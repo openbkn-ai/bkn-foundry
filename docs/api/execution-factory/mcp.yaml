@@ -321,7 +321,6 @@ paths:
       operationId: updateMCPServerStatus
       description: |
         发布 / 下架。改成 `published` 后该服务出现在 MCP 市场，`offline` 则下架。
-        与算子共用同一套生命周期状态。
       parameters:
         - $ref: '#/components/parameters/MCPID'
       requestBody:
@@ -859,7 +858,7 @@ components:
         - published
         - offline
         - editing
-      description: 生命周期状态，与算子共用同一套。
+      description: 生命周期状态。
 
     CommonPage:
       type: object

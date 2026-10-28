@@ -4,10 +4,6 @@ import "context"
 
 type managementAuditOwnerKey struct{}
 
-// ToolIDContextKey carries the Tool ID returned by a completed conversion.
-// The source Operator ID in the request is not the created Tool's identity.
-const ToolIDContextKey = "bkn.operation_audit.tool_id"
-
 // PartialBundleContextKey is set only when a successful OpenAPI bundle reply
 // reports failed child operations, so the request attempt is not called fully successful.
 const PartialBundleContextKey = "bkn.operation_audit.partial_bundle"

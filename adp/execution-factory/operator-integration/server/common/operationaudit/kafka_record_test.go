@@ -58,7 +58,7 @@ func TestBuildKafkaRecordKeepsUnauthenticatedDenialAnonymous(t *testing.T) {
 		EventID: eventID.String(), EventTime: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
 		ActorID: "anonymous", ActorType: "anonymous", AuthMethod: "unknown",
 		RequestID: "req-unauthenticated", SourceChannel: "api", Method: "POST", HTTPStatus: 401,
-		Action: "create", TargetType: "operator", TargetID: "operator:req-unauthenticated",
+		Action: "create", TargetType: "toolbox", TargetID: "toolbox:req-unauthenticated",
 		Outcome: "denied", FailureCode: "http_401",
 	}
 	value, err := BuildKafkaRecord(entry, "test")

@@ -16,7 +16,7 @@ import (
 var auditSecretShape = regexp.MustCompile(`(?i)(?:bearer\s+[a-z0-9._~-]{8,}|^bak_[a-z0-9._-]{12,}$)`)
 
 var managementTargetTypes = map[string]struct{}{
-	"operator": {}, "mcp": {}, "toolbox": {}, "tool": {}, "skill": {},
+	"mcp": {}, "toolbox": {}, "tool": {}, "skill": {},
 	"import_batch": {}, "capability_bundle": {}, "operator_category": {},
 }
 

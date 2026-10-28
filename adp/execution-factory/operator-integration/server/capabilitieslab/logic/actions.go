@@ -19,12 +19,11 @@ func (s *Service) ImportOpenApiCapabilities(
 	req model.ImportOpenApiCapabilityRequest,
 ) (*model.ImportOpenApiCapabilityResponse, error) {
 	createReq := model.CreateHttpCapabilityRequest{
-		OpenAPISpec:          req.OpenAPISpec,
-		ServiceURL:           req.ServiceURL,
-		Description:          req.Description,
-		Category:             req.Category,
-		Group:                req.Group,
-		OrchestrationEnabled: req.OrchestrationEnabled,
+		OpenAPISpec: req.OpenAPISpec,
+		ServiceURL:  req.ServiceURL,
+		Description: req.Description,
+		Category:    req.Category,
+		Group:       req.Group,
 	}
 	if createReq.Group.Mode == "" {
 		createReq.Group.Mode = "auto"
@@ -38,51 +37,6 @@ func (s *Service) ImportOpenApiCapabilities(
 	category := req.Category
 	if category == "" {
 		category = "other_category"
-	}
-
-	if req.OrchestrationEnabled {
-		bundleReq := client.BundleRequestFromModel(boxID, groupName, struct {
-			OpenAPISpec string
-			ServiceURL  string
-			Description string
-			Category    string
-		}{
-			OpenAPISpec: req.OpenAPISpec,
-			ServiceURL:  req.ServiceURL,
-			Description: req.Description,
-			Category:    category,
-		}, category)
-
-		bundle, bundleErr := s.Client.RegisterOpenAPIBundle(ctx, bundleReq)
-		if bundleErr != nil {
-			return nil, bundleErr
-		}
-
-		response := &model.ImportOpenApiCapabilityResponse{
-			BoxID:        bundle.BoxID,
-			FailureCount: bundle.FailureCount,
-			Failures:     bundle.Failures,
-		}
-
-		for i, toolID := range bundle.ToolIDs {
-			capability, capErr := s.GetCapability(ctx, BuildHttpCapabilityID(bundle.BoxID, toolID))
-			if capErr != nil {
-				continue
-			}
-			response.Capabilities = append(response.Capabilities, *capability)
-			if i < len(bundle.Links) {
-				response.Links = append(response.Links, model.Link{
-					OperatorID: bundle.Links[i].OperatorID,
-					ToolID:     bundle.Links[i].ToolID,
-				})
-			}
-		}
-
-		if len(response.Capabilities) == 0 {
-			return nil, errors.New("no capabilities imported from openapi")
-		}
-
-		return response, nil
 	}
 
 	if boxID == "" {
@@ -221,33 +175,6 @@ func (s *Service) ListVersions(
 
 		return &model.VersionListResponse{Kind: "skill", Versions: versions}, nil
 
-	case "http":
-		if capability.Orchestration == nil || !capability.Orchestration.Enabled {
-			return &model.VersionListResponse{
-				Kind:     "http",
-				Versions: ensureCurrentVersionEntry(capability, nil),
-			}, nil
-		}
-
-		history, histErr := s.Client.GetOperatorHistory(ctx, capability.Orchestration.OperatorID)
-		if histErr != nil {
-			return nil, histErr
-		}
-
-		versions := make([]model.VersionEntry, 0, len(history))
-		for _, item := range history {
-			versions = append(versions, model.VersionEntry{
-				Version:     item.Version,
-				Status:      item.Status,
-				ReleaseUser: item.ReleaseUser,
-				ReleaseTime: item.ReleaseTime,
-				UpdateTime:  item.UpdateTime,
-			})
-		}
-		versions = ensureCurrentVersionEntry(capability, versions)
-
-		return &model.VersionListResponse{Kind: "http", Versions: versions}, nil
-
 	default:
 		return &model.VersionListResponse{
 			Kind:     capability.Kind,
@@ -291,11 +218,6 @@ func (s *Service) RepublishVersion(
 			return s.Client.PublishSkillHistory(ctx, capability.SkillID, req.Version)
 		}
 		return s.Client.RepublishSkillHistory(ctx, capability.SkillID, req.Version)
-	case "http":
-		if capability.Orchestration == nil || !capability.Orchestration.Enabled || capability.Orchestration.OperatorID == "" {
-			return errors.New("historical version restore is only available after orchestration is enabled")
-		}
-		return s.Client.UpdateOperatorStatus(ctx, s.DefaultUserID, capability.Orchestration.OperatorID, "published", req.Version)
 	default:
 		return errors.New("republish not supported for this capability kind")
 	}
@@ -344,204 +266,6 @@ func mapMcpPublishStatus(status string) string {
 	default:
 		return "unpublish"
 	}
-}
-
-func (s *Service) EnableOrchestration(
-	ctx context.Context,
-	capabilityID string,
-	req model.EnableOrchestrationRequest,
-) (*model.EnableOrchestrationResponse, error) {
-	capability, err := s.GetCapability(ctx, capabilityID)
-	if err != nil {
-		return nil, err
-	}
-
-	if capability.Kind != "http" {
-		return nil, errors.New("orchestration only supported for http capabilities")
-	}
-
-	if capability.Orchestration != nil && capability.Orchestration.Enabled {
-		return &model.EnableOrchestrationResponse{
-			OperatorID: capability.Orchestration.OperatorID,
-			Audit:      capability.Orchestration.Audit,
-		}, nil
-	}
-
-	tool, err := s.Client.GetTool(ctx, capability.BoxID, capability.ToolID)
-	if err != nil {
-		return nil, err
-	}
-
-	openapiSpec := openAPISpecFromToolMetadata(tool)
-	if openapiSpec == "" {
-		return nil, errors.New("tool has no openapi metadata")
-	}
-
-	ids, regErr := s.Client.RegisterOperatorOpenAPI(
-		ctx,
-		openapiSpec,
-		operatorInfoForCapability(capability),
-		operatorExecuteControlToMap(req.OperatorExecuteControl),
-		true,
-	)
-	if regErr != nil {
-		return nil, regErr
-	}
-	if len(ids) == 0 {
-		return nil, errors.New("operator registration failed")
-	}
-
-	operator, _ := s.Client.GetOperator(ctx, ids[0])
-	return &model.EnableOrchestrationResponse{
-		OperatorID: ids[0],
-		Audit:      auditFromOperator(operator),
-	}, nil
-}
-
-func operatorInfoForCapability(capability *model.Capability) map[string]interface{} {
-	category := "other_category"
-	if capability != nil && capability.Group != nil && capability.Group.Category != "" {
-		category = capability.Group.Category
-	}
-
-	return map[string]interface{}{
-		"operator_type":  "basic",
-		"execution_mode": "sync",
-		"category":       category,
-		"source":         "custom",
-		"is_data_source": false,
-	}
-}
-
-func operatorExecuteControlToMap(control model.OperatorExecuteControl) map[string]interface{} {
-	retryPolicy := control.RetryPolicy
-	retryConditions := retryPolicy.RetryConditions
-
-	executeControl := map[string]interface{}{}
-	if control.Timeout > 0 {
-		executeControl["timeout"] = control.Timeout
-	}
-
-	retryPolicyMap := map[string]interface{}{}
-	if retryPolicy.MaxAttempts > 0 {
-		retryPolicyMap["max_attempts"] = retryPolicy.MaxAttempts
-	}
-	if retryPolicy.InitialDelay > 0 {
-		retryPolicyMap["initial_delay"] = retryPolicy.InitialDelay
-	}
-	if retryPolicy.MaxDelay > 0 {
-		retryPolicyMap["max_delay"] = retryPolicy.MaxDelay
-	}
-	if retryPolicy.BackoffFactor > 0 {
-		retryPolicyMap["backoff_factor"] = retryPolicy.BackoffFactor
-	}
-
-	retryConditionsMap := map[string]interface{}{}
-	if len(retryConditions.StatusCode) > 0 {
-		retryConditionsMap["status_code"] = retryConditions.StatusCode
-	}
-	if len(retryConditions.ErrorCodes) > 0 {
-		retryConditionsMap["error_codes"] = retryConditions.ErrorCodes
-	}
-	if len(retryConditionsMap) > 0 {
-		retryPolicyMap["retry_conditions"] = retryConditionsMap
-	}
-	if len(retryPolicyMap) > 0 {
-		executeControl["retry_policy"] = retryPolicyMap
-	}
-
-	if len(executeControl) == 0 {
-		return nil
-	}
-	return executeControl
-}
-
-func (s *Service) DisableOrchestration(
-	ctx context.Context,
-	capabilityID string,
-) (*model.DisableOrchestrationResponse, error) {
-	capability, err := s.GetCapability(ctx, capabilityID)
-	if err != nil {
-		return nil, err
-	}
-
-	if capability.Kind != "http" {
-		return nil, errors.New("orchestration only supported for http capabilities")
-	}
-
-	if capability.Orchestration == nil || capability.Orchestration.OperatorID == "" {
-		return &model.DisableOrchestrationResponse{Enabled: false}, nil
-	}
-
-	if err := s.Client.UpdateOperatorStatus(ctx, s.DefaultUserID, capability.Orchestration.OperatorID, "offline"); err != nil {
-		return nil, err
-	}
-
-	return &model.DisableOrchestrationResponse{
-		Enabled:    false,
-		OperatorID: capability.Orchestration.OperatorID,
-	}, nil
-}
-
-func (s *Service) UpdateOrchestrationConfig(
-	ctx context.Context,
-	capabilityID string,
-	req model.UpdateOrchestrationConfigRequest,
-) (*model.OrchestrationDetailResponse, error) {
-	capability, err := s.GetCapability(ctx, capabilityID)
-	if err != nil {
-		return nil, err
-	}
-
-	if capability.Kind != "http" {
-		return nil, errors.New("orchestration only supported for http capabilities")
-	}
-
-	if capability.Orchestration == nil || !capability.Orchestration.Enabled || capability.Orchestration.OperatorID == "" {
-		return nil, errors.New("enable orchestration before saving operator settings")
-	}
-
-	tool, err := s.Client.GetTool(ctx, capability.BoxID, capability.ToolID)
-	if err != nil {
-		return nil, err
-	}
-
-	openapiSpec := openAPISpecFromToolMetadata(tool)
-	if openapiSpec == "" {
-		return nil, errors.New("tool has no openapi metadata")
-	}
-
-	var openapiData interface{} = openapiSpec
-	var parsedOpenAPI map[string]interface{}
-	if err := json.Unmarshal([]byte(openapiSpec), &parsedOpenAPI); err == nil && parsedOpenAPI != nil {
-		openapiData = parsedOpenAPI
-	}
-
-	if err := s.Client.UpdateOperatorConfig(
-		ctx,
-		s.DefaultUserID,
-		capability.Orchestration.OperatorID,
-		capability.Name,
-		capability.Description,
-		"openapi",
-		openapiData,
-		operatorInfoForCapability(capability),
-		operatorExecuteControlToMap(req.OperatorExecuteControl),
-	); err != nil {
-		return nil, err
-	}
-	if err := s.Client.UpdateOperatorStatus(ctx, s.DefaultUserID, capability.Orchestration.OperatorID, "published"); err != nil {
-		return nil, err
-	}
-
-	operator, _ := s.Client.GetOperator(ctx, capability.Orchestration.OperatorID)
-	return &model.OrchestrationDetailResponse{
-		Enabled:    true,
-		OperatorID: capability.Orchestration.OperatorID,
-		ToolID:     capability.ToolID,
-		BoxID:      capability.BoxID,
-		Audit:      auditFromOperator(operator),
-	}, nil
 }
 
 func (s *Service) PublishGroup(ctx context.Context, groupID, status string) error {

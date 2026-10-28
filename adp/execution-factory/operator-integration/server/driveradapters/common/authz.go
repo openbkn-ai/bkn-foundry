@@ -15,7 +15,7 @@ import (
 // Generation uses the type-level create operation, like creating a function box.
 //
 // Valid only on the public side. The internal side (internal-v1) is called between services, and the identity comes from the X-Account-ID header rather than the verified.
-// token, following the existing idiom within the service (see logics/operator/query.go:31) to skip the determination and avoid interrupting existing callers.
+// token, following the existing idiom within the service to skip the determination and avoid interrupting existing callers.
 func requireFunctionPermission(
 	ctx context.Context,
 	authService interfaces.IAuthorizationService,

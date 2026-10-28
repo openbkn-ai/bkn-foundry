@@ -51,39 +51,3 @@ func (mr *MockHTTPRouterInterfaceMockRecorder) RegisterRouter(engine any) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterRouter", reflect.TypeOf((*MockHTTPRouterInterface)(nil).RegisterRouter), engine)
 }
-
-// MockMQHandler is a mock of MQHandler interface.
-type MockMQHandler struct {
-	ctrl     *gomock.Controller
-	recorder *MockMQHandlerMockRecorder
-	isgomock struct{}
-}
-
-// MockMQHandlerMockRecorder is the mock recorder for MockMQHandler.
-type MockMQHandlerMockRecorder struct {
-	mock *MockMQHandler
-}
-
-// NewMockMQHandler creates a new mock instance.
-func NewMockMQHandler(ctrl *gomock.Controller) *MockMQHandler {
-	mock := &MockMQHandler{ctrl: ctrl}
-	mock.recorder = &MockMQHandlerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMQHandler) EXPECT() *MockMQHandlerMockRecorder {
-	return m.recorder
-}
-
-// Subscribe mocks base method.
-func (m *MockMQHandler) Subscribe() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Subscribe")
-}
-
-// Subscribe indicates an expected call of Subscribe.
-func (mr *MockMQHandlerMockRecorder) Subscribe() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockMQHandler)(nil).Subscribe))
-}

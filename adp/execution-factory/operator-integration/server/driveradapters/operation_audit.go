@@ -97,15 +97,6 @@ func operationAuditForSurface(recorder interface {
 			// represents the entire attempt, including partial bundle success.
 			targetID, targetName = rule.TargetType+":"+requestID, ""
 		}
-		if path == "/operator/convert/tool" {
-			// This route creates a Tool from an existing Operator. A request's
-			// operator_id is not the new Tool ID; failed attempts have no Tool ID.
-			targetID = "tool:" + requestID
-			if createdID := c.GetString(operationaudit.ToolIDContextKey); createdID != "" {
-				targetID = createdID
-			}
-			targetName = targetID
-		}
 		outcome, failureCode, failureMessage := executionAuditOutcome(c.Writer.Status())
 		if path == "/capabilities/openapi-bundle" && outcome == "success" && c.GetBool(operationaudit.PartialBundleContextKey) {
 			outcome, failureCode, failureMessage = "unknown", "", ""
@@ -208,9 +199,9 @@ func executionAuditAuthMethod(authorization string) string {
 }
 
 func executionAuditTarget(c *gin.Context, targetType string, request map[string]any, requestID string) (string, string) {
-	targetID := firstExecutionAuditNonEmpty(c.Param("operator_id"), c.Param("box_id"), c.Param("tool_id"), c.Param("mcp_id"), c.Param("skill_id"))
+	targetID := firstExecutionAuditNonEmpty(c.Param("box_id"), c.Param("tool_id"), c.Param("mcp_id"), c.Param("skill_id"))
 	if targetID == "" && request != nil {
-		for _, key := range []string{"operator_id", "op_id", "box_id", "tool_id", "mcp_id", "skill_id", "id"} {
+		for _, key := range []string{"box_id", "tool_id", "mcp_id", "skill_id", "id"} {
 			if value, ok := request[key].(string); ok && strings.TrimSpace(value) != "" {
 				targetID = strings.TrimSpace(value)
 				break
@@ -222,7 +213,7 @@ func executionAuditTarget(c *gin.Context, targetType string, request map[string]
 	}
 	name := ""
 	if request != nil {
-		for _, key := range []string{"name", "display_name", "operator_name", "box_name", "tool_name", "skill_name"} {
+		for _, key := range []string{"name", "display_name", "box_name", "tool_name", "skill_name"} {
 			if value, ok := request[key].(string); ok && strings.TrimSpace(value) != "" {
 				name = strings.TrimSpace(value)
 				break

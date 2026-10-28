@@ -114,55 +114,6 @@ func (s *Service) CreateHttpCapability(
 		category = "other_category"
 	}
 
-	if req.OrchestrationEnabled {
-		bundleReq := client.BundleRequestFromModel(boxID, groupName, struct {
-			OpenAPISpec string
-			ServiceURL  string
-			Description string
-			Category    string
-		}{
-			OpenAPISpec: req.OpenAPISpec,
-			ServiceURL:  req.ServiceURL,
-			Description: req.Description,
-			Category:    category,
-		}, category)
-
-		bundle, bundleErr := s.Client.RegisterOpenAPIBundle(ctx, bundleReq)
-		if bundleErr != nil {
-			return nil, bundleErr
-		}
-		if bundle.FailureCount > 0 || len(bundle.ToolIDs) == 0 {
-			if len(bundle.Failures) > 0 {
-				return nil, errors.New(bundle.Failures[0])
-			}
-			return nil, errors.New("bundle registration failed")
-		}
-
-		toolID := bundle.ToolIDs[0]
-		boxID = bundle.BoxID
-		capability, capErr := s.GetCapability(ctx, BuildHttpCapabilityID(boxID, toolID))
-		if capErr != nil {
-			return nil, capErr
-		}
-
-		if len(bundle.Links) > 0 {
-			capability.Orchestration = &model.Orchestration{
-				Enabled:    true,
-				OperatorID: bundle.Links[0].OperatorID,
-			}
-		}
-
-		response := &model.CreateHttpCapabilityResponse{Capability: *capability}
-		for _, link := range bundle.Links {
-			response.Links = append(response.Links, model.Link{
-				OperatorID: link.OperatorID,
-				ToolID:     link.ToolID,
-			})
-		}
-
-		return response, nil
-	}
-
 	if boxID == "" {
 		created, createErr := s.Client.CreateToolbox(ctx, client.CreateToolboxPayload(
 			groupName,

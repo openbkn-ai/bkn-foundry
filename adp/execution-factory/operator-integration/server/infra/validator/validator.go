@@ -16,14 +16,13 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	validatorv10 "github.com/go-playground/validator/v10"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 const (
-	defaultNameMaxLength = 50 // Maximum length of operator name (characters)
+	defaultNameMaxLength = 50  // Maximum name length (characters).
+	defaultDescMaxLength = 500 // Maximum description length (characters).
 )
 
 var (
@@ -39,11 +38,9 @@ var (
 
 // Validator validator interface.
 type validator struct {
-	Validator           *validatorv10.Validate
-	ImportMaxCount      int64 // Operator import restrictions (maximum number of operators imported at a time)
-	NameLimit           int64 // Operator name restrictions.
-	DescLimit           int64 // Operator description restrictions.
-	ImportFileSizeLimit int64 // Operator import restrictions (maximum file size for a single import)
+	Validator *validatorv10.Validate
+	NameLimit int64 // Name length limit.
+	DescLimit int64 // Description length limit.
 }
 
 var (
@@ -56,13 +53,10 @@ var (
 
 func NewValidator() interfaces.Validator {
 	vOnce.Do(func() {
-		conf := config.NewConfigLoader()
 		v = &validator{
-			Validator:           validatorv10.New(),
-			ImportMaxCount:      conf.OperatorConfig.ImportOperatorMaxCount,
-			NameLimit:           defaultNameMaxLength,
-			DescLimit:           conf.OperatorConfig.DescLengthLimit,
-			ImportFileSizeLimit: conf.OperatorConfig.ImportFileSizeLimit,
+			Validator: validatorv10.New(),
+			NameLimit: defaultNameMaxLength,
+			DescLimit: defaultDescMaxLength,
 		}
 	})
 	return v
@@ -83,83 +77,6 @@ func init() {
 		// Returns the field name defined by the json tag.
 		return name
 	})
-}
-
-// ValidateOperatorName verifies whether the operator name is legal.
-// Only supports Chinese, English, numbers and special characters on the keyboard.
-func (v *validator) ValidateOperatorName(ctx context.Context, name string) (err error) {
-	if name == "" {
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorNameEmpty, "operator name cannot be empty")
-		return
-	}
-
-	// Check length (calculated in number of characters)
-	if utf8.RuneCountInString(name) > int(v.NameLimit) {
-		err = fmt.Errorf("operator name %s length exceeds limit [%d]", name, v.NameLimit)
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorNameTooLong, err.Error(),
-			v.NameLimit)
-		return
-	}
-
-	matched, err := regexp.MatchString(commonNameReg, name)
-	if err != nil {
-		err = fmt.Errorf("operator name %s contains invalid characters %v", name, err)
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtCommonNameInvalid, err.Error())
-		return
-	}
-	if !matched {
-		err = fmt.Errorf("operator name %s contains invalid characters", name)
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtCommonNameInvalid, err.Error())
-	}
-	return
-}
-
-// ValidateOperatorDesc verifies whether the operator description is legal.
-func (v *validator) ValidateOperatorDesc(ctx context.Context, desc string) (err error) {
-	// Operator description is not allowed to be empty.
-	if desc == "" {
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorDescEmpty, "operator description cannot be empty")
-		return
-	}
-	// Check length (calculated in number of characters)
-	if utf8.RuneCountInString(desc) > int(v.DescLimit) {
-		err = fmt.Errorf("operator description length exceeds limit [%d]", v.DescLimit)
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorDescTooLong, err.Error(), v.DescLimit)
-	}
-	return
-}
-
-// Verify whether the number of imported operators exceeds the limit.
-func (v *validator) ValidateOperatorImportCount(ctx context.Context, count int64) (err error) {
-	if count == 0 {
-		err = fmt.Errorf("operator import count %d is zero", count)
-		err = myErr.NewHTTPError(ctx, http.StatusNotFound, myErr.ErrExtOperatorUnparsed, err.Error())
-		return
-	}
-	if count > v.ImportMaxCount {
-		err = fmt.Errorf("operator import count %d exceeds limit [%d]", count, v.ImportMaxCount)
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorImportLimit, err.Error(),
-			v.ImportMaxCount)
-	}
-	return
-}
-
-// Verify whether the size of imported data exceeds the limit.
-func (v *validator) ValidateOperatorImportSize(ctx context.Context, size int64) (err error) {
-	if size == 0 {
-		err = myErr.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("operator import size %d is zero", size))
-		return
-	}
-	// Convert file size to MB.
-	if size < v.ImportFileSizeLimit {
-		return
-	}
-	// In the returned prompt information, convert the current limit into a string in units of B, KB, MB, GB, and TB.
-	sizeStr := utils.ConvertToBytes(v.ImportFileSizeLimit)
-	err = fmt.Errorf("file size %d exceeds limit [%s]", size, sizeStr)
-	err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorImportDataLimit,
-		err.Error(), sizeStr)
-	return
 }
 
 func (v *validator) ValidatorToolBoxName(ctx context.Context, name string) (err error) {

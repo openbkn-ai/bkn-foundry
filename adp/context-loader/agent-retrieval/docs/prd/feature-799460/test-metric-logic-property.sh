@@ -113,8 +113,8 @@ curl -s -X POST "${BASE_URL}${API_PATH}" \
 echo ""
 echo ""
 
-# 测试用例 5: 混合查询 metric + operator
-echo "【测试 5】混合查询 - metric + operator"
+# 测试用例 5: 混合查询 metric + tool
+echo "【测试 5】混合查询 - metric + tool"
 echo "----------------------------------------"
 curl -s -X POST "${BASE_URL}${API_PATH}" \
   -H "Content-Type: application/json" \

@@ -1,0 +1,89 @@
+---
+openapi: 3.0.3
+info:
+  title: 执行工厂 · 分类 API
+  description: |
+    分类（category）是工具箱、MCP Server 与 Skill **共用**的一组标签。
+    注册或更新这些资源时用 `category` / `box_category` 填分类机器值，
+    列表接口也按它过滤。
+
+    公开面只提供只读的分类列表；分类的新增、修改与删除只在集群内部接口上提供，
+    不在本文档范围内。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-operator-integration/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /category:
+    get:
+      tags:
+        - Category
+      summary: 分类列表
+      operationId: listCategories
+      x-contract-probe:
+        readonly: true
+        order: 1
+      description: |
+        返回可用的分类，供工具箱、MCP Server 与 Skill 共用。`category_type` 是
+        机器可读值（过滤与注册时填它），`name` 是随请求语言本地化的显示名。
+      responses:
+        '200':
+          description: 分类列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryInfo'
+              examples:
+                实测:
+                  value:
+                    - category_type: other_category
+                      name: 未分类
+                    - category_type: system
+                      name: 系统工具
+                    - category_type: data_query
+                      name: 数据查询
+                    - category_type: data_analysis
+                      name: 数据分析
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  responses:
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+
+  schemas:
+    CategoryInfo:
+      type: object
+      properties:
+        category_type:
+          type: string
+          description: 分类机器值，过滤与注册时填它。
+        name:
+          type: string
+          description: 分类显示名，随请求语言本地化。

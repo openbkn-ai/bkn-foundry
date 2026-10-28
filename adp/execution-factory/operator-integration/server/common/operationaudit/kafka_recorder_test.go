@@ -28,7 +28,7 @@ func validKafkaAuditEntry(t *testing.T) Entry {
 	return Entry{
 		EventID: id.String(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Operator",
 		ActorType: "user", AuthMethod: "oauth", RequestID: "req-1", Method: "POST",
-		HTTPStatus: 201, Action: "create", TargetType: "operator", TargetID: "op-1",
+		HTTPStatus: 201, Action: "create", TargetType: "toolbox", TargetID: "box-1",
 		Outcome: "success",
 	}
 }

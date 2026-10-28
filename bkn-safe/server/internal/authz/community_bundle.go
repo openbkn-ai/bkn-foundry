@@ -21,7 +21,6 @@ var communityBundleOperations = map[string][]string{
 	"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"function":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"operator":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"small_model":       {"display", "modify", "delete", "execute"},
 	"large_model":       {"display", "modify", "delete", "execute"},

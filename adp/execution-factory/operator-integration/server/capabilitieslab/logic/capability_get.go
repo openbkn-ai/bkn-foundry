@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
 
@@ -76,22 +75,6 @@ func (s *Service) getHttpCapability(ctx context.Context, capabilityID string) (*
 		capability.Endpoint = extractEndpoint(string(tool.Metadata.APISpec))
 	}
 
-	capability.Orchestration = s.resolveOrchestrationForTool(ctx, boxID, client.ToolInfo{
-		ToolID:         tool.ToolID,
-		Name:           tool.Name,
-		Description:    tool.Description,
-		Status:         tool.Status,
-		CreateUser:     tool.CreateUser,
-		CreateTime:     tool.CreateTime,
-		UpdateUser:     tool.UpdateUser,
-		UpdateTime:     tool.UpdateTime,
-		ReleaseUser:    tool.ReleaseUser,
-		ReleaseTime:    tool.ReleaseTime,
-		SourceID:       tool.SourceID,
-		SourceType:     tool.SourceType,
-		ResourceObject: tool.ResourceObject,
-	})
-	s.enrichOrchestrationAudit(ctx, capability.Orchestration)
 	capability.OpenAPISpec = openAPISpecFromToolMetadata(tool)
 	return capability, nil
 }
@@ -195,35 +178,5 @@ func (s *Service) getSkillCapability(ctx context.Context, capabilityID string) (
 		Audit:       auditFromSkillDetail(skill),
 		SkillID:     skill.SkillID,
 		Version:     skill.Version,
-	}, nil
-}
-
-func (s *Service) GetOrchestrationDetail(
-	ctx context.Context,
-	capabilityID string,
-) (*model.OrchestrationDetailResponse, error) {
-	capability, err := s.GetCapability(ctx, capabilityID)
-	if err != nil {
-		return nil, err
-	}
-
-	if capability.Kind != "http" {
-		return &model.OrchestrationDetailResponse{Enabled: false}, nil
-	}
-
-	if capability.Orchestration != nil && capability.Orchestration.Enabled {
-		return &model.OrchestrationDetailResponse{
-			Enabled:    true,
-			OperatorID: capability.Orchestration.OperatorID,
-			ToolID:     capability.ToolID,
-			BoxID:      capability.BoxID,
-			Audit:      capability.Orchestration.Audit,
-		}, nil
-	}
-
-	return &model.OrchestrationDetailResponse{
-		Enabled: false,
-		ToolID:  capability.ToolID,
-		BoxID:   capability.BoxID,
 	}, nil
 }

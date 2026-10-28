@@ -23,7 +23,7 @@ type restPublicHandler struct {
 	Hydra               interfaces.Hydra
 	AppKeys             interfaces.AppKeyVerifier
 	SandboxHandler      sandboxdriver.ManagementHandler
-	OperatorRestHandler OperatorRestHandler
+	CategoryRestHandler CategoryRestHandler
 	ToolBoxRestHandler  ToolBoxRestHandler
 	MCPRestHandler      MCPRestHandler
 	SkillRestHandler    SkillRestHandler
@@ -44,7 +44,7 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 		Hydra:               drivenadapters.NewHydra(),
 		AppKeys:             drivenadapters.NewAppKeyVerifier(),
 		SandboxHandler:      sandboxdriver.NewManagementHandler(),
-		OperatorRestHandler: NewOperatorRestHandler(),
+		CategoryRestHandler: NewCategoryRestHandler(),
 		ToolBoxRestHandler:  NewToolBoxRestHandler(),
 		MCPRestHandler:      NewMCPRestHandler(),
 		SkillRestHandler:    NewSkillRestHandler(),
@@ -71,8 +71,8 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 		middlewareIntrospectVerify(r.Hydra, r.AppKeys),
 	)
 	engine.Use(mws...)
-	// Operator registration related interfaces.
-	r.OperatorRestHandler.RegisterPublic(engine)
+	// Category interface.
+	r.CategoryRestHandler.RegisterPublic(engine)
 	// Toolbox related interfaces.
 	r.ToolBoxRestHandler.RegisterPublic(engine)
 	// MCP related interfaces.

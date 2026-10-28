@@ -89,14 +89,11 @@ else
 
     mkrole() { local a="r$1-$$"; aapi POST /api/safe/v1/admin/users "{\"account\":\"$a\",\"name\":\"$1\",\"password\":\"p@ss1234\"}" >/dev/null; local u; u=$(jget "d['id']" </tmp/safe_body); aapi POST /api/safe/v1/admin/role-bindings "{\"accessor_id\":\"$u\",\"role_id\":\"$2\"}" >/dev/null; echo "$u"; }
     DU=$(mkrole data 00990824-4bf7-11f0-8fa7-865d5643e61f)
-    AU=$(mkrole ai 3fb94948-5169-11f0-b662-3a7bdba2913f)
     [ "$(chk "$DU" catalog c1 create)" = "True" ]    && ok "数据管理员 catalog create" || bad "data-admin catalog"
-    [ "$(chk "$DU" operator o1 execute)" = "False" ] && ok "数据管理员 NOT operator" || bad "data-admin operator leak"
-    [ "$(chk "$AU" operator o1 execute)" = "True" ]  && ok "AI管理员 operator execute" || bad "ai-admin operator"
 
     # role enumeration + cleanup of created users
     [ "$(aapi GET /api/safe/v1/admin/roles)" = "200" ] && ok "admin roles list" || bad "roles list"
-    for u in "$USER" "$DU" "$AU"; do aapi DELETE "/api/safe/v1/admin/users/$u" >/dev/null; done
+    for u in "$USER" "$DU"; do aapi DELETE "/api/safe/v1/admin/users/$u" >/dev/null; done
     ok "cleaned up test users"
   fi
 fi

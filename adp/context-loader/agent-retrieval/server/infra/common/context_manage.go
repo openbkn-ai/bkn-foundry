@@ -109,7 +109,7 @@ func IsPublicAPIFromCtx(ctx context.Context) bool {
 //
 // TokenInfo is the introspection result and does not contain the original text, and PTC's run_code must bring the caller's own token to.
 // Downstream: Any code submitted by the caller is executed in the sandbox, and the authorization determination must be left on the public side of the execution factory.
-// (execute permission on operator types, see #345). Switching to the server identity to open the internal interface is equivalent to changing this.
+// (execute permission on function:adhoc, see #345). Switching to the server identity to open the internal interface is equivalent to changing this.
 // Check and wash out, any account that can connect to MCP has obtained the sandbox code execution capability.
 func SetRawTokenToCtx(ctx context.Context, token string) context.Context {
 	return context.WithValue(ctx, interfaces.KeyToken, token)

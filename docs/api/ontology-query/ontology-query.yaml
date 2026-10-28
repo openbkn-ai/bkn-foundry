@@ -504,7 +504,7 @@ paths:
                       - name: tool_test
                         display_name: tool_test
                         type: tool
-                        comment: pod的算子
+                        comment: pod的工具
                         index: false
                         data_source:
                           type: tool
@@ -834,7 +834,7 @@ paths:
                       - name: tool_test
                         display_name: tool_test
                         type: tool
-                        comment: pod的算子
+                        comment: pod的工具
                         index: false
                         data_source:
                           type: tool
@@ -2394,7 +2394,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PropertyQueryBody'
             examples:
-              含指标、算子的属性值查询:
+              含指标、工具的属性值查询:
                 value:
                   _instance_identities:
                   - id: 1479
@@ -2484,7 +2484,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ObjectPropertiesValuesResponse'
               examples:
-                请求指标属性和算子属性:
+                请求指标属性和工具属性:
                   value:
                     datas:
                     - id: 1479
@@ -3856,7 +3856,7 @@ components:
       type: object
       properties:
         objects:
-          description: 子图中参与关系的对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、MetricProperty或OperatorProperty
+          description: 子图中参与关系的对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、MetricProperty
           type: object
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
@@ -3866,7 +3866,7 @@ components:
           items:
             $ref: '#/components/schemas/RelationPath'
         isolated_objects:
-          description: 子图中未建立关系的孤立对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、MetricProperty或OperatorProperty
+          description: 子图中未建立关系的孤立对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、MetricProperty
           type: object
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
@@ -4120,7 +4120,7 @@ components:
           $ref: '#/components/schemas/ObjectTypeDetail'
           description: 对象类信息
         datas:
-          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty或OperatorProperty
+          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty
           type: array
           items:
             $ref: '#/components/schemas/ObjectInfo'
@@ -4162,7 +4162,7 @@ components:
       type: object
       properties:
         datas:
-          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty或OperatorProperty
+          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty
           type: array
           items:
             $ref: '#/components/schemas/ObjectPropertyValue'
@@ -4223,7 +4223,6 @@ components:
         - type: boolean
         - type: integer
         - $ref: '#/components/schemas/MetricProperty'
-        - $ref: '#/components/schemas/OperatorProperty'
     ObjectInfoInSubgraph:
       description: 子图中的对象信息
       required:
@@ -4248,7 +4247,6 @@ components:
             - type: boolean
             - type: integer
             - $ref: '#/components/schemas/MetricProperty'
-            - $ref: '#/components/schemas/OperatorProperty'
         _instance_id:
           description: 对象实例id：对象类id-根据联合主键生成的对象id。默认返回，当 exclude_system_properties 排除时，不返回。
           type: string
@@ -4283,41 +4281,6 @@ components:
         - type: integer
         - $ref: '#/components/schemas/MetricPropertyValue'
         - type: object
-    OperatorProperty:
-      description: 算子属性
-      required:
-      - property_type
-      - mapping_source_id
-      - has_any_unfilled_params
-      - parameters
-      - dynamic_params
-      type: object
-      properties:
-        property_type:
-          description: 属性类型
-          enum:
-          - metric
-          type: string
-        mapping_source_id:
-          description: 映射的指标模型id
-          type: string
-        has_any_unfilled_params:
-          description: 是否有未填充的参数，默认是false
-          type: boolean
-        parameters:
-          description: 实例化了的参数。是个map
-          type: object
-          additionalProperties:
-            oneOf:
-            - type: string
-            - type: number
-            - type: boolean
-            - type: integer
-            - type: object
-        dynamic_params:
-          description: 动态参数。是个map
-          type: object
-          additionalProperties: {}
     PropertyQueryBody:
       description: 属性查询请求体
       required:
@@ -4339,7 +4302,7 @@ components:
           description: |
             各逻辑属性所需的动态参数：外层 key 为**逻辑属性名**，内层为参数名到取值的 map。
             当属性是指标属性时，内层结构可遵循 MetricPropertyDynamicParams（时间、分析维度等）；
-            算子属性则为参数名到标量或嵌套对象的映射。未传或某属性无动态需求时可省略该 key。
+            工具属性则为参数名到标量或嵌套对象的映射。未传或某属性无动态需求时可省略该 key。
           type: object
           additionalProperties:
             oneOf:

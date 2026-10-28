@@ -17,7 +17,6 @@ func (s *ToolServiceImpl) deleteTools(ctx context.Context, tx *sql.Tx, boxID str
 		switch tool.SourceType {
 		case model.SourceTypeOpenAPI:
 			apiMetadatas = append(apiMetadatas, tool.SourceID)
-		case model.SourceTypeOperator:
 		case model.SourceTypeFunction:
 			funcMetadatas = append(funcMetadatas, tool.SourceID)
 		}

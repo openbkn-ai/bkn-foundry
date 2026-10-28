@@ -302,7 +302,7 @@ openbkn agent trace conv-xyz789 --pretty
 | --- | --- |
 | `agent` | Top-level agent turn (root span) |
 | `retrieval` | Context retrieval from BKN / knowledge network |
-| `tool` | Tool or operator invocation via Execution Factory |
+| `tool` | Tool invocation via Execution Factory |
 | `llm` | LLM inference call (prompt → completion) |
 | `memory` | Memory read/write operations |
 | `policy` | Policy evaluation (permission checks, guardrails) |

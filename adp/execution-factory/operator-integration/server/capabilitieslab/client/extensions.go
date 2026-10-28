@@ -71,37 +71,6 @@ type skillHistoryEntry struct {
 	ReleaseTime int64  `json:"release_time"`
 }
 
-type operatorHistoryEntry struct {
-	OperatorID  string `json:"operator_id"`
-	Version     string `json:"version"`
-	Status      string `json:"status"`
-	ReleaseUser string `json:"release_user"`
-	ReleaseTime int64  `json:"release_time"`
-	UpdateTime  int64  `json:"update_time"`
-}
-
-type operatorListResponse struct {
-	pageResult
-	Data []struct {
-		OperatorID string `json:"operator_id"`
-		Name       string `json:"name"`
-		Status     string `json:"status"`
-	} `json:"data"`
-}
-
-type OperatorDetailResponse struct {
-	OperatorID  string `json:"operator_id"`
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Status      string `json:"status"`
-	CreateUser  string `json:"create_user"`
-	CreateTime  int64  `json:"create_time"`
-	UpdateUser  string `json:"update_user"`
-	UpdateTime  int64  `json:"update_time"`
-	ReleaseUser string `json:"release_user"`
-	ReleaseTime int64  `json:"release_time"`
-}
-
 type DebugToolRequest struct {
 	Body    map[string]interface{} `json:"body,omitempty"`
 	Query   map[string]interface{} `json:"query,omitempty"`
@@ -188,93 +157,6 @@ func (c *OperatorIntegrationClient) UpdateSkillStatus(ctx context.Context, skill
 	return c.doJSON(ctx, http.MethodPut, path, map[string]string{"status": status}, nil)
 }
 
-func (c *OperatorIntegrationClient) GetOperatorHistory(ctx context.Context, operatorID string) ([]operatorHistoryEntry, error) {
-	path := fmt.Sprintf("/api/agent-operator-integration/v1/operator/history/%s", url.PathEscape(operatorID))
-	var resp []operatorHistoryEntry
-	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-func (c *OperatorIntegrationClient) ListOperatorsByName(ctx context.Context, name string) (*operatorListResponse, error) {
-	query := url.Values{}
-	query.Set("page", "1")
-	query.Set("page_size", "20")
-	if name != "" {
-		query.Set("name", name)
-	}
-
-	path := fmt.Sprintf("/api/agent-operator-integration/v1/operator/info/list?%s", query.Encode())
-	var resp operatorListResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
-func (c *OperatorIntegrationClient) GetOperator(ctx context.Context, operatorID string) (*OperatorDetailResponse, error) {
-	path := fmt.Sprintf("/api/agent-operator-integration/v1/operator/info/%s", url.PathEscape(operatorID))
-	var resp OperatorDetailResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
-func (c *OperatorIntegrationClient) UpdateOperatorStatus(
-	ctx context.Context,
-	userID, operatorID, status string,
-	version ...string,
-) error {
-	item := map[string]string{"operator_id": operatorID, "status": status}
-	if len(version) > 0 && version[0] != "" {
-		item["version"] = version[0]
-	}
-	body := []map[string]string{item}
-	return c.doJSONWithUser(ctx, http.MethodPost, "/api/agent-operator-integration/v1/operator/status", userID, body, nil)
-}
-
-func (c *OperatorIntegrationClient) UpdateOperatorConfig(
-	ctx context.Context,
-	userID, operatorID string,
-	name, description, metadataType string,
-	data interface{},
-	operatorInfo map[string]interface{},
-	executeControl map[string]interface{},
-) error {
-	body := map[string]interface{}{
-		"operator_id": operatorID,
-	}
-	if name != "" {
-		body["name"] = name
-	}
-	if description != "" {
-		body["description"] = description
-	}
-	if metadataType != "" {
-		body["metadata_type"] = metadataType
-	}
-	if data != nil {
-		body["data"] = data
-	}
-	if operatorInfo != nil {
-		body["operator_info"] = operatorInfo
-	}
-	if executeControl != nil {
-		body["operator_execute_control"] = executeControl
-	}
-
-	return c.doJSONWithUser(
-		ctx,
-		http.MethodPost,
-		"/api/agent-operator-integration/v1/operator/info",
-		userID,
-		body,
-		nil,
-	)
-}
-
 func (c *OperatorIntegrationClient) DebugTool(
 	ctx context.Context,
 	boxID, toolID string,
@@ -306,55 +188,4 @@ func (c *OperatorIntegrationClient) DebugMcpTool(
 func (c *OperatorIntegrationClient) UpdateToolboxStatus(ctx context.Context, boxID, status string) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/tool-box/%s/status", url.PathEscape(boxID))
 	return c.doJSON(ctx, http.MethodPost, path, map[string]string{"status": status}, nil)
-}
-
-func (c *OperatorIntegrationClient) RegisterOperatorOpenAPI(
-	ctx context.Context,
-	openapiSpec string,
-	operatorInfo map[string]interface{},
-	executeControl map[string]interface{},
-	directPublish bool,
-) ([]string, error) {
-	if operatorInfo == nil {
-		operatorInfo = map[string]interface{}{}
-	}
-	if operatorInfo["category"] == nil || operatorInfo["category"] == "" {
-		operatorInfo["category"] = "other_category"
-	}
-	if operatorInfo["operator_type"] == nil || operatorInfo["operator_type"] == "" {
-		operatorInfo["operator_type"] = "basic"
-	}
-	if operatorInfo["execution_mode"] == nil || operatorInfo["execution_mode"] == "" {
-		operatorInfo["execution_mode"] = "sync"
-	}
-	if operatorInfo["source"] == nil || operatorInfo["source"] == "" {
-		operatorInfo["source"] = "custom"
-	}
-
-	body := map[string]interface{}{
-		"operator_metadata_type": "openapi",
-		"data":                   openapiSpec,
-		"direct_publish":         directPublish,
-		"operator_info":          operatorInfo,
-	}
-	if executeControl != nil {
-		body["operator_execute_control"] = executeControl
-	}
-
-	var resp []struct {
-		OperatorID string `json:"operator_id"`
-		Status     string `json:"status"`
-	}
-	if err := c.doJSON(ctx, http.MethodPost,
-		"/api/agent-operator-integration/v1/operator/register", body, &resp); err != nil {
-		return nil, err
-	}
-
-	ids := make([]string, 0, len(resp))
-	for _, item := range resp {
-		if item.OperatorID != "" {
-			ids = append(ids, item.OperatorID)
-		}
-	}
-	return ids, nil
 }

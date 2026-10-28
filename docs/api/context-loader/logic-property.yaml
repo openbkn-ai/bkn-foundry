@@ -3,7 +3,7 @@ openapi: 3.1.0
 info:
   title: 上下文加载 · 逻辑属性求值 API
   description: |
-    批量求一批对象实例的**逻辑属性**（指标 `metric` 或算子 `operator`）值。
+    批量求一批对象实例的**逻辑属性**（指标 `metric` 或工具 `tool`）值。
 
     逻辑属性不直接存在于数据源里，需要带参数计算，而参数往往藏在用户的自然语言里
     （「最近一年」→ 时间窗、「按省份」→ 分析维度）。本接口先用大模型把 `query`
@@ -501,7 +501,7 @@ components:
           type: array
           items:
             type: string
-          description: 要求值的逻辑属性名列表（`metric` 或 `operator`）。
+          description: 要求值的逻辑属性名列表（`metric` 或 `tool`）。
         additional_context:
           type: string
           description: |

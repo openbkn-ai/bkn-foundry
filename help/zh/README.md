@@ -28,7 +28,7 @@ BKN Foundry 为**纯后台**平台，请通过 CLI、各语言 SDK 或 HTTP API 
 | 🗄️ [VEGA 引擎](manual/vega.md) | 数据虚拟化 — 连接、模型、视图与统一查询 |
 | 🔎 [Cypher 查询](manual/cypher.md) | 只读 openCypher 子集：语法、示例、限制与错误码 |
 | 📚 [Context Loader](manual/context-loader.md) | 面向智能体的上下文组装 |
-| 🛠️ [Execution Factory](manual/execution-factory.md) | 工具、算子与技能 |
+| 🛠️ [Execution Factory](manual/execution-factory.md) | 工具箱、MCP 与技能 |
 | 🔭 [BKN Trace](manual/bkn-trace.md) | 链路追踪、指标与证据链式可观测 |
 | 🔐 [BKN Safe](manual/bkn-safe.md) | 身份、权限、策略与审计 |
 | 🛡️ [平台管理](install.md#-安装后的管理员命令openbkn-admin) | `openbkn admin` — 用户/组织/角色/模型/审计（安装后） |

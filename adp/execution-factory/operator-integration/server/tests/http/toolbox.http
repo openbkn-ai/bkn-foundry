@@ -370,37 +370,10 @@ Authorization: {{token}}
 }
 
 
-#  {
-#     "status": "success",
-#     "operator_id": "125e3bcc-2c2d-4a45-9518-ccce35c788c2",
-#     "version": "4bb806bd-b2dc-4d0c-bb8d-f764e0cd20e0"
-#   }
-
-
 ### 获取工具箱内工具列表（分页）
 GET http://127.0.0.1:9000/api/agent-operator-integration/v1/tool-box/18c24f3b-3c1c-4ea2-bf2d-babb80c3dabc/tools/list?box_id=18c24f3b-3c1c-4ea2-bf2d-babb80c3dabc&page=1&page_size=100
 Content-Type: application/json
 Authorization: {{token}}
-
-
-### 算子转换成工�?
-POST http://127.0.0.1:9000/api/agent-operator-integration/v1/operator/convert/tool
-Content-Type: application/json
-Authorization: {{token}}
-
-{
-    "box_id": "78a999d4-8923-4ed7-9b83-c4862007b4a5",
-    "operator_id": "59469860-fc7b-45d1-8d1d-eba8306826a2",
-    "operator_version": "4664c91b-3e1b-4e64-a455-d31775bf4ef7"
-}
-
-# 45a079da-2ee1-11f0-8415-86972a85e82a
-
-### 查询工具依赖算子
-GET http://127.0.0.1:9000/api/agent-operator-integration/v1/relations/source?source_type=tool&source_id=ed86d5c4-6e77-4342-9519-5794e0119c48
-Content-Type: application/json
-Authorization: {{token}}
-
 
 
 ## 内部接口

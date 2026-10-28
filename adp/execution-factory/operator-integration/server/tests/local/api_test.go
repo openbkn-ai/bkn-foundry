@@ -16,10 +16,6 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-// OperatorAPI operator API metadata.
-type OperatorAPI struct {
-}
-
 // Test API format parsing.
 func TestAPIAnalysis(t *testing.T) {
 	localPath := "../file/test.json"

@@ -36,7 +36,7 @@ list_knowledge_networks  → discover kn_id
 search_schema            → find relevant object, relation, action, and metric types
 get_object_types         → inspect physical property columns, allowed operators, and related_metrics
 query_object_instance    → retrieve instances and read the primary key from _instance_identity
-  ├→ logic-property-resolver → evaluate metric or operator logical properties
+  ├→ logic-property-resolver → evaluate metric or tool logical properties
   ├→ get_action_info → execute_action → get_action_execution → complete an action flow
   └→ search_capabilities    → rank every kind the network mounted in one space
        ├→ capability_type=skill → get_skill_content → read_skill_file → execute_skill

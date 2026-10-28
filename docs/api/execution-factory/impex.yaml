@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: 执行工厂 · 导入导出 API
   description: |
-    把算子、工具箱、MCP 打成 `.adp` 包导出，或从包导入回来。用于环境间搬运与备份。
+    把工具箱、MCP 打成 `.adp` 包导出，或从包导入回来。用于环境间搬运与备份。
 
     **导出是 GET、导入是 multipart**：导入不是发 JSON，而是把 `.adp` 文件作为
     表单字段 `data` 上传，`Content-Type` 必须是 `multipart/form-data`，
@@ -29,7 +29,7 @@ paths:
         `Content-Disposition: attachment; filename=<type>_export_<时间戳>.adp`，
         浏览器会直接落盘；`Content-Type` 仍是 `application/json`——`.adp` 就是 JSON。
 
-        导出内容按 `type` 落在响应的对应字段里（`operator` / `toolbox` / `mcp`），
+        导出内容按 `type` 落在响应的对应字段里（`toolbox` / `mcp`），
         其余字段不出现。
       parameters:
         - name: type
@@ -48,7 +48,7 @@ paths:
         '200':
           description: |
             组件配置。响应头带 `Content-Disposition`，文件名形如
-            `operator_export_20260731_150405.adp`
+            `toolbox_export_20260731_150405.adp`
           content:
             application/json:
               schema:
@@ -160,7 +160,6 @@ components:
     ComponentType:
       type: string
       enum:
-        - operator
         - toolbox
         - mcp
       description: 组件类型。传其他值返回 400。
@@ -179,12 +178,6 @@ components:
       description: |
         `.adp` 包内容。按导出的 `type` 只出现对应的那一个字段。
       properties:
-        operator:
-          type: object
-          additionalProperties: true
-          description: |
-            算子配置。含 `configs`（算子本体）与 `composite_configs`
-            （组合算子的依赖配置）。
         toolbox:
           type: object
           additionalProperties: true

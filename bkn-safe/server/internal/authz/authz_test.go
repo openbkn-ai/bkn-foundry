@@ -222,7 +222,7 @@ func TestFunctionGrantDoesNotCrossResourceTypes(t *testing.T) {
 		{"function", "box-2", false},
 		{"tool_box", "box-1", false},
 		{"mcp", "box-1", false},
-		{"operator", "box-1", false},
+		{"skill", "box-1", false},
 		{"knowledge_network", "box-1", false},
 	} {
 		got, err := e.Check(user, tc.resourceType, tc.resourceID, "execute")
@@ -581,7 +581,7 @@ func TestAccessibleResources(t *testing.T) {
 	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d1:default", "list"))
 	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d2:default", "list"))
 	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d3:default", "view")) // wrong op
-	mustNoErr(t, e.GrantObjectPermission("u-1", "operator", "op1", "list"))         // wrong type
+	mustNoErr(t, e.GrantObjectPermission("u-1", "skill", "op1", "list"))            // wrong type
 	// role-inherited grant
 	mustNoErr(t, e.GrantObjectPermission(role, "data_flow", "d4:default", "list"))
 	mustNoErr(t, e.AssignRole("u-1", role))

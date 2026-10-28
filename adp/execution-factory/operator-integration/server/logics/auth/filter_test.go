@@ -28,14 +28,14 @@ func TestFilterViewableIDs(t *testing.T) {
 
 		Convey("内部面原样返回，不触发判定", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
-			got, err := FilterViewableIDs(context.Background(), authService, "", ids, interfaces.AuthResourceTypeOperator)
+			got, err := FilterViewableIDs(context.Background(), authService, "", ids, interfaces.AuthResourceTypeToolBox)
 			So(err, ShouldBeNil)
 			So(got, ShouldResemble, ids)
 		})
 
 		Convey("空ID列表直接返回", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
-			got, err := FilterViewableIDs(publicCtx(), authService, "", nil, interfaces.AuthResourceTypeOperator)
+			got, err := FilterViewableIDs(publicCtx(), authService, "", nil, interfaces.AuthResourceTypeToolBox)
 			So(err, ShouldBeNil)
 			So(got, ShouldBeEmpty)
 		})
@@ -43,9 +43,9 @@ func TestFilterViewableIDs(t *testing.T) {
 		Convey("类型级授权(ResourceIDAll)全量放行", func() {
 			authService := mocks.NewMockIAuthorizationService(ctrl)
 			authService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
-			authService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeOperator,
+			authService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
 				interfaces.AuthOperationTypeView).Return([]string{interfaces.ResourceIDAll}, nil)
-			got, err := FilterViewableIDs(publicCtx(), authService, "", ids, interfaces.AuthResourceTypeOperator)
+			got, err := FilterViewableIDs(publicCtx(), authService, "", ids, interfaces.AuthResourceTypeToolBox)
 			So(err, ShouldBeNil)
 			So(got, ShouldResemble, ids)
 		})
@@ -75,7 +75,7 @@ func TestFilterViewableIDs(t *testing.T) {
 			authService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
 			authService.EXPECT().ResourceListIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, errors.New("authz down"))
-			got, err := FilterViewableIDs(publicCtx(), authService, "", ids, interfaces.AuthResourceTypeOperator)
+			got, err := FilterViewableIDs(publicCtx(), authService, "", ids, interfaces.AuthResourceTypeToolBox)
 			So(err, ShouldNotBeNil)
 			So(got, ShouldBeNil)
 		})

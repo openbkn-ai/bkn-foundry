@@ -26,30 +26,23 @@ type IComponentImpexConfig interface {
 
 // ExportConfigReq export configuration request.
 type ExportConfigReq struct {
-	UserID string        `header:"user_id" validate:"required"`                      // User ID.
-	Type   ComponentType `uri:"type" validate:"required,oneof=operator toolbox mcp"` // Component type.
-	ID     string        `uri:"id" validate:"required"`                              // Component ID.
+	UserID string        `header:"user_id" validate:"required"`             // User ID.
+	Type   ComponentType `uri:"type" validate:"required,oneof=toolbox mcp"` // Component type.
+	ID     string        `uri:"id" validate:"required"`                     // Component ID.
 }
 
 // ImportConfigReq import configuration request.
 type ImportConfigReq struct {
 	UserID string          `header:"user_id" validate:"required"`                        // User ID.
-	Type   ComponentType   `uri:"type" validate:"required,oneof=operator toolbox mcp"`   // Component type.
+	Type   ComponentType   `uri:"type" validate:"required,oneof=toolbox mcp"`            // Component type.
 	Mode   ImportType      `form:"mode" default:"create" validate:"oneof=create upsert"` // Configure import type.
 	Data   json.RawMessage `form:"data" validate:"required"`
 }
 
 // ComponentImpexConfigModel component import and export configuration model.
 type ComponentImpexConfigModel struct {
-	Operator *OperatorImpexConfig `json:"operator,omitempty"`
-	Toolbox  *ToolBoxImpexConfig  `json:"toolbox,omitempty"`
-	MCP      *MCPImpexConfig      `json:"mcp,omitempty"`
-}
-
-// OperatorImpexConfig operator import and export configuration.
-type OperatorImpexConfig struct {
-	Configs          []*OperatorImpexItem `json:"configs"`           // Operator configuration.
-	CompositeConfigs []any                `json:"composite_configs"` // Combination operator depends on configuration.
+	Toolbox *ToolBoxImpexConfig `json:"toolbox,omitempty"`
+	MCP     *MCPImpexConfig     `json:"mcp,omitempty"`
 }
 
 // ToolBoxImpexConfig toolbox import and export configuration.
@@ -177,26 +170,4 @@ type MCPToolItem struct {
 	Name        string `json:"name" validate:"required"`
 	Description string `json:"description"`
 	UseRule     string `json:"use_rule"`
-}
-
-type OperatorImpexData struct {
-	Operators []*OperatorImpexItem `json:"operators"`
-}
-
-// OperatorImpexItem operator import and export data model.
-type OperatorImpexItem struct {
-	OperatorID             string                  `json:"operator_id" validate:"uuid"`                                           // Operator ID.
-	OperatorName           string                  `json:"operator_name" validate:"required"`                                     // Operator name.
-	Version                string                  `json:"version" validate:"uuid"`                                               // Operator version.
-	Status                 BizStatus               `json:"status" validate:"omitempty,oneof=unpublish published offline editing"` // Status.
-	MetadataType           MetadataType            `json:"metadata_type" default:"openapi" validate:"oneof=openapi function"`     // Operator metadata type (mandatory parameter)
-	Metadata               *MetadataInfo           `json:"metadata" validate:"required"`                                          // Operator metadata.
-	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty"`                                                 // Extended information.
-	OperatorInfo           *OperatorInfo           `json:"operator_info"`                                                         // Operator information.
-	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control"`                                              // Operator execution control.
-	CreateUser             string                  `json:"create_user"`                                                           // Create user.
-	CreateTime             int64                   `json:"create_time"`                                                           // creation time.
-	UpdateUser             string                  `json:"update_user"`                                                           // Update user.
-	UpdateTime             int64                   `json:"update_time"`                                                           // Update time.
-	IsInternal             bool                    `json:"is_internal"`                                                           // Is it an internal operator?.
 }

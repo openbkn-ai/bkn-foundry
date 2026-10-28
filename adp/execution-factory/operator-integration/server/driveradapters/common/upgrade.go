@@ -34,7 +34,6 @@ type upgradeHandler struct {
 	Logger                  interfaces.Logger
 	DBMCPServerConfig       model.DBMCPServerConfig
 	ToolBoxDB               model.IToolboxDB
-	DBOperatorManager       model.IOperatorRegisterDB
 	SkillRepo               model.ISkillRepository
 	SkillReleaseRepo        model.ISkillReleaseDB
 	SkillReleaseHistoryRepo model.ISkillReleaseHistoryDB
@@ -67,7 +66,6 @@ func NewUpgradeHandler() UpgradeHandler {
 			Logger:                  confLoader.GetLogger(),
 			DBMCPServerConfig:       dbaccess.NewMCPServerConfigDBSingleton(),
 			ToolBoxDB:               dbaccess.NewToolboxDB(),
-			DBOperatorManager:       dbaccess.NewOperatorManagerDB(),
 			SkillRepo:               dbaccess.NewSkillRepositoryDB(),
 			SkillReleaseRepo:        dbaccess.NewSkillReleaseDB(),
 			SkillReleaseHistoryRepo: dbaccess.NewSkillReleaseHistoryDB(),
@@ -141,8 +139,6 @@ func (uh *upgradeHandler) MigrateHistoryData(c *gin.Context) {
 
 	var resp *MigrateHistoryDataResponse
 	switch req.ResourceType {
-	case interfaces.AuthResourceTypeOperator:
-		resp, err = uh.migrateHistoryDataForOperator(ctx, req)
 	case interfaces.AuthResourceTypeMCP:
 		resp, err = uh.migrateHistoryDataForForMcp(ctx, req)
 	case interfaces.AuthResourceTypeToolBox:
@@ -161,42 +157,6 @@ func (uh *upgradeHandler) MigrateHistoryData(c *gin.Context) {
 	}
 
 	rest.ReplyOK(c, http.StatusOK, resp)
-}
-
-func (uh *upgradeHandler) migrateHistoryDataForOperator(ctx context.Context, req *MigrateHistoryDataRequest) (resp *MigrateHistoryDataResponse, err error) {
-	resp = &MigrateHistoryDataResponse{
-		Items: []*HistoryData{},
-	}
-	filter := make(map[string]interface{})
-
-	var total int64
-	total, err = uh.DBOperatorManager.CountByWhereClause(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	resp.Total = total
-
-	// Calculate actual offset.
-	actualOffset := int64(req.Page * req.PageSize)
-
-	// If offset exceeds total, empty items will be returned directly.
-	if actualOffset >= total {
-		return resp, nil
-	}
-
-	filter["limit"] = req.PageSize
-	filter["offset"] = req.Page
-	configList, err := uh.DBOperatorManager.SelectListPage(ctx, filter, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, config := range configList {
-		resp.Items = append(resp.Items, &HistoryData{Id: config.OperatorID})
-	}
-
-	return resp, nil
 }
 
 func (uh *upgradeHandler) migrateHistoryDataForToolBox(ctx context.Context, req *MigrateHistoryDataRequest) (resp *MigrateHistoryDataResponse, err error) {

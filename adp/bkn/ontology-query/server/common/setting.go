@@ -51,8 +51,6 @@ type AppSetting struct {
 	BKNBackendUrl  string
 	VegaBackendUrl string
 	BknSafeURL     string
-	// Operator execution URL.
-	AgentOperatorUrl string
 	// Toolbox execution URL.
 	ToolBoxUrl string
 	// MCP execution URL.
@@ -269,7 +267,6 @@ func SetAgentOperatorSetting() {
 	host := setting["host"].(string)
 	port := setting["port"].(int)
 
-	appSetting.AgentOperatorUrl = fmt.Sprintf("%s://%s:%d/api/agent-operator-integration/internal-v1/operator", protocol, host, port)
 	// ToolBox URL: /api/agent-operator-integration/internal-v1/tool-box/{box_id}/proxy/{tool_id}
 	appSetting.ToolBoxUrl = fmt.Sprintf("%s://%s:%d/api/agent-operator-integration/internal-v1/tool-box", protocol, host, port)
 	// MCP URL: /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/call

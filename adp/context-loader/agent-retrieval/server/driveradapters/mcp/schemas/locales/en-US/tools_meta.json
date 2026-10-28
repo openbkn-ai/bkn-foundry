@@ -43,9 +43,9 @@
   "get_logic_properties_values": {
     "title": "Compute Logic Properties",
     "group_title": "Instance Queries",
-    "description": "Resolve calculated logic properties, such as metrics or operator-backed properties, for a batch of object instances. This is the instance-level branch of the metric path (a metric already bound to a logic property); class-level metrics and metrics not bound to a logic property go to query_metric.",
+    "description": "Resolve calculated logic properties, such as metrics or tool-backed properties, for a batch of object instances. This is the instance-level branch of the metric path (a metric already bound to a logic property); class-level metrics and metrics not bound to a logic property go to query_metric.",
     "gateway": {
-      "summary": "Compute bound logic properties (instance-level metrics or operators) for given instances.",
+      "summary": "Compute bound logic properties (instance-level metrics or tools) for given instances.",
       "use_when": "You need a logic property of a few specific instances, such as the gross margin of one order.",
       "not_for": "For metrics at object-type level, or metrics with no logic property bound, use query_metric. For plain fields, use query_object_instance.",
       "next_step": "Take logic property names and their parameter definitions from get_object_types, and instance identities from query results.",

@@ -1,4 +1,4 @@
-// Package common common operator manage
+// Package common holds the shared business status state machine.
 // @file status_manage.go
 // @description: Unified turntable manager.
 package common

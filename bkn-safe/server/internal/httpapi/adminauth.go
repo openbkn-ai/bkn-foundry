@@ -236,11 +236,10 @@ const (
 //
 // "Concrete" is the whole point, and it is why this reads ListObjectGrants
 // rather than asking the enforcer. A Check/EffectivePermissions answer folds in
-// type-wide role grants, and the seeded network_builder role carries `authorize`
-// on catalog, connector_type, operator, skill and stream_data_pipeline — so
-// every member of that role would pass without owning anything at all, turning
-// "the person who built this may look up a colleague" into "this role may read
-// the directory". ListObjectGrants skips type-wide rows (see its rid == "*"
+// type-wide role grants, and a role carrying type-wide `authorize` (for example
+// on connector_type or skill) would let every member pass without owning
+// anything at all, turning "the person who built this may look up a colleague"
+// into "this role may read the directory". ListObjectGrants skips type-wide rows (see its rid == "*"
 // filter), leaving exactly the grants a domain service wrote to a creator.
 //
 // Fail-closed throughout: a lookup error is a refusal, never a pass.

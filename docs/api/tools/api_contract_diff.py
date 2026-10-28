@@ -150,7 +150,7 @@ class SpecLoader:
         if schema.get("type") == "array" or "items" in schema:
             # 记下数组形态本身。oneOf 分支里的数组(如 mapping_rules 的 direct
             # 形态)否则只会留下父级的 object 记录,和实际的 `key[]` 对不上。
-            # prefix 为空 = 响应根就是数组(如 GET /operator/category),此时
+            # prefix 为空 = 响应根就是数组(如 GET /category),此时
             # actual_paths 会产出一条裸 "[]",文档侧不记就会误报「文档未声明」,
             # 所以根节点也要记,不能只在 prefix 非空时记。
             out.setdefault(prefix + "[]",

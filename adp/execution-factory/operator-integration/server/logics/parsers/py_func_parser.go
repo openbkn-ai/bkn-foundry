@@ -509,7 +509,7 @@ func createParameterSchema(param *interfaces.ParameterDef) *openapi3.Schema {
 //
 // Outputs are left alone deliberately. A missing output description costs a
 // reader some guessing; a missing input description costs a failed call. The
-// function's own description is left to ValidateOperatorDesc, which already
+// function's own description is left to ValidatorToolDesc, which already
 // refuses it with a localised code of its own.
 func validateParameterDescriptions(ctx context.Context, input *interfaces.FunctionInput) error {
 	for _, missing := range undescribedParameters(input.Inputs, "", "") {

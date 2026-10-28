@@ -16,7 +16,7 @@ import (
 // Each use case does not set EXPECT for DBCategory/Validator - once the access control fails, the business logic will.
 // gomock will fail directly due to unexpected calls.
 func TestCategoryWriteAuthz(t *testing.T) {
-	Convey("算子分类写操作授权", t, func() {
+	Convey("分类写操作授权", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		publicCtx := common.SetPublicAPIToCtx(context.Background(), true)
@@ -34,7 +34,7 @@ func TestCategoryWriteAuthz(t *testing.T) {
 		expectDenied := func(authService *mocks.MockIAuthorizationService, operation interfaces.AuthOperationType) {
 			authService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
 			authService.EXPECT().OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, operation).Return(false, nil)
+				interfaces.AuthResourceTypeToolBox, operation).Return(false, nil)
 		}
 
 		Convey("CreateCategory 无新建权限时拒绝", func() {

@@ -42,21 +42,6 @@ func (m *MockIToolService) EXPECT() *MockIToolServiceMockRecorder {
 	return m.recorder
 }
 
-// ConvertOperatorToTool mocks base method.
-func (m *MockIToolService) ConvertOperatorToTool(ctx context.Context, req *interfaces.ConvertOperatorToToolReq) (*interfaces.ConvertOperatorToToolResp, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ConvertOperatorToTool", ctx, req)
-	ret0, _ := ret[0].(*interfaces.ConvertOperatorToToolResp)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ConvertOperatorToTool indicates an expected call of ConvertOperatorToTool.
-func (mr *MockIToolServiceMockRecorder) ConvertOperatorToTool(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConvertOperatorToTool", reflect.TypeOf((*MockIToolService)(nil).ConvertOperatorToTool), ctx, req)
-}
-
 // CreateTool mocks base method.
 func (m *MockIToolService) CreateTool(ctx context.Context, req *interfaces.CreateToolReq) (*interfaces.CreateToolResp, error) {
 	m.ctrl.T.Helper()
@@ -252,20 +237,6 @@ func (mr *MockIToolServiceMockRecorder) GetToolBoxNamesByIDs(ctx, ids any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolBoxNamesByIDs", reflect.TypeOf((*MockIToolService)(nil).GetToolBoxNamesByIDs), ctx, ids)
 }
 
-// HandleOperatorDeleteEvent mocks base method.
-func (m *MockIToolService) HandleOperatorDeleteEvent(ctx context.Context, message []byte) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleOperatorDeleteEvent", ctx, message)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// HandleOperatorDeleteEvent indicates an expected call of HandleOperatorDeleteEvent.
-func (mr *MockIToolServiceMockRecorder) HandleOperatorDeleteEvent(ctx, message any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleOperatorDeleteEvent", reflect.TypeOf((*MockIToolService)(nil).HandleOperatorDeleteEvent), ctx, message)
-}
-
 // Import mocks base method.
 func (m *MockIToolService) Import(ctx context.Context, tx *sql.Tx, mode interfaces.ImportType, data *interfaces.ComponentImpexConfigModel, userID string) error {
 	m.ctrl.T.Helper()
@@ -425,42 +396,4 @@ func (m *MockIToolService) UpdateToolStatus(ctx context.Context, req *interfaces
 func (mr *MockIToolServiceMockRecorder) UpdateToolStatus(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateToolStatus", reflect.TypeOf((*MockIToolService)(nil).UpdateToolStatus), ctx, req)
-}
-
-// MockToolBoxEventHandler is a mock of ToolBoxEventHandler interface.
-type MockToolBoxEventHandler struct {
-	ctrl     *gomock.Controller
-	recorder *MockToolBoxEventHandlerMockRecorder
-	isgomock struct{}
-}
-
-// MockToolBoxEventHandlerMockRecorder is the mock recorder for MockToolBoxEventHandler.
-type MockToolBoxEventHandlerMockRecorder struct {
-	mock *MockToolBoxEventHandler
-}
-
-// NewMockToolBoxEventHandler creates a new mock instance.
-func NewMockToolBoxEventHandler(ctrl *gomock.Controller) *MockToolBoxEventHandler {
-	mock := &MockToolBoxEventHandler{ctrl: ctrl}
-	mock.recorder = &MockToolBoxEventHandlerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockToolBoxEventHandler) EXPECT() *MockToolBoxEventHandlerMockRecorder {
-	return m.recorder
-}
-
-// HandleOperatorDeleteEvent mocks base method.
-func (m *MockToolBoxEventHandler) HandleOperatorDeleteEvent(ctx context.Context, message []byte) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleOperatorDeleteEvent", ctx, message)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// HandleOperatorDeleteEvent indicates an expected call of HandleOperatorDeleteEvent.
-func (mr *MockToolBoxEventHandlerMockRecorder) HandleOperatorDeleteEvent(ctx, message any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleOperatorDeleteEvent", reflect.TypeOf((*MockToolBoxEventHandler)(nil).HandleOperatorDeleteEvent), ctx, message)
 }

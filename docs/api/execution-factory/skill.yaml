@@ -6,7 +6,7 @@ info:
     Skill 是一个**文件包**——一份 `SKILL.md` 加上配套脚本与资源，描述「怎么做一件
     事」。Agent 按需装载它，而不是把全部说明塞进上下文。
 
-    与算子 / 工具的区别：算子和工具是**可调用的函数**，Skill 是**给 Agent 读的
+    与工具的区别：工具是**可调用的函数**，Skill 是**给 Agent 读的
     工作手册 + 随手册附带的可执行文件**。召回入口在 context-loader 的
     `search_capabilities`，那边只返回最小元数据；真正的内容读取与下载在这里。
 
@@ -191,7 +191,7 @@ paths:
       summary: 按 ID 批量取技能名
       operationId: getSkillNames
       description: |
-        与 `/operator/names`、`/tool-box/names` 同契约：不存在的 ID 静默略过、不占位。
+        与 `/tool-box/names` 同契约：不存在的 ID 静默略过、不占位。
 
         **也注册在 `internal-v1`**。公开面按调用者的 `view` 过滤（无权限的 ID 与不存在的
         ID 一样被略过），内部面不过滤——服务间调用要的是「这些 ID 还在不在」，用于知识网络
@@ -410,7 +410,7 @@ paths:
         **只接受 `published` 与 `offline` 两个值**——不能通过这个接口把技能改回
         `unpublish` 或 `editing`，那两个状态由注册与编辑动作产生。
 
-        本面用的是 PUT（工具箱与算子的同类接口用 POST），注意区别。
+        本面用的是 PUT（工具箱的同类接口用 POST），注意区别。
       parameters:
         - $ref: '#/components/parameters/SkillID'
       requestBody:

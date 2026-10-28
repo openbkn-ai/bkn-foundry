@@ -28,7 +28,7 @@ Reference manuals by subsystem (living under `./manual/`).
 | [VEGA Engine](manual/vega.md) | Data virtualization — connections, models, views, unified query |
 | [Cypher Queries](manual/cypher.md) | Read-only openCypher subset: syntax, examples, limits, error codes |
 | [Context Loader](manual/context-loader.md) | Agent context assembly from ontology and data |
-| [Execution Factory](manual/execution-factory.md) | Tools, operators, and skills for agents |
+| [Execution Factory](manual/execution-factory.md) | Toolboxes, MCP, and skills for agents |
 | [BKN Trace](manual/bkn-trace.md) | Traces, metrics, and evidence-chain style observability |
 | [BKN Safe](manual/bkn-safe.md) | Identity, permissions, policies, and audit |
 | [Platform admin](install.md#-administrator-commands-after-installation-openbkn-admin) | `openbkn admin` — users / orgs / roles / models / audit (after installation) |

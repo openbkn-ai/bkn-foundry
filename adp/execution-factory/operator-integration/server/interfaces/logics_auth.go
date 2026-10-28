@@ -56,7 +56,6 @@ const (
 	AuthResourceTypeToolBox  AuthResourceType = "tool_box" // toolbox.
 	AuthResourceTypeFunction AuthResourceType = "function" // function toolbox.
 	AuthResourceTypeMCP      AuthResourceType = "mcp"      // MCP
-	AuthResourceTypeOperator AuthResourceType = "operator" // operator.
 	AuthResourceTypeSkill    AuthResourceType = "skill"    // Skill
 
 	// AuthResourceTypeSafeAdmin is the super-management capability bit of bkn-safe, not the execution factory's own resource type.

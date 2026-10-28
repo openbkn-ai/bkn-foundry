@@ -10,61 +10,33 @@ func (e ErrorCode) String() string {
 	return string(e)
 }
 
-// Operator expansion error code definition.
+// Category extension error code definition.
 const (
-	ErrExtOperatorExists           ErrorCode = "OperatorExists"           // operator already exists.
-	ErrExtOperatorRegisterFailed   ErrorCode = "OperatorRegisterFailed"   // Operator registration failed.
-	ErrExtOperatorDirectPublishErr ErrorCode = "OperatorDirectPublishErr" // Operator direct release failed.
-	ErrExtCategoryTypeInvalid      ErrorCode = "CategoryTypeInvalid"      // Invalid operator type.
-	ErrExtOperatorUnparsed         ErrorCode = "OperatorUnparsed"         // No valid operator was parsed.
-	ErrExtOperatorNotFound         ErrorCode = "OperatorNotFound"         // operator does not exist.
-	ErrExtOperatorMetadataNotFound ErrorCode = "OperatorMetadataNotFound" // Operator metadata does not exist.
-	ErrExtOperatorUnSupportUpgrade ErrorCode = "OperatorUnSupportUpgrade" // The current operator does not support upgrades.
-	ErrExtOperatorDeleteForbidden  ErrorCode = "OperatorDeleteForbidden"  // The current operator does not allow deletion.
-	ErrExtOperatorUnSupportEdit    ErrorCode = "OperatorUnSupportEdit"    // The current operator does not support editing.
-	ErrExtOperatorEditFailed       ErrorCode = "OperatorEditFailed"       // Operator editing failed.
-	ErrExtOperatorImportLimit      ErrorCode = "OperatorImportLimit"      // Limit on the number of operators imported at a time.
-	ErrExtOperatorNameEmpty        ErrorCode = "OperatorNameEmpty"        // Operator name cannot be empty.
-	ErrExtOperatorNameTooLong      ErrorCode = "OperatorNameTooLong"      // The length of the operator name cannot exceed %d characters.
-	ErrExtOperatorDescEmpty        ErrorCode = "OperatorDescEmpty"        // Operator description cannot be empty.
-	ErrExtOperatorDescTooLong      ErrorCode = "OperatorDescTooLong"      // The operator description length cannot exceed %d characters.
-	ErrExtOperatorImportDataLimit  ErrorCode = "OperatorImportDataLimit"  // Import operator data exceeds limit.
-	ErrExtOperatorExistsSameName   ErrorCode = "OperatorExistsSameName"   // Operator "%s" already exists.
-	ErrExtOperatorEditLimit        ErrorCode = "OperatorEditLimit"        // Only allow single operator editing.
-	ErrExtOperatorNotAvailable     ErrorCode = "OperatorNotAvailable"     // Operator is not available.
-	ErrExtOnlySyncModeDebug        ErrorCode = "OnlySyncModeDebug"        // Only supports synchronous mode debugging.
-	ErrExtOperatorStatusInvalid    ErrorCode = "OperatorStatusInvalid"    // Operator status is invalid.
-	ErrExtOperatorAsyncDataSource  ErrorCode = "OperatorAsyncDataSource"  // Asynchronous operators do not support adding as data source operators.
-	ErrExtOperatorNotExistInFile   ErrorCode = "OperatorNotExistInFile"   // The file you uploaded does not contain an existing operator.
+	ErrExtCategoryTypeInvalid ErrorCode = "CategoryTypeInvalid" // Invalid category type.
 )
 
 // Toolbox extension error code definition.
 const (
-	ErrExtToolBoxNotFound                 ErrorCode = "ToolBoxNotFound"                 // Toolbox does not exist.
-	ErrExtToolBoxNameExists               ErrorCode = "ToolBoxNameExists"               // Toolbox name already exists.
-	ErrExtToolBoxCategoryTypeInvalid      ErrorCode = "ToolBoxCategoryTypeInvalid"      // Invalid toolbox type.
-	ErrExtToolExists                      ErrorCode = "ToolExists"                      // Tool already exists.
-	ErrExtMetadataNotFound                ErrorCode = "MetadataNotFound"                // Metadata does not exist.
-	ErrExtToolNotFound                    ErrorCode = "ToolNotFound"                    // Tool does not exist.
-	ErrExtToolNotAvailable                ErrorCode = "ToolNotAvailable"                // Tool is not available.
-	ErrExtToolConvertOnlySupportSync      ErrorCode = "ToolConvertOnlySupportSync"      // Only supports synchronized operators converted to tools.
-	ErrExtToolConvertOnlySupportAPI       ErrorCode = "ToolConvertOnlySupportAPI"       // Only supports API operators to convert to tools.
-	ErrExtToolBoxStatusInvalid            ErrorCode = "ToolBoxStatusInvalid"            // Toolbox status is invalid.
-	ErrExtToolBoxNameEmpty                ErrorCode = "ToolBoxNameEmpty"                // Tool name cannot be empty.
-	ErrExtToolBoxNameLimit                ErrorCode = "ToolBoxNameLimit"                // Tool name cannot exceed %d characters in length.
-	ErrExtToolBoxDescLimit                ErrorCode = "ToolBoxDescLimit"                // Tool description length cannot exceed %d characters.
-	ErrExtToolNameEmpty                   ErrorCode = "ToolNameEmpty"                   // Tool name cannot be empty.
-	ErrExtToolNameLimit                   ErrorCode = "ToolNameLimit"                   // Tool name cannot exceed %d characters in length.
-	ErrExtToolDescLimit                   ErrorCode = "ToolDescLimit"                   // Tool description length cannot exceed %d characters.
-	ErrExtInternalToolBoxVersion          ErrorCode = "InternalToolBoxVersion"          // Internal toolbox version number format is wrong.
-	ErrExtToolNameDuplicate               ErrorCode = "ToolNameDuplicate"               // Duplicate tool name.
-	ErrExtToolOperatorNotAllowEdit        ErrorCode = "ToolOperatorNotAllowEdit"        // The operator tool does not allow editing of metadata.
-	ErrExtToolDescEmpty                   ErrorCode = "ToolDescEmpty"                   // Tool description cannot be empty.
-	ErrExtToolBoxDescEmpty                ErrorCode = "ToolBoxDescEmpty"                // Toolbox description cannot be empty.
-	ErrExtToolNotExistInFile              ErrorCode = "ToolNotExistInFile"              // The file you uploaded does not contain an existing tool.
-	ErrExtToolConvertMetadataTypeNotMatch ErrorCode = "ToolConvertMetadataTypeNotMatch" // Operator metadata type does not match tool.
-	ErrExtToolTypeMismatch                ErrorCode = "ToolTypeMismatch"                // Tool type does not match toolbox type.
-	ErrExtToolRefOperatorNotFound         ErrorCode = "ToolRefOperatorNotFound"         // The tool "%s" cannot be enabled. The dependent operator has been deleted. Please reconfigure it.
+	ErrExtToolBoxNotFound            ErrorCode = "ToolBoxNotFound"            // Toolbox does not exist.
+	ErrExtToolBoxNameExists          ErrorCode = "ToolBoxNameExists"          // Toolbox name already exists.
+	ErrExtToolBoxCategoryTypeInvalid ErrorCode = "ToolBoxCategoryTypeInvalid" // Invalid toolbox type.
+	ErrExtToolExists                 ErrorCode = "ToolExists"                 // Tool already exists.
+	ErrExtMetadataNotFound           ErrorCode = "MetadataNotFound"           // Metadata does not exist.
+	ErrExtToolNotFound               ErrorCode = "ToolNotFound"               // Tool does not exist.
+	ErrExtToolNotAvailable           ErrorCode = "ToolNotAvailable"           // Tool is not available.
+	ErrExtToolBoxStatusInvalid       ErrorCode = "ToolBoxStatusInvalid"       // Toolbox status is invalid.
+	ErrExtToolBoxNameEmpty           ErrorCode = "ToolBoxNameEmpty"           // Tool name cannot be empty.
+	ErrExtToolBoxNameLimit           ErrorCode = "ToolBoxNameLimit"           // Tool name cannot exceed %d characters in length.
+	ErrExtToolBoxDescLimit           ErrorCode = "ToolBoxDescLimit"           // Tool description length cannot exceed %d characters.
+	ErrExtToolNameEmpty              ErrorCode = "ToolNameEmpty"              // Tool name cannot be empty.
+	ErrExtToolNameLimit              ErrorCode = "ToolNameLimit"              // Tool name cannot exceed %d characters in length.
+	ErrExtToolDescLimit              ErrorCode = "ToolDescLimit"              // Tool description length cannot exceed %d characters.
+	ErrExtInternalToolBoxVersion     ErrorCode = "InternalToolBoxVersion"     // Internal toolbox version number format is wrong.
+	ErrExtToolNameDuplicate          ErrorCode = "ToolNameDuplicate"          // Duplicate tool name.
+	ErrExtToolDescEmpty              ErrorCode = "ToolDescEmpty"              // Tool description cannot be empty.
+	ErrExtToolBoxDescEmpty           ErrorCode = "ToolBoxDescEmpty"           // Toolbox description cannot be empty.
+	ErrExtToolNotExistInFile         ErrorCode = "ToolNotExistInFile"         // The file you uploaded does not contain an existing tool.
+	ErrExtToolTypeMismatch           ErrorCode = "ToolTypeMismatch"           // Tool type does not match toolbox type.
 )
 
 // MCP extended error code definition.
@@ -92,12 +64,12 @@ const (
 	ErrExtMCPServerEndpointUnsupported ErrorCode = "MCPServerEndpointUnsupported"
 )
 
-// Operator classification expanded error code definition.
+// Category expanded error code definition.
 const (
-	ErrExtCategoryNameEmpty ErrorCode = "CategoryNameEmpty" // Operator classification name cannot be empty.
-	ErrExtCategoryNameLimit ErrorCode = "CategoryNameLimit" // The length of operator classification name cannot exceed %d characters.
-	ErrExtCategoryNotFound  ErrorCode = "CategoryNotFound"  // Operator classification does not exist.
-	ErrExtCategoryNameExist ErrorCode = "CategoryNameExist" // Operator classification name already exists.
+	ErrExtCategoryNameEmpty ErrorCode = "CategoryNameEmpty" // Category name cannot be empty.
+	ErrExtCategoryNameLimit ErrorCode = "CategoryNameLimit" // The length of category name cannot exceed %d characters.
+	ErrExtCategoryNotFound  ErrorCode = "CategoryNotFound"  // Category does not exist.
+	ErrExtCategoryNameExist ErrorCode = "CategoryNameExist" // Category name already exists.
 )
 
 // Skill extended error code definition.
@@ -222,5 +194,4 @@ const (
 )
 
 // Operation audit query error codes.
-const (
-)
+const ()

@@ -59,9 +59,6 @@ const (
 	// Default instance count per node object type in subgraph queries.
 	DEFAULT_LIMIT = 1000
 
-	// Operator execution_mode values.
-	OPERATOR_EXECUTION_MODE_SYNC = "sync"
-
 	// Edge directions.
 	DIRECTION_FORWARD       = "forward"
 	DIRECTION_BACKWARD      = "backward"

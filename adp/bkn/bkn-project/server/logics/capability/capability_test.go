@@ -37,8 +37,7 @@ const (
 func toolboxExport(code string) []byte {
 	return []byte(fmt.Sprintf(`{"toolbox":{"configs":[{"box_id":%q,"box_name":"supply_tools","category_name":"Other",
 "box_svc_url":"http://box","metadata_type":"function","update_time":1761400000000000001,
-"tools":[{"tool_id":%q,"name":"expand_bom","metadata_type":"function","code":%q}]}]},
-"operator":{"configs":[{"operator_id":"op1"}]}}`, boxID, toolID, code))
+"tools":[{"tool_id":%q,"name":"expand_bom","metadata_type":"function","code":%q}]}]}}`, boxID, toolID, code))
 }
 
 func skillFiles(body string) map[string][]byte {
@@ -157,7 +156,7 @@ func Test_NextManifest(t *testing.T) {
 
 func Test_CopyFunction(t *testing.T) {
 	Convey("Test CopyFunction\n", t, func() {
-		Convey("The copy has new ids and name, the new network id and no operators\n", func() {
+		Convey("The copy has new ids and name and the new network id\n", func() {
 			it := mustFunction(`KN_ID = "supply_kn"; act = KN_ID + "_act"; other = "supply_kn_chain"`)
 
 			payload, c, err := CopyFunction(it, oldNet, newNet)
@@ -170,7 +169,6 @@ func Test_CopyFunction(t *testing.T) {
 			So(c.ToolIDs[toolID], ShouldNotEqual, toolID)
 			doc := map[string]any{}
 			So(json.Unmarshal(payload, &doc), ShouldBeNil)
-			So(doc["operator"], ShouldBeNil)
 			box := doc["toolbox"].(map[string]any)["configs"].([]any)[0].(map[string]any)
 			So(box["box_id"], ShouldEqual, c.NewID)
 			So(box["box_name"], ShouldEqual, c.NewName)

@@ -70,9 +70,8 @@ const (
 type AuditLogObjectType string
 
 const (
-	AuditLogObjectOperator AuditLogObjectType = "operator" // operator.
-	AuditLogObjectTool     AuditLogObjectType = "tool"     // Tools.
-	AuditLogObjectMCP      AuditLogObjectType = "mcp"      // mcp
+	AuditLogObjectTool AuditLogObjectType = "tool" // Tools.
+	AuditLogObjectMCP  AuditLogObjectType = "mcp"  // mcp
 )
 
 // AuditLogObject operation object information.
@@ -211,8 +210,6 @@ type OperationCode string
 
 // Tool additional information.
 const (
-	// "Import tool "%s" from operator successfully".
-	ImportToolFromOperator OperationCode = "import_tool_from_operator"
 	// "Add tool "%s" to toolbox successfully".
 	AddTool OperationCode = "add_tool"
 	// "Editing tool "%s" successful".
@@ -258,7 +255,7 @@ func (b *AuditLogBuilder) getToolDetailsAndExMsg(param interface{}) (detils inte
 	}
 	operationCode := p.OperationCode
 	switch operationCode {
-	case ImportToolFromOperator, AddTool, EditTool, DeleteTool, UpdateToolStatus, DebugTool, ExecuteTool:
+	case AddTool, EditTool, DeleteTool, UpdateToolStatus, DebugTool, ExecuteTool:
 	default:
 		operationCode = UnknownOperation
 	}
@@ -363,7 +360,7 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 	}
 	key := fmt.Sprintf("audit_log.%s_%s", p.Operation, p.Object.Type)
 	switch p.Object.Type {
-	case AuditLogObjectOperator, AuditLogObjectMCP:
+	case AuditLogObjectMCP:
 		key = fmt.Sprintf("audit_log.%s_%s", p.Object.Type, p.Operation)
 	case AuditLogObjectTool:
 		logObj.Detail, logObj.ExMsg = b.getToolDetailsAndExMsg(logObj.Detail)
@@ -400,8 +397,6 @@ func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) 
 	}
 	var targetType string
 	switch p.Object.Type {
-	case AuditLogObjectOperator:
-		targetType = "operator"
 	case AuditLogObjectMCP:
 		targetType = "mcp"
 	case AuditLogObjectTool:

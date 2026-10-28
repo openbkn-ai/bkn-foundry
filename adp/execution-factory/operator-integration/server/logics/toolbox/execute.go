@@ -373,8 +373,6 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 			toolBoxURL = metadata.GetServerURL()
 		}
 		url = fmt.Sprintf("%s%s", toolBoxURL, metadata.GetPath())
-	case model.SourceTypeOperator:
-		url = fmt.Sprintf("%s%s", metadata.GetServerURL(), metadata.GetPath())
 	case model.SourceTypeFunction:
 		url = fmt.Sprintf("%s%s", metadata.GetServerURL(), metadata.GetPath())
 	}

@@ -57,33 +57,6 @@ func cloneToolboxImpexForCreate(payload impexPayload, newName string) (json.RawM
 	}
 	item["status"] = "unpublish"
 
-	operatorIDMap := map[string]string{}
-	if operatorSection, ok := payload["operator"].(map[string]any); ok {
-		if operatorConfigs, ok := operatorSection["configs"].([]any); ok {
-			for _, cfg := range operatorConfigs {
-				op, ok := cfg.(map[string]any)
-				if !ok {
-					continue
-				}
-				oldID := fmt.Sprint(op["operator_id"])
-				newOpID := newUUID()
-				metadataVersion := newUUID()
-				if oldID != "" && oldID != "<nil>" {
-					operatorIDMap[oldID] = newOpID
-				}
-				op["operator_id"] = newOpID
-				if newName != "" {
-					op["operator_name"] = newName
-				}
-				op["version"] = metadataVersion
-				op["status"] = "unpublish"
-				if metadata, ok := op["metadata"].(map[string]any); ok {
-					metadata["version"] = metadataVersion
-				}
-			}
-		}
-	}
-
 	if tools, ok := item["tools"].([]any); ok {
 		for _, toolRaw := range tools {
 			tool, ok := toolRaw.(map[string]any)
@@ -92,15 +65,8 @@ func cloneToolboxImpexForCreate(payload impexPayload, newName string) (json.RawM
 			}
 			tool["box_id"] = newBoxID
 			tool["tool_id"] = newUUID()
-			sourceType := fmt.Sprint(tool["source_type"])
 			sourceID := fmt.Sprint(tool["source_id"])
-			if sourceType == "operator" && sourceID != "" && sourceID != "<nil>" {
-				if mapped, ok := operatorIDMap[sourceID]; ok {
-					tool["source_id"] = mapped
-				} else {
-					tool["source_id"] = newUUID()
-				}
-			} else if sourceID != "" && sourceID != "<nil>" {
+			if sourceID != "" && sourceID != "<nil>" {
 				tool["source_id"] = newUUID()
 			}
 		}

@@ -741,7 +741,7 @@ components:
           description: 显示名。summary 级别与 `get_object_types` 均不返回。
         type:
           type: string
-          description: 属性类型。除视图字段类型外，还有 metric / objective / event / trace / log / operator。
+          description: 属性类型。除视图字段类型外，还有 metric / objective / event / trace / log / tool。
         comment:
           type: string
           description: 备注。summary 级别不返回。
@@ -768,7 +768,7 @@ components:
 
     LogicProperty:
       type: object
-      description: 逻辑属性（指标或算子），值需要计算，不直接存在于数据源里。
+      description: 逻辑属性（指标或工具），值需要计算，不直接存在于数据源里。
       properties:
         name:
           type: string
@@ -779,7 +779,7 @@ components:
           type: string
           enum:
             - metric
-            - operator
+            - tool
           description: 逻辑属性类型。
         comment:
           type: string

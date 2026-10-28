@@ -399,31 +399,6 @@ components:
         end:
           description: 结束时间戳
           type: integer
-    OperatorProperty:
-      description: 算子属性
-      required:
-      - property_type
-      - mapping_source_id
-      - has_any_unfilled_params
-      - parameters
-      - dynamic_params
-      type: object
-      properties:
-        property_type:
-          description: 属性类型
-          enum:
-          - metric
-          type: string
-        mapping_source_id:
-          description: 映射的指标模型id
-          type: string
-        has_any_unfilled_params:
-          description: 是否有未填充的参数，默认是false
-          type: boolean
-        parameters:
-          description: 实例化了的参数。是个map
-        dynamic_params:
-          description: 动态参数。是个map
     ObjectDataResponse:
       description: 节点（对象类）信息
       required:
@@ -436,7 +411,7 @@ components:
           $ref: '#/components/schemas/ObjectTypeDetail'
           description: 对象类信息
         datas:
-          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty或OperatorProperty
+          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty
           type: array
           items:
             type: object
@@ -557,7 +532,7 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool
           type: string
         comment:
           description: 属性描述
@@ -613,7 +588,7 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool
           type: string
         comment:
           description: 属性描述
@@ -640,7 +615,7 @@ components:
           description: 数据来源类型
           enum:
           - metric
-          - operator
+          - tool
           type: string
         id:
           description: 数据来源ID
