@@ -185,7 +185,11 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 	})
 	if draft.Items.Inputs != nil && draft.Items.Inputs.Partial {
 		confirm.Body["accept_partial"] = true
-		confirm.Accepts = []string{interfaces.ACCEPTS_PARTIAL_DRAFT}
+		confirm.Accepts = append(confirm.Accepts, interfaces.ACCEPTS_PARTIAL_DRAFT)
+	}
+	if s.Undecided = len(undecidedItems(&draft.Items)); s.Undecided > 0 {
+		confirm.Body["accept_undecided"] = true
+		confirm.Accepts = append(confirm.Accepts, interfaces.ACCEPTS_UNDECIDED_ITEMS)
 	}
 	confirmation := draft.Items.Confirmation
 	if confirmation != nil && confirmation.Commit != "" {

@@ -67,6 +67,8 @@ const (
 const (
 	// ACCEPTS_PARTIAL_DRAFT confirms a draft knowing the tables drafting could not read.
 	ACCEPTS_PARTIAL_DRAFT = "partial_draft"
+	// ACCEPTS_UNDECIDED_ITEMS confirms a draft leaving out the items no one decided on.
+	ACCEPTS_UNDECIDED_ITEMS = "undecided_items"
 )
 
 // Why an action cannot be done by the caller; otherwise a blocker code.
@@ -76,14 +78,17 @@ const (
 )
 
 type ProjectStatus struct {
-	ProjectID    string                    `json:"project_id"`
-	Stage        string                    `json:"stage"`
-	Draft        *ProjectStatusDraft       `json:"draft,omitempty"`
-	Confirmation *ProjectStatusConfirmed   `json:"confirmation,omitempty"`
-	Check        *ProjectStatusCheck       `json:"check,omitempty"`
-	Blockers     []ProjectStatusBlocker    `json:"blockers"`
-	Stale        []string                  `json:"stale"`
-	NextActions  []ProjectStatusNextAction `json:"next_actions"`
+	ProjectID    string                  `json:"project_id"`
+	Stage        string                  `json:"stage"`
+	Draft        *ProjectStatusDraft     `json:"draft,omitempty"`
+	Confirmation *ProjectStatusConfirmed `json:"confirmation,omitempty"`
+	Check        *ProjectStatusCheck     `json:"check,omitempty"`
+	Blockers     []ProjectStatusBlocker  `json:"blockers"`
+	// Undecided counts the items drafting left out and no one decided on: they do not block, but
+	// confirming leaves them out only when the confirmation accepts it.
+	Undecided   int                       `json:"undecided"`
+	Stale       []string                  `json:"stale"`
+	NextActions []ProjectStatusNextAction `json:"next_actions"`
 	// Links are the reads that show the details: the draft, its pending items and the check.
 	Links      map[string]string `json:"links"`
 	ComputedAt int64             `json:"computed_at"`
@@ -143,7 +148,12 @@ const (
 	ACTION_CHOOSE_IDENTITY = "choose_identity"
 	ACTION_UNADOPT         = "unadopt"
 	ACTION_ADOPT_END       = "adopt_end"
+	ACTION_ADOPT           = "adopt"
 )
+
+// PENDING_REASON_UNDECIDED is a pending item drafting left out and no one decided on; it does not
+// block confirming.
+const PENDING_REASON_UNDECIDED = "undecided"
 
 // PENDING_PLACEHOLDER_UPDATE_TIME stands in a body template for the draft's update time as the
 // sender last read it: each edit moves it on.
@@ -164,8 +174,13 @@ type PendingItem struct {
 	Kind   string `json:"kind"`
 	ItemID string `json:"item_id"`
 	Name   string `json:"name"`
-	// Reason is a blocker code: needs_identity or unadopted_ends.
-	Reason  string          `json:"reason"`
+	// Blocking is set for what confirming refuses until settled; an undecided item does not block.
+	Blocking bool `json:"blocking"`
+	// Reason is a blocker code, needs_identity or unadopted_ends, or undecided.
+	Reason string `json:"reason"`
+	// Because is why drafting left an undecided item out: needs_identity, a relation's
+	// proposed_because, or not_adopted.
+	Because string          `json:"because,omitempty"`
 	Options []PendingOption `json:"options"`
 	// Recommendation is the option a written rule recommends, with the rule; null when no rule does.
 	Recommendation *PendingRecommendation `json:"recommendation"`

@@ -100,6 +100,31 @@ func Test_PendingOf(t *testing.T) {
 			So(len(p.Items), ShouldEqual, len(pending["needs_identity"])+len(pending["unadopted_ends"]))
 		})
 
+		Convey("Items no one decided on follow the blocking ones, with how to take them in\n", func() {
+			d := draft()
+			d.Items.Decisions = nil
+			d.Items.ObjectTypes[3].NeedsIdentity = true
+			d.Items.RelationTypes = append(d.Items.RelationTypes, compileFixture().RelationTypes[3])
+			d.Items.RelationTypes[3].ProposedBecause = "below_adopt_hit_rate"
+
+			p := pendingOf(project, d)
+
+			So(len(p.Items), ShouldEqual, 4)
+			for _, item := range p.Items[:2] {
+				So(item.Blocking, ShouldBeTrue)
+			}
+			auditLog, proposed := p.Items[2], p.Items[3]
+			So([]any{auditLog.ItemID, auditLog.Blocking, auditLog.Reason, auditLog.Because}, ShouldResemble,
+				[]any{"audit_log", false, interfaces.PENDING_REASON_UNDECIDED, interfaces.BLOCKER_NEEDS_IDENTITY})
+			So(auditLog.Options[0].Action, ShouldEqual, interfaces.ACTION_CHOOSE_IDENTITY)
+			adopt := auditLog.Options[1]
+			So([]any{adopt.Action, adopt.Allowed, adopt.Reason}, ShouldResemble,
+				[]any{interfaces.ACTION_ADOPT, false, interfaces.BLOCKER_NEEDS_IDENTITY})
+			So([]any{proposed.ItemID, proposed.Because}, ShouldResemble, []any{"customers_to_products", "below_adopt_hit_rate"})
+			So(proposed.Options[0].Action, ShouldEqual, interfaces.ACTION_ADOPT)
+			So(proposed.Options[0].Allowed, ShouldBeTrue)
+		})
+
 		Convey("A draft with nothing pending lists nothing, as an empty list\n", func() {
 			out, err := json.Marshal(pendingOf(project, confirmableDraft()))
 

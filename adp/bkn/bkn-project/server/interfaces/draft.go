@@ -66,6 +66,9 @@ const (
 	// DRAFT_DECISION_ACCEPT_PARTIAL confirms a draft knowing the tables it could not read, the
 	// resource IDs in After.
 	DRAFT_DECISION_ACCEPT_PARTIAL = "accept_partial"
+	// DRAFT_DECISION_ACCEPT_UNDECIDED confirms a draft leaving out the items drafting did not adopt
+	// and no one decided on, listed in After as kind/item_id.
+	DRAFT_DECISION_ACCEPT_UNDECIDED = "accept_undecided"
 )
 
 // Limits of what people write into a draft, those of BKN definitions.
@@ -168,6 +171,8 @@ type DraftConfirm struct {
 	UpdateTime int64 `json:"update_time"`
 	// AcceptPartial confirms a partial draft knowing the tables drafting could not read.
 	AcceptPartial bool `json:"accept_partial"`
+	// AcceptUndecided confirms a draft leaving out the items no one decided on.
+	AcceptUndecided bool `json:"accept_undecided"`
 }
 
 // DraftDecision records one change a person made to a draft item. Before and After are the

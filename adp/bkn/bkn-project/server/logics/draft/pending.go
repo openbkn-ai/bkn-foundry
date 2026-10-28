@@ -81,7 +81,7 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft) *interfaces
 			map[string]any{"properties": interfaces.PENDING_PLACEHOLDER_CANDIDATE})
 		choose.Candidates = identityChoices(ot)
 		p.Items = append(p.Items, interfaces.PendingItem{
-			Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: ot.ID, Name: ot.Name,
+			Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: ot.ID, Name: ot.Name, Blocking: true,
 			Reason: interfaces.BLOCKER_NEEDS_IDENTITY, Evidence: ot.Key,
 			Options: []interfaces.PendingOption{
 				choose,
@@ -114,9 +114,39 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft) *interfaces
 		}
 		options = append(options, setAdopted(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, false, interfaces.ACTION_UNADOPT))
 		p.Items = append(p.Items, interfaces.PendingItem{
-			Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: rt.ID, Name: rt.Name,
+			Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: rt.ID, Name: rt.Name, Blocking: true,
 			Reason: interfaces.BLOCKER_UNADOPTED_ENDS, Evidence: rt.Evidence, Options: options,
 		})
+	}
+
+	// Then what drafting left out and no one decided on: taking it in is the person's choice, and
+	// confirming without leaves it out only when accepted.
+	for _, u := range undecidedItems(&draft.Items) {
+		item := interfaces.PendingItem{
+			Kind: u.Kind, ItemID: u.ItemID, Reason: interfaces.PENDING_REASON_UNDECIDED, Because: u.Because,
+		}
+		adopt := setAdopted(u.Kind, u.ItemID, true, interfaces.ACTION_ADOPT)
+		if u.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+			ot := findObjectType(&draft.Items, u.ItemID)
+			item.Name, item.Evidence = ot.Name, ot.Key
+			if ot.NeedsIdentity {
+				choose := option(interfaces.ACTION_CHOOSE_IDENTITY, http.MethodPut, base+"/object_types/"+ot.ID+"/identity",
+					map[string]any{"properties": interfaces.PENDING_PLACEHOLDER_CANDIDATE})
+				choose.Candidates = identityChoices(ot)
+				item.Options = append(item.Options, choose)
+				if adopt.Allowed {
+					adopt.Allowed, adopt.Reason = false, interfaces.BLOCKER_NEEDS_IDENTITY
+				}
+			}
+		} else {
+			rt := findRelationType(&draft.Items, u.ItemID)
+			item.Name, item.Evidence = rt.Name, rt.Evidence
+			if adopt.Allowed && !(objectTypeAdopted(&draft.Items, rt.Source) && objectTypeAdopted(&draft.Items, rt.Target)) {
+				adopt.Allowed, adopt.Reason = false, interfaces.BLOCKER_UNADOPTED_ENDS
+			}
+		}
+		item.Options = append(item.Options, adopt)
+		p.Items = append(p.Items, item)
 	}
 	return p
 }
