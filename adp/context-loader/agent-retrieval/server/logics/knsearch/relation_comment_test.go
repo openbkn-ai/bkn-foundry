@@ -6,6 +6,7 @@
 package knsearch
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -32,7 +33,7 @@ func TestBriefKeepsTheRelationComment(t *testing.T) {
 	svc := &localSearchImpl{}
 
 	for _, brief := range []bool{true, false} {
-		converted := svc.convertRelationTypesToLocal(relationFixture(), brief)
+		converted := svc.convertRelationTypesToLocal(context.Background(), relationFixture(), nil, brief)
 
 		if converted[0].Comment != "which supplier a purchase order was placed with" {
 			t.Errorf("brief=%v lost the relation comment: %+v", brief, converted[0])
@@ -47,8 +48,8 @@ func TestBriefKeepsTheRelationComment(t *testing.T) {
 func TestBriefStillDropsConceptType(t *testing.T) {
 	svc := &localSearchImpl{}
 
-	brief := svc.convertRelationTypesToLocal(relationFixture(), true)
-	full := svc.convertRelationTypesToLocal(relationFixture(), false)
+	brief := svc.convertRelationTypesToLocal(context.Background(), relationFixture(), nil, true)
+	full := svc.convertRelationTypesToLocal(context.Background(), relationFixture(), nil, false)
 
 	if brief[0].ConceptType != "" {
 		t.Errorf("brief published concept_type: %+v", brief[0])
