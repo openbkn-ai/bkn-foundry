@@ -495,7 +495,22 @@ class PromptPublish(BaseModel):
     vars_schema: Optional[dict[str, Any]] = None
 
 
-class PromptVersionPublish(PromptPublish):
+# Match Studio trim whitespace; consume the whole value for generated clients.
+_SHARED_PROMPT_CONTENT_PATTERN = (
+    r"^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a"
+    r"\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$"
+)
+
+
+class SharedPromptPublish(PromptPublish):
+    content: str = Field(
+        min_length=1,
+        pattern=_SHARED_PROMPT_CONTENT_PATTERN,
+        description="Must contain a character outside ECMAScript trim whitespace; original formatting is preserved.",
+    )
+
+
+class PromptVersionPublish(SharedPromptPublish):
     version: int = Field(ge=1, le=2147483647, strict=True)
 
 
