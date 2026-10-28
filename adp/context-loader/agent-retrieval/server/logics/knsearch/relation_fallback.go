@@ -96,11 +96,12 @@ func (s *localSearchImpl) pairFallbackRelations(ctx context.Context, knID string
 }
 
 // readRelations reads relation types by id. bkn-backend refuses a whole batch when one id is
-// missing or denied, so a failed batch is read again one id at a time: one primary that cannot be
-// read must not take the others' fallback paths with it.
+// missing or denied, so a refused batch is read again one id at a time: one primary that cannot be
+// read must not take the others' fallback paths with it. Any other failure is the dependency, and
+// reading one id at a time would only repeat it, so it is logged and given up as it is.
 func (s *localSearchImpl) readRelations(ctx context.Context, knID string, ids []string) []*interfaces.RelationType {
 	found, err := s.bknBackend.GetRelationTypeDetail(ctx, knID, ids, true)
-	if err == nil || len(ids) == 1 {
+	if err == nil || len(ids) == 1 || !objectTypeLookupRefused(err) {
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] primary relation %v of a recalled fallback path unreadable, fallback path left out: %v", ids, err)
 		}
