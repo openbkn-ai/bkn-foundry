@@ -1255,6 +1255,7 @@ class OtherClient:
         self.thinking_mode = thinking_mode if thinking_mode in {"enabled", "disabled"} else ""
 
     async def chat_completion(self, messages, user_id, func_module):
+        start_time = time.perf_counter()
         retry_time = 3
         while retry_time > 0:
             retry_time -= 1
@@ -1264,7 +1265,6 @@ class OtherClient:
                         _platform_stream_error(
                             "ModelFactory.Stream.InvalidMessageRole", "invalid_request_error"),
                         400)
-                start_time = time.perf_counter()
                 params = {
                     "messages": messages,
                     "model": self.api_model,
@@ -1296,11 +1296,6 @@ class OtherClient:
                         res = await resp.text()
                         result = json.loads(res)
                         if resp.status == 200:
-                            log_info = logics.AddModelUsedAudit(
-                                model_id=self.model_id, user_id=user_id, input_tokens=result["usage"]["prompt_tokens"],
-                                output_tokens=result["usage"]["completion_tokens"],
-                                total_time=time.perf_counter() - start_time, status="success")
-                            await add_llm_model_call_log(log_info)
                             if self.model_type == "rlm" and not result["choices"][0]["message"].get("reasoning_content",
                                                                                                     None):
                                 # Extract the thinking tag.
@@ -1343,6 +1338,11 @@ class OtherClient:
                                     f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                                     f'"prompt_tokens":{prompt_tokens},"completion_tokens":{completion_tokens},'
                                     f'"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
+                            log_info = logics.AddModelUsedAudit(
+                                model_id=self.model_id, user_id=user_id, input_tokens=result["usage"]["prompt_tokens"],
+                                output_tokens=result["usage"]["completion_tokens"],
+                                total_time=time.perf_counter() - start_time, status="success")
+                            await add_llm_model_call_log(log_info)
                             return result
                         else:
                             if get_logger():
@@ -1350,11 +1350,17 @@ class OtherClient:
                                     f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                                     f'"prompt_tokens":0,"completion_tokens":0,'
                                     f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                            return openai_error.with_http_status(
+                            error_result = openai_error.with_http_status(
                                 openai_error.from_upstream(result, resp.status),
                                 resp.status,
                                 openai_error.retry_after_seconds(
                                     resp.status, resp.headers))
+                            log_info = logics.AddModelUsedAudit(
+                                model_id=self.model_id, user_id=user_id, input_tokens=0,
+                                output_tokens=0, total_time=time.perf_counter() - start_time,
+                                status="failed")
+                            await add_llm_model_call_log(log_info)
+                            return error_result
             except Exception as e:
                 StandLogger.error(e.args)
                 if get_logger():
@@ -1363,6 +1369,12 @@ class OtherClient:
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
                 if retry_time <= 0:
+                    # Count the final outcome once, after all provider attempts.
+                    log_info = logics.AddModelUsedAudit(
+                        model_id=self.model_id, user_id=user_id, input_tokens=0,
+                        output_tokens=0, total_time=time.perf_counter() - start_time,
+                        status="failed")
+                    await add_llm_model_call_log(log_info)
                     raise e
                 else:
                     await asyncio.sleep(0.5)
