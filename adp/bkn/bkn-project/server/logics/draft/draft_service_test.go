@@ -41,7 +41,8 @@ func Test_DraftService(t *testing.T) {
 		setting := testSetting
 		setting.Timeout = time.Minute
 		setting.QueryTimeout = 60
-		svc := &draftService{setting: setting, da: da, va: va, ps: ps, run: func(fn func()) { fn() }}
+		ca := pmock.NewMockCheckAccess(ctrl)
+		svc := &draftService{setting: setting, da: da, va: va, ps: ps, ca: ca, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", CatalogIDs: []string{"c1"}}}
 
@@ -198,8 +199,16 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("Drafts a previous run left drafting fail as interrupted\n", func() {
 			da.EXPECT().FailDrafting(gomock.Any(), FailureInterrupted, gomock.Any()).Return(int64(1), nil)
+			ca.EXPECT().FailRunning(gomock.Any(), FailureInterrupted, gomock.Any()).Return(int64(1), nil)
 
 			So(svc.FailInterrupted(ctx), ShouldBeNil)
+		})
+
+		Convey("Checks a previous run left running fail as interrupted too\n", func() {
+			da.EXPECT().FailDrafting(gomock.Any(), FailureInterrupted, gomock.Any()).Return(int64(0), nil)
+			ca.EXPECT().FailRunning(gomock.Any(), FailureInterrupted, gomock.Any()).Return(int64(0), errors.New("db down"))
+
+			So(svc.FailInterrupted(ctx), ShouldNotBeNil)
 		})
 	})
 }

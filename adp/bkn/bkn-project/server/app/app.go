@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknbackend"
+	checkaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/check"
 	draftaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/executionfactory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
@@ -72,13 +73,14 @@ func Boot() *Application {
 	logics.SetReleaseAccess(release.NewReleaseAccess(appSetting))
 	logics.SetProjectAccess(project.NewProjectAccess(appSetting))
 	logics.SetDraftAccess(draftaccess.NewDraftAccess(appSetting))
+	logics.SetCheckAccess(checkaccess.NewCheckAccess(appSetting))
 	logics.SetVegaAccess(vega.NewVegaAccess(appSetting))
 	logics.SetGitStore(gitstore.NewGitStore(appSetting))
 	logics.SetBknBackendAccess(bknbackend.NewBknBackendAccess(appSetting))
 	logics.SetExecutionFactoryAccess(executionfactory.NewExecutionFactoryAccess(appSetting))
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
-	// Drafting runs in this process; drafts a previous run left drafting will never finish.
+	// Drafting and checks run in this process; those a previous run left going will never finish.
 	if err := draft.NewDraftService(appSetting).FailInterrupted(context.Background()); err != nil {
 		logger.Errorf("Failed to fail interrupted drafts: %v", err)
 	}

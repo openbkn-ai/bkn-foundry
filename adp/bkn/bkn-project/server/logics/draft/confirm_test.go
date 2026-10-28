@@ -46,7 +46,16 @@ func Test_ConfirmDraft(t *testing.T) {
 		da := pmock.NewMockDraftAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
 		ls := pmock.NewMockLineageService(ctrl)
-		svc := &draftService{da: da, ps: ps, ls: ls}
+		ca := pmock.NewMockCheckAccess(ctrl)
+		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, run: func(func()) {}}
+		// A confirmation that commits starts a check of its commit; the check itself is tested apart.
+		var checked []string
+		ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
+		ca.EXPECT().StartCheck(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *interfaces.Check, _ int64) (bool, error) {
+				checked = append(checked, c.Commit)
+				return true, nil
+			}).AnyTimes()
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{
 			ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller,
@@ -91,6 +100,7 @@ func Test_ConfirmDraft(t *testing.T) {
 			// Confirmed is the confirmation of the draft as it now is.
 			So(c.UpdateTime, ShouldEqual, draft.UpdateTime)
 			So(draft.UpdateTime, ShouldBeGreaterThan, readTime)
+			So(checked, ShouldResemble, []string{"c1"})
 		})
 
 		Convey("Confirming again may replace what the previous confirmation wrote\n", func() {
@@ -155,6 +165,7 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(restoredOver, ShouldEqual, claimTime)
 			So(restored.UpdateTime, ShouldEqual, readTime)
 			So(restored.Items.Confirmation, ShouldResemble, last())
+			So(checked, ShouldBeEmpty)
 		})
 
 		Convey("A refused commit is written back after the caller went away\n", func() {
