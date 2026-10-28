@@ -5,7 +5,15 @@
 package draft
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"sort"
+	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
@@ -13,12 +21,83 @@ import (
 // waitSeconds is how soon to read the status again while drafting or a check runs.
 const waitSeconds = 5
 
-// projectStatus computes where a project stands from its draft and check, as the caller sees it.
+// GetStatus computes where a project stands, as the caller sees it. Only a draft ready to confirm
+// is read against its project branch; a preflight that fails leaves out what it would tell, and
+// confirming checks it anyway.
+func (s *draftService) GetStatus(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo) (*interfaces.ProjectStatus, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetStatus")
+	defer span.End()
+
+	entry, err := s.ps.GetProject(ctx, token, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, err
+	}
+	draft, exist, err := s.da.GetDraft(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get draft failed")
+		return nil, internalError(ctx, "Get draft failed", err)
+	}
+	if !exist {
+		draft = nil
+	}
+	check, checked, err := s.ca.GetCheck(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get check failed")
+		return nil, internalError(ctx, "Get check failed", err)
+	}
+	if !checked {
+		check = nil
+	}
+	now := time.Now()
+	draftStaleBefore := now.Add(-(s.setting.Timeout + time.Minute)).UnixMilli()
+	checkStaleBefore := now.Add(-s.checkStaleAfter()).UnixMilli()
+	status := projectStatus(entry.Project, draft, check, nil, caller, draftStaleBefore, checkStaleBefore, now.UnixMilli())
+	if status.Stage == interfaces.PROJECT_STAGE_READY_TO_CONFIRM {
+		if preflight := s.preflightConfirm(ctx, entry.Project, draft); preflight != nil {
+			status = projectStatus(entry.Project, draft, check, preflight, caller, draftStaleBefore, checkStaleBefore,
+				now.UnixMilli())
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return status, nil
+}
+
+// preflightConfirm reads what the project branch would refuse confirming the draft for, with the
+// paths confirming would write and those the draft owns from earlier confirmations; nil when it
+// cannot tell.
+func (s *draftService) preflightConfirm(ctx context.Context, project *interfaces.Project,
+	draft *interfaces.Draft) *interfaces.DefinitionsPreflight {
+	compiled, err := compileDraft(&draft.Items)
+	if err != nil {
+		return nil
+	}
+	paths := make([]string, 0, len(compiled.Files))
+	for p := range compiled.Files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	var owned []string
+	if c := draft.Items.Confirmation; c != nil {
+		owned = unionSorted(c.Files, c.Pending)
+	}
+	preflight, err := s.ls.PreflightDefinitions(ctx, project.KNID, project.Branch, paths, owned)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Preflight confirming project %s: %v", project.ID, err))
+		return nil
+	}
+	return preflight
+}
+
+// projectStatus computes where a project stands from its draft and check, as the caller sees it,
+// and, for a draft ready to confirm, from what the project branch would refuse it for (preflight,
+// nil when not read).
 // A draft drafting, or a check running, since before its stale time has ended without being
 // recorded and reads as failed. The same data gives the same status, but for computedAt and what
 // the caller may do.
 func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *interfaces.Check,
-	caller interfaces.AccountInfo, draftStaleBefore int64, checkStaleBefore int64,
+	preflight *interfaces.DefinitionsPreflight, caller interfaces.AccountInfo, draftStaleBefore int64, checkStaleBefore int64,
 	computedAt int64) *interfaces.ProjectStatus {
 	base := "/projects/" + project.ID
 	s := &interfaces.ProjectStatus{
@@ -57,8 +136,8 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		Action: interfaces.ACTION_GENERATE_DRAFT, Method: http.MethodPost, Path: base + "/ontology/draft:generate",
 		Allowed: true,
 	}
-	if draft != nil && len(draft.Items.Decisions) > 0 {
-		generate.DiscardsDecisions = len(draft.Items.Decisions)
+	if n := itemDecisions(draft); n > 0 {
+		generate.DiscardsDecisions = n
 		generate.Body = map[string]any{"discard_decisions": true}
 	}
 	// Without catalogs nothing can be drafted. That blocks the project only where drafting is its
@@ -87,7 +166,7 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		return s
 	}
 	s.Draft = &interfaces.ProjectStatusDraft{
-		Status: draft.Status, UpdateTime: draft.UpdateTime, Decisions: len(draft.Items.Decisions),
+		Status: draft.Status, UpdateTime: draft.UpdateTime, Decisions: itemDecisions(draft),
 	}
 	switch {
 	case draft.Status == interfaces.DRAFT_STATUS_DRAFTING && draft.UpdateTime >= draftStaleBefore:
@@ -104,6 +183,10 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		Action: interfaces.ACTION_CONFIRM_DRAFT, Method: http.MethodPost, Path: base + "/ontology/draft:confirm",
 		Body: map[string]any{"update_time": draft.UpdateTime},
 	})
+	if draft.Items.Inputs != nil && draft.Items.Inputs.Partial {
+		confirm.Body["accept_partial"] = true
+		confirm.Accepts = []string{interfaces.ACCEPTS_PARTIAL_DRAFT}
+	}
 	confirmation := draft.Items.Confirmation
 	if confirmation != nil && confirmation.Commit != "" {
 		s.Confirmation = &interfaces.ProjectStatusConfirmed{
@@ -146,6 +229,31 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 
 	if s.Confirmation == nil || !s.Confirmation.Current {
 		s.Stage = interfaces.PROJECT_STAGE_READY_TO_CONFIRM
+		// What the branch would refuse confirming for, read ahead; the content is checked only when
+		// confirming.
+		if preflight != nil {
+			lineage := "/lineages/" + project.KNID
+			switch preflight.NotV3 {
+			case interfaces.DEFINITIONS_LINEAGE_NOT_V3:
+				block(interfaces.BLOCKER_LINEAGE_NOT_V3, 0, interfaces.WAITING_FOR_EDITOR)
+				act(interfaces.ProjectStatusNextAction{
+					Action: interfaces.ACTION_COMMIT_DRIFT, Method: http.MethodPost, Path: lineage + "/drift?commit=true",
+					Body: map[string]any{"kn_id": project.KNID}, Allowed: true,
+				})
+			case interfaces.DEFINITIONS_BRANCH_NOT_V3:
+				block(interfaces.BLOCKER_BRANCH_NOT_V3, 0, interfaces.WAITING_FOR_EDITOR)
+				act(interfaces.ProjectStatusNextAction{
+					Action: interfaces.ACTION_SYNC_BRANCH, Method: http.MethodPost,
+					Path: lineage + "/branches/" + project.Branch + "/sync", Allowed: true,
+				})
+			}
+			if n := len(preflight.Existing); n > 0 {
+				block(interfaces.BLOCKER_DEFINITIONS_EXIST, n, interfaces.WAITING_FOR_EDITOR)
+			}
+			if len(s.Blockers) > 0 {
+				confirm.Allowed, confirm.Reason = false, s.Blockers[0].Code
+			}
+		}
 		act(confirm)
 		act(generate)
 		return s
@@ -189,6 +297,21 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 	}
 	act(generate)
 	return s
+}
+
+// itemDecisions counts the decisions on a draft's items, those drafting again would discard; a
+// decision on the draft as a whole is about that draft only.
+func itemDecisions(draft *interfaces.Draft) int {
+	if draft == nil {
+		return 0
+	}
+	n := 0
+	for _, d := range draft.Items.Decisions {
+		if d.Kind != interfaces.DRAFT_KIND_DRAFT {
+			n++
+		}
+	}
+	return n
 }
 
 func anyObjectTypeAdopted(items *interfaces.DraftItems) bool {

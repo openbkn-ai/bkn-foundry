@@ -5,12 +5,19 @@
 package draft
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
 
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
 
 func Test_ProjectStatus(t *testing.T) {
@@ -37,7 +44,7 @@ func Test_ProjectStatus(t *testing.T) {
 		}
 		status := func(p *interfaces.Project, d *interfaces.Draft, c *interfaces.Check, as interfaces.AccountInfo,
 			staleBefore int64) *interfaces.ProjectStatus {
-			return projectStatus(p, d, c, as, staleBefore, staleBefore, 7)
+			return projectStatus(p, d, c, nil, as, staleBefore, staleBefore, 7)
 		}
 		action := func(s *interfaces.ProjectStatus, name string) *interfaces.ProjectStatusNextAction {
 			for i := range s.NextActions {
@@ -183,6 +190,63 @@ func Test_ProjectStatus(t *testing.T) {
 				ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
 		})
 
+		Convey("Confirming is refused ahead for what the branch would refuse\n", func() {
+			p := project()
+			p.KNID, p.Branch = "supply", "project/p1"
+			existing := &interfaces.DefinitionsPreflight{Existing: []string{"object_types/orders.bkn"}}
+
+			s := projectStatus(p, ready(), nil, existing, owner, fresh, fresh, 7)
+
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_DEFINITIONS_EXIST, Count: 1, WaitingFor: interfaces.WAITING_FOR_EDITOR},
+			})
+			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+			So(confirm.Allowed, ShouldBeFalse)
+			So(confirm.Reason, ShouldEqual, interfaces.BLOCKER_DEFINITIONS_EXIST)
+
+			s = projectStatus(p, ready(), nil, &interfaces.DefinitionsPreflight{NotV3: interfaces.DEFINITIONS_BRANCH_NOT_V3},
+				owner, fresh, fresh, 7)
+			So(s.Blockers[0].Code, ShouldEqual, interfaces.BLOCKER_BRANCH_NOT_V3)
+			So(*action(s, interfaces.ACTION_SYNC_BRANCH), ShouldResemble, interfaces.ProjectStatusNextAction{
+				Action: interfaces.ACTION_SYNC_BRANCH, Method: "POST", Path: "/lineages/supply/branches/project/p1/sync",
+				Allowed: true,
+			})
+
+			s = projectStatus(p, ready(), nil, &interfaces.DefinitionsPreflight{NotV3: interfaces.DEFINITIONS_LINEAGE_NOT_V3},
+				owner, fresh, fresh, 7)
+			So(s.Blockers[0].Code, ShouldEqual, interfaces.BLOCKER_LINEAGE_NOT_V3)
+			So(*action(s, interfaces.ACTION_COMMIT_DRIFT), ShouldResemble, interfaces.ProjectStatusNextAction{
+				Action: interfaces.ACTION_COMMIT_DRIFT, Method: "POST", Path: "/lineages/supply/drift?commit=true",
+				Body: map[string]any{"kn_id": "supply"}, Allowed: true,
+			})
+		})
+
+		Convey("Confirming a partial draft says it accepts what drafting could not read\n", func() {
+			d := ready()
+			d.Items.Inputs = &interfaces.DraftInputs{Partial: true}
+
+			s := status(project(), d, nil, owner, fresh)
+
+			So(s.Blockers, ShouldBeEmpty)
+			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+			So(confirm.Allowed, ShouldBeTrue)
+			So(confirm.Body, ShouldResemble, map[string]any{"update_time": int64(100), "accept_partial": true})
+			So(confirm.Accepts, ShouldResemble, []string{interfaces.ACCEPTS_PARTIAL_DRAFT})
+		})
+
+		Convey("A decision on the draft as a whole is not discarded by drafting again\n", func() {
+			d := ready()
+			d.Items.Decisions = []*interfaces.DraftDecision{
+				{Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ACCEPT_PARTIAL},
+			}
+
+			generate := action(status(project(), d, nil, owner, fresh), interfaces.ACTION_GENERATE_DRAFT)
+
+			So(generate.DiscardsDecisions, ShouldEqual, 0)
+			So(generate.Body, ShouldBeNil)
+		})
+
 		Convey("Drafting again says how many decisions it would discard\n", func() {
 			d := ready()
 			d.Items.Decisions = []*interfaces.DraftDecision{{Kind: "object_types"}, {Kind: "relation_types"}}
@@ -267,6 +331,74 @@ func Test_ProjectStatus(t *testing.T) {
 			So(string(a), ShouldContainSubstring, `"stale":[]`)
 			So(string(a), ShouldContainSubstring, `"links":{"check":"/projects/p1/ontology/check",`+
 				`"draft":"/projects/p1/ontology/draft","pending":"/projects/p1/pending"}`)
+		})
+	})
+}
+
+func Test_GetStatus(t *testing.T) {
+	Convey("Test draftService GetStatus\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		da := pmock.NewMockDraftAccess(ctrl)
+		ca := pmock.NewMockCheckAccess(ctrl)
+		ps := pmock.NewMockProjectService(ctrl)
+		ls := pmock.NewMockLineageService(ctrl)
+		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls}
+		ctx := context.Background()
+		project := &interfaces.ProjectEntry{Project: &interfaces.Project{
+			ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller, CatalogIDs: []string{"c1"},
+		}}
+
+		Convey("A draft ready to confirm is preflighted with the paths confirming would write\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			d := confirmableDraft()
+			d.Items.Confirmation = &interfaces.DraftConfirmation{Files: []string{"object_types/old.bkn"},
+				Pending: []string{"object_types/stopped.bkn"}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), "supply", "project/p1", compiledPaths(),
+				[]string{"object_types/old.bkn", "object_types/stopped.bkn"}).
+				Return(&interfaces.DefinitionsPreflight{Existing: []string{"object_types/orders.bkn"}}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			So(s.Blockers[0].Code, ShouldEqual, interfaces.BLOCKER_DEFINITIONS_EXIST)
+		})
+
+		Convey("Other stages read nothing of the branch\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_NO_DRAFT)
+		})
+
+		Convey("A preflight that fails leaves the status without what it would tell\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, errors.New("git unavailable"))
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			So(s.Blockers, ShouldBeEmpty)
+		})
+
+		Convey("A project the caller cannot see answers as the project service does\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").
+				Return(nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound))
+
+			_, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
 		})
 	})
 }

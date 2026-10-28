@@ -33,6 +33,8 @@ type DraftService interface {
 	// definitions, for the project owner, and records the confirmation on the draft.
 	ConfirmDraft(ctx context.Context, token string, projectID string, confirm DraftConfirm,
 		caller AccountInfo) (*Draft, error)
+	// GetStatus computes where the project stands, what blocks it and what the caller can do next.
+	GetStatus(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectStatus, error)
 	// GetCheck returns the check of the project's last confirmation.
 	GetCheck(ctx context.Context, token string, projectID string) (*Check, error)
 	// RunCheck checks the last confirmation again in the background, for the project owner, and

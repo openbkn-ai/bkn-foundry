@@ -28,9 +28,13 @@ const (
 	BLOCKER_NEEDS_IDENTITY  = "needs_identity"
 	BLOCKER_UNADOPTED_ENDS  = "unadopted_ends"
 	BLOCKER_NOTHING_ADOPTED = "nothing_adopted"
-	BLOCKER_CHECK_ISSUES    = "check_issues"
-	BLOCKER_CHECK_PARTIAL   = "check_partial"
-	BLOCKER_CHECK_FAILED    = "check_failed"
+	// What the project branch would refuse confirming for, read ahead.
+	BLOCKER_BRANCH_NOT_V3     = "branch_not_v3"
+	BLOCKER_LINEAGE_NOT_V3    = "lineage_not_v3"
+	BLOCKER_DEFINITIONS_EXIST = "definitions_exist"
+	BLOCKER_CHECK_ISSUES      = "check_issues"
+	BLOCKER_CHECK_PARTIAL     = "check_partial"
+	BLOCKER_CHECK_FAILED      = "check_failed"
 )
 
 // Who a blocker waits for.
@@ -54,7 +58,15 @@ const (
 	ACTION_ADOPT_ITEMS    = "adopt_items"
 	ACTION_CONFIRM_DRAFT  = "confirm_draft"
 	ACTION_RUN_CHECK      = "run_check"
+	ACTION_SYNC_BRANCH    = "sync_branch"
+	ACTION_COMMIT_DRIFT   = "commit_drift"
 	ACTION_WAIT           = "wait"
+)
+
+// What sending an action accepts on the caller's behalf.
+const (
+	// ACCEPTS_PARTIAL_DRAFT confirms a draft knowing the tables drafting could not read.
+	ACCEPTS_PARTIAL_DRAFT = "partial_draft"
 )
 
 // Why an action cannot be done by the caller; otherwise a blocker code.
@@ -116,4 +128,6 @@ type ProjectStatusNextAction struct {
 	RetryAfterS int `json:"retry_after_s,omitempty"`
 	// DiscardsDecisions is how many decisions drafting again would discard.
 	DiscardsDecisions int `json:"discards_decisions,omitempty"`
+	// Accepts says what sending the action accepts, as its body does.
+	Accepts []string `json:"accepts,omitempty"`
 }
