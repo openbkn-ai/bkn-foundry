@@ -4,6 +4,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ## Unreleased
 
+- `search_schema` outputs the BKN spec 3.0 relation declarations: `reverse_name`, `cardinality`, `required`, `characteristics`, `verification`, `importance` (omitted when primary) and relation properties. A primary relation carries its fallback path under `fallback` with the rule for using it, and a fallback path no longer appears on its own: recalling one brings its primary in. Object, relation and action types carry `lifecycle` when not active, so a deprecated definition looked up by id (`get_object_types`, `get_relation_types`, a pinned object type) says what replaces it. A network without these declarations gets the same output as before. (#2285)
+
 - Reserve acknowledgement-recovery time inside existing lifecycle budgets, replay start with its original idempotency key, and freeze terminal payload/artifact envelopes across retries without re-executing business tools. (#2539)
 
 ### Features & Improvements

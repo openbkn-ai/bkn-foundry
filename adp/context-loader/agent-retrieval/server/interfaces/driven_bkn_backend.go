@@ -142,6 +142,10 @@ type ObjectType struct {
 	// resource for this response, so condition_operations are missing rather than empty: what the
 	// object type can be searched by is unknown, not "nothing".
 	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitempty"`
+	// Lifecycle says whether the object type is still in use (BKN spec 3.0 §4.3); nil is active.
+	// It reaches every answer that carries the object type, so one looked up by id says what
+	// replaces it.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 
 	// RelatedMetrics are published Object Metrics V1 owned by this object type.
 	// get_object_types fills this list for caller-visible definitions.
@@ -185,6 +189,74 @@ type RelationType struct {
 	TargetObjectType   any    `json:"target_object_type,omitempty"` // Provide name when viewing details
 	MappingRules       any    `json:"mapping_rules,omitempty"`      // Mapping rules based on type, direct corresponds to []Mapping structure
 	Type               string `json:"type"`                         // Relation type
+
+	// BKN spec 3.0 relation declarations (SPECIFICATION.md §7.6), as bkn-backend returns them.
+	// Relation properties ride in mapping_rules.properties of an indirect relation.
+	ReverseName  string               `json:"reverse_name,omitempty"`
+	Cardinality  string               `json:"cardinality,omitempty"`
+	Constraints  *RelationConstraints `json:"constraints,omitempty"`
+	Importance   string               `json:"importance,omitempty"`
+	FallbackFor  string               `json:"fallback_for,omitempty"`
+	Verification string               `json:"verification,omitempty"`
+	Lifecycle    *Lifecycle           `json:"lifecycle,omitempty"`
+}
+
+// RelationConstraints is a relation type's ### Relation Constraints (SPECIFICATION.md §7.6).
+type RelationConstraints struct {
+	Required        []string `json:"required,omitempty"`
+	Characteristics []string `json:"characteristics,omitempty"`
+}
+
+// Lifecycle is the lifecycle of an object, relation or action type (SPECIFICATION.md §4.3). nil,
+// or status active, is a type still in use.
+type Lifecycle struct {
+	Status     string `json:"status"`
+	Reason     string `json:"reason,omitempty"`
+	ReplacedBy string `json:"replaced_by,omitempty"`
+}
+
+// Lifecycle status values.
+const (
+	LifecycleActive     = "active"
+	LifecycleDeprecated = "deprecated"
+)
+
+// Relation importance values.
+const (
+	RelationImportancePrimary   = "primary"
+	RelationImportanceSecondary = "secondary"
+)
+
+// Inactive returns the lifecycle when it says something, and nil for a type still in use.
+func (l *Lifecycle) Inactive() *Lifecycle {
+	if l == nil || ((l.Status == "" || l.Status == LifecycleActive) && l.Reason == "" && l.ReplacedBy == "") {
+		return nil
+	}
+	return l
+}
+
+// IsFallback reports whether the relation is the fallback path of a primary relation.
+func (r *RelationType) IsFallback() bool {
+	return r != nil && r.FallbackFor != "" && r.Importance == RelationImportanceSecondary
+}
+
+// MayHaveFallback reports whether a fallback path may point at the relation. The spec allows one
+// only on an active primary direct or indirect relation with many_to_one or one_to_one
+// cardinality and no characteristics, so the many relations that do not qualify cost no lookup.
+func (r *RelationType) MayHaveFallback() bool {
+	if r == nil || r.Lifecycle.Inactive() != nil {
+		return false
+	}
+	if r.Importance != "" && r.Importance != RelationImportancePrimary {
+		return false
+	}
+	if r.Cardinality != "many_to_one" && r.Cardinality != "one_to_one" {
+		return false
+	}
+	if r.Type != "direct" && r.Type != "indirect" {
+		return false
+	}
+	return r.Constraints == nil || len(r.Constraints.Characteristics) == 0
 }
 
 // ActionType Action type structure definition
@@ -197,6 +269,8 @@ type ActionType struct {
 	Score      float64  `json:"_score,omitempty"`      // Score
 
 	ObjectTypeID string `json:"object_type_id"` // Object type ID bound to action type
+	// Lifecycle says whether the action type is still in use (BKN spec 3.0 §4.3); nil is active.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 }
 
 // ConceptGroup BKN concept group structure used by exported knowledge-network detail.
@@ -519,8 +593,10 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 			a.Score = 0
 		}
 	}
-	// Property declarations are search_schema's to surface; no level of this answer carries them.
+	// Property and relation declarations are search_schema's to surface; no level of this answer
+	// carries them. Lifecycle stays.
 	OmitPropertyDeclarations(d.ObjectTypes)
+	OmitRelationDeclarations(d.RelationTypes)
 	if level == DetailLevelFull {
 		return
 	}
@@ -960,5 +1036,22 @@ func OmitPropertyDeclarations(objectTypes []*ObjectType) {
 			p.Required = false
 			p.Constraints = nil
 		}
+	}
+}
+
+// OmitRelationDeclarations clears the BKN spec 3.0 relation declarations other than lifecycle from
+// the given relation types. search_schema surfaces them; get_kn_detail and get_relation_types keep
+// only lifecycle, which says what replaces a deprecated relation looked up by id.
+func OmitRelationDeclarations(relationTypes []*RelationType) {
+	for _, r := range relationTypes {
+		if r == nil {
+			continue
+		}
+		r.ReverseName = ""
+		r.Cardinality = ""
+		r.Constraints = nil
+		r.Importance = ""
+		r.FallbackFor = ""
+		r.Verification = ""
 	}
 }

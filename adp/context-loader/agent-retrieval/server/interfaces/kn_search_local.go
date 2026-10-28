@@ -184,6 +184,9 @@ type KnSearchObjectType struct {
 	PrimaryKeys          []string                       `json:"primary_keys,omitempty"`
 	SampleData           map[string]any                 `json:"sample_data,omitempty"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
+	// Lifecycle is omitted while the object type is active. Recall leaves deprecated object types
+	// out, so it shows on one the caller pinned by id, saying what replaces it.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 	// Score is concept recall's relevance score for this object type, kept off the wire (json:"-").
 	//
 	// It exists so instance recall can skip object types the query has nothing to do with, before
@@ -238,6 +241,30 @@ type KnSearchRelationType struct {
 	Comment            string `json:"comment,omitempty"`
 	SourceObjectTypeID string `json:"source_object_type_id"`
 	TargetObjectTypeID string `json:"target_object_type_id"`
+
+	// BKN spec 3.0 relation declarations (SPECIFICATION.md §7.6), each omitted when undeclared.
+	// required and characteristics come from the relation's constraints; importance is omitted
+	// when primary, lifecycle when active.
+	ReverseName     string                  `json:"reverse_name,omitempty"`
+	Cardinality     string                  `json:"cardinality,omitempty"`
+	Required        []string                `json:"required,omitempty"`
+	Characteristics []string                `json:"characteristics,omitempty"`
+	Importance      string                  `json:"importance,omitempty"`
+	Verification    string                  `json:"verification,omitempty"`
+	Lifecycle       *Lifecycle              `json:"lifecycle,omitempty"`
+	DataProperties  []*KnSearchDataProperty `json:"data_properties,omitempty"`
+	// Fallback is the relation's fallback path with the rule for using it. A fallback path does
+	// not appear in the response on its own: it comes with its primary relation.
+	Fallback *KnSearchRelationFallback `json:"fallback,omitempty"`
+}
+
+// KnSearchRelationFallback is the fallback path paired with a primary relation in search_schema.
+type KnSearchRelationFallback struct {
+	RelationID   string `json:"relation_id"`
+	RelationName string `json:"relation_name,omitempty"`
+	Comment      string `json:"comment,omitempty"`
+	Verification string `json:"verification,omitempty"`
+	Rule         string `json:"rule"`
 }
 
 // KnSearchActionType action type (local response shape)
@@ -249,6 +276,8 @@ type KnSearchActionType struct {
 	Comment        string   `json:"comment,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	KnID           string   `json:"kn_id"`
+	// Lifecycle is omitted while the action type is active.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 }
 
 // KnSearchNode node (semantic instance) in local response
