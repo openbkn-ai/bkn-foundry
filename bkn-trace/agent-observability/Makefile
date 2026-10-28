@@ -63,6 +63,30 @@ test-summary-capacity:
 	@test -n "$(BKN_TRACE_CAPACITY_ADMIN_DSN)" || (echo "Set BKN_TRACE_CAPACITY_ADMIN_DSN to an isolated MariaDB admin DSN" >&2; exit 1)
 	go test -tags=integration $(INTEGRATION_PACKAGE) -run '^TestSummaryCapacityMariaDB$$' -count=1 -v
 
+.PHONY: test-outbox-performance
+test-outbox-performance:
+	@test -n "$(BKN_TRACE_OUTBOX_PERF_ADMIN_DSN)" || \
+		(echo "BKN_TRACE_OUTBOX_PERF_ADMIN_DSN is required (isolated test server with CREATE/DROP DATABASE)" >&2; exit 1)
+	go test -tags=integration $(INTEGRATION_PACKAGE) \
+		-run '^TestProjectionOutbox(Lease.*|ClaimIndexMigration)MariaDB$$' -count=1 -v
+
+.PHONY: test-outbox-scale
+test-outbox-scale:
+	@test -n "$(BKN_TRACE_OUTBOX_PERF_ADMIN_DSN)" || (echo "BKN_TRACE_OUTBOX_PERF_ADMIN_DSN is required" >&2; exit 1)
+	@test -n "$(BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL)" || (echo "BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL is required" >&2; exit 1)
+	BKN_TRACE_OUTBOX_SCALE=1 go test -tags=integration $(INTEGRATION_PACKAGE) \
+		-run '^TestProjectionOutboxScaleMariaDB$$' -timeout=15m -count=1 -v
+
+.PHONY: test-outbox-million test-outbox-soak
+test-outbox-million:
+	BKN_TRACE_OUTBOX_SCALE_SIZES=1000000 $(MAKE) test-outbox-scale
+
+test-outbox-soak:
+	@test -n "$(BKN_TRACE_OUTBOX_PERF_ADMIN_DSN)" || (echo "BKN_TRACE_OUTBOX_PERF_ADMIN_DSN is required" >&2; exit 1)
+	@test -n "$(BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL)" || (echo "BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL is required" >&2; exit 1)
+	BKN_TRACE_OUTBOX_SOAK=1 go test -tags=integration $(INTEGRATION_PACKAGE) \
+		-run '^TestProjectionOutboxContinuousLifecycleMariaDB$$' -timeout=40m -count=1 -v
+
 ci: lint license-check test-cover
 
 build:

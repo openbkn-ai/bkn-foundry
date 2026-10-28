@@ -14,6 +14,8 @@
 
 **升级：** 从 0.1.3 升级到 0.1.4 且需要清理不兼容的历史 Trace 数据时，参见[生产升级与历史数据清理](bkn-trace-0.1.3-to-0.1.4-upgrade.md)。
 
+资源规划与实测边界见[资源配置与 Agent / Trace 容量参考](bkn-trace-resources.md)。
+
 ## Community 与 EE 接口边界
 
 Community 提供受授权的基础事实和技术 Trace 读取。企业原生业务溯源需要目标

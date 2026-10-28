@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Claim MariaDB projection work through ordered, bounded ID candidate pages using the v040 covering index, then lock and revalidate selected rows. Preserve ID ordering, `SKIP LOCKED`, payload budgets and lease fencing; add historical-volume, 100k/500k pending capacity and real worker/OpenSearch throughput regressions. (#2585)
+
 ### Changed
 
 - Add an explicit, read-only-by-default historical integrity recheck command. It streams exact-version output artifacts through bounded token/hash verification and applies the existing integrity rules; optional source-version CAS completion preserves exhausted retry history and records real gaps instead of certifying them as complete. No schema, queue, producer or page-read changes.

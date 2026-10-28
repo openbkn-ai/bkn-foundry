@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 
@@ -29,7 +30,9 @@ func TestOutboxLeaseBoundsPayloadBytesBeforeLoading(t *testing.T) {
 		AddRow(1, "artifact", "a", 1, "artifact.persist_requested", "oversized", iprojectionoutbox.MaxPayloadBytes+1, 0, now).
 		AddRow(2, "interaction", "b", 1, "interaction.completed", "bounded", iprojectionoutbox.MaxPayloadBytes, 0, now).
 		AddRow(3, "artifact", "c", 1, "artifact.persist_requested", "next-batch", iprojectionoutbox.MaxPayloadBytes, 0, now)
-	mock.ExpectQuery("SELECT outbox_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_id,.*OCTET_LENGTH").WithArgs(100).WillReturnRows(rows)
+	mock.ExpectQuery("SELECT UTC_TIMESTAMP").WillReturnRows(sqlmock.NewRows([]string{"as_of"}).AddRow(now))
+	expectOutboxCandidatePage(mock, 0, now, 1, 2, 3)
+	mock.ExpectQuery("SELECT outbox_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_id,.*OCTET_LENGTH").WithArgs(uint64(1), uint64(2), uint64(3), now, now, 100).WillReturnRows(rows)
 	mock.ExpectQuery("SELECT outbox_id, payload FROM bkn_trace_projection_outbox WHERE outbox_id IN").WithArgs(uint64(2)).WillReturnRows(sqlmock.NewRows([]string{"id", "payload"}).AddRow(2, []byte(`{"answer":"kept"}`)))
 	for _, id := range []uint64{1, 2} {
 		mock.ExpectExec("UPDATE bkn_trace_projection_outbox").WithArgs(sqlmock.AnyArg(), time.Minute.Microseconds(), id).WillReturnResult(sqlmock.NewResult(0, 1))
@@ -73,7 +76,10 @@ func TestOutboxLeaseDefersAnswerBodyUntilTask(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT outbox_id, aggregate_type").WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "type", "aggregate", "version", "event_type", "event_id", "bytes", "attempts", "created"}).AddRow(8, "interaction", "i", 1, "artifact.persist_requested", "answer", iprojectionoutbox.MaxPayloadBytes, 0, time.Now()))
+	now := time.Now().UTC()
+	mock.ExpectQuery("SELECT UTC_TIMESTAMP").WillReturnRows(sqlmock.NewRows([]string{"as_of"}).AddRow(now))
+	expectOutboxCandidatePage(mock, 0, now, 8)
+	mock.ExpectQuery("SELECT outbox_id, aggregate_type").WithArgs(uint64(8), now, now, 1).WillReturnRows(sqlmock.NewRows([]string{"id", "type", "aggregate", "version", "event_type", "event_id", "bytes", "attempts", "created"}).AddRow(8, "interaction", "i", 1, "artifact.persist_requested", "answer", iprojectionoutbox.MaxPayloadBytes, 0, time.Now()))
 	// No payload SELECT is allowed before committing the claim.
 	mock.ExpectExec("UPDATE bkn_trace_projection_outbox").WithArgs(sqlmock.AnyArg(), time.Minute.Microseconds(), uint64(8)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
@@ -132,4 +138,16 @@ func TestOutboxDeferredPayloadIsBoundedAndLeaseFenced(t *testing.T) {
 			}
 		})
 	}
+}
+
+func expectOutboxCandidatePage(mock sqlmock.Sqlmock, after uint64, asOf time.Time, ids ...uint64) {
+	rows := sqlmock.NewRows([]string{"outbox_id"})
+	for _, id := range ids {
+		rows.AddRow(id)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(leaseProjectionOutboxCandidatesSQL)).WithArgs(
+		after, asOf, asOf, projectionOutboxCandidatePageSize,
+		after, asOf, asOf, projectionOutboxCandidatePageSize,
+		projectionOutboxCandidatePageSize,
+	).WillReturnRows(rows)
 }
