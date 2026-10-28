@@ -6,6 +6,8 @@ package managedproxy_test
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -67,6 +69,84 @@ func TestCreateIsIdempotentAndBuildsNonCredentialedApp(t *testing.T) {
 	}
 	if mappings != 1 {
 		t.Fatalf("mapping count = %d, want 1", mappings)
+	}
+}
+
+func TestCreateCountsProxyNameLimitInUnicodeCharacters(t *testing.T) {
+	mixedMaximum := strings.Repeat("A长🙂", 42) + "长🙂"
+	tests := []struct {
+		name                   string
+		networkName            string
+		crossesFormerByteLimit bool
+	}{
+		{name: "81 Chinese characters", networkName: strings.Repeat("长", 81)},
+		{name: "82 Chinese characters", networkName: strings.Repeat("长", 82), crossesFormerByteLimit: true},
+		{name: "128 Chinese characters", networkName: strings.Repeat("长", 128), crossesFormerByteLimit: true},
+		{name: "128 ASCII characters", networkName: strings.Repeat("a", 128)},
+		{name: "128 mixed characters", networkName: mixedMaximum, crossesFormerByteLimit: true},
+	}
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := managedProxyTestDB(t)
+			service := managedproxy.New(db)
+			name := "BKN proxy: " + test.networkName
+			if test.crossesFormerByteLimit && len(name) <= 255 {
+				t.Fatalf("test name must cross the former byte limit: bytes=%d", len(name))
+			}
+
+			account, created, err := service.Create(t.Context(), managedproxy.CreateRequest{
+				ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+				ManagedResourceID:   fmt.Sprintf("kn-unicode-%d", index),
+				Name:                name,
+			})
+			if err != nil || !created {
+				t.Fatalf("Create() = (%+v, %v, %v), want created", account, created, err)
+			}
+			if account.Name != name {
+				t.Fatalf("proxy name = %q, want exact Unicode input", account.Name)
+			}
+			var user model.User
+			if err := db.First(&user, "id = ?", account.ProxyAccountID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if user.Name != name {
+				t.Fatalf("stored proxy name = %q, want exact Unicode input", user.Name)
+			}
+		})
+	}
+}
+
+func TestCreateEnforcesProxyNameCharacterLimit(t *testing.T) {
+	db := managedProxyTestDB(t)
+	statement := &gorm.Statement{DB: db}
+	if err := statement.Parse(&model.User{}); err != nil {
+		t.Fatal(err)
+	}
+	field := statement.Schema.LookUpField("Name")
+	if field == nil {
+		t.Fatal("model.User.Name field is missing")
+	}
+	if field.Size != 255 {
+		t.Fatalf("model.User.Name size = %d, want 255", field.Size)
+	}
+	service := managedproxy.New(db)
+	maximum := strings.Repeat("名", field.Size)
+	account, created, err := service.Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-name-maximum",
+		Name:                maximum,
+	})
+	if err != nil || !created || account.Name != maximum {
+		t.Fatalf("maximum-length Create() = (%+v, %v, %v)", account, created, err)
+	}
+
+	_, _, err = service.Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork,
+		ManagedResourceID:   "kn-name-overlong",
+		Name:                maximum + "名",
+	})
+	if !errors.Is(err, managedproxy.ErrInvalidManagedResource) {
+		t.Fatalf("overlong Create() error = %v, want ErrInvalidManagedResource", err)
 	}
 }
 

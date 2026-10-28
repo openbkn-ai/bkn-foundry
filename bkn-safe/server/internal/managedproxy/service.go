@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -23,6 +24,7 @@ import (
 const (
 	ManagerBKN               = "bkn"
 	ResourceKnowledgeNetwork = "knowledge_network"
+	maxManagedProxyNameRunes = 255
 
 	StatusActive    = "active"
 	StatusDisabling = "disabling"
@@ -75,7 +77,8 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Account, bool
 	req.ManagedResourceID = strings.TrimSpace(req.ManagedResourceID)
 	req.Name = strings.TrimSpace(req.Name)
 	if req.ManagedResourceType != ResourceKnowledgeNetwork || req.ManagedResourceID == "" ||
-		len(req.ManagedResourceID) > 128 || len(req.Name) > 255 {
+		len(req.ManagedResourceID) > 128 || !utf8.ValidString(req.Name) ||
+		utf8.RuneCountInString(req.Name) > maxManagedProxyNameRunes {
 		return nil, false, ErrInvalidManagedResource
 	}
 
@@ -91,9 +94,6 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Account, bool
 	}
 	if req.Name == "" {
 		req.Name = "BKN proxy " + req.ManagedResourceID
-		if len(req.Name) > 255 {
-			req.Name = req.Name[:255]
-		}
 	}
 	user := model.User{
 		ID: proxyID, Account: "bkn-proxy-" + proxyID, Name: req.Name,

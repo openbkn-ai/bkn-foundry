@@ -219,7 +219,7 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 func (kns *knowledgeNetworkService) createProxyMapping(ctx context.Context, kn *interfaces.KN) (*interfaces.KNProxyAccount, bool, error) {
 	account, created, err := kns.mpa.Create(ctx, kn.KNID, "BKN proxy: "+kn.KNName)
 	if err != nil {
-		return nil, false, proxyHTTPError(ctx, http.StatusServiceUnavailable, "create managed knowledge network proxy")
+		return nil, false, managedProxyDependencyHTTPError(ctx, "create managed knowledge network proxy", err)
 	}
 	now := time.Now().UnixMilli()
 	mapping := &interfaces.KNProxyAccount{
@@ -1458,6 +1458,37 @@ func accountIDFromContext(ctx context.Context) string {
 
 func proxyHTTPError(ctx context.Context, status int, detail string) *httperrors.HTTPError {
 	return httperrors.NewHTTPError(ctx, status, berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(detail)
+}
+
+func managedProxyDependencyHTTPError(ctx context.Context, operation string, cause error) *httperrors.HTTPError {
+	var statusErr *interfaces.ManagedProxyStatusError
+	if !errors.As(cause, &statusErr) {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, operation)
+	}
+	detail := fmt.Sprintf("%s: bkn-safe returned status %d", operation, statusErr.StatusCode)
+	if code := publicDependencyErrorCode(statusErr.ErrorCode); code != "" {
+		detail += " (" + code + ")"
+	}
+	status := http.StatusBadGateway
+	if statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode >= http.StatusInternalServerError {
+		status = http.StatusServiceUnavailable
+	}
+	return proxyHTTPError(ctx, status, detail)
+}
+
+func publicDependencyErrorCode(code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" || len(code) > 128 {
+		return ""
+	}
+	for _, char := range code {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
+			char >= '0' && char <= '9' || char == '.' || char == '_' || char == '-' {
+			continue
+		}
+		return ""
+	}
+	return code
 }
 
 func proxyStateHTTPError(ctx context.Context, status int, code, detail string) *httperrors.HTTPError {
