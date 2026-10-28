@@ -503,6 +503,18 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 			So(kept, ShouldBeFalse)
 		})
 
+		Convey("Nothing left to write removes what the same source wrote before\n", func() {
+			first := map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}
+			_, err := svc.AddDefinitions(ctx, id, branch, first, nil, "confirm", author)
+			So(err, ShouldBeNil)
+
+			result, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{},
+				[]string{"object_types/plant.bkn"}, "confirm nothing", author)
+
+			So(err, ShouldBeNil)
+			So(result.Changed.Removed, ShouldResemble, []string{"object_types/plant.bkn"})
+		})
+
 		Convey("A path the branch holds is refused and listed, and nothing is committed\n", func() {
 			before, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
 

@@ -178,7 +178,8 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 		span.SetStatus(codes.Error, "Invalid branch")
 		return nil, err
 	}
-	if len(files) == 0 {
+	// Nothing to write is a request only when nothing written before is to be removed either.
+	if len(files) == 0 && len(owned) == 0 {
 		span.SetStatus(codes.Error, "Empty definitions")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions)
 	}
