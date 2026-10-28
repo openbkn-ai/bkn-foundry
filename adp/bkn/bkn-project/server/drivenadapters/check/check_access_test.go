@@ -32,14 +32,17 @@ func Test_CheckAccess(t *testing.T) {
 		lockRow := regexp.QuoteMeta("SELECT f_commit, f_status, f_start_time FROM t_bkn_project_check WHERE f_project_id = ? FOR UPDATE")
 		lockCols := []string{"f_commit", "f_status", "f_start_time"}
 		replace := regexp.QuoteMeta("UPDATE t_bkn_project_check SET f_commit = ?, f_status = ?, f_run_id = ?")
+		ensureRow := regexp.QuoteMeta(
+			"INSERT INTO t_bkn_project_check (f_project_id,f_input,f_results,f_error) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE f_project_id = f_project_id")
 
-		Convey("StartCheck inserts the first check of a project\n", func() {
+		Convey("StartCheck writes the first check of a project into the row it makes sure of\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols))
-			smock.ExpectExec(regexp.QuoteMeta(
-				"INSERT INTO t_bkn_project_check (f_project_id,f_commit,f_status,f_run_id,f_attempt,f_runner,f_runner_type,f_input,f_results,f_error,f_start_time,f_finish_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")).
-				WithArgs("p1", "c2", "running", "r2", 1, "u1", "user", `{"object_types":[]}`, "", "", int64(10), int64(0)).
-				WillReturnResult(sqlmock.NewResult(1, 1))
+			// Two first starts both find the row: the second waits on the first's, then sees it.
+			smock.ExpectExec(ensureRow).WithArgs("p1", "", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols).AddRow("", "", int64(0)))
+			smock.ExpectExec(replace).WithArgs("c2", "running", "r2", 1, "u1", "user", `{"object_types":[]}`, "", "",
+				int64(10), int64(0), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
 			started, err := ca.StartCheck(ctx, running, 5)
@@ -51,6 +54,7 @@ func Test_CheckAccess(t *testing.T) {
 
 		Convey("StartCheck replaces a finished check\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("c2", "failed", int64(8)))
 			smock.ExpectExec(replace).WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
@@ -64,6 +68,7 @@ func Test_CheckAccess(t *testing.T) {
 
 		Convey("StartCheck leaves a running check of the same commit alone\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("c2", "running", int64(8)))
 			smock.ExpectRollback()
 
@@ -76,6 +81,7 @@ func Test_CheckAccess(t *testing.T) {
 
 		Convey("StartCheck replaces a running check of an earlier commit\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("c1", "running", int64(8)))
 			smock.ExpectExec(replace).WithArgs("c2", "running", "r2", 1, "u1", "user", `{"object_types":[]}`, "", "",
 				int64(10), int64(0), "p1").
@@ -91,6 +97,7 @@ func Test_CheckAccess(t *testing.T) {
 
 		Convey("StartCheck takes over a check running since before the stale time\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("c2", "running", int64(4)))
 			smock.ExpectExec(replace).WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
@@ -104,8 +111,21 @@ func Test_CheckAccess(t *testing.T) {
 
 		Convey("StartCheck rolls back when the write fails\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols))
-			smock.ExpectExec("INSERT INTO t_bkn_project_check").WillReturnError(errors.New("db down"))
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("c1", "passed", int64(8)))
+			smock.ExpectExec(replace).WillReturnError(errors.New("db down"))
+			smock.ExpectRollback()
+
+			started, err := ca.StartCheck(ctx, running, 5)
+
+			So(err, ShouldNotBeNil)
+			So(started, ShouldBeFalse)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("StartCheck rolls back when the row cannot be made sure of\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnError(errors.New("db down"))
 			smock.ExpectRollback()
 
 			started, err := ca.StartCheck(ctx, running, 5)
