@@ -5,6 +5,7 @@
 package draft
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"sort"
@@ -77,7 +78,18 @@ func draftTable(table *interfaces.VegaTable) interfaces.DraftTable {
 func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	unreadable []*interfaces.DraftTable) (interfaces.DraftItems, error) {
 	d.items.Unreadable = append(d.items.Unreadable, unreadable...)
-	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+	// One order for the same tables however they were listed: which of two tables of one name
+	// takes the plain ID must not depend on the listing.
+	sort.Slice(tables, func(i, j int) bool {
+		a, b := tables[i], tables[j]
+		return cmp.Or(
+			cmp.Compare(a.Name, b.Name),
+			cmp.Compare(a.CatalogID, b.CatalogID),
+			cmp.Compare(a.SourceSchema, b.SourceSchema),
+			cmp.Compare(a.SourceName, b.SourceName),
+			cmp.Compare(a.ID, b.ID),
+		) < 0
+	})
 	for _, table := range tables {
 		d.kinds[table.ID] = classify(table, d.setting)
 		d.bySourceName[sourceName(table.CatalogID, table.SourceSchema, table.SourceName)] = table

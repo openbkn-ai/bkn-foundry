@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -344,6 +345,39 @@ func Test_Drafter(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(relation(items, "orders", "customers"), ShouldNotBeNil)
+		})
+
+		Convey("The same tables in any order draft the same items, with the same IDs\n", func() {
+			// Tables of one name in two catalogs, and in two schemas of one catalog.
+			tables := func() []*interfaces.VegaTable {
+				a := table("r_a", "c2", "customers", 0, []string{"id"}, col("id", "string", ""))
+				b := table("r_b", "c1", "customers", 0, []string{"id"}, col("id", "string", ""))
+				c := table("r_c", "c1", "customers", 0, []string{"id"}, col("id", "string", ""))
+				c.SourceSchema = "crm"
+				return []*interfaces.VegaTable{a, b, c}
+			}
+			drafted := func(order []int) string {
+				in := tables()
+				ordered := []*interfaces.VegaTable{in[order[0]], in[order[1]], in[order[2]]}
+				items, err := newDrafter(testSetting, sampleCounter()).draft(ctx, ordered, nil)
+				So(err, ShouldBeNil)
+				out, err := json.Marshal(items)
+				So(err, ShouldBeNil)
+				return string(out)
+			}
+
+			first := drafted([]int{0, 1, 2})
+			for _, order := range [][]int{{2, 1, 0}, {1, 0, 2}, {2, 0, 1}} {
+				So(drafted(order), ShouldEqual, first)
+			}
+			// Ordered by name, then catalog and schema: the first takes the plain ID.
+			var items interfaces.DraftItems
+			So(json.Unmarshal([]byte(first), &items), ShouldBeNil)
+			ids := map[string]string{}
+			for _, ot := range items.ObjectTypes {
+				ids[ot.Table.ResourceID] = ot.ID
+			}
+			So(ids["r_c"], ShouldEqual, "customers")
 		})
 
 		Convey("A small table of people is not a code table, so no names are read as enum values\n", func() {
