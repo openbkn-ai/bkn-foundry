@@ -65,6 +65,11 @@ func TestWriteErrUsesStableLocalizedResponse(t *testing.T) {
 			description: map[string]string{"zh-CN": "不能授予通配资源类型或操作。请指定具体的资源类型和操作。", "en-US": "Wildcard resource types and operations cannot be granted. Specify a concrete resource type and operation."},
 		},
 		{
+			name: "sub-resource wildcard", err: errors.Join(ErrSubResourceWildcard, errors.New("wildcard detail")),
+			status: http.StatusBadRequest, code: httperrors.AdminWriteSubResourceWildcardForbidden,
+			description: map[string]string{"zh-CN": "子资源类型不支持通配授权。请指定具体的资源标识。", "en-US": "Wildcard grants are not allowed for sub-resource types. Specify a concrete resource identifier."},
+		},
+		{
 			name: "admin console permission", err: ErrAdminConsolePermission,
 			status: http.StatusForbidden, code: httperrors.AdminWriteAdminConsolePermissionForbidden,
 			description: map[string]string{"zh-CN": "不能通过角色权限授予管理控制台能力。请通过受管的管理员角色绑定授予此能力。", "en-US": "The admin console capability cannot be granted through role permissions. Use the managed administrator role binding for this capability."},

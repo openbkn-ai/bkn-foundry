@@ -27,6 +27,7 @@ var bknSafeZhCN = i18n.I18nMessages{
 		"BknSafe.AdminWrite.Immutable":                       "内置对象不能修改。请改为创建或修改自定义对象。",
 		"BknSafe.AdminWrite.NoUpdatableFields":               "未提供可更新字段。请至少提供一个可更新字段。",
 		"BknSafe.AdminWrite.WildcardGrantForbidden":          "不能授予通配资源类型或操作。请指定具体的资源类型和操作。",
+		"BknSafe.AdminWrite.SubResourceWildcardForbidden":    "子资源类型不支持通配授权。请指定具体的资源标识。",
 		"BknSafe.AdminWrite.AdminConsolePermissionForbidden": "不能通过角色权限授予管理控制台能力。请通过受管的管理员角色绑定授予此能力。",
 		"BknSafe.Auth.AccountPlaceholder":                    "账号",
 		"BknSafe.Auth.PasswordPlaceholder":                   "密码",

@@ -27,6 +27,7 @@ var bknSafeEnUS = i18n.I18nMessages{
 		"BknSafe.AdminWrite.Immutable":                       "Built-in objects cannot be modified. Create or modify a custom object instead.",
 		"BknSafe.AdminWrite.NoUpdatableFields":               "No updatable fields were provided. Provide at least one field that can be updated.",
 		"BknSafe.AdminWrite.WildcardGrantForbidden":          "Wildcard resource types and operations cannot be granted. Specify a concrete resource type and operation.",
+		"BknSafe.AdminWrite.SubResourceWildcardForbidden":    "Wildcard grants are not allowed for sub-resource types. Specify a concrete resource identifier.",
 		"BknSafe.AdminWrite.AdminConsolePermissionForbidden": "The admin console capability cannot be granted through role permissions. Use the managed administrator role binding for this capability.",
 		"BknSafe.Auth.AccountPlaceholder":                    "Account",
 		"BknSafe.Auth.PasswordPlaceholder":                   "Password",

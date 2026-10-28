@@ -1,0 +1,98 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: BKN Safe 管理 · 角色权限 API
+  version: 1.0.0
+  description: |
+    Grants registered operations to custom roles. Available only when the
+    Enterprise rbac_basic capability is assembled and licensed.
+servers:
+  - url: /api/safe/v1/admin
+security:
+  - BearerAuth: []
+tags:
+  - name: Role permissions
+paths:
+  /roles/{id}/permissions:
+    post:
+      tags: [Role permissions]
+      operationId: grantRolePermissions
+      summary: Grant operations to a custom role
+      description: |
+        Requires admin-role:permissions; the legacy admin-authz:grant permission
+        is also accepted during the deprecation window. Built-in roles cannot
+        be modified through this endpoint.
+
+        Resource types and operations must be registered. Wildcard resource
+        types and operations are rejected. Resource identifiers containing `*`
+        are rejected for registered sub-resource types (types with a parent),
+        including partial patterns such as `prefix-*` and `parent/*`. Permitted
+        top-level type-wide grants retain their existing behavior. Other guards,
+        including the prohibition on type-wide action execution, still apply.
+
+        A rejected request preserves existing permissions and creates no partial
+        grants or business audit event. Registry and database failures remain
+        HTTP 500 and do not expose internal exception details.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Custom role identifier.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resource, operations]
+              properties:
+                resource:
+                  type: object
+                  required: [type]
+                  properties:
+                    type: {type: string, description: Registered resource type.}
+                    id: {type: string, description: Resource identifier or permitted pattern.}
+                operations:
+                  type: array
+                  minItems: 1
+                  items: {type: string}
+            example:
+              resource: {type: resource, id: owned-resource}
+              operations: [view_detail]
+      responses:
+        '204':
+          description: The operation set, including required operations, was granted atomically.
+        '400':
+          description: |
+            Invalid permission request. A prohibited sub-resource wildcard returns
+            BknSafe.AdminWrite.SubResourceWildcardForbidden. The description is
+            localized according to Accept-Language.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+              example:
+                error_code: BknSafe.AdminWrite.SubResourceWildcardForbidden
+                description: Wildcard grants are not allowed for sub-resource types. Specify a concrete resource identifier.
+                error_details: ''
+        '401':
+          description: Authentication failed.
+        '403':
+          description: Insufficient permission, an immutable role, or a forbidden grant.
+        '404':
+          description: The role does not exist or the capability is unavailable.
+        '500':
+          description: Unexpected registry, database, or internal service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

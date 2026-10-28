@@ -269,6 +269,9 @@ func (s *adminWriteServices) GrantRolePermissions(ctx context.Context, roleID, r
 		return enqueueRoleAudit(ctx, tx.DB(), role.ID, role.Name, http.StatusNoContent)
 	})
 	markRoleAuditHandledIfCommitted(ctx, err)
+	if errors.Is(err, authz.ErrSubResourceWildcard) {
+		return adminwrite.ErrSubResourceWildcard
+	}
 	return err
 }
 
