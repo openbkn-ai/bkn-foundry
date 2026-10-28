@@ -539,6 +539,14 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
             await redis_util.set_str(key=cache_key, value=str(model_info),
                                      expire=_model_cache_ttl(is_default))
 
+        # Older API instances cached rows without limits. Reload once during rolling upgrades.
+        if model_info and "f_max_documents" not in model_info[0]:
+            model_info = _load_small_model(is_default, RERANKER_MODEL_TYPE, model_name, model_id)
+            if not model_info:
+                return JSONResponse(status_code=404 if not is_default else 400,
+                                    content=_model_missing_error(is_default))
+            await redis_util.set_str(key=cache_key, value=str(model_info),
+                                     expire=_model_cache_ttl(is_default))
         model_info = model_info[0]
         model_name = model_info["f_model_name"]
         config_info = json.loads(model_info["f_model_config"])
@@ -552,6 +560,13 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
                                                                           role=role)
             if not permission:
                 return JSONResponse(status_code=403, content=NotPermissionError)
+        max_documents = model_info.get("f_max_documents")
+        if max_documents is not None and len(documents) > max_documents:
+            error_dict = ModelFactory_ExternalSmallModel_Used_InvalidParameter.copy()
+            error_dict["solution"] = "Reduce documents or increase the configured max_documents limit."
+            error_dict["detail"] = (
+                f"documents count {len(documents)} exceeds max_documents={max_documents}.")
+            return JSONResponse(status_code=400, content=error_dict)
         client = InnerClient(url=config_info.get("api_url", ""), model_name=config_info.get("api_model", ""),
                              api_key=config_info.get("api_key", ""), adapter=adapter, adapter_code=adapter_code)
         res_dict = await client.reranker(query=query, documents=documents)

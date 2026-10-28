@@ -560,6 +560,15 @@ components:
           type: integer
           title: Batch Size
           description: Batch size
+        max_documents:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 2147483647
+          description: >-
+            Maximum input documents per rerank request; only supported for reranker models.
+            Null disables the local limit. Creation without this field has no local limit.
+            Editing without this field preserves the saved limit; explicit null clears it.
+            Requests exceeding the limit return HTTP 400 without calling the provider.
         max_tokens:
           type: integer
           title: Max Tokens
@@ -619,6 +628,15 @@ components:
           type: integer
           title: Batch Size
           description: Batch size
+        max_documents:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 2147483647
+          description: >-
+            Maximum input documents per rerank request; only supported for reranker models.
+            Null disables the local limit. Creation without this field has no local limit.
+            Editing without this field preserves the saved limit; explicit null clears it.
+            Requests exceeding the limit return HTTP 400 without calling the provider.
         max_tokens:
           type: integer
           title: Max Tokens
@@ -685,6 +703,15 @@ components:
           type: integer
           title: Batch Size
           description: Batch size
+        max_documents:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 2147483647
+          description: >-
+            Maximum input documents per rerank request; only supported for reranker models.
+            Null disables the local limit. Creation without this field has no local limit.
+            Editing without this field preserves the saved limit; explicit null clears it.
+            Requests exceeding the limit return HTTP 400 without calling the provider.
         max_tokens:
           type: integer
           title: Max Tokens

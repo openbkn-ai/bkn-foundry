@@ -91,6 +91,7 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
             model_config=request.model_config,
             adapter=request.adapter,
             adapter_code=request.adapter_code,
+            max_documents=request.max_documents,
             batch_size=batch_size,
             max_tokens=max_tokens,
             embedding_dim=embedding_dim
@@ -295,17 +296,28 @@ async def edit_model(request: logics.EditExternalSmallModel, userId, language, r
             model_config=model_config_new,
             adapter=request.adapter,
             adapter_code=request.adapter_code,
+            # Older clients omit this new field; explicit null clears the limit.
+            max_documents=(
+                request.max_documents if "max_documents" in request.__fields_set__
+                else model_info[0].get("f_max_documents")
+            ) if request.model_type == "reranker" else None,
             batch_size=request.batch_size,
             max_tokens=request.max_tokens,
             embedding_dim=request.embedding_dim
         )
         small_model_dao.edit_model_info(config_info, userId)
         set_operation_audit_target(audit_request, [request.model_id], [request.model_name])
-        cache_key = f"dip:model-api:small-model:{request.model_name}:list"
+        cache_keys = {
+            f"dip:model-api:small-model:{request.model_name}:list",
+            f"dip:model-api:small-model:{model_info[0]['f_model_name']}:list",
+            f"dip:model-api:small-model:{request.model_id}:list",
+            f"dip:model-api:small-model:default:{model_info[0]['f_model_type']}:list",
+            f"dip:model-api:small-model:default:{request.model_type}:list",
+        }
         global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
-        await redis_util.delete_str(cache_key)
+        await redis_util.delete_str(sorted(cache_keys))
         content = {"status": "ok", "id": request.model_id}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
@@ -350,6 +362,7 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
                 "update_by": user_infos.get(item["f_update_by"], ""),
                 "adapter": True if item["f_adapter"] else False,
                 "adapter_code": item["f_adapter_code"],
+                "max_documents": item.get("f_max_documents"),
                 "batch_size": item["f_batch_size"],
                 "max_tokens": item["f_max_tokens"],
                 "embedding_dim": item["f_embedding_dim"],
@@ -392,6 +405,7 @@ async def get_info(model_id, user_id, role, trusted_app=False):
             "update_time": item["f_update_time"].strftime("%Y-%m-%d %H:%M:%S"),
             "adapter": True if item["f_adapter"] else False,
             "adapter_code": item["f_adapter_code"],
+            "max_documents": item.get("f_max_documents"),
             "batch_size": item["f_batch_size"],
             "max_tokens": item["f_max_tokens"],
             "embedding_dim": item["f_embedding_dim"],
@@ -443,6 +457,7 @@ async def get_info_by_name(model_name):
             "update_time": item["f_update_time"].strftime("%Y-%m-%d %H:%M:%S"),
             "adapter": True if item["f_adapter"] else False,
             "adapter_code": item["f_adapter_code"],
+            "max_documents": item.get("f_max_documents"),
             "batch_size": item["f_batch_size"],
             "max_tokens": item["f_max_tokens"],
             "embedding_dim": item["f_embedding_dim"],
@@ -483,6 +498,7 @@ async def get_default_model(model_type, user_id=None, role=None, *, trusted_inte
             "model_config": json.loads(
                 re.sub(r'"api_key":\s*"[^"]*"', '"api_key": "******************************"',
                        item["f_model_config"])),
+            "max_documents": item.get("f_max_documents"),
             "batch_size": item["f_batch_size"],
             "max_tokens": item["f_max_tokens"],
             "embedding_dim": item["f_embedding_dim"],

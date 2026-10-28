@@ -13,6 +13,7 @@ class AddExternalSmallModelInfo(BaseModel):
     model_config: dict
     adapter: bool = Field(default=False, description="Whether to enable the adapter service")
     adapter_code: StrictStr = Field(default=None, description="Adapter code")
+    max_documents: conint(strict=True, ge=1, le=2147483647) = Field(default=None, description="Maximum input documents per rerank request")
     batch_size: StrictInt = Field(description="Batch size", default=None)
     max_tokens: StrictInt = Field(description="Maximum tokens per batch; required only for embedding models", default=None)
     embedding_dim: StrictInt = Field(description="Embedding dimension; required only for embedding models", default=None)
