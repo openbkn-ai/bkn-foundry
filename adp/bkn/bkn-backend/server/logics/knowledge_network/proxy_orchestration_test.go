@@ -210,6 +210,8 @@ type managedProxyAccessStub struct {
 	resolvedGrantors map[string]string
 	omitResolved     bool
 	createCount      int
+	createName       string
+	createErr        error
 	disabled         bool
 	disableLifecycle string
 	archived         bool
@@ -229,9 +231,88 @@ type managedProxyAccessStub struct {
 	events           *[]string
 }
 
-func (s *managedProxyAccessStub) Create(_ context.Context, knID, _ string) (*interfaces.ManagedProxyAccount, bool, error) {
+func (s *managedProxyAccessStub) Create(_ context.Context, knID, name string) (*interfaces.ManagedProxyAccount, bool, error) {
 	s.createCount++
+	s.createName = name
+	if s.createErr != nil {
+		return nil, false, s.createErr
+	}
 	return &interfaces.ManagedProxyAccount{ProxyAccountID: "proxy-1", AccountType: interfaces.KNProxyAccountTypeApp, ManagedResourceID: knID}, true, nil
+}
+
+func TestCreateProxyMappingPreservesMaximumUnicodeNetworkName(t *testing.T) {
+	kpa := &proxyAccessStub{}
+	mpa := &managedProxyAccessStub{}
+	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa}
+	name := strings.Repeat("长度", 64)
+
+	mapping, created, err := service.createProxyMapping(t.Context(), &interfaces.KN{
+		KNID: strings.Repeat("cd", 64), KNName: name, Branch: interfaces.MAIN_BRANCH,
+	})
+	if err != nil || !created || mapping == nil {
+		t.Fatalf("createProxyMapping() = (%+v, %v, %v), want created", mapping, created, err)
+	}
+	if mpa.createName != "BKN proxy: "+name {
+		t.Fatalf("managed proxy name = %q, want exact Unicode name", mpa.createName)
+	}
+}
+
+func TestCreateProxyMappingReportsSanitizedSafeRejection(t *testing.T) {
+	mpa := &managedProxyAccessStub{createErr: &interfaces.ManagedProxyStatusError{
+		Method: http.MethodPost, Path: "/internal/path?token=secret",
+		StatusCode: http.StatusBadRequest, ErrorCode: "BknSafe.InvalidRequest",
+	}}
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}, mpa: mpa}
+
+	_, _, err := service.createProxyMapping(t.Context(), &interfaces.KN{KNID: "kn-1", KNName: "network"})
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok {
+		t.Fatalf("createProxyMapping() error = %T, want *httperrors.HTTPError", err)
+	}
+	if httpErr.HTTPCode != http.StatusBadGateway {
+		t.Fatalf("HTTP status = %d, want %d", httpErr.HTTPCode, http.StatusBadGateway)
+	}
+	detail, ok := httpErr.ErrorDetails.(string)
+	if !ok || detail != "create managed knowledge network proxy: bkn-safe returned status 400 (BknSafe.InvalidRequest)" {
+		t.Fatalf("error details = %#v", httpErr.ErrorDetails)
+	}
+	if strings.Contains(detail, "token") || strings.Contains(detail, "/internal/") {
+		t.Fatalf("error details leaked internal request data: %q", detail)
+	}
+
+	mpa.createErr = &interfaces.ManagedProxyStatusError{
+		StatusCode: http.StatusBadRequest, ErrorCode: "token=secret",
+	}
+	_, _, err = service.createProxyMapping(t.Context(), &interfaces.KN{KNID: "kn-1", KNName: "network"})
+	httpErr = err.(*httperrors.HTTPError)
+	if httpErr.ErrorDetails != "create managed knowledge network proxy: bkn-safe returned status 400" {
+		t.Fatalf("unsafe downstream code was not removed: %#v", httpErr.ErrorDetails)
+	}
+
+	mpa.createErr = &interfaces.ManagedProxyStatusError{
+		StatusCode: http.StatusServiceUnavailable, ErrorCode: "BknSafe.DependencyUnavailable",
+	}
+	_, _, err = service.createProxyMapping(t.Context(), &interfaces.KN{KNID: "kn-1", KNName: "network"})
+	httpErr = err.(*httperrors.HTTPError)
+	if httpErr.HTTPCode != http.StatusServiceUnavailable ||
+		httpErr.ErrorDetails != "create managed knowledge network proxy: bkn-safe returned status 503 (BknSafe.DependencyUnavailable)" {
+		t.Fatalf("downstream unavailable error = status %d details %#v", httpErr.HTTPCode, httpErr.ErrorDetails)
+	}
+}
+
+func TestCreateProxyMappingKeepsTransportFailurePrivate(t *testing.T) {
+	mpa := &managedProxyAccessStub{createErr: errors.New("dial tcp token=secret")}
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}, mpa: mpa}
+
+	_, _, err := service.createProxyMapping(t.Context(), &interfaces.KN{KNID: "kn-1", KNName: "network"})
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok {
+		t.Fatalf("createProxyMapping() error = %T, want *httperrors.HTTPError", err)
+	}
+	if httpErr.HTTPCode != http.StatusServiceUnavailable ||
+		httpErr.ErrorDetails != "create managed knowledge network proxy" {
+		t.Fatalf("transport error = status %d details %#v", httpErr.HTTPCode, httpErr.ErrorDetails)
+	}
 }
 func (s *managedProxyAccessStub) Restore(context.Context, string) (*interfaces.ManagedProxyAccount, error) {
 	s.restored = true
