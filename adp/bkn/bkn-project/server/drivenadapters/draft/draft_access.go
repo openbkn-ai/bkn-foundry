@@ -241,9 +241,21 @@ func (da *draftAccess) FailDrafting(ctx context.Context, reason string, updateTi
 // treated as having none, as drafting replaces them anyway.
 func hasDecisions(itemsJSON string) bool {
 	var items struct {
-		Decisions []json.RawMessage `json:"decisions"`
+		Decisions []struct {
+			Kind string `json:"kind"`
+		} `json:"decisions"`
 	}
-	return json.Unmarshal([]byte(itemsJSON), &items) == nil && len(items.Decisions) > 0
+	if json.Unmarshal([]byte(itemsJSON), &items) != nil {
+		return false
+	}
+	// A decision on the draft as a whole, such as accepting a partial draft, is about that draft
+	// only: drafting again decides it anew, so it is no edit to keep.
+	for _, d := range items.Decisions {
+		if d.Kind != interfaces.DRAFT_KIND_DRAFT {
+			return true
+		}
+	}
+	return false
 }
 
 // carriedConfirmation is the confirmation of a replaced draft as its successor keeps it: the
