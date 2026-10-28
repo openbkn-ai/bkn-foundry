@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 
 import aiohttp
 
@@ -467,7 +468,6 @@ class InnerClient:
 
                 result = await adapter_func(texts)
 
-                return result
             except Exception as e:
                 raise Exception(f"Adapter execution failed: {str(e)}")
 
@@ -483,12 +483,15 @@ class InnerClient:
                 if self._is_volcengine_embedding():
                     result = self._validate_volcengine_embedding_response(result)
         required_keys = ["object", "data", "model", "usage"]
-        if not all(key in result for key in required_keys):
+        if not isinstance(result, dict) or not all(key in result for key in required_keys):
             raise ValueError(f"Invalid adapter response format, missing one of: {required_keys}")
 
-        if not isinstance(result["data"], list) or not all(
+        if not isinstance(result["data"], list) or len(result["data"]) != len(texts) or not all(
                 isinstance(item, dict) and "embedding" in item and
                 isinstance(item["embedding"], list) and len(item["embedding"]) > 0
+                and (self.embedding_dim is None or len(item["embedding"]) == int(self.embedding_dim))
+                and all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                        and math.isfinite(value) for value in item["embedding"])
                 for item in result["data"]
         ):
             raise ValueError("Invalid data format in adapter response")
@@ -524,11 +527,12 @@ class InnerClient:
                     res = await resp.text()
                     result = json.loads(res)
         required_keys = ["object", "results", "model", "usage"]
-        if not all(key in result for key in required_keys):
+        if not isinstance(result, dict) or not all(key in result for key in required_keys):
             raise ValueError(f"Invalid adapter response format, missing one of: {required_keys}")
 
         if not isinstance(result["results"], list) or len(result["results"]) == 0 or not all(
-                isinstance(item, dict) and "relevance_score" in item
+                isinstance(item, dict) and isinstance(item.get("relevance_score"), (int, float))
+                and not isinstance(item["relevance_score"], bool) and math.isfinite(item["relevance_score"])
                 for item in result["results"]
         ):
             raise ValueError("Invalid results format in adapter response")
