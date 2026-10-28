@@ -28,9 +28,9 @@ from app.models import (
     AgentSetting,
     AgentSettingOut,
     PromptOut,
-    PromptPublish,
     PromptVersionPublish,
     SharedAgentUpdate,
+    SharedPromptPublish,
 )
 from app.public_auth import (
     BUILTIN_AGENT_IDS,
@@ -589,7 +589,7 @@ async def get_shared_prompt(
 
 @router.put("/admin/agents/{agent_id}/prompt", response_model=SharedPromptOut)
 async def publish_shared_prompt(
-    body: PromptPublish,
+    body: SharedPromptPublish,
     agent_id: str = AgentId,
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),

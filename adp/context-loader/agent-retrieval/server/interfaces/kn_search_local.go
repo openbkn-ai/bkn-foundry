@@ -31,6 +31,8 @@ type KnSearchLocalRequest struct {
 	IncludeColumns bool `json:"include_columns" default:"false"`
 	// IndexOpsOnly See SearchSchemaReq field of the same name.
 	IndexOpsOnly bool `json:"-"`
+	// EnumQuery looks up enum items by display name or code. See SearchSchemaReq.
+	EnumQuery string `json:"enum_query,omitempty"`
 }
 
 // KnSearchRetrievalConfig recall configuration parameters.
@@ -171,6 +173,7 @@ type KnSearchObjectType struct {
 	ConceptType    string                  `json:"concept_type,omitempty"`
 	ConceptID      string                  `json:"concept_id"`
 	ConceptName    string                  `json:"concept_name"`
+	Aliases        []string                `json:"aliases,omitempty"`
 	Comment        string                  `json:"comment,omitempty"`
 	Tags           []string                `json:"tags,omitempty"`
 	DataSource     *ResourceInfo           `json:"data_source,omitempty"`
@@ -217,11 +220,28 @@ type KnSearchDataProperty struct {
 	// BKN spec 3.0 property declarations (SPECIFICATION.md §6.8). Each is omitted when the
 	// property does not declare it; brief mode keeps only semantic. unit, crs and timezone come
 	// from the property's constraints.
-	Semantic string `json:"semantic,omitempty"`
-	Required bool   `json:"required,omitempty"`
-	Unit     string `json:"unit,omitempty"`
-	CRS      string `json:"crs,omitempty"`
-	Timezone string `json:"timezone,omitempty"`
+	Aliases  []string `json:"aliases,omitempty"`
+	Semantic string   `json:"semantic,omitempty"`
+	Required bool     `json:"required,omitempty"`
+	Unit     string   `json:"unit,omitempty"`
+	CRS      string   `json:"crs,omitempty"`
+	Timezone string   `json:"timezone,omitempty"`
+	// ValueType names the enum value type the property takes its values from (SPECIFICATION.md
+	// §16). Enum lists its items when the enum is expanded, or the items enum_query matched when
+	// it is not; EnumCount says how many items there are whenever Enum is not all of them.
+	// EnumMatchCount says how many items enum_query matched when Enum lists only the first of them.
+	ValueType      string              `json:"value_type,omitempty"`
+	Enum           []*KnSearchEnumItem `json:"enum,omitempty"`
+	EnumCount      int                 `json:"enum_count,omitempty"`
+	EnumMatchCount int                 `json:"enum_match_count,omitempty"`
+}
+
+// KnSearchEnumItem is one enum item of a property's value type. A deprecated item stays listed:
+// stored data still holds it.
+type KnSearchEnumItem struct {
+	Value      string `json:"value"`
+	Display    string `json:"display"`
+	Deprecated bool   `json:"deprecated,omitempty"`
 }
 
 // KnSearchLogicProperty logic property (local response shape)
@@ -235,12 +255,13 @@ type KnSearchLogicProperty struct {
 
 // KnSearchRelationType relation type (local response shape)
 type KnSearchRelationType struct {
-	ConceptType        string `json:"concept_type,omitempty"`
-	ConceptID          string `json:"concept_id"`
-	ConceptName        string `json:"concept_name"`
-	Comment            string `json:"comment,omitempty"`
-	SourceObjectTypeID string `json:"source_object_type_id"`
-	TargetObjectTypeID string `json:"target_object_type_id"`
+	ConceptType        string   `json:"concept_type,omitempty"`
+	ConceptID          string   `json:"concept_id"`
+	ConceptName        string   `json:"concept_name"`
+	Aliases            []string `json:"aliases,omitempty"`
+	Comment            string   `json:"comment,omitempty"`
+	SourceObjectTypeID string   `json:"source_object_type_id"`
+	TargetObjectTypeID string   `json:"target_object_type_id"`
 
 	// BKN spec 3.0 relation declarations (SPECIFICATION.md §7.6), each omitted when undeclared.
 	// required and characteristics come from the relation's constraints; importance is omitted
@@ -271,6 +292,7 @@ type KnSearchRelationFallback struct {
 type KnSearchActionType struct {
 	ID             string   `json:"id"`
 	Name           string   `json:"name"`
+	Aliases        []string `json:"aliases,omitempty"`
 	ObjectTypeID   string   `json:"object_type_id"`
 	ObjectTypeName string   `json:"object_type_name"`
 	Comment        string   `json:"comment,omitempty"`

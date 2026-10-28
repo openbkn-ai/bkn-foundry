@@ -260,6 +260,8 @@ func Test_CompileDraft(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(compiled.Files, ShouldBeEmpty)
+			// An empty list, not a missing one: the confirmation reads as skipping none.
+			So(compiled.SkippedValueTypes, ShouldNotBeNil)
 			So(compiled.SkippedValueTypes, ShouldBeEmpty)
 		})
 

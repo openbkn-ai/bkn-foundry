@@ -72,6 +72,10 @@
         "type": "boolean",
         "default": false,
         "description": "是否在每个对象类的 data_property 上额外返回物理列名 column（取自 mapped_field）。直接访问底层数据资源时列名要用 column（物理列），而非 name（逻辑名）——二者可不同，且同一资源可被多个对象类用不同逻辑名映射。默认 false 以保持响应精简。"
+      },
+      "enum_query": {
+        "type": "string",
+        "description": "按显示名或编码查枚举项，多个词用空格隔开，任一词命中即返回。用于没有展开的枚举：超过展开上限的大字典，以及精简模式下的所有枚举。例如问「已撤销的申请」时传「已撤销」，查出 C、X 两个编码。不传时这些枚举只给 value_type 与 enum_count。"
       }
     },
     "required": [
@@ -96,6 +100,13 @@
               "type": "string",
               "description": "名称。同上，action_types 那一项叫 name。"
             },
+            "aliases": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "对象类的别名，用户可能这样称呼它。没有时不带这个键。"
+            },
             "comment": {
               "type": "string",
               "description": "说明文字，通常含该类的属性表。"
@@ -111,7 +122,7 @@
                 "type": "object",
                 "additionalProperties": true
               },
-              "description": "数据属性 [{name, type, indexed}]；indexed=true 表示该属性支持所在对象类 index_operations 里的算子（match / knn 等）；能力与对象类不同的属性自带 condition_operations；两者都没有的属性没建索引，不能用 match / knn 过滤。属性声明了时另带 semantic（业务语义，如 event_time / status / location）；非精简模式还带 required、unit、crs、timezone，未声明的不出现。"
+              "description": "数据属性 [{name, type, indexed}]；indexed=true 表示该属性支持所在对象类 index_operations 里的算子（match / knn 等）；能力与对象类不同的属性自带 condition_operations；两者都没有的属性没建索引，不能用 match / knn 过滤。属性声明了时另带 semantic（业务语义，如 event_time / status / location）；非精简模式还带 aliases、required、unit、crs、timezone，未声明的不出现。取值是枚举的属性带 value_type 与 enum：enum 是 [{value, display, deprecated}]，数据里存的是 value，筛选时用 value；deprecated=true 的是停用的旧编码，存量数据仍有，按含义筛选时要一起带上（如「已撤销」写 IN ('C', 'X')）。枚举没有展开时（超过上限，或精简模式）只给 enum_count 表示总项数，enum 只列 enum_query 查到的项；查到的项超过上限时只列前面一部分，另给 enum_match_count 表示查到的总数，这时换更具体的词再查，别拿不全的编码去筛选。"
             },
             "index_operations": {
               "type": "array",
@@ -185,6 +196,13 @@
             "concept_name": {
               "type": "string",
               "description": "关系名"
+            },
+            "aliases": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "关系的别名。没有时不带这个键。"
             },
             "comment": {
               "type": "string",
@@ -262,6 +280,13 @@
             "name": {
               "type": "string",
               "description": "行动名。同上，与 object_types 的 concept_name 不一致。"
+            },
+            "aliases": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "行动类的别名。没有时不带这个键。"
             },
             "object_type_id": {
               "type": "string",

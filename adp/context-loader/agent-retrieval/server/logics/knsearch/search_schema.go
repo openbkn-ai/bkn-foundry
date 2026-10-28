@@ -96,6 +96,11 @@ func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSe
 		return nil, scope, errors.New("max_concepts must be greater than 0")
 	}
 
+	var enumQuery string
+	if req.EnumQuery != nil {
+		enumQuery = strings.TrimSpace(*req.EnumQuery)
+	}
+
 	onlySchema := true
 	return &interfaces.KnSearchReq{
 		XAccountID:     req.XAccountID,
@@ -107,6 +112,7 @@ func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSe
 		RerankModel:    req.RerankModel,
 		IncludeColumns: req.IncludeColumns,
 		IndexOpsOnly:   req.IndexOpsOnly,
+		EnumQuery:      enumQuery,
 		RetrievalConfig: &interfaces.RetrievalConfig{
 			ConceptRetrieval: &interfaces.ConceptRetrievalConfig{
 				ConceptGroups: scope.ConceptGroups,

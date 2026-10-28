@@ -9,8 +9,8 @@ USE openbkn;
 -- network; the lineage id is the base network id.
 CREATE TABLE IF NOT EXISTS t_bkn_project_release (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release ID',
-  f_lineage_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Lineage ID: the base knowledge network ID',
-  f_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID this release was imported as',
+  f_lineage_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Lineage ID: the base knowledge network ID',
+  f_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID this release was imported as',
   f_version VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release version',
   f_base_version VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Version this release was based on; empty for the first release',
   f_project_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
@@ -33,9 +33,9 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_release (
 
 CREATE TABLE IF NOT EXISTS t_bkn_project_switch (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Switch ID',
-  f_lineage_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Lineage ID',
-  f_from_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched away from',
-  f_to_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched to',
+  f_lineage_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Lineage ID',
+  f_from_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched away from',
+  f_to_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched to',
   f_operator VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Operator ID',
   f_operator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Operator type',
   f_schedules TEXT NOT NULL COMMENT 'Schedules moved, JSON: from_id, to_id, name',
@@ -51,9 +51,9 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_switch (
 CREATE TABLE IF NOT EXISTS t_bkn_project_project (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
   f_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Project name',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID: the lineage ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID: the lineage ID',
   f_branch VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Git branch of the lineage',
-  f_baseline_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Live knowledge network when the project started',
+  f_baseline_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Live knowledge network when the project started',
   f_catalog_ids TEXT NOT NULL COMMENT 'Data catalog IDs the project uses, JSON array',
   f_archived TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived: hidden from the default list',
   f_owner VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Owner ID: the creator',
@@ -82,3 +82,24 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_draft (
   PRIMARY KEY (f_project_id),
   KEY idx_bkn_project_draft_status (f_status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN-project ontology drafts';
+
+-- Checks of confirmed ontology drafts: the latest check of each project, run in
+-- the background after a confirmation against what that confirmation wrote. It
+-- is kept apart from the draft so that recording a check never races an edit.
+
+CREATE TABLE IF NOT EXISTS t_bkn_project_check (
+  f_project_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
+  f_commit VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Commit of the confirmation checked',
+  f_status VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Status: running, passed, issues or failed',
+  f_run_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Run ID: only this run records its outcome',
+  f_attempt INT NOT NULL DEFAULT 0 COMMENT 'Attempts made in this run',
+  f_runner VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Account the counts run as',
+  f_runner_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Runner account type',
+  f_input LONGTEXT NOT NULL COMMENT 'What the confirmation wrote, as the check reads it, JSON',
+  f_results LONGTEXT NOT NULL COMMENT 'Results of each check item, JSON',
+  f_error TEXT NOT NULL COMMENT 'Why the run failed',
+  f_start_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Start time',
+  f_finish_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Finish time',
+  PRIMARY KEY (f_project_id),
+  KEY idx_bkn_project_check_status (f_status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN-project checks of confirmed drafts';
