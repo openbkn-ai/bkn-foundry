@@ -1696,7 +1696,7 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	if len(report.MissingMappings) != 1 || report.MissingMappings[0] != "kn-live" {
 		t.Fatalf("missing mappings = %#v", report.MissingMappings)
 	}
-	if len(report.OrphanMappings) != 1 || report.OrphanMappings[0] != "kn-orphan" {
+	if !reflect.DeepEqual(report.OrphanMappings, []string{"kn-deleted", "kn-orphan"}) {
 		t.Fatalf("orphan mappings = %#v", report.OrphanMappings)
 	}
 	if len(report.ConflictingProxy["proxy-shared"]) != 2 {
@@ -1787,7 +1787,7 @@ func TestProxyDeletionLifecycleIsOrdered(t *testing.T) {
 	if err := service.finalizeProxyDelete(ctx, plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"mapping:deleting", "business:delete", "proxy:disable", "grants:sync", "snapshot:delete", "proxy:archive", "policy:delete"}
+	want := []string{"mapping:deleting", "business:delete", "proxy:disable", "grants:sync", "snapshot:delete", "proxy:archive", "policy:delete", "mapping:archived"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("deletion events = %#v, want %#v", events, want)
 	}
@@ -1935,7 +1935,7 @@ func TestFinalizeProxyDeleteRepairsAlreadyArchivedManagedProxy(t *testing.T) {
 	if err := service.finalizeProxyDelete(t.Context(), plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"proxy:disable", "grants:sync", "snapshot:delete", "mapping:deleting", "policy:delete"}
+	want := []string{"proxy:disable", "grants:sync", "snapshot:delete", "mapping:deleting", "policy:delete", "mapping:archived"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("recovery events = %#v, want %#v", events, want)
 	}
@@ -2034,6 +2034,30 @@ func TestFinalizeKNProxyDeletionKeepsPermissionWhileNetworkExists(t *testing.T) 
 	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusConflict {
 		t.Fatalf("FinalizeKNProxyDeletion() error = %#v, want conflict", err)
+	}
+}
+
+func TestFinalizeKNProxyDeletionArchivesCommittedDeletionWithoutParentPolicy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	events := []string{}
+	permissionService := bmock.NewMockPermissionService(ctrl)
+	permissionService.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn-1"}).
+		DoAndReturn(func(context.Context, string, []string) error {
+			events = append(events, "policy:delete")
+			return nil
+		})
+	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(nil, nil)
+	kpa := &proxyAccessStub{events: &events, mapping: &interfaces.KNProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDeleting,
+	}}
+	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: &managedProxyAccessStub{}, ps: permissionService}
+
+	if err := service.FinalizeKNProxyDeletion(t.Context(), "kn-1"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(events, []string{"policy:delete", "mapping:archived"}) {
+		t.Fatalf("finalize events = %#v", events)
 	}
 }
 

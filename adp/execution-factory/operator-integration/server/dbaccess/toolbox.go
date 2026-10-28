@@ -286,6 +286,37 @@ func (b *toolboxDB) UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, 
 	return
 }
 
+// RestoreToolBoxAfterDeleteConflict makes a toolbox visible again when Safe
+// rejected deletion before removing its policy. The deleting status and user
+// fence ensure that a concurrent retry cannot be overwritten.
+func (b *toolboxDB) RestoreToolBoxAfterDeleteConflict(ctx context.Context, tx *sql.Tx,
+	toolbox *model.ToolboxDB, deletingUser string) (err error) {
+	orm := b.orm
+	if tx != nil {
+		orm = b.orm.WithTx(tx)
+	}
+	row, err := orm.Update(tbToolBox).SetData(map[string]interface{}{
+		"f_status":       toolbox.Status,
+		"f_update_user":  toolbox.UpdateUser,
+		"f_update_time":  toolbox.UpdateTime,
+		"f_release_user": toolbox.ReleaseUser,
+		"f_release_time": toolbox.ReleaseTime,
+	}).WhereEq("f_box_id", toolbox.BoxID).
+		WhereEq("f_status", model.ToolboxStatusDeleting).
+		WhereEq("f_update_user", deletingUser).Execute(ctx)
+	if err != nil {
+		return errors.Wrapf(err, "restore toolbox after delete conflict error")
+	}
+	ok, err := checkAffected(row)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("restore toolbox after delete conflict failed")
+	}
+	return nil
+}
+
 // TouchToolBox records a change to one of the toolbox's tools as a change to the
 // toolbox, so its update time and updater follow the newest tool edit.
 func (b *toolboxDB) TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) (err error) {

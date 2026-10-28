@@ -1598,8 +1598,14 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// The network's own permission is intentionally the final fallible step.
-	err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
+	// The network's own permission is intentionally the final external cleanup.
+	// Archive the durable mapping only after Safe confirms that the old parent
+	// policy is gone, making the same kn_id safe to create or import again.
+	if proxyPlan == nil {
+		err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
+	} else {
+		err = kns.finalizeProxyAuthorizationDelete(ctx, proxyPlan)
+	}
 	if err != nil {
 		logger.Errorf("Finalize knowledge network authorization deletion error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")

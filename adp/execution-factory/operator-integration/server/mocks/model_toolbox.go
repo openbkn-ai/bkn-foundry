@@ -205,6 +205,20 @@ func (mr *MockIToolboxDBMockRecorder) SelectToolBoxList(ctx, filter, sort, curso
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectToolBoxList", reflect.TypeOf((*MockIToolboxDB)(nil).SelectToolBoxList), ctx, filter, sort, cursor)
 }
 
+// RestoreToolBoxAfterDeleteConflict mocks base method.
+func (m *MockIToolboxDB) RestoreToolBoxAfterDeleteConflict(ctx context.Context, tx *sql.Tx, toolbox *model.ToolboxDB, deletingUser string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreToolBoxAfterDeleteConflict", ctx, tx, toolbox, deletingUser)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RestoreToolBoxAfterDeleteConflict indicates an expected call of RestoreToolBoxAfterDeleteConflict.
+func (mr *MockIToolboxDBMockRecorder) RestoreToolBoxAfterDeleteConflict(ctx, tx, toolbox, deletingUser any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreToolBoxAfterDeleteConflict", reflect.TypeOf((*MockIToolboxDB)(nil).RestoreToolBoxAfterDeleteConflict), ctx, tx, toolbox, deletingUser)
+}
+
 // TouchToolBox mocks base method.
 func (m *MockIToolboxDB) TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) error {
 	m.ctrl.T.Helper()

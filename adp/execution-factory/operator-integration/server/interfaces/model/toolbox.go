@@ -48,6 +48,7 @@ type IToolboxDB interface {
 	CountToolBox(ctx context.Context, filter map[string]interface{}) (int64, error)
 	SelectToolBoxByName(ctx context.Context, name string, status []string) (bool, *ToolboxDB, error)
 	UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, status string, updateUser string) (err error)
+	RestoreToolBoxAfterDeleteConflict(ctx context.Context, tx *sql.Tx, toolbox *ToolboxDB, deletingUser string) error
 	TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) error
 	SelectListByBoxIDs(ctx context.Context, boxIDs []string, status ...string) ([]*ToolboxDB, error)
 	SelectListByBoxIDsFilter(ctx context.Context, boxIDs []string, status string, filter map[string]interface{}) ([]*ToolboxDB, error)

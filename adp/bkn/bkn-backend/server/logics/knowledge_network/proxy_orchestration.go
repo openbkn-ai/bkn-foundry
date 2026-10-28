@@ -1137,7 +1137,27 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 	if err := kns.revokeProxyDelete(ctx, plan); err != nil {
 		return err
 	}
-	return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID})
+	return kns.finalizeProxyAuthorizationDelete(ctx, plan)
+}
+
+// finalizeProxyAuthorizationDelete removes the parent authorization before
+// making the archived mapping reusable. Keeping the mapping deleting until the
+// Safe call succeeds prevents a concurrent import from restoring the proxy
+// while the old network policy still exists.
+func (kns *knowledgeNetworkService) finalizeProxyAuthorizationDelete(ctx context.Context, plan *proxyPublishPlan) error {
+	if plan == nil {
+		return nil
+	}
+	if err := kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID}); err != nil {
+		return err
+	}
+	if err := kns.kpa.SetLifecycle(ctx, plan.mapping.KNID, interfaces.KNProxyLifecycleArchived,
+		time.Now().UnixMilli()); err != nil {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable,
+			"record completed knowledge network deletion")
+	}
+	plan.mapping.LifecycleStatus = interfaces.KNProxyLifecycleArchived
+	return nil
 }
 
 // revokeProxyDelete disables the network proxy and removes every grant derived
@@ -1199,10 +1219,6 @@ func (kns *knowledgeNetworkService) FinalizeKNProxyDeletion(ctx context.Context,
 	if mapping == nil {
 		return proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
 	}
-	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID},
-		[]string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
-		return err
-	}
 	if mapping.LifecycleStatus == interfaces.KNProxyLifecycleDeleting {
 		kn, loadErr := kns.kna.GetKNByID(ctx, knID, interfaces.MAIN_BRANCH)
 		if loadErr != nil {
@@ -1210,10 +1226,22 @@ func (kns *knowledgeNetworkService) FinalizeKNProxyDeletion(ctx context.Context,
 				"check knowledge network deletion completion")
 		}
 		if kn != nil {
+			if err := kns.ps.CheckPermission(ctx,
+				interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID},
+				[]string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
+				return err
+			}
 			return proxyHTTPError(ctx, http.StatusConflict,
 				"knowledge network deletion has not committed")
 		}
-		return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{knID})
+		// The durable deleting marker proves that an authorized deletion already
+		// committed. Resume this idempotent tail even when the parent policy was
+		// removed before the previous lifecycle update failed.
+		return kns.finalizeProxyAuthorizationDelete(ctx, &proxyPublishPlan{mapping: mapping})
+	}
+	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID},
+		[]string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
+		return err
 	}
 	if mapping.LifecycleStatus == interfaces.KNProxyLifecycleArchived {
 		return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{knID})
@@ -1511,8 +1539,7 @@ func (kns *knowledgeNetworkService) ReconcileKNProxies(ctx context.Context, requ
 		mappingByKN[mapping.KNID] = mapping
 		_, networkExists := knsByID[mapping.KNID]
 		if !networkExists {
-			if mapping.LifecycleStatus != interfaces.KNProxyLifecycleArchived &&
-				mapping.LifecycleStatus != interfaces.KNProxyLifecycleDeleting {
+			if mapping.LifecycleStatus != interfaces.KNProxyLifecycleArchived {
 				report.OrphanMappings = append(report.OrphanMappings, mapping.KNID)
 			}
 			continue

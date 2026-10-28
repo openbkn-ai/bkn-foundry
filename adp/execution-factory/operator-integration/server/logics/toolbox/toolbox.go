@@ -5,6 +5,7 @@ package toolbox
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
@@ -112,26 +114,39 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	if toolBox.Status != model.ToolboxStatusDeleting || toolBox.UpdateUser != req.UserID {
-		err = s.checkBoxDeletePermission(ctx, accessor, req.BoxID)
-		if err != nil {
-			return
-		}
-	}
-	if toolBox.Status != model.ToolboxStatusDeleting {
-		if err = s.markToolBoxDeleting(ctx, req.BoxID, req.UserID); err != nil {
-			return
-		}
-	}
-
-	// Delete resource permissions while the durable marker still identifies the
-	// authorized retry. Safe treats an already absent policy as success.
 	resourceType, typeErr := toolboxAuthorizationType(toolBox.MetadataType)
 	if typeErr != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, typeErr.Error())
 		return
 	}
+	if toolBox.Status != model.ToolboxStatusDeleting || toolBox.UpdateUser != req.UserID {
+		if toolBox.Status == model.ToolboxStatusDeleting {
+			err = s.AuthService.CheckDeletePermission(ctx, accessor, req.BoxID, resourceType)
+		} else {
+			err = s.checkBoxDeletePermission(ctx, accessor, req.BoxID)
+		}
+		if err != nil {
+			return
+		}
+	}
+	markedDeleting := false
+	if toolBox.Status != model.ToolboxStatusDeleting {
+		if err = s.markToolBoxDeleting(ctx, req.BoxID, req.UserID); err != nil {
+			return
+		}
+		markedDeleting = true
+	}
+
+	// Delete resource permissions while the durable marker still identifies the
+	// authorized retry. Safe treats an already absent policy as success.
 	if err = s.AuthService.DeletePolicy(ctx, []string{req.BoxID}, resourceType); err != nil {
+		var httpErr *httperrors.HTTPError
+		if markedDeleting && stderrors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusConflict {
+			if restoreErr := s.restoreToolBoxAfterDeleteConflict(ctx, toolBox, req.UserID); restoreErr != nil {
+				err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+					fmt.Sprintf("restore toolbox after Safe conflict: %v; delete error: %v", restoreErr, err))
+			}
+		}
 		return
 	}
 
@@ -194,6 +209,28 @@ func (s *ToolServiceImpl) markToolBoxDeleting(ctx context.Context, boxID, userID
 		}
 	}()
 	if err := s.ToolBoxDB.UpdateToolBoxStatus(ctx, tx, boxID, model.ToolboxStatusDeleting, userID); err != nil {
+		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	committed = true
+	return nil
+}
+
+func (s *ToolServiceImpl) restoreToolBoxAfterDeleteConflict(ctx context.Context,
+	toolbox *model.ToolboxDB, deletingUser string) error {
+	tx, err := s.DBTx.GetTx(ctx)
+	if err != nil {
+		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := s.ToolBoxDB.RestoreToolBoxAfterDeleteConflict(ctx, tx, toolbox, deletingUser); err != nil {
 		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	if err := tx.Commit(); err != nil {

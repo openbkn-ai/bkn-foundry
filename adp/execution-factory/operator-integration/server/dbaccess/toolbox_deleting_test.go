@@ -60,6 +60,28 @@ func TestToolboxWritesDoNotOverwriteDeletingMarker(t *testing.T) {
 	}
 }
 
+func TestToolboxDeleteConflictRestoresOnlyOwnedMarker(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	query := regexp.QuoteMeta("WHERE f_box_id = ? AND f_status = ? AND f_update_user = ?")
+	mock.ExpectExec("UPDATE .*" + query).WillReturnResult(sqlmock.NewResult(0, 1))
+	db := &toolboxDB{orm: ormhelper.New(sqlDB, "agent_operator_integration")}
+	box := &model.ToolboxDB{
+		BoxID: "box-1", Status: "published", UpdateUser: "editor-1", UpdateTime: 123,
+		ReleaseUser: "publisher-1", ReleaseTime: 456,
+	}
+	if err := db.RestoreToolBoxAfterDeleteConflict(t.Context(), nil, box, "deleter-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSkillWritesDoNotOverwriteDeletingMarker(t *testing.T) {
 	tests := []struct {
 		name string

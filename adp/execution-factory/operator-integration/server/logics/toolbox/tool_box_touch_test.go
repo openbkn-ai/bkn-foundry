@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -13,6 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 )
 
@@ -179,9 +181,16 @@ func TestDeleteToolBoxStopsBeforePhysicalDeleteWhenSafeRejects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	dbMock.MatchExpectationsInOrder(false)
 	t.Cleanup(func() { _ = db.Close() })
 	dbMock.ExpectBegin()
 	markTx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.ExpectCommit()
+	dbMock.ExpectBegin()
+	restoreTx, err := db.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +200,9 @@ func TestDeleteToolBoxStopsBeforePhysicalDeleteWhenSafeRejects(t *testing.T) {
 	boxDB := mocks.NewMockIToolboxDB(ctrl)
 	dbTx := mocks.NewMockDBTx(ctrl)
 	accessor := &interfaces.AuthAccessor{ID: touchUserID}
-	box := &model.ToolboxDB{BoxID: touchBoxID, Name: "box a", MetadataType: string(interfaces.MetadataTypeAPI)}
+	box := &model.ToolboxDB{BoxID: touchBoxID, Name: "box a", Status: string(interfaces.BizStatusPublished),
+		MetadataType: string(interfaces.MetadataTypeAPI), UpdateUser: "editor-1", UpdateTime: 123,
+		ReleaseUser: "publisher-1", ReleaseTime: 456}
 	auth.EXPECT().GetAccessor(gomock.Any(), touchUserID).Return(accessor, nil)
 	boxDB.EXPECT().SelectToolBoxForDelete(gomock.Any(), touchBoxID).Return(true, box, nil)
 	boxDB.EXPECT().SelectToolBox(gomock.Any(), touchBoxID).Return(true, box, nil)
@@ -200,7 +211,9 @@ func TestDeleteToolBoxStopsBeforePhysicalDeleteWhenSafeRejects(t *testing.T) {
 	boxDB.EXPECT().UpdateToolBoxStatus(gomock.Any(), markTx, touchBoxID,
 		model.ToolboxStatusDeleting, touchUserID).Return(nil)
 	auth.EXPECT().DeletePolicy(gomock.Any(), []string{touchBoxID}, gomock.Any()).
-		Return(errors.New("resource has active proxy grant sources"))
+		Return(httperrors.NewHTTPError(t.Context(), http.StatusConflict, "Public.Conflict"))
+	dbTx.EXPECT().GetTx(gomock.Any()).Return(restoreTx, nil)
+	boxDB.EXPECT().RestoreToolBoxAfterDeleteConflict(gomock.Any(), restoreTx, box, touchUserID).Return(nil)
 
 	svc := &ToolServiceImpl{
 		Logger: logger.DefaultLogger(), DBTx: dbTx, AuthService: auth, ToolBoxDB: boxDB,
