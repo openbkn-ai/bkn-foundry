@@ -56,6 +56,21 @@ func (mr *MockDraftServiceMockRecorder) ChooseIdentity(ctx, token, projectID, it
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChooseIdentity", reflect.TypeOf((*MockDraftService)(nil).ChooseIdentity), ctx, token, projectID, itemID, identity, caller)
 }
 
+// ConfirmDraft mocks base method.
+func (m *MockDraftService) ConfirmDraft(ctx context.Context, token, projectID string, confirm interfaces.DraftConfirm, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConfirmDraft", ctx, token, projectID, confirm, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConfirmDraft indicates an expected call of ConfirmDraft.
+func (mr *MockDraftServiceMockRecorder) ConfirmDraft(ctx, token, projectID, confirm, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfirmDraft", reflect.TypeOf((*MockDraftService)(nil).ConfirmDraft), ctx, token, projectID, confirm, caller)
+}
+
 // EditDraftItem mocks base method.
 func (m *MockDraftService) EditDraftItem(ctx context.Context, token, projectID, kind, itemID string, edit interfaces.DraftItemEdit, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()

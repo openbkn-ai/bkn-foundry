@@ -16,6 +16,11 @@ const (
 	BknProject_Draft_NotRestorable      = "BknProject.Draft.NotRestorable"
 	BknProject_Draft_MissingUpdateTime  = "BknProject.Draft.MissingUpdateTime"
 	BknProject_Draft_NeedsIdentity      = "BknProject.Draft.NeedsIdentity"
+	BknProject_Draft_NothingAdopted     = "BknProject.Draft.NothingAdopted"
+	BknProject_Draft_InvalidItem        = "BknProject.Draft.InvalidItem"
+
+	// 403
+	BknProject_Draft_NotOwner = "BknProject.Draft.NotOwner"
 
 	// 404
 	BknProject_Draft_NotFound     = "BknProject.Draft.NotFound"
@@ -29,6 +34,7 @@ const (
 	BknProject_Draft_HasDecisions    = "BknProject.Draft.HasDecisions"
 	BknProject_Draft_FieldNotFound   = "BknProject.Draft.FieldNotFound"
 	BknProject_Draft_CatalogMissing  = "BknProject.Draft.CatalogMissing"
+	BknProject_Draft_HasPending      = "BknProject.Draft.HasPending"
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
@@ -56,5 +62,9 @@ var (
 		BknProject_Draft_Stale,
 		BknProject_Draft_HasDecisions,
 		BknProject_Draft_CatalogMissing,
+		BknProject_Draft_NothingAdopted,
+		BknProject_Draft_InvalidItem,
+		BknProject_Draft_NotOwner,
+		BknProject_Draft_HasPending,
 	}
 )

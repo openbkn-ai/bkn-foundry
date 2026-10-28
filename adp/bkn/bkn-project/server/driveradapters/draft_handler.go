@@ -24,6 +24,7 @@ import (
 const (
 	draftActionGenerate = "draft:generate"
 	draftActionRestore  = "draft:restore"
+	draftActionConfirm  = "draft:confirm"
 )
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
@@ -44,6 +45,8 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.GenerateDraft)
 	case draftActionRestore:
 		r.withExVisitor(c, r.RestoreExcluded)
+	case draftActionConfirm:
+		r.withExVisitor(c, r.ConfirmDraft)
 	default:
 		replyNotFound(c)
 	}
@@ -72,6 +75,28 @@ func (r *restHandler) GenerateDraft(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, draft)
+}
+
+func (r *restHandler) ConfirmDraft(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var confirm interfaces.DraftConfirm
+	if err := c.ShouldBindJSON(&confirm); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	draft, err := r.drs.ConfirmDraft(ctx, visitor.TokenID, id, confirm, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, draft)
 }
 
 func (r *restHandler) GetDraft(c *gin.Context, visitor hydra.Visitor) {

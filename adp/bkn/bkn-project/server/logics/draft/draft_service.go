@@ -23,6 +23,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 )
 
@@ -48,6 +49,8 @@ type draftService struct {
 	da      interfaces.DraftAccess
 	va      interfaces.VegaAccess
 	ps      interfaces.ProjectService
+	// ls commits a confirmed draft to its project branch.
+	ls interfaces.LineageService
 	// run drafts in the background; tests replace it to run in line.
 	run func(fn func())
 }
@@ -59,6 +62,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			da:      logics.DA,
 			va:      logics.VA,
 			ps:      project.NewProjectService(),
+			ls:      lineage.NewLineageService(),
 			run:     func(fn func()) { go fn() },
 		}
 	})
@@ -140,7 +144,9 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	catalogIDs := entry.CatalogIDs
 	// Drafting outlives the request; it keeps the trace but not the request's cancellation.
 	background := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(background, projectID, catalogIDs, caller) })
+	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
+	carried := draft.Items.Confirmation
+	s.run(func() { s.draft(background, projectID, catalogIDs, caller, carried) })
 
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
@@ -148,7 +154,7 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 
 // draft reads the catalogs' tables as the caller, drafts and records the result.
 func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string,
-	caller interfaces.AccountInfo) {
+	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation) {
 	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DraftFromTables")
@@ -164,6 +170,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	default:
 		result.Items = items
 	}
+	result.Items.Confirmation = confirmation
 	if err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Draft of project %s failed: %v", projectID, err))
 		span.SetStatus(codes.Error, "Draft failed")

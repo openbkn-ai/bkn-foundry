@@ -96,9 +96,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
 	apiV1.PUT("/projects/:project_id/catalogs", r.SetProjectCatalogsByEx)
 
-	// Ontology drafts: drafting and restoring an excluded field are custom methods,
-	// ontology/draft:generate and draft:restore; people edit items one by one and choose
-	// object types' identities.
+	// Ontology drafts: drafting, restoring an excluded field and confirming are custom methods,
+	// ontology/draft:generate, draft:restore and draft:confirm; people edit items one by one and
+	// choose object types' identities.
 	apiV1.GET("/projects/:project_id/ontology/draft", r.GetDraftByEx)
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
