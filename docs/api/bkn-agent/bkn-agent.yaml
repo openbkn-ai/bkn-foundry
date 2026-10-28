@@ -923,7 +923,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PromptPublish'
+              $ref: '#/components/schemas/SharedPromptPublish'
       responses:
         '200':
           description: Successful Response
@@ -2955,7 +2955,10 @@ components:
         content:
           type: string
           minLength: 1
+          pattern: '[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
           title: Content
+          description: Must contain a character outside ECMAScript trim whitespace;
+            original formatting is preserved.
         vars_schema:
           anyOf:
           - additionalProperties: true
@@ -3129,6 +3132,25 @@ components:
       - prompt
       - next_version
       title: SharedPromptOut
+    SharedPromptPublish:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          pattern: '[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
+          title: Content
+          description: Must contain a character outside ECMAScript trim whitespace;
+            original formatting is preserved.
+        vars_schema:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - content
+      title: SharedPromptPublish
     TaskOut:
       properties:
         task_id:
