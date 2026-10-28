@@ -19,11 +19,18 @@ type recordingVega struct {
 	sql     []string
 	timeout int
 	rows    []map[string]any
+	// answers, when set, are the rows of each query in turn.
+	answers [][]map[string]any
 }
 
 func (v *recordingVega) Query(_ context.Context, _ interfaces.VegaAccount, sql string, timeout int) ([]map[string]any, error) {
 	v.sql = append(v.sql, sql)
 	v.timeout = timeout
+	if v.answers != nil {
+		rows := v.answers[0]
+		v.answers = v.answers[1:]
+		return rows, nil
+	}
 	return v.rows, nil
 }
 
@@ -59,6 +66,34 @@ func Test_VegaCounter(t *testing.T) {
 				"SUM(CASE WHEN s.`customer_id` IS NOT NULL AND t.`customer_id` IS NULL THEN 1 ELSE 0 END) AS orphans, "+
 				"COUNT(DISTINCT s.`customer_id`) AS distinct_values "+
 				"FROM {{r_orders}} s LEFT JOIN (SELECT DISTINCT `customer_id` FROM {{r_customers}}) t ON s.`customer_id` = t.`customer_id`")
+		})
+
+		Convey("keyTupleStats counts rows, rows with a null field, and distinct complete keys\n", func() {
+			vega.answers = [][]map[string]any{
+				{{"total": float64(60), "nulls": float64(2)}},
+				{{"distinct_values": "57"}},
+			}
+
+			rows, distinct, nulls, err := c.keyTupleStats(ctx, orders, []string{"order_id", "line`no"})
+
+			So(err, ShouldBeNil)
+			So([]int64{rows, distinct, nulls}, ShouldResemble, []int64{60, 57, 2})
+			So(vega.sql, ShouldResemble, []string{
+				"SELECT COUNT(*) AS total, " +
+					"SUM(CASE WHEN `order_id` IS NULL OR `line``no` IS NULL THEN 1 ELSE 0 END) AS nulls FROM {{r_orders}}",
+				// Grouping keeps it to SQL every dialect has; COUNT(DISTINCT a, b) is MySQL's.
+				"SELECT COUNT(*) AS distinct_values FROM (SELECT `order_id`, `line``no` FROM {{r_orders}} " +
+					"WHERE `order_id` IS NOT NULL AND `line``no` IS NOT NULL GROUP BY `order_id`, `line``no`) k",
+			})
+		})
+
+		Convey("keyTupleStats stops at the first failed query\n", func() {
+			vega.answers = [][]map[string]any{nil}
+
+			_, _, _, err := c.keyTupleStats(ctx, orders, []string{"order_id", "line_no"})
+
+			So(err, ShouldNotBeNil)
+			So(len(vega.sql), ShouldEqual, 1)
 		})
 
 		Convey("An answer without exactly one row is an error\n", func() {

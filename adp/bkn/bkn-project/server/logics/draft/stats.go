@@ -17,6 +17,7 @@ import (
 // code tables. Only counts and code-table values come back; no other data leaves vega-backend.
 type counter interface {
 	keyStats(ctx context.Context, table *interfaces.VegaTable, field string) (rows, distinct, nulls int64, err error)
+	keyTupleStats(ctx context.Context, table *interfaces.VegaTable, fields []string) (rows, distinct, nulls int64, err error)
 	joinStats(ctx context.Context, source *interfaces.VegaTable, field string, target *interfaces.VegaTable,
 		key string) (rows, nulls, orphans, distinct int64, err error)
 	codeValues(ctx context.Context, table *interfaces.VegaTable, code, name string, limit int64) ([]interfaces.DraftEnumValue, error)
@@ -61,6 +62,36 @@ func (c *vegaCounter) keyStats(ctx context.Context, table *interfaces.VegaTable,
 		return 0, 0, 0, err
 	}
 	return number(row["total"]), number(row["distinct_values"]), number(row["nulls"]), nil
+}
+
+// keyTupleStats counts a key of several fields: the rows, the rows with any of them null, and
+// the distinct keys of the rows with none null, as keyStats counts one field.
+func (c *vegaCounter) keyTupleStats(ctx context.Context, table *interfaces.VegaTable,
+	fields []string) (int64, int64, int64, error) {
+	quoted := make([]string, 0, len(fields))
+	isNull := make([]string, 0, len(fields))
+	notNull := make([]string, 0, len(fields))
+	for _, field := range fields {
+		f := quote(field)
+		quoted = append(quoted, f)
+		isNull, notNull = append(isNull, f+" IS NULL"), append(notNull, f+" IS NOT NULL")
+	}
+	row, err := c.one(ctx, fmt.Sprintf(
+		"SELECT COUNT(*) AS total, SUM(CASE WHEN %s THEN 1 ELSE 0 END) AS nulls FROM %s",
+		strings.Join(isNull, " OR "), ref(table)))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	rows, nulls := number(row["total"]), number(row["nulls"])
+	// Grouping keeps it to SQL every dialect has; COUNT(DISTINCT a, b) is MySQL's.
+	columns := strings.Join(quoted, ", ")
+	row, err = c.one(ctx, fmt.Sprintf(
+		"SELECT COUNT(*) AS distinct_values FROM (SELECT %s FROM %s WHERE %s GROUP BY %s) k",
+		columns, ref(table), strings.Join(notNull, " AND "), columns))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return rows, number(row["distinct_values"]), nulls, nil
 }
 
 func (c *vegaCounter) joinStats(ctx context.Context, source *interfaces.VegaTable, field string,
