@@ -88,8 +88,21 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 		}
 	}()
 
-	// The row lock makes two starts of one project take turns: the second sees drafting.
-	sqlStr, vals, err := sq.Select("f_status", "f_update_time", "f_items").From(DRAFT_TABLE_NAME).
+	// The row lock makes two starts of one project take turns: the second sees drafting. A
+	// project's first start has no row to lock, so the row is made sure of first; a second first
+	// start waits on that row until the first commits, then locks and reads it.
+	sqlStr, vals, err := sq.Insert(DRAFT_TABLE_NAME).Columns("f_project_id", "f_items", "f_error").
+		Values(draft.ProjectID, "", "").Suffix("ON DUPLICATE KEY UPDATE f_project_id = f_project_id").
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+	if _, err = tx.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Write data failed")
+		return false, err
+	}
+	sqlStr, vals, err = sq.Select("f_status", "f_update_time", "f_items").From(DRAFT_TABLE_NAME).
 		Where(sq.Eq{"f_project_id": draft.ProjectID}).Suffix("FOR UPDATE").
 		ToSql()
 	if err != nil {
@@ -99,11 +112,6 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 	var status, itemsRead string
 	var updateTime int64
 	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime, &itemsRead); {
-	case errors.Is(err, sql.ErrNoRows):
-		sqlStr, vals, err = sq.Insert(DRAFT_TABLE_NAME).Columns(draftColumns...).Values(
-			draft.ProjectID, draft.Status, string(itemsJSON), draft.Error, draft.Drafter.ID, draft.Drafter.Type,
-			draft.CreateTime, draft.UpdateTime,
-		).ToSql()
 	case err != nil:
 		span.SetStatus(codes.Error, "Query data failed")
 		return false, err
