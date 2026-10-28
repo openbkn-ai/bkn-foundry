@@ -47,6 +47,24 @@ func Test_DraftInputsOf(t *testing.T) {
 				ShouldNotEqual, before.Fingerprint)
 		})
 
+		Convey("The fingerprint does not depend on the order indices and foreign keys are listed in\n", func() {
+			listed := func(swap bool) *interfaces.VegaTable {
+				t := customers()
+				t.Indices = []interfaces.VegaIndex{{Columns: []string{"id"}, Primary: true}, {Columns: []string{"level"}}}
+				t.ForeignKeys = []interfaces.VegaForeignKey{fk("level", "erp.levels", "code"), fk("id", "erp.people", "id")}
+				if swap {
+					t.Indices[0], t.Indices[1] = t.Indices[1], t.Indices[0]
+					t.ForeignKeys[0], t.ForeignKeys[1] = t.ForeignKeys[1], t.ForeignKeys[0]
+				}
+				return t
+			}
+			a, b := listed(false), listed(true)
+
+			So(fingerprint(a), ShouldEqual, fingerprint(b))
+			// Hashing leaves the table as it was read.
+			So(b.Indices[0].Columns, ShouldResemble, []string{"level"})
+		})
+
 		Convey("A draft missing tables it could not read is partial\n", func() {
 			inputs := draftInputsOf(testSetting, []string{"c1"}, []*interfaces.VegaTable{orders},
 				[]*interfaces.DraftTable{{ResourceID: "r_hidden", Reason: unreadableNotVisible}})

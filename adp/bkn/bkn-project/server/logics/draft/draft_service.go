@@ -232,7 +232,9 @@ func (s *draftService) draftFromTables(ctx context.Context, catalogIDs []string,
 	if err != nil {
 		return items, err
 	}
-	items.Inputs = draftInputsOf(s.setting, catalogIDs, tables, unreadable)
+	// Tables drafting itself could not read, such as a code table whose values it could not
+	// query, are in items.Unreadable too.
+	items.Inputs = draftInputsOf(s.setting, catalogIDs, tables, items.Unreadable)
 	return items, nil
 }
 

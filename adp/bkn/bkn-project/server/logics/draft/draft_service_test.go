@@ -108,6 +108,27 @@ func Test_DraftService(t *testing.T) {
 			So(inputs.Partial, ShouldBeTrue)
 		})
 
+		Convey("A code table whose values could not be read makes the draft partial\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
+			levels := table("r_levels", "c1", "levels", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
+			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{
+				{ID: "r_levels", Name: "levels", CatalogID: "c1"},
+			}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_levels"}).Return([]*interfaces.VegaTable{levels}, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).Return(nil, errors.New("permission denied"))
+			var finished *interfaces.Draft
+			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
+
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(len(finished.Items.Unreadable), ShouldEqual, 1)
+			So(finished.Items.Inputs.Partial, ShouldBeTrue)
+		})
+
 		Convey("A failure reading vega-backend fails the draft with its reason\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
