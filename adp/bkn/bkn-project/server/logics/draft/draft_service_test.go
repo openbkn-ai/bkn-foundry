@@ -93,6 +93,19 @@ func Test_DraftService(t *testing.T) {
 				{ResourceID: "r_hidden", Name: "hidden", CatalogID: "c1", Reason: unreadableNotVisible},
 				{ResourceID: "r_empty", Name: "empty", CatalogID: "c1", Reason: unreadableNoStructure},
 			})
+			// What the draft was made from: the rules, their settings and the tables read.
+			inputs := finished.Items.Inputs
+			So(inputs, ShouldNotBeNil)
+			So(inputs.RulesVersion, ShouldEqual, draftRulesVersion)
+			So(inputs.Settings.AdoptHitRate, ShouldEqual, setting.AdoptHitRate)
+			So(inputs.Settings.CodeTableMaxRows, ShouldEqual, setting.CodeTableMaxRows)
+			So(inputs.CatalogIDs, ShouldResemble, []string{"c1"})
+			So(len(inputs.Tables), ShouldEqual, 2)
+			So(inputs.Tables[0].ResourceID, ShouldEqual, "r_customers")
+			So(inputs.Tables[0].Rows, ShouldEqual, 2)
+			So(inputs.Tables[0].Fingerprint, ShouldHaveLength, 64)
+			// Some tables could not be read: the draft is partial.
+			So(inputs.Partial, ShouldBeTrue)
 		})
 
 		Convey("A failure reading vega-backend fails the draft with its reason\n", func() {

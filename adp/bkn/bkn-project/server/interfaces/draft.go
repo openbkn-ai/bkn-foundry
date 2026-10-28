@@ -95,10 +95,45 @@ type DraftItems struct {
 	// Decisions people made on the items, oldest first. They are kept with the items so a
 	// draft and its decisions are read and written together.
 	Decisions []*DraftDecision `json:"decisions"`
+	// Inputs records what the draft was made from, so a draft can be explained and remade later.
+	Inputs *DraftInputs `json:"inputs,omitempty"`
 	// Confirmation records the last time the draft was confirmed. The draft is confirmed while
 	// its update time is the draft's: any change since moves the draft's on. Drafting again keeps
 	// it, unconfirmed, so what it wrote on the branch stays the draft's.
 	Confirmation *DraftConfirmation `json:"confirmation,omitempty"`
+}
+
+// DraftInputs is what drafting read and how it decided: the version of its rules and their
+// settings, the catalogs, and each table read with a fingerprint of its structure. It holds no data
+// values.
+type DraftInputs struct {
+	RulesVersion int               `json:"rules_version"`
+	Settings     DraftRuleSettings `json:"settings"`
+	CatalogIDs   []string          `json:"catalog_ids"`
+	Tables       []DraftInputTable `json:"tables"`
+	// Partial is set when some tables of the catalogs could not be read: they are in unreadable.
+	Partial bool `json:"partial"`
+}
+
+// DraftRuleSettings are the settings drafting's rules read.
+type DraftRuleSettings struct {
+	CodeTableMaxRows    int64    `json:"code_table_max_rows"`
+	CodeTableMaxColumns int      `json:"code_table_max_columns"`
+	AdoptHitRate        float64  `json:"adopt_hit_rate"`
+	SuggestHitRate      float64  `json:"suggest_hit_rate"`
+	PrivacyKeywords     []string `json:"privacy_keywords"`
+	NameFieldKeywords   []string `json:"name_field_keywords"`
+}
+
+// DraftInputTable is a table drafting read. Fingerprint is a SHA-256 of its structure — names,
+// columns and their types, the catalog's names and descriptions, keys, indices and foreign keys —
+// and changes when any of them does; fingerprints compare between drafts of one rules version.
+// Rows is the count discovery gave, as of drafting.
+type DraftInputTable struct {
+	ResourceID  string `json:"resource_id"`
+	Fingerprint string `json:"fingerprint"`
+	Rows        int64  `json:"rows"`
+	RowsCounted bool   `json:"rows_counted"`
 }
 
 // DraftConfirmation records a draft committed to its project branch as BKN definitions.
