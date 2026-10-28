@@ -23,6 +23,7 @@ SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
 VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
 CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
 METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
+METRIC_DESIGN_BUDGET = MIGRATIONS / "0.2.1/14-object-metric-designer-output-budget.sql"
 SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
 GRAPH_EXPLORER = MIGRATIONS / "0.2.1/09-seed-graph-explorer.sql"
 CLAIM_LOCALES = MIGRATIONS / "0.2.1/10-claim-prompt-locales.sql"
@@ -411,6 +412,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PROMPT_INDEX),
                     str(RESOURCE_ID_LIMITS),
                     str(DRAFTER),
+                    str(METRIC_DESIGN_BUDGET),
                 ],
             ],
         ],
@@ -879,9 +881,26 @@ def test_metric_designer_seed_is_tool_free_and_draft():
         assert item["spec"]["tools"] == []
         assert item["spec"]["skills"] == []
         assert item["spec"]["limits"]["max_tool_calls"] == 0
+        assert item["spec"]["limits"]["max_output_tokens"] == 8192
         assert "save, publish, delete, or upgrade metrics" in item["prompt"]["content"]
         apply(db, METRIC_DESIGN)
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0] == 1
+
+
+def test_metric_designer_budget_upgrade_only_changes_untouched_default():
+    with database() as db:
+        apply(db, METRIC_DESIGN)
+        original = {"max_turns": 6, "max_tool_calls": 0, "timeout_s": 120, "max_output_tokens": 4096}
+        db.execute("UPDATE t_agent SET f_limits=? WHERE f_agent_id='object_metric_designer'", (json.dumps(original),))
+        apply(db, METRIC_DESIGN_BUDGET)
+        upgraded = json.loads(db.execute("SELECT f_limits FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0])
+        assert upgraded == {**original, "max_output_tokens": 8192}
+        apply(db, METRIC_DESIGN_BUDGET)
+        assert json.loads(db.execute("SELECT f_limits FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0]) == upgraded
+        custom = {**original, "max_output_tokens": 5000}
+        db.execute("UPDATE t_agent SET f_limits=? WHERE f_agent_id='object_metric_designer'", (json.dumps(custom),))
+        apply(db, METRIC_DESIGN_BUDGET)
+        assert json.loads(db.execute("SELECT f_limits FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0]) == custom
 
 
 @pytest.mark.parametrize("completed", [1, 2])

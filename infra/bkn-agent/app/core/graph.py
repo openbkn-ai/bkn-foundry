@@ -14,7 +14,7 @@ from app.config import config
 from app.core import builtin_tools, context_loader
 from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
-from app.core.structured import structured_extract_with_path
+from app.core.structured import StructuredOutputError, structured_extract_with_path
 from app.core.prompt import resolve_prompt
 from app.core.agent_settings import instruction_block, shared_limits
 from app.core.context_budget import context_middleware
@@ -62,6 +62,7 @@ async def stream_chat(
     account_type: str,
     *,
     public: PublicChat | None = None,
+    system_extension: str | None = None,
 ) -> AsyncIterator[str]:
     thread_id = req.thread_id or str(uuid.uuid4())
     if thread_id in _busy_threads:
@@ -90,6 +91,8 @@ async def stream_chat(
         system_prompt, prompt_source, prompt_version = await resolve_prompt(
             session, agent, account_id, req.prompt_override, req.prompt_vars, **prompt_options
         )
+        if system_extension:
+            system_prompt += "\n\n" + system_extension
         if public:
             public.prompt_version = prompt_version
             system_prompt += (
@@ -398,7 +401,11 @@ async def stream_chat(
                     except Exception as e:  # Errors must be sent explicitly onto the stream, never swallowed
                         if public:
                             logger.exception("public execution %s failed", public.run_id)
-                            code, upstream = classify_failure(e)
+                            code, upstream = (
+                                ("BknAgent.MetricDesign.ProposalInvalid", None)
+                                if system_extension and isinstance(e, StructuredOutputError)
+                                else classify_failure(e)
+                            )
                             yield _sse("error", {**_stream_error(code), "upstream": upstream})
                         else:
                             yield _sse("error", _stream_error("BknAgent.Chat.Failed", detail=str(e)))

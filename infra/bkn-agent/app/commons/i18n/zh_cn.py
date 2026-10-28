@@ -83,6 +83,12 @@ error_messages = {
         "detail": "执行失败。",
         "solution": "请检查执行记录，必要时使用新的请求 ID 重试。",
     },
+    "BknAgent.MetricDesign.ProposalInvalid": {
+        "code": "BknAgent.MetricDesign.ProposalInvalid",
+        "description": "对象指标设计建议未通过校验。",
+        "detail": "对象指标修改建议不符合字段要求，请查看出错字段和原因后重试。",
+        "solution": "可补充指标描述后重试；持续出现时请提供执行 ID。",
+    },
     "BknAgent.Auth.AccountRequired": {
         "code": "BknAgent.Auth.AccountRequired",
         "description": "缺少调用方身份",

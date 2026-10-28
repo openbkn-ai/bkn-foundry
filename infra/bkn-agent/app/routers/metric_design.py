@@ -26,7 +26,10 @@ router = APIRouter()
             "description": (
                 "Scoped SSE execution. Emits meta, token, proposal, usage, result, and terminal. "
                 "The proposal is validated and persisted before successful terminal; "
-                "GET /executions/{run_id} can recover it."
+                "GET /executions/{run_id} can recover it. Invalid proposals return "
+                "BknAgent.MetricDesign.ProposalInvalid with stage, field, and reason in "
+                "terminal.error and the recovered execution error; run_id is included "
+                "in the event and execution record."
             ),
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
         }
