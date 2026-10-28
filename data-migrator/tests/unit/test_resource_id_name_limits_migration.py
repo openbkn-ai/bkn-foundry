@@ -12,7 +12,7 @@ BACKEND_MIGRATION = (
 )
 PROJECT_MIGRATION = (
     Path(__file__).resolve().parents[3]
-    / "migrations/bkn-project/mariadb/0.1.2/02-resource-id-limits.sql"
+    / "migrations/bkn-project/mariadb/0.2.1/03-resource-id-limits.sql"
 )
 AGENT_MIGRATION = (
     Path(__file__).resolve().parents[3]
