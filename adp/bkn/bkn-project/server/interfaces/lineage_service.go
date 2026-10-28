@@ -36,6 +36,15 @@ type CreateBranchResult struct {
 	Commit string `json:"commit"`
 }
 
+// DefinitionError is a check of the BKN specification a set of definitions fails: where (the
+// table, such as object_type:part, and the column), what (code) and why (message).
+type DefinitionError struct {
+	Table   string `json:"table"`
+	Column  string `json:"column,omitempty"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 type CommitDefinitionsResult struct {
 	Commit string `json:"commit"`
 	// Changed lists the bkn/ paths the commit added, changed or removed; all empty

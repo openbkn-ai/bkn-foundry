@@ -6,6 +6,7 @@ package lineage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -549,6 +550,14 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusBadRequest)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			details, ok := httpErr.ErrorDetails.([]interfaces.DefinitionError)
+			So(ok, ShouldBeTrue)
+			So(details, ShouldNotBeEmpty)
+			So(details[0].Message, ShouldNotBeEmpty)
+			reply, _ := json.Marshal(details[0])
+			So(string(reply), ShouldStartWith, `{"table":`)
 		})
 
 		Convey("A branch still kept in BKN 2.x is refused until it syncs\n", func() {

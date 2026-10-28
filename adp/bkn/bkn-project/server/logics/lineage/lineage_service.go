@@ -249,8 +249,14 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 			return err
 		}
 		if len(introduced) > 0 {
+			details := make([]interfaces.DefinitionError, 0, len(introduced))
+			for _, ve := range introduced {
+				details = append(details, interfaces.DefinitionError{
+					Table: ve.Table, Column: ve.Column, Code: ve.Code, Message: ve.Message,
+				})
+			}
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
-				WithErrorDetails(introduced)
+				WithErrorDetails(details)
 		}
 		if result.Commit, err = gs.CommitFiles(ctx, lineageID, branch, merged, message, author); err != nil {
 			return err
