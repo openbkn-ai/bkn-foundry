@@ -854,6 +854,10 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			}
 			entries = append(entries, entry)
 		}
+		if err := populateGrantCreators(c, db, entries); err != nil {
+			serverError(c, err)
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
 	})
 
@@ -944,6 +948,54 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 	g.POST("/object-grants", setObjectGrantHandler(e, db, dir, catalog, reviewerSync))
 	g.POST("/object-grants/revoke", revokeObjectGrantBatchHandler(e, db, dir, catalog))
 	g.DELETE("/object-grants", revokeObjectGrantHandler(e, db, dir, catalog))
+}
+
+// populateGrantCreators enriches only sources already authorized by the object-scoped
+// read. Grantors need not be grantees. Do not expose directory fields beyond the
+// display name/account, or treat historical/system actors as directory users.
+func populateGrantCreators(c *gin.Context, db *gorm.DB, entries []gin.H) error {
+	ids := make([]string, 0)
+	seen := map[string]bool{}
+	var sources []gin.H
+	for _, entry := range entries {
+		grants, _ := entry["grants"].([]gin.H)
+		for _, grant := range grants {
+			id, _ := grant["created_by"].(string)
+			authority, _ := grant["authority_source"].(string)
+			if id == "" || id == authority || strings.HasPrefix(id, "system:") {
+				continue
+			}
+			sources = append(sources, grant)
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var users []model.User
+	if err := db.WithContext(c.Request.Context()).Select("id", "name", "account").
+		Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return err
+	}
+	identities := make(map[string]model.User, len(users))
+	for _, user := range users {
+		identities[user.ID] = user
+	}
+	for _, source := range sources {
+		id, _ := source["created_by"].(string)
+		if user, ok := identities[id]; ok {
+			if user.Name != "" {
+				source["created_by_name"] = user.Name
+			}
+			if user.Account != "" {
+				source["created_by_account"] = user.Account
+			}
+		}
+	}
+	return nil
 }
 
 type grantAccessorIdentity struct {

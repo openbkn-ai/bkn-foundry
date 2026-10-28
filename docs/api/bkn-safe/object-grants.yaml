@@ -451,6 +451,12 @@ components:
         created_by:
           type: string
           description: Authenticated actor that wrote this independently managed source. Unattributable direct grants migrated from official 0.1.4 use `migration` and are administrator-managed only.
+        created_by_name:
+          type: string
+          description: Current grantor display name, optionally resolved by the authorized object-scoped `/me` read independently of grantees. Omitted for missing users and historical/system actors.
+        created_by_account:
+          type: string
+          description: Current grantor account, with the same visibility and omission rules as created_by_name. No directory access permission is granted to the caller.
         active: {type: boolean}
         inherited: {type: boolean}
     ObjectGrantSet:
