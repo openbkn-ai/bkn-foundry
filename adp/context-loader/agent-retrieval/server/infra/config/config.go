@@ -178,7 +178,9 @@ type KnConceptSearchConfig struct {
 	KnnKValue         int `yaml:"knn_k"`               // knn k value
 	// SchemaReadTimeoutMS bounds each selected object type's schema read in
 	// search_schema. A read that has not answered by then keeps its object type
-	// without properties instead of holding the whole search (#1906).
+	// without properties instead of holding the whole search (#1906). It also
+	// bounds the one read of the network's value types; when that has not
+	// answered, properties keep value_type and enums are not expanded.
 	SchemaReadTimeoutMS int `yaml:"schema_read_timeout_ms" env:"CONTEXT_LOADER_SCHEMA_READ_TIMEOUT_MS" default:"5000"`
 	// EnumExpandLimit is the most enum items search_schema lists on a property. A larger enum
 	// gives its value type and item count, and enum_query looks items up in it.

@@ -62,6 +62,7 @@ service:
     concept_recall_size: 100
     knn_k: 300
     # Per-object schema read limit in search_schema; a slower read keeps its object type without properties.
+    # Also bounds the one value type read; a slower one leaves enums unexpanded.
     schema_read_timeout_ms: 5000
     # Most enum items search_schema lists on a property; a larger enum gives its item count.
     enum_expand_limit: 50
