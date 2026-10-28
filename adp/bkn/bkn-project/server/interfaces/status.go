@@ -131,3 +131,63 @@ type ProjectStatusNextAction struct {
 	// Accepts says what sending the action accepts, as its body does.
 	Accepts []string `json:"accepts,omitempty"`
 }
+
+// Why an option of a pending item cannot be taken.
+const (
+	ACTION_REASON_ARCHIVED           = "archived"
+	ACTION_REASON_END_NEEDS_IDENTITY = "end_needs_identity"
+)
+
+// What a pending item can be settled by.
+const (
+	ACTION_CHOOSE_IDENTITY = "choose_identity"
+	ACTION_UNADOPT         = "unadopt"
+	ACTION_ADOPT_END       = "adopt_end"
+)
+
+// PENDING_PLACEHOLDER_UPDATE_TIME stands in a body template for the draft's update time as the
+// sender last read it: each edit moves it on.
+const PENDING_PLACEHOLDER_UPDATE_TIME = "$draft_update_time"
+
+// PENDING_PLACEHOLDER_CANDIDATE stands for one of an option's candidates.
+const PENDING_PLACEHOLDER_CANDIDATE = "$candidate"
+
+// ProjectPending lists what waits for a person before the draft can be confirmed, each with the
+// requests that settle it, in one order: by kind, then item ID.
+type ProjectPending struct {
+	ProjectID       string        `json:"project_id"`
+	DraftUpdateTime int64         `json:"draft_update_time"`
+	Items           []PendingItem `json:"items"`
+}
+
+type PendingItem struct {
+	Kind   string `json:"kind"`
+	ItemID string `json:"item_id"`
+	Name   string `json:"name"`
+	// Reason is a blocker code: needs_identity or unadopted_ends.
+	Reason  string          `json:"reason"`
+	Options []PendingOption `json:"options"`
+	// Recommendation is the option a written rule recommends, with the rule; null when no rule does.
+	Recommendation *PendingRecommendation `json:"recommendation"`
+	// Evidence is what drafting counted for the item: the key for an object type, the join for a
+	// relation.
+	Evidence any `json:"evidence,omitempty"`
+}
+
+// PendingOption is a request that settles a pending item. Candidates, for choosing an identity,
+// are the property lists to send in place of $candidate, the one drafting counted first.
+type PendingOption struct {
+	Action     string         `json:"action"`
+	Method     string         `json:"method"`
+	Path       string         `json:"path"`
+	Body       map[string]any `json:"body"`
+	Allowed    bool           `json:"allowed"`
+	Reason     string         `json:"reason,omitempty"`
+	Candidates [][]string     `json:"candidates,omitempty"`
+}
+
+type PendingRecommendation struct {
+	Action string `json:"action"`
+	Basis  string `json:"basis"`
+	RuleID string `json:"rule_id"`
+}

@@ -154,6 +154,16 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"stage":"deciding"`)
 		})
 
+		Convey("The pending items are listed\n", func() {
+			drs.EXPECT().GetPending(gomock.Any(), "Bearer t", "p1").
+				Return(&interfaces.ProjectPending{ProjectID: "p1", Items: []interfaces.PendingItem{}}, nil)
+
+			w := serve(handler, http.MethodGet, "/api/bkn-project/v1/projects/p1/pending")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"items":[]`)
+		})
+
 		Convey("Any other ontology action is not found\n", func() {
 			So(serve(handler, http.MethodPost, base+"/draft:delete").Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})

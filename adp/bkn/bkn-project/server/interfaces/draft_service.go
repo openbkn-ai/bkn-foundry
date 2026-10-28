@@ -35,6 +35,9 @@ type DraftService interface {
 		caller AccountInfo) (*Draft, error)
 	// GetStatus computes where the project stands, what blocks it and what the caller can do next.
 	GetStatus(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectStatus, error)
+	// GetPending lists what waits for a person before the draft can be confirmed, each item with
+	// the requests that settle it.
+	GetPending(ctx context.Context, token string, projectID string) (*ProjectPending, error)
 	// GetCheck returns the check of the project's last confirmation.
 	GetCheck(ctx context.Context, token string, projectID string) (*Check, error)
 	// RunCheck checks the last confirmation again in the background, for the project owner, and
