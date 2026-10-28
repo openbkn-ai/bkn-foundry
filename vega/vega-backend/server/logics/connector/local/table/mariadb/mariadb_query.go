@@ -61,52 +61,10 @@ func (c *MariaDBConnector) BuildCountSQL(sqlStr string) string {
 	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s\n) AS _raw_query_total", strings.TrimSpace(sqlStr))
 }
 
-// ExecuteRawSQL executes SQL that has passed the caller's read-only and resource policy checks.
-// 列类型来自驱动；binary 列保留原始字节，其他值沿用原生查询转换，TotalCount 为返回行数。
-func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*interfaces.RawQueryResponse, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("failed to connect for raw query: %w", err)
-	}
-
-	rows, err := c.db.QueryContext(ctx, sqlStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute raw query: %w", mariadbQueryError(err))
-	}
-	defer func() { _ = rows.Close() }()
-
-	columnTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read result column types: %w", err)
-	}
-
-	// binary 列保留原始字节，避免文本转换损坏内容；JSON 编码输出 base64。
-	binaryColumns := make(map[string]bool)
-	for _, column := range columnTypes {
-		if c.MapType(column.DatabaseTypeName()) == interfaces.DataType_Binary {
-			binaryColumns[column.Name()] = true
-		}
-	}
-	result, err := c.scanQueryRows(rows, binaryColumns)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan raw query rows: %w", err)
-	}
-
-	columns := make([]interfaces.ColumnInfo, len(columnTypes))
-	for i, column := range columnTypes {
-		columns[i] = interfaces.ColumnInfo{
-			Name: column.Name(),
-			Type: c.MapType(column.DatabaseTypeName()),
-		}
-	}
-	totalCount := int64(len(result.Entries))
-
-	response := &interfaces.RawQueryResponse{
-		Columns:    columns,
-		Entries:    result.Entries,
-		TotalCount: &totalCount,
-	}
-
-	return response, nil
+// ExecuteRawSQL 不再执行原始 SQL；SQL 查询必须通过 Parser 和 Builder。
+// 保留方法以满足共享 TableConnector 端口，误调用时在建立连接前明确拒绝。
+func (c *MariaDBConnector) ExecuteRawSQL(_ context.Context, _ string) (*interfaces.RawQueryResponse, error) {
+	return nil, interfaces.NewUnsupportedOperationError("ExecuteRawSQL", errors.New("use Parser and ExecuteSQLBuilder for SQL queries"))
 }
 
 // scanQueryRows 保留所选 Binary 内容，其他字节值转为字符串；总数由调用方按接口契约设置。
@@ -396,7 +354,7 @@ func sqlCalendarGroup(expr sb.SqlNode, unit string) (sb.SqlNode, error) {
 
 // ExecuteSQLBuilder 执行已完成资源授权和来源解析的查询，在执行时生成 SQL 和参数。
 // 结果沿用 RawQueryResponse；TotalCount 是本次返回行数，API 分页和会话由调用层负责。
-// MySQL SQL 服务消费此入口，其他连接器继续沿用 ExecuteRawSQL。
+// MariaDB/MySQL 与 PG SQL 服务消费 Builder 入口，其他连接器继续沿用 ExecuteRawSQL。
 func (c *MariaDBConnector) ExecuteSQLBuilder(ctx context.Context, query *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
 	rows, columns, err := c.OpenSQLBuilder(ctx, query)
 	if err != nil {
@@ -632,7 +590,19 @@ func ToSql(q *sb.SelectBuilder) (string, []any, error) {
 	}
 	if len(q.GroupByPart) != 0 {
 		b.writeString(" GROUP BY ")
-		b.writeParts(q.GroupByPart, ", ")
+		for i, group := range q.GroupByPart {
+			if i > 0 {
+				b.writeString(", ")
+			}
+			// 整数字面量保留位置语义，范围及聚合合法性由源端判断。
+			if param, ok := group.(*sb.Param); ok && param != nil {
+				if number, ok := param.Value.(json.Number); ok && len(number) > 0 && strings.IndexFunc(string(number), func(r rune) bool { return r < '0' || r > '9' }) == -1 {
+					b.writeString(string(number))
+					continue
+				}
+			}
+			b.writePart(group)
+		}
 	}
 	if len(q.HavingPart) != 0 {
 		b.writeString(" HAVING ")

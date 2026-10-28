@@ -233,6 +233,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	session.SQLQuery = prepared.builder
 	session.SQLResourceVersions = prepared.resourceVersions
 	session.SQLCatalogUpdateTime = prepared.catalog.UpdateTime
+	session.SQLConnectorType = prepared.catalog.ConnectorType
 	session.PageOffset = req.Paging.Offset
 	session.TotalCount = totalCount
 	session.HasTotalCount = req.NeedTotal
@@ -302,7 +303,7 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 }
 
 // prepareSQLQuery is the shared SQL preparation pipeline for both single and
-// cursor execution. MariaDB/MySQL 使用原生 Builder；其他目标保留 SQLGlot 的资源绑定与策略校验。
+// cursor execution. MariaDB/MySQL 和 PG 强制使用公共 Builder；其他连接器保留 SQLGlot。
 func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
 	inputDialect := req.EffectiveInputDialect()
 	var resourceIDs []string
@@ -337,14 +338,16 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, err
 	}
-	if catalog.ConnectorType == interfaces.ConnectorTypeMySQL || catalog.ConnectorType == interfaces.ConnectorTypeMariaDB {
+	if catalog.ConnectorType == interfaces.ConnectorTypeMySQL ||
+		catalog.ConnectorType == interfaces.ConnectorTypeMariaDB ||
+		catalog.ConnectorType == interfaces.ConnectorTypePostgreSQL {
 		if inputDialect != "mysql" {
-			return nil, mysqlQueryInvalid(ctx, "MariaDB/MySQL queries only support mysql input syntax")
+			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL and PostgreSQL queries only support mysql input syntax")
 		}
 		if parseErr != nil {
-			return nil, mysqlQueryInvalid(ctx, parseErr.Error())
+			return nil, sqlBuilderQueryInvalid(ctx, parseErr.Error())
 		}
-		return rqs.prepareMySQLBuilder(ctx, parsed, catalog, resourceIDs, warnings)
+		return rqs.prepareSQLBuilder(ctx, parsed, catalog, resourceIDs, warnings)
 	}
 	targetDialect, err := targetDialectForCatalog(ctx, catalog)
 	if err != nil {
@@ -458,7 +461,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 
 	if session.SQLQuery != nil && session.PageOffset > math.MaxInt-session.PageLimit {
 		rawQueryCursorSessions.remove(session.ID)
-		return nil, mysqlQueryInvalid(ctx, "cursor paging offset exceeds the supported range")
+		return nil, sqlBuilderQueryInvalid(ctx, "cursor paging offset exceeds the supported range")
 	}
 	options := &rawSQLBuildOptions{offset: session.PageOffset, limit: session.PageLimit + 1}
 	var result *interfaces.RawQueryResponse
@@ -1163,10 +1166,10 @@ func rawQueryValidationError(ctx context.Context, err error) error {
 		WithErrorDetails("raw query rejected by read-only policy")
 }
 
-// prepareMySQLBuilder 为 MariaDB/MySQL 使用已授权的资源集选择目标，严格解析后只补齐资源的源端标识。
-func (rqs *rawQueryService) prepareMySQLBuilder(ctx context.Context, query *sb.SelectBuilder, catalog *interfaces.Catalog, ids []string, warnings []string) (*preparedSQLQuery, error) {
+// prepareSQLBuilder 复用已授权的资源集，只补齐源端标识；SQL 生成由目标连接器负责。
+func (rqs *rawQueryService) prepareSQLBuilder(ctx context.Context, query *sb.SelectBuilder, catalog *interfaces.Catalog, ids []string, warnings []string) (*preparedSQLQuery, error) {
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return nil, mysqlQueryForbidden(ctx)
+		return nil, sqlBuilderQueryForbidden(ctx)
 	}
 	resources := make(map[string]*interfaces.Resource)
 	versions := make(map[string]int64)
@@ -1182,16 +1185,16 @@ func (rqs *rawQueryService) prepareMySQLBuilder(ctx context.Context, query *sb.S
 				return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound)
 			}
 			if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-				return nil, mysqlQueryForbidden(ctx)
+				return nil, sqlBuilderQueryForbidden(ctx)
 			}
 			if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 				return nil, err
 			}
 			if resource.Category != interfaces.ResourceCategoryTable {
-				return nil, mysqlQueryInvalid(ctx, "SQL queries currently only support physical table resources")
+				return nil, sqlBuilderQueryInvalid(ctx, "SQL queries currently only support physical table resources")
 			}
 			if resource.CatalogID != catalog.ID {
-				return nil, mysqlCursorChanged(ctx)
+				return nil, sqlBuilderCursorChanged(ctx)
 			}
 			resources[table.ResourceID] = resource
 			versions[table.ResourceID] = resource.UpdateTime
@@ -1212,11 +1215,11 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 			read = sb.Select(&sb.Alias{Expr: &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}, Name: rawQueryTotalCountColumn}).FromSelect(query, "_raw_query_total")
 		} else {
 			if options.offset < 0 || options.limit < 0 {
-				return nil, mysqlQueryInvalid(ctx, "paging offset and limit must not be negative")
+				return nil, sqlBuilderQueryInvalid(ctx, "paging offset and limit must not be negative")
 			}
 			offset, limit := uint64(options.offset), uint64(options.limit)
 			if query.OffsetPart > math.MaxUint64-offset {
-				return nil, mysqlQueryInvalid(ctx, "paging offset exceeds the source range")
+				return nil, sqlBuilderQueryInvalid(ctx, "paging offset exceeds the source range")
 			}
 			if query.LimitPart != nil {
 				if offset >= *query.LimitPart {
@@ -1238,7 +1241,7 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 	defer func() { _ = connector.Close(ctx) }()
 	executor, ok := connector.(interfaces.SQLBuilderExecutor)
 	if !ok {
-		return nil, mysqlQueryInvalid(ctx, "connector does not support SQL Builder execution")
+		return nil, sqlBuilderQueryInvalid(ctx, "connector does not support SQL Builder execution")
 	}
 	result, err := executor.ExecuteSQLBuilder(ctx, read)
 	if err != nil {
@@ -1251,11 +1254,11 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog) error {
 	query := session.SQLQuery
 	if session.PageOffset < 0 {
-		return mysqlQueryInvalid(ctx, "paging offset must not be negative")
+		return sqlBuilderQueryInvalid(ctx, "paging offset must not be negative")
 	}
 	offset := uint64(session.PageOffset)
 	if query.OffsetPart > math.MaxUint64-offset {
-		return mysqlQueryInvalid(ctx, "paging offset exceeds the source range")
+		return sqlBuilderQueryInvalid(ctx, "paging offset exceeds the source range")
 	}
 	read := *query
 	read.OffsetPart += offset
@@ -1270,7 +1273,7 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 	session.SQLConnector = connector
 	executor, ok := connector.(interfaces.SQLBuilderRowsExecutor)
 	if !ok {
-		return mysqlQueryInvalid(ctx, "connector does not support SQL Rows execution")
+		return sqlBuilderQueryInvalid(ctx, "connector does not support SQL Rows execution")
 	}
 	// 保留请求身份与观测信息，Rows 生命周期由会话控制，不能随首屏 HTTP 请求结束。
 	cursorCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -1360,7 +1363,7 @@ func sqlBuilderExecutionError(ctx context.Context, err error) error {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 	}
 	if detail, ok := interfaces.RequestSideQueryError(err); ok {
-		return mysqlQueryInvalid(ctx, detail)
+		return sqlBuilderQueryInvalid(ctx, detail)
 	}
 	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).WithErrorDetails("query execution failed")
 }
@@ -1378,10 +1381,10 @@ func invalidateSQLCursor(session *interfaces.CursorSession, err error) {
 
 func (rqs *rawQueryService) validateSQLBuilderCursor(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog) error {
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return mysqlQueryForbidden(ctx)
+		return sqlBuilderQueryForbidden(ctx)
 	}
-	if (catalog.ConnectorType != interfaces.ConnectorTypeMySQL && catalog.ConnectorType != interfaces.ConnectorTypeMariaDB) || catalog.UpdateTime != session.SQLCatalogUpdateTime {
-		return mysqlCursorChanged(ctx)
+	if catalog.ConnectorType != session.SQLConnectorType || catalog.UpdateTime != session.SQLCatalogUpdateTime {
+		return sqlBuilderCursorChanged(ctx)
 	}
 	for _, table := range sqlBuilderTables(session.SQLQuery) {
 		resource, err := rqs.rs.InternalGetByID(ctx, nil, table.ResourceID)
@@ -1389,19 +1392,19 @@ func (rqs *rawQueryService) validateSQLBuilderCursor(ctx context.Context, sessio
 			return err
 		}
 		if resource == nil || resource.CatalogID != catalog.ID || resource.Category != interfaces.ResourceCategoryTable || resource.UpdateTime != session.SQLResourceVersions[table.ResourceID] || resource.SourceIdentifier != table.SourceIdentifier {
-			return mysqlCursorChanged(ctx)
+			return sqlBuilderCursorChanged(ctx)
 		}
 		if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-			return mysqlQueryForbidden(ctx)
+			return sqlBuilderQueryForbidden(ctx)
 		}
 	}
 	return ctx.Err()
 }
 
-func mysqlCursorChanged(ctx context.Context) error {
+func sqlBuilderCursorChanged(ctx context.Context) error {
 	return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).WithErrorDetails("cursor source metadata changed; start a new query")
 }
-func mysqlQueryInvalid(ctx context.Context, detail string) error {
+func sqlBuilderQueryInvalid(ctx context.Context, detail string) error {
 	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).WithErrorDetails(detail)
 }
 
@@ -1423,6 +1426,6 @@ func sqlBuilderTables(node sb.SqlNode) []*sb.Table {
 	}
 }
 
-func mysqlQueryForbidden(ctx context.Context) error {
+func sqlBuilderQueryForbidden(ctx context.Context) error {
 	return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 }

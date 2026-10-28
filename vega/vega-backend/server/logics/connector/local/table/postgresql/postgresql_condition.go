@@ -13,18 +13,17 @@ import (
 	"strings"
 	"time"
 
-	sq "github.com/Masterminds/squirrel"
-
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
-var Special = strings.NewReplacer(`\`, `\\\\`, `'`, `\'`, `%`, `\%`, `_`, `\_`)
+// Special 仅转义 LIKE 模式字符；参数绑定负责 SQL 字面量。
+var Special = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-// ConvertFilterCondition dispatches a filter condition to its SQL converter.
-func (c *PostgresqlConnector) ConvertFilterCondition(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
-
+// ConvertFilterCondition 将已验证的过滤条件转换为公共结构化节点。
+func (c *PostgresqlConnector) ConvertFilterCondition(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	switch condition.GetOperation() {
 	case filter_condition.OperationAnd:
 		return c.ConvertFilterConditionAnd(condition)
@@ -36,14 +35,12 @@ func (c *PostgresqlConnector) ConvertFilterCondition(condition interfaces.Filter
 }
 
 // ConvertFilterConditionAnd combines converted child conditions with AND.
-func (c *PostgresqlConnector) ConvertFilterConditionAnd(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
-
+func (c *PostgresqlConnector) ConvertFilterConditionAnd(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.AndCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.AndCond")
 	}
-
-	convertedConds := sq.And{}
+	convertedConds := sb.And{}
 	for _, subCond := range cond.SubConds {
 		convertedCond, err := c.ConvertFilterCondition(subCond)
 		if err != nil {
@@ -51,19 +48,16 @@ func (c *PostgresqlConnector) ConvertFilterConditionAnd(condition interfaces.Fil
 		}
 		convertedConds = append(convertedConds, convertedCond)
 	}
-
-	return convertedConds, nil
+	return &convertedConds, nil
 }
 
 // ConvertFilterConditionOr combines converted child conditions with OR.
-func (c *PostgresqlConnector) ConvertFilterConditionOr(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
-
+func (c *PostgresqlConnector) ConvertFilterConditionOr(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.OrCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.OrCond")
 	}
-
-	convertedConds := sq.Or{}
+	convertedConds := sb.Or{}
 	for _, subCond := range cond.SubConds {
 		convertedCond, err := c.ConvertFilterCondition(subCond)
 		if err != nil {
@@ -71,13 +65,11 @@ func (c *PostgresqlConnector) ConvertFilterConditionOr(condition interfaces.Filt
 		}
 		convertedConds = append(convertedConds, convertedCond)
 	}
-
-	return convertedConds, nil
+	return &convertedConds, nil
 }
 
 // ConvertFilterConditionWithOpr dispatches a non-composite filter operation to its SQL converter.
-func (c *PostgresqlConnector) ConvertFilterConditionWithOpr(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
-
+func (c *PostgresqlConnector) ConvertFilterConditionWithOpr(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	switch condition.GetOperation() {
 	case filter_condition.OperationEqual, filter_condition.OperationEqual2:
 		return c.ConvertFilterConditionEqual(condition)
@@ -148,468 +140,453 @@ func (c *PostgresqlConnector) ConvertFilterConditionWithOpr(condition interfaces
 }
 
 // ConvertFilterConditionEqual builds an equality predicate for a constant or another field.
-func (c *PostgresqlConnector) ConvertFilterConditionEqual(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionEqual(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.EqualCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.EqualCond")
 	}
 
-	switch cond.Cfg.ValueFrom {
-	case interfaces.ValueFrom_Const:
-		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "=", cond.Value)
-		}
-		return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
-	case interfaces.ValueFrom_Field:
-		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " = " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
-	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
+	return sqlComparison(cond.Lfield, cond.Rfield, cond.Value, "=")
 }
 
 // ConvertFilterConditionNotEqual builds an inequality predicate for a constant or another field.
-func (c *PostgresqlConnector) ConvertFilterConditionNotEqual(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotEqual(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotEqualCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotEqualCond")
 	}
 
-	switch cond.Cfg.ValueFrom {
-	case interfaces.ValueFrom_Const:
-		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<>", cond.Value)
-		}
-		return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
-	case interfaces.ValueFrom_Field:
-		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " <> " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
-	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
+	return sqlComparison(cond.Lfield, cond.Rfield, cond.Value, "<>")
 }
 
 // ConvertFilterConditionGt builds a greater-than predicate for a constant or another field.
-func (c *PostgresqlConnector) ConvertFilterConditionGt(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionGt(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.GtCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.GtCond")
 	}
 
-	switch cond.Cfg.ValueFrom {
-	case interfaces.ValueFrom_Const:
-		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">", cond.Value)
-		}
-		return sq.Gt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
-	case interfaces.ValueFrom_Field:
-		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " > " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
-	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
+	return sqlComparison(cond.Lfield, cond.Rfield, cond.Value, ">")
 }
 
 // ConvertFilterConditionGte builds a greater-than-or-equal predicate for a constant or another field.
-func (c *PostgresqlConnector) ConvertFilterConditionGte(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionGte(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.GteCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.GteCond")
 	}
 
-	switch cond.Cfg.ValueFrom {
-	case interfaces.ValueFrom_Const:
-		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">=", cond.Value)
-		}
-		return sq.GtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
-	case interfaces.ValueFrom_Field:
-		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " >= " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
-	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
+	return sqlComparison(cond.Lfield, cond.Rfield, cond.Value, ">=")
 }
 
 // ConvertFilterConditionLt builds a less-than predicate for a constant or another field.
-func (c *PostgresqlConnector) ConvertFilterConditionLt(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionLt(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.LtCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.LtCond")
 	}
 
-	switch cond.Cfg.ValueFrom {
-	case interfaces.ValueFrom_Const:
-		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<", cond.Value)
-		}
-		return sq.Lt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
-	case interfaces.ValueFrom_Field:
-		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " < " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
-	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
+	return sqlComparison(cond.Lfield, cond.Rfield, cond.Value, "<")
 }
 
 // ConvertFilterConditionLte builds a less-than-or-equal predicate for a constant or another field.
-func (c *PostgresqlConnector) ConvertFilterConditionLte(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionLte(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.LteCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.LteCond")
 	}
 
-	switch cond.Cfg.ValueFrom {
-	case interfaces.ValueFrom_Const:
-		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<=", cond.Value)
-		}
-		return sq.LtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
-	case interfaces.ValueFrom_Field:
-		return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName) + " <= " + pgQuoteColumnName(cond.Rfield.OriginalName)), nil
-	default:
-		return nil, fmt.Errorf("value_from %s is not supported", cond.Cfg.ValueFrom)
-	}
+	return sqlComparison(cond.Lfield, cond.Rfield, cond.Value, "<=")
 }
 
 // ConvertFilterConditionIn builds a predicate matching one of the supplied values.
-func (c *PostgresqlConnector) ConvertFilterConditionIn(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionIn(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.InCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.InCond")
 	}
 
-	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return dateSetExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "IN", cond.Value)
-	}
-
-	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+	return sqlSetCondition(sqlResourceColumn(cond.Lfield), cond.Lfield, cond.Value, false)
 }
 
 // ConvertFilterConditionNotIn builds a predicate excluding the supplied values.
-func (c *PostgresqlConnector) ConvertFilterConditionNotIn(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotIn(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotInCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotInCond")
 	}
 
-	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return dateSetExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "NOT IN", cond.Value)
-	}
-
-	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
+	return sqlSetCondition(sqlResourceColumn(cond.Lfield), cond.Lfield, cond.Value, true)
 }
 
 // ConvertFilterConditionLike builds a substring LIKE predicate with escaped input.
-func (c *PostgresqlConnector) ConvertFilterConditionLike(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionLike(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.LikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.LikeCond")
 	}
 
-	vStr := "%" + Special.Replace(cond.Value) + "%"
-	return sq.Like{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return &sb.Like{Expr: sqlResourceColumn(cond.Lfield), Pattern: &sb.Param{Value: "%" + Special.Replace(cond.Value) + "%"}}, nil
 }
 
 // ConvertFilterConditionNotLike builds a negated substring LIKE predicate with escaped input.
-func (c *PostgresqlConnector) ConvertFilterConditionNotLike(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotLike(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotLikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotLikeCond")
 	}
 
-	vStr := "%" + Special.Replace(cond.Value) + "%"
-	return sq.NotLike{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return &sb.Like{Expr: sqlResourceColumn(cond.Lfield), Pattern: &sb.Param{Value: "%" + Special.Replace(cond.Value) + "%"}, Negated: true}, nil
 }
 
 // ConvertFilterConditionRegex builds a regular-expression predicate.
-func (c *PostgresqlConnector) ConvertFilterConditionRegex(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionRegex(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.RegexCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.RegexCond")
 	}
 
-	return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName)+" ~ ?", cond.Value), nil
+	return &sb.Regex{Expr: sqlResourceColumn(cond.Lfield), Pattern: &sb.Param{Value: cond.Value}}, nil
 }
 
 // ConvertFilterConditionContain requires every supplied item to occur in a comma-separated field.
-func (c *PostgresqlConnector) ConvertFilterConditionContain(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionContain(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.ContainCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.ContainCond")
 	}
 
-	exprs := make(sq.And, 0, len(cond.Value))
-	column := pgQuoteColumnName(cond.Lfield.OriginalName)
-	for _, value := range cond.Value {
-		exprs = append(exprs, sq.Expr("? = ANY(string_to_array("+column+"::text, ','))", fmt.Sprint(value)))
-	}
-	return exprs, nil
+	return sqlCSVCondition(cond.Lfield, cond.Value, false), nil
 }
 
 // ConvertFilterConditionNotContain matches when a supplied item is absent from a comma-separated field.
-func (c *PostgresqlConnector) ConvertFilterConditionNotContain(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotContain(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotContainCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotContainCond")
 	}
 
-	exprs := make(sq.Or, 0, len(cond.Value))
-	column := pgQuoteColumnName(cond.Lfield.OriginalName)
-	for _, value := range cond.Value {
-		exprs = append(exprs, sq.Expr("NOT (? = ANY(string_to_array("+column+"::text, ',')))", fmt.Sprint(value)))
-	}
-	return exprs, nil
+	return sqlCSVCondition(cond.Lfield, cond.Value, true), nil
 }
 
-// ConvertFilterConditionRange builds an inclusive lower-and-upper-bound predicate.
-func (c *PostgresqlConnector) ConvertFilterConditionRange(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+// ConvertFilterConditionRange builds inclusive lower and upper bounds joined with AND.
+func (c *PostgresqlConnector) ConvertFilterConditionRange(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.RangeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.RangeCond")
 	}
 
-	if len(cond.Value) != 2 {
-		return nil, fmt.Errorf("range condition requires exactly 2 values")
-	}
-
-	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		lower, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">=", cond.Value[0])
-		if err != nil {
-			return nil, err
-		}
-		upper, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<=", cond.Value[1])
-		if err != nil {
-			return nil, err
-		}
-		return sq.And{lower, upper}, nil
-	}
-
-	return sq.And{
-		sq.GtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
-		sq.LtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
-	}, nil
+	return sqlRangeCondition(sqlResourceColumn(cond.Lfield), cond.Lfield, cond.Value, false)
 }
 
-// ConvertFilterConditionOutRange builds a predicate outside the supplied bounds.
-func (c *PostgresqlConnector) ConvertFilterConditionOutRange(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+// ConvertFilterConditionOutRange builds exclusive outer bounds joined with OR.
+func (c *PostgresqlConnector) ConvertFilterConditionOutRange(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.OutRangeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.OutRangeCond")
 	}
 
-	if len(cond.Value) != 2 {
-		return nil, fmt.Errorf("out_range condition requires exactly 2 values")
-	}
-
-	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		lower, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<", cond.Value[0])
-		if err != nil {
-			return nil, err
-		}
-		upper, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">", cond.Value[1])
-		if err != nil {
-			return nil, err
-		}
-		return sq.Or{lower, upper}, nil
-	}
-
-	return sq.Or{
-		sq.Lt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
-		sq.Gt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
-	}, nil
+	return sqlRangeCondition(sqlResourceColumn(cond.Lfield), cond.Lfield, cond.Value, true)
 }
 
 // ConvertFilterConditionBetween builds an inclusive predicate between two values.
-func (c *PostgresqlConnector) ConvertFilterConditionBetween(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionBetween(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.BetweenCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.BetweenCond")
 	}
 
-	if len(cond.Value) != 2 {
-		return nil, fmt.Errorf("between condition requires exactly 2 values")
-	}
-
-	// Check if the field is of time type. If it is, convert the long type value to a timestamp
-	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		lower, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">=", cond.Value[0])
-		if err != nil {
-			return nil, err
-		}
-		upper, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<=", cond.Value[1])
-		if err != nil {
-			return nil, err
-		}
-		return sq.And{lower, upper}, nil
-	}
-
-	// For non-time type fields, parameterized queries can be directly used
-	return sq.And{
-		sq.GtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[0]},
-		sq.LtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value[1]},
-	}, nil
+	return sqlRangeCondition(sqlResourceColumn(cond.Lfield), cond.Lfield, cond.Value, false)
 }
 
 // ConvertFilterConditionNull builds an IS NULL predicate.
-func (c *PostgresqlConnector) ConvertFilterConditionNull(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNull(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NullCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NullCond")
 	}
 
-	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return &sb.IsNull{Expr: sqlResourceColumn(cond.Lfield), Negated: false}, nil
 }
 
 // ConvertFilterConditionNotNull builds an IS NOT NULL predicate.
-func (c *PostgresqlConnector) ConvertFilterConditionNotNull(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotNull(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotNullCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotNullCond")
 	}
 
-	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return &sb.IsNull{Expr: sqlResourceColumn(cond.Lfield), Negated: true}, nil
 }
 
 // ConvertFilterConditionEmpty matches an empty string.
-func (c *PostgresqlConnector) ConvertFilterConditionEmpty(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionEmpty(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.EmptyCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.EmptyCond")
 	}
 
-	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): ""}, nil
+	return &sb.Eq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Param{Value: ""}}, nil
 }
 
 // ConvertFilterConditionNotEmpty excludes empty strings.
-func (c *PostgresqlConnector) ConvertFilterConditionNotEmpty(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotEmpty(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotEmptyCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotEmptyCond")
 	}
 
-	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): ""}, nil
+	return &sb.NotEq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Param{Value: ""}}, nil
 }
 
 // ConvertFilterConditionPrefix builds a prefix LIKE predicate with escaped input.
-func (c *PostgresqlConnector) ConvertFilterConditionPrefix(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionPrefix(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.PrefixCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.PrefixCond")
 	}
 
-	vStr := Special.Replace(cond.Value) + "%"
-	return sq.Like{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return sqlPrefixCondition(cond.Lfield, cond.Value, false), nil
 }
 
 // ConvertFilterConditionNotPrefix builds a negated prefix LIKE predicate with escaped input.
-func (c *PostgresqlConnector) ConvertFilterConditionNotPrefix(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotPrefix(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotPrefixCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotPrefixCond")
 	}
 
-	vStr := Special.Replace(cond.Value) + "%"
-	return sq.NotLike{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
+	return sqlPrefixCondition(cond.Lfield, cond.Value, true), nil
 }
 
 // ConvertFilterConditionExist matches non-NULL field values.
-func (c *PostgresqlConnector) ConvertFilterConditionExist(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionExist(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.ExistCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.ExistCond")
 	}
 
-	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return &sb.IsNull{Expr: sqlResourceColumn(cond.Lfield), Negated: true}, nil
 }
 
 // ConvertFilterConditionNotExist matches NULL field values.
-func (c *PostgresqlConnector) ConvertFilterConditionNotExist(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionNotExist(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotExistCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotExistCond")
 	}
 
-	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): nil}, nil
+	return &sb.IsNull{Expr: sqlResourceColumn(cond.Lfield), Negated: false}, nil
 }
 
-// ConvertFilterConditionTrue matches a true Boolean value.
-func (c *PostgresqlConnector) ConvertFilterConditionTrue(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+// ConvertFilterConditionTrue matches a true Boolean or nonzero TINYINT(1) value.
+func (c *PostgresqlConnector) ConvertFilterConditionTrue(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.TrueCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.TrueCond")
 	}
 
-	if cond.Lfield.Type != interfaces.DataType_Boolean {
-		return nil, fmt.Errorf("postgresql true condition requires BOOLEAN: %s", cond.Lfield.Name)
-	}
-
-	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): true}, nil
+	return sqlBooleanCondition(cond.Lfield, true)
 }
 
-// ConvertFilterConditionFalse matches a false Boolean value.
-func (c *PostgresqlConnector) ConvertFilterConditionFalse(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+// ConvertFilterConditionFalse matches a false Boolean or zero TINYINT(1) value.
+func (c *PostgresqlConnector) ConvertFilterConditionFalse(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.FalseCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.FalseCond")
 	}
 
-	if cond.Lfield.Type != interfaces.DataType_Boolean {
-		return nil, fmt.Errorf("postgresql false condition requires BOOLEAN: %s", cond.Lfield.Name)
-	}
-
-	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): false}, nil
+	return sqlBooleanCondition(cond.Lfield, false)
 }
 
 // ConvertFilterConditionBefore matches values before the specified interval relative to now.
-func (c *PostgresqlConnector) ConvertFilterConditionBefore(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionBefore(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.BeforeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.BeforeCond")
 	}
-
 	if len(cond.Value) != 2 {
-		return nil, fmt.Errorf("before condition requires exactly 2 values")
+		return nil, interfaces.NewConditionBuildError("before condition requires exactly 2 values")
 	}
-
 	n, ok := common.NumberAsInt64(cond.Value[0])
-	if !ok {
-		return nil, fmt.Errorf("condition [before] interval value should be a number")
+	if !ok || n <= 0 {
+		return nil, interfaces.NewConditionBuildError("before interval must be a positive integer")
 	}
 	unit, ok := cond.Value[1].(string)
 	if !ok {
-		return nil, fmt.Errorf("condition [before] unit value should be a string")
+		return nil, interfaces.NewConditionBuildError("before unit must be a string")
 	}
-	pgUnit, err := intervalUnit(strings.TrimSpace(unit))
+	pgUnit, err := intervalUnit(unit)
 	if err != nil {
 		return nil, err
 	}
-	col := pgQuoteColumnName(cond.Lfield.OriginalName)
-	return sq.Expr(fmt.Sprintf("%s < NOW() - (?::bigint * INTERVAL '1 %s')", col, pgUnit), n), nil
+	cutoff := &sb.Arithmetic{Left: &sb.Function{Name: "TRANSACTION_TIMESTAMP"}, Op: sb.Subtract, Right: &sb.Interval{Value: &sb.Param{Value: n}, Unit: sb.IntervalUnit(pgUnit)}}
+	return &sb.Lt{Left: sqlResourceColumn(cond.Lfield), Right: cutoff}, nil
 }
 
 // ConvertFilterConditionCurrent matches values in the current calendar interval.
-func (c *PostgresqlConnector) ConvertFilterConditionCurrent(condition interfaces.FilterCondition) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) ConvertFilterConditionCurrent(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.CurrentCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.CurrentCond")
 	}
-
-	col := pgQuoteColumnName(cond.Lfield.OriginalName)
-	var trunc string
+	unit := ""
 	switch cond.Value {
 	case filter_condition.CurrentYear:
-		trunc = "year"
+		unit = "year"
 	case filter_condition.CurrentMonth:
-		trunc = "month"
+		unit = "month"
 	case filter_condition.CurrentWeek:
-		trunc = "week"
+		unit = "week"
 	case filter_condition.CurrentDay:
-		trunc = "day"
+		unit = "day"
 	case filter_condition.CurrentHour:
-		trunc = "hour"
+		unit = "hour"
 	case filter_condition.CurrentMinute:
-		trunc = "minute"
+		unit = "minute"
 	default:
-		return nil, fmt.Errorf("condition [current] unsupported format: %s", cond.Value)
+		return nil, interfaces.NewConditionBuildError("current condition has unsupported format")
 	}
+	left := &sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Param{Value: unit}, sqlResourceColumn(cond.Lfield)}}
+	right := &sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Param{Value: unit}, &sb.Function{Name: "TRANSACTION_TIMESTAMP"}}}
+	return &sb.Eq{Left: left, Right: right}, nil
+}
 
-	return sq.Expr(fmt.Sprintf("date_trunc('%s', %s::timestamptz) = date_trunc('%s', CURRENT_TIMESTAMP)", trunc, col, trunc)), nil
+// sqlResourceColumn 沿用现有结构化接口的 OriginalName 回退和别名限定规则。
+func sqlResourceColumn(field *interfaces.Property) sb.SqlNode {
+	name := field.OriginalName
+	if name == "" {
+		name = field.Name
+	}
+	return sqlColumnName(name)
+}
+
+func sqlColumnName(name string) sb.SqlNode {
+	qualifier, column, qualified := strings.Cut(name, ".")
+	if qualified {
+		return &sb.Column{Qualifier: strings.TrimSpace(qualifier), Name: strings.TrimSpace(column)}
+	}
+	return &sb.Column{Name: strings.TrimSpace(name)}
+}
+
+func sqlComparison(field, rightField *interfaces.Property, value any, op string) (sb.SqlNode, error) {
+	left := sqlResourceColumn(field)
+	if rightField != nil {
+		return sqlComparisonNode(left, sqlResourceColumn(rightField), op)
+	}
+	if value == nil && (op == "=" || op == "<>") {
+		return &sb.IsNull{Expr: left, Negated: op == "<>"}, nil
+	}
+	right, err := sqlConditionValue(field, value)
+	if err != nil {
+		return nil, err
+	}
+	return sqlComparisonNode(left, right, op)
+}
+
+func sqlComparisonNode(left, right sb.SqlNode, op string) (sb.SqlNode, error) {
+	switch op {
+	case "=", "==":
+		return &sb.Eq{Left: left, Right: right}, nil
+	case "<>", "!=":
+		return &sb.NotEq{Left: left, Right: right}, nil
+	case ">":
+		return &sb.Gt{Left: left, Right: right}, nil
+	case ">=":
+		return &sb.GtOrEq{Left: left, Right: right}, nil
+	case "<":
+		return &sb.Lt{Left: left, Right: right}, nil
+	case "<=":
+		return &sb.LtOrEq{Left: left, Right: right}, nil
+	default:
+		return nil, interfaces.NewConditionBuildError("unsupported comparison operation")
+	}
+}
+
+func sqlConditionValue(field *interfaces.Property, value any) (sb.SqlNode, error) {
+	if field == nil || !interfaces.DataType_IsDate(field.Type) {
+		// 结构化条件由左侧源字段推导参数类型，保留 JSON 数字原文，避免科学计数法被提升为浮点数。
+		if number, ok := value.(json.Number); ok {
+			value = number.String()
+		}
+		return &sb.Param{Value: value}, nil
+	}
+	if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Datetime || field.Type == interfaces.DataType_Time {
+		parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+		if err != nil {
+			return nil, err
+		}
+		value = parsed
+	}
+	if err := validateDateValue(field, value); err != nil {
+		return nil, err
+	}
+	return dateValueExpr(field, normalizeTimestampValue(value)), nil
+}
+
+func sqlSetCondition(expr sb.SqlNode, field *interfaces.Property, values []any, negated bool) (sb.SqlNode, error) {
+	if len(values) == 0 {
+		if negated {
+			return &sb.And{}, nil
+		}
+		return &sb.Or{}, nil
+	}
+	nodes := make([]sb.SqlNode, 0, len(values))
+	for _, value := range values {
+		node, err := sqlConditionValue(field, value)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return &sb.In{Expr: expr, Values: nodes, Negated: negated}, nil
+}
+
+func sqlRangeCondition(expr sb.SqlNode, field *interfaces.Property, values []any, outside bool) (sb.SqlNode, error) {
+	if len(values) != 2 {
+		return nil, interfaces.NewConditionBuildError("range requires two values")
+	}
+	lower, err := sqlConditionValue(field, values[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert range lower bound: %w", err)
+	}
+	upper, err := sqlConditionValue(field, values[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert range upper bound: %w", err)
+	}
+	if outside {
+		return &sb.Or{&sb.Lt{Left: expr, Right: lower}, &sb.Gt{Left: expr, Right: upper}}, nil
+	}
+	return &sb.And{&sb.GtOrEq{Left: expr, Right: lower}, &sb.LtOrEq{Left: expr, Right: upper}}, nil
+}
+
+func sqlPrefixCondition(field *interfaces.Property, value string, negated bool) sb.SqlNode {
+	return &sb.Like{Expr: sqlResourceColumn(field), Pattern: &sb.Param{Value: Special.Replace(value) + "%"}, Negated: negated}
+}
+
+func sqlCSVCondition(field *interfaces.Property, values []any, negated bool) sb.SqlNode {
+	nodes := make([]sb.SqlNode, 0, len(values))
+	for _, value := range values {
+		found := &sb.Function{Name: "FIND_IN_SET", Args: []sb.SqlNode{&sb.Param{Value: fmt.Sprint(value)}, sqlResourceColumn(field)}}
+		var node sb.SqlNode = &sb.Gt{Left: found, Right: &sb.Param{Value: 0}}
+		if negated {
+			node = &sb.Eq{Left: found, Right: &sb.Param{Value: 0}}
+		}
+		nodes = append(nodes, node)
+	}
+	if negated {
+		result := sb.Or(nodes)
+		return &result
+	}
+	result := sb.And(nodes)
+	return &result
+}
+
+func sqlBooleanCondition(field *interfaces.Property, value bool) (sb.SqlNode, error) {
+	if field.Type != interfaces.DataType_Boolean {
+		return nil, interfaces.NewConditionBuildError("postgresql boolean condition requires BOOLEAN")
+	}
+	return &sb.Eq{Left: sqlResourceColumn(field), Right: &sb.Param{Value: value}}, nil
 }
 
 // intervalUnit maps calendar units to PostgreSQL interval unit names.
@@ -671,59 +648,34 @@ func normalizeTimestampValue(value any) any {
 	}
 }
 
-// dateValueExpr builds a parameter expression compatible with the field's PostgreSQL date type.
-func dateValueExpr(field *interfaces.Property, value any) string {
+// dateValueExpr 保留 DATE/TIME、无时区墙上时间和带时区瞬间的绑定语义。
+func dateValueExpr(field *interfaces.Property, value any) sb.SqlNode {
+	param := &sb.Param{Value: value}
 	if field.Type == interfaces.DataType_Date {
-		return "?::date"
+		return &sb.Cast{Expr: param, Type: sb.CastDate}
 	}
-	// Type is the semantic contract and may be present even when an API-provided schema
-	// omits OriginalType. Keep this check aligned with validatePostgresqlDateValue.
 	if field.Type == interfaces.DataType_Time {
-		return "?"
+		return param
 	}
-	originalType := strings.ToLower(strings.TrimSpace(field.OriginalType))
-	nativeTimestamp := false
-	if _, ok := value.(time.Time); ok {
-		nativeTimestamp = true
+	original := strings.ToLower(strings.TrimSpace(field.OriginalType))
+	if _, native := value.(time.Time); native {
+		if field.Type == interfaces.DataType_Datetime && original != "timestamptz" && !strings.Contains(original, "with time zone") {
+			return &sb.Cast{Expr: param, Type: sb.CastDateTime}
+		}
+		if original == "timestamp" || original == "timestamp without time zone" || original == "date" {
+			return &sb.Cast{Expr: param, Type: sb.CastDateTime}
+		}
+		return param
 	}
-	if value, ok := value.(string); ok {
-		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
-			nativeTimestamp = true
-		}
-	}
-	if nativeTimestamp {
-		if field.Type == interfaces.DataType_Datetime && !strings.Contains(originalType, "with time zone") && originalType != "timestamptz" {
-			return "?::timestamp"
-		}
-		// Without an explicit cast PostgreSQL may infer an unknown parameter as timestamptz
-		// and shift an unzoned column through the session TimeZone. Keep native cursors in
-		// wall-clock space for timestamp-without-time-zone and date columns.
-		switch originalType {
-		case "timestamp", "timestamp without time zone", "date":
-			return "?::timestamp"
-		}
-		if field.Type == interfaces.DataType_Date {
-			return "?::timestamp"
-		}
-		return "?"
-	}
-
-	switch originalType {
+	switch original {
 	case "time", "timetz", "time without time zone", "time with time zone":
-		// An epoch instant has no well-defined time-of-day value. Keep time values raw so
-		// PostgreSQL can parse them according to the column type instead of comparing with timestamptz.
-		return "?"
+		return param
 	}
-
-	// The explicit float8 cast prevents PostgreSQL from inferring the parameter as int4
-	// from the 1000 literal, which would overflow or truncate millisecond timestamps.
-	timestampExpr := "to_timestamp(?::double precision / 1000.0)"
-	switch originalType {
-	case "timestamp", "timestamp without time zone":
-		// Convert the instant to a wall-clock timestamp using the connection session time zone.
-		timestampExpr = "(" + timestampExpr + " AT TIME ZONE current_setting('TimeZone'))"
+	instant := &sb.Function{Name: "FROM_UNIXTIME", Args: []sb.SqlNode{&sb.Arithmetic{Left: param, Op: sb.Divide, Right: &sb.Param{Value: 1000}}}}
+	if original == "timestamp" || original == "timestamp without time zone" {
+		return &sb.Cast{Expr: instant, Type: sb.CastDateTime}
 	}
-	return timestampExpr
+	return instant
 }
 
 // validateDateValue checks that a value is compatible with the field's date or time type.
@@ -734,48 +686,4 @@ func validateDateValue(field *interfaces.Property, value any) error {
 	}
 
 	return nil
-}
-
-// dateCompareExpr compares a date expression with epoch milliseconds or a time string.
-func dateCompareExpr(lhs string, field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
-	if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Datetime || field.Type == interfaces.DataType_Time {
-		parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
-		if err != nil {
-			return nil, err
-		}
-		value = parsed
-	}
-
-	if err := validateDateValue(field, value); err != nil {
-		return nil, err
-	}
-	return sq.Expr(
-		lhs+" "+op+" "+dateValueExpr(field, value),
-		normalizeTimestampValue(value),
-	), nil
-}
-
-// dateSetExpr builds an IN or NOT IN expression for bound date or time values.
-func dateSetExpr(lhs string, field *interfaces.Property, op string, values []any) (sq.Sqlizer, error) {
-	valueExprs := make([]string, len(values))
-	args := make([]any, len(values))
-	for i, value := range values {
-		if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Datetime || field.Type == interfaces.DataType_Time {
-			parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
-			if err != nil {
-				return nil, err
-			}
-			value = parsed
-		}
-
-		if err := validateDateValue(field, value); err != nil {
-			return nil, err
-		}
-		valueExprs[i] = dateValueExpr(field, value)
-		args[i] = normalizeTimestampValue(value)
-	}
-	return sq.Expr(
-		lhs+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
-		args...,
-	), nil
 }

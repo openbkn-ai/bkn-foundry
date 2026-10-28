@@ -33,6 +33,7 @@ import (
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	mysql "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/mariadb"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/postgresql"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/sqlglot"
 )
@@ -453,6 +454,15 @@ func TestWithExecutedResourceIDs(t *testing.T) {
 }
 
 func TestRawQueryServiceValidateRequest(t *testing.T) {
+	t.Run("rejects unsupported dialects before resource resolution or connector creation", func(t *testing.T) {
+		svc := &rawQueryService{}
+		for _, dialect := range []string{"postgres", "Postgres", "POSTGRES", "trino", "duckdb", "TRINO", "DuckDB"} {
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, InputDialect: dialect, Query: "SELECT * FROM {{orders}}"})
+			assert.Nil(t, result)
+			assertHTTPError(t, err, http.StatusBadRequest)
+		}
+	})
+
 	svc := &rawQueryService{}
 	tests := []struct {
 		name       string
@@ -527,66 +537,59 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		query string
-		want  string
-	}{
-		{
-			name:  "binds spaced MySQL placeholders for PostgreSQL",
-			query: "SELECT '{{ resource-1 }}' FROM {{ \tresource-1\r\n }} a JOIN {{resource-1}} b ON a.id = b.id /* {{ resource-1 }} */ -- {{ resource-1 }}\n",
-			want:  "SELECT '{{ resource-1 }}' FROM __vega_resource_0 a JOIN __vega_resource_0 b ON a.id = b.id /* {{ resource-1 }} */ -- {{ resource-1 }}\n",
-		},
-		{
-			name:  "binds spaced MySQL placeholders on parser fallback for PostgreSQL",
-			query: "WITH r AS (SELECT * FROM {{ \tresource-1\r\n }}) SELECT * FROM r",
-			want:  "WITH r AS (SELECT * FROM __vega_resource_0) SELECT * FROM r",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mockCS := vmock.NewMockCatalogService(ctrl)
-			mockRS := vmock.NewMockResourceService(ctrl)
-			resource := &interfaces.Resource{
-				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-				SourceIdentifier: `"public"."orders"`, Status: interfaces.ResourceStatusActive,
-				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
-			}
-			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil)
-			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-				ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
-			}, nil)
+	t.Run("star grouping positions are left to the source without schema expansion", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT o.*,COUNT(*) AS n FROM {{orders}} o GROUP BY 1,2", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		text, args, err := postgresql.ToSql(prepared.builder)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT "o".*, COUNT(*) AS "n" FROM "public"."orders" AS "o" GROUP BY 1, 2`, text)
+		assert.Empty(t, args)
+	})
 
-			policy := &recordingPolicy{}
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = policy
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-			patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
-				func(_ context.Context, sql, inputDialect, targetDialect string) (*sqlglot.SQLParseResult, error) {
-					assert.Equal(t, tc.want, sql)
-					assert.Equal(t, "mysql", inputDialect)
-					assert.Equal(t, "postgres", targetDialect)
-					return &sqlglot.SQLParseResult{SQL: "SELECT * FROM __vega_resource_0"}, nil
+	for _, target := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL} {
+		for _, dialect := range []string{"tsql", "oracle", "doris", "generic"} {
+			t.Run(target+" rejects "+dialect+" input before compilation", func(t *testing.T) {
+				svc, rs, cs, _ := mysqlRawServices(t)
+				policy := &recordingPolicy{resourceIDs: []string{"orders"}}
+				rawQueryPolicy = policy
+				mysqlRawMetadata(rs, cs, builderTestResource(), false, target)
+				prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
+					Query: "SELECT id FROM {{orders}}", QueryFormat: interfaces.QueryFormatSQL, InputDialect: dialect,
 				})
-			defer patches.Reset()
-			patches.ApplyFunc(sqlglot.BindTableReferences, func(_ context.Context, sql, dialect string, bindings map[string]string) (*sqlglot.SQLParseResult, error) {
-				assert.Equal(t, "SELECT * FROM __vega_resource_0", sql)
-				assert.Equal(t, "postgres", dialect)
-				assert.Equal(t, map[string]string{"__vega_resource_0": `"public"."orders"`}, bindings)
-				return &sqlglot.SQLParseResult{SQL: `SELECT * FROM "public"."orders"`}, nil
+				assert.Nil(t, prepared)
+				assertHTTPError(t, err, http.StatusBadRequest)
+				assert.Empty(t, policy.dialects)
+				assert.Empty(t, policy.derivedDialects)
 			})
-
-			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-				Query: tc.query, QueryFormat: interfaces.QueryFormatSQL, InputDialect: "mysql",
-			})
-			require.NoError(t, err)
-			assert.Equal(t, `SELECT * FROM "public"."orders"`, prepared.sql)
-			assert.Equal(t, []string{"resource-1"}, prepared.resourceIDs)
-			assert.Equal(t, []string{"mysql"}, policy.dialects)
-			assert.Equal(t, []string{"postgres"}, policy.derivedDialects)
-		})
+		}
 	}
+
+	t.Run("PG binds spaced MySQL placeholders with the Builder and no SQLGlot", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT '{{ orders }}' AS label FROM {{ \torders\r\n }} a JOIN {{orders}} b ON a.id=b.id /* {{orders}} */", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		assert.Empty(t, prepared.sql)
+		text, args, err := postgresql.ToSql(prepared.builder)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT $1 AS "label" FROM "public"."orders" AS "a" INNER JOIN "public"."orders" AS "b" ON ("a"."id" = "b"."id")`, text)
+		assert.Equal(t, []any{"{{ orders }}"}, args)
+		assert.Equal(t, []string{"orders"}, prepared.resourceIDs)
+	})
+	t.Run("PG MySQL input does not fall back to SQLGlot after parse failure", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), false, interfaces.ConnectorTypePostgreSQL)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "WITH r AS (SELECT * FROM {{ orders }}) SELECT * FROM r", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
 
 	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
 		requireRawQuerySQLGlotRuntime(t)
@@ -621,7 +624,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "select DATEPART(YEAR, created_at) as year_value from [dbo].[orders] where status = 'active'", prepared.sql)
 	})
-	for _, inputDialect := range []string{"mysql", "postgres", "tsql"} {
+	for _, inputDialect := range []string{"mysql", "tsql"} {
 		t.Run("normalizes SQL Server Unicode literals from "+inputDialect, func(t *testing.T) {
 			requireRawQuerySQLGlotRuntime(t)
 			ctrl := gomock.NewController(t)
@@ -704,7 +707,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			_, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
 				Query:        sql,
 				QueryFormat:  interfaces.QueryFormatSQL,
-				InputDialect: "postgres",
+				InputDialect: "generic",
 			})
 			assertHTTPError(t, err, http.StatusBadRequest)
 			var httpErr *httperrors.HTTPError
@@ -750,11 +753,11 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		prepared, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
 			Query:        "SELECT * FROM {{resource-1}}",
 			QueryFormat:  interfaces.QueryFormatSQL,
-			InputDialect: "trino",
+			InputDialect: "mysql",
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM `orders`", prepared.sql)
-		assert.Equal(t, []string{"trino"}, policy.dialects)
+		assert.Equal(t, []string{"mysql"}, policy.dialects)
 		assert.Equal(t, []string{"doris"}, policy.derivedDialects)
 	})
 }
@@ -826,7 +829,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 		}
 		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeHANA,
 		}, nil)
 
 		policy := &deadlineInspectingPolicy{}
@@ -838,6 +841,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 			Query:           "SELECT * FROM {{resource-1}}",
 			QueryFormat:     interfaces.QueryFormatSQL,
 			QueryTimeoutSec: 1,
+			InputDialect:    "mysql",
 			Paging:          interfaces.PagingRequest{Limit: 1},
 		})
 		require.Error(t, err)
@@ -1944,10 +1948,18 @@ func nativeSQLConnectorMocks(t *testing.T, cf *vmock.MockConnectorFactory, conne
 		dbs[i], mocks[i], err = sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual), sqlmock.MonitorPingsOption(true))
 		require.NoError(t, err)
 		mocks[i].ExpectPing()
+		if connectorType == interfaces.ConnectorTypePostgreSQL {
+			mocks[i].ExpectQuery(`SELECT 1 FROM (SELECT ARRAY[1] AS items) AS base JOIN LATERAL generate_subscripts(base.items, 1) AS probe(position) ON true`).WillReturnRows(sqlmock.NewRows([]string{"probe"}).AddRow(1))
+			mocks[i].ExpectQuery(`SELECT ordinal_position FROM (SELECT ARRAY[1] AS items) AS base JOIN LATERAL unnest(base.items) WITH ORDINALITY AS probe(value, ordinal_position) ON true`).WillReturnRows(sqlmock.NewRows([]string{"probe"}).AddRow(1))
+		}
 	}
 	opened := 0
 	patch := gomonkey.ApplyFunc(sql.Open, func(driver, _ string) (*sql.DB, error) {
-		require.Equal(t, "mysql", driver)
+		expectedDriver := "mysql"
+		if connectorType == interfaces.ConnectorTypePostgreSQL {
+			expectedDriver = "postgres"
+		}
+		require.Equal(t, expectedDriver, driver)
 		require.Less(t, opened, len(dbs), "no extra data query or connection may be opened")
 		db := dbs[opened]
 		opened++
@@ -1966,6 +1978,9 @@ func nativeSQLConnectorMocks(t *testing.T, cf *vmock.MockConnectorFactory, conne
 	})
 	cf.EXPECT().CreateConnectorInstance(gomock.Any(), connectorType, gomock.Any()).DoAndReturn(
 		func(context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			if connectorType == interfaces.ConnectorTypePostgreSQL {
+				return postgresql.NewPostgresqlConnector().New(interfaces.ConnectorConfig{"host": "db.test", "port": 5432, "username": "test", "password": "test-only", "database": "fixture"})
+			}
 			builder := mysql.NewMySQLConnector()
 			if connectorType == interfaces.ConnectorTypeMariaDB {
 				builder = mysql.NewMariaDBConnector()
@@ -2377,6 +2392,53 @@ func TestRawQueryServiceMariaDBSQLBuilder(t *testing.T) {
 		result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": int64(2)}}, result.Entries)
+		assert.Nil(t, result.Paging.NextCursor)
+	})
+}
+
+// TestRawQueryServicePostgreSQLSQLBuilder 覆盖生产 parser、PG 连接器、COUNT 及保留 Rows 的服务闭环。
+func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
+	t.Run("mysql input generates PG parameters and independent logical count without SQLGlot", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		mocks := nativeSQLConnectorMocks(t, cf, interfaces.ConnectorTypePostgreSQL, 2)
+		base := `SELECT "id" FROM "public"."orders" WHERE ("id" > CAST($1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 5`
+		mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithArgs("1").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(5)).RowsWillBeClosed()
+		mocks[0].ExpectClose()
+		mocks[1].ExpectQuery(`SELECT "id" FROM "public"."orders" WHERE ("id" > CAST($1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 2 OFFSET 1`).WithArgs("1").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0))).AddRow(3).AddRow(4)).RowsWillBeClosed()
+		mocks[1].ExpectClose()
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}} WHERE id>1 ORDER BY id LIMIT 5", NeedTotal: true, Paging: interfaces.PagingRequest{Offset: 1, Limit: 2}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": int64(3)}, {"id": int64(4)}}, result.Entries)
+		require.NotNil(t, result.TotalCount)
+		assert.Equal(t, int64(5), *result.TotalCount)
+	})
+	t.Run("PG cursor keeps one Rows across continuation with native binary values", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		mocks := nativeSQLConnectorMocks(t, cf, interfaces.ConnectorTypePostgreSQL, 1)
+		mocks[0].ExpectQuery(`SELECT "id", "payload" FROM "public"."orders" ORDER BY "id" ASC NULLS FIRST`).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("payload").OfType("BYTEA", []byte{})).AddRow(1, []byte{0, 255}).AddRow(2, []byte{}).AddRow(3, nil)).RowsWillBeClosed()
+		mocks[0].ExpectClose()
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id,payload FROM {{orders}} ORDER BY id", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
+		require.NoError(t, err)
+		require.NotNil(t, result.Paging.NextCursor)
+		assert.Equal(t, []byte{0, 255}, result.Entries[0]["payload"])
+		for _, want := range []struct {
+			id      int64
+			payload any
+		}{{2, []byte{}}, {3, nil}} {
+			token := *result.Paging.NextCursor
+			mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+			result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 1)
+			assert.Equal(t, want.id, result.Entries[0]["id"])
+			assert.Equal(t, want.payload, result.Entries[0]["payload"])
+		}
 		assert.Nil(t, result.Paging.NextCursor)
 	})
 }

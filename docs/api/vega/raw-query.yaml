@@ -7,7 +7,7 @@ info:
 
     本端点执行经服务端校验和资源绑定的原生查询，**不做结构化 filter 解析**：
 
-    - SQL 引擎（mysql / postgresql / sqlserver / clickhouse / 达梦 / oracle）→ `query` 字段为 SQL 字符串
+    - SQL 引擎（MariaDB/MySQL / PostgreSQL / SQL Server / Oracle / HANA / Doris）→ `query` 字段为 SQL 字符串
     - 索引引擎（opensearch / elasticsearch）→ `query` 字段为 DSL JSON 对象
 
     与 `POST /resources/{id}/data`（[resource-data.yaml](resource-data.yaml)）的分工：
@@ -26,6 +26,9 @@ info:
     常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询不被只读策略单独禁止；
     MariaDB/MySQL 连接器使用 Vega 的 Go 解析器与结构化 Builder，只接受 `mysql` 输入语法（含默认值），
     不调用 SQLGlot；支持显式子查询、JOIN、DISTINCT、分组、排序和 LIMIT/OFFSET，窗口函数不开放。
+    PostgreSQL Catalog 同样只接受 mysql 输入（含默认值及 mariadb 别名），强制走 Go parser/Builder，
+    在 PG 连接器内生成双引号标识符和 $n 绑定参数，不调用 SQLGlot；不支持的语法不回退。
+    禁止显式传入 input_dialect=postgres（含大小写变体），查询 PostgreSQL 仅接受 mysql 输入（含默认值及 mariadb 别名），其他输入返回 400。
     其他连接器继续使用原有 SQLGlot 流程，其窗口函数和其他内置函数须被识别为安全表达式，
     且由 `input_dialect` 和底层连接器支持。
 
@@ -33,33 +36,38 @@ info:
     锁定读取，以及写入、DDL、事务、权限与过程类语句。MariaDB/MySQL 函数使用明确的只读内置函数名单，
     包括常用聚合、数值、字符串和日期函数；在访问连接器前检查参数数量及 DISTINCT / * 的组合。
     例如 COUNT()、COUNT(DISTINCT *)、ABS(1,2) 会返回 400；字段类型及分组语义由目标数据库检查。
-    其他目标仅允许 SQLGlot 可识别的具名内置表达式。
+    PostgreSQL Builder 使用同一输入函数名单，将 IFNULL、LENGTH、日期取值和格式等映射为 PG 表达式；
+    无符号 CAST、动态日期格式以及未映射的格式标记会返回 400。DATE_FORMAT/STR_TO_DATE 的格式
+    必须为字面量，当前标记为 %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%x/%v/%%。
+    字段类型、隐式类型转换和分组合法性仍由 PG 检查，不承诺全部 MySQL 运行时语义。
+    其他输入/目标仅允许 SQLGlot 可识别的具名内置表达式。
     UDF 与未开放的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
     内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400
     `VegaBackend.Query.InvalidParameter`，`error_details` 为
-    MariaDB/MySQL 返回不含 SQL 原文的解析或能力错误，其他目标返回
+    Builder 通道返回不含 SQL 原文的解析或能力错误，SQLGlot 通道返回
     `raw query rejected by read-only policy`；请改写为受支持的单条顶层 `SELECT`。
 
-    MariaDB/MySQL 对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
+    Builder 通道对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
     例如 SELECT 1,2 的输出列名为 `1`、`2`。重复输出名称仍需使用不同的显式别名。
 
-    MariaDB/MySQL 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
-    total_count 统计原始逻辑查询的结果行数。MariaDB/MySQL cursor 只执行一次数据查询，在服务端保留
+    MariaDB/MySQL 和 PG 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
+    total_count 统计原始逻辑查询的结果行数。Builder cursor 只执行一次数据查询，在服务端保留
     同一个 Rows 和连接，续页继续扫描，不重复执行 OFFSET 查询；额外预读一行判断是否有下一页。
     每次续页重新校验资源权限和源端元数据版本；权限撤销或版本改变会关闭 cursor，版本改变返回
     HTTP 409。读取超时、取消或结果集读取失败会终止 cursor，调用方应重新发起查询；读取前的
     临时元数据服务错误可重试。首次 HTTP 请求结束不会关闭空闲 Rows，末页、显式关闭或空闲租约
     到期会释放 Rows 与连接。need_total 的 COUNT 仍独立执行，不保证与数据查询共享同一快照或 NOW() 等时间函数的时间基准。
 
-    每个未读完的 MariaDB/MySQL cursor 持有一个源端结果集和连接，应用的 keep_alive_sec
+    每个未读完的 Builder cursor 持有一个源端结果集和连接，应用的 keep_alive_sec
     仅控制会话回收，不保证源库连接在租约内持续可用。大结果集在客户端暂停读取时可能使源端写入
-    阻塞并触发 net_write_timeout；SELECT 尚未结束时，其持有的元数据锁也可能使 DDL 等待。
+    阻塞；MariaDB/MySQL 可能触发 net_write_timeout。SELECT 尚未结束时持有的锁也可能使 DDL 等待。
     应结合源端连接预算控制并发 cursor 数，读取完成后及时关闭，不再使用时调用 cursor 关闭接口。
     源端超时或断连导致续页失败时，会话终止并释放资源，调用方需要重新发起查询。
 
     MySQL/MariaDB 映射为 binary 的结果列（BIT、BINARY、VARBINARY 和各类 BLOB）
     以原始字节的 base64 字符串返回，空字节串返回空字符串，NULL 保持 null。
     BIT（包括 BIT(1)）不解释为 boolean；TINYINT 保留整数值，文本列仍返回文本。
+    PostgreSQL Builder 的 bytea 同样保留原始字节并以 base64 输出，NUMERIC 保留精确文本。
 
     调用方仍应受 RBAC 与限流约束，底层账号必须保持只读。
   version: 0.1.0
@@ -97,7 +105,7 @@ paths:
         **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
         - SQL（省略方言，按 MariaDB/MySQL 解析）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
-        - PostgreSQL SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
+        - 查询 PostgreSQL Catalog：省略 input_dialect，或显式使用 `mysql`；`postgres` 输入返回 400。
         - SQL Server T-SQL：`{"query":"SELECT TOP (20) * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"tsql"}`
         - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
 
@@ -269,14 +277,12 @@ components:
             输入方言。SQL 省略时默认 `mysql`；`mariadb` 按 `mysql` 解析，`generic` 使用
             SQLGlot 通用方言。SQL Server 原生 T-SQL 使用 `tsql`。SQL Server Catalog 的
             执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。
+            禁止显式传入 `postgres`（含大小写变体）；MariaDB/MySQL 和 PostgreSQL Catalog 仅接受 `mysql`（含默认值及 `mariadb` 别名），其他输入返回 400。
             `hana` 不是可选输入方言；查询 HANA Catalog 时可使用 `generic`。
           type: string
           enum:
-            - postgres
             - mysql
             - mariadb
-            - trino
-            - duckdb
             - tsql
             - oracle
             - doris
@@ -326,7 +332,7 @@ components:
           description: 可携带但不会覆盖首次请求冻结的值。
           type: boolean
     PagingRequest:
-      description: MariaDB/MySQL cursor 保留同一次数据查询的 Rows，续页继续读取；其他 SQL 连接器使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
+      description: MariaDB/MySQL 和 PostgreSQL cursor 保留同一次数据查询的 Rows，续页继续读取；SQLGlot 通道使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
       type: object
       allOf:
         - if:

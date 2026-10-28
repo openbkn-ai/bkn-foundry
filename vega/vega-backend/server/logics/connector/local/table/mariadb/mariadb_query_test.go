@@ -27,96 +27,13 @@ import (
 type unknownNode struct{ *sb.Column }
 
 func TestMariaDBConnectorExecuteRawSQL(t *testing.T) {
-	for _, native := range []string{"BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB"} {
-		t.Run(native+" preserves binary content alongside text", func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			require.NoError(t, err)
-			defer func() { _ = db.Close() }()
-			connector := &MariaDBConnector{db: db, connected: true}
-			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
-				sqlmock.NewColumn("payload").OfType(native, []byte{}),
-				sqlmock.NewColumn("label").OfType("TEXT", ""),
-			).AddRow([]byte{0xff, 0x00}, []byte("text")).AddRow([]byte{}, []byte{}).AddRow(nil, nil))
-			result, err := connector.ExecuteRawSQL(context.Background(), "SELECT payload, label FROM orders")
-			require.NoError(t, err)
-			assert.Equal(t, []interfaces.ColumnInfo{{Name: "payload", Type: interfaces.DataType_Binary}, {Name: "label", Type: interfaces.DataType_Text}}, result.Columns)
-			assert.Equal(t, []map[string]any{{"payload": []byte{0xff, 0x00}, "label": "text"}, {"payload": []byte{}, "label": ""}, {"payload": nil, "label": nil}}, result.Entries)
-			wire, err := json.Marshal(result.Entries)
-			require.NoError(t, err)
-			assert.JSONEq(t, `[{"payload":"/wA=","label":"text"},{"payload":"","label":""},{"payload":null,"label":null}]`, string(wire))
-			require.NoError(t, mock.ExpectationsWereMet())
-		})
-	}
-	t.Run("BIT raw results preserve bytes and declare binary", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		defer func() { _ = db.Close() }()
-		connector := &MariaDBConnector{db: db, connected: true}
-		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
-			sqlmock.NewColumn("bits").OfType("BIT", []byte{}),
-			sqlmock.NewColumn("flag").OfType("TINYINT", int64(0)),
-		).AddRow([]byte{0xff, 0x00}, int64(127)).AddRow([]byte{0}, int64(0)).AddRow(nil, nil))
-		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT bits, flag FROM orders")
-		require.NoError(t, err)
-		assert.Equal(t, []interfaces.ColumnInfo{{Name: "bits", Type: interfaces.DataType_Binary}, {Name: "flag", Type: interfaces.DataType_Integer}}, result.Columns)
-		assert.Equal(t, []map[string]any{{"bits": []byte{0xff, 0x00}, "flag": int64(127)}, {"bits": []byte{0}, "flag": int64(0)}, {"bits": nil, "flag": nil}}, result.Entries)
-		wire, err := json.Marshal(result.Entries)
-		require.NoError(t, err)
-		assert.JSONEq(t, `[{"bits":"/wA=","flag":127},{"bits":"AA==","flag":0},{"bits":null,"flag":null}]`, string(wire))
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	connector := &MariaDBConnector{db: db, connected: true}
-	driverErr := &mysql.MySQLError{Number: 1054, Message: "Unknown column 'missing' in 'field list'"}
-	mock.ExpectQuery("SELECT missing FROM orders").WillReturnError(driverErr)
-	result, err := connector.ExecuteRawSQL(context.Background(), "SELECT missing FROM orders")
+	connector := &MariaDBConnector{}
+	result, err := connector.ExecuteRawSQL(context.Background(), "SELECT 1")
 	assert.Nil(t, result)
-	var invalid *interfaces.SourceQueryInvalidParameterError
-	require.ErrorAs(t, err, &invalid)
-	assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
-	assert.True(t, errors.Is(err, driverErr))
-	assert.ErrorContains(t, err, "failed to execute raw query")
-	require.NoError(t, mock.ExpectationsWereMet())
-	t.Run("raw rows retain column types, NULLs, and returned row count", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		defer func() { _ = db.Close() }()
-		connector := &MariaDBConnector{db: db, connected: true}
-		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
-			sqlmock.NewColumn("value").OfType("VARCHAR", ""),
-			sqlmock.NewColumn("optional").OfType("INT", int64(0)),
-		).AddRow([]byte("text"), nil))
-		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT value, optional FROM orders")
-		require.NoError(t, err)
-		assert.Equal(t, []interfaces.ColumnInfo{{Name: "value", Type: interfaces.DataType_String}, {Name: "optional", Type: interfaces.DataType_Integer}}, result.Columns)
-		assert.Equal(t, []map[string]any{{"value": "text", "optional": nil}}, result.Entries)
-		require.NotNil(t, result.TotalCount)
-		assert.EqualValues(t, 1, *result.TotalCount)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("raw scan errors retain their cause and classification", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		defer func() { _ = db.Close() }()
-		connector := &MariaDBConnector{db: db, connected: true}
-		cause := &mysql.MySQLError{Number: 1054, Message: "source column detail"}
-		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(1).RowError(0, cause))
-		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT value FROM orders")
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.ErrorContains(t, err, "failed to scan raw query rows")
-		assert.ErrorContains(t, err, "failed to iterate result rows")
-		assert.ErrorIs(t, err, cause)
-		var invalid *interfaces.SourceQueryInvalidParameterError
-		require.ErrorAs(t, err, &invalid)
-		assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
+	var unsupported *interfaces.UnsupportedOperationError
+	require.ErrorAs(t, err, &unsupported)
+	assert.Equal(t, "ExecuteRawSQL", unsupported.Operation)
+	assert.False(t, connector.connected)
 }
 
 func TestMariaDBConnectorExecuteQuery(t *testing.T) {
@@ -865,6 +782,13 @@ func TestMariaDBConnectorBuildTypedSelectBuilder(t *testing.T) {
 }
 
 func TestToSql(t *testing.T) {
+	t.Run("grouping ordinal is emitted literally", func(t *testing.T) {
+		query := sb.Select(&sb.Star{}).From(&sb.Table{SourceIdentifier: "`orders`"}).GroupBy(&sb.Param{Value: json.Number("1")}, &sb.Param{Value: json.Number("2")})
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM `orders` GROUP BY 1, 2", text)
+		assert.Empty(t, args)
+	})
 	t.Run("clauses compose in SQL parameter order", func(t *testing.T) {
 		query := sb.Select(&sb.Alias{Expr: &sb.Param{Value: "projection"}, Name: "label"}, &sb.Column{Qualifier: "a", Name: "id"}).
 			From(&sb.Table{SourceIdentifier: "`sales.eu`.`order.items`", Alias: "a"}).
@@ -1091,6 +1015,99 @@ func TestOrderToSql(t *testing.T) {
 }
 
 func TestMariaDBConnectorExecuteSQLBuilder(t *testing.T) {
+	t.Run("result values and error classification", func(t *testing.T) {
+		for _, native := range []string{"BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB"} {
+			t.Run(native+" preserves binary content alongside text", func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
+				defer func() { _ = db.Close() }()
+				connector := &MariaDBConnector{db: db, connected: true}
+				mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+					sqlmock.NewColumn("payload").OfType(native, []byte{}),
+					sqlmock.NewColumn("label").OfType("TEXT", ""),
+				).AddRow([]byte{0xff, 0x00}, []byte("text")).AddRow([]byte{}, []byte{}).AddRow(nil, nil))
+				result, err := connector.ExecuteSQLBuilder(context.Background(), sb.Select(&sb.Column{Name: "payload"}, &sb.Column{Name: "label"}).From(&sb.Table{SourceIdentifier: "orders"}))
+				require.NoError(t, err)
+				assert.Equal(t, []interfaces.ColumnInfo{{Name: "payload", Type: interfaces.DataType_Binary}, {Name: "label", Type: interfaces.DataType_Text}}, result.Columns)
+				assert.Equal(t, []map[string]any{{"payload": []byte{0xff, 0x00}, "label": "text"}, {"payload": []byte{}, "label": ""}, {"payload": nil, "label": nil}}, result.Entries)
+				wire, err := json.Marshal(result.Entries)
+				require.NoError(t, err)
+				assert.JSONEq(t, `[{"payload":"/wA=","label":"text"},{"payload":"","label":""},{"payload":null,"label":null}]`, string(wire))
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+		t.Run("BIT raw results preserve bytes and declare binary", func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{db: db, connected: true}
+			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+				sqlmock.NewColumn("bits").OfType("BIT", []byte{}),
+				sqlmock.NewColumn("flag").OfType("TINYINT", int64(0)),
+			).AddRow([]byte{0xff, 0x00}, int64(127)).AddRow([]byte{0}, int64(0)).AddRow(nil, nil))
+			result, err := connector.ExecuteSQLBuilder(context.Background(), sb.Select(&sb.Column{Name: "bits"}, &sb.Column{Name: "flag"}).From(&sb.Table{SourceIdentifier: "orders"}))
+			require.NoError(t, err)
+			assert.Equal(t, []interfaces.ColumnInfo{{Name: "bits", Type: interfaces.DataType_Binary}, {Name: "flag", Type: interfaces.DataType_Integer}}, result.Columns)
+			assert.Equal(t, []map[string]any{{"bits": []byte{0xff, 0x00}, "flag": int64(127)}, {"bits": []byte{0}, "flag": int64(0)}, {"bits": nil, "flag": nil}}, result.Entries)
+			wire, err := json.Marshal(result.Entries)
+			require.NoError(t, err)
+			assert.JSONEq(t, `[{"bits":"/wA=","flag":127},{"bits":"AA==","flag":0},{"bits":null,"flag":null}]`, string(wire))
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+
+		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		driverErr := &mysql.MySQLError{Number: 1054, Message: "Unknown column 'missing' in 'field list'"}
+		mock.ExpectQuery("SELECT `missing` FROM orders").WillReturnError(driverErr)
+		result, err := connector.ExecuteSQLBuilder(context.Background(), sb.Select(&sb.Column{Name: "missing"}).From(&sb.Table{SourceIdentifier: "orders"}))
+		assert.Nil(t, result)
+		var invalid *interfaces.SourceQueryInvalidParameterError
+		require.ErrorAs(t, err, &invalid)
+		assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
+		assert.True(t, errors.Is(err, driverErr))
+		assert.ErrorContains(t, err, "failed to execute SQL builder query")
+		require.NoError(t, mock.ExpectationsWereMet())
+		t.Run("raw rows retain column types, NULLs, and returned row count", func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{db: db, connected: true}
+			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+				sqlmock.NewColumn("value").OfType("VARCHAR", ""),
+				sqlmock.NewColumn("optional").OfType("INT", int64(0)),
+			).AddRow([]byte("text"), nil))
+			result, err := connector.ExecuteSQLBuilder(context.Background(), sb.Select(&sb.Column{Name: "value"}, &sb.Column{Name: "optional"}).From(&sb.Table{SourceIdentifier: "orders"}))
+			require.NoError(t, err)
+			assert.Equal(t, []interfaces.ColumnInfo{{Name: "value", Type: interfaces.DataType_String}, {Name: "optional", Type: interfaces.DataType_Integer}}, result.Columns)
+			assert.Equal(t, []map[string]any{{"value": "text", "optional": nil}}, result.Entries)
+			require.NotNil(t, result.TotalCount)
+			assert.EqualValues(t, 1, *result.TotalCount)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+
+		t.Run("raw scan errors retain their cause and classification", func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{db: db, connected: true}
+			cause := &mysql.MySQLError{Number: 1054, Message: "source column detail"}
+			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(1).RowError(0, cause))
+			result, err := connector.ExecuteSQLBuilder(context.Background(), sb.Select(&sb.Column{Name: "value"}).From(&sb.Table{SourceIdentifier: "orders"}))
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.ErrorContains(t, err, "failed to scan SQL builder query rows")
+			assert.ErrorContains(t, err, "failed to iterate result rows")
+			assert.ErrorIs(t, err, cause)
+			var invalid *interfaces.SourceQueryInvalidParameterError
+			require.ErrorAs(t, err, &invalid)
+			assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+
+	})
+
 	for _, tc := range []struct {
 		name, input, statement string
 		args                   []driver.Value

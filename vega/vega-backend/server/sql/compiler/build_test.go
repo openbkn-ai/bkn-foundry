@@ -129,6 +129,23 @@ func TestTreeBuilderOrderPosition(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestTreeBuilderGroupPosition 验证数字分组保持原始位置，语义由目标数据库判断。
+func TestTreeBuilderGroupPosition(t *testing.T) {
+	for _, input := range []string{
+		"SELECT ID%2 AS k,COUNT(*) AS n FROM {{r}} GROUP BY 1",
+		"SELECT ID FROM {{r}} GROUP BY 0",
+		"SELECT ID FROM {{r}} GROUP BY 2",
+		"SELECT COUNT(*) FROM {{r}} GROUP BY 1",
+		"SELECT SUM(ID)+1 FROM {{r}} GROUP BY 1",
+		"SELECT * FROM {{r}} GROUP BY 1",
+	} {
+		query, err := ParseSQL(input)
+		require.NoError(t, err)
+		_, ok := query.GroupByPart[0].(*sb.Param)
+		assert.True(t, ok, input)
+	}
+}
+
 func TestTreeBuilderProjectionNames(t *testing.T) {
 	for _, tc := range []struct {
 		input, want string

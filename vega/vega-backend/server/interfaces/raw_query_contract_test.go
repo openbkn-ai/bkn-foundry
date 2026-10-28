@@ -32,7 +32,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 			request: RawQueryContract{
 				Query:        "SELECT * FROM {{orders}}",
 				QueryFormat:  QueryFormatSQL,
-				InputDialect: "trino",
+				InputDialect: "mysql",
 				Paging: PagingRequest{
 					Mode:  PagingModeCursor,
 					Limit: 100,
@@ -125,6 +125,16 @@ func TestRawQueryContractValidate(t *testing.T) {
 				QueryFormat:  QueryFormatSQL,
 				InputDialect: "opensearch",
 			},
+			wantErr: "unsupported SQL input_dialect",
+		},
+		{
+			name:    "rejects explicit postgres input",
+			request: RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: "postgres"},
+			wantErr: "unsupported SQL input_dialect",
+		},
+		{
+			name:    "rejects case variants of postgres input",
+			request: RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: "Postgres"},
 			wantErr: "unsupported SQL input_dialect",
 		},
 		{
@@ -320,9 +330,10 @@ func TestRawQueryContractEffectiveInputDialect(t *testing.T) {
 	assert.Equal(t, "tsql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "TSQL"}.EffectiveInputDialect())
 	assert.Equal(t, "oracle", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "ORACLE"}.EffectiveInputDialect())
 	assert.Equal(t, "", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "GENERIC"}.EffectiveInputDialect())
-	require.NoError(t, RawQueryContract{
-		Query:        "SELECT * FROM {{orders}}",
-		QueryFormat:  QueryFormatSQL,
-		InputDialect: "tsql",
-	}.Validate())
+	for _, dialect := range []string{"mysql", "mariadb", "tsql", "oracle", "doris", "generic", "TSQL", "ORACLE", "GENERIC"} {
+		require.NoError(t, RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: dialect}.Validate())
+	}
+	for _, dialect := range []string{"postgres", "trino", "duckdb", "TRINO", "DuckDB"} {
+		require.ErrorContains(t, RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: dialect}.Validate(), "unsupported SQL input_dialect")
+	}
 }
