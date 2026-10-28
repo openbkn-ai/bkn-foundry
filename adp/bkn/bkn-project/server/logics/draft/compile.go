@@ -19,6 +19,16 @@ import (
 // the draft's.
 var compiledDirs = []string{"object_types/", "relation_types/", "value_types/"}
 
+// compiledDraft is a draft written as BKN definitions.
+type compiledDraft struct {
+	// Files are the definition files, keyed by their path in the package.
+	Files map[string][]byte
+	// SkippedValueTypes are adopted value types BKN 3.0 would refuse: a base type it has no value
+	// type for, or a name another adopted value type took first. Their properties keep their base
+	// type, and confirming says which they are.
+	SkippedValueTypes []string
+}
+
 // compileDraft writes the adopted items of a draft as the definition files of a BKN 3.0 package,
 // keyed by their path in the package: the object types with their tables as data sources, the
 // relation types whose ends are adopted, and the value types an adopted property can reference.
@@ -27,7 +37,7 @@ var compiledDirs = []string{"object_types/", "relation_types/", "value_types/"}
 // The definitions go through the BKN specification's own writer, which has no public way to
 // write a single 3.0 definition: a package holding only them is written and its definition files
 // kept. Its network.bkn is not, since a branch has its own.
-func compileDraft(items *interfaces.DraftItems) (map[string][]byte, error) {
+func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 	network := &bkn.BknNetwork{
 		BknNetworkFrontmatter: bkn.BknNetworkFrontmatter{
 			Type:    "knowledge_network",
@@ -37,12 +47,20 @@ func compileDraft(items *interfaces.DraftItems) (map[string][]byte, error) {
 		},
 	}
 
-	valueTypes := map[string]bool{}
+	result := &compiledDraft{Files: map[string][]byte{}}
+	valueTypes, names := map[string]bool{}, map[string]bool{}
 	for _, vt := range items.ValueTypes {
-		if vt.Adopted {
-			valueTypes[vt.ID] = true
-			network.ValueTypes = append(network.ValueTypes, compileValueType(vt))
+		if !vt.Adopted {
+			continue
 		}
+		compiled := compileValueType(vt)
+		// One value type BKN 3.0 refuses would fail the whole package, so it is left out alone.
+		if bkn.ValidateValueType(compiled) != nil || names[compiled.Name] {
+			result.SkippedValueTypes = append(result.SkippedValueTypes, vt.ID)
+			continue
+		}
+		valueTypes[vt.ID], names[compiled.Name] = true, true
+		network.ValueTypes = append(network.ValueTypes, compiled)
 	}
 	objectTypes := map[string]bool{}
 	for _, ot := range items.ObjectTypes {
@@ -75,15 +93,14 @@ func compileDraft(items *interfaces.DraftItems) (map[string][]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read written definitions: %w", err)
 	}
-	files := map[string][]byte{}
 	for path, data := range written {
 		for _, dir := range compiledDirs {
 			if strings.HasPrefix(path, dir) {
-				files[path] = data
+				result.Files[path] = data
 			}
 		}
 	}
-	return files, nil
+	return result, nil
 }
 
 func compileObjectType(ot *interfaces.DraftObjectType, valueTypes map[string]bool) *bkn.BknObjectType {
@@ -167,7 +184,12 @@ func compileValueType(vt *interfaces.DraftValueType) *bkn.BknValueType {
 		BaseType:                vt.BaseType,
 	}
 	for _, v := range vt.Values {
-		compiled.Enum = append(compiled.Enum, &bkn.ValueTypeEnumItem{Value: v.Value, Display: v.Display})
+		// A code without a name in its code table stands for itself.
+		display := v.Display
+		if display == "" {
+			display = v.Value
+		}
+		compiled.Enum = append(compiled.Enum, &bkn.ValueTypeEnumItem{Value: v.Value, Display: display})
 	}
 	return compiled
 }

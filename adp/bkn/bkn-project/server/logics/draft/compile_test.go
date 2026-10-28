@@ -112,7 +112,8 @@ func loadWithBranch(files map[string][]byte) (*bkn.BknNetwork, error) {
 func Test_CompileDraft(t *testing.T) {
 	Convey("Test compileDraft\n", t, func() {
 		Convey("Only adopted items are written, as definition files of a 3.0 package\n", func() {
-			files, err := compileDraft(compileFixture())
+			compiled, err := compileDraft(compileFixture())
+			files := compiled.Files
 
 			So(err, ShouldBeNil)
 			paths := make([]string, 0, len(files))
@@ -131,7 +132,8 @@ func Test_CompileDraft(t *testing.T) {
 		})
 
 		Convey("The files read back under a branch's network.bkn as the draft's definitions\n", func() {
-			files, err := compileDraft(compileFixture())
+			compiled, err := compileDraft(compileFixture())
+			files := compiled.Files
 			So(err, ShouldBeNil)
 
 			network, err := loadWithBranch(files)
@@ -173,6 +175,7 @@ func Test_CompileDraft(t *testing.T) {
 			So(direct.Endpoint.Type, ShouldEqual, "direct")
 			So(direct.Endpoint.Cardinality, ShouldEqual, "many_to_one")
 			So(direct.Verification, ShouldEqual, "confirmed")
+			So(direct.MappingRules, ShouldResemble, bkn.DirectMappingRule{{SourceProperty: "customer_id", TargetProperty: "customer_id"}})
 			linked := relations["orders_to_products"]
 			So(linked.Endpoint.Type, ShouldEqual, "indirect")
 			rules, ok := linked.MappingRules.(*bkn.InDirectMappingRule)
@@ -192,8 +195,9 @@ func Test_CompileDraft(t *testing.T) {
 				}
 			}
 
-			files, err := compileDraft(&items)
+			compiled, err := compileDraft(&items)
 			So(err, ShouldBeNil)
+			files := compiled.Files
 			network, err := loadWithBranch(files)
 
 			So(err, ShouldBeNil)
@@ -208,11 +212,55 @@ func Test_CompileDraft(t *testing.T) {
 			So(network.RelationTypes, ShouldNotBeEmpty)
 		})
 
-		Convey("Nothing adopted writes no definitions\n", func() {
-			files, err := compileDraft(&interfaces.DraftItems{})
+		Convey("A value type BKN 3.0 refuses is left out, and its properties keep their base type\n", func() {
+			items := compileFixture()
+			items.ObjectTypes[0].Properties = append(items.ObjectTypes[0].Properties,
+				&interfaces.DraftProperty{Name: "region", DisplayName: "Region", Type: "text", MappedField: "region", ValueTypeID: "region"},
+				&interfaces.DraftProperty{Name: "priority", DisplayName: "Priority", Type: "string", MappedField: "priority", ValueTypeID: "priority"},
+				&interfaces.DraftProperty{Name: "grade", DisplayName: "Grade", Type: "string", MappedField: "grade", ValueTypeID: "grade"})
+			items.ValueTypes = append(items.ValueTypes,
+				// A PostgreSQL text code table: text is no base type of a value type.
+				&interfaces.DraftValueType{ID: "region", Name: "Region", BaseType: "text", Adopted: true,
+					Values: []interfaces.DraftEnumValue{{Value: "N", Display: "North"}}},
+				// A code without a name: its value stands for it.
+				&interfaces.DraftValueType{ID: "priority", Name: "Priority", BaseType: "string", Adopted: true,
+					Values: []interfaces.DraftEnumValue{{Value: "P1", Display: ""}}},
+				// Named as an adopted one before it: names are unique in a network.
+				&interfaces.DraftValueType{ID: "grade", Name: "Order status", BaseType: "string", Adopted: true,
+					Values: []interfaces.DraftEnumValue{{Value: "A", Display: "Top"}}})
+
+			compiled, err := compileDraft(items)
 
 			So(err, ShouldBeNil)
-			So(files, ShouldBeEmpty)
+			So(compiled.SkippedValueTypes, ShouldResemble, []string{"region", "grade"})
+			network, err := loadWithBranch(compiled.Files)
+			So(err, ShouldBeNil)
+			ids := []string{}
+			for _, vt := range network.ValueTypes {
+				ids = append(ids, vt.ID)
+			}
+			sort.Strings(ids)
+			So(ids, ShouldResemble, []string{"order_status", "priority"})
+			properties := map[string]*bkn.DataProperty{}
+			for _, ot := range network.ObjectTypes {
+				if ot.ID == "orders" {
+					for _, p := range ot.DataProperties {
+						properties[p.Name] = p
+					}
+				}
+			}
+			So(properties["region"].Constraints, ShouldBeNil)
+			So(properties["region"].Type, ShouldEqual, "text")
+			So(properties["grade"].Constraints, ShouldBeNil)
+			So(properties["priority"].Constraints.ValueType, ShouldEqual, "priority")
+		})
+
+		Convey("Nothing adopted writes no definitions\n", func() {
+			compiled, err := compileDraft(&interfaces.DraftItems{})
+
+			So(err, ShouldBeNil)
+			So(compiled.Files, ShouldBeEmpty)
+			So(compiled.SkippedValueTypes, ShouldBeEmpty)
 		})
 
 		Convey("An adopted object type without a table is refused\n", func() {
