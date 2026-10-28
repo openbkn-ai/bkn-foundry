@@ -117,7 +117,8 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		// Nothing was written: the draft goes back to what was read, with the last confirmation
 		// and what it left pending, so the person can fix the cause and confirm it as it is.
 		draft.UpdateTime, draft.Items.Confirmation = readUpdateTime, previous
-		if werr := s.writeDraft(ctx, draft, claimTime); werr != nil {
+		// Whether or not the caller is still there: the draft must not stay claimed.
+		if werr := s.writeDraft(context.WithoutCancel(ctx), draft, claimTime); werr != nil {
 			otellog.LogWarn(ctx, fmt.Sprintf("Restore draft of project %s: %v", projectID, werr))
 		}
 		span.SetStatus(codes.Error, "Commit definitions failed")
@@ -129,7 +130,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	confirmation.By, confirmation.Time = caller, draft.UpdateTime
 	confirmation.Files, confirmation.Pending = paths, nil
 	confirmation.SkippedValueTypes = compiled.SkippedValueTypes
-	if err := s.writeDraft(ctx, draft, draft.UpdateTime); err != nil {
+	if err := s.writeDraft(context.WithoutCancel(ctx), draft, draft.UpdateTime); err != nil {
 		span.SetStatus(codes.Error, "Record confirmation failed")
 		return nil, err
 	}

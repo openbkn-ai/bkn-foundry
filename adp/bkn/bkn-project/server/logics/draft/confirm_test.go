@@ -157,6 +157,33 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(restored.Items.Confirmation, ShouldResemble, last())
 		})
 
+		Convey("A refused commit is written back after the caller went away\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			gone, cancel := context.WithCancel(ctx)
+			refused := httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DefinitionsExist)
+			// The caller disconnects while the branch is being written.
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, string, string, map[string][]byte, []string, string,
+					interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+					cancel()
+					return nil, refused
+				})
+			var restoreErr error
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(c context.Context, _ *interfaces.Draft, _ int64) (bool, error) {
+					restoreErr = c.Err()
+					return true, nil
+				})
+
+			_, err := svc.ConfirmDraft(gone, token, "p1", confirm, caller)
+
+			So(errors.Is(err, refused), ShouldBeTrue)
+			So(restoreErr, ShouldBeNil)
+		})
+
 		Convey("A refused first commit leaves the draft without a confirmation\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
