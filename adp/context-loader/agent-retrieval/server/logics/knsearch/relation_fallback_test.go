@@ -9,8 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -33,7 +36,7 @@ func (b *fallbackBackend) GetRelationTypeDetail(_ context.Context, _ string, ids
 	}
 	for _, id := range ids {
 		if b.deniedIDs[id] {
-			return nil, errors.New("403 " + id)
+			return nil, &httperrors.HTTPError{HTTPCode: http.StatusForbidden, BaseError: httperrors.BaseError{ErrorCode: "Denied"}}
 		}
 	}
 	var out []*interfaces.RelationType
@@ -190,6 +193,23 @@ func TestPairFallbackRelationsReadsPrimariesOneByOneAfterABatchFails(t *testing.
 	}
 	if len(backend.detailIDs) != 3 {
 		t.Fatalf("detail lookups = %v, want the batch then one per id", backend.detailIDs)
+	}
+}
+
+// A dependency failure is not read again id by id: that would only repeat it, once per primary.
+func TestPairFallbackRelationsDoesNotFanOutOnADependencyFailure(t *testing.T) {
+	other := fallbackRelation()
+	other.ID, other.FallbackFor = "other_fallback", "other_primary"
+	backend := &fallbackBackend{mockBknBackend: &mockBknBackend{},
+		detailErr: &httperrors.HTTPError{HTTPCode: http.StatusInternalServerError, BaseError: httperrors.BaseError{ErrorCode: "Boom"}}}
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	out, fallbacks := svc.pairFallbackRelations(context.Background(), "kn1",
+		[]*interfaces.RelationType{fallbackRelation(), other})
+	if len(out) != 0 || len(fallbacks) != 0 {
+		t.Fatalf("relations = %v fallbacks = %v", relationIDs(out), fallbacks)
+	}
+	if len(backend.detailIDs) != 1 {
+		t.Fatalf("detail lookups = %v, want the batch alone", backend.detailIDs)
 	}
 }
 
