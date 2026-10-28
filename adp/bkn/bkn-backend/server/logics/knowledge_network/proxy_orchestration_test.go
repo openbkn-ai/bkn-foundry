@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -31,6 +32,9 @@ type proxyAccessStub struct {
 	lockAcquired    bool
 	lockReleased    bool
 	rejectLockRenew bool
+	renew           func(context.Context) (bool, error)
+	renewCount      int
+	renewed         chan struct{}
 	syncStatus      string
 	syncedVersion   string
 	pendingCount    int
@@ -190,7 +194,17 @@ func (s *proxyAccessStub) TryAcquireLock(context.Context, string, string, int64,
 	s.lockAcquired = true
 	return true, nil
 }
-func (s *proxyAccessStub) RenewLock(context.Context, string, string, int64, int64) (bool, error) {
+func (s *proxyAccessStub) RenewLock(ctx context.Context, _ string, _ string, _ int64, _ int64) (bool, error) {
+	if s.renew != nil {
+		return s.renew(ctx)
+	}
+	s.renewCount++
+	if s.renewed != nil {
+		select {
+		case s.renewed <- struct{}{}:
+		default:
+		}
+	}
 	if s.rejectLockRenew {
 		return false, nil
 	}
@@ -1659,6 +1673,7 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 		mappings: []*interfaces.KNProxyAccount{
 			{KNID: "kn-orphan", ProxyAccountID: "proxy-shared", LifecycleStatus: interfaces.KNProxyLifecycleActive},
 			{KNID: "kn-mapped", ProxyAccountID: "proxy-mapped", LifecycleStatus: interfaces.KNProxyLifecycleActive},
+			{KNID: "kn-deleted", ProxyAccountID: "proxy-deleted", LifecycleStatus: interfaces.KNProxyLifecycleDeleting},
 		},
 		conflicts: map[string][]string{"proxy-shared": {"kn-a", "kn-b"}},
 	}
@@ -1681,7 +1696,7 @@ func TestReconcileKNProxiesReportsMissingOrphanAndConflict(t *testing.T) {
 	if len(report.MissingMappings) != 1 || report.MissingMappings[0] != "kn-live" {
 		t.Fatalf("missing mappings = %#v", report.MissingMappings)
 	}
-	if len(report.OrphanMappings) != 1 || report.OrphanMappings[0] != "kn-orphan" {
+	if !reflect.DeepEqual(report.OrphanMappings, []string{"kn-deleted", "kn-orphan"}) {
 		t.Fatalf("orphan mappings = %#v", report.OrphanMappings)
 	}
 	if len(report.ConflictingProxy["proxy-shared"]) != 2 {
@@ -1764,14 +1779,15 @@ func TestProxyDeletionLifecycleIsOrdered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 0 || mpa.disabled || len(mpa.synced) != 0 || kpa.lifecycle != "" {
-		t.Fatalf("prepareProxyDelete() performed external side effects before commit: events=%#v", events)
+	if !reflect.DeepEqual(events, []string{"mapping:deleting"}) || mpa.disabled || len(mpa.synced) != 0 ||
+		kpa.lifecycle != interfaces.KNProxyLifecycleDeleting {
+		t.Fatalf("prepareProxyDelete() did not persist only the deletion marker: events=%#v", events)
 	}
 	events = append(events, "business:delete")
 	if err := service.finalizeProxyDelete(ctx, plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"business:delete", "proxy:disable", "mapping:disabling", "grants:sync", "snapshot:delete", "proxy:archive", "mapping:archived", "policy:delete"}
+	want := []string{"mapping:deleting", "business:delete", "proxy:disable", "grants:sync", "snapshot:delete", "proxy:archive", "policy:delete", "mapping:archived"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("deletion events = %#v, want %#v", events, want)
 	}
@@ -1785,16 +1801,113 @@ func TestProxyDeletionLifecycleIsOrdered(t *testing.T) {
 	}
 }
 
-func TestPrepareProxyDeleteAllowsLegacyNetworkWithoutMapping(t *testing.T) {
-	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}, mpa: &managedProxyAccessStub{}}
+func TestDeletingProxyCannotBeRestoredByPublication(t *testing.T) {
+	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDeleting,
+	}}
+	mpa := &managedProxyAccessStub{allowed: true}
+	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa}
+	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1"})
+
+	if _, err := service.prepareProxyPublish(ctx, &interfaces.KN{
+		KNID: "kn-1", KNName: "network", Branch: interfaces.MAIN_BRANCH,
+	}); err == nil {
+		t.Fatal("prepareProxyPublish() error = nil, want deleting lifecycle rejection")
+	}
+	if mpa.restored {
+		t.Fatal("deleting proxy was restored")
+	}
+}
+
+func TestProxyDeletionLeaseIsRenewedUntilStopped(t *testing.T) {
+	kpa := &proxyAccessStub{renewed: make(chan struct{}, 1)}
+	service := &knowledgeNetworkService{kpa: kpa}
+	plan := &proxyPublishPlan{mapping: &interfaces.KNProxyAccount{KNID: "kn-1"}, lockOwner: "worker-1"}
+
+	heartbeatCtx, stop := service.keepProxyLockAliveAtInterval(t.Context(), plan, time.Millisecond)
+	select {
+	case <-kpa.renewed:
+	case <-time.After(time.Second):
+		t.Fatal("proxy deletion lease was not renewed")
+	}
+	if err := stop(); err != nil {
+		t.Fatal(err)
+	}
+	if err := heartbeatCtx.Err(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("heartbeat context error = %v, want canceled", err)
+	}
+}
+
+func TestStoppingProxyDeletionHeartbeatIgnoresCanceledInFlightRenewal(t *testing.T) {
+	started := make(chan struct{})
+	kpa := &proxyAccessStub{renew: func(ctx context.Context) (bool, error) {
+		close(started)
+		<-ctx.Done()
+		return false, ctx.Err()
+	}}
+	service := &knowledgeNetworkService{kpa: kpa}
+	plan := &proxyPublishPlan{mapping: &interfaces.KNProxyAccount{KNID: "kn-1"}, lockOwner: "worker-1"}
+
+	_, stop := service.keepProxyLockAliveAtInterval(t.Context(), plan, time.Millisecond)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("proxy deletion lease renewal did not start")
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("stop() reported an intentional renewal cancellation: %v", err)
+	}
+}
+
+func TestStoppingProxyDeletionHeartbeatDoesNotHideLeaseLoss(t *testing.T) {
+	started := make(chan struct{})
+	kpa := &proxyAccessStub{renew: func(ctx context.Context) (bool, error) {
+		close(started)
+		<-ctx.Done()
+		return false, nil
+	}}
+	service := &knowledgeNetworkService{kpa: kpa}
+	plan := &proxyPublishPlan{mapping: &interfaces.KNProxyAccount{KNID: "kn-1"}, lockOwner: "worker-1"}
+
+	_, stop := service.keepProxyLockAliveAtInterval(t.Context(), plan, time.Millisecond)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("proxy deletion lease renewal did not start")
+	}
+	if err := stop(); err == nil {
+		t.Fatal("stop() hid a concurrent lease ownership failure")
+	}
+}
+
+func TestDeleteKNRejectsNonMainBranch(t *testing.T) {
+	service := &knowledgeNetworkService{}
+	err := service.DeleteKN(t.Context(), &interfaces.KN{KNID: "kn-1", Branch: "draft"})
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok || httpErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("DeleteKN() error = %#v, want bad request", err)
+	}
+}
+
+func TestPrepareProxyDeleteCreatesLockedMappingForLegacyNetwork(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().GetKNByID(gomock.Any(), "legacy-kn", interfaces.MAIN_BRANCH).
+		Return(&interfaces.KN{KNID: "legacy-kn", KNName: "Legacy", Branch: interfaces.MAIN_BRANCH}, nil)
+	kpa := &proxyAccessStub{}
+	mpa := &managedProxyAccessStub{}
+	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: mpa}
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1"})
 
 	plan, err := service.prepareProxyDelete(ctx, "legacy-kn", interfaces.MAIN_BRANCH)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan != nil {
-		t.Fatalf("prepareProxyDelete() = %#v, want legacy cleanup plan", plan)
+	if plan == nil || !plan.createdMapping || plan.lockOwner == "" || plan.mapping == nil {
+		t.Fatalf("prepareProxyDelete() = %#v, want locked legacy mapping", plan)
+	}
+	if mpa.createCount != 1 || kpa.mapping == nil || kpa.mapping.KNID != "legacy-kn" {
+		t.Fatalf("legacy mapping not materialized: creates=%d mapping=%#v", mpa.createCount, kpa.mapping)
 	}
 }
 
@@ -1822,7 +1935,7 @@ func TestFinalizeProxyDeleteRepairsAlreadyArchivedManagedProxy(t *testing.T) {
 	if err := service.finalizeProxyDelete(t.Context(), plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"proxy:disable", "grants:sync", "snapshot:delete", "mapping:archived", "policy:delete"}
+	want := []string{"proxy:disable", "grants:sync", "snapshot:delete", "mapping:deleting", "policy:delete", "mapping:archived"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("recovery events = %#v, want %#v", events, want)
 	}
@@ -1831,22 +1944,20 @@ func TestFinalizeProxyDeleteRepairsAlreadyArchivedManagedProxy(t *testing.T) {
 	}
 }
 
-func TestDeleteKNRollbackDoesNotDisableProxy(t *testing.T) {
+func TestDeleteKNRevokesProxyBeforeLoadingChildAuthorization(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	db, databaseMock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	databaseMock.ExpectBegin()
-	databaseMock.ExpectRollback()
 
 	permissionService := bmock.NewMockPermissionService(ctrl)
 	permissionService.EXPECT().CheckPermission(gomock.Any(), gomock.Any(),
 		[]string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
 	kna := bmock.NewMockKNAccess(ctrl)
-	kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
-		Return(int64(0), errors.New("delete failed"))
+	kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn-1"}, interfaces.MAIN_BRANCH).
+		Return(nil, errors.New("list children failed"))
 	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
 		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
 		SyncStatus: interfaces.KNProxySyncReady,
@@ -1856,14 +1967,14 @@ func TestDeleteKNRollbackDoesNotDisableProxy(t *testing.T) {
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "grantor-1", Type: "user"})
 
 	if err := service.DeleteKN(ctx, &interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}); err == nil {
-		t.Fatal("DeleteKN() error = nil, want transaction failure")
+		t.Fatal("DeleteKN() error = nil, want child authorization failure")
 	}
-	if mpa.disabled || mpa.archived || len(mpa.synced) != 0 || kpa.lifecycle != "" {
-		t.Fatalf("rolled-back deletion changed proxy: disabled=%v archived=%v synced=%#v lifecycle=%q",
+	if !mpa.disabled || !mpa.archived || len(mpa.syncGenerations) != 1 || kpa.lifecycle != interfaces.KNProxyLifecycleDeleting {
+		t.Fatalf("deletion did not revoke proxy first: disabled=%v archived=%v synced=%#v lifecycle=%q",
 			mpa.disabled, mpa.archived, mpa.synced, kpa.lifecycle)
 	}
 	if !kpa.lockReleased {
-		t.Fatal("rolled-back deletion did not release the proxy lock")
+		t.Fatal("failed deletion did not release the proxy lock")
 	}
 	if err := databaseMock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -1899,6 +2010,57 @@ func TestFinalizeKNProxyDeletionAuthorizesArchivedCleanup(t *testing.T) {
 	}
 	if !reflect.DeepEqual(events, []string{"permission:check", "policy:delete"}) {
 		t.Fatalf("finalize events = %#v", events)
+	}
+}
+
+func TestFinalizeKNProxyDeletionKeepsPermissionWhileNetworkExists(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	permissionService := bmock.NewMockPermissionService(ctrl)
+	permissionService.EXPECT().CheckPermission(gomock.Any(), gomock.Any(),
+		[]string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
+	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).
+		Return(&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH}, nil)
+	service := &knowledgeNetworkService{
+		kna: kna,
+		kpa: &proxyAccessStub{mapping: &interfaces.KNProxyAccount{
+			KNID: "kn-1", LifecycleStatus: interfaces.KNProxyLifecycleDeleting,
+		}},
+		mpa: &managedProxyAccessStub{},
+		ps:  permissionService,
+	}
+
+	err := service.FinalizeKNProxyDeletion(t.Context(), "kn-1")
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok || httpErr.HTTPCode != http.StatusConflict {
+		t.Fatalf("FinalizeKNProxyDeletion() error = %#v, want conflict", err)
+	}
+}
+
+func TestFinalizeKNProxyDeletionArchivesCommittedDeletionWithoutParentPolicy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	events := []string{}
+	permissionService := bmock.NewMockPermissionService(ctrl)
+	permissionService.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn-1"}).
+		DoAndReturn(func(context.Context, string, []string) error {
+			events = append(events, "policy:delete")
+			return nil
+		})
+	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(nil, nil)
+	kpa := &proxyAccessStub{events: &events, mapping: &interfaces.KNProxyAccount{
+		KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDeleting,
+	}}
+	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: &managedProxyAccessStub{}, ps: permissionService}
+
+	if err := service.FinalizeKNProxyDeletion(t.Context(), "kn-1"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(events, []string{"policy:delete", "mapping:archived"}) {
+		t.Fatalf("finalize events = %#v", events)
+	}
+	if !kpa.lockAcquired || !kpa.lockReleased {
+		t.Fatal("committed deletion tail was not fenced by the proxy lock")
 	}
 }
 

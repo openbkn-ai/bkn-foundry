@@ -252,17 +252,3 @@ func checkDeclaredHierarchy(ctx context.Context, registry *authz.Registry, resou
 	}
 	return nil
 }
-
-// dropResourceParent removes the hierarchy row for one instance. Called on the
-// resource-delete path alongside the policy teardown, so a deleted resource does
-// not leave a row that would later make a recycled id inherit from a stale
-// parent. Best-effort by design: the caller is deleting policies, and a failure
-// to tidy the hierarchy must not fail that.
-func dropResourceParent(ctx context.Context, db *gorm.DB, resourceType, resourceID string) error {
-	if db == nil || resourceType == "" || resourceID == "" {
-		return nil
-	}
-	return db.WithContext(ctx).
-		Where("resource_type_id = ? AND resource_id = ?", resourceType, resourceID).
-		Delete(&model.ResourceParent{}).Error
-}

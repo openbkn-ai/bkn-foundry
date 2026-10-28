@@ -119,6 +119,31 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(serveBody(handler, http.MethodPost, base+"/draft:confirm", nil).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("check:run runs the check again as the caller and replies 202\n", func() {
+			drs.EXPECT().RunCheck(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.Check{ProjectID: "p1", Commit: "c1", Status: interfaces.CHECK_STATUS_RUNNING}, nil)
+
+			w := serve(handler, http.MethodPost, base+"/check:run")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
+			So(w.Body.String(), ShouldContainSubstring, `"status":"running"`)
+		})
+
+		Convey("The check is replied as is, or with the service's error\n", func() {
+			drs.EXPECT().GetCheck(gomock.Any(), "Bearer t", "p1").
+				Return(&interfaces.Check{ProjectID: "p1", Commit: "c1", RunID: "r1", Status: interfaces.CHECK_STATUS_PASSED}, nil)
+			w := serve(handler, http.MethodGet, base+"/check")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"commit":"c1"`)
+			So(w.Body.String(), ShouldNotContainSubstring, "r1")
+
+			drs.EXPECT().GetCheck(gomock.Any(), "Bearer t", "p1").
+				Return(nil, httperrors.NewHTTPError(context.Background(), http.StatusNotFound, perrors.BknProject_Check_NotFound))
+			w = serve(handler, http.MethodGet, base+"/check")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Check_NotFound)
+		})
+
 		Convey("Any other ontology action is not found\n", func() {
 			So(serve(handler, http.MethodPost, base+"/draft:delete").Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})

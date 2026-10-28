@@ -103,7 +103,7 @@ func Test_DraftingFloor(t *testing.T) {
 			So(r.Adopted, ShouldBeTrue)
 		})
 
-		Convey("A low-cardinality field matching by chance is proposed, not adopted\n", func() {
+		Convey("A low-cardinality field matching by chance is proposed, not adopted, and says why\n", func() {
 			c := sampleCounter()
 			c.joins[joinKey{"r_orders", "salesperson_id"}] = [4]int64{800, 0, 0, 3}
 
@@ -112,6 +112,41 @@ func Test_DraftingFloor(t *testing.T) {
 			So(r.Evidence.HitRate, ShouldEqual, 1)
 			So(r.Evidence.SourceDistinct, ShouldEqual, 3)
 			So(r.Adopted, ShouldBeFalse)
+			So(r.ProposedBecause, ShouldEqual, proposedFewValues)
+		})
+
+		Convey("How few values are too few is a setting\n", func() {
+			c := sampleCounter()
+			c.joins[joinKey{"r_orders", "salesperson_id"}] = [4]int64{800, 0, 0, 3}
+			setting := testSetting
+			setting.MinInferredDistinct = 3
+
+			items, err := newDrafter(setting, c).draft(ctx, sample(), nil)
+
+			So(err, ShouldBeNil)
+			r := relation(items, "orders", "salesperson")
+			So(r.Adopted, ShouldBeTrue)
+			So(r.ProposedBecause, ShouldBeEmpty)
+		})
+
+		Convey("An inferred relation below the adopt rate is proposed, and says why\n", func() {
+			c := sampleCounter()
+			c.joins[joinKey{"r_orders", "salesperson_id"}] = [4]int64{800, 0, 80, 60}
+
+			r := relation(draftOf(c, sample()...), "orders", "salesperson")
+
+			So(r.Adopted, ShouldBeFalse)
+			So(r.ProposedBecause, ShouldEqual, proposedBelowAdoptRate)
+		})
+
+		Convey("A relation that could not be counted is proposed, and says why\n", func() {
+			c := sampleCounter()
+			c.failed["r_orders.salesperson_id"] = true
+
+			r := relation(draftOf(c, sample()...), "orders", "salesperson")
+
+			So(r.Adopted, ShouldBeFalse)
+			So(r.ProposedBecause, ShouldEqual, proposedNotCounted)
 		})
 
 		Convey("A small entity whose key is no code is not drafted as an enum\n", func() {

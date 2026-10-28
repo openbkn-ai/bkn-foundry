@@ -158,7 +158,7 @@ func TestSnapshotTransactionsMatchStore(t *testing.T) {
 		case 8:
 			id := pick(ids)
 			step = "remove resource " + id
-			opErr = en.RemoveResourcePolicies("catalog", id)
+			opErr = en.RemoveResourcePolicies(ctx, "catalog", id)
 		case 9:
 			u := pick(users)
 			step = "remove accessor " + u
@@ -330,7 +330,7 @@ func TestWritePathsNeedOneConnection(t *testing.T) {
 					return tx.GrantObjectPermission("u-3", "catalog", "c-3", "view_detail")
 				})
 			},
-			func() error { return en.RemoveResourcePolicies("catalog", "c-3") },
+			func() error { return en.RemoveResourcePolicies(ctx, "catalog", "c-3") },
 			func() error { return en.RemoveRoleCompletely("r-a") },
 			func() error { _, err := en.ReloadPolicy(ctx); return err },
 		}

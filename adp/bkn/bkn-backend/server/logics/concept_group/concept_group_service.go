@@ -1142,7 +1142,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
 		defer func() {
 			if trackerOwner && err == nil {
-				_ = cleanupTracker.Cleanup(ctx, cgs.ps)
+				err = cleanupTracker.Cleanup(ctx, cgs.ps)
 			}
 		}()
 	}

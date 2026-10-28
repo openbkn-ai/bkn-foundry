@@ -237,6 +237,23 @@ func TestValidateOutboxPayloadRejectsDivergentDesiredSnapshot(t *testing.T) {
 	}
 }
 
+func TestValidateOutboxPayloadRejectsUnsafeAuthorizationCleanup(t *testing.T) {
+	event := &interfaces.KNProxyOutboxEvent{
+		KNID: "kn-1", GrantorID: "editor-1", TargetVersion: "v1",
+		AuthorizationCleanups: []interfaces.AuthorizationCleanupTarget{{
+			ResourceType: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			ResourceIDs:  []string{"kn-1/*"},
+		}},
+	}
+	if err := validateOutboxPayload(event); err == nil {
+		t.Fatal("validateOutboxPayload() error = nil, want wildcard cleanup rejection")
+	}
+	event.AuthorizationCleanups[0].ResourceIDs = []string{"kn-1/object-1"}
+	if err := validateOutboxPayload(event); err != nil {
+		t.Fatalf("validateOutboxPayload() valid cleanup error = %v", err)
+	}
+}
+
 func TestCompleteKeepsLatestPendingVersionWhenNewerGenerationExists(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

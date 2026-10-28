@@ -5,6 +5,7 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -482,13 +483,19 @@ func TestRemoveResourcePolicies(t *testing.T) {
 	if err := db.Create(&source).Error; err != nil {
 		t.Fatal(err)
 	}
+	parent := model.ResourceParent{
+		ResourceTypeID: "pipeline", ResourceID: "p1", ParentTypeID: "workspace", ParentID: "w1",
+	}
+	if err := db.Create(&parent).Error; err != nil {
+		t.Fatal(err)
+	}
 	mustNoErr(t, e.GrantObjectPermission(proxy, "pipeline", "p1", "read"))
 
 	ok, _ := e.Check(user, "pipeline", "p1", "read")
 	if !ok {
 		t.Fatal("expected read before removal")
 	}
-	if err := e.RemoveResourcePolicies("pipeline", "p1"); !errors.Is(err, ErrManagedProxyPolicies) {
+	if err := e.RemoveResourcePolicies(t.Context(), "pipeline", "p1"); !errors.Is(err, ErrManagedProxyPolicies) {
 		t.Fatalf("RemoveResourcePolicies() error = %v, want managed proxy conflict", err)
 	}
 	if ok, _ := e.Check(user, "pipeline", "p1", "read"); !ok {
@@ -497,12 +504,54 @@ func TestRemoveResourcePolicies(t *testing.T) {
 	if err := db.Model(&source).Update("lifecycle_status", "revoked").Error; err != nil {
 		t.Fatal(err)
 	}
-	mustNoErr(t, e.RemoveResourcePolicies("pipeline", "p1"))
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := e.RemoveResourcePolicies(canceled, "pipeline", "p1"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("RemoveResourcePolicies() error = %v, want context cancellation", err)
+	}
+	if ok, _ := e.Check(user, "pipeline", "p1", "read"); !ok {
+		t.Error("ordinary policy changed despite context cancellation")
+	}
+	var parentCount int64
+	if err := db.Model(&model.ResourceParent{}).
+		Where("resource_type_id = ? AND resource_id = ?", "pipeline", "p1").
+		Count(&parentCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if parentCount != 1 {
+		t.Fatalf("resource parent count after canceled cleanup = %d, want 1", parentCount)
+	}
+
+	mustNoErr(t, e.RemoveResourcePolicies(t.Context(), "pipeline", "p1"))
 	if ok, _ := e.Check(user, "pipeline", "p1", "read"); ok {
 		t.Error("read still allowed after RemoveResourcePolicies")
 	}
 	if ok, _ := e.Check(proxy, "pipeline", "p1", "read"); ok {
 		t.Error("unsourced proxy policy still allowed after RemoveResourcePolicies")
+	}
+	if err := db.Model(&model.ResourceParent{}).
+		Where("resource_type_id = ? AND resource_id = ?", "pipeline", "p1").
+		Count(&parentCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if parentCount != 0 {
+		t.Fatalf("resource parent count after cleanup = %d, want 0", parentCount)
+	}
+}
+
+func TestResourceCleanupIndexesMigrated(t *testing.T) {
+	_, db := newTestEnforcerDB(t)
+	tests := []struct {
+		model any
+		name  string
+	}{
+		{model: &model.AuthorizationGrant{}, name: "idx_authorization_grant_object_grant"},
+		{model: &model.ProxyGrantSource{}, name: "idx_proxy_grant_source_resource_lifecycle"},
+	}
+	for _, test := range tests {
+		if !db.Migrator().HasIndex(test.model, test.name) {
+			t.Errorf("migration did not create index %s", test.name)
+		}
 	}
 }
 

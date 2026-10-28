@@ -493,7 +493,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
 		defer func() {
 			if trackerOwner && err == nil {
-				_ = cleanupTracker.Cleanup(ctx, rts.ps)
+				err = cleanupTracker.Cleanup(ctx, rts.ps)
 			}
 		}()
 	}

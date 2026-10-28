@@ -115,6 +115,21 @@ func (mr *MockDraftServiceMockRecorder) GenerateDraft(ctx, token, projectID, cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDraft", reflect.TypeOf((*MockDraftService)(nil).GenerateDraft), ctx, token, projectID, caller, discardDecisions)
 }
 
+// GetCheck mocks base method.
+func (m *MockDraftService) GetCheck(ctx context.Context, token, projectID string) (*interfaces.Check, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCheck", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.Check)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCheck indicates an expected call of GetCheck.
+func (mr *MockDraftServiceMockRecorder) GetCheck(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCheck", reflect.TypeOf((*MockDraftService)(nil).GetCheck), ctx, token, projectID)
+}
+
 // GetDraft mocks base method.
 func (m *MockDraftService) GetDraft(ctx context.Context, token, projectID string) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -143,4 +158,19 @@ func (m *MockDraftService) RestoreExcluded(ctx context.Context, token, projectID
 func (mr *MockDraftServiceMockRecorder) RestoreExcluded(ctx, token, projectID, restore, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreExcluded", reflect.TypeOf((*MockDraftService)(nil).RestoreExcluded), ctx, token, projectID, restore, caller)
+}
+
+// RunCheck mocks base method.
+func (m *MockDraftService) RunCheck(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.Check, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunCheck", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(*interfaces.Check)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunCheck indicates an expected call of RunCheck.
+func (mr *MockDraftServiceMockRecorder) RunCheck(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCheck", reflect.TypeOf((*MockDraftService)(nil).RunCheck), ctx, token, projectID, caller)
 }

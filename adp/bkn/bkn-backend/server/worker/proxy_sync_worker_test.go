@@ -65,13 +65,13 @@ func (s *proxySyncOutboxStub) CleanupTerminal(context.Context, int64, int) (int6
 }
 
 func TestProxySyncWorkerDefaultsAndUpgradeDisableSwitch(t *testing.T) {
-	defaults := NewProxySyncWorker(nil, nil, nil)
+	defaults := NewProxySyncWorker(nil, nil, nil, nil)
 	t.Cleanup(defaults.cancel)
 	if !defaults.enabled || defaults.workers != 4 || defaults.lease != 60*time.Second {
 		t.Fatalf("default worker settings = enabled %t, workers %d, lease %v",
 			defaults.enabled, defaults.workers, defaults.lease)
 	}
-	disabled := NewProxySyncWorker(&common.AppSetting{}, nil, nil)
+	disabled := NewProxySyncWorker(&common.AppSetting{}, nil, nil, nil)
 	t.Cleanup(disabled.cancel)
 	if disabled.enabled {
 		t.Fatal("zero-valued deployment configuration did not disable the worker")
@@ -81,19 +81,58 @@ func TestProxySyncWorkerDefaultsAndUpgradeDisableSwitch(t *testing.T) {
 func TestProxySyncWorkerCompletesSuccessfulDelta(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	proxy := bmock.NewMockManagedProxyAccess(ctrl)
+	permission := bmock.NewMockPermissionService(ctrl)
 	event := &interfaces.KNProxyOutboxEvent{
 		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", GrantorID: "editor-1",
 		Generation: 2, BaseVersion: "v1", TargetVersion: "v2",
+		AuthorizationCleanups: []interfaces.AuthorizationCleanupTarget{{
+			ResourceType: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			ResourceIDs:  []string{"kn-1/object-1"},
+		}},
 	}
 	proxy.EXPECT().SyncGrantDelta(gomock.Any(), "proxy-1", "editor-1", int64(2), "v1", "v2",
 		event.Upserts, event.Removals).Return(interfaces.ProxyGrantSyncResult{}, nil)
+	permission.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/object-1"}).Return(nil)
 	outbox := &proxySyncOutboxStub{}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	w := &ProxySyncWorker{outbox: outbox, proxy: proxy, lease: time.Minute, maxAttempts: 12, ctx: ctx}
+	w := &ProxySyncWorker{outbox: outbox, proxy: proxy, permission: permission,
+		lease: time.Minute, maxAttempts: 12, ctx: ctx}
 	w.process("pod-1", event)
 	if outbox.completed != event || outbox.retriedID != "" {
 		t.Fatalf("worker result = completed %#v, retried %q", outbox.completed, outbox.retriedID)
+	}
+}
+
+func TestProxySyncWorkerRetriesAuthorizationCleanupAfterProxyAccepted(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	proxy := bmock.NewMockManagedProxyAccess(ctrl)
+	permission := bmock.NewMockPermissionService(ctrl)
+	cleanupErr := errors.New("safe cleanup temporarily unavailable")
+	event := &interfaces.KNProxyOutboxEvent{
+		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", GrantorID: "editor-1",
+		Generation: 2, BaseVersion: "v1", TargetVersion: "v2", AttemptCount: 12,
+		AuthorizationCleanups: []interfaces.AuthorizationCleanupTarget{{
+			ResourceType: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			ResourceIDs:  []string{"kn-1/object-1"},
+		}},
+	}
+	proxy.EXPECT().SyncGrantDelta(gomock.Any(), "proxy-1", "editor-1", int64(2), "v1", "v2",
+		event.Upserts, event.Removals).Return(interfaces.ProxyGrantSyncResult{}, nil)
+	permission.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/object-1"}).Return(cleanupErr)
+	outbox := &proxySyncOutboxStub{}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	w := &ProxySyncWorker{outbox: outbox, proxy: proxy, permission: permission,
+		lease: time.Minute, maxAttempts: 12, ctx: ctx}
+
+	w.process("pod-1", event)
+
+	if outbox.completed != nil || outbox.retriedID != event.ID || outbox.retryDead || !outbox.safeApplied {
+		t.Fatalf("cleanup retry = completed %#v, id %q, dead %t, proxy applied %t",
+			outbox.completed, outbox.retriedID, outbox.retryDead, outbox.safeApplied)
 	}
 }
 
@@ -185,6 +224,41 @@ func TestLeaseRenewalCanceledAfterSafeCompletionIsNotReportedAsLeaseLoss(t *test
 	case err := <-lost:
 		t.Fatalf("normal completion reported lease loss: %v", err)
 	default:
+	}
+}
+
+func TestLeaseRenewalCancellationDoesNotHideOwnerChange(t *testing.T) {
+	started := make(chan struct{})
+	outbox := &proxySyncOutboxStub{renew: func(ctx context.Context) (bool, error) {
+		close(started)
+		<-ctx.Done()
+		return false, nil
+	}}
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	t.Cleanup(workerCancel)
+	w := &ProxySyncWorker{outbox: outbox, lease: 3 * time.Millisecond, ctx: workerCtx}
+	processCtx, processCancel := context.WithCancel(workerCtx)
+	done := make(chan struct{})
+	lost := make(chan error, 1)
+	go w.renewLease(processCtx, processCancel, done, lost, "pod-1", "event-1")
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("lease renewal did not start")
+	}
+	processCancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("lease renewal did not stop")
+	}
+	select {
+	case err := <-lost:
+		if err == nil {
+			t.Fatal("lease owner change reported a nil error")
+		}
+	default:
+		t.Fatal("lease owner change was hidden by cancellation")
 	}
 }
 

@@ -157,6 +157,13 @@ func IsValidAuthorizationID(id string) bool {
 	return id != "" && strings.TrimSpace(id) == id && !strings.ContainsAny(id, "/*")
 }
 
+// IsValidKNChildResourceID reports whether an ID is the canonical, unambiguous
+// Safe identity of one concrete child inside one knowledge network.
+func IsValidKNChildResourceID(id string) bool {
+	parts := strings.Split(id, "/")
+	return len(parts) == 2 && IsValidAuthorizationID(parts[0]) && IsValidAuthorizationID(parts[1])
+}
+
 // PermissionResourcesFilter is used for filtering and deletion.
 //
 // Operations determine visibility: a resource must hold all listed operations
