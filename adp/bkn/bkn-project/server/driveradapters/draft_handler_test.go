@@ -144,6 +144,16 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Check_NotFound)
 		})
 
+		Convey("The status is computed for the caller\n", func() {
+			drs.EXPECT().GetStatus(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.ProjectStatus{ProjectID: "p1", Stage: interfaces.PROJECT_STAGE_DECIDING}, nil)
+
+			w := serve(handler, http.MethodGet, "/api/bkn-project/v1/projects/p1/status")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"stage":"deciding"`)
+		})
+
 		Convey("Any other ontology action is not found\n", func() {
 			So(serve(handler, http.MethodPost, base+"/draft:delete").Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})

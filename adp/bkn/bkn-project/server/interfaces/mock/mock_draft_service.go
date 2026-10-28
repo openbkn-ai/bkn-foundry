@@ -145,6 +145,21 @@ func (mr *MockDraftServiceMockRecorder) GetDraft(ctx, token, projectID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDraft", reflect.TypeOf((*MockDraftService)(nil).GetDraft), ctx, token, projectID)
 }
 
+// GetStatus mocks base method.
+func (m *MockDraftService) GetStatus(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStatus", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStatus indicates an expected call of GetStatus.
+func (mr *MockDraftServiceMockRecorder) GetStatus(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStatus", reflect.TypeOf((*MockDraftService)(nil).GetStatus), ctx, token, projectID, caller)
+}
+
 // RestoreExcluded mocks base method.
 func (m *MockDraftService) RestoreExcluded(ctx context.Context, token, projectID string, restore interfaces.DraftRestore, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
