@@ -227,6 +227,10 @@ type DraftRelationType struct {
 	// Verification is "confirmed" for a declared foreign key, "unconfirmed" for an inferred one.
 	Verification string            `json:"verification"`
 	Evidence     DraftJoinEvidence `json:"evidence"`
+	// ProposedBecause says why drafting proposed the relation rather than adopting it: not counted,
+	// a hit rate below the suggest or adopt rate, or a field of too few values to tell a match from
+	// chance. Empty for a relation drafting adopted.
+	ProposedBecause string `json:"proposed_because,omitempty"`
 }
 
 type DraftFieldMapping struct {

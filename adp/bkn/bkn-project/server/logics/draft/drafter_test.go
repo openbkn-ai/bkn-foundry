@@ -21,6 +21,7 @@ var testSetting = common.DraftSetting{
 	CodeTableMaxColumns: 3,
 	AdoptHitRate:        0.95,
 	SuggestHitRate:      0.8,
+	MinInferredDistinct: 10,
 	PrivacyKeywords:     append([]string{"手机"}, common.DefaultPrivacyKeywords...),
 	NameFieldKeywords:   append([]string{"名称"}, common.DefaultNameFieldKeywords...),
 }
