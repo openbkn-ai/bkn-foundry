@@ -20,6 +20,12 @@ import (
 // what failed.
 const checkAttempts = 2
 
+// checkRun is a check running in this process; checks only run in the process that started them.
+type checkRun struct {
+	runID  string
+	cancel context.CancelFunc
+}
+
 // checkStaleAfter is how long a run may take: its attempts, with a minute to record it. A check
 // running longer has ended without being recorded.
 func (s *draftService) checkStaleAfter() time.Duration {
@@ -64,9 +70,20 @@ func (s *draftService) startCheck(ctx context.Context, projectID string, commit 
 		return
 	}
 	// The run outlives the request; it keeps the trace but not the request's cancellation.
-	background := context.WithoutCancel(ctx)
+	// A later run of the project stops it, so replaced runs do not keep counting on the source.
+	background, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	run := &checkRun{runID: check.RunID, cancel: cancel}
+	if previous, replaced := s.checkRuns.Swap(projectID, run); replaced {
+		previous.(*checkRun).cancel()
+	}
 	counter := &vegaCounter{va: s.va, account: runner, timeoutSeconds: s.setting.QueryTimeout}
-	s.run(func() { s.check(background, check, input, counter) })
+	s.run(func() {
+		defer func() {
+			cancel()
+			s.checkRuns.CompareAndDelete(projectID, run)
+		}()
+		s.check(background, check, input, counter)
+	})
 }
 
 // check runs a started check and records its outcome. Each attempt has the check timeout; a
@@ -78,7 +95,8 @@ func (s *draftService) check(ctx context.Context, check *interfaces.Check, input
 		results = runCheck(attemptCtx, c, input, results)
 		cancel()
 		check.Attempt = attempt
-		if checkStatus(results) != interfaces.CHECK_STATUS_FAILED {
+		// A run a later one replaced is not retried; its outcome is not recorded anyway.
+		if checkStatus(results) != interfaces.CHECK_STATUS_FAILED || ctx.Err() != nil {
 			break
 		}
 	}
@@ -90,7 +108,7 @@ func (s *draftService) check(ctx context.Context, check *interfaces.Check, input
 		return
 	}
 	check.Results = resultsJSON
-	written, err := s.ca.FinishCheck(ctx, check)
+	written, err := s.ca.FinishCheck(context.WithoutCancel(ctx), check)
 	switch {
 	case err != nil:
 		// Left running, it is taken over once stale, or failed as interrupted on the next start.

@@ -99,6 +99,32 @@ func Test_StartCheck(t *testing.T) {
 			So(finished.Status, ShouldEqual, interfaces.CHECK_STATUS_PASSED)
 		})
 
+		Convey("A run replaced by a later one stops counting, and is not retried\n", func() {
+			va := pmock.NewMockVegaAccess(ctrl)
+			svc.va = va
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil).Times(2)
+			ca.EXPECT().StartCheck(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+			// The replaced run queries nothing more: every item it had left fails as cut short.
+			va.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			var replaced interfaces.Check
+			ca.EXPECT().FinishCheck(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, check *interfaces.Check) (bool, error) {
+					replaced = *check
+					return false, nil
+				})
+
+			svc.startCheck(ctx, "p1", "c1", input, caller)
+			svc.startCheck(ctx, "p1", "c2", input, caller)
+			ran[0]()
+
+			So(replaced.Commit, ShouldEqual, "c1")
+			So(replaced.Attempt, ShouldEqual, 1)
+			// The later run is still the project's.
+			current, ok := svc.checkRuns.Load("p1")
+			So(ok, ShouldBeTrue)
+			So(current.(*checkRun).runID, ShouldNotEqual, replaced.RunID)
+		})
+
 		Convey("A commit already checked is not checked again\n", func() {
 			for _, status := range []string{interfaces.CHECK_STATUS_PASSED, interfaces.CHECK_STATUS_ISSUES} {
 				ca.EXPECT().GetCheck(gomock.Any(), "p1").

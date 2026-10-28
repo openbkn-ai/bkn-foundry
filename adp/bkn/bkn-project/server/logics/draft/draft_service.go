@@ -55,6 +55,8 @@ type draftService struct {
 	ls interfaces.LineageService
 	// run drafts in the background; tests replace it to run in line.
 	run func(fn func())
+	// checkRuns holds each project's running check, a *checkRun, so a later run can stop it.
+	checkRuns sync.Map
 }
 
 func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
