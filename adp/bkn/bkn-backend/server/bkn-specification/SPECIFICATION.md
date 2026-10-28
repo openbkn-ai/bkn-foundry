@@ -265,7 +265,7 @@ frontmatter 中的其他字段除各章节明确列出的之外，2.x 下一律�
 
 ### 4.3 生命周期（3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储对象类、关系类、行动类的 `lifecycle`，接口读写它，保存时按本节规则检查，跨定义的规则（`replaced_by`、端点弃用）在任何一方保存时都检查，删除仍被 `replaced_by` 引用的定义时拒绝；上传与导出 3.0 包时随包往返。Context Loader 的概念召回不返回 `deprecated` 的定义，按 ID 查询照常返回；按 ID 查到时提示替代定义仍在实现中（bkn-foundry#2285）。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储对象类、关系类、行动类的 `lifecycle`，接口读写它，保存时按本节规则检查，跨定义的规则（`replaced_by`、端点弃用）在任何一方保存时都检查，删除仍被 `replaced_by` 引用的定义时拒绝；上传与导出 3.0 包时随包往返。Context Loader 的概念召回不返回 `deprecated` 的定义，按 ID 查询照常返回并带上 `lifecycle`（含 `replaced_by`）。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 对象类、关系类、行动类的 frontmatter 可写 `lifecycle`，取值与含义参考 Palantir 的 status；接口与 JSON 导入导出中是同名、同结构的字段：
 
@@ -768,7 +768,7 @@ value: 启用
 
 ### 7.6 关系声明（3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储关系声明（`reverse_name`、`aliases`、`Cardinality`、`### Relation Constraints`、`importance`、`fallback_for`、`verification`）与关系属性，关系类接口读写它们，保存时按本节规则检查，跨定义的规则（`fallback_for`）在任何一方保存时都检查，删除仍被 `fallback_for` 或 `replaced_by` 引用的关系类时拒绝；上传与导出 3.0 包时随包往返。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储关系声明（`reverse_name`、`aliases`、`Cardinality`、`### Relation Constraints`、`importance`、`fallback_for`、`verification`）与关系属性，关系类接口读写它们，保存时按本节规则检查，跨定义的规则（`fallback_for`）在任何一方保存时都检查，删除仍被 `fallback_for` 或 `replaced_by` 引用的关系类时拒绝；上传与导出 3.0 包时随包往返。Context Loader 的 `search_schema` 输出关系声明与关系属性，主关系与替代路径配对输出并附替代规则，替代路径不单独出现。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 ````markdown
 ---

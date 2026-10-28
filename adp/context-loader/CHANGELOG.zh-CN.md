@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- `search_schema` 输出 BKN 规范 3.0 的关系声明：`reverse_name`、`cardinality`、`required`、`characteristics`、`verification`、`importance`（primary 时不输出）与关系属性。主关系在 `fallback` 下带上替代路径及替代规则，替代路径不再单独出现：只召回到替代路径时补出它的主关系。对象类、关系类、行动类非 active 时带 `lifecycle`，按 ID 查到已弃用的定义（`get_object_types`、`get_relation_types`、指定 ID 的对象类）时可从中看到替代定义。无这些声明的网络输出与之前相同。 (#2285)
+
 - 在既有生命周期预算内为确认恢复保留时间，使用原幂等键重放 start，并冻结终态载荷与附件引用；不重复执行业务工具。 (#2539)
 
 ### 功能与改进

@@ -162,6 +162,11 @@
                 ]
               },
               "description": "当前账户对各属性的有效权限：full 可读原值，masked 读到脱敏值，schema 只见字段不见值。所有属性都是 full 时省略此字段；只要有一个受限属性就完整列出。"
+            },
+            "lifecycle": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "生命周期 {status, reason, replaced_by}。概念召回不返回已弃用的对象类，只有按 object_types 指定 ID 时才可能出现；有 replaced_by 时改用它。active 时不带这个键。"
             }
           },
           "additionalProperties": true
@@ -192,6 +197,53 @@
             "target_object_type_id": {
               "type": "string",
               "description": "终点对象类 ID"
+            },
+            "reverse_name": {
+              "type": "string",
+              "description": "反向名称：从终点看向起点时的叫法。没声明时不带这个键。"
+            },
+            "cardinality": {
+              "type": "string",
+              "description": "基数：one_to_one / one_to_many / many_to_one / many_to_many，方向为 source → target，统计的是不同的对端实例。沿 one_to_many 连接后对「一」端求和会被放大；indirect 关系同一对实例可能有多条边，聚合前先按端点实例去重。没声明时不带这个键。"
+            },
+            "required": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "必有：[source]、[target] 或两者，该端每个实例至少关联一个对端实例。没声明时不带这个键。"
+            },
+            "characteristics": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "关系特性：symmetric / transitive 的子集，只用于两端为同一对象类的关系。数据只存直接的边，查询时按特性展开。没声明时不带这个键。"
+            },
+            "importance": {
+              "type": "string",
+              "description": "主次：secondary 为辅助关系，主要关系答不了或问题明确涉及时才用，回答中注明来自补充关系。primary（默认）时不带这个键。"
+            },
+            "verification": {
+              "type": "string",
+              "description": "可信度：confirmed 按真实标识关联；unconfirmed 按规则推测（规则见 comment），用到它的结果标为「待确认」。没声明时不带这个键。"
+            },
+            "lifecycle": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "生命周期 {status, reason, replaced_by}。概念召回不返回已弃用的关系，所以通常不出现；active 时不带这个键。"
+            },
+            "data_properties": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "description": "关系属性（只有 indirect 关系有），字段与对象类的 data_properties 相同。"
+            },
+            "fallback": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "替代路径 {relation_id, relation_name, comment, verification, rule}：本关系对某个 Source 实例没有对端时，按 rule 改用 relation_id 这条关系。平台不自动执行替代，由你按 rule 分步查询。替代路径不会单独出现在 relation_types 里。"
             }
           },
           "additionalProperties": true

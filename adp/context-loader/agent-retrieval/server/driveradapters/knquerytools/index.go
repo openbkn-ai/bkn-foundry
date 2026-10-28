@@ -384,6 +384,8 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	// Relation declarations are search_schema's to surface, but for lifecycle and the fallback marking (#2285).
+	interfaces.OmitRelationDeclarations(matched)
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "relation", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched})
 }
