@@ -131,6 +131,21 @@ func (mr *MockLineageServiceMockRecorder) PlanSwitch(ctx, token, lineageID, toNe
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanSwitch", reflect.TypeOf((*MockLineageService)(nil).PlanSwitch), ctx, token, lineageID, toNetworkID)
 }
 
+// PreflightDefinitions mocks base method.
+func (m *MockLineageService) PreflightDefinitions(ctx context.Context, lineageID, branch string, paths, owned []string) (*interfaces.DefinitionsPreflight, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PreflightDefinitions", ctx, lineageID, branch, paths, owned)
+	ret0, _ := ret[0].(*interfaces.DefinitionsPreflight)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PreflightDefinitions indicates an expected call of PreflightDefinitions.
+func (mr *MockLineageServiceMockRecorder) PreflightDefinitions(ctx, lineageID, branch, paths, owned any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreflightDefinitions", reflect.TypeOf((*MockLineageService)(nil).PreflightDefinitions), ctx, lineageID, branch, paths, owned)
+}
+
 // PublishRelease mocks base method.
 func (m *MockLineageService) PublishRelease(ctx context.Context, token, lineageID string, req interfaces.PublishReleaseRequest, publisher interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.PublishReleaseResult, error) {
 	m.ctrl.T.Helper()
