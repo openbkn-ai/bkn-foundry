@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -18,6 +19,9 @@ import (
 )
 
 func TestProjectionOutboxLeaseOrderedRefillMariaDB(t *testing.T) {
+	if os.Getenv("BKN_TRACE_OUTBOX_PERF_ADMIN_DSN") == "" {
+		t.Skip("BKN_TRACE_OUTBOX_PERF_ADMIN_DSN is not set")
+	}
 	for _, pattern := range []string{"clustered", "interleaved"} {
 		t.Run(pattern, func(t *testing.T) {
 			db, store := outboxRegressionDatabase(t)
