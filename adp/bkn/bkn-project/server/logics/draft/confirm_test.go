@@ -115,7 +115,12 @@ func Test_ConfirmDraft(t *testing.T) {
 
 		Convey("A refused commit drops what it was about to write, and the draft is not confirmed\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			before := confirmableDraft()
+			earlier := interfaces.AccountInfo{ID: "u0", Type: "user"}
+			before.Items.Confirmation = &interfaces.DraftConfirmation{
+				UpdateTime: readTime, Commit: "c0", By: earlier, Time: 50, Files: []string{"object_types/customers.bkn"},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(before, true, nil)
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
 			refused := httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DefinitionsExist)
 			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
@@ -133,6 +138,11 @@ func Test_ConfirmDraft(t *testing.T) {
 			// The paths it was refused for are not its own next time.
 			So(cleared.Pending, ShouldBeEmpty)
 			So(cleared.UpdateTime, ShouldEqual, 0)
+			// The record is still the last confirmation's, whole: not mixed with the refused one.
+			So(cleared.Commit, ShouldEqual, "c0")
+			So(cleared.By, ShouldResemble, earlier)
+			So(cleared.Time, ShouldEqual, 50)
+			So(cleared.Files, ShouldResemble, []string{"object_types/customers.bkn"})
 		})
 
 		Convey("What a confirmation stopped after committing left pending is the draft's own\n", func() {

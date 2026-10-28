@@ -95,11 +95,11 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		*confirmation = *previous
 	}
 
-	// Claim: not confirmed while under way, and what it is about to write recorded apart.
+	// Claim: not confirmed while under way, and what it is about to write recorded apart. The
+	// rest stays the last confirmation's until this one commits.
 	readUpdateTime := draft.UpdateTime
 	draft.UpdateTime = max(time.Now().UnixMilli(), readUpdateTime+1)
-	confirmation.UpdateTime, confirmation.By, confirmation.Time = 0, caller, draft.UpdateTime
-	confirmation.Pending, confirmation.SkippedValueTypes = paths, compiled.SkippedValueTypes
+	confirmation.UpdateTime, confirmation.Pending = 0, paths
 	draft.Items.Confirmation = confirmation
 	if err := s.writeDraft(ctx, draft, readUpdateTime); err != nil {
 		span.SetStatus(codes.Error, "Claim confirmation failed")
@@ -122,7 +122,9 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 
 	// Record the commit; the draft's update time stays, so it reads as confirmed.
 	confirmation.UpdateTime, confirmation.Commit = draft.UpdateTime, result.Commit
+	confirmation.By, confirmation.Time = caller, draft.UpdateTime
 	confirmation.Files, confirmation.Pending = paths, nil
+	confirmation.SkippedValueTypes = compiled.SkippedValueTypes
 	if err := s.writeDraft(ctx, draft, draft.UpdateTime); err != nil {
 		span.SetStatus(codes.Error, "Record confirmation failed")
 		return nil, err
