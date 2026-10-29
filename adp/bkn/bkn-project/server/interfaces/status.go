@@ -99,6 +99,9 @@ type ProjectStatus struct {
 	// Undecided counts the items drafting left out and no one decided on: they do not block, but
 	// confirming leaves them out only when the confirmation accepts it.
 	Undecided int `json:"undecided"`
+	// UndecidedNeeded counts those of them a knowledge question of the ready requirement
+	// specification needs: confirming without them leaves the question without its answer.
+	UndecidedNeeded int `json:"undecided_needed"`
 	// UnresolvedConflicts counts the conflicts between the requirement documents of a ready
 	// specification without a resolution, deferred ones included: they do not block, but confirming
 	// accepts them.
@@ -224,6 +227,15 @@ type PendingItem struct {
 	// Evidence is what drafting counted for the item: the key for an object type, the join for a
 	// relation.
 	Evidence any `json:"evidence,omitempty"`
+	// NeededBy are the knowledge questions of the ready requirement specification that need the
+	// item to be answered.
+	NeededBy []PendingQuestion `json:"needed_by,omitempty"`
+}
+
+// PendingQuestion is a scenario question a pending item is needed by.
+type PendingQuestion struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
 }
 
 // PendingOption is a request that settles a pending item. Candidates, for choosing an identity,

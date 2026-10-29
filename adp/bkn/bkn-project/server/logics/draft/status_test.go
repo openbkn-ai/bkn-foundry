@@ -525,6 +525,36 @@ func Test_GetStatus(t *testing.T) {
 			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
 		})
 
+		Convey("Undecided items a knowledge question needs are counted; confirming still only accepts them\n", func() {
+			needs := []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "audit_log"}}
+			requirement = &interfaces.Requirement{Version: 1, Status: interfaces.REQUIREMENT_STATUS_READY,
+				Spec: interfaces.RequirementSpec{Questions: []*interfaces.RequirementQuestion{
+					{ID: "q1", Text: "Who changed it?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, Needs: needs},
+					{ID: "q2", Text: "How often?", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Needs: needs},
+				}}}
+			for _, c := range []struct {
+				decided bool
+				needed  int
+			}{{false, 1}, {true, 0}} {
+				d := confirmableDraft()
+				if !c.decided {
+					// No one decided on leaving audit_log out.
+					d.Items.Decisions = nil
+				}
+				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+				ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+				ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(&interfaces.DefinitionsPreflight{}, nil)
+
+				s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(s.UndecidedNeeded, ShouldEqual, c.needed)
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			}
+		})
+
 		Convey("Without a ready specification nothing is accepted for conflicts\n", func() {
 			for _, spec := range []*interfaces.Requirement{nil, {Status: interfaces.REQUIREMENT_STATUS_DRAFTING,
 				Spec: interfaces.RequirementSpec{Conflicts: []*interfaces.RequirementConflict{{ID: "k1"}}}}} {
