@@ -22,6 +22,11 @@ func TestSemanticUnderstandingResponseFormat(t *testing.T) {
 		assert.Equal(t, []string{"confidence", "resource", "fields", "warnings"}, format["required"])
 		resource := format["properties"].(map[string]any)["resource"].(map[string]any)
 		assert.Equal(t, []string{"display_name", "description"}, resource["required"])
+		// api_name 可选且不带 pattern：结构化输出不合 schema 会让整条结果失败，格式由写回时校验。
+		assert.Equal(t, map[string]any{"type": "string", "description": apiNameDescription}, resource["properties"].(map[string]any)["api_name"])
+		field := format["properties"].(map[string]any)["fields"].(map[string]any)["items"].(map[string]any)
+		assert.Equal(t, map[string]any{"type": "string", "description": apiNameDescription}, field["properties"].(map[string]any)["api_name"])
+		assert.Equal(t, []string{"name", "display_name", "description"}, field["required"])
 	})
 
 	t.Run("catalog", func(t *testing.T) {

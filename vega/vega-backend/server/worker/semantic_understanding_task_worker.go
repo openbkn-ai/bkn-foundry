@@ -1037,6 +1037,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		}
 	}
 	displayNameCandidates, acceptedDisplayNames := planSemanticDisplayNameUpdates(task, result.Fields, resourceInfo.SchemaDefinition, fieldByName)
+	duplicateAPINames := planSemanticAPINameUpdates(result.Fields, resourceInfo.SchemaDefinition, fieldByName)
 
 	seenFields := make(map[string]struct{}, len(result.Fields))
 	updatedFields := make([]string, 0)
@@ -1107,6 +1108,20 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		if applyStringByMode(task.ApplyMode, &property.Description, field.Description, property.Description == property.OriginalDescription) {
 			updated = append(updated, "description")
 		}
+		// api_name 只写一次：已有的不论哪种模式都不覆盖。
+		if apiName := strings.TrimSpace(field.APIName); apiName != "" && property.APIName == "" {
+			switch {
+			case !semanticAPINamePattern.MatchString(apiName):
+				skippedFields = append(skippedFields, fmt.Sprintf("%s: api_name invalid", field.Name))
+				reasons = append(reasons, "api_name invalid")
+			case duplicateAPINames[field.Name]:
+				skippedFields = append(skippedFields, fmt.Sprintf("%s: api_name duplicates another field", field.Name))
+				reasons = append(reasons, "api_name duplicates another field")
+			default:
+				property.APIName = apiName
+				updated = append(updated, "api_name")
+			}
+		}
 		status := "unchanged"
 		if len(updated) > 0 {
 			status = "updated"
@@ -1127,13 +1142,23 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		resourceInfo.Description == sourceOriginalDescription(resourceInfo.SourceMetadata)) {
 		updatedResource = append(updatedResource, "description")
 	}
+	skippedResource := make([]string, 0, 1)
+	if apiName := strings.TrimSpace(result.Resource.APIName); apiName != "" && resourceInfo.APIName == "" {
+		if semanticAPINamePattern.MatchString(apiName) {
+			resourceInfo.APIName = apiName
+			updatedResource = append(updatedResource, "api_name")
+		} else {
+			skippedResource = append(skippedResource, "api_name invalid")
+		}
+	}
 	resourceUpdated := len(updatedResource) > 0
 	if !resourceUpdated && len(updatedFields) == 0 {
-		if len(skippedFields) > 0 {
+		if len(skippedFields) > 0 || len(skippedResource) > 0 {
 			detailStr, err := sonic.MarshalString(
 				interfaces.SemanticUnderstandingResourceApplyDetail{
-					SkippedFields: skippedFields,
-					FieldDetails:  fieldDetails,
+					SkippedResource: skippedResource,
+					SkippedFields:   skippedFields,
+					FieldDetails:    fieldDetails,
 				})
 			if err != nil {
 				return nil, fmt.Errorf("marshal resource semantic understanding apply detail failed: %w", err)
@@ -1161,6 +1186,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	detailStr, err := sonic.MarshalString(interfaces.SemanticUnderstandingResourceApplyDetail{
 		ResourceUpdated: resourceUpdated,
 		UpdatedResource: updatedResource,
+		SkippedResource: skippedResource,
 		UpdatedFields:   updatedFields,
 		SkippedFields:   skippedFields,
 		FieldDetails:    fieldDetails,
@@ -1173,6 +1199,42 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		Applied:    true,
 		DetailJSON: detailStr,
 	}, nil
+}
+
+// semanticAPINamePattern 与 BKN 的 ID 规则一致，长度取属性名上限 40。
+var semanticAPINamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
+
+// planSemanticAPINameUpdates 找出会与其他字段重名的 api_name：已被别的字段占用，
+// 或本次结果里有多个字段给出同一个。重名的都不写，避免只写一次的短名从一开始就冲突。
+func planSemanticAPINameUpdates(fields []interfaces.SemanticUnderstandingResourceResultField,
+	properties []*interfaces.Property, fieldByName map[string]*interfaces.Property) map[string]bool {
+	taken := make(map[string]bool, len(properties))
+	for _, property := range properties {
+		if property != nil && property.APIName != "" {
+			taken[property.APIName] = true
+		}
+	}
+	proposers := make(map[string][]string)
+	seen := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		property, ok := fieldByName[field.Name]
+		if !ok || seen[field.Name] || property.APIName != "" {
+			continue
+		}
+		seen[field.Name] = true
+		if apiName := strings.TrimSpace(field.APIName); semanticAPINamePattern.MatchString(apiName) {
+			proposers[apiName] = append(proposers[apiName], field.Name)
+		}
+	}
+	duplicates := make(map[string]bool)
+	for apiName, names := range proposers {
+		if taken[apiName] || len(names) > 1 {
+			for _, name := range names {
+				duplicates[name] = true
+			}
+		}
+	}
+	return duplicates
 }
 
 // planSemanticDisplayNameUpdates checks the names that would exist after the whole

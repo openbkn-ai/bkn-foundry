@@ -275,6 +275,7 @@ type SemanticUnderstandingFieldApplyDetail struct {
 type SemanticUnderstandingResourceApplyDetail struct {
 	ResourceUpdated bool                                    `json:"resource_updated"`
 	UpdatedResource []string                                `json:"updated_resource,omitempty"`
+	SkippedResource []string                                `json:"skipped_resource,omitempty"`
 	UpdatedFields   []string                                `json:"updated_fields,omitempty"`
 	SkippedFields   []string                                `json:"skipped_fields,omitempty"`
 	FieldDetails    []SemanticUnderstandingFieldApplyDetail `json:"field_details,omitempty"`
@@ -288,6 +289,7 @@ type SemanticUnderstandingResourceResult struct {
 type SemanticUnderstandingResourceResultResource struct {
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description"`
+	APIName     string   `json:"api_name,omitempty"`
 	Confidence  *float64 `json:"confidence,omitempty"`
 }
 
@@ -295,6 +297,7 @@ type SemanticUnderstandingResourceResultField struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description"`
+	APIName     string   `json:"api_name,omitempty"`
 	Confidence  *float64 `json:"confidence,omitempty"`
 }
 
