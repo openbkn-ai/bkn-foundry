@@ -211,8 +211,51 @@ func Test_GenerateGuidance(t *testing.T) {
 			So(finished.AgentTaskID, ShouldEqual, "t9")
 			So(finished.Tests[0].Text, ShouldEqual, "Orders of 10001?")
 			So(finished.Tests[0].Slots[0].Value, ShouldEqual, "10001")
+			// Checked before it is recorded: c2 maps to nothing in this specification.
+			So(finished.Tests[0].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED,
+				Reason: checkConceptNotMapped})
 			So(finished.OutOfScope, ShouldResemble, []string{"Parent company?"})
 			So(finished.Guidance, ShouldEqual, "Use the relation.")
+		})
+
+		Convey("Checking stops in time to record the outcome within the run's lease\n", func() {
+			va := pmock.NewMockVegaAccess(ctrl)
+			svc.va = va
+			spec := readySpec()
+			spec.Spec.Concepts[1].MapsTo = &customerRef
+			draft := guidanceDraft()
+			draft.Items.ObjectTypes[1].Table = interfaces.DraftTable{ResourceID: "r-cust"}
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
+				doc("prd", interfaces.REQUIREMENT_DOC_PRD, "Customers 10001 and 10002 call.")}, nil)
+			ra.EXPECT().StartGenerating(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t9"}, nil)
+			// The Agent finishes just inside its own limit.
+			ba.EXPECT().GetTask(gomock.Any(), caller, "t9").Return(&interfaces.BknAgentTask{TaskID: "t9",
+				Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil).Times(int(agentDeadline/pollInterval) - 1)
+			ba.EXPECT().GetTask(gomock.Any(), caller, "t9").Return(&interfaces.BknAgentTask{TaskID: "t9",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+				Output: `{"tests":[{"text":"Orders of 10001?","expect":"exists","slots":[{"concept_id":"c2","property":"customer_id","value":"10001"}]},` +
+					`{"text":"Orders of 10002?","expect":"exists","slots":[{"concept_id":"c2","property":"customer_id","value":"10002"}]}],"guidance":"g"}`}, nil)
+			// The first check takes long; the second would end past the lease.
+			va.EXPECT().Query(gomock.Any(), caller, "SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", checkQueryTimeout).
+				DoAndReturn(func(queryCtx context.Context, _ interfaces.VegaAccount, _ string, _ int) ([]map[string]any, error) {
+					// A slow count is cut at the check's deadline, inside the lease.
+					deadline, ok := queryCtx.Deadline()
+					So(ok, ShouldBeTrue)
+					So(deadline.UnixMilli(), ShouldEqual, 1000+(guidanceLease-finishMargin).Milliseconds())
+					clock += (guidanceLease - agentDeadline).Milliseconds()
+					return []map[string]any{{"n": float64(1)}}, nil
+				})
+			expectFinish()
+
+			_, err := svc.GenerateGuidance(ctx, token, "p1", "q1", caller)
+
+			So(err, ShouldBeNil)
+			So(finished.Tests[0].Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(finished.Tests[1].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED,
+				Reason: checkTimeout})
 		})
 
 		Convey("The Agent's failures are recorded as codes\n", func() {
