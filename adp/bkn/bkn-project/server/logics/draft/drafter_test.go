@@ -386,6 +386,39 @@ func Test_Drafter(t *testing.T) {
 			So(ids["r_c"], ShouldEqual, "customers")
 		})
 
+		Convey("Which of two tables of one physical name takes the plain id does not follow their names\n", func() {
+			// ods.orders and dw.orders; semantic understanding named them, in either language.
+			drafted := func(odsName, dwName string) map[string]string {
+				ods := table("r_ods", "c1", odsName, 0, []string{"order_id"}, col("order_id", "string", ""))
+				ods.SourceName, ods.SourceSchema = "orders", "ods"
+				dw := table("r_dw", "c1", dwName, 0, []string{"order_id"}, col("order_id", "string", ""))
+				dw.SourceName, dw.SourceSchema = "orders", "dw"
+				items, err := newDrafter(testSetting, sampleCounter()).draft(ctx, []*interfaces.VegaTable{ods, dw}, nil)
+				So(err, ShouldBeNil)
+				ids := map[string]string{}
+				for _, ot := range items.ObjectTypes {
+					ids[ot.Table.ResourceID] = ot.ID
+				}
+				return ids
+			}
+
+			// Names that sort ods first, then dw first: the ids must not swap.
+			So(drafted("A orders", "B orders"), ShouldResemble, drafted("B orders", "A orders"))
+		})
+
+		Convey("A keyless table's field named id in another script is still an identity candidate\n", func() {
+			// The field is not named for its table (日记账), so only reading it as id makes it a candidate.
+			ledger := table("r_ledger", "c1", "日记账", 0, nil, col("流水ID", "string", ""), col("金额", "decimal", ""))
+			c := sampleCounter()
+			c.keys["r_ledger.流水ID"] = [3]int64{10, 10, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{ledger}, nil)
+
+			So(err, ShouldBeNil)
+			So(items.ObjectTypes[0].NeedsIdentity, ShouldBeFalse)
+			So(items.ObjectTypes[0].Key.Field, ShouldEqual, "流水ID")
+		})
+
 		Convey("Ids come from the physical name; the name people read from semantic understanding\n", func() {
 			// Semantic understanding renamed the resource; the source table is still gys_info.
 			suppliers := table("r_gys", "c1", "供应商", 0, []string{"gys_id"}, col("gys_id", "string", ""))
@@ -486,6 +519,8 @@ func Test_Rules(t *testing.T) {
 			So(matchName("Customer_ID"), ShouldEqual, "customer_id")
 			So(matchName("供应商编号"), ShouldEqual, "供应商编号")
 			So(matchName("供应商编号"), ShouldNotEqual, matchName("采购单号"))
+			// Words break where the script changes: 客户ID refers to 客户 as customer_id to customer.
+			So(matchName("客户ID"), ShouldEqual, "客户_id")
 		})
 
 		Convey("uniqueName adds a suffix to a taken name\n", func() {

@@ -87,11 +87,12 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	// takes the plain ID must not depend on the listing.
 	sort.Slice(tables, func(i, j int) bool {
 		a, b := tables[i], tables[j]
+		// By the physical name first: the resource's name is semantic understanding's to rewrite,
+		// and which table takes a plain id must not change with it.
 		return cmp.Or(
-			cmp.Compare(a.Name, b.Name),
+			cmp.Compare(physicalName(a), physicalName(b)),
 			cmp.Compare(a.CatalogID, b.CatalogID),
 			cmp.Compare(a.SourceSchema, b.SourceSchema),
-			cmp.Compare(a.SourceName, b.SourceName),
 			cmp.Compare(a.ID, b.ID),
 		) < 0
 	})

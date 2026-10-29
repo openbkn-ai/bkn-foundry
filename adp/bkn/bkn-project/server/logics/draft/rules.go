@@ -141,8 +141,8 @@ func displayName(comment string, name string) string {
 	return clause
 }
 
-// words splits a name into lowercase words at non-alphanumerics and camelCase boundaries:
-// contactEmail and contact_email both give [contact email].
+// words splits a name into lowercase words at non-alphanumerics, camelCase boundaries and where
+// the script changes: contactEmail and contact_email both give [contact email], 客户ID [客户 id].
 func words(name string) []string {
 	out := []string{}
 	var word []rune
@@ -157,7 +157,8 @@ func words(name string) []string {
 		switch {
 		case !unicode.IsLetter(r) && !unicode.IsDigit(r):
 			flush()
-		case unicode.IsUpper(r) && unicode.IsLower(prev):
+		case unicode.IsUpper(r) && unicode.IsLower(prev),
+			len(word) > 0 && (r > unicode.MaxASCII) != (prev > unicode.MaxASCII):
 			flush()
 			word = append(word, r)
 		default:
