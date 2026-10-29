@@ -199,6 +199,8 @@ func Test_GenerateGuidance(t *testing.T) {
 					So(req.AgentID, ShouldEqual, requirementAgentID)
 					So(req.Message, ShouldStartWith, "pass guidance\nlanguage: zh-CN\n")
 					So(req.ResponseFormat["type"], ShouldEqual, "object")
+					reason := req.ResponseFormat["properties"].(map[string]any)["no_tests_reason"].(map[string]any)
+					So(reason["description"], ShouldContainSubstring, "otherwise empty")
 					return &interfaces.BknAgentTask{TaskID: "t9", Status: interfaces.BKN_AGENT_TASK_PENDING}, nil
 				})
 			ba.EXPECT().GetTask(gomock.Any(), caller, "t9").Return(&interfaces.BknAgentTask{TaskID: "t9",

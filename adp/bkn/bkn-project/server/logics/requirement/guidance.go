@@ -82,9 +82,11 @@ func guidanceResponseFormat() map[string]any {
 			"expect": schemaEnum(interfaces.TEST_EXPECT_EXISTS, interfaces.TEST_EXPECT_NOT_EXISTS,
 				interfaces.TEST_EXPECT_SAME_RECORD),
 		}, "text", "kind", "slots", "expect")),
-		"no_tests_reason": schemaString(),
-		"out_of_scope":    schemaStrings(),
-		"guidance":        schemaString(),
+		// Described here too, for a prompt that does not name it yet.
+		"no_tests_reason": map[string]any{"type": "string",
+			"description": "When no test is written, why, in one sentence; otherwise empty."},
+		"out_of_scope": schemaStrings(),
+		"guidance":     schemaString(),
 	}, "tests", "no_tests_reason", "out_of_scope", "guidance")
 }
 
