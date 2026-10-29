@@ -13,7 +13,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -242,26 +241,30 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 		})
 
 		Convey("A caller that gives up after the reply began is not a cut answer\n", func() {
+			// The caller gives up while the body is being read: comm-go's client then returns the
+			// status it already had, 200, with the read's error. Faked so it never depends on timing.
 			cancelled, cancel := context.WithCancel(ctx)
-			defer cancel()
-			stalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/event-stream")
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(sse([2]string{"meta", `{"thread_id":"th1","agent_id":"studio_smart_qa"}`})))
-				w.(http.Flusher).Flush()
-				// The reply has begun: once the client has its headers, the caller gives up while the
-				// body is being read.
-				time.Sleep(200 * time.Millisecond)
-				cancel()
-				<-r.Context().Done()
-			}))
-			defer stalled.Close()
-			giveUp := &bknAgentAccess{httpClient: rest.NewHTTPClient(), baseUrl: stalled.URL + "/api/bkn-agent/v1"}
+			giveUp := &bknAgentAccess{baseUrl: "http://bkn-agent/api/bkn-agent/v1", httpClient: &readFailsClient{
+				read: func(ctx context.Context) error {
+					cancel()
+					return ctx.Err()
+				},
+			}}
 
 			_, err := giveUp.AnswerOnNetwork(cancelled, "Bearer t", req)
 
-			So(err, ShouldNotBeNil)
+			So(errors.Is(err, context.Canceled), ShouldBeTrue)
 			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeFalse)
+		})
+
+		Convey("A body read that fails after the reply began, the caller still waiting, is a cut answer\n", func() {
+			cut := &bknAgentAccess{baseUrl: "http://bkn-agent/api/bkn-agent/v1", httpClient: &readFailsClient{
+				read: func(context.Context) error { return io.ErrUnexpectedEOF },
+			}}
+
+			_, err := cut.AnswerOnNetwork(ctx, "Bearer t", req)
+
+			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeTrue)
 		})
 
 		Convey("A request that does not go through is an error, but not a cut answer\n", func() {
@@ -273,4 +276,17 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeFalse)
 		})
 	})
+}
+
+// readFailsClient replies 200 to a POST whose body read then fails with what read returns, as
+// comm-go's client reports a read that fails after the status line: the status, what was read and
+// the error.
+type readFailsClient struct {
+	rest.HTTPClient
+	read func(ctx context.Context) error
+}
+
+func (c *readFailsClient) PostNoUnmarshal(ctx context.Context, _ string, _ map[string]string,
+	_ interface{}) (int, []byte, error) {
+	return http.StatusOK, []byte(sse([2]string{"meta", `{"thread_id":"th1","agent_id":"studio_smart_qa"}`})), c.read(ctx)
 }
