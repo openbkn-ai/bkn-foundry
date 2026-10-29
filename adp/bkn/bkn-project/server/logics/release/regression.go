@@ -171,6 +171,9 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 	if err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Answer question %s on %s: %v", q.ID, networkID, err))
 		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, interfaces.REGRESSION_CODE_UNREACHABLE
+		if errors.Is(err, interfaces.ErrBknAgentAnswerCut) {
+			result.ErrorCode = interfaces.REGRESSION_CODE_ANSWER_INTERRUPTED
+		}
 		return result
 	}
 	// What it was answered with is kept whatever the outcome, for the answer to be judged again.

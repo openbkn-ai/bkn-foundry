@@ -105,6 +105,9 @@ const (
 const (
 	// REGRESSION_CODE_UNREACHABLE: the answering service could not be reached.
 	REGRESSION_CODE_UNREACHABLE = "unreachable"
+	// REGRESSION_CODE_ANSWER_INTERRUPTED: the answering service was reached, but its answer stopped
+	// before it ended or could not be read.
+	REGRESSION_CODE_ANSWER_INTERRUPTED = "answer_interrupted"
 	// REGRESSION_CODE_CANCELLED: the answer was cancelled before it ended.
 	REGRESSION_CODE_CANCELLED = "cancelled"
 	// REGRESSION_CODE_TOOLS_UNAVAILABLE: no call of the answering Agent reached the network.

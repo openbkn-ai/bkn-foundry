@@ -225,10 +225,10 @@ func Test_RegressionService(t *testing.T) {
 			})
 		})
 
-		Convey("An answer refused, not reached or cancelled could not be asked\n", func() {
+		Convey("An answer refused, not reached, cut short or cancelled could not be asked\n", func() {
 			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
 				regQuestion("q1", knowledge, regNeed(ot, "part")), regQuestion("q2", knowledge, regNeed(ot, "part")),
-				regQuestion("q3", knowledge, regNeed(ot, "part")),
+				regQuestion("q3", knowledge, regNeed(ot, "part")), regQuestion("q4", knowledge, regNeed(ot, "part")),
 			), nil)
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
@@ -237,18 +237,22 @@ func Test_RegressionService(t *testing.T) {
 					switch req.Message {
 					case "Text of q1":
 						return nil, errors.New("connection refused")
+					case "Text of q4":
+						// Reached, but the stream stopped before its end.
+						return nil, fmt.Errorf("%w: no terminal event", interfaces.ErrBknAgentAnswerCut)
 					case "Text of q2":
 						return &interfaces.BknAgentAnswer{Status: interfaces.BKN_AGENT_ANSWER_CANCELLED}, nil
 					}
 					// No permission on the new network, or it does not exist: bkn-agent says 403 for both.
 					return nil, &interfaces.BknAgentError{HTTPCode: http.StatusForbidden, Code: "BknAgent.Execution.Forbidden"}
-				}).Times(6)
+				}).Times(8)
 			expectFinish()
 
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 
 			So(err, ShouldBeNil)
 			So(finished.Results[0].ErrorCode, ShouldEqual, interfaces.REGRESSION_CODE_UNREACHABLE)
+			So(finished.Results[3].ErrorCode, ShouldEqual, interfaces.REGRESSION_CODE_ANSWER_INTERRUPTED)
 			So(finished.Results[1].ErrorCode, ShouldEqual, interfaces.REGRESSION_CODE_CANCELLED)
 			So(finished.Results[2].ErrorCode, ShouldEqual, "BknAgent.Execution.Forbidden")
 			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_FAILED)
