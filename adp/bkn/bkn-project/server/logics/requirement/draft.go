@@ -48,6 +48,10 @@ const (
 	pollInterval  = 2 * time.Second
 )
 
+// taskReadTimeout bounds one read of the Agent's task, so a bkn-agent that takes the connection
+// and never answers cannot hold drafting past its deadline.
+var taskReadTimeout = 30 * time.Second
+
 // Why drafting failed, stored as codes for the client to word.
 const (
 	failureInterrupted      = "interrupted"
@@ -633,11 +637,12 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	}
 
 	// Tables and drafted items are clues; drafting goes on without those it cannot read.
-	tables := []*interfaces.VegaTable{}
+	tables, unlisted := []*interfaces.VegaTable{}, []string{}
 	for _, catalogID := range project.CatalogIDs {
 		listed, err := s.va.ListTables(ctx, caller, catalogID)
 		if err != nil {
 			logger.Warnf("List tables of catalog %s for requirement drafting failed: %v", catalogID, err)
+			unlisted = append(unlisted, catalogID)
 			continue
 		}
 		tables = append(tables, listed...)
@@ -659,14 +664,18 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		return
 	}
 	req.AgentTaskID = task.TaskID
-	for polls := int(agentDeadline / pollInterval); !task.Terminal(); polls-- {
-		if polls == 0 {
+	deadline := s.now() + agentDeadline.Milliseconds()
+	for !task.Terminal() {
+		if s.now() >= deadline {
 			fail(failureAgentTimeout, fmt.Errorf("task %s did not finish", task.TaskID))
 			return
 		}
 		s.sleep(pollInterval)
-		// A failed read is retried until the deadline: the task goes on in bkn-agent.
-		if read, err := s.ba.GetTask(ctx, caller, task.TaskID); err == nil {
+		// A failed or slow read is retried until the deadline: the task goes on in bkn-agent.
+		readCtx, cancel := context.WithTimeout(ctx, taskReadTimeout)
+		read, err := s.ba.GetTask(readCtx, caller, task.TaskID)
+		cancel()
+		if err == nil {
 			task = read
 		}
 	}
@@ -683,17 +692,25 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	byID := documentsByID(docs)
 	spec, types := buildSpec(&out, byID, draft)
 	spec.TablesOmitted = omitted
+	if len(unlisted) > 0 {
+		spec.CatalogsUnlisted = unlisted
+	}
 	// The Agent's type of a document is taken only while no one has typed it.
 	for _, d := range docs {
 		suggested, ok := types[d.ID]
 		if !ok || d.DocType != interfaces.REQUIREMENT_DOC_OTHER || suggested == d.DocType {
 			continue
 		}
-		if _, err := s.ra.SetDocumentType(ctx, req.ProjectID, d.ID, suggested, s.now()); err != nil {
+		// Written only while the document is still typed other: a type the owner set while drafting
+		// ran stays, and the specification then reads as drafted from other inputs.
+		typed, err := s.ra.SuggestDocumentType(ctx, req.ProjectID, d.ID, suggested, s.now())
+		if err != nil {
 			logger.Warnf("Set the type of requirement document %s failed: %v", d.ID, err)
 			continue
 		}
-		d.DocType = suggested
+		if typed {
+			d.DocType = suggested
+		}
 	}
 	// Conflicts are suggested by the types the documents have now.
 	for _, k := range spec.Conflicts {
