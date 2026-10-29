@@ -461,8 +461,24 @@ func Test_GetStatus(t *testing.T) {
 		ps := pmock.NewMockProjectService(ctrl)
 		ls := pmock.NewMockLineageService(ctrl)
 		ra := pmock.NewMockReleaseAccess(ctrl)
-		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls, ra: ra}
+		// The project's requirement specification; none unless a test sets one.
+		rqa := pmock.NewMockRequirementAccess(ctrl)
+		var requirement *interfaces.Requirement
+		var requirementErr error
+		rqa.EXPECT().GetRequirement(gomock.Any(), "p1").DoAndReturn(
+			func(context.Context, string) (*interfaces.Requirement, bool, error) {
+				return requirement, requirement != nil, requirementErr
+			}).AnyTimes()
+		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls, ra: ra, rqa: rqa}
 		ctx := context.Background()
+		action := func(s *interfaces.ProjectStatus, name string) *interfaces.ProjectStatusNextAction {
+			for i := range s.NextActions {
+				if s.NextActions[i].Action == name {
+					return &s.NextActions[i]
+				}
+			}
+			return nil
+		}
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{
 			ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller, CatalogIDs: []string{"c1"},
 		}}
@@ -483,6 +499,74 @@ func Test_GetStatus(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
 			So(s.Blockers[0].Code, ShouldEqual, interfaces.BLOCKER_DEFINITIONS_EXIST)
+		})
+
+		Convey("Unresolved requirement conflicts are counted, and confirming accepts them\n", func() {
+			requirement = &interfaces.Requirement{Version: 2, Status: interfaces.REQUIREMENT_STATUS_READY,
+				Spec: interfaces.RequirementSpec{Conflicts: []*interfaces.RequirementConflict{
+					{ID: "k1"},
+					{ID: "k2", Deferred: true, Resolution: &interfaces.RequirementResolution{Reason: "ask"}},
+					{ID: "k3", Resolution: &interfaces.RequirementResolution{DocumentID: "pol", Reason: "policy"}},
+				}}}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.UnresolvedConflicts, ShouldEqual, 2)
+			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+			So(confirm.Body["accept_unresolved_conflicts"], ShouldEqual, true)
+			So(confirm.Accepts, ShouldContain, interfaces.ACCEPTS_UNRESOLVED_CONFLICTS)
+			// Conflicts are a risk to accept, not a blocker.
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+		})
+
+		Convey("Without a ready specification nothing is accepted for conflicts\n", func() {
+			for _, spec := range []*interfaces.Requirement{nil, {Status: interfaces.REQUIREMENT_STATUS_DRAFTING,
+				Spec: interfaces.RequirementSpec{Conflicts: []*interfaces.RequirementConflict{{ID: "k1"}}}}} {
+				requirement = spec
+				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+				ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+				ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(&interfaces.DefinitionsPreflight{}, nil)
+
+				s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(s.UnresolvedConflicts, ShouldEqual, 0)
+				So(action(s, interfaces.ACTION_CONFIRM_DRAFT).Accepts, ShouldNotContain, interfaces.ACCEPTS_UNRESOLVED_CONFLICTS)
+			}
+		})
+
+		Convey("With no draft to confirm, conflicts are not counted\n", func() {
+			requirement = &interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_READY,
+				Spec: interfaces.RequirementSpec{Conflicts: []*interfaces.RequirementConflict{{ID: "k1"}}}}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.UnresolvedConflicts, ShouldEqual, 0)
+		})
+
+		Convey("A specification that cannot be read fails the status\n", func() {
+			requirementErr = errors.New("db down")
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil).AnyTimes()
+
+			_, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
 		})
 
 		Convey("Other stages read nothing of the branch\n", func() {
