@@ -67,7 +67,7 @@ func objectTypeAdopted(items *interfaces.DraftItems, id string) bool {
 // checkEdit refuses an edit that changes nothing or writes an invalid name or description,
 // and trims what it writes.
 func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
-	if edit.Adopted == nil && edit.Name == nil && edit.Description == nil {
+	if edit.Adopted == nil && edit.Name == nil && edit.Description == nil && edit.IncrementalKey == nil {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EmptyEdit)
 	}
 	if edit.Name != nil {
@@ -84,7 +84,38 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 		}
 		edit.Description = &description
 	}
+	if edit.IncrementalKey != nil {
+		key := strings.TrimSpace(*edit.IncrementalKey)
+		edit.IncrementalKey = &key
+	}
 	return nil
+}
+
+// checkIncrementalField reads, as the caller, the field the object type's update field maps to,
+// refusing one vega-backend would not refresh the table's local index by. The draft keeps BKN
+// types only, which merge some vega types (large_integer drafts as integer).
+func (s *draftService) checkIncrementalField(ctx context.Context, objectType *interfaces.DraftObjectType,
+	caller interfaces.AccountInfo) error {
+	property := findProperty(objectType, objectType.IncrementalKey)
+	tables, err := s.va.GetTables(ctx, caller, []string{objectType.Table.ResourceID})
+	if err != nil {
+		return internalError(ctx, "Read table failed", err)
+	}
+	for _, table := range tables {
+		if c, ok := column(table, property.MappedField); ok {
+			if !incrementalTypes[c.Type] {
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+			}
+			return nil
+		}
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_FieldNotFound)
+}
+
+// incrementalTypes are the types vega-backend refreshes a table's local index by
+// (INCREMENTAL_FIELD_TYPES); a property's BKN type has the same name.
+var incrementalTypes = map[string]bool{
+	"integer": true, "unsigned integer": true, "string": true, "date": true, "time": true, "datetime": true, "timestamp": true,
 }
 
 // applyEdit changes the item and returns the decisions it made. An object type is adopted only
@@ -107,6 +138,20 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		for _, r := range items.RelationTypes {
 			if r.ID == id && (!objectTypeAdopted(items, r.Source) || !objectTypeAdopted(items, r.Target)) {
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EndpointNotAdopted)
+			}
+		}
+	}
+
+	var objectType *interfaces.DraftObjectType
+	if edit.IncrementalKey != nil {
+		invalid := httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+		if kind != interfaces.DRAFT_KIND_OBJECT_TYPES {
+			return nil, invalid
+		}
+		objectType = findObjectType(items, id)
+		if key := *edit.IncrementalKey; key != "" {
+			if property := findProperty(objectType, key); property == nil || !incrementalTypes[property.Type] {
+				return nil, invalid
 			}
 		}
 	}
@@ -140,6 +185,10 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 	if edit.Description != nil && *edit.Description != *item.description {
 		decide(kind, id, interfaces.DRAFT_DECISION_DESCRIBE, *item.description, *edit.Description)
 		*item.description = *edit.Description
+	}
+	if edit.IncrementalKey != nil && *edit.IncrementalKey != objectType.IncrementalKey {
+		decide(kind, id, interfaces.DRAFT_DECISION_INCREMENTAL, objectType.IncrementalKey, *edit.IncrementalKey)
+		objectType.IncrementalKey = *edit.IncrementalKey
 	}
 	return decisions, nil
 }
@@ -221,6 +270,14 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 	if err != nil {
 		span.SetStatus(codes.Error, "Edit refused")
 		return nil, err
+	}
+	for _, d := range decisions {
+		if d.Action == interfaces.DRAFT_DECISION_INCREMENTAL && d.After != "" {
+			if err := s.checkIncrementalField(ctx, findObjectType(&draft.Items, itemID), caller); err != nil {
+				span.SetStatus(codes.Error, "Update field refused")
+				return nil, err
+			}
+		}
 	}
 	if err := s.commit(ctx, draft, decisions, caller); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
