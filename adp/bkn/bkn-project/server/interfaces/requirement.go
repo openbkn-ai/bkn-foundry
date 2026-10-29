@@ -389,9 +389,49 @@ type RequirementAccess interface {
 	FailDrafting(ctx context.Context, reason string, updateTime int64) (int64, error)
 }
 
-// RequirementService serves the requirement specification to the rest of bkn-project.
+// Outcomes of uploading one file.
+const (
+	REQUIREMENT_UPLOAD_CREATED   = "created"
+	REQUIREMENT_UPLOAD_DUPLICATE = "duplicate"
+	REQUIREMENT_UPLOAD_REJECTED  = "rejected"
+)
+
+// RequirementUpload is one uploaded file: its name and bytes.
+type RequirementUpload struct {
+	Name    string
+	Content []byte
+}
+
+// RequirementUploadResult is what became of one uploaded file. DocumentID is the document
+// created, or the one that already has the same content; Code is the error code a rejected file
+// was refused with.
+type RequirementUploadResult struct {
+	Name       string `json:"name"`
+	Outcome    string `json:"outcome"`
+	DocumentID string `json:"document_id,omitempty"`
+	Code       string `json:"code,omitempty"`
+}
+
+// RequirementService serves a project's requirement documents and specification. token is the
+// caller's Authorization header: the project must be visible to the caller. Only the project's
+// owner changes them, and not while the project is archived.
 type RequirementService interface {
-	// ScenarioQuestions returns the project's scenario questions with their needs. A project
-	// without a ready specification has none; that is no error.
+	// UploadDocuments stores Markdown and plain-text files as the project's requirement
+	// documents and reports each file's outcome; a refused file does not stop the others.
+	UploadDocuments(ctx context.Context, token string, projectID string, files []RequirementUpload,
+		caller AccountInfo) ([]RequirementUploadResult, error)
+	// ListDocuments lists the project's documents oldest first, without their content.
+	ListDocuments(ctx context.Context, token string, projectID string) ([]*RequirementDocument, error)
+	// GetDocument returns one document with its content and blocks.
+	GetDocument(ctx context.Context, token string, projectID string, documentID string) (*RequirementDocument, error)
+	// SetDocumentType sets what kind of document it is, which decides its authority in conflicts.
+	SetDocumentType(ctx context.Context, token string, projectID string, documentID string, docType string,
+		caller AccountInfo) (*RequirementDocument, error)
+	// DeleteDocument removes a document.
+	DeleteDocument(ctx context.Context, token string, projectID string, documentID string, caller AccountInfo) error
+
+	// ScenarioQuestions returns the project's scenario questions with their needs, for
+	// publishing and the regression after a release, which check visibility themselves. A
+	// project without a ready specification has none; that is no error.
 	ScenarioQuestions(ctx context.Context, projectID string) (*ScenarioQuestions, error)
 }
