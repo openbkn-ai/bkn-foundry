@@ -287,6 +287,21 @@ func Test_CheckTests(t *testing.T) {
 					So(pathOf(&d, &q, &slotField{objectType: d.Items.ObjectTypes[1], field: "cust_id"}), ShouldBeNil)
 				}
 				So(pathOf(pathDraft, withPath, &slotField{objectType: pathDraft.Items.ObjectTypes[1], field: "cust_id"}), ShouldNotBeNil)
+
+				// Nor across catalogs: one query cannot read both tables.
+				d := *pathDraft
+				other := *d.Items.ObjectTypes[0]
+				other.Table.CatalogID = "c2"
+				d.Items.ObjectTypes = []*interfaces.DraftObjectType{&other, d.Items.ObjectTypes[1]}
+				So(pathOf(&d, withPath, &slotField{objectType: d.Items.ObjectTypes[1], field: "cust_id"}), ShouldBeNil)
+			})
+
+			Convey("from either end of the relation\n", func() {
+				order := pathDraft.Items.ObjectTypes[0]
+				p := pathOf(pathDraft, withPath, &slotField{objectType: order, field: "cust_ref"})
+
+				So(p, ShouldResemble, &relationPath{objectType: "customer", own: "cust_ref", table: "r-cust", other: "cust_id"})
+				So(p.condition(), ShouldEqual, "`cust_ref` IN (SELECT `cust_id` FROM {{r-cust}})")
 			})
 		})
 

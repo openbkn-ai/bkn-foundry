@@ -379,7 +379,8 @@ func (p *relationPath) condition() string {
 
 // pathOf finds the first relation the question needs, in its order, that joins the slot's object
 // type to another by one field: values the question can follow are taken from the records it
-// reaches. Relations through a link table, or joining on several fields, are not followed.
+// reaches. Relations through a link table, joining on several fields, or across catalogs (one query
+// cannot read both) are not followed.
 func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotField) *relationPath {
 	if draft == nil {
 		return nil
@@ -413,7 +414,8 @@ func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotF
 			}
 			_, ownField := mapped(f.objectType.ID, own)
 			ot, otherField := mapped(otherType, other)
-			if ownField == "" || otherField == "" || ot.Table.ResourceID == "" {
+			if ownField == "" || otherField == "" || ot.Table.ResourceID == "" ||
+				ot.Table.CatalogID != f.objectType.Table.CatalogID {
 				continue
 			}
 			return &relationPath{objectType: ot.ID, own: ownField, table: ot.Table.ResourceID, other: otherField}
