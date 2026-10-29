@@ -48,21 +48,7 @@ func (b *treeBuilder) query(ctx g.ISelectQueryContext) *sb.SelectBuilder {
 		}
 		query.Columns(expr)
 	}
-	for _, part := range ctx.Relation().AllJoinPart() {
-		join := sb.Join{Kind: sb.InnerJoin, Source: b.source(part.RelationPrimary())}
-		switch {
-		case part.LEFT() != nil:
-			join.Kind = sb.LeftJoin
-		case part.RIGHT() != nil:
-			join.Kind = sb.RightJoin
-		case part.CROSS() != nil:
-			join.Kind = sb.CrossJoin
-		}
-		if part.Expression() != nil {
-			join.On = b.expr(part.Expression())
-		}
-		query.JoinClause(join)
-	}
+	query.JoinsPart = b.joins(ctx.Relation().AllJoinPart())
 	index := 0
 	if ctx.WHERE() != nil {
 		query.Where(b.expr(ctx.Expression(index)))
@@ -102,6 +88,26 @@ func (b *treeBuilder) query(ctx g.ISelectQueryContext) *sb.SelectBuilder {
 	return query
 }
 
+func (b *treeBuilder) joins(parts []g.IJoinPartContext) []sb.Join {
+	var joins []sb.Join
+	for _, part := range parts {
+		join := sb.Join{Kind: sb.InnerJoin, Source: b.source(part.RelationPrimary())}
+		switch {
+		case part.LEFT() != nil:
+			join.Kind = sb.LeftJoin
+		case part.RIGHT() != nil:
+			join.Kind = sb.RightJoin
+		case part.CROSS() != nil:
+			join.Kind = sb.CrossJoin
+		}
+		if part.Expression() != nil {
+			join.On = b.expr(part.Expression())
+		}
+		joins = append(joins, join)
+	}
+	return joins
+}
+
 func (b *treeBuilder) source(ctx g.IRelationPrimaryContext) sb.SqlNode {
 	alias := ""
 	if ctx.Identifier() != nil {
@@ -110,6 +116,9 @@ func (b *treeBuilder) source(ctx g.IRelationPrimaryContext) sb.SqlNode {
 	if resource := ctx.RESOURCE(); resource != nil {
 		text := resource.GetText()
 		return &sb.Table{ResourceID: strings.TrimSpace(text[2 : len(text)-2]), Alias: alias}
+	}
+	if relation := ctx.Relation(); relation != nil {
+		return &sb.JoinedTable{From: b.source(relation.RelationPrimary()), Joins: b.joins(relation.AllJoinPart())}
 	}
 	return &sb.Subquery{Query: b.query(ctx.SelectQuery()), Alias: alias}
 }

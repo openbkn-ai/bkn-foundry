@@ -4,6 +4,9 @@
 SQL 查询经过 `compiler.ParseSQL → SelectBuilder → 资源准备 → 连接器 ToSql/执行`。
 结构化查询直接构造同一套 Builder 节点，不重新解析 SQL 字符串。
 
+SQL 来源支持带括号的 JOIN 组，例如 `a LEFT JOIN (b JOIN c ON ...) ON ...`。
+Parser 使用 `JoinedTable` 保留括号与连接边界，资源准备递归绑定组内全部来源；不会展开成多个外连接而改变 NULL 扩展语义。
+
 ## 公共函数与连接器的边界
 
 - 输入采用 MySQL 风格语法，函数集合由 Vega 显式定义，不限于 MySQL 已有的函数。

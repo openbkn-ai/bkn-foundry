@@ -782,6 +782,19 @@ func TestMariaDBConnectorBuildTypedSelectBuilder(t *testing.T) {
 }
 
 func TestToSql(t *testing.T) {
+	t.Run("parenthesized join group preserves predicates and binding order", func(t *testing.T) {
+		query, err := compiler.ParseSQL("SELECT a.ID,b.ID AS matched FROM {{r}} a LEFT JOIN ({{r}} m JOIN {{r}} b ON m.ID=b.ID AND b.LABEL='inner') ON a.ID=m.ID AND a.LABEL='outer' WHERE b.ID IS NULL")
+		require.NoError(t, err)
+		group := query.JoinsPart[0].Source.(*sb.JoinedTable)
+		for _, node := range []sb.SqlNode{query.FromPart, group.From, group.Joins[0].Source} {
+			node.(*sb.Table).SourceIdentifier = "`T`"
+		}
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT `a`.`ID`, `b`.`ID` AS `matched` FROM `T` AS `a` LEFT JOIN (`T` AS `m` INNER JOIN `T` AS `b` ON ((`m`.`ID` = `b`.`ID`) AND (`b`.`LABEL` = ?))) ON ((`a`.`ID` = `m`.`ID`) AND (`a`.`LABEL` = ?)) WHERE (`b`.`ID` IS NULL)", text)
+		assert.Equal(t, []any{"inner", "outer"}, args)
+	})
+
 	t.Run("grouping ordinal is emitted literally", func(t *testing.T) {
 		query := sb.Select(&sb.Star{}).From(&sb.Table{SourceIdentifier: "`orders`"}).GroupBy(&sb.Param{Value: json.Number("1")}, &sb.Param{Value: json.Number("2")})
 		text, args, err := ToSql(query)

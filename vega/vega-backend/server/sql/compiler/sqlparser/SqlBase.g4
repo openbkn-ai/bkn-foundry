@@ -18,7 +18,9 @@ selectItem: (identifier DOT)? STAR | expression (AS? identifier)?;
 
 relation: relationPrimary joinPart*;
 
-relationPrimary: RESOURCE (AS? identifier)? | LPAREN selectQuery RPAREN AS? identifier;
+relationPrimary: RESOURCE (AS? identifier)?
+               | LPAREN selectQuery RPAREN AS? identifier
+               | LPAREN relation RPAREN;
 
 joinPart: ((INNER | LEFT OUTER? | RIGHT OUTER?)? JOIN relationPrimary ON expression)
         | CROSS JOIN relationPrimary;

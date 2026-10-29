@@ -17,6 +17,19 @@ import (
 
 // TestToSql 检查 PG 目标生成的标识符、绑定编号、类型、子句及拒绝边界。
 func TestToSql(t *testing.T) {
+	t.Run("parenthesized join group preserves predicates and binding order", func(t *testing.T) {
+		query, err := compiler.ParseSQL("SELECT a.ID,b.ID AS matched FROM {{r}} a LEFT JOIN ({{r}} m JOIN {{r}} b ON m.ID=b.ID AND b.LABEL='inner') ON a.ID=m.ID AND a.LABEL='outer' WHERE b.ID IS NULL")
+		require.NoError(t, err)
+		group := query.JoinsPart[0].Source.(*sb.JoinedTable)
+		for _, node := range []sb.SqlNode{query.FromPart, group.From, group.Joins[0].Source} {
+			node.(*sb.Table).SourceIdentifier = "\"T\""
+		}
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT \"a\".\"ID\", \"b\".\"ID\" AS \"matched\" FROM \"T\" AS \"a\" LEFT JOIN (\"T\" AS \"m\" INNER JOIN \"T\" AS \"b\" ON ((\"m\".\"ID\" = \"b\".\"ID\") AND (\"b\".\"LABEL\" = $1))) ON ((\"a\".\"ID\" = \"m\".\"ID\") AND (\"a\".\"LABEL\" = $2)) WHERE (\"b\".\"ID\" IS NULL)", text)
+		assert.Equal(t, []any{"inner", "outer"}, args)
+	})
+
 	t.Run("CHAR preserves byte construction and bound arguments", func(t *testing.T) {
 		query, err := compiler.ParseSQL("SELECT CHAR(31,NULL,50089,ID+64) AS value FROM {{r}}")
 		require.NoError(t, err)

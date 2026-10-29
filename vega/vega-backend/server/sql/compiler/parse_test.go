@@ -17,6 +17,35 @@ import (
 )
 
 func TestParseSQL(t *testing.T) {
+	t.Run("Cypher OPTIONAL MATCH SQL parses without rewriting its join scope", func(t *testing.T) {
+		input := "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{res_employee}} t0 " +
+			"LEFT JOIN ({{res_member}} t2 JOIN {{res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`) " +
+			"ON t2.`employee_code` = t0.`f_code` AND t2.`employee_org_code` = t0.`f_org` AND t1.`f_org` = 'ORG1'"
+		query, err := ParseSQL(input)
+		require.NoError(t, err)
+		assert.Equal(t, "res_employee", query.FromPart.(*sb.Table).ResourceID)
+		group := query.JoinsPart[0].Source.(*sb.JoinedTable)
+		assert.Equal(t, "res_member", group.From.(*sb.Table).ResourceID)
+		assert.Equal(t, "res_project", group.Joins[0].Source.(*sb.Table).ResourceID)
+	})
+	t.Run("optional indirect relation preserves the parenthesized join group", func(t *testing.T) {
+		query, err := ParseSQL("SELECT a.id,b.id AS matched FROM {{employees}} a LEFT JOIN ({{members}} m JOIN {{projects}} b ON m.project_id=b.id AND b.label='inner') ON a.id=m.employee_id AND a.label='outer' WHERE b.id IS NULL")
+		require.NoError(t, err)
+		require.Len(t, query.JoinsPart, 1)
+		assert.Equal(t, sb.LeftJoin, query.JoinsPart[0].Kind)
+		group, ok := query.JoinsPart[0].Source.(*sb.JoinedTable)
+		require.True(t, ok)
+		require.Len(t, group.Joins, 1)
+		assert.Equal(t, sb.InnerJoin, group.Joins[0].Kind)
+		for _, node := range []sb.SqlNode{query.FromPart, group.From, group.Joins[0].Source} {
+			table := node.(*sb.Table)
+			table.SourceIdentifier = "`" + table.ResourceID + "`"
+		}
+		text, args, err := mysql.ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT `a`.`id`, `b`.`id` AS `matched` FROM `employees` AS `a` LEFT JOIN (`members` AS `m` INNER JOIN `projects` AS `b` ON ((`m`.`project_id` = `b`.`id`) AND (`b`.`label` = ?))) ON ((`a`.`id` = `m`.`employee_id`) AND (`a`.`label` = ?)) WHERE (`b`.`id` IS NULL)", text)
+		assert.Equal(t, []any{"inner", "outer"}, args)
+	})
 	t.Run("resource join and clauses map to the new builder", func(t *testing.T) {
 		query, err := ParseSQL("SELECT DISTINCT a.id AS aid, COUNT(*) AS n FROM {{ orders }} a LEFT JOIN {{orders}} b ON a.id=b.id WHERE a.id IN (1,2) GROUP BY a.id HAVING COUNT(*)>1 ORDER BY a.id DESC LIMIT 2,10;")
 		require.NoError(t, err)
@@ -86,7 +115,7 @@ func TestParseSQL(t *testing.T) {
 		assert.NotContains(t, err.Error(), "sensitive-value")
 	})
 	t.Run("input budgets reject before returning a query", func(t *testing.T) {
-		for _, sql := range []string{strings.Repeat(" ", maxSQLBytes+1), strings.Repeat("/*x*/ ", maxTokens+1) + "SELECT id FROM {{x}}", "SELECT " + strings.Repeat("(", maxDepth+1) + "id" + strings.Repeat(")", maxDepth+1) + " FROM {{x}}", "SELECT " + strings.Repeat("NOT ", maxDepth+1) + "id FROM {{x}}", "SELECT " + strings.Repeat("id+", maxDepth+1) + "id FROM {{x}}", "SELECT id FROM {{x}} WHERE id IN (" + strings.Repeat("1,", maxINValues) + "1)"} {
+		for _, sql := range []string{strings.Repeat(" ", maxSQLBytes+1), "SELECT id FROM " + strings.Repeat("(", maxDepth+1) + "{{x}}" + strings.Repeat(")", maxDepth+1), strings.Repeat("/*x*/ ", maxTokens+1) + "SELECT id FROM {{x}}", "SELECT " + strings.Repeat("(", maxDepth+1) + "id" + strings.Repeat(")", maxDepth+1) + " FROM {{x}}", "SELECT " + strings.Repeat("NOT ", maxDepth+1) + "id FROM {{x}}", "SELECT " + strings.Repeat("id+", maxDepth+1) + "id FROM {{x}}", "SELECT id FROM {{x}} WHERE id IN (" + strings.Repeat("1,", maxINValues) + "1)"} {
 			query, err := ParseSQL(sql)
 			assert.Nil(t, query)
 			var parseError *ParseError

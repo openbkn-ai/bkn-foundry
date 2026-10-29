@@ -22,11 +22,11 @@ info:
 
     **SQL 查询能力**：执行单条顶层 `SELECT`，所有物理表通过受权限保护的
     `{{resource_id}}` 占位符解析；DSL 的索引同样由 Resource 推导。支持同一 Catalog 内的
-    `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数
+    `JOIN`（含括号连接组）、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数
     （`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。
 
     MariaDB/MySQL、PostgreSQL、HANA、Doris、Oracle 和 SQL Server Catalog 使用 `mysql` 输入语法（省略时默认，
-    `mariadb` 为别名），通过 Go parser/Builder 支持显式子查询、JOIN、DISTINCT、分组、排序和
+    `mariadb` 为别名），通过 Go parser/Builder 支持显式子查询、JOIN（含括号连接组）、DISTINCT、分组、排序和
     LIMIT/OFFSET，并由目标连接器生成源端 SQL。其他连接器根据 `input_dialect` 和底层连接器
     能力处理 SQL，其函数调用由 SQLGlot 校验为只读内置表达式。
 
@@ -124,7 +124,7 @@ paths:
         SQL Server 使用命名参数与原生 TOP、OFFSET/FETCH 分页，SQL Builder 通道要求数据库兼容级别至少为 110。
         投影名称必须唯一；多表 JOIN 可使用限定通配符或显式列别名。
 
-        **SQL 查询能力**：单条顶层 `SELECT`，支持同一 Catalog 内的 `JOIN`、`WHERE`、
+        **SQL 查询能力**：单条顶层 `SELECT`，支持同一 Catalog 内的 `JOIN`（含括号连接组）、`WHERE`、
         `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数；子查询及内置函数的具体能力
         由所选输入方言和目标连接器共同决定。
 
@@ -262,7 +262,7 @@ components:
           oneOf:
             - type: string
               description: |
-                SQL 字符串。执行单条顶层 `SELECT`，支持同一 Catalog 内的 JOIN、WHERE、
+                SQL 字符串。执行单条顶层 `SELECT`，支持同一 Catalog 内的 JOIN（含括号连接组）、WHERE、
                 GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。子查询及内置函数的具体能力
                 由输入方言和目标连接器共同决定。
             - type: object

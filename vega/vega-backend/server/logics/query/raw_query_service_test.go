@@ -503,6 +503,42 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	t.Run("joined group authorizes and binds every nested source", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		ids := []string{"orders", "members", "projects"}
+		resources := make([]*interfaces.Resource, 0, len(ids))
+		for _, id := range ids {
+			resource := builderTestResource()
+			resource.ID, resource.SourceIdentifier = id, "`"+id+"`"
+			resources = append(resources, resource)
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, id).Return(resource, nil)
+		}
+		expectRawQueryResources(rs, ids, resources...)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: interfaces.ConnectorTypeMySQL, Enabled: true}, nil)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
+			Query: "SELECT a.id FROM {{orders}} a LEFT JOIN ({{members}} m JOIN ({{projects}} p) ON m.id=p.id) ON a.id=m.id", QueryFormat: interfaces.QueryFormatSQL,
+		})
+		require.NoError(t, err)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 3)
+		for i, table := range tables {
+			assert.Equal(t, ids[i], table.ResourceID)
+			assert.Equal(t, resources[i].SourceIdentifier, table.SourceIdentifier)
+			assert.NotNil(t, table.ColumnNames)
+		}
+		assert.Len(t, prepared.resourceVersions, 3)
+	})
+	t.Run("joined group permission denial stops before metadata", func(t *testing.T) {
+		svc, rs, _, _ := mysqlRawServices(t)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		denial := httperrors.NewHTTPError(compileTestContext(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "members", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denial)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
+			Query: "SELECT a.id FROM {{orders}} a LEFT JOIN ({{members}} m JOIN {{orders}} b ON m.id=b.id) ON a.id=m.id", QueryFormat: interfaces.QueryFormatSQL,
+		})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusForbidden)
+	})
 	t.Run("SQL Server receives physical source column names without rewriting query fields", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		resource := builderTestResource()
