@@ -55,7 +55,7 @@ create '{
   "grant_types": ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
-  "scope": "openid offline",
+  "scope": "openid offline profile email phone",
   "audience": ["bkn-safe"]
 }' >/dev/null
 echo "  + openbkn-sdk (device_code, public)"
@@ -68,7 +68,7 @@ create "{
   \"token_endpoint_auth_method\": \"none\",
   \"redirect_uris\": [\"${WEB_REDIRECT_URI}\"],
   \"post_logout_redirect_uris\": [\"${WEB_LOGOUT_URI}\"],
-  \"scope\": \"openid offline\",
+  \"scope\": \"openid offline profile email phone\",
   \"audience\": [\"bkn-safe\"]
 }" >/dev/null
 echo "  + openbkn-studio (authorization_code + PKCE, public; redirect=${WEB_REDIRECT_URI}, logout=${WEB_LOGOUT_URI})"
@@ -80,7 +80,7 @@ create "{
   \"response_types\": [\"code\"],
   \"token_endpoint_auth_method\": \"none\",
   \"redirect_uris\": [\"${CLI_REDIRECT_URI}\"],
-  \"scope\": \"openid offline all\",
+  \"scope\": \"openid offline all profile email phone\",
   \"audience\": [\"bkn-safe\"]
 }" >/dev/null
 echo "  + openbkn-cli (authorization_code + PKCE, public; redirect=${CLI_REDIRECT_URI})"
