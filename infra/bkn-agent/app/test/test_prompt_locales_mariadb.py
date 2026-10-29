@@ -12,7 +12,7 @@ import pymysql
 import pytest
 
 from app.public_auth import BUILTIN_AGENT_IDS
-from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, ANSWER_JUDGE, statements, selected_migrations
+from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, ANSWER_JUDGE, ANSWER_JUDGE_EXPECT, statements, selected_migrations
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
@@ -67,6 +67,8 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         apply(REQUIREMENTS)
         apply(ANSWER_JUDGE)
         apply(ANSWER_JUDGE)
+        apply(ANSWER_JUDGE_EXPECT)
+        apply(ANSWER_JUDGE_EXPECT)
         assert saved_rows() == before_locales_rerun
         with db.cursor() as cursor:
             cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content FROM t_agent a "
