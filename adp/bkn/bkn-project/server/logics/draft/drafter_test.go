@@ -386,6 +386,25 @@ func Test_Drafter(t *testing.T) {
 			So(ids["r_c"], ShouldEqual, "customers")
 		})
 
+		Convey("Ids come from the physical name; the name people read from semantic understanding\n", func() {
+			// Semantic understanding renamed the resource; the source table is still gys_info.
+			suppliers := table("r_gys", "c1", "供应商", 0, []string{"gys_id"}, col("gys_id", "string", ""))
+			suppliers.SourceName = "gys_info"
+			orders := table("r_po", "c1", "采购单", 0, []string{"po_id"}, col("po_id", "string", ""), col("gys_info_id", "string", ""))
+			orders.SourceName = "po"
+			c := sampleCounter()
+			c.joins[joinKey{"r_po", "gys_info_id"}] = [4]int64{10, 0, 0, 10}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{suppliers, orders}, nil)
+
+			So(err, ShouldBeNil)
+			ot := objectType(items, "gys_info")
+			So(ot, ShouldNotBeNil)
+			So(ot.Name, ShouldEqual, "供应商")
+			// Name matching reads the physical name too: gys_info_id refers to gys_info.
+			So(relation(items, "po", "gys_info"), ShouldNotBeNil)
+		})
+
 		Convey("A small table of people is not a code table, so no names are read as enum values\n", func() {
 			staff := table("r_staff", "c1", "staff", 30, []string{"id"}, col("id", "string", ""), col("full_name", "string", ""))
 			c := sampleCounter()
@@ -439,11 +458,34 @@ func Test_Drafter(t *testing.T) {
 
 func Test_Rules(t *testing.T) {
 	Convey("Test naming and matching rules\n", t, func() {
-		Convey("apiName makes a valid BKN id\n", func() {
-			So(apiName("Customer Orders"), ShouldEqual, "customer_orders")
-			So(apiName("2024销售"), ShouldEqual, "f_2024")
-			So(apiName("客户"), ShouldEqual, "field")
-			So(len(apiName("a_very_long_table_name_that_goes_on_and_on_and_on")), ShouldBeLessThanOrEqualTo, maxIDLength)
+		Convey("idFrom makes a valid BKN id from a physical name\n", func() {
+			So(idFrom("Customer Orders", idPrefixObjectType), ShouldEqual, "customer_orders")
+			// camelCase is split as words are.
+			So(idFrom("customerId", idPrefixProperty), ShouldEqual, "customer_id")
+			So(idFrom("orderID", idPrefixProperty), ShouldEqual, "order_id")
+			So(idFrom("2024_sales", idPrefixObjectType), ShouldEqual, "f_2024_sales")
+			So(idFrom("###", idPrefixProperty), ShouldEqual, "field")
+			So(len(idFrom("a_very_long_table_name_that_goes_on_and_on_and_on", idPrefixObjectType)),
+				ShouldBeLessThanOrEqualTo, maxIDLength)
+		})
+
+		Convey("A physical name that is not ASCII stands as its kind and a short hash of the name\n", func() {
+			supplier := idFrom("供应商", idPrefixObjectType)
+			So(supplier, ShouldStartWith, "ot_")
+			So(supplier, ShouldHaveLength, len("ot_")+6)
+			// The same name always gives the same id; another gives another.
+			So(idFrom("供应商", idPrefixObjectType), ShouldEqual, supplier)
+			So(idFrom("采购单", idPrefixObjectType), ShouldNotEqual, supplier)
+			So(idFrom("供应商编号", idPrefixProperty), ShouldStartWith, "p_")
+			// Part ASCII is not cut out: order alone would clash with a table named order.
+			So(idFrom("订单order", idPrefixObjectType), ShouldStartWith, "ot_")
+		})
+
+		Convey("Names are matched as written, so names that are not ASCII still match\n", func() {
+			So(matchName("customerId"), ShouldEqual, "customer_id")
+			So(matchName("Customer_ID"), ShouldEqual, "customer_id")
+			So(matchName("供应商编号"), ShouldEqual, "供应商编号")
+			So(matchName("供应商编号"), ShouldNotEqual, matchName("采购单号"))
 		})
 
 		Convey("uniqueName adds a suffix to a taken name\n", func() {

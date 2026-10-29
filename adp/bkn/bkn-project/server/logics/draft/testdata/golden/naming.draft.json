@@ -11,12 +11,12 @@
         "catalog_id": "c1"
       },
       "primary_keys": [
-        "customerid"
+        "customer_id"
       ],
-      "display_key": "customername",
+      "display_key": "customer_name",
       "properties": [
         {
-          "name": "customerid",
+          "name": "customer_id",
           "display_name": "customerId",
           "type": "string",
           "description": "",
@@ -25,7 +25,7 @@
           "missing_description": true
         },
         {
-          "name": "customername",
+          "name": "customer_name",
           "display_name": "customerName",
           "type": "string",
           "description": "",
@@ -44,7 +44,7 @@
       "needs_identity": false
     },
     {
-      "id": "salesorder",
+      "id": "sales_order",
       "name": "SalesOrder",
       "description": "",
       "adopted": true,
@@ -54,12 +54,12 @@
         "catalog_id": "c1"
       },
       "primary_keys": [
-        "orderid"
+        "order_id"
       ],
-      "display_key": "orderid",
+      "display_key": "order_id",
       "properties": [
         {
-          "name": "orderid",
+          "name": "order_id",
           "display_name": "orderId",
           "type": "string",
           "description": "",
@@ -68,7 +68,7 @@
           "missing_description": true
         },
         {
-          "name": "customerid",
+          "name": "customer_id",
           "display_name": "customerId",
           "type": "string",
           "description": "",
@@ -182,7 +182,7 @@
       "needs_identity": false
     },
     {
-      "id": "field",
+      "id": "ot_033ed5",
       "name": "供应商",
       "description": "",
       "adopted": true,
@@ -192,12 +192,12 @@
         "catalog_id": "c1"
       },
       "primary_keys": [
-        "field"
+        "p_a1a5a5"
       ],
-      "display_key": "field_2",
+      "display_key": "p_cbb2ff",
       "properties": [
         {
-          "name": "field",
+          "name": "p_a1a5a5",
           "display_name": "供应商编号",
           "type": "string",
           "description": "",
@@ -206,7 +206,7 @@
           "missing_description": true
         },
         {
-          "name": "field_2",
+          "name": "p_cbb2ff",
           "display_name": "供应商名称",
           "type": "string",
           "description": "",
@@ -225,7 +225,7 @@
       "needs_identity": false
     },
     {
-      "id": "field_2",
+      "id": "ot_d38021",
       "name": "采购单",
       "description": "",
       "adopted": true,
@@ -235,12 +235,12 @@
         "catalog_id": "c1"
       },
       "primary_keys": [
-        "field"
+        "p_0e1e9a"
       ],
-      "display_key": "field",
+      "display_key": "p_0e1e9a",
       "properties": [
         {
-          "name": "field",
+          "name": "p_0e1e9a",
           "display_name": "采购单号",
           "type": "string",
           "description": "",
@@ -249,7 +249,7 @@
           "missing_description": true
         },
         {
-          "name": "field_2",
+          "name": "p_a1a5a5",
           "display_name": "供应商编号",
           "type": "string",
           "description": "",
@@ -270,17 +270,17 @@
   ],
   "relation_types": [
     {
-      "id": "salesorder_to_customer",
-      "name": "salesorder_to_customer",
+      "id": "sales_order_to_customer",
+      "name": "sales_order_to_customer",
       "description": "",
-      "source": "salesorder",
+      "source": "sales_order",
       "target": "customer",
       "origin": "name_match",
       "cardinality": "many_to_one",
       "mapping": [
         {
-          "source_property": "customerid",
-          "target_property": "customerid"
+          "source_property": "customer_id",
+          "target_property": "customer_id"
         }
       ],
       "adopted": true,
@@ -322,17 +322,17 @@
       }
     },
     {
-      "id": "field_2_to_field",
-      "name": "field_2_to_field",
+      "id": "ot_d38021_to_ot_033ed5",
+      "name": "ot_d38021_to_ot_033ed5",
       "description": "",
-      "source": "field_2",
-      "target": "field",
+      "source": "ot_d38021",
+      "target": "ot_033ed5",
       "origin": "name_match",
       "cardinality": "many_to_one",
       "mapping": [
         {
-          "source_property": "field_2",
-          "target_property": "field"
+          "source_property": "p_a1a5a5",
+          "target_property": "p_a1a5a5"
         }
       ],
       "adopted": true,

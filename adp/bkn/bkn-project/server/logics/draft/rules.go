@@ -5,6 +5,8 @@
 package draft
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
@@ -74,6 +76,42 @@ func apiName(name string) string {
 		id = strings.TrimRight(id[:maxIDLength], "_")
 	}
 	return id
+}
+
+// Prefixes of the ids made for physical names that are not ASCII, by the kind of item.
+const (
+	idPrefixObjectType   = "ot"
+	idPrefixProperty     = "p"
+	idPrefixValueType    = "vt"
+	idPrefixRelationType = "rt"
+)
+
+// idFrom makes the BKN id of an item from the physical name it is drafted from: its words, camelCase
+// split, joined by "_". BKN ids are ASCII, so a name that is not stands as the kind's prefix and a
+// short hash of the name: the same name always gives the same id, whoever drafts it and in whatever
+// language. The name people read is the item's name, not its id.
+func idFrom(name string, prefix string) string {
+	if !isASCII(name) {
+		sum := sha256.Sum256([]byte(name))
+		return prefix + "_" + hex.EncodeToString(sum[:])[:6]
+	}
+	return apiName(strings.Join(words(name), "_"))
+}
+
+// physicalName is the name of the table in its source. A resource's name is what people read, and
+// semantic understanding may rewrite it; ids and name matching read the source's name, which does
+// not change with it.
+func physicalName(table *interfaces.VegaTable) string {
+	if table.SourceName != "" {
+		return table.SourceName
+	}
+	return table.Name
+}
+
+// matchName is a name as name matching compares it: its words joined by "_", letters of any script
+// kept, so fields named in Chinese match as written.
+func matchName(name string) string {
+	return strings.Join(words(name), "_")
 }
 
 // uniqueName returns name, or name with the first free numeric suffix, and takes it.
@@ -278,9 +316,9 @@ func identityCandidates(table *interfaces.VegaTable) []string {
 			candidates = append(candidates, field)
 		}
 	}
-	tableID := apiName(table.Name) + "_id"
+	tableID := matchName(physicalName(table)) + "_id"
 	for _, c := range table.Columns {
-		if f := apiName(c.Name); f == "id" || f == tableID {
+		if f := matchName(c.Name); f == "id" || f == tableID {
 			add(c.Name)
 		}
 	}
