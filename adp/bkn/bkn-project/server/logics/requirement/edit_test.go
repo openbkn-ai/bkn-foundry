@@ -1,0 +1,354 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package requirement
+
+import (
+	"context"
+	"net/http"
+	"strings"
+	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+)
+
+var (
+	orderRef    = interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"}
+	customerRef = interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}
+	relationRef = interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "sales_order_customer"}
+)
+
+func ptr[T any](v T) *T { return &v }
+
+// readySpec is a drafted specification: q1 follows its concepts, q2 has needs a person set.
+func readySpec() *interfaces.Requirement {
+	cite := []interfaces.RequirementCitation{{DocumentID: "prd", Quote: "q", BlockID: "b1", Start: 0, End: 1}}
+	return &interfaces.Requirement{ProjectID: "p1", Version: 1, Status: interfaces.REQUIREMENT_STATUS_READY, UpdateTime: 7,
+		Spec: interfaces.RequirementSpec{
+			Scenarios: []*interfaces.RequirementScenario{{ID: "s1", Name: "Answer", Citations: cite}},
+			Concepts: []*interfaces.RequirementConcept{
+				{ID: "c1", Term: "Order", Category: "object", MapsTo: &orderRef, Citations: cite},
+				{ID: "c2", Term: "Customer", Category: "object", Citations: cite},
+			},
+			Questions: []*interfaces.RequirementQuestion{
+				{ID: "q1", Text: "Which orders?", ScenarioIDs: []string{"s1"}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+					Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1", "c2"}}, Needs: []interfaces.RequirementItemRef{orderRef},
+					NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS, Citations: cite},
+				{ID: "q2", Text: "Whose orders?", ScenarioIDs: []string{"s1"}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+					Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1"}}, Needs: []interfaces.RequirementItemRef{customerRef},
+					NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_PERSON, Citations: cite},
+			},
+			Rules: []*interfaces.RequirementRule{{ID: "r1", Statement: "Signed changes only", Citations: cite}},
+			Conflicts: []*interfaces.RequirementConflict{{ID: "k1", Topic: "Email", Kind: conflictRule,
+				Sides: []interfaces.RequirementConflictSide{
+					{RequirementCitation: interfaces.RequirementCitation{DocumentID: "prd", Quote: "a"}},
+					{RequirementCitation: interfaces.RequirementCitation{DocumentID: "pol", Quote: "b"}},
+				}}},
+			Choices: []*interfaces.RequirementChoice{{ID: "f1", Question: "Event?", RecommendedOptionID: "o1",
+				Options: []interfaces.RequirementOption{{ID: "o1", Label: "Event"}, {ID: "o2", Label: "Property"}}}},
+			Rejected: []*interfaces.RequirementRejected{},
+		}}
+}
+
+func Test_RequirementEdits(t *testing.T) {
+	Convey("Test requirement edits\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 100 }}
+		ctx := context.Background()
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil).AnyTimes()
+
+		var saved *interfaces.Requirement
+		expectRead := func() { ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(readySpec(), true, nil) }
+		expectSave := func() {
+			ra.EXPECT().UpdateRequirement(gomock.Any(), gomock.Any(), int64(7)).DoAndReturn(
+				func(_ context.Context, req *interfaces.Requirement, _ int64) (bool, error) {
+					saved = req
+					return true, nil
+				})
+		}
+
+		Convey("An edit changes the fields it sets, marks the item edited and moves the update time\n", func() {
+			expectRead()
+			expectSave()
+
+			req, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_SCENARIOS, "s1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Name: ptr("Answer date requests"), Actor: ptr("Sales")}, caller)
+
+			So(err, ShouldBeNil)
+			So(req.UpdateTime, ShouldEqual, 100)
+			s := saved.Spec.Scenarios[0]
+			So(s.Name, ShouldEqual, "Answer date requests")
+			So(s.Actor, ShouldEqual, "Sales")
+			So(s.Edited, ShouldBeTrue)
+			So(s.Citations, ShouldHaveLength, 1)
+		})
+
+		Convey("Setting a question's needs makes them the person's, checked against the draft\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Needs: &[]interfaces.RequirementItemRef{relationRef, relationRef}}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[0].Needs, ShouldResemble, []interfaces.RequirementItemRef{relationRef})
+			So(saved.Spec.Questions[0].NeedsSource, ShouldEqual, interfaces.REQUIREMENT_NEEDS_FROM_PERSON)
+		})
+
+		Convey("An edit is refused when it is incomplete, too long, of another kind's field or refers to nothing\n", func() {
+			for _, c := range []struct {
+				kind, id string
+				edit     interfaces.RequirementItemEdit
+			}{
+				{interfaces.REQUIREMENT_KIND_SCENARIOS, "s1", interfaces.RequirementItemEdit{UpdateTime: 7, Name: ptr("  ")}},
+				{interfaces.REQUIREMENT_KIND_SCENARIOS, "s1", interfaces.RequirementItemEdit{UpdateTime: 7, Name: ptr(strings.Repeat("名", maxItemNameRunes+1))}},
+				{interfaces.REQUIREMENT_KIND_RULES, "r1", interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr(strings.Repeat("a", maxItemTextRunes+1))}},
+				{interfaces.REQUIREMENT_KIND_RULES, "r1", interfaces.RequirementItemEdit{UpdateTime: 7, Text: ptr("not a rule's")}},
+				{interfaces.REQUIREMENT_KIND_RULES, "r1", interfaces.RequirementItemEdit{UpdateTime: 7}},
+				{interfaces.REQUIREMENT_KIND_QUESTIONS, "q1", interfaces.RequirementItemEdit{UpdateTime: 7, Layer: ptr("other")}},
+				{interfaces.REQUIREMENT_KIND_QUESTIONS, "q1", interfaces.RequirementItemEdit{UpdateTime: 7, ScenarioIDs: &[]string{"s9"}}},
+				{interfaces.REQUIREMENT_KIND_QUESTIONS, "q1", interfaces.RequirementItemEdit{UpdateTime: 7,
+					Needs: &[]interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "carrier"}}}},
+				{interfaces.REQUIREMENT_KIND_QUESTIONS, "q1", interfaces.RequirementItemEdit{UpdateTime: 7,
+					Needs: &[]interfaces.RequirementItemRef{{Kind: "table", ID: "customer"}}}},
+				{interfaces.REQUIREMENT_KIND_CONCEPTS, "c1", interfaces.RequirementItemEdit{UpdateTime: 7, Category: ptr("thing")}},
+			} {
+				expectRead()
+
+				_, err := svc.EditItem(ctx, token, "p1", c.kind, c.id, c.edit, caller)
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+			}
+		})
+
+		Convey("An edit needs the update time read, a ready specification, and an item that exists\n", func() {
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+				interfaces.RequirementItemEdit{Statement: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_MissingUpdateTime)
+
+			expectRead()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r9",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+
+			expectRead()
+			_, err = svc.EditItem(ctx, token, "p1", "tables", "r1", interfaces.RequirementItemEdit{UpdateTime: 7}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+
+			expectRead()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+				interfaces.RequirementItemEdit{UpdateTime: 6, Statement: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Stale)
+
+			expectRead()
+			ra.EXPECT().UpdateRequirement(gomock.Any(), gomock.Any(), int64(7)).Return(false, nil)
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Stale)
+
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_DRAFTING}, true, nil)
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
+
+			for _, none := range []*interfaces.Requirement{nil, {Status: interfaces.REQUIREMENT_STATUS_FAILED}} {
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(none, none != nil, nil)
+				_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+					interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("x")}, caller)
+				shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_NotFound)
+			}
+		})
+
+		Convey("Only the owner edits\n", func() {
+			other := pmock.NewMockProjectService(ctrl)
+			other.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{
+				ID: "p1", Owner: interfaces.AccountInfo{ID: "u2"}}}, nil)
+			svc.ps = other
+
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Requirement_NotOwner)
+		})
+
+		Convey("An added item gets the next id and is the person's\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS,
+				interfaces.RequirementItemEdit{UpdateTime: 7, Text: ptr("Which customers?"), Needs: &[]interfaces.RequirementItemRef{customerRef}}, caller)
+
+			So(err, ShouldBeNil)
+			q := saved.Spec.Questions[2]
+			So(q.ID, ShouldEqual, "q3")
+			So(q.Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
+			So(q.Needs, ShouldResemble, []interfaces.RequirementItemRef{customerRef})
+			So(q.NeedsSource, ShouldEqual, interfaces.REQUIREMENT_NEEDS_FROM_PERSON)
+			So(q.Edited, ShouldBeTrue)
+			So(q.Citations, ShouldResemble, []interfaces.RequirementCitation{})
+		})
+
+		Convey("An id freed by a deletion is not given again\n", func() {
+			spec := readySpec()
+			spec.Spec.Rules = []*interfaces.RequirementRule{{ID: "r4"}}
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+			expectSave()
+
+			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES,
+				interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("Codes have seven digits")}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Rules[1].ID, ShouldEqual, "r5")
+		})
+
+		Convey("An added item needs what identifies it, and a kind the specification has\n", func() {
+			expectRead()
+			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS,
+				interfaces.RequirementItemEdit{UpdateTime: 7, Definition: ptr("A buyer")}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+
+			expectRead()
+			_, err = svc.AddItem(ctx, token, "p1", "tables", interfaces.RequirementItemEdit{UpdateTime: 7, Name: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+		})
+
+		Convey("Deleting a concept takes it out of the questions, and needs that follow concepts follow\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS, "c1", 7, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Concepts, ShouldHaveLength, 1)
+			So(saved.Spec.Questions[0].Basis.ConceptIDs, ShouldResemble, []string{"c2"})
+			So(saved.Spec.Questions[0].Needs, ShouldResemble, []interfaces.RequirementItemRef{})
+			So(saved.Spec.Questions[1].Basis.ConceptIDs, ShouldResemble, []string{})
+			So(saved.Spec.Questions[1].Needs, ShouldResemble, []interfaces.RequirementItemRef{customerRef})
+		})
+
+		Convey("Deleting a scenario takes it out of the questions\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_SCENARIOS, "s1", 7, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Scenarios, ShouldBeEmpty)
+			So(saved.Spec.Questions[0].ScenarioIDs, ShouldResemble, []string{})
+		})
+
+		Convey("Mapping a concept updates the questions that follow their concepts, and only those\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.MapConcept(ctx, token, "p1", "c2", interfaces.RequirementMapping{UpdateTime: 7, MapsTo: &customerRef}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Concepts[1].MapsTo, ShouldResemble, &customerRef)
+			So(saved.Spec.Concepts[1].Edited, ShouldBeTrue)
+			So(saved.Spec.Questions[0].Needs, ShouldResemble, []interfaces.RequirementItemRef{orderRef, customerRef})
+			So(saved.Spec.Questions[1].Needs, ShouldResemble, []interfaces.RequirementItemRef{customerRef})
+		})
+
+		Convey("Two concepts of one item make one need\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.MapConcept(ctx, token, "p1", "c2", interfaces.RequirementMapping{UpdateTime: 7, MapsTo: &orderRef}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[0].Needs, ShouldResemble, []interfaces.RequirementItemRef{orderRef})
+		})
+
+		Convey("A concept is unmapped with no item, and mapped only to an item the draft has\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.MapConcept(ctx, token, "p1", "c1", interfaces.RequirementMapping{UpdateTime: 7}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Concepts[0].MapsTo, ShouldBeNil)
+			So(saved.Spec.Questions[0].Needs, ShouldResemble, []interfaces.RequirementItemRef{})
+
+			expectRead()
+			_, err = svc.MapConcept(ctx, token, "p1", "c1", interfaces.RequirementMapping{UpdateTime: 7,
+				MapsTo: &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "customer"}}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+
+			expectRead()
+			_, err = svc.MapConcept(ctx, token, "p1", "c9", interfaces.RequirementMapping{UpdateTime: 7}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+		})
+
+		Convey("A conflict is resolved by a side or a conclusion of its own, with a reason\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.ResolveConflict(ctx, token, "p1", "k1", interfaces.RequirementResolve{UpdateTime: 7,
+				DocumentID: "pol", Reason: "The policy governs"}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Conflicts[0].Resolution, ShouldResemble, &interfaces.RequirementResolution{
+				DocumentID: "pol", Reason: "The policy governs", By: caller, Time: 100})
+			So(saved.Spec.Conflicts[0].Deferred, ShouldBeFalse)
+
+			expectRead()
+			expectSave()
+			_, err = svc.ResolveConflict(ctx, token, "p1", "k1", interfaces.RequirementResolve{UpdateTime: 7,
+				Text: "Email only proposes", Reason: "Both are partly right"}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Conflicts[0].Resolution.Text, ShouldEqual, "Email only proposes")
+		})
+
+		Convey("A conflict handed to the business stays unresolved, with why\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.ResolveConflict(ctx, token, "p1", "k1", interfaces.RequirementResolve{UpdateTime: 7,
+				Deferred: true, Reason: "Sales must confirm"}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Conflicts[0].Deferred, ShouldBeTrue)
+			So(saved.Spec.Conflicts[0].Resolution, ShouldResemble, &interfaces.RequirementResolution{
+				Reason: "Sales must confirm", By: caller, Time: 100})
+		})
+
+		Convey("A resolution needs a reason, and a side of the conflict or a conclusion\n", func() {
+			for _, resolve := range []interfaces.RequirementResolve{
+				{UpdateTime: 7, DocumentID: "pol"},
+				{UpdateTime: 7, Deferred: true},
+				{UpdateTime: 7, Reason: "r"},
+				{UpdateTime: 7, DocumentID: "std", Reason: "r"},
+			} {
+				expectRead()
+				_, err := svc.ResolveConflict(ctx, token, "p1", "k1", resolve, caller)
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidResolution)
+			}
+			expectRead()
+			_, err := svc.ResolveConflict(ctx, token, "p1", "k9", interfaces.RequirementResolve{UpdateTime: 7,
+				DocumentID: "pol", Reason: "r"}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+		})
+
+		Convey("A choice is decided by one of its options\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.DecideChoice(ctx, token, "p1", "f1", interfaces.RequirementDecide{UpdateTime: 7,
+				OptionID: "o2", Basis: "Changes are rare"}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Choices[0].Decision, ShouldResemble, &interfaces.RequirementChoiceDecision{
+				OptionID: "o2", Basis: "Changes are rare", By: caller, Time: 100})
+
+			expectRead()
+			_, err = svc.DecideChoice(ctx, token, "p1", "f1", interfaces.RequirementDecide{UpdateTime: 7, OptionID: "o9"}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidOption)
+		})
+	})
+}

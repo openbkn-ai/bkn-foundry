@@ -233,6 +233,36 @@ func (m *MockRequirementService) EXPECT() *MockRequirementServiceMockRecorder {
 	return m.recorder
 }
 
+// AddItem mocks base method.
+func (m *MockRequirementService) AddItem(ctx context.Context, token, projectID, kind string, edit interfaces.RequirementItemEdit, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddItem", ctx, token, projectID, kind, edit, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddItem indicates an expected call of AddItem.
+func (mr *MockRequirementServiceMockRecorder) AddItem(ctx, token, projectID, kind, edit, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddItem", reflect.TypeOf((*MockRequirementService)(nil).AddItem), ctx, token, projectID, kind, edit, caller)
+}
+
+// DecideChoice mocks base method.
+func (m *MockRequirementService) DecideChoice(ctx context.Context, token, projectID, choiceID string, decide interfaces.RequirementDecide, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DecideChoice", ctx, token, projectID, choiceID, decide, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DecideChoice indicates an expected call of DecideChoice.
+func (mr *MockRequirementServiceMockRecorder) DecideChoice(ctx, token, projectID, choiceID, decide, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DecideChoice", reflect.TypeOf((*MockRequirementService)(nil).DecideChoice), ctx, token, projectID, choiceID, decide, caller)
+}
+
 // DeleteDocument mocks base method.
 func (m *MockRequirementService) DeleteDocument(ctx context.Context, token, projectID, documentID string, caller interfaces.AccountInfo) error {
 	m.ctrl.T.Helper()
@@ -245,6 +275,36 @@ func (m *MockRequirementService) DeleteDocument(ctx context.Context, token, proj
 func (mr *MockRequirementServiceMockRecorder) DeleteDocument(ctx, token, projectID, documentID, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocument", reflect.TypeOf((*MockRequirementService)(nil).DeleteDocument), ctx, token, projectID, documentID, caller)
+}
+
+// DeleteItem mocks base method.
+func (m *MockRequirementService) DeleteItem(ctx context.Context, token, projectID, kind, itemID string, updateTime int64, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteItem", ctx, token, projectID, kind, itemID, updateTime, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteItem indicates an expected call of DeleteItem.
+func (mr *MockRequirementServiceMockRecorder) DeleteItem(ctx, token, projectID, kind, itemID, updateTime, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteItem", reflect.TypeOf((*MockRequirementService)(nil).DeleteItem), ctx, token, projectID, kind, itemID, updateTime, caller)
+}
+
+// EditItem mocks base method.
+func (m *MockRequirementService) EditItem(ctx context.Context, token, projectID, kind, itemID string, edit interfaces.RequirementItemEdit, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EditItem", ctx, token, projectID, kind, itemID, edit, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EditItem indicates an expected call of EditItem.
+func (mr *MockRequirementServiceMockRecorder) EditItem(ctx, token, projectID, kind, itemID, edit, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EditItem", reflect.TypeOf((*MockRequirementService)(nil).EditItem), ctx, token, projectID, kind, itemID, edit, caller)
 }
 
 // FailInterrupted mocks base method.
@@ -319,6 +379,36 @@ func (m *MockRequirementService) ListDocuments(ctx context.Context, token, proje
 func (mr *MockRequirementServiceMockRecorder) ListDocuments(ctx, token, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockRequirementService)(nil).ListDocuments), ctx, token, projectID)
+}
+
+// MapConcept mocks base method.
+func (m *MockRequirementService) MapConcept(ctx context.Context, token, projectID, conceptID string, mapping interfaces.RequirementMapping, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MapConcept", ctx, token, projectID, conceptID, mapping, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MapConcept indicates an expected call of MapConcept.
+func (mr *MockRequirementServiceMockRecorder) MapConcept(ctx, token, projectID, conceptID, mapping, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MapConcept", reflect.TypeOf((*MockRequirementService)(nil).MapConcept), ctx, token, projectID, conceptID, mapping, caller)
+}
+
+// ResolveConflict mocks base method.
+func (m *MockRequirementService) ResolveConflict(ctx context.Context, token, projectID, conflictID string, resolve interfaces.RequirementResolve, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveConflict", ctx, token, projectID, conflictID, resolve, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveConflict indicates an expected call of ResolveConflict.
+func (mr *MockRequirementServiceMockRecorder) ResolveConflict(ctx, token, projectID, conflictID, resolve, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveConflict", reflect.TypeOf((*MockRequirementService)(nil).ResolveConflict), ctx, token, projectID, conflictID, resolve, caller)
 }
 
 // ScenarioQuestions mocks base method.
