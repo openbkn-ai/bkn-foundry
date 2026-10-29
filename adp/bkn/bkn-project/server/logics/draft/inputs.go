@@ -20,7 +20,9 @@ import (
 // same tables differently, so drafts made under other rules are told apart.
 // Version 2: ids split camelCase into words, and a physical name that is not ASCII gives the kind's
 // prefix and a short hash of the name instead of field.
-const draftRulesVersion = 2
+// Version 3: a physical name that is not ASCII takes its id from the project's registry, else from
+// the short name semantic understanding gave, and the hash stands only until there is one.
+const draftRulesVersion = 3
 
 // draftInputsOf records what a draft is made from: the rules and their settings, the catalogs
 // and the tables read, listed by resource ID.
@@ -61,6 +63,7 @@ type fingerprintedTable struct {
 	Description  string                      `json:"description"`
 	SourceSchema string                      `json:"source_schema"`
 	SourceName   string                      `json:"source_name"`
+	APIName      string                      `json:"api_name,omitempty"`
 	Columns      []interfaces.VegaColumn     `json:"columns"`
 	PrimaryKeys  []string                    `json:"primary_keys"`
 	Indices      []interfaces.VegaIndex      `json:"indices"`
@@ -71,7 +74,7 @@ type fingerprintedTable struct {
 func fingerprint(table *interfaces.VegaTable) string {
 	structure := fingerprintedTable{
 		Name: table.Name, Description: table.Description, SourceSchema: table.SourceSchema,
-		SourceName: table.SourceName, Columns: table.Columns, PrimaryKeys: table.PrimaryKeys,
+		SourceName: table.SourceName, APIName: table.APIName, Columns: table.Columns, PrimaryKeys: table.PrimaryKeys,
 		Indices:     slices.Clone(table.Indices),
 		ForeignKeys: slices.Clone(table.ForeignKeys),
 	}

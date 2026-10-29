@@ -73,3 +73,23 @@ func Test_DraftInputsOf(t *testing.T) {
 		})
 	})
 }
+
+func Test_FingerprintShortNames(t *testing.T) {
+	Convey("Short names change a table's fingerprint only when it has them\n", t, func() {
+		supplier := func() *interfaces.VegaTable {
+			return &interfaces.VegaTable{Name: "供应商", SourceName: "供应商", SourceSchema: "erp", PrimaryKeys: []string{"编号"},
+				Columns: []interfaces.VegaColumn{{Name: "编号", Type: "string", DisplayName: "供应商编号", Comment: "c"}}}
+		}
+		// What the drafts before short names recorded, so their tables do not all read as changed.
+		So(fingerprint(supplier()), ShouldEqual, "b6adb221e747f3ec43951ca3bb10786f7641981c9b376a95d1ed524c8fffec4d")
+
+		// A short name changes the ids drafted from the table, so it changes the fingerprint.
+		named := supplier()
+		named.APIName = "supplier"
+		So(fingerprint(named), ShouldNotEqual, fingerprint(supplier()))
+		field := supplier()
+		field.Columns[0].APIName = "supplier_code"
+		So(fingerprint(field), ShouldNotEqual, fingerprint(supplier()))
+		So(fingerprint(field), ShouldNotEqual, fingerprint(named))
+	})
+}

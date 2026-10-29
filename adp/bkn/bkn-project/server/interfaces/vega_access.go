@@ -40,8 +40,9 @@ type VegaColumn struct {
 	// Comment is the database comment; privacy rules read it even when semantic understanding
 	// gave a description.
 	Comment string
-	// APIName is the English short name semantic understanding gave, empty when it gave none.
-	APIName  string
+	// APIName is the English short name semantic understanding gave, empty when it gave none. Left
+	// out of the JSON when empty, so draft fingerprints of tables without it stay as they were.
+	APIName  string `json:",omitempty"`
 	Nullable bool
 }
 
