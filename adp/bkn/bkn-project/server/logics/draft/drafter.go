@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -54,6 +53,8 @@ type drafter struct {
 	recorded   []*interfaces.RegisteredID
 	// named are the keys of the items this draft named from names that are not ASCII.
 	named map[interfaces.IDKey]bool
+	// namingLanguage is the project's: the language items are named in.
+	namingLanguage string
 }
 
 func newDrafter(setting common.DraftSetting, c counter) *drafter {
@@ -176,9 +177,11 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 }
 
 func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]bool) {
+	name, aliases := d.tableName(table)
 	objectType := &interfaces.DraftObjectType{
 		ID:          d.itemID(interfaces.ID_KIND_OBJECT_TYPES, table.ID, physicalName(table), table.APIName, idPrefixObjectType, typeIDs),
-		Name:        displayName(table.Description, table.Name),
+		Name:        name,
+		Aliases:     aliases,
 		Description: table.Description,
 		Table:       draftTable(table),
 		Properties:  []*interfaces.DraftProperty{},
@@ -227,8 +230,9 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 		}
 	}
 	for _, c := range columns {
-		objectType.Properties = append(objectType.Properties, newProperty(c, fields[c.Name]))
+		objectType.Properties = append(objectType.Properties, newProperty(c, fields[c.Name], d.language()))
 	}
+	dropAliasesOfOtherProperties(objectType.Properties)
 
 	objectType.Key = interfaces.DraftKeyEvidence{Source: source}
 	if source == interfaces.DRAFT_KEY_NONE && len(identityCandidates(table)) > 0 {
@@ -258,10 +262,12 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 }
 
 // newProperty maps a field of a BKN type to a property named name.
-func newProperty(c interfaces.VegaColumn, name string) *interfaces.DraftProperty {
+func newProperty(c interfaces.VegaColumn, name string, language string) *interfaces.DraftProperty {
+	displayName, aliases := fieldNames(c, language)
 	return &interfaces.DraftProperty{
 		Name:               name,
-		DisplayName:        propertyDisplayName(c),
+		DisplayName:        displayName,
+		Aliases:            aliases,
 		Type:               bknTypes[c.Type],
 		Description:        c.Description,
 		MappedField:        c.Name,
@@ -270,13 +276,11 @@ func newProperty(c interfaces.VegaColumn, name string) *interfaces.DraftProperty
 	}
 }
 
-// propertyDisplayName is the business name semantic understanding gave the field, else the
-// first clause of its description.
-func propertyDisplayName(c interfaces.VegaColumn) string {
-	if c.DisplayName != "" && utf8.RuneCountInString(c.DisplayName) <= maxDisplayNameRunes {
-		return c.DisplayName
-	}
-	return displayName(c.Description, c.Name)
+// fieldNames are the display name of a field in the naming language and its aliases, from the
+// business name semantic understanding gave it, its description and its comment, in that order,
+// then its own name.
+func fieldNames(c interfaces.VegaColumn, language string) (string, []string) {
+	return pickName(language, c.Name, c.DisplayName, firstClause(c.Description), firstClause(c.Comment))
 }
 
 // displayKey is the first mapped name field, else the first key property.
@@ -385,9 +389,11 @@ func (d *drafter) addValueType(ctx context.Context, table *interfaces.VegaTable,
 		// More values than a code table holds: the row count was stale; leave the table out.
 		return nil
 	}
+	// BKN has no aliases of value types: the name alone.
+	valueTypeName, _ := d.tableName(table)
 	valueType := &interfaces.DraftValueType{
 		ID:        d.itemID(interfaces.ID_KIND_VALUE_TYPES, table.ID, physicalName(table), table.APIName, idPrefixValueType, ids),
-		Name:      displayName(table.Description, table.Name),
+		Name:      valueTypeName,
 		BaseType:  bknTypes[c.Type],
 		Values:    values,
 		CodeTable: draftTable(table),
@@ -614,7 +620,7 @@ func (d *drafter) addLinkRelation(table *interfaces.VegaTable, ids map[string]bo
 		Verification:  "confirmed",
 		Evidence:      interfaces.DraftJoinEvidence{Reason: reasonLinkTable},
 	}
-	relation.Name = displayName(table.Description, table.Name)
+	relation.Name, relation.Aliases = d.tableName(table)
 	d.items.RelationTypes = append(d.items.RelationTypes, relation)
 }
 

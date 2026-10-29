@@ -125,8 +125,10 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 
 func compileObjectType(ot *interfaces.DraftObjectType, valueTypes map[string]bool) *bkn.BknObjectType {
 	compiled := &bkn.BknObjectType{
-		BknObjectTypeFrontmatter: bkn.BknObjectTypeFrontmatter{Type: "object_type", ID: ot.ID, Name: ot.Name},
-		Description:              ot.Description,
+		BknObjectTypeFrontmatter: bkn.BknObjectTypeFrontmatter{
+			Type: "object_type", ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases,
+		},
+		Description: ot.Description,
 		DataSource: &bkn.ResourceInfo{
 			Type: bkn.DATA_SOURCE_TYPE_RESOURCE,
 			ID:   ot.Table.ResourceID,
@@ -139,6 +141,7 @@ func compileObjectType(ot *interfaces.DraftObjectType, valueTypes map[string]boo
 		property := &bkn.DataProperty{
 			Name:        p.Name,
 			DisplayName: p.DisplayName,
+			Aliases:     p.Aliases,
 			Type:        p.Type,
 			Description: p.Description,
 			MappedField: p.MappedField,
@@ -158,6 +161,7 @@ func compileRelationType(rt *interfaces.DraftRelationType) (*bkn.BknRelationType
 			Type:         "relation_type",
 			ID:           rt.ID,
 			Name:         rt.Name,
+			Aliases:      rt.Aliases,
 			Verification: rt.Verification,
 		},
 		Description: rt.Description,

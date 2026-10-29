@@ -121,6 +121,8 @@ type DraftInputs struct {
 	Tables       []DraftInputTable `json:"tables"`
 	// Partial is set when some tables of the catalogs could not be read: they are in unreadable.
 	Partial bool `json:"partial"`
+	// NamingLanguage is the language the draft named its items in.
+	NamingLanguage string `json:"naming_language"`
 	// IDs sums up the project's registered ids as drafting left them; absent when there are none.
 	IDs *DraftInputIDs `json:"ids,omitempty"`
 }
@@ -232,8 +234,10 @@ type DraftTable struct {
 }
 
 type DraftObjectType struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Aliases are its names in the other naming language, from the catalog; absent when none.
+	Aliases     []string         `json:"aliases,omitempty"`
 	Description string           `json:"description"`
 	Adopted     bool             `json:"adopted"`
 	Table       DraftTable       `json:"table"`
@@ -246,13 +250,15 @@ type DraftObjectType struct {
 }
 
 type DraftProperty struct {
-	Name           string `json:"name"`
-	DisplayName    string `json:"display_name"`
-	Type           string `json:"type"`
-	Description    string `json:"description"`
-	MappedField    string `json:"mapped_field"`
-	ValueTypeID    string `json:"value_type_id,omitempty"`
-	SourceOfRecord string `json:"source_of_record"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	// Aliases are its names in the other naming language, from the catalog; absent when none.
+	Aliases        []string `json:"aliases,omitempty"`
+	Type           string   `json:"type"`
+	Description    string   `json:"description"`
+	MappedField    string   `json:"mapped_field"`
+	ValueTypeID    string   `json:"value_type_id,omitempty"`
+	SourceOfRecord string   `json:"source_of_record"`
 	// MissingDescription is a quality reminder; it does not block.
 	MissingDescription bool `json:"missing_description"`
 }
@@ -271,8 +277,10 @@ type DraftKeyEvidence struct {
 }
 
 type DraftRelationType struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Aliases are its names in the other naming language, from the catalog; absent when none.
+	Aliases     []string            `json:"aliases,omitempty"`
 	Description string              `json:"description"`
 	Source      string              `json:"source"`
 	Target      string              `json:"target"`

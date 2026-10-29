@@ -129,6 +129,8 @@ func Test_DraftService(t *testing.T) {
 			inputs := finished.Items.Inputs
 			So(inputs, ShouldNotBeNil)
 			So(inputs.RulesVersion, ShouldEqual, draftRulesVersion)
+			// A project made before naming languages names in Chinese.
+			So(inputs.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_ZH_CN)
 			So(inputs.Settings.AdoptHitRate, ShouldEqual, setting.AdoptHitRate)
 			So(inputs.Settings.CodeTableMaxRows, ShouldEqual, setting.CodeTableMaxRows)
 			So(inputs.Settings.MinInferredDistinct, ShouldEqual, setting.MinInferredDistinct)
@@ -154,6 +156,7 @@ func Test_DraftService(t *testing.T) {
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).
 				Return([]map[string]any{{"total": float64(2), "distinct_values": float64(2), "nulls": float64(0)}}, nil).AnyTimes()
 			ira.ids = []*interfaces.RegisteredID{registered(interfaces.ID_KIND_OBJECT_TYPES, "r1", "vendor", interfaces.ID_ORIGIN_SEMANTIC, true)}
+			project.NamingLanguage = interfaces.NAMING_LANGUAGE_EN_US
 			var finished *interfaces.Draft
 			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
@@ -163,6 +166,8 @@ func Test_DraftService(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
 			So(finished.Items.ObjectTypes[0].ID, ShouldEqual, "vendor")
+			// Drafted in the project's naming language.
+			So(finished.Items.Inputs.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_EN_US)
 			So(len(ira.recorded), ShouldEqual, 1)
 			So(ira.recorded[0].ID, ShouldEqual, "supplier_code")
 			So(ira.recorded[0].ProjectID, ShouldEqual, "p1")

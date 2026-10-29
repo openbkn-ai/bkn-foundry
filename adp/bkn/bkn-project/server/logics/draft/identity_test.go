@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -246,6 +247,28 @@ func Test_RestoreExcluded(t *testing.T) {
 				ObjectType: "customers", Field: "Phone", Reason: excludedPrivacy, Keyword: "phone",
 			})
 			So(decision.After, ShouldEqual, "phone")
+		})
+
+		Convey("A restored field is named in the language the draft named in\n", func() {
+			customers.Columns[1].Comment = "手机号码"
+			for language, want := range map[string]string{
+				// Contact number is the other property's display name: not an alias.
+				interfaces.NAMING_LANGUAGE_ZH_CN: "手机号码 | Mobile phone",
+				interfaces.NAMING_LANGUAGE_EN_US: "Mobile phone | 手机号码",
+			} {
+				d := identityDraft()
+				d.Items.ObjectTypes[1].Properties[0].DisplayName = "Contact number"
+				d.Items.Inputs = &interfaces.DraftInputs{NamingLanguage: language}
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_customers"}).Return([]*interfaces.VegaTable{customers}, nil)
+				da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+
+				got, err := svc.RestoreExcluded(ctx, token, "p1", restore("customers", "Phone"), caller)
+
+				So(err, ShouldBeNil)
+				restored := got.Items.ObjectTypes[1].Properties[1]
+				So(restored.DisplayName+" | "+strings.Join(restored.Aliases, ","), ShouldEqual, want)
+			}
 		})
 
 		Convey("A restored field gets a property name no other property has\n", func() {

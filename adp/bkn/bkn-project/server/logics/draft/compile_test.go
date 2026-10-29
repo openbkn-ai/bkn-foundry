@@ -314,3 +314,27 @@ func Test_CompileDraftIDKeys(t *testing.T) {
 		So(compiled.IDKeys, ShouldNotContain, interfaces.IDKey{Kind: interfaces.ID_KIND_VALUE_TYPES, SourceKey: "res_order_status"})
 	})
 }
+
+func Test_CompileAliases(t *testing.T) {
+	Convey("Aliases are written into the definitions, as BKN 3.0 reads them\n", t, func() {
+		items := compileFixture()
+		items.ObjectTypes[0].Aliases = []string{"订单"}
+		items.ObjectTypes[0].Properties[0].Aliases = []string{"订单号"}
+		items.RelationTypes[1].Aliases = []string{"包含商品"}
+
+		compiledOT := compileObjectType(items.ObjectTypes[0], map[string]bool{})
+		So(compiledOT.Aliases, ShouldResemble, []string{"订单"})
+		So(compiledOT.DataProperties[0].Aliases, ShouldResemble, []string{"订单号"})
+		So(bkn.ValidateObjectTypeDeclarations(compiledOT), ShouldBeNil)
+		compiledRT, err := compileRelationType(items.RelationTypes[1])
+		So(err, ShouldBeNil)
+		So(compiledRT.Aliases, ShouldResemble, []string{"包含商品"})
+		So(bkn.ValidateRelationTypeDeclarations(compiledRT), ShouldBeNil)
+
+		compiled, err := compileDraft(items)
+		So(err, ShouldBeNil)
+		So(string(compiled.Files["object_types/orders.bkn"]), ShouldContainSubstring, "订单号")
+		So(string(compiled.Files["object_types/orders.bkn"]), ShouldContainSubstring, "aliases:")
+		So(string(compiled.Files["relation_types/orders_to_products.bkn"]), ShouldContainSubstring, "包含商品")
+	})
+}

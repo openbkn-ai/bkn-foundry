@@ -30,7 +30,9 @@ type goldenCase struct {
 	Tables      []*interfaces.VegaTable `json:"tables"`
 	// Registered are the project's ids registered before this draft.
 	Registered []*interfaces.RegisteredID `json:"registered"`
-	Counts     struct {
+	// NamingLanguage is the project's; empty drafts as a project made before naming languages.
+	NamingLanguage string `json:"naming_language"`
+	Counts         struct {
 		// Keys are rows, distinct and nulls by "table" or "table.field".
 		Keys map[string][3]int64 `json:"keys"`
 		// Joins are rows, nulls, orphans and distinct source values by "table.field@target": a field
@@ -110,7 +112,7 @@ func draftGolden(c *goldenCase, tables []*interfaces.VegaTable) ([]byte, []byte,
 		clones = append(clones, &clone)
 	}
 	counter := &goldenCounter{c: c}
-	d := newDrafter(testSetting, counter).withRegisteredIDs("p1", c.Registered)
+	d := newDrafter(testSetting, counter).withRegisteredIDs("p1", c.Registered).withNamingLanguage(c.NamingLanguage)
 	items, err := d.draft(context.Background(), clones, nil)
 	if err != nil {
 		return nil, nil, nil, err
