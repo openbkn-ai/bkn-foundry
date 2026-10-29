@@ -18,7 +18,9 @@ import (
 
 // draftRulesVersion names the drafting rules; it moves whenever a change to them could draft the
 // same tables differently, so drafts made under other rules are told apart.
-const draftRulesVersion = 1
+// Version 2: ids split camelCase into words, and a physical name that is not ASCII gives the kind's
+// prefix and a short hash of the name instead of field.
+const draftRulesVersion = 2
 
 // draftInputsOf records what a draft is made from: the rules and their settings, the catalogs
 // and the tables read, listed by resource ID.

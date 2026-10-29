@@ -1,5 +1,5 @@
 {
-  "description": "Field names in camelCase, pinyin and Chinese: name matching relates them all. Known gap (wp1-review G1): Chinese table and field names become IDs field, field_2, ...; meaningful and colliding-free IDs for them are not decided yet.",
+  "description": "Field names in camelCase, pinyin and Chinese. Ids come from physical names: camelCase is split (customerId becomes customer_id); a name that is not ASCII stands as its kind's prefix and a short hash (ot_..., p_...), while the names people read stay Chinese. Name matching compares names as written, so 采购单.供应商编号 refers to 供应商, and no two Chinese fields match as field. English short names for such ids are NAME-1b.",
   "tables": [
     {
       "ID": "r_kh",
@@ -253,12 +253,6 @@
         0,
         0,
         480
-      ],
-      "r_zh.供应商名称@r_po": [
-        80,
-        0,
-        80,
-        80
       ],
       "r_po.供应商编号@r_zh": [
         700,

@@ -35,7 +35,13 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   `below_adopt_hit_rate`, `few_values` or `end_not_adopted` (an object type at an
   end waits for a person). Personal fields
   (privacy keywords matched as whole words) are excluded. Names and descriptions
-  from the catalog's semantic understanding come first. Only counts and
+  from the catalog's semantic understanding come first. Ids come from physical
+  table and field names only, never from names semantic understanding wrote, so
+  they do not change with language or with understanding run again: words
+  joined by `_`, camelCase split (`customerId` gives `customer_id`); a physical
+  name that is not ASCII, which BKN ids cannot hold, gives its kind's prefix and
+  a short hash of the name (`ot_…`, `p_…`, `vt_…`, `rt_…`). Name matching
+  compares physical names as written. Only counts and
   code-table values leave vega-backend, which is read as the caller.
 - Health and readiness endpoints.
 

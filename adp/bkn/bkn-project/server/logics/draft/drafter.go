@@ -87,11 +87,12 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	// takes the plain ID must not depend on the listing.
 	sort.Slice(tables, func(i, j int) bool {
 		a, b := tables[i], tables[j]
+		// By the physical name first: the resource's name is semantic understanding's to rewrite,
+		// and which table takes a plain id must not change with it.
 		return cmp.Or(
-			cmp.Compare(a.Name, b.Name),
+			cmp.Compare(physicalName(a), physicalName(b)),
 			cmp.Compare(a.CatalogID, b.CatalogID),
 			cmp.Compare(a.SourceSchema, b.SourceSchema),
-			cmp.Compare(a.SourceName, b.SourceName),
 			cmp.Compare(a.ID, b.ID),
 		) < 0
 	})
@@ -155,7 +156,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 
 func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]bool) {
 	objectType := &interfaces.DraftObjectType{
-		ID:          uniqueName(apiName(table.Name), typeIDs),
+		ID:          uniqueName(idFrom(physicalName(table), idPrefixObjectType), typeIDs),
 		Name:        displayName(table.Description, table.Name),
 		Description: table.Description,
 		Table:       draftTable(table),
@@ -190,7 +191,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 			})
 			continue
 		}
-		name := uniqueName(apiName(c.Name), names)
+		name := uniqueName(idFrom(c.Name, idPrefixProperty), names)
 		fields[c.Name] = name
 		objectType.Properties = append(objectType.Properties, newProperty(c, name))
 	}
@@ -351,7 +352,7 @@ func (d *drafter) addValueType(ctx context.Context, table *interfaces.VegaTable,
 		return nil
 	}
 	valueType := &interfaces.DraftValueType{
-		ID:        uniqueName(apiName(table.Name), ids),
+		ID:        uniqueName(idFrom(physicalName(table), idPrefixValueType), ids),
 		Name:      displayName(table.Description, table.Name),
 		BaseType:  bknTypes[c.Type],
 		Values:    values,
@@ -449,7 +450,7 @@ var genericKeys = map[string]bool{"id": true, "code": true, "key": true, "no": t
 // sub_account_id goes to sub_account before account. A generic key name (id, code) only
 // matches with the table's name in front.
 func nameMatch(field string, other *interfaces.VegaTable, key string) int {
-	f, k, table := apiName(field), apiName(key), apiName(other.Name)
+	f, k, table := matchName(field), matchName(key), matchName(physicalName(other))
 	switch {
 	case f == table+"_id" || f == table+"_"+k || (f == k && !genericKeys[k]):
 		return 1000
@@ -487,7 +488,7 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 	}
 
 	relation := &interfaces.DraftRelationType{
-		ID:           uniqueName(apiName(source.ID+"_to_"+targetType.ID), ids),
+		ID:           uniqueName(idFrom(source.ID+"_to_"+targetType.ID, idPrefixRelationType), ids),
 		Source:       source.ID,
 		Target:       targetType.ID,
 		Origin:       origin,
@@ -567,7 +568,7 @@ func (d *drafter) addLinkRelation(table *interfaces.VegaTable, ids map[string]bo
 	}
 	link := draftTable(table)
 	relation := &interfaces.DraftRelationType{
-		ID:            uniqueName(apiName(table.Name), ids),
+		ID:            uniqueName(idFrom(physicalName(table), idPrefixRelationType), ids),
 		Source:        ends[0].ID,
 		Target:        ends[1].ID,
 		Origin:        interfaces.DRAFT_ORIGIN_LINK_TABLE,
