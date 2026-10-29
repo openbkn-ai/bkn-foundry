@@ -79,9 +79,6 @@ func rewriteLikeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 	return &CondCfg{
 		Name:      cfg.NameField.MappedField.Name,
 		Operation: cfg.Operation,
-		ValueOptCfg: ValueOptCfg{
-			Value:     cfg.Value,
-			RealValue: cfg.Value, // Pass the ontology like value to the real_value of the view like filter.
-		},
+		Value:     cfg.Value,
 	}, nil
 }

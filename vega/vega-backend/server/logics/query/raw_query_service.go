@@ -10,12 +10,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -26,13 +25,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/sqlglot"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/sql/compiler"
 )
+
+const rawQueryTotalCountColumn = "_raw_query_total_count"
 
 var (
 	rqServiceOnce sync.Once
@@ -45,7 +46,19 @@ type rawQueryService struct {
 	rs interfaces.ResourceService
 }
 
-const rawQueryTotalCountColumn = "_raw_query_total_count"
+type preparedSQLQuery struct {
+	catalog          *interfaces.Catalog
+	resourceIDs      []string
+	builder          *sb.SelectBuilder
+	resourceVersions map[string]int64
+	warnings         []string
+}
+
+type rawSQLBuildOptions struct {
+	offset int
+	limit  int
+	count  bool
+}
 
 func connectorInitializationError(ctx context.Context, err error) error {
 	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
@@ -143,15 +156,17 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 
 	var totalCount int64
 	if req.NeedTotal {
-		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		var counted *interfaces.RawQueryResponse
+		counted, err = rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, &rawSQLBuildOptions{count: true})
+		if err == nil {
+			totalCount, err = rawQueryTotalCount(counted)
+		}
 		if err != nil {
 			return nil, err
 		}
 	}
-	result, err := rqs.executeSQL(queryCtx, prepared.catalog, prepared.sql, interfaces.PagingModeSingle, &rawSQLBuildOptions{
-		offset: req.Paging.Offset,
-		limit:  req.Paging.Limit,
-	})
+	options := &rawSQLBuildOptions{offset: req.Paging.Offset, limit: req.Paging.Limit}
+	result, err := rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, options)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +188,11 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	}
 	var totalCount int64
 	if req.NeedTotal {
-		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		var counted *interfaces.RawQueryResponse
+		counted, err = rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, &rawSQLBuildOptions{count: true})
+		if err == nil {
+			totalCount, err = rawQueryTotalCount(counted)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +201,6 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 		accountIDFromContext(ctx),
 		prepared.catalog.ID,
 		prepared.resourceIDs,
-		prepared.sql,
 		req.Paging.Limit,
 		req.Paging.KeepAliveSec,
 		req.QueryTimeoutSec,
@@ -190,14 +208,22 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	if err != nil {
 		return nil, cursorSessionCreateError(ctx, err)
 	}
+	session.Lock()
+	defer session.Unlock()
+	session.SQLQuery = prepared.builder
+	session.SQLResourceVersions = prepared.resourceVersions
+	session.SQLCatalogUpdateTime = prepared.catalog.UpdateTime
+	session.SQLConnectorType = prepared.catalog.ConnectorType
 	session.PageOffset = req.Paging.Offset
 	session.TotalCount = totalCount
 	session.HasTotalCount = req.NeedTotal
 	session.NeedTotal = req.NeedTotal
 	bindCursorResource(session, req)
-	session.Lock()
-	defer session.Unlock()
-	result, err := rqs.executeSQLCursorPage(queryCtx, session, prepared.catalog, prepared.warnings)
+	if err := rqs.openSQLBuilderCursor(queryCtx, session, prepared.catalog); err != nil {
+		rawQueryCursorSessions.remove(session.ID)
+		return nil, err
+	}
+	result, err := rqs.executeSQLCursorPage(queryCtx, session, prepared.warnings)
 	if err != nil {
 		// The client has not received this token, so it cannot retry this
 		// session. Do not retain it until idle expiry.
@@ -227,15 +253,25 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	defer cancel()
 	catalog, warnings, err := rqs.checkSameDataSource(queryCtx, session.ResourceIDs)
 	if err != nil {
+		invalidateSQLCursor(session, err)
 		return nil, err
 	}
 	if catalog.ID != session.CatalogID {
+		if session.QueryFormat == interfaces.QueryFormatSQL {
+			rawQueryCursorSessions.remove(session.ID)
+		}
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor catalog changed")
 	}
+	if session.QueryFormat == interfaces.QueryFormatSQL {
+		if err := rqs.validateSQLBuilderCursor(queryCtx, session, catalog); err != nil {
+			invalidateSQLCursor(session, err)
+			return nil, err
+		}
+	}
 	switch session.QueryFormat {
 	case interfaces.QueryFormatSQL:
-		return rqs.executeSQLCursorPage(queryCtx, session, catalog, warnings)
+		return rqs.executeSQLCursorPage(queryCtx, session, warnings)
 	case interfaces.QueryFormatDSL:
 		return rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
 	default:
@@ -244,22 +280,20 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	}
 }
 
-type preparedSQLQuery struct {
-	catalog     *interfaces.Catalog
-	resourceIDs []string
-	sql         string
-	warnings    []string
-}
-
 // prepareSQLQuery is the shared SQL preparation pipeline for both single and
-// cursor execution. Policy validation deliberately happens after controlled
-// resource binding and before compilation or connector execution.
+// cursor execution. SQL uses the shared parser and the Catalog selects the renderer.
 func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
-	inputDialect := req.EffectiveInputDialect()
-	resourceIDs, err := rqs.extractResourceIDs(ctx, req.Query, inputDialect)
+	parsed, err := compiler.ParseSQL(req.Query.(string))
 	if err != nil {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
+		return nil, sqlBuilderQueryInvalid(ctx, err.Error())
+	}
+	var resourceIDs []string
+	seen := make(map[string]bool)
+	for _, table := range sqlBuilderTables(parsed) {
+		if !seen[table.ResourceID] {
+			resourceIDs = append(resourceIDs, table.ResourceID)
+			seen[table.ResourceID] = true
+		}
 	}
 	if len(resourceIDs) == 0 {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -269,126 +303,23 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, err
 	}
-	targetDialect, err := targetDialectForCatalog(ctx, catalog)
-	if err != nil {
-		return nil, err
-	}
-	// Compile temporary table references before binding source-dialect names.
-	needsUnicodeNormalization := targetDialect == "tsql" && strings.ContainsFunc(req.Query.(string), func(r rune) bool {
-		return r > unicode.MaxASCII
-	})
-	var finalSQL string
-	if inputDialect == targetDialect && !needsUnicodeNormalization {
-		finalSQL, err = rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog, inputDialect)
-		if err != nil {
-			return nil, err
-		}
-		allowed, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
-		if err != nil {
-			return nil, err
-		}
-		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, allowed, true); err != nil {
-			return nil, err
-		}
-	} else {
-		query := req.Query.(string)
-		markers := make([]string, len(resourceIDs))
-		for i, resourceID := range resourceIDs {
-			marker := fmt.Sprintf("__vega_resource_%d", i)
-			for strings.Contains(query, marker) {
-				marker += "_"
-			}
-			markers[i] = marker
-			query = replacePlaceholderInSQLCode(query, "{{"+resourceID+"}}", marker, inputDialect)
-			query = replacePlaceholderInSQLCode(query, "{{."+resourceID+"}}", marker, inputDialect)
-		}
-		if err := validateSQLPolicy(ctx, query, inputDialect, markers, inputDialect == targetDialect); err != nil {
-			return nil, err
-		}
-		compiled, err := sqlglot.TranspileSQL(ctx, query, inputDialect, targetDialect)
-		if err != nil {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-				WithErrorDetails("failed to compile SQL query")
-		}
-		references, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
-		if err != nil {
-			return nil, err
-		}
-		bindings := make(map[string]string, len(markers))
-		for i, marker := range markers {
-			bindings[marker] = references[i]
-		}
-		bound, err := sqlglot.BindTableReferences(ctx, compiled.SQL, targetDialect, bindings)
-		if err != nil {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-				WithErrorDetails("failed to bind SQL resource references")
-		}
-		finalSQL = bound.SQL
-		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, references, true); err != nil {
-			return nil, err
-		}
-	}
-	return &preparedSQLQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
+	return rqs.prepareSQLBuilder(ctx, parsed, catalog, resourceIDs, warnings)
 }
 
-func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferences []string, derivedTable bool) error {
-	var err error
-	if derivedTable {
-		err = rawQueryPolicy.ValidateDerivedTable(ctx, sql, dialect)
-	} else {
-		err = rawQueryPolicy.ValidateSQL(ctx, sql, dialect)
-	}
-	if err != nil {
-		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
-			return httpErr
-		}
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails("failed to validate SQL query")
-	}
-	if err := rawQueryPolicy.ValidateTableReferences(ctx, sql, dialect, allowedReferences); err != nil {
-		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
-			return httpErr
-		}
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails("failed to validate SQL resource references")
-	}
-	return nil
-}
-
-func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resourceIDs []string) ([]string, error) {
-	identifiers := make([]string, 0, len(resourceIDs))
-	for _, resourceID := range resourceIDs {
-		resource, err := rqs.rs.InternalGetByID(ctx, nil, resourceID)
-		if err != nil {
-			return nil, err
-		}
-		if resource == nil || strings.TrimSpace(resource.SourceIdentifier) == "" {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-				WithErrorDetails(fmt.Sprintf("resource %s has no queryable source", resourceID))
-		}
-		identifiers = append(identifiers, resource.SourceIdentifier)
-	}
-	return identifiers, nil
-}
-
-func trimSQLTerminator(sql string) string {
-	return strings.TrimSuffix(strings.TrimSpace(sql), ";")
-}
-
-func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *interfaces.CursorSession, warnings []string) (*interfaces.RawQueryResponse, error) {
 	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
 
-	result, err := rqs.executeSQL(pageCtx, catalog, session.CompiledSQL, interfaces.PagingModeCursor, &rawSQLBuildOptions{
-		offset: session.PageOffset,
-		limit:  session.PageLimit + 1,
-	})
+	if session.PageOffset > math.MaxInt-session.PageLimit {
+		rawQueryCursorSessions.remove(session.ID)
+		return nil, sqlBuilderQueryInvalid(ctx, "cursor paging offset exceeds the supported range")
+	}
+	result, err := readSQLCursorPage(pageCtx, session)
 	if err != nil {
 		return nil, err
 	}
-	hasNext := len(result.Entries) > session.PageLimit
+	hasNext := session.SQLPendingRow != nil
 	if hasNext {
-		result.Entries = result.Entries[:session.PageLimit]
 		session.PageOffset += session.PageLimit
 		rawQueryCursorSessions.markPageSuccess(session)
 		result.Paging = cursorPagingResponse(session)
@@ -427,7 +358,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 			WithErrorDetails("cursor paging does not support OpenSearch aggregation queries")
 	}
 	session, err := rawQueryCursorSessions.create(
-		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, "", req.Paging.Limit, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
+		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, req.Paging.Limit, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
 	)
 	if err != nil {
 		return nil, cursorSessionCreateError(ctx, err)
@@ -760,34 +691,6 @@ func queryExecutionContext(ctx context.Context, queryTimeoutSec int) (context.Co
 	return context.WithTimeout(ctx, time.Duration(queryTimeoutSec)*time.Second)
 }
 
-func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (string, error) {
-	switch catalog.ConnectorType {
-	case interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypeMySQL:
-		return "mysql", nil
-	case interfaces.ConnectorTypePostgreSQL:
-		return "postgres", nil
-	case interfaces.ConnectorTypeSQLServer:
-		return "tsql", nil
-	case interfaces.ConnectorTypeOracle:
-		return "oracle", nil
-	case interfaces.ConnectorTypeDoris:
-		return "doris", nil
-	case interfaces.ConnectorTypeHANA:
-		return sqlglot.GenericDialect, nil
-	default:
-		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
-	}
-}
-
-func (rqs *rawQueryService) executeSQLTotalCount(ctx context.Context, catalog *interfaces.Catalog, sql string) (int64, error) {
-	result, err := rqs.executeSQL(ctx, catalog, sql, interfaces.PagingModeSingle, &rawSQLBuildOptions{count: true})
-	if err != nil {
-		return 0, err
-	}
-	return rawQueryTotalCount(result)
-}
-
 func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
 	if result == nil || len(result.Entries) != 1 {
 		return 0, fmt.Errorf("count query returned an invalid result")
@@ -812,16 +715,6 @@ func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
 	default:
 		return 0, fmt.Errorf("count query returned an unsupported value")
 	}
-}
-
-// extractResourceIDs extracts all {{.resource_id}} placeholders from FROM and JOIN table references.
-func (rqs *rawQueryService) extractResourceIDs(ctx context.Context, query any, inputDialect string) ([]string, error) {
-	if queryStr, ok := query.(string); ok {
-		return rawQueryPolicy.ExtractTableResourceIDs(ctx, queryStr, inputDialect)
-	}
-
-	// OpenSearch DSL queries use a map and identify their index through resource_id.
-	return []string{}, nil
 }
 
 // checkSameDataSource verifies that all resource IDs belong to one catalog and are queryable.
@@ -912,36 +805,6 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 	return nil
 }
 
-// replaceResourceIDWithSchemaTable replaces resource placeholders with quoted source identifiers.
-func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context,
-	sql any, resourceIDs []string, _ *interfaces.Catalog, inputDialect string) (string, error) {
-
-	replacedSQL := sql.(string)
-	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
-
-	for _, resourceID := range resourceIDs {
-		// Load resource metadata.
-		resource, err := rqs.rs.InternalGetByID(ctx, nil, resourceID)
-		if err != nil {
-			return "", err
-		}
-		if resource == nil {
-			return "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
-		}
-
-		// Replace both supported placeholder forms with the quoted identifier.
-		placeholder1 := fmt.Sprintf("{{.%s}}", resourceID)
-		placeholder2 := fmt.Sprintf("{{%s}}", resourceID)
-		quotedIdentifier := resource.SourceIdentifier
-		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder1, quotedIdentifier, inputDialect)
-		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder2, quotedIdentifier, inputDialect)
-	}
-
-	logger.Infof("After replace - %s", SafeQuerySummary(replacedSQL))
-	return replacedSQL, nil
-}
-
 func (rqs *rawQueryService) resourceForQuery(ctx context.Context, resourceID string) (*interfaces.Resource, error) {
 	if err := rqs.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
 		return nil, err
@@ -949,131 +812,267 @@ func (rqs *rawQueryService) resourceForQuery(ctx context.Context, resourceID str
 	return rqs.rs.InternalGetByID(ctx, nil, resourceID)
 }
 
-// replacePlaceholderInSQLCode preserves comments and quoted literals. They
-// are not resource bindings and must remain semantically unchanged.
-func replacePlaceholderInSQLCode(sql, placeholder, replacement, inputDialect string) string {
-	var output strings.Builder
-	output.Grow(len(sql))
-	for index := 0; index < len(sql); {
-		if strings.HasPrefix(sql[index:], "--") {
-			end := strings.IndexByte(sql[index:], '\n')
-			if end < 0 {
-				output.WriteString(sql[index:])
-				break
-			}
-			end += index + 1
-			output.WriteString(sql[index:end])
-			index = end
-			continue
-		}
-		if strings.HasPrefix(sql[index:], "/*") {
-			end := strings.Index(sql[index+2:], "*/")
-			if end < 0 {
-				output.WriteString(sql[index:])
-				break
-			}
-			end += index + 4
-			output.WriteString(sql[index:end])
-			index = end
-			continue
-		}
-		if sql[index] == '\'' || sql[index] == '"' || sql[index] == '`' {
-			quote := sql[index]
-			end := index + 1
-			for end < len(sql) {
-				if sql[end] == quote {
-					if end+1 < len(sql) && sql[end+1] == quote {
-						end += 2
-						continue
-					}
-					end++
-					break
-				}
-				if (inputDialect == "mysql" || inputDialect == "doris") && (quote == '\'' || quote == '"') && sql[end] == '\\' && end+1 < len(sql) {
-					end += 2
-					continue
-				}
-				end++
-			}
-			output.WriteString(sql[index:end])
-			index = end
-			continue
-		}
-		if strings.HasPrefix(sql[index:], placeholder) {
-			output.WriteString(replacement)
-			index += len(placeholder)
-			continue
-		}
-		output.WriteByte(sql[index])
-		index++
+// prepareSQLBuilder 复用已授权的资源集，补齐源端标识及字段名；SQL 生成由目标连接器负责。
+func (rqs *rawQueryService) prepareSQLBuilder(ctx context.Context, query *sb.SelectBuilder, catalog *interfaces.Catalog, ids []string, warnings []string) (*preparedSQLQuery, error) {
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, sqlBuilderQueryForbidden(ctx)
 	}
-	return output.String()
+	resources := make(map[string]*interfaces.Resource)
+	versions := make(map[string]int64)
+	for _, table := range sqlBuilderTables(query) {
+		resource := resources[table.ResourceID]
+		if resource == nil {
+			loaded, err := rqs.rs.InternalGetByID(ctx, nil, table.ResourceID)
+			resource = loaded
+			if err != nil {
+				return nil, err
+			}
+			if resource == nil {
+				return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound)
+			}
+			if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+				return nil, sqlBuilderQueryForbidden(ctx)
+			}
+			if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
+				return nil, err
+			}
+			if resource.Category != interfaces.ResourceCategoryTable {
+				return nil, sqlBuilderQueryInvalid(ctx, "SQL queries currently only support physical table resources")
+			}
+			if resource.CatalogID != catalog.ID {
+				return nil, sqlBuilderCursorChanged(ctx)
+			}
+			resources[table.ResourceID] = resource
+			versions[table.ResourceID] = resource.UpdateTime
+		}
+		table.SourceIdentifier = resource.SourceIdentifier
+		if resource.SchemaDefinition != nil {
+			table.ColumnNames = make([]string, 0, len(resource.SchemaDefinition))
+			for _, field := range resource.SchemaDefinition {
+				name := field.OriginalName
+				if name == "" {
+					name = field.Name
+				}
+				table.ColumnNames = append(table.ColumnNames, name)
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return &preparedSQLQuery{catalog: catalog, resourceIDs: ids, warnings: warnings, builder: query, resourceVersions: versions}, nil
 }
 
-type rawSQLBuildOptions struct {
-	offset int
-	limit  int
-	count  bool
-}
-
-// executeSQL executes SQL queries and records pagination patterns.
-func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.Catalog, sql string,
-	pagingMode interfaces.PagingMode, buildOptions *rawSQLBuildOptions) (*interfaces.RawQueryResponse, error) {
-	// Create a connector
+// executeSQLBuilder 将读取窗口合并到临时查询根节点，保留基础 Builder 的逻辑 LIMIT 和排序。
+func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *interfaces.Catalog, query *sb.SelectBuilder, options *rawSQLBuildOptions) (*interfaces.RawQueryResponse, error) {
+	read := query
+	if options != nil {
+		if options.count {
+			read = sb.Select(&sb.Alias{Expr: &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}, Name: rawQueryTotalCountColumn}).FromSelect(query, "_raw_query_total")
+		} else {
+			if options.offset < 0 || options.limit < 0 {
+				return nil, sqlBuilderQueryInvalid(ctx, "paging offset and limit must not be negative")
+			}
+			offset, limit := uint64(options.offset), uint64(options.limit)
+			if query.OffsetPart > math.MaxUint64-offset {
+				return nil, sqlBuilderQueryInvalid(ctx, "paging offset exceeds the source range")
+			}
+			if query.LimitPart != nil {
+				if offset >= *query.LimitPart {
+					limit = 0
+				} else {
+					limit = min(limit, *query.LimitPart-offset)
+				}
+			}
+			page := *query
+			page.OffsetPart = query.OffsetPart + offset
+			page.LimitPart = &limit
+			read = &page
+		}
+	}
 	connector, err := rqs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
-		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, connectorInitializationError(ctx, err)
 	}
 	defer func() { _ = connector.Close(ctx) }()
 
-	tableConnector, ok := connector.(interfaces.TableConnector)
+	executor, ok := connector.(interfaces.TableConnector)
 	if !ok {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
+		return nil, sqlBuilderQueryInvalid(ctx, "connector is not a table connector")
 	}
-	// Establish the connection before any connector-specific operation. Some
-	// connectors probe server capabilities during Connect, which SQL builders
-	// need before selecting their syntax.
-	if err := tableConnector.Connect(ctx); err != nil {
-		otellog.LogError(ctx, "Connect connector before executing SQL failed", err)
-		return nil, connectorInitializationError(ctx, err)
-	}
-
-	if buildOptions != nil {
-		if buildOptions.count {
-			sql = tableConnector.BuildCountSQL(sql)
-		} else {
-			sql = tableConnector.BuildPagedSQL(sql, buildOptions.offset, buildOptions.limit)
-		}
-	}
-	logger.Infof("Executing query - %s, paging_mode: %s, catalog: %s", SafeQuerySummary(sql), pagingMode, catalog.Name)
-	result, err := tableConnector.ExecuteRawSQL(ctx, sql)
+	result, err := executor.ExecuteSQLBuilder(ctx, read)
 	if err != nil {
-		otellog.LogError(ctx, "Execute SQL failed", err)
-		var sourceReadForbidden *interfaces.SourceReadForbiddenError
-		if errors.As(err, &sourceReadForbidden) {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
-		}
-		if detail, ok := interfaces.RequestSideQueryError(err); ok {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails(detail)
-		}
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails("query execution failed")
+		return nil, sqlBuilderExecutionError(ctx, err)
 	}
-
-	logger.Infof("SQL query executed successfully: paging_mode=%s, returned_rows=%d", pagingMode, len(result.Entries))
 	return result, nil
 }
 
-func rawQueryValidationError(ctx context.Context, err error) error {
-	var validationErr *querypolicy.ReadOnlySQLValidationError
-	if !errors.As(err, &validationErr) {
-		return nil
+// openSQLBuilderCursor 合并首次 API 偏移后只执行一次查询，不将页大小变成 SQL LIMIT。
+func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog) error {
+	query := session.SQLQuery
+	if session.PageOffset < 0 {
+		return sqlBuilderQueryInvalid(ctx, "paging offset must not be negative")
 	}
-	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-		WithErrorDetails("raw query rejected by read-only policy")
+	offset := uint64(session.PageOffset)
+	if query.OffsetPart > math.MaxUint64-offset {
+		return sqlBuilderQueryInvalid(ctx, "paging offset exceeds the source range")
+	}
+	read := *query
+	read.OffsetPart += offset
+	if query.LimitPart != nil {
+		remaining := *query.LimitPart - min(offset, *query.LimitPart)
+		read.LimitPart = &remaining
+	}
+	connector, err := rqs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return connectorInitializationError(ctx, err)
+	}
+
+	executor, ok := connector.(interfaces.TableConnector)
+	if !ok {
+		_ = connector.Close(ctx)
+		return sqlBuilderQueryInvalid(ctx, "connector is not a table connector")
+	}
+	session.SQLConnector = executor
+
+	// 保留请求身份与观测信息，Rows 生命周期由会话控制，不能随首屏 HTTP 请求结束。
+	cursorCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	session.SQLCancel = cancel
+	stop := watchSQLCursorRequest(ctx, cancel)
+	rows, columns, err := executor.OpenSQLBuilder(cursorCtx, &read) //nolint:rowserrcheck // Rows 转交会话，ScanSQLBuilderRow 在读取结束时检查 Err。
+	stop()
+
+	session.SQLRows, session.SQLColumns = rows, columns
+	if ctx.Err() != nil {
+		return sqlBuilderExecutionError(ctx, ctx.Err())
+	}
+	if err != nil {
+		return sqlBuilderExecutionError(ctx, err)
+	}
+	return nil
 }
 
-var rawQueryPolicy querypolicy.Adapter = querypolicy.NewSQLGlotAdapter()
+// watchSQLCursorRequest 仅在当前请求打开或读取 Rows 时传播取消，并等待已启动的回调结束。
+func watchSQLCursorRequest(ctx context.Context, cancel context.CancelFunc) func() {
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() { cancel(); close(done) })
+	return func() {
+		if !stop() {
+			<-done
+		}
+	}
+}
+
+// readSQLCursorPage 使用同一 Rows，最多缓存一行预读结果。读取失败后无法回退，必须终止会话。
+func readSQLCursorPage(ctx context.Context, session *interfaces.CursorSession) (*interfaces.RawQueryResponse, error) {
+	stop := watchSQLCursorRequest(ctx, session.SQLCancel)
+	result := &interfaces.RawQueryResponse{
+		Columns: session.SQLColumns,
+		Entries: make([]map[string]any, 0, session.PageLimit),
+	}
+	var err error
+	if session.SQLPendingRow != nil {
+		result.Entries = append(result.Entries, session.SQLPendingRow)
+		session.SQLPendingRow = nil
+	}
+	for len(result.Entries) <= session.PageLimit {
+		var row map[string]any
+		row, err = session.SQLConnector.ScanSQLBuilderRow(session.SQLRows, session.SQLColumns)
+		if err != nil || row == nil {
+			break
+		}
+		if len(result.Entries) == session.PageLimit {
+			session.SQLPendingRow = row
+			break
+		}
+		result.Entries = append(result.Entries, row)
+	}
+	stop()
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		rawQueryCursorSessions.remove(session.ID)
+		return nil, sqlBuilderExecutionError(ctx, err)
+	}
+	return result, nil
+}
+
+func sqlBuilderExecutionError(ctx context.Context, err error) error {
+	var forbidden *interfaces.SourceReadForbiddenError
+	if errors.As(err, &forbidden) {
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+	}
+	if detail, ok := interfaces.RequestSideQueryError(err); ok {
+		return sqlBuilderQueryInvalid(ctx, detail)
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).WithErrorDetails("query execution failed")
+}
+
+// invalidateSQLCursor 权限或来源变化终止结果集；读取前的临时服务错误允许重试。
+func invalidateSQLCursor(session *interfaces.CursorSession, err error) {
+	if session.QueryFormat != interfaces.QueryFormatSQL {
+		return
+	}
+	var failure *httperrors.HTTPError
+	if errors.As(err, &failure) && (failure.HTTPCode == http.StatusForbidden || failure.HTTPCode == http.StatusNotFound || failure.HTTPCode == http.StatusConflict || failure.ErrorCode == verrors.VegaBackend_Query_MultiCatalogNotSupported) {
+		rawQueryCursorSessions.remove(session.ID)
+	}
+}
+
+func (rqs *rawQueryService) validateSQLBuilderCursor(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog) error {
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+		return sqlBuilderQueryForbidden(ctx)
+	}
+	if catalog.ConnectorType != session.SQLConnectorType || catalog.UpdateTime != session.SQLCatalogUpdateTime {
+		return sqlBuilderCursorChanged(ctx)
+	}
+	for _, table := range sqlBuilderTables(session.SQLQuery) {
+		resource, err := rqs.rs.InternalGetByID(ctx, nil, table.ResourceID)
+		if err != nil {
+			return err
+		}
+		if resource == nil || resource.CatalogID != catalog.ID || resource.Category != interfaces.ResourceCategoryTable || resource.UpdateTime != session.SQLResourceVersions[table.ResourceID] || resource.SourceIdentifier != table.SourceIdentifier {
+			return sqlBuilderCursorChanged(ctx)
+		}
+		if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+			return sqlBuilderQueryForbidden(ctx)
+		}
+	}
+	return ctx.Err()
+}
+
+func sqlBuilderCursorChanged(ctx context.Context) error {
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).WithErrorDetails("cursor source metadata changed; start a new query")
+}
+func sqlBuilderQueryInvalid(ctx context.Context, detail string) error {
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).WithErrorDetails(detail)
+}
+
+// sqlBuilderTables 按来源出现顺序遍历 ParseSQL 产出的表，包含括号 JOIN 组和子查询。
+func sqlBuilderTables(node sb.SqlNode) []*sb.Table {
+	switch n := node.(type) {
+	case *sb.Table:
+		return []*sb.Table{n}
+	case *sb.Subquery:
+		return sqlBuilderTables(n.Query)
+	case *sb.JoinedTable:
+		tables := sqlBuilderTables(n.From)
+		for _, join := range n.Joins {
+			tables = append(tables, sqlBuilderTables(join.Source)...)
+		}
+		return tables
+	case *sb.SelectBuilder:
+		tables := sqlBuilderTables(n.FromPart)
+		for _, join := range n.JoinsPart {
+			tables = append(tables, sqlBuilderTables(join.Source)...)
+		}
+		return tables
+	default:
+		return nil
+	}
+}
+
+func sqlBuilderQueryForbidden(ctx context.Context) error {
+	return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+}

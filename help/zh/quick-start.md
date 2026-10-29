@@ -345,7 +345,7 @@ openbkn vega catalog resources <catalog_id> --category table
 openbkn vega resource query <resource_id> --limit 10 --need-total
 
 # 直连 SQL：用 {{<resource_id>}} 占位符引用资源，避免手写全限定表名
-openbkn vega sql --input-dialect mysql \
+openbkn vega sql \
   --query "SELECT supplier_name, city FROM {{<resource_id>}} LIMIT 10"
 
 # 同一 Catalog 内多表 JOIN 走结构化查询接口

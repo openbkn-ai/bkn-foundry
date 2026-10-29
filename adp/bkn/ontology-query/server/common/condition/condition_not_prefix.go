@@ -86,8 +86,9 @@ func rewriteNotPrefixCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "not_prefix", "field": cfg.Name})
 	}
 	return &CondCfg{
-		Name:        cfg.NameField.MappedField.Name,
-		Operation:   cfg.Operation,
-		ValueOptCfg: cfg.ValueOptCfg,
+		Name:      cfg.NameField.MappedField.Name,
+		Operation: cfg.Operation,
+		ValueFrom: cfg.ValueFrom,
+		Value:     cfg.Value,
 	}, nil
 }

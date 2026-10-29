@@ -40,6 +40,8 @@ const (
 )
 
 var (
+	_ interfaces.TableConnector = (*PostgresqlConnector)(nil)
+
 	sessionTimeoutPattern = regexp.MustCompile(`^\+?([0-9]+(?:\.[0-9]*)?|\.[0-9]+)\s*(us|ms|s|min|h|d)?$`)
 
 	SYSTEM_SCHEMAS = []string{

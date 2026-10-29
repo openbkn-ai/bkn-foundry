@@ -1432,9 +1432,7 @@ func Test_ExecuteAction_AddActionType(t *testing.T) {
 				Condition: &cond.CondCfg{
 					Name:      "status",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "active",
-					},
+					Value:     "active",
 				},
 				Parameters: []interfaces.Parameter{},
 			}
@@ -1501,9 +1499,7 @@ func Test_ExecuteAction_AddActionType(t *testing.T) {
 				Condition: &cond.CondCfg{
 					Name:      "status",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "active",
-					},
+					Value:     "active",
 				},
 				Parameters: []interfaces.Parameter{},
 			}

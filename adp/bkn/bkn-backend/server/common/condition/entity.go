@@ -149,19 +149,15 @@ type Filter struct {
 }
 
 type CondCfg struct {
-	Field       string     `json:"field,omitempty" mapstructure:"field"`
-	Operation   string     `json:"operation,omitempty" mapstructure:"operation"`
-	SubConds    []*CondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
-	ValueOptCfg `mapstructure:",squash"`
+	Field     string     `json:"field,omitempty" mapstructure:"field"`
+	Operation string     `json:"operation,omitempty" mapstructure:"operation"`
+	SubConds  []*CondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
+	ValueFrom string     `json:"value_from,omitempty" mapstructure:"value_from"`
+	Value     any        `json:"value,omitempty" mapstructure:"value"`
 
 	RemainCfg map[string]any `json:",inline" mapstructure:",remain,squash"`
 
 	NameField *ViewField `json:"-" mapstructure:"-"`
-}
-
-type ValueOptCfg struct {
-	ValueFrom string `json:"value_from,omitempty" mapstructure:"value_from"`
-	Value     any    `json:"value,omitempty" mapstructure:"value"`
 }
 
 type ViewField struct {

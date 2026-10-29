@@ -475,7 +475,7 @@ func (a *access) ResolvePublishedBinding(ctx context.Context, knID string,
 		}
 	}()
 	if !rows.Next() {
-		return nil, nil
+		return nil, rows.Err()
 	}
 	resolved = &interfaces.KNProxyBinding{}
 	if err := rows.Scan(&resolved.ChildType, &resolved.ChildID, &resolved.TargetType,

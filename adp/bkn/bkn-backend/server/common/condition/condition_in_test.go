@@ -29,10 +29,8 @@ func TestNewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     []any{"value1"},
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     []any{"value1"},
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -44,10 +42,8 @@ func TestNewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -59,10 +55,8 @@ func TestNewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", 123},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", 123},
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -74,10 +68,8 @@ func TestNewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -91,10 +83,8 @@ func TestNewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{1, 2, 3},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{1, 2, 3},
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -117,10 +107,8 @@ func TestInCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, _ := NewInCond(ctx, cfg, fieldsMap)
 			inCond := cond.(*InCond)
@@ -142,10 +130,8 @@ func TestInCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{1, 2, 3},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{1, 2, 3},
 			}
 			cond, _ := NewInCond(ctx, cfg, fieldsMap)
 			inCond := cond.(*InCond)
@@ -176,10 +162,8 @@ func TestInCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, _ := NewInCond(ctx, cfg, fieldsMap)
 			inCond := cond.(*InCond)
@@ -197,10 +181,8 @@ func TestInCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{1, 2, 3},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{1, 2, 3},
 			}
 			cond, _ := NewInCond(ctx, cfg, fieldsMap)
 			inCond := cond.(*InCond)

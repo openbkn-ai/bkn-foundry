@@ -29,10 +29,8 @@ func TestNewNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     []any{"value1"},
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     []any{"value1"},
 			}
 			cond, err := NewNotInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -44,10 +42,8 @@ func TestNewNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewNotInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -59,10 +55,8 @@ func TestNewNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", 123},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", 123},
 			}
 			cond, err := NewNotInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -74,10 +68,8 @@ func TestNewNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, err := NewNotInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -103,10 +95,8 @@ func TestNotInCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, _ := NewNotInCond(ctx, cfg, fieldsMap)
 			notInCond := cond.(*NotInCond)
@@ -140,10 +130,8 @@ func TestNotInCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, _ := NewNotInCond(ctx, cfg, fieldsMap)
 			notInCond := cond.(*NotInCond)
@@ -161,10 +149,8 @@ func TestNotInCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{1, 2, 3},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{1, 2, 3},
 			}
 			cond, _ := NewNotInCond(ctx, cfg, fieldsMap)
 			notInCond := cond.(*NotInCond)

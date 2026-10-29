@@ -28,37 +28,6 @@ func TestMariaDBQuoteIdent(t *testing.T) {
 	}
 }
 
-func TestQuoteColumnName(t *testing.T) {
-	t.Run("quote column name simple", func(t *testing.T) {
-		if got := mariadbQuoteColumnName("name"); got != "`name`" {
-			t.Errorf("expected `name`, got %s", got)
-		}
-	})
-	t.Run("quote column name with alias", func(t *testing.T) {
-		got := mariadbQuoteColumnName("t1.name")
-		if got != "`t1`.`name`" {
-			t.Errorf("expected `t1`.`name`, got %s", got)
-		}
-	})
-	t.Run("quote column name empty", func(t *testing.T) {
-		if got := mariadbQuoteColumnName(""); got != "``" {
-			t.Errorf("expected ``, got %s", got)
-		}
-	})
-	t.Run("quote column name with backtick", func(t *testing.T) {
-		got := mariadbQuoteColumnName("col`name")
-		if got != "`col``name`" {
-			t.Errorf("expected `col``name`, got %s", got)
-		}
-	})
-	t.Run("quote column name alias with spaces", func(t *testing.T) {
-		got := mariadbQuoteColumnName(" t1 . name ")
-		if got != "`t1`.`name`" {
-			t.Errorf("expected `t1`.`name`, got %s", got)
-		}
-	})
-}
-
 func TestMariaDBConnectorBuildSourceIdentifier(t *testing.T) {
 	for _, tc := range []struct{ name, namespace, table, want string }{
 		{"ordinary", "sales", "orders", "`sales`.`orders`"},

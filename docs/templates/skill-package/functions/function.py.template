@@ -47,5 +47,5 @@ def handler(event: dict) -> dict:
 #   kn.query_metric(kn_id, "{{metric_id}}", time={"instant": True},
 #                   condition={"field": "{{field}}", "operation": "==",
 #                              "value": key, "value_from": "const"})
-# 或对数据资源执行只读 SQL（表名写 {{.resource_id}} 占位符）：
-#   kn.run_sql(kn_id, "SELECT COUNT(*) AS n FROM {{.resource_id}}")
+# 或对数据资源执行只读 SQL（表名写 {{<resource_id>}} 占位符）：
+#   kn.run_sql(kn_id, "SELECT COUNT(*) AS n FROM {{<resource_id>}}")

@@ -29,10 +29,8 @@ func TestNewNotEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 			}
 			cond, err := NewNotEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -44,10 +42,8 @@ func TestNewNotEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, err := NewNotEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -59,10 +55,8 @@ func TestNewNotEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewNotEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -88,10 +82,8 @@ func TestNotEqCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, _ := NewNotEqCond(ctx, cfg, fieldsMap)
 			notEqCond := cond.(*NotEqCond)
@@ -114,10 +106,8 @@ func TestNotEqCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, _ := NewNotEqCond(ctx, cfg, fieldsMap)
 			notEqCond := cond.(*NotEqCond)
@@ -150,10 +140,8 @@ func TestNotEqCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, _ := NewNotEqCond(ctx, cfg, fieldsMap)
 			notEqCond := cond.(*NotEqCond)
@@ -170,10 +158,8 @@ func TestNotEqCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationNotEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, _ := NewNotEqCond(ctx, cfg, fieldsMap)
 			notEqCond := cond.(*NotEqCond)

@@ -29,10 +29,8 @@ func TestNewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -48,10 +46,8 @@ func TestNewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     AllField,
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -69,10 +65,8 @@ func TestNewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -90,18 +84,14 @@ func TestNewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				SubConds: []*CondCfg{
 					{
 						Operation: OperationEq,
 						Field:     "field1",
-						ValueOptCfg: ValueOptCfg{
-							ValueFrom: ValueFrom_Const,
-							Value:     "value1",
-						},
+						ValueFrom: ValueFrom_Const,
+						Value:     "value1",
 					},
 				},
 				RemainCfg: map[string]any{
@@ -121,10 +111,8 @@ func TestNewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				SubConds: []*CondCfg{
 					nil,
 				},
@@ -157,10 +145,8 @@ func TestKnnCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -195,10 +181,8 @@ func TestKnnCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -223,18 +207,14 @@ func TestKnnCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				SubConds: []*CondCfg{
 					{
 						Operation: OperationEq,
 						Field:     "field1",
-						ValueOptCfg: ValueOptCfg{
-							ValueFrom: ValueFrom_Const,
-							Value:     "value1",
-						},
+						ValueFrom: ValueFrom_Const,
+						Value:     "value1",
 					},
 				},
 				RemainCfg: map[string]any{
@@ -269,18 +249,14 @@ func TestKnnCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				SubConds: []*CondCfg{
 					{
 						Operation: OperationKNN,
 						Field:     "field1",
-						ValueOptCfg: ValueOptCfg{
-							ValueFrom: ValueFrom_Const,
-							Value:     "value1",
-						},
+						ValueFrom: ValueFrom_Const,
+						Value:     "value1",
 						RemainCfg: map[string]any{
 							"limit_key":   "k",
 							"limit_value": 10,
@@ -333,10 +309,8 @@ func TestKnnCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationKNN,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,

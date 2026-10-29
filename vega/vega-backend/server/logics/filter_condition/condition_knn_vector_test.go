@@ -29,7 +29,7 @@ func TestKnnVectorCondNew(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			field := &interfaces.Property{Name: "embedding", Type: interfaces.DataType_Vector, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": tc.dimension}}}}
-			cfg := &interfaces.FilterCondCfg{Name: "embedding", Operation: OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: tc.value}}
+			cfg := &interfaces.FilterCondCfg{Name: "embedding", Operation: OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: tc.value}
 			cond, err := (&KnnVectorCond{}).New(context.Background(), cfg, map[string]*interfaces.Property{"embedding": field})
 			if tc.invalid {
 				require.Error(t, err)

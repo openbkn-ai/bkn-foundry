@@ -100,8 +100,8 @@ func TestPropertyAccessPlanRequiresFullAccessForMetricIdentityDisjunction(t *tes
 	objectType.PrimaryKeys = []string{"id", "mobile"}
 	identity := func(id, mobile string) *cond.CondCfg {
 		return &cond.CondCfg{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{
-			{Name: "id", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: id}},
-			{Name: "mobile", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: mobile}},
+			{Name: "id", Operation: cond.OperationEq, Value: id},
+			{Name: "mobile", Operation: cond.OperationEq, Value: mobile},
 		}}
 	}
 	query := &interfaces.ObjectQueryBaseOnObjectType{

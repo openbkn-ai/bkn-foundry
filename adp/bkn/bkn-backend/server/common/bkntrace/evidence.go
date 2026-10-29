@@ -492,7 +492,7 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 }
 
 func stableEventID(traceID, operationID, eventType string, attempt uint32) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d", traceID, operationID, eventType, attempt)))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s|%s|%s|%d", traceID, operationID, eventType, attempt))
 	return "evt_" + hex.EncodeToString(sum[:])
 }
 

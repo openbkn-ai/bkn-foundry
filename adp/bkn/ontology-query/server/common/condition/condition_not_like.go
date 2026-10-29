@@ -86,9 +86,6 @@ func rewriteNotLikeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 	return &CondCfg{
 		Name:      cfg.NameField.MappedField.Name,
 		Operation: cfg.Operation,
-		ValueOptCfg: ValueOptCfg{
-			Value:     cfg.Value,
-			RealValue: cfg.Value, // Pass the ontology not_like value to the real_value of the view not_like filter.
-		},
+		Value:     cfg.Value,
 	}, nil
 }

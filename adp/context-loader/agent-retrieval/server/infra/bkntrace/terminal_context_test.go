@@ -27,9 +27,9 @@ func TestSQLTargetReceiptIndependentOfPublishDisposition(t *testing.T) {
 			}
 			ctx := withEvidenceOutcome(testTraceContext())
 			if disposition == "success" {
-				EmitRunSQLEvents(ctx, nil, "SELECT * FROM {{.inventory}}", []string{"inventory", " inventory ", ""}, nil)
+				EmitRunSQLEvents(ctx, nil, "SELECT * FROM {{inventory}}", []string{"inventory", " inventory ", ""}, nil)
 			} else {
-				EmitRunSQLFailure(ctx, nil, "SELECT * FROM {{.inventory}}", []string{"inventory", " inventory ", ""}, RunSQLFailure{Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "backend unavailable"})
+				EmitRunSQLFailure(ctx, nil, "SELECT * FROM {{inventory}}", []string{"inventory", " inventory ", ""}, RunSQLFailure{Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "backend unavailable"})
 			}
 			type finishBody struct {
 				BusinessRefs        []BusinessRef        `json:"business_refs"`

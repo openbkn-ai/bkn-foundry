@@ -29,10 +29,8 @@ func TestNewMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -44,10 +42,8 @@ func TestNewMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     AllField,
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -62,10 +58,8 @@ func TestNewMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -92,10 +86,8 @@ func TestMatchCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			matchCond := cond.(*MatchCond)
@@ -116,10 +108,8 @@ func TestMatchCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, _ := NewMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			matchCond := cond.(*MatchCond)
@@ -139,10 +129,8 @@ func TestMatchCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     AllField,
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			matchCond := cond.(*MatchCond)
@@ -174,10 +162,8 @@ func TestMatchCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			matchCond := cond.(*MatchCond)

@@ -93,7 +93,7 @@ func TestSemiJoinGenerates(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"FROM {{.res_customer}} t0 JOIN (SELECT DISTINCT t1.`f_cust` AS `value` FROM {{.res_item}} t0 JOIN {{.res_order}} t1",
+		"FROM {{res_customer}} t0 JOIN (SELECT DISTINCT t1.`f_cust` AS `value` FROM {{res_item}} t0 JOIN {{res_order}} t1",
 		"WHERE t1.`f_amount` > 10) s0 ON t0.`f_code` = s0.`value`",
 		"WHERE t0.`f_region` = 'west'",
 	} {
@@ -198,7 +198,7 @@ func TestSemiJoinAppliesRowFiltersToItsStage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if !strings.Contains(vega.request.Query, "JOIN (SELECT DISTINCT t0.`f_cust_code` AS `value` FROM {{.res_order}} t0 WHERE t0.`f_region` IN ('east')) s0") {
+	if !strings.Contains(vega.request.Query, "JOIN (SELECT DISTINCT t0.`f_cust_code` AS `value` FROM {{res_order}} t0 WHERE t0.`f_region` IN ('east')) s0") {
 		t.Fatalf("statement = %s, want the row filter inside the earlier stage", vega.request.Query)
 	}
 	impacted := make([]string, 0, len(result.PermissionImpacts))

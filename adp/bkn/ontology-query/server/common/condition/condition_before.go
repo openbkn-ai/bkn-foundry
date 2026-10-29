@@ -91,9 +91,10 @@ func rewriteBeforeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "before", "field": cfg.Name})
 	}
 	return &CondCfg{
-		Name:        cfg.NameField.MappedField.Name,
-		Operation:   cfg.Operation,
-		ValueOptCfg: cfg.ValueOptCfg,
-		RemainCfg:   cfg.RemainCfg,
+		Name:      cfg.NameField.MappedField.Name,
+		Operation: cfg.Operation,
+		ValueFrom: cfg.ValueFrom,
+		Value:     cfg.Value,
+		RemainCfg: cfg.RemainCfg,
 	}, nil
 }

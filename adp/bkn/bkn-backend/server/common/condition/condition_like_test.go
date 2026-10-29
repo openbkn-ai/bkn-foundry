@@ -42,10 +42,8 @@ func TestNewLikeCond(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field3",
 				NameField: fieldsMap["field3"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -58,10 +56,8 @@ func TestNewLikeCond(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -74,10 +70,8 @@ func TestNewLikeCond(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -90,10 +84,8 @@ func TestNewLikeCond(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -108,10 +100,8 @@ func TestNewLikeCond(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field2",
 				NameField: fieldsMap["field2"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -123,10 +113,8 @@ func TestNewLikeCond(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field4",
 				NameField: fieldsMap["field4"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -150,10 +138,8 @@ func TestLikeCond_Convert(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewLikeCond(ctx, cfg, fieldsMap)
 			likeCond := cond.(*LikeCond)
@@ -187,10 +173,8 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewLikeCond(ctx, cfg, fieldsMap)
 			likeCond := cond.(*LikeCond)
@@ -208,10 +192,8 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     `test'\%\_`,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     `test'\%\_`,
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -229,10 +211,8 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "%test%",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "%test%",
 			}
 			_, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -292,8 +272,8 @@ func TestConvertLikeCondToDatasetFilterCondition(t *testing.T) {
 	Convey("Test convertLikeCondToDatasetFilterCondition", t, func() {
 		Convey("passes the raw value through so vega can parse the escapes", func() {
 			got, err := convertLikeCondToDatasetFilterCondition(&CondCfg{
-				Field:       "title",
-				ValueOptCfg: ValueOptCfg{ValueFrom: ValueFrom_Const, Value: `50\%`},
+				Field:     "title",
+				ValueFrom: ValueFrom_Const, Value: `50\%`,
 			})
 			So(err, ShouldBeNil)
 			So(got["field"], ShouldEqual, "title")
@@ -303,8 +283,8 @@ func TestConvertLikeCondToDatasetFilterCondition(t *testing.T) {
 
 		Convey("rejects SQL wildcards and names the property", func() {
 			_, err := convertLikeCondToDatasetFilterCondition(&CondCfg{
-				Field:       "title",
-				ValueOptCfg: ValueOptCfg{ValueFrom: ValueFrom_Const, Value: "%Indirect%"},
+				Field:     "title",
+				ValueFrom: ValueFrom_Const, Value: "%Indirect%",
 			})
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "property 'title'")

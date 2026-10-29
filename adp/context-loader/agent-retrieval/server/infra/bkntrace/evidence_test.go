@@ -378,7 +378,7 @@ func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T)
 	}})
 	events := BuildRunSQLEvents(
 		ctx,
-		"SELECT demand_no, quantity FROM {{.forecast_resource}} WHERE month = '2026-06'",
+		"SELECT demand_no, quantity FROM {{forecast_resource}} WHERE month = '2026-06'",
 		[]string{"forecast_resource"},
 		&interfaces.VegaRawQueryResp{
 			Entries: []map[string]any{{
@@ -933,7 +933,7 @@ func TestEmitRunSQLEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *tes
 	SetEvidencePublisher(publisher)
 	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
-	sql := "SELECT material_id, SUM(quantity) FROM {{.inventory}} WHERE warehouse = '昆山' GROUP BY material_id LIMIT 10"
+	sql := "SELECT material_id, SUM(quantity) FROM {{inventory}} WHERE warehouse = '昆山' GROUP BY material_id LIMIT 10"
 	EmitRunSQLEvents(testTraceContext(), nil, sql, []string{"inventory"}, &interfaces.VegaRawQueryResp{
 		Entries: []map[string]any{{"material_id": "M-001", "SUM(quantity)": 42}},
 	})
@@ -965,7 +965,7 @@ func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *te
 	SetEvidencePublisher(publisher)
 	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
-	sql := "SELECT * FROM {{.inventory}} WHERE material_id = 'M-001'"
+	sql := "SELECT * FROM {{inventory}} WHERE material_id = 'M-001'"
 	EmitRunSQLFailure(testTraceContext(), nil, sql, []string{"inventory"}, RunSQLFailure{
 		Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "unknown column available_qty",
 	})

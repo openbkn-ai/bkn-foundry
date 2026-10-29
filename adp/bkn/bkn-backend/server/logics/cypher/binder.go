@@ -292,7 +292,7 @@ func (s *Schema) unknownProperty(ot *interfaces.ObjectType, property string) err
 }
 
 // ResourceID is the vega resource backing an object type, for the
-// {{.resource_id}} placeholder.
+// {{resource_id}} placeholder.
 //
 // Two broken bindings occur in real networks and mean different things: a
 // missing data source is an object type that was never bound, while an empty

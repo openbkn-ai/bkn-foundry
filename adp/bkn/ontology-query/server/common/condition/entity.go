@@ -154,7 +154,8 @@ type CondCfg struct {
 	Name         string     `json:"field,omitempty" mapstructure:"field"`
 	Operation    string     `json:"operation,omitempty" mapstructure:"operation"`
 	SubConds     []*CondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
-	ValueOptCfg  `mapstructure:",squash"`
+	ValueFrom    string     `json:"value_from,omitempty" mapstructure:"value_from"`
+	Value        any        `json:"value,omitempty" mapstructure:"value"`
 
 	RemainCfg map[string]any `json:"-" mapstructure:",remain"`
 
@@ -229,12 +230,6 @@ type Field struct {
 
 // 	Path []string `json:"-"`
 // }
-
-type ValueOptCfg struct {
-	ValueFrom string `json:"value_from,omitempty" mapstructure:"value_from"`
-	Value     any    `json:"value,omitempty" mapstructure:"value"`
-	RealValue any    `json:"real_value,omitempty" mapstructure:"real_value"`
-}
 
 // func (field *ViewField) InitFieldPath() {
 // 	if len(field.Path) == 0 {
