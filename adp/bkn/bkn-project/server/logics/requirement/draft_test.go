@@ -502,6 +502,7 @@ func Test_RequirementDrafting(t *testing.T) {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).Times(3)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil).Times(3)
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil).Times(3)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).Times(3)
 			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(false, nil)
 			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(false, interfaces.ErrRequirementHasDecisions)
 			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), true).DoAndReturn(
@@ -515,6 +516,39 @@ func Test_RequirementDrafting(t *testing.T) {
 			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_HasDecisions)
 			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, true)
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
+		})
+
+		Convey("Drafting again after a confirmation made against rq-n starts rq-n+1\n", func() {
+			for _, c := range []struct {
+				confirmed int
+				want      int
+			}{{3, 4}, {2, 3}, {0, 3}} {
+				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil)
+				draft := testDraft()
+				draft.Items.Confirmation = &interfaces.DraftConfirmation{RequirementVersion: c.confirmed}
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+				want := c.want
+				ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), false).DoAndReturn(
+					func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
+						So(req.Version, ShouldEqual, want)
+						return false, nil
+					})
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
+			}
+		})
+
+		Convey("A draft that cannot be read stops drafting\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, errors.New("db down"))
+
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
 		})
 
