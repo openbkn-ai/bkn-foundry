@@ -29,6 +29,13 @@ import (
 // guidance, from the question and the structure of the drafted items it rests on; no data goes to
 // it.
 
+// guidanceLease is how long a generating run holds the guidance before another may take it over;
+// finishMargin is kept of it to record the outcome.
+const (
+	guidanceLease = agentDeadline + time.Minute
+	finishMargin  = 30 * time.Second
+)
+
 // maxTests bounds the test questions of one scenario question.
 const maxTests = 20
 
@@ -329,7 +336,7 @@ func (s *requirementService) GenerateGuidance(ctx context.Context, token string,
 		Status: interfaces.GUIDANCE_STATUS_GENERATING, Tests: []*interfaces.QuestionTest{}, OutOfScope: []string{},
 		RunID: s.newID(), Runner: caller, CreateTime: now, UpdateTime: now,
 	}
-	staleBefore := now - agentDeadline.Milliseconds() - time.Minute.Milliseconds()
+	staleBefore := now - guidanceLease.Milliseconds()
 	started, err := s.ra.StartGenerating(ctx, g, staleBefore)
 	if err != nil {
 		span.SetStatus(codes.Error, "Start generating failed")
@@ -382,8 +389,9 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	}
 	done := *g
 	done.Status, done.Tests, done.Guidance = interfaces.GUIDANCE_STATUS_READY, buildTests(&out, docs), strings.TrimSpace(out.Guidance)
-	// Checked as the person who generated them, before anyone relies on them.
-	s.checkTests(ctx, caller, spec, draft, done.Tests)
+	// Checked as the person who generated them, before anyone relies on them, and in time to
+	// record the outcome before another run may take the guidance over.
+	s.checkTests(ctx, caller, spec, draft, done.Tests, g.UpdateTime+guidanceLease.Milliseconds()-finishMargin.Milliseconds())
 	done.OutOfScope = []string{}
 	for _, o := range out.OutOfScope {
 		if o = strings.TrimSpace(o); o != "" {
