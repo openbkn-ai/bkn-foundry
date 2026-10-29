@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -17,6 +19,9 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
+
+// firstVersion is the version a lineage's first release is suggested.
+const firstVersion = "1.0.0"
 
 // waitSeconds is how soon to read the status again while drafting or a check runs.
 const waitSeconds = 5
@@ -75,20 +80,30 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 		if !switched {
 			sw = nil
 		}
+		var newest *interfaces.Release
 		if len(latest) > 0 {
-			withRelease(status, entry.Project, latest[0], sw, caller)
+			newest = latest[0]
 		}
+		withRelease(status, entry.Project, newest, sw, caller)
 	}
 	span.SetStatus(codes.Ok, "")
 	return status, nil
 }
 
-// withRelease makes a status published when latest, the lineage's newest release, is the project's
-// and came after its current confirmation; consumers not yet on it wait for the owner to switch
-// them. What blocked the confirmation from being published no longer does. sw is the lineage's
-// latest switch, or nil.
+// withRelease reads a status against latest, the lineage's newest release or nil before any. Until
+// the project is published, reviewing a release names the next version, which the client may
+// change. The status is published when latest is the project's and came after its current
+// confirmation; consumers not yet on it wait for the owner to switch them. What blocked the
+// confirmation from being published no longer does. sw is the lineage's latest switch, or nil.
 func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, latest *interfaces.Release,
 	sw *interfaces.Switch, caller interfaces.AccountInfo) {
+	version := nextVersion(latest)
+	for i := range s.NextActions {
+		if a := &s.NextActions[i]; a.Action == interfaces.ACTION_REVIEW_RELEASE {
+			a.Path += "?version=" + version
+			a.Requires, a.SuggestedVersion = []string{interfaces.ACTION_REQUIRES_VERSION}, version
+		}
+	}
 	if latest == nil || latest.ProjectID != project.ID || s.Confirmation == nil || !s.Confirmation.Current ||
 		latest.CreateTime < s.Confirmation.Time {
 		return
@@ -114,6 +129,19 @@ func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, lates
 		}
 	}
 	s.NextActions = actions
+}
+
+// nextVersion is the patch after latest's version, or 1.0.0 before the first release.
+func nextVersion(latest *interfaces.Release) string {
+	if latest == nil {
+		return firstVersion
+	}
+	parts := strings.Split(latest.Version, ".")
+	patch, err := strconv.Atoi(parts[len(parts)-1])
+	if len(parts) != 3 || err != nil {
+		return firstVersion
+	}
+	return fmt.Sprintf("%s.%s.%d", parts[0], parts[1], patch+1)
 }
 
 // preflightConfirm reads what the project branch would refuse confirming the draft for, with the

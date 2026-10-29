@@ -155,7 +155,14 @@ type ProjectStatusNextAction struct {
 	DiscardsDecisions int `json:"discards_decisions,omitempty"`
 	// Accepts says what sending the action accepts, as its body does.
 	Accepts []string `json:"accepts,omitempty"`
+	// Requires names what the request needs that a client may choose: version, for reviewing a
+	// release, whose path carries SuggestedVersion, the patch after the lineage's newest release.
+	Requires         []string `json:"requires,omitempty"`
+	SuggestedVersion string   `json:"suggested_version,omitempty"`
 }
+
+// ACTION_REQUIRES_VERSION is the version a release review is of.
+const ACTION_REQUIRES_VERSION = "version"
 
 // Why an option of a pending item cannot be taken.
 const (
