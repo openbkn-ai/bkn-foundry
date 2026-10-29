@@ -226,6 +226,23 @@ func Test_StemRelations(t *testing.T) {
 			So(rc.counted, ShouldResemble, []string{"r_cg.yh>r_d_user", "r_cg.yh>r_c_user"})
 		})
 
+		Convey("A physical name standing in for a business name never matches by part of a word\n", func() {
+			// Without business names, user_id and po_no are their own display names.
+			orders := table("r_orders", "c1", "orders", 0, []string{"order_id"},
+				col("order_id", "string", ""), col("user_id", "string", ""), col("po_no", "string", ""))
+			superuser := table("r_superuser_log", "c1", "superuser_log", 0, []string{"code"}, col("code", "string", ""))
+			userRole := table("r_user_role", "c1", "user_role", 0, []string{"code"}, col("code", "string", ""))
+			report := table("r_report", "c1", "report", 0, []string{"code"}, col("code", "string", ""))
+			deposit := table("r_deposit", "c1", "deposit", 0, []string{"code"}, col("code", "string", ""))
+			c := sampleCounter()
+			c.joins = map[joinKey][4]int64{{"r_orders", "user_id"}: {100, 0, 0, 40}, {"r_orders", "po_no"}: {100, 0, 0, 40}}
+			rc := &recordingCounter{fakeCounter: c}
+			items := run(rc, []*interfaces.VegaTable{orders, superuser, userRole, report, deposit})
+
+			So(rc.counted, ShouldBeEmpty)
+			So(items.RelationTypes, ShouldBeEmpty)
+		})
+
 		Convey("A field whose business name names the other table is a candidate\n", func() {
 			po := table("r_cg", "c1", "cgdd", 0, []string{"dd_id"}, col("dd_id", "string", ""), col("gys_bh", "string", "供应商编号"))
 			supplier := table("r_gys", "c1", "gys", 0, []string{"bm"}, col("bm", "string", ""), col("mc", "string", ""))
