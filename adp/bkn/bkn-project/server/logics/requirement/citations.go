@@ -119,25 +119,43 @@ func checkCitations(citations []interfaces.RequirementCitation,
 	}
 }
 
-// numbers lists the runs of digits in text, full-width ones as ASCII. A date or a code gives one
-// run per group of digits.
+// numbers lists the numbers in text, full-width digits as ASCII: runs of digits, with a single
+// decimal point between two digits kept inside the number, so 0.5 is not 5. A date or a code gives
+// one number per group of digits.
 func numbers(text string) []string {
-	var runs []string
-	var run strings.Builder
-	for _, r := range text + " " {
+	runes := []rune(text)
+	digit := func(i int) (rune, bool) {
+		if i < 0 || i >= len(runes) {
+			return 0, false
+		}
+		r := runes[i]
 		if r >= '\uff10' && r <= '\uff19' {
 			r -= 0xfee0
 		}
-		if r >= '0' && r <= '9' {
+		return r, r >= '0' && r <= '9'
+	}
+	var found []string
+	var run strings.Builder
+	for i := range runes {
+		if r, ok := digit(i); ok {
 			run.WriteRune(r)
 			continue
 		}
+		if runes[i] == '.' && run.Len() > 0 {
+			if _, next := digit(i + 1); next {
+				run.WriteRune('.')
+				continue
+			}
+		}
 		if run.Len() > 0 {
-			runs = append(runs, run.String())
+			found = append(found, run.String())
 			run.Reset()
 		}
 	}
-	return runs
+	if run.Len() > 0 {
+		found = append(found, run.String())
+	}
+	return found
 }
 
 // numbersInQuotes tells whether every number in text is a number of one of the quotes, whole: a

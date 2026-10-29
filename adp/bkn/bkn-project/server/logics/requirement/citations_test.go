@@ -122,6 +122,16 @@ func Test_NumbersInQuotes(t *testing.T) {
 			So(numbersInQuotes("Order 12", []interfaces.RequirementCitation{{Quote: "since 2012"}}), ShouldBeFalse)
 		})
 
+		Convey("A decimal is one number: 0.5% is not 5%\n", func() {
+			quoted := []interfaces.RequirementCitation{{Quote: "误差不超过0.5%，单价 12.30 元。"}}
+			So(numbersInQuotes("误差不超过5%", quoted), ShouldBeFalse)
+			So(numbersInQuotes("误差不超过0.5%", quoted), ShouldBeTrue)
+			So(numbersInQuotes("单价 12.30 元", quoted), ShouldBeTrue)
+			So(numbersInQuotes("单价 30 元", quoted), ShouldBeFalse)
+			// A full stop after a number ends it.
+			So(numbersInQuotes("Within 2. Then 5.", []interfaces.RequirementCitation{{Quote: "within 2 days, then 5"}}), ShouldBeTrue)
+		})
+
 		Convey("Dates split into their numbers\n", func() {
 			dated := []interfaces.RequirementCitation{{Quote: "effective 2026-04-30"}}
 			So(numbersInQuotes("from 2026-04-30", dated), ShouldBeTrue)
