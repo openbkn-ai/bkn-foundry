@@ -176,6 +176,10 @@ func identityChoices(ot *interfaces.DraftObjectType) [][]string {
 	}
 	slices.Sort(names)
 	candidates := [][]string{}
+	// A pair drafting counted unique comes first: no single field was.
+	if len(ot.Key.Candidate) > 0 {
+		candidates = append(candidates, ot.Key.Candidate)
+	}
 	if counted != "" {
 		candidates = append(candidates, []string{counted})
 	}
