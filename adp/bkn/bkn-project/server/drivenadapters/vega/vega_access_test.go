@@ -95,7 +95,7 @@ func Test_VegaAccess(t *testing.T) {
 			byPath["/api/vega-backend/in/v1/catalogs/c1,c2,c3"] = http.StatusNotFound
 			byPath["/api/vega-backend/in/v1/catalogs/c2"] = http.StatusInternalServerError
 			_, err = each.MissingCatalogs(ctx, account, []string{"c1", "c2", "c3"})
-			var vegaErr *VegaError
+			var vegaErr *interfaces.VegaError
 			So(errors.As(err, &vegaErr), ShouldBeTrue)
 			So(vegaErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -238,6 +238,32 @@ func Test_VegaAccess(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("CreateBuildTask creates a full batch build of the table as the account\n", func() {
+			status, respBody = http.StatusCreated, `{"id":"t9"}`
+
+			taskID, err := va.CreateBuildTask(ctx, account, "r1")
+
+			So(err, ShouldBeNil)
+			So(taskID, ShouldEqual, "t9")
+			So(got[0].method, ShouldEqual, http.MethodPost)
+			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/build-tasks")
+			So(got[0].accountID, ShouldEqual, "u1")
+			So(got[0].body, ShouldResemble, map[string]any{"resource_id": "r1", "mode": "batch", "execute_type": "full"})
+		})
+
+		Convey("CreateBuildTask returns vega-backend's refusal with its code and details\n", func() {
+			status, respBody = http.StatusBadRequest,
+				`{"error_code":"VegaBackend.BuildTask.Exist","description":"Build task exists","error_details":"an active task"}`
+
+			_, err := va.CreateBuildTask(ctx, account, "r1")
+
+			var vegaErr *interfaces.VegaError
+			So(errors.As(err, &vegaErr), ShouldBeTrue)
+			So(vegaErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(vegaErr.ErrorCode, ShouldEqual, "VegaBackend.BuildTask.Exist")
+			So(vegaErr.ErrorDetails, ShouldEqual, "an active task")
+		})
+
 		Convey("GetTables takes the English short names semantic understanding gave\n", func() {
 			respBody = `{"entries":[{"id":"r1","name":"供应商档案","api_name":"supplier",
 				"schema_definition":[
@@ -286,7 +312,7 @@ func Test_VegaAccess(t *testing.T) {
 
 			_, err := va.Query(ctx, account, "SELECT 1", 60)
 
-			var vegaErr *VegaError
+			var vegaErr *interfaces.VegaError
 			So(errors.As(err, &vegaErr), ShouldBeTrue)
 			So(vegaErr.HTTPCode, ShouldEqual, http.StatusNotImplemented)
 			So(vegaErr.ErrorCode, ShouldEqual, "VegaBackend.Query.MultiCatalogNotSupported")

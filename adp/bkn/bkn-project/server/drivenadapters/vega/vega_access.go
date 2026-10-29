@@ -103,19 +103,8 @@ type tableMeta struct {
 	} `json:"foreign_keys"`
 }
 
-// VegaError is a reply of vega-backend that is not a success.
-type VegaError struct {
-	HTTPCode  int
-	ErrorCode string `json:"error_code"`
-	Detail    string `json:"description"`
-}
-
-func (e *VegaError) Error() string {
-	return fmt.Sprintf("vega-backend returned HTTP %d: %s %s", e.HTTPCode, e.ErrorCode, e.Detail)
-}
-
 func vegaError(respCode int, respBody []byte) error {
-	vegaErr := &VegaError{HTTPCode: respCode}
+	vegaErr := &interfaces.VegaError{HTTPCode: respCode}
 	_ = json.Unmarshal(respBody, vegaErr)
 	return vegaErr
 }
@@ -362,6 +351,38 @@ func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfac
 	}
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return tasks, true, nil
+}
+
+// CreateBuildTask calls POST /build-tasks for a full batch build; vega-backend
+// starts the task itself and answers 201 with its id.
+func (va *vegaAccess) CreateBuildTask(ctx context.Context, account interfaces.VegaAccount,
+	resourceID string) (string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateBuildTask")
+	defer span.End()
+
+	httpUrl := va.baseUrl + "/build-tasks"
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
+
+	body := map[string]any{"resource_id": resourceID, "mode": "batch", "execute_type": "full"}
+	respCode, respBody, err := va.httpClient.PostNoUnmarshal(ctx, httpUrl, headers(account), body)
+	logger.Debugf("CreateBuildTask finished, response code is [%d]", respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http create build task failed")
+		return "", fmt.Errorf("create build task: %w", err)
+	}
+	if respCode != http.StatusCreated {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 201")
+		return "", vegaError(respCode, respBody)
+	}
+	result := &struct {
+		ID string `json:"id"`
+	}{}
+	if err := json.Unmarshal(respBody, result); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal build task failed")
+		return "", fmt.Errorf("unmarshal build task: %w", err)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return result.ID, nil
 }
 
 // Query calls POST /resources/query with a single page of results.

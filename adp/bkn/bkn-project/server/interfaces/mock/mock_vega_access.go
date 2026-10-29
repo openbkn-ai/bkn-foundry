@@ -41,6 +41,21 @@ func (m *MockVegaAccess) EXPECT() *MockVegaAccessMockRecorder {
 	return m.recorder
 }
 
+// CreateBuildTask mocks base method.
+func (m *MockVegaAccess) CreateBuildTask(ctx context.Context, account interfaces.VegaAccount, resourceID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBuildTask", ctx, account, resourceID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBuildTask indicates an expected call of CreateBuildTask.
+func (mr *MockVegaAccessMockRecorder) CreateBuildTask(ctx, account, resourceID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBuildTask", reflect.TypeOf((*MockVegaAccess)(nil).CreateBuildTask), ctx, account, resourceID)
+}
+
 // GetTables mocks base method.
 func (m *MockVegaAccess) GetTables(ctx context.Context, account interfaces.VegaAccount, ids []string) ([]*interfaces.VegaTable, error) {
 	m.ctrl.T.Helper()

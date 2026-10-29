@@ -4,7 +4,12 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+)
 
 // VegaTable is a table resource of vega-backend with the structure discovery recorded.
 type VegaTable struct {
@@ -89,6 +94,17 @@ type VegaForeignKey struct {
 // account's permissions.
 type VegaAccount = AccountInfo
 
+// VegaError is a reply of vega-backend that is not a success, with its status
+// and error code, so that callers can tell refusals apart.
+type VegaError struct {
+	HTTPCode int
+	httperrors.BaseError
+}
+
+func (e *VegaError) Error() string {
+	return fmt.Sprintf("vega-backend returned HTTP %d: %s %s", e.HTTPCode, e.ErrorCode, e.Description)
+}
+
 //go:generate mockgen -source ../interfaces/vega_access.go -destination ../interfaces/mock/mock_vega_access.go
 type VegaAccess interface {
 	// MissingCatalogs returns the catalogs that no longer exist, in their order.
@@ -101,6 +117,9 @@ type VegaAccess interface {
 	// stopping, and whether the account may see them: listing them needs the catalog's
 	// task_manage permission.
 	ListActiveBuildTasks(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaBuildTask, bool, error)
+	// CreateBuildTask starts a full batch build of the table's local index as the account and
+	// returns the task id. A refusal is a *VegaError.
+	CreateBuildTask(ctx context.Context, account VegaAccount, resourceID string) (string, error)
 	// Query runs a SQL statement whose tables are written {{<resource id>}} and returns its rows.
 	Query(ctx context.Context, account VegaAccount, sql string, timeoutSeconds int) ([]map[string]any, error)
 }

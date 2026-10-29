@@ -52,6 +52,8 @@ type draftService struct {
 	// ira keeps the ids of items drafted from names that are not ASCII, so drafts do not change them.
 	ira interfaces.IDRegistryAccess
 	va  interfaces.VegaAccess
+	// iba records the local index builds a confirmation starts.
+	iba interfaces.IndexBuildAccess
 	ps  interfaces.ProjectService
 	// ls commits a confirmed draft to its project branch.
 	ls interfaces.LineageService
@@ -69,6 +71,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			ca:      logics.CA,
 			ira:     logics.IRA,
 			va:      logics.VA,
+			iba:     logics.IBA,
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
 			run:     func(fn func()) { go fn() },
