@@ -161,6 +161,8 @@ type ResourceSummary struct {
 type Property struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
+	// APIName 是语义理解给出的英文短名（snake_case），可用作机器标识；只写一次，之后不再覆盖。
+	APIName     string `json:"api_name,omitempty"`
 	Type        string `json:"type"`
 	Description string `json:"description"`
 
