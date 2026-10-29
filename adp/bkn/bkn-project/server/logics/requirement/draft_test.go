@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -253,6 +254,25 @@ func Test_BuildSpec(t *testing.T) {
 			_, types := buildSpec(out, docs, draft)
 
 			So(types, ShouldResemble, map[string]string{"prd": interfaces.REQUIREMENT_DOC_PRD})
+		})
+	})
+}
+
+func Test_BuildDraftMessage(t *testing.T) {
+	Convey("Test buildDraftMessage\n", t, func() {
+		Convey("At most maxMessageTables tables go to the Agent, the first ones listed\n", func() {
+			tables := make([]*interfaces.VegaTable, maxMessageTables+5)
+			for i := range tables {
+				tables[i] = &interfaces.VegaTable{Name: fmt.Sprintf("t%d", i)}
+			}
+
+			message, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil)
+
+			So(err, ShouldBeNil)
+			var body draftMessage
+			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
+			So(body.Tables, ShouldHaveLength, maxMessageTables)
+			So(body.Tables[0].Name, ShouldEqual, "t0")
 		})
 	})
 }

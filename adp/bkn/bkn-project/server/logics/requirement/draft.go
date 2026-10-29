@@ -37,6 +37,10 @@ const requirementRulesVersion = 1
 // one message.
 const maxInputRunes = 120000
 
+// maxMessageTables bounds the tables named to the Agent: they are clues, and a catalog may hold
+// thousands.
+const maxMessageTables = 500
+
 // agentDeadline is how long drafting waits for the Agent: its own time limit, with a minute for
 // bkn-agent to record the outcome. pollInterval is how often it asks.
 const (
@@ -298,7 +302,7 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 		}
 		msg.Documents = append(msg.Documents, md)
 	}
-	for _, t := range tables {
+	for _, t := range tables[:min(len(tables), maxMessageTables)] {
 		msg.Tables = append(msg.Tables, messageTable{Name: t.Name, Description: t.Description})
 	}
 	if draft != nil {
