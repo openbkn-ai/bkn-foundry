@@ -121,7 +121,7 @@ func (s *requirementService) EditTest(ctx context.Context, token string, project
 				draft = nil
 			}
 			test.Edited = true
-			test.Check = s.checkTest(ctx, caller, &req.Spec, draft, &test)
+			test.Check = s.checkTest(ctx, caller, &req.Spec, draft, g.Question, &test)
 			g.Tests[i] = &test
 			return nil
 		})

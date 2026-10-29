@@ -573,7 +573,10 @@ func Test_RegressionService(t *testing.T) {
 
 		Convey("A question with tests is asked through them, one result each, and itself not at all\n", func() {
 			withTests := regQuestion("q1", knowledge, regNeed(ot, "part"))
-			withTests.Tests = []interfaces.ScenarioTest{{ID: "t1", Text: "Which part is P1?"}, {ID: "t2", Text: "Which part is P2?"}}
+			withTests.Tests = []interfaces.ScenarioTest{
+				{ID: "t1", Text: "Which part is P1?", Expect: interfaces.TEST_EXPECT_EXISTS},
+				{ID: "t2", Text: "Which part is P2?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS},
+			}
 			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(withTests, regQuestion("q2", knowledge, regNeed(ot, "part"))), nil)
 			verdicts["Which part is P2?"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_CANNOT_ANSWER, Reason: "No P2."}
 			expectStart()
@@ -589,12 +592,41 @@ func Test_RegressionService(t *testing.T) {
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 
 			So(err, ShouldBeNil)
-			So(started.Questions[0].Tests, ShouldResemble, []interfaces.RegressionTest{{ID: "t1", Text: "Which part is P1?"}, {ID: "t2", Text: "Which part is P2?"}})
+			So(started.Questions[0].Tests, ShouldResemble, []interfaces.RegressionTest{
+				{ID: "t1", Text: "Which part is P1?", Expect: interfaces.TEST_EXPECT_EXISTS},
+				{ID: "t2", Text: "Which part is P2?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS},
+			})
+			// The judge reads what each test expects of the data; a template question expects nothing.
+			So([]string{judged[0].Expect, judged[1].Expect, judged[2].Expect}, ShouldResemble,
+				[]string{interfaces.TEST_EXPECT_EXISTS, interfaces.TEST_EXPECT_NOT_EXISTS, ""})
 			So(asked, ShouldResemble, []string{"Which part is P1?", "Which part is P2?", "Text of q2"})
 			So(finished.Results, ShouldHaveLength, 3)
 			So([]string{finished.Results[0].QuestionID, finished.Results[0].TestID}, ShouldResemble, []string{"q1", "t1"})
 			So([]string{finished.Results[1].TestID, finished.Results[1].Outcome}, ShouldResemble, []string{"t2", "not_answered"})
 			So([]string{finished.Results[2].QuestionID, finished.Results[2].TestID}, ShouldResemble, []string{"q2", ""})
+		})
+
+		Convey("A not_exists test passes when the judge finds it answered, and fails when it does not\n", func() {
+			for verdict, want := range map[string]string{
+				interfaces.REGRESSION_VERDICT_ANSWERED:      interfaces.REGRESSION_OUTCOME_PASSED,
+				interfaces.REGRESSION_VERDICT_CANNOT_ANSWER: interfaces.REGRESSION_OUTCOME_NOT_ANSWERED,
+			} {
+				q := regQuestion("q1", knowledge, regNeed(ot, "part"))
+				q.Tests = []interfaces.ScenarioTest{{ID: "t1", Text: "Which suppliers supply part X-0?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS}}
+				rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(q), nil)
+				verdicts["Which suppliers supply part X-0?"] = judgeOutput{Verdict: verdict, Reason: "R"}
+				expectStart()
+				gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+				ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("No such part exists."), nil)
+				expectFinish()
+				judged = nil
+
+				_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+				So(err, ShouldBeNil)
+				So(judged[0].Expect, ShouldEqual, interfaces.TEST_EXPECT_NOT_EXISTS)
+				So(finished.Results[0].Outcome, ShouldEqual, want)
+			}
 		})
 
 		Convey("Request ids keep to bkn-agent's form and differ by question and attempt\n", func() {
