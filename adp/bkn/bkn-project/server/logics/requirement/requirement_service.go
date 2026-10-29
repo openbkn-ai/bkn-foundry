@@ -141,7 +141,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 		if g := guidance[q.ID]; g != nil && g.Status == interfaces.GUIDANCE_STATUS_READY && guidanceCurrent(req, q, g) {
 			for _, t := range g.Tests {
 				if t.Check.Outcome == interfaces.TEST_CHECK_PASSED {
-					question.Tests = append(question.Tests, interfaces.ScenarioTest{ID: t.ID, Text: t.Text})
+					question.Tests = append(question.Tests, interfaces.ScenarioTest{ID: t.ID, Text: t.Text, Expect: t.Expect})
 				}
 			}
 		}
