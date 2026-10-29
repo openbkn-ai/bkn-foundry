@@ -356,7 +356,7 @@ func Test_ProjectStatus(t *testing.T) {
 			So(string(a), ShouldEqual, string(b))
 			So(string(a), ShouldContainSubstring, `"stale":[]`)
 			So(string(a), ShouldContainSubstring, `"links":{"check":"/projects/p1/ontology/check",`+
-				`"draft":"/projects/p1/ontology/draft","pending":"/projects/p1/pending"}`)
+				`"draft":"/projects/p1/ontology/draft","index":"/projects/p1/ontology/index","pending":"/projects/p1/pending"}`)
 		})
 	})
 }

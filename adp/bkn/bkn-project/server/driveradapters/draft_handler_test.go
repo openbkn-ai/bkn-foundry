@@ -129,6 +129,15 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"status":"running"`)
 		})
 
+		Convey("The index readiness is read as the caller\n", func() {
+			drs.EXPECT().GetIndex(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.ProjectIndex{ObjectTypes: []interfaces.ProjectIndexItem{{ID: "orders", State: interfaces.INDEX_STATE_READY}},
+					Counts: map[string]int{interfaces.INDEX_STATE_READY: 1}, TasksVisible: true}, nil)
+			w := serve(handler, http.MethodGet, base+"/index")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"state":"ready"`)
+		})
+
 		Convey("The check is replied as is, or with the service's error\n", func() {
 			drs.EXPECT().GetCheck(gomock.Any(), "Bearer t", "p1").
 				Return(&interfaces.Check{ProjectID: "p1", Commit: "c1", RunID: "r1", Status: interfaces.CHECK_STATUS_PASSED}, nil)

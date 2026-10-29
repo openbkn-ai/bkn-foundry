@@ -25,6 +25,33 @@ type VegaTable struct {
 	PrimaryKeys []string
 	Indices     []VegaIndex
 	ForeignKeys []VegaForeignKey
+	// Index is vega-backend's local index of the table, which full-text and vector search need.
+	Index VegaTableIndex
+}
+
+// States of a table's local index in vega-backend.
+const (
+	VEGA_LOCAL_STATUS_UNAVAILABLE = "unavailable"
+	VEGA_LOCAL_STATUS_AVAILABLE   = "available"
+	// VEGA_LOCAL_STATUS_STALE is an index built before the table's configuration or structure
+	// changed: it is no longer used.
+	VEGA_LOCAL_STATUS_STALE = "stale"
+)
+
+// VegaTableIndex is what vega-backend holds of a table's local index: the fields a build needs
+// configured, and the index's state.
+type VegaTableIndex struct {
+	PrimaryKeyFields  []string
+	IncrementalFields []string
+	LocalStatus       string
+	IndexName         string
+}
+
+// VegaBuildTask is a task building a table's local index.
+type VegaBuildTask struct {
+	ID         string
+	ResourceID string
+	Status     string
 }
 
 type VegaColumn struct {
@@ -70,6 +97,10 @@ type VegaAccess interface {
 	ListTables(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaTable, error)
 	// GetTables returns the tables with their structure; ids the account cannot see are left out.
 	GetTables(ctx context.Context, account VegaAccount, ids []string) ([]*VegaTable, error)
+	// ListActiveBuildTasks returns the catalog's index build tasks that are pending, running or
+	// stopping, and whether the account may see them: listing them needs the catalog's
+	// task_manage permission.
+	ListActiveBuildTasks(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaBuildTask, bool, error)
 	// Query runs a SQL statement whose tables are written {{<resource id>}} and returns its rows.
 	Query(ctx context.Context, account VegaAccount, sql string, timeoutSeconds int) ([]map[string]any, error)
 }

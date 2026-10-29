@@ -30,6 +30,7 @@ const (
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
 func (r *restHandler) GetCheckByEx(c *gin.Context)       { r.withExVisitor(c, r.GetCheck) }
+func (r *restHandler) GetIndexByEx(c *gin.Context)       { r.withExVisitor(c, r.GetIndex) }
 func (r *restHandler) GetStatusByEx(c *gin.Context)      { r.withExVisitor(c, r.GetStatus) }
 func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.GetPending) }
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
@@ -176,6 +177,24 @@ func (r *restHandler) GetCheck(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, check)
+}
+
+// GetIndex replies the readiness of the local indexes of the draft's adopted object types.
+func (r *restHandler) GetIndex(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	index, err := r.drs.GetIndex(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, index)
 }
 
 // RunCheck checks the last confirmation again in the background and replies the check, running.
