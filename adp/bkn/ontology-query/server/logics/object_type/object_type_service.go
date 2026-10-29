@@ -201,6 +201,62 @@ func (ots *objectTypeService) GetObjectsByObjectTypeIDForScan(ctx context.Contex
 	return ots.getObjectsByObjectTypeID(ctx, query, true, nil)
 }
 
+// ScanObjectsByObjectTypeID reads query page by page so callers that act on a
+// whole match set never mistake its first page for all of it. Reading stops
+// once more than maxObjects objects are collected: the result then holds
+// maxObjects+1 objects, which is how callers learn the set is over their limit
+// without loading the rest of it. The first page supplies the type info and
+// the total count; the result carries no continuation.
+func (ots *objectTypeService) ScanObjectsByObjectTypeID(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, maxObjects int) (interfaces.Objects, error) {
+	if query == nil || maxObjects < 0 {
+		return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("invalid object scan")
+	}
+	var result interfaces.Objects
+	cursor := ""
+	for {
+		// Every page is read from a fresh copy: a read rewrites its query (row
+		// filter, default sort), and the continuation is bound to the original.
+		page := *query
+		page.Limit = interfaces.MAX_LIMIT
+		page.NeedTotal = true
+		page.Cursor = cursor
+		objects, err := ots.GetObjectsByObjectTypeIDForScan(ctx, &page)
+		if err != nil {
+			return interfaces.Objects{}, err
+		}
+		if cursor == "" {
+			result = objects
+			result.Datas = make([]map[string]any, 0, len(objects.Datas))
+		}
+		result.Datas = append(result.Datas, objects.Datas...)
+		if len(result.Datas) > maxObjects {
+			result.Datas = result.Datas[:maxObjects+1]
+			break
+		}
+		if objects.Paging != nil && objects.Paging.NextCursor != nil && len(objects.Datas) > 0 {
+			cursor = *objects.Paging.NextCursor
+			continue
+		}
+		// A full page without a continuation comes from an object type whose
+		// sort cannot be made total (see appendResourceSortTieBreakers). Its
+		// remaining rows cannot be addressed, so report it instead of
+		// returning a partial set as if it were complete.
+		if len(objects.Datas) >= page.Limit && result.TotalCount > int64(len(result.Datas)) {
+			return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+				oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("object type [%s] matches %d objects but cannot be read past the first %d: "+
+					"map its primary keys to resource fields", query.ObjectTypeID, result.TotalCount, len(result.Datas)))
+		}
+		break
+	}
+	result.SearchAfter, result.ResourceCursor, result.ResourceCursorExpiry = nil, "", nil
+	result.ResourceNextOffset, result.Cursor = 0, ""
+	result.Paging = &interfaces.ObjectPagingResponse{}
+	return result, nil
+}
+
 // AggregateObjectsByObjectTypeID uses the same proxy, property and row-filter
 // decisions as object reads. It is intentionally an internal opt-in operation;
 // public callers cannot construct its aggregate specification.

@@ -1116,8 +1116,8 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 				TotalCount: 2,
 			}
 
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType, _ int) (interfaces.Objects, error) {
 					// Verify query parameters
 					So(query.KNID, ShouldEqual, knID)
 					So(query.ObjectTypeID, ShouldEqual, objectTypeID)
@@ -1165,7 +1165,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 				Return(interfaces.ObjectType{KNID: knID}, true, nil)
 
 			// Mock GetObjectsByObjectTypeID to return empty result
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(interfaces.Objects{Datas: []map[string]any{}}, nil)
 
 			_, err := service.ExecuteAction(ctx, req)
@@ -1199,7 +1199,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 				Return(interfaces.ObjectType{KNID: knID}, true, nil)
 
 			// Mock GetObjectsByObjectTypeID to return error
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
 					WithErrorDetails("scan failed"))
 
@@ -1213,9 +1213,9 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 
 		Convey("失败 - 扫描模式：超过最大执行数量限制", func() {
 			// Save original limit and restore after test
-			originalLimit := maxExecutionObjects
-			maxExecutionObjects = 5 // Set a low limit for testing
-			defer func() { maxExecutionObjects = originalLimit }()
+			originalLimit := logics.ActionExecutionMaxObjects
+			logics.ActionExecutionMaxObjects = 5 // Set a low limit for testing
+			defer func() { logics.ActionExecutionMaxObjects = originalLimit }()
 
 			req := &interfaces.ActionExecutionRequest{
 				KNID:               knID,
@@ -1248,7 +1248,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 			}
 			manyObjects.TotalCount = 10
 
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(manyObjects, nil)
 
 			_, err := service.ExecuteAction(ctx, req)
@@ -1258,6 +1258,74 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_InvalidParameter)
+		})
+
+		// Regression for #2666: 10001 matches used to be cut to the first
+		// 10000 and executed as complete. The scan now runs to the limit, so
+		// one object past it is rejected and a raised limit covers every match.
+		customerObjects := func(count int) interfaces.Objects {
+			objects := interfaces.Objects{TotalCount: int64(count)}
+			for id := 1; id <= count; id++ {
+				objects.Datas = append(objects.Datas, map[string]any{
+					interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"customer_id": id},
+				})
+			}
+			return objects
+		}
+		scanActionType := interfaces.ActionType{
+			ATID:         actionTypeID,
+			ATName:       "notify_customer",
+			ObjectTypeID: objectTypeID,
+			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_001", ToolID: "tool_001"},
+			Condition:    &cond.CondCfg{Name: "customer_id", Operation: "<=", Value: 10001},
+		}
+
+		Convey("失败 - 扫描模式：命中数比上限多一个也明确拒绝", func() {
+			originalLimit := logics.ActionExecutionMaxObjects
+			logics.ActionExecutionMaxObjects = 10000
+			defer func() { logics.ActionExecutionMaxObjects = originalLimit }()
+
+			req := &interfaces.ActionExecutionRequest{KNID: knID, Branch: interfaces.MAIN_BRANCH, ActionTypeID: actionTypeID}
+			omAccess.EXPECT().GetActionType(gomock.Any(), knID, interfaces.MAIN_BRANCH, actionTypeID).
+				Return(scanActionType, map[string]any{"id": actionTypeID}, true, nil)
+			omAccess.EXPECT().GetObjectType(gomock.Any(), knID, interfaces.MAIN_BRANCH, objectTypeID).
+				Return(interfaces.ObjectType{KNID: knID}, true, nil)
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), 10000).
+				Return(customerObjects(10001), nil)
+
+			_, err := service.ExecuteAction(ctx, req)
+
+			httpErr, ok := err.(*httperrors.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(fmt.Sprint(httpErr.ErrorDetails), ShouldContainSubstring, "More than 10000 objects match")
+		})
+
+		Convey("成功 - 扫描模式：调大上限后覆盖全部命中对象", func() {
+			originalLimit := logics.ActionExecutionMaxObjects
+			logics.ActionExecutionMaxObjects = 20000
+			defer func() { logics.ActionExecutionMaxObjects = originalLimit }()
+
+			req := &interfaces.ActionExecutionRequest{KNID: knID, Branch: interfaces.MAIN_BRANCH, ActionTypeID: actionTypeID}
+			omAccess.EXPECT().GetActionType(gomock.Any(), knID, interfaces.MAIN_BRANCH, actionTypeID).
+				Return(scanActionType, map[string]any{"id": actionTypeID}, true, nil)
+			omAccess.EXPECT().GetObjectType(gomock.Any(), knID, interfaces.MAIN_BRANCH, objectTypeID).
+				Return(interfaces.ObjectType{KNID: knID}, true, nil)
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), 20000).
+				DoAndReturn(func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType, _ int) (interfaces.Objects, error) {
+					So(query.ActualCondition, ShouldEqual, scanActionType.Condition)
+					return customerObjects(10001), nil
+				})
+
+			// Execution stops after instance selection: logsService is not mocked.
+			func() {
+				defer func() { _ = recover() }()
+				_, _ = service.ExecuteAction(ctx, req)
+			}()
+
+			So(len(req.Instances), ShouldEqual, 10001)
+			So(req.Instances[0].InstanceIdentity["customer_id"], ShouldEqual, 1)
+			So(req.Instances[10000].InstanceIdentity["customer_id"], ShouldEqual, 10001)
 		})
 	})
 }
@@ -1537,8 +1605,8 @@ func Test_ExecuteAction_AddActionType(t *testing.T) {
 					return interfaces.Objects{Datas: []map[string]any{{"id": "123"}}}, nil
 				})
 			// Mock GetObjectsByObjectTypeID - second query by identities and condition
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType, _ int) (interfaces.Objects, error) {
 					// Second call: query by identities and condition
 					So(query.ActualCondition, ShouldNotBeNil)
 					So(query.ActualCondition.Operation, ShouldEqual, "and")
