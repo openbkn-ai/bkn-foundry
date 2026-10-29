@@ -14,6 +14,13 @@ const (
 	// INDEX_BUILD_NO_PERMISSION is a runner without the catalog's task_manage permission.
 	INDEX_BUILD_NO_PERMISSION = "no_permission"
 	INDEX_BUILD_FAILED        = "failed"
+	// INDEX_BUILD_NO_CONFIG_PERMISSION is a runner who may not change the table's index
+	// configuration (modify on the table), which lacked the keys a build needs.
+	INDEX_BUILD_NO_CONFIG_PERMISSION = "no_config_permission"
+	// INDEX_BUILD_NOT_CONFIGURABLE is a table lacking keys the object type cannot give: an
+	// identity of a type vega-backend does not key an index by, or no update field. Reason
+	// names them, as INDEX_FIELD_* separated by commas.
+	INDEX_BUILD_NOT_CONFIGURABLE = "not_configurable"
 )
 
 // IndexBuild is a local index build a confirmation started for one table.

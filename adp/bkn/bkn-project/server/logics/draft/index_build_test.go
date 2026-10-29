@@ -86,6 +86,8 @@ func Test_BuildIndexes(t *testing.T) {
 				"lines":  {interfaces.INDEX_BUILD_EXISTING, "t1", ""},
 				"taken":  {interfaces.INDEX_BUILD_EXISTING, "", ""},
 				"broken": {interfaces.INDEX_BUILD_FAILED, "", "vega is down"},
+				// No identity to key the index by: recorded, and nothing is written to vega.
+				"no_key": {interfaces.INDEX_BUILD_NOT_CONFIGURABLE, "", interfaces.INDEX_FIELD_PRIMARY_KEY},
 			})
 		})
 
@@ -285,6 +287,132 @@ func Test_BuildIndex(t *testing.T) {
 			_, err := svc.BuildIndex(ctx, token, "p1", caller)
 
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
+		})
+	})
+}
+
+func Test_ConfigureIndexes(t *testing.T) {
+	Convey("Test configuring the index of a confirmed table that lacks its keys, then building it\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		va := pmock.NewMockVegaAccess(ctrl)
+		iba := pmock.NewMockIndexBuildAccess(ctrl)
+		svc := &draftService{setting: testSetting, va: va, iba: iba}
+		ctx := context.Background()
+		// orders is keyed by id and refreshed by changed_at, which map to fields id and updated_at.
+		orders := &interfaces.DraftObjectType{ID: "orders", Name: "orders", Adopted: true,
+			Table:       interfaces.DraftTable{ResourceID: "r_orders", Name: "orders", CatalogID: "c1"},
+			PrimaryKeys: []string{"order_id"}, IncrementalKey: "changed_at",
+			Properties: []*interfaces.DraftProperty{
+				{Name: "order_id", Type: "integer", MappedField: "id"},
+				{Name: "changed_at", Type: "datetime", MappedField: "updated_at"},
+				{Name: "note", Type: "text", MappedField: "note"},
+				{Name: "seq", Type: "integer", MappedField: "seq"},
+			}}
+		items := &interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{orders}}
+		table := &interfaces.VegaTable{ID: "r_orders", Columns: []interfaces.VegaColumn{
+			{Name: "id", Type: "integer"}, {Name: "updated_at", Type: "datetime"},
+			{Name: "note", Type: "text"}, {Name: "seq", Type: "large_integer"},
+		}}
+		reads := func(index interfaces.VegaTableIndex) {
+			read := *table
+			read.Index = index
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{&read}, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").Return(nil, true, nil)
+		}
+		var recorded []*interfaces.IndexBuild
+		records := func() {
+			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, builds []*interfaces.IndexBuild) error {
+					recorded = builds
+					return nil
+				})
+		}
+		outcome := func() [3]string {
+			So(recorded, ShouldHaveLength, 1)
+			return [3]string{recorded[0].Outcome, recorded[0].TaskID, recorded[0].Reason}
+		}
+
+		Convey("the identity's and update field's fields are written as the runner, then built\n", func() {
+			reads(interfaces.VegaTableIndex{})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", interfaces.VegaIndexKeys{
+				PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"updated_at"}}).Return(true, nil)
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_orders").Return("t9", nil)
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_CREATED, "t9", ""})
+		})
+
+		Convey("only the keys the table lacks need to be known\n", func() {
+			// The table has a primary key already: an identity vega would not take does not matter.
+			orders.PrimaryKeys = []string{"note"}
+			reads(interfaces.VegaTableIndex{PrimaryKeyFields: []string{"code"}})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", interfaces.VegaIndexKeys{
+				IncrementalFields: []string{"updated_at"}}).Return(true, nil)
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_orders").Return("t9", nil)
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			So(outcome()[0], ShouldEqual, interfaces.INDEX_BUILD_CREATED)
+		})
+
+		Convey("a key that cannot be known writes nothing and says which\n", func() {
+			for _, c := range []struct {
+				primaryKeys    []string
+				incrementalKey string
+				reason         string
+			}{
+				{[]string{"note"}, "changed_at", interfaces.INDEX_FIELD_PRIMARY_KEY},
+				{[]string{"order_id"}, "", interfaces.INDEX_FIELD_INCREMENTAL},
+				// Drafted as integer, but vega's large_integer refreshes no index.
+				{[]string{"order_id"}, "seq", interfaces.INDEX_FIELD_INCREMENTAL},
+				{[]string{"note"}, "", interfaces.INDEX_FIELD_PRIMARY_KEY + "," + interfaces.INDEX_FIELD_INCREMENTAL},
+			} {
+				orders.PrimaryKeys, orders.IncrementalKey = c.primaryKeys, c.incrementalKey
+				reads(interfaces.VegaTableIndex{})
+				records()
+
+				So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+				So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_NOT_CONFIGURABLE, "", c.reason})
+			}
+		})
+
+		Convey("a runner who may not change the table's configuration builds nothing\n", func() {
+			reads(interfaces.VegaTableIndex{})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", gomock.Any()).Return(false,
+				&interfaces.VegaError{HTTPCode: http.StatusForbidden,
+					BaseError: httperrors.BaseError{ErrorCode: httperrors.PublicError_Forbidden}})
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_NO_CONFIG_PERMISSION, "", ""})
+		})
+
+		Convey("a 403 for another reason than the runner's permission fails with its reason\n", func() {
+			reads(interfaces.VegaTableIndex{})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", gomock.Any()).Return(false,
+				&interfaces.VegaError{HTTPCode: http.StatusForbidden,
+					BaseError: httperrors.BaseError{ErrorCode: "VegaBackend.Resource.BuiltinOnly"}})
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			got := outcome()
+			So(got[0], ShouldEqual, interfaces.INDEX_BUILD_FAILED)
+			So(got[2], ShouldContainSubstring, "VegaBackend.Resource.BuiltinOnly")
+		})
+
+		Convey("another refusal of the configuration fails with its reason\n", func() {
+			reads(interfaces.VegaTableIndex{})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", gomock.Any()).Return(false,
+				&interfaces.VegaError{HTTPCode: http.StatusConflict,
+					BaseError: httperrors.BaseError{ErrorCode: "VegaBackend.Resource.UpdateConflict"}})
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			got := outcome()
+			So(got[0], ShouldEqual, interfaces.INDEX_BUILD_FAILED)
+			So(got[2], ShouldContainSubstring, "VegaBackend.Resource.UpdateConflict")
 		})
 	})
 }

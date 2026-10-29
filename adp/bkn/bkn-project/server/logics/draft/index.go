@@ -40,7 +40,7 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
-	index, err := s.readIndex(ctx, &draft.Items, caller)
+	index, _, err := s.readIndex(ctx, &draft.Items, caller)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read tables failed")
 		return nil, internalError(ctx, "Read tables failed", err)
@@ -74,9 +74,10 @@ func (s *draftService) attachBuilds(ctx context.Context, index *interfaces.Proje
 	}
 }
 
-// readIndex reads the readiness of the local indexes of the adopted object types as the account.
+// readIndex reads the readiness of the local indexes of the adopted object types as the account,
+// and the tables it read them from, by resource id.
 func (s *draftService) readIndex(ctx context.Context, items *interfaces.DraftItems,
-	account interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
+	account interfaces.AccountInfo) (*interfaces.ProjectIndex, map[string]*interfaces.VegaTable, error) {
 	var ids, catalogIDs []string
 	for _, ot := range items.ObjectTypes {
 		if ot.Adopted {
@@ -90,7 +91,7 @@ func (s *draftService) readIndex(ctx context.Context, items *interfaces.DraftIte
 	if len(ids) > 0 {
 		read, err := s.va.GetTables(ctx, account, ids)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, table := range read {
 			tables[table.ID] = table
@@ -111,7 +112,7 @@ func (s *draftService) readIndex(ctx context.Context, items *interfaces.DraftIte
 			tasks[task.ResourceID] = task
 		}
 	}
-	return indexReadiness(items, tables, tasks, tasksVisible), nil
+	return indexReadiness(items, tables, tasks, tasksVisible), tables, nil
 }
 
 // indexReadiness is the readiness of the local indexes of the adopted object types, in the draft's
