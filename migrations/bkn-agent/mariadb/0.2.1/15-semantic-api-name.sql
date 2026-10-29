@@ -7,7 +7,10 @@
 -- upgrade only the untouched official v4, preserve customized prompts, every
 -- historical prompt/Agent version and the operator's runtime settings; replay
 -- resumes interrupted updates. The original seed runtime is Agent version 1,
--- whose prompt is v3 after an upgrade from 0.2.0 and v4 on a 0.2.1 install.
+-- whose prompt is v3 after an upgrade from 0.2.0. It is v4 on a database
+-- installed from an earlier 0.2.1 snapshot; data-migrator does not re-run
+-- deltas of the installed version, so such a database gets this script only
+-- when it is applied by hand or its progress is reset.
 USE openbkn;
 
 insert into t_agent_prompt_version (
