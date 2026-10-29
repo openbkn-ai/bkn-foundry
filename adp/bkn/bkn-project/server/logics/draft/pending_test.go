@@ -106,7 +106,7 @@ func Test_PendingOf(t *testing.T) {
 			d := draft()
 			d.Items.ObjectTypes[0].Key.Candidate = []string{"order_id", "status"}
 
-			choose := pendingOf(project, d).Items[0].Options[0]
+			choose := pendingOf(project, d, nil).Items[0].Options[0]
 
 			So(choose.Candidates, ShouldResemble, [][]string{{"order_id", "status"}, {"customer_id"}, {"channel"}, {"order_id"}, {"status"}})
 		})
