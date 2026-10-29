@@ -107,6 +107,7 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		NextActions: []interfaces.ProjectStatusNextAction{},
 		Links: map[string]string{
 			"draft": base + "/ontology/draft", "pending": base + "/pending", "check": base + "/ontology/check",
+			"index": base + "/ontology/index",
 		},
 		ComputedAt: computedAt,
 	}

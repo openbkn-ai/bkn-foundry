@@ -40,6 +40,9 @@ type DraftService interface {
 	GetPending(ctx context.Context, token string, projectID string) (*ProjectPending, error)
 	// GetCheck returns the check of the project's last confirmation.
 	GetCheck(ctx context.Context, token string, projectID string) (*Check, error)
+	// GetIndex returns the readiness of the local indexes of the draft's adopted object types, read
+	// from vega-backend as the caller.
+	GetIndex(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectIndex, error)
 	// RunCheck checks the last confirmation again in the background, for the project owner, and
 	// returns the check, running.
 	RunCheck(ctx context.Context, token string, projectID string, caller AccountInfo) (*Check, error)

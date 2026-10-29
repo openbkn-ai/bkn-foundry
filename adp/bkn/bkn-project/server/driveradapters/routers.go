@@ -107,6 +107,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	// check again is ontology/check:run.
 	apiV1.GET("/projects/:project_id/ontology/draft", r.GetDraftByEx)
 	apiV1.GET("/projects/:project_id/ontology/check", r.GetCheckByEx)
+	apiV1.GET("/projects/:project_id/ontology/index", r.GetIndexByEx)
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
 	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id/identity", r.ChooseIdentityByEx)

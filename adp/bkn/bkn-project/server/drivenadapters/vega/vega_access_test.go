@@ -148,6 +148,42 @@ func Test_VegaAccess(t *testing.T) {
 			})
 		})
 
+		Convey("GetTables reads the table's local index: the fields a build needs, and its state\n", func() {
+			respBody = `{"entries":[{"id":"r1","name":"orders","local_status":"stale","index_name":"idx_r1",
+				"index_config":{"primary_key_fields":["id"],"incremental_fields":["updated_at"]}},
+				{"id":"r2","name":"parts"}]}`
+
+			tables, err := va.GetTables(ctx, account, []string{"r1", "r2"})
+
+			So(err, ShouldBeNil)
+			So(tables[0].Index, ShouldResemble, interfaces.VegaTableIndex{
+				PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"updated_at"},
+				LocalStatus: interfaces.VEGA_LOCAL_STATUS_STALE, IndexName: "idx_r1",
+			})
+			// A table never configured has no index config and no local status yet.
+			So(tables[1].Index, ShouldResemble, interfaces.VegaTableIndex{})
+		})
+
+		Convey("ListActiveBuildTasks lists the catalog's pending, running and stopping tasks in one page\n", func() {
+			respBody = `{"entries":[{"id":"t1","resource_id":"r1","status":"running","mode":"batch"}],"total_count":1}`
+
+			tasks, err := va.ListActiveBuildTasks(ctx, account, "c1")
+
+			So(err, ShouldBeNil)
+			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/build-tasks")
+			So(got[0].query, ShouldEqual, "catalog_id=c1&limit=-1&status=pending&status=running&status=stopping")
+			So(got[0].accountID, ShouldEqual, "u1")
+			So(tasks, ShouldResemble, []*interfaces.VegaBuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}})
+		})
+
+		Convey("ListActiveBuildTasks returns vega-backend's refusal\n", func() {
+			status, respBody = http.StatusForbidden, `{"error_code":"VegaBackend.Forbidden"}`
+
+			_, err := va.ListActiveBuildTasks(ctx, account, "c1")
+
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("GetTables takes the English short names semantic understanding gave\n", func() {
 			respBody = `{"entries":[{"id":"r1","name":"供应商档案","api_name":"supplier",
 				"schema_definition":[

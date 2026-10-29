@@ -49,12 +49,18 @@ func NewVegaAccess(appSetting *common.AppSetting) interfaces.VegaAccess {
 
 // resource is the part of vega-backend's resource that drafting reads.
 type resource struct {
-	ID                string     `json:"id"`
-	CatalogID         string     `json:"catalog_id"`
-	Name              string     `json:"name"`
-	Description       string     `json:"description"`
-	APIName           string     `json:"api_name"`
-	Category          string     `json:"category"`
+	ID          string `json:"id"`
+	CatalogID   string `json:"catalog_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	APIName     string `json:"api_name"`
+	Category    string `json:"category"`
+	IndexConfig *struct {
+		PrimaryKeyFields  []string `json:"primary_key_fields"`
+		IncrementalFields []string `json:"incremental_fields"`
+	} `json:"index_config"`
+	LocalStatus       string     `json:"local_status"`
+	IndexName         string     `json:"index_name"`
 	RowCount          *int64     `json:"row_count"`
 	EstimatedRowCount *int64     `json:"estimated_row_count"`
 	SourceMetadata    *tableMeta `json:"source_metadata"`
@@ -255,6 +261,46 @@ func (va *vegaAccess) GetTables(ctx context.Context, account interfaces.VegaAcco
 	return tables, nil
 }
 
+// ListActiveBuildTasks calls GET /build-tasks?catalog_id=&status=pending&status=running&status=stopping.
+func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfaces.VegaAccount,
+	catalogID string) ([]*interfaces.VegaBuildTask, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListActiveBuildTasks")
+	defer span.End()
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+
+	httpUrl := va.baseUrl + "/build-tasks"
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
+
+	query := url.Values{"catalog_id": {catalogID}, "limit": {noLimit}, "status": {"pending", "running", "stopping"}}
+	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
+	logger.Debugf("ListActiveBuildTasks finished, catalog_id is [%s], response code is [%d]", catalogID, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list build tasks failed")
+		return nil, fmt.Errorf("list build tasks of catalog %s: %w", catalogID, err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, vegaError(respCode, respBody)
+	}
+	list := &struct {
+		Entries []struct {
+			ID         string `json:"id"`
+			ResourceID string `json:"resource_id"`
+			Status     string `json:"status"`
+		} `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, list); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal build tasks failed")
+		return nil, fmt.Errorf("unmarshal build tasks of catalog %s: %w", catalogID, err)
+	}
+	tasks := make([]*interfaces.VegaBuildTask, 0, len(list.Entries))
+	for _, entry := range list.Entries {
+		tasks = append(tasks, &interfaces.VegaBuildTask{ID: entry.ID, ResourceID: entry.ResourceID, Status: entry.Status})
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return tasks, nil
+}
+
 // Query calls POST /resources/query with a single page of results.
 func (va *vegaAccess) Query(ctx context.Context, account interfaces.VegaAccount, sql string,
 	timeoutSeconds int) ([]map[string]any, error) {
@@ -298,6 +344,11 @@ func toTable(r *resource) *interfaces.VegaTable {
 		Name:        r.Name,
 		Description: r.Description,
 		APIName:     r.APIName,
+		Index:       interfaces.VegaTableIndex{LocalStatus: r.LocalStatus, IndexName: r.IndexName},
+	}
+	if r.IndexConfig != nil {
+		table.Index.PrimaryKeyFields = r.IndexConfig.PrimaryKeyFields
+		table.Index.IncrementalFields = r.IndexConfig.IncrementalFields
 	}
 	switch {
 	case r.RowCount != nil:
