@@ -89,17 +89,18 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		return draft, nil
 	}
 
+	// One bound for every count of the choice: the key's, then those of the relations it allows.
+	countCtx, cancel := context.WithTimeout(ctx, identityCountTimeout)
+	defer cancel()
+	timeout := min(s.setting.QueryTimeout, int(identityCountTimeout.Seconds()))
+	c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: timeout}
 	key := interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN, Reason: reasonCompositeKey}
 	if len(properties) == 1 {
 		// A person may keep a key with duplicates or nulls, e.g. to clean the data later; the
 		// counts stay as found and the check on confirming the draft reports them.
 		key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN, Field: properties[0].MappedField}
-		timeout := min(s.setting.QueryTimeout, int(identityCountTimeout.Seconds()))
-		c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: timeout}
-		countCtx, cancel := context.WithTimeout(ctx, identityCountTimeout)
 		table := &interfaces.VegaTable{ID: objectType.Table.ResourceID}
 		rows, distinct, nulls, err := c.keyStats(countCtx, table, properties[0].MappedField)
-		cancel()
 		if err != nil {
 			key.Reason = fmt.Sprintf("%s: %v", reasonQueryFailed, err)
 		} else {
@@ -114,6 +115,9 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 	if objectType.DisplayKey == "" {
 		objectType.DisplayKey = objectType.PrimaryKeys[0]
 	}
+	d := newDrafter(s.setting, c)
+	d.namingLanguage = draftLanguage(draft)
+	proposeRelations(countCtx, d, s.va, caller, &draft.Items, objectType)
 	decisions := []*interfaces.DraftDecision{{
 		Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: itemID, Action: interfaces.DRAFT_DECISION_IDENTITY,
 		Before: before, After: objectType.PrimaryKeys,
