@@ -43,6 +43,7 @@ var draftEnUS = i18n.I18nMessages{
 		"BknProject.Understand.NotOwner":         "Not the Project Owner. Only the project owner can run semantic understanding of the project's data.",
 		"BknProject.Understand.NoCatalogs":       "No Data Catalogs. Select the data catalogs that hold the project's structured data before running semantic understanding.",
 		"BknProject.Draft.PartialNotAccepted":    "Draft Incomplete. Drafting could not read some tables, so the draft holds nothing of them; accept that when confirming, see error_details.",
+		"BknProject.Draft.ConflictsNotAccepted":  "Requirement Conflicts Unresolved. Conflicts between requirement documents are not resolved yet, including those handed to the business to confirm; accept confirming with them unresolved, or resolve them first, see error_details.",
 		"BknProject.Draft.UndecidedNotAccepted":  "Items Not Decided. Drafting left some tables and relations out and no one has decided on them yet; accept leaving them out when confirming, or settle them first, see error_details.",
 		"BknProject.Draft.HasPending":            "Items Wait for You. Before confirming, choose the identity of adopted object types and settle relations that connect an object type not adopted, see error_details.",
 		"BknProject.Draft.CatalogMissing":        "Data Catalog Not Found. A data catalog of the project no longer exists; change the project's data catalogs before drafting.",
