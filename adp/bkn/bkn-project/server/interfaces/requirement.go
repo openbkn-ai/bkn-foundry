@@ -146,6 +146,9 @@ type RequirementSpec struct {
 	// CatalogsUnlisted are the project's catalogs whose tables drafting could not list, so none of
 	// their tables went to the Agent. Absent when every catalog was listed.
 	CatalogsUnlisted []string `json:"catalogs_unlisted,omitempty"`
+	// LastIDs is the highest number given to an item of each kind (s, c, q, r) since drafting, so
+	// an id once given, even of an item removed since, is never given again.
+	LastIDs map[string]int `json:"last_ids,omitempty"`
 }
 
 // RequirementCitation is a passage of a document an item quotes. The agent gives the document and
@@ -332,6 +335,63 @@ func (s *RequirementSpec) HasDecisions() bool {
 	return false
 }
 
+// Kinds of specification items, as the routes name them.
+const (
+	REQUIREMENT_KIND_SCENARIOS = "scenarios"
+	REQUIREMENT_KIND_CONCEPTS  = "concepts"
+	REQUIREMENT_KIND_QUESTIONS = "questions"
+	REQUIREMENT_KIND_RULES     = "rules"
+)
+
+// RequirementItemEdit changes the fields it sets of one item, for the item's kind: name, actor,
+// trigger, decision and knowledge of a scenario; term, category and definition of a concept; text,
+// layer, template, answer_shape, scenario_ids and needs of a question; statement of a rule.
+// Setting a question's needs makes them the person's; follow_concepts makes them follow its
+// concepts again. UpdateTime is the specification's as read.
+type RequirementItemEdit struct {
+	UpdateTime  int64                 `json:"update_time"`
+	Name        *string               `json:"name"`
+	Actor       *string               `json:"actor"`
+	Trigger     *string               `json:"trigger"`
+	Decision    *string               `json:"decision"`
+	Knowledge   *[]string             `json:"knowledge"`
+	Term        *string               `json:"term"`
+	Category    *string               `json:"category"`
+	Definition  *string               `json:"definition"`
+	Text        *string               `json:"text"`
+	Layer       *string               `json:"layer"`
+	Template    *string               `json:"template"`
+	AnswerShape *string               `json:"answer_shape"`
+	ScenarioIDs *[]string             `json:"scenario_ids"`
+	Needs       *[]RequirementItemRef `json:"needs"`
+	// FollowConcepts set to true gives a question's needs back to its concepts.
+	FollowConcepts *bool   `json:"follow_concepts"`
+	Statement      *string `json:"statement"`
+}
+
+// RequirementMapping sets the drafted item a concept is; nil clears it.
+type RequirementMapping struct {
+	UpdateTime int64               `json:"update_time"`
+	MapsTo     *RequirementItemRef `json:"maps_to"`
+}
+
+// RequirementResolve resolves a conflict: the side chosen, or a conclusion of its own, with a
+// reason. Deferred hands it to the business to confirm instead, with a reason; it stays unresolved.
+type RequirementResolve struct {
+	UpdateTime int64  `json:"update_time"`
+	DocumentID string `json:"document_id"`
+	Text       string `json:"text"`
+	Reason     string `json:"reason"`
+	Deferred   bool   `json:"deferred"`
+}
+
+// RequirementDecide chooses an option of a modelling choice, with what it rests on.
+type RequirementDecide struct {
+	UpdateTime int64  `json:"update_time"`
+	OptionID   string `json:"option_id"`
+	Basis      string `json:"basis"`
+}
+
 // RequirementView is a specification as the client reads it, with what is computed from it.
 type RequirementView struct {
 	*Requirement
@@ -460,6 +520,27 @@ type RequirementService interface {
 	GetRequirement(ctx context.Context, token string, projectID string) (*RequirementView, error)
 	// FailInterrupted fails the specifications a previous run of the service left drafting.
 	FailInterrupted(ctx context.Context) error
+
+	// AddItem adds an item a person writes to the specification; EditItem changes one and
+	// DeleteItem removes one. kind is scenarios, concepts, questions or rules. Each returns the
+	// specification as it is after the change.
+	AddItem(ctx context.Context, token string, projectID string, kind string, edit RequirementItemEdit,
+		caller AccountInfo) (*Requirement, error)
+	EditItem(ctx context.Context, token string, projectID string, kind string, itemID string,
+		edit RequirementItemEdit, caller AccountInfo) (*Requirement, error)
+	DeleteItem(ctx context.Context, token string, projectID string, kind string, itemID string,
+		updateTime int64, caller AccountInfo) (*Requirement, error)
+	// MapConcept sets or clears the drafted item a concept is; the needs of the questions that
+	// follow their concepts follow.
+	MapConcept(ctx context.Context, token string, projectID string, conceptID string, mapping RequirementMapping,
+		caller AccountInfo) (*Requirement, error)
+	// ResolveConflict records the owner's resolution of a conflict between documents, or that it
+	// was handed to the business to confirm.
+	ResolveConflict(ctx context.Context, token string, projectID string, conflictID string,
+		resolve RequirementResolve, caller AccountInfo) (*Requirement, error)
+	// DecideChoice records the option chosen for a modelling choice.
+	DecideChoice(ctx context.Context, token string, projectID string, choiceID string, decide RequirementDecide,
+		caller AccountInfo) (*Requirement, error)
 
 	// ScenarioQuestions returns the project's scenario questions with their needs, for
 	// publishing and the regression after a release, which check visibility themselves. A
