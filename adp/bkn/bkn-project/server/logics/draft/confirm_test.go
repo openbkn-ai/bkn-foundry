@@ -53,6 +53,13 @@ func Test_ConfirmDraft(t *testing.T) {
 		ca := pmock.NewMockCheckAccess(ctrl)
 		ira := &fakeIDRegistry{}
 		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, ira: ira, run: func(func()) {}}
+		// The object type names the branch keeps beside what a confirmation writes.
+		var branchNames []string
+		var preflightErr error
+		ls.EXPECT().PreflightDefinitions(gomock.Any(), "supply", "project/p1", gomock.Any(), gomock.Any()).
+			DoAndReturn(func(context.Context, string, string, []string, []string) (*interfaces.DefinitionsPreflight, error) {
+				return &interfaces.DefinitionsPreflight{Existing: []string{}, ObjectTypeNames: branchNames}, preflightErr
+			}).AnyTimes()
 		// A confirmation that commits starts a check of its commit; the check itself is tested apart.
 		var checked []string
 		ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
@@ -158,6 +165,45 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(restored.Items.Confirmation, ShouldBeNil)
 			So(checked, ShouldBeEmpty)
 			So(ira.unlocked, ShouldResemble, []interfaces.IDKey{{Kind: interfaces.ID_KIND_OBJECT_TYPES, SourceKey: "res_orders"}})
+		})
+
+		Convey("An alias that names an object type the branch keeps is left out of what is written\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			d := confirmableDraft()
+			d.Items.ObjectTypes[0].Aliases = []string{"Supplier", "采购"}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+			branchNames = []string{"Plant", "Supplier"}
+			var written map[string][]byte
+			ls.EXPECT().AddDefinitions(gomock.Any(), "supply", "project/p1", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, _ string, files map[string][]byte, _ []string, _ string,
+					_ interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+					written = files
+					return &interfaces.CommitDefinitionsResult{Commit: "c1"}, nil
+				})
+
+			draft, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			So(err, ShouldBeNil)
+			// A file read alone is read as BKN 2.x, which ignores aliases: the text is checked.
+			orders := string(written["object_types/"+d.Items.ObjectTypes[0].ID+".bkn"])
+			So(orders, ShouldContainSubstring, "采购")
+			So(orders, ShouldNotContainSubstring, "Supplier")
+			// Only the definitions leave it out: the draft keeps it.
+			So(draft.Items.ObjectTypes[0].Aliases, ShouldResemble, []string{"Supplier", "采购"})
+			So(draft.Items.Confirmation.Files, ShouldResemble, compiledPaths())
+		})
+
+		Convey("A failure reading the branch writes nothing\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			preflightErr = errors.New("git is down")
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			So(err, ShouldNotBeNil)
+			So(ira.locked, ShouldBeEmpty)
+			So(checked, ShouldBeEmpty)
 		})
 
 		Convey("Confirming again may replace what the previous confirmation wrote\n", func() {

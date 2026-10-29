@@ -58,6 +58,9 @@ const (
 type DefinitionsPreflight struct {
 	NotV3    string   `json:"not_v3,omitempty"`
 	Existing []string `json:"existing"`
+	// ObjectTypeNames are the names of the object types the branch keeps beside the definitions,
+	// sorted: an alias of an added object type may not be one of them.
+	ObjectTypeNames []string `json:"object_type_names,omitempty"`
 }
 
 type CommitDefinitionsResult struct {

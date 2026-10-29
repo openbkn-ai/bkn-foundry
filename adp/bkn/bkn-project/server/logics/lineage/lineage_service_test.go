@@ -488,6 +488,24 @@ func Test_LineageService_PreflightDefinitions(t *testing.T) {
 			So(after, ShouldEqual, before)
 		})
 
+		Convey("It names the object types the branch keeps beside the definitions\n", func() {
+			id := lineage(v3())
+
+			// part is replaced by what is added; supplier stays.
+			preflight, err := svc.PreflightDefinitions(ctx, id, branch, []string{"object_types/part.bkn"}, nil)
+			So(err, ShouldBeNil)
+			So(preflight.ObjectTypeNames, ShouldResemble, []string{"Supplier"})
+
+			// What the draft owns goes, whether it adds it again or not.
+			preflight, err = svc.PreflightDefinitions(ctx, id, branch, nil, []string{"object_types/supplier.bkn"})
+			So(err, ShouldBeNil)
+			So(preflight.ObjectTypeNames, ShouldResemble, []string{"Part"})
+
+			preflight, err = svc.PreflightDefinitions(ctx, id, branch, []string{"object_types/plant.bkn"}, nil)
+			So(err, ShouldBeNil)
+			So(preflight.ObjectTypeNames, ShouldResemble, []string{"Part", "Supplier"})
+		})
+
 		Convey("A path the draft owns is not in the way\n", func() {
 			id := lineage(v3())
 
