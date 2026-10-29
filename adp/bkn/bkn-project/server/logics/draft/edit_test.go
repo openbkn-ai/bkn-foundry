@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -50,7 +51,8 @@ func Test_EditDraftItem(t *testing.T) {
 		defer ctrl.Finish()
 		da := pmock.NewMockDraftAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
-		svc := &draftService{setting: testSetting, da: da, ps: ps, run: func(fn func()) { fn() }}
+		va := pmock.NewMockVegaAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, ps: ps, va: va, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
@@ -135,15 +137,23 @@ func Test_EditDraftItem(t *testing.T) {
 		})
 
 		Convey("An object type's update field is one of its properties of a type the index accepts\n", func() {
+			draft.Items.ObjectTypes[1].Table = interfaces.DraftTable{ResourceID: "r_orders", CatalogID: "c1"}
 			draft.Items.ObjectTypes[1].Properties = []*interfaces.DraftProperty{
 				{Name: "id", Type: "integer", MappedField: "id"},
 				{Name: "changed_at", Type: "datetime", MappedField: "updated_at"},
 				{Name: "amount", Type: "float", MappedField: "amount"},
+				// vega's large_integer drafts as integer, which vega does not refresh an index by.
+				{Name: "seq", Type: "integer", MappedField: "seq"},
 			}
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			// The field's type is read from the table as the caller: the draft keeps only BKN types.
+			table := &interfaces.VegaTable{ID: "r_orders", Columns: []interfaces.VegaColumn{
+				{Name: "id", Type: "integer"}, {Name: "updated_at", Type: "datetime"}, {Name: "seq", Type: "large_integer"},
+			}}
 			e := edit()
 
 			Convey("setting it records what it replaced\n", func() {
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{table}, nil)
 				expectWrite()
 				e.IncrementalKey = strPtr(" changed_at ")
 
@@ -190,6 +200,39 @@ func Test_EditDraftItem(t *testing.T) {
 					shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
 				}
 				So(written, ShouldBeNil)
+			})
+
+			Convey("a field whose vega type the index cannot be refreshed by is refused\n", func() {
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{table}, nil)
+				e.IncrementalKey = strPtr("seq")
+
+				_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+				So(written, ShouldBeNil)
+			})
+
+			Convey("a field gone from its table, or a table the caller cannot read, is not found\n", func() {
+				e.IncrementalKey = strPtr("changed_at")
+				for _, read := range [][]*interfaces.VegaTable{
+					{{ID: "r_orders", Columns: []interfaces.VegaColumn{{Name: "id", Type: "integer"}}}}, {},
+				} {
+					// The refused edit changed the draft read in memory only; read it afresh.
+					draft.Items.ObjectTypes[1].IncrementalKey = ""
+					va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return(read, nil)
+					_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+					shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_FieldNotFound)
+				}
+				So(written, ShouldBeNil)
+			})
+
+			Convey("a failure reading the table is an internal error\n", func() {
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return(nil, errors.New("vega is down"))
+				e.IncrementalKey = strPtr("changed_at")
+
+				_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
 			})
 		})
 

@@ -91,7 +91,29 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 	return nil
 }
 
-// incrementalTypes are the property types vega-backend refreshes a table's local index by.
+// checkIncrementalField reads, as the caller, the field the object type's update field maps to,
+// refusing one vega-backend would not refresh the table's local index by. The draft keeps BKN
+// types only, which merge some vega types (large_integer drafts as integer).
+func (s *draftService) checkIncrementalField(ctx context.Context, objectType *interfaces.DraftObjectType,
+	caller interfaces.AccountInfo) error {
+	property := findProperty(objectType, objectType.IncrementalKey)
+	tables, err := s.va.GetTables(ctx, caller, []string{objectType.Table.ResourceID})
+	if err != nil {
+		return internalError(ctx, "Read table failed", err)
+	}
+	for _, table := range tables {
+		if c, ok := column(table, property.MappedField); ok {
+			if !incrementalTypes[c.Type] {
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+			}
+			return nil
+		}
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_FieldNotFound)
+}
+
+// incrementalTypes are the types vega-backend refreshes a table's local index by
+// (INCREMENTAL_FIELD_TYPES); a property's BKN type has the same name.
 var incrementalTypes = map[string]bool{
 	"integer": true, "unsigned integer": true, "string": true, "date": true, "time": true, "datetime": true, "timestamp": true,
 }
@@ -248,6 +270,14 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 	if err != nil {
 		span.SetStatus(codes.Error, "Edit refused")
 		return nil, err
+	}
+	for _, d := range decisions {
+		if d.Action == interfaces.DRAFT_DECISION_INCREMENTAL && d.After != "" {
+			if err := s.checkIncrementalField(ctx, findObjectType(&draft.Items, itemID), caller); err != nil {
+				span.SetStatus(codes.Error, "Update field refused")
+				return nil, err
+			}
+		}
 	}
 	if err := s.commit(ctx, draft, decisions, caller); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
