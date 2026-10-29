@@ -23,6 +23,7 @@ var (
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
 	EFA interfaces.ExecutionFactoryAccess
+	RQA interfaces.RequirementAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -71,4 +72,8 @@ func SetBknBackendAccess(bba interfaces.BknBackendAccess) {
 
 func SetExecutionFactoryAccess(efa interfaces.ExecutionFactoryAccess) {
 	EFA = efa
+}
+
+func SetRequirementAccess(rqa interfaces.RequirementAccess) {
+	RQA = rqa
 }
