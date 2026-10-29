@@ -208,9 +208,8 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 	// own, defaulting to 20 rows, so a query asking for more would come back
 	// cut down with nothing to say it had been.
 	response, err := s.execute(ctx, query, compiled.plan, interfaces.RawQueryRequest{
-		Query:        compiled.statement,
-		QueryFormat:  interfaces.VEGA_QUERY_FORMAT_SQL,
-		InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+		Query:       compiled.statement,
+		QueryFormat: interfaces.VEGA_QUERY_FORMAT_SQL,
 		Paging: interfaces.ResourceDataPagingRequest{
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: compiled.rowLimit,
@@ -245,9 +244,8 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
 	read := compiled.graph
 	response, err := s.execute(ctx, query, compiled.plan, interfaces.RawQueryRequest{
-		Query:        read.statement,
-		QueryFormat:  interfaces.VEGA_QUERY_FORMAT_SQL,
-		InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+		Query:       read.statement,
+		QueryFormat: interfaces.VEGA_QUERY_FORMAT_SQL,
 		Paging: interfaces.ResourceDataPagingRequest{
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: read.rowLimit,

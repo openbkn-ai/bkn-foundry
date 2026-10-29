@@ -5,7 +5,7 @@
 
 ########################### Stage 0 ########################
 ARG BUILD_IMAGE=golang:1.26.9
-ARG PYTHON_BASE_IMAGE=ghcr.io/openbkn-ai/vega-python-base:0.2.0
+ARG RUNTIME_IMAGE=ubuntu:24.04
 
 FROM ${BUILD_IMAGE} AS builder
 
@@ -25,10 +25,16 @@ RUN set -ex; \
 
 ########################### Stage 1 ########################
 # Copy working directory to the actual release docker images
-FROM ${PYTHON_BASE_IMAGE} AS prod
+FROM ${RUNTIME_IMAGE} AS prod
 
 ARG UID=1001
 ARG GID=1001
+
+RUN groupadd -r -g $GID openbkn \
+    && useradd -r -u $UID -g $GID openbkn \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend
 

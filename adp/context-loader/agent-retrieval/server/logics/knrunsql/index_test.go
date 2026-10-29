@@ -43,7 +43,7 @@ func TestRunSQLUsesRawQueryContract(t *testing.T) {
 	service := NewKnRunSQLServiceWith(vega)
 
 	_, err := service.RunSQL(context.Background(), &RunSQLReq{
-		SQL:          "SELECT * FROM {{.resource1}}",
+		SQL:          "SELECT * FROM {{resource1}}",
 		QueryTimeout: 30,
 	})
 	if err != nil {
@@ -52,7 +52,7 @@ func TestRunSQLUsesRawQueryContract(t *testing.T) {
 	if vega.req == nil {
 		t.Fatal("RawQuery() was not called")
 	}
-	if vega.req.QueryFormat != "sql" || vega.req.InputDialect != "mysql" || vega.req.QueryTimeoutSec != 30 {
+	if vega.req.QueryFormat != "sql" || vega.req.QueryTimeoutSec != 30 {
 		t.Fatalf("unexpected Raw Query contract: %#v", vega.req)
 	}
 	if vega.req.Paging != (interfaces.VegaPagingRequest{Mode: "single", Limit: 10000}) {
@@ -69,9 +69,9 @@ func TestRunSQLEmitsStructuredFailureAtEachBoundary(t *testing.T) {
 		wantCode  string
 	}{
 		{name: "sql required", req: &RunSQLReq{}, wantStage: "input_validation", wantCode: "RUN_SQL_SQL_REQUIRED"},
-		{name: "read only guard", req: &RunSQLReq{SQL: "DELETE FROM {{.inventory}}"}, wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED"},
+		{name: "read only guard", req: &RunSQLReq{SQL: "DELETE FROM {{inventory}}"}, wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED"},
 		{name: "resource placeholder", req: &RunSQLReq{SQL: "SELECT 1"}, wantStage: "input_validation", wantCode: "RUN_SQL_RESOURCE_PLACEHOLDER_REQUIRED"},
-		{name: "vega query", req: &RunSQLReq{SQL: "SELECT * FROM {{.inventory}}"}, vegaError: errors.New("unknown column available_qty"), wantStage: "vega_query", wantCode: "RUN_SQL_VEGA_QUERY_FAILED"},
+		{name: "vega query", req: &RunSQLReq{SQL: "SELECT * FROM {{inventory}}"}, vegaError: errors.New("unknown column available_qty"), wantStage: "vega_query", wantCode: "RUN_SQL_VEGA_QUERY_FAILED"},
 	}
 
 	for _, test := range tests {

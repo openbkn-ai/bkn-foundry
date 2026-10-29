@@ -32,7 +32,7 @@ func currentEvidencePublisher() EvidencePublisher {
 	return evidencePublisher
 }
 
-func publishEvidenceEvent(ctx context.Context, event Event) evidencepublisher.PublishResult {
+func publishEvidenceEvent(_ context.Context, event Event) evidencepublisher.PublishResult {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return evidencepublisher.PublishResult{Disposition: evidencepublisher.Dropped, Reason: evidencepublisher.ReasonSerialization}

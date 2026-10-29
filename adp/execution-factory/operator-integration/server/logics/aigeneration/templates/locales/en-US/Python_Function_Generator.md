@@ -58,7 +58,7 @@ def kn_summary(kn_id: str) -> dict:
 ```
 
    - Common capabilities: `kn.get_kn_detail(kn_id)` for the schema, `kn.search_schema(kn_id, query)` to find object types semantically, `kn.query_object_instance(kn_id, ot_id, limit=...)` for instances, `kn.list_resources(kn_id)` for resources.
-   - For aggregation use `kn.run_sql(kn_id, sql)`, but table names in the SQL must be the placeholder `{{.<resource_id>}}`, where `<resource_id>` comes from the `data_source.id` returned by `kn.search_schema` (or from `kn.list_resources`) — do **not** write a real table name (it is rejected). Use physical column names, which `search_schema(..., include_columns=True)` returns.
+   - For aggregation use `kn.run_sql(kn_id, sql)`, but table names in the SQL must be the placeholder `{{<resource_id>}}`, where `<resource_id>` comes from the `data_source.id` returned by `kn.search_schema` (or from `kn.list_resources`) — do **not** write a real table name (it is rejected). Use physical column names, which `search_schema(..., include_columns=True)` returns.
    - A misconfigured platform address or a failed call raises `bkn_osdk.BknError` (`InputError` and `HttpError` are its subclasses). Let it propagate unless the request asks for a degraded result — swallowing it into an empty result disguises a configuration problem as "no data found".
    - The older `from sandbox_sdk import tool, bkn` form **still works**; existing functions need no rewrite. Use `bkn_osdk` for newly generated code, and when editing an existing function keep whichever form it already uses unless the request explicitly asks to migrate.
 

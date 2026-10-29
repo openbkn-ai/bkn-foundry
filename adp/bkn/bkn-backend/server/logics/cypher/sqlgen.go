@@ -52,7 +52,7 @@ type GenerateOptions struct {
 }
 
 // Generate writes the plan as one SQL statement. Resources appear as
-// {{.resource_id}} placeholders, which vega-backend replaces with the quoted
+// {{resource_id}} placeholders, which vega-backend replaces with the quoted
 // physical table name, so no table name is ever composed here.
 func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	dialect := options.Dialect
@@ -987,7 +987,7 @@ func (g *generator) writeLimit(defaultLimit int64) {
 // wrote or carry anything the author controls.
 func (g *generator) table(index int) string {
 	t := g.plan.Tables[index]
-	return "{{." + t.ResourceID + "}} " + t.Alias
+	return "{{" + t.ResourceID + "}} " + t.Alias
 }
 
 func (g *generator) column(table int, column string) string {

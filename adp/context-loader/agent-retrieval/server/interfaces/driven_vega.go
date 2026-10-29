@@ -13,11 +13,10 @@ import (
 var maxSafeTOONInteger = big.NewInt(9007199254740991)
 
 // VegaRawQueryReq vega raw SQL query request (read-only).
-// Query is MySQL dialect SQL. The table name is referenced by {{.resource_id}} placeholder, which is parsed into the real table name by vega.
+// Query is MySQL dialect SQL. The table name is referenced by {{resource_id}} placeholder, which is parsed into the real table name by vega.
 type VegaRawQueryReq struct {
 	Query           string            `json:"query"`                       // MySQL Dialect SQL.
 	QueryFormat     string            `json:"query_format"`                // fixed to sql.
-	InputDialect    string            `json:"input_dialect"`               // fixed to mysql.
 	QueryTimeoutSec int               `json:"query_timeout_sec,omitempty"` // Query timeout (seconds), 1-3600.
 	Paging          VegaPagingRequest `json:"paging"`
 }

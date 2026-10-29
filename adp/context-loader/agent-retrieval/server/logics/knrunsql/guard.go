@@ -17,15 +17,15 @@ import (
 
 // run_sql Read-only SQL guard.
 //
-// Vega's original query interface will make the final decision based on the SQLGlot AST strategy, rejecting non-top-level SELECT, WITH/CTE,
+// Vega's query interface makes the final decision with its target-specific parser and policy, rejecting non-top-level SELECT, WITH/CTE,
 // Set operations and writing/DDL. Here we use "stripping comments and string literals before doing lexical determination" for defense in depth:
 // First eliminate the comments/strings/placeholders that can hide keywords, and then require a single statement, starting with SELECT/WITH, without the write/DDL keyword.
 // It is not a full SQL parser and is not a replacement for final policy validation on the vega side.
 
 var (
-	// resourcePlaceholderRe is consistent with vega extractResourceIDs: {{.resource_id}} or {{resource_id}}.
-	resourcePlaceholderRe = regexp.MustCompile(`\{\{\.?([a-z0-9][a-z0-9_-]{0,39})\}\}`)
-	// anyPlaceholderRe replaces the entire placeholder before keyword determination to avoid misjudgments triggered by internal words such as {{.delete}}.
+	// resourcePlaceholderRe recognizes Vega resource references, including whitespace inside the braces.
+	resourcePlaceholderRe = regexp.MustCompile(`\{\{[ \t\r\n]*([a-z0-9][a-z0-9_-]{0,39})[ \t\r\n]*\}\}`)
+	// anyPlaceholderRe replaces the entire placeholder before keyword determination to avoid misjudgments triggered by internal words such as {{delete}}.
 	anyPlaceholderRe = regexp.MustCompile(`\{\{[^}]*\}\}`)
 	// startsWithSelectRe only checks the entry form, allowing leading whitespace and left parentheses; set operations may pass local guards,
 	// But will be rejected by vega's final strategy.
@@ -34,7 +34,7 @@ var (
 	forbiddenKeywordRe = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|REPLACE|MERGE|UPSERT|CALL|EXEC|EXECUTE|RENAME|LOAD|COPY|INTO|ATTACH|DETACH|USE|VACUUM|ANALYZE|REFRESH|COMMENT|PREPARE|DEALLOCATE)\b`)
 )
 
-// ExtractResourceIDs Extracts all resource_ids within {{.resource_id}} placeholders from SQL (removes duplication, preserves order).
+// ExtractResourceIDs extracts resource IDs from {{resource_id}} placeholders, removing duplicates and preserving order.
 func ExtractResourceIDs(sql string) []string {
 	matches := resourcePlaceholderRe.FindAllStringSubmatch(sql, -1)
 	ids := make([]string, 0, len(matches))

@@ -23,8 +23,8 @@ const (
 // of its own, nulls left out as collect leaves them out, and the second
 // stage's rows decide whether there is a row at all.
 func TestIntersectionGenerates(t *testing.T) {
-	first := "SELECT t0.`f_cust` AS `value` FROM {{.res_order}} t0 WHERE t0.`f_region` = 'east'"
-	second := "SELECT t0.`f_code` AS `value` FROM {{.res_customer}} t0 WHERE t0.`f_region` = 'west'"
+	first := "SELECT t0.`f_cust` AS `value` FROM {{res_order}} t0 WHERE t0.`f_region` = 'east'"
+	second := "SELECT t0.`f_code` AS `value` FROM {{res_customer}} t0 WHERE t0.`f_region` = 'west'"
 	for _, tc := range []struct {
 		name  string
 		query string
@@ -182,8 +182,8 @@ func TestIntersectionAppliesRowFiltersToBothStages(t *testing.T) {
 	}
 	statement := vega.request.Query
 	for resource, filtered := range map[string]string{
-		"{{.res_order}}":    "{{.res_order}} t0 WHERE t0.`f_region` IN ('east')",
-		"{{.res_customer}}": "{{.res_customer}} t0 WHERE t0.`f_name` IN ('Ann')",
+		"{{res_order}}":    "{{res_order}} t0 WHERE t0.`f_region` IN ('east')",
+		"{{res_customer}}": "{{res_customer}} t0 WHERE t0.`f_name` IN ('Ann')",
 	} {
 		if all, kept := strings.Count(statement, resource), strings.Count(statement, filtered); all == 0 || all != kept {
 			t.Errorf("%s appears %d times, %d of them filtered:\n%s", resource, all, kept, statement)

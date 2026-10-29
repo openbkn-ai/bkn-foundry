@@ -999,10 +999,8 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 			{
 				Name:      inField,
 				Operation: "in",
-				ValueOptCfg: cond.ValueOptCfg{
-					ValueFrom: "const",
-					Value:     inValues,
-				},
+				ValueFrom: "const",
+				Value:     inValues,
 			},
 		}, viewDataMap, nil
 	}
@@ -1138,10 +1136,8 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			viewQuery.Filters = &cond.CondCfg{
 				Name:      inField,
 				Operation: "in",
-				ValueOptCfg: cond.ValueOptCfg{
-					ValueFrom: "const",
-					Value:     inValues,
-				},
+				ValueFrom: "const",
+				Value:     inValues,
 			}
 		} else {
 			viewQuery.Filters = groupConditions(cond.OperationOr, batchConditions)

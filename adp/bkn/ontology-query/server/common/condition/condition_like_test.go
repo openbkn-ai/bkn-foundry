@@ -39,9 +39,7 @@ func Test_NewLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 			}
 			cfg.NameField = fieldsMap["name"]
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
@@ -53,9 +51,7 @@ func Test_NewLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "nonexistent",
 				Operation: OperationLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 			}
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -66,9 +62,7 @@ func Test_NewLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 			}
 			cfg.NameField = fieldsMap["age"]
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
@@ -80,9 +74,7 @@ func Test_NewLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: 123,
-				},
+				Value:     123,
 			}
 			cfg.NameField = fieldsMap["name"]
 			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
@@ -99,9 +91,7 @@ func Test_LikeCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL", func() {
 			cond := &LikeCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mValue:           "test",
 				mFilterFieldName: "name",
@@ -121,9 +111,7 @@ func Test_LikeCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 转换SQL", func() {
 			cond := &LikeCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mValue:           "test",
 				mFilterFieldName: "name",
@@ -142,9 +130,7 @@ func Test_rewriteLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 				NameField: &DataProperty{
 					Name: "name",
 					MappedField: Field{
@@ -162,9 +148,7 @@ func Test_rewriteLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 				NameField: &DataProperty{
 					Name: "",
 				},
@@ -193,9 +177,7 @@ func Test_NewNotLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 			}
 			cfg.NameField = fieldsMap["name"]
 			cond, err := NewNotLikeCond(ctx, cfg, fieldsMap)
@@ -207,9 +189,7 @@ func Test_NewNotLikeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: 123,
-				},
+				Value:     123,
 			}
 			cfg.NameField = fieldsMap["name"]
 			cond, err := NewNotLikeCond(ctx, cfg, fieldsMap)
@@ -226,9 +206,7 @@ func Test_NotLikeCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL", func() {
 			cond := &NotLikeCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mValue:           "test",
 				mFilterFieldName: "name",
@@ -249,9 +227,7 @@ func Test_NotLikeCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 转换SQL", func() {
 			cond := &NotLikeCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mValue:           "test",
 				mFilterFieldName: "name",

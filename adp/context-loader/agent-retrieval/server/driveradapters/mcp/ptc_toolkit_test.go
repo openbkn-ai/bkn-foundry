@@ -185,7 +185,7 @@ func TestPTCDigestFencesBalanced(t *testing.T) {
 
 // In actual testing, if the model writes SQL without reading the complete docstring, it will miss the placeholder convention and fail in one round.
 func TestPTCDigestCarriesRunSQLHint(t *testing.T) {
-	if digest := ptcTestDigest(); !strings.Contains(digest, "{{.<resource_id>}}") {
+	if digest := ptcTestDigest(); !strings.Contains(digest, "{{<resource_id>}}") {
 		t.Fatalf("run_sql 缺少占位符示例:\n%s", digest)
 	}
 }

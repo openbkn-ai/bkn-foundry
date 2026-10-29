@@ -14,7 +14,7 @@ import (
 func compileWhere(t *testing.T, where string) string {
 	t.Helper()
 	sql := mustCompile(t, "MATCH (o:Order) WHERE "+where+" RETURN o.id AS id")
-	const prefix = "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 WHERE "
+	const prefix = "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 WHERE "
 	if !strings.HasPrefix(sql, prefix) {
 		t.Fatalf("unexpected statement shape: %s", sql)
 	}

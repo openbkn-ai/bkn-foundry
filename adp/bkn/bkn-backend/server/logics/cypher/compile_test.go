@@ -120,7 +120,7 @@ func TestCompileSingleNode(t *testing.T) {
 	// Properties resolve to their mapped columns, and the resource appears as
 	// a placeholder rather than a table name.
 	got := mustCompile(t, "MATCH (o:Order) RETURN o.id AS id, o.amount")
-	want := "SELECT t0.`f_id` AS `id`, t0.`f_total` AS `o.amount` FROM {{.res_order}} t0"
+	want := "SELECT t0.`f_id` AS `id`, t0.`f_total` AS `o.amount` FROM {{res_order}} t0"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -131,8 +131,8 @@ func TestCompileJoin(t *testing.T) {
 		WHERE o.amount > 100
 		RETURN o.id AS id, c.name AS customer`)
 	want := "SELECT t0.`f_id` AS `id`, t1.`f_name` AS `customer` " +
-		"FROM {{.res_order}} t0 " +
-		"JOIN {{.res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
+		"FROM {{res_order}} t0 " +
+		"JOIN {{res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
 		"WHERE t0.`f_total` > 100"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -144,8 +144,8 @@ func TestCompileJoin(t *testing.T) {
 func TestCompileJoinIncoming(t *testing.T) {
 	got := mustCompile(t, "MATCH (c:Customer)<-[:PLACED_BY]-(o:Order) RETURN o.id AS id")
 	want := "SELECT t1.`f_id` AS `id` " +
-		"FROM {{.res_customer}} t0 " +
-		"JOIN {{.res_order}} t1 ON t0.`f_code` = t1.`f_cust_code` AND t0.`f_region` = t1.`f_region`"
+		"FROM {{res_customer}} t0 " +
+		"JOIN {{res_order}} t1 ON t0.`f_code` = t1.`f_cust_code` AND t0.`f_region` = t1.`f_region`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -155,7 +155,7 @@ func TestCompileJoinIncoming(t *testing.T) {
 // named by its alias in RETURN or written out again in ORDER BY.
 func TestCompileDistinctSortedByReturnedValue(t *testing.T) {
 	got := mustCompile(t, "MATCH (o:Order) RETURN DISTINCT o.region AS r ORDER BY o.region DESC")
-	want := "SELECT DISTINCT t0.`f_region` AS `r` FROM {{.res_order}} t0 ORDER BY t0.`f_region` DESC"
+	want := "SELECT DISTINCT t0.`f_region` AS `r` FROM {{res_order}} t0 ORDER BY t0.`f_region` DESC"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -166,7 +166,7 @@ func TestCompileDistinctSortedByReturnedValue(t *testing.T) {
 func TestCompileClauses(t *testing.T) {
 	got := mustCompile(t, `MATCH (o:Order) RETURN o.region AS region
 		ORDER BY o.region DESC, o.amount SKIP 20 LIMIT 10`)
-	want := "SELECT t0.`f_region` AS `region` FROM {{.res_order}} t0 " +
+	want := "SELECT t0.`f_region` AS `region` FROM {{res_order}} t0 " +
 		"ORDER BY t0.`f_region` DESC, t0.`f_total` LIMIT 10 OFFSET 20"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -274,7 +274,7 @@ func TestGeneratePostgres(t *testing.T) {
 	}
 	// Identifiers switch to double quotes, and a backslash stays one
 	// backslash because it is not an escape character here.
-	want := `SELECT t0."f_name" AS "n" FROM {{.res_customer}} t0 WHERE t0."f_name" = 'a\b''c'`
+	want := `SELECT t0."f_name" AS "n" FROM {{res_customer}} t0 WHERE t0."f_name" = 'a\b''c'`
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -373,8 +373,8 @@ func TestCompileRejectionCarriesPosition(t *testing.T) {
 func TestCompileUndirected(t *testing.T) {
 	t.Run("object types settle the direction", func(t *testing.T) {
 		got := mustCompile(t, "MATCH (o:Order)-[:PLACED_BY]-(c:Customer) RETURN o.id AS id")
-		want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 " +
-			"JOIN {{.res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region`"
+		want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 " +
+			"JOIN {{res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region`"
 		if got != want {
 			t.Fatalf("got  %s\nwant %s", got, want)
 		}
@@ -382,8 +382,8 @@ func TestCompileUndirected(t *testing.T) {
 
 	t.Run("written the other way round is the same join", func(t *testing.T) {
 		got := mustCompile(t, "MATCH (c:Customer)-[:PLACED_BY]-(o:Order) RETURN o.id AS id")
-		want := "SELECT t1.`f_id` AS `id` FROM {{.res_customer}} t0 " +
-			"JOIN {{.res_order}} t1 ON t0.`f_code` = t1.`f_cust_code` AND t0.`f_region` = t1.`f_region`"
+		want := "SELECT t1.`f_id` AS `id` FROM {{res_customer}} t0 " +
+			"JOIN {{res_order}} t1 ON t0.`f_code` = t1.`f_cust_code` AND t0.`f_region` = t1.`f_region`"
 		if got != want {
 			t.Fatalf("got  %s\nwant %s", got, want)
 		}
@@ -391,8 +391,8 @@ func TestCompileUndirected(t *testing.T) {
 
 	t.Run("a self relation matches either reading", func(t *testing.T) {
 		got := mustCompile(t, "MATCH (a:Order)-[:FOLLOWS]-(b:Order) RETURN a.id AS id")
-		want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 " +
-			"JOIN {{.res_order}} t1 ON (t0.`f_id` = t1.`f_prev`) OR (t0.`f_prev` = t1.`f_id`)"
+		want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 " +
+			"JOIN {{res_order}} t1 ON (t0.`f_id` = t1.`f_prev`) OR (t0.`f_prev` = t1.`f_id`)"
 		if got != want {
 			t.Fatalf("got  %s\nwant %s", got, want)
 		}
@@ -406,9 +406,9 @@ func TestCompileMultiHop(t *testing.T) {
 	t.Run("two hops over different relations", func(t *testing.T) {
 		got := mustCompile(t,
 			"MATCH (i:Item)-[:BELONGS_TO]->(o:Order)-[:PLACED_BY]->(c:Customer) RETURN c.name AS customer")
-		want := "SELECT t2.`f_name` AS `customer` FROM {{.res_item}} t0 " +
-			"JOIN {{.res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
-			"JOIN {{.res_customer}} t2 ON t1.`f_cust_code` = t2.`f_code` AND t1.`f_region` = t2.`f_region`"
+		want := "SELECT t2.`f_name` AS `customer` FROM {{res_item}} t0 " +
+			"JOIN {{res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
+			"JOIN {{res_customer}} t2 ON t1.`f_cust_code` = t2.`f_code` AND t1.`f_region` = t2.`f_region`"
 		if got != want {
 			t.Fatalf("got  %s\nwant %s", got, want)
 		}
@@ -420,9 +420,9 @@ func TestCompileMultiHop(t *testing.T) {
 		// relationship walked out and back.
 		got := mustCompile(t,
 			"MATCH (a:Item)-[:BELONGS_TO]->(o:Order)<-[:BELONGS_TO]-(b:Item) RETURN a.id AS a, b.id AS b")
-		want := "SELECT t0.`f_id` AS `a`, t2.`f_id` AS `b` FROM {{.res_item}} t0 " +
-			"JOIN {{.res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
-			"JOIN {{.res_item}} t2 ON t1.`f_id` = t2.`f_order` " +
+		want := "SELECT t0.`f_id` AS `a`, t2.`f_id` AS `b` FROM {{res_item}} t0 " +
+			"JOIN {{res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
+			"JOIN {{res_item}} t2 ON t1.`f_id` = t2.`f_order` " +
 			"WHERE NOT t0.`f_id` = t2.`f_id`"
 		if got != want {
 			t.Fatalf("got  %s\nwant %s", got, want)
@@ -574,9 +574,9 @@ func TestCompileRefusesTooManyNodes(t *testing.T) {
 // describe a shape that is not a single chain: one node with two
 // relationships leaving it.
 func TestCompileSharedVariableJoinsThePaths(t *testing.T) {
-	branching := "SELECT t2.`f_name` AS `customer` FROM {{.res_item}} t0 " +
-		"JOIN {{.res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
-		"JOIN {{.res_customer}} t2 ON t1.`f_cust_code` = t2.`f_code` AND t1.`f_region` = t2.`f_region`"
+	branching := "SELECT t2.`f_name` AS `customer` FROM {{res_item}} t0 " +
+		"JOIN {{res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
+		"JOIN {{res_customer}} t2 ON t1.`f_cust_code` = t2.`f_code` AND t1.`f_region` = t2.`f_region`"
 
 	for _, tc := range []struct {
 		name  string
@@ -613,9 +613,9 @@ func TestCompileSharedVariableJoinsThePaths(t *testing.T) {
 func TestCompileBranchingPattern(t *testing.T) {
 	got := mustCompile(t, "MATCH (o:Order)-[:PLACED_BY]->(c:Customer), (i:Item)-[:BELONGS_TO]->(o) "+
 		"RETURN c.name AS customer, i.id AS item")
-	want := "SELECT t1.`f_name` AS `customer`, t2.`f_id` AS `item` FROM {{.res_order}} t0 " +
-		"JOIN {{.res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
-		"JOIN {{.res_item}} t2 ON t2.`f_order` = t0.`f_id`"
+	want := "SELECT t1.`f_name` AS `customer`, t2.`f_id` AS `item` FROM {{res_order}} t0 " +
+		"JOIN {{res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
+		"JOIN {{res_item}} t2 ON t2.`f_order` = t0.`f_id`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -626,8 +626,8 @@ func TestCompileBranchingPattern(t *testing.T) {
 // sees the cost.
 func TestCompileUnconnectedPaths(t *testing.T) {
 	got := mustCompile(t, "MATCH (o:Order), (c:Customer) RETURN o.id AS o, c.name AS c")
-	want := "SELECT t0.`f_id` AS `o`, t1.`f_name` AS `c` FROM {{.res_order}} t0 " +
-		"CROSS JOIN {{.res_customer}} t1"
+	want := "SELECT t0.`f_id` AS `o`, t1.`f_name` AS `c` FROM {{res_order}} t0 " +
+		"CROSS JOIN {{res_customer}} t1"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -640,7 +640,7 @@ func TestCompileSecondMentionCarriesConditions(t *testing.T) {
 	if !strings.Contains(got, "WHERE t1.`f_region` = 'eu'") {
 		t.Fatalf("got %s", got)
 	}
-	if strings.Count(got, "{{.res_order}}") != 1 {
+	if strings.Count(got, "{{res_order}}") != 1 {
 		t.Fatalf("the order table was read twice: %s", got)
 	}
 }
@@ -685,7 +685,7 @@ func TestCompileMultiPatternRejections(t *testing.T) {
 func TestCompileJoinsThatAttachNoTable(t *testing.T) {
 	t.Run("a node related to itself", func(t *testing.T) {
 		got := mustCompile(t, "MATCH (a:Order)-[:FOLLOWS]->(a) RETURN a.id AS id")
-		want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 WHERE t0.`f_id` = t0.`f_prev`"
+		want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 WHERE t0.`f_id` = t0.`f_prev`"
 		if got != want {
 			t.Fatalf("got  %s\nwant %s", got, want)
 		}
@@ -698,7 +698,7 @@ func TestCompileJoinsThatAttachNoTable(t *testing.T) {
 		if !strings.Contains(got, "WHERE t0.`f_id` = t2.`f_prev` AND ") {
 			t.Fatalf("the closing relationship did not become a condition: %s", got)
 		}
-		if strings.Contains(got, "t2 AND") || strings.Contains(got, "JOIN {{.res_order}} t2 ON t1.`f_id` = t2.`f_prev` AND t0") {
+		if strings.Contains(got, "t2 AND") || strings.Contains(got, "JOIN {{res_order}} t2 ON t1.`f_id` = t2.`f_prev` AND t0") {
 			t.Fatalf("a condition was appended to the FROM list: %s", got)
 		}
 	})
@@ -707,7 +707,7 @@ func TestCompileJoinsThatAttachNoTable(t *testing.T) {
 		got := mustCompile(t,
 			"MATCH (a:Order)-[:FOLLOWS]->(b:Order), (a)-[:FOLLOWS]->(b), (d:Customer) "+
 				"RETURN d.name AS n")
-		if !strings.Contains(got, "CROSS JOIN {{.res_customer}} t2 WHERE ") {
+		if !strings.Contains(got, "CROSS JOIN {{res_customer}} t2 WHERE ") {
 			t.Fatalf("a condition landed after the cross join: %s", got)
 		}
 	})

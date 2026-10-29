@@ -271,9 +271,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:        "value1",
 					},
 				},
 			}
@@ -289,9 +287,7 @@ func Test_ValidateActionType(t *testing.T) {
 		// 			Condition: &interfaces.ActionCondCfg{
 		// 				Field:     "field1",
 		// 				Operation: cond.OperationEq,
-		// 				ValueOptCfg: cond.ValueOptCfg{
-		// 					Value: "value1",
-		// 				},
+		// 				Value: "value1",
 		// 			},
 		// 		},
 		// 	}
@@ -309,9 +305,7 @@ func Test_ValidateActionType(t *testing.T) {
 					Condition: &interfaces.ActionCondCfg{
 						ObjectTypeID: "ot1",
 						Field:        "field1",
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:        "value1",
 					},
 				},
 			}
@@ -330,9 +324,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    "invalid_op",
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:        "value1",
 					},
 				},
 			}
@@ -355,9 +347,7 @@ func Test_ValidateActionType(t *testing.T) {
 								ObjectTypeID: "ot1",
 								Field:        "field1",
 								Operation:    cond.OperationEq,
-								ValueOptCfg: cond.ValueOptCfg{
-									Value: "value1",
-								},
+								Value:        "value1",
 							},
 						},
 					},
@@ -439,9 +429,7 @@ func Test_ValidateActionType(t *testing.T) {
 								ObjectTypeID: "ot1",
 								Field:        "field1",
 								Operation:    cond.OperationEq,
-								ValueOptCfg: cond.ValueOptCfg{
-									Value: "value1",
-								},
+								Value:        "value1",
 							},
 							{
 								ObjectTypeID: "ot1",
@@ -469,9 +457,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    "eq",
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: []any{"value1", "value2"},
-						},
+						Value:        []any{"value1", "value2"},
 					},
 				},
 			}
@@ -490,9 +476,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    cond.OperationIn,
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:        "value1",
 					},
 				},
 			}
@@ -511,9 +495,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    cond.OperationIn,
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: []any{},
-						},
+						Value:        []any{},
 					},
 				},
 			}
@@ -532,9 +514,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    cond.OperationRange,
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:        "value1",
 					},
 				},
 			}
@@ -553,9 +533,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    cond.OperationRange,
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: []any{"value1"},
-						},
+						Value:        []any{"value1"},
 					},
 				},
 			}
@@ -578,17 +556,13 @@ func Test_ValidateActionType(t *testing.T) {
 								ObjectTypeID: "ot1",
 								Field:        "field1",
 								Operation:    cond.OperationEq,
-								ValueOptCfg: cond.ValueOptCfg{
-									Value: "value1",
-								},
+								Value:        "value1",
 							},
 							{
 								ObjectTypeID: "ot1",
 								Field:        "field2",
 								Operation:    cond.OperationIn,
-								ValueOptCfg: cond.ValueOptCfg{
-									Value: []any{"value2", "value3"},
-								},
+								Value:        []any{"value2", "value3"},
 							},
 						},
 					},
@@ -622,9 +596,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:        "value1",
 					},
 				},
 			}
@@ -645,9 +617,7 @@ func Test_ValidateActionType(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Field:        "field1",
 						Operation:    cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:        "value1",
 					},
 				},
 			}

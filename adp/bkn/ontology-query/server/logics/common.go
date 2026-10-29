@@ -310,10 +310,8 @@ func BuildDirectBatchConditions(currentLevelObjects []interfaces.LevelObject,
 			{
 				Name:      inField,
 				Operation: "in",
-				ValueOptCfg: cond.ValueOptCfg{
-					ValueFrom: "const",
-					Value:     inValues,
-				},
+				ValueFrom: "const",
+				Value:     inValues,
 			},
 		}, nil
 	}
@@ -352,10 +350,8 @@ func BuildCondition(viewQuery *interfaces.ViewQuery, mappingRules []interfaces.M
 		conditions = append(conditions, &cond.CondCfg{
 			Name:      targetName, // Pay attention to the difference between forward and reverse directions.
 			Operation: "==",       // Relationships only support equality here.
-			ValueOptCfg: cond.ValueOptCfg{
-				ValueFrom: "const",
-				Value:     currentObjectData[sourceName], // Source property obtained from the source object.
-			},
+			ValueFrom: "const",
+			Value:     currentObjectData[sourceName], // Source property obtained from the source object.
 		})
 		sort = append(sort, &interfaces.SortParams{
 			Field:     targetName,
@@ -564,9 +560,7 @@ func BuildInstanceIdentitiesCondition(uks []map[string]any) *cond.CondCfg {
 			conds = append(conds, &cond.CondCfg{
 				Name:      k,
 				Operation: "==",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: v,
-				},
+				Value:     v,
 			})
 		}
 		ukSubConds = append(ukSubConds, &cond.CondCfg{

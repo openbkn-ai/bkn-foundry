@@ -32,9 +32,7 @@ func Test_NewNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 			}
 			cond, err := NewNotInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -45,9 +43,7 @@ func Test_NewNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewNotInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -58,9 +54,7 @@ func Test_NewNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", 123},
-				},
+				Value:     []any{"test1", 123},
 			}
 			cond, err := NewNotInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -76,9 +70,7 @@ func Test_NotInCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL", func() {
 			cond := &NotInCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"test1", "test2"},
-					},
+					Value: []any{"test1", "test2"},
 				},
 				mValue:           []any{"test1", "test2"},
 				mFilterFieldName: "name",
@@ -99,9 +91,7 @@ func Test_NotInCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 转换SQL", func() {
 			cond := &NotInCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"test1", "test2"},
-					},
+					Value: []any{"test1", "test2"},
 				},
 				mValue:           []any{"test1", "test2"},
 				mFilterFieldName: "name",
@@ -120,9 +110,7 @@ func Test_rewriteNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 				NameField: &DataProperty{
 					Name: "name",
 					MappedField: Field{
@@ -140,9 +128,7 @@ func Test_rewriteNotInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 				NameField: &DataProperty{
 					Name: "",
 				},

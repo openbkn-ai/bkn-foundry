@@ -59,6 +59,35 @@ type VegaBuildTask struct {
 	Status     string
 }
 
+// VegaIndexKeys are the fields a table's local index identifies records by and refreshes them by.
+type VegaIndexKeys struct {
+	PrimaryKeyFields  []string
+	IncrementalFields []string
+}
+
+// How a semantic understanding task writes its result to the table.
+const (
+	// VEGA_SEMANTIC_APPLY_FILL_EMPTY writes only what is empty, keeping what people wrote; the default.
+	VEGA_SEMANTIC_APPLY_FILL_EMPTY = "fill_empty"
+	// VEGA_SEMANTIC_APPLY_FORCE overwrites names and descriptions; an api_name is never overwritten.
+	VEGA_SEMANTIC_APPLY_FORCE = "force"
+	// VEGA_SEMANTIC_APPLY_DRY_RUN writes nothing and only records the result.
+	VEGA_SEMANTIC_APPLY_DRY_RUN = "dry_run"
+)
+
+// VegaSemanticTask is a semantic understanding task of one table: it writes the names,
+// descriptions and api_names the table and its fields lack.
+type VegaSemanticTask struct {
+	ID         string
+	ResourceID string
+	// Status is pending, running, completed, failed or cancelled.
+	Status string
+	// Applied tells whether the task wrote its result to the table.
+	Applied    bool
+	CreateTime int64
+	FinishTime int64
+}
+
 type VegaColumn struct {
 	Name string
 	// DisplayName is the business name the catalog's semantic understanding gave the field,
@@ -120,6 +149,18 @@ type VegaAccess interface {
 	// CreateBuildTask starts a full batch build of the table's local index as the account and
 	// returns the task id. A refusal is a *VegaError.
 	CreateBuildTask(ctx context.Context, account VegaAccount, resourceID string) (string, error)
+	// UpdateIndexConfig gives the table's index configuration the keys it lacks, as the account,
+	// keeping every key it has; it tells whether it wrote anything. A refusal is a *VegaError.
+	UpdateIndexConfig(ctx context.Context, account VegaAccount, resourceID string, keys VegaIndexKeys) (bool, error)
+	// CreateSemanticTask starts, as the account, a semantic understanding task of the table written
+	// in language (zh-CN or en-US) and applied by applyMode, one of the VEGA_SEMANTIC_APPLY_* modes;
+	// empty fills only what is empty. A refusal is a *VegaError.
+	CreateSemanticTask(ctx context.Context, account VegaAccount, resourceID string, language string,
+		applyMode string) (*VegaSemanticTask, error)
+	// ListSemanticTasks returns the semantic understanding tasks of the catalog's tables, newest
+	// first, and whether the account may see them: listing them needs the catalog's task_manage
+	// permission.
+	ListSemanticTasks(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaSemanticTask, bool, error)
 	// Query runs a SQL statement whose tables are written {{<resource id>}} and returns its rows.
 	Query(ctx context.Context, account VegaAccount, sql string, timeoutSeconds int) ([]map[string]any, error)
 }

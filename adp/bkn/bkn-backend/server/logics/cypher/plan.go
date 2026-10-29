@@ -84,7 +84,7 @@ type PlanProperty struct {
 }
 
 // PlanTable is one node of the pattern, bound to the resource behind its
-// object type. ResourceID goes into the {{.resource_id}} placeholder that
+// object type. ResourceID goes into the {{resource_id}} placeholder that
 // vega-backend substitutes, so the physical table name never appears here.
 type PlanTable struct {
 	Alias        string

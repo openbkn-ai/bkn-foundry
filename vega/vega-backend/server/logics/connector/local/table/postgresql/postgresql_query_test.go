@@ -8,33 +8,18 @@ import (
 	"context"
 	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/lib/pq"
+	"github.com/lib/pq/pqerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
-
-func TestPostgresqlConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	connector := &PostgresqlConnector{db: db, connected: true}
-	driverErr := &pq.Error{Code: "42703", Message: `column "missing" does not exist`}
-	mock.ExpectQuery("SELECT missing FROM orders").WillReturnError(driverErr)
-	result, err := connector.ExecuteRawSQL(context.Background(), "SELECT missing FROM orders")
-	assert.Nil(t, result)
-	var invalid *interfaces.SourceQueryInvalidParameterError
-	require.ErrorAs(t, err, &invalid)
-	assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
-	assert.True(t, errors.Is(err, driverErr))
-	require.NoError(t, mock.ExpectationsWereMet())
-}
 
 func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 	t.Run("aggregate timezone follows its input rather than same-name source field", func(t *testing.T) {
@@ -259,17 +244,18 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 		total       int64
 	}{
 		{name: "groups without a metric", groups: []*interfaces.GroupByItem{{Property: "label"}}, statement: `SELECT "label" AS "label" FROM "public"."orders" GROUP BY "label"`, total: 8},
-		{name: "group count after HAVING", groups: []*interfaces.GroupByItem{{Property: "label"}}, aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2}, statement: `SELECT "label" AS "label", COUNT("id") AS "total" FROM "public"."orders" GROUP BY "label" HAVING COUNT("id") > $1`, args: []driver.Value{2}, total: 3},
+		{name: "HAVING aggregate alias matches its source column", groups: []*interfaces.GroupByItem{{Property: "label"}}, aggregation: &interfaces.Aggregation{Property: "id", Aggr: "sum", Alias: "id"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2}, statement: `SELECT "label" AS "label", SUM("id") AS "id" FROM "public"."orders" GROUP BY "label" HAVING (SUM("id") > CAST($1 AS BIGINT))`, args: []driver.Value{2}, total: 3},
+		{name: "group count after HAVING", groups: []*interfaces.GroupByItem{{Property: "label"}}, aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2}, statement: `SELECT "label" AS "label", COUNT("id") AS "total" FROM "public"."orders" GROUP BY "label" HAVING (COUNT("id") > CAST($1 AS BIGINT))`, args: []driver.Value{2}, total: 3},
 		{name: "ungrouped aggregate is one result row", aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders"`, total: 1},
-		{name: "implicit count HAVING without grouping", having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 100}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders" HAVING COUNT(*) > $1`, args: []driver.Value{100}, total: 0},
-		{name: "timestamp max HAVING milliseconds", aggregation: &interfaces.Aggregation{Property: "created", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: json.Number("1767225600000")}, statement: `SELECT MAX("created_at") AS "__value" FROM "public"."orders" HAVING MAX("created_at") > $1::timestamp`, args: []driver.Value{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, total: 1},
-		{name: "date min HAVING calendar date", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "==", Value: "2026-01-01"}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING MIN("day") = $1::date`, args: []driver.Value{"2026-01-01"}, total: 1},
-		{name: "zoned max HAVING list", aggregation: &interfaces.Aggregation{Property: "zoned", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: "in", Value: []any{int64(1767225600000), "2026-01-02T00:00:00Z"}}, statement: `SELECT MAX("zoned") AS "__value" FROM "public"."orders" HAVING MAX("zoned") IN ($1, $2)`, args: []driver.Value{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)}, total: 1},
-		{name: "date min HAVING not in", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "not_in", Value: []any{"2026-01-01"}}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING MIN("day") NOT IN ($1::date)`, args: []driver.Value{"2026-01-01"}, total: 1},
-		{name: "date min HAVING range", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{"2026-01-01", "2026-01-02"}}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING (MIN("day") >= $1::date AND MIN("day") <= $2::date)`, args: []driver.Value{"2026-01-01", "2026-01-02"}, total: 1},
-		{name: "date max HAVING out range", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: "out_range", Value: []any{"2026-01-01", "2026-01-02"}}, statement: `SELECT MAX("day") AS "__value" FROM "public"."orders" HAVING (MAX("day") < $1::date OR MAX("day") > $2::date)`, args: []driver.Value{"2026-01-01", "2026-01-02"}, total: 1},
-		{name: "timestamp min HAVING RFC3339", aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: "2026-01-01T00:00:00Z"}, statement: `SELECT MIN("created_at") AS "__value" FROM "public"."orders" HAVING MIN("created_at") >= $1::timestamp`, args: []driver.Value{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, total: 1},
-		{name: "count HAVING beside date aggregate stays numeric", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING COUNT(*) > $1`, args: []driver.Value{2}, total: 1},
+		{name: "implicit count HAVING without grouping", having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 100}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders" HAVING (COUNT(*) > CAST($1 AS BIGINT))`, args: []driver.Value{100}, total: 0},
+		{name: "timestamp max HAVING milliseconds", aggregation: &interfaces.Aggregation{Property: "created", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: json.Number("1767225600000")}, statement: `SELECT MAX("created_at") AS "__value" FROM "public"."orders" HAVING (MAX("created_at") > CAST($1 AS TIMESTAMP))`, args: []driver.Value{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, total: 1},
+		{name: "date min HAVING calendar date", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "==", Value: "2026-01-01"}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING (MIN("day") = CAST($1 AS DATE))`, args: []driver.Value{"2026-01-01"}, total: 1},
+		{name: "zoned max HAVING list", aggregation: &interfaces.Aggregation{Property: "zoned", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: "in", Value: []any{int64(1767225600000), "2026-01-02T00:00:00Z"}}, statement: `SELECT MAX("zoned") AS "__value" FROM "public"."orders" HAVING (MAX("zoned") IN ($1, $2))`, args: []driver.Value{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)}, total: 1},
+		{name: "date min HAVING not in", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "not_in", Value: []any{"2026-01-01"}}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING (MIN("day") NOT IN (CAST($1 AS DATE)))`, args: []driver.Value{"2026-01-01"}, total: 1},
+		{name: "date min HAVING range", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{"2026-01-01", "2026-01-02"}}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING ((MIN("day") >= CAST($1 AS DATE)) AND (MIN("day") <= CAST($2 AS DATE)))`, args: []driver.Value{"2026-01-01", "2026-01-02"}, total: 1},
+		{name: "date max HAVING out range", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: "out_range", Value: []any{"2026-01-01", "2026-01-02"}}, statement: `SELECT MAX("day") AS "__value" FROM "public"."orders" HAVING ((MAX("day") < CAST($1 AS DATE)) OR (MAX("day") > CAST($2 AS DATE)))`, args: []driver.Value{"2026-01-01", "2026-01-02"}, total: 1},
+		{name: "timestamp min HAVING RFC3339", aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: "2026-01-01T00:00:00Z"}, statement: `SELECT MIN("created_at") AS "__value" FROM "public"."orders" HAVING (MIN("created_at") >= CAST($1 AS TIMESTAMP))`, args: []driver.Value{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, total: 1},
+		{name: "count HAVING beside date aggregate stays numeric", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING (COUNT(*) > CAST($1 AS BIGINT))`, args: []driver.Value{2}, total: 1},
 	} {
 		for _, needTotal := range []bool{false, true} {
 			name := tc.name + " without total"
@@ -287,7 +273,7 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 				// An empty page must still return the full aggregate total when requested.
 				mock.ExpectQuery(tc.statement + " LIMIT 1 OFFSET 10").WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"value"})).RowsWillBeClosed()
 				if needTotal {
-					mock.ExpectQuery(`SELECT COUNT(*) FROM (` + tc.statement + `) AS _query_groups`).WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.total))
+					mock.ExpectQuery(`SELECT COUNT(*) FROM (` + tc.statement + `) AS "_resource_total"`).WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.total))
 				}
 				result, err := connector.ExecuteQuery(context.Background(), resource, params)
 				require.NoError(t, err)
@@ -318,34 +304,35 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 
 }
 
-func TestPostgresqlConnectorBuildPagedSQL(t *testing.T) {
-	connector := &PostgresqlConnector{}
-	assert.Equal(t,
-		"SELECT * FROM (SELECT id FROM orders) AS _raw_query_page LIMIT 10 OFFSET 20",
-		connector.BuildPagedSQL("SELECT id FROM orders", 20, 10),
-	)
-}
-
-func TestPostgresqlConnectorBuildDateFormat(t *testing.T) {
-	connector := &PostgresqlConnector{}
+func TestSQLCalendarGroup(t *testing.T) {
 	tests := []struct {
 		name     string
 		interval string
 		want     string
 	}{
-		{name: "minute", interval: interfaces.CALENDAR_UNIT_MINUTE, want: "to_char(date_trunc('minute',created_at),'YYYY-MM-DD HH24:MI')"},
-		{name: "hour", interval: interfaces.CALENDAR_UNIT_HOUR, want: "to_char(date_trunc('hour',created_at),'YYYY-MM-DD HH24')"},
-		{name: "day", interval: interfaces.CALENDAR_UNIT_DAY, want: "to_char(date_trunc('day',created_at),'YYYY-MM-DD')"},
-		{name: "week", interval: interfaces.CALENDAR_UNIT_WEEK, want: "to_char(date_trunc('week',created_at),'IYYY-IW')"},
-		{name: "month", interval: interfaces.CALENDAR_UNIT_MONTH, want: "to_char(date_trunc('month',created_at),'YYYY-MM')"},
-		{name: "quarter", interval: interfaces.CALENDAR_UNIT_QUARTER, want: "to_char(date_trunc('quarter',created_at),'YYYY-\"Q\"Q')"},
-		{name: "year", interval: interfaces.CALENDAR_UNIT_YEAR, want: "to_char(date_trunc('year',created_at),'YYYY')"},
+		{name: "minute", interval: interfaces.CALENDAR_UNIT_MINUTE, want: "YYYY-MM-DD HH24:MI"},
+		{name: "hour", interval: interfaces.CALENDAR_UNIT_HOUR, want: "YYYY-MM-DD HH24"},
+		{name: "day", interval: interfaces.CALENDAR_UNIT_DAY, want: "YYYY-MM-DD"},
+		{name: "week", interval: interfaces.CALENDAR_UNIT_WEEK, want: "IYYY-IW"},
+		{name: "month", interval: interfaces.CALENDAR_UNIT_MONTH, want: "YYYY-MM"},
+		{name: "quarter", interval: interfaces.CALENDAR_UNIT_QUARTER, want: "YYYY-\"Q\"Q"},
+		{name: "year", interval: interfaces.CALENDAR_UNIT_YEAR, want: "YYYY"},
 		{name: "unknown", interval: "unknown", want: ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, connector.buildDateFormat("created_at", tt.interval))
+			expr, err := sqlCalendarGroup(&sb.Column{Name: "created_at"}, tt.interval)
+			if tt.interval == "unknown" {
+				require.Error(t, err)
+				assert.Nil(t, expr)
+				return
+			}
+			require.NoError(t, err)
+			text, args, err := renderFilterSQL(expr)
+			require.NoError(t, err)
+			assert.Equal(t, `TO_CHAR(DATE_TRUNC($1, "created_at"), $2)`, text)
+			assert.Equal(t, []any{tt.interval, tt.want}, args)
 		})
 	}
 }
@@ -368,15 +355,17 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 		Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"},
 		Sort:        []*interfaces.SortField{{Field: "createdAt", Direction: interfaces.ASC_DIRECTION}},
 		Paging:      interfaces.PagingRequest{Limit: 20},
+		NeedTotal:   true,
 	}
-	expectedQuery := "SELECT to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') AS \"createdAt\", COUNT(\"id\") AS \"__value\" " +
-		"FROM \"public\".\"events\" GROUP BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ORDER BY to_char(date_trunc('day',\"createdAt\"),'YYYY-MM-DD') ASC LIMIT 20 OFFSET 0"
-	mock.ExpectQuery(expectedQuery).
+	expectedQuery := `SELECT TO_CHAR(DATE_TRUNC($1, "createdAt"), $2) AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC($1, "createdAt"), $2) ORDER BY "createdAt" ASC NULLS LAST LIMIT 20`
+	mock.ExpectQuery(expectedQuery).WithArgs("day", "YYYY-MM-DD").
 		WillReturnRows(sqlmock.NewRows([]string{"createdAt", "__value"}).AddRow("2024-01-01", 1))
 
+	mock.ExpectQuery(`SELECT COUNT(*) FROM (SELECT TO_CHAR(DATE_TRUNC($1, "createdAt"), $2) AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC($1, "createdAt"), $2)) AS "_resource_total"`).WithArgs("day", "YYYY-MM-DD").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	result, err := connector.ExecuteQuery(context.Background(), resource, params)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"createdAt", "__value"}, result.Columns)
+	assert.Equal(t, int64(1), result.Total)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -399,7 +388,7 @@ func TestPostgresqlConnectorExecuteQueryAliasesGroupByFields(t *testing.T) {
 		Paging:      interfaces.PagingRequest{Limit: 20},
 	}
 	expectedQuery := "SELECT \"group_key\" AS \"groupKey\", COUNT(\"id\") AS \"__value\" " +
-		"FROM \"public\".\"events\" GROUP BY \"group_key\" LIMIT 20 OFFSET 0"
+		"FROM \"public\".\"events\" GROUP BY \"group_key\" LIMIT 20"
 	mock.ExpectQuery(expectedQuery).
 		WillReturnRows(sqlmock.NewRows([]string{"groupKey", "__value"}).AddRow("priority", 1))
 
@@ -423,7 +412,7 @@ func TestPostgresqlConnectorExecuteQueryConvertsAliasedTimezoneField(t *testing.
 	}
 	params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
 	utc := time.Date(2026, 9, 9, 8, 0, 0, 0, time.UTC)
-	mock.ExpectQuery("SELECT \"created_at\" AS \"createdAt\" FROM \"public\".\"events\" LIMIT 1 OFFSET 0").
+	mock.ExpectQuery("SELECT \"created_at\" AS \"createdAt\" FROM \"public\".\"events\" LIMIT 1").
 		WillReturnRows(sqlmock.NewRows([]string{"createdAt"}).AddRow(utc))
 
 	result, err := connector.ExecuteQuery(context.Background(), resource, params)
@@ -433,36 +422,35 @@ func TestPostgresqlConnectorExecuteQueryConvertsAliasedTimezoneField(t *testing.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestPostgresqlConnectorBuildHavingCondition(t *testing.T) {
+func TestSQLHavingCondition(t *testing.T) {
 	t.Run("invalid temporal value is a request error", func(t *testing.T) {
 		field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
-		_, err := (&PostgresqlConnector{}).buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: ">", Value: "2026-10-19"}, "MIN(created)", field)
+		_, err := sqlHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: ">", Value: "2026-10-19"}, &sb.Function{Name: "MIN", Args: []sb.SqlNode{&sb.Column{Name: "created"}}}, field)
 		var conditionErr *interfaces.ConditionBuildError
 		require.ErrorAs(t, err, &conditionErr)
 		_, request := interfaces.RequestSideQueryError(err)
 		assert.True(t, request)
 	})
 
-	connector := &PostgresqlConnector{}
 	for _, tc := range []struct {
 		name, operation, sql string
 		value                any
 		args                 []any
 	}{
-		{"equal", "==", "COUNT(id) = ?", 10, []any{10}},
-		{"quoted string stays bound", "!=", "COUNT(id) <> ?", "a' OR 1=1 --", []any{"a' OR 1=1 --"}},
-		{"greater equal", ">=", "COUNT(id) >= ?", 3, []any{3}},
-		{"string list", "in", "COUNT(id) IN (?,?)", []string{"a'", "b"}, []any{"a'", "b"}},
-		{"not in", "not_in", "COUNT(id) NOT IN (?,?)", []any{1, 2}, []any{1, 2}},
-		{"range", "range", "(COUNT(id) >= ? AND COUNT(id) <= ?)", []any{1, 3}, []any{1, 3}},
-		{"out range", "out_range", "(COUNT(id) < ? OR COUNT(id) > ?)", []any{1, 3}, []any{1, 3}},
-		{"empty in", "in", "1=0", []any{}, nil},
-		{"empty not in", "not_in", "1=1", []any{}, nil},
+		{"equal", "==", `(COUNT("id") = CAST($1 AS BIGINT))`, 10, []any{10}},
+		{"quoted string stays bound", "!=", `(COUNT("id") <> $1)`, "a' OR 1=1 --", []any{"a' OR 1=1 --"}},
+		{"greater equal", ">=", `(COUNT("id") >= CAST($1 AS BIGINT))`, 3, []any{3}},
+		{"string list", "in", `(COUNT("id") IN ($1, $2))`, []string{"a'", "b"}, []any{"a'", "b"}},
+		{"not in", "not_in", `(COUNT("id") NOT IN (CAST($1 AS BIGINT), CAST($2 AS BIGINT)))`, []any{1, 2}, []any{1, 2}},
+		{"range", "range", `((COUNT("id") >= CAST($1 AS BIGINT)) AND (COUNT("id") <= CAST($2 AS BIGINT)))`, []any{1, 3}, []any{1, 3}},
+		{"out range", "out_range", `((COUNT("id") < CAST($1 AS BIGINT)) OR (COUNT("id") > CAST($2 AS BIGINT)))`, []any{1, 3}, []any{1, 3}},
+		{"empty in", "in", "FALSE", []any{}, nil},
+		{"empty not in", "not_in", "TRUE", []any{}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			expression, err := connector.buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: tc.operation, Value: tc.value}, "COUNT(id)", nil)
+			expression, err := sqlHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: tc.operation, Value: tc.value}, &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Column{Name: "id"}}}, nil)
 			require.NoError(t, err)
-			sql, args, err := expression.ToSql()
+			sql, args, err := renderFilterSQL(expression)
 			require.NoError(t, err)
 			assert.Equal(t, tc.sql, sql)
 			assert.Equal(t, tc.args, args)
@@ -475,7 +463,7 @@ func TestPostgresqlConnectorBuildHavingCondition(t *testing.T) {
 		{Field: "__value", Operation: "in", Value: 1},
 		{Field: "__value", Operation: "=="},
 	} {
-		_, err := connector.buildHavingCondition(having, "COUNT(id)", nil)
+		_, err := sqlHavingCondition(having, &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Column{Name: "id"}}}, nil)
 		require.Error(t, err)
 	}
 }
@@ -528,5 +516,91 @@ func TestPostgresqlConnectorConnectionString(t *testing.T) {
 
 		connector.config.Options = nil
 		assert.Contains(t, connector.connectionString(), "sslmode=disable")
+	})
+}
+
+// TestPostgresqlConnectorExecuteSQLBuilder 验证真正执行 $n 参数、二进制内容及源错误分类。
+func TestPostgresqlConnectorExecuteSQLBuilder(t *testing.T) {
+	t.Run("bound numeric parameters and native bytea survive scanning", func(t *testing.T) {
+		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		query := sb.Select(&sb.Column{Name: "payload"}, &sb.Alias{Expr: &sb.Param{Value: json.Number("10.1234567890")}, Name: "amount"})
+		mock.ExpectQuery(`SELECT "payload", CAST($1 AS NUMERIC) AS "amount"`).WithArgs("10.1234567890").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("payload").OfType("BYTEA", []byte{}), sqlmock.NewColumn("amount").OfType("NUMERIC", "")).AddRow([]byte{0, 255}, []byte("10.1234567890"))).RowsWillBeClosed()
+		result, err := connector.ExecuteSQLBuilder(context.Background(), query)
+		require.NoError(t, err)
+		require.Len(t, result.Entries, 1)
+		assert.Equal(t, []byte{0, 255}, result.Entries[0]["payload"])
+		assert.Equal(t, "10.1234567890", result.Entries[0]["amount"])
+		require.NotNil(t, result.TotalCount)
+		assert.Equal(t, int64(1), *result.TotalCount)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	for _, code := range []string{"42703", "42803", "42883", "22P02", "22003", "22021", "08006"} {
+		t.Run(code, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &PostgresqlConnector{db: db, connected: true}
+			cause := &pq.Error{Code: pqerror.Code(code)}
+			mock.ExpectQuery("SELECT").WillReturnError(cause)
+			result, err := connector.ExecuteSQLBuilder(context.Background(), sb.Select(&sb.Star{}))
+			assert.Nil(t, result)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, cause)
+			var invalid *interfaces.SourceQueryInvalidParameterError
+			if code == "08006" {
+				assert.NotErrorAs(t, err, &invalid)
+			} else {
+				require.ErrorAs(t, err, &invalid)
+				want := interfaces.SourceQueryInvalidParameterInvalidQuery
+				if code == "42703" {
+					want = interfaces.SourceQueryInvalidParameterUnknownColumn
+				}
+				assert.Equal(t, want, invalid.Reason)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestPostgresqlConnectorOpenSQLBuilder 检查 Rows 转交、重复列关闭及取消前不创建连接。
+func TestPostgresqlConnectorOpenSQLBuilder(t *testing.T) {
+	t.Run("duplicate names close Rows before returning error", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "id"}).AddRow(1, 2)).RowsWillBeClosed()
+		rows, columns, err := connector.OpenSQLBuilder(context.Background(), sb.Select(&sb.Star{}))
+		if rows != nil {
+			assert.NoError(t, rows.Err())
+			defer func() { assert.NoError(t, rows.Close()) }()
+		}
+		require.Error(t, err)
+		assert.Nil(t, rows)
+		assert.Nil(t, columns)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("cancellation and unsupported casts do not connect", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		connector := &PostgresqlConnector{}
+		rows, _, err := connector.OpenSQLBuilder(ctx, sb.Select(&sb.Star{}))
+		if rows != nil {
+			assert.NoError(t, rows.Err())
+			defer func() { assert.NoError(t, rows.Close()) }()
+		}
+		assert.Nil(t, rows)
+		assert.ErrorIs(t, err, context.Canceled)
+		rows, _, err = connector.OpenSQLBuilder(context.Background(), sb.Select(&sb.Cast{Expr: &sb.Param{Value: 1}, Type: sb.CastUnsignedInteger}))
+		if rows != nil {
+			assert.NoError(t, rows.Err())
+			defer func() { assert.NoError(t, rows.Close()) }()
+		}
+		assert.Nil(t, rows)
+		var invalid *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &invalid)
 	})
 }

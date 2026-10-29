@@ -20,19 +20,14 @@ const (
 	ValueFrom_User  = "user"
 )
 
-type ValueOptCfg struct {
-	ValueFrom string `json:"value_from,omitempty" mapstructure:"value_from"`
-	Value     any    `json:"value,omitempty" mapstructure:"value"`
-	RealValue any    `json:"real_value,omitempty" mapstructure:"real_value"`
-}
-
 type FilterCondCfg struct {
-	Name        string           `json:"field,omitempty" mapstructure:"field"` // Pass "name"
-	Operation   string           `json:"operation,omitempty" mapstructure:"operation"`
-	SubConds    []*FilterCondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
-	ValueOptCfg `mapstructure:",squash"`
+	Name      string           `json:"field,omitempty" mapstructure:"field"` // Pass "name"
+	Operation string           `json:"operation,omitempty" mapstructure:"operation"`
+	SubConds  []*FilterCondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
+	ValueFrom string           `json:"value_from,omitempty" mapstructure:"value_from"`
+	Value     any              `json:"value,omitempty" mapstructure:"value"`
 
-	RemainCfg map[string]any `mapstructure:",remain"`
+	RemainCfg map[string]any `json:",omitempty" mapstructure:",remain"`
 
 	// LegacyLikeWildcards marks a like/not_like that came from a view definition written before
 	// the literal-substring contract, i.e. one using % as a wildcard. When set, each backend

@@ -1047,9 +1047,7 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 			condition := &cond.CondCfg{
 				Name:      "target_id",
 				Operation: "==",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "123",
-				},
+				Value:     "123",
 			}
 			mappingRules := []interfaces.Mapping{
 				{
@@ -1068,9 +1066,7 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 			condition := &cond.CondCfg{
 				Name:      "target_id",
 				Operation: "==",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "123",
-				},
+				Value:     "123",
 			}
 			mappingRules := []interfaces.Mapping{
 				{
@@ -1087,9 +1083,7 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 			condition := &cond.CondCfg{
 				Name:      "target_id",
 				Operation: "==",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "123",
-				},
+				Value:     "123",
 			}
 			mappingRules := []interfaces.Mapping{
 				{
@@ -1108,9 +1102,7 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 			condition := &cond.CondCfg{
 				Name:      "source_id",
 				Operation: "==",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "123",
-				},
+				Value:     "123",
 			}
 			mappingRules := []interfaces.Mapping{
 				{
@@ -1130,9 +1122,7 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 			condition := &cond.CondCfg{
 				Name:      "source_id",
 				Operation: "==",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "123",
-				},
+				Value:     "123",
 			}
 			mappingRules := []interfaces.Mapping{
 				{
@@ -1154,14 +1144,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "membership_date",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "2026-10-19"},
+						Name:      "membership_date",
+						Operation: cond.OperationEq,
+						Value:     "2026-10-19",
 					},
 					{
-						Name:        "business_key",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "ORDER-001"},
+						Name:      "business_key",
+						Operation: cond.OperationEq,
+						Value:     "ORDER-001",
 					},
 				},
 			}
@@ -1189,14 +1179,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "employee_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "U001"},
+						Name:      "employee_code",
+						Operation: cond.OperationEq,
+						Value:     "U001",
 					},
 					{
-						Name:        "employee_org_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+						Name:      "employee_org_code",
+						Operation: cond.OperationEq,
+						Value:     "A",
 					},
 				},
 			}
@@ -1217,14 +1207,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "employee_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "U001"},
+						Name:      "employee_code",
+						Operation: cond.OperationEq,
+						Value:     "U001",
 					},
 					{
-						Name:        "employee_org_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+						Name:      "employee_org_code",
+						Operation: cond.OperationEq,
+						Value:     "A",
 					},
 				},
 			}
@@ -1246,14 +1236,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "project_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "PR001"},
+						Name:      "project_code",
+						Operation: cond.OperationEq,
+						Value:     "PR001",
 					},
 					{
-						Name:        "project_org_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+						Name:      "project_org_code",
+						Operation: cond.OperationEq,
+						Value:     "A",
 					},
 				},
 			}
@@ -1700,9 +1690,7 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 			condition := &cond.CondCfg{
 				Name:      "amount",
 				Operation: cond.OperationEq,
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: 100,
-				},
+				Value:     100,
 			}
 			paramDefs := []interfaces.Parameter{{Name: "amount", Type: dtype.DATATYPE_INTEGER}}
 			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
@@ -1715,9 +1703,7 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 			condition := &cond.CondCfg{
 				Name:      "amount",
 				Operation: cond.OperationEq,
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: 200,
-				},
+				Value:     200,
 			}
 			paramDefs := []interfaces.Parameter{{Name: "amount", Type: dtype.DATATYPE_INTEGER}}
 			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
@@ -1731,14 +1717,14 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "amount",
-						Operation:   cond.OperationGte,
-						ValueOptCfg: cond.ValueOptCfg{Value: 50},
+						Name:      "amount",
+						Operation: cond.OperationGte,
+						Value:     50,
 					},
 					{
-						Name:        "level",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "high"},
+						Name:      "level",
+						Operation: cond.OperationEq,
+						Value:     "high",
 					},
 				},
 			}
@@ -1757,14 +1743,14 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "amount",
-						Operation:   cond.OperationGte,
-						ValueOptCfg: cond.ValueOptCfg{Value: 50},
+						Name:      "amount",
+						Operation: cond.OperationGte,
+						Value:     50,
 					},
 					{
-						Name:        "level",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "high"},
+						Name:      "level",
+						Operation: cond.OperationEq,
+						Value:     "high",
 					},
 				},
 			}
@@ -1780,9 +1766,9 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 		Convey("成功 - paramDefs 为空仍可评估", func() {
 			data := map[string]any{"amount": 100}
 			condition := &cond.CondCfg{
-				Name:        "amount",
-				Operation:   cond.OperationEq,
-				ValueOptCfg: cond.ValueOptCfg{Value: 100},
+				Name:      "amount",
+				Operation: cond.OperationEq,
+				Value:     100,
 			}
 			result, err := EvaluateDataAgainstCondition(ctx, data, condition, nil)
 			So(err, ShouldBeNil)
@@ -1792,9 +1778,9 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 		Convey("失败 - 字段不存在", func() {
 			data := map[string]any{}
 			condition := &cond.CondCfg{
-				Name:        "amount",
-				Operation:   cond.OperationEq,
-				ValueOptCfg: cond.ValueOptCfg{Value: 100},
+				Name:      "amount",
+				Operation: cond.OperationEq,
+				Value:     100,
 			}
 			paramDefs := []interfaces.Parameter{{Name: "amount", Type: dtype.DATATYPE_INTEGER}}
 			result, err := EvaluateDataAgainstCondition(ctx, data, condition, paramDefs)
@@ -1810,9 +1796,9 @@ func Test_EvaluateDataAgainstCondition_EmptyConditionSets(t *testing.T) {
 		data := map[string]any{"amount": 100}
 		paramDefs := []interfaces.Parameter{{Name: "amount", Type: dtype.DATATYPE_INTEGER}}
 		miss := &cond.CondCfg{
-			Name:        "amount",
-			Operation:   cond.OperationEq,
-			ValueOptCfg: cond.ValueOptCfg{Value: 200},
+			Name:      "amount",
+			Operation: cond.OperationEq,
+			Value:     200,
 		}
 
 		Convey("empty AND matches", func() {
@@ -1875,7 +1861,7 @@ func TestCondCfgToFilterMap(t *testing.T) {
 		So(CondCfgToFilterMap(nil), ShouldBeNil)
 	})
 	Convey("serializes simple cond", t, func() {
-		c := &cond.CondCfg{Name: "f1", Operation: "==", ValueOptCfg: cond.ValueOptCfg{ValueFrom: "const", Value: "v"}}
+		c := &cond.CondCfg{Name: "f1", Operation: "==", ValueFrom: "const", Value: "v"}
 		m := CondCfgToFilterMap(c)
 		So(m, ShouldNotBeNil)
 		So(m["field"], ShouldEqual, "f1")

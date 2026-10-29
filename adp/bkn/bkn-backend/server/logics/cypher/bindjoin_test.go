@@ -766,8 +766,7 @@ func TestBindJoinFallsBackToSQLPastTheReadBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if vega.sqlRequest == nil || !strings.HasPrefix(vega.sqlRequest.Query, "SELECT ") ||
-		vega.sqlRequest.InputDialect != interfaces.VEGA_DIALECT_MYSQL {
+	if vega.sqlRequest == nil || !strings.HasPrefix(vega.sqlRequest.Query, "SELECT ") {
 		t.Fatalf("sql request = %+v, want the compiled MySQL statement", vega.sqlRequest)
 	}
 	if !reflect.DeepEqual(result.Entries, vega.sqlResponse.Entries) {

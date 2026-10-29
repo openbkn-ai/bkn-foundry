@@ -42,7 +42,10 @@ func (e *SourceMemoryLimitError) Unwrap() error { return e.Cause }
 // SourceQueryInvalidParameterReason identifies a client-safe source query failure category.
 type SourceQueryInvalidParameterReason string
 
-const SourceQueryInvalidParameterUnknownColumn SourceQueryInvalidParameterReason = "unknown_column"
+const (
+	SourceQueryInvalidParameterUnknownColumn SourceQueryInvalidParameterReason = "unknown_column"
+	SourceQueryInvalidParameterInvalidQuery  SourceQueryInvalidParameterReason = "invalid_query"
+)
 
 // SourceQueryInvalidParameterError reports a source query rejected for invalid input.
 // Connectors preserve the driver failure for diagnostics; callers decide the HTTP response.

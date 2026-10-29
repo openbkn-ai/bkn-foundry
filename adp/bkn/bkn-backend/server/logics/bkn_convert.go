@@ -632,10 +632,8 @@ func toADPCondCfg(bknCond *bknsdk.CondCfg) *cond.CondCfg {
 	adpCond := &cond.CondCfg{
 		Field:     bknCond.Field,
 		Operation: bknCond.Operation,
-		ValueOptCfg: cond.ValueOptCfg{
-			ValueFrom: bknCond.ValueFrom,
-			Value:     bknCond.Value,
-		},
+		ValueFrom: bknCond.ValueFrom,
+		Value:     bknCond.Value,
 	}
 
 	for _, subCond := range bknCond.SubConds {
@@ -655,10 +653,8 @@ func toADPActionCondCfg(bknCond *bknsdk.ActionCondCfg) *interfaces.ActionCondCfg
 		ObjectTypeID: bknCond.ObjectTypeID,
 		Field:        bknCond.Field,
 		Operation:    bknCond.Operation,
-		ValueOptCfg: cond.ValueOptCfg{
-			ValueFrom: bknCond.ValueFrom,
-			Value:     bknCond.Value,
-		},
+		ValueFrom:    bknCond.ValueFrom,
+		Value:        bknCond.Value,
 	}
 
 	for _, subCond := range bknCond.SubConds {
