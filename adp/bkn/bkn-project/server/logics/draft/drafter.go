@@ -343,12 +343,19 @@ func (d *drafter) namesAnotherTable(table *interfaces.VegaTable, field string) b
 		if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
 			continue
 		}
+		// A declared key of several fields is never referred to; without one, any candidate may
+		// become the single field it is keyed by.
 		keys := other.PrimaryKeys
+		if len(keys) > 1 {
+			continue
+		}
 		if len(keys) == 0 {
 			keys = identityCandidates(other)
 		}
-		if len(keys) == 1 && nameMatch(field, other, keys[0]) > 0 {
-			return true
+		for _, key := range keys {
+			if nameMatch(field, other, key) > 0 {
+				return true
+			}
 		}
 	}
 	return false

@@ -484,6 +484,36 @@ func Test_Drafter(t *testing.T) {
 			So(objectType(items, "receipt_lines").Key.Candidate, ShouldResemble, []string{"id", "line_no"})
 		})
 
+		Convey("A field named for any identity candidate of a keyless table refers to it\n", func() {
+			receipts := table("r_rl", "c1", "receipt_lines", 0, nil,
+				col("id", "integer", ""), col("supplier_id", "integer", ""))
+			suppliers := table("r_sup", "c1", "supplier", 0, nil,
+				col("id", "integer", ""), col("supplier_id", "integer", ""), col("name", "string", ""))
+			c := sampleCounter()
+			c.keys["r_rl.id"] = [3]int64{100, 40, 0}
+			c.keys["r_rl.id+supplier_id"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{receipts, suppliers}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "receipt_lines").Key.Candidate, ShouldBeNil)
+		})
+
+		Convey("A link table is referred to by no field, as name inference never draws a relation to one\n", func() {
+			lines := table("r_tl", "c1", "tag_lines", 0, nil, col("id", "integer", ""), col("order_tags_id", "integer", ""))
+			links := table("r_ot", "c1", "order_tags", 0, []string{"id"},
+				col("id", "integer", ""), col("order_id", "string", ""), col("tag_id", "string", ""))
+			links.ForeignKeys = []interfaces.VegaForeignKey{fk("order_id", "orders", "order_id"), fk("tag_id", "tags", "tag_id")}
+			c := sampleCounter()
+			c.keys["r_tl.id"] = [3]int64{100, 40, 0}
+			c.keys["r_tl.id+order_tags_id"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{lines, links}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "tag_lines").Key.Candidate, ShouldResemble, []string{"id", "order_tags_id"})
+		})
+
 		Convey("A declared key with duplicates is paired as an inferred one is\n", func() {
 			c := sampleCounter()
 			c.keys["r_orders"] = [3]int64{800, 798, 0}
