@@ -179,6 +179,12 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 	return "pass guidance\nlanguage: " + language + "\n" + string(body), nil
 }
 
+// slotPlaceholder stands in a test question's text for the value of its slot i, until the
+// server fills it from the data.
+func slotPlaceholder(i int) string {
+	return fmt.Sprintf("{{slot %d}}", i+1)
+}
+
 // valueInDocuments tells whether a value is written in one of the documents, compared as quotes
 // are: a value the documents do not say, the Agent made up.
 func valueInDocuments(value string, docs []*interfaces.RequirementDocument) bool {
@@ -209,9 +215,14 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 			expect = interfaces.TEST_EXPECT_EXISTS
 		}
 		slots := make([]interfaces.QuestionTestSlot, 0, len(at.Slots))
-		for _, s := range at.Slots {
+		for i, s := range at.Slots {
 			value := strings.TrimSpace(s.Value)
 			if !valueInDocuments(value, docs) {
+				// The text asks about the made-up value: it gives way to the slot, which the
+				// server's value from the data replaces.
+				if value != "" {
+					text = strings.Replace(text, value, slotPlaceholder(i), 1)
+				}
 				value = ""
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
