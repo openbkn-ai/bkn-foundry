@@ -338,3 +338,42 @@ func Test_CompileAliases(t *testing.T) {
 		So(string(compiled.Files["relation_types/orders_to_products.bkn"]), ShouldContainSubstring, "包含商品")
 	})
 }
+
+func Test_CompileDropsRefusedAliases(t *testing.T) {
+	Convey("Aliases BKN would refuse after people renamed items are left out of the definitions\n", t, func() {
+		items := compileFixture()
+		orders, customers := items.ObjectTypes[0], items.ObjectTypes[1]
+		// Renamed to its own alias, and an alias that is another object type's name.
+		orders.Name, orders.Aliases = "订单", []string{"订单", "Customers", "销售单"}
+		// A property renamed to its alias, and one whose alias is another property's display name.
+		orders.Properties[0].DisplayName, orders.Properties[0].Aliases = "订单号", []string{"订单号", "单号"}
+		orders.Properties[1].Aliases = []string{"Order", "订单号", "客户"}
+		customers.Aliases = []string{"客户"}
+		items.RelationTypes[1].Name, items.RelationTypes[1].Aliases = "包含", []string{"包含", "包含商品"}
+
+		compiled, err := compileDraft(items)
+		So(err, ShouldBeNil)
+		network, err := loadWithBranch(compiled.Files)
+		So(err, ShouldBeNil)
+		So(bkn.ValidateNetworkDeclarations(network), ShouldBeNil)
+		objectTypes := map[string]*bkn.BknObjectType{}
+		for _, ot := range network.ObjectTypes {
+			So(bkn.ValidateObjectTypeDeclarations(ot), ShouldBeNil)
+			objectTypes[ot.ID] = ot
+		}
+		ot := objectTypes["orders"]
+		So(ot.Aliases, ShouldResemble, []string{"销售单"})
+		So(ot.DataProperties[0].Aliases, ShouldResemble, []string{"单号"})
+		// 订单号 is now the first property's display name; Order and 客户 are no property's.
+		So(ot.DataProperties[1].Aliases, ShouldResemble, []string{"Order", "客户"})
+		So(objectTypes["customers"].Aliases, ShouldResemble, []string{"客户"})
+		for _, rt := range network.RelationTypes {
+			So(bkn.ValidateRelationTypeDeclarations(rt), ShouldBeNil)
+			if rt.ID == "orders_to_products" {
+				So(rt.Aliases, ShouldResemble, []string{"包含商品"})
+			}
+		}
+		// The draft itself keeps them: people may rename the item back.
+		So(orders.Aliases, ShouldResemble, []string{"订单", "Customers", "销售单"})
+	})
+}
