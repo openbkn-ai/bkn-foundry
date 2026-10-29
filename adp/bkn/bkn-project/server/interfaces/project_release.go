@@ -189,7 +189,7 @@ type ProjectReleaseService interface {
 	ReviewRelease(ctx context.Context, token string, projectID string, version string,
 		caller AccountInfo) (*ReleaseReview, error)
 	// PublishRelease publishes the project's branch, for the owner, once its review still stands
-	// and every check passed or was accepted.
+	// and every check passed or was accepted, and then starts its regression in the background.
 	PublishRelease(ctx context.Context, token string, projectID string, req ProjectPublish,
 		caller AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
 	// SyncBranch brings the live version into the project's branch, for the owner.
@@ -201,6 +201,13 @@ type ProjectReleaseService interface {
 		author GitAuthor) (*ProjectDriftCommit, error)
 	// PlanSwitch reports what switching consumers to a release of the project would do.
 	PlanSwitch(ctx context.Context, token string, projectID string, toNetworkID string) (*SwitchPlan, error)
+	// GetRegression returns the regression of a release of the project, read by anyone who can
+	// read the project.
+	GetRegression(ctx context.Context, token string, projectID string, networkID string) (*Regression, error)
+	// RunRegression starts the regression of a release of the project again, for the owner, with
+	// the questions the specification has now, and returns it, running.
+	RunRegression(ctx context.Context, token string, projectID string, networkID string,
+		caller AccountInfo) (*Regression, error)
 	// SwitchConsumers switches consumers to a release of the project, for the owner.
 	SwitchConsumers(ctx context.Context, token string, projectID string, toNetworkID string,
 		caller AccountInfo) (*Switch, error)

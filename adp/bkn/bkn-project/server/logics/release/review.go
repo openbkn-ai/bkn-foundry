@@ -53,6 +53,9 @@ type projectReleaseService struct {
 	rs interfaces.RequirementService
 	// reviewer reviews a release before it is published: the service itself, but for tests.
 	reviewer interfaces.ProjectReleaseService
+	// rgs answers a release's scenario questions after it is published; rga reads the result.
+	rgs interfaces.RegressionService
+	rga interfaces.RegressionAccess
 }
 
 func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectReleaseService {
@@ -66,6 +69,8 @@ func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectR
 			gs:  logics.GS,
 			ra:  logics.RA,
 			rs:  requirement.NewRequirementService(),
+			rgs: NewRegressionService(),
+			rga: logics.RGA,
 		}
 		s.reviewer = s
 		prs = s
