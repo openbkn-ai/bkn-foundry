@@ -85,6 +85,23 @@ func Test_ScenarioQuestions(t *testing.T) {
 			So(got.Questions[1].Tests, ShouldResemble, []interfaces.ScenarioTest{})
 		})
 
+		Convey("Guidance generated before the specification was drafted again no longer applies\n", func() {
+			again := *ready
+			again.CreateTime = 30
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&again, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return([]*interfaces.QuestionGuidance{
+				{QuestionID: "q1", SpecVersion: 2, Question: "Which orders?", Status: interfaces.GUIDANCE_STATUS_READY, CreateTime: 20,
+					Tests: []*interfaces.QuestionTest{{ID: "t1", Text: "Orders of 10001?",
+						Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}}}},
+			}, nil)
+
+			got, err := svc.ScenarioQuestions(ctx, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.Questions[0].Tests, ShouldResemble, []interfaces.ScenarioTest{})
+		})
+
 		Convey("Without a draft every need is missing\n", func() {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(ready, true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)

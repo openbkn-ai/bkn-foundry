@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -62,9 +63,9 @@ func Test_BuildGuidance(t *testing.T) {
 
 		Convey("Tests get the server's ids, at most maxTests, and are not checked yet\n", func() {
 			out := &guidanceOutput{Guidance: "Use the relation.", OutOfScope: []string{"Parent company?"}}
-			for range maxTests + 2 {
-				out.Tests = append(out.Tests, agentTest{Text: "Orders of 10001?", Kind: "paraphrase", Expect: interfaces.TEST_EXPECT_EXISTS,
-					Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}}})
+			for i := range maxTests + 2 {
+				out.Tests = append(out.Tests, agentTest{Text: fmt.Sprintf("Orders %d of 10001?", i), Kind: "paraphrase",
+					Expect: interfaces.TEST_EXPECT_EXISTS, Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}}})
 			}
 			out.Tests[1].Text = "  "
 
@@ -72,8 +73,9 @@ func Test_BuildGuidance(t *testing.T) {
 
 			So(tests, ShouldHaveLength, maxTests)
 			So(tests[0].ID, ShouldEqual, "t1")
+			// The blank one is left out: the second test is the third written.
 			So(tests[1].ID, ShouldEqual, "t2")
-			So(tests[1].Text, ShouldNotEqual, "  ")
+			So(tests[1].Text, ShouldEqual, "Orders 2 of {{slot 1}}?")
 			// No document says 10001: the Agent made it up, so the server fills it.
 			So(tests[0].Slots, ShouldResemble, []interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}})
 			So(tests[0].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkPending})
@@ -81,7 +83,7 @@ func Test_BuildGuidance(t *testing.T) {
 
 		Convey("A value the Agent gives stays only when a document says it\n", func() {
 			docs := []*interfaces.RequirementDocument{doc("prd", interfaces.REQUIREMENT_DOC_PRD, "例如客户 １０００１ 的订单。")}
-			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Slots: []agentSlot{
+			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 10001 for Acme Ltd?", Slots: []agentSlot{
 				{ConceptID: "c2", Property: "customer_id", Value: "10001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
 				{ConceptID: "c2", Property: "customer_id", Value: "  "},
@@ -100,6 +102,44 @@ func Test_BuildGuidance(t *testing.T) {
 
 			So(tests[0].Text, ShouldEqual, "Orders of {{slot 1}} and of {{slot 2}}?")
 			So(tests[0].Slots[0].Value, ShouldEqual, "")
+		})
+
+		Convey("A value is replaced only where it stands as a whole, not within another or a slot\n", func() {
+			for _, c := range []struct {
+				text   string
+				values []string
+				want   string
+			}{
+				// The second value is not looked for in the first one's placeholder.
+				{"Orders of customer 20001 at level 1?", []string{"20001", "1"}, "Orders of customer {{slot 1}} at level {{slot 2}}?"},
+				{"Top 10 orders of customer 1?", []string{"1"}, "Top 10 orders of customer {{slot 1}}?"},
+				{"Orders of 1 and of 1?", []string{"1", "1"}, "Orders of {{slot 1}} and of {{slot 2}}?"},
+				{"客户20001的订单？", []string{"20001"}, "客户{{slot 1}}的订单？"},
+			} {
+				at := agentTest{Text: c.text}
+				for _, v := range c.values {
+					at.Slots = append(at.Slots, agentSlot{ConceptID: "c2", Property: "customer_id", Value: v})
+				}
+
+				tests := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil)
+
+				So(tests[0].Text, ShouldEqual, c.want)
+			}
+		})
+
+		Convey("A test is left out when its text does not say a made-up value as written\n", func() {
+			tests := buildTests(&guidanceOutput{Tests: []agentTest{
+				{Text: "Orders in 2024?", Slots: []agentSlot{{ConceptID: "c1", Property: "year", Value: "20"}}},
+				{Text: "Orders of customer 10,001?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}}},
+				// The second value stands only within the first.
+				{Text: "Orders of Acme Ltd?", Slots: []agentSlot{{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
+					{ConceptID: "c2", Property: "short_name", Value: "Acme"}}},
+				{Text: "Orders of a customer?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}}},
+			}}, nil)
+
+			So(tests, ShouldHaveLength, 1)
+			So(tests[0].ID, ShouldEqual, "t1")
+			So(tests[0].Text, ShouldEqual, "Orders of a customer?")
 		})
 
 		Convey("An expectation the server does not know reads as exists\n", func() {
@@ -305,22 +345,31 @@ func Test_GetGuidance(t *testing.T) {
 		svc := &requirementService{ps: ps, ra: ra}
 		ctx := context.Background()
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil).AnyTimes()
+		// Guidance generated at 20, for a specification drafted at 10 unless said otherwise.
 		stored := func(version int, question string) *interfaces.QuestionGuidance {
 			return &interfaces.QuestionGuidance{ProjectID: "p1", QuestionID: "q1", SpecVersion: version, Question: question,
-				Status: interfaces.GUIDANCE_STATUS_READY}
+				Status: interfaces.GUIDANCE_STATUS_READY, CreateTime: 20}
+		}
+		drafted := func(at int64) *interfaces.Requirement {
+			spec := readySpec()
+			spec.CreateTime = at
+			return spec
 		}
 
 		Convey("Guidance applies while the specification version and the question are as generated for\n", func() {
 			for _, c := range []struct {
 				g       *interfaces.QuestionGuidance
+				spec    *interfaces.Requirement
 				current bool
 			}{
-				{stored(1, "Which orders?"), true},
-				{stored(1, "Which orders of last month?"), false},
-				{stored(0, "Which orders?"), false},
+				{stored(1, "Which orders?"), drafted(10), true},
+				{stored(1, "Which orders of last month?"), drafted(10), false},
+				{stored(0, "Which orders?"), drafted(10), false},
+				// Drafted again after the guidance, to the same version and question: its ids may name others now.
+				{stored(1, "Which orders?"), drafted(30), false},
 			} {
 				ra.EXPECT().GetGuidance(gomock.Any(), "p1", "q1").Return(c.g, true, nil)
-				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(readySpec(), true, nil)
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(c.spec, true, nil)
 
 				view, err := svc.GetGuidance(ctx, token, "p1", "q1")
 				So(err, ShouldBeNil)

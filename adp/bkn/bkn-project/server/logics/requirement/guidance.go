@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -194,23 +196,76 @@ func slotPlaceholder(i int) string {
 
 // valueInDocuments tells whether a value is written in one of the documents, compared as quotes
 // are: a value the documents do not say, the Agent made up.
-func valueInDocuments(value string, docs []*interfaces.RequirementDocument) bool {
+func valueInDocuments(value string, texts []string) bool {
 	v := normalize([]rune(value)).text
 	if v == "" {
 		return false
 	}
-	for _, d := range docs {
-		if strings.Contains(normalize([]rune(d.Content)).text, v) {
+	for _, text := range texts {
+		if strings.Contains(text, v) {
 			return true
 		}
 	}
 	return false
 }
 
+// valueSpan is where a made-up value stands in a test's text, by byte offsets, and the slot it is.
+type valueSpan struct {
+	start, end, slot int
+}
+
+// findValue finds the value in the text as a whole word, not inside a longer word or number, nor
+// where another slot's value stands. Text written without spaces between words, as Chinese is,
+// bounds a value anywhere.
+func findValue(text string, value string, taken []valueSpan) (valueSpan, bool) {
+	if value == "" {
+		return valueSpan{}, false
+	}
+	for from := 0; from <= len(text)-len(value); {
+		i := strings.Index(text[from:], value)
+		if i < 0 {
+			break
+		}
+		start, end := from+i, from+i+len(value)
+		before, _ := utf8.DecodeLastRuneInString(text[:start])
+		after, _ := utf8.DecodeRuneInString(text[end:])
+		free := !wordRune(before) && !wordRune(after)
+		for _, sp := range taken {
+			if start < sp.end && sp.start < end {
+				free = false
+			}
+		}
+		if free {
+			return valueSpan{start: start, end: end}, true
+		}
+		_, size := utf8.DecodeRuneInString(text[start:])
+		from = start + size
+	}
+	return valueSpan{}, false
+}
+
+func wordRune(r rune) bool {
+	return r != utf8.RuneError && (unicode.IsDigit(r) || unicode.IsLetter(r) && !unicode.Is(unicode.Han, r))
+}
+
+// replaceSpans puts each slot's placeholder where its value stands, from the end so that the
+// offsets before stay right.
+func replaceSpans(text string, spans []valueSpan) string {
+	slices.SortFunc(spans, func(a, b valueSpan) int { return b.start - a.start })
+	for _, sp := range spans {
+		text = text[:sp.start] + slotPlaceholder(sp.slot) + text[sp.end:]
+	}
+	return text
+}
+
 // buildTests gives the Agent's test questions the server's ids, at most maxTests of them, leaving
-// out those without text. A value is kept only when a document says it; the others are left for
+// out those without text or asking about a made-up value they do not say as written. A value is kept only when a document says it; the others are left for
 // the server to fill from the data. None is checked against the data yet.
 func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*interfaces.QuestionTest {
+	texts := make([]string, 0, len(docs))
+	for _, d := range docs {
+		texts = append(texts, normalize([]rune(d.Content)).text)
+	}
 	tests := []*interfaces.QuestionTest{}
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
@@ -222,18 +277,27 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 			expect = interfaces.TEST_EXPECT_EXISTS
 		}
 		slots := make([]interfaces.QuestionTestSlot, 0, len(at.Slots))
+		var spans []valueSpan
+		placed := true
 		for i, s := range at.Slots {
 			value := strings.TrimSpace(s.Value)
-			if !valueInDocuments(value, docs) {
+			if !valueInDocuments(value, texts) {
 				// The text asks about the made-up value: it gives way to the slot, which the
-				// server's value from the data replaces.
+				// server's value from the data replaces. A text that does not say it as written
+				// would go on asking about a value no one checks, so the test is left out.
 				if value != "" {
-					text = strings.Replace(text, value, slotPlaceholder(i), 1)
+					sp, ok := findValue(text, value, spans)
+					sp.slot = i
+					spans, placed = append(spans, sp), placed && ok
 				}
 				value = ""
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
+		if !placed {
+			continue
+		}
+		text = replaceSpans(text, spans)
 		tests = append(tests, &interfaces.QuestionTest{
 			ID: fmt.Sprintf("t%d", len(tests)+1), Text: text, Kind: at.Kind, Slots: slots, Expect: expect,
 			Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkPending},
@@ -401,6 +465,12 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	finish(&done)
 }
 
+// guidanceCurrent tells whether guidance still applies to the question: generated for the same
+// version and question text of the specification as drafted last, since drafting again may reuse both.
+func guidanceCurrent(req *interfaces.Requirement, q *interfaces.RequirementQuestion, g *interfaces.QuestionGuidance) bool {
+	return req.Version == g.SpecVersion && q.Text == g.Question && g.CreateTime >= req.CreateTime
+}
+
 func (s *requirementService) GetGuidance(ctx context.Context, token string, projectID string,
 	questionID string) (*interfaces.QuestionGuidanceView, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetQuestionGuidance")
@@ -427,7 +497,7 @@ func (s *requirementService) GetGuidance(ctx context.Context, token string, proj
 	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g}
 	if found && req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		q := questionOf(&req.Spec, questionID)
-		view.Current = q != nil && req.Version == g.SpecVersion && q.Text == g.Question
+		view.Current = q != nil && guidanceCurrent(req, q, g)
 	}
 	span.SetStatus(codes.Ok, "")
 	return view, nil

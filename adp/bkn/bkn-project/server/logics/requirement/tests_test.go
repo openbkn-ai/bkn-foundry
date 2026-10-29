@@ -129,6 +129,20 @@ func Test_TestEdits(t *testing.T) {
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Stale)
 		})
 
+		Convey("An edit waits while the specification is drafted again, and needs one ready\n", func() {
+			expectRead()
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_DRAFTING}, true, nil)
+			_, err := svc.EditTest(ctx, token, "p1", "q1", "t1", interfaces.RequirementTestEdit{UpdateTime: 20, Text: ptr("Orders of 10001?")}, caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
+
+			for _, none := range []*interfaces.Requirement{nil, {Status: interfaces.REQUIREMENT_STATUS_FAILED}} {
+				expectRead()
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(none, none != nil, nil)
+				_, err = svc.EditTest(ctx, token, "p1", "q1", "t1", interfaces.RequirementTestEdit{UpdateTime: 20, Text: ptr("Orders of 10001?")}, caller)
+				shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_NotFound)
+			}
+		})
+
 		Convey("Deleting a test removes it and counts the deletion\n", func() {
 			expectRead()
 			expectSave()
