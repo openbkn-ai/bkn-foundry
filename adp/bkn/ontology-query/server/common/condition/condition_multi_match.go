@@ -193,8 +193,9 @@ func rewriteMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldsMap map[stri
 			"fields":     fields,
 			"match_type": matchType,
 		},
-		Operation:   cfg.Operation,
-		ValueOptCfg: cfg.ValueOptCfg,
+		Operation: cfg.Operation,
+		ValueFrom: cfg.ValueFrom,
+		Value:     cfg.Value,
 	}, nil
 }
 

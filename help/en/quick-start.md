@@ -425,7 +425,7 @@ openbkn vega resource query <resource_id> --limit 10 --need-total
 
 # Direct SQL: reference a resource with the {{<resource_id>}} placeholder
 # instead of hand-writing fully-qualified table names
-openbkn vega sql --input-dialect mysql \
+openbkn vega sql \
   --query "SELECT supplier_name, city FROM {{<resource_id>}} LIMIT 10"
 
 # Multi-table JOINs within one catalog go through the structured query endpoint

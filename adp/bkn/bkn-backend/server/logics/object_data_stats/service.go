@@ -153,9 +153,8 @@ func (s *objectDataStatsService) sideStats(ctx context.Context,
 	}
 
 	response, err := s.vba.RawQuery(ctx, &interfaces.RawQueryRequest{
-		Query:        statement,
-		QueryFormat:  interfaces.VEGA_QUERY_FORMAT_SQL,
-		InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+		Query:       statement,
+		QueryFormat: interfaces.VEGA_QUERY_FORMAT_SQL,
 		Paging: interfaces.ResourceDataPagingRequest{
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: 1,
@@ -246,7 +245,7 @@ func buildStatsSQL(ctx context.Context, resourceID string, keyColumns []string) 
 // The policy expression is compiler-produced from bkn-safe's restricted
 // predicate grammar; it is never copied from a client request.
 func buildStatsSQLWithWhere(ctx context.Context, resourceID string, keyColumns []string, where string) (string, error) {
-	table := "{{." + resourceID + "}}"
+	table := "{{" + resourceID + "}}"
 	from := "FROM " + table
 	if where != "" {
 		from += " WHERE " + where

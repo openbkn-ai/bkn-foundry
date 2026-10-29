@@ -372,9 +372,7 @@ func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
 	}
 	for _, name := range []string{"age_alias", "date_alias"} {
 		property := &interfaces.Property{Name: name, Type: queryTypes[name]}
-		cfg := &interfaces.FilterCondCfg{Name: name, ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10},
-		}}
+		cfg := &interfaces.FilterCondCfg{Name: name, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10}}
 		condition, err := (&filter_condition.RangeCond{}).New(t.Context(), cfg,
 			map[string]*interfaces.Property{name: property})
 		require.NoError(t, err, name)

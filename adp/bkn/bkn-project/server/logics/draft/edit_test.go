@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -50,7 +51,8 @@ func Test_EditDraftItem(t *testing.T) {
 		defer ctrl.Finish()
 		da := pmock.NewMockDraftAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
-		svc := &draftService{setting: testSetting, da: da, ps: ps, run: func(fn func()) { fn() }}
+		va := pmock.NewMockVegaAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, ps: ps, va: va, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
@@ -132,6 +134,150 @@ func Test_EditDraftItem(t *testing.T) {
 			So(decisions[0].After, ShouldEqual, "Sales orders")
 			So(decisions[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_DESCRIBE)
 			So(decisions[1].Before, ShouldEqual, "Sales orders")
+		})
+
+		Convey("An object type's update field is one of its properties of a type the index accepts\n", func() {
+			draft.Items.ObjectTypes[1].Table = interfaces.DraftTable{ResourceID: "r_orders", CatalogID: "c1"}
+			draft.Items.ObjectTypes[1].Properties = []*interfaces.DraftProperty{
+				{Name: "id", Type: "integer", MappedField: "id"},
+				{Name: "changed_at", Type: "datetime", MappedField: "updated_at"},
+				{Name: "amount", Type: "float", MappedField: "amount"},
+				// vega's large_integer drafts as integer, which vega does not refresh an index by.
+				{Name: "seq", Type: "integer", MappedField: "seq"},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			// The field's type is read from the table as the caller: the draft keeps only BKN types.
+			table := &interfaces.VegaTable{ID: "r_orders", Columns: []interfaces.VegaColumn{
+				{Name: "id", Type: "integer"}, {Name: "updated_at", Type: "datetime"}, {Name: "seq", Type: "large_integer"},
+			}}
+			e := edit()
+
+			Convey("setting it records what it replaced\n", func() {
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{table}, nil)
+				expectWrite()
+				e.IncrementalKey = strPtr(" changed_at ")
+
+				got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				So(err, ShouldBeNil)
+				So(got.Items.ObjectTypes[1].IncrementalKey, ShouldEqual, "changed_at")
+				So(written.Items.Decisions, ShouldHaveLength, 1)
+				d := written.Items.Decisions[0]
+				So([]any{d.Kind, d.ItemID, d.Action, d.Before, d.After}, ShouldResemble, []any{
+					interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", interfaces.DRAFT_DECISION_INCREMENTAL, "", "changed_at"})
+			})
+
+			Convey("an empty value clears it\n", func() {
+				draft.Items.ObjectTypes[1].IncrementalKey = "changed_at"
+				expectWrite()
+				e.IncrementalKey = strPtr("")
+
+				got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				So(err, ShouldBeNil)
+				So(got.Items.ObjectTypes[1].IncrementalKey, ShouldEqual, "")
+				So(written.Items.Decisions[0].Before, ShouldEqual, "changed_at")
+			})
+
+			Convey("the same value writes nothing\n", func() {
+				draft.Items.ObjectTypes[1].IncrementalKey = "changed_at"
+				e.IncrementalKey = strPtr("changed_at")
+
+				got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				So(err, ShouldBeNil)
+				So(got.Items.Decisions, ShouldBeEmpty)
+			})
+
+			Convey("an unknown property, another type or another kind of item is refused\n", func() {
+				for _, c := range []struct{ kind, id, key string }{
+					{interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "updated_at"},
+					{interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "amount"},
+					{interfaces.DRAFT_KIND_RELATION_TYPES, "orders_customers", "changed_at"},
+				} {
+					e.IncrementalKey = strPtr(c.key)
+					_, err := svc.EditDraftItem(ctx, token, "p1", c.kind, c.id, e, caller)
+					shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+				}
+				So(written, ShouldBeNil)
+			})
+
+			Convey("a field whose vega type the index cannot be refreshed by is refused\n", func() {
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{table}, nil)
+				e.IncrementalKey = strPtr("seq")
+
+				_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+				So(written, ShouldBeNil)
+			})
+
+			Convey("a field gone from its table, or a table the caller cannot read, is not found\n", func() {
+				e.IncrementalKey = strPtr("changed_at")
+				for _, read := range [][]*interfaces.VegaTable{
+					{{ID: "r_orders", Columns: []interfaces.VegaColumn{{Name: "id", Type: "integer"}}}}, {},
+				} {
+					// The refused edit changed the draft read in memory only; read it afresh.
+					draft.Items.ObjectTypes[1].IncrementalKey = ""
+					va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return(read, nil)
+					_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+					shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_FieldNotFound)
+				}
+				So(written, ShouldBeNil)
+			})
+
+			Convey("a failure reading the table is an internal error\n", func() {
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return(nil, errors.New("vega is down"))
+				e.IncrementalKey = strPtr("changed_at")
+
+				_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
+			})
+		})
+
+		Convey("Renaming an object type renames the relations still named after it, and no other\n", func() {
+			orders := draft.Items.ObjectTypes[1]
+			orders.Name = "采购单"
+			orders.Properties = []*interfaces.DraftProperty{
+				{Name: "supplier_no", DisplayName: "供应商编号", MappedField: "supplier_no"},
+				{Name: "buyer_id", DisplayName: "buyer_id", MappedField: "buyer_id"},
+			}
+			relation := func(id, property, name string) *interfaces.DraftRelationType {
+				return &interfaces.DraftRelationType{ID: id, Name: name, Source: "orders", Target: "customers",
+					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: property, TargetProperty: "id"}}}
+			}
+			draft.Items.RelationTypes = []*interfaces.DraftRelationType{
+				relation("orders_to_customers", "supplier_no", "采购单的供应商编号"),
+				// A person renamed it: it stays.
+				relation("orders_to_customers_2", "supplier_no", "采购来源"),
+				// Named by its id, as its field has only a physical name: it stays.
+				relation("orders_to_customers_3", "buyer_id", "orders_to_customers_3"),
+				// Drafted from a link table, named after it: it stays.
+				{ID: "order_tags", Name: "采购单的供应商编号", Source: "orders", Target: "customers",
+					LinkTable: &interfaces.DraftTable{ResourceID: "r_tags"}},
+				// Another object type's relation a person named like one of these: it stays.
+				{ID: "customers_to_orders", Name: "采购单的供应商编号", Source: "customers", Target: "orders",
+					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "supplier_no", TargetProperty: "id"}}},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			expectWrite()
+			e := edit()
+			e.Name = strPtr("采购订单")
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+			So(err, ShouldBeNil)
+			names := []string{}
+			for _, r := range got.Items.RelationTypes {
+				names = append(names, r.Name)
+			}
+			So(names, ShouldResemble, []string{"采购订单的供应商编号", "采购来源", "orders_to_customers_3",
+				"采购单的供应商编号", "采购单的供应商编号"})
+			last := written.Items.Decisions[len(written.Items.Decisions)-1]
+			So([]any{last.Kind, last.ItemID, last.Action, last.Before, last.After}, ShouldResemble, []any{
+				interfaces.DRAFT_KIND_RELATION_TYPES, "orders_to_customers", interfaces.DRAFT_DECISION_RENAME,
+				"采购单的供应商编号", "采购订单的供应商编号"})
 		})
 
 		Convey("An object type without an identity cannot be adopted\n", func() {

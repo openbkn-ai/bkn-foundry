@@ -180,10 +180,10 @@ openbkn call /api/vega-backend/v1/resources/query -X POST -d '{
 
 **Direct SQL** — `POST /api/vega-backend/v1/resources/query`
 
-**Simple mode** (no JSON body): pass engine type and query as separate flags (quote the SQL).
+**Simple mode** (no JSON body): pass a MySQL SELECT query with `--query` (quote the SQL).
 
 ```bash
-openbkn vega sql --input-dialect mysql --query "SELECT * FROM {{res_mysql_supplier}} LIMIT 5"
+openbkn vega sql --query "SELECT * FROM {{res_mysql_supplier}} LIMIT 5"
 ```
 
 **Advanced mode**: full JSON body; when `-d` is present, the individual flags above are ignored.
@@ -195,7 +195,7 @@ openbkn vega sql --help
 
 Other flags: `--limit` / `--offset` / `--need-total`, cursor paging via `--paging-mode cursor` with `--cursor` / `--keep-alive-sec`, and `--query-timeout-sec`.
 
-SQL must contain at least one `{{.<resource_id>}}` or `{{<resource_id>}}` placeholder (using a Vega resource id). The backend resolves the target connector from the resource's Catalog and replaces the placeholder with its physical table identifier. Queries using native table names without resource placeholders are not supported.
+SQL must contain at least one `{{<resource_id>}}` placeholder (using a Vega resource id). The backend resolves the target connector from the resource's Catalog and replaces the placeholder with its physical table identifier. Queries using native table names without resource placeholders are not supported.
 
 **Comparison**
 
@@ -227,7 +227,7 @@ Current equivalents:
 | Former use | Current practice |
 |------------|------------------|
 | Browse / query view data | Query the resource directly: `openbkn vega resource query <resource_id> --limit N` |
-| Custom SQL over a view | `openbkn vega sql --input-dialect <dialect> --query "..."`, referencing resources with `{{<resource_id>}}` |
+| Custom SQL over a view | `openbkn vega sql --query "..."`, referencing resources with `{{<resource_id>}}` |
 | Cross-table JOIN | `openbkn call /api/vega-backend/v1/resources/query -X POST`, joining tables within one catalog |
 
 An object type still bound to a retired `data_view` data source will fail to query; rebind it to a Vega resource.
@@ -246,7 +246,7 @@ openbkn vega catalog resources <catalog_id> --category table
 
 # 3. Look at the data
 openbkn vega resource query <resource_id> --limit 5 --need-total
-openbkn vega sql --input-dialect mysql \
+openbkn vega sql \
   --query "SELECT customer_id, SUM(amount) AS total FROM {{<resource_id>}} GROUP BY customer_id LIMIT 10"
 
 # 4. Build the search index (full text + vector)
@@ -301,7 +301,6 @@ const connectors = await bkn.vega.connectorTypes();
 const sqlOut = await bkn.vega.sql({
   query: 'SELECT * FROM {{res-001}} LIMIT 1',
   query_format: 'sql',
-  input_dialect: 'mysql',
   paging: { mode: 'single', limit: 1 },
 });
 
@@ -404,7 +403,7 @@ curl -sk -X POST "https://<access-address>/api/vega-backend/v1/query/execute" \
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources/query" \
   -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
-  -d '{"query":"SELECT * FROM {{res-001}} LIMIT 1","query_format":"sql","input_dialect":"mysql","paging":{"mode":"single","limit":1}}'
+  -d '{"query":"SELECT * FROM {{res-001}} LIMIT 1","query_format":"sql","paging":{"mode":"single","limit":1}}'
 
 # Connector types
 curl -sk "https://<access-address>/api/vega-backend/v1/connector-types" \

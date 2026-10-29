@@ -204,7 +204,7 @@
   "relation_types": [
     {
       "id": "dd_to_kh",
-      "name": "dd_to_kh",
+      "name": "Customer of Order",
       "description": "",
       "source": "dd",
       "target": "kh",

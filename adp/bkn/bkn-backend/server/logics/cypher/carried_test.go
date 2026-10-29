@@ -19,7 +19,7 @@ import (
 // nodes; what it named is read from that table.
 func TestCarriedStageGenerates(t *testing.T) {
 	stage := "SELECT COUNT(t0.`f_id`) AS `total`, t1.`f_code` AS `_key_0_0`, t1.`f_region` AS `_key_0_1` " +
-		"FROM {{.res_order}} t0 JOIN {{.res_customer}} t1 ON t0.`f_cust` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
+		"FROM {{res_order}} t0 JOIN {{res_customer}} t1 ON t0.`f_cust` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
 		"GROUP BY t1.`f_code`, t1.`f_region`"
 	for _, tc := range []struct {
 		name  string
@@ -32,9 +32,9 @@ func TestCarriedStageGenerates(t *testing.T) {
 				"MATCH (i:Item)-[:BELONGS_TO]->(o2:Order)-[:PLACED_BY]->(c) " +
 				"RETURN c.name AS name, count(i) AS items, total, count(i) * 1.0 / total AS share ORDER BY total DESC, name",
 			want: "SELECT t2.`f_name` AS `name`, COUNT(t0.`f_id`) AS `items`, w.`total` AS `total`, " +
-				"COUNT(t0.`f_id`) * 1E+00 / w.`total` AS `share` FROM {{.res_item}} t0 " +
-				"JOIN {{.res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
-				"JOIN {{.res_customer}} t2 ON t1.`f_cust` = t2.`f_code` AND t1.`f_region` = t2.`f_region` " +
+				"COUNT(t0.`f_id`) * 1E+00 / w.`total` AS `share` FROM {{res_item}} t0 " +
+				"JOIN {{res_order}} t1 ON t0.`f_order` = t1.`f_id` " +
+				"JOIN {{res_customer}} t2 ON t1.`f_cust` = t2.`f_code` AND t1.`f_region` = t2.`f_region` " +
 				"JOIN (" + stage + ") w ON t2.`f_code` = w.`_key_0_0` AND t2.`f_region` = w.`_key_0_1` " +
 				"GROUP BY t2.`f_name`, w.`total` ORDER BY `total` DESC, `name` LIMIT 1000",
 		},
@@ -42,8 +42,8 @@ func TestCarriedStageGenerates(t *testing.T) {
 			name: "the WITH's condition on an aggregate stays in the stage",
 			query: "MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH c, count(o) AS total WHERE total > 2 " +
 				"MATCH (o2:Order)-[:PLACED_BY]->(c) WHERE o2.amount > 10 RETURN c.name AS name, o2.id AS id",
-			want: "SELECT t1.`f_name` AS `name`, t0.`f_id` AS `id` FROM {{.res_order}} t0 " +
-				"JOIN {{.res_customer}} t1 ON t0.`f_cust` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
+			want: "SELECT t1.`f_name` AS `name`, t0.`f_id` AS `id` FROM {{res_order}} t0 " +
+				"JOIN {{res_customer}} t1 ON t0.`f_cust` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
 				"JOIN (" + stage + " HAVING COUNT(t0.`f_id`) > 2) w ON t1.`f_code` = w.`_key_0_0` AND t1.`f_region` = w.`_key_0_1` " +
 				"WHERE t0.`f_amount` > 10 LIMIT 1000",
 		},
@@ -135,7 +135,7 @@ func TestCarriedStageReturnsNodesOnTheSQLPath(t *testing.T) {
 		}
 		statement := vega.request.Query
 		// Orders are t0 in each part of the statement that reads them.
-		if all, kept := strings.Count(statement, "{{.res_order}} t0"),
+		if all, kept := strings.Count(statement, "{{res_order}} t0"),
 			strings.Count(statement, "t0.`f_region` IN ('east')"); all == 0 || kept != all {
 			t.Errorf("orders read %d times, filtered %d:\n%s", all, kept, statement)
 		}

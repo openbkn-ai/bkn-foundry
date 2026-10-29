@@ -11,9 +11,11 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 
 	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sqlbuilder "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -275,20 +277,6 @@ func (m *MockTableConnector) EXPECT() *MockTableConnectorMockRecorder {
 	return m.recorder
 }
 
-// BuildCountSQL mocks base method.
-func (m *MockTableConnector) BuildCountSQL(sqlStr string) string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BuildCountSQL", sqlStr)
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// BuildCountSQL indicates an expected call of BuildCountSQL.
-func (mr *MockTableConnectorMockRecorder) BuildCountSQL(sqlStr any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildCountSQL", reflect.TypeOf((*MockTableConnector)(nil).BuildCountSQL), sqlStr)
-}
-
 // BuildOriginalName mocks base method.
 func (m *MockTableConnector) BuildOriginalName(table *interfaces.TableMeta) string {
 	m.ctrl.T.Helper()
@@ -301,20 +289,6 @@ func (m *MockTableConnector) BuildOriginalName(table *interfaces.TableMeta) stri
 func (mr *MockTableConnectorMockRecorder) BuildOriginalName(table any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildOriginalName", reflect.TypeOf((*MockTableConnector)(nil).BuildOriginalName), table)
-}
-
-// BuildPagedSQL mocks base method.
-func (m *MockTableConnector) BuildPagedSQL(sqlStr string, offset, limit int) string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BuildPagedSQL", sqlStr, offset, limit)
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// BuildPagedSQL indicates an expected call of BuildPagedSQL.
-func (mr *MockTableConnectorMockRecorder) BuildPagedSQL(sqlStr, offset, limit any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildPagedSQL", reflect.TypeOf((*MockTableConnector)(nil).BuildPagedSQL), sqlStr, offset, limit)
 }
 
 // BuildSourceIdentifier mocks base method.
@@ -404,19 +378,19 @@ func (mr *MockTableConnectorMockRecorder) ExecuteQuery(ctx, resource, params any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteQuery", reflect.TypeOf((*MockTableConnector)(nil).ExecuteQuery), ctx, resource, params)
 }
 
-// ExecuteRawSQL mocks base method.
-func (m *MockTableConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*interfaces.RawQueryResponse, error) {
+// ExecuteSQLBuilder mocks base method.
+func (m *MockTableConnector) ExecuteSQLBuilder(arg0 context.Context, arg1 *sqlbuilder.SelectBuilder) (*interfaces.RawQueryResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteRawSQL", ctx, sqlStr)
+	ret := m.ctrl.Call(m, "ExecuteSQLBuilder", arg0, arg1)
 	ret0, _ := ret[0].(*interfaces.RawQueryResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ExecuteRawSQL indicates an expected call of ExecuteRawSQL.
-func (mr *MockTableConnectorMockRecorder) ExecuteRawSQL(ctx, sqlStr any) *gomock.Call {
+// ExecuteSQLBuilder indicates an expected call of ExecuteSQLBuilder.
+func (mr *MockTableConnectorMockRecorder) ExecuteSQLBuilder(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteRawSQL", reflect.TypeOf((*MockTableConnector)(nil).ExecuteRawSQL), ctx, sqlStr)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteSQLBuilder", reflect.TypeOf((*MockTableConnector)(nil).ExecuteSQLBuilder), arg0, arg1)
 }
 
 // GetCategory mocks base method.
@@ -590,6 +564,22 @@ func (mr *MockTableConnectorMockRecorder) New(cfg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "New", reflect.TypeOf((*MockTableConnector)(nil).New), cfg)
 }
 
+// OpenSQLBuilder mocks base method.
+func (m *MockTableConnector) OpenSQLBuilder(arg0 context.Context, arg1 *sqlbuilder.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OpenSQLBuilder", arg0, arg1)
+	ret0, _ := ret[0].(*sql.Rows)
+	ret1, _ := ret[1].([]interfaces.ColumnInfo)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// OpenSQLBuilder indicates an expected call of OpenSQLBuilder.
+func (mr *MockTableConnectorMockRecorder) OpenSQLBuilder(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenSQLBuilder", reflect.TypeOf((*MockTableConnector)(nil).OpenSQLBuilder), arg0, arg1)
+}
+
 // Ping mocks base method.
 func (m *MockTableConnector) Ping(ctx context.Context) error {
 	m.ctrl.T.Helper()
@@ -602,6 +592,21 @@ func (m *MockTableConnector) Ping(ctx context.Context) error {
 func (mr *MockTableConnectorMockRecorder) Ping(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockTableConnector)(nil).Ping), ctx)
+}
+
+// ScanSQLBuilderRow mocks base method.
+func (m *MockTableConnector) ScanSQLBuilderRow(arg0 *sql.Rows, arg1 []interfaces.ColumnInfo) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScanSQLBuilderRow", arg0, arg1)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ScanSQLBuilderRow indicates an expected call of ScanSQLBuilderRow.
+func (mr *MockTableConnectorMockRecorder) ScanSQLBuilderRow(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScanSQLBuilderRow", reflect.TypeOf((*MockTableConnector)(nil).ScanSQLBuilderRow), arg0, arg1)
 }
 
 // SetEnabled mocks base method.

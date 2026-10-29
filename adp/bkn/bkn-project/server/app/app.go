@@ -30,6 +30,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/executionfactory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/indexbuild"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/vega"
@@ -77,6 +78,7 @@ func Boot() *Application {
 	logics.SetCheckAccess(checkaccess.NewCheckAccess(appSetting))
 	logics.SetIDRegistryAccess(idregistry.NewIDRegistryAccess(appSetting))
 	logics.SetVegaAccess(vega.NewVegaAccess(appSetting))
+	logics.SetIndexBuildAccess(indexbuild.NewIndexBuildAccess(appSetting))
 	logics.SetGitStore(gitstore.NewGitStore(appSetting))
 	logics.SetBknBackendAccess(bknbackend.NewBknBackendAccess(appSetting))
 	logics.SetExecutionFactoryAccess(executionfactory.NewExecutionFactoryAccess(appSetting))

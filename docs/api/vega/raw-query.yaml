@@ -5,9 +5,9 @@ info:
   description: |
     Vega Backend 原生查询端点（`POST /resources/query`）相关 API。
 
-    本端点执行经服务端校验和资源绑定的原生查询，**不做结构化 filter 解析**：
+    本端点执行经服务端校验和资源绑定的 SQL 或 DSL 原生查询：
 
-    - SQL 引擎（mysql / postgresql / sqlserver / clickhouse / 达梦 / oracle）→ `query` 字段为 SQL 字符串
+    - SQL 引擎（MariaDB/MySQL / PostgreSQL / SQL Server / Oracle / HANA / Doris）→ `query` 字段为 SQL 字符串
     - 索引引擎（opensearch / elasticsearch）→ `query` 字段为 DSL JSON 对象
 
     与 `POST /resources/{id}/data`（[resource-data.yaml](resource-data.yaml)）的分工：
@@ -15,27 +15,68 @@ info:
     | 维度 | `POST /resources/query` | `POST /resources/{id}/data` (Override:GET) |
     |---|---|---|
     | 资源定位 | SQL 使用受控 `{{resource_id}}` 占位符；DSL 使用顶层 `resource_id` | 绑定 `:id` |
-    | 输入 | 原生 SQL / DSL + format/dialect | 结构化 `filter_condition` + 分页 |
+    | 输入 | SQL / DSL + query_format | 结构化 `filter_condition` + 分页 |
     | 输出 | 列元数据 + raw entries + cursor 分页 | 文档对象 + 可选 total_count + cursor 分页 |
     | Cursor | `paging.cursor` / `paging.next_cursor` | `paging.cursor` / `paging.next_cursor` |
     | 用途 | 同一 Catalog 内的复杂 SQL / DSL | 应用层结构化访问 |
 
-    **SQL 只读策略**：SQL 只允许单条顶层 `SELECT`，且所有物理表必须由受权限保护的
-    Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为
-    同一 Catalog 内的 `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和
-    常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询不被只读策略单独禁止；
-    窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由 `input_dialect` 和底层连接器支持。
+    **SQL 查询能力**：执行单条顶层 `SELECT`，所有物理表通过受权限保护的
+    `{{resource_id}}` 占位符解析；DSL 的索引同样由 Resource 推导。支持同一 Catalog 内的
+    `JOIN`（含括号连接组）、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数
+    （`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。
 
-    不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、
-    锁定读取，以及写入、DDL、事务、权限与过程类语句。函数仅允许 SQLGlot 可识别的具名
-    内置表达式：UDF 与未建模的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
-    内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400
-    `VegaBackend.Query.InvalidParameter`，`error_details` 为
-    `raw query rejected by read-only policy`；请改写为单条顶层 `SELECT`。
+    SQL 输入统一使用 MySQL SELECT 子集，通过 Go Parser → Builder 支持显式子查询、
+    JOIN（含括号连接组）、DISTINCT、分组、排序和 LIMIT/OFFSET，
+    并由 Resource/Catalog 对应的目标连接器生成源端 SQL 及绑定参数。
+
+    MariaDB/MySQL、PostgreSQL、HANA、Doris、Oracle 和 SQL Server 使用明确的只读内置函数名单，涵盖常用聚合、数值、
+    字符串和日期函数，并在访问连接器前校验参数数量及 DISTINCT / * 的组合。
+    OCTET_LENGTH 与 LENGTH 同义，返回字节长度；CHAR_LENGTH 返回字符长度。
+    PostgreSQL 将 IFNULL、LENGTH、日期取值和格式等映射为 PG 表达式；
+    DATE_FORMAT/STR_TO_DATE 的格式使用字面量，支持 %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%x/%v/%%。
+    HANA 支持常用数值、字符串、日期函数和 HAVING 别名映射，CHAR 接受 ASCII 整数字面量
+    （0–127）及 NULL；DATE_FORMAT/STR_TO_DATE 的字面量格式支持
+    %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%% 和常用分隔符。
+    HANA 的 CHAR_LENGTH/SUBSTRING 使用 CESU-8 字符计数，LENGTH/OCTET_LENGTH 先编码为 UTF-8，再统计二进制字节。
+    PostgreSQL 和 HANA 的 SECOND 返回去除小数部分的整数秒。
+    Doris 使用原生函数映射及 BIGINT、LARGEINT、STRING/VARCHAR、DECIMAL 等目标类型；精确 DECIMAL 支持到 38 位。
+    Oracle 19c 使用命名参数和原生 NUMBER 绑定（最多 38 位有效数字），分页使用 OFFSET/FETCH。
+    空字符串按 Oracle 规则返回 null；LENGTH/OCTET_LENGTH 使用 LENGTHB，字节数取决于源库字符集。
+    CHAR 接受 0–127 的 ASCII 整数字面量及 NULL；DATE_FORMAT/STR_TO_DATE 支持
+    %Y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%%；STR_TO_DATE 格式包含完整年月日，12 小时制配合 %p。
+    日期函数支持 ISO 日期/日期时间字符串字面量（空格或 T 分隔，最多六位小数秒），动态文本使用 STR_TO_DATE 显式转换。
+    NOW/CURRENT_TIMESTAMP 支持精度 0–6。
+    SQL Server 使用 @pN 命名参数，精确 DECIMAL 最多 38 位，LIMIT 0 生成 TOP (0)，其他分页使用 TOP 或 OFFSET/FETCH。
+    SQL 通道要求兼容级别至少 110；UTF-8 字节长度使用 SQL Server 2019+ 的 UTF-8 collation。
+    CHAR_LENGTH 保留尾随空格并按 Unicode 码点计数，CONCAT 保持 NULL 传播，除法/取模的零除数返回 NULL。
+    CHAR 接受 ASCII 整数字面量及 NULL；COUNT DISTINCT 只接受一个表达式。日期格式范围见 SQL Server 验收 README。
+    字段类型、隐式类型转换和分组合法性由目标数据库检查。
+    HANA 在只有 OFFSET、未设置 SQL LIMIT 时由方言生成器补充 LIMIT 2147384648；Doris 补充 LIMIT 9223372036854775807。
+
+    语法、函数调用或参数校验失败返回 HTTP 400 `VegaBackend.Query.InvalidParameter`。
+    通过 `error_details` 返回公共 Parser 的解析错误或目标连接器的能力错误。
+
+    Builder 通道对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
+    例如 SELECT 1,2 的输出列名为 `1`、`2`。重复输出名称仍需使用不同的显式别名。
+
+    MariaDB/MySQL、PG、HANA、Doris、Oracle 和 SQL Server 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
+    total_count 统计原始逻辑查询的结果行数。Builder cursor 只执行一次数据查询，在服务端保留
+    同一个 Rows 和连接，续页继续扫描，不重复执行 OFFSET 查询；额外预读一行判断是否有下一页。
+    每次续页重新校验资源权限和源端元数据版本；权限撤销或版本改变会关闭 cursor，版本改变返回
+    HTTP 409。读取超时、取消或结果集读取失败会终止 cursor，调用方应重新发起查询；读取前的
+    临时元数据服务错误可重试。首次 HTTP 请求结束不会关闭空闲 Rows，末页、显式关闭或空闲租约
+    到期会释放 Rows 与连接。need_total 的 COUNT 仍独立执行，不保证与数据查询共享同一快照或 NOW() 等时间函数的时间基准。
+
+    每个未读完的 Builder cursor 持有一个源端结果集和连接，应用的 keep_alive_sec
+    仅控制会话回收，不保证源库连接在租约内持续可用。大结果集在客户端暂停读取时可能使源端写入
+    阻塞；MariaDB/MySQL 可能触发 net_write_timeout。SELECT 尚未结束时持有的锁也可能使 DDL 等待。
+    应结合源端连接预算控制并发 cursor 数，读取完成后及时关闭，不再使用时调用 cursor 关闭接口。
+    源端超时或断连导致续页失败时，会话终止并释放资源，调用方需要重新发起查询。
 
     MySQL/MariaDB 映射为 binary 的结果列（BIT、BINARY、VARBINARY 和各类 BLOB）
     以原始字节的 base64 字符串返回，空字节串返回空字符串，NULL 保持 null。
     BIT（包括 BIT(1)）不解释为 boolean；TINYINT 保留整数值，文本列仍返回文本。
+    PostgreSQL Builder 的 bytea 同样保留原始字节并以 base64 输出，NUMERIC 保留精确文本。
 
     调用方仍应受 RBAC 与限流约束，底层账号必须保持只读。
   version: 0.1.0
@@ -70,35 +111,27 @@ paths:
     post:
       summary: 执行原生查询（SQL 或 DSL）
       description: |
-        **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
+        **请求体的 `query` 字段类型由 `query_format` 决定**：
 
-        - SQL（省略方言，按 MySQL 解析）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
-        - PostgreSQL SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
-        - SQL Server T-SQL：`{"query":"SELECT TOP (20) * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"tsql"}`
-        - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
+        - SQL（MySQL SELECT 子集）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
+        - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl"}`
 
-        实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
-        SQL Server Catalog 的目标方言固定为 `tsql`；客户端可直接提交 `tsql`，也可提交受支持的其它 SQL
-        输入方言，由服务端转换为 T-SQL。无论输入方言为何，`EXEC`、`SELECT INTO`、DDL/DML 和多语句
-        都会在访问数据库前被拒绝。由于 total-count 和部分分页查询需要使用 SQL Server 派生表，计算表达式
-        必须显式指定唯一列别名；通配符不能与其它投影列混用，多表 JOIN 的通配符必须指定表名（例如 `orders.*`）。
+        实际执行数据源由 Resource/Catalog 确定。
+        SQL 输入统一按 MySQL 语法解析，由目标连接器生成源端方言及绑定参数。
+        SQL Server 使用命名参数与原生 TOP、OFFSET/FETCH 分页，SQL Builder 通道要求数据库兼容级别至少为 110。
+        投影名称必须唯一；多表 JOIN 可使用限定通配符或显式列别名。
 
-        **SQL 语法边界**：只接受单条顶层 `SELECT`。支持同一 Catalog 内的 `JOIN`、
-        `WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询不被
-        只读策略单独禁止，但须由所选方言和连接器支持；窗口函数与其他内置函数还必须
-        由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。`WITH` / CTE、
-        `UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、锁定读取、DML、DDL、
-        事务、权限和过程类语句均被拒绝。CTE 不可通过改写为 `WITH` 规避：请改为单条
-        顶层 `SELECT`，或拆分为多次查询。
+        **SQL 查询能力**：单条顶层 `SELECT`，支持同一 Catalog 内的 `JOIN`（含括号连接组）、`WHERE`、
+        `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数；子查询及内置函数的具体能力
+        由公共 Parser 和目标连接器共同决定。
 
         OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
         `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
         包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。
 
         OpenSearch 聚合 DSL 仅支持 `paging.mode: single`，服务端强制 `size: 0`，并将
-        metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`。不能
-        转换为行结构的聚合在访问 OpenSearch 前返回 400；`paging.offset/limit` 应用于
-        展开后的行结果，cursor 模式不支持聚合。
+        metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`；
+        `paging.offset/limit` 应用于展开后的行结果。
       requestBody:
         required: true
         content:
@@ -137,8 +170,8 @@ components:
       description: |
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
-        - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法，
-          SQL 引用不存在字段，或 SQL 违反只读策略（包括 `WITH` / CTE）。字段不存在时
+        - `VegaBackend.Query.InvalidParameter`：`query_format` 或 paging 参数非法，
+          SQL 引用不存在字段、函数参数或分组用法非法，或 SQL 违反只读策略。字段不存在时
           `error_details` 固定为 `query references an unknown column`，其他连接器明确归类的
           参数错误固定为 `invalid source query parameter`，均不包含数据库驱动原文；
           违反只读策略时固定为 `raw query rejected by read-only policy`
@@ -226,11 +259,9 @@ components:
           oneOf:
             - type: string
               description: |
-                SQL 字符串（mysql / postgresql / sqlserver 等）。仅允许单条顶层 `SELECT`；支持同一
-                Catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。
-                不支持 WITH/CTE、集合运算、多语句、SELECT INTO、锁定读取、DML/DDL、
-                事务、权限或过程类语句。子查询须由输入方言与连接器支持；窗口函数和其他
-                内置函数还必须由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。
+                SQL 字符串。执行单条顶层 `SELECT`，支持同一 Catalog 内的 JOIN（含括号连接组）、WHERE、
+                GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。子查询及内置函数的具体能力
+                由公共 Parser 和目标连接器共同决定。
             - type: object
               description: DSL JSON 对象（OpenSearch / Elasticsearch）
               additionalProperties: true
@@ -240,24 +271,6 @@ components:
           enum:
             - sql
             - dsl
-        input_dialect:
-          description: |
-            输入方言。SQL 省略时默认 `mysql`；`mariadb` 按 `mysql` 解析，`generic` 使用
-            SQLGlot 通用方言。SQL Server 原生 T-SQL 使用 `tsql`。SQL Server Catalog 的
-            执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。
-            `hana` 不是可选输入方言；查询 HANA Catalog 时可使用 `generic`。
-          type: string
-          enum:
-            - postgres
-            - mysql
-            - mariadb
-            - trino
-            - duckdb
-            - tsql
-            - oracle
-            - doris
-            - generic
-            - opensearch
         paging:
           allOf:
             - $ref: "#/components/schemas/PagingRequest"
@@ -282,7 +295,6 @@ components:
         anyOf:
           - required: [query]
           - required: [query_format]
-          - required: [input_dialect]
           - required: [query_timeout_sec]
       properties:
         paging:
@@ -302,7 +314,7 @@ components:
           description: 可携带但不会覆盖首次请求冻结的值。
           type: boolean
     PagingRequest:
-      description: SQL cursor 使用 OFFSET 分页；为避免底层数据变更导致跨页重复或遗漏，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY。服务端暂不强制校验该排序。
+      description: SQL cursor 保留同一次数据查询的 Rows，续页继续读取；调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
       type: object
       allOf:
         - if:

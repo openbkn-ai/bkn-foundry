@@ -19,9 +19,11 @@ var (
 	CA  interfaces.CheckAccess
 	IRA interfaces.IDRegistryAccess
 	VA  interfaces.VegaAccess
+	IBA interfaces.IndexBuildAccess
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
 	EFA interfaces.ExecutionFactoryAccess
+	RQA interfaces.RequirementAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -56,6 +58,10 @@ func SetVegaAccess(va interfaces.VegaAccess) {
 	VA = va
 }
 
+func SetIndexBuildAccess(iba interfaces.IndexBuildAccess) {
+	IBA = iba
+}
+
 func SetGitStore(gs interfaces.GitStore) {
 	GS = gs
 }
@@ -66,4 +72,8 @@ func SetBknBackendAccess(bba interfaces.BknBackendAccess) {
 
 func SetExecutionFactoryAccess(efa interfaces.ExecutionFactoryAccess) {
 	EFA = efa
+}
+
+func SetRequirementAccess(rqa interfaces.RequirementAccess) {
+	RQA = rqa
 }

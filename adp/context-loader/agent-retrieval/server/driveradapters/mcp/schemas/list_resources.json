@@ -39,7 +39,7 @@
         "items": {
           "type": "object",
           "properties": {
-            "resource_id": { "type": "string", "description": "资源 ID，写 run_sql 时用作 {{.<resource_id>}} 占位符" },
+            "resource_id": { "type": "string", "description": "资源 ID，写 run_sql 时用作 {{<resource_id>}} 占位符" },
             "name": { "type": "string", "description": "资源名" },
             "type": { "type": "string", "description": "资源类别（table / file / ...）" },
             "status": { "type": "string", "description": "状态（active / stale / disabled / deprecated）" },

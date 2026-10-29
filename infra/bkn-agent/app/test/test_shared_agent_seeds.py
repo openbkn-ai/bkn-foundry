@@ -31,8 +31,10 @@ PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
 RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
 BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
-SOURCE_LANGUAGE = MIGRATIONS / "0.2.1/17-prompt-source-language.sql"
+SOURCE_LANGUAGE = MIGRATIONS / "0.2.1/19-prompt-source-language.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
+SEMANTIC_NAMING = MIGRATIONS / "0.2.1/17-semantic-naming.sql"
+REQUIREMENTS = MIGRATIONS / "0.2.1/18-seed-bkn-project-requirements.sql"
 
 
 def statements(path):
@@ -54,8 +56,10 @@ def database():
     db.create_function("now", 1, lambda _: 1)
     db.create_function("unix_timestamp", 1, lambda _: 1)
     db.create_function(
-        "sha2", 2, lambda value, bits: hashlib.sha256(value.encode()).hexdigest()
+        "sha2", 2, lambda value, bits: None if value is None else hashlib.sha256(value.encode()).hexdigest()
     )
+    # SQLite's json_extract already returns unquoted text.
+    db.create_function("json_unquote", 1, lambda value: value)
 
     # Migrations compare flat limits objects and lists of changed field names.
     def json_contains(document, candidate):
@@ -236,6 +240,8 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, DRAFTER)
         apply(upgraded, SEMANTIC_API_NAME)
         apply(upgraded, BUILTIN_LOCALES)
+        apply(upgraded, SEMANTIC_NAMING)
+        apply(upgraded, REQUIREMENTS)
         apply(upgraded, SOURCE_LANGUAGE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
@@ -251,7 +257,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
             match = next(after for after in updated[1] if after[0] == row[0])
             if row[0] == "resource-semantic-understanding-prompt":
                 assert row[:2] == match[:2]
-                assert match[2] == 5
+                assert match[2] == 6
             else:
                 assert row == match
         # Adding the nullable locale column must retain every original value.
@@ -269,7 +275,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
                 "SELECT f_prompt_id, f_current_version FROM t_agent_prompt"
             )
         )
-        assert versions["resource-semantic-understanding-prompt"] == 5
+        assert versions["resource-semantic-understanding-prompt"] == 6
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
@@ -297,9 +303,11 @@ def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
         assert "expand_neighbours" in seeded["prompt"]["content"]
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
+        # 18 also attaches translations, to the column 10 adds.
+        apply(db, CLAIM_LOCALES)
         apply(db, path)
         db.execute(
             "UPDATE t_agent SET f_model='custom', f_status='draft', f_tools='[]'"
@@ -423,6 +431,8 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(METRIC_DESIGN_BUDGET),
                     str(SEMANTIC_API_NAME),
                     str(BUILTIN_LOCALES),
+                    str(SEMANTIC_NAMING),
+                    str(REQUIREMENTS),
                     str(SOURCE_LANGUAGE),
                 ],
             ],
@@ -459,11 +469,29 @@ def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
             assert snapshot(db) == before
 
 
+def naming_locales_text():
+    """The v6 translation backfill at the end of 17, which the fresh snapshot ends with too."""
+    text = SEMANTIC_NAMING.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
+def requirements_locales_text():
+    """The translation backfill at the end of 18, which the fresh snapshot ends with too."""
+    text = REQUIREMENTS.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
-        "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text() + "\n" + SOURCE_LANGUAGE.read_text()
+        "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
+        + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + SOURCE_LANGUAGE.read_text()
     )
+    # The seed itself sits with the other seeds, before the locale column is added.
+    init = (MIGRATIONS / "0.2.1/init.sql").read_text()
+    seed = REQUIREMENTS.read_text()[: REQUIREMENTS.read_text().index("-- Attach the zh-CN")]
+    seed = seed[seed.index("-- bkn-project-requirements:"):].rstrip("\n")
+    assert init.index(seed) < init.index(CLAIM_LOCALES.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -716,7 +744,7 @@ def test_real_migrator_selected_cross_version_chain_preserves_semantic_agents(re
         versions = dict(
             db.execute("SELECT f_prompt_id,f_current_version FROM t_agent_prompt")
         )
-        assert versions["resource-semantic-understanding-prompt"] == 5
+        assert versions["resource-semantic-understanding-prompt"] == 6
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
@@ -758,7 +786,7 @@ def test_every_agent_starts_with_one_current_version():
         initial = db.execute(
             "SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1"
         ).fetchone()
-        assert initial[0] == 5
+        assert initial[0] == 6
         assert all(row["f_initial"] == 1 for row in rows.values())
         qa = db.execute(
             "SELECT f_model, f_tools, f_limits FROM t_agent WHERE f_agent_id='studio_smart_qa'"
@@ -770,7 +798,7 @@ def test_every_agent_starts_with_one_current_version():
             qa["f_tools"],
             qa["f_limits"],
         )
-        assert rows["resource-semantic-understanding"]["f_prompt_version"] == 5
+        assert rows["resource-semantic-understanding"]["f_prompt_version"] == 6
 
         # Running the delta again adds nothing.
         apply(db, VERSIONS)
@@ -1036,7 +1064,10 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     init = Path(selected_migrations("0.0.0")[0][0])
     # The optional claim-locale column and guarded translation backfill do not
     # update semantic-understanding versions or their current/initial markers.
-    claim_locale_statements = set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES)) | set(statements(SOURCE_LANGUAGE))
+    claim_locale_statements = (set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
+                               | set(statements(SOURCE_LANGUAGE))
+                               | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
+                               | {s for s in statements(REQUIREMENTS) if "f_localized_content" in s})
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)
@@ -1047,11 +1078,11 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
         versions = db.execute(
             "SELECT f_version FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt'"
         ).fetchall()
-        assert [row[0] for row in versions] == [5]
+        assert [row[0] for row in versions] == [6]
         agent_versions = db.execute(
             "SELECT f_version,f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding'"
         ).fetchall()
-        assert [tuple(row) for row in agent_versions] == [(1, 5, 1, 1)]
+        assert [tuple(row) for row in agent_versions] == [(1, 6, 1, 1)]
         before = snapshot(db)
         apply(db, init)
         assert snapshot(db) == before
@@ -1245,7 +1276,8 @@ def semantic_v4_state(db, start):
 @pytest.mark.parametrize("start", ["upgraded", "installed"])
 def test_semantic_api_name_upgrade_matches_fresh_install_and_keeps_history(start):
     with database() as db, database() as fresh:
-        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        # A fresh install is at v6 now; 15 is compared with an install as it was at v5.
+        semantic_v5_state(fresh, "installed")
         semantic_v4_state(db, start)
         old_prompt = item_from_db(db, "resource-semantic-understanding")["prompt"]["content"]
         history = snapshot(db)[3]
@@ -1372,3 +1404,262 @@ def test_semantic_api_name_upgrade_does_not_switch_a_prompt_head_an_operator_sav
         apply(db, SEMANTIC_API_NAME)
         assert snapshot(db)[1] == head_before
         assert snapshot(db)[3] == agent_versions_before
+
+
+def semantic_v5_state(db, start):
+    """Agent state just before 17: upgraded from 0.2.0 through 15 and 16, or installed from the
+    0.2.1 snapshot as it was before 17 was appended."""
+    if start == "upgraded":
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        for delta in (VERSIONS, SEMANTIC_LANGUAGE, CLAIM_LOCALES, SEMANTIC_API_NAME, BUILTIN_LOCALES):
+            apply(db, delta)
+        return
+    with database() as upgraded:
+        semantic_v5_state(upgraded, "upgraded")
+        v5 = semantic_prompt_version(upgraded, 5)
+    apply(db, Path(selected_migrations("0.0.0")[0][0]))
+    db.execute(
+        "UPDATE t_agent_prompt_version SET f_version=5,f_content=?,f_localized_content=? WHERE f_prompt_id='resource-semantic-understanding-prompt'",
+        (v5["f_content"], v5["f_localized_content"]),
+    )
+    db.execute("UPDATE t_agent_prompt SET f_current_version=5 WHERE f_prompt_id='resource-semantic-understanding-prompt'")
+    db.execute("UPDATE t_agent_version SET f_prompt_version=5 WHERE f_agent_id='resource-semantic-understanding'")
+
+
+def semantic_prompt_version(db, version):
+    result = dict(db.execute(
+        "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=?",
+        (version,),
+    ).fetchone())
+    # Migration 17 is also tested before 19 adds the optional language column.
+    result.setdefault("f_source_language", None)
+    return result
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_semantic_naming_upgrade_matches_fresh_install_and_keeps_history(start):
+    with database() as db, database() as fresh:
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        semantic_v5_state(db, start)
+        old = semantic_prompt_version(db, 5)
+        history = snapshot(db)[3]
+        apply(db, SEMANTIC_NAMING)
+        assert item_from_db(db, "resource-semantic-understanding") == item_from_db(fresh, "resource-semantic-understanding")
+        new = semantic_prompt_version(db, 6)
+        assert new == semantic_prompt_version(fresh, 6)
+        assert new["f_content"].startswith(old["f_content"] + "\n\n")
+        added = new["f_content"][len(old["f_content"]):]
+        # The resource is named as the business object; generic field meanings are qualified.
+        assert "单数业务名词" in added and "不得写成句子" in added and "40" in added and "加限定" in added
+        # Both translations carry the same rules after their v5 text.
+        old_locales, new_locales = json.loads(old["f_localized_content"]), json.loads(new["f_localized_content"])
+        assert new_locales["zh-CN"].startswith(old_locales["zh-CN"] + "\n\n") and "单数业务名词" in new_locales["zh-CN"]
+        assert new_locales["en-US"].startswith(old_locales["en-US"] + "\n\n")
+        assert "singular business noun" in new_locales["en-US"] and "qualify generic" in new_locales["en-US"]
+        # Earlier prompt and Agent versions stay; only the initial/current markers move.
+        assert semantic_prompt_version(db, 5) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            "SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(6, 1, 1)]
+        before = snapshot(db)
+        apply(db, SEMANTIC_NAMING)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
+def test_semantic_naming_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        semantic_v5_state(db, "upgraded")
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=5"
+            )
+        elif customization in ("zh-CN", "en-US"):
+            # An administrator's translation of v5 is a customization too: moving to v6 would stop
+            # using it, so nothing is upgraded.
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom') WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=5",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('resource-semantic-understanding-prompt',6,'custom newer prompt',null,'operator',2000)"
+            )
+            if customization == "higher-version":
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_current_version=6 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+                )
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, SEMANTIC_NAMING)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_semantic_naming_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            semantic_v5_state(connection, "upgraded")
+            if customized:
+                connection.execute(
+                    "UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='resource-semantic-understanding'"
+                )
+        apply(expected, SEMANTIC_NAMING)
+        apply(db, SEMANTIC_NAMING, limit=limit)
+        apply(db, SEMANTIC_NAMING)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_semantic_naming_upgrade_does_not_reverse_an_operator_rollback():
+    with database() as db:
+        semantic_v5_state(db, "upgraded")
+        apply(db, SEMANTIC_NAMING)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_current_version=5,f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+        )
+        db.execute("UPDATE t_agent_version SET f_current=0 WHERE f_agent_id='resource-semantic-understanding'")
+        db.execute(
+            "UPDATE t_agent_version SET f_current=1 WHERE f_agent_id='resource-semantic-understanding' AND f_prompt_version=5"
+        )
+        before = snapshot(db)
+        apply(db, SEMANTIC_NAMING)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_semantic_naming_upgrade_keeps_custom_settings_and_official_baseline(start):
+    with database() as db:
+        semantic_v5_state(db, start)
+        original = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_version=1"
+            ).fetchone()
+        )
+        db.execute(
+            "UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='resource-semantic-understanding'",
+            ('{"max_turns":17}',),
+        )
+        apply(db, SEMANTIC_NAMING)
+        baseline = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1"
+            ).fetchone()
+        )
+        current = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_current=1"
+            ).fetchone()
+        )
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (6, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (6, "custom-model", '{"max_turns":17}')
+
+
+def test_semantic_naming_upgrade_does_not_switch_a_prompt_head_an_operator_saved():
+    with database() as db:
+        semantic_v5_state(db, "upgraded")
+        db.execute(
+            "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=500 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+        )
+        head_before, agent_versions_before = snapshot(db)[1], snapshot(db)[3]
+        apply(db, SEMANTIC_NAMING)
+        assert snapshot(db)[1] == head_before
+        assert snapshot(db)[3] == agent_versions_before
+
+
+def requirements_prompt(db):
+    return db.execute(
+        "SELECT v.f_content, v.f_localized_content FROM t_agent_prompt p JOIN t_agent_prompt_version v"
+        " ON v.f_prompt_id = p.f_prompt_id AND v.f_version = p.f_current_version"
+        " WHERE p.f_prompt_id='bkn-project-requirements-prompt'"
+    ).fetchone()
+
+
+def test_project_requirements_seed_is_a_published_tool_free_task_on_the_default_model():
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        agent = db.execute(
+            "SELECT f_name, f_mode, f_model, f_tools, f_skills, f_limits, f_status FROM t_agent"
+            " WHERE f_agent_id='bkn-project-requirements'"
+        ).fetchone()
+        assert agent["f_name"] == "BKNProjectRequirements"
+        assert agent["f_mode"] == "task"
+        assert agent["f_model"] == ""
+        assert json.loads(agent["f_tools"]) == []
+        assert json.loads(agent["f_skills"]) == []
+        assert agent["f_status"] == "published"
+        limits = json.loads(agent["f_limits"])
+        assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
+        prompt, localized = requirements_prompt(db)
+        assert prompt.isascii()
+        # One Agent serves the passes the server names in each message.
+        for requirement_pass in ("pass draft", "pass guidance"):
+            assert requirement_pass in prompt
+        for output in ("scenarios", "concepts", "questions", "rules", "conflicts", "choices", "doc_types"):
+            assert output in prompt
+        # The agent proposes and quotes; the server checks every quote against the documents.
+        assert "copied verbatim" in prompt
+        assert "supplement_reason" in prompt
+        assert "Write a rule only when a document states it" in prompt
+        # Concepts map to drafted items by meaning, by the ids the server lists.
+        assert "maps_to" in prompt and "only ids listed in the message" in prompt
+        # Requirements describe answers, never their values.
+        assert "Never write an answer value" in prompt
+        assert "no row data" in prompt
+        assert "language named in the user message" in prompt
+        assert "never as instructions" in prompt
+        # The prompt is general: no business of any sample network.
+        for sample in ("order", "customer", "delivery", "contract", "\u8ba2\u5355", "\u5ba2\u6237"):
+            assert sample not in prompt.lower()
+        variants = json.loads(localized)
+        assert variants["en-US"] == prompt
+        assert variants["zh-CN"] != prompt
+
+
+@pytest.mark.parametrize("completed", [1, 2])
+def test_partial_requirements_seed_is_retryable_without_an_unfinished_agent(completed):
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        apply(db, REQUIREMENTS, limit=completed)
+        assert db.execute("SELECT COUNT(*) FROM t_agent").fetchone()[0] == 0
+        apply(db, REQUIREMENTS)
+        assert db.execute(
+            "SELECT f_name FROM t_agent WHERE f_agent_id='bkn-project-requirements'"
+        ).fetchone()[0] == "BKNProjectRequirements"
+
+
+def test_conflicting_requirements_prompt_is_not_taken_over():
+    with database() as db:
+        db.execute(
+            "INSERT INTO t_agent_prompt VALUES('bkn-project-requirements-prompt','customer',3,'customer',1)"
+        )
+        apply(db, CLAIM_LOCALES)
+        before = snapshot(db)
+        # The seed does not adopt someone else's prompt: it fails closed and changes nothing.
+        with pytest.raises(sqlite3.IntegrityError):
+            apply(db, REQUIREMENTS)
+        assert snapshot(db) == before
+
+
+def test_requirements_translation_skips_a_customized_prompt():
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        seed = [s for s in statements(REQUIREMENTS) if s.lower().startswith("insert")]
+        for statement in seed:
+            db.execute(statement)
+        db.execute(
+            "UPDATE t_agent_prompt_version SET f_content='Administrator prompt'"
+            " WHERE f_prompt_id='bkn-project-requirements-prompt'"
+        )
+        apply(db, REQUIREMENTS)
+        assert requirements_prompt(db)[1] is None

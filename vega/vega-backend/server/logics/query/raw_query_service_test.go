@@ -10,15 +10,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"math"
 	"net/http"
-	"os/exec"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/agiledragon/gomonkey/v2"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
@@ -28,40 +28,17 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/sqlglot"
+	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
+	mysql "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/mariadb"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/postgresql"
 )
 
-// NewRawQueryServiceWithDeps 创建SQL查询服务（用于测试）
-func NewRawQueryServiceWithDeps(cs interfaces.CatalogService, rs interfaces.ResourceService) interfaces.RawQueryService {
-	return &rawQueryService{cs: cs, rs: rs}
-}
-
-func TestTargetDialectForCatalog(t *testing.T) {
-	cases := []struct {
-		name          string
-		connectorType string
-		want          string
-	}{
-		{name: "mysql", connectorType: interfaces.ConnectorTypeMySQL, want: "mysql"},
-		{name: "mariadb", connectorType: interfaces.ConnectorTypeMariaDB, want: "mysql"},
-		{name: "postgresql", connectorType: interfaces.ConnectorTypePostgreSQL, want: "postgres"},
-		{name: "sqlserver", connectorType: interfaces.ConnectorTypeSQLServer, want: "tsql"},
-		{name: "oracle", connectorType: interfaces.ConnectorTypeOracle, want: "oracle"},
-		{name: "hana", connectorType: interfaces.ConnectorTypeHANA, want: sqlglot.GenericDialect},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := targetDialectForCatalog(context.Background(), &interfaces.Catalog{ConnectorType: tc.connectorType})
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-	t.Run("rejects unsupported connector type", func(t *testing.T) {
-		got, err := targetDialectForCatalog(context.Background(), &interfaces.Catalog{ConnectorType: "unknown"})
-		require.Error(t, err)
-		assert.Empty(t, got)
-	})
+type builderConnector struct {
+	interfaces.TableConnector
+	run  func(context.Context, *sb.SelectBuilder) (*interfaces.RawQueryResponse, error)
+	open func(context.Context, *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error)
+	scan func(*sql.Rows, []interfaces.ColumnInfo) (map[string]any, error)
 }
 
 func int64Pointer(value int64) *int64 {
@@ -90,58 +67,161 @@ func expectRawQueryResources(mockRS *vmock.MockResourceService,
 	mockRS.EXPECT().InternalGetByIDs(gomock.Any(), resourceIDs).Return(resourcesByID, nil)
 }
 
-type deadlineInspectingPolicy struct {
-	sawDeadline bool
-}
-
-type recordingPolicy struct {
-	dialects        []string
-	derivedDialects []string
-	resourceIDs     []string
-}
-
-func (p *recordingPolicy) ExtractTableResourceIDs(context.Context, string, string) ([]string, error) {
-	return p.resourceIDs, nil
-}
-
-func (p *recordingPolicy) ValidateSQL(_ context.Context, _ string, dialect string) error {
-	p.dialects = append(p.dialects, dialect)
-	return nil
-}
-
-func (p *recordingPolicy) ValidateDerivedTable(_ context.Context, _ string, dialect string) error {
-	p.derivedDialects = append(p.derivedDialects, dialect)
-	return nil
-}
-
-func (p *deadlineInspectingPolicy) ExtractTableResourceIDs(context.Context, string, string) ([]string, error) {
-	return []string{"resource-1"}, nil
-}
-
-func (p *recordingPolicy) ValidateTableReferences(context.Context, string, string, []string) error {
-	return nil
-}
-
-func (p *deadlineInspectingPolicy) ValidateSQL(ctx context.Context, _ string, _ string) error {
-	_, p.sawDeadline = ctx.Deadline()
-	return errors.New("stop after inspecting policy context")
-}
-
-func (p *deadlineInspectingPolicy) ValidateDerivedTable(ctx context.Context, _ string, _ string) error {
-	_, p.sawDeadline = ctx.Deadline()
-	return errors.New("stop after inspecting policy context")
-}
-
-func (p *deadlineInspectingPolicy) ValidateTableReferences(context.Context, string, string, []string) error {
-	return nil
-}
-
 func TestRawQueryServiceExecute(t *testing.T) {
+	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB} {
+		t.Run(connectorType+" actual connector", func(t *testing.T) {
+			for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
+				t.Run(string(mode)+" preserves binary bytes and text through JSON encoding", func(t *testing.T) {
+					svc, rs, cs, cf := mysqlRawServices(t)
+					resource := builderTestResource()
+					mysqlRawMetadata(rs, cs, resource, true, connectorType)
+					mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+					statement := "SELECT `bits`, `payload`, `label`, `flag` FROM `sales.eu`.`order.items` ORDER BY `id` ASC"
+					limit := 2
+					if mode == interfaces.PagingModeSingle {
+						statement += " LIMIT 3"
+						limit = 3
+					}
+					mocks[0].ExpectQuery(statement).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+						sqlmock.NewColumn("bits").OfType("BIT", []byte{}),
+						sqlmock.NewColumn("payload").OfType("VARBINARY", []byte{}),
+						sqlmock.NewColumn("label").OfType("TEXT", ""),
+						sqlmock.NewColumn("flag").OfType("TINYINT", int64(0)),
+					).AddRow([]byte{0xff, 0}, []byte{0, 0xff}, []byte("text"), int64(127)).
+						AddRow([]byte{}, []byte{}, []byte{}, int64(0)).AddRow(nil, nil, nil, nil)).RowsWillBeClosed()
+					mocks[0].ExpectClose()
+					result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+						QueryFormat: interfaces.QueryFormatSQL,
+						Query:       "SELECT bits, payload, label, flag FROM {{orders}} ORDER BY id",
+						Paging:      interfaces.PagingRequest{Mode: mode, Limit: limit},
+					})
+					require.NoError(t, err)
+					assert.Equal(t, []interfaces.ColumnInfo{{Name: "bits", Type: interfaces.DataType_Binary}, {Name: "payload", Type: interfaces.DataType_Binary}, {Name: "label", Type: interfaces.DataType_Text}, {Name: "flag", Type: interfaces.DataType_Integer}}, result.Columns)
+					entries := result.Entries
+					if mode == interfaces.PagingModeCursor {
+						require.Len(t, entries, 2)
+						require.NotNil(t, result.Paging.NextCursor)
+						mysqlRawMetadata(rs, cs, resource, true, connectorType)
+						result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *result.Paging.NextCursor}})
+						require.NoError(t, err)
+						assert.Nil(t, result.Paging.NextCursor)
+						entries = append(entries, result.Entries...)
+					}
+					require.Len(t, entries, 3)
+					assert.Equal(t, []byte{0xff, 0}, entries[0]["bits"])
+					assert.Equal(t, []byte{0, 0xff}, entries[0]["payload"])
+					wire, err := json.Marshal(entries)
+					require.NoError(t, err)
+					assert.JSONEq(t, `[{"bits":"/wA=","payload":"AP8=","label":"text","flag":127},{"bits":"","payload":"","label":"","flag":0},{"bits":null,"payload":null,"label":null,"flag":null}]`, string(wire))
+					assert.Empty(t, rawQueryCursorSessions.sessions)
+				})
+			}
+			t.Run("single page binds exact values and counts the logical query", func(t *testing.T) {
+				svc, rs, cs, cf := mysqlRawServices(t)
+				mysqlRawMetadata(rs, cs, builderTestResource(), true, connectorType)
+				mocks := nativeSQLConnectorMocks(t, cf, connectorType, 2)
+				base := "SELECT `o`.`id`, CAST(? AS DECIMAL(19,3)) AS `amount`, ? AS `optional` FROM `sales.eu`.`order.items` AS `o` WHERE (`o`.`id` > ?) ORDER BY `o`.`id` ASC"
+				mocks[0].ExpectQuery("SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+base+" LIMIT 5 OFFSET 2) AS `_raw_query_total`").
+					WithArgs("9007199254740993.125", nil, int64(1)).
+					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("BIGINT", int64(0))).AddRow(5)).RowsWillBeClosed()
+				mocks[0].ExpectClose()
+				mocks[1].ExpectQuery(base+" LIMIT 2 OFFSET 3").WithArgs("9007199254740993.125", nil, int64(1)).
+					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+						sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
+						sqlmock.NewColumn("amount").OfType("DECIMAL", ""),
+						sqlmock.NewColumn("optional").OfType("VARCHAR", ""),
+					).AddRow(4, []byte("9007199254740993.125"), nil).AddRow(5, []byte("9007199254740993.125"), nil)).RowsWillBeClosed()
+				mocks[1].ExpectClose()
+
+				result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+					QueryFormat: interfaces.QueryFormatSQL,
+					Query:       "SELECT o.id, 9007199254740993.125 AS amount, NULL AS optional FROM {{ orders }} o WHERE o.id > 1 ORDER BY o.id LIMIT 5 OFFSET 2",
+					NeedTotal:   true, Paging: interfaces.PagingRequest{Limit: 2, Offset: 1},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Decimal}, {Name: "optional", Type: interfaces.DataType_String}}, result.Columns)
+				assert.Equal(t, []map[string]any{{"id": int64(4), "amount": "9007199254740993.125", "optional": nil}, {"id": int64(5), "amount": "9007199254740993.125", "optional": nil}}, result.Entries)
+				require.NotNil(t, result.TotalCount)
+				assert.EqualValues(t, 5, *result.TotalCount)
+				assert.Equal(t, []string{"orders"}, result.ResourceIDs)
+			})
+			t.Run("cursor keeps the actual connector and Rows after the first request ends", func(t *testing.T) {
+				svc, rs, cs, cf := mysqlRawServices(t)
+				resource := builderTestResource()
+				mysqlRawMetadata(rs, cs, resource, true, connectorType)
+				mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+				mocks[0].ExpectQuery("SELECT `id`, CAST(? AS DECIMAL(19,3)) AS `amount` FROM `sales.eu`.`order.items` WHERE (`id` > ?) ORDER BY `id` ASC LIMIT 3 OFFSET 2").
+					WithArgs("9007199254740993.125", int64(0)).
+					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+						sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
+						sqlmock.NewColumn("amount").OfType("DECIMAL", ""),
+					).AddRow(3, []byte("9007199254740993.125")).AddRow(4, nil).AddRow(5, []byte("9007199254740993.125"))).RowsWillBeClosed()
+				mocks[0].ExpectClose()
+				firstCtx, cancel := context.WithCancel(compileTestContext())
+				defer cancel()
+				first, err := svc.Execute(firstCtx, &interfaces.RawQueryRequest{
+					QueryFormat: interfaces.QueryFormatSQL,
+					Query:       "SELECT id, 9007199254740993.125 AS amount FROM {{orders}} WHERE id > 0 ORDER BY id LIMIT 4 OFFSET 1",
+					Paging:      interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2, Offset: 1},
+				})
+				require.NoError(t, err)
+				require.NotNil(t, first.Paging.NextCursor)
+				token := *first.Paging.NextCursor
+				assert.Equal(t, []map[string]any{{"id": int64(3), "amount": "9007199254740993.125"}, {"id": int64(4), "amount": nil}}, first.Entries)
+				session, ok := rawQueryCursorSessions.acquire(token)
+				require.True(t, ok)
+				retainedRows := session.SQLRows
+				assert.IsType(t, &mysql.MariaDBConnector{}, session.SQLConnector)
+				rawQueryCursorSessions.release(session)
+				cancel()
+
+				mysqlRawMetadata(rs, cs, resource, true, connectorType)
+				last, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+				require.NoError(t, err)
+				assert.Equal(t, first.Columns, last.Columns)
+				assert.Equal(t, []map[string]any{{"id": int64(5), "amount": "9007199254740993.125"}}, last.Entries)
+				assert.Nil(t, last.TotalCount)
+				assert.Nil(t, last.Paging.NextCursor)
+				assert.NoError(t, retainedRows.Err())
+				assert.Empty(t, rawQueryCursorSessions.sessions)
+			})
+			for _, failure := range []string{"unknown column", "duplicate output names", "cursor read failure"} {
+				t.Run(failure+" releases the source without exposing its error", func(t *testing.T) {
+					svc, rs, cs, cf := mysqlRawServices(t)
+					mysqlRawMetadata(rs, cs, builderTestResource(), true, connectorType)
+					mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+					request := &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Limit: 2}}
+					statement := "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 2"
+					status := http.StatusBadRequest
+					if failure == "cursor read failure" {
+						request.Paging.Mode = interfaces.PagingModeCursor
+						statement = "SELECT `id` FROM `sales.eu`.`order.items`"
+						status = http.StatusInternalServerError
+					}
+					expected := mocks[0].ExpectQuery(statement)
+					switch failure {
+					case "unknown column":
+						expected.WillReturnError(&mysqldriver.MySQLError{Number: 1054, Message: "private source detail"})
+					case "duplicate output names":
+						expected.WillReturnRows(sqlmock.NewRows([]string{"id", "id"}).AddRow(1, 2)).RowsWillBeClosed()
+					case "cursor read failure":
+						expected.WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).RowError(1, errors.New("private source detail"))).RowsWillBeClosed()
+					}
+					mocks[0].ExpectClose()
+					result, err := svc.Execute(compileTestContext(), request)
+					assertHTTPError(t, err, status)
+					assert.Nil(t, result)
+					assert.NotContains(t, err.Error(), "private source detail")
+					assert.Empty(t, rawQueryCursorSessions.sessions)
+				})
+			}
+		})
+	}
 	t.Run("execute rejects disabled catalog for open search query", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := vmock.NewMockCatalogService(ctrl)
 		mockRS := vmock.NewMockResourceService(ctrl)
-		service := NewRawQueryServiceWithDeps(mockCS, mockRS)
+		service := &rawQueryService{cs: mockCS, rs: mockRS}
 
 		expectRawQueryResource(mockRS, "resource-1", &interfaces.Resource{
 			ID: "resource-1", CatalogID: "catalog-1", Enabled: true, SchemaDefinition: []*interfaces.Property{{Name: "id"}},
@@ -150,82 +230,11 @@ func TestRawQueryServiceExecute(t *testing.T) {
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
 
 		_, err := service.Execute(context.Background(), &interfaces.RawQueryRequest{
-			Query:        map[string]any{"resource_id": "resource-1"},
-			QueryFormat:  interfaces.QueryFormatDSL,
-			InputDialect: "opensearch",
+			Query:       map[string]any{"resource_id": "resource-1"},
+			QueryFormat: interfaces.QueryFormatDSL,
 		})
 		assertCatalogDisabledError(t, err)
 	})
-	rejectedTSQLTests := []struct {
-		name              string
-		sql               string
-		hasTableReference bool
-		needTotal         bool
-	}{
-		{name: "exec", sql: "EXEC('SELECT * FROM {{resource-1}}')"},
-		{name: "select into", sql: "SELECT * INTO archived_orders FROM {{resource-1}}", hasTableReference: true},
-		{name: "ddl", sql: "DROP TABLE {{resource-1}}", hasTableReference: true},
-		{name: "dml", sql: "UPDATE {{resource-1}} SET status = 'closed'", hasTableReference: true},
-		{name: "multiple statements", sql: "SELECT * FROM {{resource-1}}; DELETE FROM {{resource-1}}", hasTableReference: true},
-		{name: "top with ties", sql: "SELECT TOP (10) WITH TIES id FROM {{resource-1}} ORDER BY score", hasTableReference: true},
-		{name: "top percent", sql: "SELECT TOP (10) PERCENT id FROM {{resource-1}} ORDER BY score", hasTableReference: true},
-		{name: "for json", sql: "SELECT id FROM {{resource-1}} ORDER BY id FOR JSON PATH", hasTableReference: true},
-		{name: "for xml", sql: "SELECT id FROM {{resource-1}} FOR XML PATH", hasTableReference: true},
-		{name: "next sequence value", sql: "SELECT NEXT VALUE FOR dbo.order_seq OVER (ORDER BY id), id FROM {{resource-1}} ORDER BY id", hasTableReference: true},
-		{name: "offset fetch", sql: "SELECT id FROM {{resource-1}} ORDER BY id OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY", hasTableReference: true},
-		{name: "table lock hint", sql: "SELECT id FROM {{resource-1}} WITH (TABLOCKX)", hasTableReference: true},
-		{name: "non-literal top", sql: "SELECT TOP (5 + 5) id FROM {{resource-1}} ORDER BY id", hasTableReference: true},
-		{name: "unnamed aggregate with total", sql: "SELECT COUNT(*) FROM {{resource-1}}", hasTableReference: true, needTotal: true},
-	}
-	for _, test := range rejectedTSQLTests {
-		t.Run("rejects tsql before connector creation: "+test.name, func(t *testing.T) {
-			requireRawQuerySQLGlotRuntime(t)
-
-			ctrl := gomock.NewController(t)
-			var connectorCreations atomic.Int64
-			connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-			connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).
-				DoAndReturn(func(context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
-					connectorCreations.Add(1)
-					return nil, errors.New("connector must not be created")
-				}).AnyTimes()
-
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-			catalogService := vmock.NewMockCatalogService(ctrl)
-			resourceService := vmock.NewMockResourceService(ctrl)
-			svc := &rawQueryService{cs: catalogService, rs: resourceService, cf: connectorFactory}
-			if test.hasTableReference {
-				resource := &interfaces.Resource{
-					ID:               "resource-1",
-					Enabled:          true,
-					CatalogID:        "catalog-1",
-					SourceIdentifier: "[dbo].[orders]",
-					Status:           interfaces.ResourceStatusActive,
-					SchemaDefinition: []*interfaces.Property{{Name: "id"}},
-				}
-				expectRawQueryResources(resourceService, []string{"resource-1"}, resource)
-				catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-					ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
-				}, nil)
-				resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
-			}
-
-			result, err := svc.Execute(context.Background(), &interfaces.RawQueryRequest{
-				Query:        test.sql,
-				QueryFormat:  interfaces.QueryFormatSQL,
-				InputDialect: "tsql",
-				Paging:       interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 10},
-				NeedTotal:    test.needTotal,
-			})
-
-			assertHTTPError(t, err, http.StatusBadRequest)
-			assert.Nil(t, result)
-			assert.Zero(t, connectorCreations.Load())
-		})
-	}
 }
 
 func assertCatalogDisabledError(t *testing.T, err error) {
@@ -236,23 +245,6 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.ErrorCode)
-}
-
-func TestRawQueryValidationError(t *testing.T) {
-	t.Run("sanitizes read-only validation errors", func(t *testing.T) {
-		err := rawQueryValidationError(context.Background(), &querypolicy.ReadOnlySQLValidationError{
-			Reason: "READ_ONLY_SQL_REJECTED: invalid SQL SELECT * FROM accounts WHERE password = 'secret'",
-		})
-
-		var httpErr *httperrors.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
-		assert.NotContains(t, httpErr.Error(), "secret")
-	})
-	t.Run("ignores unrelated errors", func(t *testing.T) {
-		assert.NoError(t, rawQueryValidationError(context.Background(), errors.New("unexpected error")))
-	})
 }
 
 func TestRawQueryTotalCount(t *testing.T) {
@@ -331,7 +323,7 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 		req  *interfaces.RawQueryRequest
 	}{
 		{
-			name: "new SQL contract defaults to mysql",
+			name: "SQL contract",
 			req: &interfaces.RawQueryRequest{
 				Query:       "select * from {{r1}}",
 				QueryFormat: interfaces.QueryFormatSQL,
@@ -340,9 +332,8 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 		{
 			name: "new opensearch DSL contract",
 			req: &interfaces.RawQueryRequest{
-				Query:        map[string]any{"resource_id": "r1"},
-				QueryFormat:  interfaces.QueryFormatDSL,
-				InputDialect: "opensearch",
+				Query:       map[string]any{"resource_id": "r1"},
+				QueryFormat: interfaces.QueryFormatDSL,
 			},
 		},
 	}
@@ -352,122 +343,192 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 			require.NoError(t, svc.validateRequest(context.Background(), tt.req))
 		})
 	}
-	t.Run("rejects incompatible input dialect", func(t *testing.T) {
-		svc := &rawQueryService{}
-		err := svc.validateRequest(context.Background(), &interfaces.RawQueryRequest{
-			Query:        "select 1",
-			QueryFormat:  interfaces.QueryFormatSQL,
-			InputDialect: "opensearch",
-		})
-
-		assertHTTPError(t, err, http.StatusBadRequest)
-	})
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
-
-	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
-		requireRawQuerySQLGlotRuntime(t)
-		ctrl := gomock.NewController(t)
-		mockCS := vmock.NewMockCatalogService(ctrl)
-		mockRS := vmock.NewMockResourceService(ctrl)
-		resource := &interfaces.Resource{
-			ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-			Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
-			SchemaDefinition: []*interfaces.Property{{Name: "created_at"}},
+	t.Run("joined group authorizes and binds every nested source", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		ids := []string{"orders", "members", "projects"}
+		resources := make([]*interfaces.Resource, 0, len(ids))
+		for _, id := range ids {
+			resource := builderTestResource()
+			resource.ID, resource.SourceIdentifier = id, "`"+id+"`"
+			resources = append(resources, resource)
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, id).Return(resource, nil)
 		}
-		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
-		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
-		}, nil)
-
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-		patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
-			func(context.Context, string, string, string) (*sqlglot.SQLParseResult, error) {
-				t.Error("ASCII TSQL must not be recompiled")
-				return nil, errors.New("unexpected compilation")
-			})
-		defer patches.Reset()
-
-		prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-			Query: "select DATEPART(YEAR, created_at) as year_value from {{resource-1}} where status = 'active'", QueryFormat: interfaces.QueryFormatSQL, InputDialect: "tsql",
+		expectRawQueryResources(rs, ids, resources...)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: interfaces.ConnectorTypeMySQL, Enabled: true}, nil)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
+			Query: "SELECT a.id FROM {{orders}} a LEFT JOIN ({{members}} m JOIN ({{projects}} p) ON m.id=p.id) ON a.id=m.id", QueryFormat: interfaces.QueryFormatSQL,
 		})
 		require.NoError(t, err)
-		assert.Equal(t, "select DATEPART(YEAR, created_at) as year_value from [dbo].[orders] where status = 'active'", prepared.sql)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 3)
+		for i, table := range tables {
+			assert.Equal(t, ids[i], table.ResourceID)
+			assert.Equal(t, resources[i].SourceIdentifier, table.SourceIdentifier)
+			assert.NotNil(t, table.ColumnNames)
+		}
+		assert.Len(t, prepared.resourceVersions, 3)
 	})
-	for _, inputDialect := range []string{"mysql", "postgres", "tsql"} {
-		t.Run("normalizes SQL Server Unicode literals from "+inputDialect, func(t *testing.T) {
-			requireRawQuerySQLGlotRuntime(t)
-			ctrl := gomock.NewController(t)
-			mockCS := vmock.NewMockCatalogService(ctrl)
-			mockRS := vmock.NewMockResourceService(ctrl)
-			resource := &interfaces.Resource{
-				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-				Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
-				SchemaDefinition: []*interfaces.Property{{Name: "name"}},
-			}
-			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(1)
-			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-				ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
-			}, nil)
-
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-				Query: "SELECT name FROM {{resource-1}} WHERE name = '刘🙂备'", QueryFormat: interfaces.QueryFormatSQL, InputDialect: inputDialect,
-			})
+	t.Run("joined group permission denial stops before metadata", func(t *testing.T) {
+		svc, rs, _, _ := mysqlRawServices(t)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		denial := httperrors.NewHTTPError(compileTestContext(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "members", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denial)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
+			Query: "SELECT a.id FROM {{orders}} a LEFT JOIN ({{members}} m JOIN {{orders}} b ON m.id=b.id) ON a.id=m.id", QueryFormat: interfaces.QueryFormatSQL,
+		})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusForbidden)
+	})
+	t.Run("SQL Server receives physical source column names without rewriting query fields", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", OriginalName: "AMOUNT"}, {Name: "id"}}
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeSQLServer)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
+			Query: "SELECT ROUND(amount,0) AS amount,COUNT(*) AS n FROM {{orders}} GROUP BY amount", QueryFormat: interfaces.QueryFormatSQL,
+		})
+		require.NoError(t, err)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, []string{"AMOUNT", "id"}, tables[0].ColumnNames)
+		assert.Equal(t, "amount", prepared.builder.GroupByPart[0].(*sb.Column).Name)
+		assert.Equal(t, "amount", resource.SchemaDefinition[0].Name)
+	})
+	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL} {
+		t.Run(connectorType+" composite key statistics use the native parser and builder", func(t *testing.T) {
+			svc, rs, cs, _ := mysqlRawServices(t)
+			resource := builderTestResource()
+			mysqlRawMetadata(rs, cs, resource, true, connectorType)
+			input := "SELECT COUNT(*) AS row_count, COUNT(CASE WHEN `a` IS NOT NULL AND `b` IS NOT NULL THEN 1 END) AS keyed_rows, COUNT(DISTINCT CASE WHEN `a` IS NOT NULL AND `b` IS NOT NULL THEN CONCAT_WS(CHAR(31), `a`, `b`) END) AS primary_key_distinct FROM {{orders}}"
+			prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: input, QueryFormat: interfaces.QueryFormatSQL})
 			require.NoError(t, err)
-			assert.Equal(t, "SELECT name FROM [dbo].[orders] WHERE name = N'刘🙂备'", prepared.sql)
+			require.NotNil(t, prepared.builder)
+			var text string
+			var args []any
+			if connectorType == interfaces.ConnectorTypePostgreSQL {
+				text, args, err = postgresql.ToSql(prepared.builder)
+			} else {
+				text, args, err = mysql.ToSql(prepared.builder)
+			}
+			require.NoError(t, err)
+			assert.Contains(t, text, "CONCAT_WS(")
+			assert.Contains(t, text, "COUNT(DISTINCT CASE WHEN")
+			require.Len(t, args, 2)
+			if connectorType == interfaces.ConnectorTypePostgreSQL {
+				assert.Equal(t, "31", args[1])
+			} else {
+				assert.Contains(t, text, "CHAR(")
+				assert.Equal(t, json.Number("31"), args[1])
+			}
 		})
 	}
-	for _, tc := range []struct {
-		name          string
-		inputDialect  string
-		connectorType string
-		wantDialect   string
-		wantSQL       string
-	}{
-		{name: "generic input for HANA", inputDialect: "generic", connectorType: interfaces.ConnectorTypeHANA, wantDialect: sqlglot.GenericDialect, wantSQL: `SELECT id FROM "APP"."orders"`},
-		{name: "Oracle input for Oracle", inputDialect: "oracle", connectorType: interfaces.ConnectorTypeOracle, wantDialect: "oracle", wantSQL: `SELECT id FROM "APP"."orders"`},
-		{name: "MariaDB input for MariaDB", inputDialect: "mariadb", connectorType: interfaces.ConnectorTypeMariaDB, wantDialect: "mysql", wantSQL: "SELECT id FROM `APP`.`orders`"},
-		{name: "ASCII TSQL input for SQL Server", inputDialect: "tsql", connectorType: interfaces.ConnectorTypeSQLServer, wantDialect: "tsql", wantSQL: "SELECT id FROM [APP].[orders]"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mockCS := vmock.NewMockCatalogService(ctrl)
-			mockRS := vmock.NewMockResourceService(ctrl)
-			resource := &interfaces.Resource{
-				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-				Schema: "APP", SourceIdentifier: strings.TrimPrefix(tc.wantSQL, "SELECT id FROM "), Status: interfaces.ResourceStatusActive,
-				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
-			}
-			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
-			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-				ID: "catalog-1", Enabled: true, ConnectorType: tc.connectorType,
-			}, nil)
+	t.Run("Doris prepares MySQL SQL with Builder", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = "`ext.catalog`.`sales.eu`.`order.items`"
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeDoris)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT a.id FROM {{ orders }} a WHERE a.id>1 ORDER BY a.id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, resource.SourceIdentifier, tables[0].SourceIdentifier)
+	})
+	t.Run("Doris parse failures stop before resource lookup", func(t *testing.T) {
+		svc, _, _, _ := mysqlRawServices(t)
 
-			policy := &recordingPolicy{resourceIDs: []string{"resource-1"}}
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = policy
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "WITH r AS (SELECT * FROM {{orders}}) SELECT * FROM r", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
+	t.Run("Oracle prepares MySQL SQL with Builder", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"sales.eu"."order.items"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeOracle)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT a.id FROM {{ orders }} a WHERE a.id>1 ORDER BY a.id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, resource.SourceIdentifier, tables[0].SourceIdentifier)
+	})
+	t.Run("Oracle parse failures stop before resource lookup", func(t *testing.T) {
+		svc, _, _, _ := mysqlRawServices(t)
 
-			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-				Query: "SELECT id FROM {{resource-1}}", QueryFormat: interfaces.QueryFormatSQL, InputDialect: tc.inputDialect,
-			})
-			require.NoError(t, err)
-			assert.Equal(t, tc.wantSQL, prepared.sql)
-			assert.Empty(t, policy.dialects)
-			assert.Equal(t, []string{tc.wantDialect}, policy.derivedDialects)
-		})
-	}
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "WITH r AS (SELECT * FROM {{orders}}) SELECT * FROM r", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
+	t.Run("HANA prepares MySQL SQL and preserves source identifiers", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		source := builderTestResource()
+		source.SourceIdentifier = `"SALES.EU"."order.items"`
+		mysqlRawMetadata(rs, cs, source, true, interfaces.ConnectorTypeHANA)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT a.id FROM {{ orders }} a WHERE a.id>1 ORDER BY a.id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, source.SourceIdentifier, tables[0].SourceIdentifier)
+		assert.Equal(t, "a", tables[0].Alias)
+	})
+	t.Run("HANA parse failures stop before resource lookup", func(t *testing.T) {
+		svc, _, _, _ := mysqlRawServices(t)
+
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "WITH r AS (SELECT * FROM {{orders}}) SELECT * FROM r", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
+
+	t.Run("star grouping positions are left to the source without schema expansion", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT o.*,COUNT(*) AS n FROM {{orders}} o GROUP BY 1,2", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		text, args, err := postgresql.ToSql(prepared.builder)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT "o".*, COUNT(*) AS "n" FROM "public"."orders" AS "o" GROUP BY 1, 2`, text)
+		assert.Empty(t, args)
+	})
+
+	t.Run("PG binds spaced MySQL placeholders with Builder", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT '{{ orders }}' AS label FROM {{ \torders\r\n }} a JOIN {{orders}} b ON a.id=b.id /* {{orders}} */", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		text, args, err := postgresql.ToSql(prepared.builder)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT $1 AS "label" FROM "public"."orders" AS "a" INNER JOIN "public"."orders" AS "b" ON ("a"."id" = "b"."id")`, text)
+		assert.Equal(t, []any{"{{ orders }}"}, args)
+		assert.Equal(t, []string{"orders"}, prepared.resourceIDs)
+	})
+	t.Run("PG invalid input stops before resource lookup", func(t *testing.T) {
+		svc, _, _, _ := mysqlRawServices(t)
+
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "WITH r AS (SELECT * FROM {{ orders }}) SELECT * FROM r", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
+
+	t.Run("SQL Server prepares Unicode MySQL SQL with Builder", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = "[Sales.eu].[ord]]ers]"
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeSQLServer)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} WHERE id=1 AND name='刘🙂备' ORDER BY id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		assert.Equal(t, "[Sales.eu].[ord]]ers]", prepared.builder.FromPart.(*sb.Table).SourceIdentifier)
+	})
 
 	for _, sql := range []string{
 		"SELECT * FROM public.orders /* {{resource-1}} */",
@@ -476,94 +537,24 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 	} {
 		t.Run("rejects placeholder outside table reference: "+sql, func(t *testing.T) {
 			svc := &rawQueryService{}
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = &recordingPolicy{}
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
 
 			_, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-				Query:        sql,
-				QueryFormat:  interfaces.QueryFormatSQL,
-				InputDialect: "postgres",
+				Query:       sql,
+				QueryFormat: interfaces.QueryFormatSQL,
 			})
 			assertHTTPError(t, err, http.StatusBadRequest)
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
-			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.ErrorDetails)
+			assert.Contains(t, httpErr.ErrorDetails, "invalid SQL syntax")
 		})
 	}
-	t.Run("revalidates transpiled SQL", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := vmock.NewMockCatalogService(ctrl)
-		mockRS := vmock.NewMockResourceService(ctrl)
-		svc := &rawQueryService{cs: mockCS, rs: mockRS}
-		resource := &interfaces.Resource{
-			ID:               "resource-1",
-			Enabled:          true,
-			CatalogID:        "catalog-1",
-			SourceIdentifier: "`orders`",
-			Status:           interfaces.ResourceStatusActive,
-			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
-		}
-		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).AnyTimes()
-		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL,
-		}, nil)
+	t.Run("SQL Server parse failures stop before resource lookup", func(t *testing.T) {
+		svc, _, _, _ := mysqlRawServices(t)
 
-		policy := &recordingPolicy{resourceIDs: []string{"resource-1"}}
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = policy
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-		patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
-			func(context.Context, string, string, string) (*sqlglot.SQLParseResult, error) {
-				return &sqlglot.SQLParseResult{SQL: "SELECT * FROM __vega_resource_0"}, nil
-			})
-		defer patches.Reset()
-		patches.ApplyFunc(sqlglot.BindTableReferences, func(_ context.Context, sql, dialect string, bindings map[string]string) (*sqlglot.SQLParseResult, error) {
-			assert.Equal(t, "SELECT * FROM __vega_resource_0", sql)
-			assert.Equal(t, "mysql", dialect)
-			assert.Equal(t, map[string]string{"__vega_resource_0": "`orders`"}, bindings)
-			return &sqlglot.SQLParseResult{SQL: "SELECT * FROM `orders`", Dialect: "mysql"}, nil
-		})
-
-		prepared, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-			Query:        "SELECT * FROM {{resource-1}}",
-			QueryFormat:  interfaces.QueryFormatSQL,
-			InputDialect: "trino",
-		})
-		require.NoError(t, err)
-		assert.Equal(t, "SELECT * FROM `orders`", prepared.sql)
-		assert.Equal(t, []string{"trino"}, policy.dialects)
-		assert.Equal(t, []string{"mysql"}, policy.derivedDialects)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT TOP (3) id FROM {{orders}}", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
 	})
-}
-
-func TestReplacePlaceholderInSQLCode(t *testing.T) {
-	t.Run("preserves comments and literals", func(t *testing.T) {
-		got := replacePlaceholderInSQLCode(
-			"SELECT '{{resource-1}}' FROM {{resource-1}} /* {{resource-1}} */ -- {{resource-1}}\n",
-			"{{resource-1}}", "public.orders", "postgres",
-		)
-		assert.Equal(t, "SELECT '{{resource-1}}' FROM public.orders /* {{resource-1}} */ -- {{resource-1}}\n", got)
-	})
-
-	t.Run("honors mysql backslash escapes", func(t *testing.T) {
-		got := replacePlaceholderInSQLCode(
-			"SELECT 'it\\'s {{resource-1}}' FROM {{resource-1}}",
-			"{{resource-1}}", "public.orders", "mysql",
-		)
-		assert.Equal(t, "SELECT 'it\\'s {{resource-1}}' FROM public.orders", got)
-	})
-	for _, dialect := range []string{"mysql", "doris"} {
-		t.Run(dialect+" double-quoted backslash escapes", func(t *testing.T) {
-			got := replacePlaceholderInSQLCode(
-				`SELECT "a\"b {{resource-1}}" FROM {{resource-1}}`,
-				"{{resource-1}}", "public.orders", dialect,
-			)
-			assert.Equal(t, `SELECT "a\"b {{resource-1}}" FROM public.orders`, got)
-		})
-	}
-
 }
 
 func TestQueryExecutionContext(t *testing.T) {
@@ -597,13 +588,16 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 		}
 		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
 		}, nil)
 
-		policy := &deadlineInspectingPolicy{}
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = policy
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+		sawDeadline := false
+		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").DoAndReturn(func(ctx context.Context, _ *sql.Tx, _ string) (*interfaces.Resource, error) {
+			deadline, ok := ctx.Deadline()
+			remaining := time.Until(deadline)
+			sawDeadline = ok && remaining > 0 && remaining <= time.Second
+			return nil, errors.New("metadata unavailable")
+		})
 
 		_, err := svc.executeInitialSQLQuery(context.Background(), &interfaces.RawQueryRequest{
 			Query:           "SELECT * FROM {{resource-1}}",
@@ -612,7 +606,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 			Paging:          interfaces.PagingRequest{Limit: 1},
 		})
 		require.Error(t, err)
-		assert.True(t, policy.sawDeadline)
+		assert.True(t, sawDeadline)
 	})
 }
 
@@ -621,7 +615,7 @@ func TestValidateCursorResourceBinding(t *testing.T) {
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = newCursorSessionManager(10, 9)
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
-		rawSession, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
+		rawSession, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, 1, 60, 60)
 		require.NoError(t, err)
 		err = validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1"})
 		var httpErr *httperrors.HTTPError
@@ -629,7 +623,7 @@ func TestValidateCursorResourceBinding(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		require.NoError(t, validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{}))
 
-		session, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
+		session, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, 1, 60, 60)
 		require.NoError(t, err)
 		bindCursorResource(session, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1", ResourceDataUpdateTime: 10})
 
@@ -648,240 +642,6 @@ func TestValidateCursorResourceBinding(t *testing.T) {
 		_, exists = rawQueryCursorSessions.acquire(session.ID)
 		assert.False(t, exists)
 	})
-}
-
-func requireRawQuerySQLGlotRuntime(t *testing.T) {
-	t.Helper()
-	if err := exec.Command("python3", "-c",
-		"import sqlglot; assert callable(getattr(sqlglot, 'parse_one', None))").Run(); err != nil {
-		t.Skip("sqlglot Python runtime is not installed")
-	}
-}
-
-func TestRawQueryServiceExecuteSQL(t *testing.T) {
-	t.Run("single page uses connector paging wrapper", func(t *testing.T) {
-		catalog := rawQuerySQLServerCatalog()
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		gomock.InOrder(
-			connector.EXPECT().Connect(gomock.Any()).Return(nil),
-			connector.EXPECT().BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10).Return("TSQL SINGLE PAGE"),
-			connector.EXPECT().ExecuteRawSQL(gomock.Any(), "TSQL SINGLE PAGE").Return(&interfaces.RawQueryResponse{
-				Entries: []map[string]any{{"id": 1}},
-			}, nil),
-			connector.EXPECT().Close(gomock.Any()).Return(nil),
-		)
-
-		result, err := svc.executeSQL(context.Background(), catalog,
-			"SELECT id FROM dbo.orders", interfaces.PagingModeSingle, &rawSQLBuildOptions{offset: 20, limit: 10})
-
-		require.NoError(t, err)
-		assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
-	})
-
-	t.Run("does not expose MySQL driver details for an unknown column", func(t *testing.T) {
-		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "mariadb-catalog", ConnectorType: interfaces.ConnectorTypeMariaDB}
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
-			Return(nil, fmt.Errorf("execute query failed: %w", interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, errors.New("Unknown column 'no_such_column' in 'field list'"))))
-
-		_, err := svc.executeSQL(context.Background(), catalog,
-			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
-
-		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *httperrors.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
-		assert.Equal(t, "query references an unknown column", httpErr.ErrorDetails)
-	})
-
-	t.Run("returns source read forbidden for connector privilege errors", func(t *testing.T) {
-		catalog := rawQuerySQLServerCatalog()
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT id FROM brands").
-			Return(nil, fmt.Errorf("execute query failed: %w",
-				interfaces.NewSourceReadForbiddenError(errors.New("source driver privilege details"))))
-
-		result, err := svc.executeSQL(context.Background(), catalog,
-			"SELECT id FROM brands", interfaces.PagingModeSingle, nil)
-
-		assert.Nil(t, result)
-		assertHTTPError(t, err, http.StatusForbidden)
-		var httpErr *httperrors.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.ErrorCode)
-		assert.Empty(t, httpErr.ErrorDetails)
-	})
-
-	t.Run("connects before executing unpaged SQL", func(t *testing.T) {
-		catalog := rawQuerySQLServerCatalog()
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(errors.New("connection refused"))
-
-		_, err := svc.executeSQL(context.Background(), catalog,
-			"SELECT id FROM dbo.orders", interfaces.PagingModeSingle, nil)
-
-		assertHTTPError(t, err, http.StatusInternalServerError)
-	})
-
-	t.Run("does not expose PostgreSQL driver details for an unknown column", func(t *testing.T) {
-		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "postgresql-catalog", ConnectorType: interfaces.ConnectorTypePostgreSQL}
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT no_such_column FROM brands").
-			Return(nil, fmt.Errorf("execute query failed: %w", interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, errors.New("column \"no_such_column\" does not exist"))))
-
-		_, err := svc.executeSQL(context.Background(), catalog,
-			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
-
-		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *httperrors.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
-		assert.Equal(t, "query references an unknown column", httpErr.ErrorDetails)
-	})
-
-	t.Run("uses generic detail for other source query parameter failures", func(t *testing.T) {
-		catalog := rawQuerySQLServerCatalog()
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT id FROM brands").
-			Return(nil, fmt.Errorf("execute query failed: %w",
-				interfaces.NewSourceQueryInvalidParameterError("type_mismatch", errors.New("driver type mismatch details"))))
-
-		result, err := svc.executeSQL(context.Background(), catalog,
-			"SELECT id FROM brands", interfaces.PagingModeSingle, nil)
-
-		assert.Nil(t, result)
-		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *httperrors.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
-		assert.Equal(t, "invalid source query parameter", httpErr.ErrorDetails)
-	})
-
-	t.Run("preserves internal errors for other database failures", func(t *testing.T) {
-		catalog := rawQuerySQLServerCatalog()
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "SELECT id FROM brands").
-			Return(nil, errors.New("database connection lost"))
-
-		_, err := svc.executeSQL(context.Background(), catalog,
-			"SELECT id FROM brands", interfaces.PagingModeSingle, nil)
-
-		assertHTTPError(t, err, http.StatusInternalServerError)
-	})
-}
-
-func TestRawQueryServiceExecuteSQLCursorPage(t *testing.T) {
-	t.Run("cursor page requests one lookahead row", func(t *testing.T) {
-		catalog := rawQuerySQLServerCatalog()
-		previousManager := rawQueryCursorSessions
-		rawQueryCursorSessions = newCursorSessionManager(10, 9)
-		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
-		session, err := rawQueryCursorSessions.create("account-1", catalog.ID, []string{"resource-1"},
-			"SELECT id FROM dbo.orders", 2, 60, 0)
-		require.NoError(t, err)
-		session.PageOffset = 4
-
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().BuildPagedSQL("SELECT id FROM dbo.orders", 4, 3).Return("TSQL CURSOR PAGE")
-		connector.EXPECT().ExecuteRawSQL(gomock.Any(), "TSQL CURSOR PAGE").Return(&interfaces.RawQueryResponse{
-			Entries: []map[string]any{{"id": 5}, {"id": 6}, {"id": 7}},
-		}, nil)
-
-		result, err := svc.executeSQLCursorPage(context.Background(), session, catalog, nil)
-
-		require.NoError(t, err)
-		assert.Equal(t, []map[string]any{{"id": 5}, {"id": 6}}, result.Entries)
-		require.NotNil(t, result.Paging)
-		assert.NotNil(t, result.Paging.NextCursor)
-		assert.Equal(t, 6, session.PageOffset)
-	})
-}
-
-func TestRawQueryServiceExecuteSQLTotalCount(t *testing.T) {
-	t.Run("total count is not paged", func(t *testing.T) {
-		catalog := rawQuerySQLServerCatalog()
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockTableConnector(ctrl)
-		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
-			Return(connector, nil)
-		svc := &rawQueryService{cf: connectorFactory}
-		gomock.InOrder(
-			connector.EXPECT().Connect(gomock.Any()).Return(nil),
-			connector.EXPECT().BuildCountSQL("SELECT id FROM dbo.orders").Return(
-				"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total"),
-			connector.EXPECT().ExecuteRawSQL(gomock.Any(),
-				"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total").
-				Return(&interfaces.RawQueryResponse{
-					Entries: []map[string]any{{rawQueryTotalCountColumn: int64(42)}},
-				}, nil),
-			connector.EXPECT().Close(gomock.Any()).Return(nil),
-		)
-
-		count, err := svc.executeSQLTotalCount(context.Background(), catalog, "SELECT id FROM dbo.orders")
-
-		require.NoError(t, err)
-		assert.Equal(t, int64(42), count)
-	})
-}
-
-func rawQuerySQLServerCatalog() *interfaces.Catalog {
-	return &interfaces.Catalog{
-		ID: "catalog-1", Name: "sqlserver-catalog", ConnectorType: interfaces.ConnectorTypeSQLServer,
-	}
 }
 
 func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
@@ -1181,7 +941,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
-		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 2, 60, 0)
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, 2, 60, 0)
 		require.NoError(t, err)
 		session.QueryFormat = interfaces.QueryFormatDSL
 		session.OpenSearchIndex = "events"
@@ -1242,7 +1002,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
-		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 2, 60, 0)
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, 2, 60, 0)
 		require.NoError(t, err)
 		session.QueryFormat = interfaces.QueryFormatDSL
 		session.OpenSearchIndex = "events"
@@ -1279,7 +1039,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
-		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 1, 60, 0)
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, 1, 60, 0)
 		require.NoError(t, err)
 		session.OpenSearchIndex = "events"
 		session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 1}
@@ -1307,7 +1067,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
-		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 1, 60, 0)
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, 1, 60, 0)
 		require.NoError(t, err)
 		session.OpenSearchIndex = "events"
 		session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 1}
@@ -1336,7 +1096,7 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 		rawQueryCursorSessions = manager
 		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 
-		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 1, 60, 0)
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, 1, 60, 0)
 		require.NoError(t, err)
 		session.QueryFormat = interfaces.QueryFormatDSL
 		session.OpenSearchIndex = "events"
@@ -1383,34 +1143,6 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 	})
 }
 
-func TestRawQueryServiceExtractResourceIDs(t *testing.T) {
-	t.Run("supports hyphenated IDs", func(t *testing.T) {
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = &recordingPolicy{resourceIDs: []string{"orders-2026", "customer_data"}}
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-		ids, err := (&rawQueryService{}).extractResourceIDs(context.Background(), "SELECT * FROM {{orders-2026}} JOIN {{.customer_data}} ON true", "postgres")
-
-		require.NoError(t, err)
-		assert.Equal(t, []string{"orders-2026", "customer_data"}, ids)
-	})
-	t.Run("raw query service extract resource ids", func(t *testing.T) {
-		svc := &rawQueryService{}
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = &recordingPolicy{resourceIDs: []string{"r1", "r2"}}
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-		got, err := svc.extractResourceIDs(context.Background(), "select * from {{.r1}} join {{r2}} on x where id in (select id from {{.r1}})", "postgres")
-
-		require.NoError(t, err)
-		assert.Equal(t, []string{"r1", "r2"}, got)
-
-		got, err = svc.extractResourceIDs(context.Background(), map[string]any{"query": map[string]any{"match_all": map[string]any{}}}, "postgres")
-		require.NoError(t, err)
-		assert.Empty(t, got)
-	})
-}
-
 func TestHasOpenSearchAggregation(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -1426,93 +1158,6 @@ func TestHasOpenSearchAggregation(t *testing.T) {
 			assert.Equal(t, test.want, hasOpenSearchAggregation(test.query))
 		})
 	}
-}
-
-func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
-	t.Run("preserves Doris catalog reference", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		rs := vmock.NewMockResourceService(ctrl)
-		reference := "`hive`.`sales.eu`.`o``rders`"
-		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{Schema: "sales.eu", SourceIdentifier: reference}, nil)
-		got, err := (&rawQueryService{rs: rs}).replaceResourceIDWithSchemaTable(context.Background(), "SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{ConnectorType: interfaces.ConnectorTypeDoris}, "doris")
-		require.NoError(t, err)
-		assert.Equal(t, "SELECT * FROM "+reference, got)
-	})
-
-	t.Run("preserves already quoted source reference", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		rs := vmock.NewMockResourceService(ctrl)
-		reference := `"public"."orders.part"`
-		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{Schema: "public", SourceIdentifier: reference}, nil)
-		got, err := (&rawQueryService{rs: rs}).replaceResourceIDWithSchemaTable(context.Background(), "SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{ConnectorType: interfaces.ConnectorTypePostgreSQL}, "postgres")
-		require.NoError(t, err)
-		assert.Equal(t, "SELECT * FROM "+reference, got)
-	})
-
-	t.Run("raw query service replace resource idwith schema table", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		rs := vmock.NewMockResourceService(ctrl)
-		svc := &rawQueryService{rs: rs}
-
-		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
-			ID:               "r1",
-			Schema:           "schema",
-			SourceIdentifier: `"schema"."table_one"`,
-		}, nil)
-		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r2").Return(&interfaces.Resource{
-			ID:               "r2",
-			Schema:           "schema",
-			SourceIdentifier: `"schema"."table_two"`,
-		}, nil)
-
-		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
-			"select * from {{.r1}} join {{r2}} on {{.r1}}.id = {{r2}}.id",
-			[]string{"r1", "r2"},
-			&interfaces.Catalog{Name: "catalog", ConnectorType: interfaces.ConnectorTypePostgreSQL},
-			"postgres",
-		)
-
-		require.NoError(t, err)
-		assert.Equal(t, `select * from "schema"."table_one" join "schema"."table_two" on "schema"."table_one".id = "schema"."table_two".id`, got)
-	})
-
-	t.Run("quotes tsql special identifiers", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		rs := vmock.NewMockResourceService(ctrl)
-		svc := &rawQueryService{rs: rs}
-		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
-			ID:               "r1",
-			Schema:           "sales data",
-			SourceIdentifier: "[sales data].[Order.Archive]]]",
-		}, nil)
-
-		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
-			"SELECT * FROM {{r1}}",
-			[]string{"r1"},
-			&interfaces.Catalog{Name: "catalog", ConnectorType: interfaces.ConnectorTypeSQLServer},
-			"tsql",
-		)
-
-		require.NoError(t, err)
-		assert.Equal(t, "SELECT * FROM [sales data].[Order.Archive]]]", got)
-	})
-
-	t.Run("quotes schema containing dots", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		rs := vmock.NewMockResourceService(ctrl)
-		svc := &rawQueryService{rs: rs}
-		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
-			ID:               "r1",
-			Schema:           "sales.archive",
-			SourceIdentifier: "[sales.archive].[orders]",
-		}, nil)
-
-		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
-			"SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{Name: "catalog", ConnectorType: interfaces.ConnectorTypeSQLServer}, "tsql")
-
-		require.NoError(t, err)
-		assert.Equal(t, "SELECT * FROM [sales.archive].[orders]", got)
-	})
 }
 
 func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
@@ -1641,4 +1286,763 @@ func TestCursorSessionCreateError(t *testing.T) {
 			assert.Equal(t, testCase.details, httpErr.ErrorDetails)
 		})
 	}
+}
+
+func (c *builderConnector) ExecuteSQLBuilder(ctx context.Context, q *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
+	return c.run(ctx, q)
+}
+func (c *builderConnector) OpenSQLBuilder(ctx context.Context, q *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+	return c.open(ctx, q)
+}
+func (c *builderConnector) ScanSQLBuilderRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+	if c.scan != nil {
+		return c.scan(rows, columns)
+	}
+	return table.ScanSQLRow(rows, columns)
+}
+
+func compileTestContext() context.Context {
+	return context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "caller", Type: "user"})
+}
+
+func builderTestResource() *interfaces.Resource {
+	return &interfaces.Resource{ID: "orders", CatalogID: "catalog", Name: "display label", Category: interfaces.ResourceCategoryTable,
+		Enabled: true, Status: interfaces.ResourceStatusActive, UpdateTime: 11, SourceIdentifier: "`sales.eu`.`order.items`",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id", Type: interfaces.DataType_Integer, OriginalName: "order.id", OriginalType: "BIGINT"},
+			{Name: "created", Type: interfaces.DataType_Datetime, OriginalName: "created at", OriginalType: "TIMESTAMP(6)"},
+		}}
+}
+
+func mysqlRawServices(t *testing.T) (*rawQueryService, *vmock.MockResourceService, *vmock.MockCatalogService, *vmock.MockConnectorFactory) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	rs, cs, cf := vmock.NewMockResourceService(ctrl), vmock.NewMockCatalogService(ctrl), vmock.NewMockConnectorFactory(ctrl)
+	oldSessions := rawQueryCursorSessions
+	rawQueryCursorSessions = newCursorSessionManager(10, 9)
+	t.Cleanup(func() {
+		for id := range rawQueryCursorSessions.sessions {
+			rawQueryCursorSessions.remove(id)
+		}
+		rawQueryCursorSessions = oldSessions
+	})
+	return &rawQueryService{rs: rs, cs: cs, cf: cf}, rs, cs, cf
+}
+func mysqlRawMetadata(rs *vmock.MockResourceService, cs *vmock.MockCatalogService, resource *interfaces.Resource, individual bool, connectorTypes ...string) {
+	connectorType := interfaces.ConnectorTypeMySQL
+	if len(connectorTypes) > 0 {
+		connectorType = connectorTypes[0]
+	}
+
+	expectRawQueryResources(rs, []string{"orders"}, resource)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: connectorType, Enabled: true, UpdateTime: 7}, nil)
+	if individual {
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "orders").Return(resource, nil)
+	}
+}
+
+// nativeSQLConnectorMocks 仅替换数据库打开边界，服务、解析器和连接器均执行生产实现。
+func nativeSQLConnectorMocks(t *testing.T, cf *vmock.MockConnectorFactory, connectorType string, count int) []sqlmock.Sqlmock {
+	t.Helper()
+	dbs := make([]*sql.DB, count)
+	mocks := make([]sqlmock.Sqlmock, count)
+	for i := range dbs {
+		var err error
+		dbs[i], mocks[i], err = sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual), sqlmock.MonitorPingsOption(true))
+		require.NoError(t, err)
+		mocks[i].ExpectPing()
+		if connectorType == interfaces.ConnectorTypePostgreSQL {
+			mocks[i].ExpectQuery(`SELECT 1 FROM (SELECT ARRAY[1] AS items) AS base JOIN LATERAL generate_subscripts(base.items, 1) AS probe(position) ON true`).WillReturnRows(sqlmock.NewRows([]string{"probe"}).AddRow(1))
+			mocks[i].ExpectQuery(`SELECT ordinal_position FROM (SELECT ARRAY[1] AS items) AS base JOIN LATERAL unnest(base.items) WITH ORDINALITY AS probe(value, ordinal_position) ON true`).WillReturnRows(sqlmock.NewRows([]string{"probe"}).AddRow(1))
+		}
+	}
+	opened := 0
+	patch := gomonkey.ApplyFunc(sql.Open, func(driver, _ string) (*sql.DB, error) {
+		expectedDriver := "mysql"
+		if connectorType == interfaces.ConnectorTypePostgreSQL {
+			expectedDriver = "postgres"
+		}
+		require.Equal(t, expectedDriver, driver)
+		require.Less(t, opened, len(dbs), "no extra data query or connection may be opened")
+		db := dbs[opened]
+		opened++
+		return db, nil
+	})
+	t.Cleanup(func() {
+		for id := range rawQueryCursorSessions.sessions {
+			rawQueryCursorSessions.remove(id)
+		}
+		patch.Reset()
+		assert.Equal(t, count, opened)
+		for i, db := range dbs {
+			assert.NoError(t, mocks[i].ExpectationsWereMet())
+			_ = db.Close()
+		}
+	})
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), connectorType, gomock.Any()).DoAndReturn(
+		func(context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			if connectorType == interfaces.ConnectorTypePostgreSQL {
+				return postgresql.NewPostgresqlConnector().New(interfaces.ConnectorConfig{"host": "db.test", "port": 5432, "username": "test", "password": "test-only", "database": "fixture"})
+			}
+			builder := mysql.NewMySQLConnector()
+			if connectorType == interfaces.ConnectorTypeMariaDB {
+				builder = mysql.NewMariaDBConnector()
+			}
+			return builder.New(interfaces.ConnectorConfig{"host": "db.test", "port": 3306, "username": "test", "password": "test-only"})
+		}).Times(count)
+	return mocks
+}
+
+func mysqlRawRead(t *testing.T, cf *vmock.MockConnectorFactory, statement string, args []any, entries []map[string]any, failure error, connectorTypes ...string) {
+	t.Helper()
+	connectorType := interfaces.ConnectorTypeMySQL
+	if len(connectorTypes) > 0 {
+		connectorType = connectorTypes[0]
+	}
+
+	base := vmock.NewMockTableConnector(gomock.NewController(t))
+	base.EXPECT().Close(gomock.Any()).Return(nil)
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), connectorType, gomock.Any()).Return(&builderConnector{TableConnector: base, run: func(ctx context.Context, q *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
+		text, bound, err := mysql.ToSql(q)
+		require.NoError(t, err)
+		assert.Equal(t, statement, text)
+		assert.Equal(t, args, bound)
+		if failure != nil {
+			return nil, failure
+		}
+		return &interfaces.RawQueryResponse{Entries: entries}, nil
+	}}, nil)
+}
+
+// mysqlRawCursorRows 只允许一次源端查询，返回真实 sql.Rows；续页再次创建连接器会直接使测试失败。
+func mysqlRawCursorRows(t *testing.T, cf *vmock.MockConnectorFactory, statement string, source *sqlmock.Rows, failure error, connectorTypes ...string) <-chan context.Context {
+	t.Helper()
+	connectorType := interfaces.ConnectorTypeMySQL
+	if len(connectorTypes) > 0 {
+		connectorType = connectorTypes[0]
+	}
+
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	expected := mock.ExpectQuery(statement)
+	if failure != nil {
+		expected.WillReturnError(failure)
+	} else {
+		expected.WillReturnRows(source).RowsWillBeClosed()
+	}
+	mock.ExpectClose()
+	t.Cleanup(func() { assert.NoError(t, mock.ExpectationsWereMet()) })
+	base := vmock.NewMockTableConnector(gomock.NewController(t))
+	base.EXPECT().Close(gomock.Any()).DoAndReturn(func(context.Context) error { return db.Close() })
+	opened := make(chan context.Context, 1)
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), connectorType, gomock.Any()).Return(&builderConnector{TableConnector: base, open: func(ctx context.Context, query *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+		opened <- ctx
+		text, args, err := mysql.ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, statement, text)
+		assert.Empty(t, args)
+		rows, err := db.QueryContext(ctx, text)
+		return rows, []interfaces.ColumnInfo{{Name: "id", Type: "integer"}}, err
+	}}, nil)
+	// 最后注册的清理先执行：检查 mock 前释放尚未读完的测试会话。
+	manager := rawQueryCursorSessions
+	t.Cleanup(func() {
+		for id := range manager.sessions {
+			manager.remove(id)
+		}
+	})
+	return opened
+}
+
+func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
+	t.Run("single page and total preserve logical limit and parameters", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		base := "SELECT `a`.`id` FROM `sales.eu`.`order.items` AS `a` WHERE (`a`.`id` > ?) ORDER BY `a`.`id` ASC LIMIT 5 OFFSET 2"
+		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+base+") AS `_raw_query_total`", []any{json.Number("1")}, []map[string]any{{rawQueryTotalCountColumn: int64(5)}}, nil)
+		mysqlRawRead(t, cf, "SELECT `a`.`id` FROM `sales.eu`.`order.items` AS `a` WHERE (`a`.`id` > ?) ORDER BY `a`.`id` ASC LIMIT 2 OFFSET 3", []any{json.Number("1")}, []map[string]any{{"id": 4}, {"id": 5}}, nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT a.id FROM {{ orders }} a WHERE a.id>1 ORDER BY a.id LIMIT 5 OFFSET 2", NeedTotal: true, Paging: interfaces.PagingRequest{Limit: 2, Offset: 1}})
+		require.NoError(t, err)
+		require.NotNil(t, result.TotalCount)
+		assert.EqualValues(t, 5, *result.TotalCount)
+		assert.Equal(t, []string{"orders"}, result.ResourceIDs)
+		assert.Len(t, result.Entries, 2)
+		require.NotNil(t, result.Paging)
+		assert.Nil(t, result.Paging.NextCursor)
+	})
+	t.Run("self join authorizes once and preserves wildcard and physical field names", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		mysqlRawRead(t, cf, "SELECT `a`.*, `b`.`id` AS `other_id` FROM `sales.eu`.`order.items` AS `a` INNER JOIN `sales.eu`.`order.items` AS `b` ON (`a`.`id` = `b`.`id`) LIMIT 2", nil, []map[string]any{{"id": 1, "other_id": 1}}, nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT a.*,b.id AS other_id FROM {{orders}} a JOIN {{orders}} b ON a.id=b.id", Paging: interfaces.PagingRequest{Limit: 2}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"orders"}, result.ResourceIDs)
+		assert.Equal(t, []map[string]any{{"id": 1, "other_id": 1}}, result.Entries)
+	})
+	t.Run("subquery keeps its own limit through the production preparation path", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		mysqlRawRead(t, cf, "SELECT `q`.`public_id` FROM (SELECT `id` AS `public_id` FROM `sales.eu`.`order.items` LIMIT 1) AS `q` LIMIT 2", nil, []map[string]any{{"public_id": 1}}, nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT q.public_id FROM (SELECT id AS public_id FROM {{orders}} LIMIT 1) q", Paging: interfaces.PagingRequest{Limit: 2}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"public_id": 1}}, result.Entries)
+	})
+
+	t.Run("strings and comments do not become resource bindings", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		mysqlRawRead(t, cf, "SELECT ? AS `label` FROM `sales.eu`.`order.items` WHERE (`id` = ?) LIMIT 2", []any{"{{hidden}}", json.Number("1")}, []map[string]any{{"label": "{{hidden}}"}}, nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT '{{hidden}}' AS label FROM {{orders}} WHERE id=1 /* {{ignored}} */", Paging: interfaces.PagingRequest{Limit: 2}})
+		require.NoError(t, err)
+		assert.Nil(t, result.TotalCount)
+		assert.Equal(t, []string{"orders"}, result.ResourceIDs)
+	})
+	t.Run("cursor retains one Rows and counts once with bounded lookahead", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		mysqlRawMetadata(rs, cs, resource, true)
+		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM (SELECT `id` FROM `sales.eu`.`order.items` ORDER BY `id` ASC LIMIT 5) AS `_raw_query_total`", nil, []map[string]any{{rawQueryTotalCountColumn: int64(5)}}, nil)
+		openedContexts := mysqlRawCursorRows(t, cf, "SELECT `id` FROM `sales.eu`.`order.items` ORDER BY `id` ASC LIMIT 5", sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3).AddRow(4).AddRow(5), nil)
+		firstCtx, cancelFirst := context.WithCancel(compileTestContext())
+		defer cancelFirst()
+		result, err := svc.Execute(firstCtx, &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}} ORDER BY id LIMIT 5", NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+		require.NoError(t, err)
+		require.NotNil(t, result.Paging.NextCursor)
+		token := *result.Paging.NextCursor
+		cancelFirst()
+		opened := <-openedContexts
+		assert.NoError(t, opened.Err())
+		assert.Equal(t, []map[string]any{{"id": int64(1)}, {"id": int64(2)}}, result.Entries)
+		session, ok := rawQueryCursorSessions.acquire(token)
+		require.True(t, ok)
+		retainedRows := session.SQLRows
+		require.NotNil(t, retainedRows)
+		assert.Equal(t, map[string]any{"id": int64(3)}, session.SQLPendingRow)
+		require.NotNil(t, session.SQLQuery)
+		assert.EqualValues(t, 5, *session.SQLQuery.LimitPart)
+		assert.Zero(t, session.SQLQuery.OffsetPart)
+		rawQueryCursorSessions.release(session)
+		mysqlRawMetadata(rs, cs, resource, true)
+		result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		require.NoError(t, err)
+		assert.Len(t, result.Entries, 2)
+		assert.Equal(t, token, *result.Paging.NextCursor)
+		mysqlRawMetadata(rs, cs, resource, true)
+		assert.Same(t, retainedRows, session.SQLRows)
+		assert.Equal(t, []map[string]any{{"id": int64(3)}, {"id": int64(4)}}, result.Entries)
+		result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		require.NoError(t, err)
+		assert.Nil(t, result.Paging.NextCursor)
+		require.NotNil(t, result.TotalCount)
+		assert.EqualValues(t, 5, *result.TotalCount)
+		assert.Equal(t, []map[string]any{{"id": int64(5)}}, result.Entries)
+		assert.EqualValues(t, 5, *session.SQLQuery.LimitPart)
+		assert.Zero(t, session.SQLQuery.OffsetPart)
+		_, ok = rawQueryCursorSessions.acquire(token)
+		assert.False(t, ok)
+	})
+	for _, sql := range []string{"SELECT SLEEP(1) FROM {{orders}}", "SELECT custom_udf(id) FROM {{orders}}", "SELECT * FROM {{orders}}; DELETE FROM {{orders}}", "SELECT * FROM {{orders}} JOIN hidden_table ON 1=1", "SELECT * FROM {{orders}} FOR UPDATE", "WITH t AS (SELECT * FROM {{orders}}) SELECT * FROM t"} {
+		t.Run("reject before connector: "+sql, func(t *testing.T) {
+			svc, _, _, _ := mysqlRawServices(t)
+
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: sql})
+			assert.Nil(t, result)
+			assertHTTPError(t, err, http.StatusBadRequest)
+		})
+	}
+	t.Run("view expansion is not bypassed", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.Category = interfaces.ResourceCategoryLogicalView
+		mysqlRawMetadata(rs, cs, resource, true)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT * FROM {{orders}}"})
+		assert.Nil(t, result)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
+	t.Run("permission denial stops before reading metadata", func(t *testing.T) {
+		svc, rs, _, _ := mysqlRawServices(t)
+		denial := httperrors.NewHTTPError(compileTestContext(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denial)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT * FROM {{orders}}"})
+		assert.Nil(t, result)
+		assert.ErrorIs(t, err, denial)
+	})
+	t.Run("initial cursor execution failure releases session", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		mysqlRawCursorRows(t, cf, "SELECT `id` FROM `sales.eu`.`order.items`", nil, errors.New("private source error"))
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+		assert.Nil(t, result)
+		assertHTTPError(t, err, http.StatusInternalServerError)
+		assert.NotContains(t, err.Error(), "private source error")
+		assert.Empty(t, rawQueryCursorSessions.sessions)
+	})
+}
+
+func TestRawQueryServiceValidateSQLBuilderCursor(t *testing.T) {
+	for _, change := range []string{"resource version", "source identifier", "catalog version", "connector type", "permission"} {
+		t.Run(change, func(t *testing.T) {
+			svc, rs, cs, cf := mysqlRawServices(t)
+			resource := builderTestResource()
+			mysqlRawMetadata(rs, cs, resource, true)
+			mysqlRawCursorRows(t, cf, "SELECT `id` FROM `sales.eu`.`order.items`", sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3), nil)
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+			require.NoError(t, err)
+			token := *result.Paging.NextCursor
+			session, ok := rawQueryCursorSessions.acquire(token)
+			require.True(t, ok)
+			rawQueryCursorSessions.release(session)
+			if change == "permission" {
+				rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(httperrors.NewHTTPError(compileTestContext(), http.StatusForbidden, httperrors.PublicError_Forbidden))
+			} else {
+				if change == "resource version" {
+					resource.UpdateTime++
+				}
+				if change == "source identifier" {
+					resource.SourceIdentifier = "`other`"
+				}
+				expectRawQueryResources(rs, []string{"orders"}, resource)
+				catalog := &interfaces.Catalog{ID: "catalog", ConnectorType: interfaces.ConnectorTypeMySQL, Enabled: true, UpdateTime: 7}
+				if change == "catalog version" {
+					catalog.UpdateTime++
+				}
+				if change == "connector type" {
+					catalog.ConnectorType = interfaces.ConnectorTypePostgreSQL
+				}
+				cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(catalog, nil)
+				if change == "resource version" || change == "source identifier" {
+					rs.EXPECT().InternalGetByID(gomock.Any(), nil, "orders").Return(resource, nil)
+				}
+			}
+			result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+			assert.Nil(t, result)
+			code := http.StatusConflict
+			if change == "permission" {
+				code = http.StatusForbidden
+			}
+			assertHTTPError(t, err, code)
+			assert.Equal(t, 2, session.PageOffset)
+			assert.NotContains(t, rawQueryCursorSessions.sessions, token)
+			assert.Error(t, session.SQLRows.Scan(new(any)))
+		})
+	}
+}
+
+func TestRawQueryServiceExecuteSQLBuilder(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		failure error
+		status  int
+		detail  string
+	}{
+		{name: "source read forbidden", failure: interfaces.NewSourceReadForbiddenError(errors.New("private source detail")), status: http.StatusForbidden},
+		{name: "unknown column", failure: interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, errors.New("private source detail")), status: http.StatusBadRequest, detail: "query references an unknown column"},
+		{name: "other source parameter", failure: interfaces.NewSourceQueryInvalidParameterError("type_mismatch", errors.New("private source detail")), status: http.StatusBadRequest, detail: "invalid source query parameter"},
+		{name: "source unavailable", failure: errors.New("private source detail"), status: http.StatusInternalServerError, detail: "query execution failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, _, _, cf := mysqlRawServices(t)
+			connector := vmock.NewMockTableConnector(gomock.NewController(t))
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			query := sb.Select(&sb.Column{Name: "id"})
+			executor := &builderConnector{TableConnector: connector, run: func(_ context.Context, got *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
+				assert.Same(t, query, got)
+				return nil, test.failure
+			}}
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "custom-sql", gomock.Any()).Return(executor, nil)
+			result, err := svc.executeSQLBuilder(compileTestContext(), &interfaces.Catalog{ConnectorType: "custom-sql"}, query, nil)
+			assert.Nil(t, result)
+			assertHTTPError(t, err, test.status)
+			var failure *httperrors.HTTPError
+			require.ErrorAs(t, err, &failure)
+			assert.Equal(t, test.detail, failure.ErrorDetails)
+			assert.NotContains(t, err.Error(), "private source detail")
+		})
+	}
+
+	t.Run("invalid windows fail before connector creation", func(t *testing.T) {
+		svc, _, _, _ := mysqlRawServices(t)
+		query := sb.Select(&sb.Param{Value: 1})
+		for _, options := range []*rawSQLBuildOptions{{offset: -1, limit: 2}, {offset: 0, limit: -1}} {
+			_, err := svc.executeSQLBuilder(compileTestContext(), &interfaces.Catalog{}, query, options)
+			assertHTTPError(t, err, http.StatusBadRequest)
+		}
+		session := &interfaces.CursorSession{SQLQuery: query, PageOffset: math.MaxInt, PageLimit: 2}
+		_, err := svc.executeSQLCursorPage(compileTestContext(), session, nil)
+		assertHTTPError(t, err, http.StatusBadRequest)
+		assert.Equal(t, math.MaxInt, session.PageOffset)
+	})
+
+	t.Run("API offset beyond logical limit reads an empty window", func(t *testing.T) {
+		svc, _, _, cf := mysqlRawServices(t)
+		mysqlRawRead(t, cf, "SELECT `id` FROM `orders` ORDER BY `id` ASC LIMIT 0 OFFSET 7", nil, []map[string]any{}, nil)
+		query := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`orders`"}).OrderBy(sb.Order{Expr: &sb.Column{Name: "id"}}).Limit(5).Offset(2)
+		_, err := svc.executeSQLBuilder(compileTestContext(), &interfaces.Catalog{ConnectorType: interfaces.ConnectorTypeMySQL}, query, &rawSQLBuildOptions{offset: 5, limit: 2})
+		require.NoError(t, err)
+		assert.EqualValues(t, 5, *query.LimitPart)
+		assert.EqualValues(t, 2, query.OffsetPart)
+	})
+	t.Run("Rows read failure terminates cursor without returning a partial page", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		mysqlRawMetadata(rs, cs, resource, true)
+		mysqlRawCursorRows(t, cf, "SELECT `id` FROM `sales.eu`.`order.items`", sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3).AddRow(4).RowError(3, errors.New("private read failure")), nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+		require.NoError(t, err)
+		token := *result.Paging.NextCursor
+		mysqlRawMetadata(rs, cs, resource, true)
+		result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		assert.Nil(t, result)
+		assertHTTPError(t, err, http.StatusInternalServerError)
+		assert.NotContains(t, err.Error(), "private read failure")
+		assert.NotContains(t, rawQueryCursorSessions.sessions, token)
+		_, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		assertHTTPError(t, err, http.StatusNotFound)
+	})
+}
+
+func TestRawQueryServiceOpenSQLBuilderCursor(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		apiOffset int
+		expected  string
+		values    []any
+	}{
+		{"logical offset and API offset apply only when opening", 1, "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 4 OFFSET 3", []any{int64(4), int64(5), int64(6)}},
+		{"API offset beyond logical limit", 5, "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 0 OFFSET 7", nil},
+		{"empty result", 0, "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 5 OFFSET 2", nil},
+		{"exact page boundary closes without an empty continuation", 0, "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 5 OFFSET 2", []any{int64(1), int64(2)}},
+		{"bytes and null retain raw query representation", 0, "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 5 OFFSET 2", []any{[]byte("value"), nil}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, rs, cs, cf := mysqlRawServices(t)
+			resource := builderTestResource()
+			mysqlRawMetadata(rs, cs, resource, true)
+			source := sqlmock.NewRows([]string{"id"})
+			for _, value := range tc.values {
+				source.AddRow(value)
+			}
+			openedContexts := mysqlRawCursorRows(t, cf, tc.expected, source, nil)
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}} LIMIT 5 OFFSET 2", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2, Offset: tc.apiOffset}})
+			require.NoError(t, err)
+			opened := <-openedContexts
+			assert.Len(t, result.Entries, min(2, len(tc.values)))
+			if len(tc.values) > 2 {
+				token := *result.Paging.NextCursor
+				mysqlRawMetadata(rs, cs, resource, true)
+				result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+				require.NoError(t, err)
+				assert.Equal(t, []map[string]any{{"id": int64(6)}}, result.Entries)
+			}
+			assert.Nil(t, result.Paging.NextCursor)
+			assert.Empty(t, rawQueryCursorSessions.sessions)
+			assert.ErrorIs(t, opened.Err(), context.Canceled)
+			if tc.name == "bytes and null retain raw query representation" {
+				assert.Equal(t, []map[string]any{{"id": "value"}, {"id": nil}}, result.Entries)
+			}
+		})
+	}
+	t.Run("active initial request cancellation terminates open and releases connector", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		entered := make(chan context.Context, 1)
+		base := vmock.NewMockTableConnector(gomock.NewController(t))
+		base.EXPECT().Close(gomock.Any()).Return(nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMySQL, gomock.Any()).Return(&builderConnector{TableConnector: base, open: func(ctx context.Context, _ *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+			entered <- ctx
+			<-ctx.Done()
+			return nil, nil, ctx.Err()
+		}}, nil)
+		requestCtx, cancel := context.WithCancel(compileTestContext())
+		defer cancel()
+		done := make(chan error, 1)
+		go func() {
+			_, err := svc.Execute(requestCtx, &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+			done <- err
+		}()
+		select {
+		case <-entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("open did not start")
+		}
+		cancel()
+		select {
+		case err := <-done:
+			assertHTTPError(t, err, http.StatusInternalServerError)
+		case <-time.After(5 * time.Second):
+			t.Fatal("request cancellation did not interrupt open")
+		}
+		assert.Empty(t, rawQueryCursorSessions.sessions)
+	})
+}
+
+func TestRawQueryServiceSQLRowsCursorContinuation(t *testing.T) {
+	t.Run("connector row conversion preserves decimal and NULL across pages", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		mysqlRawMetadata(rs, cs, resource, true)
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		mock.ExpectQuery("SELECT amount").WillReturnRows(sqlmock.NewRows([]string{"amount"}).AddRow("12.5000").AddRow(nil)).RowsWillBeClosed()
+		rows, err := db.Query("SELECT amount")
+		require.NoError(t, err)
+		calls := 0
+		base := vmock.NewMockTableConnector(gomock.NewController(t))
+		base.EXPECT().Close(gomock.Any()).Return(nil)
+		opened := 0
+		connector := &builderConnector{TableConnector: base, open: func(context.Context, *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+			opened++
+			return rows, []interfaces.ColumnInfo{{Name: "amount", Type: interfaces.DataType_Decimal}}, nil
+		}, scan: func(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+			calls++
+			if !rows.Next() {
+				return nil, rows.Err()
+			}
+			var value any
+			if err := rows.Scan(&value); err != nil {
+				return nil, err
+			}
+			if value != nil {
+				value = json.Number(value.(string))
+			}
+			return map[string]any{columns[0].Name: value}, nil
+		}}
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMySQL, gomock.Any()).Return(connector, nil)
+		first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT amount FROM {{orders}}", QueryFormat: interfaces.QueryFormatSQL, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"amount": json.Number("12.5000")}}, first.Entries)
+		require.NotNil(t, first.Paging.NextCursor)
+		mysqlRawMetadata(rs, cs, resource, true)
+		second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"amount": nil}}, second.Entries)
+		assert.Nil(t, second.Paging.NextCursor)
+		assert.Empty(t, rawQueryCursorSessions.sessions)
+		assert.Equal(t, 1, opened)
+		assert.Equal(t, 3, calls)
+		require.NoError(t, rows.Err())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("foreign owner does not close Rows and transient metadata failure can retry", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		mysqlRawMetadata(rs, cs, resource, true)
+		openedContexts := mysqlRawCursorRows(t, cf, "SELECT `id` FROM `sales.eu`.`order.items`", sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3), nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+		require.NoError(t, err)
+		token := *result.Paging.NextCursor
+		opened := <-openedContexts
+		foreign := context.WithValue(compileTestContext(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "other-account"})
+		_, err = svc.Execute(foreign, &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		assertHTTPError(t, err, http.StatusForbidden)
+		assert.NoError(t, opened.Err())
+		failure := httperrors.NewHTTPError(compileTestContext(), http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(failure)
+		_, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		assert.ErrorIs(t, err, failure)
+		assert.NoError(t, opened.Err())
+		assert.Equal(t, map[string]any{"id": int64(3)}, rawQueryCursorSessions.sessions[token].SQLPendingRow)
+		mysqlRawMetadata(rs, cs, resource, true)
+		result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": int64(3)}}, result.Entries)
+		assert.Nil(t, result.Paging.NextCursor)
+	})
+}
+
+func TestRawQueryServiceMariaDBSQLBuilder(t *testing.T) {
+	t.Run("MariaDB uses the native builder for the mariadb input alias", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true, interfaces.ConnectorTypeMariaDB)
+		mysqlRawRead(t, cf, "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 2", nil, []map[string]any{{"id": 1}}, nil, interfaces.ConnectorTypeMariaDB)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Limit: 2}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
+	})
+	t.Run("MariaDB cursor retains Rows on the same native path", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeMariaDB)
+		mysqlRawCursorRows(t, cf, "SELECT `id` FROM `sales.eu`.`order.items`", sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2), nil, interfaces.ConnectorTypeMariaDB)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
+		require.NoError(t, err)
+		token := *result.Paging.NextCursor
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeMariaDB)
+		result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": int64(2)}}, result.Entries)
+		assert.Nil(t, result.Paging.NextCursor)
+	})
+}
+
+// TestRawQueryServicePostgreSQLSQLBuilder 覆盖生产 parser、PG 连接器、COUNT 及保留 Rows 的服务闭环。
+func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
+	t.Run("mysql input generates PG parameters and independent logical count", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		mocks := nativeSQLConnectorMocks(t, cf, interfaces.ConnectorTypePostgreSQL, 2)
+		base := `SELECT "id" FROM "public"."orders" WHERE ("id" > CAST($1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 5`
+		mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithArgs("1").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(5)).RowsWillBeClosed()
+		mocks[0].ExpectClose()
+		mocks[1].ExpectQuery(`SELECT "id" FROM "public"."orders" WHERE ("id" > CAST($1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 2 OFFSET 1`).WithArgs("1").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0))).AddRow(3).AddRow(4)).RowsWillBeClosed()
+		mocks[1].ExpectClose()
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}} WHERE id>1 ORDER BY id LIMIT 5", NeedTotal: true, Paging: interfaces.PagingRequest{Offset: 1, Limit: 2}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": int64(3)}, {"id": int64(4)}}, result.Entries)
+		require.NotNil(t, result.TotalCount)
+		assert.Equal(t, int64(5), *result.TotalCount)
+	})
+	t.Run("PG cursor keeps one Rows across continuation with native binary values", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		mocks := nativeSQLConnectorMocks(t, cf, interfaces.ConnectorTypePostgreSQL, 1)
+		mocks[0].ExpectQuery(`SELECT "id", "payload" FROM "public"."orders" ORDER BY "id" ASC NULLS FIRST`).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("payload").OfType("BYTEA", []byte{})).AddRow(1, []byte{0, 255}).AddRow(2, []byte{}).AddRow(3, nil)).RowsWillBeClosed()
+		mocks[0].ExpectClose()
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id,payload FROM {{orders}} ORDER BY id", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
+		require.NoError(t, err)
+		require.NotNil(t, result.Paging.NextCursor)
+		assert.Equal(t, []byte{0, 255}, result.Entries[0]["payload"])
+		for _, want := range []struct {
+			id      int64
+			payload any
+		}{{2, []byte{}}, {3, nil}} {
+			token := *result.Paging.NextCursor
+			mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+			result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 1)
+			assert.Equal(t, want.id, result.Entries[0]["id"])
+			assert.Equal(t, want.payload, result.Entries[0]["payload"])
+		}
+		assert.Nil(t, result.Paging.NextCursor)
+	})
+}
+
+func TestRawQueryServiceHANAUnlimitedCursor(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		offset int
+		want   []map[string]any
+		next   bool
+	}{
+		{"push offset then continue", 1, []map[string]any{{"id": int64(2)}}, true},
+		{"offset beyond end", 5, []map[string]any{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, rs, cs, cf := mysqlRawServices(t)
+			source := builderTestResource()
+			source.SourceIdentifier = `"APP"."ORDERS"`
+			mysqlRawMetadata(rs, cs, source, true, interfaces.ConnectorTypeHANA)
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			resultRows := sqlmock.NewRows([]string{"id"})
+			if tc.offset == 1 {
+				resultRows.AddRow(int64(2)).AddRow(int64(3))
+			}
+			mock.ExpectQuery("SELECT retained").WillReturnRows(resultRows).RowsWillBeClosed()
+			opened := 0
+			connector := vmock.NewMockTableConnector(gomock.NewController(t))
+			connector.EXPECT().Close(gomock.Any()).Return(nil).Times(1)
+			bc := &builderConnector{TableConnector: connector, open: func(ctx context.Context, q *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+				opened++
+				assert.EqualValues(t, tc.offset, q.OffsetPart, "API offset must be passed to the source renderer")
+				assert.Nil(t, q.LimitPart, "the service leaves the source-specific sentinel to the renderer")
+				rows, err := db.QueryContext(ctx, "SELECT retained")
+				return rows, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}}, err
+			}}
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeHANA, gomock.Any()).Return(bc, nil)
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} ORDER BY id", QueryFormat: interfaces.QueryFormatSQL, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: tc.offset, Limit: 1}})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, result.Entries)
+			if tc.next {
+				require.NotEmpty(t, result.Paging.NextCursor)
+				mysqlRawMetadata(rs, cs, source, true, interfaces.ConnectorTypeHANA)
+				result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *result.Paging.NextCursor}})
+				require.NoError(t, err)
+				assert.Equal(t, []map[string]any{{"id": int64(3)}}, result.Entries)
+			}
+			assert.Empty(t, result.Paging.NextCursor)
+			assert.Equal(t, 1, opened)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// TestRawQueryServiceDorisSQLBuilder checks that Doris retains one Rows and its metadata across pages.
+func TestRawQueryServiceDorisSQLBuilder(t *testing.T) {
+	svc, rs, cs, cf := mysqlRawServices(t)
+	resource := builderTestResource()
+	resource.SourceIdentifier = "`external`.`sales.eu`.`orders`"
+	mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeDoris)
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery("SELECT retained").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2).AddRow(3)).RowsWillBeClosed()
+	base := vmock.NewMockTableConnector(gomock.NewController(t))
+	base.EXPECT().Close(gomock.Any()).Return(nil)
+	opened := 0
+	connector := &builderConnector{TableConnector: base, open: func(ctx context.Context, q *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+		opened++
+		assert.EqualValues(t, 1, q.OffsetPart)
+		assert.Nil(t, q.LimitPart)
+		assert.Equal(t, resource.SourceIdentifier, q.FromPart.(*sb.Table).SourceIdentifier)
+		rows, err := db.QueryContext(ctx, "SELECT retained")
+		return rows, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}}, err
+	}}
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeDoris, gomock.Any()).Return(connector, nil)
+	first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} ORDER BY id", QueryFormat: interfaces.QueryFormatSQL, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 1, Limit: 1}})
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	assert.Equal(t, []map[string]any{{"id": int64(2)}}, first.Entries)
+	mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeDoris)
+	second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": int64(3)}}, second.Entries)
+	assert.Equal(t, first.Columns, second.Columns)
+	assert.Nil(t, second.Paging.NextCursor)
+	assert.Equal(t, 1, opened)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestRawQueryServiceOracleSQLBuilder checks that Oracle retains one Rows and its metadata across pages.
+func TestRawQueryServiceOracleSQLBuilder(t *testing.T) {
+	svc, rs, cs, cf := mysqlRawServices(t)
+	resource := builderTestResource()
+	resource.SourceIdentifier = `"APP"."ORDERS"`
+	mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeOracle)
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery("SELECT retained").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2).AddRow(3)).RowsWillBeClosed()
+	base := vmock.NewMockTableConnector(gomock.NewController(t))
+	base.EXPECT().Close(gomock.Any()).Return(nil)
+	opened := 0
+	connector := &builderConnector{TableConnector: base, open: func(ctx context.Context, q *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+		opened++
+		assert.EqualValues(t, 1, q.OffsetPart)
+		assert.Nil(t, q.LimitPart)
+		assert.Equal(t, resource.SourceIdentifier, q.FromPart.(*sb.Table).SourceIdentifier)
+		rows, err := db.QueryContext(ctx, "SELECT retained")
+		return rows, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}}, err
+	}}
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOracle, gomock.Any()).Return(connector, nil)
+	first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} ORDER BY id", QueryFormat: interfaces.QueryFormatSQL, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 1, Limit: 1}})
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	assert.Equal(t, []map[string]any{{"id": int64(2)}}, first.Entries)
+	mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeOracle)
+	second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": int64(3)}}, second.Entries)
+	assert.Equal(t, first.Columns, second.Columns)
+	assert.Nil(t, second.Paging.NextCursor)
+	assert.Equal(t, 1, opened)
+	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -39,9 +39,7 @@ func Test_NewRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 			}
 			cond, err := NewRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -52,9 +50,7 @@ func Test_NewRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"a", "z"},
-				},
+				Value:     []any{"a", "z"},
 			}
 			cond, err := NewRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -65,9 +61,7 @@ func Test_NewRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 			}
 			cond, err := NewRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -78,9 +72,7 @@ func Test_NewRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18},
-				},
+				Value:     []any{18},
 			}
 			cond, err := NewRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -91,9 +83,7 @@ func Test_NewRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, "65"},
-				},
+				Value:     []any{18, "65"},
 			}
 			cond, err := NewRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -112,9 +102,7 @@ func Test_RangeCond_Convert(t *testing.T) {
 					NameField: &DataProperty{
 						Type: dtype.DATATYPE_INTEGER,
 					},
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{18, 65},
-					},
+					Value: []any{18, 65},
 				},
 				mValue:           []any{18, 65},
 				mFilterFieldName: "age",
@@ -133,9 +121,7 @@ func Test_RangeCond_Convert(t *testing.T) {
 					NameField: &DataProperty{
 						Type: dtype.DATATYPE_STRING,
 					},
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"a", "z"},
-					},
+					Value: []any{"a", "z"},
 				},
 				mValue:           []any{"a", "z"},
 				mFilterFieldName: "name",
@@ -152,9 +138,7 @@ func Test_RangeCond_Convert(t *testing.T) {
 					NameField: &DataProperty{
 						Type: dtype.DATATYPE_DATETIME,
 					},
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"2023-01-01", "2023-12-31"},
-					},
+					Value: []any{"2023-01-01", "2023-12-31"},
 				},
 				mValue:           []any{"2023-01-01", "2023-12-31"},
 				mFilterFieldName: "date_field",
@@ -172,9 +156,7 @@ func Test_RangeCond_Convert(t *testing.T) {
 					NameField: &DataProperty{
 						Type: dtype.DATATYPE_DATETIME,
 					},
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{1672531200000.0, 1704067199000.0},
-					},
+					Value: []any{1672531200000.0, 1704067199000.0},
 				},
 				mValue:           []any{1672531200000.0, 1704067199000.0},
 				mFilterFieldName: "date_field",
@@ -195,9 +177,7 @@ func Test_RangeCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 整数范围", func() {
 			cond := &RangeCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{18, 65},
-					},
+					Value: []any{18, 65},
 				},
 				mValue:           []any{18, 65},
 				mFilterFieldName: "age",
@@ -213,9 +193,7 @@ func Test_RangeCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 字符串范围", func() {
 			cond := &RangeCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"a", "z"},
-					},
+					Value: []any{"a", "z"},
 				},
 				mValue:           []any{"a", "z"},
 				mFilterFieldName: "name",
@@ -235,9 +213,7 @@ func Test_rewriteRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 				NameField: &DataProperty{
 					Name: "age",
 					MappedField: Field{
@@ -256,9 +232,7 @@ func Test_rewriteRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 				NameField: &DataProperty{
 					Name: "",
 				},

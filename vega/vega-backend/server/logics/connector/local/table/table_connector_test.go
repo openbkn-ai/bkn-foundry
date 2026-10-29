@@ -202,3 +202,43 @@ func TestQueryBinaryContentColumns(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) { assert.Equal(t, tc.want, QueryBinaryContentColumns(resource, &tc.params)) })
 	}
 }
+
+func TestScanSQLRow(t *testing.T) {
+	t.Run("preserves binary and decimal text across retained reads", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		mock.ExpectQuery("SELECT payload,amount,note").WillReturnRows(sqlmock.NewRows([]string{"payload", "amount", "note"}).
+			AddRow([]byte{0, 255}, []byte("12345678901234567890.123400"), []byte("text")).AddRow([]byte{}, nil, nil)).RowsWillBeClosed()
+		rows, err := db.Query("SELECT payload,amount,note")
+		require.NoError(t, err)
+		defer func() { _ = rows.Close() }()
+		columns := []interfaces.ColumnInfo{{Name: "payload", Type: interfaces.DataType_Binary}, {Name: "amount", Type: interfaces.DataType_Decimal}, {Name: "note", Type: interfaces.DataType_String}}
+		first, err := ScanSQLRow(rows, columns)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"payload": []byte{0, 255}, "amount": "12345678901234567890.123400", "note": "text"}, first)
+		second, err := ScanSQLRow(rows, columns)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"payload": []byte{}, "amount": nil, "note": nil}, second)
+		end, err := ScanSQLRow(rows, columns)
+		require.NoError(t, err)
+		assert.Nil(t, end)
+		require.NoError(t, rows.Err())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("propagates source iteration errors", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		cause := errors.New("source result interrupted")
+		mock.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1).RowError(0, cause)).RowsWillBeClosed()
+		rows, err := db.Query("SELECT id")
+		require.NoError(t, err)
+		defer func() { _ = rows.Close() }()
+		row, err := ScanSQLRow(rows, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}})
+		require.ErrorIs(t, err, cause)
+		assert.Nil(t, row)
+		require.ErrorIs(t, rows.Err(), cause)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}

@@ -536,7 +536,7 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 		Mapping:      []interfaces.DraftFieldMapping{{SourceProperty: property, TargetProperty: targetKey}},
 		Verification: "unconfirmed",
 	}
-	relation.Name = relation.ID
+	relation.Name = d.relationName(source, property, relation.ID)
 	if origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY {
 		relation.Verification = "confirmed"
 	}

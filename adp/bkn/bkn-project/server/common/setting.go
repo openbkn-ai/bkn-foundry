@@ -85,6 +85,10 @@ type AppSetting struct {
 	// http://vega-backend-svc:13014/api/vega-backend/in/v1. Internal routes take the
 	// caller's account in headers, and vega-backend applies the caller's permissions.
 	VegaBackendUrl string
+
+	// BknAgentUrl is the bkn-agent API base, e.g. http://bkn-agent:30800/api/bkn-agent/v1. It
+	// takes the caller's account in headers, and tasks run and are read as that account.
+	BknAgentUrl string
 }
 
 const (
@@ -98,6 +102,7 @@ const (
 	bknBackendServiceName    string = "bkn-backend"
 	agentOperatorServiceName string = "agent-operator-integration"
 	vegaBackendServiceName   string = "vega-backend"
+	bknAgentServiceName      string = "bkn-agent"
 
 	// DefaultGitStoreRootDir is the git store root when the configuration does not name one.
 	DefaultGitStoreRootDir string = "/data/git"
@@ -175,6 +180,8 @@ func loadSetting(vp *viper.Viper) {
 
 	SetVegaBackendSetting()
 
+	SetBknAgentSetting()
+
 	appSetting.OtelSetting.ServiceName = version.ServerName
 	appSetting.OtelSetting.ServiceVersion = version.ServerVersion
 	logger.Infof("ServerName: %s, ServerVersion: %s, Language: %s, GoVersion: %s, GoArch: %s",
@@ -248,6 +255,19 @@ func SetVegaBackendSetting() {
 	port := setting["port"].(int)
 
 	appSetting.VegaBackendUrl = fmt.Sprintf("%s://%s:%d/api/vega-backend/in/v1", protocol, host, port)
+}
+
+func SetBknAgentSetting() {
+	setting, ok := appSetting.DepServices[bknAgentServiceName]
+	if !ok {
+		logger.Fatalf("service %s not found in depServices", bknAgentServiceName)
+	}
+
+	protocol := setting["protocol"].(string)
+	host := setting["host"].(string)
+	port := setting["port"].(int)
+
+	appSetting.BknAgentUrl = fmt.Sprintf("%s://%s:%d/api/bkn-agent/v1", protocol, host, port)
 }
 
 // DefaultPrivacyKeywords and DefaultNameFieldKeywords are the fallbacks when the configuration

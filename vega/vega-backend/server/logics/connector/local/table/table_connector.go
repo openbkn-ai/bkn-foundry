@@ -138,3 +138,28 @@ func QueryBinaryContentColumns(resource *interfaces.Resource, params *interfaces
 	}
 	return columns
 }
+
+// ScanSQLRow reads one SQL result row using standard database/sql driver values.
+// Binary bytes stay intact; other byte values retain their exact text representation.
+func ScanSQLRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
+	values := make([]any, len(columns))
+	destinations := make([]any, len(values))
+	for i := range values {
+		destinations[i] = &values[i]
+	}
+	if err := rows.Scan(destinations...); err != nil {
+		return nil, err
+	}
+	row := make(map[string]any, len(values))
+	for i, column := range columns {
+		value := values[i]
+		if data, ok := value.([]byte); ok && column.Type != interfaces.DataType_Binary {
+			value = string(data)
+		}
+		row[column.Name] = value
+	}
+	return row, nil
+}

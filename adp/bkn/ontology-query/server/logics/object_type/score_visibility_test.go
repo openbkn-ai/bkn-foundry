@@ -41,7 +41,7 @@ func TestResourceQueryPreservesScoreMetadata(t *testing.T) {
 			query := &interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"id"}, PageQuery: interfaces.PageQuery{Limit: 10}}
 			if tc.search {
 				query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationMatch,
-					ValueOptCfg: cond.ValueOptCfg{Value: "customer", ValueFrom: "const"}}
+					Value: "customer", ValueFrom: "const"}
 				if tc.operation != "" {
 					query.ActualCondition.Operation = tc.operation
 				}

@@ -142,9 +142,7 @@ func rewriteKnnCond(ctx context.Context, cfg *CondCfg,
 	return &CondCfg{
 		Name:      cfg.NameField.MappedField.Name,
 		Operation: OperationKNNVector,
-		ValueOptCfg: ValueOptCfg{
-			Value: cfg.Value,
-		},
+		Value:     cfg.Value,
 		RemainCfg: cfg.RemainCfg,
 	}, nil
 }

@@ -53,7 +53,7 @@ func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 			client := vegaRawQueryAnswering(http.StatusForbidden, vegaViewDetailDenied)
 
 			_, err := client.RawQuery(ctx, &interfaces.VegaRawQueryReq{
-				Query: "SELECT * FROM {{.d9m3f2k2u8d3u773mgo0}} LIMIT 10", QueryFormat: "sql",
+				Query: "SELECT * FROM {{d9m3f2k2u8d3u773mgo0}} LIMIT 10", QueryFormat: "sql",
 			})
 
 			he := asHTTPError(t, err)

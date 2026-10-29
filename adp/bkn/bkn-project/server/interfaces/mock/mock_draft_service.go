@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// BuildIndex mocks base method.
+func (m *MockDraftService) BuildIndex(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BuildIndex", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectIndex)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BuildIndex indicates an expected call of BuildIndex.
+func (mr *MockDraftServiceMockRecorder) BuildIndex(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildIndex", reflect.TypeOf((*MockDraftService)(nil).BuildIndex), ctx, token, projectID, caller)
+}
+
 // ChooseIdentity mocks base method.
 func (m *MockDraftService) ChooseIdentity(ctx context.Context, token, projectID, itemID string, identity interfaces.DraftIdentity, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -190,6 +205,21 @@ func (mr *MockDraftServiceMockRecorder) GetStatus(ctx, token, projectID, caller 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStatus", reflect.TypeOf((*MockDraftService)(nil).GetStatus), ctx, token, projectID, caller)
 }
 
+// GetUnderstanding mocks base method.
+func (m *MockDraftService) GetUnderstanding(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectUnderstanding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnderstanding", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectUnderstanding)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnderstanding indicates an expected call of GetUnderstanding.
+func (mr *MockDraftServiceMockRecorder) GetUnderstanding(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnderstanding", reflect.TypeOf((*MockDraftService)(nil).GetUnderstanding), ctx, token, projectID, caller)
+}
+
 // RestoreExcluded mocks base method.
 func (m *MockDraftService) RestoreExcluded(ctx context.Context, token, projectID string, restore interfaces.DraftRestore, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -218,4 +248,19 @@ func (m *MockDraftService) RunCheck(ctx context.Context, token, projectID string
 func (mr *MockDraftServiceMockRecorder) RunCheck(ctx, token, projectID, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCheck", reflect.TypeOf((*MockDraftService)(nil).RunCheck), ctx, token, projectID, caller)
+}
+
+// Understand mocks base method.
+func (m *MockDraftService) Understand(ctx context.Context, token, projectID string, request interfaces.ProjectUnderstand, caller interfaces.AccountInfo) (*interfaces.ProjectUnderstandSubmitted, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Understand", ctx, token, projectID, request, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectUnderstandSubmitted)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Understand indicates an expected call of Understand.
+func (mr *MockDraftServiceMockRecorder) Understand(ctx, token, projectID, request, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Understand", reflect.TypeOf((*MockDraftService)(nil).Understand), ctx, token, projectID, request, caller)
 }

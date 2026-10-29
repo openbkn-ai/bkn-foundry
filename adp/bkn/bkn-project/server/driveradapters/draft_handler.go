@@ -22,10 +22,12 @@ import (
 // vega-backend as the caller.
 
 const (
-	draftActionGenerate = "draft:generate"
-	draftActionRestore  = "draft:restore"
-	draftActionConfirm  = "draft:confirm"
-	checkActionRun      = "check:run"
+	draftActionGenerate      = "draft:generate"
+	draftActionRestore       = "draft:restore"
+	draftActionConfirm       = "draft:confirm"
+	checkActionRun           = "check:run"
+	indexActionBuild         = "index:build"
+	catalogsActionUnderstand = "catalogs:understand"
 )
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
@@ -43,7 +45,7 @@ type generateDraftRequest struct {
 }
 
 // OntologyActionByEx serves POST /projects/{project_id}/ontology/draft:generate,
-// draft:restore, draft:confirm and check:run.
+// draft:restore, draft:confirm, check:run and index:build.
 func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 	switch c.Param("action") {
 	case draftActionGenerate:
@@ -54,9 +56,70 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.ConfirmDraft)
 	case checkActionRun:
 		r.withExVisitor(c, r.RunCheck)
+	case indexActionBuild:
+		r.withExVisitor(c, r.BuildIndex)
 	default:
 		replyNotFound(c)
 	}
+}
+
+// ProjectDataActionByEx serves POST /projects/{project_id}/catalogs:understand.
+func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
+	switch c.Param("action") {
+	case catalogsActionUnderstand:
+		r.withExVisitor(c, r.Understand)
+	case projectActionSync:
+		r.withExVisitor(c, r.SyncProjectBranch)
+	case driftActionCommit:
+		r.withExVisitor(c, r.CommitProjectDrift)
+	default:
+		replyNotFound(c)
+	}
+}
+
+func (r *restHandler) GetUnderstandingByEx(c *gin.Context) { r.withExVisitor(c, r.GetUnderstanding) }
+
+// Understand submits the semantic understanding of the project's tables and replies 202.
+func (r *restHandler) Understand(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.ProjectUnderstand
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+			return
+		}
+	}
+	submitted, err := r.drs.Understand(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, submitted)
+}
+
+// GetUnderstanding replies the semantic understanding of the project's tables.
+func (r *restHandler) GetUnderstanding(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	understanding, err := r.drs.GetUnderstanding(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, understanding)
 }
 
 func (r *restHandler) GenerateDraft(c *gin.Context, visitor hydra.Visitor) {
@@ -213,6 +276,24 @@ func (r *restHandler) RunCheck(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, check)
+}
+
+// BuildIndex builds the last confirmation's local indexes again and replies the readiness.
+func (r *restHandler) BuildIndex(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	index, err := r.drs.BuildIndex(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, index)
 }
 
 func (r *restHandler) EditDraftItem(c *gin.Context, visitor hydra.Visitor) {

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2468,
+  "violation_count": 2465,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -440,9 +440,6 @@
       "dcb642357cfc897c0b48"
     ],
     "adp/context-loader/agent-retrieval/scripts/gen_sandbox_tools.py": [
-      "79139428fc8a629b2292",
-      "fc4cb66d8dc0fa67b4ac",
-      "b2aa6c8b551bb45b4994",
       "1809fa77e73b9786f411",
       "dd8b54ee7628b9da1b24",
       "6720b42b7db687c8ce18",

@@ -105,7 +105,7 @@ func mustGenerateFiltered(t *testing.T, schema *Schema, query string) string {
 	return statement
 }
 
-const filteredLink = "JOIN {{.res_order}} t1 ON (t0.`channel_type` = 'offline' AND t1.`order_status` = 'refunding')"
+const filteredLink = "JOIN {{res_order}} t1 ON (t0.`channel_type` = 'offline' AND t1.`order_status` = 'refunding')"
 
 func TestFilteredCrossJoinLinksEveryPairThatPasses(t *testing.T) {
 	schema := filteredSchema(t)
@@ -117,23 +117,23 @@ func TestFilteredCrossJoinLinksEveryPairThatPasses(t *testing.T) {
 		{
 			name:  "forward",
 			query: "MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) RETURN c.c_key, o.o_key",
-			want:  "SELECT t0.`channel_id` AS `c.c_key`, t1.`order_id` AS `o.o_key` FROM {{.res_channel}} t0 " + filteredLink,
+			want:  "SELECT t0.`channel_id` AS `c.c_key`, t1.`order_id` AS `o.o_key` FROM {{res_channel}} t0 " + filteredLink,
 		},
 		{
 			name:  "written from the target",
 			query: "MATCH (o:probe_order)<-[:probe_fcj]-(c:probe_channel) RETURN count(*) AS n",
-			want: "SELECT COUNT(*) AS `n` FROM {{.res_order}} t0 " +
-				"JOIN {{.res_channel}} t1 ON (t1.`channel_type` = 'offline' AND t0.`order_status` = 'refunding')",
+			want: "SELECT COUNT(*) AS `n` FROM {{res_order}} t0 " +
+				"JOIN {{res_channel}} t1 ON (t1.`channel_type` = 'offline' AND t0.`order_status` = 'refunding')",
 		},
 		{
 			name:  "undirected between different object types",
 			query: "MATCH (c:probe_channel)-[:probe_fcj]-(o:probe_order) RETURN count(*) AS n",
-			want:  "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 " + filteredLink,
+			want:  "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 " + filteredLink,
 		},
 		{
 			name:  "with a condition of the query's own",
 			query: "MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) WHERE o.o_amount > 100 RETURN o.o_key",
-			want: "SELECT t1.`order_id` AS `o.o_key` FROM {{.res_channel}} t0 " + filteredLink +
+			want: "SELECT t1.`order_id` AS `o.o_key` FROM {{res_channel}} t0 " + filteredLink +
 				" WHERE t1.`actual_amount` > 100",
 		},
 	} {
@@ -195,7 +195,7 @@ func TestFilteredCrossJoinTranslatesEachOperation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			schema := filteredSchema(t, filteredRelation(t, "probe_fcj", tc.condition, refunding))
 			got := mustGenerateFiltered(t, schema, "MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) RETURN count(*) AS n")
-			prefix := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 JOIN {{.res_order}} t1 ON ("
+			prefix := "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 JOIN {{res_order}} t1 ON ("
 			suffix := " AND t1.`order_status` = 'refunding')"
 			if !strings.HasPrefix(got, prefix) || !strings.HasSuffix(got, suffix) ||
 				strings.TrimSuffix(strings.TrimPrefix(got, prefix), suffix) != tc.want {
@@ -251,7 +251,7 @@ func TestFilteredCrossJoinRefusals(t *testing.T) {
 func TestFilteredCrossJoinOptionalMatch(t *testing.T) {
 	got := mustGenerateFiltered(t, filteredSchema(t),
 		"MATCH (c:probe_channel) OPTIONAL MATCH (c)-[:probe_fcj]->(o:probe_order) RETURN c.c_key, o.o_key")
-	want := "SELECT t0.`channel_id` AS `c.c_key`, t1.`order_id` AS `o.o_key` FROM {{.res_channel}} t0 " +
+	want := "SELECT t0.`channel_id` AS `c.c_key`, t1.`order_id` AS `o.o_key` FROM {{res_channel}} t0 " +
 		"LEFT " + filteredLink
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -266,7 +266,7 @@ func TestFilteredCrossJoinClosingACycleKeepsItsConditions(t *testing.T) {
 		SourceCondition: condition(t, offline), TargetCondition: condition(t, `{"field":"c_key","operation":">","value":1}`),
 	}
 	got := mustGenerateFiltered(t, filteredSchema(t, self), "MATCH (a:probe_channel)-[:probe_peer]->(a) RETURN a.c_key")
-	want := "SELECT t0.`channel_id` AS `a.c_key` FROM {{.res_channel}} t0 " +
+	want := "SELECT t0.`channel_id` AS `a.c_key` FROM {{res_channel}} t0 " +
 		"WHERE (t0.`channel_type` = 'offline' AND t0.`channel_id` > 1)"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -322,8 +322,8 @@ func filteredService(permission *stubPermission, vega *recordingVega) *cypherQue
 					RTID: "probe_fcj", RTName: "probe_fcj", Type: interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN,
 					SourceObjectTypeID: "probe_channel", TargetObjectTypeID: "probe_order",
 					MappingRules: &interfaces.FilteredCrossJoinMapping{
-						SourceCondition: &cond.CondCfg{Field: "c_kind", Operation: "==", ValueOptCfg: cond.ValueOptCfg{ValueFrom: "const", Value: "offline"}},
-						TargetCondition: &cond.CondCfg{Field: "o_state", Operation: "==", ValueOptCfg: cond.ValueOptCfg{ValueFrom: "const", Value: "refunding"}},
+						SourceCondition: &cond.CondCfg{Field: "c_kind", Operation: "==", ValueFrom: "const", Value: "offline"},
+						TargetCondition: &cond.CondCfg{Field: "o_state", Operation: "==", ValueFrom: "const", Value: "refunding"},
 					},
 				},
 			},
@@ -349,7 +349,7 @@ func TestFilteredCrossJoinRowFiltersApplyToBothEnds(t *testing.T) {
 	if got, want := permission.rowFilterCalls[0], []string{"kn_1/probe_channel", "kn_1/probe_order"}; !slices.Equal(got, want) {
 		t.Fatalf("row-filter refs = %v, want %v", got, want)
 	}
-	want := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 " + filteredLink +
+	want := "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 " + filteredLink +
 		" WHERE t0.`channel_type` IN ('app') AND t1.`is_paid` IN (TRUE) LIMIT 1000"
 	if got := vega.request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
@@ -398,7 +398,7 @@ func TestFilteredCrossJoinWithOneCondition(t *testing.T) {
 	relation.MappingRules.(*interfaces.FilteredCrossJoinMapping).TargetCondition = nil
 	got := mustGenerateFiltered(t, filteredSchema(t, relation),
 		"MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) RETURN count(*) AS n")
-	want := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 JOIN {{.res_order}} t1 ON t0.`channel_type` = 'offline'"
+	want := "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 JOIN {{res_order}} t1 ON t0.`channel_type` = 'offline'"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -431,7 +431,7 @@ func TestFilteredCrossJoinWithoutConditionsFollowsTheCrossProductRule(t *testing
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	want := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 JOIN {{.res_order}} t1 ON 1 = 1 WHERE t0.`channel_id` = 10 LIMIT 1000"
+	want := "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 JOIN {{res_order}} t1 ON 1 = 1 WHERE t0.`channel_id` = 10 LIMIT 1000"
 	if got := service.vba.(*recordingVega).request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
 	}

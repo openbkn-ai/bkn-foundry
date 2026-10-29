@@ -754,7 +754,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 
 		{name: "missing search network", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "search_instance", input: map[string]any{}, next: handleSearchInstance(knsearch.NewKnSearchService(), nil)},
 		{name: "SQL policy without target", wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED", toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM inventory"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
-		{name: "SQL policy with target", wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{.inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
+		{name: "SQL policy with target", wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
 		{name: "untrusted failure stage", wantCode: "tool_error", wantMessage: "untrusted failure", toolName: "run_sql", input: map[string]any{}, next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			result := mcpsdk.NewToolResultError("untrusted failure")
 			result.StructuredContent = map[string]any{"stage": "input_validation"}
@@ -763,11 +763,11 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 
 		{name: "empty SQL", wantStage: "input_validation", wantCode: "RUN_SQL_SQL_REQUIRED", wantMessage: knrunsql.ErrSQLRequired.Error(), toolName: "run_sql", input: map[string]any{"sql": ""}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
 		{name: "missing SQL resource", wantStage: "input_validation", wantCode: "RUN_SQL_RESOURCE_PLACEHOLDER_REQUIRED", wantMessage: knrunsql.ErrNoResourcePlaceholder.Error(), toolName: "run_sql", input: map[string]any{"sql": "SELECT 1"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
-		{name: "SQL backend failure", wantStage: "vega_query", wantCode: "RUN_SQL_VEGA_QUERY_FAILED", wantMessage: "backend unavailable", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{.inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(&failedCallVega{}))},
+		{name: "SQL backend failure", wantStage: "vega_query", wantCode: "RUN_SQL_VEGA_QUERY_FAILED", wantMessage: "backend unavailable", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(&failedCallVega{}))},
 
 		{
 			name: "policy rejection", wantCode: "tool_error", wantMessage: "run_sql is read-only",
-			toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{.purchase_order_resource}} WHERE status = 'closed'"},
+			toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{purchase_order_resource}} WHERE status = 'closed'"},
 			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 				return mcpsdk.NewToolResultError("run_sql is read-only"), nil
 			},
@@ -782,7 +782,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 		},
 		{
 			name: "panic", wantCode: "handler_panic", wantMessage: "deterministic business defect",
-			toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{.purchase_order_resource}} LIMIT 1"},
+			toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{purchase_order_resource}} LIMIT 1"},
 			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 				panic("deterministic business defect")
 			},
@@ -1109,7 +1109,7 @@ func TestManagedBusinessToolsPreservePreciseArgumentsAndResults(t *testing.T) {
 		{
 			name: "run_sql",
 			input: map[string]any{
-				"sql":           "SELECT purchase_order_number, supplier_name FROM {{.purchase_order_resource}} WHERE material_number = '101-000015' ORDER BY created_at DESC LIMIT 20",
+				"sql":           "SELECT purchase_order_number, supplier_name FROM {{purchase_order_resource}} WHERE material_number = '101-000015' ORDER BY created_at DESC LIMIT 20",
 				"query_timeout": 60,
 			},
 			output: map[string]any{

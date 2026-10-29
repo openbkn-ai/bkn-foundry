@@ -96,7 +96,7 @@ func TestValidateStoredFilterConditionPreservesErrorSource(t *testing.T) {
 	field := &interfaces.Property{Name: "body", OriginalName: "BODY", Type: interfaces.DataType_Text}
 	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{field}}
 	cfg := &interfaces.FilterCondCfg{Name: "body", Operation: filter_condition.OperationEqual,
-		ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "example"}}
+		ValueFrom: interfaces.ValueFrom_Const, Value: "example"}
 	actual, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"body": field})
 	require.NoError(t, err)
 	params := &interfaces.ResourceDataQueryParams{FixedFilterCondCfg: cfg, FixedActualFilterCond: actual}
@@ -860,7 +860,7 @@ func TestOpenSearchConnectorExecuteQueryPreservesBackendErrors(t *testing.T) {
 				return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})})
 			require.NoError(t, err)
-			cfg := &interfaces.FilterCondCfg{Name: "embedding", Operation: filter_condition.OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{Value: make([]float32, 3)}}
+			cfg := &interfaces.FilterCondCfg{Name: "embedding", Operation: filter_condition.OperationKnnVector, Value: make([]float32, 3)}
 			actual, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"embedding": {Name: "embedding", Type: interfaces.DataType_Vector}})
 			require.NoError(t, err)
 			require.NotNil(t, actual)

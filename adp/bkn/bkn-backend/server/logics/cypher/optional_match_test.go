@@ -22,9 +22,9 @@ func TestCompileOptionalMatchIsAnOuterJoin(t *testing.T) {
 	got := mustCompile(t, "MATCH (o:Order)-[:PLACED_BY]->(c:Customer) "+
 		"OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) "+
 		"RETURN o.id AS id, count(i.id) AS items ORDER BY items DESC, id")
-	want := "SELECT t0.`f_id` AS `id`, COUNT(t2.`f_id`) AS `items` FROM {{.res_order}} t0 " +
-		"JOIN {{.res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
-		"LEFT JOIN {{.res_item}} t2 ON t0.`f_id` = t2.`f_order` " +
+	want := "SELECT t0.`f_id` AS `id`, COUNT(t2.`f_id`) AS `items` FROM {{res_order}} t0 " +
+		"JOIN {{res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
+		"LEFT JOIN {{res_item}} t2 ON t0.`f_id` = t2.`f_order` " +
 		"GROUP BY t0.`f_id` ORDER BY `items` DESC, `id`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -52,8 +52,8 @@ func TestCompileOptionalMatchConditionsStayInTheJoin(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := mustCompile(t, tc.query)
-			want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 " +
-				"LEFT JOIN {{.res_item}} t1 ON t0.`f_id` = t1.`f_order` AND t1.`f_id` = 'x'"
+			want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 " +
+				"LEFT JOIN {{res_item}} t1 ON t0.`f_id` = t1.`f_order` AND t1.`f_id` = 'x'"
 			if got != want {
 				t.Fatalf("got  %s\nwant %s", got, want)
 			}
@@ -67,8 +67,8 @@ func TestCompileOptionalMatchBesideARequiredWhere(t *testing.T) {
 	got := mustCompile(t, "MATCH (o:Order) WHERE o.region = 'eu' "+
 		"OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) "+
 		"RETURN o.id AS id, count(i.id) AS items")
-	want := "SELECT t0.`f_id` AS `id`, COUNT(t1.`f_id`) AS `items` FROM {{.res_order}} t0 " +
-		"LEFT JOIN {{.res_item}} t1 ON t0.`f_id` = t1.`f_order` " +
+	want := "SELECT t0.`f_id` AS `id`, COUNT(t1.`f_id`) AS `items` FROM {{res_order}} t0 " +
+		"LEFT JOIN {{res_item}} t1 ON t0.`f_id` = t1.`f_order` " +
 		"WHERE t0.`f_region` = 'eu' GROUP BY t0.`f_id`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -80,8 +80,8 @@ func TestCompileOptionalMatchBesideARequiredWhere(t *testing.T) {
 func TestCompileOptionalMatchUndirected(t *testing.T) {
 	got := mustCompile(t, "MATCH (a:Order) OPTIONAL MATCH (a)-[:FOLLOWS]-(b:Order) "+
 		"WHERE b.region = 'eu' RETURN a.id AS id")
-	want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 " +
-		"LEFT JOIN {{.res_order}} t1 ON ((t0.`f_id` = t1.`f_prev`) OR (t0.`f_prev` = t1.`f_id`)) " +
+	want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 " +
+		"LEFT JOIN {{res_order}} t1 ON ((t0.`f_id` = t1.`f_prev`) OR (t0.`f_prev` = t1.`f_id`)) " +
 		"AND t1.`f_region` = 'eu'"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -97,9 +97,9 @@ func TestCompileOptionalJoinsComeLast(t *testing.T) {
 		"OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) "+
 		"MATCH (o)-[:PLACED_BY]->(c:Customer) "+
 		"RETURN c.name AS customer, count(i.id) AS items")
-	want := "SELECT t2.`f_name` AS `customer`, COUNT(t1.`f_id`) AS `items` FROM {{.res_order}} t0 " +
-		"JOIN {{.res_customer}} t2 ON t0.`f_cust_code` = t2.`f_code` AND t0.`f_region` = t2.`f_region` " +
-		"LEFT JOIN {{.res_item}} t1 ON t0.`f_id` = t1.`f_order` " +
+	want := "SELECT t2.`f_name` AS `customer`, COUNT(t1.`f_id`) AS `items` FROM {{res_order}} t0 " +
+		"JOIN {{res_customer}} t2 ON t0.`f_cust_code` = t2.`f_code` AND t0.`f_region` = t2.`f_region` " +
+		"LEFT JOIN {{res_item}} t1 ON t0.`f_id` = t1.`f_order` " +
 		"GROUP BY t2.`f_name`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -114,9 +114,9 @@ func TestCompileChainedOptionalMatches(t *testing.T) {
 		"OPTIONAL MATCH (c)<-[:PLACED_BY]-(o:Order) "+
 		"OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) "+
 		"RETURN c.name AS customer, count(i.id) AS items")
-	want := "SELECT t0.`f_name` AS `customer`, COUNT(t2.`f_id`) AS `items` FROM {{.res_customer}} t0 " +
-		"LEFT JOIN {{.res_order}} t1 ON t0.`f_code` = t1.`f_cust_code` AND t0.`f_region` = t1.`f_region` " +
-		"LEFT JOIN {{.res_item}} t2 ON t1.`f_id` = t2.`f_order` " +
+	want := "SELECT t0.`f_name` AS `customer`, COUNT(t2.`f_id`) AS `items` FROM {{res_customer}} t0 " +
+		"LEFT JOIN {{res_order}} t1 ON t0.`f_code` = t1.`f_cust_code` AND t0.`f_region` = t1.`f_region` " +
+		"LEFT JOIN {{res_item}} t2 ON t1.`f_id` = t2.`f_order` " +
 		"GROUP BY t0.`f_name`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -133,7 +133,7 @@ func TestCompileOptionalMatchAddsNoDistinctnessCondition(t *testing.T) {
 	if strings.Contains(got, " WHERE ") {
 		t.Fatalf("an optional clause produced a condition in WHERE: %s", got)
 	}
-	if !strings.Contains(got, "LEFT JOIN {{.res_order}} t2 ON t1.`f_id` = t2.`f_prev`") {
+	if !strings.Contains(got, "LEFT JOIN {{res_order}} t2 ON t1.`f_id` = t2.`f_prev`") {
 		t.Fatalf("got %s", got)
 	}
 }
@@ -262,8 +262,8 @@ func TestQueryRowFilterOnOptionalTableStaysInTheJoin(t *testing.T) {
 		t.Fatalf("Query: %v", err)
 	}
 
-	want := "SELECT t0.`f_id` AS `id`, COUNT(t1.`f_id`) AS `customers` FROM {{.res_order}} t0 " +
-		"LEFT JOIN {{.res_customer}} t1 ON t0.`f_id` = t1.`f_id` AND t1.`f_region` IN ('cn') " +
+	want := "SELECT t0.`f_id` AS `id`, COUNT(t1.`f_id`) AS `customers` FROM {{res_order}} t0 " +
+		"LEFT JOIN {{res_customer}} t1 ON t0.`f_id` = t1.`f_id` AND t1.`f_region` IN ('cn') " +
 		"WHERE t0.`f_region` IN ('east') GROUP BY t0.`f_id` LIMIT 1000"
 	if got := vega.request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
@@ -345,9 +345,9 @@ func TestCompileNeighbourDegreeRanking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "SELECT t0.`f_id` AS `id`, COUNT(DISTINCT t2.`f_id`) AS `items` FROM {{.res_order}} t0 " +
-		"JOIN {{.res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
-		"LEFT JOIN {{.res_item}} t2 ON t0.`f_id` = t2.`f_order` " +
+	want := "SELECT t0.`f_id` AS `id`, COUNT(DISTINCT t2.`f_id`) AS `items` FROM {{res_order}} t0 " +
+		"JOIN {{res_customer}} t1 ON t0.`f_cust_code` = t1.`f_code` AND t0.`f_region` = t1.`f_region` " +
+		"LEFT JOIN {{res_item}} t2 ON t0.`f_id` = t2.`f_order` " +
 		"WHERE t1.`f_name` = 'name' GROUP BY t0.`f_id` " +
 		"ORDER BY `items` DESC, `id` LIMIT 10 OFFSET 20"
 	if got != want {
@@ -365,9 +365,9 @@ func TestCompileDegreesOverSeveralRelationTypes(t *testing.T) {
 		"OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) "+
 		"RETURN o.id AS id, count(DISTINCT i.id) AS items, count(DISTINCT c.name) AS customers")
 	want := "SELECT t0.`f_id` AS `id`, COUNT(DISTINCT t1.`f_id`) AS `items`, " +
-		"COUNT(DISTINCT t2.`f_name`) AS `customers` FROM {{.res_order}} t0 " +
-		"LEFT JOIN {{.res_item}} t1 ON t0.`f_id` = t1.`f_order` " +
-		"LEFT JOIN {{.res_customer}} t2 ON t0.`f_cust_code` = t2.`f_code` AND t0.`f_region` = t2.`f_region` " +
+		"COUNT(DISTINCT t2.`f_name`) AS `customers` FROM {{res_order}} t0 " +
+		"LEFT JOIN {{res_item}} t1 ON t0.`f_id` = t1.`f_order` " +
+		"LEFT JOIN {{res_customer}} t2 ON t0.`f_cust_code` = t2.`f_code` AND t0.`f_region` = t2.`f_region` " +
 		"GROUP BY t0.`f_id`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)

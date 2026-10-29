@@ -18,32 +18,6 @@ func mariadbQuoteIdent(name string) string {
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }
 
-// mariadbQuotedColumn resolves the original column name and quotes it for conditions.
-// A dot separates alias and column: t1.col becomes `t1`.`col`.
-func mariadbQuotedColumn(property *interfaces.Property) string {
-	name := mariadbOriginalName(property)
-	if idx := strings.Index(name, "."); idx >= 0 {
-		alias := strings.TrimSpace(name[:idx])
-		col := strings.TrimSpace(name[idx+1:])
-		return mariadbQuoteIdent(alias) + "." + mariadbQuoteIdent(col)
-	}
-	return mariadbQuoteIdent(strings.TrimSpace(name))
-}
-
-// mariadbQuoteColumnName quotes a column or alias-qualified column name.
-// A dot separates alias and column: t1.col becomes `t1`.`col`.
-func mariadbQuoteColumnName(name string) string {
-	if name == "" {
-		return mariadbQuoteIdent(name)
-	}
-	if idx := strings.Index(name, "."); idx >= 0 {
-		alias := strings.TrimSpace(name[:idx])
-		col := strings.TrimSpace(name[idx+1:])
-		return mariadbQuoteIdent(alias) + "." + mariadbQuoteIdent(col)
-	}
-	return mariadbQuoteIdent(strings.TrimSpace(name))
-}
-
 // mariadbOriginalName returns OriginalName, falling back to the resource property name.
 func mariadbOriginalName(property *interfaces.Property) string {
 	if property.OriginalName != "" {

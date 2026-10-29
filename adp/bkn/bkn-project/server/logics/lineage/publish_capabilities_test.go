@@ -233,5 +233,37 @@ func Test_LineageService_PublishRelease_Capabilities(t *testing.T) {
 			mainAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
 			So(mainAfter, ShouldEqual, mainBefore)
 		})
+		Convey("A preview lists what the release would do with each function and Skill, and copies nothing\n", func() {
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(capabilityExport(`KN_ID = "`+id+`"`), nil)
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, capSkillID).Return(releasedSkill("Reads the bound network.\n"), nil)
+			// No ImportToolbox or ImportBKN: the mocks expect none.
+
+			preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+			So(err, ShouldBeNil)
+			So(preview.Refusals, ShouldBeEmpty)
+			So(preview.Capabilities, ShouldResemble, []interfaces.CapabilityPlan{
+				{Kind: "function", ID: capBoxID, Name: "supply_tools", Copy: true, Reasons: []string{capability.REASON_NETWORK_ID}},
+				{Kind: "skill", ID: capSkillID, Name: "plan-supply", Copy: false, Reasons: []string{}},
+			})
+		})
+
+		Convey("A preview lists references the copies cannot reach as a refusal\n", func() {
+			flow := capabilityDefinitions(id, "A part, edited.")
+			flow["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n---",
+				"name: Supply chain\ncapabilities: {skills: [{id: "+capSkillID+", name: plan-supply}]}\n---", 1))
+			_, err := realGS.CommitFiles(ctx, id, branch, flow, "flow style", author)
+			So(err, ShouldBeNil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(capabilityExport(`KN_ID = "`+id+`"`), nil)
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, capSkillID).Return(releasedSkill("Reads "+id+".\n"), nil)
+
+			preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+			So(err, ShouldBeNil)
+			So(refusalCodes(preview), ShouldResemble, []string{perrors.BknProject_Lineage_InvalidDefinitions})
+			So(preview.Capabilities, ShouldBeEmpty)
+		})
 	})
 }

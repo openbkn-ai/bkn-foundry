@@ -41,6 +41,36 @@ func (m *MockVegaAccess) EXPECT() *MockVegaAccessMockRecorder {
 	return m.recorder
 }
 
+// CreateBuildTask mocks base method.
+func (m *MockVegaAccess) CreateBuildTask(ctx context.Context, account interfaces.VegaAccount, resourceID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBuildTask", ctx, account, resourceID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBuildTask indicates an expected call of CreateBuildTask.
+func (mr *MockVegaAccessMockRecorder) CreateBuildTask(ctx, account, resourceID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBuildTask", reflect.TypeOf((*MockVegaAccess)(nil).CreateBuildTask), ctx, account, resourceID)
+}
+
+// CreateSemanticTask mocks base method.
+func (m *MockVegaAccess) CreateSemanticTask(ctx context.Context, account interfaces.VegaAccount, resourceID, language, applyMode string) (*interfaces.VegaSemanticTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSemanticTask", ctx, account, resourceID, language, applyMode)
+	ret0, _ := ret[0].(*interfaces.VegaSemanticTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateSemanticTask indicates an expected call of CreateSemanticTask.
+func (mr *MockVegaAccessMockRecorder) CreateSemanticTask(ctx, account, resourceID, language, applyMode any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSemanticTask", reflect.TypeOf((*MockVegaAccess)(nil).CreateSemanticTask), ctx, account, resourceID, language, applyMode)
+}
+
 // GetTables mocks base method.
 func (m *MockVegaAccess) GetTables(ctx context.Context, account interfaces.VegaAccount, ids []string) ([]*interfaces.VegaTable, error) {
 	m.ctrl.T.Helper()
@@ -70,6 +100,22 @@ func (m *MockVegaAccess) ListActiveBuildTasks(ctx context.Context, account inter
 func (mr *MockVegaAccessMockRecorder) ListActiveBuildTasks(ctx, account, catalogID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActiveBuildTasks", reflect.TypeOf((*MockVegaAccess)(nil).ListActiveBuildTasks), ctx, account, catalogID)
+}
+
+// ListSemanticTasks mocks base method.
+func (m *MockVegaAccess) ListSemanticTasks(ctx context.Context, account interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaSemanticTask, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSemanticTasks", ctx, account, catalogID)
+	ret0, _ := ret[0].([]*interfaces.VegaSemanticTask)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListSemanticTasks indicates an expected call of ListSemanticTasks.
+func (mr *MockVegaAccessMockRecorder) ListSemanticTasks(ctx, account, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSemanticTasks", reflect.TypeOf((*MockVegaAccess)(nil).ListSemanticTasks), ctx, account, catalogID)
 }
 
 // ListTables mocks base method.
@@ -115,4 +161,19 @@ func (m *MockVegaAccess) Query(ctx context.Context, account interfaces.VegaAccou
 func (mr *MockVegaAccessMockRecorder) Query(ctx, account, sql, timeoutSeconds any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockVegaAccess)(nil).Query), ctx, account, sql, timeoutSeconds)
+}
+
+// UpdateIndexConfig mocks base method.
+func (m *MockVegaAccess) UpdateIndexConfig(ctx context.Context, account interfaces.VegaAccount, resourceID string, keys interfaces.VegaIndexKeys) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateIndexConfig", ctx, account, resourceID, keys)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateIndexConfig indicates an expected call of UpdateIndexConfig.
+func (mr *MockVegaAccessMockRecorder) UpdateIndexConfig(ctx, account, resourceID, keys any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIndexConfig", reflect.TypeOf((*MockVegaAccess)(nil).UpdateIndexConfig), ctx, account, resourceID, keys)
 }

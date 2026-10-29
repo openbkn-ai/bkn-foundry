@@ -129,6 +129,51 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"status":"running"`)
 		})
 
+		Convey("catalogs:understand submits as the caller and replies 202; a bad body is refused\n", func() {
+			const project = "/api/bkn-project/v1/projects/p1"
+			drs.EXPECT().Understand(gomock.Any(), "Bearer t", "p1",
+				interfaces.ProjectUnderstand{ApplyMode: "force", All: true}, caller).
+				Return(&interfaces.ProjectUnderstandSubmitted{Catalogs: []interfaces.UnderstandSubmittedCatalog{
+					{CatalogID: "c1", Permitted: true, Tables: 3}}}, nil)
+
+			w := serveBody(handler, http.MethodPost, project+"/catalogs:understand", []byte(`{"apply_mode":"force","all":true}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
+			So(w.Body.String(), ShouldContainSubstring, `"tables":3`)
+
+			// An empty body takes the defaults.
+			drs.EXPECT().Understand(gomock.Any(), "Bearer t", "p1", interfaces.ProjectUnderstand{}, caller).
+				Return(&interfaces.ProjectUnderstandSubmitted{}, nil)
+			So(serveBody(handler, http.MethodPost, project+"/catalogs:understand", nil).Result().StatusCode,
+				ShouldEqual, http.StatusAccepted)
+			So(serveBody(handler, http.MethodPost, project+"/catalogs:understand", []byte(`{`)).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+			So(serve(handler, http.MethodPost, project+"/catalogs:unknown").Result().StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("The understanding is read as the caller\n", func() {
+			drs.EXPECT().GetUnderstanding(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{
+					{CatalogID: "c1", Visible: true, Counts: map[string]int{"completed": 1}}}}, nil)
+
+			w := serve(handler, http.MethodGet, "/api/bkn-project/v1/projects/p1/catalogs/understanding")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"visible":true`)
+		})
+
+		Convey("index:build builds the indexes again as the caller and replies the readiness\n", func() {
+			drs.EXPECT().BuildIndex(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.ProjectIndex{ObjectTypes: []interfaces.ProjectIndexItem{{ID: "orders",
+					State: interfaces.INDEX_STATE_BUILDING, Build: &interfaces.ProjectIndexBuild{Outcome: interfaces.INDEX_BUILD_CREATED}}},
+					Counts: map[string]int{interfaces.INDEX_STATE_BUILDING: 1}, TasksVisible: true}, nil)
+
+			w := serve(handler, http.MethodPost, base+"/index:build")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"outcome":"created"`)
+		})
+
 		Convey("The index readiness is read as the caller\n", func() {
 			drs.EXPECT().GetIndex(gomock.Any(), "Bearer t", "p1", caller).
 				Return(&interfaces.ProjectIndex{ObjectTypes: []interfaces.ProjectIndexItem{{ID: "orders", State: interfaces.INDEX_STATE_READY}},

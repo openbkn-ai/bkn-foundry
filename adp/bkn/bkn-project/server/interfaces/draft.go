@@ -62,7 +62,9 @@ const (
 	DRAFT_DECISION_RENAME   = "rename"
 	DRAFT_DECISION_DESCRIBE = "describe"
 	DRAFT_DECISION_IDENTITY = "identity"
-	DRAFT_DECISION_RESTORE  = "restore"
+	// DRAFT_DECISION_INCREMENTAL sets or clears an object type's update field.
+	DRAFT_DECISION_INCREMENTAL = "incremental"
+	DRAFT_DECISION_RESTORE     = "restore"
 	// DRAFT_DECISION_ACCEPT_PARTIAL confirms a draft knowing the tables it could not read, the
 	// resource IDs in After.
 	DRAFT_DECISION_ACCEPT_PARTIAL = "accept_partial"
@@ -222,6 +224,8 @@ type DraftItemEdit struct {
 	Adopted     *bool   `json:"adopted"`
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
+	// IncrementalKey sets an object type's update field; empty clears it.
+	IncrementalKey *string `json:"incremental_key"`
 }
 
 // DraftTable names a table of a data catalog.
@@ -247,6 +251,9 @@ type DraftObjectType struct {
 	Key         DraftKeyEvidence `json:"key"`
 	// NeedsIdentity is set when no unique, non-null key was found: a person decides the identity.
 	NeedsIdentity bool `json:"needs_identity"`
+	// IncrementalKey is the property whose value grows whenever a record changes, which the
+	// table's local index is refreshed by; empty when none is known.
+	IncrementalKey string `json:"incremental_key,omitempty"`
 }
 
 type DraftProperty struct {

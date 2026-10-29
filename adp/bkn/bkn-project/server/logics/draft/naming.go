@@ -10,6 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -77,9 +79,50 @@ func (d *drafter) language() string {
 }
 
 // tableName names an item drafted from a table in the naming language, with its aliases: from the
-// first clause of its description, then the name semantic understanding gave it, then its own.
+// name semantic understanding or a person gave it, then the first clause of its description, then
+// its own, as fields are named. Semantic understanding writes a sentence as the description, whose
+// first clause names badly.
 func (d *drafter) tableName(table *interfaces.VegaTable) (string, []string) {
-	return pickName(d.language(), physicalName(table), firstClause(table.Description), table.Name)
+	return pickName(d.language(), physicalName(table), givenName(table), firstClause(table.Description))
+}
+
+// givenName is the name semantic understanding or a person gave a table, empty while it keeps the
+// name discovery gave it: its physical name, which is no candidate anyway, or, for tables discovered
+// before vega 0.2.1, its physical name with its schema, as vega itself reads a default name.
+func givenName(table *interfaces.VegaTable) string {
+	if table.Name == table.SourceSchema+"."+table.SourceName {
+		return ""
+	}
+	return table.Name
+}
+
+// messageRelationName is the localized template a relation drafted from a referring field is named
+// by, in the naming language.
+const messageRelationName = "BknProject.Draft.RelationName"
+
+// relationName names a relation drafted from a referring field, in the naming language: the field's
+// name with its object type's ("物料BOM明细的父项物料编码", "Parent material code of BOM detail"), as
+// the referring fields, not the target, tell apart the relations between the same two types. When
+// that is longer than BKN takes for a display name, the field's name alone. A field nobody named
+// keeps an ASCII physical name such as customer_id, and joining technical names reads no better
+// than the id, which also names the target: the relation keeps its id. A physical name that is not
+// ASCII, such as 供应商编号, reads as written.
+func (d *drafter) relationName(source *interfaces.DraftObjectType, property string, id string) string {
+	return relationNameIn(d.language(), source, property, id)
+}
+
+// relationNameIn is relationName in a given naming language.
+func relationNameIn(language string, source *interfaces.DraftObjectType, property string, id string) string {
+	p := findProperty(source, property)
+	if p == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
+		return id
+	}
+	name, err := i18n.Render(i18n.Language(language), messageRelationName,
+		map[string]any{"object_type": source.Name, "field": p.DisplayName})
+	if err != nil || utf8.RuneCountInString(name) > maxDisplayNameRunes {
+		return p.DisplayName
+	}
+	return name
 }
 
 // dropAliasesOfOtherProperties leaves out an alias that is another property's name or display name:
@@ -107,8 +150,37 @@ func dropAliasesOfOtherProperties(properties []*interfaces.DraftProperty) {
 // draftLanguage is the naming language a draft named its items in; Chinese for a draft made before
 // naming languages.
 func draftLanguage(draft *interfaces.Draft) string {
-	if draft.Items.Inputs == nil || draft.Items.Inputs.NamingLanguage == "" {
+	return itemsLanguage(&draft.Items)
+}
+
+// itemsLanguage is the naming language draft items were named in.
+func itemsLanguage(items *interfaces.DraftItems) string {
+	if items.Inputs == nil || items.Inputs.NamingLanguage == "" {
 		return interfaces.NAMING_LANGUAGE_ZH_CN
 	}
-	return draft.Items.Inputs.NamingLanguage
+	return items.Inputs.NamingLanguage
+}
+
+// renameRelations names again, after its object type is renamed to name, each relation drafted
+// from one of its referring fields that still bears the name drafting gave it; a relation a person
+// renamed stays, and one named by its id is named by it again. Each rename is recorded through decide.
+func renameRelations(items *interfaces.DraftItems, objectType *interfaces.DraftObjectType, name string,
+	decide func(kind string, id string, action string, before any, after any)) {
+	language := itemsLanguage(items)
+	renamed := *objectType
+	renamed.Name = name
+	for _, r := range items.RelationTypes {
+		// Relations drafted from link tables map no field of the object type, and are named apart.
+		if r.Source != objectType.ID || len(r.Mapping) == 0 {
+			continue
+		}
+		property := r.Mapping[0].SourceProperty
+		if drafted := relationNameIn(language, objectType, property, r.ID); r.Name != drafted {
+			continue
+		}
+		if again := relationNameIn(language, &renamed, property, r.ID); again != r.Name {
+			decide(interfaces.DRAFT_KIND_RELATION_TYPES, r.ID, interfaces.DRAFT_DECISION_RENAME, r.Name, again)
+			r.Name = again
+		}
+	}
 }

@@ -42,16 +42,12 @@ func Test_newAndCond(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 					{
 						Name:      "age",
 						Operation: OperationGt,
-						ValueOptCfg: ValueOptCfg{
-							Value: 18,
-						},
+						Value:     18,
 					},
 				},
 			}
@@ -79,9 +75,7 @@ func Test_newAndCond(t *testing.T) {
 				subConds[i] = &CondCfg{
 					Name:      "name",
 					Operation: OperationEq,
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value:     "test",
 				}
 			}
 			cfg := &CondCfg{
@@ -100,9 +94,7 @@ func Test_newAndCond(t *testing.T) {
 					{
 						Name:      "nonexistent",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -140,16 +132,12 @@ func Test_AndCond_Convert(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 					{
 						Name:      "age",
 						Operation: OperationGt,
-						ValueOptCfg: ValueOptCfg{
-							Value: 18,
-						},
+						Value:     18,
 					},
 				},
 			}
@@ -190,16 +178,12 @@ func Test_AndCond_Convert2SQL(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 					{
 						Name:      "age",
 						Operation: OperationGt,
-						ValueOptCfg: ValueOptCfg{
-							Value: 18,
-						},
+						Value:     18,
 					},
 				},
 			}
@@ -242,16 +226,12 @@ func Test_rewriteAndCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 					{
 						Name:      "age",
 						Operation: OperationGt,
-						ValueOptCfg: ValueOptCfg{
-							Value: 18,
-						},
+						Value:     18,
 					},
 				},
 			}
@@ -288,9 +268,7 @@ func Test_rewriteAndCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -307,9 +285,7 @@ func Test_rewriteAndCondition(t *testing.T) {
 				subConds[i] = &CondCfg{
 					Name:      "name",
 					Operation: OperationEq,
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value:     "test",
 				}
 				subConds[i].NameField = fieldsMap["name"]
 			}
@@ -344,16 +320,12 @@ func Test_newOrCond(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test1",
-						},
+						Value:     "test1",
 					},
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test2",
-						},
+						Value:     "test2",
 					},
 				},
 			}
@@ -383,9 +355,7 @@ func Test_newOrCond(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -421,16 +391,12 @@ func Test_OrCond_Convert(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test1",
-						},
+						Value:     "test1",
 					},
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test2",
-						},
+						Value:     "test2",
 					},
 				},
 			}
@@ -464,16 +430,12 @@ func Test_OrCond_Convert2SQL(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test1",
-						},
+						Value:     "test1",
 					},
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test2",
-						},
+						Value:     "test2",
 					},
 				},
 			}
@@ -523,9 +485,7 @@ func Test_rewriteOrCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -545,9 +505,7 @@ func Test_rewriteOrCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -564,9 +522,7 @@ func Test_rewriteOrCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -596,9 +552,9 @@ func Test_EmptyConditionSetSemantics(t *testing.T) {
 		}
 		leaf := func() *CondCfg {
 			return &CondCfg{
-				Name:        "name",
-				Operation:   OperationEq,
-				ValueOptCfg: ValueOptCfg{Value: "test"},
+				Name:      "name",
+				Operation: OperationEq,
+				Value:     "test",
 			}
 		}
 		emptyAnd := func() *CondCfg { return &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{}} }

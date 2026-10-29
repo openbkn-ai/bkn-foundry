@@ -38,10 +38,8 @@ func TestNewRegexCond(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field3",
 				NameField: fieldsMap["field3"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -54,10 +52,8 @@ func TestNewRegexCond(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -70,10 +66,8 @@ func TestNewRegexCond(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -86,10 +80,8 @@ func TestNewRegexCond(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "[invalid",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "[invalid",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -102,10 +94,8 @@ func TestNewRegexCond(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test.*",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test.*",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -121,10 +111,8 @@ func TestNewRegexCond(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field2",
 				NameField: fieldsMap["field2"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test.*",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test.*",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -148,10 +136,8 @@ func TestRegexCond_Convert(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test.*",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test.*",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -187,10 +173,8 @@ func TestRegexCond_Convert2SQL(t *testing.T) {
 				Operation: OperationRegex,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test.*",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test.*",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)

@@ -90,14 +90,14 @@ func TestWithGenerates(t *testing.T) {
 		{
 			name:  "RETURN counts the groups through a derived table",
 			query: "MATCH (o:Order) WITH o.customer_code AS c, count(*) AS n WHERE n > 1 RETURN count(*) AS customers",
-			want: []string{"SELECT COUNT(*) AS `customers` FROM (SELECT COUNT(*) AS `group_rows` FROM {{.res_order}} t0 " +
+			want: []string{"SELECT COUNT(*) AS `customers` FROM (SELECT COUNT(*) AS `group_rows` FROM {{res_order}} t0 " +
 				"GROUP BY t0.`f_cust` HAVING COUNT(*) > 1) g"},
 		},
 		{
 			name:  "RETURN aggregates a value each group yields",
 			query: "MATCH (o:Order) WITH o.region AS r, sum(o.amount) AS total RETURN max(total) AS top, count(DISTINCT total) AS kinds LIMIT 5",
 			want: []string{"SELECT MAX(g.`total`) AS `top`, COUNT(DISTINCT g.`total`) AS `kinds` FROM (SELECT SUM(t0.`f_amount`) AS `total` " +
-				"FROM {{.res_order}} t0 GROUP BY t0.`f_region`) g LIMIT 5"},
+				"FROM {{res_order}} t0 GROUP BY t0.`f_region`) g LIMIT 5"},
 		},
 		{
 			name:  "an opening WITH names a list that IN uses",
@@ -364,7 +364,7 @@ func TestWithTotalsRunOnTheSQLPathWhateverTheExecutor(t *testing.T) {
 		t.Fatal("totals did not run on the SQL path")
 	}
 	want := "SELECT COUNT(*) AS `customers`, MAX(g.`last`) AS `top` FROM (SELECT MAX(t0.`f_cust_code`) AS `last` " +
-		"FROM {{.res_order}} t0 GROUP BY t0.`f_total` HAVING COUNT(*) > 1) g LIMIT"
+		"FROM {{res_order}} t0 GROUP BY t0.`f_total` HAVING COUNT(*) > 1) g LIMIT"
 	if !strings.Contains(vega.request.Query, want) {
 		t.Fatalf("statement = %s, want %s", vega.request.Query, want)
 	}

@@ -39,9 +39,7 @@ func Test_NewGtCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationGt,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 			}
 			cond, err := NewGtCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -52,9 +50,7 @@ func Test_NewGtCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationGt,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewGtCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -65,9 +61,7 @@ func Test_NewGtCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationGt,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 19},
-				},
+				Value:     []any{18, 19},
 			}
 			cond, err := NewGtCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -83,9 +77,7 @@ func Test_GtCond_Convert(t *testing.T) {
 		Convey("成功 - 整数转换DSL", func() {
 			cond := &GtCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: 18,
-					},
+					Value: 18,
 				},
 				mFilterFieldName: "age",
 			}
@@ -100,9 +92,7 @@ func Test_GtCond_Convert(t *testing.T) {
 		Convey("成功 - 字符串转换DSL", func() {
 			cond := &GtCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldName: "name",
 			}
@@ -123,9 +113,7 @@ func Test_GtCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 整数转换SQL", func() {
 			cond := &GtCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: 18,
-					},
+					Value: 18,
 				},
 				mFilterFieldName: "age",
 			}
@@ -139,9 +127,7 @@ func Test_GtCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 字符串转换SQL", func() {
 			cond := &GtCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldName: "name",
 			}
@@ -160,9 +146,7 @@ func Test_rewriteGtCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationGt,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 				NameField: &DataProperty{
 					Name: "age",
 					MappedField: Field{
@@ -181,9 +165,7 @@ func Test_rewriteGtCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationGt,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 				NameField: &DataProperty{
 					Name: "",
 				},

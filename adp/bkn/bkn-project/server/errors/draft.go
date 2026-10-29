@@ -6,18 +6,19 @@ package errors
 
 const (
 	// 400
-	BknProject_Draft_NoCatalogs         = "BknProject.Draft.NoCatalogs"
-	BknProject_Draft_InvalidRequestBody = "BknProject.Draft.InvalidRequestBody"
-	BknProject_Draft_EmptyEdit          = "BknProject.Draft.EmptyEdit"
-	BknProject_Draft_InvalidName        = "BknProject.Draft.InvalidName"
-	BknProject_Draft_InvalidDescription = "BknProject.Draft.InvalidDescription"
-	BknProject_Draft_EndpointNotAdopted = "BknProject.Draft.EndpointNotAdopted"
-	BknProject_Draft_InvalidIdentity    = "BknProject.Draft.InvalidIdentity"
-	BknProject_Draft_NotRestorable      = "BknProject.Draft.NotRestorable"
-	BknProject_Draft_MissingUpdateTime  = "BknProject.Draft.MissingUpdateTime"
-	BknProject_Draft_NeedsIdentity      = "BknProject.Draft.NeedsIdentity"
-	BknProject_Draft_NothingAdopted     = "BknProject.Draft.NothingAdopted"
-	BknProject_Draft_InvalidItem        = "BknProject.Draft.InvalidItem"
+	BknProject_Draft_NoCatalogs            = "BknProject.Draft.NoCatalogs"
+	BknProject_Draft_InvalidRequestBody    = "BknProject.Draft.InvalidRequestBody"
+	BknProject_Draft_EmptyEdit             = "BknProject.Draft.EmptyEdit"
+	BknProject_Draft_InvalidName           = "BknProject.Draft.InvalidName"
+	BknProject_Draft_InvalidDescription    = "BknProject.Draft.InvalidDescription"
+	BknProject_Draft_EndpointNotAdopted    = "BknProject.Draft.EndpointNotAdopted"
+	BknProject_Draft_InvalidIdentity       = "BknProject.Draft.InvalidIdentity"
+	BknProject_Draft_InvalidIncrementalKey = "BknProject.Draft.InvalidIncrementalKey"
+	BknProject_Draft_NotRestorable         = "BknProject.Draft.NotRestorable"
+	BknProject_Draft_MissingUpdateTime     = "BknProject.Draft.MissingUpdateTime"
+	BknProject_Draft_NeedsIdentity         = "BknProject.Draft.NeedsIdentity"
+	BknProject_Draft_NothingAdopted        = "BknProject.Draft.NothingAdopted"
+	BknProject_Draft_InvalidItem           = "BknProject.Draft.InvalidItem"
 
 	// 403
 	BknProject_Draft_NotOwner = "BknProject.Draft.NotOwner"
@@ -56,6 +57,28 @@ const (
 	BknProject_Check_Running          = "BknProject.Check.Running"
 )
 
+// The local index builds of a confirmed draft.
+const (
+	// 403
+	BknProject_Index_NotOwner = "BknProject.Index.NotOwner"
+
+	// 409
+	BknProject_Index_NothingConfirmed = "BknProject.Index.NothingConfirmed"
+	BknProject_Index_ConfirmAgain     = "BknProject.Index.ConfirmAgain"
+)
+
+// The semantic understanding of a project's catalogs.
+const (
+	// 400
+	BknProject_Understand_InvalidApplyMode = "BknProject.Understand.InvalidApplyMode"
+
+	// 403
+	BknProject_Understand_NotOwner = "BknProject.Understand.NotOwner"
+
+	// 409
+	BknProject_Understand_NoCatalogs = "BknProject.Understand.NoCatalogs"
+)
+
 var (
 	DraftErrCodeList = []string{
 		BknProject_Draft_NoCatalogs,
@@ -65,6 +88,7 @@ var (
 		BknProject_Draft_MissingUpdateTime,
 		BknProject_Draft_NeedsIdentity,
 		BknProject_Draft_InvalidIdentity,
+		BknProject_Draft_InvalidIncrementalKey,
 		BknProject_Draft_NotRestorable,
 		BknProject_Draft_FieldNotFound,
 		BknProject_Draft_InvalidRequestBody,
@@ -89,5 +113,11 @@ var (
 		BknProject_Check_NothingConfirmed,
 		BknProject_Check_ConfirmAgain,
 		BknProject_Check_Running,
+		BknProject_Index_NotOwner,
+		BknProject_Index_NothingConfirmed,
+		BknProject_Index_ConfirmAgain,
+		BknProject_Understand_InvalidApplyMode,
+		BknProject_Understand_NotOwner,
+		BknProject_Understand_NoCatalogs,
 	}
 )

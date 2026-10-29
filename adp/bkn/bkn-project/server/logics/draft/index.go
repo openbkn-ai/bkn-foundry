@@ -40,8 +40,46 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
+	index, _, err := s.readIndex(ctx, &draft.Items, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read tables failed")
+		return nil, internalError(ctx, "Read tables failed", err)
+	}
+	if c := draft.Items.Confirmation; c != nil && c.Commit != "" {
+		s.attachBuilds(ctx, index, projectID, c.Commit)
+	}
+	span.SetStatus(codes.Ok, "")
+	return index, nil
+}
+
+// attachBuilds gives each object type the build that the confirmation of commit started for its
+// table. Without them the readiness still stands.
+func (s *draftService) attachBuilds(ctx context.Context, index *interfaces.ProjectIndex, projectID string,
+	commit string) {
+	builds, err := s.iba.ListBuilds(ctx, projectID, commit)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("List index builds of project %s: %v", projectID, err))
+		return
+	}
+	byResource := map[string]*interfaces.IndexBuild{}
+	for _, b := range builds {
+		byResource[b.ResourceID] = b
+	}
+	for i := range index.ObjectTypes {
+		item := &index.ObjectTypes[i]
+		if b, ok := byResource[item.Table.ResourceID]; ok {
+			item.Build = &interfaces.ProjectIndexBuild{Outcome: b.Outcome, TaskID: b.TaskID, Reason: b.Reason,
+				Time: b.CreateTime}
+		}
+	}
+}
+
+// readIndex reads the readiness of the local indexes of the adopted object types as the account,
+// and the tables it read them from, by resource id.
+func (s *draftService) readIndex(ctx context.Context, items *interfaces.DraftItems,
+	account interfaces.AccountInfo) (*interfaces.ProjectIndex, map[string]*interfaces.VegaTable, error) {
 	var ids, catalogIDs []string
-	for _, ot := range draft.Items.ObjectTypes {
+	for _, ot := range items.ObjectTypes {
 		if ot.Adopted {
 			ids = append(ids, ot.Table.ResourceID)
 			if !slices.Contains(catalogIDs, ot.Table.CatalogID) {
@@ -51,10 +89,9 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 	}
 	tables := map[string]*interfaces.VegaTable{}
 	if len(ids) > 0 {
-		read, err := s.va.GetTables(ctx, caller, ids)
+		read, err := s.va.GetTables(ctx, account, ids)
 		if err != nil {
-			span.SetStatus(codes.Error, "Read tables failed")
-			return nil, internalError(ctx, "Read tables failed", err)
+			return nil, nil, err
 		}
 		for _, table := range read {
 			tables[table.ID] = table
@@ -63,7 +100,7 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 	tasks, tasksVisible := map[string]*interfaces.VegaBuildTask{}, true
 	for _, catalogID := range catalogIDs {
 		// Listing needs the catalog's task_manage permission, which a reader may not have.
-		listed, visible, err := s.va.ListActiveBuildTasks(ctx, caller, catalogID)
+		listed, visible, err := s.va.ListActiveBuildTasks(ctx, account, catalogID)
 		if err != nil {
 			otellog.LogWarn(ctx, fmt.Sprintf("List build tasks of catalog %s: %v", catalogID, err))
 		}
@@ -75,8 +112,7 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 			tasks[task.ResourceID] = task
 		}
 	}
-	span.SetStatus(codes.Ok, "")
-	return indexReadiness(&draft.Items, tables, tasks, tasksVisible), nil
+	return indexReadiness(items, tables, tasks, tasksVisible), tables, nil
 }
 
 // indexReadiness is the readiness of the local indexes of the adopted object types, in the draft's

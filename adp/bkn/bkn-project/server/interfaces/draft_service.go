@@ -46,6 +46,16 @@ type DraftService interface {
 	// RunCheck checks the last confirmation again in the background, for the project owner, and
 	// returns the check, running.
 	RunCheck(ctx context.Context, token string, projectID string, caller AccountInfo) (*Check, error)
+	// BuildIndex builds the local indexes of the last confirmation again, for the project owner,
+	// and returns the readiness with what each build did.
+	BuildIndex(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectIndex, error)
+	// Understand starts, for the project owner, the semantic understanding of the tables in the
+	// project's data catalogs, in its naming language; tasks are created in the background.
+	Understand(ctx context.Context, token string, projectID string, request ProjectUnderstand,
+		caller AccountInfo) (*ProjectUnderstandSubmitted, error)
+	// GetUnderstanding returns the semantic understanding of the tables in the project's data
+	// catalogs, read from vega-backend as the caller.
+	GetUnderstanding(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectUnderstanding, error)
 	// FailInterrupted fails the drafts and checks a previous run of the service left going.
 	FailInterrupted(ctx context.Context) error
 }

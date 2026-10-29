@@ -273,7 +273,7 @@ func TestObjectAggregateUsesAuthorizedResourceQuery(t *testing.T) {
 	service := resourcePagingService(t, vega, 1)
 	query := resourcePagingQuery(10000)
 	query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationEq,
-		ValueOptCfg: cond.ValueOptCfg{Value: "customer-1"}}
+		Value: "customer-1"}
 	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "id", "count", []string{"id"})
 	if err != nil || len(result.Datas) != 1 || result.Datas[0]["id"] != "customer-1" ||
 		result.Datas[0]["__value"] != int64(4) || result.QuerySource != "local_index" {

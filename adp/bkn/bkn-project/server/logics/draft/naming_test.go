@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -129,6 +130,129 @@ func Test_DraftNamingLanguage(t *testing.T) {
 			items, err := d.draft(context.Background(), []*interfaces.VegaTable{customers()}, nil)
 			So(err, ShouldBeNil)
 			So(items.ObjectTypes[0].Name, ShouldEqual, "客户主数据")
+		})
+	})
+}
+
+func Test_DraftTableName(t *testing.T) {
+	Convey("Test naming an object type from its table\n", t, func() {
+		zh, en := interfaces.NAMING_LANGUAGE_ZH_CN, interfaces.NAMING_LANGUAGE_EN_US
+		orders := func(name string, description string) *interfaces.VegaTable {
+			t := table("r_so", "c1", name, 0, []string{"id"}, col("id", "string", ""))
+			t.SourceName, t.Description = "sales_order", description
+			return t
+		}
+		nameIn := func(language string, t *interfaces.VegaTable) (string, []string) {
+			d := newDrafter(testSetting, sampleCounter()).withNamingLanguage(language)
+			items, err := d.draft(context.Background(), []*interfaces.VegaTable{t}, nil)
+			So(err, ShouldBeNil)
+			return items.ObjectTypes[0].Name, items.ObjectTypes[0].Aliases
+		}
+
+		Convey("The name semantic understanding or a person gave the table comes before its description\n", func() {
+			// Semantic understanding writes a sentence as the description: its first clause names badly.
+			name, aliases := nameIn(zh, orders("销售订单", "记录销售订单的签订、客户、产品、数量、交期及发货状态等信息"))
+			So(name, ShouldEqual, "销售订单")
+			So(aliases, ShouldBeNil)
+		})
+
+		Convey("A table nobody named takes the first clause of its description, as a database comment gives\n", func() {
+			name, _ := nameIn(zh, orders("sales_order", "销售订单。来自 ERP"))
+			So(name, ShouldEqual, "销售订单")
+		})
+
+		Convey("A name discovery gave, the physical name with its schema, is no name a person gave\n", func() {
+			// Tables discovered before vega 0.2.1 kept their source identifier as their name.
+			t := orders("erp.sales_order", "Sales orders. From ERP")
+			t.SourceSchema = "erp"
+			name, aliases := nameIn(en, t)
+			So(name, ShouldEqual, "Sales orders")
+			So(aliases, ShouldBeNil)
+		})
+
+		Convey("The naming language still comes first: a name in the other language is an alias\n", func() {
+			name, aliases := nameIn(en, orders("销售订单", "Sales orders signed with customers"))
+			So(name, ShouldEqual, "Sales orders signed with customers")
+			So(aliases, ShouldResemble, []string{"销售订单"})
+		})
+	})
+}
+
+func Test_DraftRelationName(t *testing.T) {
+	Convey("Test naming a relation drafted from a field referring to another table\n", t, func() {
+		zh, en := interfaces.NAMING_LANGUAGE_ZH_CN, interfaces.NAMING_LANGUAGE_EN_US
+		// A bill of materials refers to materials three times; only the referring fields tell the
+		// relations apart.
+		schema := func(bomName string, materialCode, parentCode, childCode string) []*interfaces.VegaTable {
+			materials := table("r_mat", "c1", "material", 0, []string{"code"}, col("code", "string", "物料编码"))
+			bom := table("r_bom", "c1", "material_bom", 0, []string{"id"}, col("id", "string", ""),
+				col("material_code", "string", materialCode), col("parent_code", "string", parentCode),
+				col("child_code", "string", childCode))
+			bom.Description = bomName
+			bom.ForeignKeys = []interfaces.VegaForeignKey{fk("material_code", "material", "code"),
+				fk("parent_code", "material", "code"), fk("child_code", "material", "code")}
+			return []*interfaces.VegaTable{materials, bom}
+		}
+		relationNames := func(language string, tables []*interfaces.VegaTable) map[string]string {
+			d := newDrafter(testSetting, sampleCounter()).withNamingLanguage(language)
+			items, err := d.draft(context.Background(), tables, nil)
+			So(err, ShouldBeNil)
+			names := map[string]string{}
+			for _, r := range items.RelationTypes {
+				names[r.Mapping[0].SourceProperty] = r.Name
+			}
+			return names
+		}
+
+		Convey("A Chinese project names it the source's referring field\n", func() {
+			So(relationNames(zh, schema("物料BOM明细", "BOM所属物料编码", "父项物料编码", "子项物料编码")),
+				ShouldResemble, map[string]string{
+					"material_code": "物料BOM明细的BOM所属物料编码",
+					"parent_code":   "物料BOM明细的父项物料编码",
+					"child_code":    "物料BOM明细的子项物料编码",
+				})
+		})
+
+		Convey("An English project names it the referring field of the source\n", func() {
+			So(relationNames(en, schema("BOM detail", "Material code", "Parent material code", "Child material code")),
+				ShouldResemble, map[string]string{
+					"material_code": "Material code of BOM detail",
+					"parent_code":   "Parent material code of BOM detail",
+					"child_code":    "Child material code of BOM detail",
+				})
+		})
+
+		Convey("A field nobody named keeps the relation's id: joining physical names reads no better\n", func() {
+			names := relationNames(zh, schema("物料BOM明细", "", "父项物料编码", ""))
+			So(names["material_code"], ShouldEqual, "material_bom_to_material")
+			So(names["parent_code"], ShouldEqual, "物料BOM明细的父项物料编码")
+			So(names["child_code"], ShouldEqual, "material_bom_to_material_3")
+		})
+
+		Convey("A field whose physical name is not ASCII reads as written: it names the relation\n", func() {
+			materials := table("r_wl", "c1", "物料", 0, []string{"编码"}, col("编码", "string", ""))
+			bom := table("r_bom", "c1", "物料清单", 0, []string{"id"}, col("id", "string", ""), col("父项编码", "string", ""))
+			bom.ForeignKeys = []interfaces.VegaForeignKey{fk("父项编码", "物料", "编码")}
+			names := relationNames(zh, []*interfaces.VegaTable{materials, bom})
+			So(names, ShouldHaveLength, 1)
+			for _, name := range names {
+				So(name, ShouldEqual, "物料清单的父项编码")
+			}
+		})
+
+		Convey("A naming language without a template keeps the referring field's name\n", func() {
+			names := relationNames("fr-FR", schema("物料BOM明细", "BOM所属物料编码", "父项物料编码", "子项物料编码"))
+			So(names["parent_code"], ShouldEqual, "父项物料编码")
+		})
+
+		Convey("Too long a name keeps the referring field's name only, within BKN's 40-character display names\n", func() {
+			// 36 characters: a name BKN takes, too long once the field is joined.
+			long := "物料清单明细记录表包含父子项及用量与损耗率等全部信息字段以及其他扩展属性"
+			names := relationNames(zh, schema(long, "BOM所属物料编码", "父项物料编码", "子项物料编码"))
+			So(names["parent_code"], ShouldEqual, "父项物料编码")
+			for _, name := range names {
+				So(utf8.RuneCountInString(name), ShouldBeLessThanOrEqualTo, maxDisplayNameRunes)
+			}
 		})
 	})
 }

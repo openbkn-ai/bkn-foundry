@@ -25,7 +25,11 @@ import (
 // the short name semantic understanding gave, and the hash stands only until there is one.
 // Version 4: items are named in the project's naming language, and their names in the other one
 // become aliases.
-const draftRulesVersion = 4
+// Version 5: a table is named first from the name semantic understanding or a person gave it, then
+// from the first clause of its description.
+// Version 6: a relation drafted from a referring field is named after the field and its object type
+// rather than by its id.
+const draftRulesVersion = 6
 
 // draftInputsOf records what a draft is made from: the rules and their settings, the catalogs
 // and the tables read, listed by resource ID.

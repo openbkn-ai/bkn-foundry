@@ -146,6 +146,21 @@ func (mr *MockLineageServiceMockRecorder) PreflightDefinitions(ctx, lineageID, b
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreflightDefinitions", reflect.TypeOf((*MockLineageService)(nil).PreflightDefinitions), ctx, lineageID, branch, paths, owned)
 }
 
+// PreviewRelease mocks base method.
+func (m *MockLineageService) PreviewRelease(ctx context.Context, token, lineageID, branch, version string) (*interfaces.ReleasePreview, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PreviewRelease", ctx, token, lineageID, branch, version)
+	ret0, _ := ret[0].(*interfaces.ReleasePreview)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PreviewRelease indicates an expected call of PreviewRelease.
+func (mr *MockLineageServiceMockRecorder) PreviewRelease(ctx, token, lineageID, branch, version any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreviewRelease", reflect.TypeOf((*MockLineageService)(nil).PreviewRelease), ctx, token, lineageID, branch, version)
+}
+
 // PublishRelease mocks base method.
 func (m *MockLineageService) PublishRelease(ctx context.Context, token, lineageID string, req interfaces.PublishReleaseRequest, publisher interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.PublishReleaseResult, error) {
 	m.ctrl.T.Helper()

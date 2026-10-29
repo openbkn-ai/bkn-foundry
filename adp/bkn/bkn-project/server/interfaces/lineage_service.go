@@ -105,6 +105,48 @@ type PublishReleaseResult struct {
 	Commit string `json:"commit"`
 }
 
+// ReleasePreview is what publishing a project branch as Version would do, read without doing it:
+// the network it would create, what it changes against main, what it does with each function
+// and Skill, and every refusal publishing would meet now, in the order publishing checks them.
+type ReleasePreview struct {
+	LineageID string `json:"lineage_id"`
+	Branch    string `json:"branch"`
+	Version   string `json:"version"`
+	Tag       string `json:"tag"`
+	NetworkID string `json:"network_id"`
+	// NetworkName is empty when the branch's definitions cannot make a release package.
+	NetworkName string `json:"network_name"`
+	// LiveNetworkID and BaseVersion are the newest release, or the lineage's own network and
+	// empty before the first one.
+	LiveNetworkID string `json:"live_network_id"`
+	BaseVersion   string `json:"base_version"`
+	MainCommit    string `json:"main_commit"`
+	BranchCommit  string `json:"branch_commit"`
+	// Changes says how the branch's definitions differ from main's.
+	Changes PathDiff `json:"changes"`
+	// Capabilities is what the release would do with each toolbox and Skill the definitions use;
+	// empty when the package could not be built.
+	Capabilities []CapabilityPlan `json:"capabilities"`
+	Refusals     []ReleaseRefusal `json:"refusals"`
+}
+
+// CapabilityPlan is what a release does with one toolbox (kind function) or Skill: reuse it under
+// its id, or copy it to a new one for the reasons given (changed, network_id).
+type CapabilityPlan struct {
+	Kind    string   `json:"kind"`
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Copy    bool     `json:"copy"`
+	Reasons []string `json:"reasons"`
+}
+
+// ReleaseRefusal is a reason publishing would be refused, as the error code and details
+// publishing replies with.
+type ReleaseRefusal struct {
+	Code    string `json:"code"`
+	Details any    `json:"details,omitempty"`
+}
+
 // SwitchRequest is the body of POST /lineages/{lineage_id}/switches.
 type SwitchRequest struct {
 	// ToNetworkID is a network of the lineage: one a release created, or the base network.
@@ -153,6 +195,10 @@ type LineageService interface {
 	// PublishRelease imports a project branch with token as a new knowledge network and records the release.
 	PublishRelease(ctx context.Context, token string, lineageID string, req PublishReleaseRequest,
 		publisher AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
+	// PreviewRelease runs the checks of PublishRelease without acting on any, and reports what
+	// publishing the branch as version would do and every refusal it would meet now.
+	PreviewRelease(ctx context.Context, token string, lineageID string, branch string,
+		version string) (*ReleasePreview, error)
 	// PlanSwitch reports what switching the lineage to toNetworkID would do, without doing it.
 	PlanSwitch(ctx context.Context, token string, lineageID string, toNetworkID string) (*SwitchPlan, error)
 	// SwitchConsumers moves the lineage's schedules to req.ToNetworkID and records the switch. A

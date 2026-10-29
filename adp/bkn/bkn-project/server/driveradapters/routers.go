@@ -48,6 +48,7 @@ type restHandler struct {
 	ls         interfaces.LineageService
 	ps         interfaces.ProjectService
 	drs        interfaces.DraftService
+	prs        interfaces.ProjectReleaseService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
@@ -59,6 +60,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		ls:         lineage.NewLineageService(),
 		ps:         project.NewProjectService(),
 		drs:        draft.NewDraftService(appSetting),
+		prs:        release.NewProjectReleaseService(appSetting),
 	}
 }
 
@@ -96,10 +98,21 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
 	apiV1.PUT("/projects/:project_id/catalogs", r.SetProjectCatalogsByEx)
 	apiV1.PUT("/projects/:project_id/naming-language", r.SetProjectNamingLanguageByEx)
+	// Semantic understanding of the tables in the project's data catalogs: catalogs:understand
+	// submits it, and its progress is read from vega-backend. Bringing the live version into the
+	// project's branch is branch:sync, and committing the live network's drift first drift:commit.
+	apiV1.POST("/projects/:project_id/:action", r.ProjectDataActionByEx)
+	apiV1.GET("/projects/:project_id/catalogs/understanding", r.GetUnderstandingByEx)
 	// Where a project stands, computed for the caller from its draft, confirmation and check.
 	apiV1.GET("/projects/:project_id/status", r.GetStatusByEx)
 	// What waits for a person before the draft can be confirmed, with the requests that settle it.
 	apiV1.GET("/projects/:project_id/pending", r.GetPendingByEx)
+	// A project's releases: what publishing would bring, publishing it, and switching consumers to
+	// a release of the project.
+	apiV1.GET("/projects/:project_id/release-review", r.ReviewReleaseByEx)
+	apiV1.POST("/projects/:project_id/releases", r.PublishProjectByEx)
+	apiV1.GET("/projects/:project_id/switch-plan", r.PlanProjectSwitchByEx)
+	apiV1.POST("/projects/:project_id/switches", r.SwitchProjectByEx)
 
 	// Ontology drafts: drafting, restoring an excluded field and confirming are custom methods,
 	// ontology/draft:generate, draft:restore and draft:confirm; people edit items one by one and

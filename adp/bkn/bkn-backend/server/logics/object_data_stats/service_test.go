@@ -77,7 +77,7 @@ func Test_objectDataStatsService_ObjectDataStats(t *testing.T) {
 
 			vba.EXPECT().RawQuery(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, q *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-					So(q.Query, ShouldContainSubstring, "{{.res-1}}")
+					So(q.Query, ShouldContainSubstring, "{{res-1}}")
 					So(q.Query, ShouldContainSubstring,
 						"COUNT(DISTINCT CASE WHEN `bom_material_code` IS NOT NULL THEN `bom_material_code` END)")
 					return countRow(1000, 1000, true), nil

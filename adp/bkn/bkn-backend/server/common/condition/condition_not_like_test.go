@@ -38,10 +38,8 @@ func TestNewNotLikeCond(t *testing.T) {
 				Operation: OperationNotLike,
 				Field:     "field3",
 				NameField: fieldsMap["field3"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewNotLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -54,10 +52,8 @@ func TestNewNotLikeCond(t *testing.T) {
 				Operation: OperationNotLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 			}
 			cond, err := NewNotLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -70,10 +66,8 @@ func TestNewNotLikeCond(t *testing.T) {
 				Operation: OperationNotLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, err := NewNotLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -86,10 +80,8 @@ func TestNewNotLikeCond(t *testing.T) {
 				Operation: OperationNotLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewNotLikeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -116,10 +108,8 @@ func TestNotLikeCond_Convert(t *testing.T) {
 				Operation: OperationNotLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewNotLikeCond(ctx, cfg, fieldsMap)
 			notLikeCond := cond.(*NotLikeCond)
@@ -155,10 +145,8 @@ func TestNotLikeCond_Convert2SQL(t *testing.T) {
 				Operation: OperationNotLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewNotLikeCond(ctx, cfg, fieldsMap)
 			notLikeCond := cond.(*NotLikeCond)
