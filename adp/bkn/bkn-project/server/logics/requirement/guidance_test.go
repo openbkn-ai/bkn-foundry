@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -62,9 +63,9 @@ func Test_BuildGuidance(t *testing.T) {
 
 		Convey("Tests get the server's ids, at most maxTests, and are not checked yet\n", func() {
 			out := &guidanceOutput{Guidance: "Use the relation.", OutOfScope: []string{"Parent company?"}}
-			for range maxTests + 2 {
-				out.Tests = append(out.Tests, agentTest{Text: "Orders of 10001?", Kind: "paraphrase", Expect: interfaces.TEST_EXPECT_EXISTS,
-					Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}}})
+			for i := range maxTests + 2 {
+				out.Tests = append(out.Tests, agentTest{Text: fmt.Sprintf("Orders %d of 10001?", i), Kind: "paraphrase",
+					Expect: interfaces.TEST_EXPECT_EXISTS, Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}}})
 			}
 			out.Tests[1].Text = "  "
 
@@ -72,8 +73,9 @@ func Test_BuildGuidance(t *testing.T) {
 
 			So(tests, ShouldHaveLength, maxTests)
 			So(tests[0].ID, ShouldEqual, "t1")
+			// The blank one is left out: the second test is the third written.
 			So(tests[1].ID, ShouldEqual, "t2")
-			So(tests[1].Text, ShouldNotEqual, "  ")
+			So(tests[1].Text, ShouldEqual, "Orders 2 of {{slot 1}}?")
 			// No document says 10001: the Agent made it up, so the server fills it.
 			So(tests[0].Slots, ShouldResemble, []interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}})
 			So(tests[0].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkPending})
@@ -262,22 +264,31 @@ func Test_GetGuidance(t *testing.T) {
 		svc := &requirementService{ps: ps, ra: ra}
 		ctx := context.Background()
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil).AnyTimes()
+		// Guidance generated at 20, for a specification drafted at 10 unless said otherwise.
 		stored := func(version int, question string) *interfaces.QuestionGuidance {
 			return &interfaces.QuestionGuidance{ProjectID: "p1", QuestionID: "q1", SpecVersion: version, Question: question,
-				Status: interfaces.GUIDANCE_STATUS_READY}
+				Status: interfaces.GUIDANCE_STATUS_READY, CreateTime: 20}
+		}
+		drafted := func(at int64) *interfaces.Requirement {
+			spec := readySpec()
+			spec.CreateTime = at
+			return spec
 		}
 
 		Convey("Guidance applies while the specification version and the question are as generated for\n", func() {
 			for _, c := range []struct {
 				g       *interfaces.QuestionGuidance
+				spec    *interfaces.Requirement
 				current bool
 			}{
-				{stored(1, "Which orders?"), true},
-				{stored(1, "Which orders of last month?"), false},
-				{stored(0, "Which orders?"), false},
+				{stored(1, "Which orders?"), drafted(10), true},
+				{stored(1, "Which orders of last month?"), drafted(10), false},
+				{stored(0, "Which orders?"), drafted(10), false},
+				// Drafted again after the guidance, to the same version and question: its ids may name others now.
+				{stored(1, "Which orders?"), drafted(30), false},
 			} {
 				ra.EXPECT().GetGuidance(gomock.Any(), "p1", "q1").Return(c.g, true, nil)
-				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(readySpec(), true, nil)
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(c.spec, true, nil)
 
 				view, err := svc.GetGuidance(ctx, token, "p1", "q1")
 				So(err, ShouldBeNil)

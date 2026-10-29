@@ -187,13 +187,13 @@ func slotPlaceholder(i int) string {
 
 // valueInDocuments tells whether a value is written in one of the documents, compared as quotes
 // are: a value the documents do not say, the Agent made up.
-func valueInDocuments(value string, docs []*interfaces.RequirementDocument) bool {
+func valueInDocuments(value string, texts []string) bool {
 	v := normalize([]rune(value)).text
 	if v == "" {
 		return false
 	}
-	for _, d := range docs {
-		if strings.Contains(normalize([]rune(d.Content)).text, v) {
+	for _, text := range texts {
+		if strings.Contains(text, v) {
 			return true
 		}
 	}
@@ -204,6 +204,10 @@ func valueInDocuments(value string, docs []*interfaces.RequirementDocument) bool
 // out those without text. A value is kept only when a document says it; the others are left for
 // the server to fill from the data. None is checked against the data yet.
 func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*interfaces.QuestionTest {
+	texts := make([]string, 0, len(docs))
+	for _, d := range docs {
+		texts = append(texts, normalize([]rune(d.Content)).text)
+	}
 	tests := []*interfaces.QuestionTest{}
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
@@ -217,7 +221,7 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 		slots := make([]interfaces.QuestionTestSlot, 0, len(at.Slots))
 		for i, s := range at.Slots {
 			value := strings.TrimSpace(s.Value)
-			if !valueInDocuments(value, docs) {
+			if !valueInDocuments(value, texts) {
 				// The text asks about the made-up value: it gives way to the slot, which the
 				// server's value from the data replaces.
 				if value != "" {
@@ -391,6 +395,12 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	finish(&done)
 }
 
+// guidanceCurrent tells whether guidance still applies to the question: generated for the same
+// version and question text of the specification as drafted last, since drafting again may reuse both.
+func guidanceCurrent(req *interfaces.Requirement, q *interfaces.RequirementQuestion, g *interfaces.QuestionGuidance) bool {
+	return req.Version == g.SpecVersion && q.Text == g.Question && g.CreateTime >= req.CreateTime
+}
+
 func (s *requirementService) GetGuidance(ctx context.Context, token string, projectID string,
 	questionID string) (*interfaces.QuestionGuidanceView, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetQuestionGuidance")
@@ -417,7 +427,7 @@ func (s *requirementService) GetGuidance(ctx context.Context, token string, proj
 	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g}
 	if found && req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		q := questionOf(&req.Spec, questionID)
-		view.Current = q != nil && req.Version == g.SpecVersion && q.Text == g.Question
+		view.Current = q != nil && guidanceCurrent(req, q, g)
 	}
 	span.SetStatus(codes.Ok, "")
 	return view, nil
