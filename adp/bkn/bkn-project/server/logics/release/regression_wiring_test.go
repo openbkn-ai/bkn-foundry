@@ -10,6 +10,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
@@ -37,6 +38,14 @@ func Test_NewRegressionService(t *testing.T) {
 			So(svc.rs, ShouldEqual, requirement.NewRequirementService())
 			So(svc.run, ShouldNotBeNil)
 			So(NewRegressionService(), ShouldEqual, svc)
+		})
+
+		Convey("A project's release service starts regressions with it and reads them from the store\n", func() {
+			prs, ok := NewProjectReleaseService(&common.AppSetting{}).(*projectReleaseService)
+
+			So(ok, ShouldBeTrue)
+			So(prs.rgs, ShouldEqual, NewRegressionService())
+			So(prs.rga, ShouldEqual, rga)
 		})
 	})
 }
