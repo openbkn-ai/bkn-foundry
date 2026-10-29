@@ -7,6 +7,7 @@ package draft
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -15,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
@@ -197,6 +199,42 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 	return decisions, nil
 }
 
+// regateRelations adopts the relations of an object type just adopted that drafting proposed
+// only because it was not, as drafting would have with both ends adopted: on the counts it
+// recorded, while they were counted against the key the target still has. One a person decided
+// on is theirs, and is left as it is.
+func regateRelations(setting common.DraftSetting, items *interfaces.DraftItems, id string) []*interfaces.DraftDecision {
+	decided := map[string]bool{}
+	for _, d := range items.Decisions {
+		if d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES {
+			decided[d.ItemID] = true
+		}
+	}
+	decisions := []*interfaces.DraftDecision{}
+	for _, r := range items.RelationTypes {
+		if r.ProposedBecause != proposedEndNotAdopted || decided[r.ID] || (r.Source != id && r.Target != id) ||
+			!objectTypeAdopted(items, r.Source) || !objectTypeAdopted(items, r.Target) {
+			continue
+		}
+		because := ""
+		if r.LinkTable == nil {
+			target := findObjectType(items, r.Target)
+			if len(r.Mapping) != 1 || !slices.Equal(target.PrimaryKeys, []string{r.Mapping[0].TargetProperty}) {
+				continue
+			}
+			because, _ = proposedBecause(setting, r.Origin, r.Evidence)
+		}
+		r.ProposedBecause, r.Adopted = because, because == ""
+		if r.Adopted {
+			decisions = append(decisions, &interfaces.DraftDecision{
+				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: r.ID, Action: interfaces.DRAFT_DECISION_ADOPT,
+				Before: false, After: true,
+			})
+		}
+	}
+	return decisions
+}
+
 // readyDraft returns the project's draft if it can be edited: the project is not archived,
 // the draft is ready, and it is the draft the edit was made on.
 func (s *draftService) readyDraft(ctx context.Context, token string, projectID string,
@@ -274,6 +312,9 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 	if err != nil {
 		span.SetStatus(codes.Error, "Edit refused")
 		return nil, err
+	}
+	if kind == interfaces.DRAFT_KIND_OBJECT_TYPES && edit.Adopted != nil && *edit.Adopted {
+		decisions = append(decisions, regateRelations(s.setting, &draft.Items, itemID)...)
 	}
 	for _, d := range decisions {
 		if d.Action == interfaces.DRAFT_DECISION_INCREMENTAL && d.After != "" {
