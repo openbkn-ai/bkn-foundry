@@ -1218,11 +1218,15 @@ func planSemanticAPINameUpdates(task *interfaces.SemanticUnderstandingTask, fiel
 	proposers := make(map[string][]string)
 	seen := make(map[string]bool, len(fields))
 	for _, field := range fields {
-		property, ok := fieldByName[field.Name]
-		if !ok || seen[field.Name] || property.APIName != "" || semanticFieldSkipped(task, field) {
+		// 与主循环一致：同名字段只看第一条，先判重再过滤。
+		if seen[field.Name] {
 			continue
 		}
 		seen[field.Name] = true
+		property, ok := fieldByName[field.Name]
+		if !ok || property.APIName != "" || semanticFieldSkipped(task, field) {
+			continue
+		}
 		if apiName := strings.TrimSpace(field.APIName); semanticAPINamePattern.MatchString(apiName) {
 			proposers[apiName] = append(proposers[apiName], field.Name)
 		}

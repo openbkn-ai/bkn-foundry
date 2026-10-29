@@ -1727,6 +1727,33 @@ func TestSemanticUnderstandingTaskWorkerApplyAPIName(t *testing.T) {
 		assert.Equal(t, []string{"ok"}, mustUpdatedFields(t, got.DetailJSON))
 	})
 
+	t.Run("counts only the first entry of a field the result repeats", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "x", DisplayName: "x", Type: interfaces.DataType_String},
+				{Name: "y", DisplayName: "y", Type: interfaces.DataType_String},
+			},
+		}
+		ctrl := gomock.NewController(t)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+		resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+				assert.Empty(t, got.SchemaDefinition[0].APIName)
+				assert.Equal(t, "code", got.SchemaDefinition[1].APIName)
+				return nil
+			})
+		// x 的第一条低于阈值被整条跳过，第二条按重复跳过，所以 x 不算 code 的提议者。
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+			Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+			ApplyMode: interfaces.SemanticUnderstandingApplyModeFillEmpty, ConfidenceThreshold: 0.75,
+		}, `{"fields":[{"name":"x","api_name":"foo","confidence":0.1},{"name":"x","api_name":"code"},{"name":"y","api_name":"code"}]}`, 0.9)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"y"}, mustUpdatedFields(t, got.DetailJSON))
+	})
+
 	t.Run("skips api names another field has or would get", func(t *testing.T) {
 		resource := &interfaces.Resource{
 			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
