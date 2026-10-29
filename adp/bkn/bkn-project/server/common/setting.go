@@ -48,6 +48,13 @@ type DraftSetting struct {
 	PrivacyKeywords []string `mapstructure:"privacyKeywords"`
 	// NameFieldKeywords name the fields that hold a record's name, matched as a field name or its end.
 	NameFieldKeywords []string `mapstructure:"nameFieldKeywords"`
+	// IdentifierWords end the names of fields that hold another record's identifier
+	// (supplier_number, 供应商编号); a field's name without one is its stem, which may point at
+	// the table it refers to. A word in Latin letters ends a name as its last word, any other as
+	// its end.
+	IdentifierWords []string `mapstructure:"identifierWords"`
+	// GenericStems are stems too common to say which table a field refers to (status_code).
+	GenericStems []string `mapstructure:"genericStems"`
 	// QueryTimeout bounds each count query in seconds; Timeout bounds the whole drafting.
 	QueryTimeout int           `mapstructure:"queryTimeout"`
 	Timeout      time.Duration `mapstructure:"timeout"`
@@ -139,6 +146,8 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("draft.minInferredDistinct", 10)
 	vp.SetDefault("draft.privacyKeywords", DefaultPrivacyKeywords)
 	vp.SetDefault("draft.nameFieldKeywords", DefaultNameFieldKeywords)
+	vp.SetDefault("draft.identifierWords", DefaultIdentifierWords)
+	vp.SetDefault("draft.genericStems", DefaultGenericStems)
 	vp.SetDefault("draft.queryTimeout", 60)
 	vp.SetDefault("draft.timeout", 10*time.Minute)
 	vp.SetDefault("draft.checkTimeout", 10*time.Minute)
@@ -270,7 +279,7 @@ func SetBknAgentSetting() {
 	appSetting.BknAgentUrl = fmt.Sprintf("%s://%s:%d/api/bkn-agent/v1", protocol, host, port)
 }
 
-// DefaultPrivacyKeywords and DefaultNameFieldKeywords are the fallbacks when the configuration
+// DefaultPrivacyKeywords, DefaultNameFieldKeywords, DefaultIdentifierWords and DefaultGenericStems are the fallbacks when the configuration
 // gives none. They are business vocabulary, so the shipped configuration carries the full
 // lists, Chinese included; the code keeps only the English ones.
 var DefaultPrivacyKeywords = []string{
@@ -279,3 +288,7 @@ var DefaultPrivacyKeywords = []string{
 }
 
 var DefaultNameFieldKeywords = []string{"name", "label", "title"}
+
+var DefaultIdentifierWords = []string{"id", "code", "no", "num", "number", "key", "sn"}
+
+var DefaultGenericStems = []string{"name", "remark", "desc", "description", "status", "type"}

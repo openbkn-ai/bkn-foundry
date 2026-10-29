@@ -26,6 +26,8 @@ var testSetting = common.DraftSetting{
 	MinInferredDistinct: 10,
 	PrivacyKeywords:     append([]string{"手机"}, common.DefaultPrivacyKeywords...),
 	NameFieldKeywords:   append([]string{"名称"}, common.DefaultNameFieldKeywords...),
+	IdentifierWords:     append([]string{"编号", "编码", "代码", "号码"}, common.DefaultIdentifierWords...),
+	GenericStems:        append([]string{"名称", "备注", "描述", "状态", "类型"}, common.DefaultGenericStems...),
 }
 
 type joinKey struct{ source, field string }

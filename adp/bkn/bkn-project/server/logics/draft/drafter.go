@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -514,7 +515,7 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 		}
 		linked[fk.Columns[0]] = true
 		if _, err := d.refer(ctx, table, source, fk.Columns[0], target, fk.RefColumns[0],
-			interfaces.DRAFT_ORIGIN_FOREIGN_KEY, ids); err != nil {
+			interfaces.DRAFT_ORIGIN_FOREIGN_KEY, false, ids); err != nil {
 			return err
 		}
 	}
@@ -533,8 +534,10 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 			table *interfaces.VegaTable
 			key   string
 			rank  int
+			// stem is a candidate the counts alone may bear out: it is not drafted uncounted.
+			stem bool
 		}
-		candidates := []candidate{}
+		candidates, stems := []candidate{}, []candidate{}
 		for _, other := range tables {
 			if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
 				continue
@@ -550,12 +553,25 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 				continue
 			}
 			if rank := nameMatch(c.Name, other, otherKey[0]); rank > 0 {
-				candidates = append(candidates, candidate{other, otherKey[0], rank})
+				candidates = append(candidates, candidate{other, otherKey[0], rank, false})
+			} else if d.kinds[other.ID] == tableKindEntity && other.CatalogID == table.CatalogID {
+				// Only relations within the catalog: refer counts those, while it takes a code
+				// table's enum, and a relation to another catalog, uncounted.
+				if rank := d.stemMatch(source, c.Name, other, otherKey[0]); rank > 0 {
+					stems = append(stems, candidate{other, otherKey[0], rank, true})
+				}
 			}
 		}
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].rank > candidates[j].rank })
+		// Stems point less surely than names: after them, the surer first and then by table id,
+		// and only a few, as each is counted.
+		sort.Slice(stems, func(i, j int) bool {
+			return cmp.Or(cmp.Compare(stems[j].rank, stems[i].rank), cmp.Compare(stems[i].table.ID, stems[j].table.ID)) < 0
+		})
+		candidates = append(candidates, stems[:min(len(stems), maxStemCandidates)]...)
 		for _, cand := range candidates {
-			drafted, err := d.refer(ctx, table, source, c.Name, cand.table, cand.key, interfaces.DRAFT_ORIGIN_NAME_MATCH, ids)
+			drafted, err := d.refer(ctx, table, source, c.Name, cand.table, cand.key, interfaces.DRAFT_ORIGIN_NAME_MATCH,
+				cand.stem, ids)
 			if err != nil {
 				return err
 			}
@@ -588,10 +604,44 @@ func nameMatch(field string, other *interfaces.VegaTable, key string) int {
 	return 0
 }
 
+// maxStemCandidates bounds how many tables one field's stem is counted against.
+const maxStemCandidates = 3
+
+// stemMatch ranks how a field of source points at another table by its stem, 0 when it does
+// not: by its name (see stemMatch), else by its business name naming the other table's object
+// type, the whole name above its end (or, in a script without words, any part of it). Either is
+// only a candidate; refer drafts it when the counts bear it out.
+func (d *drafter) stemMatch(source *interfaces.DraftObjectType, field string, other *interfaces.VegaTable,
+	key string) int {
+	if rank := stemMatch(field, other, key, d.setting); rank > 0 {
+		return rank
+	}
+	p := findProperty(source, d.fields[source.Table.ResourceID][field])
+	if p == nil {
+		return 0
+	}
+	target := d.objectTypes[other.ID]
+	stem := businessStem(p.DisplayName, d.setting)
+	if stem == "" || target == nil {
+		return 0
+	}
+	name, stemWords := words(target.Name), words(stem)
+	switch {
+	case slices.Equal(name, stemWords):
+		return 2
+	case isASCII(stem) && len(name) > len(stemWords) && slices.Equal(name[len(name)-len(stemWords):], stemWords),
+		!isASCII(stem) && strings.Contains(strings.ToLower(target.Name), stem):
+		return 1
+	}
+	return 0
+}
+
 // refer drafts what a field referring to another table's key becomes: an enum when the other
-// table is a code table, else a relation checked by full-table counts.
+// table is a code table, else a relation checked by full-table counts. A relation that only
+// counts may bear out (mustCount) is not drafted when it could not be counted.
 func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source *interfaces.DraftObjectType,
-	field string, target *interfaces.VegaTable, key string, origin string, ids map[string]bool) (bool, error) {
+	field string, target *interfaces.VegaTable, key string, origin string, mustCount bool,
+	ids map[string]bool) (bool, error) {
 	property, ok := d.fields[table.ID][field]
 	if !ok {
 		return false, nil
@@ -647,6 +697,8 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 
 	rate, computed := relation.Evidence.HitRate, relation.Evidence.Computed
 	switch {
+	case !computed && mustCount:
+		return false, nil
 	case !computed:
 		// Not counted (another catalog, a failed query): proposed for a person to check, never dropped.
 		relation.ProposedBecause = proposedNotCounted
