@@ -204,6 +204,10 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		descriptor.LimitSource = "explicit"
 	}
 	for index, table := range plan.Tables {
+		if table.Backing {
+			// Part of the relation that reads it, recorded under Relations.
+			continue
+		}
 		if strings.TrimSpace(table.ObjectTypeID) == "" {
 			return nil, fmt.Errorf("semantic query object %d is missing its bound object type", index)
 		}

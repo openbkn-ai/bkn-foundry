@@ -44,6 +44,12 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 	refs := make([]string, 0, len(plan.Tables))
 	seen := make(map[string]struct{}, len(plan.Tables))
 	for _, table := range plan.Tables {
+		if table.Backing {
+			// A backing table is a resource, not an object: there is no row
+			// policy to ask for, and an object reference without an object
+			// type is not one the policy service accepts.
+			continue
+		}
 		ref := interfaces.KNChildResourceID(knID, table.ObjectTypeID)
 		if _, exists := seen[ref]; exists {
 			continue
@@ -80,6 +86,9 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 		filters = append(filters, plan.Where)
 	}
 	for tableIndex, table := range plan.Tables {
+		if table.Backing {
+			continue
+		}
 		objectType := schema.objectTypesByID[table.ObjectTypeID]
 		if objectType == nil {
 			return nil, fmt.Errorf("compiled row-filter table has unknown object type %q", table.ObjectTypeID)

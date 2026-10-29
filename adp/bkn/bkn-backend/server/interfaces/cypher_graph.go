@@ -57,9 +57,12 @@ type CypherObjectValue struct {
 	Properties   map[string]any            `json:"properties,omitempty"`
 }
 
-// CypherRelationValue is a relationship of a direct relation type. It has no
-// row of its own, so it is identified by its two ends and the binding, and
-// carries the key pairs that joined them as its evidence.
+// CypherRelationValue is a relationship. It is identified by its two ends and
+// the binding, and carries the key pairs that joined them as its evidence:
+// for a direct relation, source property to target property; for an indirect
+// one, each mapping rule as the model writes it -- source property to backing
+// field, then backing field to target property -- with the values of the
+// backing row that linked them.
 type CypherRelationValue struct {
 	Kind           string                `json:"kind"`
 	RelationTypeID string                `json:"relation_type_id"`

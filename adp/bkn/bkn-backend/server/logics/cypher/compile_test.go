@@ -329,7 +329,7 @@ func TestCompileRejections(t *testing.T) {
 		{
 			name:  "filtered cross join",
 			query: "MATCH (o:Order)-[:NEARBY]->(c:Customer) RETURN o.id",
-			want:  "only direct relations",
+			want:  "only direct and indirect relations",
 		},
 		{
 			name:  "relation without key mapping",

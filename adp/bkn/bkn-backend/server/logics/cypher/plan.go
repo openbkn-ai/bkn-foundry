@@ -96,13 +96,21 @@ type PlanTable struct {
 	// an outer join, so its columns are null on a row that found nothing. Every
 	// condition over it belongs to that join rather than to WHERE.
 	Optional bool
+	// Backing marks the resource an indirect relation reads its links from.
+	// It is not a node: it has no object type, no variable and no row policy
+	// of its own, and it is read only through the join it belongs to.
+	Backing bool
 }
 
-// PlanJoin joins two tables on the key pairs of a direct relation type.
+// PlanJoin joins two tables on the key pairs of a relation type.
 //
-// Readings holds one set of key pairs per way the relation can be read. A
-// directed pattern has one; an undirected one between two nodes of the same
+// Readings holds one set of key pairs per way a direct relation can be read.
+// A directed pattern has one; an undirected one between two nodes of the same
 // object type has two, and a row matches if either holds.
+//
+// An indirect relation has no key pairs between its ends: it links them
+// through a row of its backing resource, which Backing describes, and
+// Readings stays empty.
 type PlanJoin struct {
 	Left           int
 	Right          int
@@ -122,6 +130,23 @@ type PlanJoin struct {
 	// the whole semantics: in WHERE they would turn it back into an inner one
 	// and drop the rows it exists to keep.
 	Conditions []PlanPredicate
+	// Backing is set for an indirect relation.
+	Backing *PlanBacking
+}
+
+// PlanBacking is how an indirect relation links its two ends: a row of the
+// backing table matches the left table on LeftKeys and the right table on
+// RightKeys, in pattern order. Every key pair of both sides has to hold on the
+// same backing row, so a link row that matches one end on part of its keys
+// links nothing.
+type PlanBacking struct {
+	Table int
+	// LeftKeys pair a column of the left table (LeftColumn) with a column of
+	// the backing table (RightColumn).
+	LeftKeys []PlanJoinKey
+	// RightKeys pair a column of the backing table (LeftColumn) with a column
+	// of the right table (RightColumn).
+	RightKeys []PlanJoinKey
 }
 
 // PlanJoinKey is one equality between a column of the left table and a column
@@ -702,13 +727,16 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 	if err != nil {
 		return &PlanError{Pos: edge.Pos, Err: err}
 	}
+	if relationType.Type == interfaces.RELATION_TYPE_INDIRECT {
+		return p.addIndirectJoin(edge, relationType, left, right)
+	}
 	if relationType.Type != interfaces.RELATION_TYPE_DIRECT {
 		// A filtered cross join has no key pairs to join on: it pairs every
 		// row that passes one side's filter with every row that passes the
 		// other. That is a different SQL shape, so it is refused rather than
 		// approximated.
 		return planErrorf(edge.Pos,
-			"relation type %q is a %s relation; only direct relations can be used in a pattern yet",
+			"relation type %q is a %s relation; only direct and indirect relations can be used in a pattern yet",
 			relationType.RTName, relationType.Type)
 	}
 
