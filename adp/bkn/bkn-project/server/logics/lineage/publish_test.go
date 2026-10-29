@@ -141,6 +141,20 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(commit.Message, ShouldEqual, "sync live definitions after release v1.0.0")
 			onMain, _ := realGS.ReadTree(ctx, id, "main")
 			So(string(onMain["network.bkn"]), ShouldEndWith, "Re-serialized.\n")
+
+			// The project branch follows main, so the project's next release does not start behind it.
+			branchAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			So(branchAfter, ShouldEqual, mainHead)
+
+			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), id+"_v1_1_0").Return(nil, false, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{recorded}, nil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(onMain, nil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id+"_v1_1_0").Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
+			next, err := svc.PreviewRelease(ctx, token, id, branch, "1.1.0")
+			So(err, ShouldBeNil)
+			for _, refusal := range next.Refusals {
+				So(refusal.Code, ShouldNotEqual, perrors.BknProject_Release_BranchBehind)
+			}
 		})
 
 		Convey("A release after another one checks drift against it and builds on its version\n", func() {

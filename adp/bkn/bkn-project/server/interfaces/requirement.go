@@ -424,9 +424,13 @@ type ScenarioQuestion struct {
 	Tests []ScenarioTest `json:"tests"`
 }
 
+// ScenarioTest is a test question asked in its question's place. Expect is what it expects of the
+// data (exists, not_exists or same_record): an answer to a not_exists test that finds no such
+// record is right.
 type ScenarioTest struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Expect string `json:"expect"`
 }
 
 // Statuses of a question's test questions and guidance as stored.
