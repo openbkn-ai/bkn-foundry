@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/version"
 )
 
@@ -48,6 +49,7 @@ type restHandler struct {
 	ls         interfaces.LineageService
 	ps         interfaces.ProjectService
 	drs        interfaces.DraftService
+	rqs        interfaces.RequirementService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
@@ -59,6 +61,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		ls:         lineage.NewLineageService(),
 		ps:         project.NewProjectService(),
 		drs:        draft.NewDraftService(appSetting),
+		rqs:        requirement.NewRequirementService(),
 	}
 }
 
@@ -115,6 +118,13 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
 	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id/identity", r.ChooseIdentityByEx)
+
+	// Requirement documents of a project.
+	apiV1.POST("/projects/:project_id/requirements/documents", r.UploadRequirementDocumentsByEx)
+	apiV1.GET("/projects/:project_id/requirements/documents", r.ListRequirementDocumentsByEx)
+	apiV1.GET("/projects/:project_id/requirements/documents/:document_id", r.GetRequirementDocumentByEx)
+	apiV1.PATCH("/projects/:project_id/requirements/documents/:document_id", r.SetRequirementDocumentTypeByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/documents/:document_id", r.DeleteRequirementDocumentByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }
