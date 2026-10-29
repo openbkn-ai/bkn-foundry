@@ -61,7 +61,7 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 		Convey("An answer streamed to its end is read with the tool calls the Agent made\n", func() {
 			respBody = sse(
 				[2]string{"meta", `{"thread_id":"th1","agent_id":"studio_smart_qa"}`},
-				[2]string{"tool_started", `{"tool_call_id":"c1","name":"search_schema","input":{}}`},
+				[2]string{"tool_started", `{"tool_call_id":"c1","name":"search_schema","input":{"query":"supplier","kn_id":"supply_v1_1_0"}}`},
 				[2]string{"tool_finished", `{"tool_call_id":"c1","name":"search_schema","status":"succeeded","output":{},"duration_ms":5}`},
 				[2]string{"tool_started", `{"tool_call_id":"c2","name":"query_object_instance","input":{}}`},
 				[2]string{"tool_finished", `{"tool_call_id":"c2","name":"query_object_instance","status":"failed","output":"x","duration_ms":5,"error":"x","error_kind":"unavailable"}`},
@@ -86,7 +86,33 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			So(answer, ShouldResemble, &interfaces.BknAgentAnswer{
 				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "Supplier S1 delivers part P1.",
 				ToolCalls: 3, ToolsUnavailable: 1, ToolsFailed: 1,
+				ToolUses: []interfaces.BknAgentToolUse{
+					// sse writes inputs with sorted keys, as encoding/json does.
+					{Name: "search_schema", Input: json.RawMessage(`{"kn_id":"supply_v1_1_0","query":"supplier"}`),
+						Status: "succeeded"},
+					{Name: "query_object_instance", Input: json.RawMessage(`{}`), Status: "failed", ErrorKind: "unavailable"},
+					{Name: "run_cypher", Input: json.RawMessage(`{}`), Status: "failed", ErrorKind: "error"},
+				},
 			})
+		})
+
+		Convey("A tool call's input too large to keep is left out and said so; one unfinished has no status\n", func() {
+			large := `{"query":"` + strings.Repeat("x", maxToolInputBytes) + `"}`
+			respBody = sse(
+				[2]string{"tool_started", `{"tool_call_id":"c1","name":"search_schema","input":` + large + `}`},
+				[2]string{"tool_finished", `{"tool_call_id":"c1","name":"search_schema","status":"succeeded","output":{},"duration_ms":5}`},
+				[2]string{"tool_started", `{"tool_call_id":"c2","name":"run_cypher","input":{"query":"MATCH (n) RETURN n"}}`},
+				[2]string{"terminal", `{"status":"failed","error":{"code":"BknAgent.Chat.Timeout","detail":"d"}}`},
+			)
+
+			answer, err := ba.AnswerOnNetwork(ctx, "Bearer t", req)
+
+			So(err, ShouldBeNil)
+			So(answer.ToolUses, ShouldResemble, []interfaces.BknAgentToolUse{
+				{Name: "search_schema", InputOmitted: true, Status: "succeeded"},
+				{Name: "run_cypher", Input: json.RawMessage(`{"query":"MATCH (n) RETURN n"}`)},
+			})
+			So(answer.ToolCalls, ShouldEqual, 1)
 		})
 
 		Convey("A replayed answer has its result and no tool calls\n", func() {

@@ -194,11 +194,17 @@ func (ba *bknAgentAccess) AnswerOnNetwork(ctx context.Context, token string,
 	return answer, nil
 }
 
-// readAnswer reads the events of an answer: the tool calls as they finished, the result and the
-// terminal event. A stream without a terminal event was cut short.
+// maxToolInputBytes is the largest tool input an answer keeps; bkn-agent streams inputs of up to
+// 16000 characters.
+const maxToolInputBytes = 4096
+
+// readAnswer reads the events of an answer: the tool calls as they started and finished, the result
+// and the terminal event. A stream without a terminal event was cut short.
 func readAnswer(respBody []byte) (*interfaces.BknAgentAnswer, error) {
 	answer := &interfaces.BknAgentAnswer{}
 	ended := false
+	// started finds a tool call's use by its id when it finishes.
+	started := map[string]int{}
 	text := strings.ReplaceAll(string(respBody), "\r\n", "\n")
 	for _, block := range strings.Split(text, "\n\n") {
 		var name, data string
@@ -211,16 +217,19 @@ func readAnswer(respBody []byte) (*interfaces.BknAgentAnswer, error) {
 			}
 		}
 		var event struct {
-			Status    string `json:"status"`
-			ErrorKind string `json:"error_kind"`
-			Content   struct {
+			ToolCallID string          `json:"tool_call_id"`
+			Name       string          `json:"name"`
+			Input      json.RawMessage `json:"input"`
+			Status     string          `json:"status"`
+			ErrorKind  string          `json:"error_kind"`
+			Content    struct {
 				Answer string `json:"answer"`
 			} `json:"content"`
 			// Error is the tool's output on a failed tool call, and {code, detail} on the terminal event.
 			Error json.RawMessage `json:"error"`
 		}
 		switch name {
-		case "tool_finished", "result", "terminal":
+		case "tool_started", "tool_finished", "result", "terminal":
 			if err := json.Unmarshal([]byte(data), &event); err != nil {
 				return nil, fmt.Errorf("unmarshal %s event: %w", name, err)
 			}
@@ -228,7 +237,17 @@ func readAnswer(respBody []byte) (*interfaces.BknAgentAnswer, error) {
 			continue
 		}
 		switch name {
+		case "tool_started":
+			use := interfaces.BknAgentToolUse{Name: event.Name, Input: event.Input}
+			if len(event.Input) > maxToolInputBytes {
+				use.Input, use.InputOmitted = nil, true
+			}
+			started[event.ToolCallID] = len(answer.ToolUses)
+			answer.ToolUses = append(answer.ToolUses, use)
 		case "tool_finished":
+			if i, ok := started[event.ToolCallID]; ok {
+				answer.ToolUses[i].Status, answer.ToolUses[i].ErrorKind = event.Status, event.ErrorKind
+			}
 			answer.ToolCalls++
 			if event.Status == "failed" {
 				if event.ErrorKind == "unavailable" {
