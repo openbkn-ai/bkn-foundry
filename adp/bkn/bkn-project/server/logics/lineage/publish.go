@@ -68,13 +68,9 @@ func (s *lineageService) PublishRelease(ctx context.Context, token string, linea
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "PublishRelease")
 	defer span.End()
 
-	if err := checkProjectBranch(ctx, req.Branch); err != nil {
-		span.SetStatus(codes.Error, "Invalid branch")
+	if err := checkReleaseRequest(ctx, req.Branch, req.Version); err != nil {
+		span.SetStatus(codes.Error, "Invalid request")
 		return nil, err
-	}
-	if len(req.Version) > maxVersionLength || !versionPattern.MatchString(req.Version) {
-		span.SetStatus(codes.Error, "Invalid version")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidVersion)
 	}
 	// The release row is written after the import; a value it cannot hold must
 	// not fail the release only then.
@@ -101,122 +97,69 @@ func (s *lineageService) PublishRelease(ctx context.Context, token string, linea
 	return result, nil
 }
 
+// PreviewRelease runs the checks of a release without the lock: it changes nothing, and what it
+// reads may move before a release, which checks it all again under the lock.
+func (s *lineageService) PreviewRelease(ctx context.Context, token string, lineageID string, branch string,
+	version string) (*interfaces.ReleasePreview, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "PreviewRelease")
+	defer span.End()
+
+	if err := checkReleaseRequest(ctx, branch, version); err != nil {
+		span.SetStatus(codes.Error, "Invalid request")
+		return nil, err
+	}
+	checked, err := s.checkRelease(ctx, s.gs, token, lineageID, branch, version, true)
+	if err != nil {
+		span.SetStatus(codes.Error, "Preview release failed")
+		return nil, toHTTPError(ctx, "Preview release failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return checked.preview, nil
+}
+
+// checkReleaseRequest refuses a branch or version no release can have.
+func checkReleaseRequest(ctx context.Context, branch string, version string) error {
+	if err := checkProjectBranch(ctx, branch); err != nil {
+		return err
+	}
+	if len(version) > maxVersionLength || !versionPattern.MatchString(version) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidVersion)
+	}
+	return nil
+}
+
+// releaseCheck is what the checks of a release read and decided, for publishing to go on from.
+type releaseCheck struct {
+	preview *interfaces.ReleasePreview
+	// refusals are the replies publishing is refused with, in the order they were found.
+	refusals []error
+	// retry is a tag a failed attempt left at the branch head, to reuse.
+	retry    bool
+	previous *capability.Manifest
+	pkg      map[string][]byte
+	steps    []*capability.Step
+}
+
 func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, token string, lineageID string,
 	req interfaces.PublishReleaseRequest, publisher interfaces.AccountInfo,
 	author interfaces.GitAuthor) (*interfaces.PublishReleaseResult, error) {
-	networkID := releaseNetworkID(lineageID, req.Version)
-	tag := "v" + req.Version
+	checked, err := s.checkRelease(ctx, gs, token, lineageID, req.Branch, req.Version, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(checked.refusals) > 0 {
+		return nil, checked.refusals[0]
+	}
+	preview := checked.preview
+	networkID, tag, branchHead := preview.NetworkID, preview.Tag, preview.BranchCommit
+	liveID, baseVersion, previous := preview.LiveNetworkID, preview.BaseVersion, checked.previous
 
-	// A recorded release owns its network id: this version of the lineage, or
-	// another lineage whose truncated id is the same.
-	if owner, exist, err := s.ra.GetReleaseByNetworkID(ctx, networkID); err != nil {
-		return nil, err
-	} else if exist {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_VersionExists).
-			WithErrorDetails(map[string]any{"network_id": networkID, "lineage_id": owner.LineageID, "version": owner.Version})
-	}
-
-	branchHead, err := gs.ResolveRef(ctx, lineageID, branchRef(req.Branch))
-	if err != nil {
-		return nil, err
-	}
-	// A tag without a release row was left by a failed attempt. Only the same
-	// branch head may reuse it; anything else would make the tag lie.
-	retry := false
-	tagHead, err := gs.ResolveRef(ctx, lineageID, tagRef(tag))
-	switch {
-	case err == nil && tagHead == branchHead:
-		retry = true
-	case err == nil:
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_VersionExists).
-			WithErrorDetails(map[string]any{"tag": tag, "commit": tagHead})
-	case !errors.Is(err, plumbing.ErrReferenceNotFound):
-		return nil, err
-	}
-
-	// The baseline is the newest release; before the first one it is the lineage's own network.
-	liveID, baseVersion := lineageID, ""
-	latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: lineageID, Limit: 1})
-	if err != nil {
-		return nil, err
-	}
-	if len(latest) > 0 {
-		liveID, baseVersion = latest[0].NetworkID, latest[0].Version
-	}
-
-	mainHead, err := gs.ResolveRef(ctx, lineageID, branchRef(interfaces.GIT_MAIN_BRANCH))
-	if err != nil {
-		return nil, err
-	}
-	base, err := gs.MergeBase(ctx, lineageID, mainHead, branchHead)
-	if err != nil {
-		return nil, err
-	}
-	if base != mainHead {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_BranchBehind).
-			WithErrorDetails(map[string]any{"main": mainHead, "branch": branchHead})
-	}
-
-	// Edits made to the live network since main was last synced would be lost silently.
-	live, err := s.bba.ExportBKN(ctx, token, liveID)
-	if err != nil {
-		return nil, err
-	}
-	stored, err := gs.ReadTree(ctx, lineageID, mainHead)
-	if err != nil {
-		return nil, err
-	}
-	// So would edits made to the functions and Skills the last release recorded.
-	previous, tracked, capabilityDiff, err := drift.CheckCapabilities(ctx, gs, s.efa, token, lineageID, mainHead)
-	if err != nil {
-		return nil, err
-	}
-	if diff := drift.DiffFiles(stored, live); !diff.Empty() || !capabilityDiff.Empty() {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_Drift).
-			WithErrorDetails(&interfaces.DriftReport{LineageID: lineageID, KNID: liveID, PathDiff: diff, Capabilities: capabilityDiff})
-	}
-
-	// The import runs in overwrite mode, so a network that already has this id and that no
-	// release created must not be touched. On a retry the network is the one the failed
-	// attempt created.
-	if !retry {
-		_, err := s.bba.ExportBKN(ctx, token, networkID)
-		var backendErr *interfaces.BknBackendError
-		switch {
-		case err == nil:
-			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_NetworkExists).
-				WithErrorDetails(map[string]any{"network_id": networkID})
-		case !errors.As(err, &backendErr) || backendErr.HTTPCode != http.StatusNotFound:
-			return nil, err
-		}
-	}
-
-	// The package is built from the branch head before the tag is made, so
-	// definitions the release cannot rename leave no tag that would block the
-	// same version once the branch is fixed. On a retry the tag is that head.
-	files, err := gs.ReadTree(ctx, lineageID, branchHead)
-	if err != nil {
-		return nil, err
-	}
-	pkg, err := buildPackage(files, networkID, req.Version)
-	if err != nil {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
-			WithErrorDetails(err.Error())
-	}
-	// Functions and Skills follow the network. What to reuse or copy, and whether
-	// the package's references can move to the copies, is settled before the tag
-	// too; the copies are made after it, before the import, so the new network
-	// is created pointing at them.
-	steps, err := s.planCapabilities(ctx, token, pkg, previous, tracked, liveID, networkID)
-	if err != nil {
-		return nil, err
-	}
-	if !retry {
+	if !checked.retry {
 		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
 			return nil, err
 		}
 	}
-	pkg, released, err := s.applyCapabilities(ctx, token, pkg, steps, liveID, networkID)
+	pkg, released, err := s.applyCapabilities(ctx, token, checked.pkg, checked.steps, liveID, networkID)
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +226,160 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	}
 
 	return &interfaces.PublishReleaseResult{Release: release, NetworkID: networkID, Tag: tag, Commit: commit}, nil
+}
+
+// checkRelease runs every check of publishing the branch as version, in the order publishing
+// needs them, without acting on any. A check that refuses is recorded as a refusal; with all it
+// goes on to the next, otherwise it stops there. Definitions that make no release package stop
+// it either way: nothing is left to plan. A failure to read is an error.
+func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStore, token string, lineageID string,
+	branch string, version string, all bool) (*releaseCheck, error) {
+	networkID := releaseNetworkID(lineageID, version)
+	checked := &releaseCheck{preview: &interfaces.ReleasePreview{
+		LineageID: lineageID, Branch: branch, Version: version, Tag: "v" + version, NetworkID: networkID,
+		Capabilities: []interfaces.CapabilityPlan{}, Refusals: []interfaces.ReleaseRefusal{},
+	}}
+	preview := checked.preview
+	// refuse records a refusal and tells whether to stop.
+	refuse := func(err *httperrors.HTTPError) bool {
+		checked.refusals = append(checked.refusals, err)
+		preview.Refusals = append(preview.Refusals, interfaces.ReleaseRefusal{Code: err.BaseError.ErrorCode, Details: err.ErrorDetails})
+		return !all
+	}
+
+	// A recorded release owns its network id: this version of the lineage, or
+	// another lineage whose truncated id is the same.
+	owner, recorded, err := s.ra.GetReleaseByNetworkID(ctx, networkID)
+	if err != nil {
+		return nil, err
+	}
+	if recorded && refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_VersionExists).
+		WithErrorDetails(map[string]any{"network_id": networkID, "lineage_id": owner.LineageID, "version": owner.Version})) {
+		return checked, nil
+	}
+
+	branchHead, err := gs.ResolveRef(ctx, lineageID, branchRef(branch))
+	if err != nil {
+		return nil, err
+	}
+	preview.BranchCommit = branchHead
+	// A tag without a release row was left by a failed attempt. Only the same
+	// branch head may reuse it; anything else would make the tag lie.
+	tagHead, err := gs.ResolveRef(ctx, lineageID, tagRef(preview.Tag))
+	switch {
+	case err == nil && tagHead == branchHead:
+		checked.retry = true
+	case err == nil:
+		if refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_VersionExists).
+			WithErrorDetails(map[string]any{"tag": preview.Tag, "commit": tagHead})) {
+			return checked, nil
+		}
+	case !errors.Is(err, plumbing.ErrReferenceNotFound):
+		return nil, err
+	}
+
+	// The baseline is the newest release; before the first one it is the lineage's own network.
+	preview.LiveNetworkID = lineageID
+	latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: lineageID, Limit: 1})
+	if err != nil {
+		return nil, err
+	}
+	if len(latest) > 0 {
+		preview.LiveNetworkID, preview.BaseVersion = latest[0].NetworkID, latest[0].Version
+	}
+	liveID := preview.LiveNetworkID
+
+	mainHead, err := gs.ResolveRef(ctx, lineageID, branchRef(interfaces.GIT_MAIN_BRANCH))
+	if err != nil {
+		return nil, err
+	}
+	preview.MainCommit = mainHead
+	base, err := gs.MergeBase(ctx, lineageID, mainHead, branchHead)
+	if err != nil {
+		return nil, err
+	}
+	if base != mainHead && refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_BranchBehind).
+		WithErrorDetails(map[string]any{"main": mainHead, "branch": branchHead})) {
+		return checked, nil
+	}
+
+	// Edits made to the live network since main was last synced would be lost silently.
+	live, err := s.bba.ExportBKN(ctx, token, liveID)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := gs.ReadTree(ctx, lineageID, mainHead)
+	if err != nil {
+		return nil, err
+	}
+	// So would edits made to the functions and Skills the last release recorded.
+	previous, tracked, capabilityDiff, err := drift.CheckCapabilities(ctx, gs, s.efa, token, lineageID, mainHead)
+	if err != nil {
+		return nil, err
+	}
+	checked.previous = previous
+	if diff := drift.DiffFiles(stored, live); !diff.Empty() || !capabilityDiff.Empty() {
+		if refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_Drift).
+			WithErrorDetails(&interfaces.DriftReport{LineageID: lineageID, KNID: liveID, PathDiff: diff, Capabilities: capabilityDiff})) {
+			return checked, nil
+		}
+	}
+
+	// The import runs in overwrite mode, so a network that already has this id and that no
+	// release created must not be touched. On a retry the network is the one the failed
+	// attempt created, and a recorded release owns its network.
+	if !checked.retry && !recorded {
+		_, err := s.bba.ExportBKN(ctx, token, networkID)
+		var backendErr *interfaces.BknBackendError
+		switch {
+		case err == nil:
+			if refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_NetworkExists).
+				WithErrorDetails(map[string]any{"network_id": networkID})) {
+				return checked, nil
+			}
+		case !errors.As(err, &backendErr) || backendErr.HTTPCode != http.StatusNotFound:
+			return nil, err
+		}
+	}
+
+	// The package is built from the branch head before the tag is made, so
+	// definitions the release cannot rename leave no tag that would block the
+	// same version once the branch is fixed. On a retry the tag is that head.
+	files, err := gs.ReadTree(ctx, lineageID, branchHead)
+	if err != nil {
+		return nil, err
+	}
+	preview.Changes = drift.DiffFiles(stored, files)
+	pkg, err := buildPackage(files, networkID, version)
+	if err != nil {
+		refuse(httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error()))
+		return checked, nil
+	}
+	if header, err := bkn.ParseNetworkFile(string(pkg[bkn.RootFileName]), bkn.RootFileName); err == nil {
+		preview.NetworkName = header.Name
+	}
+	// Functions and Skills follow the network. What to reuse or copy, and whether
+	// the package's references can move to the copies, is settled before the tag
+	// too; the copies are made after it, before the import, so the new network
+	// is created pointing at them.
+	steps, err := s.planCapabilities(ctx, token, pkg, previous, tracked, liveID, networkID)
+	var refusal *httperrors.HTTPError
+	if errors.As(err, &refusal) {
+		refuse(refusal)
+		return checked, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	checked.pkg, checked.steps = pkg, steps
+	for _, step := range steps {
+		preview.Capabilities = append(preview.Capabilities, interfaces.CapabilityPlan{
+			Kind: string(step.Item.Kind), ID: step.Item.ID, Name: step.Item.Name, Copy: step.Copy,
+			Reasons: append([]string{}, step.Reasons...),
+		})
+	}
+	return checked, nil
 }
 
 // planCapabilities decides for each toolbox and Skill the package references
