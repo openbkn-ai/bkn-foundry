@@ -182,6 +182,23 @@ func (ra *requirementAccess) SetDocumentType(ctx context.Context, projectID stri
 	return ra.execAffected(ctx, span, sqlStr, vals)
 }
 
+func (ra *requirementAccess) SuggestDocumentType(ctx context.Context, projectID string, documentID string,
+	docType string, updateTime int64) (bool, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "SuggestRequirementDocumentType")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Update(DOCUMENT_TABLE_NAME).
+		Set("f_doc_type", docType).Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": documentID}).Where(sq.Eq{"f_project_id": projectID}).
+		Where(sq.Eq{"f_doc_type": interfaces.REQUIREMENT_DOC_OTHER}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+	return ra.execAffected(ctx, span, sqlStr, vals)
+}
+
 func (ra *requirementAccess) DeleteDocument(ctx context.Context, projectID string, documentID string) (bool, error) {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "DeleteRequirementDocument")
 	defer span.End()
