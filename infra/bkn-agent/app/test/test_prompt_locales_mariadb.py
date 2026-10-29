@@ -12,8 +12,8 @@ import pymysql
 import pytest
 
 from app.public_auth import BUILTIN_AGENT_IDS
-from app.test.test_builtin_prompt_locales import LEGACY_SMART_QA
-from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, statements, selected_migrations
+from app.test.test_builtin_prompt_locales import ENGLISH_ORIGINALS, LEGACY_SMART_QA
+from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, SOURCE_LANGUAGE, statements, selected_migrations
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
@@ -68,15 +68,19 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         apply(BUILTIN_LOCALES)
         apply(REQUIREMENTS)
         apply(REQUIREMENTS)
+        apply(SOURCE_LANGUAGE)
+        apply(SOURCE_LANGUAGE)
         assert saved_rows() == before_locales_rerun
         with db.cursor() as cursor:
-            cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content, p.f_current_version FROM t_agent a "
+            cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content, p.f_current_version, v.f_source_language FROM t_agent a "
                            "JOIN t_agent_prompt p ON p.f_prompt_id=a.f_prompt_id "
                            "JOIN t_agent_prompt_version v ON v.f_prompt_id=p.f_prompt_id "
                            "AND v.f_version=p.f_current_version")
             rows = cursor.fetchall()
             assert len(rows) == len(BUILTIN_AGENT_IDS)
-            for agent_id, canonical, variants, current in rows:
+            for agent_id, canonical, variants, current, source_language in rows:
+                expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
+                assert source_language == expected, agent_id
                 cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
                 initial = cursor.fetchone()
                 if variants is not None:
@@ -129,13 +133,15 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             cursor.execute("UPDATE t_agent_version SET f_prompt_version=103 WHERE f_agent_id='studio_smart_qa' AND f_initial=1")
         before_legacy = saved_rows()
         apply(BUILTIN_LOCALES)
+        apply(SOURCE_LANGUAGE)
         with db.cursor() as cursor:
-            cursor.execute("SELECT f_version,f_content,f_localized_content FROM t_agent_prompt_version WHERE f_prompt_id='studio_smart_qa_prompt' AND f_version IN (103,104,105) ORDER BY f_version")
+            cursor.execute("SELECT f_version,f_content,f_localized_content,f_source_language FROM t_agent_prompt_version WHERE f_prompt_id='studio_smart_qa_prompt' AND f_version IN (103,104,105) ORDER BY f_version")
             official, custom, non_initial = cursor.fetchall()
             assert official[1] == LEGACY_SMART_QA
             assert json.loads(official[2])["en-US"].startswith("You are a business knowledge network Q&A assistant")
-            assert custom == (104, LEGACY_SMART_QA, None)
-            assert non_initial == (105, LEGACY_SMART_QA, None)
+            assert official[3] == "zh-CN"
+            assert custom == (104, LEGACY_SMART_QA, None, None)
+            assert non_initial == (105, LEGACY_SMART_QA, None, "zh-CN")
         after_legacy = saved_rows()
         assert before_legacy[:3] == after_legacy[:3]
         apply(BUILTIN_LOCALES)

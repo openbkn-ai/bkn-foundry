@@ -1431,8 +1431,9 @@ def semantic_prompt_version(db, version):
         "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=?",
         (version,),
     ).fetchone())
-    # Migration 17 is also tested before 19 adds the optional language column.
-    result.setdefault("f_source_language", None)
+    # Compare migration 17's payload independently of language metadata from 19.
+    # The source-language backfill has its own fresh/upgrade/guard regressions.
+    result.pop("f_source_language", None)
     return result
 
 

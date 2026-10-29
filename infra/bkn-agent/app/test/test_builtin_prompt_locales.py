@@ -18,6 +18,8 @@ from app.models import AgentRow, AgentVersionRow, Base, PromptRow, PromptVersion
 from app.routers.agent_settings import _shared_prompt, _versions_out
 from app.test import test_shared_agent_seeds as seeds
 
+ENGLISH_ORIGINALS = {"object_metric_designer", "bkn-project-drafter", "bkn-project-requirements"}
+
 # Official historical template from commit ab9ae6d64 (VM Prompt v3/v4).
 LEGACY_SMART_QA = """你是业务知识网络问答助手，基于当前授权知识网络中的对象、关系、指标和数据回答业务问题。
 
@@ -76,6 +78,10 @@ def test_official_locale_migration_preserves_versions_and_is_idempotent():
         )
         assert {row["f_agent_id"] for row in agents} == set(seeds.BUILTIN_AGENT_IDS)
         for row in agents:
+            expected_source = (
+                "en-US" if row["f_agent_id"] in ENGLISH_ORIGINALS else "zh-CN"
+            )
+            assert row["f_source_language"] == expected_source, row["f_agent_id"]
             variants = json.loads(row["f_localized_content"])
             canonical = row["f_content"]
             for language in ("zh-CN", "en-US"):
@@ -107,6 +113,60 @@ def test_official_locale_migration_preserves_versions_and_is_idempotent():
             if row["f_agent_id"] == "resource-semantic-understanding"
         )
         assert "api_name rules" in json.loads(resource["f_localized_content"])["en-US"]
+
+
+@pytest.mark.parametrize(
+    "agent_id", ["resource-semantic-understanding", "bkn-project-requirements"]
+)
+def test_source_language_backfill_is_guarded_and_preserves_content(agent_id):
+    with official_database() as db:
+        row = db.execute(
+            "SELECT v.* FROM t_agent a JOIN t_agent_prompt p ON p.f_prompt_id=a.f_prompt_id "
+            "JOIN t_agent_prompt_version v ON v.f_prompt_id=p.f_prompt_id AND v.f_version=p.f_current_version "
+            "WHERE a.f_agent_id=?",
+            (agent_id,),
+        ).fetchone()
+        expected = "en-US" if agent_id == "bkn-project-requirements" else "zh-CN"
+        for version, content, creator, language in (
+            (101, row["f_content"], row["f_create_user"], None),
+            (102, row["f_content"], "administrator", None),
+            (103, "Unknown custom body", row["f_create_user"], None),
+            (
+                104,
+                row["f_content"],
+                row["f_create_user"],
+                "en-US" if expected == "zh-CN" else "zh-CN",
+            ),
+        ):
+            db.execute(
+                "INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_create_user,f_create_time,f_source_language) VALUES (?,?,?,?,?,?)",
+                (row["f_prompt_id"], version, content, creator, 1, language),
+            )
+        before = seeds.snapshot(db)
+        seeds.apply(db, seeds.SOURCE_LANGUAGE)
+        results = dict(
+            db.execute(
+                "SELECT f_version,f_source_language FROM t_agent_prompt_version WHERE f_prompt_id=? AND f_version>=101",
+                (row["f_prompt_id"],),
+            )
+        )
+        assert results == {
+            101: expected,
+            102: None,
+            103: None,
+            104: "en-US" if expected == "zh-CN" else "zh-CN",
+        }
+        after = seeds.snapshot(db)
+        assert before[:2] == after[:2] and before[3] == after[3]
+        columns = [
+            r[1] for r in db.execute("PRAGMA table_info(t_agent_prompt_version)")
+        ]
+        language_index = columns.index("f_source_language")
+        assert [r[:language_index] + r[language_index + 1 :] for r in before[2]] == [
+            r[:language_index] + r[language_index + 1 :] for r in after[2]
+        ]
+        seeds.apply(db, seeds.SOURCE_LANGUAGE)
+        assert seeds.snapshot(db) == after
 
 
 def test_locale_delta_does_not_touch_custom_content_or_existing_translations():
@@ -199,6 +259,13 @@ def test_all_builtin_display_history_and_runtime_share_the_same_variant(language
                     # Canonical export/management reads stay language-independent.
                     canonical = await dao.get_prompt(session, agent.prompt_id)
                     assert canonical.current_version == version
+                    expected_source = (
+                        "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
+                    )
+                    assert shared.source_language == expected_source
+                    assert shared.source_content == canonical.content
+                    assert expected_source not in shared.translations
+                    assert shared.content_language == language
             finally:
                 locale.reset_effective_locale(token)
 

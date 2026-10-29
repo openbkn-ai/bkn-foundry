@@ -78,7 +78,7 @@ Built-in Agents use fixed IDs. Their configuration, shared Prompts, and Prompt h
 
 Default translations are provided only for the Prompt version referenced by a built-in Agent's Initial configuration. Initial is resolved by its stored Prompt reference, not by assuming Prompt version 1. Other versions start without translations; administrators may add or edit them explicitly.
 
-Each Prompt version has an optional original language (`f_source_language`). Known official bodies are labeled Chinese by exact hash; unknown legacy originals remain unmarked until an administrator confirms their language. New Studio publications explicitly select the original language and create a version without inherited translations.
+Each Prompt version has an optional original language (`f_source_language`). Known official bodies are labeled with their Chinese or English original language by exact hash; unknown legacy originals remain unmarked until an administrator confirms their language. New Studio publications explicitly select the original language and create a version without inherited translations.
 
 The admin shared-Prompt read returns canonical `source_content`, `source_language`, a canonical-content hash, stored `translations`, and the actually selected `content_language`. A matching translation is displayed/executed; otherwise the canonical original is used. Raw Prompt reads/exports remain canonical.
 
