@@ -73,6 +73,9 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             for agent_id, canonical, variants in rows:
                 variants = json.loads(variants)
                 assert variants.get("zh-CN", canonical) != variants.get("en-US", canonical), agent_id
+            # The official v5 and its official translations upgrade to v6 on every path.
+            cursor.execute("SELECT f_current_version FROM t_agent_prompt WHERE f_prompt_id='resource-semantic-understanding-prompt'")
+            assert cursor.fetchone() == (6,)
         before_index_rerun = saved_rows()
         apply(PROMPT_INDEX)
         apply(PROMPT_INDEX)
