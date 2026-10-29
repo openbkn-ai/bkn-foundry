@@ -30,6 +30,7 @@ CLAIM_LOCALES = MIGRATIONS / "0.2.1/10-claim-prompt-locales.sql"
 PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
 RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
+SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 
 
 def statements(path):
@@ -207,6 +208,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
         + METRIC_DESIGN.read_text()
         + GRAPH_EXPLORER.read_text()
         + DRAFTER.read_text()
+        + SEMANTIC_API_NAME.read_text()
     )
     assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
@@ -229,6 +231,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, GRAPH_EXPLORER)
         apply(upgraded, CLAIM_LOCALES)
         apply(upgraded, DRAFTER)
+        apply(upgraded, SEMANTIC_API_NAME)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -243,7 +246,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
             match = next(after for after in updated[1] if after[0] == row[0])
             if row[0] == "resource-semantic-understanding-prompt":
                 assert row[:2] == match[:2]
-                assert match[2] == 4
+                assert match[2] == 5
             else:
                 assert row == match
         # Adding the nullable locale column must retain every original value.
@@ -261,7 +264,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
                 "SELECT f_prompt_id, f_current_version FROM t_agent_prompt"
             )
         )
-        assert versions["resource-semantic-understanding-prompt"] == 4
+        assert versions["resource-semantic-understanding-prompt"] == 5
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
@@ -413,6 +416,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(RESOURCE_ID_LIMITS),
                     str(DRAFTER),
                     str(METRIC_DESIGN_BUDGET),
+                    str(SEMANTIC_API_NAME),
                 ],
             ],
         ],
@@ -704,7 +708,7 @@ def test_real_migrator_selected_cross_version_chain_preserves_semantic_agents(re
         versions = dict(
             db.execute("SELECT f_prompt_id,f_current_version FROM t_agent_prompt")
         )
-        assert versions["resource-semantic-understanding-prompt"] == 4
+        assert versions["resource-semantic-understanding-prompt"] == 5
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
@@ -746,7 +750,7 @@ def test_every_agent_starts_with_one_current_version():
         initial = db.execute(
             "SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1"
         ).fetchone()
-        assert initial[0] == 4
+        assert initial[0] == 5
         assert all(row["f_initial"] == 1 for row in rows.values())
         qa = db.execute(
             "SELECT f_model, f_tools, f_limits FROM t_agent WHERE f_agent_id='studio_smart_qa'"
@@ -758,7 +762,7 @@ def test_every_agent_starts_with_one_current_version():
             qa["f_tools"],
             qa["f_limits"],
         )
-        assert rows["resource-semantic-understanding"]["f_prompt_version"] == 4
+        assert rows["resource-semantic-understanding"]["f_prompt_version"] == 5
 
         # Running the delta again adds nothing.
         apply(db, VERSIONS)
@@ -1035,11 +1039,11 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
         versions = db.execute(
             "SELECT f_version FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt'"
         ).fetchall()
-        assert [row[0] for row in versions] == [4]
+        assert [row[0] for row in versions] == [5]
         agent_versions = db.execute(
             "SELECT f_version,f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding'"
         ).fetchall()
-        assert [tuple(row) for row in agent_versions] == [(1, 4, 1, 1)]
+        assert [tuple(row) for row in agent_versions] == [(1, 5, 1, 1)]
         before = snapshot(db)
         apply(db, init)
         assert snapshot(db) == before
@@ -1204,3 +1208,159 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 def test_installed_021_selects_nothing_more():
     _, repeated = selected_migrations("0.2.1")
     assert repeated == [[], "0.2.1", False]
+
+
+def v4_semantic_prompt():
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        apply(db, VERSIONS)
+        apply(db, SEMANTIC_LANGUAGE)
+        return item_from_db(db, "resource-semantic-understanding")["prompt"]["content"]
+
+
+def semantic_v4_state(db, start):
+    """Agent state just before 15: upgraded from 0.2.0, or installed from the 0.2.1 snapshot at v4."""
+    if start == "upgraded":
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        apply(db, VERSIONS)
+        apply(db, SEMANTIC_LANGUAGE)
+        return
+    apply(db, Path(selected_migrations("0.0.0")[0][0]))
+    db.execute(
+        "UPDATE t_agent_prompt_version SET f_version=4,f_content=? WHERE f_prompt_id='resource-semantic-understanding-prompt'",
+        (v4_semantic_prompt(),),
+    )
+    db.execute("UPDATE t_agent_prompt SET f_current_version=4 WHERE f_prompt_id='resource-semantic-understanding-prompt'")
+    db.execute("UPDATE t_agent_version SET f_prompt_version=4 WHERE f_agent_id='resource-semantic-understanding'")
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_semantic_api_name_upgrade_matches_fresh_install_and_keeps_history(start):
+    with database() as db, database() as fresh:
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        semantic_v4_state(db, start)
+        old_prompt = item_from_db(db, "resource-semantic-understanding")["prompt"]["content"]
+        history = snapshot(db)[3]
+        apply(db, SEMANTIC_API_NAME)
+        assert item_from_db(db, "resource-semantic-understanding") == item_from_db(fresh, "resource-semantic-understanding")
+        prompt = item_from_db(db, "resource-semantic-understanding")["prompt"]["content"]
+        assert prompt.startswith(old_prompt)
+        added = prompt[len(old_prompt):]
+        assert "api_name" in added and "snake_case" in added and "40" in added
+        assert "不受 options.language 影响" in added and "拼音" in added
+        # Earlier prompt and Agent versions stay; only the initial/current markers move.
+        assert db.execute(
+            "SELECT f_content FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=4"
+        ).fetchone()[0] == old_prompt
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            "SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(5, 1, 1)]
+        before = snapshot(db)
+        apply(db, SEMANTIC_API_NAME)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback"])
+def test_semantic_api_name_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        semantic_v4_state(db, "upgraded")
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=4"
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('resource-semantic-understanding-prompt',5,'custom newer prompt',null,'operator',2000)"
+            )
+            if customization == "higher-version":
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_current_version=5 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+                )
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, SEMANTIC_API_NAME)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 8))
+def test_semantic_api_name_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            semantic_v4_state(connection, "upgraded")
+            if customized:
+                connection.execute(
+                    "UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='resource-semantic-understanding'"
+                )
+        apply(expected, SEMANTIC_API_NAME)
+        apply(db, SEMANTIC_API_NAME, limit=limit)
+        apply(db, SEMANTIC_API_NAME)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_semantic_api_name_upgrade_does_not_reverse_an_operator_rollback():
+    with database() as db:
+        semantic_v4_state(db, "upgraded")
+        apply(db, SEMANTIC_API_NAME)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_current_version=4,f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+        )
+        db.execute("UPDATE t_agent_version SET f_current=0 WHERE f_agent_id='resource-semantic-understanding'")
+        db.execute(
+            "UPDATE t_agent_version SET f_current=1 WHERE f_agent_id='resource-semantic-understanding' AND f_prompt_version=4"
+        )
+        before = snapshot(db)
+        apply(db, SEMANTIC_API_NAME)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_semantic_api_name_upgrade_keeps_custom_settings_and_official_baseline(start):
+    with database() as db:
+        semantic_v4_state(db, start)
+        original = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_version=1"
+            ).fetchone()
+        )
+        db.execute(
+            "UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='resource-semantic-understanding'",
+            ('{"max_turns":17}',),
+        )
+        apply(db, SEMANTIC_API_NAME)
+        baseline = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1"
+            ).fetchone()
+        )
+        current = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_current=1"
+            ).fetchone()
+        )
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (5, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (5, "custom-model", '{"max_turns":17}')
+
+
+def test_semantic_api_name_upgrade_does_not_switch_a_prompt_head_an_operator_saved():
+    with database() as db:
+        semantic_v4_state(db, "upgraded")
+        # Saved before the migration runs (the test clock's now is 1000), so only
+        # the updater, not the timestamp, tells this head apart from the seed's.
+        db.execute(
+            "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=500 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+        )
+        head_before, agent_versions_before = snapshot(db)[1], snapshot(db)[3]
+        apply(db, SEMANTIC_API_NAME)
+        assert snapshot(db)[1] == head_before
+        assert snapshot(db)[3] == agent_versions_before
