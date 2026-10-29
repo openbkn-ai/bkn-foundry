@@ -57,8 +57,8 @@ func evaluateGraph(value PlanGraph, s scope) (any, error) {
 		}
 		for _, key := range node.Basis {
 			relation.Basis = append(relation.Basis, interfaces.CypherRelationBasis{
-				SourceProperty: key.SourceProperty, SourceValue: sourceRow[key.SourceColumn],
-				TargetProperty: key.TargetProperty, TargetValue: targetRow[key.TargetColumn],
+				SourceProperty: key.SourceProperty, SourceValue: scopeRow(s, key.SourceTable)[key.SourceColumn],
+				TargetProperty: key.TargetProperty, TargetValue: scopeRow(s, key.TargetTable)[key.TargetColumn],
 			})
 		}
 		return relation, nil
@@ -226,8 +226,8 @@ func walkGraphColumns(value PlanGraph, visit func(table int, column string)) {
 		identity(node.Source)
 		identity(node.Target)
 		for _, key := range node.Basis {
-			visit(node.Source.Table, key.SourceColumn)
-			visit(node.Target.Table, key.TargetColumn)
+			visit(key.SourceTable, key.SourceColumn)
+			visit(key.TargetTable, key.TargetColumn)
 		}
 	case PlanGraphProperty:
 		visit(node.Table, node.Column)

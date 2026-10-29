@@ -78,9 +78,15 @@ type PlanRelationValue struct {
 func (PlanRelationValue) planGraph() {}
 
 // PlanRelationKey is one key pair of a relation, source side and target side.
+// For a direct relation the two sides are the relationship's two ends. For an
+// indirect one each mapping rule is a pair: a source column with a backing
+// column, or a backing column with a target column, so each side names the
+// table it is read from.
 type PlanRelationKey struct {
+	SourceTable    int
 	SourceProperty string
 	SourceColumn   string
+	TargetTable    int
 	TargetProperty string
 	TargetColumn   string
 }
@@ -150,8 +156,10 @@ type joinVariable struct {
 	sourceTable int
 	targetTable int
 	mappings    []interfaces.Mapping
-	digest      string
-	pos         Position
+	// indirect is set for a relationship over an indirect relation.
+	indirect *indirectLink
+	digest   string
+	pos      Position
 }
 
 // relationDigest names one binding of a relation type: its id, its key
@@ -289,6 +297,33 @@ func (p *planner) planRelationValue(relationship joinVariable) (PlanGraph, error
 		Target:         target,
 		Digest:         relationship.digest,
 	}
+	if link := relationship.indirect; link != nil {
+		// The basis follows the model's rules: each source rule pairs a
+		// source property with a backing field, and each target rule a
+		// backing field with a target property, read from the backing row
+		// that linked them.
+		for _, rule := range link.sourceRules {
+			sourceColumn, err := p.resolvePropertyColumn(relationship.sourceTable, rule.SourceProp.Name, relationship.pos)
+			if err != nil {
+				return nil, err
+			}
+			value.Basis = append(value.Basis, PlanRelationKey{
+				SourceTable: relationship.sourceTable, SourceProperty: rule.SourceProp.Name, SourceColumn: sourceColumn,
+				TargetTable: link.table, TargetProperty: rule.TargetProp.Name, TargetColumn: rule.TargetProp.Name,
+			})
+		}
+		for _, rule := range link.targetRules {
+			targetColumn, err := p.resolvePropertyColumn(relationship.targetTable, rule.TargetProp.Name, relationship.pos)
+			if err != nil {
+				return nil, err
+			}
+			value.Basis = append(value.Basis, PlanRelationKey{
+				SourceTable: link.table, SourceProperty: rule.SourceProp.Name, SourceColumn: rule.SourceProp.Name,
+				TargetTable: relationship.targetTable, TargetProperty: rule.TargetProp.Name, TargetColumn: targetColumn,
+			})
+		}
+		return value, nil
+	}
 	for _, mapping := range relationship.mappings {
 		sourceColumn, err := p.resolvePropertyColumn(relationship.sourceTable, mapping.SourceProp.Name, relationship.pos)
 		if err != nil {
@@ -299,8 +334,8 @@ func (p *planner) planRelationValue(relationship joinVariable) (PlanGraph, error
 			return nil, err
 		}
 		value.Basis = append(value.Basis, PlanRelationKey{
-			SourceProperty: mapping.SourceProp.Name, SourceColumn: sourceColumn,
-			TargetProperty: mapping.TargetProp.Name, TargetColumn: targetColumn,
+			SourceTable: relationship.sourceTable, SourceProperty: mapping.SourceProp.Name, SourceColumn: sourceColumn,
+			TargetTable: relationship.targetTable, TargetProperty: mapping.TargetProp.Name, TargetColumn: targetColumn,
 		})
 	}
 	return value, nil

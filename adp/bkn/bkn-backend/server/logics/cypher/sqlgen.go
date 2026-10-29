@@ -403,9 +403,12 @@ func (g *generator) writeFrom() {
 	// Only the required tables take part in this. An outer join has a side that
 	// may go null, so it cannot be reordered in among the inner ones: everything
 	// it hangs off has to be in the statement before it is written.
+	//
+	// A backing table is not counted: it is written with the join it belongs
+	// to, never on its own.
 	required := 0
 	for _, table := range g.plan.Tables {
-		if !table.Optional {
+		if !table.Optional && !table.Backing {
 			required++
 		}
 	}
@@ -419,6 +422,7 @@ func (g *generator) writeFrom() {
 			continue
 		}
 		g.writeJoin(g.plan.Joins[join], next)
+		g.markBacking(g.plan.Joins[join], joined)
 		joined[next] = true
 		used[join] = true
 	}
@@ -434,6 +438,14 @@ func (g *generator) writeFrom() {
 	// kept for WHERE, where a condition can stand on its own.
 	for i, join := range g.plan.Joins {
 		if !used[i] {
+			if join.Backing != nil && !join.Optional {
+				// Both ends are read already, so only the backing table is
+				// left to join, on both of its rule sets at once.
+				g.writeClosingBacking(join)
+				joined[join.Backing.Table] = true
+				used[i] = true
+				continue
+			}
 			if join.Optional {
 				// An outer join's condition cannot stand in WHERE: there it
 				// filters the rows the join kept instead of deciding what it
@@ -514,8 +526,17 @@ func (g *generator) writeOptionalJoins(joined, used []bool) {
 			return
 		}
 		g.writeJoin(join, table)
+		g.markBacking(join, joined)
 		joined[table] = true
 		used[i] = true
+	}
+}
+
+// markBacking records that a join over an indirect relation wrote its
+// backing table along with the table it attached.
+func (g *generator) markBacking(join PlanJoin, joined []bool) {
+	if join.Backing != nil {
+		joined[join.Backing.Table] = true
 	}
 }
 
@@ -538,7 +559,7 @@ func (g *generator) nextJoinable(joined, used []bool) (table int, join int) {
 
 func (g *generator) firstUnjoined(joined []bool) int {
 	for i, in := range joined {
-		if !in && !g.plan.Tables[i].Optional {
+		if !in && !g.plan.Tables[i].Optional && !g.plan.Tables[i].Backing {
 			return i
 		}
 	}
@@ -546,6 +567,10 @@ func (g *generator) firstUnjoined(joined []bool) int {
 }
 
 func (g *generator) writeJoin(join PlanJoin, table int) {
+	if join.Backing != nil {
+		g.writeBackingJoin(join, table)
+		return
+	}
 	if join.Optional {
 		g.out.WriteString(" LEFT JOIN ")
 	} else {
@@ -569,6 +594,90 @@ func (g *generator) writeJoin(join PlanJoin, table int) {
 			g.fail(err)
 			return
 		}
+	}
+}
+
+// writeBackingJoin attaches table through an indirect relation's backing
+// table: the backing row has to match the side already read on one rule set
+// and table on the other.
+//
+// An inner join is two joins in a row. An outer join nests them, as in
+// LEFT JOIN (backing JOIN table ON ...) ON ..., so that only a backing row
+// that reaches a matching table row counts as a match: written as two outer
+// joins, a link row whose other end is missing or filtered out would come
+// back as a row of its own with nothing attached, beside the real matches.
+func (g *generator) writeBackingJoin(join PlanJoin, table int) {
+	link := join.Backing
+	// nearKeys join the backing table to the side already read, farKeys to
+	// the table being attached, each written backing column first.
+	anchor, nearKeys, farKeys := join.Left, link.LeftKeys, link.RightKeys
+	nearFlipped, farFlipped := true, false
+	if table == join.Left {
+		anchor, nearKeys, farKeys = join.Right, link.RightKeys, link.LeftKeys
+		nearFlipped, farFlipped = false, true
+	}
+	if join.Optional {
+		g.out.WriteString(" LEFT JOIN (")
+		g.out.WriteString(g.table(link.Table))
+		g.out.WriteString(" JOIN ")
+		g.out.WriteString(g.table(table))
+		g.out.WriteString(" ON ")
+		g.writeBackingKeys(link.Table, table, farKeys, farFlipped)
+		g.out.WriteString(") ON ")
+		g.writeBackingKeys(link.Table, anchor, nearKeys, nearFlipped)
+	} else {
+		g.out.WriteString(" JOIN ")
+		g.out.WriteString(g.table(link.Table))
+		g.out.WriteString(" ON ")
+		g.writeBackingKeys(link.Table, anchor, nearKeys, nearFlipped)
+		g.out.WriteString(" JOIN ")
+		g.out.WriteString(g.table(table))
+		g.out.WriteString(" ON ")
+		g.writeBackingKeys(link.Table, table, farKeys, farFlipped)
+	}
+	for _, condition := range join.Conditions {
+		g.out.WriteString(" AND ")
+		if err := g.writePredicate(condition, true); err != nil {
+			g.fail(err)
+			return
+		}
+	}
+}
+
+// writeClosingBacking joins the backing table of a relationship both of whose
+// ends are already read, as a cycle or a node linked to itself has.
+func (g *generator) writeClosingBacking(join PlanJoin) {
+	link := join.Backing
+	g.out.WriteString(" JOIN ")
+	g.out.WriteString(g.table(link.Table))
+	g.out.WriteString(" ON ")
+	g.writeBackingKeys(link.Table, join.Left, link.LeftKeys, true)
+	g.out.WriteString(" AND ")
+	g.writeBackingKeys(link.Table, join.Right, link.RightKeys, false)
+	for _, condition := range join.Conditions {
+		g.out.WriteString(" AND ")
+		if err := g.writePredicate(condition, true); err != nil {
+			g.fail(err)
+			return
+		}
+	}
+}
+
+// writeBackingKeys writes the equalities between the backing table and one
+// end. Keys keep pattern order, so the backing column is the right column of
+// the left end's keys (flipped) and the left column of the right end's.
+func (g *generator) writeBackingKeys(backing, end int, keys []PlanJoinKey, flipped bool) {
+	for i, key := range keys {
+		if i > 0 {
+			g.out.WriteString(" AND ")
+		}
+		backingColumn, endColumn := key.LeftColumn, key.RightColumn
+		if flipped {
+			backingColumn, endColumn = key.RightColumn, key.LeftColumn
+		}
+		g.out.WriteString(g.column(backing, backingColumn))
+		g.out.WriteString(" = ")
+		g.out.WriteString(g.column(end, endColumn))
 	}
 }
 

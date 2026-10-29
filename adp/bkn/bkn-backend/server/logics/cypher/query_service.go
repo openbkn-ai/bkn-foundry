@@ -831,9 +831,10 @@ func (s *cypherQueryService) resolveProxy(ctx context.Context, query interfaces.
 
 // proxyBindings lists the published bindings a statement reads through: each
 // object type the pattern matches, bound to its resource, and each relation
-// type it joins over, bound to the resources at both of its ends. That is how
-// the published model grants the proxy account query_data, so every resource
-// the statement references is covered by one of them.
+// type it joins over, bound to the resources at both of its ends and, for an
+// indirect relation, to its backing resource. That is how the published model
+// grants the proxy account query_data, so every resource the statement
+// references is covered by one of them.
 func proxyBindings(plan *Plan) []interfaces.KNProxyBinding {
 	seen := map[interfaces.KNProxyBinding]bool{}
 	bindings := make([]interfaces.KNProxyBinding, 0, len(plan.Tables)+2*len(plan.Joins))
@@ -851,11 +852,18 @@ func proxyBindings(plan *Plan) []interfaces.KNProxyBinding {
 		}
 	}
 	for _, table := range plan.Tables {
+		if table.Backing {
+			// Read through the relation it backs, below.
+			continue
+		}
 		add(interfaces.MODULE_TYPE_OBJECT_TYPE, table.ObjectTypeID, table.ResourceID)
 	}
 	for _, join := range plan.Joins {
 		add(interfaces.MODULE_TYPE_RELATION_TYPE, join.RelationTypeID, plan.Tables[join.Left].ResourceID)
 		add(interfaces.MODULE_TYPE_RELATION_TYPE, join.RelationTypeID, plan.Tables[join.Right].ResourceID)
+		if join.Backing != nil {
+			add(interfaces.MODULE_TYPE_RELATION_TYPE, join.RelationTypeID, plan.Tables[join.Backing.Table].ResourceID)
+		}
 	}
 	for _, sub := range plan.subPlans() {
 		for _, binding := range proxyBindings(sub) {

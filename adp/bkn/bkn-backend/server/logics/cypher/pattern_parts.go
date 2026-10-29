@@ -24,6 +24,10 @@ func patternComponents(plan *Plan) []int {
 	}
 	for _, join := range plan.Joins {
 		parent[find(join.Left)] = find(join.Right)
+		if join.Backing != nil {
+			// The backing table is read with its join, never on its own.
+			parent[find(join.Backing.Table)] = find(join.Right)
+		}
 	}
 	for _, term := range conjuncts(plan.Where) {
 		if node, ok := term.(PlanColumnComparison); ok && node.Operator == "=" && node.LeftTable != node.RightTable {
