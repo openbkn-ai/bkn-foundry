@@ -124,7 +124,7 @@
       ]
     },
     "joins": {
-      "r_t.status_code": [
+      "r_t.status_code@r_st": [
         3000,
         0,
         0,

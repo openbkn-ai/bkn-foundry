@@ -90,7 +90,7 @@
       ]
     },
     "joins": {
-      "r_s.warehouse_id": [
+      "r_s.warehouse_id@r_w": [
         20000,
         0,
         0,

@@ -30,7 +30,8 @@ type goldenCase struct {
 	Counts      struct {
 		// Keys are rows, distinct and nulls by "table" or "table.field".
 		Keys map[string][3]int64 `json:"keys"`
-		// Joins are rows, nulls, orphans and distinct source values by "table.field".
+		// Joins are rows, nulls, orphans and distinct source values by "table.field@target": a field
+		// tried against another target when the first is refuted is another count.
 		Joins  map[string][4]int64                    `json:"joins"`
 		Codes  map[string][]interfaces.DraftEnumValue `json:"codes"`
 		Failed []string                               `json:"failed"`
@@ -71,13 +72,14 @@ func (g *goldenCounter) keyTupleStats(ctx context.Context, table *interfaces.Veg
 }
 
 func (g *goldenCounter) joinStats(_ context.Context, source *interfaces.VegaTable, field string,
-	_ *interfaces.VegaTable, _ string) (int64, int64, int64, int64, error) {
+	target *interfaces.VegaTable, _ string) (int64, int64, int64, int64, error) {
 	if g.failed(source.ID, source.ID+"."+field) {
 		return 0, 0, 0, 0, errors.New("timeout")
 	}
-	s, ok := g.c.Counts.Joins[source.ID+"."+field]
+	key := source.ID + "." + field + "@" + target.ID
+	s, ok := g.c.Counts.Joins[key]
 	if !ok {
-		g.unlisted = append(g.unlisted, "joins "+source.ID+"."+field)
+		g.unlisted = append(g.unlisted, "joins "+key)
 		return 0, 0, 0, 0, errors.New("unlisted")
 	}
 	return s[0], s[1], s[2], s[3], nil

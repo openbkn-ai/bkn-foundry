@@ -205,29 +205,29 @@
       ]
     },
     "joins": {
-      "r_staff.dept_id": [
-        400,
+      "r_link.staff_id@r_staff": [
+        900,
         0,
         0,
-        30
+        400
       ],
-      "r_staff.team_code": [
-        400,
-        0,
-        0,
-        20
-      ],
-      "r_emp.parent_employee_id": [
+      "r_emp.parent_employee_id@r_emp": [
         400,
         1,
         0,
         60
       ],
-      "r_link.staff_id": [
-        900,
+      "r_staff.dept_id@r_dept": [
+        400,
         0,
         0,
-        400
+        30
+      ],
+      "r_staff.team_code@r_team": [
+        400,
+        0,
+        0,
+        20
       ]
     },
     "codes": {

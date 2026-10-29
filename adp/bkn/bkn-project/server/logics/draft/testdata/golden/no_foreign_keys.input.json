@@ -128,13 +128,13 @@
       ]
     },
     "joins": {
-      "r_o.customer_id": [
+      "r_o.customer_id@r_c": [
         50000,
         0,
         120,
         990
       ],
-      "r_o.product_id": [
+      "r_o.product_id@r_p": [
         50000,
         300,
         2000,
