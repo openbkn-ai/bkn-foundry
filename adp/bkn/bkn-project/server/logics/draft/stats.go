@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -122,6 +123,12 @@ func (c *vegaCounter) codeValues(ctx context.Context, table *interfaces.VegaTabl
 // number reads a count, which JSON brings as a number and some drivers as a string.
 func number(value any) int64 {
 	switch v := value.(type) {
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return n
+		}
+		f, _ := v.Float64()
+		return int64(f)
 	case float64:
 		return int64(v)
 	case int64:
@@ -141,6 +148,8 @@ func text(value any) string {
 		return ""
 	case string:
 		return v
+	case json.Number:
+		return v.String()
 	case float64:
 		return strconv.FormatFloat(v, 'f', -1, 64)
 	}
