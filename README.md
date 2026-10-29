@@ -25,7 +25,10 @@
 <div align="center">
 
 <a href="https://youtu.be/xarWAhN5cQg?si=Z28Uug7__WDknbiO">
-  <img src="help/openbkn-in-3-minutes-thumbnail.jpg" alt="OpenBKN in 3 Minutes: Ontology for AI Agent video preview" width="640">
+  <picture>
+    <source srcset="help/openbkn-in-3-minutes-preview.webp" type="image/webp">
+    <img src="help/openbkn-in-3-minutes-preview.gif" alt="Watch OpenBKN in 3 Minutes on YouTube" width="640" height="360">
+  </picture>
 </a>
 
 **[▶ Watch OpenBKN in 3 Minutes: Ontology for AI Agent](https://youtu.be/xarWAhN5cQg?si=Z28Uug7__WDknbiO)**
