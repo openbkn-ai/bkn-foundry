@@ -18,6 +18,13 @@ var releaseEnUS = i18n.I18nMessages{
 		"BknProject.Release.BranchBehind":        "Branch Behind main. main has changes the branch does not have; sync the branch first.",
 		"BknProject.Release.Drift":               "Live Definitions Drifted. The live network differs from main; error_details lists the paths. Commit the drift to main, sync the branch, then publish again.",
 		"BknProject.Release.CapabilitiesSkipped": "Capabilities Skipped. The network was imported, but some Skills or functions could not be bound; error_details lists them. The release is not recorded; fix the permissions and publish the same version again.",
+		"BknProject.Release.InvalidRequestBody":  "Invalid Request Body. The body must be valid JSON.",
+		"BknProject.Release.InvalidAccepts":      "Invalid Accepts. Only similar names, partly unverified checks and indexes not ready can be accepted.",
+		"BknProject.Release.NotProjectRelease":   "Not a Release of This Project. Only a version this project published can be switched to.",
+		"BknProject.Release.NotOwner":            "Not the Project Owner. Only the project owner can publish, sync or switch consumers.",
+		"BknProject.Release.ProjectArchived":     "Project Archived. Unarchive the project before publishing.",
+		"BknProject.Release.ChecksFailed":        "Release Checks Not Passed. error_details lists the checks that did not pass; fix them and open the release review again.",
+		"BknProject.Release.ReviewOutdated":      "Release Review Outdated. The draft or the live version changed after the release review was opened; open it again.",
 		"BknProject.Release.InternalError":       "Internal Error. Please contact the administrator.",
 	},
 }
