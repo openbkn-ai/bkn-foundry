@@ -40,6 +40,22 @@ func newestTasks(tasks []*interfaces.VegaSemanticTask) map[string]*interfaces.Ve
 	return newest
 }
 
+// understood tells whether a table needs no new task: one is queued or running, or one completed
+// that was meant to write. A completed preview (dry_run) wrote nothing, so it does not count; a
+// result too unsure to write does, as asking again would give the same.
+func understood(task *interfaces.VegaSemanticTask) bool {
+	if task == nil {
+		return false
+	}
+	switch task.Status {
+	case semanticPending, semanticRunning:
+		return true
+	case semanticCompleted:
+		return task.ApplyMode != interfaces.VEGA_SEMANTIC_APPLY_DRY_RUN
+	}
+	return false
+}
+
 func (s *draftService) Understand(ctx context.Context, token string, projectID string,
 	request interfaces.ProjectUnderstand, caller interfaces.AccountInfo) (*interfaces.ProjectUnderstandSubmitted, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Understand")
@@ -90,10 +106,8 @@ func (s *draftService) Understand(ctx context.Context, token string, projectID s
 			}
 			newest := newestTasks(tasks)
 			for _, table := range tables {
-				task := newest[table.ID]
 				// A table understood, or being understood, is left alone unless all are asked for.
-				if !request.All && task != nil &&
-					(task.Status == semanticCompleted || task.Status == semanticPending || task.Status == semanticRunning) {
+				if !request.All && understood(newest[table.ID]) {
 					continue
 				}
 				resourceIDs = append(resourceIDs, table.ID)

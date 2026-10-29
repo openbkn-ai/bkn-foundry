@@ -82,8 +82,11 @@ type VegaSemanticTask struct {
 	ResourceID string
 	// Status is pending, running, completed, failed or cancelled.
 	Status string
-	// Applied tells whether the task wrote its result to the table.
-	Applied    bool
+	// Applied tells whether the task wrote its result to the table: a dry run never does, nor a
+	// result below the confidence threshold.
+	Applied bool
+	// ApplyMode is how the task was to write its result, one of the VEGA_SEMANTIC_APPLY_* modes.
+	ApplyMode  string
 	CreateTime int64
 	FinishTime int64
 }
