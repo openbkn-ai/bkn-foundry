@@ -223,11 +223,13 @@ func Test_CheckTests(t *testing.T) {
 			pathDraft.Items.RelationTypes[0].Mapping = []interfaces.DraftFieldMapping{{SourceProperty: "customer_ref", TargetProperty: "customer_id"}}
 			rel := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "sales_order_customer"}
 			withPath := &interfaces.RequirementQuestion{Text: asked.Text, Needs: []interfaces.RequirementItemRef{customerRef, rel}}
-			reached := "SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IN (SELECT `cust_ref` FROM {{r-so}}) AND `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1"
+			// The shape vega-backend accepts: a join on the other end's distinct values, never a
+			// subquery in WHERE, which it rejects as invalid syntax.
+			reached := "SELECT a.`cust_id` AS v FROM {{r-cust}} a JOIN (SELECT DISTINCT `cust_ref` FROM {{r-so}}) b ON a.`cust_id` = b.`cust_ref` WHERE a.`cust_id` IS NOT NULL ORDER BY a.`cust_id` LIMIT 1"
 			anyRecord := "SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1"
 
 			Convey("and says where it came from\n", func() {
-				sample(reached, map[string]any{"v0": "10007"})
+				sample(reached, map[string]any{"v": "10007"})
 				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10007'", float64(1))
 				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
 				tt.Slots[0].ValueFrom = "stale"
@@ -301,7 +303,8 @@ func Test_CheckTests(t *testing.T) {
 				p := pathOf(pathDraft, withPath, &slotField{objectType: order, field: "cust_ref"})
 
 				So(p, ShouldResemble, &relationPath{objectType: "customer", own: "cust_ref", table: "r-cust", other: "cust_id"})
-				So(p.condition(), ShouldEqual, "`cust_ref` IN (SELECT `cust_id` FROM {{r-cust}})")
+				So(p.sample("r-so", "cust_ref", "so_id"), ShouldEqual,
+					"SELECT a.`cust_ref` AS v FROM {{r-so}} a JOIN (SELECT DISTINCT `cust_id` FROM {{r-cust}}) b ON a.`cust_ref` = b.`cust_id` WHERE a.`cust_ref` IS NOT NULL ORDER BY a.`so_id` LIMIT 1")
 			})
 		})
 
