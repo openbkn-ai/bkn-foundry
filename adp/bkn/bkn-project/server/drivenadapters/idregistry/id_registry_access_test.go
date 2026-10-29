@@ -60,7 +60,7 @@ func Test_IDRegistryAccess(t *testing.T) {
 			}
 			ids[batchSize].Basis = json.RawMessage(`{"physical_name":"供应商"}`)
 			smock.ExpectExec(regexp.QuoteMeta(insert + placeholders(batchSize) + upsert)).WillReturnResult(sqlmock.NewResult(0, batchSize))
-			smock.ExpectExec(regexp.QuoteMeta(insert + placeholders(1) + upsert)).
+			smock.ExpectExec(regexp.QuoteMeta(insert+placeholders(1)+upsert)).
 				WithArgs("p1", interfaces.ID_KIND_OBJECT_TYPES, fmt.Sprintf("r%d", batchSize), fmt.Sprintf("ot_%06d", batchSize),
 					interfaces.ID_ORIGIN_FALLBACK, `{"physical_name":"供应商"}`, false, int64(5), int64(5)).
 				WillReturnResult(sqlmock.NewResult(0, 1))
@@ -69,7 +69,7 @@ func Test_IDRegistryAccess(t *testing.T) {
 		})
 
 		Convey("RecordIDs writes an empty basis as an empty object\n", func() {
-			smock.ExpectExec(regexp.QuoteMeta(insert + placeholders(1) + upsert)).
+			smock.ExpectExec(regexp.QuoteMeta(insert+placeholders(1)+upsert)).
 				WithArgs("p1", interfaces.ID_KIND_PROPERTIES, "r1/编号", "p_1a2b3c", interfaces.ID_ORIGIN_FALLBACK, "{}", false, int64(0), int64(0)).
 				WillReturnResult(sqlmock.NewResult(0, 1))
 			So(ira.RecordIDs(ctx, []*interfaces.RegisteredID{{ProjectID: "p1",
