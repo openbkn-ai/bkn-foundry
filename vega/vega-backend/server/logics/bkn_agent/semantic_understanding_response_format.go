@@ -10,6 +10,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
+// apiNameDescription 告诉模型 api_name 的格式。schema 不带 pattern：结构化输出不合 schema
+// 会让整条结果失败，一个不合格的短名不应连带丢掉显示名和说明，所以格式在写回时校验。
+const apiNameDescription = "English short name in snake_case for use as a machine identifier: " +
+	"a lowercase letter, then lowercase letters, digits or underscores, at most 40 characters."
+
 func semanticUnderstandingResponseFormat(scope string) (map[string]any, error) {
 	switch scope {
 	case interfaces.SemanticUnderstandingTaskScopeResource:
@@ -29,12 +34,14 @@ func resourceSemanticUnderstandingResponseFormat() map[string]any {
 			"resource": objectSchema(map[string]any{
 				"display_name": stringSchema(),
 				"description":  stringSchema(),
+				"api_name":     apiNameSchema(),
 				"confidence":   confidence,
 			}, "display_name", "description"),
 			"fields": arraySchema(objectSchema(map[string]any{
 				"name":         stringSchema(),
 				"display_name": stringSchema(),
 				"description":  stringSchema(),
+				"api_name":     apiNameSchema(),
 				"confidence":   confidence,
 			}, "name", "display_name", "description")),
 			"warnings": arraySchema(stringSchema()),
@@ -85,6 +92,10 @@ func confidenceSchema() map[string]any {
 
 func stringSchema() map[string]any {
 	return map[string]any{"type": "string"}
+}
+
+func apiNameSchema() map[string]any {
+	return map[string]any{"type": "string", "description": apiNameDescription}
 }
 
 func arraySchema(items map[string]any) map[string]any {

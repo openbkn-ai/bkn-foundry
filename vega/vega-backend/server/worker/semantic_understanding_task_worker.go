@@ -841,20 +841,15 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		return "", 0, "", fmt.Errorf("unmarshal resource semantic understanding result quality input failed: %w", err)
 	}
 
-	inputFields := make(map[string]struct {
-		DisplayName string
-		Description string
-	}, len(input.Resource.SchemaDefinition))
+	inputFields := make(map[string]interfaces.SemanticUnderstandingResourceAgentInputProperty, len(input.Resource.SchemaDefinition))
 	for _, field := range input.Resource.SchemaDefinition {
-		inputFields[field.Name] = struct {
-			DisplayName string
-			Description string
-		}{DisplayName: field.DisplayName, Description: field.Description}
+		inputFields[field.Name] = field
 	}
 
 	quality := interfaces.SemanticUnderstandingResourceQuality{
 		ResourceEffective: strings.TrimSpace(result.Resource.DisplayName) != "" && result.Resource.DisplayName != input.Resource.Name ||
-			strings.TrimSpace(result.Resource.Description) != "" && result.Resource.Description != input.Resource.Description,
+			strings.TrimSpace(result.Resource.Description) != "" && result.Resource.Description != input.Resource.Description ||
+			newSemanticAPIName(input.Resource.APIName, result.Resource.APIName),
 		FieldTotal: len(inputFields),
 	}
 	for _, field := range result.Fields {
@@ -864,7 +859,7 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		}
 		displayNameEffective := !isTechnicalFieldName(field.Name, field.DisplayName) && field.DisplayName != inputField.DisplayName
 		descriptionEffective := strings.TrimSpace(field.Description) != "" && field.Description != inputField.Description
-		if displayNameEffective || descriptionEffective {
+		if displayNameEffective || descriptionEffective || newSemanticAPIName(inputField.APIName, field.APIName) {
 			quality.FieldEffective++
 		}
 	}
@@ -882,6 +877,11 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		confidence = 0
 	}
 	return resultJSON, confidence, confidenceDetailJSON, nil
+}
+
+// newSemanticAPIName 判断结果是否补上了原来没有的合法 api_name：只写一次，已有的不算新内容。
+func newSemanticAPIName(current, next string) bool {
+	return current == "" && semanticAPINamePattern.MatchString(strings.TrimSpace(next))
 }
 
 func appendResourceSemanticQuality(payload string, quality interfaces.SemanticUnderstandingResourceQuality, warning string) (string, error) {
@@ -1037,6 +1037,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		}
 	}
 	displayNameCandidates, acceptedDisplayNames := planSemanticDisplayNameUpdates(task, result.Fields, resourceInfo.SchemaDefinition, fieldByName)
+	duplicateAPINames := planSemanticAPINameUpdates(task, result.Fields, resourceInfo.SchemaDefinition, fieldByName)
 
 	seenFields := make(map[string]struct{}, len(result.Fields))
 	updatedFields := make([]string, 0)
@@ -1107,6 +1108,20 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		if applyStringByMode(task.ApplyMode, &property.Description, field.Description, property.Description == property.OriginalDescription) {
 			updated = append(updated, "description")
 		}
+		// api_name 只写一次：已有的不论哪种模式都不覆盖。
+		if apiName := strings.TrimSpace(field.APIName); apiName != "" && property.APIName == "" {
+			switch {
+			case !semanticAPINamePattern.MatchString(apiName):
+				skippedFields = append(skippedFields, fmt.Sprintf("%s: api_name invalid", field.Name))
+				reasons = append(reasons, "api_name invalid")
+			case duplicateAPINames[field.Name]:
+				skippedFields = append(skippedFields, fmt.Sprintf("%s: api_name duplicates another field", field.Name))
+				reasons = append(reasons, "api_name duplicates another field")
+			default:
+				property.APIName = apiName
+				updated = append(updated, "api_name")
+			}
+		}
 		status := "unchanged"
 		if len(updated) > 0 {
 			status = "updated"
@@ -1127,13 +1142,23 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		resourceInfo.Description == sourceOriginalDescription(resourceInfo.SourceMetadata)) {
 		updatedResource = append(updatedResource, "description")
 	}
+	skippedResource := make([]string, 0, 1)
+	if apiName := strings.TrimSpace(result.Resource.APIName); apiName != "" && resourceInfo.APIName == "" {
+		if semanticAPINamePattern.MatchString(apiName) {
+			resourceInfo.APIName = apiName
+			updatedResource = append(updatedResource, "api_name")
+		} else {
+			skippedResource = append(skippedResource, "api_name invalid")
+		}
+	}
 	resourceUpdated := len(updatedResource) > 0
 	if !resourceUpdated && len(updatedFields) == 0 {
-		if len(skippedFields) > 0 {
+		if len(skippedFields) > 0 || len(skippedResource) > 0 {
 			detailStr, err := sonic.MarshalString(
 				interfaces.SemanticUnderstandingResourceApplyDetail{
-					SkippedFields: skippedFields,
-					FieldDetails:  fieldDetails,
+					SkippedResource: skippedResource,
+					SkippedFields:   skippedFields,
+					FieldDetails:    fieldDetails,
 				})
 			if err != nil {
 				return nil, fmt.Errorf("marshal resource semantic understanding apply detail failed: %w", err)
@@ -1161,6 +1186,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	detailStr, err := sonic.MarshalString(interfaces.SemanticUnderstandingResourceApplyDetail{
 		ResourceUpdated: resourceUpdated,
 		UpdatedResource: updatedResource,
+		SkippedResource: skippedResource,
 		UpdatedFields:   updatedFields,
 		SkippedFields:   skippedFields,
 		FieldDetails:    fieldDetails,
@@ -1173,6 +1199,56 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		Applied:    true,
 		DetailJSON: detailStr,
 	}, nil
+}
+
+// semanticAPINamePattern 与 BKN 的 ID 规则一致，长度取属性名上限 40。
+var semanticAPINamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
+
+// planSemanticAPINameUpdates 找出会与其他字段重名的 api_name：已被别的字段占用，
+// 或本次结果里有多个字段给出同一个。重名的都不写，避免只写一次的短名从一开始就冲突。
+// 主循环会整条跳过的字段不写任何内容，它们的 api_name 不算提议，不能挤掉别的字段。
+func planSemanticAPINameUpdates(task *interfaces.SemanticUnderstandingTask, fields []interfaces.SemanticUnderstandingResourceResultField,
+	properties []*interfaces.Property, fieldByName map[string]*interfaces.Property) map[string]bool {
+	taken := make(map[string]bool, len(properties))
+	for _, property := range properties {
+		if property != nil && property.APIName != "" {
+			taken[property.APIName] = true
+		}
+	}
+	proposers := make(map[string][]string)
+	seen := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		// 与主循环一致：同名字段只看第一条，先判重再过滤。
+		if seen[field.Name] {
+			continue
+		}
+		seen[field.Name] = true
+		property, ok := fieldByName[field.Name]
+		if !ok || property.APIName != "" || semanticFieldSkipped(task, field) {
+			continue
+		}
+		if apiName := strings.TrimSpace(field.APIName); semanticAPINamePattern.MatchString(apiName) {
+			proposers[apiName] = append(proposers[apiName], field.Name)
+		}
+	}
+	duplicates := make(map[string]bool)
+	for apiName, names := range proposers {
+		if taken[apiName] || len(names) > 1 {
+			for _, name := range names {
+				duplicates[name] = true
+			}
+		}
+	}
+	return duplicates
+}
+
+// semanticFieldSkipped 与 applyResourceResult 主循环整条跳过字段的条件一致：
+// 显示名或说明超长、置信度非法或低于阈值。
+func semanticFieldSkipped(task *interfaces.SemanticUnderstandingTask, field interfaces.SemanticUnderstandingResourceResultField) bool {
+	return utf8.RuneCountInString(strings.TrimSpace(field.DisplayName)) > interfaces.MaxLength_PropertyDisplayName ||
+		utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription ||
+		validateConfidence(field.Confidence, "") != nil ||
+		(field.Confidence != nil && *field.Confidence < task.ConfidenceThreshold)
 }
 
 // planSemanticDisplayNameUpdates checks the names that would exist after the whole
@@ -1194,11 +1270,8 @@ func planSemanticDisplayNameUpdates(task *interfaces.SemanticUnderstandingTask,
 		seen[field.Name] = struct{}{}
 		property := fieldByName[field.Name]
 		displayName := strings.TrimSpace(field.DisplayName)
-		if property == nil || utf8.RuneCountInString(displayName) > interfaces.MaxLength_PropertyDisplayName ||
-			(field.DisplayName != "" && isTechnicalFieldName(field.Name, field.DisplayName)) ||
-			utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription ||
-			validateConfidence(field.Confidence, "") != nil ||
-			(field.Confidence != nil && *field.Confidence < task.ConfidenceThreshold) {
+		if property == nil || semanticFieldSkipped(task, field) ||
+			(field.DisplayName != "" && isTechnicalFieldName(field.Name, field.DisplayName)) {
 			continue
 		}
 		candidate := property.DisplayName

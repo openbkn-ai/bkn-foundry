@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	// "net/http" // Catalog 父目录测试恢复时启用。
+	"strings"
 	"testing"
 	"time"
 
@@ -1278,6 +1279,28 @@ func TestAssessResourceSemanticResultQuality(t *testing.T) {
 		}
 	})
 
+	t.Run("counts an api name filled in where the input had none", func(t *testing.T) {
+		// 展示名和说明都已维护好，本次只补 api_name：不能被当成无效输出。
+		maintained := `{"resource":{"name":"供应商","description":"供应商主数据","schema_definition":[` +
+			`{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号"},` +
+			`{"name":"电话","display_name":"联系电话","description":"联系电话","api_name":"phone"}]}}`
+		for _, tc := range []struct {
+			name, result string
+			want         float64
+		}{
+			{"new field api name", `{"resource":{"display_name":"供应商","description":"供应商主数据"},"fields":[{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号","api_name":"supplier_code"}]}`, 0.9},
+			{"new resource api name", `{"resource":{"display_name":"供应商","description":"供应商主数据","api_name":"supplier"},"fields":[{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号"}]}`, 0.9},
+			{"api name the field already has", `{"resource":{"display_name":"供应商","description":"供应商主数据"},"fields":[{"name":"电话","display_name":"联系电话","description":"联系电话","api_name":"contact_phone"}]}`, 0},
+			{"invalid api name", `{"resource":{"display_name":"供应商","description":"供应商主数据","api_name":"Supplier"},"fields":[{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号","api_name":"supplier-code"}]}`, 0},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, confidence, _, err := assessResourceSemanticResultQuality(tc.result, maintained, `{}`, 0.9)
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, confidence)
+			})
+		}
+	})
+
 	t.Run("keeps agent confidence for valid resource-only update", func(t *testing.T) {
 		_, confidence, detail, err := assessResourceSemanticResultQuality(
 			`{"confidence":1,"resource":{"display_name":"供应商主数据","description":"供应商业务主数据"},"fields":[{"name":"supplier_id","display_name":"supplier_id","description":"供应商ID"}],"warnings":[]}`,
@@ -1603,4 +1626,188 @@ func extractWarningDetailsForTest(t *testing.T, payload string) string {
 	raw, ok := object["warning_details"]
 	require.True(t, ok)
 	return string(raw)
+}
+
+func TestSemanticUnderstandingTaskWorkerApplyAPIName(t *testing.T) {
+	apply := func(t *testing.T, resource *interfaces.Resource, mode, result string, check func(got *interfaces.Resource)) *interfaces.SemanticUnderstandingApplyResult {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+		resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+				check(got)
+				return nil
+			})
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+			Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1", ApplyMode: mode,
+		}, result, 0.9)
+		require.NoError(t, err)
+		require.True(t, got.Applied)
+		return got
+	}
+
+	t.Run("writes empty api names and trims them", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{{Name: "编号", DisplayName: "编号", Type: interfaces.DataType_String}},
+		}
+		got := apply(t, resource, interfaces.SemanticUnderstandingApplyModeFillEmpty,
+			`{"resource":{"api_name":" supplier "},"fields":[{"name":"编号","api_name":"supplier_code"}]}`,
+			func(got *interfaces.Resource) {
+				assert.Equal(t, "supplier", got.APIName)
+				assert.Equal(t, "supplier_code", got.SchemaDefinition[0].APIName)
+			})
+		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["api_name"],"updated_fields":["编号"],"field_details":[{"name":"编号","status":"updated","updated":["api_name"]}]}`, got.DetailJSON)
+	})
+
+	t.Run("never overwrites an api name, even in force mode", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", APIName: "vendor", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{{Name: "编号", DisplayName: "编号", APIName: "vendor_code", Type: interfaces.DataType_String}},
+		}
+		got := apply(t, resource, interfaces.SemanticUnderstandingApplyModeForce,
+			`{"resource":{"display_name":"供应商档案","api_name":"supplier"},"fields":[{"name":"编号","display_name":"供应商编号","api_name":"supplier_code"}]}`,
+			func(got *interfaces.Resource) {
+				assert.Equal(t, "供应商档案", got.Name)
+				assert.Equal(t, "vendor", got.APIName)
+				assert.Equal(t, "供应商编号", got.SchemaDefinition[0].DisplayName)
+				assert.Equal(t, "vendor_code", got.SchemaDefinition[0].APIName)
+			})
+		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name"],"updated_fields":["编号"],"field_details":[{"name":"编号","status":"updated","updated":["display_name"]}]}`, got.DetailJSON)
+	})
+
+	t.Run("drops invalid api names and keeps the rest of the result", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "a", DisplayName: "a", Type: interfaces.DataType_String},
+				{Name: "b", DisplayName: "b", Type: interfaces.DataType_String},
+				{Name: "c", DisplayName: "c", Type: interfaces.DataType_String},
+				{Name: "d", DisplayName: "d", Type: interfaces.DataType_String},
+			},
+		}
+		got := apply(t, resource, interfaces.SemanticUnderstandingApplyModeForce,
+			`{"resource":{"display_name":"供应商档案","api_name":"Supplier"},"fields":[`+
+				`{"name":"a","display_name":"甲","api_name":"1st"},`+
+				`{"name":"b","display_name":"乙","api_name":"supplier-code"},`+
+				`{"name":"c","display_name":"丙","api_name":"编号"},`+
+				`{"name":"d","display_name":"丁","api_name":"a_very_long_api_name_that_exceeds_forty_c"}]}`,
+			func(got *interfaces.Resource) {
+				assert.Equal(t, "供应商档案", got.Name)
+				assert.Empty(t, got.APIName)
+				for i, name := range []string{"甲", "乙", "丙", "丁"} {
+					assert.Equal(t, name, got.SchemaDefinition[i].DisplayName)
+					assert.Empty(t, got.SchemaDefinition[i].APIName)
+				}
+			})
+		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name"],"skipped_resource":["api_name invalid"],"updated_fields":["a","b","c","d"],`+
+			`"skipped_fields":["a: api_name invalid","b: api_name invalid","c: api_name invalid","d: api_name invalid"],"field_details":[`+
+			`{"name":"a","status":"partial","updated":["display_name"],"reasons":["api_name invalid"]},`+
+			`{"name":"b","status":"partial","updated":["display_name"],"reasons":["api_name invalid"]},`+
+			`{"name":"c","status":"partial","updated":["display_name"],"reasons":["api_name invalid"]},`+
+			`{"name":"d","status":"partial","updated":["display_name"],"reasons":["api_name invalid"]}]}`, got.DetailJSON)
+	})
+
+	t.Run("ignores api names of fields the result skips", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "low", DisplayName: "low", Type: interfaces.DataType_String},
+				{Name: "bad", DisplayName: "bad", Type: interfaces.DataType_String},
+				{Name: "long_name", DisplayName: "long_name", Type: interfaces.DataType_String},
+				{Name: "long_desc", DisplayName: "long_desc", Type: interfaces.DataType_String},
+				{Name: "ok", DisplayName: "ok", Type: interfaces.DataType_String},
+			},
+		}
+		result := fmt.Sprintf(`{"fields":[`+
+			`{"name":"low","api_name":"code","confidence":0.1},`+
+			`{"name":"bad","api_name":"code","confidence":2},`+
+			`{"name":"long_name","display_name":%q,"api_name":"code"},`+
+			`{"name":"long_desc","description":%q,"api_name":"code"},`+
+			`{"name":"ok","api_name":"code"}]}`,
+			strings.Repeat("名", interfaces.MaxLength_PropertyDisplayName+1),
+			strings.Repeat("述", interfaces.MaxLength_PropertyDescription+1))
+		ctrl := gomock.NewController(t)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+		resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+				for _, property := range got.SchemaDefinition[:4] {
+					assert.Empty(t, property.APIName, property.Name)
+				}
+				assert.Equal(t, "code", got.SchemaDefinition[4].APIName)
+				return nil
+			})
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+			Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+			ApplyMode: interfaces.SemanticUnderstandingApplyModeFillEmpty, ConfidenceThreshold: 0.75,
+		}, result, 0.9)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"ok"}, mustUpdatedFields(t, got.DetailJSON))
+	})
+
+	t.Run("counts only the first entry of a field the result repeats", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "x", DisplayName: "x", Type: interfaces.DataType_String},
+				{Name: "y", DisplayName: "y", Type: interfaces.DataType_String},
+			},
+		}
+		ctrl := gomock.NewController(t)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+		resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+				assert.Empty(t, got.SchemaDefinition[0].APIName)
+				assert.Equal(t, "code", got.SchemaDefinition[1].APIName)
+				return nil
+			})
+		// x 的第一条低于阈值被整条跳过，第二条按重复跳过，所以 x 不算 code 的提议者。
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+			Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+			ApplyMode: interfaces.SemanticUnderstandingApplyModeFillEmpty, ConfidenceThreshold: 0.75,
+		}, `{"fields":[{"name":"x","api_name":"foo","confidence":0.1},{"name":"x","api_name":"code"},{"name":"y","api_name":"code"}]}`, 0.9)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"y"}, mustUpdatedFields(t, got.DetailJSON))
+	})
+
+	t.Run("skips api names another field has or would get", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "a", DisplayName: "a", APIName: "code", Type: interfaces.DataType_String},
+				{Name: "b", DisplayName: "b", Type: interfaces.DataType_String},
+				{Name: "c", DisplayName: "c", Type: interfaces.DataType_String},
+				{Name: "d", DisplayName: "d", Type: interfaces.DataType_String},
+				{Name: "e", DisplayName: "e", Type: interfaces.DataType_String},
+			},
+		}
+		got := apply(t, resource, interfaces.SemanticUnderstandingApplyModeFillEmpty,
+			`{"fields":[{"name":"a","api_name":"code"},{"name":"b","api_name":"code"},{"name":"c","api_name":"name"},{"name":"d","api_name":"name"},{"name":"e","api_name":"phone"}]}`,
+			func(got *interfaces.Resource) {
+				assert.Equal(t, []string{"code", "", "", "", "phone"}, []string{
+					got.SchemaDefinition[0].APIName, got.SchemaDefinition[1].APIName, got.SchemaDefinition[2].APIName,
+					got.SchemaDefinition[3].APIName, got.SchemaDefinition[4].APIName,
+				})
+			})
+		assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["e"],`+
+			`"skipped_fields":["b: api_name duplicates another field","c: api_name duplicates another field","d: api_name duplicates another field"],"field_details":[`+
+			`{"name":"a","status":"unchanged"},`+
+			`{"name":"b","status":"unchanged","reasons":["api_name duplicates another field"]},`+
+			`{"name":"c","status":"unchanged","reasons":["api_name duplicates another field"]},`+
+			`{"name":"d","status":"unchanged","reasons":["api_name duplicates another field"]},`+
+			`{"name":"e","status":"updated","updated":["api_name"]}]}`, got.DetailJSON)
+	})
+}
+
+func mustUpdatedFields(t *testing.T, detailJSON string) []string {
+	t.Helper()
+	var detail interfaces.SemanticUnderstandingResourceApplyDetail
+	require.NoError(t, sonic.UnmarshalString(detailJSON, &detail))
+	return detail.UpdatedFields
 }

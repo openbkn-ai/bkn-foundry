@@ -167,6 +167,7 @@ type SemanticUnderstandingResourceAgentInputResource struct {
 	SourceIdentifier  string                                            `json:"source_identifier"`
 	SourceDescription string                                            `json:"source_description,omitempty"`
 	Description       string                                            `json:"description,omitempty"`
+	APIName           string                                            `json:"api_name,omitempty"`
 	SchemaDefinition  []SemanticUnderstandingResourceAgentInputProperty `json:"schema_definition"`
 }
 
@@ -178,6 +179,7 @@ type SemanticUnderstandingResourceAgentInputProperty struct {
 	OriginalDescription string `json:"original_description,omitempty"`
 	DisplayName         string `json:"display_name,omitempty"`
 	Description         string `json:"description,omitempty"`
+	APIName             string `json:"api_name,omitempty"`
 }
 
 type SemanticUnderstandingResourceAgentInputOptions struct {
@@ -275,6 +277,7 @@ type SemanticUnderstandingFieldApplyDetail struct {
 type SemanticUnderstandingResourceApplyDetail struct {
 	ResourceUpdated bool                                    `json:"resource_updated"`
 	UpdatedResource []string                                `json:"updated_resource,omitempty"`
+	SkippedResource []string                                `json:"skipped_resource,omitempty"`
 	UpdatedFields   []string                                `json:"updated_fields,omitempty"`
 	SkippedFields   []string                                `json:"skipped_fields,omitempty"`
 	FieldDetails    []SemanticUnderstandingFieldApplyDetail `json:"field_details,omitempty"`
@@ -288,6 +291,7 @@ type SemanticUnderstandingResourceResult struct {
 type SemanticUnderstandingResourceResultResource struct {
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description"`
+	APIName     string   `json:"api_name,omitempty"`
 	Confidence  *float64 `json:"confidence,omitempty"`
 }
 
@@ -295,6 +299,7 @@ type SemanticUnderstandingResourceResultField struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description"`
+	APIName     string   `json:"api_name,omitempty"`
 	Confidence  *float64 `json:"confidence,omitempty"`
 }
 
