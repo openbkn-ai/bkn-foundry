@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	// "net/http" // Catalog 父目录测试恢复时启用。
+	"strings"
 	"testing"
 	"time"
 
@@ -1687,6 +1688,45 @@ func TestSemanticUnderstandingTaskWorkerApplyAPIName(t *testing.T) {
 			`{"name":"d","status":"partial","updated":["display_name"],"reasons":["api_name invalid"]}]}`, got.DetailJSON)
 	})
 
+	t.Run("ignores api names of fields the result skips", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "low", DisplayName: "low", Type: interfaces.DataType_String},
+				{Name: "bad", DisplayName: "bad", Type: interfaces.DataType_String},
+				{Name: "long_name", DisplayName: "long_name", Type: interfaces.DataType_String},
+				{Name: "long_desc", DisplayName: "long_desc", Type: interfaces.DataType_String},
+				{Name: "ok", DisplayName: "ok", Type: interfaces.DataType_String},
+			},
+		}
+		result := fmt.Sprintf(`{"fields":[`+
+			`{"name":"low","api_name":"code","confidence":0.1},`+
+			`{"name":"bad","api_name":"code","confidence":2},`+
+			`{"name":"long_name","display_name":%q,"api_name":"code"},`+
+			`{"name":"long_desc","description":%q,"api_name":"code"},`+
+			`{"name":"ok","api_name":"code"}]}`,
+			strings.Repeat("名", interfaces.MaxLength_PropertyDisplayName+1),
+			strings.Repeat("述", interfaces.MaxLength_PropertyDescription+1))
+		ctrl := gomock.NewController(t)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		resourceService.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+		resourceService.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+				for _, property := range got.SchemaDefinition[:4] {
+					assert.Empty(t, property.APIName, property.Name)
+				}
+				assert.Equal(t, "code", got.SchemaDefinition[4].APIName)
+				return nil
+			})
+		got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+			Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: "resource-1",
+			ApplyMode: interfaces.SemanticUnderstandingApplyModeFillEmpty, ConfidenceThreshold: 0.75,
+		}, result, 0.9)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"ok"}, mustUpdatedFields(t, got.DetailJSON))
+	})
+
 	t.Run("skips api names another field has or would get", func(t *testing.T) {
 		resource := &interfaces.Resource{
 			ID: "resource-1", Name: "供应商", Category: interfaces.ResourceCategoryTable,
@@ -1714,4 +1754,11 @@ func TestSemanticUnderstandingTaskWorkerApplyAPIName(t *testing.T) {
 			`{"name":"d","status":"unchanged","reasons":["api_name duplicates another field"]},`+
 			`{"name":"e","status":"updated","updated":["api_name"]}]}`, got.DetailJSON)
 	})
+}
+
+func mustUpdatedFields(t *testing.T, detailJSON string) []string {
+	t.Helper()
+	var detail interfaces.SemanticUnderstandingResourceApplyDetail
+	require.NoError(t, sonic.UnmarshalString(detailJSON, &detail))
+	return detail.UpdatedFields
 }
