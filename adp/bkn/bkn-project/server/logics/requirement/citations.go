@@ -119,8 +119,8 @@ func checkCitations(citations []interfaces.RequirementCitation,
 	}
 }
 
-// numbers lists the numbers in text, full-width digits as ASCII: runs of digits, with a single
-// decimal point between two digits kept inside the number, so 0.5 is not 5. A date or a code gives
+// numbers lists the numbers in text, full-width digits and points as ASCII: runs of digits, with
+// a single decimal point between two digits kept inside the number, so 0.5 is not 5. A date or a code gives
 // one number per group of digits.
 func numbers(text string) []string {
 	runes := []rune(text)
@@ -141,7 +141,7 @@ func numbers(text string) []string {
 			run.WriteRune(r)
 			continue
 		}
-		if runes[i] == '.' && run.Len() > 0 {
+		if (runes[i] == '.' || runes[i] == '\uff0e') && run.Len() > 0 {
 			if _, next := digit(i + 1); next {
 				run.WriteRune('.')
 				continue

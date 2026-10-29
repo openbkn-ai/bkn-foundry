@@ -128,6 +128,10 @@ func Test_NumbersInQuotes(t *testing.T) {
 			So(numbersInQuotes("误差不超过0.5%", quoted), ShouldBeTrue)
 			So(numbersInQuotes("单价 12.30 元", quoted), ShouldBeTrue)
 			So(numbersInQuotes("单价 30 元", quoted), ShouldBeFalse)
+			// A full-width decimal point is a decimal point too.
+			wide := []interfaces.RequirementCitation{{Quote: "误差不超过０．５％"}}
+			So(numbersInQuotes("误差不超过5%", wide), ShouldBeFalse)
+			So(numbersInQuotes("误差不超过0.5%", wide), ShouldBeTrue)
 			// A full stop after a number ends it.
 			So(numbersInQuotes("Within 2. Then 5.", []interfaces.RequirementCitation{{Quote: "within 2 days, then 5"}}), ShouldBeTrue)
 		})
