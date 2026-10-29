@@ -220,17 +220,22 @@ func Test_ProjectStatus(t *testing.T) {
 				owner, fresh, fresh, 7)
 			So(s.Blockers[0].Code, ShouldEqual, interfaces.BLOCKER_BRANCH_NOT_V3)
 			So(*action(s, interfaces.ACTION_SYNC_BRANCH), ShouldResemble, interfaces.ProjectStatusNextAction{
-				Action: interfaces.ACTION_SYNC_BRANCH, Method: "POST", Path: "/lineages/supply/branches/project/p1/sync",
-				Allowed: true,
+				Action: interfaces.ACTION_SYNC_BRANCH, Method: "POST", Path: "/projects/p1/branch:sync", Allowed: true,
 			})
+			s = projectStatus(p, ready(), nil, &interfaces.DefinitionsPreflight{NotV3: interfaces.DEFINITIONS_BRANCH_NOT_V3},
+				editor, fresh, fresh, 7)
+			So(action(s, interfaces.ACTION_SYNC_BRANCH).Allowed, ShouldBeFalse)
+			So(action(s, interfaces.ACTION_SYNC_BRANCH).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
 
 			s = projectStatus(p, ready(), nil, &interfaces.DefinitionsPreflight{NotV3: interfaces.DEFINITIONS_LINEAGE_NOT_V3},
 				owner, fresh, fresh, 7)
 			So(s.Blockers[0].Code, ShouldEqual, interfaces.BLOCKER_LINEAGE_NOT_V3)
 			So(*action(s, interfaces.ACTION_COMMIT_DRIFT), ShouldResemble, interfaces.ProjectStatusNextAction{
-				Action: interfaces.ACTION_COMMIT_DRIFT, Method: "POST", Path: "/lineages/supply/drift?commit=true",
-				Body: map[string]any{"kn_id": "supply"}, Allowed: true,
+				Action: interfaces.ACTION_COMMIT_DRIFT, Method: "POST", Path: "/projects/p1/drift:commit", Allowed: true,
 			})
+			s = projectStatus(p, ready(), nil, &interfaces.DefinitionsPreflight{NotV3: interfaces.DEFINITIONS_LINEAGE_NOT_V3},
+				editor, fresh, fresh, 7)
+			So(action(s, interfaces.ACTION_COMMIT_DRIFT).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
 		})
 
 		Convey("Confirming a partial draft says it accepts what drafting could not read\n", func() {
@@ -335,6 +340,8 @@ func Test_ProjectStatus(t *testing.T) {
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_CHECK_NEEDS_ATTENTION)
 				So(codes(s), ShouldResemble, []string{code})
 				So(s.Blockers[0].WaitingFor, ShouldEqual, interfaces.WAITING_FOR_OWNER)
+				// Only a partial check can be accepted when publishing, so only then is a release reviewed.
+				So(action(s, interfaces.ACTION_REVIEW_RELEASE) != nil, ShouldEqual, status_ == interfaces.CHECK_STATUS_PARTIAL)
 			}
 		})
 
@@ -345,6 +352,90 @@ func Test_ProjectStatus(t *testing.T) {
 			So(s.Blockers, ShouldBeEmpty)
 			So(s.Stale, ShouldBeEmpty)
 			So(s.Check.Current, ShouldBeTrue)
+			So(*action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldResemble, interfaces.ProjectStatusNextAction{
+				Action: interfaces.ACTION_REVIEW_RELEASE, Method: "GET", Path: "/projects/p1/release-review", Allowed: true,
+			})
+		})
+
+		Convey("A release by the project of its current confirmation makes it published\n", func() {
+			passed := checkOf("c1", interfaces.CHECK_STATUS_PASSED)
+			release := &interfaces.Release{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply_v1_1_0", CreateTime: 100}
+
+			Convey("Consumers not yet on it wait for the owner to switch them\n", func() {
+				s := status(project(), confirmed(), passed, owner, fresh)
+				withRelease(s, project(), release, nil, owner)
+
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
+				So(s.Release, ShouldResemble, &interfaces.ProjectStatusRelease{Version: "1.1.0", NetworkID: "supply_v1_1_0"})
+				So(action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldBeNil)
+				So(*action(s, interfaces.ACTION_SWITCH_CONSUMERS), ShouldResemble, interfaces.ProjectStatusNextAction{
+					Action: interfaces.ACTION_SWITCH_CONSUMERS, Method: "POST", Path: "/projects/p1/switches",
+					Body: map[string]any{"to_network_id": "supply_v1_1_0"}, Allowed: true,
+				})
+
+				s = status(project(), confirmed(), passed, editor, fresh)
+				withRelease(s, project(), release, &interfaces.Switch{ToNetworkID: "supply"}, editor)
+				So(action(s, interfaces.ACTION_SWITCH_CONSUMERS).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
+			})
+
+			Convey("Consumers already on it leave nothing to switch\n", func() {
+				s := status(project(), confirmed(), passed, owner, fresh)
+				withRelease(s, project(), release, &interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, owner)
+
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
+				So(s.Release.InUse, ShouldBeTrue)
+				So(action(s, interfaces.ACTION_SWITCH_CONSUMERS), ShouldBeNil)
+			})
+
+			Convey("A partial check published is published, its blocker settled\n", func() {
+				s := status(project(), confirmed(), checkOf("c1", interfaces.CHECK_STATUS_PARTIAL), owner, fresh)
+				withRelease(s, project(), release, nil, owner)
+
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
+				So(s.Blockers, ShouldBeEmpty)
+			})
+
+			Convey("Until published, reviewing names the next version after the lineage's newest release\n", func() {
+				for _, c := range []struct {
+					latest *interfaces.Release
+					want   string
+				}{
+					{nil, "1.0.0"},
+					{&interfaces.Release{ProjectID: "p2", Version: "1.0.4", CreateTime: 100}, "1.0.5"},
+					{&interfaces.Release{ProjectID: "p1", Version: "2.3.9", CreateTime: 99}, "2.3.10"},
+				} {
+					s := status(project(), confirmed(), passed, owner, fresh)
+					withRelease(s, project(), c.latest, nil, owner)
+
+					So(*action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldResemble, interfaces.ProjectStatusNextAction{
+						Action: interfaces.ACTION_REVIEW_RELEASE, Method: "GET",
+						Path: "/projects/p1/release-review?version=" + c.want, Allowed: true,
+						Requires: []string{interfaces.ACTION_REQUIRES_VERSION}, SuggestedVersion: c.want,
+					})
+				}
+			})
+
+			Convey("Another project's release, an earlier one, or an outdated confirmation is not this one\n", func() {
+				other := *release
+				other.ProjectID = "p2"
+				earlier := *release
+				earlier.CreateTime = 99
+				outdated := confirmed()
+				outdated.UpdateTime = 120
+				for _, c := range []struct {
+					draft   *interfaces.Draft
+					release *interfaces.Release
+				}{
+					{confirmed(), &other}, {confirmed(), &earlier}, {outdated, release}, {confirmed(), nil},
+				} {
+					s := status(project(), c.draft, passed, owner, fresh)
+					stage := s.Stage
+					withRelease(s, project(), c.release, nil, owner)
+
+					So(s.Stage, ShouldEqual, stage)
+					So(s.Release, ShouldBeNil)
+				}
+			})
 		})
 
 		Convey("The same data gives the same status, empty lists included\n", func() {
@@ -369,7 +460,8 @@ func Test_GetStatus(t *testing.T) {
 		ca := pmock.NewMockCheckAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
 		ls := pmock.NewMockLineageService(ctrl)
-		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls}
+		ra := pmock.NewMockReleaseAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls, ra: ra}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{
 			ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller, CatalogIDs: []string{"c1"},
@@ -416,6 +508,58 @@ func Test_GetStatus(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
 			So(s.Blockers, ShouldBeEmpty)
+		})
+
+		Convey("A current confirmation is read against the lineage's newest release and switch\n", func() {
+			d := confirmableDraft()
+			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: d.UpdateTime, Commit: "c1", Time: 100}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
+
+			Convey("A release of it is published\n", func() {
+				ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "supply", Limit: 1}).Return(
+					[]*interfaces.Release{{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply_v1_1_0", CreateTime: 200}}, nil)
+				ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(&interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, true, nil)
+
+				s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
+				So(s.Release.InUse, ShouldBeTrue)
+			})
+
+			Convey("Before any release, reviewing suggests the first version\n", func() {
+				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+				ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, nil)
+
+				s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_CONFIRMED)
+				for _, a := range s.NextActions {
+					if a.Action == interfaces.ACTION_REVIEW_RELEASE {
+						So(a.Path, ShouldEqual, "/projects/p1/release-review?version=1.0.0")
+					}
+				}
+			})
+
+			Convey("A failure to read the releases is an internal error\n", func() {
+				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
+
+				_, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
+			})
+
+			Convey("A failure to read the switches is an internal error\n", func() {
+				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+				ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, errors.New("db down"))
+
+				_, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
+			})
 		})
 
 		Convey("A project the caller cannot see answers as the project service does\n", func() {

@@ -25,6 +25,8 @@ var releaseZhCN = i18n.I18nMessages{
 		"BknProject.Release.ProjectArchived":     "项目已归档 请先取消归档，再发布。",
 		"BknProject.Release.ChecksFailed":        "发布检查未全部通过 未通过的检查见 error_details，处理后重新打开发布确认。",
 		"BknProject.Release.ReviewOutdated":      "发布确认已过期 打开发布确认之后，草稿或线上版本又变了，请重新打开发布确认。",
+		"BknProject.Release.RegressionNotFound":  "没有回归结果 这个版本还没有运行过发布后回归。",
+		"BknProject.Release.RegressionRunning":   "回归正在运行 请等这一轮结束后再运行。",
 		"BknProject.Release.InternalError":       "内部错误 请联系管理员。",
 	},
 }

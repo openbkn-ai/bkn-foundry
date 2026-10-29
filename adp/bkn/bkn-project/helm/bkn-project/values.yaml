@@ -69,6 +69,10 @@ depServices:
     host: vega-backend-svc
     port: 13014
     protocol: http
+  bkn-agent:
+    host: bkn-agent
+    port: 30800
+    protocol: http
 
 config:
   server:

@@ -68,6 +68,10 @@ func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
 	switch c.Param("action") {
 	case catalogsActionUnderstand:
 		r.withExVisitor(c, r.Understand)
+	case projectActionSync:
+		r.withExVisitor(c, r.SyncProjectBranch)
+	case driftActionCommit:
+		r.withExVisitor(c, r.CommitProjectDrift)
 	default:
 		replyNotFound(c)
 	}
