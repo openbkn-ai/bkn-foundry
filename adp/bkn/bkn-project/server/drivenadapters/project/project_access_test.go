@@ -18,10 +18,11 @@ import (
 )
 
 const selectProjects = "SELECT f_id, f_name, f_kn_id, f_branch, f_baseline_network_id, f_catalog_ids, " +
-	"f_archived, f_owner, f_owner_type, f_create_time, f_update_time FROM t_bkn_project_project "
+	"f_naming_language, f_archived, f_owner, f_owner_type, f_create_time, f_update_time FROM t_bkn_project_project "
 
+// projectRow is a project made before naming languages, whose language is empty.
 func projectRow(id, knID string, createTime int64) []driver.Value {
-	return []driver.Value{id, "Orders", knID, "project/" + id, knID, `["c1"]`, false, "u1", "user", createTime, createTime}
+	return []driver.Value{id, "Orders", knID, "project/" + id, knID, `["c1"]`, "", false, "u1", "user", createTime, createTime}
 }
 
 func Test_ProjectAccess(t *testing.T) {
@@ -36,14 +37,14 @@ func Test_ProjectAccess(t *testing.T) {
 		Convey("CreateProject inserts every column, catalog ids as JSON\n", func() {
 			smock.ExpectExec(regexp.QuoteMeta(
 				"INSERT INTO t_bkn_project_project (f_id,f_name,f_kn_id,f_branch,f_baseline_network_id,f_catalog_ids,"+
-					"f_archived,f_owner,f_owner_type,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)")).
-				WithArgs("p1", "Orders", "orders", "project/p1", "orders_v1_0_0", `["c1","c2"]`, false, "u1", "user", int64(7), int64(7)).
+					"f_naming_language,f_archived,f_owner,f_owner_type,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")).
+				WithArgs("p1", "Orders", "orders", "project/p1", "orders_v1_0_0", `["c1","c2"]`, "en-US", false, "u1", "user", int64(7), int64(7)).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 
 			err := pa.CreateProject(ctx, &interfaces.Project{
 				ID: "p1", Name: "Orders", KNID: "orders", Branch: "project/p1", BaselineNetworkID: "orders_v1_0_0",
-				CatalogIDs: []string{"c1", "c2"}, Owner: interfaces.AccountInfo{ID: "u1", Type: "user"},
-				CreateTime: 7, UpdateTime: 7,
+				CatalogIDs: []string{"c1", "c2"}, NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US,
+				Owner: interfaces.AccountInfo{ID: "u1", Type: "user"}, CreateTime: 7, UpdateTime: 7,
 			})
 
 			So(err, ShouldBeNil)
@@ -52,7 +53,7 @@ func Test_ProjectAccess(t *testing.T) {
 
 		Convey("CreateProject stores no catalog ids as an empty array\n", func() {
 			smock.ExpectExec("INSERT INTO t_bkn_project_project").
-				WithArgs("p1", "", "", "", "", "[]", false, "", "", int64(0), int64(0)).
+				WithArgs("p1", "", "", "", "", "[]", "", false, "", "", int64(0), int64(0)).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 
 			So(pa.CreateProject(ctx, &interfaces.Project{ID: "p1"}), ShouldBeNil)
@@ -65,7 +66,7 @@ func Test_ProjectAccess(t *testing.T) {
 			So(pa.CreateProject(ctx, &interfaces.Project{ID: "p1"}), ShouldNotBeNil)
 		})
 
-		Convey("GetProject reads the row\n", func() {
+		Convey("GetProject reads the row; a project made before naming languages names in zh-CN\n", func() {
 			smock.ExpectQuery(regexp.QuoteMeta(selectProjects + "WHERE f_id = ?")).
 				WithArgs("p1").
 				WillReturnRows(sqlmock.NewRows(projectColumns).AddRow(projectRow("p1", "orders", 3)...))
@@ -76,9 +77,29 @@ func Test_ProjectAccess(t *testing.T) {
 			So(exist, ShouldBeTrue)
 			So(project, ShouldResemble, &interfaces.Project{
 				ID: "p1", Name: "Orders", KNID: "orders", Branch: "project/p1", BaselineNetworkID: "orders",
-				CatalogIDs: []string{"c1"}, Owner: interfaces.AccountInfo{ID: "u1", Type: "user"},
-				CreateTime: 3, UpdateTime: 3,
+				CatalogIDs: []string{"c1"}, NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN,
+				Owner: interfaces.AccountInfo{ID: "u1", Type: "user"}, CreateTime: 3, UpdateTime: 3,
 			})
+		})
+
+		Convey("GetProject reads the naming language a project has\n", func() {
+			row := projectRow("p1", "orders", 3)
+			row[6] = "en-US"
+			smock.ExpectQuery("FROM t_bkn_project_project").WillReturnRows(sqlmock.NewRows(projectColumns).AddRow(row...))
+
+			project, _, err := pa.GetProject(ctx, "p1")
+
+			So(err, ShouldBeNil)
+			So(project.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_EN_US)
+		})
+
+		Convey("SetProjectNamingLanguage stores the language and the update time\n", func() {
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_naming_language = ?, f_update_time = ? WHERE f_id = ?")).
+				WithArgs("en-US", int64(9), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+
+			So(pa.SetProjectNamingLanguage(ctx, "p1", interfaces.NAMING_LANGUAGE_EN_US, 9), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("GetProject reports a missing project\n", func() {

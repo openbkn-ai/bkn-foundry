@@ -30,7 +30,7 @@ var (
 
 var projectColumns = []string{
 	"f_id", "f_name", "f_kn_id", "f_branch", "f_baseline_network_id", "f_catalog_ids",
-	"f_archived", "f_owner", "f_owner_type", "f_create_time", "f_update_time",
+	"f_naming_language", "f_archived", "f_owner", "f_owner_type", "f_create_time", "f_update_time",
 }
 
 // likeEscaper makes a name match literally inside a LIKE pattern.
@@ -64,7 +64,8 @@ func (pa *projectAccess) CreateProject(ctx context.Context, project *interfaces.
 		Columns(projectColumns...).
 		Values(
 			project.ID, project.Name, project.KNID, project.Branch, project.BaselineNetworkID, string(catalogJSON),
-			project.Archived, project.Owner.ID, project.Owner.Type, project.CreateTime, project.UpdateTime,
+			project.NamingLanguage, project.Archived, project.Owner.ID, project.Owner.Type, project.CreateTime,
+			project.UpdateTime,
 		).
 		ToSql()
 	if err != nil {
@@ -261,6 +262,27 @@ func (pa *projectAccess) SetProjectCatalogs(ctx context.Context, id string, cata
 	return nil
 }
 
+func (pa *projectAccess) SetProjectNamingLanguage(ctx context.Context, id string, language string,
+	updateTime int64) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "SetProjectNamingLanguage")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Update(PROJECT_TABLE_NAME).
+		Set("f_naming_language", language).Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": id}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if _, err = pa.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Update data failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // filterProjects adds the networks, archive state and name of query.
 func filterProjects(builder sq.SelectBuilder, query interfaces.ProjectsQuery) sq.SelectBuilder {
 	builder = builder.Where(sq.Eq{"f_kn_id": query.KNIDs})
@@ -279,10 +301,15 @@ func scanProject(row interface{ Scan(dest ...any) error }) (*interfaces.Project,
 	var catalogJSON string
 	err := row.Scan(
 		&project.ID, &project.Name, &project.KNID, &project.Branch, &project.BaselineNetworkID, &catalogJSON,
-		&project.Archived, &project.Owner.ID, &project.Owner.Type, &project.CreateTime, &project.UpdateTime,
+		&project.NamingLanguage, &project.Archived, &project.Owner.ID, &project.Owner.Type, &project.CreateTime,
+		&project.UpdateTime,
 	)
 	if err != nil {
 		return nil, err
+	}
+	// Projects made before naming languages named their items in Chinese.
+	if project.NamingLanguage == "" {
+		project.NamingLanguage = interfaces.NAMING_LANGUAGE_ZH_CN
 	}
 	if err = json.Unmarshal([]byte(catalogJSON), &project.CatalogIDs); err != nil {
 		return nil, err

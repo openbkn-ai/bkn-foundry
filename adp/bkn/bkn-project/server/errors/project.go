@@ -11,6 +11,8 @@ const (
 	BknProject_Project_InvalidNetwork     = "BknProject.Project.InvalidNetwork"
 	BknProject_Project_InvalidCatalogIDs  = "BknProject.Project.InvalidCatalogIDs"
 	BknProject_Project_InvalidArchived    = "BknProject.Project.InvalidArchived"
+	// BknProject_Project_InvalidNamingLanguage: a naming language other than zh-CN or en-US.
+	BknProject_Project_InvalidNamingLanguage = "BknProject.Project.InvalidNamingLanguage"
 
 	// 403
 	BknProject_Project_NotOwner = "BknProject.Project.NotOwner"
@@ -32,6 +34,7 @@ var (
 		BknProject_Project_InvalidNetwork,
 		BknProject_Project_InvalidCatalogIDs,
 		BknProject_Project_InvalidArchived,
+		BknProject_Project_InvalidNamingLanguage,
 		BknProject_Project_NotOwner,
 		BknProject_Project_NotFound,
 		BknProject_Project_BknBackendRequestFailed,

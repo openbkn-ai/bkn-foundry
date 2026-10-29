@@ -29,12 +29,25 @@ type Project struct {
 	KNID   string `json:"kn_id"`
 	Branch string `json:"branch"`
 	// BaselineNetworkID is the network that was live when the project started.
-	BaselineNetworkID string      `json:"baseline_network_id"`
-	CatalogIDs        []string    `json:"catalog_ids"`
-	Archived          bool        `json:"archived"`
-	Owner             AccountInfo `json:"owner"`
-	CreateTime        int64       `json:"create_time"`
-	UpdateTime        int64       `json:"update_time"`
+	BaselineNetworkID string   `json:"baseline_network_id"`
+	CatalogIDs        []string `json:"catalog_ids"`
+	// NamingLanguage is the language the project names its ontology items in.
+	NamingLanguage string      `json:"naming_language"`
+	Archived       bool        `json:"archived"`
+	Owner          AccountInfo `json:"owner"`
+	CreateTime     int64       `json:"create_time"`
+	UpdateTime     int64       `json:"update_time"`
+}
+
+// Naming languages of a project.
+const (
+	NAMING_LANGUAGE_ZH_CN = "zh-CN"
+	NAMING_LANGUAGE_EN_US = "en-US"
+)
+
+// IsNamingLanguage tells whether language is a naming language.
+func IsNamingLanguage(language string) bool {
+	return language == NAMING_LANGUAGE_ZH_CN || language == NAMING_LANGUAGE_EN_US
 }
 
 // ProjectCursor is the keyset position of the last project of a page.

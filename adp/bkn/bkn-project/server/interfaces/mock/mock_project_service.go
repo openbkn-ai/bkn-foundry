@@ -115,3 +115,18 @@ func (mr *MockProjectServiceMockRecorder) SetProjectCatalogs(ctx, token, id, cat
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectCatalogs", reflect.TypeOf((*MockProjectService)(nil).SetProjectCatalogs), ctx, token, id, catalogIDs, caller)
 }
+
+// SetProjectNamingLanguage mocks base method.
+func (m *MockProjectService) SetProjectNamingLanguage(ctx context.Context, token, id, language string, caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetProjectNamingLanguage", ctx, token, id, language, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetProjectNamingLanguage indicates an expected call of SetProjectNamingLanguage.
+func (mr *MockProjectServiceMockRecorder) SetProjectNamingLanguage(ctx, token, id, language, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectNamingLanguage", reflect.TypeOf((*MockProjectService)(nil).SetProjectNamingLanguage), ctx, token, id, language, caller)
+}

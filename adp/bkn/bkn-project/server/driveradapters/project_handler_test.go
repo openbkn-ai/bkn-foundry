@@ -113,6 +113,15 @@ func Test_ProjectRestHandler(t *testing.T) {
 			}
 		})
 
+		Convey("PUT naming-language sets the language for the caller; the body must be JSON\n", func() {
+			ps.EXPECT().SetProjectNamingLanguage(gomock.Any(), "Bearer t", "p1", "en-US", caller).Return(entry, nil)
+			So(serveBody(handler, http.MethodPut, base+"/p1/naming-language", []byte(`{"naming_language":"en-US"}`)).
+				Result().StatusCode, ShouldEqual, http.StatusOK)
+
+			So(serveBody(handler, http.MethodPut, base+"/p1/naming-language", []byte(`not json`)).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("Any other POST on a project is not found\n", func() {
 			for _, path := range []string{base + "/p1", base + "/p1:delete", base + "/:archive"} {
 				So(serve(handler, http.MethodPost, path).Result().StatusCode, ShouldEqual, http.StatusNotFound)
