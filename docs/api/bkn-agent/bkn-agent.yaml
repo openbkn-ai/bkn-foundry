@@ -701,6 +701,12 @@ paths:
       tags:
       - BknAgentExecution
       summary: List Agent Versions
+      description: 'List configuration history with Prompt bodies in the negotiated
+        request language.
+
+
+        Missing translations fall back to canonical content; raw Prompt history is
+        unchanged.'
       operationId: list_agent_versions_api_bkn_agent_v1_admin_agents__agent_id__versions_get
       security:
       - HTTPBearer: []
