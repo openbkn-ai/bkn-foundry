@@ -168,6 +168,9 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 	s.Draft = &interfaces.ProjectStatusDraft{
 		Status: draft.Status, UpdateTime: draft.UpdateTime, Decisions: itemDecisions(draft),
 	}
+	if inputs := draft.Items.Inputs; inputs != nil && inputs.IDs != nil {
+		s.Draft.Placeholders = inputs.IDs.Placeholders
+	}
 	switch {
 	case draft.Status == interfaces.DRAFT_STATUS_DRAFTING && draft.UpdateTime >= draftStaleBefore:
 		s.Stage = interfaces.PROJECT_STAGE_DRAFTING

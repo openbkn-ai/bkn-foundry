@@ -1,0 +1,206 @@
+{
+  "object_types": [
+    {
+      "id": "supplier",
+      "name": "supplier",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_supplier",
+        "name": "supplier",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "id"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "id",
+          "display_name": "id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "name",
+          "type": "string",
+          "description": "",
+          "mapped_field": "name",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "warehouse",
+      "name": "仓库",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_ck",
+        "name": "仓库",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "warehouse_code"
+      ],
+      "display_key": "warehouse_code",
+      "properties": [
+        {
+          "name": "warehouse_code",
+          "display_name": "编号",
+          "type": "string",
+          "description": "",
+          "mapped_field": "编号",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "supplier_2",
+      "name": "供应商",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_gys",
+        "name": "供应商",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "supplier_code"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "supplier_code",
+          "display_name": "编号",
+          "type": "string",
+          "description": "",
+          "mapped_field": "编号",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "名称",
+          "type": "string",
+          "description": "",
+          "mapped_field": "名称",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "p_daede9",
+          "display_name": "备注",
+          "type": "string",
+          "description": "",
+          "mapped_field": "备注",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "ot_000002",
+      "name": "物料",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_wl",
+        "name": "物料",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "material_code"
+      ],
+      "display_key": "material_code",
+      "properties": [
+        {
+          "name": "material_code",
+          "display_name": "编号",
+          "type": "string",
+          "description": "",
+          "mapped_field": "编号",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "ot_d38021",
+      "name": "采购单",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_cgd",
+        "name": "采购单",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "p_5c2eb0"
+      ],
+      "display_key": "p_5c2eb0",
+      "properties": [
+        {
+          "name": "p_5c2eb0",
+          "display_name": "单号",
+          "type": "string",
+          "description": "",
+          "mapped_field": "单号",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

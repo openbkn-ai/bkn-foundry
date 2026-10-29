@@ -22,12 +22,15 @@ import (
 
 // goldenCase is a synthetic catalog: tables as vega-backend reads them, and what counting them
 // answers. Cases cover what customers' catalogs do and the sample does not; each has its drafted
-// items in <name>.draft.json. UPDATE_GOLDEN=1 rewrites those, so a change to the rules shows in
-// review as a change to what they draft.
+// items in <name>.draft.json, and the ids drafting registers, when it registers any, in
+// <name>.ids.json. UPDATE_GOLDEN=1 rewrites those, so a change to the rules shows in review as a
+// change to what they draft.
 type goldenCase struct {
 	Description string                  `json:"description"`
 	Tables      []*interfaces.VegaTable `json:"tables"`
-	Counts      struct {
+	// Registered are the project's ids registered before this draft.
+	Registered []*interfaces.RegisteredID `json:"registered"`
+	Counts     struct {
 		// Keys are rows, distinct and nulls by "table" or "table.field".
 		Keys map[string][3]int64 `json:"keys"`
 		// Joins are rows, nulls, orphans and distinct source values by "table.field@target": a field
@@ -98,21 +101,49 @@ func (g *goldenCounter) codeValues(_ context.Context, table *interfaces.VegaTabl
 	return values, nil
 }
 
-// draftGolden drafts the case's tables, in the order given, as JSON, and lists the counts drafting
-// asked for that the case does not list.
-func draftGolden(c *goldenCase, tables []*interfaces.VegaTable) ([]byte, []string, error) {
+// draftGolden drafts the case's tables, in the order given, as JSON with the ids it registers,
+// null when none, and lists the counts drafting asked for that the case does not list.
+func draftGolden(c *goldenCase, tables []*interfaces.VegaTable) ([]byte, []byte, []string, error) {
 	clones := make([]*interfaces.VegaTable, 0, len(tables))
 	for _, t := range tables {
 		clone := *t
 		clones = append(clones, &clone)
 	}
 	counter := &goldenCounter{c: c}
-	items, err := newDrafter(testSetting, counter).draft(context.Background(), clones, nil)
+	d := newDrafter(testSetting, counter).withRegisteredIDs("p1", c.Registered)
+	items, err := d.draft(context.Background(), clones, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	drafted, err := json.MarshalIndent(items, "", "  ")
-	return drafted, counter.unlisted, err
+	if err != nil || len(d.recorded) == 0 {
+		return drafted, nil, counter.unlisted, err
+	}
+	registered, err := json.MarshalIndent(d.recorded, "", "  ")
+	return drafted, registered, counter.unlisted, err
+}
+
+// matchGolden compares got with the golden file, which must be absent when got is nil, rewriting
+// it first under UPDATE_GOLDEN=1.
+func matchGolden(path string, got []byte, update bool) {
+	if update {
+		if got == nil {
+			err := os.Remove(path)
+			So(err == nil || errors.Is(err, os.ErrNotExist), ShouldBeTrue)
+		} else {
+			So(os.WriteFile(path, append(got, '\n'), 0o644), ShouldBeNil)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if got == nil {
+		So(errors.Is(err, os.ErrNotExist), ShouldBeTrue)
+		return
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		So("missing "+path+"; run with UPDATE_GOLDEN=1", ShouldBeEmpty)
+	}
+	So(err, ShouldBeNil)
+	So(string(got), ShouldEqual, string(bytes.TrimSuffix(want, []byte("\n"))))
 }
 
 func Test_GoldenDrafts(t *testing.T) {
@@ -133,26 +164,19 @@ func Test_GoldenDrafts(t *testing.T) {
 				dec.DisallowUnknownFields()
 				So(dec.Decode(&c), ShouldBeNil)
 
-				drafted, unlisted, err := draftGolden(&c, c.Tables)
+				drafted, registered, unlisted, err := draftGolden(&c, c.Tables)
 				So(err, ShouldBeNil)
 				So(unlisted, ShouldBeEmpty)
 				// The same tables listed in another order draft the same, byte for byte.
 				reversed := slices.Clone(c.Tables)
 				slices.Reverse(reversed)
-				again, _, err := draftGolden(&c, reversed)
+				again, againRegistered, _, err := draftGolden(&c, reversed)
 				So(err, ShouldBeNil)
 				So(string(again), ShouldEqual, string(drafted))
+				So(string(againRegistered), ShouldEqual, string(registered))
 
-				golden := filepath.Join("testdata/golden", name+".draft.json")
-				if update {
-					So(os.WriteFile(golden, append(drafted, '\n'), 0o644), ShouldBeNil)
-				}
-				want, err := os.ReadFile(golden)
-				if errors.Is(err, os.ErrNotExist) {
-					So("missing "+golden+"; run with UPDATE_GOLDEN=1", ShouldBeEmpty)
-				}
-				So(err, ShouldBeNil)
-				So(string(drafted), ShouldEqual, string(bytes.TrimSuffix(want, []byte("\n"))))
+				matchGolden(filepath.Join("testdata/golden", name+".draft.json"), drafted, update)
+				matchGolden(filepath.Join("testdata/golden", name+".ids.json"), registered, update)
 			})
 		}
 	})

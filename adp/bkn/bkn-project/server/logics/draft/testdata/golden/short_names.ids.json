@@ -1,0 +1,125 @@
+[
+  {
+    "ProjectID": "p1",
+    "Kind": "object_types",
+    "SourceKey": "r_ck",
+    "ID": "warehouse",
+    "Origin": "semantic",
+    "Basis": {
+      "physical_name": "仓库",
+      "api_name": "warehouse"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_ck/编号",
+    "ID": "warehouse_code",
+    "Origin": "semantic",
+    "Basis": {
+      "physical_name": "编号",
+      "api_name": "warehouse_code"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "object_types",
+    "SourceKey": "r_gys",
+    "ID": "supplier_2",
+    "Origin": "semantic",
+    "Basis": {
+      "physical_name": "供应商",
+      "api_name": "supplier"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_gys/编号",
+    "ID": "supplier_code",
+    "Origin": "semantic",
+    "Basis": {
+      "physical_name": "编号",
+      "api_name": "supplier_code"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_gys/名称",
+    "ID": "name",
+    "Origin": "semantic",
+    "Basis": {
+      "physical_name": "名称",
+      "api_name": "name"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_gys/备注",
+    "ID": "p_daede9",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "备注"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_wl/编号",
+    "ID": "material_code",
+    "Origin": "semantic",
+    "Basis": {
+      "physical_name": "编号",
+      "api_name": "material_code"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "object_types",
+    "SourceKey": "r_cgd",
+    "ID": "ot_d38021",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "采购单"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_cgd/单号",
+    "ID": "p_5c2eb0",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "单号"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  }
+]

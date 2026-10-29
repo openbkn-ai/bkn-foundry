@@ -1,0 +1,80 @@
+[
+  {
+    "ProjectID": "p1",
+    "Kind": "object_types",
+    "SourceKey": "r_zh",
+    "ID": "ot_033ed5",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "供应商"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_zh/供应商编号",
+    "ID": "p_a1a5a5",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "供应商编号"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_zh/供应商名称",
+    "ID": "p_cbb2ff",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "供应商名称"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "object_types",
+    "SourceKey": "r_po",
+    "ID": "ot_d38021",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "采购单"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_po/采购单号",
+    "ID": "p_0e1e9a",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "采购单号"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  },
+  {
+    "ProjectID": "p1",
+    "Kind": "properties",
+    "SourceKey": "r_po/供应商编号",
+    "ID": "p_a1a5a5",
+    "Origin": "fallback",
+    "Basis": {
+      "physical_name": "供应商编号"
+    },
+    "Locked": false,
+    "CreateTime": 0,
+    "UpdateTime": 0
+  }
+]

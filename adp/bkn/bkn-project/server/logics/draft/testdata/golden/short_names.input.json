@@ -1,0 +1,217 @@
+{
+  "description": "Tables and fields named in Chinese take their ids from the English short names semantic understanding gave (api_name), registered with the project so later drafts give them again. 供应商 takes supplier_2: the ASCII table supplier keeps the id it always had. 仓库 had an unlocked placeholder, which gives way to its short name; 物料's placeholder was locked by a confirmation and stays. 采购单 has no short name and takes a placeholder, registered as fallback. 备注 has none either.",
+  "tables": [
+    {
+      "ID": "r_gys",
+      "CatalogID": "c1",
+      "Name": "供应商",
+      "Description": "",
+      "SourceName": "供应商",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "编号"
+      ],
+      "Columns": [
+        {
+          "Name": "编号",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false,
+          "APIName": "supplier_code"
+        },
+        {
+          "Name": "名称",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false,
+          "APIName": "name"
+        },
+        {
+          "Name": "备注",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [],
+      "APIName": "supplier"
+    },
+    {
+      "ID": "r_supplier",
+      "CatalogID": "c1",
+      "Name": "supplier",
+      "Description": "",
+      "SourceName": "supplier",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "id"
+      ],
+      "Columns": [
+        {
+          "Name": "id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_ck",
+      "CatalogID": "c1",
+      "Name": "仓库",
+      "Description": "",
+      "SourceName": "仓库",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "编号"
+      ],
+      "Columns": [
+        {
+          "Name": "编号",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false,
+          "APIName": "warehouse_code"
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [],
+      "APIName": "warehouse"
+    },
+    {
+      "ID": "r_wl",
+      "CatalogID": "c1",
+      "Name": "物料",
+      "Description": "",
+      "SourceName": "物料",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "编号"
+      ],
+      "Columns": [
+        {
+          "Name": "编号",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false,
+          "APIName": "material_code"
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [],
+      "APIName": "material"
+    },
+    {
+      "ID": "r_cgd",
+      "CatalogID": "c1",
+      "Name": "采购单",
+      "Description": "",
+      "SourceName": "采购单",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "单号"
+      ],
+      "Columns": [
+        {
+          "Name": "单号",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "registered": [
+    {
+      "ProjectID": "p1",
+      "Kind": "object_types",
+      "SourceKey": "r_ck",
+      "ID": "ot_000001",
+      "Origin": "fallback",
+      "Basis": {},
+      "Locked": false,
+      "CreateTime": 1,
+      "UpdateTime": 1
+    },
+    {
+      "ProjectID": "p1",
+      "Kind": "object_types",
+      "SourceKey": "r_wl",
+      "ID": "ot_000002",
+      "Origin": "fallback",
+      "Basis": {},
+      "Locked": true,
+      "CreateTime": 1,
+      "UpdateTime": 1
+    }
+  ],
+  "counts": {
+    "keys": {
+      "r_gys.编号": [
+        100,
+        100,
+        0
+      ],
+      "r_supplier.id": [
+        100,
+        100,
+        0
+      ],
+      "r_ck.编号": [
+        100,
+        100,
+        0
+      ],
+      "r_wl.编号": [
+        100,
+        100,
+        0
+      ],
+      "r_cgd.单号": [
+        100,
+        100,
+        0
+      ]
+    },
+    "joins": {},
+    "codes": {},
+    "failed": []
+  }
+}

@@ -190,6 +190,17 @@ func Test_ProjectStatus(t *testing.T) {
 				ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
 		})
 
+		Convey("Placeholder ids are counted, and do not block confirming\n", func() {
+			So(status(project(), ready(), nil, owner, fresh).Draft.Placeholders, ShouldEqual, 0)
+
+			d := ready()
+			d.Items.Inputs = &interfaces.DraftInputs{IDs: &interfaces.DraftInputIDs{Count: 5, Placeholders: 3, Fingerprint: "f"}}
+			s := status(project(), d, nil, owner, fresh)
+			So(s.Draft.Placeholders, ShouldEqual, 3)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			So(s.Blockers, ShouldBeEmpty)
+		})
+
 		Convey("Confirming is refused ahead for what the branch would refuse\n", func() {
 			p := project()
 			p.KNID, p.Branch = "supply", "project/p1"
