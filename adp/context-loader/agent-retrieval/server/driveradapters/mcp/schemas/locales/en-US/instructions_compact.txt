@@ -13,6 +13,6 @@ Exploring and querying:
 
 Other capabilities (subgraphs, logic properties, actions, skills, functions, sandbox code or shell) go through the on-demand tools: describe the task to search_native_tools. Its `ready`, when present, is the top candidate's schema and call template - run it; otherwise call describe_native_tool. In execute_native_tool, name is the target, arguments its arguments, bkn_context in the outer call. Candidates cannot be called by name.
 
-Business calculations (sellable quantity, kitting, capacity, delivery, substitutes, BOM) and detail exports: when get_kn_detail shows mounted functions, call search_capabilities via execute_native_tool, then run a matching function with execute_tool from its call template and trust its result, not raw, paged or preview data. Follow the routes, metrics and time baseline named in get_kn_detail's top-level comment, and answer on its terms.
+When get_kn_detail shows mounted functions, first call search_capabilities via execute_native_tool for a published function matching the question; if one does, run it with execute_tool from its call template and trust its result, not raw, paged or preview data. Use generic queries only when it fails or does not apply, and say why. Follow the routes, metrics and time baseline named in get_kn_detail's top-level comment, and answer on its terms.
 
 Confirm the user's intent before calls that change data or reach external systems.

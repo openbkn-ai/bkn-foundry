@@ -36,7 +36,7 @@ ContextLoader 知识网络查询工具集使用指南。
 4. 要某对象完整字段映射再 get_object_types(ids)，要关系 mapping_rules 再 get_relation_types(ids)。别一上来就 detail_level=full。
 5. 按查询类型选工具（见下）。
 
-网络说明与业务计算：get_kn_detail 顶层的 comment 是网络作者写的说明；写了问答路由、指标或时间基线时，优先按它选择函数、技能和指标，并照它的口径作答。可售、齐套缺料、产能、交期、替代料、BOM 展开这类业务计算，网络挂载了函数时用 search_capabilities 找已发布函数、execute_tool 执行，以函数结果为准；不要用原始数据、Cypher 或 SQL 自行推算这些口径。不在上面清单里的问题（如按产品导出全部明细）也一样：search_capabilities 返回了 description / use_rule 与问题相符的函数时，按它的 call 调 execute_tool、按 input_schema 填参数，不要改用 query_object_instance、run_cypher 或 run_code 取原始数据代替；只有函数执行失败或明确不适用时才退回通用查询，并在回答里说明原因。
+网络说明与已发布函数：get_kn_detail 顶层的 comment 是网络作者写的说明；写了问答路由、指标或时间基线时，优先按它选择函数、技能和指标，并照它的口径作答。网络挂载了函数时，先用 search_capabilities 查有没有与问题相符的已发布函数（看 description / use_rule）；有就按它的 call 调 execute_tool、按 input_schema 填参数，以函数结果为准，不要改用 query_object_instance、run_cypher 或 run_code 取原始数据代替。只有函数执行失败或明确不适用时才走通用查询，并在回答里说明原因。
 
 查询分流：
 - 单对象类过滤 + 排序 + 分页（field op value，可 and/or 组合）→ query_object_instance；比较算子（==/!=/in/>/range/like/regex 等）按属性 type 自行判断，索引算子 match / knn 才看索引能力：search_schema / search_instance 把共用的算子放在对象类的 index_operations，支持它的属性写 indexed=true，能力不同的属性自带 condition_operations（get_object_types 始终逐属性给全量）——两个键都没有才说明字段没建索引，而没建索引不代表不能过滤；text 字段走本地索引时，==/!=/in/not_in 使用 keyword。新保存或重新保存的配置会自动补齐；若旧配置/旧索引返回 400 缺 keyword，重新保存资源配置后新建构建任务，或改用 match。默认 keyword 只索引长度不超过 256 的值，超长值不能精确比较。like/not_like 是字面子串包含（不要自己拼 %），要通配用 regex（锚定与大小写敏感性随资源存储而变，「包含」写 .*词.*）。
