@@ -52,6 +52,8 @@ type drafter struct {
 	projectID  string
 	registered map[interfaces.IDKey]*interfaces.RegisteredID
 	recorded   []*interfaces.RegisteredID
+	// named are the keys of the items this draft named from names that are not ASCII.
+	named map[interfaces.IDKey]bool
 }
 
 func newDrafter(setting common.DraftSetting, c counter) *drafter {

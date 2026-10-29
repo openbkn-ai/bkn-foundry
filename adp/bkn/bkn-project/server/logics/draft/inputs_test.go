@@ -99,19 +99,21 @@ func Test_RegistryInputsOf(t *testing.T) {
 		ot := registered(interfaces.ID_KIND_OBJECT_TYPES, "r1", "ot_000000", interfaces.ID_ORIGIN_FALLBACK, false)
 		p := registered(interfaces.ID_KIND_PROPERTIES, "r1/编号", "supplier_code", interfaces.ID_ORIGIN_SEMANTIC, true)
 
-		// Nothing registered: inputs say nothing, as for catalogs named in ASCII.
-		So(registryInputsOf(nil, nil), ShouldBeNil)
+		named := map[interfaces.IDKey]bool{ot.IDKey: true, p.IDKey: true}
 
-		before := registryInputsOf([]*interfaces.RegisteredID{ot, p}, nil)
+		// Nothing registered: inputs say nothing, as for catalogs named in ASCII.
+		So(registryInputsOf(nil, nil, nil), ShouldBeNil)
+
+		before := registryInputsOf([]*interfaces.RegisteredID{ot, p}, nil, named)
 		So(before.Count, ShouldEqual, 2)
 		So(before.Placeholders, ShouldEqual, 1)
 		So(before.Fingerprint, ShouldHaveLength, 64)
 		// The order the registry was read in does not matter.
-		So(registryInputsOf([]*interfaces.RegisteredID{p, ot}, nil), ShouldResemble, before)
+		So(registryInputsOf([]*interfaces.RegisteredID{p, ot}, nil, named), ShouldResemble, before)
 
 		// What the draft recorded takes the place of what it replaced.
 		replaced := registered(interfaces.ID_KIND_OBJECT_TYPES, "r1", "supplier", interfaces.ID_ORIGIN_SEMANTIC, false)
-		after := registryInputsOf([]*interfaces.RegisteredID{ot, p}, []*interfaces.RegisteredID{replaced})
+		after := registryInputsOf([]*interfaces.RegisteredID{ot, p}, []*interfaces.RegisteredID{replaced}, named)
 		So(after.Count, ShouldEqual, 2)
 		So(after.Placeholders, ShouldEqual, 0)
 		So(after.Fingerprint, ShouldNotEqual, before.Fingerprint)
@@ -119,6 +121,13 @@ func Test_RegistryInputsOf(t *testing.T) {
 		// Locking changes it too: a later draft can tell the ids were confirmed meanwhile.
 		lockedOT := *ot
 		lockedOT.Locked = true
-		So(registryInputsOf([]*interfaces.RegisteredID{&lockedOT, p}, nil).Fingerprint, ShouldNotEqual, before.Fingerprint)
+		So(registryInputsOf([]*interfaces.RegisteredID{&lockedOT, p}, nil, named).Fingerprint, ShouldNotEqual, before.Fingerprint)
+
+		// Placeholders count only what a later draft can still replace: not one a confirmation locked,
+		// nor one of an item this draft did not name, such as a table gone from the catalog.
+		So(registryInputsOf([]*interfaces.RegisteredID{&lockedOT, p}, nil, named).Placeholders, ShouldEqual, 0)
+		gone := registryInputsOf([]*interfaces.RegisteredID{ot, p}, nil, map[interfaces.IDKey]bool{p.IDKey: true})
+		So(gone.Placeholders, ShouldEqual, 0)
+		So(gone.Count, ShouldEqual, 2)
 	})
 }
