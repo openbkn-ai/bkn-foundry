@@ -96,6 +96,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
 	apiV1.PUT("/projects/:project_id/catalogs", r.SetProjectCatalogsByEx)
 	apiV1.PUT("/projects/:project_id/naming-language", r.SetProjectNamingLanguageByEx)
+	// Semantic understanding of the tables in the project's data catalogs: catalogs:understand
+	// submits it, and its progress is read from vega-backend.
+	apiV1.POST("/projects/:project_id/:action", r.ProjectDataActionByEx)
+	apiV1.GET("/projects/:project_id/catalogs/understanding", r.GetUnderstandingByEx)
 	// Where a project stands, computed for the caller from its draft, confirmation and check.
 	apiV1.GET("/projects/:project_id/status", r.GetStatusByEx)
 	// What waits for a person before the draft can be confirmed, with the requests that settle it.
