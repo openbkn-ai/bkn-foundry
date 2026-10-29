@@ -28,6 +28,8 @@ SQL 查询经过 `compiler.ParseSQL → SelectBuilder → 资源准备 → 连�
 4. 补充 Parser 的接受/拒绝测试，以及各连接器的 SQL 和绑定值回归测试。实际结果验证放在 EE 对应连接器的实库套件内；不为测试框架再增加测试。
 5. 同步 API 能力说明与实库 README，标明已有支持范围和仍需实库验证的边界。不把本地 SQL 生成测试当成实库验证。
 
+Doris 的 SQL 查询同样使用本规则及独立方言生成器。原生函数覆盖公共函数名单，`OCTET_LENGTH` 使用 `LENGTH`；`CAST AS SIGNED` 使用 `BIGINT`，默认字符串使用 `STRING`，显式长度使用 `VARCHAR(n)`。整数字面量在有符号 128 位 LARGEINT 范围内绑定；精确 DECIMAL 暂按默认 38 位能力校验，额外精度能力须另行定义。
+
 ## 当前映射与边界
 
 | 函数组 | PostgreSQL | HANA |

@@ -25,12 +25,12 @@ info:
     `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数
     （`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。
 
-    MariaDB/MySQL、PostgreSQL 和 HANA Catalog 使用 `mysql` 输入语法（省略时默认，
+    MariaDB/MySQL、PostgreSQL、HANA 和 Doris Catalog 使用 `mysql` 输入语法（省略时默认，
     `mariadb` 为别名），通过 Go parser/Builder 支持显式子查询、JOIN、DISTINCT、分组、排序和
     LIMIT/OFFSET，并由目标连接器生成源端 SQL。其他连接器根据 `input_dialect` 和底层连接器
     能力处理 SQL，其函数调用由 SQLGlot 校验为只读内置表达式。
 
-    MariaDB/MySQL、PostgreSQL 和 HANA 使用明确的只读内置函数名单，涵盖常用聚合、数值、
+    MariaDB/MySQL、PostgreSQL、HANA 和 Doris 使用明确的只读内置函数名单，涵盖常用聚合、数值、
     字符串和日期函数，并在访问连接器前校验参数数量及 DISTINCT / * 的组合。
     OCTET_LENGTH 与 LENGTH 同义，返回字节长度；CHAR_LENGTH 返回字符长度。
     PostgreSQL 将 IFNULL、LENGTH、日期取值和格式等映射为 PG 表达式；
@@ -40,8 +40,9 @@ info:
     %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%% 和常用分隔符。
     HANA 的 CHAR_LENGTH/SUBSTRING 使用 CESU-8 字符计数，LENGTH/OCTET_LENGTH 先编码为 UTF-8，再统计二进制字节。
     PostgreSQL 和 HANA 的 SECOND 返回去除小数部分的整数秒。
+    Doris 使用原生函数映射及 BIGINT、LARGEINT、STRING/VARCHAR、DECIMAL 等目标类型；精确 DECIMAL 支持到 38 位。
     字段类型、隐式类型转换和分组合法性由目标数据库检查。
-    HANA 在只有 OFFSET、未设置 SQL LIMIT 时由方言生成器补充 LIMIT 2147384648。
+    HANA 在只有 OFFSET、未设置 SQL LIMIT 时由方言生成器补充 LIMIT 2147384648；Doris 补充 LIMIT 9223372036854775807。
 
     语法、函数调用或参数校验失败返回 HTTP 400 `VegaBackend.Query.InvalidParameter`。
     Builder 通道通过 `error_details` 返回解析或能力错误，SQLGlot 通道的只读策略校验错误为
@@ -50,7 +51,7 @@ info:
     Builder 通道对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
     例如 SELECT 1,2 的输出列名为 `1`、`2`。重复输出名称仍需使用不同的显式别名。
 
-    MariaDB/MySQL、PG 和 HANA 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
+    MariaDB/MySQL、PG、HANA 和 Doris 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
     total_count 统计原始逻辑查询的结果行数。Builder cursor 只执行一次数据查询，在服务端保留
     同一个 Rows 和连接，续页继续扫描，不重复执行 OFFSET 查询；额外预读一行判断是否有下一页。
     每次续页重新校验资源权限和源端元数据版本；权限撤销或版本改变会关闭 cursor，版本改变返回
@@ -105,7 +106,7 @@ paths:
         **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
         - SQL（省略方言，按 MariaDB/MySQL 解析）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
-        - 查询 PostgreSQL / HANA Catalog：省略 input_dialect，或显式使用 `mysql`。
+        - 查询 PostgreSQL / HANA / Doris Catalog：省略 input_dialect，或显式使用 `mysql`。
         - SQL Server T-SQL：`{"query":"SELECT TOP (20) * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"tsql"}`
         - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
 
@@ -270,7 +271,7 @@ components:
             输入方言。SQL 省略时默认 `mysql`；`mariadb` 按 `mysql` 解析。
             SQL Server 原生 T-SQL 使用 `tsql`。SQL Server Catalog 的
             执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。
-            MariaDB/MySQL、PostgreSQL 和 HANA Catalog 使用 `mysql` 输入语法（含默认值及 `mariadb` 别名）。
+            MariaDB/MySQL、PostgreSQL、HANA 和 Doris Catalog 使用 `mysql` 输入语法（含默认值及 `mariadb` 别名）。
             方言值忽略大小写。
           type: string
           enum:
@@ -278,7 +279,6 @@ components:
             - mariadb
             - tsql
             - oracle
-            - doris
             - opensearch
         paging:
           allOf:
@@ -324,7 +324,7 @@ components:
           description: 可携带但不会覆盖首次请求冻结的值。
           type: boolean
     PagingRequest:
-      description: MariaDB/MySQL、PostgreSQL 和 HANA cursor 保留同一次数据查询的 Rows，续页继续读取；SQLGlot 通道使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
+      description: MariaDB/MySQL、PostgreSQL、HANA 和 Doris cursor 保留同一次数据查询的 Rows，续页继续读取；SQLGlot 通道使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
       type: object
       allOf:
         - if:

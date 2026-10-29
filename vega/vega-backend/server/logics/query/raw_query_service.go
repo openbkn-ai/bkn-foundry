@@ -303,7 +303,7 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 }
 
 // prepareSQLQuery is the shared SQL preparation pipeline for both single and
-// cursor execution. MariaDB/MySQL、PG 和 HANA 强制使用公共 Builder；其他连接器保留 SQLGlot。
+// cursor execution. MariaDB/MySQL、PG、HANA 和 Doris 强制使用公共 Builder；其他连接器保留 SQLGlot。
 func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
 	inputDialect := req.EffectiveInputDialect()
 	var resourceIDs []string
@@ -341,9 +341,10 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if catalog.ConnectorType == interfaces.ConnectorTypeMySQL ||
 		catalog.ConnectorType == interfaces.ConnectorTypeMariaDB ||
 		catalog.ConnectorType == interfaces.ConnectorTypePostgreSQL ||
-		catalog.ConnectorType == interfaces.ConnectorTypeHANA {
+		catalog.ConnectorType == interfaces.ConnectorTypeHANA ||
+		catalog.ConnectorType == interfaces.ConnectorTypeDoris {
 		if inputDialect != "mysql" {
-			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL, PostgreSQL and HANA queries only support mysql input syntax")
+			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL, PostgreSQL, HANA and Doris queries only support mysql input syntax")
 		}
 		if parseErr != nil {
 			return nil, sqlBuilderQueryInvalid(ctx, parseErr.Error())
