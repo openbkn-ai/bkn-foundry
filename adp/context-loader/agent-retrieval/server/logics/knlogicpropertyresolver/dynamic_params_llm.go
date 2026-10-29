@@ -4,7 +4,7 @@
 
 // Package knlogicpropertyresolver
 // file: dynamic_params_llm.go
-// desc: metric/tool dynamic parameter generation is handled by mf-model-api.
+// desc: tool dynamic parameter generation is handled by mf-model-api.
 //
 //	prompt is extracted from the original agent definition and built-in (see prompts/ directory). It is released with the service and is no longer dependent on.
 //	Manually imported agent in agent-factory.
@@ -21,9 +21,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
-//go:embed prompts/metric_dynamic_params.md
-var metricDynamicParamsPrompt string
-
 //go:embed prompts/tool_dynamic_params.md
 var toolDynamicParamsPrompt string
 
@@ -38,7 +35,7 @@ const (
 	dynamicParamsTopP        = 0.5
 )
 
-// dynamicParamsLLM generates metric and ToolBox-tool dynamic parameters.
+// dynamicParamsLLM generates ToolBox-tool dynamic parameters.
 // Do not specify a model: mf-model-api parses the system default large model when model is empty (t_llm_model.f_default=1,
 // Set globally by the administrator through the mf-model-manager /llm/default/edit interface), the same mechanism as the small model, and zero configuration on the service side.
 type dynamicParamsLLM struct {
@@ -52,39 +49,6 @@ func newDynamicParamsLLM(
 	mfModelClient interfaces.DrivenMFModelAPIClient,
 ) *dynamicParamsLLM {
 	return &dynamicParamsLLM{logger: logger, mfModelClient: mfModelClient}
-}
-
-// GenerateMetricParams is directly connected to LLM to generate metric type dynamic parameters.
-// The return value is semantically aligned with the original agent: successfully returns dynamicParams (the top key is logic_property.name),
-// MissingParams is returned when the model determines that parameters are missing; the two are mutually exclusive.
-func (d *dynamicParamsLLM) GenerateMetricParams(
-	ctx context.Context,
-	req *interfaces.MetricDynamicParamsGeneratorReq,
-	llmModel string,
-) (dynamicParams map[string]any, missingParams *interfaces.MissingPropertyParams, err error) {
-	userJSON := utils.ObjectToJSON(req)
-	d.logger.WithContext(ctx).Infof("  ├─ [直连LLM] Metric 入参: query=%s", userJSON)
-
-	resultStr, err := d.chatJSON(ctx, metricDynamicParamsPrompt, userJSON, llmModel)
-	if err != nil {
-		d.logger.WithContext(ctx).Errorf("  ├─ [直连LLM] ❌ Metric Chat 失败: %v", err)
-		return nil, nil, err
-	}
-
-	var rawResult map[string]any
-	if err = common.UnmarshalPreciseJSON([]byte(resultStr), &rawResult); err != nil {
-		d.logger.WithContext(ctx).Errorf("  ├─ [直连LLM] ❌ Metric JSON 解析失败: %v, raw=%s", err, resultStr)
-		return nil, nil, fmt.Errorf("unmarshal metric llm result failed: %w", err)
-	}
-
-	if errorMsg, ok := rawResult["_error"].(string); ok {
-		missingParams = newMissingParams(req.LogicProperty.Name, errorMsg)
-		d.logger.WithContext(ctx).Warnf("  └─ [直连LLM] ⚠️ Metric 缺参: %s", errorMsg)
-		return nil, missingParams, nil
-	}
-
-	d.logger.WithContext(ctx).Debugf("  └─ [直连LLM] ✅ Metric 成功: %+v", rawResult)
-	return rawResult, nil, nil
 }
 
 // GenerateToolParams generates dynamic parameters from the selected ToolBox tool schema. The

@@ -53,7 +53,7 @@ func NewKnLogicPropertyResolverHandler() KnLogicPropertyResolverHandler {
 
 // ResolveLogicProperties resolves logic properties.
 // @Summary Resolve logic properties
-// @Description Generates dynamic_params from the query and context, then retrieves logic-property values (metrics and tools) through ontology-query.
+// @Description Generates dynamic_params from the query and context, then retrieves tool-backed logic-property values through ontology-query.
 // @Tags kn-context-loader
 // @Accept json
 // @Produce json

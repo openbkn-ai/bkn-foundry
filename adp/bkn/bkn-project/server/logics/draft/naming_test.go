@@ -34,13 +34,18 @@ func Test_PickName(t *testing.T) {
 			So(aliases, ShouldResemble, []string{"客户"})
 		})
 
-		Convey("The physical name can be the name but is never an alias\n", func() {
+		Convey("The physical name names an item only when there is no other name, and is never an alias\n", func() {
+			// A name people read in the other language beats an abbreviation such as kh or cust_nm.
 			name, aliases := pickName(en, "customer_name", "客户名称")
-			So(name, ShouldEqual, "customer_name")
-			So(aliases, ShouldResemble, []string{"客户名称"})
+			So(name, ShouldEqual, "客户名称")
+			So(aliases, ShouldBeEmpty)
 
-			name, aliases = pickName(zh, "customer_name", "Customer name")
-			So(name, ShouldEqual, "Customer name")
+			name, aliases = pickName(zh, "客户", "Customer")
+			So(name, ShouldEqual, "Customer")
+			So(aliases, ShouldBeEmpty)
+
+			name, aliases = pickName(en, "customer_name")
+			So(name, ShouldEqual, "customer_name")
 			So(aliases, ShouldBeEmpty)
 		})
 

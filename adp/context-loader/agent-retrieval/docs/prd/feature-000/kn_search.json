@@ -344,7 +344,7 @@
                                                     },
                                                     "logic_properties": {
                                                         "type": "array",
-                                                        "description": "逻辑属性列表（指标等）。精简模式下仅包含name和display_name字段（数量不截断）",
+                                                        "description": "工具型逻辑属性列表。精简模式下仅包含name和display_name字段（数量不截断）",
                                                         "items": {
                                                             "type": "object",
                                                             "description": "逻辑属性",

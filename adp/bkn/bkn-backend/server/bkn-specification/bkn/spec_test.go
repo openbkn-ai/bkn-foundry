@@ -67,13 +67,13 @@ name: Pod
 
 | Display Name | Type | Description |
 |--------------|------|-------------|
-| CPU | metric | |
+| CPU | tool | |
 
 **Source**
 
-| Source Type | Source ID | Source Name |
-|-------------|-----------|-------------|
-| metric | m_cpu | |
+| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |
+|-------------|-----------|-------------|-------|--------|------------|
+| tool | | cpu_stats | box_cpu | tool_cpu | $.result |
 
 **Parameters**
 

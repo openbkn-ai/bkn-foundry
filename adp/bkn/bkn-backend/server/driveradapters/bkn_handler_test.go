@@ -81,6 +81,22 @@ func newObjectMetricBKNTar(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+func newRemovedObjectMetricFieldBKNTar(t *testing.T) []byte {
+	t.Helper()
+	net := &bknsdk.BknNetwork{
+		BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{Type: "network", ID: "test-net", Name: "Test Network"},
+		ObjectTypes:           []*bknsdk.BknObjectType{{BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{Type: "object_type", ID: "draft-object", Name: "Draft Object"}}},
+		ObjectMetrics: []json.RawMessage{json.RawMessage(
+			`{"definition":{"id":"metric-1","version":1,"code":"metric_one","name":"Metric One","owner_object_type_id":"draft-object","metric_type":"atomic","calculation_scope":"object_instance","specification":{"measure":{"aggregation":"identity","property_name":"amount"}},"lifecycle":{"status":"draft"}}}`,
+		)},
+	}
+	var buf bytes.Buffer
+	if err := bknsdk.WriteNetworkToTar(net, &buf); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 func newLegacyMetricBKNTar(t *testing.T) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -299,6 +315,14 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 			So(w.Code, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Rejects removed single-instance fields in object metric records", func() {
+			req := newMultipartRequest(t, url, "test.tar", newRemovedObjectMetricFieldBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, "calculation_scope")
 		})
 
 		Convey("Rejects old metric archives with an explicit error", func() {

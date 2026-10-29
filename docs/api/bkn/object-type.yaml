@@ -126,12 +126,12 @@ paths:
                           - 10
               create object type:
                 value:
-                  - id: pod_has_metric
-                    name: pod_has_metric
+                  - id: pod_with_logic_property
+                    name: pod_with_logic_property
                     tags:
                       - event network
                       - topology
-                    comment: Pod information bound to a metric model
+                    comment: Pod information with a tool-backed logical property
                     icon: ""
                     color: ""
                     branch: main
@@ -266,30 +266,6 @@ paths:
                           name: _action
                         index: true
                     logic_properties:
-                      - name: metric_test
-                        display_name: metric_test
-                        type: metric
-                        comment: Pod metrics
-                        index: true
-                        data_source:
-                          type: metric-model
-                          id: pod_metric
-                        parameters:
-                          - name: id
-                            value_from: property
-                            value: id
-                          - name: pod_name
-                            value_from: property
-                            value: pod_name
-                          - name: instant
-                            value_from: input
-                            value: ""
-                          - name: start
-                            value_from: input
-                            value: ""
-                          - name: end
-                            value_from: input
-                            value: ""
                       - name: tool_test
                         display_name: tool_test
                         type: tool
@@ -692,12 +668,12 @@ paths:
                 list object types - first request:
                   value:
                     entries:
-                      - id: pod_has_metric_test
-                        name: pod_has_metric_test
+                      - id: pod_with_logic_property_test
+                        name: pod_with_logic_property_test
                         tags:
                           - event network
                           - topology
-                        comment: Pod information bound to a metric model
+                        comment: Pod information with a tool-backed logical property
                         icon: ""
                         color: ""
                         branch: main
@@ -940,40 +916,6 @@ paths:
                               - in
                               - not_in
                         logic_properties:
-                          - name: metric_test
-                            display_name: metric_test
-                            type: metric
-                            comment: Pod metrics
-                            index: true
-                            data_source:
-                              type: metric-model
-                              id: pod_metric
-                              name: ""
-                            parameters:
-                              - name: id
-                                value_from: property
-                                value: id
-                              - name: pod_name
-                                value_from: property
-                                value: pod_name
-                              - name: instant
-                                value_from: input
-                                value: ""
-                              - name: start
-                                value_from: input
-                                value: ""
-                              - name: end
-                                value_from: input
-                                value: ""
-                              - name: instant
-                                value_from: input
-                                value: ""
-                              - name: start
-                                value_from: input
-                                value: ""
-                              - name: end
-                                value_from: input
-                                value: ""
                           - name: tool_test
                             display_name: tool_test
                             type: tool
@@ -1004,12 +946,12 @@ paths:
                 list object types - subsequent request:
                   value:
                     entries:
-                      - id: pod_has_metric_test2
-                        name: pod_has_metric_test2
+                      - id: pod_with_logic_property_test2
+                        name: pod_with_logic_property_test2
                         tags:
                           - event network
                           - topology
-                        comment: Pod information bound to a metric model
+                        comment: Pod information with a tool-backed logical property
                         icon: ""
                         color: ""
                         branch: main
@@ -1259,40 +1201,6 @@ paths:
                               - in
                               - not_in
                         logic_properties:
-                          - name: metric_test
-                            display_name: metric_test
-                            type: metric
-                            comment: Pod metrics
-                            index: true
-                            data_source:
-                              type: metric-model
-                              id: pod_metric
-                              name: ""
-                            parameters:
-                              - name: id
-                                value_from: property
-                                value: id
-                              - name: pod_name
-                                value_from: property
-                                value: pod_name
-                              - name: instant
-                                value_from: input
-                                value: ""
-                              - name: start
-                                value_from: input
-                                value: ""
-                              - name: end
-                                value_from: input
-                                value: ""
-                              - name: instant
-                                value_from: input
-                                value: ""
-                              - name: start
-                                value_from: input
-                                value: ""
-                              - name: end
-                                value_from: input
-                                value: ""
                           - name: tool_test
                             display_name: tool_test
                             type: tool
@@ -1354,7 +1262,7 @@ paths:
             type: string
           in: query
         - name: strict_mode
-          description: Whether to strictly validate dependencies. When true, validates external dependencies such as data views, embedding models, and metric or operator bindings used by logical properties. When false, skips this validation.
+          description: Whether to strictly validate dependencies. When true, validates external dependencies such as data views, embedding models, and tools used by logical properties. When false, skips this validation.
           schema:
             type: boolean
             default: true
@@ -1615,7 +1523,7 @@ paths:
       summary: Validate object types
       description: |
         Validates concept dependency existence only and does not write data. Use it for pre-import checks or batch self-checks.
-        When strict_mode is true, validates dependencies such as data views, vector-index embedding models, metric models and operators bound to logical properties, and concept groups.
+        When strict_mode is true, validates dependencies such as data views, vector-index embedding models, tools used by logical properties, and concept groups.
 
         For same-batch references, such as a relation type referencing an object type that has not been persisted, single-type validation recognizes only persisted resources in strict mode when the request cannot include the referenced definition.
         In that case, use full knowledge-network validation with the same structure as the create API, or concept-group validation with nested object_types, relation_types, and action_types. The server derives BatchIDIndex from the submitted JSON, making entries visible within the same create transaction.
@@ -1768,7 +1676,7 @@ components:
           description: Property display name
           type: string
         type:
-          description: Property data type. In addition to view field types, metric and tool are supported.
+          description: Property data type. Supported values are the documented data field types.
           type: string
         comment:
           description: Property description
@@ -1992,8 +1900,9 @@ components:
           description: Property display name
           type: string
         type:
-          description: Property data type. In addition to view field types, metric and tool are supported.
+          description: Logical property type. Only tool is supported; object metrics are independent instance-set resources.
           type: string
+          enum: [tool]
         comment:
           description: Property description
           type: string
@@ -2009,7 +1918,7 @@ components:
           items:
             $ref: "#/components/schemas/Parameter"
         analysis_dimensions:
-          description: Analysis dimensions of the metric model. Returned when the logical property type is metric.
+          description: Optional analysis dimensions exposed by the tool-backed property.
           type: array
           items:
             $ref: "#/components/schemas/AnalysisDim"
@@ -2291,17 +2200,16 @@ components:
       description: Data source
       required:
         - type
-        - id
+        - box_id
+        - tool_id
       type: object
       properties:
         type:
           description: Data source type
-          enum:
-            - metric
-            - tool
+          enum: [tool]
           type: string
         id:
-          description: Data source ID. Required when type is metric.
+          description: Optional external source ID.
           type: string
         box_id:
           description: Toolbox ID. Required when type is tool.
@@ -2699,42 +2607,10 @@ components:
           description: Parameter value. When value_from is property, provide the object type data property name; when it is input, omit this field.
           type: string
     Parameter:
-      oneOf:
+      allOf:
         - $ref: "#/components/schemas/Parameter4Operator"
-        - $ref: "#/components/schemas/Parameter4Metric"
-      description: Logical or metric parameters
+      description: Tool-backed logical-property parameter.
       type: object
-    Parameter4Metric:
-      description: Logical parameters
-      required:
-        - name
-        - value_from
-        - operation
-      type: object
-      properties:
-        name:
-          description: Parameter name
-          type: string
-        value_from:
-          description: Value source
-          enum:
-            - property
-            - input
-          type: string
-        value:
-          description: Parameter value. When value_from is property, provide the object type data property name; when it is input, omit this field.
-          type: string
-        operation:
-          description: Operator. Required when mapping a metric model property.
-          enum:
-            - in
-            - "="
-            - "!="
-            - ">"
-            - ">="
-            - <
-            - <=
-          type: string
     KeywordConfig:
       title: Root Type for KeywordConfig
       description: Keyword search configuration

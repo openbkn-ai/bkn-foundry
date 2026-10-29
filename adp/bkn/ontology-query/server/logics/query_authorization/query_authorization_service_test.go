@@ -203,14 +203,6 @@ func TestAuthorizeObjectMetricTrialRequiresEveryReferencedResource(t *testing.T)
 		}, true, nil)
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "customers").Return(
 		publishedObjectType("kn-a", "customers", "customers-resource"), true, nil)
-	models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", "order-region").Return(
-		interfaces.RelationType{
-			RTID: "order-region", Type: interfaces.RELATION_TYPE_DIRECT,
-			SourceObjectTypeID: "orders", TargetObjectTypeID: "regions",
-		}, true, nil)
-	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "regions").Return(
-		publishedObjectType("kn-a", "regions", "regions-resource"), true, nil)
-
 	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
 		{Type: "knowledge_network", ID: "kn-a"},
 		{Type: "object_type", ID: "kn-a/orders"},
@@ -218,8 +210,6 @@ func TestAuthorizeObjectMetricTrialRequiresEveryReferencedResource(t *testing.T)
 		{Type: "object_type", ID: "kn-a/customers"},
 		{Type: "metric", ID: "kn-a/base-metric"},
 		{Type: "metric", ID: "kn-a/dependency-metric"},
-		{Type: "relation_type", ID: "kn-a/order-region"},
-		{Type: "object_type", ID: "kn-a/regions"},
 	}).Return(nil)
 
 	err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", &interfaces.ObjectMetricDefinitionV1{
@@ -234,12 +224,6 @@ func TestAuthorizeObjectMetricTrialRequiresEveryReferencedResource(t *testing.T)
 			},
 			Dependencies: []interfaces.ObjectMetricDependencyV1{{
 				MetricRef: interfaces.ObjectMetricRefV1{MetricID: "dependency-metric", Version: 3},
-				ObjectAlignment: interfaces.ObjectMetricObjectAlignmentV1{
-					RelationPath: []interfaces.ObjectMetricRelationStepV1{{
-						RelationTypeID: "order-region", Direction: interfaces.DIRECTION_FORWARD,
-						TargetObjectTypeID: "regions",
-					}},
-				},
 			}},
 		},
 	}, nil)

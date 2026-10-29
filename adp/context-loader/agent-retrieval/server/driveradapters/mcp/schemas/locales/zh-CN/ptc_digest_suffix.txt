@@ -29,7 +29,7 @@ try/except 包住并 print 出关键中间信息。
 
 计数、求和、分组、排序、Top-N 这类，能用对象类、关系类和逻辑属性说清楚的，
 **优先写一条 `run_cypher`**，让数据库算完只回结果；它只需要知识网络授权。口径已经
-建成指标的改走 `query_metric` 或 `get_logic_properties_values`。
+建成对象指标的统一走 `query_metric`；`get_logic_properties_values` 只用于独立的工具型逻辑属性。
 不要用 `query_object_instance` 拉 5000 行回来自己数——那既慢又受 `limit` 截断，
 统计口径会悄悄错。
 

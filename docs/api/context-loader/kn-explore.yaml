@@ -177,10 +177,10 @@ paths:
         （写 `run_sql` 要的物理列名）、`condition_operations`（该属性可用的查询算子）、
         逻辑属性的 `data_source` 与 `parameters`。
 
-        同时返回 `related_metrics`——挂在该对象类下的指标，**包括没绑到逻辑属性、
-        因而在 `logic_properties` 里根本看不见的那些**。这是 Agent 选指标的权威清单，
-        选定后走 [logic-property.yaml](logic-property.yaml) 的
-        `logic-property-resolver`（实例 + 已绑逻辑属性）或 `query_metric`（其余）。
+        同时返回 `related_metrics`——挂在该对象类下的已发布实例集合指标。这是 Agent
+        选指标的权威清单，选定后统一走 `query_metric`。`logic_properties` 只包含工具型
+        逻辑属性，通过 [logic-property.yaml](logic-property.yaml) 的
+        `logic-property-resolver` 按对象实例求值；二者不建立绑定关系。
 
         `ids` 里既可以传对象类 ID，也可以传对象类名（ID 优先，名称仅作兜底）；
         匹配不到的 ID 原样回填在 `missing` 里，不报错。属性的 `display_name`
@@ -682,11 +682,10 @@ components:
         related_metrics:
           type: array
           description: |
-            挂在该对象类下的指标（`scope_type=object_type` 且 `scope_ref` 等于本对象类
-            ID），**含没绑到任何逻辑属性的指标**。仅 `get_object_types` 返回。
-            选定后怎么算：实例级且已绑逻辑属性走
-            [logic-property.yaml](logic-property.yaml) 的 `logic-property-resolver`，
-            其余把 `id` 传给同文件的 `query_metric`。
+            挂在该对象类下的已发布实例集合指标（`scope_type=object_type` 且
+            `scope_ref` 等于本对象类 ID）。仅 `get_object_types` 返回。选定后统一把
+            `id` 与固定版本传给 [logic-property.yaml](logic-property.yaml) 的
+            `query_metric`；对象指标不绑定为逻辑属性。
           items:
             $ref: '#/components/schemas/RelatedMetric'
         related_metric_count:

@@ -31,9 +31,6 @@ const (
 	VALUE_FROM_INPUT    = "input"
 	VALUE_FROM_PROPERTY = "property"
 
-	// Property types.
-	PROPERTY_TYPE_METRIC = "metric"
-
 	// Sort directions.
 	DESC_DIRECTION = "desc"
 	ASC_DIRECTION  = "asc"

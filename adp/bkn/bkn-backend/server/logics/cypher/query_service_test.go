@@ -796,7 +796,7 @@ func TestQueryReadsPropertyLevelsOncePerObjectType(t *testing.T) {
 	}
 }
 
-// #1564: a public object type read hides a logic property computed from a
+// #1564: a public object type read hides a tool-backed logic property computed from a
 // property at none. Cypher cannot query a logic property either way, but its
 // refusal must not confirm one the object type read would not show: it reads
 // as unknown then, and names the logic property only when it is visible.
@@ -805,7 +805,7 @@ func TestQueryAgreesWithPublicReadsOnHiddenLogicProperties(t *testing.T) {
 		service := relationService(&recordingVega{}, permission, nil)
 		order := service.schema.(*fakeSchemaSource).objectTypes[0]
 		order.LogicProperties = []*interfaces.LogicProperty{{
-			Name: "score", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+			Name: "score", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 			Parameters: []interfaces.Parameter{{Name: "p", ValueFrom: interfaces.VALUE_FROM_PROPERTY, Value: "amount"}},
 		}}
 		return service

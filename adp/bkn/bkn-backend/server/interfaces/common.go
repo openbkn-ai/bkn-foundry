@@ -100,9 +100,6 @@ const (
 	VALUE_FROM_CONST    = "const"
 	VALUE_FROM_PARAM    = "param" // RiskFunction parameter value comes from a RiskType parameter named by ParamDef.name.
 
-	// Property types.
-	PROPERTY_TYPE_METRIC = "metric"
-
 	// Maximum page size when concept search does not specify limit.
 	ConceptQueryLimit = 10000
 

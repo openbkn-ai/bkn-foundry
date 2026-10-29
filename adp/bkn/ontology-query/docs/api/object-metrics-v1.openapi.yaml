@@ -289,9 +289,6 @@ components:
       type: object
       additionalProperties: false
       properties:
-        instance_identities:
-          type: array
-          items: { type: object, additionalProperties: true }
         filter:
           $ref: "#/components/schemas/ObjectMetricCondition"
         group_by:
@@ -359,11 +356,9 @@ components:
             type: object
             required: [status]
             properties:
-              instance_identity: { type: object, additionalProperties: true }
-              dimensions: { type: object, additionalProperties: true }
               dimension_cells:
                 type: array
-                description: Full dimension references; unlike the legacy dimensions map, relation path aliases remain distinct.
+                description: Full dimension references; relation path aliases remain distinct.
                 items:
                   type: object
                   required: [ref, value]

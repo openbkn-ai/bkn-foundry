@@ -253,7 +253,6 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		ctx = permission.WithKNImportPermissionPrechecked(ctx)
 	}
 	if isCreate || isUpdate {
-		ctx = interfaces.WithObjectMetricReferenceSyncDeferred(ctx)
 		if err = kns.prepareNormalizedImportMembers(ctx, importPlan, isUpdate); err != nil {
 			return "", err
 		}

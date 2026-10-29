@@ -70,7 +70,6 @@ class MetricCandidate(BaseModel):
     version: int = Field(ge=1)
     name: str = Field(min_length=1, max_length=200)
     type: Literal["atomic", "derived", "composite"]
-    scope: Literal["object_instance", "object_set"]
     object_type_id: str = Field(min_length=1, max_length=128)
 
 
@@ -143,7 +142,7 @@ class MetricDesignRequest(BaseModel):
 # fields are deliberately absent; changing this list is a public contract change.
 EDITABLE_FIELDS = frozenset(
     {
-        "name", "description", "calculation_scope",
+        "name", "description",
         "atomic.aggregation", "atomic.property_name", "atomic.expression",
         "derived.base_metric_id", "derived.base_metric_version",
         "derived.filters", "derived.event_time", "derived.time_window_mode",
@@ -158,7 +157,6 @@ EDITABLE_FIELDS = frozenset(
 )
 
 FIELD_TO_FORM = {
-    "calculation_scope": "calculationScope",
     "atomic.aggregation": "aggregation",
     "derived.base_metric_id": "baseMetric",
     "derived.base_metric_version": "baseMetric",
@@ -182,8 +180,7 @@ FIELD_TO_FORM = {
 }
 
 ENUM_VALUES = {
-    "calculation_scope": {"object_instance", "object_set"},
-    "atomic.aggregation": {"identity", "count_rows", "count", "count_distinct", "sum", "avg", "min", "max"},
+    "atomic.aggregation": {"count_rows", "count", "count_distinct", "sum", "avg", "min", "max"},
     "derived.time_window_mode": {"unbounded", "rolling", "current_week", "current_month", "current_quarter", "current_year"},
     "derived.time_window_unit": {"minute", "hour", "day", "week", "month", "quarter", "year"},
     "result.no_data_policy": {"zero", "null", "unavailable"},

@@ -16,21 +16,12 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"go.uber.org/mock/gomock"
 
-	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
-
-type objectMetricBindServiceStub struct {
-	interfaces.ObjectMetricServiceV1
-	bindCalls    int
-	getCalls     int
-	upgradeCalls int
-}
 
 func TestBindObjectMetricDefinitionPreservesExactLiterals(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -47,22 +38,31 @@ func TestBindObjectMetricDefinitionPreservesExactLiterals(t *testing.T) {
 	}
 }
 
-func (s *objectMetricBindServiceStub) Get(_ context.Context, _, _, _ string, version int) (*interfaces.ObjectMetricRecordV1, error) {
-	s.getCalls++
-	return &interfaces.ObjectMetricRecordV1{Definition: interfaces.ObjectMetricDefinitionV1{
-		Version: version, OwnerObjectTypeID: "orders",
-	}}, nil
+func TestBindObjectMetricDefinitionRejectsRemovedFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, field := range []string{"calculation_scope", "logic_property"} {
+		t.Run(field, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"`+field+`":{}}`))
+			var definition interfaces.ObjectMetricDefinitionV1
+			err := bindObjectMetricDefinitionV1(ctx, &definition)
+			if err == nil || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("error = %v, want unknown-field rejection", err)
+			}
+		})
+	}
 }
 
-func (s *objectMetricBindServiceStub) UpgradeLogicProperty(_ context.Context, _, _, _, _ string, version int) (*interfaces.LogicProperty, error) {
-	s.upgradeCalls++
-	return &interfaces.LogicProperty{
-		Name: "duration",
-		MetricBinding: &interfaces.MetricPropertyBindingV1{
-			ObjectTypeID: "orders",
-			MetricRef:    interfaces.ObjectMetricRefV1{MetricID: "metric-a", Version: version},
-		},
-	}, nil
+func TestBindObjectMetricDefinitionRejectsTrailingJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, body := range []string{`{} {}`, `{} invalid`} {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		var definition interfaces.ObjectMetricDefinitionV1
+		if err := bindObjectMetricDefinitionV1(ctx, &definition); err == nil {
+			t.Fatalf("body %q: expected trailing JSON to be rejected", body)
+		}
+	}
 }
 
 type objectMetricUpdateServiceStub struct {
@@ -344,120 +344,5 @@ func TestGetObjectMetricProjectsAuthorizedMetricOwnerName(t *testing.T) {
 	if recorder.Code != http.StatusOK || service.record.OwnerObjectTypeName != "" ||
 		!strings.Contains(recorder.Body.String(), `"owner_object_type_name":"销售订单"`) {
 		t.Fatalf("status=%d record=%#v body=%s", recorder.Code, service.record, recorder.Body.String())
-	}
-}
-
-func (s *objectMetricBindServiceStub) BindLogicProperty(
-	_ context.Context,
-	_, _, _ string,
-	_ int,
-	_ *interfaces.MetricPropertyBindingV1,
-) (*interfaces.LogicProperty, error) {
-	s.bindCalls++
-	return &interfaces.LogicProperty{Name: "duration", DisplayName: "履约耗时"}, nil
-}
-
-func newBindObjectMetricContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties?version=2&branch=main", strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-	c.Params = gin.Params{
-		{Key: "kn_id", Value: "kn-a"},
-		{Key: "metric_id", Value: "metric-a"},
-	}
-	return c, recorder
-}
-
-func TestBindObjectMetricLogicPropertyUsesObjectTypeAuditTargetName(t *testing.T) {
-	restoreGin := setGinMode()
-	defer restoreGin()
-	ctrl := gomock.NewController(t)
-	objectTypes := bmock.NewMockObjectTypeService(ctrl)
-	objectTypes.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-a", "main", "orders").Return(&interfaces.ObjectType{
-		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders", OTName: "订单"},
-	}, nil)
-	metrics := &objectMetricBindServiceStub{}
-	handler := &restHandler{ots: objectTypes, oms: metrics}
-	c, recorder := newBindObjectMetricContext(`{"object_type_id":"orders","property_name":"duration","display_name":"履约耗时"}`)
-
-	handler.bindObjectMetricLogicProperty(c, hydra.Visitor{})
-
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want %d; body = %s", recorder.Code, http.StatusCreated, recorder.Body.String())
-	}
-	if metrics.bindCalls != 1 {
-		t.Fatalf("BindLogicProperty calls = %d, want 1", metrics.bindCalls)
-	}
-	got, exists := c.Get("operation_audit_target_names")
-	if !exists || !reflect.DeepEqual(got, []string{"订单"}) {
-		t.Fatalf("operation_audit_target_names = %#v, want []string{\"订单\"}", got)
-	}
-}
-
-func TestBindObjectMetricLogicPropertyStopsWhenObjectTypeLookupFails(t *testing.T) {
-	restoreGin := setGinMode()
-	defer restoreGin()
-	ctrl := gomock.NewController(t)
-	objectTypes := bmock.NewMockObjectTypeService(ctrl)
-	notFound := httperrors.NewHTTPError(context.Background(), http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
-	objectTypes.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-a", "main", "missing").Return(nil, notFound)
-	metrics := &objectMetricBindServiceStub{}
-	handler := &restHandler{ots: objectTypes, oms: metrics}
-	c, recorder := newBindObjectMetricContext(`{"object_type_id":"missing","property_name":"duration","display_name":"履约耗时"}`)
-
-	handler.bindObjectMetricLogicProperty(c, hydra.Visitor{})
-
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d; body = %s", recorder.Code, http.StatusNotFound, recorder.Body.String())
-	}
-	if metrics.bindCalls != 0 {
-		t.Fatalf("BindLogicProperty calls = %d, want 0", metrics.bindCalls)
-	}
-}
-
-func TestUpgradeObjectMetricLogicPropertyRequiresVersionAndForwardsTarget(t *testing.T) {
-	restoreGin := setGinMode()
-	defer restoreGin()
-	ctrl := gomock.NewController(t)
-	objectTypes := bmock.NewMockObjectTypeService(ctrl)
-	objectTypes.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-a", interfaces.MAIN_BRANCH, "orders").Return(&interfaces.ObjectType{
-		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders", OTName: "订单"},
-	}, nil)
-	metrics := &objectMetricBindServiceStub{}
-	handler := &restHandler{oms: metrics, ots: objectTypes}
-	for _, test := range []struct {
-		query  string
-		status int
-		calls  int
-	}{
-		{query: "", status: http.StatusBadRequest, calls: 0},
-		{query: "?version=3", status: http.StatusOK, calls: 1},
-	} {
-		recorder := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(recorder)
-		c.Request = httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties/duration/metric-ref"+test.query, nil)
-		c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "metric-a"}, {Key: "property_name", Value: "duration"}}
-		handler.upgradeObjectMetricLogicProperty(c, hydra.Visitor{})
-		if recorder.Code != test.status || metrics.upgradeCalls != test.calls {
-			t.Fatalf("query=%q status=%d calls=%d body=%s", test.query, recorder.Code, metrics.upgradeCalls, recorder.Body.String())
-		}
-		if test.status == http.StatusOK {
-			if !strings.Contains(recorder.Body.String(), `"version":3`) {
-				t.Fatalf("updated version missing from response: %s", recorder.Body.String())
-			}
-			for key, want := range map[string][]string{
-				"operation_audit_target_ids":   {"orders"},
-				"operation_audit_target_names": {"订单"},
-			} {
-				got, exists := c.Get(key)
-				if !exists || !reflect.DeepEqual(got, want) {
-					t.Fatalf("%s = %#v, want %#v", key, got, want)
-				}
-			}
-		}
-	}
-	if metrics.getCalls != 1 {
-		t.Fatalf("Get calls = %d, want 1", metrics.getCalls)
 	}
 }

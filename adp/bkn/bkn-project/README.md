@@ -38,9 +38,10 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   from the catalog's semantic understanding come first. Items are named in the
   project's naming language: of the candidate names (the name semantic
   understanding gave, the first clause of the description and of the database
-  comment, the physical name) the first in that language, a name holding a Han
-  character reading as Chinese; with none in it, the first. The candidates in
-  the other language, never the physical name, become `aliases` of object
+  comment) the first in that language, a name holding a Han character reading
+  as Chinese; with none in it, the first. The physical name names an item only
+  when it has no candidate: a name people read beats an abbreviation. The
+  candidates in the other language, never the physical name, become `aliases` of object
   types, properties and relation types, leaving out those BKN refuses: one
   holding a comma, or another property's name or display name. Ids come from physical
   table and field names only, never from names semantic understanding wrote, so
