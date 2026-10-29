@@ -82,20 +82,6 @@ func validateObjectMetricArchive(plan *NormalizedImportPlan) error {
 				return fmt.Errorf("object metric %s relation path: %w", metricKey, err)
 			}
 		}
-		for _, dependency := range def.Specification.Dependencies {
-			if len(dependency.ObjectAlignment.RelationPath) == 0 {
-				continue
-			}
-			key := fmt.Sprintf("%s@%d", dependency.MetricRef.MetricID, dependency.MetricRef.Version)
-			target := ""
-			if referenced := versions[key]; referenced != nil {
-				target = referenced.Definition.OwnerObjectTypeID
-			}
-			if err := validateArchiveMetricRelationPath(def.OwnerObjectTypeID, target,
-				dependency.ObjectAlignment.RelationPath, relations); err != nil {
-				return fmt.Errorf("object metric %s dependency %s relation path: %w", metricKey, key, err)
-			}
-		}
 		refs := make([]interfaces.ObjectMetricRefV1, 0, len(def.Specification.Dependencies)+1)
 		if def.Specification.BaseMetric != nil {
 			refs = append(refs, *def.Specification.BaseMetric)
@@ -109,6 +95,10 @@ func validateObjectMetricArchive(plan *NormalizedImportPlan) error {
 			dependency, ok := versions[key]
 			if !ok {
 				return fmt.Errorf("object metric %s@%d references missing version %s", def.ID, def.Version, key)
+			}
+			if dependency.Definition.OwnerObjectTypeID != def.OwnerObjectTypeID {
+				return fmt.Errorf("object metric %s@%d references %s owned by object type %s; dependencies must share owner %s",
+					def.ID, def.Version, key, dependency.Definition.OwnerObjectTypeID, def.OwnerObjectTypeID)
 			}
 			if def.Lifecycle.Status == "published" || def.Lifecycle.Status == "deprecated" {
 				status := dependency.Definition.Lifecycle.Status
@@ -246,7 +236,6 @@ func objectMetricReferencedObjectTypes(def *interfaces.ObjectMetricDefinitionV1)
 		}
 	}
 	for _, dependency := range spec.Dependencies {
-		addSteps(dependency.ObjectAlignment.RelationPath)
 		addRef(dependency.EvaluationContext.FilterContext.Dimension)
 	}
 	if spec.Alignment != nil {

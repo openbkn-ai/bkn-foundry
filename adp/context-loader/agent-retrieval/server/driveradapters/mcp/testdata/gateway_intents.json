@@ -3,7 +3,7 @@
   "cases": [
     {"query": "看订单对象类有哪些字段", "expect": "get_object_types"},
     {"query": "取对象类 ot_order 的完整定义和可用的查询算子", "expect": "get_object_types"},
-    {"query": "查看商品SKU对象类上绑定了哪些逻辑属性和指标", "expect": "get_object_types"},
+    {"query": "查看商品SKU对象类有哪些逻辑属性和指标", "expect": "get_object_types"},
     {"query": "list the fields of the order object type", "expect": "get_object_types"},
     {"query": "which metrics belong to this object type", "expect": "get_object_types"},
     {"query": "确认订单和明细之间的关系类定义", "expect": "get_relation_types"},

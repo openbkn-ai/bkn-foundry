@@ -43,8 +43,7 @@ const (
 type LogicPropertyType string
 
 const (
-	LogicPropertyTypeMetric LogicPropertyType = "metric" // Metric type
-	LogicPropertyTypeTool   LogicPropertyType = "tool"   // Tool type
+	LogicPropertyTypeTool LogicPropertyType = "tool" // Tool type
 )
 
 type ResourceInfo struct {
@@ -108,7 +107,7 @@ type LengthRange struct {
 type LogicPropertyDef struct {
 	Name        string              `json:"name"`
 	DisplayName string              `json:"display_name,omitempty"`
-	Type        LogicPropertyType   `json:"type"` // Logic property type: metric or tool
+	Type        LogicPropertyType   `json:"type"` // Logic property type: tool
 	Comment     string              `json:"comment,omitempty"`
 	DataSource  map[string]any      `json:"data_source,omitempty"`
 	Parameters  []PropertyParameter `json:"parameters,omitempty"`

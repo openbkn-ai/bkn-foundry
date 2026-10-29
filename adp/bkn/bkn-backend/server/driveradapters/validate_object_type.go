@@ -260,8 +260,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 	return nil
 }
 
-// validateObjectTypeLogicProperties validates the number and content of logic properties.
-// It also adds instant, start, end, and step system parameters for metric properties.
+// validateObjectTypeLogicProperties validates tool-backed logic properties.
 func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfaces.ObjectType, strictMode bool) error {
 	if len(objectType.LogicProperties) > interfaces.MAX_PROPERTY_NUM {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertiesExceeded", map[string]any{"objectType": objectType.OTName, "count": len(objectType.LogicProperties), "limit": interfaces.MAX_PROPERTY_NUM})
@@ -276,8 +275,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 		dataPropNames[dp.Name] = struct{}{}
 	}
 
-	ifSystemGen := true
-	for i, prop := range objectType.LogicProperties {
+	for _, prop := range objectType.LogicProperties {
 		// Validate the property name. Its rule differs from ID validation and permits uppercase letters.
 		if err := ValidatePropertyName(ctx, prop.Name); err != nil {
 			return err
@@ -307,7 +305,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
-		// Type is required and supports only metric or tool.
+		// Type is required and supports only tool-backed logical properties.
 		if prop.Type == "" {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyTypeRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
 			if renderErr != nil {
@@ -315,8 +313,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			}
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
-		if prop.Type != interfaces.LOGIC_PROPERTY_TYPE_METRIC &&
-			prop.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
+		if prop.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyTypeInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.Type})
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
@@ -325,7 +322,6 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 		}
 
 		// Validate data_source:
-		// - metric requires type and ID;
 		// - tool requires type, box_id, and tool_id;
 		// - non-strict mode permits omission, but supplied values must meet the full type-specific contract.
 		if prop.DataSource != nil && (prop.DataSource.Type != "" || prop.DataSource.ID != "" ||
@@ -425,35 +421,6 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			}
 		}
 
-		// Metric properties automatically receive instant, start, end, and step system parameters.
-		if prop.Type == interfaces.LOGIC_PROPERTY_TYPE_METRIC {
-			paramMap := make(map[string]struct{}, len(prop.Parameters))
-			for _, param := range prop.Parameters {
-				paramMap[param.Name] = struct{}{}
-			}
-			var extra []interfaces.Parameter
-			for _, name := range []string{"instant", "start", "end", "step"} {
-				if _, exists := paramMap[name]; exists {
-					continue
-				}
-				p := interfaces.Parameter{
-					Operation:   "==",
-					ValueFrom:   interfaces.VALUE_FROM_INPUT,
-					IfSystemGen: &ifSystemGen,
-					Name:        name,
-				}
-				switch name {
-				case "instant":
-					p.Type = "boolean"
-				case "start", "end":
-					p.Type = "integer"
-				case "step":
-					p.Type = "string"
-				}
-				extra = append(extra, p)
-			}
-			objectType.LogicProperties[i].Parameters = append(objectType.LogicProperties[i].Parameters, extra...)
-		}
 	}
 
 	return nil

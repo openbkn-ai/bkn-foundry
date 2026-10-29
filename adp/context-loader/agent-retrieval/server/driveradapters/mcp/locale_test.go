@@ -223,6 +223,69 @@ func TestServerInstructionsRequireRecomputableMembershipThresholdAndDetail(t *te
 	}
 }
 
+// #2515: a caller found the right published function through
+// search_capabilities, skipped it because the question (a product's full
+// sales detail) was not on a domain list of business calculations, read one
+// unfiltered object page and reported its in-page matches as the product
+// total. Both profiles must route any matching mounted function regardless of
+// domain, and say that a total only comes from a result under the same filter.
+func TestServerInstructionsFollowDiscoveredFunctionAndScopedTotals(t *testing.T) {
+	tests := []struct {
+		locale  string
+		full    []string
+		compact []string
+	}{
+		{
+			locale: "zh-CN",
+			full: []string{
+				"不知道 kn_id 时先 list_knowledge_networks",
+				"网络挂载了函数时，先用 search_capabilities 查有没有与问题相符的已发布函数",
+				"有就按它的 call 调 execute_tool",
+				"不要改用 query_object_instance、run_cypher 或 run_code 取原始数据代替",
+				"回答中的总数只能来自带同一过滤条件的 total_count、聚合结果或函数结果",
+				"不带 condition 的 query_object_instance 返回的 total_count 是整个对象类的数量",
+			},
+			compact: []string{
+				"查与问题相符的已发布函数",
+				"有就按其 call 调 execute_tool",
+				"总数只取同一过滤条件的 total_count 或聚合结果",
+			},
+		},
+		{
+			locale: "en-US",
+			full: []string{
+				"Without a kn_id, call list_knowledge_networks",
+				"When the network mounts functions, first ask search_capabilities whether a published function matches the question",
+				"call execute_tool with its call template, fill the arguments from input_schema",
+				"do not fetch raw rows through query_object_instance, run_cypher or run_code instead",
+				"A total in the answer must come from a total_count, aggregate or function result computed under the same filter",
+				"the total_count of a query_object_instance call without a condition counts the whole object type",
+			},
+			compact: []string{
+				"for a published function matching the question",
+				"run it with execute_tool from its call template",
+				"A total must come from a total_count or aggregate under the same filter",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			bundle := loadMCPLocaleBundle(test.locale)
+			full, compact := bundle.ServerInstructions(), bundle.CompactServerInstructions()
+			for _, want := range test.full {
+				if !strings.Contains(full, want) {
+					t.Errorf("full instructions for %s omit %q", test.locale, want)
+				}
+			}
+			for _, want := range test.compact {
+				if !strings.Contains(compact, want) {
+					t.Errorf("compact instructions for %s omit %q", test.locale, want)
+				}
+			}
+		})
+	}
+}
+
 func TestStartInteractionDescriptionGuidesStableAgentIdentity(t *testing.T) {
 	tests := []struct {
 		locale string

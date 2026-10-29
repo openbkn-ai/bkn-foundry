@@ -15,8 +15,7 @@ const (
 	DATA_SOURCE_TYPE_RESOURCE = "resource"
 
 	// Logical property types.
-	LOGIC_PROPERTY_TYPE_METRIC = "metric"
-	LOGIC_PROPERTY_TYPE_TOOL   = "tool"
+	LOGIC_PROPERTY_TYPE_TOOL = "tool"
 
 	// Logic-property parameter source types.
 	LOGIC_PARAMS_VALUE_FROM_PROP  = "property"
@@ -101,15 +100,6 @@ type ObjectTypeSampleData struct {
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 }
 
-// Calculation parameters for metric properties.
-type MetricProperty struct {
-	PropertyType         string         `json:"property_type"`
-	MappingSourceId      string         `json:"mapping_source_id"`
-	HasAnyUnfilledParams bool           `json:"has_any_unfilled_params"`
-	Parameters           MetricFilters  `json:"parameters"`
-	DynamicParams        map[string]any `json:"dynamic_params"`
-}
-
 // ToolProperty holds execution parameters for a ToolBox-backed logical property.
 type ToolProperty struct {
 	PropertyType         string         `json:"property_type"`
@@ -117,10 +107,6 @@ type ToolProperty struct {
 	HasAnyUnfilledParams bool           `json:"has_any_unfilled_params"`
 	Parameters           map[string]any `json:"parameters"`
 	DynamicParams        map[string]any `json:"dynamic_params"`
-}
-
-type MetricFilters struct {
-	Filters []Filter `json:"filters"`
 }
 
 type Filter struct {
@@ -202,19 +188,6 @@ type Parameter struct {
 	Comment   *string `json:"comment,omitempty" mapstructure:"comment"` // Parameter note used when assigning live metric inputs to object-type metric properties.
 	Required  bool    `json:"required,omitempty" mapstructure:"required,omitempty"`
 	Default   any     `json:"default,omitempty" mapstructure:"default,omitempty"`
-}
-
-// DynamicParams is the dynamic_params structure for metric properties.
-type MetricPropertyDynamicParams struct {
-	Start              *int64           `json:"start,omitempty"`
-	End                *int64           `json:"end,omitempty"`
-	Instant            *bool            `json:"instant,omitempty"`
-	Step               *string          `json:"step,omitempty"`
-	AnalysisDimensions []string         `json:"analysis_dimensions,omitempty"`
-	OrderByFields      []OrderField     `json:"order_by_fields,omitempty"`
-	HavingCondition    *HavingCondition `json:"having_condition,omitempty"`
-	Metrics            *Metrics         `json:"metrics,omitempty"`
-	// Additional dynamic parameters defined by the metric property are handled by mapstructure or custom UnmarshalJSON.
 }
 
 // Object property-value request body.

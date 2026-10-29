@@ -185,6 +185,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		var metric interfaces.ObjectMetricRecordV1
 		decoder := json.NewDecoder(bytes.NewReader(rawMetric))
 		decoder.UseNumber()
+		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&metric); err != nil {
 			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(err.Error())

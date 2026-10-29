@@ -11,10 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -36,12 +33,12 @@ type objectTypeProxyResolverStub struct {
 
 func TestSelectedObjectLogicPropertiesPreservesAccessAndOrder(t *testing.T) {
 	logic := []*interfaces.LogicProperty{
-		{Name: "hidden", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-			DataSource: &interfaces.ResourceInfo{ID: "hidden-metric"}},
-		{Name: "first", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-			DataSource: &interfaces.ResourceInfo{ID: "first-metric"}},
-		{Name: "second", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-			DataSource: &interfaces.ResourceInfo{ID: "second-metric"}},
+		{Name: "hidden", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+			DataSource: &interfaces.ResourceInfo{BoxID: "box", ToolID: "hidden-tool"}},
+		{Name: "first", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+			DataSource: &interfaces.ResourceInfo{BoxID: "box", ToolID: "first-tool"}},
+		{Name: "second", Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+			DataSource: &interfaces.ResourceInfo{BoxID: "box", ToolID: "second-tool"}},
 	}
 	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 		LogicProperties: logic,
@@ -60,7 +57,7 @@ func TestSelectedObjectLogicPropertiesPreservesAccessAndOrder(t *testing.T) {
 		t.Fatal("unapproved logical property was constructed")
 	}
 	for _, name := range []string{"first", "second"} {
-		if _, exists := row[name].(interfaces.MetricProperty); !exists {
+		if _, exists := row[name].(interfaces.ToolProperty); !exists {
 			t.Fatalf("approved logical property %q is missing: %#v", name, row)
 		}
 	}
@@ -592,72 +589,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(result.Datas, ShouldBeNil)
 		})
 
-		Convey("成功 - 包含逻辑属性", func() {
-			objectType := interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID: objectTypeID,
-					DataProperties: []cond.DataProperty{
-						{
-							Name: "prop1",
-							MappedField: cond.Field{
-								Name: "field1",
-							},
-						},
-					},
-					DataSource: &interfaces.ResourceInfo{
-						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-						ID:   "res1",
-					},
-					PrimaryKeys: []string{"id"},
-					LogicProperties: []*interfaces.LogicProperty{
-						{
-							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-							DataSource: &interfaces.ResourceInfo{
-								Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-								ID:   "metric1",
-							},
-							Parameters: []interfaces.Parameter{
-								{
-									Name:      "param1",
-									ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP,
-									Value:     "prop1",
-								},
-							},
-						},
-					},
-				},
-			}
-
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				KNID:         knID,
-				Branch:       branch,
-				ObjectTypeID: objectTypeID,
-				CommonQueryParameters: interfaces.CommonQueryParameters{
-					IncludeLogicParams: true,
-				},
-				PageQuery: interfaces.PageQuery{
-					Limit: 10,
-				},
-			}
-
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
-				},
-			}
-
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-
-			result, err := service.GetObjectsByObjectTypeID(ctx, query)
-			So(err, ShouldBeNil)
-			So(len(result.Datas), ShouldEqual, 1)
-			So(result.Datas[0]["logic_prop1"], ShouldNotBeNil)
-		})
-
 		Convey("失败 - 唯一标识缺少主键字段", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -936,7 +867,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 							DataSource: &interfaces.ResourceInfo{
 								ID: "metric1",
 							},
@@ -1001,7 +932,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 							DataSource: &interfaces.ResourceInfo{
 								ID: "metric1",
 							},
@@ -1407,21 +1338,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				"Toolbox box1 tool tool1 failed while evaluating logic property logic_prop1: tool execution failed")
 		})
 
-		Convey("失败 - 指标动态参数错误保留具体原因", func() {
-			localizedCtx := i18n.WithLanguage(ctx, i18n.SimplifiedChinese)
-			dynamicParams := map[string]map[string]any{
-				"metric_prop": {"invalid": make(chan int)},
-			}
-
-			_, err := service.handleMetricProperty(localizedCtx, "kn1", "main", "ot1", "metric_prop",
-				interfaces.MetricProperty{}, &interfaces.LogicProperty{}, dynamicParams)
-			So(err, ShouldNotBeNil)
-			httpErr := err.(*httperrors.HTTPError)
-			details := httpErr.ErrorDetails.(string)
-			So(details, ShouldStartWith, "解析属性 metric_prop 的动态参数失败：")
-			So(details, ShouldContainSubstring, "chan")
-		})
-
 		Convey("成功 - 提取工具箱逻辑属性嵌套结果", func() {
 			logicProp := &interfaces.LogicProperty{
 				Name: "logic_prop1",
@@ -1522,89 +1438,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(result.Datas[0]["id"], ShouldEqual, "123")
 		})
 
-		Convey("成功 - 包含逻辑属性", func() {
-			query := &interfaces.ObjectPropertyValueQuery{
-				KNID:         "kn1",
-				Branch:       "main",
-				ObjectTypeID: "ot1",
-				InstanceIdentities: []map[string]any{
-					{"id": "123"},
-				},
-				Properties: []string{"prop1", "logic_prop1"},
-				DynamicParams: map[string]map[string]any{
-					"logic_prop1": {
-						"start":   1234567890,
-						"end":     1234567890,
-						"instant": true,
-					},
-				},
-			}
-
-			objectType := interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID: "ot1",
-					DataProperties: []cond.DataProperty{
-						{Name: "id", MappedField: cond.Field{Name: "id"}},
-						{Name: "prop1", MappedField: cond.Field{Name: "prop1"}},
-					},
-					PrimaryKeys: []string{"id"},
-					LogicProperties: []*interfaces.LogicProperty{
-						{
-							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-							Parameters: []interfaces.Parameter{
-								{
-									Name:      "param1",
-									ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP,
-									Value:     "prop1",
-								},
-							},
-							DataSource: &interfaces.ResourceInfo{
-								ID: "object_metric_v1:metric1@1",
-							},
-						},
-					},
-					DataSource: &interfaces.ResourceInfo{
-						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-						ID:   "res1",
-					},
-				},
-			}
-
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil).AnyTimes()
-			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries: []map[string]any{
-					{
-						"id":    "123",
-						"prop1": "value1",
-						"logic_prop1": interfaces.MetricProperty{
-							PropertyType:    interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-							MappingSourceId: "object_metric_v1:metric1@1",
-							Parameters: interfaces.MetricFilters{
-								Filters: []interfaces.Filter{
-									{
-										Name:      "param1",
-										Operation: "==",
-										Value:     "value1",
-									},
-								},
-							},
-							DynamicParams: map[string]any{},
-						},
-					},
-				},
-				TotalCount: 1,
-			}, nil)
-			mqs.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn1", "main", "metric1", 1, gomock.Any()).Return(interfaces.ObjectMetricDataV1{
-				Entries: []interfaces.ObjectMetricDataEntryV1{{Value: 100, Status: "ok"}},
-			}, nil)
-
-			result, err := service.GetObjectPropertyValue(ctx, query)
-			So(err, ShouldBeNil)
-			So(len(result.Datas), ShouldEqual, 1)
-			So(result.Datas[0]["prop1"], ShouldEqual, "value1")
-		})
-
 		Convey("失败 - 获取对象错误", func() {
 			query := &interfaces.ObjectPropertyValueQuery{
 				KNID:         "kn1",
@@ -1621,70 +1454,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			result, err := service.GetObjectPropertyValue(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Datas), ShouldEqual, 0)
-		})
-
-		Convey("成功 - 包含逻辑属性且处理成功", func() {
-			query := &interfaces.ObjectPropertyValueQuery{
-				KNID:         "kn1",
-				Branch:       "main",
-				ObjectTypeID: "ot1",
-				InstanceIdentities: []map[string]any{
-					{"id": "123"},
-				},
-				Properties: []string{"logic_prop1"},
-				DynamicParams: map[string]map[string]any{
-					"logic_prop1": {
-						"start":   int64(1234567890),
-						"end":     int64(1234567890),
-						"instant": true,
-					},
-				},
-			}
-
-			objectType := interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID: "ot1",
-					DataProperties: []cond.DataProperty{
-						{Name: "id", MappedField: cond.Field{Name: "id"}},
-					},
-					PrimaryKeys: []string{"id"},
-					LogicProperties: []*interfaces.LogicProperty{
-						{
-							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-							Parameters: []interfaces.Parameter{
-								{
-									Name:      "param1",
-									ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP,
-									Value:     "id",
-								},
-							},
-							DataSource: &interfaces.ResourceInfo{
-								ID: "object_metric_v1:metric1@1",
-							},
-						},
-					},
-					DataSource: &interfaces.ResourceInfo{
-						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-						ID:   "res1",
-					},
-				},
-			}
-
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil).AnyTimes()
-			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries: []map[string]any{
-					{"id": "123"},
-				},
-				TotalCount: 1,
-			}, nil)
-			mqs.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn1", "main", "metric1", 1, gomock.Any()).Return(interfaces.ObjectMetricDataV1{
-				Entries: []interfaces.ObjectMetricDataEntryV1{{Value: 100, Status: "ok"}},
-			}, nil)
-
-			result, err := service.GetObjectPropertyValue(ctx, query)
-			So(err, ShouldBeNil)
-			So(len(result.Datas), ShouldEqual, 1)
 		})
 
 		Convey("成功 - 包含工具类型逻辑属性", func() {
@@ -1856,152 +1625,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(len(result.Datas), ShouldEqual, 0)
 		})
 	})
-}
-
-func TestGetObjectPropertyValueBoundsConcurrentMetricProperties(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	models := omock.NewMockOntologyManagerAccess(ctrl)
-	vega := omock.NewMockVegaBackendAccess(ctrl)
-	metrics := omock.NewMockObjectMetricQueryServiceV1(ctrl)
-	logics.SetObjectMetricQueryService(metrics)
-	t.Cleanup(func() { logics.SetObjectMetricQueryService(nil) })
-	service := &objectTypeService{
-		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
-		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{},
-	}
-	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-		OTID: "shipment", PrimaryKeys: []string{"id"},
-		DataProperties: []cond.DataProperty{{Name: "id", Type: "string", MappedField: cond.Field{Name: "id"}}},
-		LogicProperties: []*interfaces.LogicProperty{{
-			Name: "metric", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-			Parameters: []interfaces.Parameter{{Name: "id", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "id"}},
-			DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric-1@1"},
-		}},
-		DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
-	}}
-	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "shipment").Return(objectType, true, nil).AnyTimes()
-	// Object-set metrics are intentionally excluded from instance batching.
-	models.EXPECT().GetObjectMetricExecutionContext(gomock.Any(), "kn", "main", "metric-1", 1).
-		Return(&interfaces.ObjectMetricExecutionContextV1{Root: &interfaces.ObjectMetricRecordV1{
-			Definition: interfaces.ObjectMetricDefinitionV1{ID: "metric-1", Version: 1,
-				CalculationScope: "object_set", MetricType: "atomic", OwnerObjectTypeID: "shipment"},
-		}}, nil)
-	entries := make([]map[string]any, 32)
-	identities := make([]map[string]any, len(entries))
-	for i := range entries {
-		id := fmt.Sprintf("shipment-%02d", i)
-		entries[i] = map[string]any{"id": id}
-		identities[i] = map[string]any{"id": id}
-	}
-	vega.EXPECT().QueryResourceData(gomock.Any(), "resource-1", gomock.Any()).Return(
-		&interfaces.DatasetQueryResponse{Entries: entries, TotalCount: int64(len(entries))}, nil)
-	var active, peak atomic.Int32
-	started := make(chan struct{}, len(entries))
-	release := make(chan struct{})
-	var releaseOnce sync.Once
-	unblock := func() { releaseOnce.Do(func() { close(release) }) }
-	defer unblock()
-	metrics.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn", "main", "metric-1", 1, gomock.Any()).
-		Times(len(entries)).DoAndReturn(func(_ context.Context, _, _, _ string, _ int,
-		_ *interfaces.ObjectMetricQueryRequestV1) (interfaces.ObjectMetricDataV1, error) {
-		current := active.Add(1)
-		for {
-			previous := peak.Load()
-			if current <= previous || peak.CompareAndSwap(previous, current) {
-				break
-			}
-		}
-		started <- struct{}{}
-		<-release
-		active.Add(-1)
-		return interfaces.ObjectMetricDataV1{}, nil
-	})
-	type outcome struct {
-		objects interfaces.Objects
-		err     error
-	}
-	finished := make(chan outcome, 1)
-	go func() {
-		objects, err := service.GetObjectPropertyValue(context.Background(), &interfaces.ObjectPropertyValueQuery{
-			KNID: "kn", Branch: "main", ObjectTypeID: "shipment", Properties: []string{"metric"},
-			InstanceIdentities: identities,
-		})
-		finished <- outcome{objects: objects, err: err}
-	}()
-	for i := 0; i < maxConcurrentLogicProperties; i++ {
-		select {
-		case <-started:
-		case <-time.After(5 * time.Second):
-			t.Fatal("metric evaluations did not reach the configured concurrency")
-		}
-	}
-	unblock()
-	select {
-	case result := <-finished:
-		if result.err != nil || len(result.objects.Datas) != len(entries) {
-			t.Fatalf("objects=%d err=%v", len(result.objects.Datas), result.err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("metric evaluations did not finish")
-	}
-	if got := peak.Load(); got > maxConcurrentLogicProperties {
-		t.Fatalf("peak concurrent metric evaluations = %d, want at most %d", got, maxConcurrentLogicProperties)
-	}
-}
-
-func TestGetObjectPropertyValueReusesObjectSetMetricWithinRequest(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	models := omock.NewMockOntologyManagerAccess(ctrl)
-	vega := omock.NewMockVegaBackendAccess(ctrl)
-	metrics := omock.NewMockObjectMetricQueryServiceV1(ctrl)
-	logics.SetObjectMetricQueryService(metrics)
-	t.Cleanup(func() { logics.SetObjectMetricQueryService(nil) })
-	service := &objectTypeService{
-		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
-		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{},
-	}
-	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-		OTID: "shipment", PrimaryKeys: []string{"id"},
-		DataProperties: []cond.DataProperty{{Name: "id", Type: "string", MappedField: cond.Field{Name: "id"}}},
-		LogicProperties: []*interfaces.LogicProperty{{
-			Name: "metric", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-			DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric-1@1"},
-		}},
-		DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
-	}}
-	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "shipment").Return(objectType, true, nil).AnyTimes()
-	entries := make([]map[string]any, 32)
-	identities := make([]map[string]any, len(entries))
-	for i := range entries {
-		id := fmt.Sprintf("shipment-%02d", i)
-		entries[i] = map[string]any{"id": id}
-		identities[i] = map[string]any{"id": id}
-	}
-	vega.EXPECT().QueryResourceData(gomock.Any(), "resource-1", gomock.Any()).Return(
-		&interfaces.DatasetQueryResponse{Entries: entries, TotalCount: int64(len(entries))}, nil).Times(2)
-	metrics.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn", "main", "metric-1", 1, gomock.Any()).
-		DoAndReturn(func(_ context.Context, _, _, _ string, _ int,
-			query *interfaces.ObjectMetricQueryRequestV1) (interfaces.ObjectMetricDataV1, error) {
-			if len(query.InstanceIdentities) != 0 {
-				t.Fatalf("object-set query unexpectedly has identities: %#v", query.InstanceIdentities)
-			}
-			return interfaces.ObjectMetricDataV1{Entries: []interfaces.ObjectMetricDataEntryV1{{Value: 42}}}, nil
-		}).Times(2)
-	for request := 0; request < 2; request++ {
-		objects, err := service.GetObjectPropertyValue(context.Background(), &interfaces.ObjectPropertyValueQuery{
-			KNID: "kn", Branch: "main", ObjectTypeID: "shipment", Properties: []string{"metric"},
-			InstanceIdentities: identities,
-		})
-		if err != nil || len(objects.Datas) != len(entries) {
-			t.Fatalf("request %d: objects=%d err=%v", request, len(objects.Datas), err)
-		}
-		for _, object := range objects.Datas {
-			value, ok := object["metric"].(interfaces.MetricData)
-			if !ok || len(value.Datas) != 1 || len(value.Datas[0].Values) != 1 || value.Datas[0].Values[0] != 42 {
-				t.Fatalf("request %d: unexpected metric value %#v", request, object["metric"])
-			}
-		}
-	}
 }
 
 func Test_getNestedValue(t *testing.T) {

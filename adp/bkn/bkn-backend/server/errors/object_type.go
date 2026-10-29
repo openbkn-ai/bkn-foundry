@@ -39,7 +39,6 @@ const (
 	BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed     = "BknBackend.ObjectType.InternalError.CheckObjectTypeIfExistFailed"
 	BknBackend_ObjectType_InternalError_CreateConceptGroupRelationFailed = "BknBackend.ObjectType.InternalError.CreateConceptGroupRelationFailed"
 	BknBackend_ObjectType_InternalError_GetDataViewByIDFailed            = "BknBackend.ObjectType.InternalError.GetDataViewByIDFailed"
-	BknBackend_ObjectType_InternalError_GetMetricModelByIDFailed         = "BknBackend.ObjectType.InternalError.GetMetricModelByIDFailed"
 	BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed          = "BknBackend.ObjectType.InternalError.GetObjectTypeByIDFailed"
 	BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed        = "BknBackend.ObjectType.InternalError.GetObjectTypesByIDsFailed"
 	BknBackend_ObjectType_InternalError_GetSmallModelByIDFailed          = "BknBackend.ObjectType.InternalError.GetSmallModelByIDFailed"
@@ -79,7 +78,6 @@ var (
 		BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed,
 		BknBackend_ObjectType_InternalError_CreateConceptGroupRelationFailed,
 		BknBackend_ObjectType_InternalError_GetDataViewByIDFailed,
-		BknBackend_ObjectType_InternalError_GetMetricModelByIDFailed,
 		BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed,
 		BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed,
 		BknBackend_ObjectType_InternalError_GetSmallModelByIDFailed,

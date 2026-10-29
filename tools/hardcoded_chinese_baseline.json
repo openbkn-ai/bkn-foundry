@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2473,
+  "violation_count": 2468,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -506,11 +506,6 @@
       "ea5a7d3340c16df26371"
     ],
     "adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver/dynamic_params_llm.go": [
-      "7fee40e49e8e983752aa",
-      "118acf83cdba309e6785",
-      "add26dd4cec9cb54d24e",
-      "dd8d4a6a8ea89cf11f13",
-      "41d8c6b7431f5866d118",
       "c88705cf71ee5da75345"
     ],
     "adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver/index.go": [

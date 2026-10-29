@@ -105,7 +105,7 @@ func (g *Guide) ForObjectTypeError(ctx context.Context, err error, knID, otID st
 }
 
 // ForObjectTypeDenial is ForObjectTypeError for tools whose 403 may come from
-// a resource other than the object type (a logic property's metric or tool).
+// a resource other than the object type (for example, a logic property's tool).
 // It answers only when ontology-query's refusal names this object type.
 func (g *Guide) ForObjectTypeDenial(ctx context.Context, err error, knID, otID string) *interfaces.PermissionGuidance {
 	var httpErr *httperrors.HTTPError

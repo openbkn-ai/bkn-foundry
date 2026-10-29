@@ -344,7 +344,7 @@ func Test_ValidateObjectType(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Failed with logic property type mismatch with data source\n", func() {
+		Convey("Failed with unsupported logic property data source\n", func() {
 			ot := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:   "ot1",
@@ -361,7 +361,7 @@ func Test_ValidateObjectType(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name:        "logic1",
-							Type:        "metric",
+							Type:        "tool",
 							DisplayName: "logic1",
 							DataSource: &interfaces.ResourceInfo{
 								Type: "operator",
@@ -371,8 +371,10 @@ func Test_ValidateObjectType(t *testing.T) {
 					},
 				},
 			}
-			err := ValidateObjectType(ctx, ot, true)
+			err := ValidateObjectType(i18n.WithLanguage(ctx, i18n.AmericanEnglish), ot, true)
 			So(err, ShouldNotBeNil)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual,
+				"Logic property logic1 on object type object1 has unsupported data-source type operator; only tool is supported.")
 		})
 
 		Convey("Failed with logic property empty parameter name\n", func() {
@@ -392,11 +394,12 @@ func Test_ValidateObjectType(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name:        "logic1",
-							Type:        "metric",
+							Type:        "tool",
 							DisplayName: "logic1",
 							DataSource: &interfaces.ResourceInfo{
-								Type: "metric",
-								ID:   "metric-model-1",
+								Type:   "tool",
+								BoxID:  "box-1",
+								ToolID: "tool-1",
 							},
 							Parameters: []interfaces.Parameter{
 								{
@@ -407,8 +410,10 @@ func Test_ValidateObjectType(t *testing.T) {
 					},
 				},
 			}
-			err := ValidateObjectType(ctx, ot, true)
+			err := ValidateObjectType(i18n.WithLanguage(ctx, i18n.AmericanEnglish), ot, true)
 			So(err, ShouldNotBeNil)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual,
+				"A parameter on logic property logic1 for object type object1 requires name.")
 		})
 
 		Convey("Failed with empty logic property type\n", func() {
@@ -438,7 +443,7 @@ func Test_ValidateObjectType(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Failed with logic property data source missing id\n", func() {
+		Convey("Failed with logic property data source missing tool id\n", func() {
 			ot := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:   "ot1",
@@ -455,18 +460,20 @@ func Test_ValidateObjectType(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name:        "logic1",
-							Type:        "metric",
+							Type:        "tool",
 							DisplayName: "logic1",
 							DataSource: &interfaces.ResourceInfo{
-								Type: "metric",
-								ID:   "",
+								Type:  "tool",
+								BoxID: "box-1",
 							},
 						},
 					},
 				},
 			}
-			err := ValidateObjectType(ctx, ot, true)
+			err := ValidateObjectType(i18n.WithLanguage(ctx, i18n.AmericanEnglish), ot, true)
 			So(err, ShouldNotBeNil)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual,
+				"Logic property logic1 on object type object1 requires both box_id and tool_id.")
 		})
 
 		Convey("Success with valid tool logic property\n", func() {
@@ -596,72 +603,6 @@ func Test_ValidateObjectType(t *testing.T) {
 			}
 			err := ValidateObjectType(ctx, ot, true)
 			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Success with valid logic property metric type\n", func() {
-			ot := &interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID:   "ot1",
-					OTName: "object1",
-					DataProperties: []*interfaces.DataProperty{
-						{
-							Name:        "prop1",
-							Type:        "string",
-							DisplayName: "prop1",
-						},
-					},
-					PrimaryKeys: []string{"prop1"},
-					DisplayKey:  "prop1",
-					LogicProperties: []*interfaces.LogicProperty{
-						{
-							Name:        "logic1",
-							Type:        "metric",
-							DisplayName: "logic1",
-							DataSource: &interfaces.ResourceInfo{
-								Type: "metric",
-								ID:   "metric-model-1",
-							},
-						},
-					},
-				},
-			}
-			err := ValidateObjectType(ctx, ot, true)
-			So(err, ShouldBeNil)
-		})
-
-		Convey("Success with metric logic property on resource object type\n", func() {
-			ot := &interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID:   "ot1",
-					OTName: "object1",
-					DataProperties: []*interfaces.DataProperty{
-						{
-							Name:        "prop1",
-							Type:        "string",
-							DisplayName: "prop1",
-						},
-					},
-					PrimaryKeys: []string{"prop1"},
-					DisplayKey:  "prop1",
-					DataSource: &interfaces.ResourceInfo{
-						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-						ID:   "resource1",
-					},
-					LogicProperties: []*interfaces.LogicProperty{
-						{
-							Name:        "logic1",
-							Type:        "metric",
-							DisplayName: "logic1",
-							DataSource: &interfaces.ResourceInfo{
-								Type: "metric",
-								ID:   "metric-model-1",
-							},
-						},
-					},
-				},
-			}
-			err := ValidateObjectType(ctx, ot, true)
-			So(err, ShouldBeNil)
 		})
 
 		Convey("Failed with invalid data property\n", func() {

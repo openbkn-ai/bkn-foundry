@@ -14,15 +14,14 @@ type QueryMetricReq struct {
 }
 
 type ObjectMetricQuery struct {
-	InstanceIdentities []map[string]any             `json:"instance_identities,omitempty"`
-	Filter             *ObjectMetricCondition       `json:"filter,omitempty"`
-	GroupBy            []ObjectMetricPropertyRef    `json:"group_by,omitempty"`
-	Having             *ObjectMetricHaving          `json:"having,omitempty"`
-	OrderBy            []ObjectMetricOrderBy        `json:"order_by,omitempty"`
-	PageSize           int                          `json:"page_size,omitempty"`
-	Cursor             string                       `json:"cursor,omitempty"`
-	Time               *ObjectMetricTimeRange       `json:"time,omitempty"`
-	BucketSelection    *ObjectMetricBucketSelection `json:"bucket_selection,omitempty"`
+	Filter          *ObjectMetricCondition       `json:"filter,omitempty"`
+	GroupBy         []ObjectMetricPropertyRef    `json:"group_by,omitempty"`
+	Having          *ObjectMetricHaving          `json:"having,omitempty"`
+	OrderBy         []ObjectMetricOrderBy        `json:"order_by,omitempty"`
+	PageSize        int                          `json:"page_size,omitempty"`
+	Cursor          string                       `json:"cursor,omitempty"`
+	Time            *ObjectMetricTimeRange       `json:"time,omitempty"`
+	BucketSelection *ObjectMetricBucketSelection `json:"bucket_selection,omitempty"`
 }
 
 // ObjectMetricOperand is one side of a runtime filter predicate. Property
@@ -92,8 +91,6 @@ type QueryMetricResp struct {
 }
 
 type ObjectMetricDataEntry struct {
-	InstanceIdentity map[string]any              `json:"instance_identity,omitempty"`
-	Dimensions       map[string]any              `json:"dimensions,omitempty"`
 	Time             *int64                      `json:"time,omitempty"`
 	Value            any                         `json:"value,omitempty"`
 	Status           string                      `json:"status"`

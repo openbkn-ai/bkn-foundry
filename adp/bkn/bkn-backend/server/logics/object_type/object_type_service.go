@@ -144,10 +144,6 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 	// Schema for logic properties (type, data_source) is validated in driveradapters.ValidateObjectType.
 	for _, lp := range objectType.LogicProperties {
 		switch lp.Type {
-		case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
-			if err := ots.validateLogicMetricProperty(ctx, objectType, lp); err != nil {
-				return err
-			}
 		case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
 			if lp.DataSource == nil {
 				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name})
@@ -241,9 +237,6 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		objectType.CreateTime = currentTime
 		objectType.UpdateTime = currentTime
 
-		if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
-			return []string{}, err
-		}
 		if err := validateDeclarations(ctx, objectType); err != nil {
 			return []string{}, err
 		}
@@ -380,10 +373,6 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				WithErrorDetails(err.Error())
 		}
 	}
-	if err = replaceObjectTypeMetricReferences(ctx, tx, createObjectTypes...); err != nil {
-		return []string{}, err
-	}
-
 	for _, objectType := range createObjectTypes {
 		// Create object type-to-group relationships as needed.
 		if needCreateConceptGroupRelation {
@@ -427,9 +416,6 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 					return []string{}, err
 				}
 			}
-		}
-		if err = replaceObjectTypeMetricReferences(ctx, tx, updateObjectTypes...); err != nil {
-			return []string{}, err
 		}
 	}
 
@@ -491,9 +477,6 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	for _, objectType := range objectTypes {
 		objectType.KNID = knID
 		objectType.Branch = branch
-		if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
-			return err
-		}
 		if err := validateDeclarations(ctx, objectType); err != nil {
 			return err
 		}
@@ -1204,9 +1187,6 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		keepUndeclared(objectType, stored)
 	}
 
-	if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
-		return err
-	}
 	if err := validateDeclarations(ctx, objectType); err != nil {
 		return err
 	}
@@ -1282,10 +1262,6 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
-	if err = replaceObjectTypeMetricReferences(ctx, tx, objectType); err != nil {
-		return err
-	}
-
 	// Standalone object updates retain full-replacement group semantics. Whole-network import
 	// defers relationships to its normalized additive membership plan.
 	if syncConceptGroupRelations {
@@ -1497,10 +1473,6 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
-	if err = deleteObjectTypeMetricReferences(ctx, tx, knID, branch, otIDs); err != nil {
-		return err
-	}
-
 	logger.Infof("DeleteObjectTypes: Rows affected is %v, request delete ObjectTypeIDs is %v!", rowsAffect, len(otIDs))
 	if rowsAffect != int64(len(otIDs)) {
 		otellog.LogWarn(ctx, fmt.Sprintf("Delete object types number %v not equal requerst object types number %v!", rowsAffect, len(otIDs)))
@@ -2521,18 +2493,6 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 			}
 		}
 
-		// Resolve logical property resource IDs to names.
-		for j, logicProp := range objectType.LogicProperties {
-			if logicProp.DataSource != nil {
-				switch logicProp.DataSource.Type {
-				case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
-					if logicProp.DataSource.ID != "" {
-						ots.enrichLogicMetricProperty(ctx, objectType, logicProp, j)
-					}
-				}
-				// TODO: move dynamic parameters to a dedicated field for unified retrieval and update search accordingly.
-			}
-		}
 	}
 
 	return nil

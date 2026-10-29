@@ -168,8 +168,8 @@ type BknObjectType struct {
 
 // ResourceInfo represents a data source reference.
 //
-// A logic property of type tool is addressed by BoxID + ToolID instead of ID, and may pick one
-// field out of the tool result with ResultPath. The other source types only use Type/ID/Name.
+// A logic property source is a tool addressed by BoxID + ToolID and may pick one
+// field out of the tool result with ResultPath.
 type ResourceInfo struct {
 	Type string
 	ID   string

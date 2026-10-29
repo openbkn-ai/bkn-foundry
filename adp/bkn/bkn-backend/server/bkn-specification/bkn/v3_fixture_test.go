@@ -38,8 +38,8 @@ bkn_spec: "3.0"
 		"| created_at | 创建时间 | datetime | event_time | | | created_at |\n" +
 		"| cpu_pct | CPU | float | | | | cpu_pct |\n\n" +
 		"### Property Constraints\n\n```yaml\ncpu_pct:\n  range: {min: 0, max: 100}\n  unit: \"%\"\ncreated_at:\n  timezone: Asia/Shanghai\n```\n\n" +
-		"### Logic Properties\n\n#### cpu\n\n**Meta**\n\n| Display Name | Type | Description |\n|--------------|------|-------------|\n| CPU | metric | |\n\n" +
-		"**Source**\n\n| Source Type | Source ID | Source Name |\n|-------------|-----------|-------------|\n| metric | m_cpu | |\n\n" +
+		"### Logic Properties\n\n#### cpu\n\n**Meta**\n\n| Display Name | Type | Description |\n|--------------|------|-------------|\n| CPU | tool | |\n\n" +
+		"**Source**\n\n| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |\n|-------------|-----------|-------------|-------|--------|------------|\n| tool | | cpu_stats | box_cpu | tool_cpu | $.result |\n\n" +
 		"**Parameters**\n\n| Name | Type | Source | Operation | ValueFrom | Value | Description |\n|------|------|--------|-----------|-----------|-------|-------------|\n| pod | string | | == | property | pod_name | |\n\n" +
 		"### Keys\n\nPrimary Keys: id\nDisplay Key: pod_name\nIncremental Key: created_at\n",
 	"relation_types/pod_peer.bkn": "---\ntype: relation_type\nid: pod_peer\nname: 同组\ntags: []\n---\n\n## RelationType: 同组\n\n" +

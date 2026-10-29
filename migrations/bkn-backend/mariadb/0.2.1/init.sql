@@ -446,23 +446,21 @@ CREATE TABLE IF NOT EXISTS t_object_metric_reference (
   f_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '引用记录ID',
   f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
-  f_source_type VARCHAR(24) NOT NULL COMMENT 'metric_version|logic_property',
-  f_source_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '来源指标或对象类ID',
-  f_source_version INT NOT NULL DEFAULT 0 COMMENT '来源指标版本；逻辑属性为0',
+  f_source_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '来源指标ID',
+  f_source_version INT NOT NULL DEFAULT 1 COMMENT '来源指标版本',
   f_source_field VARCHAR(128) NOT NULL DEFAULT '' COMMENT '引用字段路径',
-  f_source_property_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '逻辑属性名称',
   f_target_metric_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '目标指标ID',
   f_target_version INT NOT NULL DEFAULT 1 COMMENT '目标指标版本',
   PRIMARY KEY (f_id),
   UNIQUE KEY uk_object_metric_reference (
-    f_kn_id, f_branch, f_source_type, f_source_id, f_source_version,
-    f_source_field, f_source_property_name, f_target_metric_id, f_target_version
+    f_kn_id, f_branch, f_source_id, f_source_version,
+    f_source_field, f_target_metric_id, f_target_version
   ),
   INDEX idx_object_metric_reference_target (
     f_kn_id, f_branch, f_target_metric_id, f_target_version
   ),
   INDEX idx_object_metric_reference_source (
-    f_kn_id, f_branch, f_source_type, f_source_id, f_source_version
+    f_kn_id, f_branch, f_source_id, f_source_version
   ),
   CONSTRAINT fk_object_metric_reference_target
     FOREIGN KEY (f_kn_id, f_branch, f_target_metric_id, f_target_version)

@@ -397,7 +397,7 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &interfaces.QueryMetricReq{}
-	if err := common.BindPreciseJSON(c.Request.Body, req); err != nil {
+	if err := common.BindStrictPreciseJSON(c.Request.Body, req); err != nil {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
 		return
 	}

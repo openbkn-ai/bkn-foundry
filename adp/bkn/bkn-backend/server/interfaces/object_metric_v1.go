@@ -18,15 +18,10 @@ const (
 	ObjectMetricTypeDerived   = "derived"
 	ObjectMetricTypeComposite = "composite"
 
-	ObjectMetricScopeInstance = "object_instance"
-	ObjectMetricScopeSet      = "object_set"
+	ObjectMetricOutputSummary    = "summary"
+	ObjectMetricOutputGrouped    = "grouped"
+	ObjectMetricOutputTimeSeries = "time_series"
 
-	ObjectMetricOutputObjectValue = "object_value"
-	ObjectMetricOutputSummary     = "summary"
-	ObjectMetricOutputGrouped     = "grouped"
-	ObjectMetricOutputTimeSeries  = "time_series"
-
-	ObjectMetricAggregationIdentity      = "identity"
 	ObjectMetricAggregationCountRows     = "count_rows"
 	ObjectMetricAggregationCount         = "count"
 	ObjectMetricAggregationCountDistinct = "count_distinct"
@@ -37,29 +32,19 @@ const (
 )
 
 // ObjectMetricDefinitionV1 is the versioned aggregate root of the object metric domain model.
-// OutputShape is deliberately absent because it is derived from CalculationScope and StatisticalGrain.
+// OutputShape is deliberately absent because it is derived from StatisticalGrain.
 type ObjectMetricDefinitionV1 struct {
-	ID                string                       `json:"id"`
-	Version           int                          `json:"version"`
-	Code              string                       `json:"code"`
-	Name              string                       `json:"name"`
-	Description       string                       `json:"description"`
-	OwnerObjectTypeID string                       `json:"owner_object_type_id"`
-	MetricType        string                       `json:"metric_type"`
-	CalculationScope  string                       `json:"calculation_scope"`
-	ResultSemantics   ObjectMetricResultSemantics  `json:"result_semantics"`
-	Specification     ObjectMetricSpecificationV1  `json:"specification"`
-	QueryCapabilities ObjectMetricQueryCapability  `json:"query_capabilities"`
-	LogicProperty     *ObjectMetricLogicPropertyV1 `json:"logic_property,omitempty"`
-	Lifecycle         ObjectMetricLifecycleV1      `json:"lifecycle"`
-}
-
-// ObjectMetricLogicPropertyV1 stores the authoring intent for exposing an
-// object-value metric as a logical property after the metric is published.
-type ObjectMetricLogicPropertyV1 struct {
-	PropertyName string `json:"property_name"`
-	DisplayName  string `json:"display_name"`
-	Comment      string `json:"comment,omitempty"`
+	ID                string                      `json:"id"`
+	Version           int                         `json:"version"`
+	Code              string                      `json:"code"`
+	Name              string                      `json:"name"`
+	Description       string                      `json:"description"`
+	OwnerObjectTypeID string                      `json:"owner_object_type_id"`
+	MetricType        string                      `json:"metric_type"`
+	ResultSemantics   ObjectMetricResultSemantics `json:"result_semantics"`
+	Specification     ObjectMetricSpecificationV1 `json:"specification"`
+	QueryCapabilities ObjectMetricQueryCapability `json:"query_capabilities"`
+	Lifecycle         ObjectMetricLifecycleV1     `json:"lifecycle"`
 }
 
 // ObjectMetricRecordV1 adds persistence metadata and read projections around an immutable metric definition version.
@@ -91,21 +76,14 @@ type ObjectMetricListV1 struct {
 	TotalCount int                     `json:"total_count"`
 }
 
-const (
-	ObjectMetricReferenceMetricVersion = "metric_version"
-	ObjectMetricReferenceLogicProperty = "logic_property"
-)
-
 // ObjectMetricReferenceV1 identifies one stored reference to an immutable
 // object-metric version. SourceName is populated only after the caller's view
 // permission has been checked.
 type ObjectMetricReferenceV1 struct {
-	SourceType         string `json:"source_type"`
-	SourceID           string `json:"source_id"`
-	SourceVersion      int    `json:"source_version,omitempty"`
-	SourceName         string `json:"source_name,omitempty"`
-	SourceField        string `json:"source_field"`
-	SourcePropertyName string `json:"source_property_name,omitempty"`
+	SourceID      string `json:"source_id"`
+	SourceVersion int    `json:"source_version,omitempty"`
+	SourceName    string `json:"source_name,omitempty"`
+	SourceField   string `json:"source_field"`
 }
 
 // ObjectMetricVersionDeletionStateV1 is the persistence result used by the
@@ -123,7 +101,6 @@ type ObjectMetricDeletionBlockerV1 struct {
 	Version      int    `json:"version,omitempty"`
 	Name         string `json:"name,omitempty"`
 	Field        string `json:"field"`
-	PropertyName string `json:"property_name,omitempty"`
 }
 
 type ObjectMetricVersionDeletionCheckV1 struct {
@@ -171,7 +148,6 @@ type ObjectMetricOutputSchemaV1 struct {
 
 type ObjectMetricCapabilitiesV1 struct {
 	MetricTypes         []string          `json:"metric_types"`
-	CalculationScopes   []string          `json:"calculation_scopes"`
 	Aggregations        []string          `json:"aggregations"`
 	ExpressionOperators []string          `json:"expression_operators"`
 	Functions           []string          `json:"functions"`
@@ -201,26 +177,6 @@ type ObjectMetricAccessV1 interface {
 	DeprecateObjectMetric(ctx context.Context, record *ObjectMetricRecordV1) error
 	NextObjectMetricVersion(ctx context.Context, knID, branch, metricID string) (int, error)
 	ObjectMetricCodeExists(ctx context.Context, knID, branch, code, exceptID string) (bool, error)
-}
-
-// ObjectMetricLogicPropertyReferenceAccessV1 lets object-type mutations keep
-// their metric-reference index in the same database transaction. Community
-// builds do not implement it; Enterprise registers it with ObjectMetricAccessV1.
-type ObjectMetricLogicPropertyReferenceAccessV1 interface {
-	ReplaceObjectTypeMetricReferences(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
-	DeleteObjectTypeMetricReferences(ctx context.Context, tx *sql.Tx, knID, branch string, objectTypeIDs []string) error
-	RebuildObjectTypeMetricReferences(ctx context.Context, tx *sql.Tx, knID, branch string) error
-}
-
-type objectMetricReferenceSyncDeferredKey struct{}
-
-func WithObjectMetricReferenceSyncDeferred(ctx context.Context) context.Context {
-	return context.WithValue(ctx, objectMetricReferenceSyncDeferredKey{}, true)
-}
-
-func ObjectMetricReferenceSyncDeferred(ctx context.Context) bool {
-	deferred, _ := ctx.Value(objectMetricReferenceSyncDeferredKey{}).(bool)
-	return deferred
 }
 
 // ObjectMetricArchiveAccessV1 is the optional enterprise persistence bridge for
@@ -255,14 +211,7 @@ type ObjectMetricServiceV1 interface {
 	GetExecutionContext(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricExecutionContextV1, error)
 	Publish(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricRecordV1, []ObjectMetricValidationIssueV1, error)
 	Deprecate(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricRecordV1, error)
-	BindLogicProperty(ctx context.Context, knID, branch, metricID string, version int, binding *MetricPropertyBindingV1) (*LogicProperty, error)
 	Capabilities() ObjectMetricCapabilitiesV1
-}
-
-// ObjectMetricLogicPropertyUpgradeV1 is implemented by metric services that
-// support explicitly moving an existing logical property to a newer release.
-type ObjectMetricLogicPropertyUpgradeV1 interface {
-	UpgradeLogicProperty(ctx context.Context, knID, branch, metricID, propertyName string, version int) (*LogicProperty, error)
 }
 
 type ObjectMetricSpecificationV1 struct {
@@ -408,10 +357,8 @@ type ObjectMetricRelationPathV1 struct {
 }
 
 type ObjectMetricObjectAlignmentV1 struct {
-	RelationPath            []ObjectMetricRelationStepV1 `json:"relation_path,omitempty"`
-	Mode                    string                       `json:"mode"`
-	RelationshipCardinality string                       `json:"relationship_cardinality,omitempty"`
-	Deduplication           string                       `json:"deduplication"`
+	Mode          string `json:"mode"`
+	Deduplication string `json:"deduplication"`
 }
 
 type ObjectMetricEvaluationContextV1 struct {
@@ -449,31 +396,10 @@ type ObjectMetricAlignmentV1 struct {
 	TimeKey                 *ObjectMetricPropertyRef  `json:"time_key,omitempty"`
 }
 
-type MetricPropertyBindingV1 struct {
-	ObjectTypeID string                           `json:"object_type_id"`
-	PropertyName string                           `json:"property_name"`
-	DisplayName  string                           `json:"display_name"`
-	Comment      string                           `json:"comment,omitempty"`
-	MetricRef    ObjectMetricRefV1                `json:"metric_ref"`
-	Execution    MetricPropertyBindingExecutionV1 `json:"execution"`
-	NoDataPolicy string                           `json:"no_data_policy"`
-	OnError      string                           `json:"on_error"`
-	Status       string                           `json:"status"`
-}
-
-type MetricPropertyBindingExecutionV1 struct {
-	Mode          string `json:"mode"`
-	RefreshPolicy string `json:"refresh_policy,omitempty"`
-	FreshnessSLO  string `json:"freshness_slo,omitempty"`
-}
-
 // InferObjectMetricOutputShapeV1 derives response shape instead of accepting it as authored input.
 func InferObjectMetricOutputShapeV1(def *ObjectMetricDefinitionV1) string {
 	if def == nil {
 		return ""
-	}
-	if def.CalculationScope == ObjectMetricScopeInstance {
-		return ObjectMetricOutputObjectValue
 	}
 	if def.ResultSemantics.StatisticalGrain.TimeGranularity != "" {
 		return ObjectMetricOutputTimeSeries

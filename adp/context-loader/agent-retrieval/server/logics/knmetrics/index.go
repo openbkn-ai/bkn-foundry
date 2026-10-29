@@ -7,10 +7,9 @@
 //	Recall the object type → see the available metrics under the object type → get the number according to the metric's own semantics.
 //
 // Step 2 is AttachRelatedMetrics: expose published versions owned by the
-// object type. Unbound metrics remain discoverable without rebuilding formulas.
-//
-// The third step is QueryMetric: pass the selected immutable version to ontology-query.
-// The instance-level branch that has bound logical properties still uses get_logic_properties_values, which is not included in this package.
+// object type. Step 3 is QueryMetric: pass the selected immutable version to
+// ontology-query. Object metrics are always instance-set aggregations; object
+// type logical properties are a separate capability.
 package knmetrics
 
 import (

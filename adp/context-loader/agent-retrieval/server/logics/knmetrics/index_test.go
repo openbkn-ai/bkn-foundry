@@ -101,12 +101,11 @@ func TestQueryMetric_PinsVersionAndPreservesV1Status(t *testing.T) {
 		TotalCount: 7, NextCursor: "next-page",
 	}}
 	query := interfaces.ObjectMetricQuery{
-		InstanceIdentities: []map[string]any{{"id": "i1"}},
-		GroupBy:            []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "ot1", PropertyName: "region"}},
-		Having:             &interfaces.ObjectMetricHaving{Operator: "gte", Value: 100},
-		OrderBy:            []interfaces.ObjectMetricOrderBy{{Field: "value", Direction: "desc"}},
-		PageSize:           2,
-		Time:               &interfaces.ObjectMetricTimeRange{Start: 1000, End: 2000},
+		GroupBy:  []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "ot1", PropertyName: "region"}},
+		Having:   &interfaces.ObjectMetricHaving{Operator: "gte", Value: 100},
+		OrderBy:  []interfaces.ObjectMetricOrderBy{{Field: "value", Direction: "desc"}},
+		PageSize: 2,
+		Time:     &interfaces.ObjectMetricTimeRange{Start: 1000, End: 2000},
 	}
 	resp, err := NewKnMetricsServiceWith(nil, nil, oq).QueryMetric(context.Background(), &interfaces.QueryMetricReq{KnID: " kn1 ", MetricID: " m1 ", Version: 2, Query: query})
 	if err != nil {

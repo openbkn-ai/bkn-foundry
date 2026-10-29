@@ -107,11 +107,11 @@ var validIncrementalKeyTypes = map[string]bool{
 }
 
 var validLogicPropertyTypes = map[string]bool{
-	"metric": true, "tool": true,
+	"tool": true,
 }
 
 var validLogicSourceTypes = map[string]bool{
-	"metric": true, "tool": true,
+	"tool": true,
 }
 
 var validActionKinds = map[string]bool{
@@ -487,32 +487,25 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 			nt := normType(lp.Type)
 			if !validLogicPropertyTypes[nt] {
 				appendError(result, table, "logic_properties", "invalid_object_type",
-					fmt.Sprintf("logic property %q type must be metric or tool", lp.Name))
+					fmt.Sprintf("logic property %q type must be tool", lp.Name))
 			}
 		}
 		if lp.DataSource != nil {
 			dst := normType(lp.DataSource.Type)
 			if !validLogicSourceTypes[dst] {
 				appendError(result, table, "logic_properties", "invalid_object_type",
-					fmt.Sprintf("logic property %q data_source.type must be metric or tool", lp.Name))
+					fmt.Sprintf("logic property %q data_source.type must be tool", lp.Name))
 			}
 			if strings.TrimSpace(lp.Type) != "" && normType(lp.Type) != dst {
 				appendError(result, table, "logic_properties", "invalid_object_type",
 					fmt.Sprintf("logic property %q type must match data_source.type", lp.Name))
 			}
-			// Mirror the backend contract so an incomplete source is caught offline instead of
-			// coming back as an HTTP 400 from push: a tool is addressed by box_id + tool_id,
-			// every other source type by its id, and result_path only means something for a tool.
-			switch dst {
-			case "tool":
+			// Mirror the backend contract so an incomplete tool source is caught offline
+			// instead of coming back as an HTTP 400 from push.
+			if dst == "tool" {
 				if strings.TrimSpace(lp.DataSource.BoxID) == "" || strings.TrimSpace(lp.DataSource.ToolID) == "" {
 					appendError(result, table, "logic_properties", "invalid_object_type",
 						fmt.Sprintf("logic property %q with a tool data_source requires both box_id and tool_id", lp.Name))
-				}
-			case "metric":
-				if strings.TrimSpace(lp.DataSource.ID) == "" {
-					appendError(result, table, "logic_properties", "invalid_object_type",
-						fmt.Sprintf("logic property %q with a metric data_source requires source id", lp.Name))
 				}
 			}
 			if strings.TrimSpace(lp.DataSource.ResultPath) != "" {
