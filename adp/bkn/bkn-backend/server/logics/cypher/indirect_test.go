@@ -121,8 +121,8 @@ func mustGenerateIndirect(t *testing.T, query string) string {
 // The backing row has to match both fields of each side; a row matching one
 // field of a side links nothing.
 const (
-	forwardLinks = "JOIN {{.res_member}} t2 ON t2.`employee_code` = t0.`f_code` AND t2.`employee_org_code` = t0.`f_org` " +
-		"JOIN {{.res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`"
+	forwardLinks = "JOIN {{res_member}} t2 ON t2.`employee_code` = t0.`f_code` AND t2.`employee_org_code` = t0.`f_org` " +
+		"JOIN {{res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`"
 )
 
 func TestIndirectRelationJoinsThroughItsBackingRow(t *testing.T) {
@@ -134,31 +134,31 @@ func TestIndirectRelationJoinsThroughItsBackingRow(t *testing.T) {
 		{
 			name:  "forward",
 			query: "MATCH (a:employee)-[:participates_in]->(b:project) RETURN a.employee_uid, b.project_uid LIMIT 25",
-			want: "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{.res_employee}} t0 " +
+			want: "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{res_employee}} t0 " +
 				forwardLinks + " LIMIT 25",
 		},
 		{
 			name:  "written from the target",
 			query: "MATCH (b:project)<-[:participates_in]-(a:employee) RETURN a.employee_uid, b.project_uid",
-			want: "SELECT t1.`f_uid` AS `a.employee_uid`, t0.`f_uid` AS `b.project_uid` FROM {{.res_project}} t0 " +
-				"JOIN {{.res_member}} t2 ON t2.`project_code` = t0.`f_code` AND t2.`project_org_code` = t0.`f_org` " +
-				"JOIN {{.res_employee}} t1 ON t2.`employee_code` = t1.`f_code` AND t2.`employee_org_code` = t1.`f_org`",
+			want: "SELECT t1.`f_uid` AS `a.employee_uid`, t0.`f_uid` AS `b.project_uid` FROM {{res_project}} t0 " +
+				"JOIN {{res_member}} t2 ON t2.`project_code` = t0.`f_code` AND t2.`project_org_code` = t0.`f_org` " +
+				"JOIN {{res_employee}} t1 ON t2.`employee_code` = t1.`f_code` AND t2.`employee_org_code` = t1.`f_org`",
 		},
 		{
 			name:  "undirected between different object types",
 			query: "MATCH (a:employee)-[:participates_in]-(b:project) RETURN a.employee_uid, b.project_uid",
-			want: "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{.res_employee}} t0 " +
+			want: "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{res_employee}} t0 " +
 				forwardLinks,
 		},
 		{
 			name:  "count",
 			query: "MATCH (a:employee)-[:participates_in]->(b:project) RETURN count(*) AS links",
-			want:  "SELECT COUNT(*) AS `links` FROM {{.res_employee}} t0 " + forwardLinks,
+			want:  "SELECT COUNT(*) AS `links` FROM {{res_employee}} t0 " + forwardLinks,
 		},
 		{
 			name:  "filtered on both ends",
 			query: "MATCH (a:employee)-[:participates_in]->(b:project) WHERE a.org_code = 'ORG1' AND b.project_code = 'P01' RETURN a.employee_uid",
-			want: "SELECT t0.`f_uid` AS `a.employee_uid` FROM {{.res_employee}} t0 " + forwardLinks +
+			want: "SELECT t0.`f_uid` AS `a.employee_uid` FROM {{res_employee}} t0 " + forwardLinks +
 				" WHERE t0.`f_org` = 'ORG1' AND t1.`f_code` = 'P01'",
 		},
 	} {
@@ -175,11 +175,11 @@ func TestIndirectRelationTwoHopsStayDistinct(t *testing.T) {
 	// and the two hops may not be the same link.
 	got := mustGenerateIndirect(t, "MATCH (a:employee)-[:participates_in]->(p:project)<-[:participates_in]-(b:employee) "+
 		"RETURN a.employee_uid, b.employee_uid")
-	want := "SELECT t0.`f_uid` AS `a.employee_uid`, t2.`f_uid` AS `b.employee_uid` FROM {{.res_employee}} t0 " +
-		"JOIN {{.res_member}} t3 ON t3.`employee_code` = t0.`f_code` AND t3.`employee_org_code` = t0.`f_org` " +
-		"JOIN {{.res_project}} t1 ON t3.`project_code` = t1.`f_code` AND t3.`project_org_code` = t1.`f_org` " +
-		"JOIN {{.res_member}} t4 ON t4.`project_code` = t1.`f_code` AND t4.`project_org_code` = t1.`f_org` " +
-		"JOIN {{.res_employee}} t2 ON t4.`employee_code` = t2.`f_code` AND t4.`employee_org_code` = t2.`f_org` " +
+	want := "SELECT t0.`f_uid` AS `a.employee_uid`, t2.`f_uid` AS `b.employee_uid` FROM {{res_employee}} t0 " +
+		"JOIN {{res_member}} t3 ON t3.`employee_code` = t0.`f_code` AND t3.`employee_org_code` = t0.`f_org` " +
+		"JOIN {{res_project}} t1 ON t3.`project_code` = t1.`f_code` AND t3.`project_org_code` = t1.`f_org` " +
+		"JOIN {{res_member}} t4 ON t4.`project_code` = t1.`f_code` AND t4.`project_org_code` = t1.`f_org` " +
+		"JOIN {{res_employee}} t2 ON t4.`employee_code` = t2.`f_code` AND t4.`employee_org_code` = t2.`f_org` " +
 		"WHERE NOT t0.`f_uid` = t2.`f_uid`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -188,8 +188,8 @@ func TestIndirectRelationTwoHopsStayDistinct(t *testing.T) {
 
 func TestIndirectRelationClosingACycleJoinsOnlyItsBackingTable(t *testing.T) {
 	got := mustGenerateIndirect(t, "MATCH (a:employee)-[:mentors]->(a) RETURN a.employee_uid")
-	want := "SELECT t0.`f_uid` AS `a.employee_uid` FROM {{.res_employee}} t0 " +
-		"JOIN {{.res_mentoring}} t1 ON t1.`mentor_uid` = t0.`f_uid` AND t1.`mentee_uid` = t0.`f_uid`"
+	want := "SELECT t0.`f_uid` AS `a.employee_uid` FROM {{res_employee}} t0 " +
+		"JOIN {{res_mentoring}} t1 ON t1.`mentor_uid` = t0.`f_uid` AND t1.`mentee_uid` = t0.`f_uid`"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -202,8 +202,8 @@ func TestIndirectRelationOptionalMatchNestsItsBackingJoin(t *testing.T) {
 	// and a single row of nulls when there is none.
 	got := mustGenerateIndirect(t, "MATCH (a:employee) OPTIONAL MATCH (a)-[:participates_in]->(b:project) "+
 		"WHERE b.org_code = 'ORG1' RETURN a.employee_uid, b.project_uid")
-	want := "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{.res_employee}} t0 " +
-		"LEFT JOIN ({{.res_member}} t2 JOIN {{.res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`) " +
+	want := "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{res_employee}} t0 " +
+		"LEFT JOIN ({{res_member}} t2 JOIN {{res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`) " +
 		"ON t2.`employee_code` = t0.`f_code` AND t2.`employee_org_code` = t0.`f_org` AND t1.`f_org` = 'ORG1'"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
@@ -339,7 +339,7 @@ func TestIndirectRelationRowFiltersCoverBothEndsOnly(t *testing.T) {
 	if got, want := permission.rowFilterCalls[0], []string{"kn_1/ot_employee", "kn_1/ot_project"}; !slices.Equal(got, want) {
 		t.Fatalf("row-filter refs = %v, want %v", got, want)
 	}
-	want := "SELECT COUNT(*) AS `links` FROM {{.res_employee}} t0 " + forwardLinks +
+	want := "SELECT COUNT(*) AS `links` FROM {{res_employee}} t0 " + forwardLinks +
 		" WHERE t0.`f_org` IN ('ORG1') AND t1.`f_code` IN ('P01') LIMIT 1000"
 	if got := vega.request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
@@ -361,8 +361,8 @@ func TestIndirectRelationOptionalRowFilterStaysInTheJoin(t *testing.T) {
 	}
 	// A hidden project leaves the employee with nothing attached rather than
 	// dropping the employee.
-	want := "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{.res_employee}} t0 " +
-		"LEFT JOIN ({{.res_member}} t2 JOIN {{.res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`) " +
+	want := "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{res_employee}} t0 " +
+		"LEFT JOIN ({{res_member}} t2 JOIN {{res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`) " +
 		"ON t2.`employee_code` = t0.`f_code` AND t2.`employee_org_code` = t0.`f_org` AND t1.`f_code` IN ('P01') LIMIT 1000"
 	if got := vega.request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
@@ -505,7 +505,7 @@ func TestIndirectRelationClosingACycleJoinsBeforeTheConclusions(t *testing.T) {
 				t.Fatalf("statement has no conclusions join: %s", statement)
 			}
 			outer := statement[:strings.Index(statement, "JOIN (SELECT")] + statement[conclusions:]
-			backing := strings.Index(outer, "JOIN {{.res_mentoring}}")
+			backing := strings.Index(outer, "JOIN {{res_mentoring}}")
 			if backing < 0 || backing > strings.Index(outer, ") c0 ON ") {
 				t.Fatalf("the backing table is joined after the conclusions that read it: %s", statement)
 			}
