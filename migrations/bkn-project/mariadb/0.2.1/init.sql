@@ -226,6 +226,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_question_guidance (
   f_status VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Status: generating, ready or failed',
   f_tests LONGTEXT NOT NULL COMMENT 'Test questions with their data checks, JSON',
   f_guidance LONGTEXT NOT NULL COMMENT 'Development guidance, Markdown',
+  f_out_of_scope TEXT NOT NULL COMMENT 'Further questions that need more than this one, JSON',
   f_ontology_signature CHAR(64) NOT NULL DEFAULT '' COMMENT 'SHA-256 of the drafted items the guidance rests on',
   f_deleted_tests INT NOT NULL DEFAULT 0 COMMENT 'Test questions people deleted',
   f_error VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Why generating failed, as a code',
