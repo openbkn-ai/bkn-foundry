@@ -150,14 +150,17 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 		}
 		fields = append(fields, f)
 	}
-	if reason := s.fill(ctx, caller, t, fields); reason != "" {
-		return notChecked(reason)
-	}
-	// What is checked must be what the question asks about.
-	for _, f := range fields {
-		if !strings.Contains(normalize([]rune(t.Text)).text, normalize([]rune(f.value)).text) {
+	// What is checked must be what the question asks about: a value the documents gave is said in
+	// the text, and one the server fills stands in it as its slot.
+	text := normalize([]rune(t.Text)).text
+	for i, f := range fields {
+		if f.value == "" && !strings.Contains(t.Text, slotPlaceholder(i)) ||
+			f.value != "" && !strings.Contains(text, normalize([]rune(f.value)).text) {
 			return notChecked(checkValueNotInText)
 		}
+	}
+	if reason := s.fill(ctx, caller, t, fields); reason != "" {
+		return notChecked(reason)
 	}
 	var key string
 	if t.Expect == interfaces.TEST_EXPECT_SAME_RECORD {
