@@ -170,6 +170,16 @@ func Test_CheckTests(t *testing.T) {
 				interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkValueNotInText})
 		})
 
+		Convey("A value to fill needs its slot in the text, whatever the text happens to contain\n", func() {
+			// The value the data gives may be 1, which "Top 1 customer" contains by chance.
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+			tt.Text = "Orders of the top 1 customer?"
+
+			So(svc.checkTest(ctx, caller, &spec, draft, tt), ShouldResemble,
+				interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkValueNotInText})
+			So(tt.Text, ShouldEqual, "Orders of the top 1 customer?")
+		})
+
 		Convey("An empty value of a record expected not to exist is a real one with its last digits changed\n", func() {
 			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "C-0042"})
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(1))
