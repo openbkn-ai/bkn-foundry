@@ -140,6 +140,9 @@ type RequirementSpec struct {
 	Choices   []*RequirementChoice   `json:"choices"`
 	// Rejected are the drafted items the checks dropped, with why, so none is dropped unseen.
 	Rejected []*RequirementRejected `json:"rejected"`
+	// TablesOmitted counts the tables of the project's catalogs drafting did not name to the Agent:
+	// it names at most a set number, the first ones listed. Absent when none was left out.
+	TablesOmitted int `json:"tables_omitted,omitempty"`
 }
 
 // RequirementCitation is a passage of a document an item quotes. The agent gives the document and
