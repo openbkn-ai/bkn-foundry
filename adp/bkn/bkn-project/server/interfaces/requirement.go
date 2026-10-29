@@ -326,6 +326,17 @@ func (s *RequirementSpec) HasDecisions() bool {
 	return false
 }
 
+// RequirementView is a specification as the client reads it, with what is computed from it.
+type RequirementView struct {
+	*Requirement
+	// Stale is set when the documents or catalogs changed since the specification was drafted.
+	Stale bool `json:"stale"`
+	// UnresolvedConflicts counts the conflicts without a resolution, deferred ones included.
+	UnresolvedConflicts int `json:"unresolved_conflicts"`
+	// UndecidedChoices counts the modelling choices no one made; their recommended options hold.
+	UndecidedChoices int `json:"undecided_choices"`
+}
+
 // ScenarioQuestions are a project's scenario questions as publishing and the regression after a
 // release read them.
 type ScenarioQuestions struct {
@@ -429,6 +440,16 @@ type RequirementService interface {
 		caller AccountInfo) (*RequirementDocument, error)
 	// DeleteDocument removes a document.
 	DeleteDocument(ctx context.Context, token string, projectID string, documentID string, caller AccountInfo) error
+
+	// GenerateRequirement drafts the project's specification from its documents in the
+	// background and returns it drafting. A specification with decisions is drafted again only
+	// when discardDecisions is set.
+	GenerateRequirement(ctx context.Context, token string, projectID string, caller AccountInfo,
+		discardDecisions bool) (*Requirement, error)
+	// GetRequirement returns the project's specification with what is computed from it.
+	GetRequirement(ctx context.Context, token string, projectID string) (*RequirementView, error)
+	// FailInterrupted fails the specifications a previous run of the service left drafting.
+	FailInterrupted(ctx context.Context) error
 
 	// ScenarioQuestions returns the project's scenario questions with their needs, for
 	// publishing and the regression after a release, which check visibility themselves. A

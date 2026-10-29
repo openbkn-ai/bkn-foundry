@@ -34,9 +34,15 @@ type requirementService struct {
 	ra interfaces.RequirementAccess
 	// da reads the ontology draft whose items questions need.
 	da interfaces.DraftAccess
-	// now and newID are replaced in tests.
+	// va lists the tables of the project's catalogs, and ba runs the drafting Agent, as the caller.
+	va interfaces.VegaAccess
+	ba interfaces.BknAgentAccess
+	// now, newID, run and sleep are replaced in tests: run drafts in the background, sleep waits
+	// between reads of the Agent's task.
 	now   func() int64
 	newID func() string
+	run   func(fn func())
+	sleep func(time.Duration)
 }
 
 func NewRequirementService() interfaces.RequirementService {
@@ -45,8 +51,12 @@ func NewRequirementService() interfaces.RequirementService {
 			ps:    project.NewProjectService(),
 			ra:    logics.RQA,
 			da:    logics.DA,
+			va:    logics.VA,
+			ba:    logics.BAA,
 			now:   func() int64 { return time.Now().UnixMilli() },
 			newID: func() string { return uuid.Must(uuid.NewV7()).String() },
+			run:   func(fn func()) { go fn() },
+			sleep: time.Sleep,
 		}
 	})
 	return rs

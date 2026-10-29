@@ -247,6 +247,35 @@ func (mr *MockRequirementServiceMockRecorder) DeleteDocument(ctx, token, project
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocument", reflect.TypeOf((*MockRequirementService)(nil).DeleteDocument), ctx, token, projectID, documentID, caller)
 }
 
+// FailInterrupted mocks base method.
+func (m *MockRequirementService) FailInterrupted(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FailInterrupted", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// FailInterrupted indicates an expected call of FailInterrupted.
+func (mr *MockRequirementServiceMockRecorder) FailInterrupted(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FailInterrupted", reflect.TypeOf((*MockRequirementService)(nil).FailInterrupted), ctx)
+}
+
+// GenerateRequirement mocks base method.
+func (m *MockRequirementService) GenerateRequirement(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, discardDecisions bool) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GenerateRequirement", ctx, token, projectID, caller, discardDecisions)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GenerateRequirement indicates an expected call of GenerateRequirement.
+func (mr *MockRequirementServiceMockRecorder) GenerateRequirement(ctx, token, projectID, caller, discardDecisions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateRequirement", reflect.TypeOf((*MockRequirementService)(nil).GenerateRequirement), ctx, token, projectID, caller, discardDecisions)
+}
+
 // GetDocument mocks base method.
 func (m *MockRequirementService) GetDocument(ctx context.Context, token, projectID, documentID string) (*interfaces.RequirementDocument, error) {
 	m.ctrl.T.Helper()
@@ -260,6 +289,21 @@ func (m *MockRequirementService) GetDocument(ctx context.Context, token, project
 func (mr *MockRequirementServiceMockRecorder) GetDocument(ctx, token, projectID, documentID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockRequirementService)(nil).GetDocument), ctx, token, projectID, documentID)
+}
+
+// GetRequirement mocks base method.
+func (m *MockRequirementService) GetRequirement(ctx context.Context, token, projectID string) (*interfaces.RequirementView, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRequirement", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.RequirementView)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRequirement indicates an expected call of GetRequirement.
+func (mr *MockRequirementServiceMockRecorder) GetRequirement(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRequirement", reflect.TypeOf((*MockRequirementService)(nil).GetRequirement), ctx, token, projectID)
 }
 
 // ListDocuments mocks base method.
