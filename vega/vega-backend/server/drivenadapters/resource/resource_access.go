@@ -813,7 +813,8 @@ func (ra *resourceAccess) UpdateSemanticMetadata(ctx context.Context,
 	builder := sq.Update(RESOURCE_TABLE_NAME).
 		Set("f_name", resource.Name).
 		Set("f_description", resource.Description).
-		Set("f_api_name", resource.APIName).
+		// api_name 只写一次：库里已有值时保持不变，不依赖调用方先读后写。
+		Set("f_api_name", sq.Expr("CASE WHEN f_api_name = '' THEN ? ELSE f_api_name END", resource.APIName)).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).
 		Set("f_logic_definition", string(logicDefinitionBytes)).
 		Set("f_updater", resource.Updater.ID).

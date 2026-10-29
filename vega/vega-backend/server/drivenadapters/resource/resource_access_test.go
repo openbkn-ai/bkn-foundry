@@ -602,7 +602,7 @@ func TestResourceAccessUpdateSemanticMetadata(t *testing.T) {
 
 		resource.APIName = "supplier"
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_api_name = ?, f_schema_definition = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_api_name = CASE WHEN f_api_name = '' THEN ? ELSE f_api_name END, f_schema_definition = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
 			WithArgs(
 				resource.Name,
 				resource.Description,
