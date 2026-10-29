@@ -238,7 +238,7 @@
     "gateway": {
       "summary": "Run Python in the sandbox, with this service's tools callable from the code; for combining, reshaping or batching the results of several queries locally.",
       "use_when": "One question needs several queries and then a computation, or a loop, paging sweep or throwaway script.",
-      "not_for": "A single query goes to the matching query tool; sellable quantity, kitting, capacity and other business measures go to published functions (search_capabilities).",
+      "not_for": "A single query goes to the matching query tool; when the network mounts a published function that matches the question, use it (search_capabilities) instead of recomputing in code.",
       "next_step": "Call this service's tools by name from the code; run_code and run_shell share one session-isolated working directory.",
       "keywords": [
         "run code",
@@ -282,12 +282,12 @@
     "description": "Search everything one knowledge network has mounted -- Skills, Function tools (including API tools) and MCP tools -- ranked together in one space and returned interleaved by relevance. Use it when looking for something that can do a job, without first guessing whether it is a Skill or a tool.\nEvery hit carries capability_type, which decides what to do next: function / mcp_tool are called through execute_tool (their hits carry input_schema), a skill is read through get_skill_content and run through execute_skill.\nOptional types narrows to skill / function / mcp_tool; Function tools can be narrowed further with metadata_types into openapi (API tools) and function. Needs view permission on the knowledge network itself; permissions on object types or other child resources alone, or a standalone Skill or tool grant, are refused. The scope is what the network mounted; Function tools this account cannot see are left out, and a network that mounted none returns nothing.",
     "gateway": {
       "summary": "Find the published functions, skills and external tools mounted on the network, with their IDs, purpose and input definitions.",
-      "use_when": "Business calculations (for example sellable quantity, kitting and shortages, capacity, delivery dates, substitutes) or using the skills and tools the network mounts; published functions define these measures.",
+      "use_when": "The network mounts functions, skills or external tools: check whether one matches the question, and if so use it; published functions define their measures.",
       "not_for": "This service's own query tools are found with search_native_tools.",
       "next_step": "Run a function with execute_tool: toolbox_id is owner_id, tool_id is capability_id, and arguments follow the returned input_schema.",
       "example_arguments": {
         "kn_id": "kn_demo",
-        "query": "kitting shortage"
+        "query": "order details for a product"
       }
     }
   },
