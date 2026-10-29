@@ -321,7 +321,8 @@ func (r *restHandler) DeleteRequirementItem(c *gin.Context, visitor hydra.Visito
 	if raw := c.Query("update_time"); raw != "" {
 		parsed, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
-			replyError(c, span, invalidRequirementBody(c))
+			replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+				perrors.BknProject_Requirement_MissingUpdateTime).WithErrorDetails("update_time is not a number"))
 			return
 		}
 		updateTime = parsed

@@ -93,9 +93,10 @@ func Test_RequirementSpecRestHandler(t *testing.T) {
 			w := serveBody(handler, http.MethodPatch, base+"/items/rules/r1", []byte(`not json`))
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_InvalidRequestBody)
+			// A deletion has no body: an update time that does not parse is a missing one.
 			w = serve(handler, http.MethodDelete, base+"/items/concepts/c1?update_time=soon")
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_InvalidRequestBody)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_MissingUpdateTime)
 			for _, path := range []string{"/concepts/c1/maps-to", "/conflicts/k1", "/choices/f1"} {
 				w = serveBody(handler, http.MethodPut, base+path, []byte(`[`))
 				So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
