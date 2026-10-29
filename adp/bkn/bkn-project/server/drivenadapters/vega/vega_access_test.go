@@ -148,6 +148,22 @@ func Test_VegaAccess(t *testing.T) {
 			})
 		})
 
+		Convey("GetTables takes the English short names semantic understanding gave\n", func() {
+			respBody = `{"entries":[{"id":"r1","name":"供应商档案","api_name":"supplier",
+				"schema_definition":[
+					{"name":"编号","display_name":"供应商编号","type":"string","original_name":"编号","api_name":"supplier_code"},
+					{"name":"电话","display_name":"电话","type":"string","original_name":"电话"}],
+				"source_metadata":{"name":"供应商","columns":[
+					{"name":"编号","type":"varchar(18)"},
+					{"name":"电话","type":"varchar(20)"}]}}]}`
+
+			tables, err := va.GetTables(ctx, account, []string{"r1"})
+
+			So(err, ShouldBeNil)
+			So(tables[0].APIName, ShouldEqual, "supplier")
+			So([]string{tables[0].Columns[0].APIName, tables[0].Columns[1].APIName}, ShouldResemble, []string{"supplier_code", ""})
+		})
+
 		Convey("GetTables falls back to the estimated row count, and asks nothing for no ids\n", func() {
 			respBody = `{"entries":[{"id":"r1","estimated_row_count":42}]}`
 
