@@ -12,12 +12,60 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/codes"
 
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
 // vega-backend's refusal of a build while one of the table is under way.
 const vegaBuildTaskExist = "VegaBackend.BuildTask.Exist"
+
+// BuildIndex builds the local indexes of the last confirmation again, as the project owner, and
+// returns the readiness with what each build did. Only a draft still as it was confirmed can be
+// built again: what a confirmation adopted is otherwise on the branch only.
+func (s *draftService) BuildIndex(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildIndex")
+	defer span.End()
+
+	entry, err := s.unarchivedProject(ctx, token, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, err
+	}
+	if entry.Owner.ID != caller.ID {
+		span.SetStatus(codes.Error, "Not the owner")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Index_NotOwner)
+	}
+	draft, exist, err := s.da.GetDraft(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get draft failed")
+		return nil, internalError(ctx, "Get draft failed", err)
+	}
+	if !exist || draft.Items.Confirmation == nil || draft.Items.Confirmation.Commit == "" {
+		span.SetStatus(codes.Error, "Nothing confirmed")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Index_NothingConfirmed)
+	}
+	confirmation := draft.Items.Confirmation
+	if draft.Status != interfaces.DRAFT_STATUS_READY || confirmation.UpdateTime != draft.UpdateTime {
+		span.SetStatus(codes.Error, "Confirmation unknown")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Index_ConfirmAgain)
+	}
+	if err := s.buildIndexes(ctx, projectID, confirmation.Commit, &draft.Items, caller); err != nil {
+		span.SetStatus(codes.Error, "Build indexes failed")
+		return nil, internalError(ctx, "Build indexes failed", err)
+	}
+	index, err := s.readIndex(ctx, &draft.Items, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read tables failed")
+		return nil, internalError(ctx, "Read tables failed", err)
+	}
+	s.attachBuilds(ctx, index, projectID, confirmation.Commit)
+	span.SetStatus(codes.Ok, "")
+	return index, nil
+}
 
 // buildIndexes starts, as the runner, a build of each adopted object type's local index that is
 // not built or went stale, and records under the confirmed commit what each start did. A table

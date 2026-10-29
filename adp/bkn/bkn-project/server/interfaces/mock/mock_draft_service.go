@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// BuildIndex mocks base method.
+func (m *MockDraftService) BuildIndex(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BuildIndex", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectIndex)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BuildIndex indicates an expected call of BuildIndex.
+func (mr *MockDraftServiceMockRecorder) BuildIndex(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildIndex", reflect.TypeOf((*MockDraftService)(nil).BuildIndex), ctx, token, projectID, caller)
+}
+
 // ChooseIdentity mocks base method.
 func (m *MockDraftService) ChooseIdentity(ctx context.Context, token, projectID, itemID string, identity interfaces.DraftIdentity, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()

@@ -46,6 +46,9 @@ type DraftService interface {
 	// RunCheck checks the last confirmation again in the background, for the project owner, and
 	// returns the check, running.
 	RunCheck(ctx context.Context, token string, projectID string, caller AccountInfo) (*Check, error)
+	// BuildIndex builds the local indexes of the last confirmation again, for the project owner,
+	// and returns the readiness with what each build did.
+	BuildIndex(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectIndex, error)
 	// FailInterrupted fails the drafts and checks a previous run of the service left going.
 	FailInterrupted(ctx context.Context) error
 }
