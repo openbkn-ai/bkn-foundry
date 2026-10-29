@@ -1540,6 +1540,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 	// migration. The request was normalized at ingress; normalize both sides before comparison so an
 	// ordinary edit without schema changes is not classified as a build-related change.
 	NormalizeSelfReferencingFeatures(resource.SchemaDefinition)
+	// api_name 不随请求更新：省略或改写都按已存值处理，免得被当成不可变字段的改动而拒绝。
+	keepStoredPropertyAPINames(resource.SchemaDefinition, req.SchemaDefinition)
 	schemaChanged, err := validateMutableSchemaUpdate(
 		ctx,
 		resource.SchemaDefinition,

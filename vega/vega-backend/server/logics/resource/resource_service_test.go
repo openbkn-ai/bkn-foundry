@@ -3404,6 +3404,27 @@ func TestApplyMutableSchemaFields(t *testing.T) {
 	})
 }
 
+func TestValidateResourceUpdateScopeKeepsStoredAPINames(t *testing.T) {
+	// 接口文档不列 api_name，客户端更新时通常省略它；不能因此被拒，也不能借此改写它。
+	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
+		for _, requested := range []string{"", "renamed"} {
+			t.Run(category+"/request api_name "+requested, func(t *testing.T) {
+				rs := &resourceService{}
+				resource := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: category,
+					SchemaDefinition: []*interfaces.Property{{Name: "code", Type: interfaces.DataType_String, APIName: "code"}}}
+				req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: category,
+					SchemaDefinition: []*interfaces.Property{{Name: "code", Type: interfaces.DataType_String, APIName: requested, DisplayName: "编号"}}}
+
+				changed, err := rs.validateResourceUpdateScope(context.Background(), resource, req)
+
+				require.NoError(t, err)
+				assert.False(t, changed)
+				assert.Equal(t, "code", req.SchemaDefinition[0].APIName)
+			})
+		}
+	}
+}
+
 func TestValidateMutableSchemaUpdateJSONEnabled(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
