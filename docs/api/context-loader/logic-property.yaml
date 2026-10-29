@@ -485,7 +485,7 @@ components:
           type: array
           items:
             type: string
-          description: 要求值的逻辑属性名列表（`metric` 或 `tool`）。
+          description: 要求值的工具型逻辑属性名列表（`tool`）。对象指标请使用 `query_metric`。
         additional_context:
           type: string
           description: |

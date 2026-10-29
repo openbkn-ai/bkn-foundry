@@ -767,7 +767,7 @@ components:
 
     LogicProperty:
       type: object
-      description: 逻辑属性（指标或工具），值需要计算，不直接存在于数据源里。
+      description: 工具型逻辑属性，值需要计算，不直接存在于数据源里；对象指标列在 `related_metrics`。
       properties:
         name:
           type: string
@@ -777,9 +777,8 @@ components:
         type:
           type: string
           enum:
-            - metric
             - tool
-          description: 逻辑属性类型。
+          description: 逻辑属性类型，目前只支持 `tool`。
         comment:
           type: string
           description: 备注。summary 级别不返回。
