@@ -59,7 +59,8 @@ func readUpload(file interfaces.RequirementUpload) (*upload, string) {
 	if !ok || name == "." || name == "/" {
 		return nil, perrors.BknProject_Requirement_UnsupportedFormat
 	}
-	if utf8.RuneCountInString(name) > maxNameRunes {
+	// The name is stored as UTF-8 text: a client that sends another encoding names no document.
+	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > maxNameRunes {
 		return nil, perrors.BknProject_Requirement_InvalidRequestBody
 	}
 	if len(file.Content) > MaxDocumentBytes {
@@ -145,12 +146,23 @@ func (s *requirementService) UploadDocuments(ctx context.Context, token string, 
 		return nil, internalError(ctx, "List documents failed", err)
 	}
 	count := len(existing)
+	// A document the project has is reported as such before the limit is weighed: uploading it
+	// again adds nothing.
+	stored := make(map[string]string, len(existing))
+	for _, d := range existing {
+		stored[d.SHA256] = d.ID
+	}
 	results := make([]interfaces.RequirementUploadResult, 0, len(files))
 	for _, file := range files {
 		read, code := readUpload(file)
 		if code != "" {
 			results = append(results, interfaces.RequirementUploadResult{Name: file.Name,
 				Outcome: interfaces.REQUIREMENT_UPLOAD_REJECTED, Code: code})
+			continue
+		}
+		if id, ok := stored[read.sha256]; ok {
+			results = append(results, interfaces.RequirementUploadResult{Name: read.name,
+				Outcome: interfaces.REQUIREMENT_UPLOAD_DUPLICATE, DocumentID: id})
 			continue
 		}
 		if count >= MaxDocuments {
@@ -169,6 +181,7 @@ func (s *requirementService) UploadDocuments(ctx context.Context, token string, 
 			span.SetStatus(codes.Error, "Create document failed")
 			return nil, internalError(ctx, "Create document failed", err)
 		}
+		stored[read.sha256] = storedID
 		if !created {
 			results = append(results, interfaces.RequirementUploadResult{Name: read.name,
 				Outcome: interfaces.REQUIREMENT_UPLOAD_DUPLICATE, DocumentID: storedID})
