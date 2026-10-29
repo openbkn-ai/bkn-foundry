@@ -67,7 +67,8 @@ const (
 
 // BknAgentAnswerRequest asks a chat Agent to answer Message on the knowledge network KNID.
 // ClientRequestID makes the request idempotent for the caller: sent again, bkn-agent replays the
-// answer it gave instead of answering again.
+// answer it gave instead of answering again. It is 1 to 100 letters, digits, "_", "." or "-";
+// bkn-agent refuses any other with 400 BknAgent.ParamError.FormatError.
 type BknAgentAnswerRequest struct {
 	AgentID         string `json:"agent_id"`
 	Message         string `json:"message"`

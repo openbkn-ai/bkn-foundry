@@ -55,7 +55,7 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 		ba := &bknAgentAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/bkn-agent/v1"}
 		ctx := context.Background()
 		req := &interfaces.BknAgentAnswerRequest{
-			AgentID: "studio_smart_qa", Message: "Which supplier delivers part P1?", ClientRequestID: "rel1:q1:1", KNID: "supply_v1_1_0",
+			AgentID: "studio_smart_qa", Message: "Which supplier delivers part P1?", ClientRequestID: "rel1.q1.1", KNID: "supply_v1_1_0",
 		}
 
 		Convey("An answer streamed to its end is read with the tool calls the Agent made\n", func() {
@@ -81,7 +81,7 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			So(got[0].authorization, ShouldEqual, "Bearer t")
 			So(got[0].body, ShouldResemble, map[string]any{
 				"agent_id": "studio_smart_qa", "message": "Which supplier delivers part P1?",
-				"client_request_id": "rel1:q1:1", "context": map[string]any{"kn_id": "supply_v1_1_0"},
+				"client_request_id": "rel1.q1.1", "context": map[string]any{"kn_id": "supply_v1_1_0"},
 			})
 			So(answer, ShouldResemble, &interfaces.BknAgentAnswer{
 				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "Supplier S1 delivers part P1.",
@@ -158,6 +158,8 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 				status int
 				code   string
 			}{
+				// A request id or network id outside bkn-agent's pattern.
+				{http.StatusBadRequest, "BknAgent.ParamError.FormatError"},
 				{http.StatusUnauthorized, "BknAgent.Auth.TokenRequired"},
 				// No permission on the network, and a network that does not exist, alike.
 				{http.StatusForbidden, "BknAgent.Execution.Forbidden"},
