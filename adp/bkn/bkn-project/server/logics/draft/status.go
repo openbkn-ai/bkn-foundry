@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -17,6 +19,9 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
+
+// firstVersion is the version a lineage's first release is suggested.
+const firstVersion = "1.0.0"
 
 // waitSeconds is how soon to read the status again while drafting or a check runs.
 const waitSeconds = 5
@@ -60,8 +65,83 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 				now.UnixMilli())
 		}
 	}
+	// Only a current confirmation can have been published.
+	if status.Confirmation != nil && status.Confirmation.Current {
+		latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: entry.KNID, Limit: 1})
+		if err != nil {
+			span.SetStatus(codes.Error, "List releases failed")
+			return nil, internalError(ctx, "List releases failed", err)
+		}
+		sw, switched, err := s.ra.GetLatestSwitch(ctx, entry.KNID)
+		if err != nil {
+			span.SetStatus(codes.Error, "Get switch failed")
+			return nil, internalError(ctx, "Get switch failed", err)
+		}
+		if !switched {
+			sw = nil
+		}
+		var newest *interfaces.Release
+		if len(latest) > 0 {
+			newest = latest[0]
+		}
+		withRelease(status, entry.Project, newest, sw, caller)
+	}
 	span.SetStatus(codes.Ok, "")
 	return status, nil
+}
+
+// withRelease reads a status against latest, the lineage's newest release or nil before any. Until
+// the project is published, reviewing a release names the next version, which the client may
+// change. The status is published when latest is the project's and came after its current
+// confirmation; consumers not yet on it wait for the owner to switch them. What blocked the
+// confirmation from being published no longer does. sw is the lineage's latest switch, or nil.
+func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, latest *interfaces.Release,
+	sw *interfaces.Switch, caller interfaces.AccountInfo) {
+	version := nextVersion(latest)
+	for i := range s.NextActions {
+		if a := &s.NextActions[i]; a.Action == interfaces.ACTION_REVIEW_RELEASE {
+			a.Path += "?version=" + version
+			a.Requires, a.SuggestedVersion = []string{interfaces.ACTION_REQUIRES_VERSION}, version
+		}
+	}
+	if latest == nil || latest.ProjectID != project.ID || s.Confirmation == nil || !s.Confirmation.Current ||
+		latest.CreateTime < s.Confirmation.Time {
+		return
+	}
+	s.Stage = interfaces.PROJECT_STAGE_PUBLISHED
+	s.Release = &interfaces.ProjectStatusRelease{Version: latest.Version, NetworkID: latest.NetworkID,
+		InUse: sw != nil && sw.ToNetworkID == latest.NetworkID}
+	s.Blockers = []interfaces.ProjectStatusBlocker{}
+	actions := []interfaces.ProjectStatusNextAction{}
+	if !s.Release.InUse {
+		switchAction := interfaces.ProjectStatusNextAction{
+			Action: interfaces.ACTION_SWITCH_CONSUMERS, Method: http.MethodPost, Path: "/projects/" + project.ID + "/switches",
+			Body: map[string]any{"to_network_id": latest.NetworkID}, Allowed: caller.ID == project.Owner.ID,
+		}
+		if !switchAction.Allowed {
+			switchAction.Reason = interfaces.ACTION_REASON_NOT_OWNER
+		}
+		actions = append(actions, switchAction)
+	}
+	for _, a := range s.NextActions {
+		if a.Action != interfaces.ACTION_REVIEW_RELEASE {
+			actions = append(actions, a)
+		}
+	}
+	s.NextActions = actions
+}
+
+// nextVersion is the patch after latest's version, or 1.0.0 before the first release.
+func nextVersion(latest *interfaces.Release) string {
+	if latest == nil {
+		return firstVersion
+	}
+	parts := strings.Split(latest.Version, ".")
+	patch, err := strconv.Atoi(parts[len(parts)-1])
+	if len(parts) != 3 || err != nil {
+		return firstVersion
+	}
+	return fmt.Sprintf("%s.%s.%d", parts[0], parts[1], patch+1)
 }
 
 // preflightConfirm reads what the project branch would refuse confirming the draft for, with the
@@ -240,20 +320,17 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		// What the branch would refuse confirming for, read ahead; the content is checked only when
 		// confirming.
 		if preflight != nil {
-			lineage := "/lineages/" + project.KNID
 			switch preflight.NotV3 {
 			case interfaces.DEFINITIONS_LINEAGE_NOT_V3:
 				block(interfaces.BLOCKER_LINEAGE_NOT_V3, 0, interfaces.WAITING_FOR_EDITOR)
-				act(interfaces.ProjectStatusNextAction{
-					Action: interfaces.ACTION_COMMIT_DRIFT, Method: http.MethodPost, Path: lineage + "/drift?commit=true",
-					Body: map[string]any{"kn_id": project.KNID}, Allowed: true,
-				})
+				act(ownerOnly(interfaces.ProjectStatusNextAction{
+					Action: interfaces.ACTION_COMMIT_DRIFT, Method: http.MethodPost, Path: base + "/drift:commit",
+				}))
 			case interfaces.DEFINITIONS_BRANCH_NOT_V3:
 				block(interfaces.BLOCKER_BRANCH_NOT_V3, 0, interfaces.WAITING_FOR_EDITOR)
-				act(interfaces.ProjectStatusNextAction{
-					Action: interfaces.ACTION_SYNC_BRANCH, Method: http.MethodPost,
-					Path: lineage + "/branches/" + project.Branch + "/sync", Allowed: true,
-				})
+				act(ownerOnly(interfaces.ProjectStatusNextAction{
+					Action: interfaces.ACTION_SYNC_BRANCH, Method: http.MethodPost, Path: base + "/branch:sync",
+				}))
 			}
 			if n := len(preflight.Existing); n > 0 {
 				block(interfaces.BLOCKER_DEFINITIONS_EXIST, n, interfaces.WAITING_FOR_EDITOR)
@@ -271,6 +348,10 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 	run := ownerOnly(interfaces.ProjectStatusNextAction{
 		Action: interfaces.ACTION_RUN_CHECK, Method: http.MethodPost, Path: base + "/ontology/check:run",
 	})
+	// Publishing goes on from a review, which reads the release as the caller.
+	review := interfaces.ProjectStatusNextAction{
+		Action: interfaces.ACTION_REVIEW_RELEASE, Method: http.MethodGet, Path: base + "/release-review", Allowed: true,
+	}
 	if check != nil {
 		s.Check = &interfaces.ProjectStatusCheck{
 			Commit: check.Commit, Status: check.Status, Current: check.Commit == confirmation.Commit,
@@ -290,6 +371,7 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		act(run)
 	case check.Status == interfaces.CHECK_STATUS_PASSED:
 		s.Stage = interfaces.PROJECT_STAGE_CONFIRMED
+		act(review)
 		act(run)
 	default:
 		s.Stage = interfaces.PROJECT_STAGE_CHECK_NEEDS_ATTENTION
@@ -301,6 +383,10 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 			code = interfaces.BLOCKER_CHECK_PARTIAL
 		}
 		block(code, 0, interfaces.WAITING_FOR_OWNER)
+		// The owner may publish knowing the check could not count every item.
+		if code == interfaces.BLOCKER_CHECK_PARTIAL {
+			act(review)
+		}
 		act(run)
 	}
 	act(generate)

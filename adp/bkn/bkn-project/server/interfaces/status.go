@@ -20,6 +20,8 @@ const (
 	PROJECT_STAGE_CHECKING              = "checking"
 	PROJECT_STAGE_CHECK_NEEDS_ATTENTION = "check_needs_attention"
 	PROJECT_STAGE_CONFIRMED             = "confirmed"
+	// PROJECT_STAGE_PUBLISHED is a project whose current confirmation the newest release published.
+	PROJECT_STAGE_PUBLISHED = "published"
 )
 
 // What blocks a project from its next stage.
@@ -61,6 +63,11 @@ const (
 	ACTION_SYNC_BRANCH    = "sync_branch"
 	ACTION_COMMIT_DRIFT   = "commit_drift"
 	ACTION_WAIT           = "wait"
+	// ACTION_REVIEW_RELEASE reads what publishing the confirmation would bring; publishing goes on
+	// from the review, which needs a version.
+	ACTION_REVIEW_RELEASE = "review_release"
+	// ACTION_SWITCH_CONSUMERS switches consumers to the release that published the project.
+	ACTION_SWITCH_CONSUMERS = "switch_consumers"
 )
 
 // What sending an action accepts on the caller's behalf.
@@ -83,7 +90,9 @@ type ProjectStatus struct {
 	Draft        *ProjectStatusDraft     `json:"draft,omitempty"`
 	Confirmation *ProjectStatusConfirmed `json:"confirmation,omitempty"`
 	Check        *ProjectStatusCheck     `json:"check,omitempty"`
-	Blockers     []ProjectStatusBlocker  `json:"blockers"`
+	// Release is the release that published the current confirmation.
+	Release  *ProjectStatusRelease  `json:"release,omitempty"`
+	Blockers []ProjectStatusBlocker `json:"blockers"`
 	// Undecided counts the items drafting left out and no one decided on: they do not block, but
 	// confirming leaves them out only when the confirmation accepts it.
 	Undecided   int                       `json:"undecided"`
@@ -118,6 +127,13 @@ type ProjectStatusCheck struct {
 	Current bool `json:"current"`
 }
 
+type ProjectStatusRelease struct {
+	Version   string `json:"version"`
+	NetworkID string `json:"network_id"`
+	// InUse is whether consumers use the release's network: the lineage's latest switch was to it.
+	InUse bool `json:"in_use"`
+}
+
 type ProjectStatusBlocker struct {
 	Code       string `json:"code"`
 	Count      int    `json:"count,omitempty"`
@@ -139,7 +155,14 @@ type ProjectStatusNextAction struct {
 	DiscardsDecisions int `json:"discards_decisions,omitempty"`
 	// Accepts says what sending the action accepts, as its body does.
 	Accepts []string `json:"accepts,omitempty"`
+	// Requires names what the request needs that a client may choose: version, for reviewing a
+	// release, whose path carries SuggestedVersion, the patch after the lineage's newest release.
+	Requires         []string `json:"requires,omitempty"`
+	SuggestedVersion string   `json:"suggested_version,omitempty"`
 }
+
+// ACTION_REQUIRES_VERSION is the version a release review is of.
+const ACTION_REQUIRES_VERSION = "version"
 
 // Why an option of a pending item cannot be taken.
 const (

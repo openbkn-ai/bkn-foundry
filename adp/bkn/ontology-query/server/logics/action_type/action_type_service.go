@@ -244,13 +244,9 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 	// 5. Retrieve source object type instances using conditions built from action conditions and unique identities.
 	objectQuery := &interfaces.ObjectQueryBaseOnObjectType{
 		ActualCondition: condition,
-		PageQuery: interfaces.PageQuery{
-			Limit:     interfaces.MAX_LIMIT, // Do not limit the count; fetch all matching records. The view supports up to 10k, so use 10k.
-			NeedTotal: true,
-		},
-		KNID:         query.KNID,
-		Branch:       query.Branch,
-		ObjectTypeID: actionType.ObjectTypeID,
+		KNID:            query.KNID,
+		Branch:          query.Branch,
+		ObjectTypeID:    actionType.ObjectTypeID,
 		CommonQueryParameters: interfaces.CommonQueryParameters{
 			IncludeTypeInfo:         true,
 			IncludeLogicParams:      query.IncludeLogicParams,
@@ -262,9 +258,16 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			Properties:       actionReturnProperties,
 		},
 	}
-	objects, err := ats.ots.GetObjectsByObjectTypeID(ctx, objectQuery)
+	// Preview lists the same objects an execution would cover. A match set
+	// larger than the execution limit is cut to the limit; total_count still
+	// reports every match, so callers can tell the list is incomplete.
+	objects, err := ats.ots.ScanObjectsByObjectTypeID(ctx, objectQuery, logics.ActionExecutionMaxObjects)
 	if err != nil {
 		return resps, err
+	}
+	totalCount := max(int(objects.TotalCount), len(objects.Datas))
+	if len(objects.Datas) > logics.ActionExecutionMaxObjects {
+		objects.Datas = objects.Datas[:logics.ActionExecutionMaxObjects]
 	}
 
 	// 6. Retrieved objects satisfy the condition and should each be instantiated as an action.
@@ -338,7 +341,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 	respActions := interfaces.Actions{
 		ActionSource: actionType.ActionSource,
 		Actions:      actions,
-		TotalCount:   len(actions),
+		TotalCount:   totalCount,
 	}
 
 	if query.IncludeTypeInfo {

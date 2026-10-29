@@ -41,6 +41,51 @@ func (m *MockProjectReleaseService) EXPECT() *MockProjectReleaseServiceMockRecor
 	return m.recorder
 }
 
+// CommitDrift mocks base method.
+func (m *MockProjectReleaseService) CommitDrift(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.ProjectDriftCommit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CommitDrift", ctx, token, projectID, caller, author)
+	ret0, _ := ret[0].(*interfaces.ProjectDriftCommit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CommitDrift indicates an expected call of CommitDrift.
+func (mr *MockProjectReleaseServiceMockRecorder) CommitDrift(ctx, token, projectID, caller, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitDrift", reflect.TypeOf((*MockProjectReleaseService)(nil).CommitDrift), ctx, token, projectID, caller, author)
+}
+
+// PlanSwitch mocks base method.
+func (m *MockProjectReleaseService) PlanSwitch(ctx context.Context, token, projectID, toNetworkID string) (*interfaces.SwitchPlan, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PlanSwitch", ctx, token, projectID, toNetworkID)
+	ret0, _ := ret[0].(*interfaces.SwitchPlan)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PlanSwitch indicates an expected call of PlanSwitch.
+func (mr *MockProjectReleaseServiceMockRecorder) PlanSwitch(ctx, token, projectID, toNetworkID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanSwitch", reflect.TypeOf((*MockProjectReleaseService)(nil).PlanSwitch), ctx, token, projectID, toNetworkID)
+}
+
+// PublishRelease mocks base method.
+func (m *MockProjectReleaseService) PublishRelease(ctx context.Context, token, projectID string, req interfaces.ProjectPublish, caller interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.PublishReleaseResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PublishRelease", ctx, token, projectID, req, caller, author)
+	ret0, _ := ret[0].(*interfaces.PublishReleaseResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PublishRelease indicates an expected call of PublishRelease.
+func (mr *MockProjectReleaseServiceMockRecorder) PublishRelease(ctx, token, projectID, req, caller, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishRelease", reflect.TypeOf((*MockProjectReleaseService)(nil).PublishRelease), ctx, token, projectID, req, caller, author)
+}
+
 // ReviewRelease mocks base method.
 func (m *MockProjectReleaseService) ReviewRelease(ctx context.Context, token, projectID, version string, caller interfaces.AccountInfo) (*interfaces.ReleaseReview, error) {
 	m.ctrl.T.Helper()
@@ -54,4 +99,34 @@ func (m *MockProjectReleaseService) ReviewRelease(ctx context.Context, token, pr
 func (mr *MockProjectReleaseServiceMockRecorder) ReviewRelease(ctx, token, projectID, version, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReviewRelease", reflect.TypeOf((*MockProjectReleaseService)(nil).ReviewRelease), ctx, token, projectID, version, caller)
+}
+
+// SwitchConsumers mocks base method.
+func (m *MockProjectReleaseService) SwitchConsumers(ctx context.Context, token, projectID, toNetworkID string, caller interfaces.AccountInfo) (*interfaces.Switch, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SwitchConsumers", ctx, token, projectID, toNetworkID, caller)
+	ret0, _ := ret[0].(*interfaces.Switch)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SwitchConsumers indicates an expected call of SwitchConsumers.
+func (mr *MockProjectReleaseServiceMockRecorder) SwitchConsumers(ctx, token, projectID, toNetworkID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SwitchConsumers", reflect.TypeOf((*MockProjectReleaseService)(nil).SwitchConsumers), ctx, token, projectID, toNetworkID, caller)
+}
+
+// SyncBranch mocks base method.
+func (m *MockProjectReleaseService) SyncBranch(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncBranch", ctx, token, projectID, caller, author)
+	ret0, _ := ret[0].(*interfaces.SyncBranchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SyncBranch indicates an expected call of SyncBranch.
+func (mr *MockProjectReleaseServiceMockRecorder) SyncBranch(ctx, token, projectID, caller, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncBranch", reflect.TypeOf((*MockProjectReleaseService)(nil).SyncBranch), ctx, token, projectID, caller, author)
 }

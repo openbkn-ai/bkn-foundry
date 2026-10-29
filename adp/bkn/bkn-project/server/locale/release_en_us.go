@@ -25,6 +25,8 @@ var releaseEnUS = i18n.I18nMessages{
 		"BknProject.Release.ProjectArchived":     "Project Archived. Unarchive the project before publishing.",
 		"BknProject.Release.ChecksFailed":        "Release Checks Not Passed. error_details lists the checks that did not pass; fix them and open the release review again.",
 		"BknProject.Release.ReviewOutdated":      "Release Review Outdated. The draft or the live version changed after the release review was opened; open it again.",
+		"BknProject.Release.RegressionNotFound":  "Regression Not Found. This release has not been checked against its scenario questions yet.",
+		"BknProject.Release.RegressionRunning":   "Regression Running. Wait for the current run to finish before running it again.",
 		"BknProject.Release.InternalError":       "Internal Error. Please contact the administrator.",
 	},
 }
