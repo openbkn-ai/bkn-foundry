@@ -27,7 +27,11 @@
   `proposed_because` 中说明原因：`not_counted`、`below_suggest_hit_rate`、
   `below_adopt_hit_rate`、`few_values` 或 `end_not_adopted`（一端的对象类还在等人
   决定）。个人信息字段（隐私关键词按词匹配）排除。优先使用数据目录语义
-  理解给出的名称和描述。以调用方身份读取 vega-backend，只取回计数和代码表取值。
+  理解给出的名称和描述。ID 只由物理表名、字段名生成，不使用语义理解写回的名称，因此
+  不随语言或重新理解而变化：按词用 `_` 连接，驼峰拆开（`customerId` 得到 `customer_id`）；
+  物理名不是 ASCII 时（BKN 的 ID 不能含中文），用类别前缀加名称的短哈希（`ot_…`、`p_…`、
+  `vt_…`、`rt_…`）。名称匹配按物理名原文比较。以调用方身份读取 vega-backend，只取回计数
+  和代码表取值。
 - 健康检查与就绪检查接口。
 
 ## API
