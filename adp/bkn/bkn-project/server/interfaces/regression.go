@@ -64,13 +64,16 @@ type RegressionQuestion struct {
 }
 
 // RegressionResult is how one question did. Missing lists what the release lacks of what it needs;
-// ErrorCode is the answering service's code when it could not be asked.
+// ErrorCode is the answering service's code when it could not be asked. Answer and ToolUses are
+// what an asked question was answered with and the tool calls behind it, kept whatever the outcome
+// so the answer can be judged again later.
 type RegressionResult struct {
-	QuestionID string        `json:"question_id"`
-	Outcome    string        `json:"outcome"`
-	Missing    []ReleaseItem `json:"missing,omitempty"`
-	Answer     string        `json:"answer,omitempty"`
-	ErrorCode  string        `json:"error_code,omitempty"`
+	QuestionID string            `json:"question_id"`
+	Outcome    string            `json:"outcome"`
+	Missing    []ReleaseItem     `json:"missing,omitempty"`
+	Answer     string            `json:"answer,omitempty"`
+	ToolUses   []BknAgentToolUse `json:"tool_uses,omitempty"`
+	ErrorCode  string            `json:"error_code,omitempty"`
 }
 
 //go:generate mockgen -source ../interfaces/regression.go -destination ../interfaces/mock/mock_regression.go
@@ -88,4 +91,34 @@ type RegressionAccess interface {
 	// FailRunning marks every running regression as failed with reason; regressions run in the
 	// service process, so ones left running after a restart will never finish.
 	FailRunning(ctx context.Context, reason string, finishTime int64) (int64, error)
+}
+
+// Why a regression run failed as a whole.
+const (
+	// REGRESSION_ERROR_INTERRUPTED: the service stopped while it ran.
+	REGRESSION_ERROR_INTERRUPTED = "interrupted"
+	// REGRESSION_ERROR_DEFINITIONS_UNREADABLE: the release's definitions could not be read.
+	REGRESSION_ERROR_DEFINITIONS_UNREADABLE = "definitions_unreadable"
+)
+
+// Codes of a question that could not be asked, besides the answering service's own.
+const (
+	// REGRESSION_CODE_UNREACHABLE: the answering service could not be reached.
+	REGRESSION_CODE_UNREACHABLE = "unreachable"
+	// REGRESSION_CODE_ANSWER_INTERRUPTED: the answering service was reached, but its answer stopped
+	// before it ended or could not be read.
+	REGRESSION_CODE_ANSWER_INTERRUPTED = "answer_interrupted"
+	// REGRESSION_CODE_CANCELLED: the answer was cancelled before it ended.
+	REGRESSION_CODE_CANCELLED = "cancelled"
+	// REGRESSION_CODE_TOOLS_UNAVAILABLE: no call of the answering Agent reached the network.
+	REGRESSION_CODE_TOOLS_UNAVAILABLE = "tools_unavailable"
+)
+
+type RegressionService interface {
+	// StartRegression starts the regression of release in the background, answering as runner with
+	// token, and returns it; false when one of the release is running already. A project without
+	// questions of the knowledge layer gets a regression with no questions, finished at once.
+	StartRegression(ctx context.Context, token string, release *Release, runner AccountInfo) (*Regression, bool, error)
+	// FailInterrupted fails the regressions a previous run of the service left running.
+	FailInterrupted(ctx context.Context) error
 }

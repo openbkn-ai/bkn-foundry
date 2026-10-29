@@ -101,3 +101,57 @@ func (mr *MockRegressionAccessMockRecorder) StartRegression(ctx, r, staleBefore 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartRegression", reflect.TypeOf((*MockRegressionAccess)(nil).StartRegression), ctx, r, staleBefore)
 }
+
+// MockRegressionService is a mock of RegressionService interface.
+type MockRegressionService struct {
+	ctrl     *gomock.Controller
+	recorder *MockRegressionServiceMockRecorder
+	isgomock struct{}
+}
+
+// MockRegressionServiceMockRecorder is the mock recorder for MockRegressionService.
+type MockRegressionServiceMockRecorder struct {
+	mock *MockRegressionService
+}
+
+// NewMockRegressionService creates a new mock instance.
+func NewMockRegressionService(ctrl *gomock.Controller) *MockRegressionService {
+	mock := &MockRegressionService{ctrl: ctrl}
+	mock.recorder = &MockRegressionServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockRegressionService) EXPECT() *MockRegressionServiceMockRecorder {
+	return m.recorder
+}
+
+// FailInterrupted mocks base method.
+func (m *MockRegressionService) FailInterrupted(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FailInterrupted", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// FailInterrupted indicates an expected call of FailInterrupted.
+func (mr *MockRegressionServiceMockRecorder) FailInterrupted(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FailInterrupted", reflect.TypeOf((*MockRegressionService)(nil).FailInterrupted), ctx)
+}
+
+// StartRegression mocks base method.
+func (m *MockRegressionService) StartRegression(ctx context.Context, token string, release *interfaces.Release, runner interfaces.AccountInfo) (*interfaces.Regression, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartRegression", ctx, token, release, runner)
+	ret0, _ := ret[0].(*interfaces.Regression)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// StartRegression indicates an expected call of StartRegression.
+func (mr *MockRegressionServiceMockRecorder) StartRegression(ctx, token, release, runner any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartRegression", reflect.TypeOf((*MockRegressionService)(nil).StartRegression), ctx, token, release, runner)
+}

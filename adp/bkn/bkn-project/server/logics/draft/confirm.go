@@ -89,6 +89,16 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_UndecidedNotAccepted).
 			WithErrorDetails(undecided)
 	}
+	requirementVersion, unresolved, err := s.requirementState(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read requirement failed")
+		return nil, internalError(ctx, "Read requirement failed", err)
+	}
+	if len(unresolved) > 0 && !confirm.AcceptUnresolvedConflicts {
+		span.SetStatus(codes.Error, "Conflicts not accepted")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_ConflictsNotAccepted).
+			WithErrorDetails(unresolved)
+	}
 	compiled, err := compileDraft(&draft.Items)
 	if err != nil {
 		span.SetStatus(codes.Error, "Compile failed")
@@ -187,6 +197,13 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	confirmation.By, confirmation.Time = caller, draft.UpdateTime
 	confirmation.Files, confirmation.Pending = paths, nil
 	confirmation.SkippedValueTypes = compiled.SkippedValueTypes
+	confirmation.RequirementVersion = requirementVersion
+	if len(unresolved) > 0 {
+		draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{
+			Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ACCEPT_UNRESOLVED_CONFLICTS,
+			After: unresolved, By: caller, Time: draft.UpdateTime,
+		})
+	}
 	if len(undecided) > 0 {
 		draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{
 			Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ACCEPT_UNDECIDED,
@@ -268,4 +285,24 @@ func unionSorted(a []string, b []string) []string {
 	}
 	sort.Strings(all)
 	return all
+}
+
+// requirementState is the project's ready requirement specification as a confirmation records it:
+// its version, and the conflicts between documents it leaves unresolved, deferred ones included.
+// A project without a ready specification has version 0 and none.
+func (s *draftService) requirementState(ctx context.Context, projectID string) (int, []string, error) {
+	req, ok, err := s.rqa.GetRequirement(ctx, projectID)
+	if err != nil {
+		return 0, nil, err
+	}
+	if !ok || req.Status != interfaces.REQUIREMENT_STATUS_READY {
+		return 0, nil, nil
+	}
+	unresolved := []string{}
+	for _, k := range req.Spec.Conflicts {
+		if k.Resolution == nil || k.Deferred {
+			unresolved = append(unresolved, k.ID)
+		}
+	}
+	return req.Version, unresolved, nil
 }

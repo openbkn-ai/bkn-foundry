@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
 
 // Directories of the definitions a review names.
@@ -64,6 +65,7 @@ func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectR
 			ca:  logics.CA,
 			gs:  logics.GS,
 			ra:  logics.RA,
+			rs:  requirement.NewRequirementService(),
 		}
 		s.reviewer = s
 		prs = s
