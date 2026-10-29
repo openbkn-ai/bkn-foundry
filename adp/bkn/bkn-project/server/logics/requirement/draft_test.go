@@ -260,15 +260,16 @@ func Test_BuildSpec(t *testing.T) {
 
 func Test_BuildDraftMessage(t *testing.T) {
 	Convey("Test buildDraftMessage\n", t, func() {
-		Convey("At most maxMessageTables tables go to the Agent, the first ones listed\n", func() {
+		Convey("At most maxMessageTables tables go to the Agent, the first ones listed, and the rest are counted\n", func() {
 			tables := make([]*interfaces.VegaTable, maxMessageTables+5)
 			for i := range tables {
 				tables[i] = &interfaces.VegaTable{Name: fmt.Sprintf("t%d", i)}
 			}
 
-			message, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil)
+			message, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil)
 
 			So(err, ShouldBeNil)
+			So(omitted, ShouldEqual, 5)
 			var body draftMessage
 			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
 			So(body.Tables, ShouldHaveLength, maxMessageTables)
@@ -360,6 +361,7 @@ func Test_RequirementDrafting(t *testing.T) {
 			So(finished.RunID, ShouldEqual, "run1")
 			So(finished.AgentTaskID, ShouldEqual, "t1")
 			So(finished.Spec.Scenarios[0].ID, ShouldEqual, "s1")
+			So(finished.Spec.TablesOmitted, ShouldEqual, 0)
 			So(finished.Spec.Rules[0].Citations[0].DocumentID, ShouldEqual, "pol")
 			So(finished.Inputs, ShouldResemble, &interfaces.RequirementInputs{
 				RulesVersion: requirementRulesVersion,
@@ -369,6 +371,26 @@ func Test_RequirementDrafting(t *testing.T) {
 				},
 				CatalogIDs: []string{"c1", "c2"}, NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US,
 			})
+		})
+
+		Convey("Tables beyond what one drafting names are counted in the specification\n", func() {
+			expectStart()
+			many := make([]*interfaces.VegaTable, maxMessageTables+3)
+			for i := range many {
+				many[i] = &interfaces.VegaTable{Name: fmt.Sprintf("t%d", i)}
+			}
+			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return(many, nil)
+			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{}`}, nil)
+			expectFinish()
+
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
+			So(finished.Spec.TablesOmitted, ShouldEqual, 3)
 		})
 
 		Convey("Each way the Agent fails is recorded as its code, with an empty specification\n", func() {
