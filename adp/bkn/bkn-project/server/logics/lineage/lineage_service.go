@@ -17,6 +17,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/go-git/go-git/v5"
@@ -295,8 +296,30 @@ func (s *lineageService) PreflightDefinitions(ctx context.Context, lineageID str
 		return nil, toHTTPError(ctx, "Read main failed", err)
 	}
 	preflight.Existing = append(preflight.Existing, existingPaths(current, paths, owned)...)
+	preflight.ObjectTypeNames = keptObjectTypeNames(current, paths, owned)
 	span.SetStatus(codes.Ok, "")
 	return preflight, nil
+}
+
+// keptObjectTypeNames lists, sorted, the names of the object types the branch keeps when the
+// definitions at paths are added and those owned are given up. A file that does not parse is left
+// out: adding refuses it with its own error.
+func keptObjectTypeNames(current map[string][]byte, paths []string, owned []string) []string {
+	gone := make(map[string]bool, len(paths)+len(owned))
+	for _, p := range append(slices.Clone(paths), owned...) {
+		gone[p] = true
+	}
+	var names []string
+	for p, data := range current {
+		if gone[p] || !strings.HasPrefix(p, "object_types/") {
+			continue
+		}
+		if ot, err := bkn.ParseObjectTypeFile(string(data), p); err == nil && ot.Name != "" {
+			names = append(names, ot.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // notKeptInV3 says why a branch whose definitions are current is not kept in BKN 3.0, or nothing

@@ -49,6 +49,12 @@ func (c *compiledDraft) addIDKey(kind string, sourceKey string) {
 }
 
 func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
+	return compileDraftBeside(items, nil)
+}
+
+// compileDraftBeside compiles the draft to go beside the object types of names the branch keeps:
+// an alias may not be one of them either.
+func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*compiledDraft, error) {
 	network := &bkn.BknNetwork{
 		BknNetworkFrontmatter: bkn.BknNetworkFrontmatter{
 			Type:    "knowledge_network",
@@ -75,6 +81,10 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 		result.addIDKey(interfaces.ID_KIND_VALUE_TYPES, vt.CodeTable.ResourceID)
 	}
 	objectTypes, objectNames := map[string]bool{}, map[string]string{}
+	for _, name := range keptNames {
+		// Kept object types are not in this draft: no id here is theirs.
+		objectNames[name] = ""
+	}
 	for _, ot := range items.ObjectTypes {
 		if !ot.Adopted {
 			continue

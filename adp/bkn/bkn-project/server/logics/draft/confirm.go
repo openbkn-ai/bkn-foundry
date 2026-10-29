@@ -111,6 +111,21 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		*confirmation = *previous
 	}
 
+	// The branch may keep object types this draft did not write: an alias may not name one either.
+	preflight, err := s.ls.PreflightDefinitions(ctx, entry.KNID, entry.Branch, paths, owned)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read branch failed")
+		return nil, err
+	}
+	if len(preflight.ObjectTypeNames) > 0 {
+		// The same items at the same paths; only aliases can differ.
+		if compiled, err = compileDraftBeside(&draft.Items, preflight.ObjectTypeNames); err != nil {
+			span.SetStatus(codes.Error, "Compile failed")
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
+				WithErrorDetails(err.Error())
+		}
+	}
+
 	// Claim: not confirmed while under way, and what it is about to write recorded apart. The
 	// rest stays the last confirmation's until this one commits.
 	readUpdateTime := draft.UpdateTime
