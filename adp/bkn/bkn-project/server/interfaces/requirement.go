@@ -143,6 +143,9 @@ type RequirementSpec struct {
 	// TablesOmitted counts the tables of the project's catalogs drafting did not name to the Agent:
 	// it names at most a set number, the first ones listed. Absent when none was left out.
 	TablesOmitted int `json:"tables_omitted,omitempty"`
+	// LastIDs is the highest number given to an item of each kind (s, c, q, r) since drafting, so
+	// an id once given, even of an item removed since, is never given again.
+	LastIDs map[string]int `json:"last_ids,omitempty"`
 }
 
 // RequirementCitation is a passage of a document an item quotes. The agent gives the document and
@@ -340,7 +343,8 @@ const (
 // RequirementItemEdit changes the fields it sets of one item, for the item's kind: name, actor,
 // trigger, decision and knowledge of a scenario; term, category and definition of a concept; text,
 // layer, template, answer_shape, scenario_ids and needs of a question; statement of a rule.
-// Setting a question's needs makes them the person's. UpdateTime is the specification's as read.
+// Setting a question's needs makes them the person's; follow_concepts makes them follow its
+// concepts again. UpdateTime is the specification's as read.
 type RequirementItemEdit struct {
 	UpdateTime  int64                 `json:"update_time"`
 	Name        *string               `json:"name"`
@@ -357,7 +361,9 @@ type RequirementItemEdit struct {
 	AnswerShape *string               `json:"answer_shape"`
 	ScenarioIDs *[]string             `json:"scenario_ids"`
 	Needs       *[]RequirementItemRef `json:"needs"`
-	Statement   *string               `json:"statement"`
+	// FollowConcepts set to true gives a question's needs back to its concepts.
+	FollowConcepts *bool   `json:"follow_concepts"`
+	Statement      *string `json:"statement"`
 }
 
 // RequirementMapping sets the drafted item a concept is; nil clears it.

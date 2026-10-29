@@ -211,6 +211,23 @@ func Test_RequirementEdits(t *testing.T) {
 			So(saved.Spec.Rules[1].ID, ShouldEqual, "r5")
 		})
 
+		Convey("Removing the item with the highest id does not free that id\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q2", 7, caller)
+			So(err, ShouldBeNil)
+
+			after := saved
+			after.UpdateTime = 7
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(after, true, nil)
+			expectSave()
+			_, err = svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS,
+				interfaces.RequirementItemEdit{UpdateTime: 7, Text: ptr("Which carriers?")}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[len(saved.Spec.Questions)-1].ID, ShouldEqual, "q3")
+		})
+
 		Convey("An added item needs what identifies it, and a kind the specification has\n", func() {
 			expectRead()
 			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS,
@@ -245,6 +262,24 @@ func Test_RequirementEdits(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(saved.Spec.Scenarios, ShouldBeEmpty)
 			So(saved.Spec.Questions[0].ScenarioIDs, ShouldResemble, []string{})
+		})
+
+		Convey("A question with a person's needs goes back to following its concepts\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q2",
+				interfaces.RequirementItemEdit{UpdateTime: 7, FollowConcepts: ptr(true)}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[1].NeedsSource, ShouldEqual, interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS)
+			So(saved.Spec.Questions[1].Needs, ShouldResemble, []interfaces.RequirementItemRef{orderRef})
+
+			expectRead()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q2",
+				interfaces.RequirementItemEdit{UpdateTime: 7, FollowConcepts: ptr(true),
+					Needs: &[]interfaces.RequirementItemRef{customerRef}}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
 		})
 
 		Convey("Mapping a concept updates the questions that follow their concepts, and only those\n", func() {
@@ -324,6 +359,9 @@ func Test_RequirementEdits(t *testing.T) {
 			for _, resolve := range []interfaces.RequirementResolve{
 				{UpdateTime: 7, DocumentID: "pol"},
 				{UpdateTime: 7, Deferred: true},
+				// Handing a conflict to the business is instead of resolving it, not besides.
+				{UpdateTime: 7, Deferred: true, Reason: "ask", DocumentID: "pol"},
+				{UpdateTime: 7, Deferred: true, Reason: "ask", Text: "email proposes"},
 				{UpdateTime: 7, Reason: "r"},
 				{UpdateTime: 7, DocumentID: "std", Reason: "r"},
 			} {
