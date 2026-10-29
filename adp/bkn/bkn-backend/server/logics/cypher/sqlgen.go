@@ -429,8 +429,9 @@ func (g *generator) writeFrom() {
 	g.writeSemiJoins()
 	g.writeCarried()
 	g.writeOptionalJoins(joined, used)
-	// The chosen conclusions may name a node an OPTIONAL MATCH attached, so
-	// they join after every outer join.
+	g.writeClosingBackings(joined, used)
+	// The chosen conclusions may name a node an OPTIONAL MATCH attached, or a
+	// backing table a relationship value reads, so they join after both.
 	g.writeConclusions()
 
 	// A join that attached no table still carries a condition: a cycle closing
@@ -438,14 +439,6 @@ func (g *generator) writeFrom() {
 	// kept for WHERE, where a condition can stand on its own.
 	for i, join := range g.plan.Joins {
 		if !used[i] {
-			if join.Backing != nil && !join.Optional {
-				// Both ends are read already, so only the backing table is
-				// left to join, on both of its rule sets at once.
-				g.writeClosingBacking(join)
-				joined[join.Backing.Table] = true
-				used[i] = true
-				continue
-			}
 			if join.Optional {
 				// An outer join's condition cannot stand in WHERE: there it
 				// filters the rows the join kept instead of deciding what it
@@ -456,6 +449,20 @@ func (g *generator) writeFrom() {
 			}
 			g.deferred = append(g.deferred, join)
 		}
+	}
+}
+
+// writeClosingBackings joins the backing table of each indirect relationship
+// whose ends are both read already, as a cycle has: it is the one table such a
+// relationship has left to attach, joined on both of its rule sets at once.
+func (g *generator) writeClosingBackings(joined, used []bool) {
+	for i, join := range g.plan.Joins {
+		if used[i] || join.Backing == nil || join.Optional {
+			continue
+		}
+		g.writeClosingBacking(join)
+		joined[join.Backing.Table] = true
+		used[i] = true
 	}
 }
 

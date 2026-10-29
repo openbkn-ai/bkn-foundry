@@ -480,3 +480,35 @@ func TestIndirectRelationPropertyIsRefusedClearly(t *testing.T) {
 		t.Fatal("a relationship property was accepted")
 	}
 }
+
+// A relationship closing a cycle joins its backing table after both ends; with
+// collect, the derived table of conclusions reads that backing table's columns
+// (the relationship's basis), so the backing table has to be joined before it.
+func TestIndirectRelationClosingACycleJoinsBeforeTheConclusions(t *testing.T) {
+	for _, query := range []string{
+		"MATCH (a:employee)-[m:mentors]->(a) RETURN m, collect(a.employee_name) AS names",
+		"MATCH (a:employee)-[:participates_in]->(p:project)<-[:participates_in]-(b:employee), (a)-[m:mentors]->(b) " +
+			"RETURN m, collect(p) AS projects",
+	} {
+		t.Run(query, func(t *testing.T) {
+			plan, err := compileIndirect(t, query, CompileOptions{})
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			read, err := planGraphRead(plan, DialectMySQL, interfaces.CYPHER_DEFAULT_LIMIT)
+			if err != nil {
+				t.Fatalf("planGraphRead: %v", err)
+			}
+			statement := read.statement
+			conclusions := strings.LastIndex(statement, ") c0 ON ")
+			if conclusions < 0 {
+				t.Fatalf("statement has no conclusions join: %s", statement)
+			}
+			outer := statement[:strings.Index(statement, "JOIN (SELECT")] + statement[conclusions:]
+			backing := strings.Index(outer, "JOIN {{.res_mentoring}}")
+			if backing < 0 || backing > strings.Index(outer, ") c0 ON ") {
+				t.Fatalf("the backing table is joined after the conclusions that read it: %s", statement)
+			}
+		})
+	}
+}
