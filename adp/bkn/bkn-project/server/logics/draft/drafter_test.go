@@ -435,12 +435,53 @@ func Test_Drafter(t *testing.T) {
 			c := sampleCounter()
 			c.keys["r_orders"] = [3]int64{800, 798, 0}
 			c.keys["r_orders.order_id+code"] = [3]int64{800, 799, 0}
+			// Each would be chosen were it counted.
+			for _, field := range []string{"customer_id", "salesperson_id", "warehouse_id"} {
+				c.keys["r_orders.order_id+"+field] = [3]int64{800, 800, 0}
+			}
 
 			orders := objectType(run(c), "orders")
 
 			// customer_id refers by its key, salesperson_id and warehouse_id by their tables' names.
 			So(orders.NeedsIdentity, ShouldBeTrue)
 			So(orders.Key.Candidate, ShouldBeNil)
+		})
+
+		Convey("A field with nulls is paired with nothing: every pair would have them\n", func() {
+			c := sampleCounter()
+			c.keys["r_orders"] = [3]int64{800, 790, 10}
+			c.keys["r_orders.order_id+code"] = [3]int64{800, 800, 0}
+
+			So(objectType(run(c), "orders").Key.Candidate, ShouldBeNil)
+		})
+
+		Convey("An inferred identity field with nulls, or a table without rows, is paired with nothing either\n", func() {
+			lines := table("r_pol", "c1", "purchase_order_lines", 0, nil, col("id", "integer", ""), col("entry_id", "integer", ""))
+			for _, counts := range [][3]int64{{100, 40, 5}, {0, 0, 0}} {
+				c := sampleCounter()
+				c.keys["r_pol.id"] = counts
+				c.keys["r_pol.id+entry_id"] = [3]int64{100, 100, 0}
+
+				items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{lines}, nil)
+
+				So(err, ShouldBeNil)
+				So(items.ObjectTypes[0].Key.Candidate, ShouldBeNil)
+			}
+		})
+
+		Convey("A line number is no reference to a table keyed by it with a document\n", func() {
+			receipts := table("r_rl", "c1", "receipt_lines", 0, nil,
+				col("id", "integer", ""), col("line_no", "integer", ""))
+			orderLines := table("r_pl", "c1", "po_lines", 0, []string{"po_id", "line_no"},
+				col("po_id", "integer", ""), col("line_no", "integer", ""))
+			c := sampleCounter()
+			c.keys["r_rl.id"] = [3]int64{100, 40, 0}
+			c.keys["r_rl.id+line_no"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{receipts, orderLines}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "receipt_lines").Key.Candidate, ShouldResemble, []string{"id", "line_no"})
 		})
 
 		Convey("A declared key with duplicates is paired as an inferred one is\n", func() {

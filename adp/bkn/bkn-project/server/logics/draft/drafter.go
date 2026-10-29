@@ -325,6 +325,10 @@ func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) err
 	if nulls > 0 || distinct < rows-nulls {
 		objectType.NeedsIdentity, objectType.Adopted = true, false
 		delete(d.keys, table.ID)
+		// A field with nulls makes every pair with it have nulls too: none to count.
+		if nulls > 0 || rows == 0 {
+			return nil
+		}
 		return d.pairIdentity(ctx, table, objectType, key[0])
 	}
 	return nil
@@ -335,17 +339,16 @@ func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) err
 // which one.
 func (d *drafter) namesAnotherTable(table *interfaces.VegaTable, field string) bool {
 	for _, other := range d.bySourceName {
-		if other.ID == table.ID {
+		// Inference refers to a table by one key field, never to a link table.
+		if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
 			continue
 		}
 		keys := other.PrimaryKeys
 		if len(keys) == 0 {
 			keys = identityCandidates(other)
 		}
-		for _, key := range keys {
-			if nameMatch(field, other, key) > 0 {
-				return true
-			}
+		if len(keys) == 1 && nameMatch(field, other, keys[0]) > 0 {
+			return true
 		}
 	}
 	return false
@@ -439,8 +442,9 @@ func (d *drafter) inferKey(ctx context.Context, table *interfaces.VegaTable, obj
 			return nil
 		}
 	}
-	if candidates := identityCandidates(table); len(candidates) > 0 && objectType.Key.Computed {
-		return d.pairIdentity(ctx, table, objectType, candidates[0])
+	// Paired with the field whose counts are the evidence, when it has no nulls to make every pair have.
+	if key := objectType.Key; key.Computed && key.Field != "" && key.Nulls == 0 && key.Rows > 0 {
+		return d.pairIdentity(ctx, table, objectType, key.Field)
 	}
 	return nil
 }
