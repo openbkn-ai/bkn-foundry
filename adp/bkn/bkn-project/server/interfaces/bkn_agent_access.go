@@ -58,6 +58,37 @@ func (e *BknAgentError) Error() string {
 	return fmt.Sprintf("bkn-agent returned HTTP %d: %s %s", e.HTTPCode, e.Code, e.Description)
 }
 
+// Statuses an answer on a knowledge network ends in.
+const (
+	BKN_AGENT_ANSWER_SUCCEEDED = "succeeded"
+	BKN_AGENT_ANSWER_FAILED    = "failed"
+	BKN_AGENT_ANSWER_CANCELLED = "cancelled"
+)
+
+// BknAgentAnswerRequest asks a chat Agent to answer Message on the knowledge network KNID.
+// ClientRequestID makes the request idempotent for the caller: sent again, bkn-agent replays the
+// answer it gave instead of answering again. It is 1 to 100 letters, digits, "_", "." or "-";
+// bkn-agent refuses any other with 400 BknAgent.ParamError.FormatError.
+type BknAgentAnswerRequest struct {
+	AgentID         string `json:"agent_id"`
+	Message         string `json:"message"`
+	ClientRequestID string `json:"client_request_id"`
+	KNID            string `json:"-"`
+}
+
+// BknAgentAnswer is how an answer ended. ErrorCode is bkn-agent's code for a failed one, such as
+// BknAgent.Model.Unavailable or BknAgent.Chat.Timeout. The tool counts are of the calls the Agent
+// made on the network, as streamed: a replayed answer has none. A tool call is unavailable when it
+// did not go through, and failed otherwise when the tool returned an error.
+type BknAgentAnswer struct {
+	Status           string `json:"status"`
+	Answer           string `json:"answer"`
+	ErrorCode        string `json:"error_code,omitempty"`
+	ToolCalls        int    `json:"tool_calls"`
+	ToolsUnavailable int    `json:"tools_unavailable"`
+	ToolsFailed      int    `json:"tools_failed"`
+}
+
 //go:generate mockgen -source ../interfaces/bkn_agent_access.go -destination ../interfaces/mock/mock_bkn_agent_access.go
 type BknAgentAccess interface {
 	// RunTask starts a task Agent once, in the background, as the account; the task it returns
@@ -65,4 +96,7 @@ type BknAgentAccess interface {
 	RunTask(ctx context.Context, account BknAgentAccount, req *BknAgentRunRequest) (*BknAgentTask, error)
 	// GetTask reads a task the account started. A task of another account reads as missing.
 	GetTask(ctx context.Context, account BknAgentAccount, taskID string) (*BknAgentTask, error)
+	// AnswerOnNetwork has a chat Agent answer a question on a knowledge network, with token, and
+	// waits for the answer to end. A refusal before answering is a *BknAgentError.
+	AnswerOnNetwork(ctx context.Context, token string, req *BknAgentAnswerRequest) (*BknAgentAnswer, error)
 }
