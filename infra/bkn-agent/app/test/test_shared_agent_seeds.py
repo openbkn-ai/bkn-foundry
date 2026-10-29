@@ -1698,6 +1698,18 @@ def test_answer_judge_seed_is_a_published_tool_free_task_on_the_default_model():
         for verdict in ("answered", "clarification_needed", "cannot_answer", "off_topic"):
             assert verdict in prompt
         assert "used_needs" in prompt and "only the kinds and ids listed in the message" in prompt
+        # An answer passes only when it gives all of what is asked, from the network: facts no tool call
+        # could have read, and part of an answer, are cannot_answer.
+        assert "gives all of what it asks" in prompt
+        assert "facts that none of its tool calls could have read from the network" in prompt
+        assert "does not rest on data in the network" in prompt
+        assert "gives only part of what the question asks" in prompt
+        # cannot_answer does not take the cases clarification_needed and off_topic name.
+        assert "when clarification_needed or off_topic applies, choose it rather than cannot_answer" in prompt
+        zh = json.loads(localized)["zh-CN"]
+        for rule in ("\u6ca1\u6709\u4f9d\u636e\u7f51\u7edc\u4e2d\u7684\u6570\u636e", "\u53ea\u7ed9\u51fa\u4e86\u95ee\u9898\u6240\u95ee\u7684\u4e00\u90e8\u5206",
+                     "\u9009\u5b83\u4eec\u800c\u4e0d\u662f cannot_answer"):
+            assert rule in zh
         # It judges what the answer says from what the message carries: never the data the tools returned.
         assert "without what the tools returned" in prompt
         assert "no row data" in prompt
