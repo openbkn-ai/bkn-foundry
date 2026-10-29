@@ -1265,6 +1265,21 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 	})
 }
 
+func TestBuildResourceAgentInputResourceCarriesAPINames(t *testing.T) {
+	resource := sampleSemanticResource()
+	resource.APIName = "order"
+	resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "编号", APIName: "order_code"})
+
+	got := buildResourceAgentInputResource(resource)
+
+	assert.Equal(t, "order", got.APIName)
+	assert.Equal(t, []string{"", "order_code"}, []string{got.SchemaDefinition[0].APIName, got.SchemaDefinition[1].APIName})
+	// 没有 api_name 时不出现在快照里，已有资源的输入哈希不变。
+	snapshot, err := sonic.ConfigStd.Marshal(buildResourceAgentInputResource(sampleSemanticResource()))
+	require.NoError(t, err)
+	assert.NotContains(t, string(snapshot), "api_name")
+}
+
 func sampleSemanticResource() *interfaces.Resource {
 	return &interfaces.Resource{
 		ID:               "resource-1",

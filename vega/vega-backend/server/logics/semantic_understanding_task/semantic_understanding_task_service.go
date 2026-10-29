@@ -911,6 +911,7 @@ func buildResourceAgentInputResource(resource *interfaces.Resource) interfaces.S
 		Schema:           resource.Schema,
 		SourceIdentifier: resource.SourceIdentifier,
 		Description:      resource.Description,
+		APIName:          resource.APIName,
 		SchemaDefinition: buildResourceAgentInputProperties(resource.SchemaDefinition),
 	}
 }
@@ -1024,6 +1025,7 @@ func buildResourceAgentInputProperties(properties []*interfaces.Property) []inte
 			OriginalDescription: property.OriginalDescription,
 			DisplayName:         property.DisplayName,
 			Description:         property.Description,
+			APIName:             property.APIName,
 		})
 	}
 	return result
