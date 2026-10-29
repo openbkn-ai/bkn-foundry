@@ -54,8 +54,10 @@ def database():
     db.create_function("now", 1, lambda _: 1)
     db.create_function("unix_timestamp", 1, lambda _: 1)
     db.create_function(
-        "sha2", 2, lambda value, bits: hashlib.sha256(value.encode()).hexdigest()
+        "sha2", 2, lambda value, bits: None if value is None else hashlib.sha256(value.encode()).hexdigest()
     )
+    # SQLite's json_extract already returns unquoted text.
+    db.create_function("json_unquote", 1, lambda value: value)
 
     # Migrations compare flat limits objects and lists of changed field names.
     def json_contains(document, candidate):
@@ -1443,7 +1445,7 @@ def test_semantic_naming_upgrade_matches_fresh_install_and_keeps_history(start):
         assert snapshot(db) == before
 
 
-@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "translation"])
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
 def test_semantic_naming_upgrade_preserves_operator_prompt_choices(customization):
     with database() as db:
         semantic_v5_state(db, "upgraded")
@@ -1451,14 +1453,13 @@ def test_semantic_naming_upgrade_preserves_operator_prompt_choices(customization
             db.execute(
                 "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=5"
             )
-        elif customization == "translation":
-            # An administrator's translation of v5 is theirs; v6 is still offered, untranslated.
+        elif customization in ("zh-CN", "en-US"):
+            # An administrator's translation of v5 is a customization too: moving to v6 would stop
+            # using it, so nothing is upgraded.
             db.execute(
-                "UPDATE t_agent_prompt_version SET f_localized_content='{\"en-US\":\"custom\"}' WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=5"
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom') WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=5",
+                (f'$."{customization}"',),
             )
-            apply(db, SEMANTIC_NAMING)
-            assert semantic_prompt_version(db, 5)["f_localized_content"] == '{"en-US":"custom"}'
-            return
         else:
             db.execute(
                 "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('resource-semantic-understanding-prompt',6,'custom newer prompt',null,'operator',2000)"

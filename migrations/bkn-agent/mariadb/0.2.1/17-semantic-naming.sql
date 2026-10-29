@@ -5,7 +5,7 @@
 -- Resource semantic understanding v6: name the resource as the business object it
 -- represents (a concise singular business noun; no sentence, source-system prefix or
 -- storage word) and qualify generic field meanings. Same rules as 15: upgrade only the
--- untouched official v5, preserve customized prompts, every historical prompt/Agent
+-- untouched official v5 (body and translations), keep customized prompts, every historical prompt/Agent
 -- version and the operator's runtime settings; replay resumes interrupted updates.
 -- The translations follow 16: attached only to the exact official v6 body, never over
 -- an administrator's. A database installed from an earlier 0.2.1 snapshot gets this
@@ -24,6 +24,9 @@ join t_agent_prompt p on p.f_prompt_id = v.f_prompt_id
 where v.f_prompt_id = 'resource-semantic-understanding-prompt'
   and v.f_version = 5 and p.f_current_version = 5
   and sha2(v.f_content, 256) = '813dff66c8ea6f830601b173347936752f02e545d45781b4bb68266d13855eb1'
+  and (v.f_localized_content is null or json_type(v.f_localized_content) = 'NULL'
+      or (sha2(json_unquote(json_extract(v.f_localized_content, '$."zh-CN"')), 256) = '813dff66c8ea6f830601b173347936752f02e545d45781b4bb68266d13855eb1'
+          and sha2(json_unquote(json_extract(v.f_localized_content, '$."en-US"')), 256) = 'cd2461640deebf44ce2028f93095fc4bc8cb3dfe9b8b66a161699b0474208ade'))
   and not exists (
       select 1 from t_agent_prompt_version newer
       where newer.f_prompt_id = v.f_prompt_id and newer.f_version > 5
