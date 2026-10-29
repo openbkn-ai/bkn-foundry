@@ -132,3 +132,47 @@ func Test_DraftNamingLanguage(t *testing.T) {
 		})
 	})
 }
+
+func Test_DraftTableName(t *testing.T) {
+	Convey("Test naming an object type from its table\n", t, func() {
+		zh, en := interfaces.NAMING_LANGUAGE_ZH_CN, interfaces.NAMING_LANGUAGE_EN_US
+		orders := func(name string, description string) *interfaces.VegaTable {
+			t := table("r_so", "c1", name, 0, []string{"id"}, col("id", "string", ""))
+			t.SourceName, t.Description = "sales_order", description
+			return t
+		}
+		nameIn := func(language string, t *interfaces.VegaTable) (string, []string) {
+			d := newDrafter(testSetting, sampleCounter()).withNamingLanguage(language)
+			items, err := d.draft(context.Background(), []*interfaces.VegaTable{t}, nil)
+			So(err, ShouldBeNil)
+			return items.ObjectTypes[0].Name, items.ObjectTypes[0].Aliases
+		}
+
+		Convey("The name semantic understanding or a person gave the table comes before its description\n", func() {
+			// Semantic understanding writes a sentence as the description: its first clause names badly.
+			name, aliases := nameIn(zh, orders("销售订单", "记录销售订单的签订、客户、产品、数量、交期及发货状态等信息"))
+			So(name, ShouldEqual, "销售订单")
+			So(aliases, ShouldBeNil)
+		})
+
+		Convey("A table nobody named takes the first clause of its description, as a database comment gives\n", func() {
+			name, _ := nameIn(zh, orders("sales_order", "销售订单。来自 ERP"))
+			So(name, ShouldEqual, "销售订单")
+		})
+
+		Convey("A name discovery gave, the physical name with its schema, is no name a person gave\n", func() {
+			// Tables discovered before vega 0.2.1 kept their source identifier as their name.
+			t := orders("erp.sales_order", "Sales orders. From ERP")
+			t.SourceSchema = "erp"
+			name, aliases := nameIn(en, t)
+			So(name, ShouldEqual, "Sales orders")
+			So(aliases, ShouldBeNil)
+		})
+
+		Convey("The naming language still comes first: a name in the other language is an alias\n", func() {
+			name, aliases := nameIn(en, orders("销售订单", "Sales orders signed with customers"))
+			So(name, ShouldEqual, "Sales orders signed with customers")
+			So(aliases, ShouldResemble, []string{"销售订单"})
+		})
+	})
+}
