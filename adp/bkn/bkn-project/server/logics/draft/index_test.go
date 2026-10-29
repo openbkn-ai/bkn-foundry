@@ -94,7 +94,8 @@ func Test_GetIndex(t *testing.T) {
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
-		svc := &draftService{setting: testSetting, da: da, va: va, ps: ps}
+		iba := pmock.NewMockIndexBuildAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, va: va, ps: ps, iba: iba}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 		objectType := func(id, catalog string, adopted bool) *interfaces.DraftObjectType {
@@ -123,6 +124,52 @@ func Test_GetIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(index.TasksVisible, ShouldBeTrue)
 			So(index.Counts, ShouldResemble, map[string]int{interfaces.INDEX_STATE_BUILDING: 1, interfaces.INDEX_STATE_NOT_BUILT: 2})
+		})
+
+		Convey("Each object type carries the build the last confirmation started for its table\n", func() {
+			confirmed := *draft
+			confirmed.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "c0ffee"}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&confirmed, true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return([]*interfaces.VegaTable{
+				{ID: "r_orders", Index: configured}, {ID: "r_parts", Index: configured},
+			}, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).Times(2)
+			iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c0ffee").Return([]*interfaces.IndexBuild{
+				{ResourceID: "r_orders", ObjectTypeID: "orders", TaskID: "t9", Outcome: interfaces.INDEX_BUILD_CREATED, CreateTime: 5},
+				{ResourceID: "r_parts", ObjectTypeID: "parts", Outcome: interfaces.INDEX_BUILD_FAILED, Reason: "vega is down", CreateTime: 6},
+			}, nil)
+
+			index, err := svc.GetIndex(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			builds := map[string]*interfaces.ProjectIndexBuild{}
+			for _, item := range index.ObjectTypes {
+				builds[item.ID] = item.Build
+			}
+			So(builds, ShouldResemble, map[string]*interfaces.ProjectIndexBuild{
+				"orders": {Outcome: interfaces.INDEX_BUILD_CREATED, TaskID: "t9", Time: 5},
+				"parts":  {Outcome: interfaces.INDEX_BUILD_FAILED, Reason: "vega is down", Time: 6},
+				"lines":  nil,
+			})
+		})
+
+		Convey("A failure reading the builds leaves them out, the rest stands\n", func() {
+			confirmed := *draft
+			confirmed.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "c0ffee"}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&confirmed, true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return([]*interfaces.VegaTable{
+				{ID: "r_orders", Index: configured},
+			}, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).Times(2)
+			iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c0ffee").Return(nil, errors.New("db is down"))
+
+			index, err := svc.GetIndex(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(index.ObjectTypes[0].Build, ShouldBeNil)
+			So(index.Counts[interfaces.INDEX_STATE_NOT_BUILT], ShouldEqual, 1)
 		})
 
 		Convey("Build tasks the caller may not list leave building unknown, the rest stands\n", func() {
