@@ -205,6 +205,14 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	}
 	// What was written is checked in the background; the check never undoes the confirmation.
 	s.startCheck(context.WithoutCancel(ctx), projectID, result.Commit, checkInputOf(&draft.Items), caller)
+	// So are the adopted tables' indexes built, as the confirmer; a build that cannot start is
+	// recorded and never undoes the confirmation either.
+	background, items := context.WithoutCancel(ctx), draft.Items
+	s.run(func() {
+		if err := s.buildIndexes(background, projectID, result.Commit, &items, caller); err != nil {
+			otellog.LogWarn(background, fmt.Sprintf("Build indexes of project %s: %v", projectID, err))
+		}
+	})
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
 }

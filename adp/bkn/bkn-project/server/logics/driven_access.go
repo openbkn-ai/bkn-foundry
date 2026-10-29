@@ -19,6 +19,7 @@ var (
 	CA  interfaces.CheckAccess
 	IRA interfaces.IDRegistryAccess
 	VA  interfaces.VegaAccess
+	IBA interfaces.IndexBuildAccess
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
 	EFA interfaces.ExecutionFactoryAccess
@@ -54,6 +55,10 @@ func SetIDRegistryAccess(ira interfaces.IDRegistryAccess) {
 
 func SetVegaAccess(va interfaces.VegaAccess) {
 	VA = va
+}
+
+func SetIndexBuildAccess(iba interfaces.IndexBuildAccess) {
+	IBA = iba
 }
 
 func SetGitStore(gs interfaces.GitStore) {

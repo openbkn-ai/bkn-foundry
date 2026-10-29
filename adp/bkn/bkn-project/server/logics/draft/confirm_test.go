@@ -52,7 +52,12 @@ func Test_ConfirmDraft(t *testing.T) {
 		ls := pmock.NewMockLineageService(ctrl)
 		ca := pmock.NewMockCheckAccess(ctrl)
 		ira := &fakeIDRegistry{}
-		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, ira: ira, run: func(func()) {}}
+		va := pmock.NewMockVegaAccess(ctrl)
+		iba := pmock.NewMockIndexBuildAccess(ctrl)
+		// What a confirmation starts in the background, held so a test can run it.
+		var ran []func()
+		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, ira: ira, va: va, iba: iba,
+			run: func(fn func()) { ran = append(ran, fn) }}
 		// The object type names the branch keeps beside what a confirmation writes.
 		var branchNames []string
 		var preflightErr error
@@ -119,6 +124,27 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(ira.locked, ShouldNotBeEmpty)
 			So(ira.lockTime, ShouldEqual, draft.UpdateTime)
 			So(ira.unlocked, ShouldBeEmpty)
+
+			// Beside the check, the confirmation builds the adopted tables' indexes as the confirmer.
+			So(ran, ShouldHaveLength, 2)
+			var adopted *interfaces.DraftObjectType
+			for _, ot := range draft.Items.ObjectTypes {
+				if ot.Adopted && adopted == nil {
+					adopted = ot
+				}
+			}
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return([]*interfaces.VegaTable{{ID: adopted.Table.ResourceID,
+				Index: interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"u"}}}}, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).AnyTimes()
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, adopted.Table.ResourceID).Return("t9", nil)
+			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, builds []*interfaces.IndexBuild) error {
+					So(builds, ShouldHaveLength, 1)
+					So(builds[0].Commit, ShouldEqual, "c1")
+					So(builds[0].TaskID, ShouldEqual, "t9")
+					return nil
+				})
+			ran[1]()
 		})
 
 		Convey("A failure to read the registered ids writes nothing and locks nothing\n", func() {
