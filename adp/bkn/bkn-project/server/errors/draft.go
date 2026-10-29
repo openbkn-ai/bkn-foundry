@@ -56,6 +56,16 @@ const (
 	BknProject_Check_Running          = "BknProject.Check.Running"
 )
 
+// The local index builds of a confirmed draft.
+const (
+	// 403
+	BknProject_Index_NotOwner = "BknProject.Index.NotOwner"
+
+	// 409
+	BknProject_Index_NothingConfirmed = "BknProject.Index.NothingConfirmed"
+	BknProject_Index_ConfirmAgain     = "BknProject.Index.ConfirmAgain"
+)
+
 var (
 	DraftErrCodeList = []string{
 		BknProject_Draft_NoCatalogs,
@@ -89,5 +99,8 @@ var (
 		BknProject_Check_NothingConfirmed,
 		BknProject_Check_ConfirmAgain,
 		BknProject_Check_Running,
+		BknProject_Index_NotOwner,
+		BknProject_Index_NothingConfirmed,
+		BknProject_Index_ConfirmAgain,
 	}
 )
