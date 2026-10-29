@@ -202,6 +202,7 @@ func TestEnrichIndexMetadataPreservesBusinessMetadata(t *testing.T) {
 		SchemaDefinition: []*interfaces.Property{{
 			Name:        "title",
 			DisplayName: "商品标题",
+			APIName:     "product_title",
 			Description: "人工字段说明",
 			Features: []interfaces.PropertyFeature{{
 				FeatureName: "fulltext",
@@ -237,6 +238,7 @@ func TestEnrichIndexMetadataPreservesBusinessMetadata(t *testing.T) {
 			require.Len(t, updated.SchemaDefinition, 1)
 			field := updated.SchemaDefinition[0]
 			assert.Equal(t, "商品标题", field.DisplayName)
+			assert.Equal(t, "product_title", field.APIName)
 			assert.Equal(t, "人工字段说明", field.Description)
 			assert.Equal(t, interfaces.DataType_Text, field.Type)
 			assert.Equal(t, "text", field.OriginalType)

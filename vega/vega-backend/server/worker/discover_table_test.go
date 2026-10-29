@@ -239,6 +239,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 			{
 				Name:                "department_id",
 				DisplayName:         "部门ID",
+				APIName:             "dept_id",
 				Description:         "部门的唯一标识",
 				Type:                "integer",
 				OriginalDescription: "旧源端注释",
@@ -284,6 +285,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 			existing := updated.SchemaDefinition[0]
 			assert.Equal(t, "department_id", existing.Name)
 			assert.Equal(t, "部门ID", existing.DisplayName)
+			assert.Equal(t, "dept_id", existing.APIName)
 			assert.Equal(t, "部门的唯一标识", existing.Description)
 			assert.Equal(t, interfaces.DataType_String, existing.Type)
 			assert.Equal(t, "varchar", existing.OriginalType)
@@ -296,6 +298,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 			added := updated.SchemaDefinition[1]
 			assert.Equal(t, "department_name", added.Name)
 			assert.Equal(t, "department_name", added.DisplayName)
+			assert.Empty(t, added.APIName)
 			assert.Equal(t, "部门名称", added.Description)
 			assert.Equal(t, "部门名称", added.OriginalDescription)
 			assert.Equal(t, []string{"department_id", "department_name"}, []string{existing.Name, added.Name})
