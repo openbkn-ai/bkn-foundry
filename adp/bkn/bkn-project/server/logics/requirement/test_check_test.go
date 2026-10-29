@@ -6,7 +6,9 @@ package requirement
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -31,8 +33,17 @@ func Test_CheckTests(t *testing.T) {
 		slot := func(property, value string) interfaces.QuestionTestSlot {
 			return interfaces.QuestionTestSlot{ConceptID: "c2", Property: property, Value: value}
 		}
+		// A test's text names its values, given or still slots to fill.
 		test := func(expect string, slots ...interfaces.QuestionTestSlot) *interfaces.QuestionTest {
-			return &interfaces.QuestionTest{ID: "t1", Text: "x", Expect: expect, Slots: slots}
+			names := []string{}
+			for i, s := range slots {
+				if s.Value == "" {
+					names = append(names, slotPlaceholder(i))
+				} else {
+					names = append(names, s.Value)
+				}
+			}
+			return &interfaces.QuestionTest{ID: "t1", Text: "About " + strings.Join(names, " and ") + "?", Expect: expect, Slots: slots}
 		}
 		count := func(sql string, n any) {
 			va.EXPECT().Query(gomock.Any(), caller, sql, checkQueryTimeout).Return([]map[string]any{{"n": n}}, nil)
@@ -136,6 +147,27 @@ func Test_CheckTests(t *testing.T) {
 
 			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Slots[0].Value, ShouldEqual, "10001")
+			// The question asks about the value checked.
+			So(tt.Text, ShouldEqual, "About 10001?")
+		})
+
+		Convey("A large identity is taken and counted with every digit\n", func() {
+			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v0": json.Number("1234567890123456789")})
+			va.EXPECT().Query(gomock.Any(), caller, "SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '1234567890123456789'",
+				checkQueryTimeout).Return([]map[string]any{{"n": json.Number("1")}}, nil)
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Text, ShouldEqual, "About 1234567890123456789?")
+		})
+
+		Convey("A value the text does not name is no question about it\n", func() {
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))
+			tt.Text = "Which orders does this customer have?"
+
+			So(svc.checkTest(ctx, caller, &spec, draft, tt), ShouldResemble,
+				interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkValueNotInText})
 		})
 
 		Convey("An empty value of a record expected not to exist is a real one with its last digits changed\n", func() {
@@ -147,6 +179,7 @@ func Test_CheckTests(t *testing.T) {
 
 			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Slots[0].Value, ShouldEqual, "C-0000")
+			So(tt.Text, ShouldEqual, "About C-0000?")
 		})
 
 		Convey("A value without digits, or whose changed forms both exist, gives no absent value\n", func() {
@@ -188,6 +221,24 @@ func Test_CheckTests(t *testing.T) {
 				So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("full_name", value))),
 					ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkExcludedField})
 			}
+		})
+
+		Convey("Tests left when checking runs out of time are not checked\n", func() {
+			clock := int64(100)
+			svc.now = func() int64 { return clock }
+			first := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))
+			second := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10002"))
+			// Checking the first takes past the deadline: the second is not started.
+			va.EXPECT().Query(gomock.Any(), caller, "SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", checkQueryTimeout).
+				DoAndReturn(func(context.Context, interfaces.VegaAccount, string, int) ([]map[string]any, error) {
+					clock = 200
+					return []map[string]any{{"n": float64(1)}}, nil
+				})
+
+			svc.checkTests(ctx, caller, &spec, draft, []*interfaces.QuestionTest{first, second}, 150)
+
+			So(first.Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(second.Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkTimeout})
 		})
 
 		Convey("A count that fails is not checked\n", func() {
