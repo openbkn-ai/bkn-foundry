@@ -38,19 +38,61 @@ func (s *draftService) GetPending(ctx context.Context, token string, projectID s
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
-	span.SetStatus(codes.Ok, "")
 	if draft.Status != interfaces.DRAFT_STATUS_READY {
+		span.SetStatus(codes.Ok, "")
 		return &interfaces.ProjectPending{
 			ProjectID: projectID, DraftUpdateTime: draft.UpdateTime, Items: []interfaces.PendingItem{},
 		}, nil
 	}
-	return pendingOf(entry.Project, draft), nil
+	needed, err := s.neededBy(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get requirement failed")
+		return nil, internalError(ctx, "Get requirement failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return pendingOf(entry.Project, draft, needed), nil
+}
+
+// neededBy maps each drafted item a knowledge question of the project's ready requirement
+// specification needs, by kind and item ID, to those questions; with no ready specification, none.
+func (s *draftService) neededBy(ctx context.Context, projectID string) (map[string][]interfaces.PendingQuestion, error) {
+	req, ok, err := s.rqa.GetRequirement(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return neededOf(req, ok), nil
+}
+
+// neededOf is neededBy of a specification read: found, and ready.
+func neededOf(req *interfaces.Requirement, found bool) map[string][]interfaces.PendingQuestion {
+	needed := map[string][]interfaces.PendingQuestion{}
+	if !found || req.Status != interfaces.REQUIREMENT_STATUS_READY {
+		return needed
+	}
+	kinds := map[string]string{
+		interfaces.REQUIREMENT_ITEM_OBJECT_TYPE:   interfaces.DRAFT_KIND_OBJECT_TYPES,
+		interfaces.REQUIREMENT_ITEM_RELATION_TYPE: interfaces.DRAFT_KIND_RELATION_TYPES,
+	}
+	for _, q := range req.Spec.Questions {
+		if q.Layer != interfaces.REQUIREMENT_LAYER_KNOWLEDGE {
+			continue
+		}
+		for _, need := range q.Needs {
+			ref := kinds[need.Kind] + "/" + need.ID
+			if !slices.ContainsFunc(needed[ref], func(p interfaces.PendingQuestion) bool { return p.ID == q.ID }) {
+				needed[ref] = append(needed[ref], interfaces.PendingQuestion{ID: q.ID, Text: q.Text})
+			}
+		}
+	}
+	return needed
 }
 
 // pendingOf lists what waits for a person before the draft can be confirmed — the items
-// pendingItems finds, the check confirming makes — each with the requests that settle it. Items
-// come by kind, then item ID. No written rule recommends an option yet, so none is recommended.
-func pendingOf(project *interfaces.Project, draft *interfaces.Draft) *interfaces.ProjectPending {
+// pendingItems finds, the check confirming makes — each with the requests that settle it and the
+// questions that need it. Items come by kind, then item ID. No written rule recommends an option
+// yet, so none is recommended.
+func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
+	needed map[string][]interfaces.PendingQuestion) *interfaces.ProjectPending {
 	p := &interfaces.ProjectPending{
 		ProjectID: project.ID, DraftUpdateTime: draft.UpdateTime, Items: []interfaces.PendingItem{},
 	}
@@ -155,6 +197,9 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft) *interfaces
 		item.Options = append(item.Options, adopt)
 		p.Items = append(p.Items, item)
 	}
+	for i := range p.Items {
+		p.Items[i].NeededBy = needed[p.Items[i].Kind+"/"+p.Items[i].ItemID]
+	}
 	return p
 }
 
@@ -176,6 +221,10 @@ func identityChoices(ot *interfaces.DraftObjectType) [][]string {
 	}
 	slices.Sort(names)
 	candidates := [][]string{}
+	// A pair drafting counted unique comes first: no single field was.
+	if len(ot.Key.Candidate) > 0 {
+		candidates = append(candidates, ot.Key.Candidate)
+	}
 	if counted != "" {
 		candidates = append(candidates, []string{counted})
 	}

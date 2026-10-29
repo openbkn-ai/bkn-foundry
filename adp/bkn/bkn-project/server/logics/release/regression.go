@@ -137,7 +137,7 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 			needs := append([]interfaces.RequirementItemRef{}, q.Needs...)
 			var tests []interfaces.RegressionTest
 			for _, t := range q.Tests {
-				tests = append(tests, interfaces.RegressionTest{ID: t.ID, Text: t.Text})
+				tests = append(tests, interfaces.RegressionTest{ID: t.ID, Text: t.Text, Expect: t.Expect})
 			}
 			questions = append(questions, interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests})
 		}
@@ -150,6 +150,8 @@ type regressionAsk struct {
 	question interfaces.RegressionQuestion
 	testID   string
 	text     string
+	// expect is what a test expects of the data; empty for a question asked itself.
+	expect string
 }
 
 // regressionAsks lists what a run asks: each question's tests when it has them, else the question.
@@ -161,7 +163,7 @@ func regressionAsks(questions []interfaces.RegressionQuestion) []regressionAsk {
 			continue
 		}
 		for _, t := range q.Tests {
-			asks = append(asks, regressionAsk{question: q, testID: t.ID, text: t.Text})
+			asks = append(asks, regressionAsk{question: q, testID: t.ID, text: t.Text, expect: t.Expect})
 		}
 	}
 	return asks
@@ -318,7 +320,7 @@ func (s *regressionService) decide(ctx context.Context, a regressionAsk, result 
 		needs = append(needs, rc.name(n.Kind, n.ID))
 	}
 	result.ErrorCode, result.Verdict, result.Reason, result.UsedNeeds = "", "", "", nil
-	out, code := s.judgeAnswer(ctx, runner, a.text, result.Answer, result.ToolUses, needs, rc.language)
+	out, code := s.judgeAnswer(ctx, runner, a.text, a.expect, result.Answer, result.ToolUses, needs, rc.language)
 	if out == nil {
 		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, code
 		return result

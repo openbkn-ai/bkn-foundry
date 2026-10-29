@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -45,6 +47,7 @@ const (
 	checkNoValueInData          = "no_value_in_data"
 	checkNoAbsentValue          = "no_absent_value"
 	checkValueNotInText         = "value_not_in_text"
+	checkValueOutsideSlot       = "value_outside_slot"
 	checkTimeout                = "check_timeout"
 )
 
@@ -136,9 +139,11 @@ func (s *requirementService) count(ctx context.Context, caller interfaces.Accoun
 	return 0, fmt.Errorf("count is %T", rows[0]["n"])
 }
 
-// checkTest checks one test question against the data, as the caller.
+// checkTest checks one test question of the scenario question asked against the data, as the
+// caller. In a test expected not to exist, the first slot names the record that does not; the
+// others keep values of records that do.
 func (s *requirementService) checkTest(ctx context.Context, caller interfaces.AccountInfo,
-	spec *interfaces.RequirementSpec, draft *interfaces.Draft, t *interfaces.QuestionTest) interfaces.QuestionTestCheck {
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, t *interfaces.QuestionTest) interfaces.QuestionTestCheck {
 	if len(t.Slots) == 0 {
 		return notChecked(checkNoValues)
 	}
@@ -159,7 +164,10 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 			return notChecked(checkValueNotInText)
 		}
 	}
-	if reason := s.fill(ctx, caller, t, fields); reason != "" {
+	if valueOutsideSlots(spec, q.Text, t, fields) {
+		return notChecked(checkValueOutsideSlot)
+	}
+	if reason := s.fill(ctx, caller, t, fields, func(f *slotField) *relationPath { return pathOf(draft, q, f) }); reason != "" {
 		return notChecked(reason)
 	}
 	var key string
@@ -187,9 +195,12 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	}
 
 	conditions := make([]string, 0, len(fields))
-	for _, f := range fields {
+	for i, f := range fields {
 		condition := quoteField(f.field) + " = " + quoteValue(f.value)
 		conditions = append(conditions, condition)
+		if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i > 0 {
+			break
+		}
 		n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s",
 			f.objectType.Table.ResourceID, condition))
 		if err != nil {
@@ -217,10 +228,64 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}
 }
 
+// valueOutsideSlots tells whether the test's text says a number, date, time or code that none of
+// its slots holds, the question asked does not say and no rule states: no one checks such a value.
+func valueOutsideSlots(spec *interfaces.RequirementSpec, asked string, t *interfaces.QuestionTest, fields []*slotField) bool {
+	text := t.Text
+	for i := range fields {
+		text = strings.ReplaceAll(text, slotPlaceholder(i), " ")
+	}
+	text = normalize([]rune(text)).text
+	for _, f := range fields {
+		if f.value != "" {
+			text = strings.ReplaceAll(text, normalize([]rune(f.value)).text, " ")
+		}
+	}
+	// Compared as whole tokens: 3 is not stated by a question that says 30.
+	stated := valueTokens(normalize([]rune(asked)).text)
+	for _, r := range spec.Rules {
+		stated = append(stated, valueTokens(normalize([]rune(r.Statement)).text)...)
+	}
+	for _, token := range valueTokens(text) {
+		if !slices.Contains(stated, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// valueTokens lists the runs of a text that hold a digit, with the ASCII letters and the - / . : _
+// marks joined to it, as in 2025-06-30, 10:30, 3.5 or CUST-10001.
+func valueTokens(text string) []string {
+	tokens := []string{}
+	var b strings.Builder
+	digit := false
+	flush := func() {
+		if digit {
+			tokens = append(tokens, strings.Trim(b.String(), "-/.:_"))
+		}
+		b.Reset()
+		digit = false
+	}
+	for _, r := range text {
+		switch {
+		case r >= '0' && r <= '9':
+			digit = true
+			b.WriteRune(r)
+		case r < utf8.RuneSelf && (unicode.IsLetter(r) || strings.ContainsRune("-/.:_", r)):
+			b.WriteRune(r)
+		default:
+			flush()
+		}
+	}
+	flush()
+	return tokens
+}
+
 // checkTests checks every test question, one after another, until deadline: those left are not
 // checked, so the run records its outcome before its lease runs out.
 func (s *requirementService) checkTests(ctx context.Context, caller interfaces.AccountInfo,
-	spec *interfaces.RequirementSpec, draft *interfaces.Draft, tests []*interfaces.QuestionTest, deadline int64) {
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, tests []*interfaces.QuestionTest, deadline int64) {
 	ctx, cancel := context.WithDeadline(ctx, time.UnixMilli(deadline))
 	defer cancel()
 	for _, t := range tests {
@@ -228,7 +293,7 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 			t.Check = notChecked(checkTimeout)
 			continue
 		}
-		t.Check = s.checkTest(ctx, caller, spec, draft, t)
+		t.Check = s.checkTest(ctx, caller, spec, draft, q, t)
 	}
 }
 
@@ -298,6 +363,67 @@ func (s *requirementService) sampleRow(ctx context.Context, caller interfaces.Ac
 	return values, ""
 }
 
+// relationPath is a relation the question needs from a slot's object type to another: the slot's
+// field the relation joins on, and the other end's table and field.
+type relationPath struct {
+	objectType string
+	own        string
+	table      string
+	other      string
+}
+
+// condition keeps the rows of the slot's object type the relation reaches.
+func (p *relationPath) condition() string {
+	return fmt.Sprintf("%s IN (SELECT %s FROM {{%s}})", quoteField(p.own), quoteField(p.other), p.table)
+}
+
+// pathOf finds the first relation the question needs, in its order, that joins the slot's object
+// type to another by one field: values the question can follow are taken from the records it
+// reaches. Relations through a link table, joining on several fields, or across catalogs (one query
+// cannot read both) are not followed.
+func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotField) *relationPath {
+	if draft == nil {
+		return nil
+	}
+	mapped := func(objectType string, property string) (*interfaces.DraftObjectType, string) {
+		for _, ot := range draft.Items.ObjectTypes {
+			if ot.ID != objectType {
+				continue
+			}
+			for _, p := range ot.Properties {
+				if p.Name == property {
+					return ot, p.MappedField
+				}
+			}
+		}
+		return nil, ""
+	}
+	for _, need := range q.Needs {
+		if need.Kind != interfaces.REQUIREMENT_ITEM_RELATION_TYPE {
+			continue
+		}
+		for _, rt := range draft.Items.RelationTypes {
+			if rt.ID != need.ID || rt.LinkTable != nil || len(rt.Mapping) != 1 || rt.Source == rt.Target {
+				continue
+			}
+			own, other, otherType := rt.Mapping[0].SourceProperty, rt.Mapping[0].TargetProperty, rt.Target
+			if rt.Target == f.objectType.ID {
+				own, other, otherType = other, own, rt.Source
+			} else if rt.Source != f.objectType.ID {
+				continue
+			}
+			_, ownField := mapped(f.objectType.ID, own)
+			ot, otherField := mapped(otherType, other)
+			if ownField == "" || otherField == "" || ot.Table.ResourceID == "" ||
+				ot.Table.CatalogID != f.objectType.Table.CatalogID {
+				continue
+			}
+			return &relationPath{objectType: ot.ID, own: ownField, table: ot.Table.ResourceID, other: otherField}
+		}
+	}
+	return nil
+}
+
 // absentValues are the forms of a real value tried for a record that should not exist: its last
 // run of digits all nines, then all zeros, keeping its format. A value without digits has none.
 func absentValues(value string) []string {
@@ -324,14 +450,16 @@ func absentValues(value string) []string {
 }
 
 // fill gives the test question's empty slots values from the data, by what it expects: a value of
-// the field for a record that exists, a changed real value no row has for one that does not, and
-// one row's values for two ways of naming a record.
+// the field for a record that exists, of a record the question's path reaches when it has one, a
+// changed real value no row has for one that does not, and one row's values for two ways of naming
+// a record.
 func (s *requirementService) fill(ctx context.Context, caller interfaces.AccountInfo, t *interfaces.QuestionTest,
-	fields []*slotField) string {
+	fields []*slotField, path func(*slotField) *relationPath) string {
 	empty := map[int]bool{}
 	for i, f := range fields {
 		if f.value == "" {
 			empty[i] = true
+			t.Slots[i].ValueFrom = ""
 		}
 	}
 	if len(empty) == 0 {
@@ -370,13 +498,28 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		if !empty[i] {
 			continue
 		}
+		absent := t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0
+		if p := path(f); p != nil && !absent {
+			// A record the question's path reaches, so asking about it can show something.
+			values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
+				map[int]string{i: f.field}, []string{p.condition()})
+			if reason == checkQueryFailed {
+				return reason
+			}
+			if reason == "" {
+				set(i, values[i])
+				t.Slots[i].ValueFrom = p.objectType
+				continue
+			}
+		}
 		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
 			map[int]string{i: f.field}, nil)
 		if reason != "" {
 			return reason
 		}
 		value := values[i]
-		if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS {
+		// The record that does not exist is named by the first slot; the others are of ones that do.
+		if absent {
 			value = ""
 			for _, form := range absentValues(values[i]) {
 				n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",

@@ -112,6 +112,10 @@ func (s *requirementService) EditTest(ctx context.Context, token string, project
 					}
 				}
 				test.Slots = append([]interfaces.QuestionTestSlot{}, *edit.Slots...)
+				// Where a value came from is the server's to say, when it fills one.
+				for i := range test.Slots {
+					test.Slots[i].ValueFrom = ""
+				}
 			}
 			draft, found, err := s.da.GetDraft(ctx, projectID)
 			if err != nil {
@@ -121,7 +125,11 @@ func (s *requirementService) EditTest(ctx context.Context, token string, project
 				draft = nil
 			}
 			test.Edited = true
-			test.Check = s.checkTest(ctx, caller, &req.Spec, draft, &test)
+			q := questionOf(&req.Spec, g.QuestionID)
+			if q == nil {
+				q = &interfaces.RequirementQuestion{ID: g.QuestionID, Text: g.Question}
+			}
+			test.Check = s.checkTest(ctx, caller, &req.Spec, draft, q, &test)
 			g.Tests[i] = &test
 			return nil
 		})

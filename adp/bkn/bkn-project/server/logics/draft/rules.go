@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -299,6 +300,65 @@ func lastWord(w []string) string {
 		return ""
 	}
 	return w[len(w)-1]
+}
+
+// minBusinessStemRunes is the shortest business-name stem that may point at a table.
+const minBusinessStemRunes = 2
+
+// fieldStem is a field's name without the identifier word it ends in, as words: [supplier] for
+// supplier_number. Nil when it ends in none or what is left is too common to point at a table.
+func fieldStem(name string, setting common.DraftSetting) []string {
+	w := words(name)
+	if len(w) < 2 || !slices.Contains(setting.IdentifierWords, lastWord(w)) {
+		return nil
+	}
+	stem := w[:len(w)-1]
+	if joined := strings.Join(stem, "_"); slices.Contains(setting.GenericStems, joined) || genericKeys[joined] {
+		return nil
+	}
+	return stem
+}
+
+// stemMatch ranks how a field's stem points at another table, 0 when it does not: the table's
+// name ending in the stem (supplier_number to erp_supplier) above the key's stem being the same
+// (supplier_number to a key supplier_code).
+func stemMatch(field string, other *interfaces.VegaTable, key string, setting common.DraftSetting) int {
+	stem := fieldStem(field, setting)
+	if stem == nil {
+		return 0
+	}
+	switch table := words(physicalName(other)); {
+	case len(table) >= len(stem) && slices.Equal(table[len(table)-len(stem):], stem):
+		return 4
+	case slices.Equal(fieldStem(key, setting), stem):
+		return 3
+	}
+	return 0
+}
+
+// businessStem is a field's business name without the identifier it ends in: 供应商 for
+// 供应商编号, supplier for Supplier number. Empty when it ends in none, or what is left is too
+// short or too common to point at a table.
+func businessStem(name string, setting common.DraftSetting) string {
+	name = strings.TrimSpace(name)
+	stem := ""
+	for _, word := range setting.IdentifierWords {
+		if isASCII(word) {
+			if w := words(name); len(w) >= 2 && lastWord(w) == word {
+				stem = strings.Join(w[:len(w)-1], " ")
+			}
+		} else if s, ok := strings.CutSuffix(name, word); ok {
+			stem = s
+		}
+		if stem != "" {
+			break
+		}
+	}
+	stem = strings.ToLower(strings.TrimSpace(stem))
+	if utf8.RuneCountInString(stem) < minBusinessStemRunes || slices.Contains(setting.GenericStems, stem) {
+		return ""
+	}
+	return stem
 }
 
 func looksLikeCode(name string) bool {
