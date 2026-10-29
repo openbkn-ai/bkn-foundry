@@ -182,6 +182,31 @@ func Test_BuildIndex(t *testing.T) {
 			So(built.Build.TaskID, ShouldEqual, "t9")
 		})
 
+		Convey("A caller who leaves does not stop the builds or their record\n", func() {
+			left, cancel := context.WithCancel(ctx)
+			cancel()
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).
+				Return([]*interfaces.VegaTable{{ID: adopted.Table.ResourceID, Index: configured}}, nil).Times(2)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).AnyTimes()
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, adopted.Table.ResourceID).DoAndReturn(
+				func(c context.Context, _ interfaces.AccountInfo, _ string) (string, error) {
+					So(c.Err(), ShouldBeNil)
+					return "t9", nil
+				})
+			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(c context.Context, _ []*interfaces.IndexBuild) error {
+					So(c.Err(), ShouldBeNil)
+					return nil
+				})
+			iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c1").Return(nil, nil)
+
+			_, err := svc.BuildIndex(left, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Only the owner may retry\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 

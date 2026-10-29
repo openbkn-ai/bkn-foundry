@@ -53,7 +53,9 @@ func (s *draftService) BuildIndex(ctx context.Context, token string, projectID s
 		span.SetStatus(codes.Error, "Confirmation unknown")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Index_ConfirmAgain)
 	}
-	if err := s.buildIndexes(ctx, projectID, confirmation.Commit, &draft.Items, caller); err != nil {
+	// Builds started are recorded even if the caller leaves before they all start.
+	if err := s.buildIndexes(context.WithoutCancel(ctx), projectID, confirmation.Commit, &draft.Items,
+		caller); err != nil {
 		span.SetStatus(codes.Error, "Build indexes failed")
 		return nil, internalError(ctx, "Build indexes failed", err)
 	}
