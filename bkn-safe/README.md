@@ -110,6 +110,25 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 | `SAFE_LDAP_URL` | （空=禁用） | LDAP 联邦；配了则 local→LDAP 链式认证 |
 | `SAFE_SEED_ON_START` | `true` | 启动时灌角色/资源类型/操作/权限 |
 
+## OIDC ID Token 与 `/userinfo`
+
+consent 时 bkn-safe 按授予的 scope 写入 ID Token 声明，hydra 在 `/userinfo` 返回同一组声明：
+
+| scope | 声明 | 来源 |
+| --- | --- | --- |
+| `openid` | `sub` | 用户 ID（hydra 自动写入） |
+| `profile` | `name`、`preferred_username`、`updated_at` | 用户名称、登录账号、资料更新时间（Unix 秒） |
+| `email` | `email` | 用户邮箱 |
+| `phone` | `phone_number` | 用户电话（按库中原值输出，不转 E.164） |
+
+- 值为空的声明不输出；不输出 `email_verified`、`phone_number_verified`，因为本地用户库不校验邮箱和电话。
+- 声明在登录时写入，刷新 token 不会更新；用户资料变更后需重新登录。
+- 访问令牌的 introspect `ext` 不受影响，仍是冻结契约中的五个字段。
+- 预置的 `openbkn-studio`、`openbkn-sdk`、`openbkn-cli` 允许申请 `profile email phone`，客户端按需申请；
+  自注册客户端仍只允许 `openid offline offline_access`。
+- 跨系统关联用户使用 `sub`；`preferred_username`、`email`、`phone_number` 可能变化，不作为关联键。
+- 部门、用户组、角色不放进 ID Token：需要时调用 `GET /api/safe/v1/me` 实时获取。
+
 ## HTTP 接口（节选）
 
 - 认证（hydra 重定向到这里）：`GET/POST /login`、`GET /consent`、`GET/POST /device`

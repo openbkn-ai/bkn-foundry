@@ -250,13 +250,17 @@ func (h *HydraAdmin) GetConsent(ctx context.Context, challenge string) (*Consent
 // AcceptConsent grants the requested scope and injects ext into the access
 // token session. hydra surfaces session.access_token under the introspect
 // `ext` field — this is what satisfies the §1 introspect contract.
-func (h *HydraAdmin) AcceptConsent(ctx context.Context, cr *ConsentRequest, ext map[string]any, remember bool) (string, error) {
+// idToken holds the ID token claims; hydra also serves them at /userinfo.
+func (h *HydraAdmin) AcceptConsent(ctx context.Context, cr *ConsentRequest, ext, idToken map[string]any, remember bool) (string, error) {
 	body := hydra.NewAcceptOAuth2ConsentRequest()
 	body.SetGrantScope(cr.RequestedScope)
 	body.SetGrantAccessTokenAudience(cr.Audience)
 	body.SetRemember(remember)
 	session := hydra.NewAcceptOAuth2ConsentRequestSession()
 	session.SetAccessToken(ext)
+	if len(idToken) > 0 {
+		session.SetIdToken(idToken)
+	}
 	body.SetSession(*session)
 	out, _, err := h.api.OAuth2API.AcceptOAuth2ConsentRequest(ctx).
 		ConsentChallenge(cr.Challenge).AcceptOAuth2ConsentRequest(*body).Execute()
