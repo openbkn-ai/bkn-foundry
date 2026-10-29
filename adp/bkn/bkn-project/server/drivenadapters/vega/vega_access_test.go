@@ -355,7 +355,7 @@ func Test_VegaAccess(t *testing.T) {
 				body string
 			}
 			tasksBody := `{"entries":[{"id":"s1","scope":"resource","resource_id":"r1","status":"completed","applied":true,
-				"create_time":5,"finish_time":9}],"total_count":1}`
+				"apply_mode":"fill_empty","create_time":5,"finish_time":9}],"total_count":1}`
 			byPath := map[string]reply{
 				"/api/vega-backend/in/v1/catalogs/c1":                  {http.StatusOK, `{"entries":[{"id":"c1","operations":["task_manage"]}]}`},
 				"/api/vega-backend/in/v1/catalogs/c2":                  {http.StatusOK, `{"entries":[{"id":"c2","operations":["view_detail"]}]}`},
@@ -376,7 +376,7 @@ func Test_VegaAccess(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(visible, ShouldBeTrue)
 			So(tasks, ShouldResemble, []*interfaces.VegaSemanticTask{
-				{ID: "s1", ResourceID: "r1", Status: "completed", Applied: true, CreateTime: 5, FinishTime: 9}})
+				{ID: "s1", ResourceID: "r1", Status: "completed", Applied: true, ApplyMode: "fill_empty", CreateTime: 5, FinishTime: 9}})
 			So(queries, ShouldResemble, []string{"catalog_id=c1&limit=-1&scope=resource"})
 
 			// Without task_manage vega-backend would list nothing, which must not read as no task.

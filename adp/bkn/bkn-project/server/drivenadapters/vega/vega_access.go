@@ -447,13 +447,14 @@ type semanticTask struct {
 	ResourceID string `json:"resource_id"`
 	Status     string `json:"status"`
 	Applied    bool   `json:"applied"`
+	ApplyMode  string `json:"apply_mode"`
 	CreateTime int64  `json:"create_time"`
 	FinishTime int64  `json:"finish_time"`
 }
 
 func (t *semanticTask) toTask() *interfaces.VegaSemanticTask {
 	return &interfaces.VegaSemanticTask{ID: t.ID, ResourceID: t.ResourceID, Status: t.Status, Applied: t.Applied,
-		CreateTime: t.CreateTime, FinishTime: t.FinishTime}
+		ApplyMode: t.ApplyMode, CreateTime: t.CreateTime, FinishTime: t.FinishTime}
 }
 
 // CreateSemanticTask calls POST /semantic-understanding-tasks for one table, filling only what is
