@@ -109,7 +109,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 
 	typeIDs := map[string]bool{}
 	d.reserve(interfaces.ID_KIND_OBJECT_TYPES, "", typeIDs)
-	for _, table := range tables {
+	for _, table := range asciiFirst(tables) {
 		if d.kinds[table.ID] == tableKindEntity {
 			d.addObjectType(table, typeIDs)
 		}
@@ -125,7 +125,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 
 	valueTypeIDs := map[string]bool{}
 	d.reserve(interfaces.ID_KIND_VALUE_TYPES, "", valueTypeIDs)
-	for _, table := range tables {
+	for _, table := range asciiFirst(tables) {
 		if d.kinds[table.ID] == tableKindCodeTable {
 			if err := d.addValueType(ctx, table, valueTypeIDs); err != nil {
 				return d.items, err
@@ -135,17 +135,27 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 
 	relationIDs := map[string]bool{}
 	d.reserve(interfaces.ID_KIND_RELATION_TYPES, "", relationIDs)
+	// Relations from link tables named otherwise come last: their short names take only what the
+	// relations named in ASCII leave.
+	namedLater := []*interfaces.VegaTable{}
 	for _, table := range tables {
 		var err error
 		switch d.kinds[table.ID] {
 		case tableKindEntity:
 			err = d.addRelations(ctx, table, tables, relationIDs)
 		case tableKindLinkTable:
-			d.addLinkRelation(table, relationIDs)
+			if isASCII(physicalName(table)) {
+				d.addLinkRelation(table, relationIDs)
+			} else {
+				namedLater = append(namedLater, table)
+			}
 		}
 		if err != nil {
 			return d.items, err
 		}
+	}
+	for _, table := range namedLater {
+		d.addLinkRelation(table, relationIDs)
 	}
 	for _, valueType := range d.valueTypes {
 		valueType.Adopted = len(valueType.UsedBy) > 0
@@ -183,9 +193,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 		}
 	}
 
-	names := map[string]bool{}
-	d.reserve(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, ""), names)
-	fields := map[string]string{}
+	columns := []interfaces.VegaColumn{}
 	for _, c := range table.Columns {
 		bknType := bknTypes[c.Type]
 		if bknType == "" {
@@ -201,9 +209,23 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 			})
 			continue
 		}
-		name := d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, c.Name), c.Name, c.APIName, idPrefixProperty, names)
-		fields[c.Name] = name
-		objectType.Properties = append(objectType.Properties, newProperty(c, name))
+		columns = append(columns, c)
+	}
+	// Fields named in ASCII take their names first, as they always did; short names of the others
+	// take what is left. The properties keep the order of the fields.
+	names := map[string]bool{}
+	d.reserve(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, ""), names)
+	fields := map[string]string{}
+	for _, ascii := range []bool{true, false} {
+		for _, c := range columns {
+			if isASCII(c.Name) == ascii {
+				fields[c.Name] = d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, c.Name), c.Name,
+					c.APIName, idPrefixProperty, names)
+			}
+		}
+	}
+	for _, c := range columns {
+		objectType.Properties = append(objectType.Properties, newProperty(c, fields[c.Name]))
 	}
 
 	objectType.Key = interfaces.DraftKeyEvidence{Source: source}

@@ -147,6 +147,49 @@ func Test_RegisteredIDs(t *testing.T) {
 			So(recordedIDs(d)[vtKey], ShouldEqual, "semantic:customer_level_2")
 		})
 
+		Convey("Short names never take an id an ASCII name gives, whatever sorts first\n", func() {
+			// ODS_客户 sorts before customer ('O' < 'c'), yet customer keeps the id it always had.
+			ods := table("r1", "c1", "ODS_客户", 0, []string{"id"}, col("id", "string", ""))
+			ods.APIName = "customer"
+			customer := table("r2", "c1", "customer", 0, []string{"id"}, col("id", "string", ""))
+			d, items := draftWith(nil, ods, customer)
+			So(objectType(items, "customer").Table.ResourceID, ShouldEqual, "r2")
+			So(recordedIDs(d)[otKey], ShouldEqual, "semantic:customer_2")
+
+			// A field named in Chinese before an ASCII one: the ASCII one keeps its name, and the
+			// properties stay in the order of the fields.
+			code := col("编号", "string", "")
+			code.APIName = "id"
+			fields := table("r1", "c1", "供应商", 0, []string{"ID"}, code, col("ID", "string", ""))
+			d, items = draftWith(nil, fields)
+			So(propertyNames(items.ObjectTypes[0]), ShouldResemble, []string{"id_2", "id"})
+			So(recordedIDs(d)[codeKey], ShouldEqual, "semantic:id_2")
+
+			// The same for value types and for relations drafted from link tables, whose short names
+			// come after foreign-key relations.
+			tables := sample()
+			byID := map[string]*interfaces.VegaTable{}
+			for _, t := range tables {
+				byID[t.ID] = t
+			}
+			cnLevels := table("r_cn_levels", "c1", "A等级", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
+			cnLevels.APIName = "customer_levels"
+			byID["r_customers"].ForeignKeys = append(byID["r_customers"].ForeignKeys, fk("level_code", "A等级", "code"))
+			byID["r_order_tags"].SourceName, byID["r_order_tags"].APIName = "A订单标签", "orders_to_customers"
+			c := sampleCounter()
+			c.codes["r_cn_levels"] = c.codes["r_levels"]
+			d = newDrafter(testSetting, c).withRegisteredIDs("p1", nil)
+			items, err := d.draft(ctx, append(tables, cnLevels), nil)
+			So(err, ShouldBeNil)
+			valueTypes := map[string]string{}
+			for _, vt := range items.ValueTypes {
+				valueTypes[vt.CodeTable.ResourceID] = vt.ID
+			}
+			So(valueTypes, ShouldResemble, map[string]string{"r_levels": "customer_levels", "r_cn_levels": "customer_levels_2"})
+			So(relation(items, "orders", "customers").ID, ShouldEqual, "orders_to_customers")
+			So(relation(items, "orders", "tags").ID, ShouldEqual, "orders_to_customers_2")
+		})
+
 		Convey("Short names that clash take a numbered suffix, registered with it\n", func() {
 			other := suppliers()
 			other.ID, other.Name, other.SourceName = "r3", "供应商2", "供应商2"

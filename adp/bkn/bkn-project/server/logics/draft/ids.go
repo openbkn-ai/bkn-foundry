@@ -72,6 +72,20 @@ func (d *drafter) itemID(kind string, sourceKey string, physical string, apiName
 	return id
 }
 
+// asciiFirst lists the tables named in ASCII before the others, each in the order given. The ids of
+// the first are as they always were; short names of the others take only what is left.
+func asciiFirst(tables []*interfaces.VegaTable) []*interfaces.VegaTable {
+	ordered := make([]*interfaces.VegaTable, 0, len(tables))
+	for _, ascii := range []bool{true, false} {
+		for _, table := range tables {
+			if isASCII(physicalName(table)) == ascii {
+				ordered = append(ordered, table)
+			}
+		}
+	}
+	return ordered
+}
+
 // propertySourceKey keys a property by its table and field.
 func propertySourceKey(tableID string, field string) string {
 	return tableID + "/" + field
