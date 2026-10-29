@@ -93,3 +93,32 @@ func Test_FingerprintShortNames(t *testing.T) {
 		So(fingerprint(field), ShouldNotEqual, fingerprint(named))
 	})
 }
+
+func Test_RegistryInputsOf(t *testing.T) {
+	Convey("The registry as a draft leaves it is summed up in its inputs\n", t, func() {
+		ot := registered(interfaces.ID_KIND_OBJECT_TYPES, "r1", "ot_000000", interfaces.ID_ORIGIN_FALLBACK, false)
+		p := registered(interfaces.ID_KIND_PROPERTIES, "r1/编号", "supplier_code", interfaces.ID_ORIGIN_SEMANTIC, true)
+
+		// Nothing registered: inputs say nothing, as for catalogs named in ASCII.
+		So(registryInputsOf(nil, nil), ShouldBeNil)
+
+		before := registryInputsOf([]*interfaces.RegisteredID{ot, p}, nil)
+		So(before.Count, ShouldEqual, 2)
+		So(before.Placeholders, ShouldEqual, 1)
+		So(before.Fingerprint, ShouldHaveLength, 64)
+		// The order the registry was read in does not matter.
+		So(registryInputsOf([]*interfaces.RegisteredID{p, ot}, nil), ShouldResemble, before)
+
+		// What the draft recorded takes the place of what it replaced.
+		replaced := registered(interfaces.ID_KIND_OBJECT_TYPES, "r1", "supplier", interfaces.ID_ORIGIN_SEMANTIC, false)
+		after := registryInputsOf([]*interfaces.RegisteredID{ot, p}, []*interfaces.RegisteredID{replaced})
+		So(after.Count, ShouldEqual, 2)
+		So(after.Placeholders, ShouldEqual, 0)
+		So(after.Fingerprint, ShouldNotEqual, before.Fingerprint)
+
+		// Locking changes it too: a later draft can tell the ids were confirmed meanwhile.
+		lockedOT := *ot
+		lockedOT.Locked = true
+		So(registryInputsOf([]*interfaces.RegisteredID{&lockedOT, p}, nil).Fingerprint, ShouldNotEqual, before.Fingerprint)
+	})
+}

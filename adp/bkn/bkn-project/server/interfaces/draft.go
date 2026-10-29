@@ -121,6 +121,17 @@ type DraftInputs struct {
 	Tables       []DraftInputTable `json:"tables"`
 	// Partial is set when some tables of the catalogs could not be read: they are in unreadable.
 	Partial bool `json:"partial"`
+	// IDs sums up the project's registered ids as drafting left them; absent when there are none.
+	IDs *DraftInputIDs `json:"ids,omitempty"`
+}
+
+// DraftInputIDs sums up the ids of items drafted from names that are not ASCII. Placeholders are
+// the ids that stand until semantic understanding gives a short name; Fingerprint is a SHA-256 of
+// every registered id, its origin and whether it is locked, and changes when any of them does.
+type DraftInputIDs struct {
+	Count        int    `json:"count"`
+	Placeholders int    `json:"placeholders"`
+	Fingerprint  string `json:"fingerprint"`
 }
 
 // DraftRuleSettings are the settings drafting's rules read.

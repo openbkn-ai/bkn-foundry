@@ -83,3 +83,17 @@ func (mr *MockIDRegistryAccessMockRecorder) RecordIDs(ctx, ids any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordIDs", reflect.TypeOf((*MockIDRegistryAccess)(nil).RecordIDs), ctx, ids)
 }
+
+// UnlockIDs mocks base method.
+func (m *MockIDRegistryAccess) UnlockIDs(ctx context.Context, projectID string, keys []interfaces.IDKey, updateTime int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnlockIDs", ctx, projectID, keys, updateTime)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UnlockIDs indicates an expected call of UnlockIDs.
+func (mr *MockIDRegistryAccessMockRecorder) UnlockIDs(ctx, projectID, keys, updateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnlockIDs", reflect.TypeOf((*MockIDRegistryAccess)(nil).UnlockIDs), ctx, projectID, keys, updateTime)
+}

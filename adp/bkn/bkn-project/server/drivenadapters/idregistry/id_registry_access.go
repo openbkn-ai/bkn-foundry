@@ -13,6 +13,7 @@ import (
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -127,16 +128,28 @@ func (ira *idRegistryAccess) LockIDs(ctx context.Context, projectID string, keys
 	updateTime int64) error {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "LockIDs")
 	defer span.End()
+	return ira.setLocked(ctx, span, projectID, keys, true, updateTime)
+}
 
+func (ira *idRegistryAccess) UnlockIDs(ctx context.Context, projectID string, keys []interfaces.IDKey,
+	updateTime int64) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "UnlockIDs")
+	defer span.End()
+	return ira.setLocked(ctx, span, projectID, keys, false, updateTime)
+}
+
+// setLocked sets the lock of the project's ids of keys that are not set so already, in batches.
+func (ira *idRegistryAccess) setLocked(ctx context.Context, span trace.Span, projectID string,
+	keys []interfaces.IDKey, locked bool, updateTime int64) error {
 	for start := 0; start < len(keys); start += batchSize {
 		match := sq.Or{}
 		for _, key := range keys[start:min(start+batchSize, len(keys))] {
 			match = append(match, sq.And{sq.Eq{"f_kind": key.Kind}, sq.Eq{"f_source_key": key.SourceKey}})
 		}
 		sqlStr, vals, err := sq.Update(ID_TABLE_NAME).
-			Set("f_locked", true).
+			Set("f_locked", locked).
 			Set("f_update_time", updateTime).
-			Where(sq.Eq{"f_project_id": projectID, "f_locked": false}).
+			Where(sq.Eq{"f_project_id": projectID, "f_locked": !locked}).
 			Where(match).
 			ToSql()
 		if err != nil {

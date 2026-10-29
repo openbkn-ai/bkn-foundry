@@ -27,6 +27,9 @@ type compiledDraft struct {
 	// type for, or a name another adopted value type took first. Their properties keep their base
 	// type, and confirming says which they are.
 	SkippedValueTypes []string
+	// IDKeys name the items written whose ids may be registered: a confirmation locks them, so
+	// what is on the branch keeps its ids.
+	IDKeys []interfaces.IDKey
 }
 
 // compileDraft writes the adopted items of a draft as the definition files of a BKN 3.0 package,
@@ -37,6 +40,13 @@ type compiledDraft struct {
 // The definitions go through the BKN specification's own writer, which has no public way to
 // write a single 3.0 definition: a package holding only them is written and its definition files
 // kept. Its network.bkn is not, since a branch has its own.
+// addIDKey names an item written from the table sourceKey names; an item from no table has none.
+func (c *compiledDraft) addIDKey(kind string, sourceKey string) {
+	if sourceKey != "" {
+		c.IDKeys = append(c.IDKeys, interfaces.IDKey{Kind: kind, SourceKey: sourceKey})
+	}
+}
+
 func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 	network := &bkn.BknNetwork{
 		BknNetworkFrontmatter: bkn.BknNetworkFrontmatter{
@@ -61,6 +71,7 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 		}
 		valueTypes[vt.ID], names[compiled.Name] = true, true
 		network.ValueTypes = append(network.ValueTypes, compiled)
+		result.addIDKey(interfaces.ID_KIND_VALUE_TYPES, vt.CodeTable.ResourceID)
 	}
 	objectTypes := map[string]bool{}
 	for _, ot := range items.ObjectTypes {
@@ -72,6 +83,12 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 		}
 		objectTypes[ot.ID] = true
 		network.ObjectTypes = append(network.ObjectTypes, compileObjectType(ot, valueTypes))
+		result.addIDKey(interfaces.ID_KIND_OBJECT_TYPES, ot.Table.ResourceID)
+		for _, p := range ot.Properties {
+			if p.MappedField != "" {
+				result.addIDKey(interfaces.ID_KIND_PROPERTIES, propertySourceKey(ot.Table.ResourceID, p.MappedField))
+			}
+		}
 	}
 	for _, rt := range items.RelationTypes {
 		// A relation adopted while an end is not is a pending item a person settles first; it
@@ -82,6 +99,9 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 				return nil, err
 			}
 			network.RelationTypes = append(network.RelationTypes, compiled)
+			if rt.LinkTable != nil {
+				result.addIDKey(interfaces.ID_KIND_RELATION_TYPES, rt.LinkTable.ResourceID)
+			}
 		}
 	}
 
