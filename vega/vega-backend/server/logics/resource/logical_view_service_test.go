@@ -121,6 +121,33 @@ func TestResourceServiceCreateLogicalViewSourceMetadata(t *testing.T) {
 	assert.Nil(t, viewService.metadataAtPrepare)
 }
 
+func TestResourceServiceCreateLogicalViewTakesNoAPINameFromPrepare(t *testing.T) {
+	// api_name 只由语义理解写入；Prepare 可能从源表字段复制出 api_name，不能带进新视图。
+	viewService := &prepareViewService{
+		sourceMetadata:   map[string]any{"source_resource": map[string]any{"original_name": "orders"}},
+		schemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, APIName: "source_id"}},
+	}
+	previous := GetLogicalViewService()
+	SetLogicalViewService(viewService)
+	t.Cleanup(func() { SetLogicalViewService(previous) })
+
+	rs, mockRA, _, _, _, _, _ := newTestService(t)
+	expectResourceServiceTransaction(t, rs, true)
+	mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+			require.Len(t, got.SchemaDefinition, 1)
+			assert.Empty(t, got.SchemaDefinition[0].APIName)
+			return nil
+		})
+
+	_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
+		LogicType:       interfaces.LogicType_Derived,
+		LogicDefinition: map[string]any{"source_resource_id": "source-1"},
+	})
+	require.NoError(t, err)
+}
+
 func TestResourceServiceCreateLogicalViewRejectsMissingPreparedSourceMetadata(t *testing.T) {
 	viewService := &prepareViewService{}
 	previous := GetLogicalViewService()
@@ -178,6 +205,7 @@ func TestResourceServiceUpdateLogicalViewSourceMetadata(t *testing.T) {
 		requestSchema           []*interfaces.Property
 		wantBuildCheck          bool
 		withoutPreparedMetadata bool
+		wantAPINames            []string
 	}{
 		{
 			name:       "preserves scanned statistics for metadata-only update",
@@ -205,6 +233,24 @@ func TestResourceServiceUpdateLogicalViewSourceMetadata(t *testing.T) {
 			definition:     map[string]any{"source_resource_id": "source-1"},
 			schema:         []*interfaces.Property{{Name: "alias", Type: interfaces.DataType_String}},
 			wantBuildCheck: true,
+		},
+		{
+			name:         "a prepared schema without the stored api names is not a build change",
+			definition:   map[string]any{"source_resource_id": "source-1"},
+			schema:       []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+			storedSchema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, APIName: "order_id"}},
+			wantAPINames: []string{"order_id"},
+		},
+		{
+			name:       "keeps stored api names and takes none from prepare",
+			definition: map[string]any{"source_resource_id": "source-1"},
+			schema: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_String, APIName: "source_id"},
+				{Name: "amount", Type: interfaces.DataType_String, APIName: "source_amount"},
+			},
+			storedSchema:   []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String, APIName: "order_id"}},
+			wantBuildCheck: true,
+			wantAPINames:   []string{"order_id", ""},
 		},
 		{
 			name:       "inherited features do not turn a name edit into a build change",
@@ -274,6 +320,13 @@ func TestResourceServiceUpdateLogicalViewSourceMetadata(t *testing.T) {
 						assert.Equal(t, int64(100), *got.RowCountTime)
 						assert.Equal(t, viewService.sourceMetadata["source_resource"], got.SourceMetadata["source_resource"])
 						assert.NotContains(t, got.SourceMetadata, "injected")
+						if tc.wantAPINames != nil {
+							apiNames := make([]string, 0, len(got.SchemaDefinition))
+							for _, property := range got.SchemaDefinition {
+								apiNames = append(apiNames, property.APIName)
+							}
+							assert.Equal(t, tc.wantAPINames, apiNames)
+						}
 						return 1, nil
 					})
 			}

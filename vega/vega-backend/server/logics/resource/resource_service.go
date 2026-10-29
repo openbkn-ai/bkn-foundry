@@ -166,6 +166,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		req.SourceIdentifier = id
 		req.Schema = ""
 	}
+	keepStoredPropertyAPINames(nil, req.SchemaDefinition)
 	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
 		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
 	}
@@ -1405,6 +1406,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		}
 	}
 
+	keepStoredPropertyAPINames(nil, req.SchemaDefinition)
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	resource := &interfaces.Resource{
 		ID:               id,
@@ -1524,6 +1526,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		if logicType != resource.LogicType {
 			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
 		}
+		// 先带回已存的 api_name 再比较，否则只差 api_name 也会被当成结构变化。
+		keepStoredPropertyAPINames(resource.SchemaDefinition, viewFields)
 		req.SchemaDefinition = viewFields
 		return !jsonNumbersEqual(resource.LogicDefinition, req.LogicDefinition) ||
 			!jsonNumbersEqual(resource.SchemaDefinition, viewFields), nil
@@ -1995,6 +1999,22 @@ func InitializeJSONIndexAttributes(schema []*interfaces.Property) {
 	}
 }
 
+// keepStoredPropertyAPINames 让字段 api_name 只来自已存的同名字段。api_name 由语义理解只写一次，
+// 请求或逻辑视图生成的字段带来的值一律不采纳；stored 为空（新建）时全部清空。
+func keepStoredPropertyAPINames(stored, next []*interfaces.Property) {
+	apiNames := make(map[string]string, len(stored))
+	for _, property := range stored {
+		if property != nil {
+			apiNames[property.Name] = property.APIName
+		}
+	}
+	for _, property := range next {
+		if property != nil {
+			property.APIName = apiNames[property.Name]
+		}
+	}
+}
+
 func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) []*interfaces.Property {
 	if requested == nil {
 		return current
@@ -2016,6 +2036,7 @@ func applyMutableSchemaFields(current []*interfaces.Property, requested []*inter
 			continue
 		}
 		if allowPropertyAdditions {
+			requestedProp.APIName = ""
 			InitializeJSONIndexAttributes([]*interfaces.Property{requestedProp})
 			current = append(current, requestedProp)
 		}
