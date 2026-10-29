@@ -194,6 +194,21 @@ func (mr *MockRequirementAccessMockRecorder) StartDrafting(ctx, req, staleBefore
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartDrafting", reflect.TypeOf((*MockRequirementAccess)(nil).StartDrafting), ctx, req, staleBefore, discardDecisions)
 }
 
+// SuggestDocumentType mocks base method.
+func (m *MockRequirementAccess) SuggestDocumentType(ctx context.Context, projectID, documentID, docType string, updateTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SuggestDocumentType", ctx, projectID, documentID, docType, updateTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SuggestDocumentType indicates an expected call of SuggestDocumentType.
+func (mr *MockRequirementAccessMockRecorder) SuggestDocumentType(ctx, projectID, documentID, docType, updateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestDocumentType", reflect.TypeOf((*MockRequirementAccess)(nil).SuggestDocumentType), ctx, projectID, documentID, docType, updateTime)
+}
+
 // UpdateRequirement mocks base method.
 func (m *MockRequirementAccess) UpdateRequirement(ctx context.Context, req *interfaces.Requirement, readUpdateTime int64) (bool, error) {
 	m.ctrl.T.Helper()

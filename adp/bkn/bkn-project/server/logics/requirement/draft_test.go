@@ -287,10 +287,11 @@ func Test_RequirementDrafting(t *testing.T) {
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
-		slept := 0
+		// The clock moves only as drafting waits.
+		slept, clock := 0, int64(1000)
 		svc := &requirementService{ps: ps, ra: ra, da: da, va: va, ba: ba,
-			now: func() int64 { return 1000 }, newID: func() string { return "run1" },
-			run: func(fn func()) { fn() }, sleep: func(time.Duration) { slept++ }}
+			now: func() int64 { return clock }, newID: func() string { return "run1" },
+			run: func(fn func()) { fn() }, sleep: func(d time.Duration) { slept++; clock += d.Milliseconds() }}
 		ctx := context.Background()
 		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller,
 			CatalogIDs: []string{"c2", "c1"}, NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US}}
@@ -349,7 +350,7 @@ func Test_RequirementDrafting(t *testing.T) {
 			ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
 				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
 			// Only a document still typed other takes the suggested type.
-			ra.EXPECT().SetDocumentType(gomock.Any(), "p1", "pol", interfaces.REQUIREMENT_DOC_POLICY, int64(1000)).Return(true, nil)
+			ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", "pol", interfaces.REQUIREMENT_DOC_POLICY, gomock.Any()).Return(true, nil)
 			expectFinish()
 
 			req, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
@@ -362,6 +363,8 @@ func Test_RequirementDrafting(t *testing.T) {
 			So(finished.AgentTaskID, ShouldEqual, "t1")
 			So(finished.Spec.Scenarios[0].ID, ShouldEqual, "s1")
 			So(finished.Spec.TablesOmitted, ShouldEqual, 0)
+			// A catalog whose tables could not be listed is named, so no one takes its tables as seen.
+			So(finished.Spec.CatalogsUnlisted, ShouldResemble, []string{"c1"})
 			So(finished.Spec.Rules[0].Citations[0].DocumentID, ShouldEqual, "pol")
 			So(finished.Inputs, ShouldResemble, &interfaces.RequirementInputs{
 				RulesVersion: requirementRulesVersion,
@@ -371,6 +374,48 @@ func Test_RequirementDrafting(t *testing.T) {
 				},
 				CatalogIDs: []string{"c1", "c2"}, NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US,
 			})
+		})
+
+		Convey("A type the owner set while drafting ran is kept, and the specification records what it read\n", func() {
+			expectStart()
+			expectContext()
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
+			// The owner typed pol meanwhile: the conditional write changes nothing.
+			ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", "pol", interfaces.REQUIREMENT_DOC_POLICY, gomock.Any()).Return(false, nil)
+			expectFinish()
+
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			// Drafting read pol as other: once its type differs, the specification reads as stale.
+			So(finished.Inputs.Documents[0], ShouldResemble, interfaces.RequirementInputDocument{
+				ID: "pol", SHA256: "h-pol", DocType: interfaces.REQUIREMENT_DOC_OTHER})
+		})
+
+		Convey("Drafting ends at its deadline even when reads of the task never come back\n", func() {
+			previous := taskReadTimeout
+			taskReadTimeout = 5 * time.Millisecond
+			defer func() { taskReadTimeout = previous }()
+			expectStart()
+			expectContext()
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil)
+			reads := 0
+			ba.EXPECT().GetTask(gomock.Any(), caller, "t1").DoAndReturn(
+				func(readCtx context.Context, _ interfaces.BknAgentAccount, _ string) (*interfaces.BknAgentTask, error) {
+					reads++
+					<-readCtx.Done()
+					return nil, readCtx.Err()
+				}).AnyTimes()
+			expectFinish()
+
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+			So(finished.Error, ShouldEqual, failureAgentTimeout)
+			So(reads, ShouldBeLessThanOrEqualTo, int(agentDeadline/pollInterval))
+			So(clock-1000, ShouldBeGreaterThanOrEqualTo, agentDeadline.Milliseconds())
 		})
 
 		Convey("Tables beyond what one drafting names are counted in the specification\n", func() {
@@ -419,6 +464,7 @@ func Test_RequirementDrafting(t *testing.T) {
 						Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: "Here is the spec: {"}, nil)
 				}, failureOutputInvalid},
 			} {
+				clock = 1000
 				expectStart()
 				expectContext()
 				c.expect()

@@ -143,6 +143,9 @@ type RequirementSpec struct {
 	// TablesOmitted counts the tables of the project's catalogs drafting did not name to the Agent:
 	// it names at most a set number, the first ones listed. Absent when none was left out.
 	TablesOmitted int `json:"tables_omitted,omitempty"`
+	// CatalogsUnlisted are the project's catalogs whose tables drafting could not list, so none of
+	// their tables went to the Agent. Absent when every catalog was listed.
+	CatalogsUnlisted []string `json:"catalogs_unlisted,omitempty"`
 }
 
 // RequirementCitation is a passage of a document an item quotes. The agent gives the document and
@@ -381,6 +384,10 @@ type RequirementAccess interface {
 	// SetDocumentType sets a document's type; it reports false when the project has no such
 	// document.
 	SetDocumentType(ctx context.Context, projectID string, documentID string, docType string,
+		updateTime int64) (bool, error)
+	// SuggestDocumentType types a document as drafting suggests, only while it is still typed
+	// other; it reports whether it did, and false means a person typed it meanwhile.
+	SuggestDocumentType(ctx context.Context, projectID string, documentID string, docType string,
 		updateTime int64) (bool, error)
 	// DeleteDocument removes a document; it reports false when the project has no such document.
 	DeleteDocument(ctx context.Context, projectID string, documentID string) (bool, error)
