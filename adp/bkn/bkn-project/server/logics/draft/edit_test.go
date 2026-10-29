@@ -236,6 +236,50 @@ func Test_EditDraftItem(t *testing.T) {
 			})
 		})
 
+		Convey("Renaming an object type renames the relations still named after it, and no other\n", func() {
+			orders := draft.Items.ObjectTypes[1]
+			orders.Name = "采购单"
+			orders.Properties = []*interfaces.DraftProperty{
+				{Name: "supplier_no", DisplayName: "供应商编号", MappedField: "supplier_no"},
+				{Name: "buyer_id", DisplayName: "buyer_id", MappedField: "buyer_id"},
+			}
+			relation := func(id, property, name string) *interfaces.DraftRelationType {
+				return &interfaces.DraftRelationType{ID: id, Name: name, Source: "orders", Target: "customers",
+					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: property, TargetProperty: "id"}}}
+			}
+			draft.Items.RelationTypes = []*interfaces.DraftRelationType{
+				relation("orders_to_customers", "supplier_no", "采购单的供应商编号"),
+				// A person renamed it: it stays.
+				relation("orders_to_customers_2", "supplier_no", "采购来源"),
+				// Named by its id, as its field has only a physical name: it stays.
+				relation("orders_to_customers_3", "buyer_id", "orders_to_customers_3"),
+				// Drafted from a link table, named after it: it stays.
+				{ID: "order_tags", Name: "采购单的供应商编号", Source: "orders", Target: "customers",
+					LinkTable: &interfaces.DraftTable{ResourceID: "r_tags"}},
+				// Another object type's relation a person named like one of these: it stays.
+				{ID: "customers_to_orders", Name: "采购单的供应商编号", Source: "customers", Target: "orders",
+					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "supplier_no", TargetProperty: "id"}}},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			expectWrite()
+			e := edit()
+			e.Name = strPtr("采购订单")
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+			So(err, ShouldBeNil)
+			names := []string{}
+			for _, r := range got.Items.RelationTypes {
+				names = append(names, r.Name)
+			}
+			So(names, ShouldResemble, []string{"采购订单的供应商编号", "采购来源", "orders_to_customers_3",
+				"采购单的供应商编号", "采购单的供应商编号"})
+			last := written.Items.Decisions[len(written.Items.Decisions)-1]
+			So([]any{last.Kind, last.ItemID, last.Action, last.Before, last.After}, ShouldResemble, []any{
+				interfaces.DRAFT_KIND_RELATION_TYPES, "orders_to_customers", interfaces.DRAFT_DECISION_RENAME,
+				"采购单的供应商编号", "采购订单的供应商编号"})
+		})
+
 		Convey("An object type without an identity cannot be adopted\n", func() {
 			draft.Items.ObjectTypes[2].NeedsIdentity = true
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
