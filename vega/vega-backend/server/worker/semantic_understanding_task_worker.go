@@ -841,20 +841,15 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		return "", 0, "", fmt.Errorf("unmarshal resource semantic understanding result quality input failed: %w", err)
 	}
 
-	inputFields := make(map[string]struct {
-		DisplayName string
-		Description string
-	}, len(input.Resource.SchemaDefinition))
+	inputFields := make(map[string]interfaces.SemanticUnderstandingResourceAgentInputProperty, len(input.Resource.SchemaDefinition))
 	for _, field := range input.Resource.SchemaDefinition {
-		inputFields[field.Name] = struct {
-			DisplayName string
-			Description string
-		}{DisplayName: field.DisplayName, Description: field.Description}
+		inputFields[field.Name] = field
 	}
 
 	quality := interfaces.SemanticUnderstandingResourceQuality{
 		ResourceEffective: strings.TrimSpace(result.Resource.DisplayName) != "" && result.Resource.DisplayName != input.Resource.Name ||
-			strings.TrimSpace(result.Resource.Description) != "" && result.Resource.Description != input.Resource.Description,
+			strings.TrimSpace(result.Resource.Description) != "" && result.Resource.Description != input.Resource.Description ||
+			newSemanticAPIName(input.Resource.APIName, result.Resource.APIName),
 		FieldTotal: len(inputFields),
 	}
 	for _, field := range result.Fields {
@@ -864,7 +859,7 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		}
 		displayNameEffective := !isTechnicalFieldName(field.Name, field.DisplayName) && field.DisplayName != inputField.DisplayName
 		descriptionEffective := strings.TrimSpace(field.Description) != "" && field.Description != inputField.Description
-		if displayNameEffective || descriptionEffective {
+		if displayNameEffective || descriptionEffective || newSemanticAPIName(inputField.APIName, field.APIName) {
 			quality.FieldEffective++
 		}
 	}
@@ -882,6 +877,11 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		confidence = 0
 	}
 	return resultJSON, confidence, confidenceDetailJSON, nil
+}
+
+// newSemanticAPIName 判断结果是否补上了原来没有的合法 api_name：只写一次，已有的不算新内容。
+func newSemanticAPIName(current, next string) bool {
+	return current == "" && semanticAPINamePattern.MatchString(strings.TrimSpace(next))
 }
 
 func appendResourceSemanticQuality(payload string, quality interfaces.SemanticUnderstandingResourceQuality, warning string) (string, error) {

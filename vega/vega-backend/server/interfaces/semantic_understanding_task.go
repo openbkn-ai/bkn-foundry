@@ -167,6 +167,7 @@ type SemanticUnderstandingResourceAgentInputResource struct {
 	SourceIdentifier  string                                            `json:"source_identifier"`
 	SourceDescription string                                            `json:"source_description,omitempty"`
 	Description       string                                            `json:"description,omitempty"`
+	APIName           string                                            `json:"api_name,omitempty"`
 	SchemaDefinition  []SemanticUnderstandingResourceAgentInputProperty `json:"schema_definition"`
 }
 
@@ -178,6 +179,7 @@ type SemanticUnderstandingResourceAgentInputProperty struct {
 	OriginalDescription string `json:"original_description,omitempty"`
 	DisplayName         string `json:"display_name,omitempty"`
 	Description         string `json:"description,omitempty"`
+	APIName             string `json:"api_name,omitempty"`
 }
 
 type SemanticUnderstandingResourceAgentInputOptions struct {

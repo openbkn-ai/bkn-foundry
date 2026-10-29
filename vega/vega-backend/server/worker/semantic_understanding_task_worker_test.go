@@ -1279,6 +1279,28 @@ func TestAssessResourceSemanticResultQuality(t *testing.T) {
 		}
 	})
 
+	t.Run("counts an api name filled in where the input had none", func(t *testing.T) {
+		// 展示名和说明都已维护好，本次只补 api_name：不能被当成无效输出。
+		maintained := `{"resource":{"name":"供应商","description":"供应商主数据","schema_definition":[` +
+			`{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号"},` +
+			`{"name":"电话","display_name":"联系电话","description":"联系电话","api_name":"phone"}]}}`
+		for _, tc := range []struct {
+			name, result string
+			want         float64
+		}{
+			{"new field api name", `{"resource":{"display_name":"供应商","description":"供应商主数据"},"fields":[{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号","api_name":"supplier_code"}]}`, 0.9},
+			{"new resource api name", `{"resource":{"display_name":"供应商","description":"供应商主数据","api_name":"supplier"},"fields":[{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号"}]}`, 0.9},
+			{"api name the field already has", `{"resource":{"display_name":"供应商","description":"供应商主数据"},"fields":[{"name":"电话","display_name":"联系电话","description":"联系电话","api_name":"contact_phone"}]}`, 0},
+			{"invalid api name", `{"resource":{"display_name":"供应商","description":"供应商主数据","api_name":"Supplier"},"fields":[{"name":"编号","display_name":"供应商编号","description":"供应商唯一编号","api_name":"supplier-code"}]}`, 0},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, confidence, _, err := assessResourceSemanticResultQuality(tc.result, maintained, `{}`, 0.9)
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, confidence)
+			})
+		}
+	})
+
 	t.Run("keeps agent confidence for valid resource-only update", func(t *testing.T) {
 		_, confidence, detail, err := assessResourceSemanticResultQuality(
 			`{"confidence":1,"resource":{"display_name":"供应商主数据","description":"供应商业务主数据"},"fields":[{"name":"supplier_id","display_name":"supplier_id","description":"供应商ID"}],"warnings":[]}`,
