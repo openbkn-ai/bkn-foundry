@@ -13,5 +13,8 @@ type ObjectTypeService interface {
 	GetObjectTypeSchema(ctx context.Context, knID, branch, objectTypeID string) (*ResourceSchemaResponse, error)
 	GetObjectTypeSampleData(ctx context.Context, query *ObjectQueryBaseOnObjectType) (*ObjectTypeSampleData, error)
 	GetObjectsByObjectTypeID(ctx context.Context, query *ObjectQueryBaseOnObjectType) (Objects, error)
+	// ScanObjectsByObjectTypeID reads every page of query and returns at most
+	// maxObjects+1 objects; more than maxObjects means the match set exceeds it.
+	ScanObjectsByObjectTypeID(ctx context.Context, query *ObjectQueryBaseOnObjectType, maxObjects int) (Objects, error)
 	GetObjectPropertyValue(ctx context.Context, query *ObjectPropertyValueQuery) (Objects, error)
 }

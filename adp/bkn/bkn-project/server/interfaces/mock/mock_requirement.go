@@ -233,6 +233,50 @@ func (m *MockRequirementService) EXPECT() *MockRequirementServiceMockRecorder {
 	return m.recorder
 }
 
+// DeleteDocument mocks base method.
+func (m *MockRequirementService) DeleteDocument(ctx context.Context, token, projectID, documentID string, caller interfaces.AccountInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDocument", ctx, token, projectID, documentID, caller)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDocument indicates an expected call of DeleteDocument.
+func (mr *MockRequirementServiceMockRecorder) DeleteDocument(ctx, token, projectID, documentID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocument", reflect.TypeOf((*MockRequirementService)(nil).DeleteDocument), ctx, token, projectID, documentID, caller)
+}
+
+// GetDocument mocks base method.
+func (m *MockRequirementService) GetDocument(ctx context.Context, token, projectID, documentID string) (*interfaces.RequirementDocument, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDocument", ctx, token, projectID, documentID)
+	ret0, _ := ret[0].(*interfaces.RequirementDocument)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDocument indicates an expected call of GetDocument.
+func (mr *MockRequirementServiceMockRecorder) GetDocument(ctx, token, projectID, documentID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockRequirementService)(nil).GetDocument), ctx, token, projectID, documentID)
+}
+
+// ListDocuments mocks base method.
+func (m *MockRequirementService) ListDocuments(ctx context.Context, token, projectID string) ([]*interfaces.RequirementDocument, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDocuments", ctx, token, projectID)
+	ret0, _ := ret[0].([]*interfaces.RequirementDocument)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDocuments indicates an expected call of ListDocuments.
+func (mr *MockRequirementServiceMockRecorder) ListDocuments(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockRequirementService)(nil).ListDocuments), ctx, token, projectID)
+}
+
 // ScenarioQuestions mocks base method.
 func (m *MockRequirementService) ScenarioQuestions(ctx context.Context, projectID string) (*interfaces.ScenarioQuestions, error) {
 	m.ctrl.T.Helper()
@@ -246,4 +290,34 @@ func (m *MockRequirementService) ScenarioQuestions(ctx context.Context, projectI
 func (mr *MockRequirementServiceMockRecorder) ScenarioQuestions(ctx, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScenarioQuestions", reflect.TypeOf((*MockRequirementService)(nil).ScenarioQuestions), ctx, projectID)
+}
+
+// SetDocumentType mocks base method.
+func (m *MockRequirementService) SetDocumentType(ctx context.Context, token, projectID, documentID, docType string, caller interfaces.AccountInfo) (*interfaces.RequirementDocument, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetDocumentType", ctx, token, projectID, documentID, docType, caller)
+	ret0, _ := ret[0].(*interfaces.RequirementDocument)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetDocumentType indicates an expected call of SetDocumentType.
+func (mr *MockRequirementServiceMockRecorder) SetDocumentType(ctx, token, projectID, documentID, docType, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDocumentType", reflect.TypeOf((*MockRequirementService)(nil).SetDocumentType), ctx, token, projectID, documentID, docType, caller)
+}
+
+// UploadDocuments mocks base method.
+func (m *MockRequirementService) UploadDocuments(ctx context.Context, token, projectID string, files []interfaces.RequirementUpload, caller interfaces.AccountInfo) ([]interfaces.RequirementUploadResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UploadDocuments", ctx, token, projectID, files, caller)
+	ret0, _ := ret[0].([]interfaces.RequirementUploadResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UploadDocuments indicates an expected call of UploadDocuments.
+func (mr *MockRequirementServiceMockRecorder) UploadDocuments(ctx, token, projectID, files, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UploadDocuments", reflect.TypeOf((*MockRequirementService)(nil).UploadDocuments), ctx, token, projectID, files, caller)
 }

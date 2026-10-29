@@ -11,9 +11,9 @@ package mock_interfaces
 
 import (
 	context "context"
-	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	reflect "reflect"
 
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -99,4 +99,19 @@ func (m *MockObjectTypeService) GetObjectsByObjectTypeID(ctx context.Context, qu
 func (mr *MockObjectTypeServiceMockRecorder) GetObjectsByObjectTypeID(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectsByObjectTypeID", reflect.TypeOf((*MockObjectTypeService)(nil).GetObjectsByObjectTypeID), ctx, query)
+}
+
+// ScanObjectsByObjectTypeID mocks base method.
+func (m *MockObjectTypeService) ScanObjectsByObjectTypeID(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType, maxObjects int) (interfaces.Objects, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScanObjectsByObjectTypeID", ctx, query, maxObjects)
+	ret0, _ := ret[0].(interfaces.Objects)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ScanObjectsByObjectTypeID indicates an expected call of ScanObjectsByObjectTypeID.
+func (mr *MockObjectTypeServiceMockRecorder) ScanObjectsByObjectTypeID(ctx, query, maxObjects any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScanObjectsByObjectTypeID", reflect.TypeOf((*MockObjectTypeService)(nil).ScanObjectsByObjectTypeID), ctx, query, maxObjects)
 }

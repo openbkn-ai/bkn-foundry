@@ -240,6 +240,59 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			}
 		})
 
+		Convey("The scenario questions are read from the specification, which the signature follows\n", func() {
+			rs := pmock.NewMockRequirementService(mockCtrl)
+			svc.rs = rs
+			sq := &interfaces.ScenarioQuestions{SpecVersion: 2, UpdateTime: 50, Questions: []interfaces.ScenarioQuestion{{
+				ID: "q1", Text: "Which supplier has this purchase order?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+				Needs: []interfaces.RequirementItemRef{
+					{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: "purchase_order"},
+					{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_has_purchase_order"},
+				},
+			}}}
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(sq, nil).Times(2)
+			expect()
+			expectIndex()
+
+			r := review()
+
+			So(r.Questions.SpecVersion, ShouldEqual, 2)
+			So(r.Questions.AnswerableNew, ShouldHaveLength, 1)
+			So(r.Questions.AnswerableNew[0].ID, ShouldEqual, "q1")
+			first := r.Signature
+
+			sq.UpdateTime = 51
+			expect()
+			expectIndex()
+			So(review().Signature, ShouldNotEqual, first)
+		})
+
+		Convey("A failure to read the scenario questions is an internal error\n", func() {
+			rs := pmock.NewMockRequirementService(mockCtrl)
+			svc.rs = rs
+			ps.EXPECT().GetProject(gomock.Any(), reviewToken, "p1").Return(project, nil)
+			ls.EXPECT().PreviewRelease(gomock.Any(), reviewToken, "supply", "project/p1", "1.1.0").Return(preview, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(check, true, nil)
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(nil, errors.New("db down"))
+
+			_, err := svc.ReviewRelease(ctx, reviewToken, "p1", "1.1.0", reviewOwner)
+
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("Without a specification service the review has no questions\n", func() {
+			expect()
+			expectIndex()
+
+			r := review()
+
+			So(r.Questions.Total, ShouldEqual, 0)
+			So(r.Questions.AnswerableNew, ShouldBeEmpty)
+		})
+
 		Convey("Without a confirmation nothing about it can pass, and the index is not read\n", func() {
 			draft = nil
 			expect()
