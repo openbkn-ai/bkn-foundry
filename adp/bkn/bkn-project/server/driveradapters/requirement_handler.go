@@ -317,15 +317,10 @@ func (r *restHandler) DeleteRequirementItem(c *gin.Context, visitor hydra.Visito
 	id := c.Param("project_id")
 	span.SetAttributes(attr.Key("project_id").String(id))
 
-	var updateTime int64
-	if raw := c.Query("update_time"); raw != "" {
-		parsed, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-				perrors.BknProject_Requirement_MissingUpdateTime).WithErrorDetails("update_time is not a number"))
-			return
-		}
-		updateTime = parsed
+	updateTime, err := queryUpdateTime(c)
+	if err != nil {
+		replyError(c, span, err)
+		return
 	}
 	spec, err := r.rqs.DeleteItem(ctx, visitor.TokenID, id, c.Param("kind"), c.Param("item_id"), updateTime,
 		visitorAccount(visitor))
@@ -359,4 +354,119 @@ func (r *restHandler) DecideRequirementChoice(c *gin.Context, visitor hydra.Visi
 		return r.rqs.DecideChoice(ctx, visitor.TokenID, c.Param("project_id"), c.Param("choice_id"), decide,
 			visitorAccount(visitor))
 	})
+}
+
+// queryUpdateTime reads the update time a deletion carries in its query: it has no body, so one
+// that does not parse is a missing one.
+func queryUpdateTime(c *gin.Context) (int64, error) {
+	raw := c.Query("update_time")
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest,
+			perrors.BknProject_Requirement_MissingUpdateTime).WithErrorDetails("update_time is not a number")
+	}
+	return parsed, nil
+}
+
+// The test questions and development guidance of a scenario question.
+
+const guidanceActionGenerate = "dev:generate"
+
+func (r *restHandler) QuestionActionByEx(c *gin.Context) {
+	switch c.Param("action") {
+	case guidanceActionGenerate:
+		r.withExVisitor(c, r.GenerateGuidance)
+	default:
+		replyNotFound(c)
+	}
+}
+func (r *restHandler) GetGuidanceByEx(c *gin.Context) { r.withExVisitor(c, r.GetGuidance) }
+func (r *restHandler) EditTestByEx(c *gin.Context)    { r.withExVisitor(c, r.EditTest) }
+func (r *restHandler) DeleteTestByEx(c *gin.Context)  { r.withExVisitor(c, r.DeleteTest) }
+
+// GenerateGuidance serves POST /projects/{project_id}/requirements/questions/{question_id}/dev:generate
+// and replies 202 with the guidance generating.
+func (r *restHandler) GenerateGuidance(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, questionID := c.Param("project_id"), c.Param("question_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("question_id").String(questionID))
+
+	g, err := r.rqs.GenerateGuidance(ctx, visitor.TokenID, id, questionID, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, g)
+}
+
+// GetGuidance serves GET /projects/{project_id}/requirements/questions/{question_id}/dev.
+func (r *restHandler) GetGuidance(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, questionID := c.Param("project_id"), c.Param("question_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("question_id").String(questionID))
+
+	view, err := r.rqs.GetGuidance(ctx, visitor.TokenID, id, questionID)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, view)
+}
+
+// EditTest serves PUT /projects/{project_id}/requirements/questions/{question_id}/tests/{test_id}.
+func (r *restHandler) EditTest(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, questionID, testID := c.Param("project_id"), c.Param("question_id"), c.Param("test_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("question_id").String(questionID))
+
+	var edit interfaces.RequirementTestEdit
+	if err := c.ShouldBindJSON(&edit); err != nil {
+		replyError(c, span, invalidRequirementBody(c))
+		return
+	}
+	g, err := r.rqs.EditTest(ctx, visitor.TokenID, id, questionID, testID, edit, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, g)
+}
+
+// DeleteTest serves DELETE /projects/{project_id}/requirements/questions/{question_id}/tests/{test_id}
+// with the update time read in the query, and replies the guidance after it.
+func (r *restHandler) DeleteTest(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, questionID, testID := c.Param("project_id"), c.Param("question_id"), c.Param("test_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("question_id").String(questionID))
+
+	updateTime, err := queryUpdateTime(c)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	g, err := r.rqs.DeleteTest(ctx, visitor.TokenID, id, questionID, testID, updateTime, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, g)
 }

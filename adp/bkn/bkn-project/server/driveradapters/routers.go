@@ -149,6 +149,12 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/projects/:project_id/requirements/conflicts/:conflict_id", r.ResolveRequirementConflictByEx)
 	apiV1.PUT("/projects/:project_id/requirements/choices/:choice_id", r.DecideRequirementChoiceByEx)
 
+	// Test questions and development guidance of a scenario question.
+	apiV1.POST("/projects/:project_id/requirements/questions/:question_id/:action", r.QuestionActionByEx)
+	apiV1.GET("/projects/:project_id/requirements/questions/:question_id/dev", r.GetGuidanceByEx)
+	apiV1.PUT("/projects/:project_id/requirements/questions/:question_id/tests/:test_id", r.EditTestByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/questions/:question_id/tests/:test_id", r.DeleteTestByEx)
+
 	logger.Info("RestHandler RegisterPublic")
 }
 
