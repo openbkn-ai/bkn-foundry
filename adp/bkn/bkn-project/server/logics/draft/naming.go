@@ -50,7 +50,7 @@ func pickName(language string, physical string, candidates ...string) (string, [
 	}
 	var aliases []string
 	for _, c := range names {
-		if c != name && nameLanguage(c) != nameLanguage(name) && !strings.ContainsAny(c, ",，") {
+		if c != name && nameLanguage(c) != nameLanguage(name) && !strings.ContainsAny(c, ",\uff0c") {
 			aliases = append(aliases, c)
 		}
 	}
