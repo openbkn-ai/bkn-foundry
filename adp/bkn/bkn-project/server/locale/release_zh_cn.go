@@ -18,6 +18,13 @@ var releaseZhCN = i18n.I18nMessages{
 		"BknProject.Release.BranchBehind":        "分支落后于 main main 上有该分支没有的变更，请先同步分支。",
 		"BknProject.Release.Drift":               "线上定义已漂移 线上网络与 main 不一致，路径明细见 error_details。请先把漂移提交到 main 并同步分支，再重新发布。",
 		"BknProject.Release.CapabilitiesSkipped": "能力绑定被跳过 网络已导入，但部分 Skill 或函数未能绑定，明细见 error_details。本次发布未记录，请补齐权限后用同一版本号重新发布。",
+		"BknProject.Release.InvalidRequestBody":  "请求体不合法 请求体必须是合法的 JSON。",
+		"BknProject.Release.InvalidAccepts":      "可接受项不合法 只能接受近似重名、部分未核对和索引未就绪。",
+		"BknProject.Release.NotProjectRelease":   "不是本项目发布的版本 只能切换到本项目发布的版本。",
+		"BknProject.Release.NotOwner":            "不是项目负责人 只有项目负责人可以发布、同步或切换使用方。",
+		"BknProject.Release.ProjectArchived":     "项目已归档 请先取消归档，再发布。",
+		"BknProject.Release.ChecksFailed":        "发布检查未全部通过 未通过的检查见 error_details，处理后重新打开发布确认。",
+		"BknProject.Release.ReviewOutdated":      "发布确认已过期 打开发布确认之后，草稿或线上版本又变了，请重新打开发布确认。",
 		"BknProject.Release.InternalError":       "内部错误 请联系管理员。",
 	},
 }
