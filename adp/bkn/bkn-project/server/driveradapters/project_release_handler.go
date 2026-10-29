@@ -23,8 +23,9 @@ import (
 // branch:sync and drift:commit, that the project's action route hands here.
 
 const (
-	projectActionSync = "branch:sync"
-	driftActionCommit = "drift:commit"
+	projectActionSync   = "branch:sync"
+	driftActionCommit   = "drift:commit"
+	regressionActionRun = "regression:run"
 )
 
 type projectSwitchRequest struct {
@@ -37,6 +38,17 @@ func (r *restHandler) PlanProjectSwitchByEx(c *gin.Context) {
 	r.withExVisitor(c, r.PlanProjectSwitch)
 }
 func (r *restHandler) SwitchProjectByEx(c *gin.Context) { r.withExVisitor(c, r.SwitchProject) }
+func (r *restHandler) GetRegressionByEx(c *gin.Context) { r.withExVisitor(c, r.GetRegression) }
+
+// ReleaseActionByEx serves the custom methods on a release of the project: regression:run.
+func (r *restHandler) ReleaseActionByEx(c *gin.Context) {
+	switch c.Param("action") {
+	case regressionActionRun:
+		r.withExVisitor(c, r.RunRegression)
+	default:
+		replyNotFound(c)
+	}
+}
 
 // ReviewRelease serves GET /projects/{id}/release-review?version=X.Y.Z.
 func (r *restHandler) ReviewRelease(c *gin.Context, visitor hydra.Visitor) {
@@ -154,4 +166,41 @@ func (r *restHandler) SwitchProject(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, sw)
+}
+
+// GetRegression serves GET /projects/{id}/releases/{network_id}/regression.
+func (r *restHandler) GetRegression(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, networkID := c.Param("project_id"), c.Param("network_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("network_id").String(networkID))
+
+	regression, err := r.prs.GetRegression(ctx, visitor.TokenID, id, networkID)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, regression)
+}
+
+// RunRegression serves POST /projects/{id}/releases/{network_id}/regression:run and replies 202:
+// the regression runs in the background.
+func (r *restHandler) RunRegression(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, networkID := c.Param("project_id"), c.Param("network_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("network_id").String(networkID))
+
+	regression, err := r.prs.RunRegression(ctx, visitor.TokenID, id, networkID, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, regression)
 }
