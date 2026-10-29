@@ -1,0 +1,307 @@
+{
+  "object_types": [
+    {
+      "id": "bz",
+      "name": "备注表",
+      "description": "备注表",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_bz",
+        "name": "bz",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "bz_id"
+      ],
+      "display_key": "bz_id",
+      "properties": [
+        {
+          "name": "bz_id",
+          "display_name": "备注编号",
+          "type": "string",
+          "description": "备注编号",
+          "mapped_field": "bz_id",
+          "source_of_record": "table",
+          "missing_description": false
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "cp",
+      "name": "Product",
+      "aliases": [
+        "产品"
+      ],
+      "description": "产品",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_cp",
+        "name": "Product",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "cp_id"
+      ],
+      "display_key": "cp_id",
+      "properties": [
+        {
+          "name": "cp_id",
+          "display_name": "Product number",
+          "aliases": [
+            "产品编号"
+          ],
+          "type": "string",
+          "description": "Product number",
+          "mapped_field": "cp_id",
+          "source_of_record": "table",
+          "missing_description": false
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "dd",
+      "name": "Order",
+      "aliases": [
+        "销售订单"
+      ],
+      "description": "销售订单",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_dd",
+        "name": "Order",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "dd_id"
+      ],
+      "display_key": "dd_id",
+      "properties": [
+        {
+          "name": "dd_id",
+          "display_name": "Order number",
+          "aliases": [
+            "订单编号"
+          ],
+          "type": "string",
+          "description": "Order number",
+          "mapped_field": "dd_id",
+          "source_of_record": "table",
+          "missing_description": false
+        },
+        {
+          "name": "kh_id",
+          "display_name": "Customer",
+          "aliases": [
+            "下单客户"
+          ],
+          "type": "string",
+          "description": "Customer of the order",
+          "mapped_field": "kh_id",
+          "source_of_record": "table",
+          "missing_description": false
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "kh",
+      "name": "Customer",
+      "aliases": [
+        "客户主数据"
+      ],
+      "description": "客户主数据。来自 CRM",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_kh",
+        "name": "Customer",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "kh_id"
+      ],
+      "display_key": "kh_id",
+      "properties": [
+        {
+          "name": "kh_id",
+          "display_name": "Customer number",
+          "aliases": [
+            "客户编号"
+          ],
+          "type": "string",
+          "description": "Customer number",
+          "mapped_field": "kh_id",
+          "source_of_record": "table",
+          "missing_description": false
+        },
+        {
+          "name": "kh_mc",
+          "display_name": "Customer name",
+          "aliases": [
+            "客户名称"
+          ],
+          "type": "string",
+          "description": "Name of the customer",
+          "mapped_field": "kh_mc",
+          "source_of_record": "table",
+          "missing_description": false
+        },
+        {
+          "name": "kh_dj",
+          "display_name": "Customer number",
+          "type": "string",
+          "description": "",
+          "mapped_field": "kh_dj",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "dj_dm",
+          "display_name": "Level",
+          "aliases": [
+            "等级代码"
+          ],
+          "type": "string",
+          "description": "Level code",
+          "mapped_field": "dj_dm",
+          "value_type_id": "dm_dj",
+          "source_of_record": "table",
+          "missing_description": false
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [
+    {
+      "id": "dd_to_kh",
+      "name": "dd_to_kh",
+      "description": "",
+      "source": "dd",
+      "target": "kh",
+      "origin": "foreign_key",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "kh_id",
+          "target_property": "kh_id"
+        }
+      ],
+      "adopted": true,
+      "verification": "confirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 100,
+        "nulls": 0,
+        "hits": 100,
+        "orphans": 0,
+        "hit_rate": 1,
+        "source_distinct": 90
+      }
+    },
+    {
+      "id": "ddcp",
+      "name": "Order line",
+      "aliases": [
+        "订单产品"
+      ],
+      "description": "",
+      "source": "dd",
+      "target": "cp",
+      "origin": "link_table",
+      "cardinality": "many_to_many",
+      "mapping": null,
+      "link_table": {
+        "resource_id": "r_ddcp",
+        "name": "Order line",
+        "catalog_id": "c1"
+      },
+      "source_mapping": [
+        {
+          "source_property": "dd_id",
+          "target_property": "dd_id"
+        }
+      ],
+      "target_mapping": [
+        {
+          "source_property": "cp_id",
+          "target_property": "cp_id"
+        }
+      ],
+      "adopted": true,
+      "verification": "confirmed",
+      "evidence": {
+        "computed": false,
+        "rows": 0,
+        "nulls": 0,
+        "hits": 0,
+        "orphans": 0,
+        "hit_rate": 0,
+        "source_distinct": 0,
+        "reason": "link_table"
+      }
+    }
+  ],
+  "value_types": [
+    {
+      "id": "dm_dj",
+      "name": "Customer level",
+      "description": "",
+      "base_type": "string",
+      "values": [
+        {
+          "value": "A",
+          "display": "重要"
+        },
+        {
+          "value": "B",
+          "display": "普通"
+        }
+      ],
+      "code_table": {
+        "resource_id": "r_dm_dj",
+        "name": "Customer level",
+        "catalog_id": "c1"
+      },
+      "used_by": [
+        {
+          "object_type": "kh",
+          "property": "dj_dm"
+        }
+      ],
+      "adopted": true
+    }
+  ],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

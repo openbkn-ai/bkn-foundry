@@ -1,0 +1,292 @@
+{
+  "description": "The same catalog in an English project: items take the English names semantic understanding gave, and the Chinese ones as aliases. The value type takes its name alone: BKN has no aliases of value types. bz has only a Chinese description: it takes 备注表, a name people read, not its physical name.",
+  "naming_language": "en-US",
+  "tables": [
+    {
+      "ID": "r_kh",
+      "CatalogID": "c1",
+      "Name": "Customer",
+      "Description": "客户主数据。来自 CRM",
+      "SourceName": "kh",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "kh_id"
+      ],
+      "Columns": [
+        {
+          "Name": "kh_id",
+          "Type": "string",
+          "Description": "Customer number",
+          "Comment": "客户编号",
+          "DisplayName": "Customer number",
+          "Nullable": false
+        },
+        {
+          "Name": "kh_mc",
+          "Type": "string",
+          "Description": "Name of the customer",
+          "Comment": "客户名称",
+          "DisplayName": "Customer name",
+          "Nullable": false
+        },
+        {
+          "Name": "kh_dj",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "Customer number",
+          "Nullable": false
+        },
+        {
+          "Name": "dj_dm",
+          "Type": "string",
+          "Description": "Level code",
+          "Comment": "等级代码",
+          "DisplayName": "Level",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [
+        {
+          "Columns": [
+            "dj_dm"
+          ],
+          "RefTable": "dm_dj",
+          "RefColumns": [
+            "code"
+          ]
+        }
+      ]
+    },
+    {
+      "ID": "r_cp",
+      "CatalogID": "c1",
+      "Name": "Product",
+      "Description": "产品",
+      "SourceName": "cp",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "cp_id"
+      ],
+      "Columns": [
+        {
+          "Name": "cp_id",
+          "Type": "string",
+          "Description": "Product number",
+          "Comment": "产品编号",
+          "DisplayName": "Product number",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_dd",
+      "CatalogID": "c1",
+      "Name": "Order",
+      "Description": "销售订单",
+      "SourceName": "dd",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "dd_id"
+      ],
+      "Columns": [
+        {
+          "Name": "dd_id",
+          "Type": "string",
+          "Description": "Order number",
+          "Comment": "订单编号",
+          "DisplayName": "Order number",
+          "Nullable": false
+        },
+        {
+          "Name": "kh_id",
+          "Type": "string",
+          "Description": "Customer of the order",
+          "Comment": "下单客户",
+          "DisplayName": "Customer",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [
+        {
+          "Columns": [
+            "kh_id"
+          ],
+          "RefTable": "kh",
+          "RefColumns": [
+            "kh_id"
+          ]
+        }
+      ]
+    },
+    {
+      "ID": "r_ddcp",
+      "CatalogID": "c1",
+      "Name": "Order line",
+      "Description": "订单产品",
+      "SourceName": "ddcp",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [],
+      "Columns": [
+        {
+          "Name": "dd_id",
+          "Type": "string",
+          "Description": "订单编号",
+          "Comment": "订单编号",
+          "DisplayName": "",
+          "Nullable": false
+        },
+        {
+          "Name": "cp_id",
+          "Type": "string",
+          "Description": "产品编号",
+          "Comment": "产品编号",
+          "DisplayName": "",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [
+        {
+          "Columns": [
+            "dd_id"
+          ],
+          "RefTable": "dd",
+          "RefColumns": [
+            "dd_id"
+          ]
+        },
+        {
+          "Columns": [
+            "cp_id"
+          ],
+          "RefTable": "cp",
+          "RefColumns": [
+            "cp_id"
+          ]
+        }
+      ]
+    },
+    {
+      "ID": "r_dm_dj",
+      "CatalogID": "c1",
+      "Name": "Customer level",
+      "Description": "客户等级",
+      "SourceName": "dm_dj",
+      "SourceSchema": "erp",
+      "Rows": 3,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "code"
+      ],
+      "Columns": [
+        {
+          "Name": "code",
+          "Type": "string",
+          "Description": "Code",
+          "Comment": "代码",
+          "DisplayName": "",
+          "Nullable": false
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "Name",
+          "Comment": "名称",
+          "DisplayName": "",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_bz",
+      "CatalogID": "c1",
+      "Name": "bz",
+      "Description": "备注表",
+      "SourceName": "bz",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "bz_id"
+      ],
+      "Columns": [
+        {
+          "Name": "bz_id",
+          "Type": "string",
+          "Description": "备注编号",
+          "Comment": "备注编号",
+          "DisplayName": "",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "counts": {
+    "keys": {
+      "r_kh.kh_id": [
+        100,
+        100,
+        0
+      ],
+      "r_cp.cp_id": [
+        100,
+        100,
+        0
+      ],
+      "r_dd.dd_id": [
+        100,
+        100,
+        0
+      ],
+      "r_bz.bz_id": [
+        100,
+        100,
+        0
+      ]
+    },
+    "joins": {
+      "r_dd.kh_id@r_kh": [
+        100,
+        0,
+        0,
+        90
+      ],
+      "r_kh.dj_dm@r_dm_dj": [
+        100,
+        0,
+        0,
+        3
+      ]
+    },
+    "codes": {
+      "r_dm_dj": [
+        {
+          "Value": "A",
+          "Display": "重要"
+        },
+        {
+          "Value": "B",
+          "Display": "普通"
+        }
+      ]
+    },
+    "failed": []
+  }
+}

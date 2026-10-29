@@ -171,8 +171,9 @@ func (s *draftService) RestoreExcluded(ctx context.Context, token string, projec
 	for _, p := range objectType.Properties {
 		taken[p.Name] = true
 	}
-	property := newProperty(*field, uniqueName(idFrom(field.Name, idPrefixProperty), taken))
+	property := newProperty(*field, uniqueName(idFrom(field.Name, idPrefixProperty), taken), draftLanguage(draft))
 	objectType.Properties = append(objectType.Properties, property)
+	dropAliasesOfOtherProperties(objectType.Properties)
 	draft.Items.Excluded = slices.Delete(draft.Items.Excluded, at, at+1)
 	decisions := []*interfaces.DraftDecision{{
 		Kind: interfaces.DRAFT_KIND_EXCLUDED, ItemID: objectType.ID, Action: interfaces.DRAFT_DECISION_RESTORE,

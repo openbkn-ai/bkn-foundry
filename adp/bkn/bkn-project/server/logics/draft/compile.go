@@ -7,6 +7,7 @@ package draft
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
@@ -73,7 +74,7 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 		network.ValueTypes = append(network.ValueTypes, compiled)
 		result.addIDKey(interfaces.ID_KIND_VALUE_TYPES, vt.CodeTable.ResourceID)
 	}
-	objectTypes := map[string]bool{}
+	objectTypes, objectNames := map[string]bool{}, map[string]string{}
 	for _, ot := range items.ObjectTypes {
 		if !ot.Adopted {
 			continue
@@ -83,12 +84,21 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 		}
 		objectTypes[ot.ID] = true
 		network.ObjectTypes = append(network.ObjectTypes, compileObjectType(ot, valueTypes))
+		objectNames[ot.Name] = ot.ID
 		result.addIDKey(interfaces.ID_KIND_OBJECT_TYPES, ot.Table.ResourceID)
 		for _, p := range ot.Properties {
 			if p.MappedField != "" {
 				result.addIDKey(interfaces.ID_KIND_PROPERTIES, propertySourceKey(ot.Table.ResourceID, p.MappedField))
 			}
 		}
+	}
+	// People may rename items after drafting: an alias that is now its own name or another object
+	// type's is left out, as BKN refuses it. The draft keeps it, should the item be renamed back.
+	for _, ot := range network.ObjectTypes {
+		ot.Aliases = allowedAliases(ot.Aliases, func(alias string) bool {
+			other, taken := objectNames[alias]
+			return taken && other != ot.ID
+		}, ot.Name)
 	}
 	for _, rt := range items.RelationTypes {
 		// A relation adopted while an end is not is a pending item a person settles first; it
@@ -125,8 +135,10 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 
 func compileObjectType(ot *interfaces.DraftObjectType, valueTypes map[string]bool) *bkn.BknObjectType {
 	compiled := &bkn.BknObjectType{
-		BknObjectTypeFrontmatter: bkn.BknObjectTypeFrontmatter{Type: "object_type", ID: ot.ID, Name: ot.Name},
-		Description:              ot.Description,
+		BknObjectTypeFrontmatter: bkn.BknObjectTypeFrontmatter{
+			Type: "object_type", ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases,
+		},
+		Description: ot.Description,
 		DataSource: &bkn.ResourceInfo{
 			Type: bkn.DATA_SOURCE_TYPE_RESOURCE,
 			ID:   ot.Table.ResourceID,
@@ -139,6 +151,7 @@ func compileObjectType(ot *interfaces.DraftObjectType, valueTypes map[string]boo
 		property := &bkn.DataProperty{
 			Name:        p.Name,
 			DisplayName: p.DisplayName,
+			Aliases:     p.Aliases,
 			Type:        p.Type,
 			Description: p.Description,
 			MappedField: p.MappedField,
@@ -149,7 +162,33 @@ func compileObjectType(ot *interfaces.DraftObjectType, valueTypes map[string]boo
 		}
 		compiled.DataProperties = append(compiled.DataProperties, property)
 	}
+	owner := map[string]*bkn.DataProperty{}
+	for _, p := range compiled.DataProperties {
+		for _, name := range []string{p.Name, p.DisplayName} {
+			if _, taken := owner[name]; !taken {
+				owner[name] = p
+			}
+		}
+	}
+	for _, p := range compiled.DataProperties {
+		p.Aliases = allowedAliases(p.Aliases, func(alias string) bool {
+			other, taken := owner[alias]
+			return taken && other != p
+		}, p.Name, p.DisplayName)
+	}
 	return compiled
+}
+
+// allowedAliases are the aliases BKN accepts of an item named own: none of them one of its names,
+// nor one refused says belongs to another item. Nil when none is left.
+func allowedAliases(aliases []string, refused func(string) bool, own ...string) []string {
+	var allowed []string
+	for _, alias := range aliases {
+		if !slices.Contains(own, alias) && !refused(alias) {
+			allowed = append(allowed, alias)
+		}
+	}
+	return allowed
 }
 
 func compileRelationType(rt *interfaces.DraftRelationType) (*bkn.BknRelationType, error) {
@@ -158,6 +197,7 @@ func compileRelationType(rt *interfaces.DraftRelationType) (*bkn.BknRelationType
 			Type:         "relation_type",
 			ID:           rt.ID,
 			Name:         rt.Name,
+			Aliases:      allowedAliases(rt.Aliases, func(string) bool { return false }, rt.Name),
 			Verification: rt.Verification,
 		},
 		Description: rt.Description,

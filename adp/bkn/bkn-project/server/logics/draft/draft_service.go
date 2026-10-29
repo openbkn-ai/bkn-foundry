@@ -149,19 +149,19 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Drafting)
 	}
 
-	catalogIDs := entry.CatalogIDs
+	catalogIDs, language := entry.CatalogIDs, entry.NamingLanguage
 	// Drafting outlives the request; it keeps the trace but not the request's cancellation.
 	background := context.WithoutCancel(ctx)
 	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
 	carried := draft.Items.Confirmation
-	s.run(func() { s.draft(background, projectID, catalogIDs, caller, carried) })
+	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried) })
 
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
 }
 
 // draft reads the catalogs' tables as the caller, drafts and records the result.
-func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string,
+func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string, language string,
 	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation) {
 	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
@@ -169,7 +169,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	defer span.End()
 
 	result := &interfaces.Draft{ProjectID: projectID, Status: interfaces.DRAFT_STATUS_READY}
-	items, err := s.draftFromTables(ctx, projectID, catalogIDs, caller)
+	items, err := s.draftFromTables(ctx, projectID, catalogIDs, language, caller)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		result.Status, result.Error = interfaces.DRAFT_STATUS_FAILED, FailureTimeout
@@ -190,7 +190,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	}
 }
 
-func (s *draftService) draftFromTables(ctx context.Context, projectID string, catalogIDs []string,
+func (s *draftService) draftFromTables(ctx context.Context, projectID string, catalogIDs []string, language string,
 	caller interfaces.AccountInfo) (interfaces.DraftItems, error) {
 	listed := []*interfaces.VegaTable{}
 	for _, catalogID := range catalogIDs {
@@ -235,7 +235,7 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 		return interfaces.DraftItems{}, fmt.Errorf("read registered ids: %w", err)
 	}
 	c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}
-	d := newDrafter(s.setting, c).withRegisteredIDs(projectID, registered)
+	d := newDrafter(s.setting, c).withRegisteredIDs(projectID, registered).withNamingLanguage(language)
 	items, err := d.draft(ctx, tables, unreadable)
 	if err != nil {
 		return items, err
@@ -252,6 +252,7 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 	// Tables drafting itself could not read, such as a code table whose values it could not
 	// query, are in items.Unreadable too.
 	items.Inputs = draftInputsOf(s.setting, catalogIDs, tables, items.Unreadable)
+	items.Inputs.NamingLanguage = d.language()
 	items.Inputs.IDs = registryInputsOf(registered, d.recorded, d.named)
 	return items, nil
 }

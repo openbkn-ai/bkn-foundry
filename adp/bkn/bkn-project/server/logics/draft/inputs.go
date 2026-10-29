@@ -23,7 +23,9 @@ import (
 // prefix and a short hash of the name instead of field.
 // Version 3: a physical name that is not ASCII takes its id from the project's registry, else from
 // the short name semantic understanding gave, and the hash stands only until there is one.
-const draftRulesVersion = 3
+// Version 4: items are named in the project's naming language, and their names in the other one
+// become aliases.
+const draftRulesVersion = 4
 
 // draftInputsOf records what a draft is made from: the rules and their settings, the catalogs
 // and the tables read, listed by resource ID.
