@@ -62,10 +62,12 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 	}
 	tasks, tasksVisible := map[string]*interfaces.VegaBuildTask{}, true
 	for _, catalogID := range catalogIDs {
-		listed, err := s.va.ListActiveBuildTasks(ctx, caller, catalogID)
+		// Listing needs the catalog's task_manage permission, which a reader may not have.
+		listed, visible, err := s.va.ListActiveBuildTasks(ctx, caller, catalogID)
 		if err != nil {
-			// Listing needs the catalog's task_manage permission, which a reader may not have.
 			otellog.LogWarn(ctx, fmt.Sprintf("List build tasks of catalog %s: %v", catalogID, err))
+		}
+		if err != nil || !visible {
 			tasksVisible = false
 			continue
 		}

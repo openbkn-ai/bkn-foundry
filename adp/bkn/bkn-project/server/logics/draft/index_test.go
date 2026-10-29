@@ -115,8 +115,8 @@ func Test_GetIndex(t *testing.T) {
 				{ID: "r_orders", Index: configured}, {ID: "r_parts", Index: configured}, {ID: "r_lines", Index: configured},
 			}, nil)
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").
-				Return([]*interfaces.VegaBuildTask{{ID: "t1", ResourceID: "r_orders", Status: "running"}}, nil)
-			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, nil)
+				Return([]*interfaces.VegaBuildTask{{ID: "t1", ResourceID: "r_orders", Status: "running"}}, true, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, true, nil)
 
 			index, err := svc.GetIndex(ctx, token, "p1", caller)
 
@@ -131,14 +131,28 @@ func Test_GetIndex(t *testing.T) {
 			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return([]*interfaces.VegaTable{
 				{ID: "r_orders", Index: configured},
 			}, nil)
-			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").Return(nil, errors.New("forbidden"))
-			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, nil)
+			// No task_manage on c1: vega-backend would list nothing, which must not read as no task.
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").Return(nil, false, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, true, nil)
 
 			index, err := svc.GetIndex(ctx, token, "p1", caller)
 
 			So(err, ShouldBeNil)
 			So(index.TasksVisible, ShouldBeFalse)
 			So(index.Counts, ShouldResemble, map[string]int{interfaces.INDEX_STATE_NOT_BUILT: 1, interfaces.INDEX_STATE_UNREADABLE: 2})
+		})
+
+		Convey("A failure listing build tasks leaves building unknown, the rest stands\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").Return(nil, false, errors.New("vega is down"))
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, true, nil)
+
+			index, err := svc.GetIndex(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(index.TasksVisible, ShouldBeFalse)
 		})
 
 		Convey("Without a draft there is nothing to read\n", func() {

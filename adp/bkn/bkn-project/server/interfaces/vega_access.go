@@ -98,8 +98,9 @@ type VegaAccess interface {
 	// GetTables returns the tables with their structure; ids the account cannot see are left out.
 	GetTables(ctx context.Context, account VegaAccount, ids []string) ([]*VegaTable, error)
 	// ListActiveBuildTasks returns the catalog's index build tasks that are pending, running or
-	// stopping; listing them needs the catalog's task_manage permission.
-	ListActiveBuildTasks(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaBuildTask, error)
+	// stopping, and whether the account may see them: listing them needs the catalog's
+	// task_manage permission.
+	ListActiveBuildTasks(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaBuildTask, bool, error)
 	// Query runs a SQL statement whose tables are written {{<resource id>}} and returns its rows.
 	Query(ctx context.Context, account VegaAccount, sql string, timeoutSeconds int) ([]map[string]any, error)
 }

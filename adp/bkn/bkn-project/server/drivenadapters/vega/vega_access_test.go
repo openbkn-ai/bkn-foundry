@@ -164,23 +164,77 @@ func Test_VegaAccess(t *testing.T) {
 			So(tables[1].Index, ShouldResemble, interfaces.VegaTableIndex{})
 		})
 
-		Convey("ListActiveBuildTasks lists the catalog's pending, running and stopping tasks in one page\n", func() {
-			respBody = `{"entries":[{"id":"t1","resource_id":"r1","status":"running","mode":"batch"}],"total_count":1}`
+		Convey("GetTables reads each table when the batch is refused, leaving out those the account may not see\n", func() {
+			// vega-backend refuses a batch holding one table the account lacks view_detail on.
+			type reply struct {
+				code int
+				body string
+			}
+			byPath := map[string]reply{
+				"/api/vega-backend/in/v1/resources/r1,r2,r3": {http.StatusForbidden, `{}`},
+				"/api/vega-backend/in/v1/resources/r1":       {http.StatusOK, `{"entries":[{"id":"r1","name":"orders"}]}`},
+				"/api/vega-backend/in/v1/resources/r2":       {http.StatusForbidden, `{}`},
+				"/api/vega-backend/in/v1/resources/r3":       {http.StatusOK, `{"entries":[]}`},
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(byPath[r.URL.Path].code)
+				_, _ = w.Write([]byte(byPath[r.URL.Path].body))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
 
-			tasks, err := va.ListActiveBuildTasks(ctx, account, "c1")
+			tables, err := each.GetTables(ctx, account, []string{"r1", "r2", "r3"})
 
 			So(err, ShouldBeNil)
-			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/build-tasks")
-			So(got[0].query, ShouldEqual, "catalog_id=c1&limit=-1&status=pending&status=running&status=stopping")
-			So(got[0].accountID, ShouldEqual, "u1")
-			So(tasks, ShouldResemble, []*interfaces.VegaBuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}})
+			So(len(tables), ShouldEqual, 1)
+			So(tables[0].ID, ShouldEqual, "r1")
+
+			byPath["/api/vega-backend/in/v1/resources/r3"] = reply{http.StatusInternalServerError, `{}`}
+			_, err = each.GetTables(ctx, account, []string{"r1", "r2", "r3"})
+			So(err, ShouldNotBeNil)
 		})
 
-		Convey("ListActiveBuildTasks returns vega-backend's refusal\n", func() {
-			status, respBody = http.StatusForbidden, `{"error_code":"VegaBackend.Forbidden"}`
+		Convey("ListActiveBuildTasks lists a catalog's active tasks only for an account that may manage them\n", func() {
+			// vega-backend lists nothing, with 200, for a catalog the account lacks task_manage on.
+			type reply struct {
+				code int
+				body string
+			}
+			tasksBody := `{"entries":[{"id":"t1","resource_id":"r1","status":"running","mode":"batch"}],"total_count":1}`
+			byPath := map[string]reply{
+				"/api/vega-backend/in/v1/catalogs/c1": {http.StatusOK, `{"entries":[{"id":"c1","operations":["view_detail","task_manage"]}]}`},
+				"/api/vega-backend/in/v1/catalogs/c2": {http.StatusOK, `{"entries":[{"id":"c2","operations":["view_detail"]}]}`},
+				"/api/vega-backend/in/v1/catalogs/c3": {http.StatusForbidden, `{}`},
+				"/api/vega-backend/in/v1/catalogs/c4": {http.StatusInternalServerError, `{}`},
+				"/api/vega-backend/in/v1/build-tasks": {http.StatusOK, tasksBody},
+			}
+			var queries []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/vega-backend/in/v1/build-tasks" {
+					queries = append(queries, r.URL.RawQuery)
+				}
+				w.WriteHeader(byPath[r.URL.Path].code)
+				_, _ = w.Write([]byte(byPath[r.URL.Path].body))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
 
-			_, err := va.ListActiveBuildTasks(ctx, account, "c1")
+			tasks, visible, err := each.ListActiveBuildTasks(ctx, account, "c1")
+			So(err, ShouldBeNil)
+			So(visible, ShouldBeTrue)
+			So(tasks, ShouldResemble, []*interfaces.VegaBuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}})
+			So(queries, ShouldResemble, []string{"catalog_id=c1&limit=-1&status=pending&status=running&status=stopping"})
 
+			for _, catalogID := range []string{"c2", "c3"} {
+				tasks, visible, err = each.ListActiveBuildTasks(ctx, account, catalogID)
+				So(err, ShouldBeNil)
+				So(visible, ShouldBeFalse)
+				So(tasks, ShouldBeEmpty)
+			}
+			// Neither asked for tasks it may not see.
+			So(len(queries), ShouldEqual, 1)
+
+			_, _, err = each.ListActiveBuildTasks(ctx, account, "c4")
 			So(err, ShouldNotBeNil)
 		})
 

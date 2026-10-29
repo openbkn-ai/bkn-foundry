@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 
@@ -28,6 +29,8 @@ const (
 
 	categoryTable = "table"
 	noLimit       = "-1"
+	// operationTaskManage is the catalog permission to see and run its build tasks.
+	operationTaskManage = "task_manage"
 )
 
 var (
@@ -228,59 +231,119 @@ func (va *vegaAccess) GetTables(ctx context.Context, account interfaces.VegaAcco
 	if len(ids) == 0 {
 		return []*interfaces.VegaTable{}, nil
 	}
+	respCode, entries, err := va.getResources(ctx, account, ids)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get tables failed")
+		return nil, err
+	}
+	// vega-backend refuses a whole batch for one table the account lacks view_detail on: each is
+	// read on its own then, and those refused are left out.
+	if respCode == http.StatusForbidden && len(ids) > 1 {
+		entries = nil
+		for _, id := range ids {
+			code, one, err := va.getResources(ctx, account, []string{id})
+			if err != nil {
+				oteltrace.AddHttpAttrs4Error(span, code, "InternalError", "Http get table failed")
+				return nil, err
+			}
+			entries = append(entries, one...)
+		}
+		respCode = http.StatusOK
+	}
+	if respCode == http.StatusForbidden {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return []*interfaces.VegaTable{}, nil
+	}
+	tables := make([]*interfaces.VegaTable, 0, len(entries))
+	for _, entry := range entries {
+		tables = append(tables, toTable(entry))
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	return tables, nil
+}
+
+// getResources calls GET /resources/{ids}?ignore_missing=true. It returns the resources on 200,
+// none on 403, and an error for any other reply.
+func (va *vegaAccess) getResources(ctx context.Context, account interfaces.VegaAccount,
+	ids []string) (int, []*resource, error) {
 	escaped := make([]string, 0, len(ids))
 	for _, id := range ids {
 		escaped = append(escaped, url.PathEscape(id))
 	}
 	httpUrl := fmt.Sprintf("%s/resources/%s", va.baseUrl, strings.Join(escaped, ","))
-	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
-
 	query := url.Values{"ignore_missing": {"true"}}
 	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
 	logger.Debugf("GetTables finished, %d ids, response code is [%d]", len(ids), respCode)
 	if err != nil {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get tables failed")
-		return nil, fmt.Errorf("get tables: %w", err)
+		return respCode, nil, fmt.Errorf("get tables: %w", err)
 	}
-	if respCode != http.StatusOK {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		return nil, vegaError(respCode, respBody)
+	switch respCode {
+	case http.StatusOK:
+	case http.StatusForbidden:
+		return respCode, nil, nil
+	default:
+		return respCode, nil, vegaError(respCode, respBody)
 	}
 	list := &struct {
 		Entries []*resource `json:"entries"`
 	}{}
 	if err := json.Unmarshal(respBody, list); err != nil {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal tables failed")
-		return nil, fmt.Errorf("unmarshal tables: %w", err)
+		return respCode, nil, fmt.Errorf("unmarshal tables: %w", err)
 	}
-	tables := make([]*interfaces.VegaTable, 0, len(list.Entries))
-	for _, entry := range list.Entries {
-		tables = append(tables, toTable(entry))
-	}
-	oteltrace.AddHttpAttrs4Ok(span, respCode)
-	return tables, nil
+	return respCode, list.Entries, nil
 }
 
-// ListActiveBuildTasks calls GET /build-tasks?catalog_id=&status=pending&status=running&status=stopping.
+// ListActiveBuildTasks calls GET /build-tasks?catalog_id=&status=pending&status=running&status=stopping
+// when the account may manage the catalog's tasks, which GET /catalogs/{id} tells.
 func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfaces.VegaAccount,
-	catalogID string) ([]*interfaces.VegaBuildTask, error) {
+	catalogID string) ([]*interfaces.VegaBuildTask, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListActiveBuildTasks")
 	defer span.End()
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+
+	// vega-backend lists nothing, with 200, for a catalog the account lacks task_manage on, so the
+	// permission is read first: no tasks would otherwise read as none under way.
+	respCode, respBody, err := va.getCatalogs(ctx, account, []string{catalogID})
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog failed")
+		return nil, false, err
+	}
+	switch respCode {
+	case http.StatusOK:
+	case http.StatusForbidden, http.StatusNotFound:
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return nil, false, nil
+	default:
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, false, vegaError(respCode, respBody)
+	}
+	catalogs := &struct {
+		Entries []struct {
+			Operations []string `json:"operations"`
+		} `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, catalogs); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal catalog failed")
+		return nil, false, fmt.Errorf("unmarshal catalog %s: %w", catalogID, err)
+	}
+	if len(catalogs.Entries) == 0 || !slices.Contains(catalogs.Entries[0].Operations, operationTaskManage) {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return nil, false, nil
+	}
 
 	httpUrl := va.baseUrl + "/build-tasks"
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
 
 	query := url.Values{"catalog_id": {catalogID}, "limit": {noLimit}, "status": {"pending", "running", "stopping"}}
-	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
+	respCode, respBody, err = va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
 	logger.Debugf("ListActiveBuildTasks finished, catalog_id is [%s], response code is [%d]", catalogID, respCode)
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list build tasks failed")
-		return nil, fmt.Errorf("list build tasks of catalog %s: %w", catalogID, err)
+		return nil, false, fmt.Errorf("list build tasks of catalog %s: %w", catalogID, err)
 	}
 	if respCode != http.StatusOK {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		return nil, vegaError(respCode, respBody)
+		return nil, false, vegaError(respCode, respBody)
 	}
 	list := &struct {
 		Entries []struct {
@@ -291,14 +354,14 @@ func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfac
 	}{}
 	if err := json.Unmarshal(respBody, list); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal build tasks failed")
-		return nil, fmt.Errorf("unmarshal build tasks of catalog %s: %w", catalogID, err)
+		return nil, false, fmt.Errorf("unmarshal build tasks of catalog %s: %w", catalogID, err)
 	}
 	tasks := make([]*interfaces.VegaBuildTask, 0, len(list.Entries))
 	for _, entry := range list.Entries {
 		tasks = append(tasks, &interfaces.VegaBuildTask{ID: entry.ID, ResourceID: entry.ResourceID, Status: entry.Status})
 	}
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
-	return tasks, nil
+	return tasks, true, nil
 }
 
 // Query calls POST /resources/query with a single page of results.

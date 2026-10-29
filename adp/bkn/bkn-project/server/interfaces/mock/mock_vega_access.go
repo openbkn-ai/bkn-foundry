@@ -57,12 +57,13 @@ func (mr *MockVegaAccessMockRecorder) GetTables(ctx, account, ids any) *gomock.C
 }
 
 // ListActiveBuildTasks mocks base method.
-func (m *MockVegaAccess) ListActiveBuildTasks(ctx context.Context, account interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaBuildTask, error) {
+func (m *MockVegaAccess) ListActiveBuildTasks(ctx context.Context, account interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaBuildTask, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListActiveBuildTasks", ctx, account, catalogID)
 	ret0, _ := ret[0].([]*interfaces.VegaBuildTask)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // ListActiveBuildTasks indicates an expected call of ListActiveBuildTasks.
