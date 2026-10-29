@@ -199,6 +199,10 @@ const PENDING_REASON_UNDECIDED = "undecided"
 // sender last read it: each edit moves it on.
 const PENDING_PLACEHOLDER_UPDATE_TIME = "$draft_update_time"
 
+// PENDING_CANDIDATES_NO_UNIQUE says why choosing an identity has no candidates: drafting counted no
+// property, nor pair of them, unique and non-null. A person may still send the properties they know.
+const PENDING_CANDIDATES_NO_UNIQUE = "no_unique_candidate"
+
 // PENDING_PLACEHOLDER_CANDIDATE stands for one of an option's candidates.
 const PENDING_PLACEHOLDER_CANDIDATE = "$candidate"
 
@@ -239,7 +243,8 @@ type PendingQuestion struct {
 }
 
 // PendingOption is a request that settles a pending item. Candidates, for choosing an identity,
-// are the property lists to send in place of $candidate, the one drafting counted first.
+// are the property lists to send in place of $candidate: only those drafting counted unique and
+// non-null.
 type PendingOption struct {
 	Action     string         `json:"action"`
 	Method     string         `json:"method"`
@@ -248,6 +253,8 @@ type PendingOption struct {
 	Allowed    bool           `json:"allowed"`
 	Reason     string         `json:"reason,omitempty"`
 	Candidates [][]string     `json:"candidates,omitempty"`
+	// CandidatesReason says why an option that takes candidates has none.
+	CandidatesReason string `json:"candidates_reason,omitempty"`
 }
 
 type PendingRecommendation struct {

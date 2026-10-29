@@ -115,8 +115,13 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 		choose := option(interfaces.ACTION_CHOOSE_IDENTITY, http.MethodPut, base+"/object_types/"+ot.ID+"/identity",
 			map[string]any{"properties": interfaces.PENDING_PLACEHOLDER_CANDIDATE})
 		choose.Candidates = identityChoices(ot)
-		if choose.Allowed && len(choose.Candidates) == 0 {
-			choose.Allowed, choose.Reason = false, interfaces.ACTION_REASON_NO_KEY_PROPERTY
+		switch {
+		case !slices.ContainsFunc(ot.Properties, func(p *interfaces.DraftProperty) bool { return keyTypes[p.Type] }):
+			if choose.Allowed {
+				choose.Allowed, choose.Reason = false, interfaces.ACTION_REASON_NO_KEY_PROPERTY
+			}
+		case len(choose.Candidates) == 0:
+			choose.CandidatesReason = interfaces.PENDING_CANDIDATES_NO_UNIQUE
 		}
 		return choose
 	}
@@ -203,33 +208,23 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 	return p
 }
 
-// identityChoices lists the properties that may identify an object type's records, one each:
-// the field drafting counted first, then the other key-typed properties by name. Several
-// properties together are a person's to choose; drafting counted none of them.
+// identityChoices lists what may identify an object type's records as drafting counted it unique
+// and non-null: the pair it found, or the field it counted. Properties it did not count are no
+// candidates: one could merge records, and choosing an identity does not refuse duplicates.
 func identityChoices(ot *interfaces.DraftObjectType) [][]string {
-	var counted string
-	names := []string{}
-	for _, p := range ot.Properties {
-		if !keyTypes[p.Type] {
-			continue
-		}
-		if ot.Key.Field != "" && p.MappedField == ot.Key.Field {
-			counted = p.Name
-			continue
-		}
-		names = append(names, p.Name)
-	}
-	slices.Sort(names)
 	candidates := [][]string{}
-	// A pair drafting counted unique comes first: no single field was.
 	if len(ot.Key.Candidate) > 0 {
 		candidates = append(candidates, ot.Key.Candidate)
 	}
-	if counted != "" {
-		candidates = append(candidates, []string{counted})
+	// Distinct values are of the rows without a null, so as many as the rows means none is null.
+	key := ot.Key
+	if !key.Computed || key.Field == "" || key.Rows == 0 || key.Distinct != key.Rows {
+		return candidates
 	}
-	for _, name := range names {
-		candidates = append(candidates, []string{name})
+	for _, p := range ot.Properties {
+		if keyTypes[p.Type] && p.MappedField == key.Field {
+			candidates = append(candidates, []string{p.Name})
+		}
 	}
 	return candidates
 }
