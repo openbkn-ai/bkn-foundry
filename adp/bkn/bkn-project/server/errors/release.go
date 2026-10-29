@@ -18,7 +18,8 @@ const (
 	BknProject_Release_NotOwner = "BknProject.Release.NotOwner"
 
 	// 404
-	BknProject_Release_NotFound = "BknProject.Release.NotFound"
+	BknProject_Release_NotFound           = "BknProject.Release.NotFound"
+	BknProject_Release_RegressionNotFound = "BknProject.Release.RegressionNotFound"
 
 	// 409
 	BknProject_Release_VersionExists       = "BknProject.Release.VersionExists"
@@ -30,6 +31,8 @@ const (
 	BknProject_Release_ProjectArchived = "BknProject.Release.ProjectArchived"
 	BknProject_Release_ChecksFailed    = "BknProject.Release.ChecksFailed"
 	BknProject_Release_ReviewOutdated  = "BknProject.Release.ReviewOutdated"
+	// A release's regression.
+	BknProject_Release_RegressionRunning = "BknProject.Release.RegressionRunning"
 
 	// 500
 	BknProject_Release_InternalError = "BknProject.Release.InternalError"
@@ -45,6 +48,7 @@ var (
 		BknProject_Release_NotProjectRelease,
 		BknProject_Release_NotOwner,
 		BknProject_Release_NotFound,
+		BknProject_Release_RegressionNotFound,
 		BknProject_Release_VersionExists,
 		BknProject_Release_BranchBehind,
 		BknProject_Release_Drift,
@@ -53,6 +57,7 @@ var (
 		BknProject_Release_ProjectArchived,
 		BknProject_Release_ChecksFailed,
 		BknProject_Release_ReviewOutdated,
+		BknProject_Release_RegressionRunning,
 		BknProject_Release_InternalError,
 	}
 )
