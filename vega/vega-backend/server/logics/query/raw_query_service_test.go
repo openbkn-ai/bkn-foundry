@@ -596,6 +596,26 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assert.Nil(t, prepared)
 		assertHTTPError(t, err, http.StatusBadRequest)
 	})
+	t.Run("Oracle prepares MySQL SQL without SQLGlot", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"sales.eu"."order.items"`
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeOracle)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT a.id FROM {{ orders }} a WHERE a.id>1 ORDER BY a.id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		assert.Empty(t, prepared.sql)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, resource.SourceIdentifier, tables[0].SourceIdentifier)
+	})
+	t.Run("Oracle parse failures do not fall back to SQLGlot", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), false, interfaces.ConnectorTypeOracle)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "WITH r AS (SELECT * FROM {{orders}}) SELECT * FROM r", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
 	t.Run("HANA prepares MySQL SQL without SQLGlot and preserves source identifiers", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		source := builderTestResource()
@@ -631,7 +651,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assert.Empty(t, args)
 	})
 
-	for _, target := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL, interfaces.ConnectorTypeHANA, interfaces.ConnectorTypeDoris} {
+	for _, target := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL, interfaces.ConnectorTypeHANA, interfaces.ConnectorTypeDoris, interfaces.ConnectorTypeOracle} {
 		for _, dialect := range []string{"tsql", "oracle", "doris", "generic"} {
 			t.Run(target+" rejects "+dialect+" input before compilation", func(t *testing.T) {
 				svc, rs, cs, _ := mysqlRawServices(t)
@@ -740,7 +760,6 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		wantDialect   string
 		wantSQL       string
 	}{
-		{name: "Oracle input for Oracle", inputDialect: "oracle", connectorType: interfaces.ConnectorTypeOracle, wantDialect: "oracle", wantSQL: `SELECT id FROM "APP"."orders"`},
 		{name: "ASCII TSQL input for SQL Server", inputDialect: "tsql", connectorType: interfaces.ConnectorTypeSQLServer, wantDialect: "tsql", wantSQL: "SELECT id FROM [APP].[orders]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -909,7 +928,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 		}
 		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeOracle,
+			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
 		}, nil)
 
 		policy := &deadlineInspectingPolicy{}
@@ -2655,6 +2674,42 @@ func TestRawQueryServiceDorisSQLBuilder(t *testing.T) {
 	require.NotNil(t, first.Paging.NextCursor)
 	assert.Equal(t, []map[string]any{{"id": int64(2)}}, first.Entries)
 	mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeDoris)
+	second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": int64(3)}}, second.Entries)
+	assert.Equal(t, first.Columns, second.Columns)
+	assert.Nil(t, second.Paging.NextCursor)
+	assert.Equal(t, 1, opened)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestRawQueryServiceOracleSQLBuilder checks that Oracle retains one Rows and its metadata across pages.
+func TestRawQueryServiceOracleSQLBuilder(t *testing.T) {
+	svc, rs, cs, cf := mysqlRawServices(t)
+	resource := builderTestResource()
+	resource.SourceIdentifier = `"APP"."ORDERS"`
+	mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeOracle)
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery("SELECT retained").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2).AddRow(3)).RowsWillBeClosed()
+	base := vmock.NewMockConnector(gomock.NewController(t))
+	base.EXPECT().Close(gomock.Any()).Return(nil)
+	opened := 0
+	connector := &builderConnector{Connector: base, open: func(ctx context.Context, q *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+		opened++
+		assert.EqualValues(t, 1, q.OffsetPart)
+		assert.Nil(t, q.LimitPart)
+		assert.Equal(t, resource.SourceIdentifier, q.FromPart.(*sb.Table).SourceIdentifier)
+		rows, err := db.QueryContext(ctx, "SELECT retained")
+		return rows, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}}, err
+	}}
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOracle, gomock.Any()).Return(connector, nil)
+	first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} ORDER BY id", QueryFormat: interfaces.QueryFormatSQL, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 1, Limit: 1}})
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	assert.Equal(t, []map[string]any{{"id": int64(2)}}, first.Entries)
+	mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeOracle)
 	second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
 	require.NoError(t, err)
 	assert.Equal(t, []map[string]any{{"id": int64(3)}}, second.Entries)

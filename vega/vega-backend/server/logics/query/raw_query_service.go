@@ -342,9 +342,10 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		catalog.ConnectorType == interfaces.ConnectorTypeMariaDB ||
 		catalog.ConnectorType == interfaces.ConnectorTypePostgreSQL ||
 		catalog.ConnectorType == interfaces.ConnectorTypeHANA ||
-		catalog.ConnectorType == interfaces.ConnectorTypeDoris {
+		catalog.ConnectorType == interfaces.ConnectorTypeDoris ||
+		catalog.ConnectorType == interfaces.ConnectorTypeOracle {
 		if inputDialect != "mysql" {
-			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL, PostgreSQL, HANA and Doris queries only support mysql input syntax")
+			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL, PostgreSQL, HANA, Doris and Oracle queries only support mysql input syntax")
 		}
 		if parseErr != nil {
 			return nil, sqlBuilderQueryInvalid(ctx, parseErr.Error())

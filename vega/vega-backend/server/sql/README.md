@@ -49,3 +49,30 @@ HANA 的 CESU-8 计数是现有边界，不作为后续新增函数默许语义�
 公共名单和调用校验以 [compiler/build.go](compiler/build.go) 为准，用户可用能力见 [Raw Query API](../../../../docs/api/vega/raw-query.yaml)。
 
 语义核对参考：[MySQL 字符串函数](https://dev.mysql.com/doc/refman/8.4/en/string-functions.html)、[MySQL 日期时间函数](https://dev.mysql.com/doc/refman/8.4/en/date-and-time-functions.html)、[PostgreSQL 字符串函数](https://www.postgresql.org/docs/current/functions-string.html)、[HANA SQL Reference](https://help.sap.com/doc/9b40bf74f8644b898fb07dabdd2a36ad/2.0.08/en-US/SAP_HANA_SQL_Reference_Guide_en.pdf)。
+
+## Oracle 19c
+
+Oracle SQL 查询使用公共 MySQL 输入语法，经 Parser/Builder 后由 EE Oracle 连接器生成 SQL。
+使用 `:pN` 命名参数及驱动原生 NUMBER 绑定，独立于 `NLS_NUMERIC_CHARACTERS`；精确数值最多 38 位有效数字；当前驱动将极小 NUMBER 折叠为零，故绑定只接受十进制指数 -128..125。校验和驱动编码使用同一规范化数值表示，保证不同科学计数法写法不会改变值。
+相同分组表达式复用命名绑定，HAVING 投影别名在本 SELECT 内展开；SQL 标识符保留原始大小写。
+分页使用原生 OFFSET/FETCH，offset-only 无需补 LIMIT。GROUP BY 数字交给源端，19c 不支持位置分组。
+
+- 常用聚合、数值、大小写、去空白、替换和空值函数使用显式映射。复合 `COUNT(DISTINCT a,b)` 返回能力错误。
+- `CHAR` 接受 0–127 ASCII 整数字面量及 NULL；`CHAR_LENGTH` 使用 LENGTH，LENGTH/OCTET_LENGTH 使用 LENGTHB。
+  字节长度以源端字符集为准；多字节 CLOB 的 LENGTHB 等原生限制由数据库返回错误。
+- CONCAT/CONCAT_WS 补齐 NULL 传播/跳过规则；Oracle 将空字符串折叠为 NULL，是本目标的明确边界，不能从已存字段恢复空串。
+  保留 LOB，不将结果隐式收窄为 VARCHAR2；源端长度限制仍适用。
+- NOW/CURRENT_TIMESTAMP 使用会话时区的 LOCALTIMESTAMP，精度 0–6；SECOND 截断小数秒。
+  DATE_FORMAT/STR_TO_DATE 使用明确格式模型和英文日期语言，支持 `%Y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%%` 及常用分隔符。
+  STR_TO_DATE 须包含完整 `%Y/%m/%d`，12 小时制须配合 `%p`；DATE_FORMAT 可以只输出年份等片段。
+- 日期函数和日期 CAST 对 ISO 日期/日期时间字符串字面量先校验日历，再使用明确格式转换，支持空格或 T 分隔、最多六位小数秒。
+  动态文本字段或文本计算结果须先使用 STR_TO_DATE；原生日期/时间字段仍由源端检查类型。
+- REPLACE 显式保持 NULL 传播，已知空替换串仍执行删除；NULLIF 的首参数为 NULL 字面量时直接返回 NULL。
+- CAST 支持 NUMBER、BINARY_FLOAT/DOUBLE、DATE、TIMESTAMP 及最多 4000 长度的 VARCHAR2；其他目标明确拒绝。
+  Oracle 的转换、非法日期、排序规则及空串规则仍按源端运行时语义执行。
+
+Raw SQL 的 RAW/LONG RAW/BLOB 保留原始字节（JSON 输出 base64），NUMBER 保留精度，SQL NULL 保持 null；
+结构化查询的 binary_mode 不影响这条路径。Oracle 结构化查询本阶段仍使用原有构造方式。
+源码生成和 mock 测试不代表已完成 Oracle 实库验收。
+
+Oracle SQL 生成按 1 MiB 预算限制（含参数占位符预留），嵌套条件改写超过预算时在连接源库前返回能力错误，避免短输入展开为无界 SQL。
