@@ -521,7 +521,7 @@ const maxStemCandidates = 3
 // Either is only a candidate; refer drafts it when the counts bear it out.
 func (d *drafter) stemMatch(source *interfaces.DraftObjectType, field string, other *interfaces.VegaTable,
 	key string) int {
-	if rank := stemMatch(field, other, key); rank > 0 {
+	if rank := stemMatch(field, other, key, d.setting); rank > 0 {
 		return rank
 	}
 	p := findProperty(source, d.fields[source.Table.ResourceID][field])
@@ -529,7 +529,7 @@ func (d *drafter) stemMatch(source *interfaces.DraftObjectType, field string, ot
 		return 0
 	}
 	target := d.objectTypes[other.ID]
-	if stem := businessStem(p.DisplayName); stem != "" && target != nil &&
+	if stem := businessStem(p.DisplayName, d.setting); stem != "" && target != nil &&
 		strings.Contains(strings.ToLower(target.Name), stem) {
 		return 1
 	}

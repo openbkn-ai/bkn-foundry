@@ -302,32 +302,18 @@ func lastWord(w []string) string {
 	return w[len(w)-1]
 }
 
-// idWords end the names of fields that hold another record's identifier: supplier_number, order_no.
-var idWords = map[string]bool{"id": true, "code": true, "no": true, "num": true, "number": true, "key": true, "sn": true}
-
-// idSuffixes end the business names of such fields written in Chinese; words in Latin letters
-// are idWords.
-var idSuffixes = []string{"编号", "编码", "代码", "号码"}
-
-// genericStems are what is left of a field's name that is too common to say which table it
-// refers to: status_code, type_id.
-var genericStems = map[string]bool{
-	"name": true, "remark": true, "desc": true, "description": true, "status": true, "type": true,
-	"名称": true, "备注": true, "描述": true, "状态": true, "类型": true,
-}
-
 // minBusinessStemRunes is the shortest business-name stem that may point at a table.
 const minBusinessStemRunes = 2
 
 // fieldStem is a field's name without the identifier word it ends in, as words: [supplier] for
 // supplier_number. Nil when it ends in none or what is left is too common to point at a table.
-func fieldStem(name string) []string {
+func fieldStem(name string, setting common.DraftSetting) []string {
 	w := words(name)
-	if len(w) < 2 || !idWords[lastWord(w)] {
+	if len(w) < 2 || !slices.Contains(setting.IdentifierWords, lastWord(w)) {
 		return nil
 	}
 	stem := w[:len(w)-1]
-	if joined := strings.Join(stem, "_"); genericStems[joined] || genericKeys[joined] {
+	if joined := strings.Join(stem, "_"); slices.Contains(setting.GenericStems, joined) || genericKeys[joined] {
 		return nil
 	}
 	return stem
@@ -336,15 +322,15 @@ func fieldStem(name string) []string {
 // stemMatch ranks how a field's stem points at another table, 0 when it does not: the table's
 // name ending in the stem (supplier_number to erp_supplier) above the key's stem being the same
 // (supplier_number to a key supplier_code).
-func stemMatch(field string, other *interfaces.VegaTable, key string) int {
-	stem := fieldStem(field)
+func stemMatch(field string, other *interfaces.VegaTable, key string, setting common.DraftSetting) int {
+	stem := fieldStem(field, setting)
 	if stem == nil {
 		return 0
 	}
 	switch table := words(physicalName(other)); {
 	case len(table) >= len(stem) && slices.Equal(table[len(table)-len(stem):], stem):
 		return 3
-	case slices.Equal(fieldStem(key), stem):
+	case slices.Equal(fieldStem(key, setting), stem):
 		return 2
 	}
 	return 0
@@ -353,20 +339,23 @@ func stemMatch(field string, other *interfaces.VegaTable, key string) int {
 // businessStem is a field's business name without the identifier it ends in: 供应商 for
 // 供应商编号, supplier for Supplier number. Empty when it ends in none, or what is left is too
 // short or too common to point at a table.
-func businessStem(name string) string {
+func businessStem(name string, setting common.DraftSetting) string {
 	name = strings.TrimSpace(name)
 	stem := ""
-	for _, suffix := range idSuffixes {
-		if s, ok := strings.CutSuffix(name, suffix); ok {
+	for _, word := range setting.IdentifierWords {
+		if isASCII(word) {
+			if w := words(name); len(w) >= 2 && lastWord(w) == word {
+				stem = strings.Join(w[:len(w)-1], " ")
+			}
+		} else if s, ok := strings.CutSuffix(name, word); ok {
 			stem = s
+		}
+		if stem != "" {
 			break
 		}
 	}
-	if w := words(name); stem == "" && len(w) >= 2 && idWords[lastWord(w)] {
-		stem = strings.Join(w[:len(w)-1], " ")
-	}
 	stem = strings.ToLower(strings.TrimSpace(stem))
-	if utf8.RuneCountInString(stem) < minBusinessStemRunes || genericStems[stem] {
+	if utf8.RuneCountInString(stem) < minBusinessStemRunes || slices.Contains(setting.GenericStems, stem) {
 		return ""
 	}
 	return stem

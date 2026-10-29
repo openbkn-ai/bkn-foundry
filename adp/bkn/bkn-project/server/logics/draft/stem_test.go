@@ -44,7 +44,7 @@ func Test_Stems(t *testing.T) {
 				{"id_no", nil},
 				{"remark_no", nil},
 			} {
-				So(fieldStem(c.field), ShouldResemble, c.stem)
+				So(fieldStem(c.field, testSetting), ShouldResemble, c.stem)
 			}
 		})
 
@@ -61,17 +61,17 @@ func Test_Stems(t *testing.T) {
 				{"备注编号", ""},
 				{"", ""},
 			} {
-				So(businessStem(c.name), ShouldEqual, c.stem)
+				So(businessStem(c.name, testSetting), ShouldEqual, c.stem)
 			}
 		})
 
 		Convey("The other table's name ending in the stem ranks above its key's stem\n", func() {
 			supplier := table("r_s", "c1", "erp_supplier", 0, nil)
 			product := table("r_p", "c1", "hd_product_view", 0, nil)
-			So(stemMatch("supplier_number", supplier, "supplier_code"), ShouldEqual, 3)
-			So(stemMatch("material_number", product, "material_code"), ShouldEqual, 2)
-			So(stemMatch("supplier_name", supplier, "supplier_code"), ShouldEqual, 0)
-			So(stemMatch("customer_number", supplier, "supplier_code"), ShouldEqual, 0)
+			So(stemMatch("supplier_number", supplier, "supplier_code", testSetting), ShouldEqual, 3)
+			So(stemMatch("material_number", product, "material_code", testSetting), ShouldEqual, 2)
+			So(stemMatch("supplier_name", supplier, "supplier_code", testSetting), ShouldEqual, 0)
+			So(stemMatch("customer_number", supplier, "supplier_code", testSetting), ShouldEqual, 0)
 		})
 	})
 }
