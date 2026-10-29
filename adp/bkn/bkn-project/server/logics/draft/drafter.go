@@ -448,7 +448,7 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 			key   string
 			rank  int
 		}
-		candidates := []candidate{}
+		candidates, stems := []candidate{}, []candidate{}
 		for _, other := range tables {
 			if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
 				continue
@@ -465,9 +465,20 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 			}
 			if rank := nameMatch(c.Name, other, otherKey[0]); rank > 0 {
 				candidates = append(candidates, candidate{other, otherKey[0], rank})
+			} else if d.kinds[other.ID] == tableKindEntity {
+				// Only relations: refer counts them, while it takes a code table's enum uncounted.
+				if rank := d.stemMatch(source, c.Name, other, otherKey[0]); rank > 0 {
+					stems = append(stems, candidate{other, otherKey[0], rank})
+				}
 			}
 		}
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].rank > candidates[j].rank })
+		// Stems point less surely than names: after them, the surer first and then by table id,
+		// and only a few, as each is counted.
+		sort.Slice(stems, func(i, j int) bool {
+			return cmp.Or(cmp.Compare(stems[j].rank, stems[i].rank), cmp.Compare(stems[i].table.ID, stems[j].table.ID)) < 0
+		})
+		candidates = append(candidates, stems[:min(len(stems), maxStemCandidates)]...)
 		for _, cand := range candidates {
 			drafted, err := d.refer(ctx, table, source, c.Name, cand.table, cand.key, interfaces.DRAFT_ORIGIN_NAME_MATCH, ids)
 			if err != nil {
@@ -498,6 +509,29 @@ func nameMatch(field string, other *interfaces.VegaTable, key string) int {
 		return len(table) + 3
 	case !genericKeys[k] && strings.HasSuffix(f, "_"+k):
 		return len(k)
+	}
+	return 0
+}
+
+// maxStemCandidates bounds how many tables one field's stem is counted against.
+const maxStemCandidates = 3
+
+// stemMatch ranks how a field of source points at another table by its stem, 0 when it does
+// not: by its name (see stemMatch), else by its business name being part of the other table's.
+// Either is only a candidate; refer drafts it when the counts bear it out.
+func (d *drafter) stemMatch(source *interfaces.DraftObjectType, field string, other *interfaces.VegaTable,
+	key string) int {
+	if rank := stemMatch(field, other, key); rank > 0 {
+		return rank
+	}
+	p := findProperty(source, d.fields[source.Table.ResourceID][field])
+	if p == nil {
+		return 0
+	}
+	target := d.objectTypes[other.ID]
+	if stem := businessStem(p.DisplayName); stem != "" && target != nil &&
+		strings.Contains(strings.ToLower(target.Name), stem) {
+		return 1
 	}
 	return 0
 }
