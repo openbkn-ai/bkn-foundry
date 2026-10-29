@@ -466,3 +466,75 @@ func TestIndirectRelationMatchesKnownObjectsWithATargetFilter(t *testing.T) {
 		t.Fatalf("read %d backing rows for one known pair", fixture.vega.served)
 	}
 }
+
+// Review of #2692: later pages must ask for the full limit. Earlier, a page
+// asked only for the room left, so objects found on earlier pages crowded new
+// ones out and later sources lost relations to objects already found.
+func TestIndirectRelationFillsTheLimitAcrossPagesOfSeveralSources(t *testing.T) {
+	fixture := newIndirectFixture(campaignCustomerPairs())
+	fixture.edge.Direction = interfaces.DIRECTION_FORWARD
+	anyCustomer := interfaces.ObjectTypeWithKeyField{OTID: "customer", PageQuery: interfaces.PageQuery{Limit: 10000}}
+	result, err := fixture.service.getNextObjectsBatchByRelation(context.Background(), pathQuery(),
+		campaignObjects(102, 103, 104), fixture.edge, anyCustomer)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	reached := map[int]struct{}{}
+	for _, objects := range result {
+		for _, id := range reachedIDs(objects, "customer_id") {
+			reached[id] = struct{}{}
+		}
+	}
+	if len(reached) != 10000 {
+		t.Fatalf("reached %d distinct customers, want the limit of 10000", len(reached))
+	}
+	if got := reachedIDs(result["campaign-102"], "customer_id"); len(got) != 9999 {
+		t.Fatalf("campaign 102 reached %d customers, want 9999", len(got))
+	}
+	if got := reachedIDs(result["campaign-103"], "customer_id"); len(got) != 10000 || got[9999] != 10000 {
+		t.Fatalf("campaign 103 reached %d customers, want 1..10000", len(got))
+	}
+}
+
+// Review of #2692: the target pushdown does not depend on the batch, so the
+// batches of one step resolve it once.
+func TestIndirectRelationResolvesThePushdownOncePerStep(t *testing.T) {
+	fixture := newIndirectFixture(campaignCustomerPairs())
+	fixture.edge.Direction = interfaces.DIRECTION_FORWARD
+	step := &stepTargetFilter{}
+	for _, campaign := range []int{101, 104, 105} {
+		result, err := fixture.service.getNextObjectsInStep(context.Background(), pathQuery(),
+			campaignObjects(campaign), fixture.edge, exactCustomer(10001), step)
+		if err != nil || len(result[fmt.Sprintf("campaign-%d", campaign)].Datas) != 1 {
+			t.Fatalf("campaign %d: %v, %v", campaign, result, err)
+		}
+	}
+	pushdowns := 0
+	for _, query := range fixture.objects.queries {
+		if query.Limit == maxPushdownTargets+1 {
+			pushdowns++
+		}
+	}
+	if pushdowns != 1 {
+		t.Fatalf("resolved the pushdown %d times for one step", pushdowns)
+	}
+}
+
+// Review of #2692: matching known objects reads up to 1000 sources in batches
+// of 50; the backing-row bound applies to each batch, not to their sum.
+func TestIndirectRelationBoundsBackingRowsPerBatch(t *testing.T) {
+	rows := make([]map[string]any, 0, 120000)
+	sources := make([]int, 0, 120)
+	for campaign := 1; campaign <= 120; campaign++ {
+		sources = append(sources, campaign)
+		for customer := 1; customer <= 1000; customer++ {
+			rows = append(rows, map[string]any{"campaign_id": campaign, "customer_id": customer})
+		}
+	}
+	fixture := newIndirectFixture(rows)
+	result, err := fixture.service.batchGetViewData(context.Background(), pathQuery(), fixture.edge,
+		campaignObjects(sources...), campaignCustomerMapping(), true)
+	if err != nil || len(result) != 120 || len(result["campaign-120"]) != 1000 {
+		t.Fatalf("read %d sources, err %v", len(result), err)
+	}
+}
