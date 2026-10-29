@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -59,7 +60,7 @@ func (s *draftService) BuildIndex(ctx context.Context, token string, projectID s
 		span.SetStatus(codes.Error, "Build indexes failed")
 		return nil, internalError(ctx, "Build indexes failed", err)
 	}
-	index, err := s.readIndex(ctx, &draft.Items, caller)
+	index, _, err := s.readIndex(ctx, &draft.Items, caller)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read tables failed")
 		return nil, internalError(ctx, "Read tables failed", err)
@@ -71,11 +72,12 @@ func (s *draftService) BuildIndex(ctx context.Context, token string, projectID s
 
 // buildIndexes starts, as the runner, a build of each adopted object type's local index that is
 // not built or went stale, and records under the confirmed commit what each start did. A table
-// already being built is recorded with its task; ready, unconfigured and unreadable tables start
-// nothing.
+// lacking the keys a build needs is first given them from its object type: its identity's fields
+// and its update field's, when vega-backend takes their types. A table already being built is
+// recorded with its task; ready and unreadable tables start nothing.
 func (s *draftService) buildIndexes(ctx context.Context, projectID string, commit string,
 	items *interfaces.DraftItems, runner interfaces.AccountInfo) error {
-	index, err := s.readIndex(ctx, items, runner)
+	index, tables, err := s.readIndex(ctx, items, runner)
 	if err != nil {
 		return fmt.Errorf("read index readiness: %w", err)
 	}
@@ -87,6 +89,18 @@ func (s *draftService) buildIndexes(ctx context.Context, projectID string, commi
 		case item.State == interfaces.INDEX_STATE_BUILDING && item.Task != nil:
 			build.Outcome, build.TaskID = interfaces.INDEX_BUILD_EXISTING, item.Task.ID
 		case item.State == interfaces.INDEX_STATE_NOT_BUILT || item.State == interfaces.INDEX_STATE_STALE:
+			build.TaskID, err = s.va.CreateBuildTask(ctx, runner, item.Table.ResourceID)
+			build.Outcome, build.Reason = buildOutcome(err)
+		case item.State == interfaces.INDEX_STATE_NOT_CONFIGURED:
+			keys, unknown := indexKeys(findObjectType(items, item.ID), tables[item.Table.ResourceID], item.Missing)
+			if len(unknown) > 0 {
+				build.Outcome, build.Reason = interfaces.INDEX_BUILD_NOT_CONFIGURABLE, strings.Join(unknown, ",")
+				break
+			}
+			if _, err = s.va.UpdateIndexConfig(ctx, runner, item.Table.ResourceID, keys); err != nil {
+				build.Outcome, build.Reason = configOutcome(err)
+				break
+			}
 			build.TaskID, err = s.va.CreateBuildTask(ctx, runner, item.Table.ResourceID)
 			build.Outcome, build.Reason = buildOutcome(err)
 		default:
@@ -102,6 +116,57 @@ func (s *draftService) buildIndexes(ctx context.Context, projectID string, commi
 		return fmt.Errorf("record index builds: %w", err)
 	}
 	return nil
+}
+
+// primaryKeyTypes are the types vega-backend keys a table's local index by (PRIMARY_KEY_TYPES).
+var primaryKeyTypes = map[string]bool{"integer": true, "unsigned integer": true, "string": true}
+
+// indexKeys gives, from the object type, the keys of missing its table lacks: its identity's
+// fields and its update field's, each of a vega type the index takes. It returns the keys it
+// cannot give, as INDEX_FIELD_*.
+func indexKeys(objectType *interfaces.DraftObjectType, table *interfaces.VegaTable,
+	missing []string) (interfaces.VegaIndexKeys, []string) {
+	fields := func(properties []string, types map[string]bool) []string {
+		var names []string
+		for _, name := range properties {
+			property := findProperty(objectType, name)
+			if property == nil {
+				return nil
+			}
+			c, ok := column(table, property.MappedField)
+			if !ok || !types[c.Type] {
+				return nil
+			}
+			names = append(names, c.Name)
+		}
+		return names
+	}
+	var keys interfaces.VegaIndexKeys
+	var unknown []string
+	for _, key := range missing {
+		switch key {
+		case interfaces.INDEX_FIELD_PRIMARY_KEY:
+			if keys.PrimaryKeyFields = fields(objectType.PrimaryKeys, primaryKeyTypes); keys.PrimaryKeyFields == nil {
+				unknown = append(unknown, key)
+			}
+		case interfaces.INDEX_FIELD_INCREMENTAL:
+			// No update field names no property, which gives no field.
+			if keys.IncrementalFields = fields([]string{objectType.IncrementalKey}, incrementalTypes); keys.IncrementalFields == nil {
+				unknown = append(unknown, key)
+			}
+		}
+	}
+	return keys, unknown
+}
+
+// configOutcome is the outcome of a refused index configuration, and why.
+func configOutcome(err error) (string, string) {
+	var vegaErr *interfaces.VegaError
+	if errors.As(err, &vegaErr) && vegaErr.HTTPCode == http.StatusForbidden &&
+		vegaErr.ErrorCode == httperrors.PublicError_Forbidden {
+		return interfaces.INDEX_BUILD_NO_CONFIG_PERMISSION, ""
+	}
+	return interfaces.INDEX_BUILD_FAILED, err.Error()
 }
 
 // buildOutcome is the outcome of creating a build task, and why it did not start.
