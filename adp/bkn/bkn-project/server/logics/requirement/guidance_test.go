@@ -144,6 +144,9 @@ func Test_GenerateGuidance(t *testing.T) {
 			So(finished.RunID, ShouldEqual, "run1")
 			So(finished.AgentTaskID, ShouldEqual, "t9")
 			So(finished.Tests[0].Text, ShouldEqual, "Orders of 10001?")
+			// Checked before it is recorded: c2 maps to nothing in this specification.
+			So(finished.Tests[0].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED,
+				Reason: checkConceptNotMapped})
 			So(finished.OutOfScope, ShouldResemble, []string{"Parent company?"})
 			So(finished.Guidance, ShouldEqual, "Use the relation.")
 		})

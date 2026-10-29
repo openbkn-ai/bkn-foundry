@@ -346,6 +346,8 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	}
 	done := *g
 	done.Status, done.Tests, done.Guidance = interfaces.GUIDANCE_STATUS_READY, buildTests(&out), strings.TrimSpace(out.Guidance)
+	// Checked as the person who generated them, before anyone relies on them.
+	s.checkTests(ctx, caller, spec, draft, done.Tests)
 	done.OutOfScope = []string{}
 	for _, o := range out.OutOfScope {
 		if o = strings.TrimSpace(o); o != "" {
