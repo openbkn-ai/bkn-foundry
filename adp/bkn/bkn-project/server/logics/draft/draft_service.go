@@ -54,6 +54,8 @@ type draftService struct {
 	va  interfaces.VegaAccess
 	// iba records the local index builds a confirmation starts.
 	iba interfaces.IndexBuildAccess
+	// rqa reads the requirement specification a confirmation is made against.
+	rqa interfaces.RequirementAccess
 	ps  interfaces.ProjectService
 	// ls commits a confirmed draft to its project branch.
 	ls interfaces.LineageService
@@ -74,6 +76,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			ira:     logics.IRA,
 			va:      logics.VA,
 			iba:     logics.IBA,
+			rqa:     logics.RQA,
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
 			ra:      logics.RA,
