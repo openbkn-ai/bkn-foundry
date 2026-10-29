@@ -3,16 +3,16 @@ Context Loader: common queries are direct; other tools load on demand.
 Managed lifecycle, for each new user question:
 1. Call bkn_start_interaction with the whole question, the Agent name and conversation_mode: new for the first question (no conversation_id), continue with the previous conversation_id afterwards.
 2. Copy both returned IDs into bkn_context on every business call, even when Trace capture is disabled. If start fails without IDs, retry start before business calls.
-3. Before replying, finish with the returned interaction_id: completed with answer, else failed/cancelled/handed_off. Copy _meta trace partial_reasons to finish; if _meta is dropped, read the separate degraded-trace content block.
+3. Before replying, finish with the returned interaction_id: completed with answer, else failed/cancelled/handed_off. Copy _meta trace partial_reasons to finish; if _meta is dropped, read the degraded-trace content block.
 
 Exploring and querying:
-- Without a kn_id, call list_knowledge_networks. get_kn_detail gives an overview; search_schema finds object types, relation types and metrics. Query with the IDs they return; never guess IDs from names.
-- search_instance recalls relevant instances (top matches, not all); query_object_instance filters, sorts and pages; query_metric computes modelled metrics.
-- Aggregation, counts, rankings, joins: one run_cypher query; never page query_object_instance to count in context.
+- Without a kn_id, call list_knowledge_networks. get_kn_detail gives an overview; search_schema finds object/relation types and metrics. Query with the IDs they return; never guess IDs from names.
+- search_instance recalls top matching instances, not all; query_object_instance filters, sorts and pages; query_metric computes modelled metrics.
+- Aggregation, counts, rankings, joins: one run_cypher query; never page query_object_instance to count in context. A total must come from a total_count or aggregate under the same filter.
 - Known path of object and relation types: query_instance_subgraph.
 
-Other capabilities (exploratory subgraphs, logic properties, actions, skills, mounted functions, sandbox code or shell) go through the on-demand tools: describe the task to search_native_tools. Its `ready`, when present, is the top candidate's schema and call template - run it; otherwise call describe_native_tool. In execute_native_tool, name is the target, arguments its arguments, bkn_context in the outer call. Candidates cannot be called by name.
+Other capabilities (subgraphs, logic properties, actions, skills, functions, sandbox code or shell) go through the on-demand tools: describe the task to search_native_tools. Its `ready`, when present, is the top candidate's schema and call template - run it; otherwise call describe_native_tool. In execute_native_tool, name is the target, arguments its arguments, bkn_context in the outer call. Candidates cannot be called by name.
 
-Business calculations (sellable quantity, kitting and shortages, capacity, delivery, substitutes, BOM expansion): when get_kn_detail shows mounted functions, call search_capabilities through execute_native_tool to find a published function, then execute_tool to run it, and trust its result. Do not derive them from raw, paged or preview data. Follow the routes, metrics and time baseline named in get_kn_detail's top-level comment, and answer on its terms.
+Business calculations (sellable quantity, kitting, capacity, delivery, substitutes, BOM) and detail exports: when get_kn_detail shows mounted functions, call search_capabilities via execute_native_tool, then run a matching function with execute_tool from its call template and trust its result, not raw, paged or preview data. Follow the routes, metrics and time baseline named in get_kn_detail's top-level comment, and answer on its terms.
 
-Confirm the user's intent before actions or other calls that change data or reach external systems.
+Confirm the user's intent before calls that change data or reach external systems.

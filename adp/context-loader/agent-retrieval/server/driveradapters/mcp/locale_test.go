@@ -223,6 +223,69 @@ func TestServerInstructionsRequireRecomputableMembershipThresholdAndDetail(t *te
 	}
 }
 
+// #2515: a caller found the right published function through
+// search_capabilities, skipped it because the question (a product's full
+// sales detail) was not on the business-calculation list, read one unfiltered
+// object page and reported its in-page matches as the product total. Both
+// profiles must say that a matching discovered function is executed, and that
+// a total only comes from a result computed under the same filter.
+func TestServerInstructionsFollowDiscoveredFunctionAndScopedTotals(t *testing.T) {
+	tests := []struct {
+		locale  string
+		full    []string
+		compact []string
+	}{
+		{
+			locale: "zh-CN",
+			full: []string{
+				"不知道 kn_id 时先 list_knowledge_networks",
+				"不在上面清单里的问题（如按产品导出全部明细）也一样",
+				"按它的 call 调 execute_tool",
+				"不要改用 query_object_instance、run_cypher 或 run_code 取原始数据代替",
+				"回答中的总数只能来自带同一过滤条件的 total_count、聚合结果或函数结果",
+				"不带 condition 的 query_object_instance 返回的 total_count 是整个对象类的数量",
+			},
+			compact: []string{
+				"与明细导出",
+				"有相符函数就按其 call 调 execute_tool",
+				"总数只取同一过滤条件的 total_count 或聚合结果",
+			},
+		},
+		{
+			locale: "en-US",
+			full: []string{
+				"Without a kn_id, call list_knowledge_networks",
+				"The same holds outside that list (for example, exporting every detail row for a product)",
+				"call execute_tool with its call template",
+				"do not fetch raw rows through query_object_instance, run_cypher or run_code instead",
+				"A total in the answer must come from a total_count, aggregate or function result computed under the same filter",
+				"the total_count of a query_object_instance call without a condition counts the whole object type",
+			},
+			compact: []string{
+				"and detail exports",
+				"run a matching function with execute_tool from its call template",
+				"A total must come from a total_count or aggregate under the same filter",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			bundle := loadMCPLocaleBundle(test.locale)
+			full, compact := bundle.ServerInstructions(), bundle.CompactServerInstructions()
+			for _, want := range test.full {
+				if !strings.Contains(full, want) {
+					t.Errorf("full instructions for %s omit %q", test.locale, want)
+				}
+			}
+			for _, want := range test.compact {
+				if !strings.Contains(compact, want) {
+					t.Errorf("compact instructions for %s omit %q", test.locale, want)
+				}
+			}
+		})
+	}
+}
+
 func TestStartInteractionDescriptionGuidesStableAgentIdentity(t *testing.T) {
 	tests := []struct {
 		locale string
