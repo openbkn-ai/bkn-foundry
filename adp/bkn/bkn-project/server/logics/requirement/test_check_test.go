@@ -46,7 +46,7 @@ func Test_CheckTests(t *testing.T) {
 			return &interfaces.QuestionTest{ID: "t1", Text: "About " + strings.Join(names, " and ") + "?", Expect: expect, Slots: slots}
 		}
 		// The scenario question the tests ask in other ways.
-		asked := spec.Questions[0].Text
+		asked := spec.Questions[0]
 		count := func(sql string, n any) {
 			va.EXPECT().Query(gomock.Any(), caller, sql, checkQueryTimeout).Return([]map[string]any{{"n": n}}, nil)
 		}
@@ -190,7 +190,7 @@ func Test_CheckTests(t *testing.T) {
 					count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
 				}
 
-				check := svc.checkTest(ctx, caller, &spec, draft, c.asked, tt)
+				check := svc.checkTest(ctx, caller, &spec, draft, &interfaces.RequirementQuestion{Text: c.asked}, tt)
 
 				So(check.Reason == checkValueOutsideSlot, ShouldEqual, c.outside)
 			}
@@ -212,6 +212,97 @@ func Test_CheckTests(t *testing.T) {
 
 			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Text, ShouldEqual, "About C-9999 and Acme?")
+		})
+
+		Convey("A value for a record that exists is taken from the records the question's relation reaches\n", func() {
+			pathDraft := guidanceDraft()
+			pathDraft.Items.ObjectTypes[1].Table = interfaces.DraftTable{ResourceID: "r-cust"}
+			pathDraft.Items.ObjectTypes[1].PrimaryKeys = []string{"customer_id"}
+			pathDraft.Items.ObjectTypes[0].Table = interfaces.DraftTable{ResourceID: "r-so"}
+			pathDraft.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{{Name: "customer_ref", Type: "string", MappedField: "cust_ref"}}
+			pathDraft.Items.RelationTypes[0].Mapping = []interfaces.DraftFieldMapping{{SourceProperty: "customer_ref", TargetProperty: "customer_id"}}
+			rel := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "sales_order_customer"}
+			withPath := &interfaces.RequirementQuestion{Text: asked.Text, Needs: []interfaces.RequirementItemRef{customerRef, rel}}
+			reached := "SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IN (SELECT `cust_ref` FROM {{r-so}}) AND `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1"
+			anyRecord := "SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1"
+
+			Convey("and says where it came from\n", func() {
+				sample(reached, map[string]any{"v0": "10007"})
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10007'", float64(1))
+				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+				tt.Slots[0].ValueFrom = "stale"
+
+				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+				So(tt.Slots[0].Value, ShouldEqual, "10007")
+				So(tt.Slots[0].ValueFrom, ShouldEqual, "sales_order")
+			})
+
+			Convey("or, when it reaches none, from any record, saying nothing of a path\n", func() {
+				va.EXPECT().Query(gomock.Any(), caller, reached, checkQueryTimeout).Return([]map[string]any{}, nil)
+				sample(anyRecord, map[string]any{"v0": "10001"})
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+				tt.Slots[0].ValueFrom = "stale"
+
+				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+				So(tt.Slots[0].ValueFrom, ShouldEqual, "")
+			})
+
+			Convey("a failed read is no check\n", func() {
+				va.EXPECT().Query(gomock.Any(), caller, reached, checkQueryTimeout).Return(nil, errors.New("boom"))
+				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+
+				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Reason, ShouldEqual, checkQueryFailed)
+			})
+
+			Convey("but the record that should not exist is not looked for there\n", func() {
+				sample(anyRecord, map[string]any{"v0": "C-0042"})
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+				tt := test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", ""))
+
+				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+				So(tt.Slots[0].ValueFrom, ShouldEqual, "")
+			})
+
+			Convey("nor by a relation the question does not need, through a link table, or on several fields\n", func() {
+				for _, change := range []func(q *interfaces.RequirementQuestion, rt *interfaces.DraftRelationType){
+					func(q *interfaces.RequirementQuestion, _ *interfaces.DraftRelationType) { q.Needs = q.Needs[:1] },
+					// An object type of the same id is not the relation.
+					func(q *interfaces.RequirementQuestion, _ *interfaces.DraftRelationType) {
+						q.Needs = []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order_customer"}}
+					},
+					func(_ *interfaces.RequirementQuestion, rt *interfaces.DraftRelationType) {
+						rt.LinkTable = &interfaces.DraftTable{}
+					},
+					func(_ *interfaces.RequirementQuestion, rt *interfaces.DraftRelationType) {
+						rt.Mapping = append(rt.Mapping, interfaces.DraftFieldMapping{SourceProperty: "a", TargetProperty: "b"})
+					},
+				} {
+					q := *withPath
+					rt := *pathDraft.Items.RelationTypes[0]
+					change(&q, &rt)
+					d := *pathDraft
+					d.Items.RelationTypes = []*interfaces.DraftRelationType{&rt}
+					So(pathOf(&d, &q, &slotField{objectType: d.Items.ObjectTypes[1], field: "cust_id"}), ShouldBeNil)
+				}
+				So(pathOf(pathDraft, withPath, &slotField{objectType: pathDraft.Items.ObjectTypes[1], field: "cust_id"}), ShouldNotBeNil)
+
+				// Nor across catalogs: one query cannot read both tables.
+				d := *pathDraft
+				other := *d.Items.ObjectTypes[0]
+				other.Table.CatalogID = "c2"
+				d.Items.ObjectTypes = []*interfaces.DraftObjectType{&other, d.Items.ObjectTypes[1]}
+				So(pathOf(&d, withPath, &slotField{objectType: d.Items.ObjectTypes[1], field: "cust_id"}), ShouldBeNil)
+			})
+
+			Convey("from either end of the relation\n", func() {
+				order := pathDraft.Items.ObjectTypes[0]
+				p := pathOf(pathDraft, withPath, &slotField{objectType: order, field: "cust_ref"})
+
+				So(p, ShouldResemble, &relationPath{objectType: "customer", own: "cust_ref", table: "r-cust", other: "cust_id"})
+				So(p.condition(), ShouldEqual, "`cust_ref` IN (SELECT `cust_id` FROM {{r-cust}})")
+			})
 		})
 
 		Convey("A value the text does not name is no question about it\n", func() {

@@ -143,7 +143,7 @@ func (s *requirementService) count(ctx context.Context, caller interfaces.Accoun
 // caller. In a test expected not to exist, the first slot names the record that does not; the
 // others keep values of records that do.
 func (s *requirementService) checkTest(ctx context.Context, caller interfaces.AccountInfo,
-	spec *interfaces.RequirementSpec, draft *interfaces.Draft, asked string, t *interfaces.QuestionTest) interfaces.QuestionTestCheck {
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, t *interfaces.QuestionTest) interfaces.QuestionTestCheck {
 	if len(t.Slots) == 0 {
 		return notChecked(checkNoValues)
 	}
@@ -164,10 +164,10 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 			return notChecked(checkValueNotInText)
 		}
 	}
-	if valueOutsideSlots(spec, asked, t, fields) {
+	if valueOutsideSlots(spec, q.Text, t, fields) {
 		return notChecked(checkValueOutsideSlot)
 	}
-	if reason := s.fill(ctx, caller, t, fields); reason != "" {
+	if reason := s.fill(ctx, caller, t, fields, func(f *slotField) *relationPath { return pathOf(draft, q, f) }); reason != "" {
 		return notChecked(reason)
 	}
 	var key string
@@ -285,7 +285,7 @@ func valueTokens(text string) []string {
 // checkTests checks every test question, one after another, until deadline: those left are not
 // checked, so the run records its outcome before its lease runs out.
 func (s *requirementService) checkTests(ctx context.Context, caller interfaces.AccountInfo,
-	spec *interfaces.RequirementSpec, draft *interfaces.Draft, asked string, tests []*interfaces.QuestionTest, deadline int64) {
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, tests []*interfaces.QuestionTest, deadline int64) {
 	ctx, cancel := context.WithDeadline(ctx, time.UnixMilli(deadline))
 	defer cancel()
 	for _, t := range tests {
@@ -293,7 +293,7 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 			t.Check = notChecked(checkTimeout)
 			continue
 		}
-		t.Check = s.checkTest(ctx, caller, spec, draft, asked, t)
+		t.Check = s.checkTest(ctx, caller, spec, draft, q, t)
 	}
 }
 
@@ -363,6 +363,67 @@ func (s *requirementService) sampleRow(ctx context.Context, caller interfaces.Ac
 	return values, ""
 }
 
+// relationPath is a relation the question needs from a slot's object type to another: the slot's
+// field the relation joins on, and the other end's table and field.
+type relationPath struct {
+	objectType string
+	own        string
+	table      string
+	other      string
+}
+
+// condition keeps the rows of the slot's object type the relation reaches.
+func (p *relationPath) condition() string {
+	return fmt.Sprintf("%s IN (SELECT %s FROM {{%s}})", quoteField(p.own), quoteField(p.other), p.table)
+}
+
+// pathOf finds the first relation the question needs, in its order, that joins the slot's object
+// type to another by one field: values the question can follow are taken from the records it
+// reaches. Relations through a link table, joining on several fields, or across catalogs (one query
+// cannot read both) are not followed.
+func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotField) *relationPath {
+	if draft == nil {
+		return nil
+	}
+	mapped := func(objectType string, property string) (*interfaces.DraftObjectType, string) {
+		for _, ot := range draft.Items.ObjectTypes {
+			if ot.ID != objectType {
+				continue
+			}
+			for _, p := range ot.Properties {
+				if p.Name == property {
+					return ot, p.MappedField
+				}
+			}
+		}
+		return nil, ""
+	}
+	for _, need := range q.Needs {
+		if need.Kind != interfaces.REQUIREMENT_ITEM_RELATION_TYPE {
+			continue
+		}
+		for _, rt := range draft.Items.RelationTypes {
+			if rt.ID != need.ID || rt.LinkTable != nil || len(rt.Mapping) != 1 || rt.Source == rt.Target {
+				continue
+			}
+			own, other, otherType := rt.Mapping[0].SourceProperty, rt.Mapping[0].TargetProperty, rt.Target
+			if rt.Target == f.objectType.ID {
+				own, other, otherType = other, own, rt.Source
+			} else if rt.Source != f.objectType.ID {
+				continue
+			}
+			_, ownField := mapped(f.objectType.ID, own)
+			ot, otherField := mapped(otherType, other)
+			if ownField == "" || otherField == "" || ot.Table.ResourceID == "" ||
+				ot.Table.CatalogID != f.objectType.Table.CatalogID {
+				continue
+			}
+			return &relationPath{objectType: ot.ID, own: ownField, table: ot.Table.ResourceID, other: otherField}
+		}
+	}
+	return nil
+}
+
 // absentValues are the forms of a real value tried for a record that should not exist: its last
 // run of digits all nines, then all zeros, keeping its format. A value without digits has none.
 func absentValues(value string) []string {
@@ -389,14 +450,16 @@ func absentValues(value string) []string {
 }
 
 // fill gives the test question's empty slots values from the data, by what it expects: a value of
-// the field for a record that exists, a changed real value no row has for one that does not, and
-// one row's values for two ways of naming a record.
+// the field for a record that exists, of a record the question's path reaches when it has one, a
+// changed real value no row has for one that does not, and one row's values for two ways of naming
+// a record.
 func (s *requirementService) fill(ctx context.Context, caller interfaces.AccountInfo, t *interfaces.QuestionTest,
-	fields []*slotField) string {
+	fields []*slotField, path func(*slotField) *relationPath) string {
 	empty := map[int]bool{}
 	for i, f := range fields {
 		if f.value == "" {
 			empty[i] = true
+			t.Slots[i].ValueFrom = ""
 		}
 	}
 	if len(empty) == 0 {
@@ -435,6 +498,20 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		if !empty[i] {
 			continue
 		}
+		absent := t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0
+		if p := path(f); p != nil && !absent {
+			// A record the question's path reaches, so asking about it can show something.
+			values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
+				map[int]string{i: f.field}, []string{p.condition()})
+			if reason == checkQueryFailed {
+				return reason
+			}
+			if reason == "" {
+				set(i, values[i])
+				t.Slots[i].ValueFrom = p.objectType
+				continue
+			}
+		}
 		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
 			map[int]string{i: f.field}, nil)
 		if reason != "" {
@@ -442,7 +519,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		}
 		value := values[i]
 		// The record that does not exist is named by the first slot; the others are of ones that do.
-		if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0 {
+		if absent {
 			value = ""
 			for _, form := range absentValues(values[i]) {
 				n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",

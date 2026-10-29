@@ -483,7 +483,7 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	}
 	// Checked as the person who generated them, before anyone relies on them, and in time to
 	// record the outcome before another run may take the guidance over.
-	s.checkTests(ctx, caller, spec, draft, q.Text, done.Tests, g.UpdateTime+guidanceLease.Milliseconds()-finishMargin.Milliseconds())
+	s.checkTests(ctx, caller, spec, draft, q, done.Tests, g.UpdateTime+guidanceLease.Milliseconds()-finishMargin.Milliseconds())
 	done.OutOfScope = []string{}
 	for _, o := range out.OutOfScope {
 		if o = strings.TrimSpace(o); o != "" {

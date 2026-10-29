@@ -524,6 +524,9 @@ type QuestionTestSlot struct {
 	ConceptID string `json:"concept_id"`
 	Property  string `json:"property"`
 	Value     string `json:"value"`
+	// ValueFrom is the object type at the other end of a relation the question needs, when the
+	// server took the value from the records that relation reaches.
+	ValueFrom string `json:"value_from,omitempty"`
 }
 
 // QuestionTestCheck is what checking a test question against the data found. Reason is a code
