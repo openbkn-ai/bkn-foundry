@@ -37,6 +37,9 @@ type fakeIDRegistry struct {
 	recorded  []*interfaces.RegisteredID
 	listErr   error
 	recordErr error
+	locked    []interfaces.IDKey
+	lockTime  int64
+	lockErr   error
 }
 
 func (f *fakeIDRegistry) ListIDs(_ context.Context, _ string) ([]*interfaces.RegisteredID, error) {
@@ -48,8 +51,9 @@ func (f *fakeIDRegistry) RecordIDs(_ context.Context, ids []*interfaces.Register
 	return f.recordErr
 }
 
-func (f *fakeIDRegistry) LockIDs(context.Context, string, []interfaces.IDKey, int64) error {
-	return nil
+func (f *fakeIDRegistry) LockIDs(_ context.Context, _ string, keys []interfaces.IDKey, updateTime int64) error {
+	f.locked, f.lockTime = append(f.locked, keys...), updateTime
+	return f.lockErr
 }
 
 func Test_DraftService(t *testing.T) {
@@ -158,6 +162,9 @@ func Test_DraftService(t *testing.T) {
 			So(ira.recorded[0].ProjectID, ShouldEqual, "p1")
 			So(ira.recorded[0].CreateTime, ShouldBeGreaterThan, 0)
 			So(ira.recorded[0].UpdateTime, ShouldEqual, ira.recorded[0].CreateTime)
+			// The draft's inputs sum up the registry as drafting left it.
+			So(finished.Items.Inputs.IDs.Count, ShouldEqual, 2)
+			So(finished.Items.Inputs.IDs.Placeholders, ShouldEqual, 0)
 		})
 
 		for _, failure := range []string{"read", "record"} {

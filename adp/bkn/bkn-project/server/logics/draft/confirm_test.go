@@ -51,7 +51,8 @@ func Test_ConfirmDraft(t *testing.T) {
 		ps := pmock.NewMockProjectService(ctrl)
 		ls := pmock.NewMockLineageService(ctrl)
 		ca := pmock.NewMockCheckAccess(ctrl)
-		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, run: func(func()) {}}
+		ira := &fakeIDRegistry{}
+		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, ira: ira, run: func(func()) {}}
 		// A confirmation that commits starts a check of its commit; the check itself is tested apart.
 		var checked []string
 		ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
@@ -83,6 +84,9 @@ func Test_ConfirmDraft(t *testing.T) {
 				DoAndReturn(func(_ context.Context, _ string, _ string, files map[string][]byte, _ []string, _ string,
 					_ interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
 					So(len(files), ShouldEqual, len(paths))
+					// The ids of what is written are locked before it is on the branch.
+					compiled, _ := compileDraft(&confirmableDraft().Items)
+					So(ira.locked, ShouldResemble, compiled.IDKeys)
 					return &interfaces.CommitDefinitionsResult{Commit: "c1"}, nil
 				}).After(first)
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
@@ -105,6 +109,35 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(c.UpdateTime, ShouldEqual, draft.UpdateTime)
 			So(draft.UpdateTime, ShouldBeGreaterThan, readTime)
 			So(checked, ShouldResemble, []string{"c1"})
+			So(ira.locked, ShouldNotBeEmpty)
+			So(ira.lockTime, ShouldEqual, draft.UpdateTime)
+		})
+
+		Convey("A failure to lock the ids writes nothing and leaves the draft as it was read\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			var claimTime int64
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					claimTime = d.UpdateTime
+					return true, nil
+				})
+			ira.lockErr = errors.New("database is down")
+			var restored interfaces.Draft
+			var restoredOver int64
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, read int64) (bool, error) {
+					restored, restoredOver = *d, read
+					return true, nil
+				})
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
+			So(restoredOver, ShouldEqual, claimTime)
+			So(restored.UpdateTime, ShouldEqual, readTime)
+			So(restored.Items.Confirmation, ShouldBeNil)
+			So(checked, ShouldBeEmpty)
 		})
 
 		Convey("Confirming again may replace what the previous confirmation wrote\n", func() {

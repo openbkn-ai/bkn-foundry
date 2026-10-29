@@ -275,3 +275,42 @@ func Test_CompileDraft(t *testing.T) {
 		})
 	})
 }
+
+func Test_CompileDraftIDKeys(t *testing.T) {
+	Convey("compileDraft names the registry keys of what it writes\n", t, func() {
+		items := compileFixture()
+		items.ValueTypes[0].CodeTable = interfaces.DraftTable{ResourceID: "res_order_status"}
+		// Not written: channel is not adopted, audit_log is not, nor are relations to it.
+		compiled, err := compileDraft(items)
+
+		So(err, ShouldBeNil)
+		key := func(kind, sourceKey string) interfaces.IDKey {
+			return interfaces.IDKey{Kind: kind, SourceKey: sourceKey}
+		}
+		So(compiled.IDKeys, ShouldResemble, []interfaces.IDKey{
+			key(interfaces.ID_KIND_VALUE_TYPES, "res_order_status"),
+			key(interfaces.ID_KIND_OBJECT_TYPES, "res_orders"),
+			key(interfaces.ID_KIND_PROPERTIES, "res_orders/order_id"),
+			key(interfaces.ID_KIND_PROPERTIES, "res_orders/customer_id"),
+			key(interfaces.ID_KIND_PROPERTIES, "res_orders/status"),
+			key(interfaces.ID_KIND_PROPERTIES, "res_orders/channel"),
+			key(interfaces.ID_KIND_OBJECT_TYPES, "res_customers"),
+			key(interfaces.ID_KIND_PROPERTIES, "res_customers/customer_id"),
+			key(interfaces.ID_KIND_OBJECT_TYPES, "res_products"),
+			key(interfaces.ID_KIND_PROPERTIES, "res_products/product_id"),
+			// Only a relation drafted from a link table has an id from a table name.
+			key(interfaces.ID_KIND_RELATION_TYPES, "res_order_lines"),
+		})
+	})
+
+	Convey("A value type BKN refuses is not written, so its id is not locked\n", t, func() {
+		items := compileFixture()
+		items.ValueTypes[0].CodeTable = interfaces.DraftTable{ResourceID: "res_order_status"}
+		items.ValueTypes[0].BaseType = "geometry"
+		compiled, err := compileDraft(items)
+
+		So(err, ShouldBeNil)
+		So(compiled.SkippedValueTypes, ShouldResemble, []string{"order_status"})
+		So(compiled.IDKeys, ShouldNotContain, interfaces.IDKey{Kind: interfaces.ID_KIND_VALUE_TYPES, SourceKey: "res_order_status"})
+	})
+}

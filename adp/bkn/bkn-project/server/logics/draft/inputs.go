@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"slices"
 	"strings"
 
@@ -92,6 +93,32 @@ func fingerprint(table *interfaces.VegaTable) string {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// registryInputsOf sums up the registry as a draft leaves it: what it read, with what it recorded
+// in place of what that replaced. It is nil when nothing is registered.
+func registryInputsOf(registered []*interfaces.RegisteredID, recorded []*interfaces.RegisteredID) *interfaces.DraftInputIDs {
+	byKey := map[interfaces.IDKey]*interfaces.RegisteredID{}
+	for _, id := range slices.Concat(registered, recorded) {
+		byKey[id.IDKey] = id
+	}
+	if len(byKey) == 0 {
+		return nil
+	}
+	ids := slices.SortedFunc(maps.Values(byKey), func(a, b *interfaces.RegisteredID) int {
+		return cmp.Or(strings.Compare(a.Kind, b.Kind), strings.Compare(a.SourceKey, b.SourceKey))
+	})
+	summary := &interfaces.DraftInputIDs{Count: len(ids)}
+	hash := sha256.New()
+	for _, id := range ids {
+		if id.Origin == interfaces.ID_ORIGIN_FALLBACK {
+			summary.Placeholders++
+		}
+		line, _ := json.Marshal([]any{id.Kind, id.SourceKey, id.ID, id.Origin, id.Locked})
+		hash.Write(append(line, '\n'))
+	}
+	summary.Fingerprint = hex.EncodeToString(hash.Sum(nil))
+	return summary
 }
 
 func compareBool(a bool, b bool) int {

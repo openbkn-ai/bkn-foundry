@@ -123,18 +123,30 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		return nil, err
 	}
 
-	message := fmt.Sprintf("confirm ontology draft of project %s: %d object types, %d definitions",
-		projectID, adopted, len(paths))
-	result, err := s.ls.AddDefinitions(ctx, entry.KNID, entry.Branch, compiled.Files, owned, message,
-		interfaces.GitAuthor{Name: caller.ID})
-	if err != nil {
-		// Nothing was written: the draft goes back to what was read, with the last confirmation
-		// and what it left pending, so the person can fix the cause and confirm it as it is.
+	// Nothing was written: the draft goes back to what was read, with the last confirmation and
+	// what it left pending, so the person can fix the cause and confirm it as it is.
+	restore := func() {
 		draft.UpdateTime, draft.Items.Confirmation = readUpdateTime, previous
 		// Whether or not the caller is still there: the draft must not stay claimed.
 		if werr := s.writeDraft(context.WithoutCancel(ctx), draft, claimTime); werr != nil {
 			otellog.LogWarn(ctx, fmt.Sprintf("Restore draft of project %s: %v", projectID, werr))
 		}
+	}
+	// The ids of what is about to be written are locked first, so nothing on the branch has an id a
+	// later draft could replace. Should the commit then fail, the ids stay locked: a placeholder
+	// then waits for a person to rename it, which costs less than an id changing under the branch.
+	if err := s.ira.LockIDs(ctx, projectID, compiled.IDKeys, claimTime); err != nil {
+		restore()
+		span.SetStatus(codes.Error, "Lock ids failed")
+		return nil, internalError(ctx, "Lock ids failed", err)
+	}
+
+	message := fmt.Sprintf("confirm ontology draft of project %s: %d object types, %d definitions",
+		projectID, adopted, len(paths))
+	result, err := s.ls.AddDefinitions(ctx, entry.KNID, entry.Branch, compiled.Files, owned, message,
+		interfaces.GitAuthor{Name: caller.ID})
+	if err != nil {
+		restore()
 		span.SetStatus(codes.Error, "Commit definitions failed")
 		return nil, err
 	}
