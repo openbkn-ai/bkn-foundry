@@ -87,7 +87,6 @@ def test_metric_design_accepts_maximum_length_object_type_ids():
                 "version": 1,
                 "name": "Metric",
                 "type": "atomic",
-                "scope": "object_set",
                 "object_type_id": maximum,
             }],
         },
@@ -115,7 +114,6 @@ def test_metric_design_rejects_overlong_object_type_ids(field):
                 "version": 1,
                 "name": "Metric",
                 "type": "atomic",
-                "scope": "object_set",
                 "object_type_id": overlong,
             }],
         }
@@ -316,7 +314,7 @@ def test_clear_creation_intent_requires_a_name_and_name_only_followup_stays_focu
             "properties": [{"name": "user_id", "label": "下单用户ID"}],
             "published_metrics": [{
                 "id": "amount-total", "version": 2, "name": "订单总金额", "type": "atomic",
-                "scope": "object_set", "object_type_id": "order",
+                "object_type_id": "order",
             }],
         },
         message="根据下单用户ID统计订单总金额",
@@ -457,7 +455,7 @@ def test_proposal_prefers_field_specific_before_snapshot():
         scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "derived", "mode": "create"},
         form_snapshot={"baseMetric": "base-1@2", "derived.base_metric_id": "base-1", "derived.base_metric_version": 2},
         candidates={"properties": [], "published_metrics": [
-            {"id": "base-2", "version": 3, "name": "New base", "type": "atomic", "scope": "object_set", "object_type_id": "order"},
+            {"id": "base-2", "version": 3, "name": "New base", "type": "atomic", "object_type_id": "order"},
         ]},
     )
     value = proposal("derived.base_metric_id", "base-2")
@@ -466,7 +464,7 @@ def test_proposal_prefers_field_specific_before_snapshot():
     assert [item["before"] for item in result["changes"]] == ["base-1", 2]
 
 
-@pytest.mark.parametrize("field", ["code", "lifecycle.status", "metric_id", "logic_property.enabled"])
+@pytest.mark.parametrize("field", ["code", "lifecycle.status", "metric_id"])
 def test_rejects_non_editable_or_server_owned_fields(field):
     with pytest.raises(ValueError):
         validate_proposal(proposal(field), request())
@@ -497,7 +495,7 @@ def test_rejects_invalid_value_types_and_non_fixed_metric_reference():
         scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "derived", "mode": "create"},
         candidates={"properties": [], "published_metrics": [{
             "id": "base-1", "version": 2, "name": "Base", "type": "atomic",
-            "scope": "object_set", "object_type_id": "order",
+            "object_type_id": "order",
         }]},
     )
     with pytest.raises(ValueError, match="published atomic metric"):
@@ -653,7 +651,7 @@ def test_new_derived_design_cannot_omit_published_atomic_base():
         form_snapshot={"name": "Current", "timeWindowMode": "unbounded"},
         candidates={"properties": [], "published_metrics": [{
             "id": "count-1", "version": 1, "name": "Count", "type": "atomic",
-            "scope": "object_set", "object_type_id": "order",
+            "object_type_id": "order",
         }]},
     )
     value = proposal("derived.time_window_mode", "rolling")
@@ -736,7 +734,7 @@ def test_selected_composite_dependencies_must_be_used_by_current_expression():
         scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "composite", "mode": "create"},
         candidates={"properties": [], "published_metrics": [
             {"id": item["metric_id"], "version": 1, "name": item["alias"], "type": "derived",
-             "scope": "object_set", "object_type_id": "order"} for item in dependencies
+             "object_type_id": "order"} for item in dependencies
         ]},
         form_snapshot={"name": "Current", "composite.expression": {
             "node_type": "literal", "value_type": "decimal", "value": 0,
@@ -764,7 +762,7 @@ def test_unconfirmed_composite_roles_do_not_offer_an_applicable_formula():
         candidates={"properties": [{"name": "status", "label": "Status"}],
                     "published_metrics": [
                         {"id": item["metric_id"], "version": 1, "name": item["alias"],
-                         "type": "atomic", "scope": "object_set", "object_type_id": "order"}
+                         "type": "atomic", "object_type_id": "order"}
                         for item in dependencies
                     ]},
     )
@@ -822,7 +820,7 @@ def test_replacing_dependencies_rejects_stale_expression_aliases():
         }},
         candidates={"properties": [], "published_metrics": [{
             "id": "base-1", "version": 1, "name": "Base", "type": "atomic",
-            "scope": "object_set", "object_type_id": "order",
+            "object_type_id": "order",
         }]},
     )
     value = proposal("composite.dependencies", [{"alias": "base", "metric_id": "base-1", "version": 1}])
@@ -922,9 +920,9 @@ def test_derived_base_rejects_non_atomic_and_other_object_candidates():
                "metric_id": "draft-1", "draft_version": 1},
         candidates={"properties": [], "published_metrics": [
             {"id": "derived-base", "version": 1, "name": "Derived", "type": "derived",
-             "scope": "object_set", "object_type_id": "order"},
+             "object_type_id": "order"},
             {"id": "other-base", "version": 1, "name": "Other", "type": "atomic",
-             "scope": "object_set", "object_type_id": "other"},
+             "object_type_id": "other"},
         ]},
     )
     for metric_id in ("derived-base", "other-base"):
@@ -941,7 +939,7 @@ def test_derived_edit_may_keep_the_existing_base_id_or_version():
         form_snapshot={"derived.base_metric_id": "base-1", "derived.base_metric_version": 1},
         candidates={"properties": [], "published_metrics": [
             {"id": metric_id, "version": version, "name": "Base", "type": "atomic",
-             "scope": "object_set", "object_type_id": "order"}
+             "object_type_id": "order"}
             for metric_id, version in (("base-1", 1), ("base-1", 2), ("base-2", 1))
         ]},
     )
@@ -970,7 +968,7 @@ def test_v3_composite_dependency_requires_alias_in_first_model_schema():
                "metric_id": "draft-1", "draft_version": 1},
         candidates={"properties": [], "published_metrics": [{
             "id": "paid-1", "version": 1, "name": "Paid", "type": "atomic",
-            "scope": "object_set", "object_type_id": "order",
+            "object_type_id": "order",
         }]},
     )
     valid = proposal("composite.dependencies", [{"alias": "paid", "metric_id": "paid-1", "version": 1}])
@@ -991,7 +989,7 @@ def test_v3_composite_missing_alias_is_corrected_by_bounded_structured_fallback(
                "metric_id": "draft-1", "draft_version": 1},
         candidates={"properties": [], "published_metrics": [{
             "id": "paid-1", "version": 1, "name": "Paid", "type": "atomic",
-            "scope": "object_set", "object_type_id": "order",
+            "object_type_id": "order",
         }]},
     )
     incomplete = proposal("composite.dependencies", [{"metric_id": "paid-1", "version": 1}])
@@ -1163,7 +1161,7 @@ def test_simulated_agent_proposes_derived_creation_and_draft_edit(monkeypatch):
                 )],
                 "published_metrics": [{
                     "id": "amount-total", "version": 2, "name": "订单总金额", "type": "atomic",
-                    "scope": "object_set", "object_type_id": "order",
+                    "object_type_id": "order",
                 }],
             }
             first = request(

@@ -503,32 +503,13 @@ type callerParamError struct {
 func (e callerParamError) Error() string { return e.err.Error() }
 func (e callerParamError) Unwrap() error { return e.err }
 
-// metricTimeWindowParams are the parameters that describe when a metric is
-// read. validateMetricParams already recognises them by name, including the
-// rule that an instant query carries no step, and this list has to agree with
-// it: whatever is named here is left to that validation instead of being
-// demanded of the caller.
-var metricTimeWindowParams = map[string]struct{}{
-	"instant": {}, "start": {}, "end": {}, "step": {},
-}
-
 // missingCallerInputParams lists the business parameters the caller alone can
 // provide: value_from=input, and not one of the ones the server works out for
 // itself.
-//
-// if_system_generate marks those, but it is optional and a definition may omit
-// it, so a metric's time window is recognised by name as well. Without that
-// fallback a definition that leaves the flag off makes an instant query
-// impossible to supply: step is demanded as a business input, and validation
-// refuses it as soon as it is given.
 func missingCallerInputParams(property *interfaces.LogicPropertyDef, supplied map[string]any) []string {
-	metricTime := property.Type == interfaces.LogicPropertyTypeMetric
 	missing := make([]string, 0, len(property.Parameters))
 	for _, parameter := range property.Parameters {
 		if parameter.ValueFrom != parameterValueFromInput || parameter.IfSystemGenerate {
-			continue
-		}
-		if _, isTimeWindow := metricTimeWindowParams[parameter.Name]; metricTime && isTimeWindow {
 			continue
 		}
 		if _, given := supplied[parameter.Name]; !given {
@@ -631,11 +612,7 @@ func (s *knLogicPropertyResolverService) generateSinglePropertyParams(
 	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generating params for property: %s (type: %s)",
 		propertyName, property.Type)
 
-	// According to the attribute type, call the corresponding parameter generation method.
-	// Note: Currently implemented using the Agent platform, it can be expanded to support direct calling of LLM in the future.
 	switch property.Type {
-	case interfaces.LogicPropertyTypeMetric:
-		dynamicParams, missingParams, err = s.generateMetricParams(ctx, req, property, propertyName, debugCollector)
 	case interfaces.LogicPropertyTypeTool:
 		dynamicParams, missingParams, err = s.generateToolParams(ctx, req, property, propertyName, debugCollector)
 	default:
@@ -680,8 +657,6 @@ func (s *knLogicPropertyResolverService) validatePropertyParams(
 
 	var err error
 	switch property.Type {
-	case interfaces.LogicPropertyTypeMetric:
-		err = s.validateMetricParams(ctx, property, dynamicParams)
 	case interfaces.LogicPropertyTypeTool:
 		err = s.validateToolParams(ctx, property, dynamicParams)
 	}
@@ -691,62 +666,6 @@ func (s *knLogicPropertyResolverService) validatePropertyParams(
 	}
 	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Validation passed for %s", propertyName)
 	return nil
-}
-
-// generateMetricParams generates dynamic parameters of metric type through Agent.
-// Note: This method encapsulates Agent calls, and can be expanded to support direct calls to LLM in the future.
-func (s *knLogicPropertyResolverService) generateMetricParams(
-	ctx context.Context,
-	req *interfaces.ResolveLogicPropertiesRequest,
-	property *interfaces.LogicPropertyDef,
-	propertyName string,
-	debugCollector *DebugCollector,
-) (dynamicParams map[string]any, missingParams *interfaces.MissingPropertyParams, err error) {
-	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generating metric params via Agent for: %s", property.Name)
-
-	// Generate now_ms if the caller does not provide it in additional_context.
-	nowMs := time.Now().UnixMilli()
-
-	// Build the Agent request.
-	agentReq := &interfaces.MetricDynamicParamsGeneratorReq{
-		LogicProperty:     property,
-		Query:             req.Query,
-		UniqueIdentities:  req.InstanceIdentities,
-		AdditionalContext: req.AdditionalContext,
-		NowMs:             nowMs,
-		Timezone:          "", // Ignore timezone for now.
-	}
-
-	// Log Agent request information.
-	if debugCollector != nil {
-		debugCollector.RecordMetricAgentRequest(propertyName, agentReq)
-	}
-
-	// Directly connected to LLM to generate metric dynamic parameters (replacing agent-factory agent); req.LLMModel is the default large model of the idling system.
-	agentResult, missingParams, err := s.dynamicLLM.GenerateMetricParams(ctx, agentReq, req.LLMModel)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Return directly when required parameters are missing.
-	if missingParams != nil {
-		return nil, missingParams, nil
-	}
-
-	// Extract the parameter object for the corresponding property from the Agent result.
-	// Agent return format: {"approved_drug_count": {"instant": false, "start": xxx, ...}}
-	// We need to extract: {"instant": false, "start": xxx, ...}
-	if agentResult != nil {
-		if propertyParams, ok := agentResult[property.Name]; ok {
-			if paramsMap, ok := propertyParams.(map[string]any); ok {
-				return paramsMap, nil, nil
-			}
-		}
-		// Return an error if extraction fails.
-		return nil, nil, fmt.Errorf("failed to extract params for property %s from agent result: %+v", property.Name, agentResult)
-	}
-
-	return nil, nil, nil
 }
 
 // generateToolParams generates dynamic parameters for ToolBox-backed logical properties.
@@ -817,137 +736,6 @@ func (s *knLogicPropertyResolverService) generateToolParams(
 	}
 
 	return nil, nil, nil
-}
-
-// validateMetricParams validates parameters of metric type.
-func (s *knLogicPropertyResolverService) validateMetricParams(
-	ctx context.Context,
-	property *interfaces.LogicPropertyDef,
-	params map[string]any,
-) error {
-	// 1. Check the instant field (required)
-	instantVal, hasInstant := params["instant"]
-	if !hasInstant {
-		// 🔧 Temporary solution: If instant is missing, it will be automatically inferred based on whether there is step.
-		_, hasStep := params["step"]
-		if hasStep {
-			// There is a step indicating that it is a trend query.
-			params["instant"] = false
-			s.logger.WithContext(ctx).Warnf("[KnLogicPropertyResolver] Auto-inferred instant=false for metric property: %s (has step field)", property.Name)
-			instantVal = false
-		} else {
-			// There is no step indicating that it is an immediate query.
-			params["instant"] = true
-			s.logger.WithContext(ctx).Warnf("[KnLogicPropertyResolver] Auto-inferred instant=true for metric property: %s (no step field)", property.Name)
-			instantVal = true
-		}
-	}
-
-	instant, ok := instantVal.(bool)
-	if !ok {
-		return fmt.Errorf("param 'instant' must be boolean for metric property: %s", property.Name)
-	}
-
-	// 2. Check start and end (usually required)
-	if _, hasStart := params["start"]; !hasStart {
-		return fmt.Errorf("missing required param 'start' for metric property: %s", property.Name)
-	}
-	if _, hasEnd := params["end"]; !hasEnd {
-		return fmt.Errorf("missing required param 'end' for metric property: %s", property.Name)
-	}
-
-	// 3. check step field.
-	stepVal, hasStep := params["step"]
-
-	// When instant=true, there should be no step.
-	if instant && hasStep {
-		return fmt.Errorf("metric property %s: instant=true cannot have 'step' field", property.Name)
-	}
-
-	// When instant=false, there must be step.
-	if !instant && !hasStep {
-		return fmt.Errorf("metric property %s: instant=false must have 'step' field", property.Name)
-	}
-
-	// 4. If there is a step, verify the enumeration value.
-	if hasStep {
-		step, ok := stepVal.(string)
-		if !ok {
-			return fmt.Errorf("param 'step' must be string for metric property: %s", property.Name)
-		}
-
-		validSteps := []string{"day", "week", "month", "quarter", "year"}
-		isValid := false
-		for _, validStep := range validSteps {
-			if step == validStep {
-				isValid = true
-				break
-			}
-		}
-
-		if !isValid {
-			return fmt.Errorf("metric property %s: invalid step value '%s', must be one of: day, week, month, quarter, year",
-				property.Name, step)
-		}
-	}
-
-	// 5. Verify that start and end are numeric types (timestamps)
-	if err := s.validateTimestamp(ctx, params["start"], "start", property.Name); err != nil {
-		return err
-	}
-	if err := s.validateTimestamp(ctx, params["end"], "end", property.Name); err != nil {
-		return err
-	}
-
-	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Metric params validation passed for: %s", property.Name)
-	return nil
-}
-
-// validateTimestamp validate timestamp parameter.
-func (s *knLogicPropertyResolverService) validateTimestamp(
-	_ context.Context,
-	value interface{},
-	paramName, propertyName string,
-) error {
-	switch v := value.(type) {
-	case int64:
-		// Verification timestamp range (millisecond level, roughly between 2000-2100)
-		if v < 946684800000 || v > 4102444800000 {
-			return fmt.Errorf("metric property %s: param '%s' timestamp %d is out of reasonable range",
-				propertyName, paramName, v)
-		}
-		return nil
-	case json.Number:
-		// UseNumber decoders hand back json.Number; see drivenadapters.precisionJSON.
-		timestamp, convErr := v.Int64()
-		if convErr != nil {
-			return fmt.Errorf("metric property %s: param '%s' timestamp %s is not an integer",
-				propertyName, paramName, v.String())
-		}
-		if timestamp < 946684800000 || timestamp > 4102444800000 {
-			return fmt.Errorf("metric property %s: param '%s' timestamp %d is out of reasonable range",
-				propertyName, paramName, timestamp)
-		}
-		return nil
-	case float64:
-		// JSON parsing may parse numbers as float64.
-		timestamp := int64(v)
-		if timestamp < 946684800000 || timestamp > 4102444800000 {
-			return fmt.Errorf("metric property %s: param '%s' timestamp %d is out of reasonable range",
-				propertyName, paramName, timestamp)
-		}
-		return nil
-	case int:
-		timestamp := int64(v)
-		if timestamp < 946684800000 || timestamp > 4102444800000 {
-			return fmt.Errorf("metric property %s: param '%s' timestamp %d is out of reasonable range",
-				propertyName, paramName, timestamp)
-		}
-		return nil
-	default:
-		return fmt.Errorf("metric property %s: param '%s' must be a number (int64 timestamp), got %T",
-			propertyName, paramName, value)
-	}
 }
 
 // validateToolParams validates ToolBox dynamic parameters.

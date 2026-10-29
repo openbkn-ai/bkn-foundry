@@ -36,20 +36,65 @@ func TestOperationSpanAttributesUseRouteTemplate(t *testing.T) {
 	}
 }
 
-func TestBindObjectMetricRequestPreservesLargeNumericLiterals(t *testing.T) {
+func TestBindObjectMetricRequestPreservesHighPrecisionHavingLiteral(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
-		`{"instance_identities":[{"id":9007199254740993}],"having":{"operator":"eq","value":0.1234567890123456789012345}}`))
+		`{"having":{"operator":"eq","value":0.1234567890123456789012345}}`))
 	var body interfaces.ObjectMetricQueryRequestV1
 	if err := bindObjectMetricRequestV1(ctx, &body); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := body.InstanceIdentities[0]["id"].(json.Number); !ok || got.String() != "9007199254740993" {
-		t.Fatalf("identity = %#v, want precise json.Number", body.InstanceIdentities[0]["id"])
-	}
 	if got, ok := body.Having.Value.(json.Number); !ok || got.String() != "0.1234567890123456789012345" {
 		t.Fatalf("having = %#v, want precise json.Number", body.Having.Value)
+	}
+}
+
+func TestBindObjectMetricRequestRejectsRemovedInstanceIdentityFilter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+		`{"instance_identities":[{"id":"order-1"}]}`))
+	var body interfaces.ObjectMetricQueryRequestV1
+	err := bindObjectMetricRequestV1(ctx, &body)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("error = %v, want unknown-field rejection", err)
+	}
+}
+
+func TestBindObjectMetricTrialAcceptsFullDefinition(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{
+		"definition":{
+			"id":"", "version":1, "code":"", "name":"Orders", "description":"Order count",
+			"owner_object_type_id":"order", "metric_type":"atomic",
+			"result_semantics":{}, "specification":{}, "query_capabilities":{},
+			"lifecycle":{
+				"status":"draft", "ontology_version":"current",
+				"expression_language_version":"1.0", "function_registry_version":"1.0",
+				"aggregation_registry_version":"1.0", "unit_registry_version":"1.0"
+			}
+		}, "query":{}
+	}`))
+	var body interfaces.ObjectMetricTrialRequestV1
+	if err := bindObjectMetricRequestV1(ctx, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Definition.Description != "Order count" || body.Definition.Lifecycle.UnitRegistryVersion != "1.0" {
+		t.Fatalf("full definition fields were lost: %#v", body.Definition)
+	}
+}
+
+func TestBindObjectMetricRequestRejectsTrailingJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, body := range []string{`{} {}`, `{} invalid`} {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		var query interfaces.ObjectMetricQueryRequestV1
+		if err := bindObjectMetricRequestV1(ctx, &query); err == nil {
+			t.Fatalf("body %q: expected trailing JSON to be rejected", body)
+		}
 	}
 }
 

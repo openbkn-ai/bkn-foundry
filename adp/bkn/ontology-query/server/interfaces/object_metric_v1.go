@@ -9,15 +9,14 @@ package interfaces
 // qualifiers and fixed statistical grain always come from the published metric
 // version and cannot be overridden by a caller.
 type ObjectMetricQueryRequestV1 struct {
-	InstanceIdentities []map[string]any               `json:"instance_identities,omitempty"`
-	Filter             *ObjectMetricConditionV1       `json:"filter,omitempty"`
-	GroupBy            []ObjectMetricPropertyRefV1    `json:"group_by,omitempty"`
-	Having             *ObjectMetricHavingV1          `json:"having,omitempty"`
-	OrderBy            []ObjectMetricOrderByV1        `json:"order_by,omitempty"`
-	PageSize           int                            `json:"page_size,omitempty"`
-	Cursor             string                         `json:"cursor,omitempty"`
-	Time               *ObjectMetricQueryTimeRangeV1  `json:"time,omitempty"`
-	BucketSelection    *ObjectMetricBucketSelectionV1 `json:"bucket_selection,omitempty"`
+	Filter          *ObjectMetricConditionV1       `json:"filter,omitempty"`
+	GroupBy         []ObjectMetricPropertyRefV1    `json:"group_by,omitempty"`
+	Having          *ObjectMetricHavingV1          `json:"having,omitempty"`
+	OrderBy         []ObjectMetricOrderByV1        `json:"order_by,omitempty"`
+	PageSize        int                            `json:"page_size,omitempty"`
+	Cursor          string                         `json:"cursor,omitempty"`
+	Time            *ObjectMetricQueryTimeRangeV1  `json:"time,omitempty"`
+	BucketSelection *ObjectMetricBucketSelectionV1 `json:"bucket_selection,omitempty"`
 	// RuntimeAnchor and WindowOverride are execution-plan fields. They are never
 	// accepted from an HTTP request and are only populated while evaluating a
 	// version-pinned composite dependency.
@@ -48,10 +47,9 @@ type ObjectMetricBucketSelectionV1 struct {
 }
 
 type ObjectMetricBucketDescriptorV1 struct {
-	InstanceIdentity map[string]any                `json:"instance_identity,omitempty"`
-	DimensionCells   []ObjectMetricDimensionCellV1 `json:"dimension_cells,omitempty"`
-	Time             *int64                        `json:"time,omitempty"`
-	TimeBucket       *ObjectMetricQueryTimeRangeV1 `json:"time_bucket,omitempty"`
+	DimensionCells []ObjectMetricDimensionCellV1 `json:"dimension_cells,omitempty"`
+	Time           *int64                        `json:"time,omitempty"`
+	TimeBucket     *ObjectMetricQueryTimeRangeV1 `json:"time_bucket,omitempty"`
 }
 
 // ObjectMetricTrialRequestV1 evaluates a caller-supplied definition against
@@ -90,8 +88,6 @@ type ObjectMetricResultModelV1 struct {
 }
 
 type ObjectMetricDataEntryV1 struct {
-	InstanceIdentity map[string]any                `json:"instance_identity,omitempty"`
-	Dimensions       map[string]any                `json:"dimensions,omitempty"`
 	DimensionCells   []ObjectMetricDimensionCellV1 `json:"dimension_cells,omitempty"`
 	Time             *int64                        `json:"time,omitempty"`
 	TimeBucket       *ObjectMetricQueryTimeRangeV1 `json:"time_bucket,omitempty"`
@@ -102,8 +98,6 @@ type ObjectMetricDataEntryV1 struct {
 }
 
 // ObjectMetricDimensionCellV1 preserves the relation path of each dimension.
-// The legacy dimensions map cannot distinguish equal property names reached
-// through different relation paths.
 type ObjectMetricDimensionCellV1 struct {
 	Ref   ObjectMetricPropertyRefV1 `json:"ref"`
 	Value any                       `json:"value"`
@@ -154,9 +148,9 @@ type ObjectMetricDefinitionV1 struct {
 	Version           int                         `json:"version"`
 	Code              string                      `json:"code"`
 	Name              string                      `json:"name"`
+	Description       string                      `json:"description"`
 	OwnerObjectTypeID string                      `json:"owner_object_type_id"`
 	MetricType        string                      `json:"metric_type"`
-	CalculationScope  string                      `json:"calculation_scope"`
 	ResultSemantics   ObjectMetricResultSemantics `json:"result_semantics"`
 	Specification     ObjectMetricSpecificationV1 `json:"specification"`
 	QueryCapabilities ObjectMetricQueryCapability `json:"query_capabilities"`
@@ -252,10 +246,8 @@ type ObjectMetricDependencyV1 struct {
 }
 
 type ObjectMetricObjectAlignmentV1 struct {
-	RelationPath            []ObjectMetricRelationStepV1 `json:"relation_path,omitempty"`
-	Mode                    string                       `json:"mode"`
-	RelationshipCardinality string                       `json:"relationship_cardinality,omitempty"`
-	Deduplication           string                       `json:"deduplication"`
+	Mode          string `json:"mode"`
+	Deduplication string `json:"deduplication"`
 }
 
 type ObjectMetricEvaluationContextV1 struct {
@@ -338,6 +330,11 @@ type ObjectMetricQueryCapability struct {
 }
 
 type ObjectMetricLifecycleV1 struct {
-	Status      string `json:"status"`
-	PublishedAt string `json:"published_at,omitempty"`
+	Status                     string `json:"status"`
+	OntologyVersion            string `json:"ontology_version"`
+	ExpressionLanguageVersion  string `json:"expression_language_version"`
+	FunctionRegistryVersion    string `json:"function_registry_version"`
+	AggregationRegistryVersion string `json:"aggregation_registry_version"`
+	UnitRegistryVersion        string `json:"unit_registry_version"`
+	PublishedAt                string `json:"published_at,omitempty"`
 }

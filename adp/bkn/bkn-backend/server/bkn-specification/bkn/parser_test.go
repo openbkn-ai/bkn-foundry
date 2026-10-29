@@ -544,9 +544,9 @@ name: 产品
 
 **Source**
 
-| Source Type | Source ID | Source Name |
-|-------------|-----------|-------------|
-| tool | bom_tree_builder | bom_tree_builder |
+| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |
+|-------------|-----------|-------------|-------|--------|------------|
+| tool | bom_tree_builder | | box_bom | tool_bom | $.result |
 
 **Parameters**
 
@@ -1098,19 +1098,6 @@ name: coupon
 	require.NoError(t, err)
 	require.Len(t, reparsed.LogicProperties, 1)
 	assert.Equal(t, src, reparsed.LogicProperties[0].DataSource)
-}
-
-func TestLogicPropertySource_NonToolKeepsNarrowTable(t *testing.T) {
-	ot := &BknObjectType{
-		BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{Type: "object_type", ID: "ot1", Name: "OT1"},
-		LogicProperties: []*LogicProperty{
-			{Name: "lp1", Type: "metric", DataSource: &ResourceInfo{Type: "metric", ID: "m1", Name: "M1"}},
-		},
-	}
-
-	out := SerializeObjectType(ot)
-	assert.Contains(t, out, "| Source Type | Source ID | Source Name |\n")
-	assert.NotContains(t, out, "BoxID")
 }
 
 func TestLogicPropertySource_IncompleteToolStillGetsColumns(t *testing.T) {

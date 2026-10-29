@@ -38,15 +38,6 @@ func (dc *DebugCollector) AddPropertyType(propertyName, propertyType string) {
 	dc.propertyTypes[propertyName] = propertyType
 }
 
-// RecordMetricAgentRequest records the Metric Agent request (directly stores the Agent request structure)
-func (dc *DebugCollector) RecordMetricAgentRequest(
-	propertyName string,
-	agentReq *interfaces.MetricDynamicParamsGeneratorReq,
-) {
-	// Store the Agent request structure directly.
-	dc.agentRequests[propertyName] = agentReq
-}
-
 // RecordToolAgentRequest stores a ToolBox-tool parameter generation request.
 func (dc *DebugCollector) RecordToolAgentRequest(
 	propertyName string,

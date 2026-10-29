@@ -90,20 +90,18 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 230,
-    "description": "逻辑属性解析（指标/工具）。针对实例批量计算已绑逻辑属性的值——指标路径里对应「实例级 + 已绑 logic property」这一支；类级指标、或未绑逻辑属性的指标改调 query_metric。",
+    "description": "针对实例批量计算对象类上已经定义的逻辑属性值。逻辑属性由对象类独立管理，可由工具、函数等能力实现；对象指标始终使用 query_metric 查询。",
     "gateway": {
-      "summary": "为给定实例计算已绑定的逻辑属性（实例级指标或工具）的值。",
+      "summary": "为给定实例计算对象类上已经定义的逻辑属性值。",
       "use_when": "要算某几个具体实例的逻辑属性，例如某个订单的毛利率。",
-      "not_for": "对象类级别或未绑定逻辑属性的指标用 query_metric；普通字段直接用 query_object_instance。",
+      "not_for": "对象指标用 query_metric；普通字段直接用 query_object_instance。",
       "next_step": "逻辑属性名与参数定义取自 get_object_types；实例标识取自查询结果。",
       "keywords": [
         "逻辑属性",
         "计算",
-        "实例指标",
         "毛利",
         "logic property",
         "compute",
-        "instance metric",
         "margin"
       ],
       "example_arguments": {
@@ -285,7 +283,7 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 140,
-    "description": "按 id 批量取对象类的完整定义，并返回当前账号可见的已发布对象指标 V1 related_metrics（含 id/version）。查询指标须把 id 和 version 一起传给 query_metric；已绑定的实例级逻辑属性也可用 get_logic_properties_values。ids 支持多个，未匹配的 id 在 missing 返回。不传 ids 时按 offset/limit 列举对象类索引（不含属性和指标，默认 50 条，上限 200）；需要完整定义时再按 id 查询。",
+    "description": "按 id 批量取对象类的完整定义，并返回当前账号可见的已发布对象指标 V1 related_metrics（含 id/version）。查询指标须把 id 和 version 一起传给 query_metric；对象类独立定义的逻辑属性可用 get_logic_properties_values。ids 支持多个，未匹配的 id 在 missing 返回。不传 ids 时按 offset/limit 列举对象类索引（不含属性和指标，默认 50 条，上限 200）；需要完整定义时再按 id 查询。",
     "gateway": {
       "summary": "按 ID 取对象类的完整定义：字段、可用的查询算子、逻辑属性和相关指标。",
       "use_when": "要知道某个对象类有哪些字段、能怎么过滤，或想按页列举全网络的对象类。",

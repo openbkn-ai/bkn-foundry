@@ -156,11 +156,6 @@
         "additionalProperties": false,
         "description": "仅包含已发布指标允许的运行时选择；固定业务限定与统计粒度由指标定义决定。",
         "properties": {
-          "instance_identities": {
-            "type": "array",
-            "items": {"type": "object", "additionalProperties": true},
-            "description": "可选的对象实例身份列表。"
-          },
           "filter": {
             "$ref": "#/definitions/object_metric_condition",
             "description": "运行时属性过滤条件。属性引用必须来自该版本开放的 analysis_dimensions 或 time_dimensions；属性与字面量类型必须兼容。"
@@ -246,8 +241,6 @@
           "type": "object",
           "required": ["status"],
           "properties": {
-            "instance_identity": {"type": "object", "additionalProperties": true},
-            "dimensions": {"type": "object", "additionalProperties": true},
             "dimension_cells": {
               "type": "array",
               "items": {

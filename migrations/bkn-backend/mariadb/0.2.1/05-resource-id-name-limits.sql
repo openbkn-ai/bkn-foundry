@@ -86,7 +86,7 @@ ALTER TABLE t_object_metric_definition
 
 ALTER TABLE t_object_metric_reference
   MODIFY COLUMN f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
-  MODIFY COLUMN f_source_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '来源指标或对象类ID',
+  MODIFY COLUMN f_source_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '来源指标ID',
   ADD CONSTRAINT fk_object_metric_reference_target
     FOREIGN KEY (f_kn_id, f_branch, f_target_metric_id, f_target_version)
     REFERENCES t_object_metric_definition (f_kn_id, f_branch, f_id, f_version)
