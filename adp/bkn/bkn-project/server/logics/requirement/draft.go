@@ -789,12 +789,19 @@ func (s *requirementService) GetRequirement(ctx context.Context, token string,
 }
 
 func (s *requirementService) FailInterrupted(ctx context.Context) error {
-	n, err := s.ra.FailDrafting(ctx, failureInterrupted, s.now())
+	now := s.now()
+	n, err := s.ra.FailDrafting(ctx, failureInterrupted, now)
 	if err != nil {
 		return err
 	}
 	if n > 0 {
 		logger.Infof("Failed %d requirement draftings a previous run left going", n)
+	}
+	if n, err = s.ra.FailGenerating(ctx, failureInterrupted, now); err != nil {
+		return err
+	}
+	if n > 0 {
+		logger.Infof("Failed %d question guidance generations a previous run left going", n)
 	}
 	return nil
 }
