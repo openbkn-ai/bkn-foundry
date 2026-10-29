@@ -38,6 +38,7 @@ const (
 	BknProject_Draft_HasPending           = "BknProject.Draft.HasPending"
 	BknProject_Draft_PartialNotAccepted   = "BknProject.Draft.PartialNotAccepted"
 	BknProject_Draft_UndecidedNotAccepted = "BknProject.Draft.UndecidedNotAccepted"
+	BknProject_Draft_ConflictsNotAccepted = "BknProject.Draft.ConflictsNotAccepted"
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
@@ -108,6 +109,7 @@ var (
 		BknProject_Draft_HasPending,
 		BknProject_Draft_PartialNotAccepted,
 		BknProject_Draft_UndecidedNotAccepted,
+		BknProject_Draft_ConflictsNotAccepted,
 		BknProject_Check_NotOwner,
 		BknProject_Check_NotFound,
 		BknProject_Check_NothingConfirmed,
