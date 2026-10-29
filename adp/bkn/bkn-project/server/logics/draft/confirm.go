@@ -142,16 +142,18 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		return nil, internalError(ctx, "Read ids failed", err)
 	}
 	locking := newlyLocked(registered, compiled.IDKeys)
-	if err := s.ira.LockIDs(ctx, projectID, compiled.IDKeys, claimTime); err != nil {
-		restore()
-		span.SetStatus(codes.Error, "Lock ids failed")
-		return nil, internalError(ctx, "Lock ids failed", err)
-	}
 	unlock := func() {
 		// Left locked if this fails: a placeholder then waits for a later draft's confirmation.
 		if uerr := s.ira.UnlockIDs(context.WithoutCancel(ctx), projectID, locking, claimTime); uerr != nil {
 			otellog.LogWarn(ctx, fmt.Sprintf("Unlock ids of project %s: %v", projectID, uerr))
 		}
+	}
+	if err := s.ira.LockIDs(ctx, projectID, compiled.IDKeys, claimTime); err != nil {
+		// Locking goes in batches: those before the failure are locked and go back too.
+		unlock()
+		restore()
+		span.SetStatus(codes.Error, "Lock ids failed")
+		return nil, internalError(ctx, "Lock ids failed", err)
 	}
 
 	message := fmt.Sprintf("confirm ontology draft of project %s: %d object types, %d definitions",

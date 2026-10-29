@@ -136,6 +136,11 @@ func Test_ConfirmDraft(t *testing.T) {
 					claimTime = d.UpdateTime
 					return true, nil
 				})
+			// A lock may fail after some batches locked: what this confirmation may have locked goes back.
+			ira.ids = []*interfaces.RegisteredID{
+				registered(interfaces.ID_KIND_OBJECT_TYPES, "res_orders", "ot_000000", interfaces.ID_ORIGIN_FALLBACK, false),
+				registered(interfaces.ID_KIND_OBJECT_TYPES, "res_customers", "customers", interfaces.ID_ORIGIN_SEMANTIC, true),
+			}
 			ira.lockErr = errors.New("database is down")
 			var restored interfaces.Draft
 			var restoredOver int64
@@ -152,6 +157,7 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(restored.UpdateTime, ShouldEqual, readTime)
 			So(restored.Items.Confirmation, ShouldBeNil)
 			So(checked, ShouldBeEmpty)
+			So(ira.unlocked, ShouldResemble, []interfaces.IDKey{{Kind: interfaces.ID_KIND_OBJECT_TYPES, SourceKey: "res_orders"}})
 		})
 
 		Convey("Confirming again may replace what the previous confirmation wrote\n", func() {
