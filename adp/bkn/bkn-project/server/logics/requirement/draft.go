@@ -38,7 +38,7 @@ const requirementRulesVersion = 1
 const maxInputRunes = 120000
 
 // maxMessageTables bounds the tables named to the Agent: they are clues, and a catalog may hold
-// thousands.
+// thousands. The specification counts those left out, so the owner sees it.
 const maxMessageTables = 500
 
 // agentDeadline is how long drafting waits for the Agent: its own time limit, with a minute for
@@ -285,8 +285,9 @@ type messageRelationType struct {
 	Target string `json:"target"`
 }
 
+// buildDraftMessage also returns how many tables it left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
-	draft *interfaces.Draft) (string, error) {
+	draft *interfaces.Draft) (string, int, error) {
 	msg := draftMessage{
 		Documents: []messageDocument{}, Tables: []messageTable{},
 		ObjectTypes: []messageObjectType{}, RelationTypes: []messageRelationType{},
@@ -316,9 +317,9 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	return "pass draft\nlanguage: " + language + "\n" + string(body), nil
+	return "pass draft\nlanguage: " + language + "\n" + string(body), len(tables) - len(msg.Tables), nil
 }
 
 // citationsOf turns the Agent's citations into the specification's, still to be located.
@@ -645,7 +646,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	if err != nil || !ok {
 		draft = nil
 	}
-	message, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft)
+	message, omitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return
@@ -681,6 +682,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 
 	byID := documentsByID(docs)
 	spec, types := buildSpec(&out, byID, draft)
+	spec.TablesOmitted = omitted
 	// The Agent's type of a document is taken only while no one has typed it.
 	for _, d := range docs {
 		suggested, ok := types[d.ID]
