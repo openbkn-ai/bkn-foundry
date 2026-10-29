@@ -56,6 +56,7 @@ var taskReadTimeout = 30 * time.Second
 const (
 	failureInterrupted      = "interrupted"
 	failureAgentUnavailable = "agent_unavailable"
+	failureAgentRejected    = "agent_rejected"
 	failureAgentFailed      = "agent_failed"
 	failureAgentTimeout     = "agent_timeout"
 	failureOutputInvalid    = "output_invalid"
@@ -537,6 +538,17 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	return spec, types
 }
 
+// startFailure tells why the Agent did not start: agent_rejected when bkn-agent refused the request
+// itself (4xx: an Agent missing, a request it does not take, no account), which no retry mends;
+// agent_unavailable when it could not be reached or failed in itself (a connection error or 5xx).
+func startFailure(err error) string {
+	var agentErr *interfaces.BknAgentError
+	if errors.As(err, &agentErr) && agentErr.HTTPCode >= 400 && agentErr.HTTPCode < 500 {
+		return failureAgentRejected
+	}
+	return failureAgentUnavailable
+}
+
 // requirementInputsOf records what a specification is drafted from, in a stable order.
 func requirementInputsOf(docs []*interfaces.RequirementDocument, project *interfaces.Project) *interfaces.RequirementInputs {
 	inputs := &interfaces.RequirementInputs{
@@ -670,7 +682,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		AgentID: requirementAgentID, Message: message, ResponseFormat: draftResponseFormat(),
 	})
 	if err != nil {
-		fail(failureAgentUnavailable, err)
+		fail(startFailure(err), err)
 		return
 	}
 	req.AgentTaskID = task.TaskID

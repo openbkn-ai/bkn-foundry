@@ -444,9 +444,31 @@ func Test_RequirementDrafting(t *testing.T) {
 				expect func()
 				code   string
 			}{
-				{"cannot start", func() {
+				// bkn-agent refused the request itself: an Agent missing, a response format it does not
+				// take, no account. These are no outage, and are told apart from one.
+				{"Agent missing", func() {
 					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
 						Return(nil, &interfaces.BknAgentError{HTTPCode: http.StatusNotFound, Code: "BknAgent.NotFound"})
+				}, failureAgentRejected},
+				{"request refused", func() {
+					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
+						Return(nil, &interfaces.BknAgentError{HTTPCode: http.StatusBadRequest, Code: "BknAgent.ParamError.FormatError"})
+				}, failureAgentRejected},
+				{"no account", func() {
+					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
+						Return(nil, &interfaces.BknAgentError{HTTPCode: http.StatusUnauthorized, Code: "BknAgent.Auth.AccountRequired"})
+				}, failureAgentRejected},
+				// bkn-agent could not be reached, or failed in itself.
+				{"bkn-agent down", func() {
+					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
+						Return(nil, &interfaces.BknAgentError{HTTPCode: http.StatusServiceUnavailable})
+				}, failureAgentUnavailable},
+				{"redirected away", func() {
+					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
+						Return(nil, &interfaces.BknAgentError{HTTPCode: http.StatusFound})
+				}, failureAgentUnavailable},
+				{"no connection", func() {
+					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("connection refused"))
 				}, failureAgentUnavailable},
 				{"task failed", func() {
 					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil)
