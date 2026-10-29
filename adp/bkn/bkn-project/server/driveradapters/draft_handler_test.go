@@ -129,6 +129,18 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"status":"running"`)
 		})
 
+		Convey("index:build builds the indexes again as the caller and replies the readiness\n", func() {
+			drs.EXPECT().BuildIndex(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.ProjectIndex{ObjectTypes: []interfaces.ProjectIndexItem{{ID: "orders",
+					State: interfaces.INDEX_STATE_BUILDING, Build: &interfaces.ProjectIndexBuild{Outcome: interfaces.INDEX_BUILD_CREATED}}},
+					Counts: map[string]int{interfaces.INDEX_STATE_BUILDING: 1}, TasksVisible: true}, nil)
+
+			w := serve(handler, http.MethodPost, base+"/index:build")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"outcome":"created"`)
+		})
+
 		Convey("The index readiness is read as the caller\n", func() {
 			drs.EXPECT().GetIndex(gomock.Any(), "Bearer t", "p1", caller).
 				Return(&interfaces.ProjectIndex{ObjectTypes: []interfaces.ProjectIndexItem{{ID: "orders", State: interfaces.INDEX_STATE_READY}},
