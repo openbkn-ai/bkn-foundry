@@ -183,6 +183,8 @@ func TestFilteredCrossJoinTranslatesEachOperation(t *testing.T) {
 		{"not exist", `{"field":"c_label","operation":"not_exist"}`, "t0.`channel_name` IS NULL"},
 		{"not null", `{"field":"c_label","operation":"not_null"}`, "t0.`channel_name` IS NOT NULL"},
 		{"exist", `{"field":"c_label","operation":"exist"}`, "t0.`channel_name` IS NOT NULL"},
+		{"null on a date property", `{"field":"c_opened","operation":"null"}`, "t0.`opened_at` IS NULL"},
+		{"exist on a date property", `{"field":"c_opened","operation":"exist"}`, "t0.`opened_at` IS NOT NULL"},
 		{"empty", `{"field":"c_label","operation":"empty"}`, "t0.`channel_name` = ''"},
 		{"not empty", `{"field":"c_label","operation":"not_empty"}`, "t0.`channel_name` <> ''"},
 		{"and and or", `{"operation":"and","sub_conditions":[` +
@@ -213,7 +215,8 @@ func TestFilteredCrossJoinRefusals(t *testing.T) {
 		{"regex", `{"field":"c_label","operation":"regex","value":"^n"}`, `"regex" condition on "c_label" is not supported`},
 		{"bare percent in like", `{"field":"c_label","operation":"like","value":"50%"}`, "wildcard '%' is not supported"},
 		{"comma-separated contain", `{"field":"c_label","operation":"contain","value":["a"]}`, `"contain" condition on "c_label" is not supported`},
-		{"date property", `{"field":"c_opened","operation":">","value":"2026-01-01"}`, "date or time property"},
+		{"date property compared with a value", `{"field":"c_opened","operation":">","value":"2026-01-01"}`, "date or time property"},
+		{"date property in a range", `{"field":"c_opened","operation":"range","value":["2026-01-01","2026-02-01"]}`, "date or time property"},
 		{"value from another field", `{"field":"c_kind","operation":"==","value_from":"field","value":"c_label"}`, "only constant values"},
 		{"value from the user", `{"field":"c_kind","operation":"==","value_from":"user","value":"id"}`, "only constant values"},
 		{"value of the wrong type", `{"field":"c_key","operation":"==","value":"north"}`, "not a number"},
@@ -385,5 +388,51 @@ func TestFilteredCrossJoinProxyBindingsCoverBothEnds(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("bindings = %v\nwant       %v", got, want)
+	}
+}
+
+// Either condition may be left out, as the model allows: that end is not
+// narrowed, as in the subgraph query.
+func TestFilteredCrossJoinWithOneCondition(t *testing.T) {
+	relation := filteredRelation(t, "probe_fcj", offline, refunding)
+	relation.MappingRules.(*interfaces.FilteredCrossJoinMapping).TargetCondition = nil
+	got := mustGenerateFiltered(t, filteredSchema(t, relation),
+		"MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) RETURN count(*) AS n")
+	want := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 JOIN {{.res_order}} t1 ON t0.`channel_type` = 'offline'"
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}
+
+// With no condition on either end the relation pairs every row with every
+// row. It connects nothing the rule for unconnected parts would not already
+// judge, so that rule decides: refused when neither end is narrowed, run
+// when the query narrows one.
+func TestFilteredCrossJoinWithoutConditionsFollowsTheCrossProductRule(t *testing.T) {
+	everything := func() *cypherQueryService {
+		service := filteredService(&stubPermission{}, &recordingVega{})
+		relation := service.schema.(*fakeSchemaSource).relationTypes[0]
+		relation.MappingRules = &interfaces.FilteredCrossJoinMapping{}
+		return service
+	}
+
+	_, err := everything().Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: "main", Query: "MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) RETURN count(*) AS n",
+	})
+	if err == nil || !strings.Contains(err.Error(), "BknBackend.Cypher.Unsupported") {
+		t.Fatalf("err = %v, want the cross-product refusal", err)
+	}
+
+	service := everything()
+	_, err = service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: "main",
+		Query: "MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) WHERE c.c_key = 10 RETURN count(*) AS n",
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	want := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 JOIN {{.res_order}} t1 ON 1 = 1 WHERE t0.`channel_id` = 10 LIMIT 1000"
+	if got := service.vba.(*recordingVega).request.Query; got != want {
+		t.Fatalf("statement = %s\nwant      = %s", got, want)
 	}
 }

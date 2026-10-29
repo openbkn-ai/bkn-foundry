@@ -16,7 +16,7 @@ import (
 
 // A small model that carries the cases the compiler has to get right: columns
 // renamed away from the property name, a direct relation with two key pairs,
-// and a filtered cross join missing the conditions it joins on.
+// and a filtered cross join whose conditions narrow neither end.
 func modelSchema(t *testing.T) *Schema {
 	t.Helper()
 
@@ -325,11 +325,6 @@ func TestCompileRejections(t *testing.T) {
 			name:  "relationship written backwards",
 			query: "MATCH (c:Customer)-[:PLACED_BY]->(o:Order) RETURN o.id",
 			want:  "does not connect",
-		},
-		{
-			name:  "filtered cross join without conditions",
-			query: "MATCH (o:Order)-[:NEARBY]->(c:Customer) RETURN o.id",
-			want:  "needs a condition on both ends",
 		},
 		{
 			name:  "relation without key mapping",
