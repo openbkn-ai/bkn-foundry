@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -31,6 +32,10 @@ const (
 	noLimit       = "-1"
 	// operationTaskManage is the catalog permission to see and run its build tasks.
 	operationTaskManage = "task_manage"
+
+	// Keys of a table's index configuration that bkn-project fills.
+	indexPrimaryKeyFields  = "primary_key_fields"
+	indexIncrementalFields = "incremental_fields"
 )
 
 var (
@@ -292,39 +297,16 @@ func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfac
 
 	// vega-backend lists nothing, with 200, for a catalog the account lacks task_manage on, so the
 	// permission is read first: no tasks would otherwise read as none under way.
-	respCode, respBody, err := va.getCatalogs(ctx, account, []string{catalogID})
-	if err != nil {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog failed")
+	visible, err := va.mayManageTasks(ctx, span, account, catalogID)
+	if err != nil || !visible {
 		return nil, false, err
-	}
-	switch respCode {
-	case http.StatusOK:
-	case http.StatusForbidden, http.StatusNotFound:
-		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		return nil, false, nil
-	default:
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		return nil, false, vegaError(respCode, respBody)
-	}
-	catalogs := &struct {
-		Entries []struct {
-			Operations []string `json:"operations"`
-		} `json:"entries"`
-	}{}
-	if err := json.Unmarshal(respBody, catalogs); err != nil {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal catalog failed")
-		return nil, false, fmt.Errorf("unmarshal catalog %s: %w", catalogID, err)
-	}
-	if len(catalogs.Entries) == 0 || !slices.Contains(catalogs.Entries[0].Operations, operationTaskManage) {
-		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		return nil, false, nil
 	}
 
 	httpUrl := va.baseUrl + "/build-tasks"
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
 
 	query := url.Values{"catalog_id": {catalogID}, "limit": {noLimit}, "status": {"pending", "running", "stopping"}}
-	respCode, respBody, err = va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
+	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
 	logger.Debugf("ListActiveBuildTasks finished, catalog_id is [%s], response code is [%d]", catalogID, respCode)
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list build tasks failed")
@@ -348,6 +330,204 @@ func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfac
 	tasks := make([]*interfaces.VegaBuildTask, 0, len(list.Entries))
 	for _, entry := range list.Entries {
 		tasks = append(tasks, &interfaces.VegaBuildTask{ID: entry.ID, ResourceID: entry.ResourceID, Status: entry.Status})
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return tasks, true, nil
+}
+
+// mayManageTasks tells, from GET /catalogs/{id}, whether the account may manage the catalog's tasks,
+// recording on the caller's span why it may not. A catalog the account may not see, or that is
+// gone, has none it may manage.
+func (va *vegaAccess) mayManageTasks(ctx context.Context, span trace.Span, account interfaces.VegaAccount,
+	catalogID string) (bool, error) {
+	respCode, respBody, err := va.getCatalogs(ctx, account, []string{catalogID})
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog failed")
+		return false, err
+	}
+	switch respCode {
+	case http.StatusOK:
+	case http.StatusForbidden, http.StatusNotFound:
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return false, nil
+	default:
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return false, vegaError(respCode, respBody)
+	}
+	catalogs := &struct {
+		Entries []struct {
+			Operations []string `json:"operations"`
+		} `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, catalogs); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal catalog failed")
+		return false, fmt.Errorf("unmarshal catalog %s: %w", catalogID, err)
+	}
+	if len(catalogs.Entries) == 0 || !slices.Contains(catalogs.Entries[0].Operations, operationTaskManage) {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return false, nil
+	}
+	return true, nil
+}
+
+// UpdateIndexConfig reads the table with GET /resources/{id} and writes it back with PUT
+// /resources/{id}. vega-backend overwrites the name, description and tags and checks the update
+// time, so they go back as read; the schema goes back too, so that vega-backend adds the default
+// features a build needs.
+func (va *vegaAccess) UpdateIndexConfig(ctx context.Context, account interfaces.VegaAccount,
+	resourceID string, keys interfaces.VegaIndexKeys) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "UpdateIndexConfig")
+	defer span.End()
+	span.SetAttributes(attr.Key("resource_id").String(resourceID))
+
+	httpUrl := fmt.Sprintf("%s/resources/%s", va.baseUrl, url.PathEscape(resourceID))
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPut})
+
+	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers(account))
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get resource failed")
+		return false, fmt.Errorf("get resource %s: %w", resourceID, err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return false, vegaError(respCode, respBody)
+	}
+	read := &struct {
+		Entries []map[string]json.RawMessage `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, read); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal resource failed")
+		return false, fmt.Errorf("unmarshal resource %s: %w", resourceID, err)
+	}
+	if len(read.Entries) == 0 {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Resource not in reply")
+		return false, fmt.Errorf("resource %s not in vega-backend's reply", resourceID)
+	}
+	stored := read.Entries[0]
+	config := map[string]any{}
+	if raw := stored["index_config"]; len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &config); err != nil {
+			return false, fmt.Errorf("unmarshal index config of resource %s: %w", resourceID, err)
+		}
+	}
+	changed := false
+	for key, fields := range map[string][]string{
+		indexPrimaryKeyFields: keys.PrimaryKeyFields, indexIncrementalFields: keys.IncrementalFields} {
+		if set, _ := config[key].([]any); len(set) == 0 && len(fields) > 0 {
+			config[key], changed = fields, true
+		}
+	}
+	if !changed {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return false, nil
+	}
+	body := map[string]any{"index_config": config, "expected_update_time": stored["update_time"]}
+	for _, key := range []string{"name", "description", "tags", "category", "catalog_id", "enabled", "schema_definition"} {
+		if raw, ok := stored[key]; ok {
+			body[key] = raw
+		}
+	}
+	respCode, respBody, err = va.httpClient.PutNoUnmarshal(ctx, httpUrl, headers(account), body)
+	logger.Debugf("UpdateIndexConfig finished, response code is [%d]", respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http update resource failed")
+		return false, fmt.Errorf("update resource %s: %w", resourceID, err)
+	}
+	if respCode != http.StatusNoContent && respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 204")
+		return false, vegaError(respCode, respBody)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return true, nil
+}
+
+// semanticTask is a semantic understanding task as vega-backend writes it.
+type semanticTask struct {
+	ID         string `json:"id"`
+	ResourceID string `json:"resource_id"`
+	Status     string `json:"status"`
+	Applied    bool   `json:"applied"`
+	CreateTime int64  `json:"create_time"`
+	FinishTime int64  `json:"finish_time"`
+}
+
+func (t *semanticTask) toTask() *interfaces.VegaSemanticTask {
+	return &interfaces.VegaSemanticTask{ID: t.ID, ResourceID: t.ResourceID, Status: t.Status, Applied: t.Applied,
+		CreateTime: t.CreateTime, FinishTime: t.FinishTime}
+}
+
+// CreateSemanticTask calls POST /semantic-understanding-tasks for one table, filling only what is
+// empty unless applyMode says otherwise. vega-backend answers
+// 201 with the task, or with the one under way for the same input.
+func (va *vegaAccess) CreateSemanticTask(ctx context.Context, account interfaces.VegaAccount,
+	resourceID string, language string, applyMode string) (*interfaces.VegaSemanticTask, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateSemanticTask")
+	defer span.End()
+
+	httpUrl := va.baseUrl + "/semantic-understanding-tasks"
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
+
+	if applyMode == "" {
+		applyMode = interfaces.VEGA_SEMANTIC_APPLY_FILL_EMPTY
+	}
+	body := map[string]any{"scope": "resource", "resource_id": resourceID, "language": language, "apply_mode": applyMode}
+	respCode, respBody, err := va.httpClient.PostNoUnmarshal(ctx, httpUrl, headers(account), body)
+	logger.Debugf("CreateSemanticTask finished, response code is [%d]", respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http create semantic task failed")
+		return nil, fmt.Errorf("create semantic task: %w", err)
+	}
+	if respCode != http.StatusCreated {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 201")
+		return nil, vegaError(respCode, respBody)
+	}
+	task := &semanticTask{}
+	if err := json.Unmarshal(respBody, task); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal semantic task failed")
+		return nil, fmt.Errorf("unmarshal semantic task: %w", err)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return task.toTask(), nil
+}
+
+// ListSemanticTasks calls GET /semantic-understanding-tasks?catalog_id=&scope=resource when the
+// account may manage the catalog's tasks, which GET /catalogs/{id} tells.
+func (va *vegaAccess) ListSemanticTasks(ctx context.Context, account interfaces.VegaAccount,
+	catalogID string) ([]*interfaces.VegaSemanticTask, bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListSemanticTasks")
+	defer span.End()
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+
+	// As with build tasks, vega-backend lists nothing, with 200, without task_manage.
+	visible, err := va.mayManageTasks(ctx, span, account, catalogID)
+	if err != nil || !visible {
+		return nil, false, err
+	}
+
+	httpUrl := va.baseUrl + "/semantic-understanding-tasks"
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
+
+	query := url.Values{"catalog_id": {catalogID}, "scope": {"resource"}, "limit": {noLimit}}
+	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
+	logger.Debugf("ListSemanticTasks finished, catalog_id is [%s], response code is [%d]", catalogID, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list semantic tasks failed")
+		return nil, false, fmt.Errorf("list semantic tasks of catalog %s: %w", catalogID, err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, false, vegaError(respCode, respBody)
+	}
+	list := &struct {
+		Entries []*semanticTask `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, list); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal semantic tasks failed")
+		return nil, false, fmt.Errorf("unmarshal semantic tasks of catalog %s: %w", catalogID, err)
+	}
+	tasks := make([]*interfaces.VegaSemanticTask, 0, len(list.Entries))
+	for _, entry := range list.Entries {
+		tasks = append(tasks, entry.toTask())
 	}
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return tasks, true, nil
