@@ -31,6 +31,7 @@ const (
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
 func (r *restHandler) GetCheckByEx(c *gin.Context)       { r.withExVisitor(c, r.GetCheck) }
 func (r *restHandler) GetStatusByEx(c *gin.Context)      { r.withExVisitor(c, r.GetStatus) }
+func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.GetPending) }
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
 func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
 
@@ -138,6 +139,25 @@ func (r *restHandler) GetStatus(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, status)
+}
+
+// GetPending replies what waits for a person before the draft can be confirmed, each item with the
+// requests that settle it.
+func (r *restHandler) GetPending(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	pending, err := r.drs.GetPending(ctx, visitor.TokenID, id)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, pending)
 }
 
 // GetCheck replies the check of the project's last confirmation.

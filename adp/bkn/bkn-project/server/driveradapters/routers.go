@@ -97,6 +97,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/projects/:project_id/catalogs", r.SetProjectCatalogsByEx)
 	// Where a project stands, computed for the caller from its draft, confirmation and check.
 	apiV1.GET("/projects/:project_id/status", r.GetStatusByEx)
+	// What waits for a person before the draft can be confirmed, with the requests that settle it.
+	apiV1.GET("/projects/:project_id/pending", r.GetPendingByEx)
 
 	// Ontology drafts: drafting, restoring an excluded field and confirming are custom methods,
 	// ontology/draft:generate, draft:restore and draft:confirm; people edit items one by one and

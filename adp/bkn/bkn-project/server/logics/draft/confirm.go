@@ -82,6 +82,13 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Nothing adopted")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NothingAdopted)
 	}
+	// Items drafting left out and no one decided on are confirmed out only by an owner who accepts it.
+	undecided := undecidedRefs(undecidedItems(&draft.Items))
+	if len(undecided) > 0 && !confirm.AcceptUndecided {
+		span.SetStatus(codes.Error, "Undecided not accepted")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_UndecidedNotAccepted).
+			WithErrorDetails(undecided)
+	}
 	compiled, err := compileDraft(&draft.Items)
 	if err != nil {
 		span.SetStatus(codes.Error, "Compile failed")
@@ -137,6 +144,12 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	confirmation.By, confirmation.Time = caller, draft.UpdateTime
 	confirmation.Files, confirmation.Pending = paths, nil
 	confirmation.SkippedValueTypes = compiled.SkippedValueTypes
+	if len(undecided) > 0 {
+		draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{
+			Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ACCEPT_UNDECIDED,
+			After: undecided, By: caller, Time: draft.UpdateTime,
+		})
+	}
 	if partial {
 		draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{
 			Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ACCEPT_PARTIAL,

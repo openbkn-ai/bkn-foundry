@@ -67,6 +67,8 @@ const (
 const (
 	// ACCEPTS_PARTIAL_DRAFT confirms a draft knowing the tables drafting could not read.
 	ACCEPTS_PARTIAL_DRAFT = "partial_draft"
+	// ACCEPTS_UNDECIDED_ITEMS confirms a draft leaving out the items no one decided on.
+	ACCEPTS_UNDECIDED_ITEMS = "undecided_items"
 )
 
 // Why an action cannot be done by the caller; otherwise a blocker code.
@@ -76,14 +78,17 @@ const (
 )
 
 type ProjectStatus struct {
-	ProjectID    string                    `json:"project_id"`
-	Stage        string                    `json:"stage"`
-	Draft        *ProjectStatusDraft       `json:"draft,omitempty"`
-	Confirmation *ProjectStatusConfirmed   `json:"confirmation,omitempty"`
-	Check        *ProjectStatusCheck       `json:"check,omitempty"`
-	Blockers     []ProjectStatusBlocker    `json:"blockers"`
-	Stale        []string                  `json:"stale"`
-	NextActions  []ProjectStatusNextAction `json:"next_actions"`
+	ProjectID    string                  `json:"project_id"`
+	Stage        string                  `json:"stage"`
+	Draft        *ProjectStatusDraft     `json:"draft,omitempty"`
+	Confirmation *ProjectStatusConfirmed `json:"confirmation,omitempty"`
+	Check        *ProjectStatusCheck     `json:"check,omitempty"`
+	Blockers     []ProjectStatusBlocker  `json:"blockers"`
+	// Undecided counts the items drafting left out and no one decided on: they do not block, but
+	// confirming leaves them out only when the confirmation accepts it.
+	Undecided   int                       `json:"undecided"`
+	Stale       []string                  `json:"stale"`
+	NextActions []ProjectStatusNextAction `json:"next_actions"`
 	// Links are the reads that show the details: the draft, its pending items and the check.
 	Links      map[string]string `json:"links"`
 	ComputedAt int64             `json:"computed_at"`
@@ -130,4 +135,77 @@ type ProjectStatusNextAction struct {
 	DiscardsDecisions int `json:"discards_decisions,omitempty"`
 	// Accepts says what sending the action accepts, as its body does.
 	Accepts []string `json:"accepts,omitempty"`
+}
+
+// Why an option of a pending item cannot be taken.
+const (
+	ACTION_REASON_ARCHIVED           = "archived"
+	ACTION_REASON_END_NEEDS_IDENTITY = "end_needs_identity"
+	// ACTION_REASON_NO_KEY_PROPERTY is an object type none of whose properties can identify records:
+	// it can only be left out.
+	ACTION_REASON_NO_KEY_PROPERTY = "no_key_property"
+)
+
+// What a pending item can be settled by.
+const (
+	ACTION_CHOOSE_IDENTITY = "choose_identity"
+	ACTION_UNADOPT         = "unadopt"
+	ACTION_ADOPT_END       = "adopt_end"
+	ACTION_ADOPT           = "adopt"
+)
+
+// PENDING_REASON_UNDECIDED is a pending item drafting left out and no one decided on; it does not
+// block confirming.
+const PENDING_REASON_UNDECIDED = "undecided"
+
+// PENDING_PLACEHOLDER_UPDATE_TIME stands in a body template for the draft's update time as the
+// sender last read it: each edit moves it on.
+const PENDING_PLACEHOLDER_UPDATE_TIME = "$draft_update_time"
+
+// PENDING_PLACEHOLDER_CANDIDATE stands for one of an option's candidates.
+const PENDING_PLACEHOLDER_CANDIDATE = "$candidate"
+
+// ProjectPending lists what waits for a person before the draft can be confirmed, each with the
+// requests that settle it, in one order: by kind, then item ID.
+type ProjectPending struct {
+	ProjectID       string        `json:"project_id"`
+	DraftUpdateTime int64         `json:"draft_update_time"`
+	Items           []PendingItem `json:"items"`
+}
+
+type PendingItem struct {
+	Kind   string `json:"kind"`
+	ItemID string `json:"item_id"`
+	Name   string `json:"name"`
+	// Blocking is set for what confirming refuses until settled; an undecided item does not block.
+	Blocking bool `json:"blocking"`
+	// Reason is a blocker code, needs_identity or unadopted_ends, or undecided.
+	Reason string `json:"reason"`
+	// Because is why drafting left an undecided item out: needs_identity, a relation's
+	// proposed_because, or not_adopted.
+	Because string          `json:"because,omitempty"`
+	Options []PendingOption `json:"options"`
+	// Recommendation is the option a written rule recommends, with the rule; null when no rule does.
+	Recommendation *PendingRecommendation `json:"recommendation"`
+	// Evidence is what drafting counted for the item: the key for an object type, the join for a
+	// relation.
+	Evidence any `json:"evidence,omitempty"`
+}
+
+// PendingOption is a request that settles a pending item. Candidates, for choosing an identity,
+// are the property lists to send in place of $candidate, the one drafting counted first.
+type PendingOption struct {
+	Action     string         `json:"action"`
+	Method     string         `json:"method"`
+	Path       string         `json:"path"`
+	Body       map[string]any `json:"body"`
+	Allowed    bool           `json:"allowed"`
+	Reason     string         `json:"reason,omitempty"`
+	Candidates [][]string     `json:"candidates,omitempty"`
+}
+
+type PendingRecommendation struct {
+	Action string `json:"action"`
+	Basis  string `json:"basis"`
+	RuleID string `json:"rule_id"`
 }

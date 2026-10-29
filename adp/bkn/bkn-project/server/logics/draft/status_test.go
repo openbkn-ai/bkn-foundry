@@ -235,6 +235,21 @@ func Test_ProjectStatus(t *testing.T) {
 			So(confirm.Accepts, ShouldResemble, []string{interfaces.ACCEPTS_PARTIAL_DRAFT})
 		})
 
+		Convey("Confirming with undecided items says how many and that it accepts leaving them out\n", func() {
+			d := ready()
+			d.Items.Decisions = nil
+
+			s := status(project(), d, nil, owner, fresh)
+
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			So(s.Undecided, ShouldEqual, 1)
+			So(s.Blockers, ShouldBeEmpty)
+			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+			So(confirm.Allowed, ShouldBeTrue)
+			So(confirm.Body["accept_undecided"], ShouldEqual, true)
+			So(confirm.Accepts, ShouldResemble, []string{interfaces.ACCEPTS_UNDECIDED_ITEMS})
+		})
+
 		Convey("A decision on the draft as a whole is not discarded by drafting again\n", func() {
 			d := ready()
 			d.Items.Decisions = []*interfaces.DraftDecision{

@@ -36,6 +36,15 @@ func findObjectType(items *interfaces.DraftItems, id string) *interfaces.DraftOb
 	return nil
 }
 
+func findRelationType(items *interfaces.DraftItems, id string) *interfaces.DraftRelationType {
+	for _, r := range items.RelationTypes {
+		if r.ID == id {
+			return r
+		}
+	}
+	return nil
+}
+
 // identityProperties returns the properties named, refusing an empty, repeated, unknown or
 // non-key-typed one.
 func identityProperties(ctx context.Context, objectType *interfaces.DraftObjectType,

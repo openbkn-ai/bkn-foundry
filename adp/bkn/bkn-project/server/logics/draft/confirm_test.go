@@ -25,6 +25,10 @@ import (
 func confirmableDraft() *interfaces.Draft {
 	items := compileFixture()
 	items.RelationTypes = items.RelationTypes[:2]
+	// Leaving audit_log out was a person's decision, so nothing is undecided.
+	items.Decisions = []*interfaces.DraftDecision{
+		{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: "audit_log", Action: interfaces.DRAFT_DECISION_UNADOPT},
+	}
 	return &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_READY, Items: *items, UpdateTime: readTime}
 }
 
@@ -242,6 +246,8 @@ func Test_ConfirmDraft(t *testing.T) {
 			partial := confirmableDraft()
 			partial.Items.Unreadable = []*interfaces.DraftTable{{ResourceID: "r_hidden", Reason: "not_visible"}}
 			partial.Items.Inputs = &interfaces.DraftInputs{Partial: true}
+			// Leaving audit_log out is accepted in the same confirmation.
+			partial.Items.Decisions = nil
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(partial, true, nil)
 			var claimed int
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).
@@ -259,15 +265,55 @@ func Test_ConfirmDraft(t *testing.T) {
 				})
 
 			_, err := svc.ConfirmDraft(ctx, token, "p1",
-				interfaces.DraftConfirm{UpdateTime: readTime, AcceptPartial: true}, caller)
+				interfaces.DraftConfirm{UpdateTime: readTime, AcceptPartial: true, AcceptUndecided: true}, caller)
 
 			So(err, ShouldBeNil)
 			So(claimed, ShouldEqual, 0)
-			So(len(recorded), ShouldEqual, 1)
-			So(recorded[0].Kind, ShouldEqual, interfaces.DRAFT_KIND_DRAFT)
-			So(recorded[0].Action, ShouldEqual, interfaces.DRAFT_DECISION_ACCEPT_PARTIAL)
-			So(recorded[0].After, ShouldResemble, []string{"r_hidden"})
-			So(recorded[0].By, ShouldResemble, caller)
+			So(len(recorded), ShouldEqual, 2)
+			So(recorded[1].Kind, ShouldEqual, interfaces.DRAFT_KIND_DRAFT)
+			So(recorded[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_ACCEPT_PARTIAL)
+			So(recorded[1].After, ShouldResemble, []string{"r_hidden"})
+			So(recorded[1].By, ShouldResemble, caller)
+		})
+
+		Convey("A draft with undecided items is confirmed only when its owner accepts leaving them out\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			undecided := confirmableDraft()
+			undecided.Items.ObjectTypes[3].NeedsIdentity = true
+			undecided.Items.Decisions = nil
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(undecided, true, nil)
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_UndecidedNotAccepted)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, []string{"object_types/audit_log"})
+		})
+
+		Convey("Accepting undecided items is recorded once the confirmation commits, and decides them\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			undecided := confirmableDraft()
+			undecided.Items.Decisions = nil
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(undecided, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any()).Return(&interfaces.CommitDefinitionsResult{Commit: "c1"}, nil)
+			var recorded *interfaces.Draft
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					recorded = d
+					return true, nil
+				})
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1",
+				interfaces.DraftConfirm{UpdateTime: readTime, AcceptUndecided: true}, caller)
+
+			So(err, ShouldBeNil)
+			last := recorded.Items.Decisions[len(recorded.Items.Decisions)-1]
+			So(last.Action, ShouldEqual, interfaces.DRAFT_DECISION_ACCEPT_UNDECIDED)
+			So(last.After, ShouldResemble, []string{"object_types/audit_log"})
+			So(undecidedItems(&recorded.Items), ShouldBeEmpty)
 		})
 
 		Convey("A draft drafted before inputs were recorded is confirmed as before\n", func() {

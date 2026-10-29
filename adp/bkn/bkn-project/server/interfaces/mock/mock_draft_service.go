@@ -145,6 +145,21 @@ func (mr *MockDraftServiceMockRecorder) GetDraft(ctx, token, projectID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDraft", reflect.TypeOf((*MockDraftService)(nil).GetDraft), ctx, token, projectID)
 }
 
+// GetPending mocks base method.
+func (m *MockDraftService) GetPending(ctx context.Context, token, projectID string) (*interfaces.ProjectPending, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPending", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.ProjectPending)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPending indicates an expected call of GetPending.
+func (mr *MockDraftServiceMockRecorder) GetPending(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPending", reflect.TypeOf((*MockDraftService)(nil).GetPending), ctx, token, projectID)
+}
+
 // GetStatus mocks base method.
 func (m *MockDraftService) GetStatus(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectStatus, error) {
 	m.ctrl.T.Helper()
