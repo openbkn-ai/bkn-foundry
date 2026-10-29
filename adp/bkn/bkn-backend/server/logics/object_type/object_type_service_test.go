@@ -462,7 +462,7 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 							{
 								Name: "lp1",
 								DataSource: &interfaces.ResourceInfo{
-									Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+									Type: "metric",
 									ID:   "metric1",
 								},
 							},
@@ -1146,72 +1146,6 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			expectImportModeOK()
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, false, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldBeNil)
-		})
-
-		Convey("Fails strict mode when KN metric does not exist\n", func() {
-			objectTypes := []*interfaces.ObjectType{
-				{
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot1",
-						OTName: "ot1",
-						DataSource: &interfaces.ResourceInfo{
-							Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-							ID:   "res1",
-						},
-						LogicProperties: []*interfaces.LogicProperty{
-							{
-								Name: "lp1",
-								Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-								DataSource: &interfaces.ResourceInfo{
-									Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-									ID:   "mid1",
-								},
-							},
-						},
-					},
-					KNID:   "kn1",
-					Branch: interfaces.MAIN_BRANCH,
-				},
-			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			expectImportModeOK()
-			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
-				Return(&interfaces.VegaResource{Name: "r1"}, nil)
-			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Rejects legacy metric references in strict mode\n", func() {
-			objectTypes := []*interfaces.ObjectType{
-				{
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot1",
-						OTName: "ot1",
-						DataSource: &interfaces.ResourceInfo{
-							Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-							ID:   "res1",
-						},
-						LogicProperties: []*interfaces.LogicProperty{
-							{
-								Name: "lp1",
-								Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-								DataSource: &interfaces.ResourceInfo{
-									Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-									ID:   "mid1",
-								},
-							},
-						},
-					},
-					KNID:   "kn1",
-					Branch: interfaces.MAIN_BRANCH,
-				},
-			}
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			expectImportModeOK()
-			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
-				Return(&interfaces.VegaResource{Name: "r1"}, nil)
-			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
-			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Fails strict mode when tool does not exist\n", func() {
@@ -3078,7 +3012,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 					map[string]any{
 						"name": "lp1",
 						"data_source": map[string]any{
-							"type": interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+							"type": "metric",
 							"id":   "metric1",
 						},
 					},

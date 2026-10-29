@@ -33,7 +33,7 @@ type ResolveLogicPropertiesRequest struct {
 
 	AdditionalContext string          `json:"additional_context,omitempty"`
 	Options           *ResolveOptions `json:"options,omitempty"`
-	// LLMModel overrides the model used for metric/tool dynamic parameter generation.
+	// LLMModel overrides the model used for tool dynamic parameter generation.
 	LLMModel string `json:"llm_model,omitempty"`
 
 	// Header fields
@@ -86,7 +86,7 @@ type ResolveDebugInfo struct {
 // AgentInfo Agent call information
 type AgentInfo struct {
 	// Property type
-	PropertyType string `json:"property_type"` // "metric" or "tool"
+	PropertyType string `json:"property_type"` // "tool"
 
 	// Agent request parameters (stores Agent request structure directly)
 	Request AgentRequestDebugInfo `json:"request,omitempty"`
@@ -96,7 +96,7 @@ type AgentInfo struct {
 }
 
 // AgentRequestDebugInfo Agent request debug info
-// Directly stores a MetricDynamicParamsGeneratorReq or ToolDynamicParamsGeneratorReq.
+// Directly stores a ToolDynamicParamsGeneratorReq.
 type AgentRequestDebugInfo any
 
 // AgentResponseDebugInfo Agent response debug info

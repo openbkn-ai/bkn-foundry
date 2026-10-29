@@ -509,14 +509,14 @@ Incremental Key: updated_at
 
 `####` 后的文字就是属性名。粗体标签必须独占一行，写作 `**Meta**` 等。逻辑属性最多 1000 个。
 
-**Meta**：`Display Name` 必需，最长 40 个字符；`Type` 为 `metric` 或 `tool`。
+**Meta**：`Display Name` 必需，最长 40 个字符；`Type` 只支持 `tool`。对象指标是独立的实例集合资源，不作为对象类逻辑属性的数据源。
 
 **Source**：
 
 | 列 | 说明 |
 |----|------|
-| `Source Type` | `metric` 或 `tool`；与 Meta 的 `Type` 都写时必须一致 |
-| `Source ID` | `metric` 时必需，为指标 ID |
+| `Source Type` | 只支持 `tool`；与 Meta 的 `Type` 都写时必须一致 |
+| `Source ID` | 可选的外部来源标识 |
 | `Source Name` | 仅供阅读 |
 | `BoxID` | `tool` 时必需，工具箱 ID；也接受 `Box ID`、`Toolbox ID` |
 | `ToolID` | `tool` 时必需，工具 ID；也接受 `Tool ID` |
@@ -1443,7 +1443,7 @@ unit: 元
 | 数据来源类型 | `data_view` | `resource`（Vega 资源） |
 | 间接关系 | `data_view` 类型 + `### Mapping View` + `View Property` 列 | `indirect` 类型 + `### Backing Resource` + `Resource Property` 列 |
 | 关系映射方式 | `direct`、`data_view` | `direct`、`indirect`、`filtered_cross_join` |
-| 逻辑属性 | 列表式元数据，类型 `metric` / `operator` | 四张表（Meta / Source / Parameters / Analysis Dimensions），类型 `metric` / `tool` |
+| 逻辑属性 | 列表式元数据，类型 `metric` / `operator` | 四张表（Meta / Source / Parameters / Analysis Dimensions），只支持 `tool`；对象指标独立建模与查询 |
 | 参数表 | `Parameter`、`Source`、`Binding` | `Name`、`Type`、`Source`、`Operation`、`ValueFrom`、`Value`、`Description` |
 | 行动执行配置 | `### Tool Configuration` | `### Action Source`（旧标题 2.x 下仍可读，3.0 拒绝，见 A-1） |
 | 行动类小节 | 含 `Pre-conditions`、`Scope of Impact`、`Execution Description` | 不再结构化解析，写了会并入描述 |

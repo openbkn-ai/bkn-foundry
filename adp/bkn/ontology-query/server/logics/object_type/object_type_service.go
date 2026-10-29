@@ -432,40 +432,6 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 
 	for _, logicProp := range logicProperties {
 		switch logicProp.Type {
-		case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
-			filters := []interfaces.Filter{}
-			dynamicParams := map[string]any{}
-			for _, param := range logicProp.Parameters {
-				switch param.ValueFrom {
-				case interfaces.LOGIC_PARAMS_VALUE_FROM_PROP:
-					value := object[param.Value.(string)]
-					filters = append(filters, interfaces.Filter{
-						Name:      param.Name,
-						Operation: param.Operation,
-						Value:     value,
-					})
-				case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-					// Fixed parameter and.
-					filters = append(filters, interfaces.Filter{
-						Name:      param.Name,
-						Operation: "==",
-						Value:     param.Value,
-					})
-				case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
-					dynamicParams[param.Name] = param
-				}
-			}
-
-			mProp := interfaces.MetricProperty{
-				PropertyType:    logicProp.Type,
-				MappingSourceId: logicProp.DataSource.ID,
-				Parameters: interfaces.MetricFilters{
-					Filters: filters,
-				},
-				DynamicParams: dynamicParams,
-			}
-			object[logicProp.Name] = mProp
-
 		case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
 			paramsJson := "{}"
 			dynamicParamsJson := "{}"
@@ -989,21 +955,13 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 		datas[i] = newObject
 	}
-	// Step 2: process logical properties with bounded concurrency. A page may
-	// contain thousands of objects, and each metric/tool property can call a
-	// downstream service; one goroutine per property would overload it.
-	// Reuse only identical object-set metric queries within this request. The
-	// memo is never shared with another request or principal.
-	ctx = withObjectMetricRequestMemo(ctx)
+	// Step 2: process tool-backed logical properties with bounded concurrency.
+	// A page may contain thousands of objects, and one goroutine per property
+	// would overload the downstream execution service.
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var processErrors []error
 	semaphore := make(chan struct{}, maxConcurrentLogicProperties)
-	batchResults := make(chan []map[string]bool, 1)
-	go func() {
-		batchResults <- ots.batchObjectInstanceMetricPropertiesWithSemaphore(ctx, query, objects, datas,
-			logicProperties, propertyNames, semaphore, &mu)
-	}()
 
 	launchProperty := func(i int, prop string, value any, logicProp *interfaces.LogicProperty) {
 		semaphore <- struct{}{}
@@ -1037,21 +995,9 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 		}(i, prop, value, logicProp)
 	}
-	// Independent non-metric properties can run while instance metric batches
-	// are in flight. Both paths share the same downstream concurrency budget.
 	for i, object := range objects.Datas {
 		for prop, value := range object {
-			if logicProp := logicProperties[prop]; propertyNames[prop] && logicProp != nil &&
-				logicProp.Type != interfaces.PROPERTY_TYPE_METRIC {
-				launchProperty(i, prop, value, logicProp)
-			}
-		}
-	}
-	batchedMetrics := <-batchResults
-	for i, object := range objects.Datas {
-		for prop, value := range object {
-			if logicProp := logicProperties[prop]; propertyNames[prop] && logicProp != nil &&
-				logicProp.Type == interfaces.PROPERTY_TYPE_METRIC && !batchedMetrics[i][prop] {
+			if logicProp := logicProperties[prop]; propertyNames[prop] && logicProp != nil {
 				launchProperty(i, prop, value, logicProp)
 			}
 		}
@@ -1091,94 +1037,12 @@ func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 	dynamicParams map[string]map[string]any) (any, error) {
 
 	switch logicProp.Type {
-	case interfaces.PROPERTY_TYPE_METRIC:
-		return ots.handleMetricProperty(ctx, knID, branch, otID, propName, propValue, logicProp, dynamicParams)
 	case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
 		return ots.handleToolProperty(ctx, knID, otID, propName, propValue, logicProp, dynamicParams)
 	default:
 		logger.Warnf("不支持的逻辑属性类型: %s", logicProp.Type)
 		return nil, nil
 	}
-}
-
-// handleMetricProperty evaluates a pinned object metric logical property.
-func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
-	knID, branch, otID string,
-	propName string,
-	propValue any,
-	logicProp *interfaces.LogicProperty,
-	dynamicParams map[string]map[string]any) (interfaces.MetricData, error) {
-
-	var (
-		// start and end stay nil unless the caller asks for a time range.
-		// They used to default to the last thirty minutes, which made every
-		// call look like a time-filtered one: a metric without a
-		// time_dimension was then refused for a filter nobody had asked for,
-		// and a metric with one silently answered for half an hour instead of
-		// its own default_range_policy.
-		start *int64
-		end   *int64
-	)
-
-	metricValue := propValue.(interfaces.MetricProperty)
-
-	var metricParams interfaces.MetricPropertyDynamicParams
-	paramBytes, err := sonic.Marshal(dynamicParams[propName])
-	if err != nil {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.DynamicParamDecodeFailed", map[string]any{"property": propName, "error": err.Error()})
-		if renderErr != nil {
-			logger.Errorf("localized message rendering failed: %v", renderErr)
-		}
-		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(localizedText)
-	}
-	if err = sonic.Unmarshal(paramBytes, &metricParams); err != nil {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.DynamicParamDecodeFailed", map[string]any{
-			"property": propName, "error": err.Error(),
-		})
-		if renderErr != nil {
-			logger.Errorf("localized message rendering failed: %v", renderErr)
-		}
-		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(localizedText)
-	}
-
-	start, end = logicMetricTimeWindow(metricParams, time.Now().UnixMilli())
-
-	for paramK := range metricValue.DynamicParams {
-		switch paramK {
-		case "start", "end", "instant", "step":
-			continue
-		default:
-			paramValue, paramExist := dynamicParams[propName][paramK]
-			if !paramExist {
-				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.MetricDynamicParamRequired", map[string]any{"property": propName, "parameter": paramK})
-				if renderErr != nil {
-					logger.Errorf("localized message rendering failed: %v", renderErr)
-				}
-				return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-					oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-					WithErrorDetails(localizedText)
-			}
-			operation := "=="
-			for _, configParam := range logicProp.Parameters {
-				if configParam.Name == paramK && configParam.Operation != "" {
-					operation = configParam.Operation
-				}
-			}
-			metricValue.Parameters.Filters = append(metricValue.Parameters.Filters,
-				interfaces.Filter{
-					Name:      paramK,
-					Operation: operation,
-					Value:     paramValue,
-				})
-		}
-	}
-
-	return ots.queryLogicMetricViaKN(ctx, knID, branch, otID, logicProp,
-		metricValue.Parameters.Filters, metricParams, start, end)
 }
 
 // handleToolProperty handles logic properties backed by ToolBox tools.

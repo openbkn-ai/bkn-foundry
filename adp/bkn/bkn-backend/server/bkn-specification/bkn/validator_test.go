@@ -207,7 +207,7 @@ func TestValidateNetwork_InvalidBoundObjectRef(t *testing.T) {
 	assert.True(t, found, "expected invalid_bound_object_ref, got %+v", res.Errors)
 }
 
-func TestValidateNetwork_LogicPropertyMetricOK(t *testing.T) {
+func TestValidateNetwork_RejectsRemovedMetricLogicProperty(t *testing.T) {
 	net := &BknNetwork{
 		BknNetworkFrontmatter: BknNetworkFrontmatter{
 			Type: "knowledge_network",
@@ -238,7 +238,9 @@ func TestValidateNetwork_LogicPropertyMetricOK(t *testing.T) {
 		},
 	}
 	res := ValidateNetwork(net)
-	assert.True(t, res.OK(), "expected valid logic metric property, errors: %+v", res.Errors)
+	assert.False(t, res.OK())
+	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "type must be tool")
+	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "data_source.type must be tool")
 }
 
 // networkWithLogicSource builds a minimal valid network whose only logic property carries src.
@@ -282,20 +284,6 @@ func TestValidateNetwork_LogicPropertyToolSourceMissingIDs(t *testing.T) {
 	}))
 	assert.False(t, res.OK())
 	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "requires both box_id and tool_id")
-}
-
-func TestValidateNetwork_LogicPropertyMetricSourceMissingID(t *testing.T) {
-	res := ValidateNetwork(networkWithLogicSource("metric", &ResourceInfo{Type: "metric", Name: "m"}))
-	assert.False(t, res.OK())
-	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "requires source id")
-}
-
-func TestValidateNetwork_LogicPropertyResultPathNeedsTool(t *testing.T) {
-	res := ValidateNetwork(networkWithLogicSource("metric", &ResourceInfo{
-		Type: "metric", ID: "1", Name: "m", ResultPath: "$.result",
-	}))
-	assert.False(t, res.OK())
-	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "result_path is only valid")
 }
 
 func TestValidateNetwork_LogicPropertyResultPathMustParse(t *testing.T) {

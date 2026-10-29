@@ -145,7 +145,7 @@ func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(
 	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{GroupBy: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: &interfaces.ObjectMetricCondition{NodeType: "predicate", Left: &interfaces.ObjectMetricOperand{
 		Source: "property", PropertyRef: &interfaces.ObjectMetricPropertyRef{ObjectTypeID: "material", PropertyName: "material_id"},
 	}, ComparisonOperator: "eq", Right: []interfaces.ObjectMetricOperand{{Source: "literal", ValueType: "string", Value: "M-1001"}}}, BucketSelection: selection}}
-	resp := &interfaces.QueryMetricResp{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Status: "ok", Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Dimensions: map[string]any{"warehouse": "WH-01"}, Value: 677}}}
+	resp := &interfaces.QueryMetricResp{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Status: "ok", Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", DimensionCells: []interfaces.ObjectMetricDimensionCell{{Ref: interfaces.ObjectMetricPropertyRef{ObjectTypeID: "warehouse", PropertyName: "name"}, Value: "WH-01"}}, Value: 677}}}
 	events := BuildQueryMetricEvents(testTraceContext(), req, resp)
 	if len(events) != 1 {
 		t.Fatalf("metric events = %d", len(events))
@@ -155,7 +155,8 @@ func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(
 		t.Fatalf("metric identity/completeness lost: %#v", payload)
 	}
 	rows, ok := payload["rows"].([]map[string]any)
-	if !ok || len(rows) != 1 || rows[0]["value"] != 677 || rows[0]["dimensions"].(map[string]any)["warehouse"] != "WH-01" {
+	cells, cellsOK := rows[0]["dimension_cells"].([]interfaces.ObjectMetricDimensionCell)
+	if !ok || len(rows) != 1 || rows[0]["value"] != 677 || !cellsOK || len(cells) != 1 || cells[0].Value != "WH-01" {
 		t.Fatalf("metric rows lost: %#v", payload["rows"])
 	}
 	if payload["conditions"] == nil {

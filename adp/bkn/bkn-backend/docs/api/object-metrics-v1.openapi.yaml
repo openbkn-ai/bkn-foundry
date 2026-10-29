@@ -117,11 +117,11 @@ paths:
       description: >-
         Deletes exactly one version in the requested knowledge-network branch. Metric references are
         branch-local because a metric reference does not carry a branch. Published versions and versions
-        referenced by any retained metric version or logical property cannot be deleted.
+        referenced by any retained metric version cannot be deleted.
       responses:
         "204": { description: "Draft, validated, or unreferenced deprecated version removed." }
         "404": { description: The requested metric version does not exist (including a repeated delete). }
-        "409": { description: Published version or a version retained by metric/property references. }
+        "409": { description: Published version or a version retained by metric references. }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deletion-check:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
@@ -174,7 +174,7 @@ paths:
       operationId: publishObjectMetricVersion
       responses:
         "200":
-          description: Immutable published metric version. The saved version must already be in validated status; an optional authored logical property is created after publication.
+          description: Immutable published metric version. The saved version must already be in validated status.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
@@ -195,44 +195,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
         "422": { description: Definition or referenced ontology is invalid. }
-  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/logic-properties:
-    parameters:
-      - $ref: "#/components/parameters/KnowledgeNetworkId"
-      - $ref: "#/components/parameters/MetricId"
-      - $ref: "#/components/parameters/Branch"
-      - $ref: "#/components/parameters/RequiredVersion"
-    post:
-      operationId: bindObjectMetricAsLogicProperty
-      description: Only published object-instance metrics can be bound. A metric can own only one logical property across all versions. Object identity is inherited from the owner object type.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [object_type_id, property_name, display_name]
-              properties:
-                object_type_id: { type: string }
-                property_name: { type: string }
-                display_name: { type: string }
-                comment: { type: string }
-      responses:
-        "201": { description: The created object-class logical property. }
-        "409": { description: This metric already owns a different logical property or a version is already bound. }
-  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/logic-properties/{property_name}/metric-ref:
-    parameters:
-      - $ref: "#/components/parameters/KnowledgeNetworkId"
-      - $ref: "#/components/parameters/MetricId"
-      - $ref: "#/components/parameters/Branch"
-      - $ref: "#/components/parameters/RequiredVersion"
-      - { name: property_name, in: path, required: true, schema: { type: string } }
-    put:
-      operationId: upgradeObjectMetricLogicalPropertyBinding
-      description: Explicitly move an existing logical property to a newer published metric version. Publishing alone never repoints the property. Its name and identity remain unchanged. Value type and unit must remain compatible.
-      responses:
-        "200": { description: The updated object-class logical property. }
-        "404": { description: This metric does not own the named logical property. }
-        "409": { description: Downgrade or incompatible value semantics. }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deprecate:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
@@ -243,7 +205,7 @@ paths:
       operationId: deprecateObjectMetricVersion
       responses:
         "200":
-          description: Published version marked as deprecated. A version bound to a logical property must first be upgraded.
+          description: Published version marked as deprecated.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
@@ -260,12 +222,11 @@ components:
     RequiredVersion: { name: version, in: query, required: true, schema: { type: integer, minimum: 1 } }
   schemas:
     ObjectMetricType: { type: string, enum: [atomic, derived, composite] }
-    CalculationScope: { type: string, enum: [object_instance, object_set] }
     LifecycleStatus: { type: string, enum: [draft, validated, published, deprecated] }
-    OutputShape: { type: string, enum: [object_value, summary, grouped, time_series] }
+    OutputShape: { type: string, enum: [summary, grouped, time_series] }
     ObjectMetricDefinition:
       type: object
-      required: [code, name, description, owner_object_type_id, metric_type, calculation_scope, result_semantics, specification, query_capabilities, lifecycle]
+      required: [code, name, description, owner_object_type_id, metric_type, result_semantics, specification, query_capabilities, lifecycle]
       properties:
         id: { type: string, description: Ignored on create; protected on update. }
         version: { type: integer, minimum: 1 }
@@ -274,7 +235,6 @@ components:
         description: { type: string, minLength: 1 }
         owner_object_type_id: { type: string }
         metric_type: { $ref: "#/components/schemas/ObjectMetricType" }
-        calculation_scope: { $ref: "#/components/schemas/CalculationScope" }
         result_semantics: { type: object, additionalProperties: true }
         specification:
           oneOf:
@@ -282,17 +242,7 @@ components:
             - { $ref: "#/components/schemas/DerivedSpecification" }
             - { $ref: "#/components/schemas/CompositeSpecification" }
         query_capabilities: { type: object, additionalProperties: true }
-        logic_property:
-          $ref: "#/components/schemas/ObjectMetricLogicProperty"
         lifecycle: { type: object, additionalProperties: true }
-    ObjectMetricLogicProperty:
-      type: object
-      description: Optional authoring intent. The first published version may create the metric's one logical property; later releases do not repoint it automatically.
-      required: [property_name, display_name]
-      properties:
-        property_name: { type: string, pattern: "^[a-z][a-z0-9_]*$" }
-        display_name: { type: string, minLength: 1 }
-        comment: { type: string }
     AtomicSpecification:
       type: object
       required: [kind, measure]
@@ -302,7 +252,7 @@ components:
           type: object
           required: [aggregation]
           properties:
-            aggregation: { type: string, enum: [identity, count_rows, count, count_distinct, sum, avg, min, max] }
+            aggregation: { type: string, enum: [count_rows, count, count_distinct, sum, avg, min, max] }
             expression: { $ref: "#/components/schemas/Expression" }
     DerivedSpecification:
       type: object
@@ -544,12 +494,11 @@ components:
       type: object
       required: [resource_type, resource_id, field]
       properties:
-        resource_type: { type: string, enum: [metric_version, logic_property] }
+        resource_type: { type: string, enum: [metric_version] }
         resource_id: { type: string }
         version: { type: integer, minimum: 1 }
         name: { type: string }
         field: { type: string }
-        property_name: { type: string }
     ObjectMetricVersionDeletionCheck:
       type: object
       required: [metric_id, metric_name, version, status, deletable, blockers, hidden_blocker_count]

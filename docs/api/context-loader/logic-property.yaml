@@ -3,7 +3,7 @@ openapi: 3.1.0
 info:
   title: 上下文加载 · 逻辑属性求值 API
   description: |
-    批量求一批对象实例的**逻辑属性**（指标 `metric` 或工具 `tool`）值。
+    批量求一批对象实例的工具型**逻辑属性**（`tool`）值。
 
     逻辑属性不直接存在于数据源里，需要带参数计算，而参数往往藏在用户的自然语言里
     （「最近一年」→ 时间窗、「按省份」→ 分析维度）。本接口先用大模型把 `query`
@@ -13,9 +13,8 @@ info:
     [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types` 返回的
     `logic_properties[].parameters`。
 
-    同一份文件里还有 `POST /kn/query_metric`：**类级指标、或没绑到任何逻辑属性的
-    指标**走它，按 `metric_id` 与不可变的对象指标 V1 版本取数。两条路的分工是
-    「实例 + 已绑逻辑属性 → `logic-property-resolver`，其余 → `query_metric`」；
+    同一份文件里还有 `POST /kn/query_metric`：对象指标只支持实例集合，始终按
+    `metric_id` 与不可变的对象指标 V1 版本通过该接口取数，不绑定为逻辑属性。
     已建模的指标一律不该用 `run_sql` 重写口径。指标清单来自 `get_object_types`
     返回的 `related_metrics`。
 
@@ -56,27 +55,26 @@ paths:
             schema:
               $ref: '#/components/schemas/ResolveLogicPropertiesRequest'
             examples:
-              指标求值:
+              工具型属性求值:
                 value:
                   kn_id: kn_medical
                   ot_id: ot_company
-                  query: 最近一年这些药企的药品上市数量和经营健康度
+                  query: 计算这些药企的经营健康度
                   _instance_identities:
                     - company_id: company_000001
                     - company_id: company_000002
                   properties:
-                    - approved_drug_count
                     - business_health_score
               带调试信息:
                 value:
                   kn_id: kn_medical
                   ot_id: ot_company
-                  query: 最近一年这些药企的药品上市数量
-                  additional_context: 'timezone=Asia/Shanghai; step=1d'
+                  query: 计算这家药企的经营健康度
+                  additional_context: 'risk_model=standard'
                   _instance_identities:
                     - company_id: company_000001
                   properties:
-                    - approved_drug_count
+                    - business_health_score
                   options:
                     return_debug: true
       responses:
@@ -116,7 +114,7 @@ paths:
   /kn/query_metric:
     post:
       tags:
-        - LogicProperty
+        - ObjectMetric
       summary: 按指标口径取数
       operationId: queryMetric
       description: |
@@ -124,12 +122,11 @@ paths:
         `search_schema` / `get_kn_detail` 锁定对象类 → `get_object_types` 从
         `related_metrics` 里选定 `metric_id` 和 `version` → 本接口计算。
 
-        与 `logic-property-resolver` 的分工：实例级、且已绑到逻辑属性的指标走那条
-        （它会先用大模型推参数）；**类级指标、或未绑逻辑属性的指标走本接口**，参数
-        由调用方显式给出，不经大模型。
+        对象指标只支持实例集合，统一走本接口；`logic-property-resolver` 只负责独立的
+        工具型逻辑属性。指标参数由调用方显式给出，不经大模型。
 
         `version` 必填，必须使用已发布、不可变的版本；`query` 只包含定义允许的
-        运行时选择（实例身份、过滤条件、分析维度、毫秒时间范围）。固定口径和统计
+        运行时选择（过滤条件、分析维度、毫秒时间范围）。固定口径和统计
         粒度由指标定义决定，不能通过本请求覆盖。
 
         响应保留对象指标 V1 的 `model`、`entries`、`status` 和 `warnings`。
@@ -265,9 +262,7 @@ components:
           description: 知识网络 ID。也可用 `x-kn-id` 头传。
         metric_id:
           type: string
-          description: |
-            指标 ID，取自 `get_object_types` 返回的 `related_metrics[].id`，
-            或对象类逻辑属性 `data_source` 里引用的指标 ID。
+          description: 指标 ID，取自 `get_object_types` 返回的 `related_metrics[].id`。
         version:
           type: integer
           minimum: 1
@@ -276,11 +271,6 @@ components:
           type: object
           additionalProperties: false
           properties:
-            instance_identities:
-              type: array
-              items:
-                type: object
-                additionalProperties: true
             filter:
               $ref: '../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/components/schemas/ObjectMetricCondition'
             group_by:
@@ -425,12 +415,6 @@ components:
       required:
         - status
       properties:
-        instance_identity:
-          type: object
-          additionalProperties: true
-        dimensions:
-          type: object
-          additionalProperties: true
         dimension_cells:
           type: array
           description: 完整维度引用；相同属性名通过 relation_path_alias 区分。

@@ -143,7 +143,7 @@ name: Order
 
 | Display Name | Type | Description |
 |--------------|------|-------------|
-| GMV | metric | 成交额 |
+| GMV | tool | 成交额 |
 
 **Parameters**
 

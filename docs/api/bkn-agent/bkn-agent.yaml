@@ -2477,12 +2477,6 @@ components:
           - derived
           - composite
           title: Type
-        scope:
-          type: string
-          enum:
-          - object_instance
-          - object_set
-          title: Scope
         object_type_id:
           type: string
           maxLength: 128
@@ -2495,7 +2489,6 @@ components:
       - version
       - name
       - type
-      - scope
       - object_type_id
       title: MetricCandidate
     MetricDesignCandidates:

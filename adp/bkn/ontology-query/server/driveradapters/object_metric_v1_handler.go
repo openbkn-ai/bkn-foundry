@@ -57,7 +57,7 @@ func RegisterObjectMetricRoutes(
 }
 
 func bindObjectMetricRequestV1(c *gin.Context, target any) error {
-	return common.BindPreciseJSON(c.Request.Body, target)
+	return common.BindStrictPreciseJSON(c.Request.Body, target)
 }
 
 func (r *restHandler) PostObjectMetricDrillThroughV1ByEx(c *gin.Context) {

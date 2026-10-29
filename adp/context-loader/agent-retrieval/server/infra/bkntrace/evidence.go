@@ -535,12 +535,9 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 	if resp != nil {
 		status = resp.Status
 		for _, entry := range resp.Entries {
-			row := map[string]any{"dimensions": entry.Dimensions, "value": entry.Value, "status": entry.Status}
+			row := map[string]any{"dimension_cells": entry.DimensionCells, "value": entry.Value, "status": entry.Status}
 			if entry.Time != nil {
 				row["time"] = *entry.Time
-			}
-			if entry.InstanceIdentity != nil {
-				row["instance_identity"] = entry.InstanceIdentity
 			}
 			rows = append(rows, row)
 		}
@@ -549,7 +546,7 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 	truncated := resp != nil && (resp.NextCursor != "" || resp.Status == "partial")
 	payload := map[string]any{
 		"metric_ref": metricRef, "network_ref": "kn:" + strings.TrimSpace(req.KnID),
-		"version": req.Version, "dimensions": req.Query.GroupBy, "conditions": req.Query.Filter,
+		"version": req.Version, "group_by": req.Query.GroupBy, "conditions": req.Query.Filter,
 		"having": req.Query.Having, "order_by": req.Query.OrderBy,
 		"page_size": req.Query.PageSize, "cursor": req.Query.Cursor,
 		"time": req.Query.Time, "status": status,

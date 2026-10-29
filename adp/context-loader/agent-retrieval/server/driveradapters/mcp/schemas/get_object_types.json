@@ -132,7 +132,7 @@
           },
           "additionalProperties": true
         },
-        "description": "对象类完整定义，含 data_properties、logic_properties 和 related_metrics。related_metrics 仅列当前账号可见的已发布对象指标 V1，含 id/version/name/metric_type 等；调用 query_metric 时须同时传 id 与 version，查询条件按该版本 query_capabilities 构造。实例级且已绑定逻辑属性也可用 get_logic_properties_values。列举模式只有对象类索引条目，不含属性和指标；按 id 再取完整定义。"
+        "description": "对象类完整定义，含 data_properties、logic_properties 和 related_metrics。related_metrics 仅列当前账号可见的已发布对象指标 V1，含 id/version/name/metric_type 等；调用 query_metric 时须同时传 id 与 version，查询条件按该版本 query_capabilities 构造。对象类独立定义的逻辑属性可用 get_logic_properties_values。列举模式只有对象类索引条目，不含属性和指标；按 id 再取完整定义。"
       },
       "missing": {
         "type": "array",

@@ -47,8 +47,6 @@ func TestRegisteredOperationAuditRoutes(t *testing.T) {
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/versions", "", "update", "metric", true},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", "", "update", "metric", true},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", "", "update", "metric", true},
-		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", "", "update", "object_type", true},
-		{http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties/:property_name/metric-ref", "", "update", "object_type", true},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/validate", "", "", "", false},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/preview", "", "", "", false},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/risk-types", "", "create", "risk_type", true},
@@ -264,34 +262,6 @@ func TestOperationAuditFactsUseObjectMetricDefinitionSnapshot(t *testing.T) {
 	}
 	if changed, _ := facts.changeSummary["changed_fields"].([]string); !containsString(changed, "owner_object_type_id") {
 		t.Fatalf("change summary = %#v", facts.changeSummary)
-	}
-}
-
-func TestOperationAuditFactsUseLogicPropertySnapshot(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	context, _ := gin.CreateTestContext(httptest.NewRecorder())
-	context.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties", nil)
-	context.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "metric-a"}}
-	context.Set("operation_audit_target_ids", []string{"order"})
-	context.Set("operation_audit_target_names", []string{"订单"})
-	facts := operationAuditFacts(
-		context,
-		operationAuditRule{Action: "update", TargetType: "object_type"},
-		[]byte(`{"object_type_id":"order","property_name":"duration","display_name":"履约耗时"}`),
-		[]byte(`{"name":"duration","display_name":"履约耗时"}`),
-		"req-test",
-	)
-	if facts.targetID != "order" || facts.targetName != "订单" {
-		t.Fatalf("facts = %#v", facts)
-	}
-	entry := operationaudit.Entry{
-		EventID: "evt-logic-property", EventTime: time.Now().UTC(), ActorID: "user-a", ActorName: "Alice",
-		RequestID: "req-test", Method: http.MethodPost, HTTPStatus: http.StatusCreated, Action: "update",
-		TargetType: "object_type", TargetID: facts.targetID, TargetName: facts.targetName, Outcome: "success",
-		ChangeSummary: facts.changeSummary,
-	}
-	if _, err := operationaudit.BuildKafkaAuditRecord(entry, "test"); err != nil {
-		t.Fatalf("logic-property audit must be publishable: %v", err)
 	}
 }
 

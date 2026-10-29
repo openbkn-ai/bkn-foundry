@@ -14,7 +14,7 @@ var objectMetricEnUS = i18n.I18nMessages{
 		"BknBackend.ObjectMetric.DuplicateCode":     "Object metric code already exists. Use a unique stable code within the knowledge network.",
 		"BknBackend.ObjectMetric.ImmutableVersion":  "The object metric version is immutable. Create a new draft version instead of editing a published version.",
 		"BknBackend.ObjectMetric.DependencyInvalid": "The object metric dependency is invalid. Review pinned versions, object alignment, time windows, and dependency cycles.",
-		"BknBackend.ObjectMetric.DeleteBlocked":     "The object metric version is still referenced. Remove or upgrade every metric and logical-property reference before deleting this version.",
+		"BknBackend.ObjectMetric.DeleteBlocked":     "The object metric version is still referenced. Remove or upgrade every dependent metric reference before deleting this version.",
 		"BknBackend.ObjectMetric.InternalError":     "Object metric service error. Retry later or contact an administrator if the problem persists.",
 	},
 }

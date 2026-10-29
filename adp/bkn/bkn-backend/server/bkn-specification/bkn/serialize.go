@@ -44,9 +44,9 @@ func tableCell(s string) string {
 	return strings.ReplaceAll(s, "\n", "<br>")
 }
 
-// hasToolSourceColumns reports whether a logic property source needs the tool addressing columns.
-// Every tool source gets them, including an incomplete one: the columns are where its box_id and
-// tool_id belong, so an export that is missing them still shows the author where to write them.
+// hasToolSourceColumns reports whether a logical-property source needs tool addressing columns.
+// Serialization deliberately remains lossless for documents that validation may reject; this is
+// separate from the business rule that only tool-backed logical properties are valid.
 func hasToolSourceColumns(src *ResourceInfo) bool {
 	if src == nil {
 		return false
@@ -306,8 +306,8 @@ func serializeObjectType(ot *BknObjectType, opts serializeOptions) string {
 		_, _ = fmt.Fprintf(&sb, "|--------------|------|-------------|\n")
 		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(lp.DisplayName), tableCell(lp.Type), tableCell(lp.Description))
 
-		// Source table. A tool source carries its own addressing columns; the narrow three-column
-		// form stays the default so that existing files keep serializing byte for byte.
+		// Tool sources carry their addressing columns. The narrow form is retained only
+		// so serialization does not rewrite documents that validation may reject.
 		_, _ = fmt.Fprintf(&sb, "**Source**\n\n")
 		if hasToolSourceColumns(lp.DataSource) {
 			_, _ = fmt.Fprintf(&sb, "| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |\n")

@@ -18,8 +18,7 @@ import (
 const (
 	MAX_PROPERTY_NUM = 1000
 	// Logical property types.
-	LOGIC_PROPERTY_TYPE_METRIC = "metric"
-	LOGIC_PROPERTY_TYPE_TOOL   = "tool"
+	LOGIC_PROPERTY_TYPE_TOOL = "tool"
 )
 
 var (
@@ -51,10 +50,9 @@ var (
 		data_type.DATATYPE_BOOLEAN:          true,
 	}
 
-	// Logical resource types must be valid. metric and tool are currently supported.
+	// Logical resource types must be valid. Tool-backed logical properties are supported.
 	ValidLogicSourceTypes = map[string]bool{
-		LOGIC_PROPERTY_TYPE_METRIC: true,
-		LOGIC_PROPERTY_TYPE_TOOL:   true,
+		LOGIC_PROPERTY_TYPE_TOOL: true,
 	}
 
 	// Valid property types are integer, unsigned integer, float, decimal, string, keyword, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, and ip.
@@ -423,9 +421,6 @@ type LogicProperty struct {
 	DataSource   *ResourceInfo `json:"data_source,omitempty" mapstructure:"data_source"`
 	Parameters   []Parameter   `json:"parameters,omitempty" mapstructure:"parameters"`
 	AnalysisDims []Field       `json:"analysis_dimensions,omitempty"`
-	// MetricBinding preserves the immutable object-metric version and its execution/error policies.
-	// It is populated only for object_metric_v1-backed logical properties.
-	MetricBinding *MetricPropertyBindingV1 `json:"metric_binding,omitempty" mapstructure:"metric_binding"`
 }
 
 type Field struct {
@@ -439,7 +434,7 @@ type Parameter struct {
 	Name        string  `json:"name" mapstructure:"name"`
 	Type        string  `json:"type" mapstructure:"type"`                               // Parameter type
 	Source      string  `json:"source,omitempty" mapstructure:"source,omitempty"`       // Source type
-	Operation   string  `json:"operation,omitempty" mapstructure:"operation,omitempty"` // Operator for a metric property
+	Operation   string  `json:"operation,omitempty" mapstructure:"operation,omitempty"` // Operator for a logical-property parameter
 	ValueFrom   string  `json:"value_from,omitempty" mapstructure:"value_from,omitempty"`
 	Value       any     `json:"value,omitempty" mapstructure:"value,omitempty"`
 	IfSystemGen *bool   `json:"if_system_generate,omitempty" mapstructure:"if_system_generate,omitempty"`

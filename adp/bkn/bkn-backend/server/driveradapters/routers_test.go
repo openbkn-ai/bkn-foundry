@@ -166,6 +166,9 @@ func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
 		if route.Path == "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics" {
 			t.Fatalf("obsolete V2 object-metric route remains registered: %q", route.Path)
 		}
+		if strings.Contains(route.Path, "/object-metrics/") && strings.Contains(route.Path, "/logic-properties") {
+			t.Fatalf("removed metric logical-property route remains registered: %s %s", route.Method, route.Path)
+		}
 		if route.Method == http.MethodPost && route.Path == objectMetricPath {
 			found = true
 		}

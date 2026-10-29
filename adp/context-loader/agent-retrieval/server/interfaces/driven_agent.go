@@ -6,19 +6,6 @@
 
 package interfaces
 
-// Dynamic parameter requests are consumed by the direct LLM resolver.
-// Now used by direct-connected LLM (knlogicpropertyresolver.dynamicParamsLLM), serialized as LLM user message.
-
-// MetricDynamicParamsGeneratorReq Metric Dynamic Params Generator Request
-type MetricDynamicParamsGeneratorReq struct {
-	LogicProperty     *LogicPropertyDef `json:"logic_property"`
-	Query             string            `json:"query"`
-	UniqueIdentities  []map[string]any  `json:"unique_identities"`
-	AdditionalContext string            `json:"additional_context,omitempty"`
-	NowMs             int64             `json:"now_ms,omitempty"`
-	Timezone          string            `json:"timezone,omitempty"`
-}
-
 // ToolDynamicParamsGeneratorReq describes a ToolBox logical-property request.
 type ToolDynamicParamsGeneratorReq struct {
 	BoxID             string            `json:"box_id"`

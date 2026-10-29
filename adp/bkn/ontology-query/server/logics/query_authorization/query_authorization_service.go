@@ -246,12 +246,6 @@ func (s *queryAuthorizationService) authorizeObjectMetricDefinitions(ctx context
 				return err
 			}
 			resources = append(resources, metricResource)
-			pathResources, err := s.objectMetricRelationPathResources(
-				ctx, knID, definition.OwnerObjectTypeID, dependency.ObjectAlignment.RelationPath)
-			if err != nil {
-				return err
-			}
-			resources = append(resources, pathResources...)
 		}
 
 		requirements, err := objectMetricPropertyRequirements(definition, input.query)
