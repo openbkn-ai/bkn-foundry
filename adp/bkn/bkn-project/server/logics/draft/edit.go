@@ -180,6 +180,10 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 	}
 	if edit.Name != nil && *edit.Name != *item.name {
 		decide(kind, id, interfaces.DRAFT_DECISION_RENAME, *item.name, *edit.Name)
+		if kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+			// Relations named after the object type follow it, unless a person renamed them.
+			renameRelations(items, findObjectType(items, id), *edit.Name, decide)
+		}
 		*item.name = *edit.Name
 	}
 	if edit.Description != nil && *edit.Description != *item.description {

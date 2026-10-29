@@ -27,7 +27,9 @@ import (
 // become aliases.
 // Version 5: a table is named first from the name semantic understanding or a person gave it, then
 // from the first clause of its description.
-const draftRulesVersion = 5
+// Version 6: a relation drafted from a referring field is named after the field and its object type
+// rather than by its id.
+const draftRulesVersion = 6
 
 // draftInputsOf records what a draft is made from: the rules and their settings, the catalogs
 // and the tables read, listed by resource ID.

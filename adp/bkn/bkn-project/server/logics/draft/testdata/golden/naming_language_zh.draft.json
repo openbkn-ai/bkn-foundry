@@ -204,7 +204,7 @@
   "relation_types": [
     {
       "id": "dd_to_kh",
-      "name": "dd_to_kh",
+      "name": "销售订单的下单客户",
       "description": "",
       "source": "dd",
       "target": "kh",
