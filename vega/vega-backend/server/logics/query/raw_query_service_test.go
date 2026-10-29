@@ -509,13 +509,13 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", OriginalName: "AMOUNT"}, {Name: "id"}}
 		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeSQLServer)
 		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
-			Query: "SELECT ROUND(AMOUNT,0) AS AMOUNT,COUNT(*) AS n FROM {{orders}} GROUP BY AMOUNT", QueryFormat: interfaces.QueryFormatSQL,
+			Query: "SELECT ROUND(amount,0) AS amount,COUNT(*) AS n FROM {{orders}} GROUP BY amount", QueryFormat: interfaces.QueryFormatSQL,
 		})
 		require.NoError(t, err)
 		tables := sqlBuilderTables(prepared.builder)
 		require.Len(t, tables, 1)
 		assert.Equal(t, []string{"AMOUNT", "id"}, tables[0].ColumnNames)
-		assert.Equal(t, "AMOUNT", prepared.builder.GroupByPart[0].(*sb.Column).Name)
+		assert.Equal(t, "amount", prepared.builder.GroupByPart[0].(*sb.Column).Name)
 		assert.Equal(t, "amount", resource.SchemaDefinition[0].Name)
 	})
 	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL} {
