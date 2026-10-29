@@ -326,10 +326,58 @@ func TestBuildTaskWorkerRejectsBatchTaskWithoutNewKeyFields(t *testing.T) {
 	bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
 	rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
 	bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1",
-		"batch build task snapshot requires primary_key_fields and incremental_fields").Return(true, nil)
+		"batch build task snapshot requires primary_key_fields").Return(true, nil)
 
 	err := worker.runBatchTask(context.Background(), "task-1")
-	require.EqualError(t, err, "batch build task snapshot requires primary_key_fields and incremental_fields")
+	require.EqualError(t, err, "batch build task snapshot requires primary_key_fields")
+}
+
+// 全量构建只按主键分批，不需要增量字段：键字段检查通过后继续读取 catalog。
+func TestBuildTaskWorkerRunsFullBatchTaskWithoutIncrementalFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	resource := workerTestResource()
+	resource.IndexConfig.IncrementalFields = nil
+	task := workerTestFullTask(t, resource)
+	task.ID = "task-1"
+	task.Status = interfaces.BuildTaskStatusPending
+	task.IndexConfig.IncrementalFields = nil
+	worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs, cs: cs}}
+
+	bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+	rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), true).Return(nil, errors.New("catalog read"))
+	// 失败原因来自 catalog，说明键字段检查已通过。
+	bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1",
+		"get catalog before claiming batch build task: catalog read").Return(true, nil)
+
+	err := worker.runBatchTask(context.Background(), "task-1")
+	require.EqualError(t, err, "get catalog before claiming batch build task: catalog read")
+}
+
+// 增量构建必须有增量字段，否则会退化为只追加主键更大的新行。
+func TestBuildTaskWorkerRejectsIncrementalBatchTaskWithoutIncrementalFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	resource := workerTestResource()
+	resource.IndexConfig.IncrementalFields = nil
+	task := workerTestFullTask(t, resource)
+	task.ID = "task-1"
+	task.Status = interfaces.BuildTaskStatusPending
+	task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+	task.IndexConfig.IncrementalFields = nil
+	worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs}}
+
+	bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+	rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+	bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1",
+		"incremental build requires incremental_fields").Return(true, nil)
+
+	err := worker.runBatchTask(context.Background(), "task-1")
+	require.EqualError(t, err, "incremental build requires incremental_fields")
 }
 
 func TestBuildTaskWorkerCancelsBatchTaskWhenResourceWasDeleted(t *testing.T) {

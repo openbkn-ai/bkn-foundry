@@ -319,15 +319,14 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		}
 		return nil
 	}
-	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 ||
-		len(resource.IndexConfig.IncrementalFields) == 0 {
-		err = errors.New("batch build resource requires primary_key_fields and incremental_fields")
+	// 全量构建只需主键（增量字段为空时仅按主键分批）；增量构建另需增量字段，见 validateIncrementalBatchResource。
+	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
+		err = errors.New("batch build resource requires primary_key_fields")
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
-	if task.IndexConfig == nil || len(task.IndexConfig.PrimaryKeyFields) == 0 ||
-		len(task.IndexConfig.IncrementalFields) == 0 {
-		err = errors.New("batch build task snapshot requires primary_key_fields and incremental_fields")
+	if task.IndexConfig == nil || len(task.IndexConfig.PrimaryKeyFields) == 0 {
+		err = errors.New("batch build task snapshot requires primary_key_fields")
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
@@ -439,6 +438,10 @@ func (btw *BuildTaskWorker) claimIncrementalBatchTask(ctx context.Context, task 
 func validateIncrementalBatchResource(resource *interfaces.Resource, task *interfaces.BuildTask) error {
 	if resource == nil {
 		return fmt.Errorf("incremental build resource was deleted")
+	}
+	// 没有增量字段时游标只剩主键，增量构建会漏掉修改过的行。
+	if resource.IndexConfig == nil || len(resource.IndexConfig.IncrementalFields) == 0 {
+		return fmt.Errorf("incremental build requires incremental_fields")
 	}
 	if err := validateBuildTaskResourceFingerprint(resource, task); err != nil {
 		return err

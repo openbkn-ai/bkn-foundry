@@ -674,6 +674,55 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, captured.ExecuteType)
 		assert.Equal(t, mustBuildTaskIndexConfig(t, resource).Fields, captured.IndexConfig.Fields)
 	})
+	t.Run("creates full task without incremental fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		mockBTA := vmock.NewMockBuildTaskAccess(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+		service := &buildTaskService{cf: buildTaskTestConnectorFactory(t), cs: mockCS, rs: mockRS, bta: mockBTA,
+			dispatchCh: make(chan struct{}, buildTaskDispatchBuffer)}
+		resource := buildTaskTestResource()
+		resource.IndexConfig.IncrementalFields = nil
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID:  "resource-1",
+			Mode:        interfaces.BuildTaskModeBatch,
+			ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+		})
+
+		require.NoError(t, err)
+	})
+	t.Run("rejects incremental task without incremental fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+		service := &buildTaskService{cf: buildTaskTestConnectorFactory(t), cs: mockCS, rs: mockRS}
+		// 有可用索引和检查点：缺少增量字段本身就必须拒绝，不能退化为只追加新行。
+		resource := buildTaskTestResource()
+		resource.IndexConfig.IncrementalFields = nil
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+		resource.LocalIndexName = "resource-1-index"
+		resource.SyncMark = `{"mode":"batch","cursor":[]}`
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID:  "resource-1",
+			Mode:        interfaces.BuildTaskModeBatch,
+			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+		})
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	})
 	t.Run("rejects streaming task with configured keys", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := vmock.NewMockCatalogService(ctrl)
@@ -1066,6 +1115,39 @@ func TestNormalizeCreateBuildTaskExecuteType(t *testing.T) {
 	})
 }
 
+func TestValidateBuildTaskKeyFields(t *testing.T) {
+	resource := func(incremental []string) *interfaces.Resource {
+		return &interfaces.Resource{
+			IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}, IncrementalFields: incremental},
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "updated_at", Type: interfaces.DataType_Datetime},
+				{Name: "amount", Type: interfaces.DataType_Float},
+			},
+		}
+	}
+	ctx := context.Background()
+
+	// 全量构建只按主键分批，不需要增量字段。
+	require.NoError(t, validateBuildTaskKeyFields(ctx, resource(nil), interfaces.BuildTaskExecuteTypeFull))
+	require.NoError(t, validateBuildTaskKeyFields(ctx, resource([]string{"updated_at"}), interfaces.BuildTaskExecuteTypeFull))
+	require.NoError(t, validateBuildTaskKeyFields(ctx, resource([]string{"updated_at"}), interfaces.BuildTaskExecuteTypeIncremental))
+
+	// 增量构建仍然需要增量字段。
+	err := validateBuildTaskKeyFields(ctx, resource(nil), interfaces.BuildTaskExecuteTypeIncremental)
+	_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields)
+
+	// 已填的增量字段在全量构建时照旧校验。
+	err = validateBuildTaskKeyFields(ctx, resource([]string{"amount"}), interfaces.BuildTaskExecuteTypeFull)
+	_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields)
+
+	// 主键始终必填。
+	noKey := resource(nil)
+	noKey.IndexConfig.PrimaryKeyFields = nil
+	err = validateBuildTaskKeyFields(ctx, noKey, interfaces.BuildTaskExecuteTypeFull)
+	_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
+}
+
 func TestValidateIncrementalBaseline(t *testing.T) {
 	validMark := `{"mode":"batch","cursor":[]}`
 	tests := []struct {
@@ -1313,6 +1395,36 @@ func TestBuildTaskServiceStart(t *testing.T) {
 
 		err := service.Start(context.Background(), "task-1", false)
 		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable)
+	})
+
+	t.Run("rejects incremental start without incremental fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		mockBTA := vmock.NewMockBuildTaskAccess(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+			Return(true, &interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+		resource := buildTaskTestResource()
+		resource.IndexConfig.IncrementalFields = nil
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+		resource.LocalIndexName = "resource-1-index"
+		resource.SyncMark = `{"mode":"batch","cursor":[]}`
+
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
+			ID:          "task-1",
+			ResourceID:  "resource-1",
+			CatalogID:   "catalog-1",
+			Status:      interfaces.BuildTaskStatusStopped,
+			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+			IndexName:   "vega-build-test-index",
+			IndexConfig: mustBuildTaskIndexConfig(t, resource),
+		}, nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+
+		err := service.Start(context.Background(), "task-1", false)
+		_ = requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields)
 	})
 
 	t.Run("returns conflict when status changes before start update", func(t *testing.T) {

@@ -144,7 +144,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid execute type")
 		return "", err
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+	if err := validateBuildTaskKeyFields(ctx, resource, executeType); err != nil {
 		span.SetStatus(codes.Error, "Invalid primary or incremental key fields")
 		return "", err
 	}
@@ -240,12 +240,15 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	return nil
 }
 
-func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource) error {
+// validateBuildTaskKeyFields 校验构建所需的键字段。主键始终必填；增量字段只有增量构建才必填：
+// 全量构建按"增量字段 + 主键"分批读取，增量字段为空时仅按主键分批。已填的增量字段照旧校验。
+func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource, executeType string) error {
 	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails("build task requires at least one primary_key_fields entry")
 	}
-	if len(resource.IndexConfig.IncrementalFields) == 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails("build task requires at least one incremental_fields entry")
+	// 没有增量字段的增量构建会退化为只追加主键更大的新行，修改过的行永远不会同步，因此拒绝。
+	if executeType == interfaces.BuildTaskExecuteTypeIncremental && len(resource.IndexConfig.IncrementalFields) == 0 {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails("incremental build task requires at least one incremental_fields entry")
 	}
 
 	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
@@ -899,7 +902,7 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	if resource == nil {
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+	if err := validateBuildTaskKeyFields(ctx, resource, buildTask.ExecuteType); err != nil {
 		return err
 	}
 	if err := validateBuildTaskDefaultFeatures(ctx, resource); err != nil {
