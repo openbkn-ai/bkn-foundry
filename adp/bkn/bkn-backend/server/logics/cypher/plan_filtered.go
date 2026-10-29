@@ -39,9 +39,11 @@ func filteredCrossJoinMapping(relationType *interfaces.RelationType) (*interface
 	case interfaces.FilteredCrossJoinMapping:
 		rules = &value
 	}
-	if rules == nil || rules.SourceCondition == nil || rules.TargetCondition == nil {
-		return nil, fmt.Errorf("relation type %q needs a condition on both ends to join on", relationType.RTName)
+	if rules == nil {
+		return nil, fmt.Errorf("relation type %q has no conditions to join on", relationType.RTName)
 	}
+	// Either condition may be left out: that end is not narrowed, as in the
+	// subgraph query.
 	return rules, nil
 }
 
@@ -172,6 +174,13 @@ func (p *planner) translateCondition(condition *cond.CondCfg, table int) (PlanPr
 	if err != nil {
 		return nil, err
 	}
+	switch operation {
+	case cond.OperationNull, cond.OperationNotExist:
+		// A null check reads no value, so it holds for a property of any type.
+		return PlanNullCheck{Table: table, Column: column, Property: property}, nil
+	case cond.OperationNotNull, cond.OperationExist:
+		return PlanNullCheck{Table: table, Column: column, Property: property, Negated: true}, nil
+	}
 	declared, _ := p.dataPropertyType(table, property)
 	family := valueFamily(declared)
 	if family == "date" {
@@ -277,10 +286,6 @@ func (p *planner) translateCondition(condition *cond.CondCfg, table int) (PlanPr
 		return bounds(">=", "<=", "AND")
 	case cond.OperationOutRange:
 		return bounds("<", ">", "OR")
-	case cond.OperationNull, cond.OperationNotExist:
-		return PlanNullCheck{Table: table, Column: column, Property: property}, nil
-	case cond.OperationNotNull, cond.OperationExist:
-		return PlanNullCheck{Table: table, Column: column, Property: property, Negated: true}, nil
 	case cond.OperationEmpty:
 		return empty("=")
 	case cond.OperationNotEmpty:

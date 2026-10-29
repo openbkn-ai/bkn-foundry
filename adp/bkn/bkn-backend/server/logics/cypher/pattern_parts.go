@@ -23,6 +23,13 @@ func patternComponents(plan *Plan) []int {
 		return i
 	}
 	for _, join := range plan.Joins {
+		if join.Filtered && join.Filter == nil {
+			// A filtered_cross_join whose conditions narrow neither end
+			// pairs every row with every row; it connects the parts no more
+			// than writing them side by side does, so the rule for parts
+			// nothing connects decides whether it may run.
+			continue
+		}
 		parent[find(join.Left)] = find(join.Right)
 		if join.Backing != nil {
 			// The backing table is read with its join, never on its own.
