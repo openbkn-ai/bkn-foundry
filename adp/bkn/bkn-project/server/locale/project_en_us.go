@@ -41,5 +41,8 @@ var projectEnUS = i18n.I18nMessages{
 		"BknProject.Requirement.HasDecisions":        "Specification Has Decisions. Drafting again discards the conflict resolutions and modelling choices made; confirm discarding them to draft again.",
 		"BknProject.Requirement.ProjectArchived":     "Project Archived. The requirement specification and documents of an archived project cannot be changed.",
 		"BknProject.Requirement.InternalError":       "Internal Error. Processing the requirement specification failed; contact the administrator.",
+		"BknProject.Requirement.InvalidTest":         "Invalid Test Question. A test question must not be empty or too long, and the concepts its values belong to must exist, see error_details.",
+		"BknProject.Requirement.TestNotFound":        "Test Question Not Found. The scenario question has no such test question.",
+		"BknProject.Requirement.Generating":          "Generation in Progress. Test questions and development guidance of this scenario question are being generated; wait for them to finish and try again.",
 	},
 }
