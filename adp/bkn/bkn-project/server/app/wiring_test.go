@@ -24,7 +24,8 @@ import (
 // Unit tests build services with mocks, so a dependency the process never sets goes unseen until
 // it is used. These tests follow the production wiring instead.
 
-// Boot sets every dependency logics holds: each Set function of driven_access.go is called.
+// Boot sets every dependency logics holds: each Set function of driven_access.go is called, before
+// any service is built.
 func TestBootSetsEveryDependency(t *testing.T) {
 	fset := token.NewFileSet()
 	access, err := parser.ParseFile(fset, "../logics/driven_access.go", nil, 0)
@@ -41,26 +42,51 @@ func TestBootSetsEveryDependency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	called := map[string]bool{}
+	// Services are built once and copy the dependencies they take from logics, so every one is
+	// set before the first service or the handler is built.
+	called := map[string]token.Pos{}
+	firstBuilt, builtBy := token.NoPos, ""
 	ast.Inspect(boot, func(n ast.Node) bool {
 		if fn, ok := n.(*ast.FuncDecl); ok && fn.Name.Name != "Boot" {
 			return false
 		}
-		if call, ok := n.(*ast.CallExpr); ok {
-			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "logics" {
-					called[sel.Sel.Name] = true
-				}
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		name := sel.Sel.Name
+		switch {
+		case pkg.Name == "logics" && strings.HasPrefix(name, "Set"):
+			called[name] = call.Pos()
+		case strings.HasPrefix(name, "New") && strings.HasSuffix(name, "Service") ||
+			pkg.Name == "driveradapters" && name == "NewRestHandler":
+			if firstBuilt == token.NoPos || call.Pos() < firstBuilt {
+				firstBuilt, builtBy = call.Pos(), pkg.Name+"."+name
 			}
 		}
 		return true
 	})
+	if firstBuilt == token.NoPos {
+		t.Fatal("Boot builds no service")
+	}
 	if len(setters) == 0 {
 		t.Fatal("no Set functions found in driven_access.go")
 	}
 	for _, setter := range setters {
-		if !called[setter] {
+		pos, ok := called[setter]
+		switch {
+		case !ok:
 			t.Errorf("Boot does not call logics.%s", setter)
+		case pos > firstBuilt:
+			t.Errorf("Boot calls logics.%s after %s, which already took its dependencies", setter, builtBy)
 		}
 	}
 }
