@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1356,10 +1357,10 @@ func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
 	// Pages are only stable under a total order. Sorting by the backing fields
 	// of both sides orders every distinct pair; identical rows are
 	// interchangeable.
-	sort := []*interfaces.SortParams{}
+	backingSort := []*interfaces.SortParams{}
 	for _, field := range append(backingFields(mappingRulesToUse, isForward, true),
 		backingFields(farMappingRules, isForward, false)...) {
-		sort = append(sort, &interfaces.SortParams{Field: field, Direction: interfaces.ASC_DIRECTION})
+		backingSort = append(backingSort, &interfaces.SortParams{Field: field, Direction: interfaces.ASC_DIRECTION})
 	}
 
 	tooManyRows := errors.New("too many backing rows")
@@ -1409,7 +1410,7 @@ func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
 		params := interfaces.ResourceDataQueryParams{
 			IgnoreLocalIndex: &query.IgnoreLocalIndex,
 			NeedTotal:        query.NeedTotal,
-			Sort:             sort,
+			Sort:             backingSort,
 			FilterCondition:  logics.CondCfgToFilterMap(filters),
 		}
 		stopped := false
@@ -1870,38 +1871,59 @@ func (kns *knowledgeNetworkService) matchIndirectRelations(ctx context.Context,
 		targetFilter = filter
 	}
 
-	// Query view data; this is necessary because view data is not in the input objects.
-	viewDataMap, err := kns.collectBackingRows(ctx, &interfaces.SubGraphQueryBaseOnSource{
+	// Match each page of backing rows against the known targets as it is read,
+	// through an index of the page's rows per source, so only one page and the
+	// pairs found so far are held at a time.
+	targetsByKey := make(map[string][]int, len(targetObjects))
+	for index, targetObj := range targetObjects {
+		if key, ok := logics.IndirectNextObjectKey(targetObj.ObjectData, mappingRules, true); ok {
+			targetsByKey[key] = append(targetsByKey[key], index)
+		}
+	}
+	sourceIndexes := make(map[string]int, len(sourceObjects))
+	for index, sourceObj := range sourceObjects {
+		sourceIndexes[sourceObj.ObjectID] = index
+	}
+	related := make(map[int]map[int]struct{})
+	err := kns.scanBackingRows(ctx, &interfaces.SubGraphQueryBaseOnSource{
 		KNID:   query.KNID,
 		Branch: query.Branch,
 		CommonQueryParameters: interfaces.CommonQueryParameters{
 			IncludeLogicParams: query.IncludeLogicParams,
 			IgnoreLocalIndex:   query.IgnoreLocalIndex,
 		},
-	}, edge, sourceObjects, mappingRules, true, targetFilter)
+	}, edge, sourceObjects, mappingRules, true, targetFilter, func(page map[string][]map[string]any) (bool, error) {
+		for objectID, rows := range page {
+			sourceIndex := sourceIndexes[objectID]
+			for key := range logics.IndexIndirectViewData(sourceObjects[sourceIndex].ObjectData, mappingRules, true, rows) {
+				for _, targetIndex := range targetsByKey[key] {
+					if related[sourceIndex] == nil {
+						related[sourceIndex] = make(map[int]struct{})
+					}
+					related[sourceIndex][targetIndex] = struct{}{}
+				}
+			}
+		}
+		return true, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Match directly with input target objects instead of querying the database,
-	// through an index of each source's backing rows.
-	targetKeys := make([]string, len(targetObjects))
-	targetHasKey := make([]bool, len(targetObjects))
-	for index, targetObj := range targetObjects {
-		targetKeys[index], targetHasKey[index] = logics.IndirectNextObjectKey(targetObj.ObjectData, mappingRules, true)
-	}
-	for _, sourceObj := range sourceObjects {
-		viewIndex := logics.IndexIndirectViewData(sourceObj.ObjectData, mappingRules, true, viewDataMap[sourceObj.ObjectID])
-
-		for index, targetObj := range targetObjects {
-			if viewIndex.Relates(targetKeys[index], targetHasKey[index]) {
-				relations = append(relations, interfaces.Relation{
-					RelationTypeId:   edge.RelationTypeId,
-					RelationTypeName: edge.RelationType.RTName,
-					SourceObjectId:   sourceObj.ObjectID,
-					TargetObjectId:   targetObj.ObjectID,
-				})
-			}
+	// Report pairs in source then target order, as the inputs list them.
+	for sourceIndex, sourceObj := range sourceObjects {
+		targets := make([]int, 0, len(related[sourceIndex]))
+		for targetIndex := range related[sourceIndex] {
+			targets = append(targets, targetIndex)
+		}
+		sort.Ints(targets)
+		for _, targetIndex := range targets {
+			relations = append(relations, interfaces.Relation{
+				RelationTypeId:   edge.RelationTypeId,
+				RelationTypeName: edge.RelationType.RTName,
+				SourceObjectId:   sourceObj.ObjectID,
+				TargetObjectId:   targetObjects[targetIndex].ObjectID,
+			})
 		}
 	}
 

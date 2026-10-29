@@ -92,12 +92,18 @@ func (v *backingTableVega) QueryResourceData(_ context.Context, _ string,
 					matched = append(matched, row)
 				}
 			}
-			// The fixture keys are all integers.
 			sort.SliceStable(matched, func(i, j int) bool {
 				for _, field := range params.Sort {
-					left, right := matched[i][field.Field].(int), matched[j][field.Field].(int)
-					if left != right {
-						return left < right
+					left, leftIsInt := matched[i][field.Field].(int)
+					right, rightIsInt := matched[j][field.Field].(int)
+					if leftIsInt && rightIsInt {
+						if left != right {
+							return left < right
+						}
+						continue
+					}
+					if leftText, rightText := fmt.Sprint(matched[i][field.Field]), fmt.Sprint(matched[j][field.Field]); leftText != rightText {
+						return leftText < rightText
 					}
 				}
 				return false
@@ -147,6 +153,8 @@ func matchesFilter(filter map[string]any, row map[string]any) bool {
 			}
 		}
 		return isAnd
+	case "==":
+		return fmt.Sprint(filter["value"]) == fmt.Sprint(row[filter["field"].(string)])
 	case "in":
 		for _, value := range filter["value"].([]any) {
 			if fmt.Sprint(value) == fmt.Sprint(row[filter["field"].(string)]) {
@@ -536,5 +544,43 @@ func TestIndirectRelationBoundsBackingRowsPerBatch(t *testing.T) {
 		campaignObjects(sources...), campaignCustomerMapping(), true)
 	if err != nil || len(result) != 120 || len(result["campaign-120"]) != 1000 {
 		t.Fatalf("read %d sources, err %v", len(result), err)
+	}
+}
+
+// Review of #2692: matching known objects through a composite key (no target
+// pushdown) holds one page at a time, and still finds pairs on every page and
+// reports them in the inputs' order.
+func TestIndirectRelationMatchesKnownObjectsAcrossPagesWithACompositeKey(t *testing.T) {
+	rows := make([]map[string]any, 0, 15000)
+	for customer := 1; customer <= 15000; customer++ {
+		rows = append(rows, map[string]any{"campaign_id": 1, "org": "A", "customer_id": customer, "customer_org": "X"})
+	}
+	fixture := newIndirectFixture(rows)
+	fixture.edge.RelationType.MappingRules = &interfaces.InDirectMapping{
+		BackingDataSource: resourceBacking("campaign_customers"),
+		SourceMappingRules: []interfaces.Mapping{
+			{SourceProp: interfaces.SimpleProperty{Name: "campaign_id"}, TargetProp: interfaces.SimpleProperty{Name: "campaign_id"}},
+			{SourceProp: interfaces.SimpleProperty{Name: "org"}, TargetProp: interfaces.SimpleProperty{Name: "org"}},
+		},
+		TargetMappingRules: []interfaces.Mapping{
+			{SourceProp: interfaces.SimpleProperty{Name: "customer_id"}, TargetProp: interfaces.SimpleProperty{Name: "customer_id"}},
+			{SourceProp: interfaces.SimpleProperty{Name: "customer_org"}, TargetProp: interfaces.SimpleProperty{Name: "org"}},
+		},
+	}
+	sources := []interfaces.LevelObject{{ObjectID: "campaign-1", ObjectData: map[string]any{"campaign_id": 1, "org": "A"}}}
+	targets := []interfaces.LevelObject{
+		{ObjectID: "customer-15000", ObjectData: map[string]any{"customer_id": 15000, "org": "X"}},
+		{ObjectID: "customer-2-other-org", ObjectData: map[string]any{"customer_id": 2, "org": "Y"}},
+		{ObjectID: "customer-1", ObjectData: map[string]any{"customer_id": 1, "org": "X"}},
+	}
+	relations, err := fixture.service.matchIndirectRelations(context.Background(),
+		&interfaces.SubGraphQueryBaseOnObjects{KNID: "ircap", Branch: interfaces.MAIN_BRANCH}, sources, targets, fixture.edge)
+	if err != nil || len(relations) != 2 ||
+		relations[0].TargetObjectId != "customer-15000" || relations[1].TargetObjectId != "customer-1" {
+		t.Fatalf("relations = %#v, %v", relations, err)
+	}
+	if len(fixture.vega.history) != 3 {
+		t.Fatalf("read the backing rows in %d requests, want a first page, a reopened cursor and its next page",
+			len(fixture.vega.history))
 	}
 }
