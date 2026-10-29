@@ -15,7 +15,8 @@ import (
 )
 
 // signedItem is what a question's test questions and guidance rely on of one drafted item: its
-// id, whether it is adopted, its identity, and the properties by their names, types and fields, or
+// id, whether it is adopted, its table, its identity, and the properties by their names, types and
+// fields, or
 // the relation's ends and the properties it joins. Names people read and descriptions are left out:
 // renaming an item changes nothing the tests ask by.
 type signedItem struct {
@@ -23,6 +24,7 @@ type signedItem struct {
 	ID          string                           `json:"id"`
 	Missing     bool                             `json:"missing,omitempty"`
 	Adopted     bool                             `json:"adopted,omitempty"`
+	Table       string                           `json:"table,omitempty"`
 	PrimaryKeys []string                         `json:"primary_keys,omitempty"`
 	Properties  []signedProperty                 `json:"properties,omitempty"`
 	Source      string                           `json:"source,omitempty"`
@@ -61,8 +63,10 @@ func ontologySignature(draft *interfaces.Draft, q *interfaces.RequirementQuestio
 			continue
 		}
 		found[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}] = true
+		// Test values are read from the table: drafted from another catalog's table of the same
+		// name and fields, the item keeps its id and properties but the tests ask other data.
 		item := signedItem{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID, Adopted: ot.Adopted,
-			PrimaryKeys: ot.PrimaryKeys, Properties: []signedProperty{}}
+			Table: ot.Table.ResourceID, PrimaryKeys: ot.PrimaryKeys, Properties: []signedProperty{}}
 		for _, p := range ot.Properties {
 			item.Properties = append(item.Properties, signedProperty{Name: p.Name, Type: p.Type, Field: p.MappedField})
 		}

@@ -51,6 +51,8 @@ func Test_OntologySignature(t *testing.T) {
 			for _, change := range []func(d *interfaces.Draft){
 				func(d *interfaces.Draft) { d.Items.ObjectTypes[0].Adopted = false },
 				func(d *interfaces.Draft) { d.Items.ObjectTypes[0].PrimaryKeys = []string{"customer_ref"} },
+				// The same table in another catalog is other data.
+				func(d *interfaces.Draft) { d.Items.ObjectTypes[0].Table.ResourceID = "r-other" },
 				func(d *interfaces.Draft) { d.Items.ObjectTypes[0].Properties[0].Name = "order_no" },
 				func(d *interfaces.Draft) { d.Items.ObjectTypes[0].Properties[0].Type = "integer" },
 				func(d *interfaces.Draft) { d.Items.ObjectTypes[0].Properties[0].MappedField = "order_no" },
