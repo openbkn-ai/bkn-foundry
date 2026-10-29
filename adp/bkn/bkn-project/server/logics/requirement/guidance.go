@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -200,6 +202,55 @@ func valueInDocuments(value string, texts []string) bool {
 	return false
 }
 
+// valueSpan is where a made-up value stands in a test's text, by byte offsets, and the slot it is.
+type valueSpan struct {
+	start, end, slot int
+}
+
+// findValue finds the value in the text as a whole word, not inside a longer word or number, nor
+// where another slot's value stands. Text written without spaces between words, as Chinese is,
+// bounds a value anywhere.
+func findValue(text string, value string, taken []valueSpan) (valueSpan, bool) {
+	if value == "" {
+		return valueSpan{}, false
+	}
+	for from := 0; from <= len(text)-len(value); {
+		i := strings.Index(text[from:], value)
+		if i < 0 {
+			break
+		}
+		start, end := from+i, from+i+len(value)
+		before, _ := utf8.DecodeLastRuneInString(text[:start])
+		after, _ := utf8.DecodeRuneInString(text[end:])
+		free := !wordRune(before) && !wordRune(after)
+		for _, sp := range taken {
+			if start < sp.end && sp.start < end {
+				free = false
+			}
+		}
+		if free {
+			return valueSpan{start: start, end: end}, true
+		}
+		_, size := utf8.DecodeRuneInString(text[start:])
+		from = start + size
+	}
+	return valueSpan{}, false
+}
+
+func wordRune(r rune) bool {
+	return r != utf8.RuneError && (unicode.IsDigit(r) || unicode.IsLetter(r) && !unicode.Is(unicode.Han, r))
+}
+
+// replaceSpans puts each slot's placeholder where its value stands, from the end so that the
+// offsets before stay right.
+func replaceSpans(text string, spans []valueSpan) string {
+	slices.SortFunc(spans, func(a, b valueSpan) int { return b.start - a.start })
+	for _, sp := range spans {
+		text = text[:sp.start] + slotPlaceholder(sp.slot) + text[sp.end:]
+	}
+	return text
+}
+
 // buildTests gives the Agent's test questions the server's ids, at most maxTests of them, leaving
 // out those without text. A value is kept only when a document says it; the others are left for
 // the server to fill from the data. None is checked against the data yet.
@@ -219,18 +270,21 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 			expect = interfaces.TEST_EXPECT_EXISTS
 		}
 		slots := make([]interfaces.QuestionTestSlot, 0, len(at.Slots))
+		var spans []valueSpan
 		for i, s := range at.Slots {
 			value := strings.TrimSpace(s.Value)
 			if !valueInDocuments(value, texts) {
 				// The text asks about the made-up value: it gives way to the slot, which the
 				// server's value from the data replaces.
-				if value != "" {
-					text = strings.Replace(text, value, slotPlaceholder(i), 1)
+				if sp, ok := findValue(text, value, spans); ok {
+					sp.slot = i
+					spans = append(spans, sp)
 				}
 				value = ""
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
+		text = replaceSpans(text, spans)
 		tests = append(tests, &interfaces.QuestionTest{
 			ID: fmt.Sprintf("t%d", len(tests)+1), Text: text, Kind: at.Kind, Slots: slots, Expect: expect,
 			Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkPending},

@@ -104,6 +104,31 @@ func Test_BuildGuidance(t *testing.T) {
 			So(tests[0].Slots[0].Value, ShouldEqual, "")
 		})
 
+		Convey("A value is replaced only where it stands as a whole, not within another or a slot\n", func() {
+			for _, c := range []struct {
+				text   string
+				values []string
+				want   string
+			}{
+				// The second value is not looked for in the first one's placeholder.
+				{"Orders of customer 20001 at level 1?", []string{"20001", "1"}, "Orders of customer {{slot 1}} at level {{slot 2}}?"},
+				{"Top 10 orders of customer 1?", []string{"1"}, "Top 10 orders of customer {{slot 1}}?"},
+				{"Orders of 1 and of 1?", []string{"1", "1"}, "Orders of {{slot 1}} and of {{slot 2}}?"},
+				{"Orders of Acme Ltd?", []string{"Acme Ltd", "Acme"}, "Orders of {{slot 1}}?"},
+				{"Orders of 7 in 2024?", []string{"20"}, "Orders of 7 in 2024?"},
+				{"客户20001的订单？", []string{"20001"}, "客户{{slot 1}}的订单？"},
+			} {
+				at := agentTest{Text: c.text}
+				for _, v := range c.values {
+					at.Slots = append(at.Slots, agentSlot{ConceptID: "c2", Property: "customer_id", Value: v})
+				}
+
+				tests := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil)
+
+				So(tests[0].Text, ShouldEqual, c.want)
+			}
+		})
+
 		Convey("An expectation the server does not know reads as exists\n", func() {
 			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil)
 
