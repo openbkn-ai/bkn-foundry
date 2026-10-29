@@ -26,6 +26,7 @@ const (
 	draftActionRestore  = "draft:restore"
 	draftActionConfirm  = "draft:confirm"
 	checkActionRun      = "check:run"
+	indexActionBuild    = "index:build"
 )
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
@@ -43,7 +44,7 @@ type generateDraftRequest struct {
 }
 
 // OntologyActionByEx serves POST /projects/{project_id}/ontology/draft:generate,
-// draft:restore, draft:confirm and check:run.
+// draft:restore, draft:confirm, check:run and index:build.
 func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 	switch c.Param("action") {
 	case draftActionGenerate:
@@ -54,6 +55,8 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.ConfirmDraft)
 	case checkActionRun:
 		r.withExVisitor(c, r.RunCheck)
+	case indexActionBuild:
+		r.withExVisitor(c, r.BuildIndex)
 	default:
 		replyNotFound(c)
 	}
@@ -213,6 +216,24 @@ func (r *restHandler) RunCheck(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, check)
+}
+
+// BuildIndex builds the last confirmation's local indexes again and replies the readiness.
+func (r *restHandler) BuildIndex(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	index, err := r.drs.BuildIndex(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, index)
 }
 
 func (r *restHandler) EditDraftItem(c *gin.Context, visitor hydra.Visitor) {
