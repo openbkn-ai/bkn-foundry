@@ -676,7 +676,7 @@ jobs:
           settings: |
             {
               "env": {
-                "CLAUDE_CODE_EFFORT_LEVEL": "max"
+                "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"
               }
             }
           # 给了 github_token，action 就不走 OIDC 换 Claude App token，job 也就不需要
@@ -1273,7 +1273,7 @@ jobs:
           settings: |
             {
               "env": {
-                "CLAUDE_CODE_EFFORT_LEVEL": "max"
+                "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"
               }
             }
           github_token: ${{ github.token }}
