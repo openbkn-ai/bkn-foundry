@@ -140,6 +140,12 @@ type RequirementSpec struct {
 	Choices   []*RequirementChoice   `json:"choices"`
 	// Rejected are the drafted items the checks dropped, with why, so none is dropped unseen.
 	Rejected []*RequirementRejected `json:"rejected"`
+	// TablesOmitted counts the tables of the project's catalogs drafting did not name to the Agent:
+	// it names at most a set number, the first ones listed. Absent when none was left out.
+	TablesOmitted int `json:"tables_omitted,omitempty"`
+	// CatalogsUnlisted are the project's catalogs whose tables drafting could not list, so none of
+	// their tables went to the Agent. Absent when every catalog was listed.
+	CatalogsUnlisted []string `json:"catalogs_unlisted,omitempty"`
 }
 
 // RequirementCitation is a passage of a document an item quotes. The agent gives the document and
@@ -326,6 +332,17 @@ func (s *RequirementSpec) HasDecisions() bool {
 	return false
 }
 
+// RequirementView is a specification as the client reads it, with what is computed from it.
+type RequirementView struct {
+	*Requirement
+	// Stale is set when the documents or catalogs changed since the specification was drafted.
+	Stale bool `json:"stale"`
+	// UnresolvedConflicts counts the conflicts without a resolution, deferred ones included.
+	UnresolvedConflicts int `json:"unresolved_conflicts"`
+	// UndecidedChoices counts the modelling choices no one made; their recommended options hold.
+	UndecidedChoices int `json:"undecided_choices"`
+}
+
 // ScenarioQuestions are a project's scenario questions as publishing and the regression after a
 // release read them.
 type ScenarioQuestions struct {
@@ -367,6 +384,10 @@ type RequirementAccess interface {
 	// SetDocumentType sets a document's type; it reports false when the project has no such
 	// document.
 	SetDocumentType(ctx context.Context, projectID string, documentID string, docType string,
+		updateTime int64) (bool, error)
+	// SuggestDocumentType types a document as drafting suggests, only while it is still typed
+	// other; it reports whether it did, and false means a person typed it meanwhile.
+	SuggestDocumentType(ctx context.Context, projectID string, documentID string, docType string,
 		updateTime int64) (bool, error)
 	// DeleteDocument removes a document; it reports false when the project has no such document.
 	DeleteDocument(ctx context.Context, projectID string, documentID string) (bool, error)
@@ -429,6 +450,16 @@ type RequirementService interface {
 		caller AccountInfo) (*RequirementDocument, error)
 	// DeleteDocument removes a document.
 	DeleteDocument(ctx context.Context, token string, projectID string, documentID string, caller AccountInfo) error
+
+	// GenerateRequirement drafts the project's specification from its documents in the
+	// background and returns it drafting. A specification with decisions is drafted again only
+	// when discardDecisions is set.
+	GenerateRequirement(ctx context.Context, token string, projectID string, caller AccountInfo,
+		discardDecisions bool) (*Requirement, error)
+	// GetRequirement returns the project's specification with what is computed from it.
+	GetRequirement(ctx context.Context, token string, projectID string) (*RequirementView, error)
+	// FailInterrupted fails the specifications a previous run of the service left drafting.
+	FailInterrupted(ctx context.Context) error
 
 	// ScenarioQuestions returns the project's scenario questions with their needs, for
 	// publishing and the regression after a release, which check visibility themselves. A
