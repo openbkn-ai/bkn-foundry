@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -45,6 +47,7 @@ const (
 	checkNoValueInData          = "no_value_in_data"
 	checkNoAbsentValue          = "no_absent_value"
 	checkValueNotInText         = "value_not_in_text"
+	checkValueOutsideSlot       = "value_outside_slot"
 	checkTimeout                = "check_timeout"
 )
 
@@ -136,9 +139,11 @@ func (s *requirementService) count(ctx context.Context, caller interfaces.Accoun
 	return 0, fmt.Errorf("count is %T", rows[0]["n"])
 }
 
-// checkTest checks one test question against the data, as the caller.
+// checkTest checks one test question of the scenario question asked against the data, as the
+// caller. In a test expected not to exist, the first slot names the record that does not; the
+// others keep values of records that do.
 func (s *requirementService) checkTest(ctx context.Context, caller interfaces.AccountInfo,
-	spec *interfaces.RequirementSpec, draft *interfaces.Draft, t *interfaces.QuestionTest) interfaces.QuestionTestCheck {
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, asked string, t *interfaces.QuestionTest) interfaces.QuestionTestCheck {
 	if len(t.Slots) == 0 {
 		return notChecked(checkNoValues)
 	}
@@ -158,6 +163,9 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 			f.value != "" && !strings.Contains(text, normalize([]rune(f.value)).text) {
 			return notChecked(checkValueNotInText)
 		}
+	}
+	if valueOutsideSlots(spec, asked, t, fields) {
+		return notChecked(checkValueOutsideSlot)
 	}
 	if reason := s.fill(ctx, caller, t, fields); reason != "" {
 		return notChecked(reason)
@@ -187,9 +195,12 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	}
 
 	conditions := make([]string, 0, len(fields))
-	for _, f := range fields {
+	for i, f := range fields {
 		condition := quoteField(f.field) + " = " + quoteValue(f.value)
 		conditions = append(conditions, condition)
+		if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i > 0 {
+			break
+		}
 		n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s",
 			f.objectType.Table.ResourceID, condition))
 		if err != nil {
@@ -217,10 +228,63 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}
 }
 
+// valueOutsideSlots tells whether the test's text says a number, date, time or code that none of
+// its slots holds, the question asked does not say and no rule states: no one checks such a value.
+func valueOutsideSlots(spec *interfaces.RequirementSpec, asked string, t *interfaces.QuestionTest, fields []*slotField) bool {
+	text := t.Text
+	for i := range fields {
+		text = strings.ReplaceAll(text, slotPlaceholder(i), " ")
+	}
+	text = normalize([]rune(text)).text
+	for _, f := range fields {
+		if f.value != "" {
+			text = strings.ReplaceAll(text, normalize([]rune(f.value)).text, " ")
+		}
+	}
+	stated := []string{normalize([]rune(asked)).text}
+	for _, r := range spec.Rules {
+		stated = append(stated, normalize([]rune(r.Statement)).text)
+	}
+	for _, token := range valueTokens(text) {
+		if !slices.ContainsFunc(stated, func(s string) bool { return strings.Contains(s, token) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// valueTokens lists the runs of a text that hold a digit, with the ASCII letters and the - / . : _
+// marks joined to it, as in 2025-06-30, 10:30, 3.5 or CUST-10001.
+func valueTokens(text string) []string {
+	tokens := []string{}
+	var b strings.Builder
+	digit := false
+	flush := func() {
+		if digit {
+			tokens = append(tokens, strings.Trim(b.String(), "-/.:_"))
+		}
+		b.Reset()
+		digit = false
+	}
+	for _, r := range text {
+		switch {
+		case r >= '0' && r <= '9':
+			digit = true
+			b.WriteRune(r)
+		case r < utf8.RuneSelf && (unicode.IsLetter(r) || strings.ContainsRune("-/.:_", r)):
+			b.WriteRune(r)
+		default:
+			flush()
+		}
+	}
+	flush()
+	return tokens
+}
+
 // checkTests checks every test question, one after another, until deadline: those left are not
 // checked, so the run records its outcome before its lease runs out.
 func (s *requirementService) checkTests(ctx context.Context, caller interfaces.AccountInfo,
-	spec *interfaces.RequirementSpec, draft *interfaces.Draft, tests []*interfaces.QuestionTest, deadline int64) {
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, asked string, tests []*interfaces.QuestionTest, deadline int64) {
 	ctx, cancel := context.WithDeadline(ctx, time.UnixMilli(deadline))
 	defer cancel()
 	for _, t := range tests {
@@ -228,7 +292,7 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 			t.Check = notChecked(checkTimeout)
 			continue
 		}
-		t.Check = s.checkTest(ctx, caller, spec, draft, t)
+		t.Check = s.checkTest(ctx, caller, spec, draft, asked, t)
 	}
 }
 
@@ -376,7 +440,8 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 			return reason
 		}
 		value := values[i]
-		if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS {
+		// The record that does not exist is named by the first slot; the others are of ones that do.
+		if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0 {
 			value = ""
 			for _, form := range absentValues(values[i]) {
 				n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",

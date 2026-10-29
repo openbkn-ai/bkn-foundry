@@ -45,27 +45,29 @@ func Test_CheckTests(t *testing.T) {
 			}
 			return &interfaces.QuestionTest{ID: "t1", Text: "About " + strings.Join(names, " and ") + "?", Expect: expect, Slots: slots}
 		}
+		// The scenario question the tests ask in other ways.
+		asked := spec.Questions[0].Text
 		count := func(sql string, n any) {
 			va.EXPECT().Query(gomock.Any(), caller, sql, checkQueryTimeout).Return([]map[string]any{{"n": n}}, nil)
 		}
 
 		Convey("A record expected to exist passes when every value is in its field, counted as the caller\n", func() {
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))),
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED})
 
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '99999'", "0")
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "99999"))),
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "99999"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordNotFound})
 		})
 
 		Convey("A record expected not to exist passes only when no value is found\n", func() {
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '99999'", float64(0))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", "99999"))),
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", "99999"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED})
 
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(2))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", "10001"))),
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", "10001"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordExists})
 		})
 
@@ -73,21 +75,21 @@ func Test_CheckTests(t *testing.T) {
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
 			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' OR `name` = 'Acme Ltd'", float64(1))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_SAME_RECORD,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD,
 				slot("customer_id", "10001"), slot("full_name", "Acme Ltd"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED})
 
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Other Co'", float64(1))
 			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' OR `name` = 'Other Co'", float64(2))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_SAME_RECORD,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD,
 				slot("customer_id", "10001"), slot("full_name", "Other Co"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkDifferentRecords})
 		})
 
 		Convey("A value is written as a literal, quotes and backslashes escaped\n", func() {
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'O''Brien \\\\ Sons'", float64(1))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("full_name", `O'Brien \ Sons`))).Outcome,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("full_name", `O'Brien \ Sons`))).Outcome,
 				ShouldEqual, interfaces.TEST_CHECK_PASSED)
 		})
 
@@ -102,37 +104,37 @@ func Test_CheckTests(t *testing.T) {
 				{test(interfaces.TEST_EXPECT_EXISTS, interfaces.QuestionTestSlot{ConceptID: "c2", Property: "phone", Value: "1"}), checkUnknownProperty},
 				{test(interfaces.TEST_EXPECT_SAME_RECORD, slot("customer_id", "1")), checkSameRecordNeedsTwo},
 			} {
-				So(svc.checkTest(ctx, caller, &spec, draft, c.t), ShouldResemble,
+				So(svc.checkTest(ctx, caller, &spec, draft, asked, c.t), ShouldResemble,
 					interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: c.reason})
 			}
 
 			// A concept that maps to nothing, or to a relation type, names no record.
 			spec.Concepts[1].MapsTo = nil
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
 				ShouldEqual, checkConceptNotMapped)
 			spec.Concepts[1].MapsTo = &relationRef
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
 				ShouldEqual, checkConceptNotMapped)
 
 			// The draft no longer has the item, or the property has no field.
 			spec.Concepts[1].MapsTo = &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "carrier"}
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
 				ShouldEqual, checkItemNotDrafted)
 			spec.Concepts[1].MapsTo = &customerRef
 			draft.Items.ObjectTypes[1].Properties[0].MappedField = ""
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
 				ShouldEqual, checkPropertyNotMapped)
-			So(svc.checkTest(ctx, caller, &spec, nil, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, nil, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
 				ShouldEqual, checkItemNotDrafted)
 		})
 
 		Convey("Two ways of naming a record need one object type with a single-field identity\n", func() {
 			draft.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{{Name: "order_no", MappedField: "order_no"}}
 			ordersSlot := interfaces.QuestionTestSlot{ConceptID: "c1", Property: "order_no", Value: "SO1"}
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("customer_id", "1"), ordersSlot)).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("customer_id", "1"), ordersSlot)).Reason,
 				ShouldEqual, checkSameRecordNeedsOneItem)
 			draft.Items.ObjectTypes[1].PrimaryKeys = []string{"customer_id", "full_name"}
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("customer_id", "1"), slot("full_name", "A"))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("customer_id", "1"), slot("full_name", "A"))).Reason,
 				ShouldEqual, checkCompositeIdentity)
 		})
 
@@ -145,7 +147,7 @@ func Test_CheckTests(t *testing.T) {
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
 			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
 
-			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Slots[0].Value, ShouldEqual, "10001")
 			// The question asks about the value checked.
 			So(tt.Text, ShouldEqual, "About 10001?")
@@ -158,15 +160,62 @@ func Test_CheckTests(t *testing.T) {
 				checkQueryTimeout).Return([]map[string]any{{"n": json.Number("1")}}, nil)
 			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
 
-			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Text, ShouldEqual, "About 1234567890123456789?")
+		})
+
+		Convey("A value the text says outside every slot is checked by no one\n", func() {
+			spec := spec
+			spec.Rules = []*interfaces.RequirementRule{{ID: "r1", Statement: "Orders over 50000 need approval."}}
+			for _, c := range []struct {
+				asked, text string
+				outside     bool
+			}{
+				{"Which orders?", "About {{slot 1}} on 2025-06-30?", true},
+				{"Which orders?", "About {{slot 1}} at 10:30?", true},
+				{"Which orders?", "About {{slot 1}} or CUST-10001?", true},
+				{"Which orders?", "About {{slot 1}} above 3.5?", true},
+				{"Which orders?", "客户{{slot 1}}前 10 名的订单？", true},
+				{"Which orders of the last 30 days?", "About {{slot 1}} in the last 30 days?", false},
+				{"Which orders?", "About {{slot 1}} over 50000?", false},
+				{"Which orders?", "About {{slot 1}}?", false},
+			} {
+				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+				tt.Text = c.text
+				if !c.outside {
+					sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "10001"})
+					count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+				}
+
+				check := svc.checkTest(ctx, caller, &spec, draft, c.asked, tt)
+
+				So(check.Reason == checkValueOutsideSlot, ShouldEqual, c.outside)
+			}
+		})
+
+		Convey("A value the documents gave is no value outside its slot\n", func() {
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'CUST-10001'", float64(1))
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "CUST-10001"))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+		})
+
+		Convey("Of a record expected not to exist, only the first slot is made absent; the others keep real values\n", func() {
+			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "C-0042"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v1": "Acme"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+			tt := test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", ""), slot("full_name", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Text, ShouldEqual, "About C-9999 and Acme?")
 		})
 
 		Convey("A value the text does not name is no question about it\n", func() {
 			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))
 			tt.Text = "Which orders does this customer have?"
 
-			So(svc.checkTest(ctx, caller, &spec, draft, tt), ShouldResemble,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt), ShouldResemble,
 				interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkValueNotInText})
 		})
 
@@ -175,7 +224,7 @@ func Test_CheckTests(t *testing.T) {
 			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
 			tt.Text = "Orders of the top 1 customer?"
 
-			So(svc.checkTest(ctx, caller, &spec, draft, tt), ShouldResemble,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt), ShouldResemble,
 				interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkValueNotInText})
 			So(tt.Text, ShouldEqual, "Orders of the top 1 customer?")
 		})
@@ -187,20 +236,20 @@ func Test_CheckTests(t *testing.T) {
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-0000'", float64(0))
 			tt := test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", ""))
 
-			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Slots[0].Value, ShouldEqual, "C-0000")
 			So(tt.Text, ShouldEqual, "About C-0000?")
 		})
 
 		Convey("A value without digits, or whose changed forms both exist, gives no absent value\n", func() {
 			sample("SELECT `name` AS v0 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "Acme"})
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("full_name", ""))),
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("full_name", ""))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkNoAbsentValue})
 
 			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "7"})
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '9'", float64(1))
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '0'", float64(1))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", ""))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", ""))).Reason,
 				ShouldEqual, checkNoAbsentValue)
 		})
 
@@ -212,23 +261,23 @@ func Test_CheckTests(t *testing.T) {
 			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' OR `name` = 'Acme Ltd'", float64(1))
 			tt := test(interfaces.TEST_EXPECT_SAME_RECORD, slot("customer_id", "10001"), slot("full_name", ""))
 
-			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Slots[1].Value, ShouldEqual, "Acme Ltd")
 		})
 
 		Convey("A table with no value to take, or a read that fails, leaves the test not checked\n", func() {
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return([]map[string]any{}, nil)
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))).Reason,
 				ShouldEqual, checkNoValueInData)
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("forbidden"))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))).Reason,
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))).Reason,
 				ShouldEqual, checkQueryFailed)
 		})
 
 		Convey("A field the privacy rules excluded is never read or counted\n", func() {
 			draft.Items.Excluded = []*interfaces.DraftExcludedField{{ObjectType: "customer", Field: "name"}}
 			for _, value := range []string{"", "Acme Ltd"} {
-				So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("full_name", value))),
+				So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("full_name", value))),
 					ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkExcludedField})
 			}
 		})
@@ -245,7 +294,7 @@ func Test_CheckTests(t *testing.T) {
 					return []map[string]any{{"n": float64(1)}}, nil
 				})
 
-			svc.checkTests(ctx, caller, &spec, draft, []*interfaces.QuestionTest{first, second}, 150)
+			svc.checkTests(ctx, caller, &spec, draft, asked, []*interfaces.QuestionTest{first, second}, 150)
 
 			So(first.Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(second.Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkTimeout})
@@ -253,8 +302,17 @@ func Test_CheckTests(t *testing.T) {
 
 		Convey("A count that fails is not checked\n", func() {
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("forbidden"))
-			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))),
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkQueryFailed})
 		})
+	})
+}
+
+func Test_valueTokens(t *testing.T) {
+	Convey("Numbers, dates, times and codes are each one token, with the marks joined to them\n", t, func() {
+		So(valueTokens("on 2025-06-30 at 10:30, CUST-10001 above 3.5."), ShouldResemble,
+			[]string{"2025-06-30", "10:30", "CUST-10001", "3.5"})
+		So(valueTokens("前 10 名，第3季度"), ShouldResemble, []string{"10", "3"})
+		So(valueTokens("Which orders, and why?"), ShouldResemble, []string{})
 	})
 }
