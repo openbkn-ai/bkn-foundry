@@ -24,11 +24,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
-// Limits of a project's requirement documents. Drafting reads every document in one message, so
-// a document is kept to what a reader would write by hand.
+// Limits of a project's requirement documents, which the upload route also bounds what it reads
+// by. Drafting reads every document in one message, so a document is kept to what a reader would
+// write by hand.
 const (
-	maxDocumentBytes = 1 << 20
-	maxDocuments     = 20
+	MaxDocumentBytes = 1 << 20
+	MaxDocuments     = 20
 	maxNameRunes     = 255
 )
 
@@ -61,7 +62,7 @@ func readUpload(file interfaces.RequirementUpload) (*upload, string) {
 	if utf8.RuneCountInString(name) > maxNameRunes {
 		return nil, perrors.BknProject_Requirement_InvalidRequestBody
 	}
-	if len(file.Content) > maxDocumentBytes {
+	if len(file.Content) > MaxDocumentBytes {
 		return nil, perrors.BknProject_Requirement_DocumentTooLarge
 	}
 	content := bytes.TrimPrefix(file.Content, []byte("\ufeff"))
@@ -152,7 +153,7 @@ func (s *requirementService) UploadDocuments(ctx context.Context, token string, 
 				Outcome: interfaces.REQUIREMENT_UPLOAD_REJECTED, Code: code})
 			continue
 		}
-		if count >= maxDocuments {
+		if count >= MaxDocuments {
 			results = append(results, interfaces.RequirementUploadResult{Name: read.name,
 				Outcome: interfaces.REQUIREMENT_UPLOAD_REJECTED, Code: perrors.BknProject_Requirement_TooManyDocuments})
 			continue

@@ -118,9 +118,9 @@ func Test_ReadUpload(t *testing.T) {
 		})
 
 		Convey("A file over the size limit is refused\n", func() {
-			_, code := readUpload(interfaces.RequirementUpload{Name: "a.txt", Content: []byte(strings.Repeat("a", maxDocumentBytes+1))})
+			_, code := readUpload(interfaces.RequirementUpload{Name: "a.txt", Content: []byte(strings.Repeat("a", MaxDocumentBytes+1))})
 			So(code, ShouldEqual, perrors.BknProject_Requirement_DocumentTooLarge)
-			_, code = readUpload(interfaces.RequirementUpload{Name: "a.txt", Content: []byte(strings.Repeat("a", maxDocumentBytes))})
+			_, code = readUpload(interfaces.RequirementUpload{Name: "a.txt", Content: []byte(strings.Repeat("a", MaxDocumentBytes))})
 			So(code, ShouldEqual, "")
 		})
 
@@ -183,7 +183,7 @@ func Test_Documents(t *testing.T) {
 		})
 
 		Convey("UploadDocuments refuses the files beyond the project's limit, and a repeat inside one upload\n", func() {
-			existing := make([]*interfaces.RequirementDocument, maxDocuments-1)
+			existing := make([]*interfaces.RequirementDocument, MaxDocuments-1)
 			for i := range existing {
 				existing[i] = &interfaces.RequirementDocument{ID: "e"}
 			}
@@ -203,7 +203,7 @@ func Test_Documents(t *testing.T) {
 		})
 
 		Convey("A duplicate does not count against the limit\n", func() {
-			existing := make([]*interfaces.RequirementDocument, maxDocuments-1)
+			existing := make([]*interfaces.RequirementDocument, MaxDocuments-1)
 			for i := range existing {
 				existing[i] = &interfaces.RequirementDocument{ID: "e"}
 			}
