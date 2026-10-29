@@ -40,6 +40,7 @@ type fakeIDRegistry struct {
 	locked    []interfaces.IDKey
 	lockTime  int64
 	lockErr   error
+	unlocked  []interfaces.IDKey
 }
 
 func (f *fakeIDRegistry) ListIDs(_ context.Context, _ string) ([]*interfaces.RegisteredID, error) {
@@ -54,6 +55,11 @@ func (f *fakeIDRegistry) RecordIDs(_ context.Context, ids []*interfaces.Register
 func (f *fakeIDRegistry) LockIDs(_ context.Context, _ string, keys []interfaces.IDKey, updateTime int64) error {
 	f.locked, f.lockTime = append(f.locked, keys...), updateTime
 	return f.lockErr
+}
+
+func (f *fakeIDRegistry) UnlockIDs(_ context.Context, _ string, keys []interfaces.IDKey, _ int64) error {
+	f.unlocked = append(f.unlocked, keys...)
+	return nil
 }
 
 func Test_DraftService(t *testing.T) {

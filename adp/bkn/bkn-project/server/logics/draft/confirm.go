@@ -133,12 +133,25 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		}
 	}
 	// The ids of what is about to be written are locked first, so nothing on the branch has an id a
-	// later draft could replace. Should the commit then fail, the ids stay locked: a placeholder
-	// then waits for a person to rename it, which costs less than an id changing under the branch.
+	// later draft could replace. Those this confirmation locks are noted, to give back if nothing
+	// gets written.
+	registered, err := s.ira.ListIDs(ctx, projectID)
+	if err != nil {
+		restore()
+		span.SetStatus(codes.Error, "Read ids failed")
+		return nil, internalError(ctx, "Read ids failed", err)
+	}
+	locking := newlyLocked(registered, compiled.IDKeys)
 	if err := s.ira.LockIDs(ctx, projectID, compiled.IDKeys, claimTime); err != nil {
 		restore()
 		span.SetStatus(codes.Error, "Lock ids failed")
 		return nil, internalError(ctx, "Lock ids failed", err)
+	}
+	unlock := func() {
+		// Left locked if this fails: a placeholder then waits for a later draft's confirmation.
+		if uerr := s.ira.UnlockIDs(context.WithoutCancel(ctx), projectID, locking, claimTime); uerr != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Unlock ids of project %s: %v", projectID, uerr))
+		}
 	}
 
 	message := fmt.Sprintf("confirm ontology draft of project %s: %d object types, %d definitions",
@@ -146,6 +159,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	result, err := s.ls.AddDefinitions(ctx, entry.KNID, entry.Branch, compiled.Files, owned, message,
 		interfaces.GitAuthor{Name: caller.ID})
 	if err != nil {
+		unlock()
 		restore()
 		span.SetStatus(codes.Error, "Commit definitions failed")
 		return nil, err
@@ -176,6 +190,23 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	s.startCheck(context.WithoutCancel(ctx), projectID, result.Commit, checkInputOf(&draft.Items), caller)
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
+}
+
+// newlyLocked lists the keys registered and not yet locked: those a lock of keys locks.
+func newlyLocked(registered []*interfaces.RegisteredID, keys []interfaces.IDKey) []interfaces.IDKey {
+	unlocked := map[interfaces.IDKey]bool{}
+	for _, id := range registered {
+		if !id.Locked {
+			unlocked[id.IDKey] = true
+		}
+	}
+	locking := []interfaces.IDKey{}
+	for _, key := range keys {
+		if unlocked[key] {
+			locking = append(locking, key)
+		}
+	}
+	return locking
 }
 
 // unreadableIDs lists the resource IDs of the tables drafting could not read.

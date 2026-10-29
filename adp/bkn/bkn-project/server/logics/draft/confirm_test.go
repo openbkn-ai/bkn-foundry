@@ -111,6 +111,20 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(checked, ShouldResemble, []string{"c1"})
 			So(ira.locked, ShouldNotBeEmpty)
 			So(ira.lockTime, ShouldEqual, draft.UpdateTime)
+			So(ira.unlocked, ShouldBeEmpty)
+		})
+
+		Convey("A failure to read the registered ids writes nothing and locks nothing\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+			ira.listErr = errors.New("database is down")
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
+			So(ira.locked, ShouldBeEmpty)
+			So(checked, ShouldBeEmpty)
 		})
 
 		Convey("A failure to lock the ids writes nothing and leaves the draft as it was read\n", func() {
@@ -173,6 +187,11 @@ func Test_ConfirmDraft(t *testing.T) {
 			before := confirmableDraft()
 			before.Items.Confirmation = last()
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(before, true, nil)
+			// orders' id was registered unlocked, customers' locked by an earlier confirmation.
+			ira.ids = []*interfaces.RegisteredID{
+				registered(interfaces.ID_KIND_OBJECT_TYPES, "res_orders", "ot_000000", interfaces.ID_ORIGIN_FALLBACK, false),
+				registered(interfaces.ID_KIND_OBJECT_TYPES, "res_customers", "customers", interfaces.ID_ORIGIN_SEMANTIC, true),
+			}
 			var claimed []string
 			var claimTime int64
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).
@@ -203,6 +222,8 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(restored.UpdateTime, ShouldEqual, readTime)
 			So(restored.Items.Confirmation, ShouldResemble, last())
 			So(checked, ShouldBeEmpty)
+			// Nothing was written: the ids this confirmation locked are given back, the others stay.
+			So(ira.unlocked, ShouldResemble, []interfaces.IDKey{{Kind: interfaces.ID_KIND_OBJECT_TYPES, SourceKey: "res_orders"}})
 		})
 
 		Convey("A refused commit is written back after the caller went away\n", func() {

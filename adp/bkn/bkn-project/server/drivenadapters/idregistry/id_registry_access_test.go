@@ -78,9 +78,10 @@ func Test_IDRegistryAccess(t *testing.T) {
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
-		Convey("RecordIDs and LockIDs do nothing for nothing\n", func() {
+		Convey("RecordIDs, LockIDs and UnlockIDs do nothing for nothing\n", func() {
 			So(ira.RecordIDs(ctx, nil), ShouldBeNil)
 			So(ira.LockIDs(ctx, "p1", nil, 9), ShouldBeNil)
+			So(ira.UnlockIDs(ctx, "p1", nil, 9), ShouldBeNil)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
@@ -97,6 +98,15 @@ func Test_IDRegistryAccess(t *testing.T) {
 			last := []driver.Value{true, int64(9), false, "p1", interfaces.ID_KIND_PROPERTIES, fmt.Sprintf("r1/f%d", batchSize)}
 			smock.ExpectExec(regexp.QuoteMeta(lock + match(1))).WithArgs(last...).WillReturnResult(sqlmock.NewResult(0, 1))
 			So(ira.LockIDs(ctx, "p1", keys, 9), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("UnlockIDs unlocks only the project's locked ids of the keys\n", func() {
+			unlock := "UPDATE t_bkn_project_id SET f_locked = ?, f_update_time = ? WHERE f_locked = ? AND f_project_id = ? AND ((f_kind = ? AND f_source_key = ?))"
+			smock.ExpectExec(regexp.QuoteMeta(unlock)).
+				WithArgs(false, int64(9), true, "p1", interfaces.ID_KIND_OBJECT_TYPES, "r1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			So(ira.UnlockIDs(ctx, "p1", []interfaces.IDKey{{Kind: interfaces.ID_KIND_OBJECT_TYPES, SourceKey: "r1"}}, 9), ShouldBeNil)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 	})

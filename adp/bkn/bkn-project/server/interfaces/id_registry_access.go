@@ -57,4 +57,7 @@ type IDRegistryAccess interface {
 	RecordIDs(ctx context.Context, ids []*RegisteredID) error
 	// LockIDs locks the project's IDs of keys, so they are never replaced again.
 	LockIDs(ctx context.Context, projectID string, keys []IDKey, updateTime int64) error
+	// UnlockIDs unlocks the project's IDs of keys: a confirmation that locked them and then wrote
+	// nothing gives them back.
+	UnlockIDs(ctx context.Context, projectID string, keys []IDKey, updateTime int64) error
 }
