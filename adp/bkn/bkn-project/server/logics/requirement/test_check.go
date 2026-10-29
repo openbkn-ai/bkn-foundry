@@ -7,6 +7,7 @@ package requirement
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -38,6 +39,9 @@ const (
 	checkSameRecordNeedsOneItem = "same_record_needs_one_object_type"
 	checkCompositeIdentity      = "composite_identity"
 	checkQueryFailed            = "query_failed"
+	checkExcludedField          = "excluded_field"
+	checkNoValueInData          = "no_value_in_data"
+	checkNoAbsentValue          = "no_absent_value"
 )
 
 // slotField is where a slot's value is looked for: the table of the drafted object type its
@@ -80,6 +84,12 @@ func resolveSlot(spec *interfaces.RequirementSpec, draft *interfaces.Draft,
 			}
 			if p.MappedField == "" {
 				return nil, checkPropertyNotMapped
+			}
+			// A field the privacy rules excluded is never read, whatever value the slot has.
+			for _, e := range draft.Items.Excluded {
+				if e.ObjectType == ot.ID && e.Field == p.MappedField {
+					return nil, checkExcludedField
+				}
 			}
 			return &slotField{objectType: ot, field: p.MappedField, value: slot.Value}, ""
 		}
@@ -133,6 +143,9 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 			return notChecked(reason)
 		}
 		fields = append(fields, f)
+	}
+	if reason := s.fill(ctx, caller, t, fields); reason != "" {
+		return notChecked(reason)
 	}
 	var key string
 	if t.Expect == interfaces.TEST_EXPECT_SAME_RECORD {
@@ -195,4 +208,167 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 	for _, t := range tests {
 		t.Check = s.checkTest(ctx, caller, spec, draft, t)
 	}
+}
+
+// orderField orders the rows values are taken from, so the same data gives the same value: the
+// object type's identity when it is one field, else the field itself.
+func orderField(f *slotField) string {
+	ot := f.objectType
+	if len(ot.PrimaryKeys) == 1 {
+		for _, p := range ot.Properties {
+			if p.Name == ot.PrimaryKeys[0] && p.MappedField != "" {
+				return p.MappedField
+			}
+		}
+	}
+	return f.field
+}
+
+func valueText(value any) (string, bool) {
+	switch v := value.(type) {
+	case string:
+		return v, v != ""
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	case int64:
+		return strconv.FormatInt(v, 10), true
+	case int:
+		return strconv.Itoa(v), true
+	case bool:
+		return strconv.FormatBool(v), true
+	}
+	return "", false
+}
+
+// sampleRow reads the first row's values of the given fields where they are all set, beside the
+// conditions, as the caller. A value goes into the test question only; none goes to the Agent.
+func (s *requirementService) sampleRow(ctx context.Context, caller interfaces.AccountInfo, table string,
+	order string, fields map[int]string, conditions []string) (map[int]string, string) {
+	selects, where := []string{}, append([]string{}, conditions...)
+	indexes := []int{}
+	for i := range fields {
+		indexes = append(indexes, i)
+	}
+	slices.Sort(indexes)
+	for _, i := range indexes {
+		selects = append(selects, fmt.Sprintf("%s AS v%d", quoteField(fields[i]), i))
+		where = append(where, quoteField(fields[i])+" IS NOT NULL")
+	}
+	rows, err := s.va.Query(ctx, caller, fmt.Sprintf("SELECT %s FROM {{%s}} WHERE %s ORDER BY %s LIMIT 1",
+		strings.Join(selects, ", "), table, strings.Join(where, " AND "), quoteField(order)), checkQueryTimeout)
+	if err != nil {
+		logger.Warnf("Read a value for a test question failed: %v", err)
+		return nil, checkQueryFailed
+	}
+	if len(rows) == 0 {
+		return nil, checkNoValueInData
+	}
+	values := map[int]string{}
+	for _, i := range indexes {
+		v, ok := valueText(rows[0][fmt.Sprintf("v%d", i)])
+		if !ok {
+			return nil, checkNoValueInData
+		}
+		values[i] = v
+	}
+	return values, ""
+}
+
+// absentValues are the forms of a real value tried for a record that should not exist: its last
+// run of digits all nines, then all zeros, keeping its format. A value without digits has none.
+func absentValues(value string) []string {
+	runes := []rune(value)
+	end := -1
+	for i := len(runes) - 1; i >= 0; i-- {
+		if runes[i] >= '0' && runes[i] <= '9' {
+			end = i
+			break
+		}
+	}
+	if end < 0 {
+		return nil
+	}
+	start := end
+	for start > 0 && runes[start-1] >= '0' && runes[start-1] <= '9' {
+		start--
+	}
+	forms := []string{}
+	for _, d := range []string{"9", "0"} {
+		forms = append(forms, string(runes[:start])+strings.Repeat(d, end-start+1)+string(runes[end+1:]))
+	}
+	return forms
+}
+
+// fill gives the test question's empty slots values from the data, by what it expects: a value of
+// the field for a record that exists, a changed real value no row has for one that does not, and
+// one row's values for two ways of naming a record.
+func (s *requirementService) fill(ctx context.Context, caller interfaces.AccountInfo, t *interfaces.QuestionTest,
+	fields []*slotField) string {
+	empty := map[int]bool{}
+	for i, f := range fields {
+		if f.value == "" {
+			empty[i] = true
+		}
+	}
+	if len(empty) == 0 {
+		return ""
+	}
+	set := func(i int, value string) {
+		fields[i].value, t.Slots[i].Value = value, value
+	}
+	if t.Expect == interfaces.TEST_EXPECT_SAME_RECORD {
+		// Checked later to be one object type; values are taken from one row of its table.
+		for _, f := range fields[1:] {
+			if f.objectType != fields[0].objectType {
+				return ""
+			}
+		}
+		wanted, conditions := map[int]string{}, []string{}
+		for i, f := range fields {
+			if empty[i] {
+				wanted[i] = f.field
+			} else {
+				conditions = append(conditions, quoteField(f.field)+" = "+quoteValue(f.value))
+			}
+		}
+		values, reason := s.sampleRow(ctx, caller, fields[0].objectType.Table.ResourceID, orderField(fields[0]),
+			wanted, conditions)
+		if reason != "" {
+			return reason
+		}
+		for i, v := range values {
+			set(i, v)
+		}
+		return ""
+	}
+	for i, f := range fields {
+		if !empty[i] {
+			continue
+		}
+		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
+			map[int]string{i: f.field}, nil)
+		if reason != "" {
+			return reason
+		}
+		value := values[i]
+		if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS {
+			value = ""
+			for _, form := range absentValues(values[i]) {
+				n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",
+					f.objectType.Table.ResourceID, quoteField(f.field), quoteValue(form)))
+				if err != nil {
+					return checkQueryFailed
+				}
+				if n == 0 {
+					value = form
+					break
+				}
+			}
+			if value == "" {
+				return checkNoAbsentValue
+			}
+		}
+		set(i, value)
+	}
+	return ""
 }
