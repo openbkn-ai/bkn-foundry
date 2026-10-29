@@ -35,9 +35,9 @@ Retrieval's sandbox listener. Retrieval does not proxy BKN Backend Schema routes
 list_knowledge_networks  → discover kn_id
 search_schema            → find relevant object, relation, action, and metric types
 get_object_types         → inspect physical property columns, allowed operators, and related_metrics
+query_metric             → evaluate a published instance-set object metric
 query_object_instance    → retrieve instances and read the primary key from _instance_identity
   ├→ logic-property-resolver → evaluate tool-backed logical properties
-  ├→ query_metric → evaluate a published instance-set object metric
   ├→ get_action_info → execute_action → get_action_execution → complete an action flow
   └→ search_capabilities    → rank every kind the network mounted in one space
        ├→ capability_type=skill → get_skill_content → read_skill_file → execute_skill
@@ -50,8 +50,7 @@ definition yourself:
 ```text
 search_schema / get_kn_detail  → identify an object type; related_metric_count must be positive
 get_object_types               → select a metric from related_metrics
-  ├→ logic-property-resolver   → instance-level metrics and bound logical properties
-  └→ query_metric              → type-level metrics or unbound logical properties, using MetricDefinition
+query_metric                  → evaluate the instance set using its published MetricDefinition
 ```
 
 The Skill surface also has a knowledge-network-independent entry point:
