@@ -160,6 +160,12 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 			capped := preview(10000)
 			So(capped.TotalCount, ShouldEqual, 10001)
 			So(len(capped.Actions), ShouldEqual, 10000)
+
+			// An object type that cannot be paged still previews its first page.
+			matches.Datas, matches.Incomplete = matches.Datas[:10000], true
+			unpageable := preview(20000)
+			So(unpageable.TotalCount, ShouldEqual, 10001)
+			So(len(unpageable.Actions), ShouldEqual, 10000)
 		})
 
 		Convey("失败 - 行动类不存在", func() {

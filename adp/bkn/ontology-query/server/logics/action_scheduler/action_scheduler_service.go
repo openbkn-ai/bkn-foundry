@@ -753,6 +753,9 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 			logger.Errorf("Failed to scan matching instances: %v", err)
 			return nil, nil, err
 		}
+		if err := requireCompleteScan(ctx, objects, actionType); err != nil {
+			return nil, nil, err
+		}
 
 		for _, objData := range objects.Datas {
 			instanceInfo := interfaces.ObjectSystemInfo{
@@ -867,6 +870,9 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 					logger.Errorf("Failed to filter instances: %v", err)
 					return nil, nil, err
 				}
+				if err := requireCompleteScan(ctx, filteredObjects, actionType); err != nil {
+					return nil, nil, err
+				}
 
 				for _, objData := range filteredObjects.Datas {
 					instanceInfo := interfaces.ObjectSystemInfo{
@@ -916,6 +922,9 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 				logger.Errorf("Failed to filter matching instances: %v", err)
 				return nil, nil, err
 			}
+			if err := requireCompleteScan(ctx, objects, actionType); err != nil {
+				return nil, nil, err
+			}
 
 			for _, objData := range objects.Datas {
 				instanceInfo := interfaces.ObjectSystemInfo{
@@ -939,6 +948,17 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 	}
 
 	return instances, objDatas, nil
+}
+
+// requireCompleteScan rejects an execution whose match set could not be read
+// to the end, instead of running on the part that was read.
+func requireCompleteScan(ctx context.Context, objects interfaces.Objects, actionType *interfaces.ActionType) error {
+	if !objects.Incomplete {
+		return nil
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		WithErrorDetails(fmt.Sprintf("object type [%s] matches %d objects but cannot be read past the first %d: "+
+			"map its primary keys to resource fields", actionType.ObjectTypeID, objects.TotalCount, len(objects.Datas)))
 }
 
 // buildExecutionParams builds the execution parameters from action type parameters and object data.

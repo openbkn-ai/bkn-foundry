@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -165,8 +164,8 @@ func (v *failingContinuationVega) GetResourceSchema(context.Context, string) (*i
 
 // An object type whose primary key has no resource field cannot be paged
 // (see appendResourceSortTieBreakers). A full first page with more matches
-// behind it must be reported rather than returned as complete.
-func TestScanObjectsRejectsAnUnpageableMatchSet(t *testing.T) {
+// behind it is flagged incomplete rather than returned as the whole set.
+func TestScanObjectsFlagsAnUnpageableMatchSet(t *testing.T) {
 	objectType := accessPlanObjectType()
 	objectType.PrimaryKeys = []string{"legacy_code"}
 	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
@@ -178,10 +177,9 @@ func TestScanObjectsRejectsAnUnpageableMatchSet(t *testing.T) {
 		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
 		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}, cursor: testQueryCursorCodec(t, time.Now()),
 	}
-	_, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), 20000)
-	var httpErr *httperrors.HTTPError
-	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest ||
-		!strings.Contains(fmt.Sprint(httpErr.ErrorDetails), "cannot be read past the first 10000") {
-		t.Fatalf("unpageable scan error = %v", err)
+	result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), 20000)
+	if err != nil || !result.Incomplete || len(result.Datas) != 10000 || result.TotalCount != 10001 {
+		t.Fatalf("unpageable scan: incomplete=%t rows=%d total=%d err=%v",
+			result.Incomplete, len(result.Datas), result.TotalCount, err)
 	}
 }

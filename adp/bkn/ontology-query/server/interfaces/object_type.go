@@ -75,6 +75,9 @@ type Objects struct {
 	// this query. It never exposes the predicate itself, so callers can explain
 	// a possibly incomplete result without learning the policy.
 	RowFilterApplied bool `json:"row_filter_applied,omitempty"`
+	// Incomplete reports that a scan could not read every matching object,
+	// because the object type cannot be paged past its first page.
+	Incomplete bool `json:"-"`
 }
 
 // ObjectPagingResponse is the public object-query pagination envelope.

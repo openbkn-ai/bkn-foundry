@@ -1301,6 +1301,24 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 			So(fmt.Sprint(httpErr.ErrorDetails), ShouldContainSubstring, "More than 10000 objects match")
 		})
 
+		Convey("失败 - 扫描模式：对象类无法分页读完时整体拒绝", func() {
+			req := &interfaces.ActionExecutionRequest{KNID: knID, Branch: interfaces.MAIN_BRANCH, ActionTypeID: actionTypeID}
+			omAccess.EXPECT().GetActionType(gomock.Any(), knID, interfaces.MAIN_BRANCH, actionTypeID).
+				Return(scanActionType, map[string]any{"id": actionTypeID}, true, nil)
+			omAccess.EXPECT().GetObjectType(gomock.Any(), knID, interfaces.MAIN_BRANCH, objectTypeID).
+				Return(interfaces.ObjectType{KNID: knID}, true, nil)
+			partial := customerObjects(10000)
+			partial.TotalCount, partial.Incomplete = 10001, true
+			ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), gomock.Any()).Return(partial, nil)
+
+			_, err := service.ExecuteAction(ctx, req)
+
+			httpErr, ok := err.(*httperrors.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(fmt.Sprint(httpErr.ErrorDetails), ShouldContainSubstring, "cannot be read past the first 10000")
+		})
+
 		Convey("成功 - 扫描模式：调大上限后覆盖全部命中对象", func() {
 			originalLimit := logics.ActionExecutionMaxObjects
 			logics.ActionExecutionMaxObjects = 20000

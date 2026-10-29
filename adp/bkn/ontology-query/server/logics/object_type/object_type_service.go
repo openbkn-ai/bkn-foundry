@@ -206,7 +206,8 @@ func (ots *objectTypeService) GetObjectsByObjectTypeIDForScan(ctx context.Contex
 // once more than maxObjects objects are collected: the result then holds
 // maxObjects+1 objects, which is how callers learn the set is over their limit
 // without loading the rest of it. The first page supplies the type info and
-// the total count; the result carries no continuation.
+// the total count; the result carries no continuation. Incomplete marks a
+// match set that could not be read to the end.
 func (ots *objectTypeService) ScanObjectsByObjectTypeID(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType, maxObjects int) (interfaces.Objects, error) {
 	if query == nil || maxObjects < 0 {
@@ -241,14 +242,9 @@ func (ots *objectTypeService) ScanObjectsByObjectTypeID(ctx context.Context,
 		}
 		// A full page without a continuation comes from an object type whose
 		// sort cannot be made total (see appendResourceSortTieBreakers). Its
-		// remaining rows cannot be addressed, so report it instead of
-		// returning a partial set as if it were complete.
-		if len(objects.Datas) >= page.Limit && result.TotalCount > int64(len(result.Datas)) {
-			return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-				oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("object type [%s] matches %d objects but cannot be read past the first %d: "+
-					"map its primary keys to resource fields", query.ObjectTypeID, result.TotalCount, len(result.Datas)))
-		}
+		// remaining rows cannot be addressed, so the result is flagged rather
+		// than passed off as complete.
+		result.Incomplete = len(objects.Datas) >= page.Limit && result.TotalCount > int64(len(result.Datas))
 		break
 	}
 	result.SearchAfter, result.ResourceCursor, result.ResourceCursorExpiry = nil, "", nil
