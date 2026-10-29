@@ -41,6 +41,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 	releaselogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
 
 // Application is a booted bkn-project process that has not started serving yet.
@@ -94,6 +95,9 @@ func Boot() *Application {
 	// Drafting and checks run in this process; those a previous run left going will never finish.
 	if err := draft.NewDraftService(appSetting).FailInterrupted(context.Background()); err != nil {
 		logger.Errorf("Failed to fail interrupted drafts: %v", err)
+	}
+	if err := requirement.NewRequirementService().FailInterrupted(context.Background()); err != nil {
+		logger.Errorf("Failed to fail interrupted requirement drafting: %v", err)
 	}
 	// So do the regressions of releases.
 	if err := releaselogic.NewRegressionService().FailInterrupted(context.Background()); err != nil {
