@@ -29,6 +29,13 @@ import (
 // guidance, from the question and the structure of the drafted items it rests on; no data goes to
 // it.
 
+// guidanceLease is how long a generating run holds the guidance before another may take it over;
+// finishMargin is kept of it to record the outcome.
+const (
+	guidanceLease = agentDeadline + time.Minute
+	finishMargin  = 30 * time.Second
+)
+
 // maxTests bounds the test questions of one scenario question.
 const maxTests = 20
 
@@ -179,6 +186,12 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 	return "pass guidance\nlanguage: " + language + "\n" + string(body), nil
 }
 
+// slotPlaceholder stands in a test question's text for the value of its slot i, until the
+// server fills it from the data.
+func slotPlaceholder(i int) string {
+	return fmt.Sprintf("{{slot %d}}", i+1)
+}
+
 // valueInDocuments tells whether a value is written in one of the documents, compared as quotes
 // are: a value the documents do not say, the Agent made up.
 func valueInDocuments(value string, docs []*interfaces.RequirementDocument) bool {
@@ -209,9 +222,14 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 			expect = interfaces.TEST_EXPECT_EXISTS
 		}
 		slots := make([]interfaces.QuestionTestSlot, 0, len(at.Slots))
-		for _, s := range at.Slots {
+		for i, s := range at.Slots {
 			value := strings.TrimSpace(s.Value)
 			if !valueInDocuments(value, docs) {
+				// The text asks about the made-up value: it gives way to the slot, which the
+				// server's value from the data replaces.
+				if value != "" {
+					text = strings.Replace(text, value, slotPlaceholder(i), 1)
+				}
 				value = ""
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
@@ -318,7 +336,7 @@ func (s *requirementService) GenerateGuidance(ctx context.Context, token string,
 		Status: interfaces.GUIDANCE_STATUS_GENERATING, Tests: []*interfaces.QuestionTest{}, OutOfScope: []string{},
 		RunID: s.newID(), Runner: caller, CreateTime: now, UpdateTime: now,
 	}
-	staleBefore := now - agentDeadline.Milliseconds() - time.Minute.Milliseconds()
+	staleBefore := now - guidanceLease.Milliseconds()
 	started, err := s.ra.StartGenerating(ctx, g, staleBefore)
 	if err != nil {
 		span.SetStatus(codes.Error, "Start generating failed")
@@ -371,8 +389,9 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	}
 	done := *g
 	done.Status, done.Tests, done.Guidance = interfaces.GUIDANCE_STATUS_READY, buildTests(&out, docs), strings.TrimSpace(out.Guidance)
-	// Checked as the person who generated them, before anyone relies on them.
-	s.checkTests(ctx, caller, spec, draft, done.Tests)
+	// Checked as the person who generated them, before anyone relies on them, and in time to
+	// record the outcome before another run may take the guidance over.
+	s.checkTests(ctx, caller, spec, draft, done.Tests, g.UpdateTime+guidanceLease.Milliseconds()-finishMargin.Milliseconds())
 	done.OutOfScope = []string{}
 	for _, o := range out.OutOfScope {
 		if o = strings.TrimSpace(o); o != "" {

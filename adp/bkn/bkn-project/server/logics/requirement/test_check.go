@@ -6,10 +6,12 @@ package requirement
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -42,6 +44,8 @@ const (
 	checkExcludedField          = "excluded_field"
 	checkNoValueInData          = "no_value_in_data"
 	checkNoAbsentValue          = "no_absent_value"
+	checkValueNotInText         = "value_not_in_text"
+	checkTimeout                = "check_timeout"
 )
 
 // slotField is where a slot's value is looked for: the table of the drafted object type its
@@ -118,6 +122,8 @@ func (s *requirementService) count(ctx context.Context, caller interfaces.Accoun
 		return 0, fmt.Errorf("expected one row, got %d", len(rows))
 	}
 	switch v := rows[0]["n"].(type) {
+	case json.Number:
+		return v.Int64()
 	case float64:
 		return int64(v), nil
 	case int64:
@@ -146,6 +152,12 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	}
 	if reason := s.fill(ctx, caller, t, fields); reason != "" {
 		return notChecked(reason)
+	}
+	// What is checked must be what the question asks about.
+	for _, f := range fields {
+		if !strings.Contains(normalize([]rune(t.Text)).text, normalize([]rune(f.value)).text) {
+			return notChecked(checkValueNotInText)
+		}
 	}
 	var key string
 	if t.Expect == interfaces.TEST_EXPECT_SAME_RECORD {
@@ -202,10 +214,17 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}
 }
 
-// checkTests checks every test question, one after another.
+// checkTests checks every test question, one after another, until deadline: those left are not
+// checked, so the run records its outcome before its lease runs out.
 func (s *requirementService) checkTests(ctx context.Context, caller interfaces.AccountInfo,
-	spec *interfaces.RequirementSpec, draft *interfaces.Draft, tests []*interfaces.QuestionTest) {
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, tests []*interfaces.QuestionTest, deadline int64) {
+	ctx, cancel := context.WithDeadline(ctx, time.UnixMilli(deadline))
+	defer cancel()
 	for _, t := range tests {
+		if s.now() >= deadline {
+			t.Check = notChecked(checkTimeout)
+			continue
+		}
 		t.Check = s.checkTest(ctx, caller, spec, draft, t)
 	}
 }
@@ -228,6 +247,8 @@ func valueText(value any) (string, bool) {
 	switch v := value.(type) {
 	case string:
 		return v, v != ""
+	case json.Number:
+		return v.String(), v != ""
 	case float64:
 		return strconv.FormatFloat(v, 'f', -1, 64), true
 	case int64:
@@ -315,6 +336,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 	}
 	set := func(i int, value string) {
 		fields[i].value, t.Slots[i].Value = value, value
+		t.Text = strings.ReplaceAll(t.Text, slotPlaceholder(i), value)
 	}
 	if t.Expect == interfaces.TEST_EXPECT_SAME_RECORD {
 		// Checked later to be one object type; values are taken from one row of its table.
