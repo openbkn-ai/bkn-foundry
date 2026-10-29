@@ -87,6 +87,21 @@ func (mr *MockRequirementAccessMockRecorder) FailDrafting(ctx, reason, updateTim
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FailDrafting", reflect.TypeOf((*MockRequirementAccess)(nil).FailDrafting), ctx, reason, updateTime)
 }
 
+// FailGenerating mocks base method.
+func (m *MockRequirementAccess) FailGenerating(ctx context.Context, reason string, updateTime int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FailGenerating", ctx, reason, updateTime)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FailGenerating indicates an expected call of FailGenerating.
+func (mr *MockRequirementAccessMockRecorder) FailGenerating(ctx, reason, updateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FailGenerating", reflect.TypeOf((*MockRequirementAccess)(nil).FailGenerating), ctx, reason, updateTime)
+}
+
 // FinishDrafting mocks base method.
 func (m *MockRequirementAccess) FinishDrafting(ctx context.Context, req *interfaces.Requirement) (bool, error) {
 	m.ctrl.T.Helper()
@@ -100,6 +115,21 @@ func (m *MockRequirementAccess) FinishDrafting(ctx context.Context, req *interfa
 func (mr *MockRequirementAccessMockRecorder) FinishDrafting(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinishDrafting", reflect.TypeOf((*MockRequirementAccess)(nil).FinishDrafting), ctx, req)
+}
+
+// FinishGenerating mocks base method.
+func (m *MockRequirementAccess) FinishGenerating(ctx context.Context, g *interfaces.QuestionGuidance) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FinishGenerating", ctx, g)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FinishGenerating indicates an expected call of FinishGenerating.
+func (mr *MockRequirementAccessMockRecorder) FinishGenerating(ctx, g any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinishGenerating", reflect.TypeOf((*MockRequirementAccess)(nil).FinishGenerating), ctx, g)
 }
 
 // GetDocument mocks base method.
@@ -133,6 +163,22 @@ func (mr *MockRequirementAccessMockRecorder) GetDocuments(ctx, projectID any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocuments", reflect.TypeOf((*MockRequirementAccess)(nil).GetDocuments), ctx, projectID)
 }
 
+// GetGuidance mocks base method.
+func (m *MockRequirementAccess) GetGuidance(ctx context.Context, projectID, questionID string) (*interfaces.QuestionGuidance, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGuidance", ctx, projectID, questionID)
+	ret0, _ := ret[0].(*interfaces.QuestionGuidance)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetGuidance indicates an expected call of GetGuidance.
+func (mr *MockRequirementAccessMockRecorder) GetGuidance(ctx, projectID, questionID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGuidance", reflect.TypeOf((*MockRequirementAccess)(nil).GetGuidance), ctx, projectID, questionID)
+}
+
 // GetRequirement mocks base method.
 func (m *MockRequirementAccess) GetRequirement(ctx context.Context, projectID string) (*interfaces.Requirement, bool, error) {
 	m.ctrl.T.Helper()
@@ -162,6 +208,21 @@ func (m *MockRequirementAccess) ListDocuments(ctx context.Context, projectID str
 func (mr *MockRequirementAccessMockRecorder) ListDocuments(ctx, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockRequirementAccess)(nil).ListDocuments), ctx, projectID)
+}
+
+// ListGuidance mocks base method.
+func (m *MockRequirementAccess) ListGuidance(ctx context.Context, projectID string) ([]*interfaces.QuestionGuidance, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListGuidance", ctx, projectID)
+	ret0, _ := ret[0].([]*interfaces.QuestionGuidance)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListGuidance indicates an expected call of ListGuidance.
+func (mr *MockRequirementAccessMockRecorder) ListGuidance(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGuidance", reflect.TypeOf((*MockRequirementAccess)(nil).ListGuidance), ctx, projectID)
 }
 
 // SetDocumentType mocks base method.
@@ -194,6 +255,21 @@ func (mr *MockRequirementAccessMockRecorder) StartDrafting(ctx, req, staleBefore
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartDrafting", reflect.TypeOf((*MockRequirementAccess)(nil).StartDrafting), ctx, req, staleBefore, discardDecisions)
 }
 
+// StartGenerating mocks base method.
+func (m *MockRequirementAccess) StartGenerating(ctx context.Context, g *interfaces.QuestionGuidance, staleBefore int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartGenerating", ctx, g, staleBefore)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StartGenerating indicates an expected call of StartGenerating.
+func (mr *MockRequirementAccessMockRecorder) StartGenerating(ctx, g, staleBefore any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartGenerating", reflect.TypeOf((*MockRequirementAccess)(nil).StartGenerating), ctx, g, staleBefore)
+}
+
 // SuggestDocumentType mocks base method.
 func (m *MockRequirementAccess) SuggestDocumentType(ctx context.Context, projectID, documentID, docType string, updateTime int64) (bool, error) {
 	m.ctrl.T.Helper()
@@ -207,6 +283,21 @@ func (m *MockRequirementAccess) SuggestDocumentType(ctx context.Context, project
 func (mr *MockRequirementAccessMockRecorder) SuggestDocumentType(ctx, projectID, documentID, docType, updateTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestDocumentType", reflect.TypeOf((*MockRequirementAccess)(nil).SuggestDocumentType), ctx, projectID, documentID, docType, updateTime)
+}
+
+// UpdateGuidance mocks base method.
+func (m *MockRequirementAccess) UpdateGuidance(ctx context.Context, g *interfaces.QuestionGuidance, readUpdateTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateGuidance", ctx, g, readUpdateTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateGuidance indicates an expected call of UpdateGuidance.
+func (mr *MockRequirementAccessMockRecorder) UpdateGuidance(ctx, g, readUpdateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGuidance", reflect.TypeOf((*MockRequirementAccess)(nil).UpdateGuidance), ctx, g, readUpdateTime)
 }
 
 // UpdateRequirement mocks base method.

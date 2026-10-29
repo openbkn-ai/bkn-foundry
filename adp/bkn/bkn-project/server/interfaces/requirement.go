@@ -429,6 +429,84 @@ type ScenarioTest struct {
 	Text string `json:"text"`
 }
 
+// Statuses of a question's test questions and guidance as stored.
+const (
+	GUIDANCE_STATUS_GENERATING = "generating"
+	GUIDANCE_STATUS_READY      = "ready"
+	GUIDANCE_STATUS_FAILED     = "failed"
+)
+
+// What a test question expects of the data: the record exists, does not, or two of its slots name
+// one record (an identifier and another way to name it).
+const (
+	TEST_EXPECT_EXISTS      = "exists"
+	TEST_EXPECT_NOT_EXISTS  = "not_exists"
+	TEST_EXPECT_SAME_RECORD = "same_record"
+)
+
+// Outcomes of checking a test question against the data. Only a passed one is asked after a
+// release.
+const (
+	TEST_CHECK_PASSED      = "passed"
+	TEST_CHECK_FAILED      = "failed"
+	TEST_CHECK_NOT_CHECKED = "not_checked"
+)
+
+// QuestionGuidance is one row of t_bkn_project_question_guidance: the test questions and
+// development guidance of a scenario question, for the specification version and question text
+// they were generated for.
+type QuestionGuidance struct {
+	ProjectID   string `json:"project_id"`
+	QuestionID  string `json:"question_id"`
+	SpecVersion int    `json:"spec_version"`
+	Question    string `json:"question"`
+	Status      string `json:"status"`
+	// Tests are the test questions, each with its data check.
+	Tests []*QuestionTest `json:"tests"`
+	// Guidance says how to answer the question on the network, as Markdown.
+	Guidance string `json:"guidance"`
+	// OntologySignature is the SHA-256 of the drafted items the guidance rests on.
+	OntologySignature string `json:"ontology_signature"`
+	// OutOfScope are further questions this one leads to that need more than it does.
+	OutOfScope []string `json:"out_of_scope"`
+	// DeletedTests counts the test questions people deleted.
+	DeletedTests int `json:"deleted_tests"`
+	// Error is why generating failed, as a code for the client to word.
+	Error       string      `json:"error,omitempty"`
+	RunID       string      `json:"-"`
+	AgentTaskID string      `json:"-"`
+	Runner      AccountInfo `json:"runner"`
+	CreateTime  int64       `json:"create_time"`
+	UpdateTime  int64       `json:"update_time"`
+}
+
+// QuestionTest is a scenario question asked with concrete values. Kind is paraphrase, boundary,
+// not_exist or variant; it says how the Agent meant it. Expect says what the data must show.
+type QuestionTest struct {
+	ID     string             `json:"id"`
+	Text   string             `json:"text"`
+	Kind   string             `json:"kind"`
+	Slots  []QuestionTestSlot `json:"slots"`
+	Expect string             `json:"expect"`
+	Edited bool               `json:"edited"`
+	Check  QuestionTestCheck  `json:"check"`
+}
+
+// QuestionTestSlot is one value a test question uses: the concept it belongs to, the property of
+// the concept's drafted object type it is a value of, and the value.
+type QuestionTestSlot struct {
+	ConceptID string `json:"concept_id"`
+	Property  string `json:"property"`
+	Value     string `json:"value"`
+}
+
+// QuestionTestCheck is what checking a test question against the data found. Reason is a code
+// when it failed or could not be checked.
+type QuestionTestCheck struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason,omitempty"`
+}
+
 //go:generate mockgen -source ../interfaces/requirement.go -destination ../interfaces/mock/mock_requirement.go
 type RequirementAccess interface {
 	// ListDocuments returns the project's documents oldest first, without content or blocks.
@@ -468,6 +546,22 @@ type RequirementAccess interface {
 	// FailDrafting marks every specification still drafting as failed with reason; drafting runs
 	// in the service process, so ones left drafting after a restart will never finish.
 	FailDrafting(ctx context.Context, reason string, updateTime int64) (int64, error)
+
+	// GetGuidance returns a question's test questions and guidance, and false when it has none.
+	GetGuidance(ctx context.Context, projectID string, questionID string) (*QuestionGuidance, bool, error)
+	// ListGuidance returns the test questions and guidance of every question of the project.
+	ListGuidance(ctx context.Context, projectID string) ([]*QuestionGuidance, error)
+	// StartGenerating writes g, generating, as the question's guidance unless it is generating
+	// already; one generating since before staleBefore is taken over. It reports whether it did.
+	StartGenerating(ctx context.Context, g *QuestionGuidance, staleBefore int64) (bool, error)
+	// UpdateGuidance writes the tests, deleted count and update time of ready guidance whose
+	// update time is still readUpdateTime; false means someone changed it meanwhile.
+	UpdateGuidance(ctx context.Context, g *QuestionGuidance, readUpdateTime int64) (bool, error)
+	// FinishGenerating records how the generating run g.RunID ended; false when another run took
+	// the guidance over.
+	FinishGenerating(ctx context.Context, g *QuestionGuidance) (bool, error)
+	// FailGenerating marks all guidance still generating as failed with reason, as FailDrafting.
+	FailGenerating(ctx context.Context, reason string, updateTime int64) (int64, error)
 }
 
 // Outcomes of uploading one file.
