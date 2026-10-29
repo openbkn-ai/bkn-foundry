@@ -89,3 +89,30 @@ type RegressionAccess interface {
 	// service process, so ones left running after a restart will never finish.
 	FailRunning(ctx context.Context, reason string, finishTime int64) (int64, error)
 }
+
+// Why a regression run failed as a whole.
+const (
+	// REGRESSION_ERROR_INTERRUPTED: the service stopped while it ran.
+	REGRESSION_ERROR_INTERRUPTED = "interrupted"
+	// REGRESSION_ERROR_DEFINITIONS_UNREADABLE: the release's definitions could not be read.
+	REGRESSION_ERROR_DEFINITIONS_UNREADABLE = "definitions_unreadable"
+)
+
+// Codes of a question that could not be asked, besides the answering service's own.
+const (
+	// REGRESSION_CODE_UNREACHABLE: the answering service could not be reached.
+	REGRESSION_CODE_UNREACHABLE = "unreachable"
+	// REGRESSION_CODE_CANCELLED: the answer was cancelled before it ended.
+	REGRESSION_CODE_CANCELLED = "cancelled"
+	// REGRESSION_CODE_TOOLS_UNAVAILABLE: no call of the answering Agent reached the network.
+	REGRESSION_CODE_TOOLS_UNAVAILABLE = "tools_unavailable"
+)
+
+type RegressionService interface {
+	// StartRegression starts the regression of release in the background, answering as runner with
+	// token, and returns it; false when one of the release is running already. A project without
+	// questions of the knowledge layer gets a regression with no questions, finished at once.
+	StartRegression(ctx context.Context, token string, release *Release, runner AccountInfo) (*Regression, bool, error)
+	// FailInterrupted fails the regressions a previous run of the service left running.
+	FailInterrupted(ctx context.Context) error
+}
