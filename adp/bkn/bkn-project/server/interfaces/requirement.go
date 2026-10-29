@@ -1,0 +1,397 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package interfaces
+
+import (
+	"context"
+	"errors"
+)
+
+// A project's requirement specification, rq-n, says what the knowledge network is for: business
+// scenarios, candidate concepts, scenario questions and business rules, drafted by bkn-agent from
+// the requirement documents the owner uploaded. Every drafted item quotes the documents, or says
+// why it has no basis in them. Conflicts between documents and modelling choices are listed for
+// the owner to settle; the agent proposes, rules check, people decide.
+
+// Requirement statuses as stored. A project without a row has not drafted one yet.
+const (
+	REQUIREMENT_STATUS_DRAFTING = "drafting"
+	REQUIREMENT_STATUS_READY    = "ready"
+	REQUIREMENT_STATUS_FAILED   = "failed"
+)
+
+// Requirement document types, in the order of authority for terms and rules.
+const (
+	REQUIREMENT_DOC_STANDARD = "standard"
+	REQUIREMENT_DOC_POLICY   = "policy"
+	REQUIREMENT_DOC_PRD      = "prd"
+	REQUIREMENT_DOC_OTHER    = "other"
+)
+
+// IsRequirementDocType tells whether docType is a requirement document type.
+func IsRequirementDocType(docType string) bool {
+	switch docType {
+	case REQUIREMENT_DOC_STANDARD, REQUIREMENT_DOC_POLICY, REQUIREMENT_DOC_PRD, REQUIREMENT_DOC_OTHER:
+		return true
+	}
+	return false
+}
+
+// Requirement document formats.
+const (
+	REQUIREMENT_FORMAT_MARKDOWN = "markdown"
+	REQUIREMENT_FORMAT_TEXT     = "text"
+)
+
+// Question layers: a knowledge question is answered by the ontology and its facts, and is asked
+// again over MCP after a release; a capability question needs a metric, function or skill that
+// another team builds.
+const (
+	REQUIREMENT_LAYER_KNOWLEDGE  = "knowledge"
+	REQUIREMENT_LAYER_CAPABILITY = "capability"
+)
+
+// Where a question's needs come from: its concepts' drafted items, or a person who set them.
+const (
+	REQUIREMENT_NEEDS_FROM_CONCEPTS = "concepts"
+	REQUIREMENT_NEEDS_FROM_PERSON   = "person"
+)
+
+// Kinds of drafted items a concept maps to or a question needs.
+const (
+	REQUIREMENT_ITEM_OBJECT_TYPE   = "object_type"
+	REQUIREMENT_ITEM_RELATION_TYPE = "relation_type"
+)
+
+// ErrRequirementHasDecisions is returned by StartDrafting when drafting again would discard the
+// conflict resolutions and modelling choices people made and the caller did not agree to that.
+var ErrRequirementHasDecisions = errors.New("requirement specification has decisions")
+
+// RequirementDocument is one row of t_bkn_project_requirement_document. Lists leave out the
+// content and blocks.
+type RequirementDocument struct {
+	ID         string             `json:"id"`
+	ProjectID  string             `json:"project_id"`
+	Name       string             `json:"name"`
+	DocType    string             `json:"doc_type"`
+	Format     string             `json:"format"`
+	Content    string             `json:"content,omitempty"`
+	Blocks     []RequirementBlock `json:"blocks,omitempty"`
+	SHA256     string             `json:"sha256"`
+	Size       int64              `json:"size"`
+	Uploader   AccountInfo        `json:"uploader"`
+	CreateTime int64              `json:"create_time"`
+	UpdateTime int64              `json:"update_time"`
+}
+
+// RequirementBlock is a part of a document's content between headings or blank lines. Start and
+// End are character offsets into the content.
+type RequirementBlock struct {
+	ID      string `json:"id"`
+	Heading string `json:"heading,omitempty"`
+	Start   int    `json:"start"`
+	End     int    `json:"end"`
+}
+
+// Requirement is one row of t_bkn_project_requirement: the project's current specification.
+type Requirement struct {
+	ProjectID string `json:"project_id"`
+	// Version is n of rq-n.
+	Version int             `json:"version"`
+	Status  string          `json:"status"`
+	Spec    RequirementSpec `json:"spec"`
+	// Inputs records what the specification was drafted from, to tell when it is out of date.
+	Inputs *RequirementInputs `json:"inputs,omitempty"`
+	// Error is why drafting failed, as a code for the client to word.
+	Error string `json:"error,omitempty"`
+	// RunID tells drafting runs apart: only the run that started drafting records its outcome.
+	RunID string `json:"-"`
+	// AgentTaskID is the bkn-agent task of the drafting.
+	AgentTaskID string      `json:"-"`
+	Drafter     AccountInfo `json:"drafter"`
+	CreateTime  int64       `json:"create_time"`
+	UpdateTime  int64       `json:"update_time"`
+}
+
+// RequirementInputs is what drafting read: the documents with their content hashes and types, the
+// project's catalogs and naming language, and the version of the checking rules.
+type RequirementInputs struct {
+	RulesVersion   int                        `json:"rules_version"`
+	Documents      []RequirementInputDocument `json:"documents"`
+	CatalogIDs     []string                   `json:"catalog_ids"`
+	NamingLanguage string                     `json:"naming_language"`
+}
+
+type RequirementInputDocument struct {
+	ID      string `json:"id"`
+	SHA256  string `json:"sha256"`
+	DocType string `json:"doc_type"`
+}
+
+// RequirementSpec is the specification. Item ids are the server's: s1, c1, q1, r1, k1 and f1.
+type RequirementSpec struct {
+	Scenarios []*RequirementScenario `json:"scenarios"`
+	Concepts  []*RequirementConcept  `json:"concepts"`
+	Questions []*RequirementQuestion `json:"questions"`
+	Rules     []*RequirementRule     `json:"rules"`
+	Conflicts []*RequirementConflict `json:"conflicts"`
+	Choices   []*RequirementChoice   `json:"choices"`
+	// Rejected are the drafted items the checks dropped, with why, so none is dropped unseen.
+	Rejected []*RequirementRejected `json:"rejected"`
+}
+
+// RequirementCitation is a passage of a document an item quotes. The agent gives the document and
+// the quote; the server finds the quote and records the block and offsets.
+type RequirementCitation struct {
+	DocumentID string `json:"document_id"`
+	Quote      string `json:"quote"`
+	BlockID    string `json:"block_id"`
+	Start      int    `json:"start"`
+	End        int    `json:"end"`
+}
+
+// RequirementItemRef names a drafted object type or relation type by its draft item id, which
+// becomes its BKN id when the draft is compiled.
+type RequirementItemRef struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+type RequirementScenario struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Actor    string `json:"actor"`
+	Trigger  string `json:"trigger"`
+	Decision string `json:"decision"`
+	// Knowledge is what the decision needs from this network.
+	Knowledge []string `json:"knowledge"`
+	// Capabilities are what other teams build: metrics with their definition, functions, skills
+	// and applications.
+	Capabilities []RequirementCapability `json:"capabilities"`
+	Loop         *RequirementLoop        `json:"loop,omitempty"`
+	Citations    []RequirementCitation   `json:"citations"`
+	// SupplementReason says why an item without a basis in the documents is needed.
+	SupplementReason string `json:"supplement_reason,omitempty"`
+	// Edited is set once a person changed the item.
+	Edited bool `json:"edited"`
+}
+
+type RequirementCapability struct {
+	// Kind is metric, function, skill or app.
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	Definition string `json:"definition,omitempty"`
+}
+
+// RequirementLoop is a scenario's operating loop, from what is discovered to what tracks it.
+type RequirementLoop struct {
+	Discover    string `json:"discover"`
+	Judge       string `json:"judge"`
+	Suggest     string `json:"suggest"`
+	Confirm     string `json:"confirm"`
+	Execute     string `json:"execute"`
+	StateChange string `json:"state_change"`
+	Track       string `json:"track"`
+}
+
+type RequirementConcept struct {
+	ID   string `json:"id"`
+	Term string `json:"term"`
+	// Category is object, event, property, relation, evidence or not_ontology.
+	Category          string `json:"category"`
+	Definition        string `json:"definition"`
+	NotOntologyReason string `json:"not_ontology_reason,omitempty"`
+	// MapsTo is the drafted item the concept is, when it is one.
+	MapsTo           *RequirementItemRef   `json:"maps_to,omitempty"`
+	Citations        []RequirementCitation `json:"citations"`
+	SupplementReason string                `json:"supplement_reason,omitempty"`
+	Edited           bool                  `json:"edited"`
+}
+
+type RequirementQuestion struct {
+	ID          string   `json:"id"`
+	Text        string   `json:"text"`
+	ScenarioIDs []string `json:"scenario_ids"`
+	// Type is point_in_time, provenance, filter, compare, aggregate, count, disambiguate, judge
+	// or metric.
+	Type  string `json:"type"`
+	Layer string `json:"layer"`
+	// Template is the question with slots; AnswerShape what an answer holds. Neither has values.
+	Template    string           `json:"template"`
+	AnswerShape string           `json:"answer_shape"`
+	Basis       RequirementBasis `json:"basis"`
+	// Needs are the drafted items the question depends on; NeedsSource says whether they follow
+	// its concepts or a person set them.
+	Needs            []RequirementItemRef  `json:"needs"`
+	NeedsSource      string                `json:"needs_source"`
+	Citations        []RequirementCitation `json:"citations"`
+	SupplementReason string                `json:"supplement_reason,omitempty"`
+	Edited           bool                  `json:"edited"`
+}
+
+// RequirementBasis is what a question rests on, as bkn-eval's answer sets name it.
+type RequirementBasis struct {
+	ConceptIDs []string `json:"concept_ids"`
+	Metrics    []string `json:"metrics"`
+	Functions  []string `json:"functions"`
+	Skills     []string `json:"skills"`
+}
+
+type RequirementRule struct {
+	ID        string `json:"id"`
+	Statement string `json:"statement"`
+	// CompilesTo is constraint, metric_definition, code_pattern, enum or other.
+	CompilesTo string                `json:"compiles_to"`
+	Citations  []RequirementCitation `json:"citations"`
+	Edited     bool                  `json:"edited"`
+}
+
+type RequirementConflict struct {
+	ID    string `json:"id"`
+	Topic string `json:"topic"`
+	// Kind is term, rule, goal, scope or scenario: it decides which document type prevails.
+	Kind  string                    `json:"kind"`
+	Sides []RequirementConflictSide `json:"sides"`
+	// SuggestedDocumentID is the side the order of authority prefers; empty when the sides are
+	// of equal authority.
+	SuggestedDocumentID string                 `json:"suggested_document_id,omitempty"`
+	Resolution          *RequirementResolution `json:"resolution,omitempty"`
+	// Deferred is set when the owner handed the conflict to the business to confirm: it stays
+	// unresolved.
+	Deferred bool `json:"deferred"`
+}
+
+type RequirementConflictSide struct {
+	RequirementCitation
+	// Position is what this side says, in a few words.
+	Position string `json:"position"`
+}
+
+type RequirementResolution struct {
+	// DocumentID is the side chosen; empty when Text states another conclusion.
+	DocumentID string      `json:"document_id,omitempty"`
+	Text       string      `json:"text,omitempty"`
+	Reason     string      `json:"reason"`
+	By         AccountInfo `json:"by"`
+	Time       int64       `json:"time"`
+}
+
+// RequirementChoice is a point where the ontology can be modelled more than one way. It never
+// blocks: undecided, the recommended option holds.
+type RequirementChoice struct {
+	ID                  string                     `json:"id"`
+	Question            string                     `json:"question"`
+	Options             []RequirementOption        `json:"options"`
+	RecommendedOptionID string                     `json:"recommended_option_id"`
+	Reason              string                     `json:"reason"`
+	Citations           []RequirementCitation      `json:"citations"`
+	Decision            *RequirementChoiceDecision `json:"decision,omitempty"`
+}
+
+type RequirementOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Consequence string `json:"consequence"`
+}
+
+type RequirementChoiceDecision struct {
+	OptionID string      `json:"option_id"`
+	Basis    string      `json:"basis"`
+	By       AccountInfo `json:"by"`
+	Time     int64       `json:"time"`
+}
+
+// RequirementRejected is a drafted item a check dropped. Reason is a code: quote_not_found,
+// number_not_in_quote or unknown_document.
+type RequirementRejected struct {
+	Kind   string `json:"kind"`
+	Text   string `json:"text"`
+	Reason string `json:"reason"`
+}
+
+// HasDecisions tells whether people resolved, deferred or chose anything in the specification.
+func (s *RequirementSpec) HasDecisions() bool {
+	for _, c := range s.Conflicts {
+		if c.Resolution != nil || c.Deferred {
+			return true
+		}
+	}
+	for _, c := range s.Choices {
+		if c.Decision != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// ScenarioQuestions are a project's scenario questions as publishing and the regression after a
+// release read them.
+type ScenarioQuestions struct {
+	// SpecVersion is n of the rq-n they come from; 0 when the project has no specification.
+	SpecVersion int `json:"spec_version"`
+	// UpdateTime is the specification's: it moves whenever the questions may have changed.
+	UpdateTime int64              `json:"update_time"`
+	Questions  []ScenarioQuestion `json:"questions"`
+}
+
+type ScenarioQuestion struct {
+	ID    string               `json:"id"`
+	Text  string               `json:"text"`
+	Layer string               `json:"layer"`
+	Needs []RequirementItemRef `json:"needs"`
+	// MissingItems are the needs the current draft no longer has.
+	MissingItems []RequirementItemRef `json:"missing_items"`
+	// Tests are the test questions whose data check passed.
+	Tests []ScenarioTest `json:"tests"`
+}
+
+type ScenarioTest struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+//go:generate mockgen -source ../interfaces/requirement.go -destination ../interfaces/mock/mock_requirement.go
+type RequirementAccess interface {
+	// ListDocuments returns the project's documents oldest first, without content or blocks.
+	ListDocuments(ctx context.Context, projectID string) ([]*RequirementDocument, error)
+	// GetDocuments returns the project's documents oldest first, with content and blocks.
+	GetDocuments(ctx context.Context, projectID string) ([]*RequirementDocument, error)
+	// GetDocument returns one document with content and blocks, and false when the project has
+	// no such document.
+	GetDocument(ctx context.Context, projectID string, documentID string) (*RequirementDocument, bool, error)
+	// CreateDocument stores doc and reports true, or reports false with the id of the document of
+	// the project that already has the same content.
+	CreateDocument(ctx context.Context, doc *RequirementDocument) (bool, string, error)
+	// SetDocumentType sets a document's type; it reports false when the project has no such
+	// document.
+	SetDocumentType(ctx context.Context, projectID string, documentID string, docType string,
+		updateTime int64) (bool, error)
+	// DeleteDocument removes a document; it reports false when the project has no such document.
+	DeleteDocument(ctx context.Context, projectID string, documentID string) (bool, error)
+
+	// GetRequirement returns the project's specification, and false when it has none.
+	GetRequirement(ctx context.Context, projectID string) (*Requirement, bool, error)
+	// StartDrafting writes req, in the drafting state, as the project's specification unless the
+	// project is drafting already; it reports whether it did. A specification drafting since
+	// before staleBefore is taken over. One with decisions is replaced only when
+	// discardDecisions is set; otherwise it returns ErrRequirementHasDecisions.
+	StartDrafting(ctx context.Context, req *Requirement, staleBefore int64, discardDecisions bool) (bool, error)
+	// UpdateRequirement writes the spec and update time of a ready specification whose update
+	// time is still readUpdateTime; false means someone changed it meanwhile.
+	UpdateRequirement(ctx context.Context, req *Requirement, readUpdateTime int64) (bool, error)
+	// FinishDrafting records how the drafting run req.RunID ended; it reports false when another
+	// run took the specification over.
+	FinishDrafting(ctx context.Context, req *Requirement) (bool, error)
+	// FailDrafting marks every specification still drafting as failed with reason; drafting runs
+	// in the service process, so ones left drafting after a restart will never finish.
+	FailDrafting(ctx context.Context, reason string, updateTime int64) (int64, error)
+}
+
+// RequirementService serves the requirement specification to the rest of bkn-project.
+type RequirementService interface {
+	// ScenarioQuestions returns the project's scenario questions with their needs. A project
+	// without a ready specification has none; that is no error.
+	ScenarioQuestions(ctx context.Context, projectID string) (*ScenarioQuestions, error)
+}
