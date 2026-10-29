@@ -179,6 +179,11 @@ func (ba *bknAgentAccess) AnswerOnNetwork(ctx context.Context, token string,
 		req.AgentID, req.KNID, respCode)
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http execution failed")
+		// The reply had begun when reading its body failed, as a broken connection or a timeout
+		// does: bkn-agent was reached. A caller giving up is its own doing.
+		if respCode == http.StatusOK && ctx.Err() == nil {
+			return nil, fmt.Errorf("%w: read stream: %v", interfaces.ErrBknAgentAnswerCut, err)
+		}
 		return nil, fmt.Errorf("answer on network %s: %w", req.KNID, err)
 	}
 	if respCode != http.StatusOK {

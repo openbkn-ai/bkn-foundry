@@ -219,6 +219,37 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			}
 		})
 
+		Convey("A stream whose connection breaks after the reply started is cut short\n", func() {
+			broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				// A declared length the body never reaches makes the client's read fail midway.
+				w.Header().Set("Content-Length", "100000")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(sse([2]string{"meta", `{"thread_id":"th1","agent_id":"studio_smart_qa"}`})))
+				w.(http.Flusher).Flush()
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					_ = conn.Close()
+				}
+			}))
+			defer broken.Close()
+			cut := &bknAgentAccess{httpClient: rest.NewHTTPClient(), baseUrl: broken.URL + "/api/bkn-agent/v1"}
+
+			_, err := cut.AnswerOnNetwork(ctx, "Bearer t", req)
+
+			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeTrue)
+		})
+
+		Convey("A caller that gives up is not a cut answer\n", func() {
+			cancelled, cancel := context.WithCancel(ctx)
+			cancel()
+
+			_, err := ba.AnswerOnNetwork(cancelled, "Bearer t", req)
+
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeFalse)
+		})
+
 		Convey("A request that does not go through is an error, but not a cut answer\n", func() {
 			server.Close()
 
