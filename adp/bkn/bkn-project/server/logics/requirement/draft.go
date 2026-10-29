@@ -592,6 +592,16 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	version := 1
 	if ok && previous.Version > 0 {
 		version = previous.Version
+		// A specification an ontology confirmation was made against is frozen: drafting again
+		// starts the next version.
+		draft, found, err := s.da.GetDraft(ctx, projectID)
+		if err != nil {
+			span.SetStatus(codes.Error, "Get draft failed")
+			return nil, internalError(ctx, "Get draft failed", err)
+		}
+		if found && draft.Items.Confirmation != nil && draft.Items.Confirmation.RequirementVersion == previous.Version {
+			version++
+		}
 	}
 
 	now := s.now()

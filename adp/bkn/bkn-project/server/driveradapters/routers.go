@@ -139,6 +139,16 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PATCH("/projects/:project_id/requirements/documents/:document_id", r.SetRequirementDocumentTypeByEx)
 	apiV1.DELETE("/projects/:project_id/requirements/documents/:document_id", r.DeleteRequirementDocumentByEx)
 
+	// The requirement specification of a project; requirements:draft is served with the other
+	// project actions.
+	apiV1.GET("/projects/:project_id/requirements", r.GetRequirementByEx)
+	apiV1.POST("/projects/:project_id/requirements/items/:kind", r.AddRequirementItemByEx)
+	apiV1.PATCH("/projects/:project_id/requirements/items/:kind/:item_id", r.EditRequirementItemByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/items/:kind/:item_id", r.DeleteRequirementItemByEx)
+	apiV1.PUT("/projects/:project_id/requirements/concepts/:concept_id/maps-to", r.MapRequirementConceptByEx)
+	apiV1.PUT("/projects/:project_id/requirements/conflicts/:conflict_id", r.ResolveRequirementConflictByEx)
+	apiV1.PUT("/projects/:project_id/requirements/choices/:choice_id", r.DecideRequirementChoiceByEx)
+
 	logger.Info("RestHandler RegisterPublic")
 }
 
