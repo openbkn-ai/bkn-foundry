@@ -289,3 +289,23 @@ func Test_RequirementSpecification(t *testing.T) {
 		})
 	})
 }
+
+func Test_SuggestDocumentType(t *testing.T) {
+	Convey("Test SuggestDocumentType\n", t, func() {
+		db, smock, err := sqlmock.New()
+		So(err, ShouldBeNil)
+		defer func() { _ = db.Close() }()
+		ra := &requirementAccess{db: db}
+
+		Convey("It types a document only while it is still typed other\n", func() {
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_requirement_document SET f_doc_type = ?, f_update_time = ? WHERE f_id = ? AND f_project_id = ? AND f_doc_type = ?")).
+				WithArgs("policy", int64(9), "d1", "p1", "other").WillReturnResult(sqlmock.NewResult(0, 0))
+
+			ok, err := ra.SuggestDocumentType(context.Background(), "p1", "d1", "policy", 9)
+
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeFalse)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+	})
+}
