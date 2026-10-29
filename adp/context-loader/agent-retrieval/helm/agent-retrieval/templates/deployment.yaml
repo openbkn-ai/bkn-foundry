@@ -1,3 +1,4 @@
+{{- $outboundTLS := .Values.outboundTLS | default dict -}}
 {{- if semverCompare ">=1.16-0" .Capabilities.KubeVersion.GitVersion -}}
 apiVersion: apps/v1
 {{- else -}}
@@ -166,6 +167,11 @@ spec:
             failureThreshold: {{ .Values.service.livenessProbe.failureThreshold }}
           {{- end}}
           volumeMounts:
+            {{- if $outboundTLS.caSecretName }}
+            - name: outbound-tls-ca
+              mountPath: /sysvol/outbound-tls
+              readOnly: true
+            {{- end }}
             - name: {{ .Release.Name }}-config
               mountPath: /sysvol/config/
             - name: {{ .Release.Name }}-secret
@@ -184,6 +190,14 @@ spec:
               memory: {{ .Values.resources.limits.memory }}
           {{ end }}
       volumes:
+        {{- if $outboundTLS.caSecretName }}
+        - name: outbound-tls-ca
+          secret:
+            secretName: {{ $outboundTLS.caSecretName | quote }}
+            items:
+              - key: {{ $outboundTLS.caSecretKey | default "ca.crt" | quote }}
+                path: ca.crt
+        {{- end }}
         - name: {{ .Release.Name }}-config
           configMap:
             name: {{ .Release.Name }}

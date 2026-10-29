@@ -10,6 +10,7 @@ import (
 	"oss-gateway/pkg/adapter"
 	"oss-gateway/pkg/crypto"
 	"oss-gateway/pkg/errors"
+	"oss-gateway/pkg/outboundtls"
 	"oss-gateway/pkg/utils"
 	"strings"
 
@@ -85,30 +86,35 @@ type CreateStorageRequest struct {
 }
 
 type UpdateStorageRequest struct {
-	StorageName      string `json:"storage_name"`
-	Endpoint         string `json:"endpoint"`
-	BucketName       string `json:"bucket_name"`
-	AccessKeyID      string `json:"access_key_id"`
-	AccessKeySecret  string `json:"access_key_secret"`
-	Region           string `json:"region"`
-	IsDefault        *bool  `json:"is_default"`
-	IsEnabled        *bool  `json:"is_enabled"`
-	InternalEndpoint string `json:"internal_endpoint"`
+	TLS              *outboundtls.Change `json:"tls_change,omitempty"`
+	InternalTLS      *outboundtls.Change `json:"internal_tls_change,omitempty"`
+	StorageName      string              `json:"storage_name"`
+	Endpoint         string              `json:"endpoint"`
+	BucketName       string              `json:"bucket_name"`
+	AccessKeyID      string              `json:"access_key_id"`
+	AccessKeySecret  string              `json:"access_key_secret"`
+	Region           string              `json:"region"`
+	IsDefault        *bool               `json:"is_default"`
+	IsEnabled        *bool               `json:"is_enabled"`
+	InternalEndpoint string              `json:"internal_endpoint"`
 }
 
 type StorageResponse struct {
-	StorageID        string `json:"storage_id"`
-	StorageName      string `json:"storage_name"`
-	VendorType       string `json:"vendor_type"`
-	Endpoint         string `json:"endpoint"`
-	BucketName       string `json:"bucket_name"`
-	Region           string `json:"region"`
-	IsDefault        bool   `json:"is_default"`
-	IsEnabled        bool   `json:"is_enabled"`
-	InternalEndpoint string `json:"internal_endpoint"`
-	SiteID           string `json:"site_id"`
-	CreatedAt        string `json:"created_at"`
-	UpdatedAt        string `json:"updated_at"`
+	TLSPolicies      map[string]outboundtls.Policy `json:"tls_policies,omitempty"`
+	TLS              *outboundtls.Policy           `json:"tls,omitempty"`
+	InternalTLS      *outboundtls.Policy           `json:"internal_tls,omitempty"`
+	StorageID        string                        `json:"storage_id"`
+	StorageName      string                        `json:"storage_name"`
+	VendorType       string                        `json:"vendor_type"`
+	Endpoint         string                        `json:"endpoint"`
+	BucketName       string                        `json:"bucket_name"`
+	Region           string                        `json:"region"`
+	IsDefault        bool                          `json:"is_default"`
+	IsEnabled        bool                          `json:"is_enabled"`
+	InternalEndpoint string                        `json:"internal_endpoint"`
+	SiteID           string                        `json:"site_id"`
+	CreatedAt        string                        `json:"created_at"`
+	UpdatedAt        string                        `json:"updated_at"`
 }
 
 func NewStorageService(repo repository.StorageRepository, crypto *crypto.AESCrypto, storageCache *cache.StorageCache, config *config.AppConfig, log *logrus.Entry) StorageService {
@@ -228,7 +234,7 @@ func (s *storageService) Create(ctx context.Context, req *CreateStorageRequest) 
 		SiteID:           req.SiteID,
 	}
 
-	if err := s.repo.Create(ctx, storage); err != nil {
+	if err := s.saveWithTrust(ctx, storage, true, nil, nil); err != nil {
 		return "", fmt.Errorf("failed to create storage: %w", err)
 	}
 
@@ -313,7 +319,7 @@ func (s *storageService) Update(ctx context.Context, storageID string, req *Upda
 		storage.InternalEndpoint = req.InternalEndpoint
 	}
 
-	if err := s.repo.Update(ctx, storage); err != nil {
+	if err := s.saveWithTrust(ctx, storage, false, req.TLS, req.InternalTLS); err != nil {
 		return err
 	}
 
@@ -345,7 +351,20 @@ func (s *storageService) Get(ctx context.Context, storageID string) (*StorageRes
 		return nil, err
 	}
 
-	return s.toResponse(storage), nil
+	resp := s.toResponse(storage)
+	resp.TLSPolicies, err = outboundtls.Policies(ctx, "storage:"+storage.StorageID)
+	if err != nil {
+		return nil, err
+	}
+	resp.TLS, err = outboundtls.Read(ctx, "storage:"+storage.StorageID, storage.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+	resp.InternalTLS, err = outboundtls.Read(ctx, "storage:"+storage.StorageID, storage.InternalEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (s *storageService) List(ctx context.Context, req *ListStorageRequest) (*ListStorageResponse, error) {

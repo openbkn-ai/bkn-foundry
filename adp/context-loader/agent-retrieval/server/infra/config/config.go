@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/outboundtls"
+
 	"github.com/creasty/defaults"
 	bknotel "github.com/openbkn-ai/bkn-foundry/comm-go/otel"
 	"github.com/spf13/viper"
@@ -31,6 +33,7 @@ import (
 
 // Config configuration
 type Config struct {
+	OutboundTLS          outboundtls.Config     `yaml:"outbound_tls"`
 	Project              Project                `yaml:"project"`
 	OAuth                OAuthConfig            `yaml:"oauth"`
 	BknBackend           PrivateBaseConfig      `yaml:"bkn_backend"`

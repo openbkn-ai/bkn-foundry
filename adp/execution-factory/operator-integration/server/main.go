@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab"
@@ -142,6 +146,19 @@ func (s *Server) Stop(ctx context.Context) {
 func main() {
 	// Initialize global configuration.
 	config := config.NewConfigLoader()
+	// Complete upgrade-time enrollment before constructing reconcilers/clients.
+	trustDB := db.NewDBPool()
+	trust, err := outboundtls.New(config.OutboundTLS, outboundtls.SQLStore{DB: trustDB})
+	if err != nil {
+		log.Fatalf("outbound TLS configuration invalid: %v", err)
+		return
+	}
+	if err = trust.BootstrapQuery(context.Background(), trustDB, "SELECT CONCAT('mcp:', f_mcp_id), COALESCE(f_url, '') FROM t_mcp_server_config UNION SELECT CONCAT('mcp:', f_mcp_id), COALESCE(f_url, '') FROM t_mcp_server_release UNION SELECT CONCAT('toolbox:', f_box_id), COALESCE(f_svc_url, '') FROM t_toolbox UNION SELECT CONCAT('toolbox:', t.f_box_id), COALESCE(m.f_svc_url, '') FROM t_tool t JOIN t_metadata_api m ON t.f_source_id = m.f_version JOIN t_toolbox b ON b.f_box_id = t.f_box_id WHERE COALESCE(b.f_svc_url, '') = ''"); err != nil {
+		log.Fatalf("outbound TLS upgrade failed: %v", err)
+		return
+	}
+
+	outboundtls.SetDefault(trust)
 	// Set error code language.
 	common.SetLang(config.Project.Language)
 	s := &Server{

@@ -222,3 +222,40 @@ See `VERSION` in the project root.
 
 - **Team**: AISHU ADP
 - **Docs**: See `docs/` (PRD, APIs, releases).
+
+### Outbound TLS and upgrade (schema 0.2.1)
+
+Outbound HTTPS verifies the certificate chain and hostname against the system trust
+store. An optional private CA is mounted from a Secret:
+
+```yaml
+outboundTLS:
+  caSecretName: private-ca
+  caSecretKey: ca.crt
+```
+
+The Secret key must contain PEM CA certificates. A missing or malformed bundle is
+a startup error. Add the CA in addition to the system roots; a CA alone cannot fix
+an ingress certificate whose SAN does not match the access address.
+
+The runtime image now includes `ca-certificates`. Configuration is validated before
+handlers are constructed. For a configured HTTPS dependency whose certificate
+cannot be verified through a CA (including a hostname mismatch), explicitly pin
+its leaf certificate:
+
+```yaml
+outboundTLS:
+  endpoints:
+    - url: https://private-service.example:443
+      fingerprint: <64-character SHA-256 leaf-certificate digest>
+      skip_verify: false
+```
+
+Each entry applies only to its exact hostname and port. The normal chain/hostname
+checks remain enabled for other endpoints. A changed pinned certificate is rejected;
+inspect it and update the saved Helm configuration explicitly. Pin and skip cannot
+be combined. `skip_verify` is an explicit per-endpoint exception, default false.
+No certificate is learned from a runtime request. Plain HTTP dependencies are
+unchanged. In the application YAML the corresponding fields are
+`outbound_tls.ca_file` and `outbound_tls.endpoints`; Helm mounts the optional bundle
+at `/sysvol/outbound-tls/ca.crt`.

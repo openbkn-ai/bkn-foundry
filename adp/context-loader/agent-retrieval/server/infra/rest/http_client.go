@@ -9,7 +9,6 @@ package rest
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/outboundtls"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -62,15 +62,14 @@ func NewRawHTTPClientWithOptions(opts HTTPClientOptions) *http.Client {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-		Transport: &http.Transport{
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		Transport: outboundtls.Wrap(&http.Transport{
 			MaxIdleConnsPerHost:   100,              //nolint:mnd
 			MaxIdleConns:          100,              //nolint:mnd
 			IdleConnTimeout:       90 * time.Second, //nolint:mnd
 			TLSHandshakeTimeout:   10 * time.Second, //nolint:mnd
 			ExpectContinueTimeout: 30 * time.Second, //nolint:mnd
 			DisableKeepAlives:     false,
-		},
+		}),
 		Timeout: time.Duration(opts.TimeOut) * time.Second,
 	}
 

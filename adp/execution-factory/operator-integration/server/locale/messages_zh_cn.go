@@ -9,6 +9,17 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"AgentOperatorIntegration.BadGateway.TLS_ENROLLMENT_FAILED":         "无法检查端点证书，请检查 HTTPS 连通性后重试。",
+		"AgentOperatorIntegration.BadRequest.TLS_POLICY_INVALID":            "证书信任策略无效。请提供 SHA-256 证书指纹或显式跳过开关，并提供预期的已保存策略。",
+		"AgentOperatorIntegration.BadRequest.TLS_ENDPOINT_INVALID":          "证书信任策略要求主机名和端口有效的 HTTPS 地址。",
+		"AgentOperatorIntegration.Conflict.TLS_TRUST_CONFLICT":              "已保存的证书信任策略发生变化，请重新读取后再确认信任。",
+		"AgentOperatorIntegration.BadGateway.TLS_CERTIFICATE_CHANGED":       "服务器证书已变化。请核实端点身份，并对该登记对象显式重新信任后重试。",
+		"AgentOperatorIntegration.BadGateway.TLS_CERTIFICATE_EXPIRED":       "服务器证书不在有效期内。请更新证书并确认新指纹。",
+		"AgentOperatorIntegration.BadGateway.TLS_CERTIFICATE_MISSING":       "HTTPS 端点未提供证书。",
+		"AgentOperatorIntegration.BadGateway.TLS_TRUST_REQUIRED":            "该登记对象尚无已保存的证书策略，请完成证书登记后重试。",
+		"AgentOperatorIntegration.ServiceUnavailable.TLS_TRUST_UNAVAILABLE": "证书信任存储不可用，请恢复后重试；证书校验未被关闭。",
+		"AgentOperatorIntegration.ServiceUnavailable.TLS_CA_INVALID":        "无法加载配置的 CA 证书包，请检查 Secret 挂载和 PEM 内容。",
+
 		"Public.UnprocessableEntity":                                                     "执行输入校验失败，请修正输入后重试。",
 		"AgentOperatorIntegration.BadGateway.OSSGatewayFailed":                           "对象存储服务不可用，请检查 OSS 网关配置或重新上传 Skill 包请联系管理员",
 		"AgentOperatorIntegration.BadRequest.CategoryNameEmpty":                          "算子分类名称不能为空请联系管理员",

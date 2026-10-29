@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/creasty/defaults"
 	"github.com/go-playground/validator/v10"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
@@ -32,6 +34,7 @@ const (
 
 // Config configuration.
 type Config struct {
+	OutboundTLS             outboundtls.Config        `yaml:"outbound_tls"`
 	Project                 Project                   `yaml:"project"`
 	OAuth                   OAuthConfig               `yaml:"oauth"`
 	DB                      DBConfig                  `yaml:"db"`

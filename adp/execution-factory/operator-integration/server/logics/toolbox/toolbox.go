@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	infracommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -65,6 +67,14 @@ func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToo
 
 	// Convert toolbox database model to toolbox information.
 	resp = s.toolBoxDBToToolBoxToolInfo(ctx, toolBox)
+	resp.TLSPolicies, err = outboundtls.Policies(ctx, "toolbox:"+toolBox.BoxID)
+	if err != nil {
+		return nil, err
+	}
+	resp.TLS, err = outboundtls.Read(ctx, "toolbox:"+toolBox.BoxID, toolBox.ServerURL)
+	if err != nil {
+		return nil, err
+	}
 	userIDs := []string{toolBox.CreateUser, toolBox.UpdateUser, toolBox.ReleaseUser}
 
 	// Get the tools under the toolbox.
@@ -135,6 +145,9 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 			_ = tx.Commit()
 		}
 	}()
+	if err = outboundtls.Forget(ctx, "toolbox:"+req.BoxID, outboundtls.SQLStore{DB: tx}); err != nil {
+		return nil, err
+	}
 	err = s.deleteToolBox(ctx, tx, req.BoxID)
 	if err != nil {
 		return

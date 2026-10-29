@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/creasty/defaults"
 	"github.com/google/uuid"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -275,11 +277,14 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 		boxDB.ReleaseUser = userID
 		boxDB.ReleaseTime = time.Now().UnixNano()
 	}
-	_, err = s.ToolBoxDB.InsertToolBox(ctx, tx, boxDB)
+	boxDB.BoxID, err = s.ToolBoxDB.InsertToolBox(ctx, tx, boxDB)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("insert toolbox failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if err = enrollImportedBoxTrust(ctx, tx, boxDB, metadataDBs); err != nil {
+		return nil, err
 	}
 	// Process metadata.
 	metadataMap := map[string]interfaces.IMetadataDB{}
@@ -357,6 +362,9 @@ func (s *ToolServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, toolBo
 	if item.Status == interfaces.BizStatusPublished {
 		toolBoxDB.ReleaseUser = userID
 		toolBoxDB.ReleaseTime = time.Now().UnixNano()
+	}
+	if err = enrollImportedBoxTrust(ctx, tx, toolBoxDB, metadataDBs); err != nil {
+		return err
 	}
 	err = s.ToolBoxDB.UpdateToolBox(ctx, tx, toolBoxDB)
 	if err != nil {
@@ -718,4 +726,20 @@ func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*mod
 		}
 	}
 	return
+}
+
+// Imports may retain a legacy empty toolbox URL and use each tool's metadata URL.
+func enrollImportedBoxTrust(ctx context.Context, tx *sql.Tx, box *model.ToolboxDB, metadata []interfaces.IMetadataDB) error {
+	store := outboundtls.SQLStore{DB: tx}
+	if err := outboundtls.Apply(ctx, "toolbox:"+box.BoxID, box.ServerURL, nil, store); err != nil {
+		return err
+	}
+	if box.ServerURL == "" {
+		for _, item := range metadata {
+			if err := outboundtls.Apply(ctx, "toolbox:"+box.BoxID, item.GetServerURL(), nil, store); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

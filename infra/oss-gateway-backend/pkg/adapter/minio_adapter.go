@@ -2,12 +2,13 @@ package adapter
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"oss-gateway/pkg/outboundtls"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -44,15 +45,11 @@ func NewMinIOAdapter(config StorageConfig) (*MinIOAdapter, error) {
 		options.BucketLookup = minio.BucketLookupDNS
 	}
 
-	// ECEPH private deployments may use self-signed certificates, so their HTTPS
-	// endpoints retain the existing certificate-verification exception.
-	if config.VendorType == VendorECEPH && config.UseSSL {
-		options.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		}
+	transport, err := minio.DefaultTransport(config.UseSSL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create storage transport: %w", err)
 	}
+	options.Transport = outboundtls.Bind(transport, "storage:"+config.StorageID, "https://"+endpoint, nil)
 
 	client, err := minio.New(endpoint, options)
 	if err != nil {

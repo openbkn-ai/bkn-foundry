@@ -1117,6 +1117,32 @@ components:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   schemas:
+    TLSPolicy:
+      type: object
+      additionalProperties: false
+      required: [fingerprint, skip_verify]
+      description: 公共 CA 校验使用空指纹；非空 SHA-256 指纹固定服务器证书。skip_verify 默认关闭，不能与指纹同时设置。
+      properties:
+        fingerprint:
+          type: string
+          pattern: '^([a-fA-F0-9]{64})?$'
+        skip_verify:
+          type: boolean
+          default: false
+    TLSChange:
+      type: object
+      additionalProperties: false
+      required: [expected, policy]
+      description: '显式重新信任，随登记对象的既有更新接口提交；expected 不匹配返回 409，不会覆盖并发变更。省略 tls_change 保留原策略。 Errors: 400 TLS_POLICY_INVALID/TLS_ENDPOINT_INVALID; 409 TLS_TRUST_CONFLICT; 502 TLS_CERTIFICATE_CHANGED/TLS_CERTIFICATE_EXPIRED/TLS_CERTIFICATE_MISSING/TLS_ENROLLMENT_FAILED; 503 TLS_TRUST_UNAVAILABLE.'
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          description: 可选，指定该登记对象已有信任记录的 HTTPS 地址；默认使用当前登记地址。
+        expected:
+          $ref: '#/components/schemas/TLSPolicy'
+        policy:
+          $ref: '#/components/schemas/TLSPolicy'
     BizStatus:
       type: string
       enum:
@@ -1234,6 +1260,8 @@ components:
         - box_desc
         - box_category
       properties:
+        tls_change:
+          $ref: '#/components/schemas/TLSChange'
         box_name:
           type: string
         box_desc:
@@ -1344,6 +1372,13 @@ components:
         工具箱详情。与列表用的 `ToolBoxInfo` 只差一处：这里的 `tools` 是**工具对象
         数组**，列表那边是名称字符串数组。
       properties:
+        tls:
+          $ref: '#/components/schemas/TLSPolicy'
+        tls_policies:
+          type: object
+          description: 该登记对象已保存的全部 HTTPS authority 策略（含历史和元数据回退地址）。
+          additionalProperties:
+            $ref: '#/components/schemas/TLSPolicy'
         box_id:
           type: string
         box_name:

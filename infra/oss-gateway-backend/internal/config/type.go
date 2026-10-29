@@ -1,6 +1,9 @@
 package config
 
+import "oss-gateway/pkg/outboundtls"
+
 type AppConfig struct {
+	OutboundTLS    outboundtls.Config
 	CommonConfig   CommonConfig
 	DatabaseConfig DatabaseConfig
 	RedisConfig    RedisConfig

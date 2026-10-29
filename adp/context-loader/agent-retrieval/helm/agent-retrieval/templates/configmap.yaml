@@ -1,3 +1,4 @@
+{{- $outboundTLS := .Values.outboundTLS | default dict -}}
 {{- if or (lt (int .Values.service.sandboxPort) 1) (gt (int .Values.service.sandboxPort) 65535) }}
 {{- fail "service.sandboxPort must be between 1 and 65535" }}
 {{- end }}
@@ -12,6 +13,9 @@ metadata:
 data:
   agent-retrieval.yaml: |
     # Configuration file path: /sysvol/conf/agent-retrieval.yaml
+    outbound_tls:
+      ca_file: {{ if $outboundTLS.caSecretName }}"/sysvol/outbound-tls/ca.crt"{{ else }}""{{ end }}
+      endpoints: {{ $outboundTLS.endpoints | default list | toJson }}
     project:
       language: {{ .Values.service.language }}
       host: "0.0.0.0"

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -432,7 +434,7 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	if err = proxyexecution.AuthorizeOutbound(ctx, s.ProxyAuthorizer, s.ProxyAudit); err != nil {
 		return nil, err
 	}
-	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
+	resp, err = s.Proxy.HandlerRequest(outboundtls.WithScope(ctx, "toolbox:"+tool.BoxID), proxyReq)
 	if err == nil && resp != nil {
 		// Provenance is not accepted from a function's result/body or from a
 		// third-party response. Only the local versioned runtime supplies it.

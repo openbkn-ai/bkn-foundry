@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/outboundtls"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -80,6 +81,11 @@ type Server struct {
 // state rather than a misconfiguration to fail on.
 func Boot(opts Options) (*App, error) {
 	cfg := config.NewConfigLoader()
+	trust, err := outboundtls.New(cfg.OutboundTLS, nil)
+	if err != nil {
+		return nil, err
+	}
+	outboundtls.SetDefault(trust)
 	var evidence *bkntrace.EvidencePublisherRuntime
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED")), "true") {
 		runtime, err := bkntrace.NewEvidencePublisherRuntime()

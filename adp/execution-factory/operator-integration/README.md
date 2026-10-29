@@ -143,3 +143,80 @@ the target. See the
 This tool is used to register, update, query, delete, publish, offline and other operations on operators.
 
 [Tool introduction](./server/tests/tool/README.MD)
+
+### Outbound TLS and upgrade (schema 0.2.1)
+
+Outbound HTTPS verifies the certificate chain and hostname against the system trust
+store. An optional private CA is mounted from a Secret:
+
+```yaml
+outboundTLS:
+  caSecretName: private-ca
+  caSecretKey: ca.crt
+```
+
+The Secret key must contain PEM CA certificates. A missing or malformed bundle is
+a startup error. Add the CA in addition to the system roots; a CA alone cannot fix
+an ingress certificate whose SAN does not match the access address.
+
+Run the ordinary schema migrator before deploying this binary. The additive
+`t_outbound_tls_trust` table is introduced in the 0.2.1 fresh-install and upgrade
+scripts. Before handlers or reconcilers start, the service enrolls the existing
+MCP draft/released URLs and toolbox URLs. It uses a credential-free TLS handshake
+only. Publicly trusted endpoints retain normal CA verification; untrusted/private
+certificates are saved as SHA-256 leaf-certificate fingerprints. This covers the
+default ingress fake certificate, including its missing IP SAN. Enrollment failure
+(e.g. an unavailable endpoint or an expired certificate) stops startup with the
+registration ID. Already saved policies are retained without probing on later
+starts and repeated upgrades.
+
+New MCP/toolbox registrations and URL changes enroll their trust in the same
+transaction as the registration. Ordinary requests never enroll or refresh a
+certificate. Pins and explicit exceptions belong to one registration and HTTPS
+authority (hostname plus port); redirects cannot inherit another authority's
+exception. HTTP service-to-service calls keep their existing behavior.
+
+A changed pin fails with `TLS_CERTIFICATE_CHANGED`. Inspect the replacement
+certificate through your normal certificate-distribution process. The fingerprint
+can also be read without sending application credentials:
+
+```sh
+openssl s_client -connect mcp.example.com:443 -servername mcp.example.com </dev/null 2>/dev/null | openssl x509 -outform DER | openssl dgst -sha256
+```
+
+Read the saved `tls` policy from MCP `base_info.tls` or the toolbox detail's `tls`.
+Explicitly re-trust through the existing authenticated **full update** endpoint:
+`PUT /api/agent-operator-integration/v1/mcp/{mcp_id}` or
+`PUT /api/agent-operator-integration/v1/tool-box/{box_id}`. Include all the endpoint's
+usual required update fields, adding this JSON fragment (replace the example
+fingerprints with the saved and inspected SHA-256 hex digests):
+
+```json
+{
+  "tls_change": {
+    "expected": {"fingerprint": "<saved 64-character digest>", "skip_verify": false},
+    "policy": {"fingerprint": "<replacement 64-character digest>", "skip_verify": false}
+  }
+}
+```
+
+The CLI may submit the same PUT request. The existing registration's `modify`
+permission is required. A concurrent trust change returns HTTP 409; read the policy
+again before retrying. Omitting `tls_change` preserves trust. Use an empty fingerprint and
+`skip_verify: false` for ordinary CA verification. A per-registration emergency
+exception uses an empty fingerprint and `skip_verify: true`; it defaults to false
+and cannot be combined with a pin. An optional `tls_change.endpoint` addresses an already
+enrolled previous HTTPS authority for that same registration. Certificate expiry
+requires certificate renewal; it is not silently accepted by a pin. Runtime trust
+store failures reject the request even if a connection was previously pooled.
+
+Configured private service dependencies (as opposed to registered MCP/toolboxes)
+may specify `outboundTLS.endpoints` entries with `url`, `fingerprint`, and
+`skip_verify`. These explicit configuration policies survive pod restarts in the
+Helm configuration. There is no global verification-disable switch. Reverting the
+binary does not require deleting the additive trust table; retain it with normal
+database backups so a later rollout does not lose established trust.
+
+The authorized detail response also includes `tls_policies`, keyed by HTTPS
+authority, for inspecting saved historical/fallback endpoints before a change
+using `tls_change.endpoint`. This read does not probe endpoints or modify trust.

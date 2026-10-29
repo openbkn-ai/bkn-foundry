@@ -1641,6 +1641,38 @@ paths:
                 $ref: "#/components/schemas/Error"
 components:
   schemas:
+    TLSPolicy:
+      type: object
+      additionalProperties: false
+      required:
+      - fingerprint
+      - skip_verify
+      description: 公共 CA 校验使用空指纹；非空 SHA-256 指纹固定服务器证书。skip_verify 默认关闭，不能与指纹同时设置。
+      properties:
+        fingerprint:
+          type: string
+          pattern: ^([a-fA-F0-9]{64})?$
+        skip_verify:
+          type: boolean
+          default: false
+    TLSChange:
+      type: object
+      additionalProperties: false
+      required:
+      - expected
+      - policy
+      description: '显式重新信任，随登记对象的既有更新接口提交；expected 不匹配返回 409，不会覆盖并发变更。省略 tls_change 保留原策略。 Errors: 400 TLS_POLICY_INVALID/TLS_ENDPOINT_INVALID;
+        409 TLS_TRUST_CONFLICT; 502 TLS_CERTIFICATE_CHANGED/TLS_CERTIFICATE_EXPIRED/TLS_CERTIFICATE_MISSING/TLS_ENROLLMENT_FAILED;
+        503 TLS_TRUST_UNAVAILABLE.'
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          description: 可选，指定该登记对象已有信任记录的 HTTPS 地址；默认使用当前登记地址。
+        expected:
+          $ref: '#/components/schemas/TLSPolicy'
+        policy:
+          $ref: '#/components/schemas/TLSPolicy'
     Error:
       type: object
       description: "错误信息"
@@ -1837,6 +1869,8 @@ components:
         - box_category
         - metadata_type
       properties:
+        tls_change:
+          $ref: '#/components/schemas/TLSChange'
         box_name:
           type: string
           description: "工具箱名称"
@@ -1893,6 +1927,12 @@ components:
       type: object
       description: "工具箱信息"
       properties:
+        tls:
+          $ref: '#/components/schemas/TLSPolicy'
+        tls_policies:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/TLSPolicy'
         metadata_type:
           type: string
           description: "算子元数据类型"

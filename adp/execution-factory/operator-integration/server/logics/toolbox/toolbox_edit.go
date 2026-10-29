@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -125,6 +127,9 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 		}
 		toolBox.ServerURL = req.BoxSvcURL
 	case interfaces.MetadataTypeFunc:
+	}
+	if err = outboundtls.Apply(ctx, "toolbox:"+toolBox.BoxID, toolBox.ServerURL, req.TLS, outboundtls.SQLStore{DB: tx}); err != nil {
+		return nil, err
 	}
 	// Update toolbox.
 	toolBox.Name = req.BoxName

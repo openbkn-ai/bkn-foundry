@@ -288,3 +288,61 @@ oss-gateway-backend/
 ## License
 
 Copyright © 2024
+
+### Outbound TLS and upgrade (schema 0.2.1)
+
+Outbound HTTPS verifies the certificate chain and hostname against the system trust
+store. An optional private CA is mounted from a Secret:
+
+```yaml
+outboundTLS:
+  caSecretName: private-ca
+  caSecretKey: ca.crt
+```
+
+The Secret key must contain PEM CA certificates. A missing or malformed bundle is
+a startup error. Add the CA in addition to the system roots; a CA alone cannot fix
+an ingress certificate whose SAN does not match the access address.
+
+The standalone environment variable for the CA bundle is `OUTBOUND_TLS_CA_FILE`.
+Run the ordinary schema migrator to 0.2.1 before starting this binary; both the fresh
+install and upgrade create the additive `t_outbound_tls_trust` table. Before serving
+requests, enroll missing policies for each storage's external and internal HTTPS
+endpoints using a credential-free TLS handshake. CA-trusted certificates use normal
+verification; private/untrusted certificates are pinned by SHA-256 leaf digest.
+The ECEPH vendor no longer implies disabled verification. Existing policies are
+never replaced by a restart or repeated upgrade. An unreachable or expired endpoint
+that has no saved policy stops startup and identifies the affected registration.
+
+Creation and updates commit the registration and trust together. Inspect the saved
+`tls` and `internal_tls` in `GET /api/v1/storages/{id}`. For an inspected replacement
+certificate, include `tls_change` (external endpoint) or `internal_tls_change` in the existing
+`PUT /api/v1/storages/{id}` update:
+
+```json
+{
+  "tls_change": {
+    "expected": {"fingerprint": "<saved 64-character digest>", "skip_verify": false},
+    "policy": {"fingerprint": "<replacement 64-character digest>", "skip_verify": false}
+  }
+}
+```
+
+The same request can be sent with the CLI. A stale expected policy fails with
+`TLS_TRUST_CONFLICT` (409); malformed policy input returns 400. Omitting these
+fields preserves existing trust. Empty fingerprint plus `skip_verify: false`
+restores CA verification. Empty fingerprint plus `skip_verify: true` is an explicit
+per-storage/authority exception, default off. One HTTPS authority has one policy
+within a registration, even when its internal and external URLs share that
+authority. Exceptions never apply to another storage or redirect authority.
+
+`TLS_CERTIFICATE_CHANGED` requires inspecting and explicitly re-trusting the new
+certificate. Pins also check certificate validity dates. Store failures stop the
+request rather than falling back to a cached exception. Back up the trust table
+with the registration database. Rolling back the binary can leave the additive
+table in place. No runtime request learns a certificate, no global verification
+bypass is introduced, and HTTP endpoints retain their existing behavior.
+
+The authorized detail response also includes `tls_policies`, keyed by HTTPS
+authority, for inspecting saved historical/fallback endpoints before a change
+using `tls_change.endpoint`. This read does not probe endpoints or modify trust.

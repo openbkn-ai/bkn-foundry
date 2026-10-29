@@ -1,3 +1,4 @@
+{{- $outboundTLS := .Values.outboundTLS | default dict -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -70,11 +71,20 @@ spec:
             # CrashLoop before the connection ever succeeded.
             failureThreshold: 30
           volumeMounts:
+            {{- if $outboundTLS.caSecretName }}
+            - name: outbound-tls-ca
+              mountPath: /sysvol/outbound-tls
+              readOnly: true
+            {{- end }}
             - name: host-time
               mountPath: /etc/localtime
             - name: {{ .Release.Name }}-rds-conf
               mountPath: /tmp/rds_conf
           env:
+            {{- if $outboundTLS.caSecretName }}
+            - name: OUTBOUND_TLS_CA_FILE
+              value: /sysvol/outbound-tls/ca.crt
+            {{- end }}
             - name: DEVICE_CODE
               value: {{ .Values.env.devicecode }}
             - name: ENVIRONMENT
@@ -357,6 +367,14 @@ spec:
             - name: GRPC_TRACE_JOB_ID
               value: {{ .Values.observability.grpcTraceJobId }}
       volumes:
+        {{- if $outboundTLS.caSecretName }}
+        - name: outbound-tls-ca
+          secret:
+            secretName: {{ $outboundTLS.caSecretName | quote }}
+            items:
+              - key: {{ $outboundTLS.caSecretKey | default "ca.crt" | quote }}
+                path: ca.crt
+        {{- end }}
         - name: host-time
           hostPath:
             path: /etc/localtime

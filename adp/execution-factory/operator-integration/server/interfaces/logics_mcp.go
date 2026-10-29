@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
@@ -51,12 +53,14 @@ type MCPParseSSEResponse struct {
 
 // MCPCoreConfigInfo MCP core information.
 type MCPCoreConfigInfo struct {
-	Mode    MCPMode           `json:"mode,omitempty" default:"stream" validate:"required,oneof=sse stream"` // operating mode.
-	Command string            `json:"command,omitempty"`                                                    // Run command.
-	Args    []string          `json:"args,omitempty"`                                                       // Operating parameters.
-	URL     string            `json:"url,omitempty" validate:"omitempty,url"`                               // Service URL.
-	Headers map[string]string `json:"headers,omitempty"`                                                    // Request header.
-	Env     map[string]string `json:"env,omitempty"`                                                        // environment variables.
+	TrustScope   string              `json:"-"`
+	TrustPreview *outboundtls.Policy `json:"-"`
+	Mode         MCPMode             `json:"mode,omitempty" default:"stream" validate:"required,oneof=sse stream"` // operating mode.
+	Command      string              `json:"command,omitempty"`                                                    // Run command.
+	Args         []string            `json:"args,omitempty"`                                                       // Operating parameters.
+	URL          string              `json:"url,omitempty" validate:"omitempty,url"`                               // Service URL.
+	Headers      map[string]string   `json:"headers,omitempty"`                                                    // Request header.
+	Env          map[string]string   `json:"env,omitempty"`                                                        // environment variables.
 }
 
 type MCPToolConfigInfo struct {
@@ -100,6 +104,8 @@ type MCPServerDeleteRequest struct {
 }
 
 type MCPServerConfigInfo struct {
+	TLSPolicies       map[string]outboundtls.Policy `json:"tls_policies,omitempty"`
+	TLS               *outboundtls.Policy           `json:"tls,omitempty"`
 	MCPCoreConfigInfo `json:",inline"`
 	Operations        []AuthOperationType  `json:"operations,omitempty"`                        // Instance operations held by the requesting user.
 	MCPID             string               `json:"mcp_id"`                                      // MCP Server ID
@@ -229,6 +235,7 @@ type MCPServerReleaseBatchRequest struct {
 
 // MCPServerUpdateRequest MCP Server update request.
 type MCPServerUpdateRequest struct {
+	TLS          *outboundtls.Change  `json:"tls_change,omitempty"`
 	UserID       string               `header:"user_id" validate:"required"`                                                           // User ID, internal use.
 	IsPublic     bool                 `header:"is_public"`                                                                             // Is it public?.
 	MCPID        string               `json:"mcp_id"`                                                                                  // MCP Server ID

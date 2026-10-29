@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
 
 	"github.com/google/uuid"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -56,6 +59,17 @@ func (s *mcpServiceImpl) ParseSSE(ctx context.Context, req *interfaces.MCPParseS
 		Headers: req.Headers,
 	}
 
+	if strings.HasPrefix(strings.ToLower(req.URL), "https://") {
+		manager := outboundtls.Default()
+		if manager == nil {
+			return nil, fmt.Errorf("TLS_TRUST_UNAVAILABLE")
+		}
+		policy, discoverErr := manager.Discover(ctx, req.URL)
+		if discoverErr != nil {
+			return nil, discoverErr
+		}
+		mcpCoreInfo.TrustPreview = &policy
+	}
 	listToolsReq := ListToolsRequest{
 		MCPCoreInfo: &mcpCoreInfo,
 	}
@@ -204,6 +218,9 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 		return "", err
 	}
 
+	if err := outboundtls.Apply(ctx, "mcp:"+MCPID, mcpConfig.URL, nil, outboundtls.SQLStore{DB: tx}); err != nil {
+		return "", err
+	}
 	return MCPID, nil
 }
 
@@ -405,6 +422,9 @@ func (s *mcpServiceImpl) removeMCPConfig(ctx context.Context, tx *sql.Tx, mcpID 
 		return
 	}
 	// Delete MCP Server configuration.
+	if err = outboundtls.Forget(ctx, "mcp:"+mcpID, outboundtls.SQLStore{DB: tx}); err != nil {
+		return nil, err
+	}
 	err = s.DBMCPServerConfig.DeleteByID(ctx, tx, mcpID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("delete mcp config failed, err: %v", err)
@@ -620,6 +640,14 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 	}
 
 	mcpConfig := s.modelToResponse(mcpConfigDB)
+	mcpConfig.TLSPolicies, err = outboundtls.Policies(ctx, "mcp:"+req.ID)
+	if err != nil {
+		return nil, err
+	}
+	mcpConfig.TLS, err = outboundtls.Read(ctx, "mcp:"+req.ID, mcpConfigDB.URL)
+	if err != nil {
+		return nil, err
+	}
 
 	// Render user name.
 	userIDs := []string{mcpConfigDB.CreateUser, mcpConfigDB.UpdateUser}
@@ -696,6 +724,10 @@ func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MC
 	config, oldVersion, currentVersion, err := s.updateMCPConfig(ctx, tx, newMCPConfig)
 	if err != nil {
 		return
+	}
+
+	if err = outboundtls.Apply(ctx, "mcp:"+req.MCPID, config.URL, req.TLS, outboundtls.SQLStore{DB: tx}); err != nil {
+		return nil, err
 	}
 
 	// Synchronize MCP tool configuration information.
@@ -812,6 +844,9 @@ func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCP
 		config.URL = s.generateInternalMCPURL(config.MCPID, config.Version, interfaces.MCPMode(config.Mode))
 	}
 
+	if err = outboundtls.Apply(ctx, "mcp:"+config.MCPID, config.URL, nil, outboundtls.SQLStore{DB: tx}); err != nil {
+		return nil, 0, 0, err
+	}
 	// status update.
 	err = s.DBMCPServerConfig.UpdateByID(ctx, tx, config)
 	if err != nil {

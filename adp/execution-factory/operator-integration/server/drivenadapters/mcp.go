@@ -2,15 +2,15 @@ package drivenadapters
 
 import (
 	"context"
-	"crypto/tls"
 	stderrors "errors"
 	"fmt"
 	"net"
 	"net/http"
 	"regexp"
 	"strconv"
-	"sync"
 	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
@@ -81,6 +81,9 @@ func upstreamHTTPStatus(err error) int {
 // The upstream returns 401/403/407, indicating that the MCP service itself is normal, but the credentials in the request header are missing, expired, or have insufficient permissions.
 // Prompting users to check whether the service is running can lead people in the wrong direction.
 func classifyMCPConnError(ctx context.Context, url string, err error) error {
+	if tlsErr := outboundtls.Extract(err); tlsErr != nil {
+		return tlsErr
+	}
 	// When initClient has given a clear error (such as the mode is not supported), it is transparently transmitted as it is to avoid being folded into unreachable.
 	var httpErr *httperrors.HTTPError
 	if stderrors.As(err, &httpErr) {
@@ -172,31 +175,22 @@ func (m *MCPClient) initClient(ctx context.Context) error {
 	return m.performHandshake(ctx)
 }
 
-var (
-	httpClient     *http.Client
-	httpClientOnce sync.Once
-)
-
 func (m *MCPClient) createHTTPClient() *http.Client {
-	httpClientOnce.Do(func() {
-		connTimeout := time.Duration(config.NewConfigLoader().MCPConfig.ConnTimeout) * time.Second
-		if connTimeout <= 0 {
-			connTimeout = defaultConnTimeout
-		}
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				DialContext: (&net.Dialer{
-					Timeout:   connTimeout,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				MaxIdleConns:        200,
-				MaxIdleConnsPerHost: 50,
-				IdleConnTimeout:     90 * time.Second,
-			},
-		}
-	})
-	return httpClient
+	connTimeout := time.Duration(config.NewConfigLoader().MCPConfig.ConnTimeout) * time.Second
+	if connTimeout <= 0 {
+		connTimeout = defaultConnTimeout
+	}
+	return newMCPHTTPClient(m.MCPCoreConfigInfo, connTimeout)
+}
+
+func newMCPHTTPClient(core *interfaces.MCPCoreConfigInfo, connTimeout time.Duration) *http.Client {
+	return &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: outboundtls.Bind(&http.Transport{
+			DialContext:         (&net.Dialer{Timeout: connTimeout, KeepAlive: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout: 10 * time.Second, MaxIdleConns: 200, MaxIdleConnsPerHost: 50, IdleConnTimeout: 90 * time.Second,
+		}, core.TrustScope, core.URL, core.TrustPreview),
+	}
 }
 
 // performHandshake performs MCP handshake.

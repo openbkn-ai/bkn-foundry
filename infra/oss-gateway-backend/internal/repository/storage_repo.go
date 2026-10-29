@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"oss-gateway/internal/model"
+	"oss-gateway/pkg/outboundtls"
 
 	"gorm.io/gorm"
 )
@@ -40,7 +41,12 @@ func (r *storageRepository) Update(ctx context.Context, storage *model.StorageCo
 }
 
 func (r *storageRepository) Delete(ctx context.Context, storageID string) error {
-	return r.db.WithContext(ctx).Where("f_storage_id = ?", storageID).Delete(&model.StorageConfig{}).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := (outboundtls.SQLStore{DB: tx.Statement.ConnPool}).Remove(ctx, "storage:"+storageID); err != nil {
+			return err
+		}
+		return tx.Where("f_storage_id = ?", storageID).Delete(&model.StorageConfig{}).Error
+	})
 }
 
 func (r *storageRepository) GetByID(ctx context.Context, storageID string) (*model.StorageConfig, error) {

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/pkg/errors"
 
@@ -87,6 +89,10 @@ func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPReque
 	f.logger.Debugf("do stream request, streamingMode: %v, timeout: %v", streamingMode, req.Timeout)
 	resp, err := streamClient.Do(httpReq)
 	if err != nil {
+		if tlsErr := outboundtls.Extract(err); tlsErr != nil {
+			headerWriter.WriteHeader(tlsErr.HTTPStatus())
+			return nil, tlsErr
+		}
 		// On the streaming server, set the ResponseHeaderTimeout parameter to 10s. If no request header is returned within 10s, it is considered a timeout.
 		// If the server does not support streaming requests, but the client uses a streaming proxy, it is also considered a timeout.
 		// Timeout error example: net/http: timeout awaiting response headers".
@@ -163,6 +169,9 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 	// Send request.
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		if tlsErr := outboundtls.Extract(err); tlsErr != nil {
+			return &interfaces.HTTPResponse{StatusCode: tlsErr.HTTPStatus(), Error: tlsErr.Error(), Duration: time.Since(startTime).Milliseconds()}, nil
+		}
 		return &interfaces.HTTPResponse{
 			StatusCode: http.StatusInternalServerError,
 			Error:      err.Error(),

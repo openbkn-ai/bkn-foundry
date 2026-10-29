@@ -16,6 +16,7 @@ import (
 	"oss-gateway/internal/router"
 	"oss-gateway/internal/service"
 	"oss-gateway/pkg/crypto"
+	"oss-gateway/pkg/outboundtls"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -38,6 +39,22 @@ func NewServer(cfg *config.AppConfig, log *logrus.Entry, db *gorm.DB, crypto *cr
 }
 
 func (s *Server) Start() {
+	trustDB, err := s.db.DB()
+	if err != nil {
+		s.log.WithError(err).Fatal("TLS trust database unavailable")
+		return
+	}
+	trust, err := outboundtls.New(s.config.OutboundTLS, outboundtls.SQLStore{DB: trustDB})
+	if err != nil {
+		s.log.WithError(err).Fatal("TLS configuration invalid")
+		return
+	}
+	if err = trust.BootstrapQuery(context.Background(), trustDB, "SELECT CONCAT('storage:', f_storage_id), f_endpoint FROM t_storage_config UNION SELECT CONCAT('storage:', f_storage_id), COALESCE(f_internal_endpoint, '') FROM t_storage_config"); err != nil {
+		s.log.WithError(err).Fatal("TLS upgrade enrollment failed")
+		return
+	}
+
+	outboundtls.SetDefault(trust)
 	storageRepo := repository.NewStorageRepository(s.db)
 	uploadTaskRepo := repository.NewUploadTaskRepository(s.db)
 

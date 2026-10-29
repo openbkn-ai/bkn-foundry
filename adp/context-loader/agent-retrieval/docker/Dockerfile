@@ -22,6 +22,11 @@ WORKDIR /app/agent-retrieval
 
 COPY --from=builder /out/agent-retrieval ./agent-retrieval
 
+# Public outbound HTTPS must have the system CA trust store.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user.
 RUN useradd -m -r -s /bin/bash aishu \
     && chown -R aishu:aishu /app/agent-retrieval

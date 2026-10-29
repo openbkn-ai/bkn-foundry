@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -277,6 +279,9 @@ func (s *mcpServiceImpl) callTool(ctx context.Context, req *CallToolRequest) (*C
 
 	result, err := mcpClient.CallTool(ctx, callToolRequest)
 	if err != nil {
+		if tlsErr := outboundtls.Extract(err); tlsErr != nil {
+			return nil, tlsErr
+		}
 		s.logger.WithContext(ctx).Errorf("call mcp tool error: %v", err)
 		return nil, oerrors.NewHTTPError(ctx, http.StatusGatewayTimeout, oerrors.ErrExtMCPCallToolFailed, err.Error())
 	}
@@ -291,7 +296,11 @@ func (s *mcpServiceImpl) callTool(ctx context.Context, req *CallToolRequest) (*C
 
 func (s *mcpServiceImpl) getMCPClient(ctx context.Context, req *ListToolsRequest) (mcpClient interfaces.MCPClient, err error) {
 	if req.CreationType != interfaces.MCPCreationTypeToolImported {
-		mcpClient, err = drivenadapters.NewMCPClient(ctx, req.MCPCoreInfo)
+		core := *req.MCPCoreInfo
+		if req.MCPID != "" {
+			core.TrustScope = "mcp:" + req.MCPID
+		}
+		mcpClient, err = drivenadapters.NewMCPClient(ctx, &core)
 		return mcpClient, err
 	}
 	var instance *interfaces.MCPServerInstance
@@ -320,6 +329,9 @@ func (s *mcpServiceImpl) listTools(ctx context.Context, req *ListToolsRequest) (
 
 	tools, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
+		if tlsErr := outboundtls.Extract(err); tlsErr != nil {
+			return nil, tlsErr
+		}
 		return nil, oerrors.NewHTTPError(ctx, http.StatusGatewayTimeout, oerrors.ErrExtMCPListToolsFailed, err.Error())
 	}
 

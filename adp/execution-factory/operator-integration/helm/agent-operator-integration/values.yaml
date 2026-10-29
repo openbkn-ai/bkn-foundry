@@ -249,3 +249,10 @@ observability:
   log:
     enabled: false
     level: info
+
+# Private CA roots and explicit trust for configured service dependencies.
+# Registration-specific MCP/tool/storage policies are persisted in the database.
+outboundTLS:
+  caSecretName: ""
+  caSecretKey: ca.crt
+  endpoints: []

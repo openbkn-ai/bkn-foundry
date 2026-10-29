@@ -3,6 +3,8 @@ package interfaces
 import (
 	"context"
 	"database/sql"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
 )
 
 //go:generate mockgen -source=logics_toolbox.go -destination=../mocks/toolbox.go -package=mocks
@@ -46,12 +48,13 @@ type CreateToolBoxResp struct {
 
 // UpdateToolBoxReq update toolbox request.
 type UpdateToolBoxReq struct {
-	UserID    string      `header:"user_id" validate:"required"`                                                 // User ID, internal use.
-	BoxID     string      `uri:"box_id" validate:"required"`                                                     // Toolbox ID.
-	BoxName   string      `json:"box_name" form:"box_name" validate:"required"`                                  // Toolbox name.
-	BoxDesc   string      `json:"box_desc" form:"box_desc" validate:"required"`                                  // Toolbox description.
-	BoxSvcURL string      `json:"box_svc_url" form:"box_svc_url"`                                                // Toolbox service address (required when metadata_type is openapi)
-	Category  BizCategory `json:"box_category" form:"box_category" default:"other_category" validate:"required"` // Classification.
+	TLS       *outboundtls.Change `json:"tls_change,omitempty"`
+	UserID    string              `header:"user_id" validate:"required"`                                                 // User ID, internal use.
+	BoxID     string              `uri:"box_id" validate:"required"`                                                     // Toolbox ID.
+	BoxName   string              `json:"box_name" form:"box_name" validate:"required"`                                  // Toolbox name.
+	BoxDesc   string              `json:"box_desc" form:"box_desc" validate:"required"`                                  // Toolbox description.
+	BoxSvcURL string              `json:"box_svc_url" form:"box_svc_url"`                                                // Toolbox service address (required when metadata_type is openapi)
+	Category  BizCategory         `json:"box_category" form:"box_category" default:"other_category" validate:"required"` // Classification.
 	// Metadata type (optional parameter). The type will not change after the toolbox is built, and the editing request does not need to be included;
 	// Verify the value only after it is provided, otherwise the "optional" comment conflicts with oneof, and if it is not passed, it will be judged as an illegal value.
 	MetadataType  MetadataType `json:"metadata_type" form:"metadata_type" validate:"omitempty,oneof=openapi function"`
@@ -74,23 +77,25 @@ type EditToolInfo struct {
 
 // ToolBoxToolInfo toolbox information.
 type ToolBoxToolInfo struct {
-	MetadataType MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
-	BoxID        string       `json:"box_id"`                                                   // Toolbox ID.
-	BoxName      string       `json:"box_name"`                                                 // Toolbox name.
-	BoxDesc      string       `json:"box_desc"`                                                 // Toolbox description.
-	Status       BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
-	BoxSvcURL    string       `json:"box_svc_url"`                                              // Toolbox service address.
-	CategoryType string       `json:"category_type"`                                            // Classification.
-	CategoryName string       `json:"category_name"`                                            // Category name.
-	IsInternal   bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
-	Source       string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
-	Tools        []*ToolInfo  `json:"tools"`                                                    // Tool list under toolbox.
-	CreateTime   int64        `json:"create_time"`                                              // creation time.
-	UpdateTime   int64        `json:"update_time"`                                              // Update time.
-	CreateUser   string       `json:"create_user"`                                              // Create user.
-	UpdateUser   string       `json:"update_user"`                                              // Update user.
-	ReleaseUser  string       `json:"release_user,omitempty"`                                   // Posted by.
-	ReleaseTime  int64        `json:"release_time,omitempty"`                                   // Release time.
+	TLSPolicies  map[string]outboundtls.Policy `json:"tls_policies,omitempty"`
+	TLS          *outboundtls.Policy           `json:"tls,omitempty"`
+	MetadataType MetadataType                  `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
+	BoxID        string                        `json:"box_id"`                                                   // Toolbox ID.
+	BoxName      string                        `json:"box_name"`                                                 // Toolbox name.
+	BoxDesc      string                        `json:"box_desc"`                                                 // Toolbox description.
+	Status       BizStatus                     `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
+	BoxSvcURL    string                        `json:"box_svc_url"`                                              // Toolbox service address.
+	CategoryType string                        `json:"category_type"`                                            // Classification.
+	CategoryName string                        `json:"category_name"`                                            // Category name.
+	IsInternal   bool                          `json:"is_internal"`                                              // Is it an internal toolbox?.
+	Source       string                        `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
+	Tools        []*ToolInfo                   `json:"tools"`                                                    // Tool list under toolbox.
+	CreateTime   int64                         `json:"create_time"`                                              // creation time.
+	UpdateTime   int64                         `json:"update_time"`                                              // Update time.
+	CreateUser   string                        `json:"create_user"`                                              // Create user.
+	UpdateUser   string                        `json:"update_user"`                                              // Update user.
+	ReleaseUser  string                        `json:"release_user,omitempty"`                                   // Posted by.
+	ReleaseTime  int64                         `json:"release_time,omitempty"`                                   // Release time.
 }
 
 // ToolInfo tool information.

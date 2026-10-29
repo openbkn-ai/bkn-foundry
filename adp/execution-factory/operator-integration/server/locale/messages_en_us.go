@@ -10,6 +10,17 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"AgentOperatorIntegration.BadGateway.TLS_ENROLLMENT_FAILED":         "Could not inspect the endpoint certificate. Check HTTPS reachability and retry.",
+		"AgentOperatorIntegration.BadRequest.TLS_POLICY_INVALID":            "The TLS policy is invalid. Supply a SHA-256 certificate fingerprint or an explicit skip switch, plus the expected saved policy.",
+		"AgentOperatorIntegration.BadRequest.TLS_ENDPOINT_INVALID":          "The TLS policy requires an HTTPS endpoint with a valid authority.",
+		"AgentOperatorIntegration.Conflict.TLS_TRUST_CONFLICT":              "The saved certificate policy changed. Read it again before confirming re-trust.",
+		"AgentOperatorIntegration.BadGateway.TLS_CERTIFICATE_CHANGED":       "The server certificate changed. Verify the endpoint and explicitly re-trust this registration before retrying.",
+		"AgentOperatorIntegration.BadGateway.TLS_CERTIFICATE_EXPIRED":       "The server certificate is outside its validity period. Renew it and confirm the new fingerprint.",
+		"AgentOperatorIntegration.BadGateway.TLS_CERTIFICATE_MISSING":       "The HTTPS endpoint did not present a certificate.",
+		"AgentOperatorIntegration.BadGateway.TLS_TRUST_REQUIRED":            "This registration has no saved certificate policy. Complete TLS enrollment before retrying.",
+		"AgentOperatorIntegration.ServiceUnavailable.TLS_TRUST_UNAVAILABLE": "The certificate trust store is unavailable. Restore it before retrying; verification has not been disabled.",
+		"AgentOperatorIntegration.ServiceUnavailable.TLS_CA_INVALID":        "The configured CA bundle cannot be loaded. Check its Secret mount and PEM contents.",
+
 		"Public.UnprocessableEntity":                                                     "Invalid execution input. Correct the input before retrying.",
 		"AgentOperatorIntegration.BadGateway.OSSGatewayFailed":                           "Object storage is unavailable. Check the OSS gateway configuration or re-upload the Skill package Contact administrator",
 		"AgentOperatorIntegration.BadRequest.CategoryNameEmpty":                          "Category name cannot be empty Contact administrator",

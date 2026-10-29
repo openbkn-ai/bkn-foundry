@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -86,6 +88,9 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 		s.Logger.WithContext(ctx).Errorf("insert toolbox failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if err = outboundtls.Apply(ctx, "toolbox:"+boxID, toolBox.ServerURL, nil, outboundtls.SQLStore{DB: tx}); err != nil {
+		return nil, err
 	}
 	// Check for metadata changes.
 	var detils []metric.AuditLogToolDetil

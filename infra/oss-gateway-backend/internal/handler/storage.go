@@ -79,6 +79,9 @@ func (h *StorageHandler) Get(c *gin.Context) {
 
 	storage, err := h.service.Get(c.Request.Context(), storageID)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.StorageNotFound(c)
 		return
 	}

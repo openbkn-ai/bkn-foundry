@@ -128,3 +128,8 @@ observability:
     httpMetricFeedIngesterUrl: "http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-metric/events"
     grpcTraceFeedIngesterUrl: "feed-ingester-service:30013"
     grpcTraceJobId: "dip-o11y-trace-grpc"
+
+# Optional CA bundle mounted into the outbound HTTPS verifier.
+outboundTLS:
+  caSecretName: ""
+  caSecretKey: ca.crt

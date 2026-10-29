@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
@@ -59,8 +59,7 @@ func NewRawHTTPClientWithOptions(opts HTTPClientOptions) *http.Client {
 			return http.ErrUseLastResponse
 		},
 		// Custom Transport.
-		Transport: &http.Transport{
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		Transport: outboundtls.Wrap(&http.Transport{
 			MaxIdleConnsPerHost:   100,              //nolint:mnd
 			MaxIdleConns:          100,              //nolint:mnd
 			IdleConnTimeout:       90 * time.Second, //nolint:mnd
@@ -68,7 +67,7 @@ func NewRawHTTPClientWithOptions(opts HTTPClientOptions) *http.Client {
 			ExpectContinueTimeout: 30 * time.Second, //nolint:mnd
 			DisableKeepAlives:     false,
 			ResponseHeaderTimeout: time.Duration(opts.ResponseHeaderTimeout) * time.Second,
-		},
+		}),
 		Timeout: time.Duration(opts.TimeOut) * time.Second,
 	}
 

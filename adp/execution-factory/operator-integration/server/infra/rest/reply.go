@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/outboundtls"
+
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -50,6 +52,10 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 
 // ReplyError writes an error response.
 func ReplyError(c *gin.Context, err error) {
+	var tlsErr *outboundtls.Error
+	if errors.As(err, &tlsErr) {
+		err = myErr.NewHTTPError(c.Request.Context(), tlsErr.HTTPStatus(), myErr.ErrorCode(tlsErr.Code), tlsErr.Message)
+	}
 	var upstream *ExHTTPError
 	if errors.As(err, &upstream) && upstream != nil {
 		c.Header(ContentTypeKey, ContentTypeJSON)
@@ -93,6 +99,9 @@ func (e *ExHTTPError) Error() string {
 
 // ReplyWithExecutionMode writes a response according to the requested execution mode.
 func ReplyWithExecutionMode(c *gin.Context, resp interface{}, err error) {
+	if tlsErr := outboundtls.Extract(err); tlsErr != nil {
+		err = myErr.NewHTTPError(c.Request.Context(), tlsErr.HTTPStatus(), myErr.ErrorCode(tlsErr.Code), tlsErr.Message)
+	}
 	// Select the response transport for streaming requests.
 	ctx := c.Request.Context()
 	executionMode := common.GetExecutionModeFromCtx(ctx)
