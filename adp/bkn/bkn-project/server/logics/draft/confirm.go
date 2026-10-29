@@ -295,8 +295,14 @@ func (s *draftService) requirementState(ctx context.Context, projectID string) (
 	if err != nil {
 		return 0, nil, err
 	}
-	if !ok || req.Status != interfaces.REQUIREMENT_STATUS_READY {
-		return 0, nil, nil
+	version, unresolved := requirementStateOf(req, ok)
+	return version, unresolved, nil
+}
+
+// requirementStateOf is requirementState of a specification read: found, and ready.
+func requirementStateOf(req *interfaces.Requirement, found bool) (int, []string) {
+	if !found || req.Status != interfaces.REQUIREMENT_STATUS_READY {
+		return 0, nil
 	}
 	unresolved := []string{}
 	for _, k := range req.Spec.Conflicts {
@@ -304,5 +310,5 @@ func (s *draftService) requirementState(ctx context.Context, projectID string) (
 			unresolved = append(unresolved, k.ID)
 		}
 	}
-	return req.Version, unresolved, nil
+	return req.Version, unresolved
 }

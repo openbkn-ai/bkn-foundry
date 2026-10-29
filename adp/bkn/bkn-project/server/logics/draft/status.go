@@ -65,7 +65,7 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 				now.UnixMilli())
 		}
 	}
-	if err := s.withRequirementConflicts(ctx, projectID, status); err != nil {
+	if err := s.withRequirement(ctx, projectID, draft, status); err != nil {
 		span.SetStatus(codes.Error, "Read requirement failed")
 		return nil, internalError(ctx, "Read requirement failed", err)
 	}
@@ -421,10 +421,10 @@ func anyObjectTypeAdopted(items *interfaces.DraftItems) bool {
 	return false
 }
 
-// withRequirementConflicts counts the unresolved conflicts of the project's ready requirement
-// specification and, when a draft can be confirmed, has confirming accept them, as confirming
-// asks.
-func (s *draftService) withRequirementConflicts(ctx context.Context, projectID string,
+// withRequirement counts, when a draft can be confirmed, the unresolved conflicts of the project's
+// ready requirement specification, having confirming accept them as confirming asks, and the
+// undecided items its knowledge questions need.
+func (s *draftService) withRequirement(ctx context.Context, projectID string, draft *interfaces.Draft,
 	status *interfaces.ProjectStatus) error {
 	var confirm *interfaces.ProjectStatusNextAction
 	for i := range status.NextActions {
@@ -435,13 +435,21 @@ func (s *draftService) withRequirementConflicts(ctx context.Context, projectID s
 	if confirm == nil {
 		return nil
 	}
-	_, unresolved, err := s.requirementState(ctx, projectID)
+	// One read: the conflicts and the questions are of the same specification.
+	req, found, err := s.rqa.GetRequirement(ctx, projectID)
 	if err != nil {
 		return err
 	}
+	_, unresolved := requirementStateOf(req, found)
 	if status.UnresolvedConflicts = len(unresolved); status.UnresolvedConflicts > 0 {
 		confirm.Body["accept_unresolved_conflicts"] = true
 		confirm.Accepts = append(confirm.Accepts, interfaces.ACCEPTS_UNRESOLVED_CONFLICTS)
+	}
+	needed := neededOf(req, found)
+	for _, u := range undecidedItems(&draft.Items) {
+		if len(needed[u.Kind+"/"+u.ItemID]) > 0 {
+			status.UndecidedNeeded++
+		}
 	}
 	return nil
 }

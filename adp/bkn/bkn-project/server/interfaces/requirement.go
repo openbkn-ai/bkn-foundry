@@ -424,9 +424,13 @@ type ScenarioQuestion struct {
 	Tests []ScenarioTest `json:"tests"`
 }
 
+// ScenarioTest is a test question asked in its question's place. Expect is what it expects of the
+// data (exists, not_exists or same_record): an answer to a not_exists test that finds no such
+// record is right.
 type ScenarioTest struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Expect string `json:"expect"`
 }
 
 // Statuses of a question's test questions and guidance as stored.
@@ -469,6 +473,11 @@ type QuestionGuidance struct {
 	OntologySignature string `json:"ontology_signature"`
 	// OutOfScope are further questions this one leads to that need more than it does.
 	OutOfScope []string `json:"out_of_scope"`
+	// NoTestsReason is why the Agent wrote no test questions, as it said, in the project's language.
+	NoTestsReason string `json:"no_tests_reason"`
+	// LeftOutTests counts the test questions the Agent wrote that the server left out: without
+	// text, asking about a value they do not say, or past the most kept.
+	LeftOutTests int `json:"left_out_tests"`
 	// DeletedTests counts the test questions people deleted.
 	DeletedTests int `json:"deleted_tests"`
 	// Error is why generating failed, as a code for the client to word.

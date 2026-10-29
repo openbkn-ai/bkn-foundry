@@ -21,7 +21,7 @@ const GUIDANCE_TABLE_NAME = "t_bkn_project_question_guidance"
 
 var guidanceColumns = []string{
 	"f_project_id", "f_question_id", "f_spec_version", "f_question", "f_status", "f_tests", "f_guidance",
-	"f_ontology_signature", "f_out_of_scope", "f_deleted_tests", "f_error", "f_run_id", "f_agent_task_id",
+	"f_ontology_signature", "f_out_of_scope", "f_no_tests_reason", "f_left_out_tests", "f_deleted_tests", "f_error", "f_run_id", "f_agent_task_id",
 	"f_runner", "f_runner_type", "f_create_time", "f_update_time",
 }
 
@@ -139,7 +139,8 @@ func (ra *requirementAccess) StartGenerating(ctx context.Context, g *interfaces.
 	sqlStr, vals, err = sq.Update(GUIDANCE_TABLE_NAME).
 		Set("f_spec_version", g.SpecVersion).Set("f_question", g.Question).Set("f_status", g.Status).
 		Set("f_tests", testsJSON).Set("f_guidance", g.Guidance).Set("f_ontology_signature", g.OntologySignature).
-		Set("f_out_of_scope", outOfScopeJSON).Set("f_deleted_tests", g.DeletedTests).Set("f_error", g.Error).
+		Set("f_out_of_scope", outOfScopeJSON).Set("f_no_tests_reason", g.NoTestsReason).
+		Set("f_left_out_tests", g.LeftOutTests).Set("f_deleted_tests", g.DeletedTests).Set("f_error", g.Error).
 		Set("f_run_id", g.RunID).Set("f_agent_task_id", g.AgentTaskID).
 		Set("f_runner", g.Runner.ID).Set("f_runner_type", g.Runner.Type).
 		Set("f_create_time", g.CreateTime).Set("f_update_time", g.UpdateTime).
@@ -197,6 +198,7 @@ func (ra *requirementAccess) FinishGenerating(ctx context.Context, g *interfaces
 	sqlStr, vals, err := sq.Update(GUIDANCE_TABLE_NAME).
 		Set("f_status", g.Status).Set("f_tests", testsJSON).Set("f_guidance", g.Guidance).
 		Set("f_ontology_signature", g.OntologySignature).Set("f_out_of_scope", outOfScopeJSON).
+		Set("f_no_tests_reason", g.NoTestsReason).Set("f_left_out_tests", g.LeftOutTests).
 		Set("f_error", g.Error).Set("f_agent_task_id", g.AgentTaskID).Set("f_update_time", g.UpdateTime).
 		Where(sq.Eq{"f_project_id": g.ProjectID}).Where(sq.Eq{"f_question_id": g.QuestionID}).
 		Where(sq.Eq{"f_status": interfaces.GUIDANCE_STATUS_GENERATING}).
@@ -256,7 +258,7 @@ func scanGuidance(row interface{ Scan(dest ...any) error }) (*interfaces.Questio
 	var testsJSON, outOfScopeJSON string
 	err := row.Scan(
 		&g.ProjectID, &g.QuestionID, &g.SpecVersion, &g.Question, &g.Status, &testsJSON, &g.Guidance,
-		&g.OntologySignature, &outOfScopeJSON, &g.DeletedTests, &g.Error, &g.RunID, &g.AgentTaskID,
+		&g.OntologySignature, &outOfScopeJSON, &g.NoTestsReason, &g.LeftOutTests, &g.DeletedTests, &g.Error, &g.RunID, &g.AgentTaskID,
 		&g.Runner.ID, &g.Runner.Type, &g.CreateTime, &g.UpdateTime,
 	)
 	if err != nil {

@@ -69,7 +69,7 @@ func Test_ScenarioQuestions(t *testing.T) {
 			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return([]*interfaces.QuestionGuidance{
 				{QuestionID: "q1", SpecVersion: 2, Question: "Which orders?", Status: interfaces.GUIDANCE_STATUS_READY,
 					Tests: []*interfaces.QuestionTest{
-						{ID: "t1", Text: "Orders of 10001?", Check: passed},
+						{ID: "t1", Text: "Orders of 10001?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS, Check: passed},
 						{ID: "t2", Text: "Orders of 99999?", Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED}},
 						{ID: "t3", Text: "Orders of Acme?", Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED}},
 					}},
@@ -81,7 +81,9 @@ func Test_ScenarioQuestions(t *testing.T) {
 			got, err := svc.ScenarioQuestions(ctx, "p1")
 
 			So(err, ShouldBeNil)
-			So(got.Questions[0].Tests, ShouldResemble, []interfaces.ScenarioTest{{ID: "t1", Text: "Orders of 10001?"}})
+			// What the test expects of the data goes with it, for the regression to judge the answer by.
+			So(got.Questions[0].Tests, ShouldResemble, []interfaces.ScenarioTest{
+				{ID: "t1", Text: "Orders of 10001?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS}})
 			So(got.Questions[1].Tests, ShouldResemble, []interfaces.ScenarioTest{})
 		})
 

@@ -17,7 +17,7 @@ import (
 )
 
 var guidanceRowColumns = []string{"f_project_id", "f_question_id", "f_spec_version", "f_question", "f_status", "f_tests",
-	"f_guidance", "f_ontology_signature", "f_out_of_scope", "f_deleted_tests", "f_error", "f_run_id",
+	"f_guidance", "f_ontology_signature", "f_out_of_scope", "f_no_tests_reason", "f_left_out_tests", "f_deleted_tests", "f_error", "f_run_id",
 	"f_agent_task_id", "f_runner", "f_runner_type", "f_create_time", "f_update_time"}
 
 func Test_QuestionGuidance(t *testing.T) {
@@ -27,11 +27,11 @@ func Test_QuestionGuidance(t *testing.T) {
 		defer func() { _ = db.Close() }()
 		ra := &requirementAccess{db: db}
 		ctx := context.Background()
-		selectGuidance := regexp.QuoteMeta("SELECT f_project_id, f_question_id, f_spec_version, f_question, f_status, f_tests, f_guidance, f_ontology_signature, f_out_of_scope, f_deleted_tests, f_error, f_run_id, f_agent_task_id, f_runner, f_runner_type, f_create_time, f_update_time FROM t_bkn_project_question_guidance")
+		selectGuidance := regexp.QuoteMeta("SELECT f_project_id, f_question_id, f_spec_version, f_question, f_status, f_tests, f_guidance, f_ontology_signature, f_out_of_scope, f_no_tests_reason, f_left_out_tests, f_deleted_tests, f_error, f_run_id, f_agent_task_id, f_runner, f_runner_type, f_create_time, f_update_time FROM t_bkn_project_question_guidance")
 		row := func(rows *sqlmock.Rows) *sqlmock.Rows {
 			return rows.AddRow("p1", "q1", 2, "Which orders?", "ready",
 				`[{"id":"t1","text":"Orders of 10001?","kind":"paraphrase","slots":[{"concept_id":"c2","property":"customer_id","value":"10001"}],"expect":"exists","edited":false,"check":{"outcome":"passed"}}]`,
-				"Use the customer relation.", "sig", `["Orders of their parent company?"]`, 1, "", "run1", "task1", "u1", "user", int64(5), int64(7))
+				"Use the customer relation.", "sig", `["Orders of their parent company?"]`, "", 2, 1, "", "run1", "task1", "u1", "user", int64(5), int64(7))
 		}
 
 		Convey("GetGuidance reads a question's guidance, and false when it has none\n", func() {
@@ -46,6 +46,7 @@ func Test_QuestionGuidance(t *testing.T) {
 			So(g.Tests[0].Slots[0], ShouldResemble, interfaces.QuestionTestSlot{ConceptID: "c2", Property: "customer_id", Value: "10001"})
 			So(g.Tests[0].Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(g.OutOfScope, ShouldResemble, []string{"Orders of their parent company?"})
+			So(g.LeftOutTests, ShouldEqual, 2)
 			So(g.RunID, ShouldEqual, "run1")
 			So(g.Runner, ShouldResemble, interfaces.AccountInfo{ID: "u1", Type: "user"})
 			_, ok, err = ra.GetGuidance(ctx, "p1", "q2")
@@ -66,7 +67,7 @@ func Test_QuestionGuidance(t *testing.T) {
 
 		ensureRow := regexp.QuoteMeta("INSERT INTO t_bkn_project_question_guidance (f_project_id,f_question_id,f_question,f_tests,f_guidance,f_out_of_scope) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE f_project_id = f_project_id")
 		lockRow := regexp.QuoteMeta("SELECT f_status, f_update_time FROM t_bkn_project_question_guidance WHERE f_project_id = ? AND f_question_id = ? FOR UPDATE")
-		start := regexp.QuoteMeta("UPDATE t_bkn_project_question_guidance SET f_spec_version = ?, f_question = ?, f_status = ?, f_tests = ?, f_guidance = ?, f_ontology_signature = ?, f_out_of_scope = ?, f_deleted_tests = ?, f_error = ?, f_run_id = ?, f_agent_task_id = ?, f_runner = ?, f_runner_type = ?, f_create_time = ?, f_update_time = ? WHERE f_project_id = ? AND f_question_id = ?")
+		start := regexp.QuoteMeta("UPDATE t_bkn_project_question_guidance SET f_spec_version = ?, f_question = ?, f_status = ?, f_tests = ?, f_guidance = ?, f_ontology_signature = ?, f_out_of_scope = ?, f_no_tests_reason = ?, f_left_out_tests = ?, f_deleted_tests = ?, f_error = ?, f_run_id = ?, f_agent_task_id = ?, f_runner = ?, f_runner_type = ?, f_create_time = ?, f_update_time = ? WHERE f_project_id = ? AND f_question_id = ?")
 		generating := &interfaces.QuestionGuidance{ProjectID: "p1", QuestionID: "q1", SpecVersion: 2, Question: "Which orders?",
 			Status: interfaces.GUIDANCE_STATUS_GENERATING, RunID: "run1", Runner: interfaces.AccountInfo{ID: "u1", Type: "user"},
 			CreateTime: 9, UpdateTime: 9}
@@ -75,7 +76,7 @@ func Test_QuestionGuidance(t *testing.T) {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WithArgs("p1", "q1", "", "", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
 			smock.ExpectQuery(lockRow).WithArgs("p1", "q1").WillReturnRows(sqlmock.NewRows([]string{"f_status", "f_update_time"}).AddRow("", int64(0)))
-			smock.ExpectExec(start).WithArgs(2, "Which orders?", "generating", "[]", "", "", "[]", 0, "", "run1", "", "u1", "user",
+			smock.ExpectExec(start).WithArgs(2, "Which orders?", "generating", "[]", "", "", "[]", "", 0, 0, "", "run1", "", "u1", "user",
 				int64(9), int64(9), "p1", "q1").WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 			smock.ExpectBegin()
@@ -127,9 +128,9 @@ func Test_QuestionGuidance(t *testing.T) {
 		Convey("FinishGenerating records the outcome only for the run that is generating\n", func() {
 			done := &interfaces.QuestionGuidance{ProjectID: "p1", QuestionID: "q1", Status: "ready", RunID: "run1",
 				AgentTaskID: "task1", Guidance: "g", OntologySignature: "sig", OutOfScope: []string{"x"}, UpdateTime: 12,
-				Tests: []*interfaces.QuestionTest{}}
-			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_question_guidance SET f_status = ?, f_tests = ?, f_guidance = ?, f_ontology_signature = ?, f_out_of_scope = ?, f_error = ?, f_agent_task_id = ?, f_update_time = ? WHERE f_project_id = ? AND f_question_id = ? AND f_status = ? AND f_run_id = ?")).
-				WithArgs("ready", "[]", "g", "sig", `["x"]`, "", "task1", int64(12), "p1", "q1", "generating", "run1").
+				Tests: []*interfaces.QuestionTest{}, NoTestsReason: "Nothing drafted holds the amount.", LeftOutTests: 3}
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_question_guidance SET f_status = ?, f_tests = ?, f_guidance = ?, f_ontology_signature = ?, f_out_of_scope = ?, f_no_tests_reason = ?, f_left_out_tests = ?, f_error = ?, f_agent_task_id = ?, f_update_time = ? WHERE f_project_id = ? AND f_question_id = ? AND f_status = ? AND f_run_id = ?")).
+				WithArgs("ready", "[]", "g", "sig", `["x"]`, "Nothing drafted holds the amount.", 3, "", "task1", int64(12), "p1", "q1", "generating", "run1").
 				WillReturnResult(sqlmock.NewResult(0, 1))
 
 			ok, err := ra.FinishGenerating(ctx, done)
