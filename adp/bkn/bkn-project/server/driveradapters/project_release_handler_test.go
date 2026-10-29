@@ -126,5 +126,49 @@ func Test_ProjectReleaseRestHandler(t *testing.T) {
 			So(serveBody(handler, http.MethodPost, base+"/switches", []byte(`[`)).Result().StatusCode,
 				ShouldEqual, http.StatusBadRequest)
 		})
+
+		Convey("A release's regression is read for the network the path names\n", func() {
+			prs.EXPECT().GetRegression(gomock.Any(), "Bearer t", "p1", "supply_v1_1_0").Return(&interfaces.Regression{
+				NetworkID: "supply_v1_1_0", Status: interfaces.REGRESSION_STATUS_NOT_PASSED,
+			}, nil)
+
+			w := serve(handler, http.MethodGet, base+"/releases/supply_v1_1_0/regression")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"status":"not_passed"`)
+		})
+
+		Convey("regression:run runs it again as the caller and replies 202\n", func() {
+			prs.EXPECT().RunRegression(gomock.Any(), "Bearer t", "p1", "supply_v1_1_0", caller).Return(&interfaces.Regression{
+				NetworkID: "supply_v1_1_0", Status: interfaces.REGRESSION_STATUS_RUNNING,
+			}, nil)
+
+			w := serve(handler, http.MethodPost, base+"/releases/supply_v1_1_0/regression:run")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
+			So(w.Body.String(), ShouldContainSubstring, `"status":"running"`)
+		})
+
+		Convey("Another action on a release is not found, and a refusal is the reply\n", func() {
+			So(serve(handler, http.MethodPost, base+"/releases/supply_v1_1_0/regression:stop").Result().StatusCode,
+				ShouldEqual, http.StatusNotFound)
+
+			prs.EXPECT().RunRegression(gomock.Any(), "Bearer t", "p1", "supply_v1_1_0", caller).Return(nil,
+				httperrors.NewHTTPError(t.Context(), http.StatusConflict, perrors.BknProject_Release_RegressionRunning))
+
+			w := serve(handler, http.MethodPost, base+"/releases/supply_v1_1_0/regression:run")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusConflict)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Release_RegressionRunning)
+		})
+
+		Convey("Publishing still reaches its handler beside the release routes\n", func() {
+			prs.EXPECT().PublishRelease(gomock.Any(), "Bearer t", "p1", gomock.Any(), caller, author).
+				Return(&interfaces.PublishReleaseResult{NetworkID: "supply_v1_1_0"}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/releases", []byte(`{"version":"1.1.0"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
+		})
 	})
 }

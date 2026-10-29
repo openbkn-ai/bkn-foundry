@@ -116,6 +116,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id/releases", r.PublishProjectByEx)
 	apiV1.GET("/projects/:project_id/switch-plan", r.PlanProjectSwitchByEx)
 	apiV1.POST("/projects/:project_id/switches", r.SwitchProjectByEx)
+	// What a release's scenario questions got on its network, and running that again:
+	// regression:run is a custom method on the release.
+	apiV1.GET("/projects/:project_id/releases/:network_id/regression", r.GetRegressionByEx)
+	apiV1.POST("/projects/:project_id/releases/:network_id/:action", r.ReleaseActionByEx)
 
 	// Ontology drafts: drafting, restoring an excluded field and confirming are custom methods,
 	// ontology/draft:generate, draft:restore and draft:confirm; people edit items one by one and
