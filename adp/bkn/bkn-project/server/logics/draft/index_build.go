@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -60,7 +62,8 @@ func buildOutcome(err error) (string, string) {
 	var vegaErr *interfaces.VegaError
 	if errors.As(err, &vegaErr) {
 		switch {
-		case vegaErr.HTTPCode == http.StatusForbidden:
+		// A 403 may also be the connector's entitlement, which is no missing permission.
+		case vegaErr.HTTPCode == http.StatusForbidden && vegaErr.ErrorCode == httperrors.PublicError_Forbidden:
 			return interfaces.INDEX_BUILD_NO_PERMISSION, ""
 		case vegaErr.HTTPCode == http.StatusBadRequest && vegaErr.ErrorCode == vegaBuildTaskExist:
 			return interfaces.INDEX_BUILD_EXISTING, ""

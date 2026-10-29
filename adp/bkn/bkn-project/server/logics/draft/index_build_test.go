@@ -55,7 +55,7 @@ func Test_BuildIndexes(t *testing.T) {
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").
 				Return([]*interfaces.VegaBuildTask{{ID: "t1", ResourceID: "r_lines", Status: "running"}}, true, nil)
 			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_orders").Return("t9", nil)
-			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_parts").Return("", refusal(http.StatusForbidden, "VegaBackend.Forbidden"))
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_parts").Return("", refusal(http.StatusForbidden, httperrors.PublicError_Forbidden))
 			// A task started between reading and creating is taken as this confirmation's own.
 			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_taken").
 				Return("", refusal(http.StatusBadRequest, "VegaBackend.BuildTask.Exist"))
@@ -93,6 +93,13 @@ func Test_BuildIndexes(t *testing.T) {
 
 			So(outcome, ShouldEqual, interfaces.INDEX_BUILD_FAILED)
 			So(reason, ShouldContainSubstring, "VegaBackend.BuildTask.InvalidMode")
+		})
+
+		Convey("Only a refused permission reads as no permission; another 403 keeps its reason\n", func() {
+			outcome, reason := buildOutcome(refusal(http.StatusForbidden, "VegaBackend.Connector.EntitlementDenied"))
+
+			So(outcome, ShouldEqual, interfaces.INDEX_BUILD_FAILED)
+			So(reason, ShouldContainSubstring, "VegaBackend.Connector.EntitlementDenied")
 		})
 
 		Convey("Nothing is recorded when no table needs a build\n", func() {
