@@ -27,6 +27,41 @@ const (
 	BknProject_Project_InternalError = "BknProject.Project.InternalError"
 )
 
+// The requirement specification of a project and its documents.
+const (
+	// 400
+	BknProject_Requirement_InvalidRequestBody  = "BknProject.Requirement.InvalidRequestBody"
+	BknProject_Requirement_MissingUpdateTime   = "BknProject.Requirement.MissingUpdateTime"
+	BknProject_Requirement_UnsupportedFormat   = "BknProject.Requirement.UnsupportedFormat"
+	BknProject_Requirement_NotText             = "BknProject.Requirement.NotText"
+	BknProject_Requirement_DocumentTooLarge    = "BknProject.Requirement.DocumentTooLarge"
+	BknProject_Requirement_TooManyDocuments    = "BknProject.Requirement.TooManyDocuments"
+	BknProject_Requirement_InvalidDocumentType = "BknProject.Requirement.InvalidDocumentType"
+	BknProject_Requirement_InvalidItem         = "BknProject.Requirement.InvalidItem"
+	BknProject_Requirement_InvalidResolution   = "BknProject.Requirement.InvalidResolution"
+	BknProject_Requirement_InvalidOption       = "BknProject.Requirement.InvalidOption"
+	BknProject_Requirement_NoDocuments         = "BknProject.Requirement.NoDocuments"
+	BknProject_Requirement_NoCatalogs          = "BknProject.Requirement.NoCatalogs"
+	BknProject_Requirement_InputsTooLarge      = "BknProject.Requirement.InputsTooLarge"
+
+	// 403
+	BknProject_Requirement_NotOwner = "BknProject.Requirement.NotOwner"
+
+	// 404
+	BknProject_Requirement_NotFound         = "BknProject.Requirement.NotFound"
+	BknProject_Requirement_DocumentNotFound = "BknProject.Requirement.DocumentNotFound"
+	BknProject_Requirement_ItemNotFound     = "BknProject.Requirement.ItemNotFound"
+
+	// 409
+	BknProject_Requirement_Drafting        = "BknProject.Requirement.Drafting"
+	BknProject_Requirement_Stale           = "BknProject.Requirement.Stale"
+	BknProject_Requirement_HasDecisions    = "BknProject.Requirement.HasDecisions"
+	BknProject_Requirement_ProjectArchived = "BknProject.Requirement.ProjectArchived"
+
+	// 500
+	BknProject_Requirement_InternalError = "BknProject.Requirement.InternalError"
+)
+
 var (
 	ProjectErrCodeList = []string{
 		BknProject_Project_InvalidRequestBody,
@@ -39,5 +74,27 @@ var (
 		BknProject_Project_NotFound,
 		BknProject_Project_BknBackendRequestFailed,
 		BknProject_Project_InternalError,
+		BknProject_Requirement_InvalidRequestBody,
+		BknProject_Requirement_MissingUpdateTime,
+		BknProject_Requirement_UnsupportedFormat,
+		BknProject_Requirement_NotText,
+		BknProject_Requirement_DocumentTooLarge,
+		BknProject_Requirement_TooManyDocuments,
+		BknProject_Requirement_InvalidDocumentType,
+		BknProject_Requirement_InvalidItem,
+		BknProject_Requirement_InvalidResolution,
+		BknProject_Requirement_InvalidOption,
+		BknProject_Requirement_NoDocuments,
+		BknProject_Requirement_NoCatalogs,
+		BknProject_Requirement_InputsTooLarge,
+		BknProject_Requirement_NotOwner,
+		BknProject_Requirement_NotFound,
+		BknProject_Requirement_DocumentNotFound,
+		BknProject_Requirement_ItemNotFound,
+		BknProject_Requirement_Drafting,
+		BknProject_Requirement_Stale,
+		BknProject_Requirement_HasDecisions,
+		BknProject_Requirement_ProjectArchived,
+		BknProject_Requirement_InternalError,
 	}
 )
