@@ -7,6 +7,7 @@ package interfaces
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -91,6 +92,10 @@ type BknAgentAnswer struct {
 	ToolsFailed      int               `json:"tools_failed"`
 	ToolUses         []BknAgentToolUse `json:"tool_uses,omitempty"`
 }
+
+// ErrBknAgentAnswerCut is an answer whose stream was reached but did not read to its end: it
+// stopped before its terminal event, or carried an event that does not read.
+var ErrBknAgentAnswerCut = errors.New("bkn-agent answer stream cut short")
 
 // BknAgentToolUse is one tool call of an answer: the tool, its input as bkn-agent streamed it, and
 // how it finished (succeeded or failed, with error_kind unavailable or error); Status is empty for
