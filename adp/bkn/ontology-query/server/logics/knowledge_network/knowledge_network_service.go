@@ -8,6 +8,7 @@ package knowledge_network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -757,6 +758,10 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 
 	// 	batch := currentLevelObjects[i:end]
 
+	if _, isIndirect := edge.RelationType.MappingRules.(*interfaces.InDirectMapping); isIndirect {
+		return kns.getNextObjectsByIndirectRelation(ctx, query, batch, edge, objectType, nextObjectTypeID, isForward)
+	}
+
 	// Build batch query conditions and also return associated view data for indirect associations.
 	conditions, viewDataMap, err := kns.buildBatchConditions(ctx, query, batch, edge, isForward)
 	if err != nil {
@@ -768,6 +773,23 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 		return nil, nil
 	}
 
+	nextObjects, err := kns.ots.GetObjectsByObjectTypeID(ctx, nextObjectsQuery(query, nextObjectTypeID, objectType, conditions))
+	if err != nil {
+		return nil, err
+	}
+	// logger.Debugf("从对象类[%s]中获取到的数据条数为[%d]", nextObjectTypeID, len(nextObjects.Datas))
+
+	// Map results back to each object according to mapping rules.
+	kns.mapResultsToObjects(batch, nextObjects, result, edge, isForward, viewDataMap)
+	// }
+
+	return result, nil
+}
+
+// nextObjectsQuery queries the next-layer objects matching any of conditions
+// and the path's own condition, sort and limit for that object type.
+func nextObjectsQuery(query *interfaces.SubGraphQueryBaseOnSource, nextObjectTypeID string,
+	objectType interfaces.ObjectTypeWithKeyField, conditions []*cond.CondCfg) *interfaces.ObjectQueryBaseOnObjectType {
 	nextObjectQuery := &interfaces.ObjectQueryBaseOnObjectType{
 		KNID:         query.KNID,
 		Branch:       query.Branch,
@@ -798,18 +820,135 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 	} else {
 		nextObjectQuery.Limit = query.Limit // Adjust the limit as needed.
 	}
+	return nextObjectQuery
+}
 
-	nextObjects, err := kns.ots.GetObjectsByObjectTypeID(ctx, nextObjectQuery)
+// maxPushdownTargets bounds the next-layer objects resolved up front to narrow
+// a backing read. A path condition matching more objects is applied after the
+// backing read instead. It is a variable so tests can disable the pushdown.
+var maxPushdownTargets = 1000
+
+// getNextObjectsByIndirectRelation expands batch through an indirect relation.
+// The backing resource is read page by page, and each page's next-layer
+// objects are queried before the next page is read, so reading stops as soon
+// as the path's object limit is filled however large the backing resource is.
+// A path condition on the next object type is resolved first when it matches
+// few objects, and then narrows the backing read itself.
+func (kns *knowledgeNetworkService) getNextObjectsByIndirectRelation(ctx context.Context,
+	query *interfaces.SubGraphQueryBaseOnSource,
+	batch []interfaces.LevelObject,
+	edge *interfaces.TypeEdge,
+	objectType interfaces.ObjectTypeWithKeyField,
+	nextObjectTypeID string, isForward bool) (map[string]interfaces.Objects, error) {
+
+	mappingRules := edge.RelationType.MappingRules.(*interfaces.InDirectMapping)
+	if err := requireRelationBacking(ctx, edge, mappingRules); err != nil {
+		return nil, err
+	}
+	targetFilter, noTargets, err := kns.pushdownTargetFilter(ctx, query, objectType, nextObjectTypeID, mappingRules, isForward)
+	if err != nil || noTargets {
+		return nil, err
+	}
+
+	result := make(map[string]interfaces.Objects)
+	limit := nextObjectsQuery(query, nextObjectTypeID, objectType, nil).Limit
+	found := make(map[string]struct{})
+	err = kns.scanBackingRows(ctx, query, edge, batch, mappingRules, isForward, targetFilter,
+		func(page map[string][]map[string]any) (bool, error) {
+			conditions, viewDataMap := indirectNextObjectConditions(batch, page, farMappingRules(mappingRules, isForward), isForward)
+			if len(conditions) == 0 {
+				return true, nil
+			}
+			nextQuery := nextObjectsQuery(query, nextObjectTypeID, objectType, conditions)
+			if limit > 0 {
+				nextQuery.Limit = limit - len(found)
+			}
+			nextObjects, err := kns.ots.GetObjectsByObjectTypeID(ctx, nextQuery)
+			if err != nil {
+				return false, err
+			}
+			pageResult := make(map[string]interfaces.Objects)
+			kns.mapResultsToObjects(batch, nextObjects, pageResult, edge, isForward, viewDataMap)
+			for objectID, objects := range pageResult {
+				merged, exists := result[objectID]
+				if !exists {
+					result[objectID] = objects
+					continue
+				}
+				merged.Datas = append(merged.Datas, objects.Datas...)
+				merged.TotalCount += objects.TotalCount
+				result[objectID] = merged
+			}
+			for index, nextObject := range nextObjects.Datas {
+				levelObject, visible := levelObjectFromProjectedRow(nextObject, nextObjects)
+				key := levelObject.ObjectID
+				if !visible {
+					key = fmt.Sprintf("hidden:%d:%d", len(found), index)
+				}
+				found[key] = struct{}{}
+			}
+			return limit <= 0 || len(found) < limit, nil
+		})
 	if err != nil {
 		return nil, err
 	}
-	// logger.Debugf("从对象类[%s]中获取到的数据条数为[%d]", nextObjectTypeID, len(nextObjects.Datas))
-
-	// Map results back to each object according to mapping rules.
-	kns.mapResultsToObjects(batch, nextObjects, result, edge, isForward, viewDataMap)
-	// }
-
 	return result, nil
+}
+
+// pushdownTargetFilter resolves a path condition on the next object type to
+// the backing-resource values of the objects it matches, so the backing read
+// skips rows whose far end cannot satisfy it. It applies to a single-field far
+// mapping and a condition matching at most maxPushdownTargets objects;
+// otherwise it returns no filter and the condition applies after the read.
+// noTargets reports that no object matches, so the relation step is empty.
+func (kns *knowledgeNetworkService) pushdownTargetFilter(ctx context.Context,
+	query *interfaces.SubGraphQueryBaseOnSource,
+	objectType interfaces.ObjectTypeWithKeyField,
+	nextObjectTypeID string,
+	mappingRules *interfaces.InDirectMapping, isForward bool) (filter *cond.CondCfg, noTargets bool, err error) {
+
+	rules := farMappingRules(mappingRules, isForward)
+	if objectType.ActualCondition == nil || len(rules) != 1 {
+		return nil, false, nil
+	}
+	targets, err := kns.ots.GetObjectsByObjectTypeID(ctx, &interfaces.ObjectQueryBaseOnObjectType{
+		KNID:            query.KNID,
+		Branch:          query.Branch,
+		ObjectTypeID:    nextObjectTypeID,
+		ActualCondition: objectType.ActualCondition,
+		PageQuery:       interfaces.PageQuery{Limit: maxPushdownTargets + 1},
+		CommonQueryParameters: interfaces.CommonQueryParameters{
+			IgnoreLocalIndex: query.IgnoreLocalIndex,
+		},
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if len(targets.Datas) > maxPushdownTargets {
+		return nil, false, nil
+	}
+	return farKeyFilter(targets.Datas, rules[0], isForward)
+}
+
+// farKeyFilter builds the backing-resource filter matching the far-end key of
+// objects through a single-field far mapping rule. noTargets reports that no
+// object carries a key, so no backing row can reach any of them.
+func farKeyFilter(objects []map[string]any, rule interfaces.Mapping, isForward bool) (*cond.CondCfg, bool, error) {
+	// A far rule maps backing -> object forward, and object -> backing reverse.
+	objectProperty, backingField := rule.TargetProp.Name, rule.SourceProp.Name
+	if !isForward {
+		objectProperty, backingField = rule.SourceProp.Name, rule.TargetProp.Name
+	}
+	values := make([]any, 0, len(objects))
+	for _, object := range objects {
+		if value, exists := object[objectProperty]; exists && value != nil {
+			values = append(values, value)
+		}
+	}
+	if len(values) == 0 {
+		return nil, true, nil
+	}
+	return &cond.CondCfg{Name: backingField, Operation: "in", ValueFrom: "const", Value: values}, false, nil
 }
 
 // Map query results back to each object.
@@ -924,27 +1063,9 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 	currentLevelObjects []interfaces.LevelObject,
 	edge *interfaces.TypeEdge, isForward bool) ([]*cond.CondCfg, map[string][]map[string]any, error) {
 
-	var conditions []*cond.CondCfg
-	viewDataMap := make(map[string][]map[string]any)
 	mappingRules := edge.RelationType.MappingRules.(*interfaces.InDirectMapping)
-
-	if mappingRules.BackingDataSource.ID == "" {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName})
-		if renderErr != nil {
-			logger.Errorf("localized message rendering failed: %v", renderErr)
-		}
-		// If the view is empty, return an error without sending a request.
-		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(localizedText)
-	}
-
-	// Mapping relationship from view to target object.
-	var targetMappingRules []interfaces.Mapping
-	if isForward {
-		targetMappingRules = mappingRules.TargetMappingRules
-	} else {
-		targetMappingRules = mappingRules.SourceMappingRules
+	if err := requireRelationBacking(ctx, edge, mappingRules); err != nil {
+		return nil, nil, err
 	}
 
 	// Batch-query view data for all objects.
@@ -953,6 +1074,44 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 		return nil, nil, err
 	}
 
+	conditions, viewDataMap := indirectNextObjectConditions(currentLevelObjects, batchViewData,
+		farMappingRules(mappingRules, isForward), isForward)
+	return conditions, viewDataMap, nil
+}
+
+// requireRelationBacking rejects an indirect relation without a backing
+// resource before any request is sent.
+func requireRelationBacking(ctx context.Context, edge *interfaces.TypeEdge, mappingRules *interfaces.InDirectMapping) error {
+	if mappingRules.BackingDataSource != nil && mappingRules.BackingDataSource.ID != "" {
+		return nil
+	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+		oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		WithErrorDetails(localizedText)
+}
+
+// farMappingRules returns the rules between the backing resource and the next
+// object in the walking direction.
+func farMappingRules(mappingRules *interfaces.InDirectMapping, isForward bool) []interfaces.Mapping {
+	if isForward {
+		return mappingRules.TargetMappingRules
+	}
+	return mappingRules.SourceMappingRules
+}
+
+// indirectNextObjectConditions builds the next-object filter from the backing
+// rows of each current object, and returns the rows of the objects that have
+// any for the later association check.
+func indirectNextObjectConditions(currentLevelObjects []interfaces.LevelObject,
+	batchViewData map[string][]map[string]any, targetMappingRules []interfaces.Mapping,
+	isForward bool) ([]*cond.CondCfg, map[string][]map[string]any) {
+
+	var conditions []*cond.CondCfg
+	viewDataMap := make(map[string][]map[string]any)
 	var inValues []any
 	var inField string
 	// Build query conditions for each object.
@@ -1002,9 +1161,9 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 				ValueFrom: "const",
 				Value:     inValues,
 			},
-		}, viewDataMap, nil
+		}, viewDataMap
 	}
-	return conditions, viewDataMap, nil
+	return conditions, viewDataMap
 }
 
 func groupConditions(operation string, conditions []*cond.CondCfg) *cond.CondCfg {
@@ -1048,14 +1207,55 @@ func conditionTupleKey(conditions []*cond.CondCfg) string {
 	return key.String()
 }
 
-// Batch-fetch view data.
+// maxIndirectBackingRows bounds the backing rows one relation step reads
+// before it fails. Path expansion stops reading once its object limit is
+// filled, so only a step that has to exhaust a very large backing table
+// reaches it; it then fails instead of returning a partial relation set.
+const maxIndirectBackingRows = 100000
+
+// Batch-fetch view data: every backing row of currentLevelObjects.
 func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource,
 	edge *interfaces.TypeEdge,
 	currentLevelObjects []interfaces.LevelObject,
 	mappingRules *interfaces.InDirectMapping, isForward bool) (map[string][]map[string]any, error) {
+	return kns.collectBackingRows(ctx, query, edge, currentLevelObjects, mappingRules, isForward, nil)
+}
 
+// collectBackingRows returns every backing row of currentLevelObjects that
+// also satisfies targetFilter, grouped by current object.
+func (kns *knowledgeNetworkService) collectBackingRows(ctx context.Context,
+	query *interfaces.SubGraphQueryBaseOnSource,
+	edge *interfaces.TypeEdge,
+	currentLevelObjects []interfaces.LevelObject,
+	mappingRules *interfaces.InDirectMapping, isForward bool,
+	targetFilter *cond.CondCfg) (map[string][]map[string]any, error) {
 	result := make(map[string][]map[string]any)
+	err := kns.scanBackingRows(ctx, query, edge, currentLevelObjects, mappingRules, isForward, targetFilter,
+		func(page map[string][]map[string]any) (bool, error) {
+			for objectID, rows := range page {
+				result[objectID] = append(result[objectID], rows...)
+			}
+			return true, nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// scanBackingRows reads the backing rows of currentLevelObjects page by page
+// and hands each page, grouped by current object, to visit until visit returns
+// false or the rows run out. targetFilter, when set, narrows the rows on the
+// far side of the relation.
+func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
+	query *interfaces.SubGraphQueryBaseOnSource,
+	edge *interfaces.TypeEdge,
+	currentLevelObjects []interfaces.LevelObject,
+	mappingRules *interfaces.InDirectMapping, isForward bool,
+	targetFilter *cond.CondCfg,
+	visit func(page map[string][]map[string]any) (bool, error)) error {
+
 	if mappingRules.BackingDataSource == nil ||
 		mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE ||
 		strings.TrimSpace(mappingRules.BackingDataSource.ID) == "" {
@@ -1063,10 +1263,10 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		if mappingRules.BackingDataSource != nil {
 			backingType = mappingRules.BackingDataSource.Type
 		}
-		return nil, logics.UnsupportedRelationBackingDataSourceError(ctx, backingType)
+		return logics.UnsupportedRelationBackingDataSourceError(ctx, backingType)
 	}
 	if kns.proxy == nil {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
@@ -1083,18 +1283,29 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		Operation:  interfaces.PermissionOperationQueryData,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
 
 	batchSize := 50 // Batch size for view queries.
-	var mappingRulesToUse []interfaces.Mapping
+	var mappingRulesToUse, farMappingRules []interfaces.Mapping
 	if isForward {
-		mappingRulesToUse = mappingRules.SourceMappingRules
+		mappingRulesToUse, farMappingRules = mappingRules.SourceMappingRules, mappingRules.TargetMappingRules
 	} else {
-		mappingRulesToUse = mappingRules.TargetMappingRules
+		mappingRulesToUse, farMappingRules = mappingRules.TargetMappingRules, mappingRules.SourceMappingRules
 	}
 
+	// Pages are only stable under a total order. Sorting by the backing fields
+	// of both sides orders every distinct pair; identical rows are
+	// interchangeable.
+	sort := []*interfaces.SortParams{}
+	for _, field := range append(backingFields(mappingRulesToUse, isForward, true),
+		backingFields(farMappingRules, isForward, false)...) {
+		sort = append(sort, &interfaces.SortParams{Field: field, Direction: interfaces.ASC_DIRECTION})
+	}
+
+	rowsRead := 0
+	tooManyRows := errors.New("too many backing rows")
 	// Process objects by batch.
 	for i := 0; i < len(currentLevelObjects); i += batchSize {
 		end := i + batchSize
@@ -1122,84 +1333,83 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			objectMapping[len(batchConditions)-1] = levelObj.ObjectID
 		}
 
-		// if len(batchConditions) == 0 {
-		// 	continue
-		// }
-
-		// Build the view query.
-		viewQuery := &interfaces.ViewQuery{
-			NeedTotal: query.NeedTotal,
-			Limit:     interfaces.MAX_LIMIT, // When querying the relation table, do not limit the count; fetch all relations.
-		}
-
+		var filters *cond.CondCfg
 		if len(mappingRulesToUse) == 1 && len(inValues) > 0 {
-			viewQuery.Filters = &cond.CondCfg{
+			filters = &cond.CondCfg{
 				Name:      inField,
 				Operation: "in",
 				ValueFrom: "const",
 				Value:     inValues,
 			}
 		} else {
-			viewQuery.Filters = groupConditions(cond.OperationOr, batchConditions)
+			filters = groupConditions(cond.OperationOr, batchConditions)
+		}
+		if targetFilter != nil {
+			filters = groupConditions(cond.OperationAnd, []*cond.CondCfg{filters, targetFilter})
 		}
 
-		// Build sorting by association fields.
-		sort := []*interfaces.SortParams{}
-		for _, mapping := range mappingRulesToUse {
-			targetName := mapping.TargetProp.Name
-			if !isForward {
-				targetName = mapping.SourceProp.Name
-			}
-
-			sort = append(sort, &interfaces.SortParams{
-				Field:     targetName,
-				Direction: interfaces.ASC_DIRECTION,
-			})
+		params := interfaces.ResourceDataQueryParams{
+			IgnoreLocalIndex: &query.IgnoreLocalIndex,
+			NeedTotal:        query.NeedTotal,
+			Sort:             sort,
+			FilterCondition:  logics.CondCfgToFilterMap(filters),
 		}
-		viewQuery.Sort = sort
-
-		var backingRows []map[string]any
-		if mappingRules.BackingDataSource != nil && mappingRules.BackingDataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE {
-			params := &interfaces.ResourceDataQueryParams{
-				IgnoreLocalIndex: &query.IgnoreLocalIndex,
-				NeedTotal:        viewQuery.NeedTotal,
-				Paging: interfaces.ResourceDataPagingRequest{
-					Mode:  interfaces.ResourceDataPagingModeSingle,
-					Limit: viewQuery.Limit,
-				},
-				Sort:            viewQuery.Sort,
-				SearchAfter:     viewQuery.SearchAfter,
-				FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
-			}
-			resp, err := kns.vba.QueryResourceData(ctx, mappingRules.BackingDataSource.ID, params)
-			if err != nil {
-				if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
-					return nil, httperrors.NewHTTPError(ctx, downstream.StatusCode,
-						relationDownstreamErrorCode(downstream.StatusCode)).
-						WithErrorDetails(downstream.ClientMessage())
+		stopped := false
+		var visitErr error
+		err := logics.ScanResourceData(ctx, kns.vba, mappingRules.BackingDataSource.ID, params, interfaces.MAX_LIMIT,
+			func(rows []map[string]any) (bool, error) {
+				rowsRead += len(rows)
+				if rowsRead > maxIndirectBackingRows {
+					return false, tooManyRows
 				}
-				return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
-					WithErrorDetails("relation backing resource query failed")
-			}
-			if resp == nil {
-				return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails("vega resource query returned nil")
-			}
-			backingRows = resp.Entries
-			logger.Debugf("relation [%s] from resource [%s] rows [%d]", edge.RelationType.RTName, mappingRules.BackingDataSource.ID, len(backingRows))
-		} else {
-			backingType := ""
-			if mappingRules.BackingDataSource != nil {
-				backingType = mappingRules.BackingDataSource.Type
-			}
-			return nil, logics.UnsupportedRelationBackingDataSourceError(ctx, backingType)
+				logger.Debugf("relation [%s] from resource [%s] rows [%d]", edge.RelationType.RTName, mappingRules.BackingDataSource.ID, len(rows))
+				page := make(map[string][]map[string]any)
+				kns.mapViewDataToObjects(rows, batchConditions, objectMapping, mappingRules, isForward, page)
+				more, err := visit(page)
+				stopped, visitErr = !more, err
+				return more, err
+			})
+		if visitErr != nil {
+			return visitErr
 		}
-
-		kns.mapViewDataToObjects(backingRows, batchConditions, objectMapping, mappingRules, isForward, result)
+		if errors.Is(err, tooManyRows) {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("relation [%s] needs more than %d backing rows for one step; add conditions to narrow the query",
+					edge.RelationType.RTName, maxIndirectBackingRows))
+		}
+		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+			return httperrors.NewHTTPError(ctx, downstream.StatusCode,
+				relationDownstreamErrorCode(downstream.StatusCode)).
+				WithErrorDetails(downstream.ClientMessage())
+		}
+		if err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+				WithErrorDetails("relation backing resource query failed")
+		}
+		if stopped {
+			return nil
+		}
 	}
 
-	return result, nil
+	return nil
+}
+
+// backingFields returns the backing-resource fields of mapping rules. near
+// selects the rules between the current object and the backing resource; the
+// others lie between the backing resource and the next object.
+func backingFields(rules []interfaces.Mapping, isForward, near bool) []string {
+	fields := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		// Near rules map object -> backing (target side is backing); far rules
+		// map backing -> object (source side is backing). Reverse swaps both.
+		if near == isForward {
+			fields = append(fields, rule.TargetProp.Name)
+		} else {
+			fields = append(fields, rule.SourceProp.Name)
+		}
+	}
+	return fields
 }
 
 func relationDownstreamErrorCode(statusCode int) string {
@@ -1582,9 +1792,35 @@ func (kns *knowledgeNetworkService) matchIndirectRelations(ctx context.Context,
 	edge *interfaces.TypeEdge) ([]interfaces.Relation, error) {
 
 	relations := []interfaces.Relation{}
+	mappingRules := edge.RelationType.MappingRules.(*interfaces.InDirectMapping)
+	if err := requireRelationBacking(ctx, edge, mappingRules); err != nil {
+		return nil, err
+	}
+
+	// The target objects are known, so the backing read only needs rows that
+	// reach one of them. A row reaching none could never match below.
+	var targetFilter *cond.CondCfg
+	if len(mappingRules.TargetMappingRules) == 1 {
+		targetData := make([]map[string]any, len(targetObjects))
+		for index, targetObj := range targetObjects {
+			targetData[index] = targetObj.ObjectData
+		}
+		filter, noTargets, _ := farKeyFilter(targetData, mappingRules.TargetMappingRules[0], true)
+		if noTargets {
+			return relations, nil
+		}
+		targetFilter = filter
+	}
 
 	// Query view data; this is necessary because view data is not in the input objects.
-	_, viewDataMap, err := kns.buildBatchConditionsForObjects(ctx, query, sourceObjects, edge, true)
+	viewDataMap, err := kns.collectBackingRows(ctx, &interfaces.SubGraphQueryBaseOnSource{
+		KNID:   query.KNID,
+		Branch: query.Branch,
+		CommonQueryParameters: interfaces.CommonQueryParameters{
+			IncludeLogicParams: query.IncludeLogicParams,
+			IgnoreLocalIndex:   query.IgnoreLocalIndex,
+		},
+	}, edge, sourceObjects, mappingRules, true, targetFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -1594,7 +1830,6 @@ func (kns *knowledgeNetworkService) matchIndirectRelations(ctx context.Context,
 		objectViewData := viewDataMap[sourceObj.ObjectID]
 
 		for _, targetObj := range targetObjects {
-			mappingRules := edge.RelationType.MappingRules.(*interfaces.InDirectMapping)
 			if logics.CheckIndirectMappingConditionsWithViewData(
 				sourceObj.ObjectData,
 				targetObj.ObjectData,
@@ -1612,67 +1847,6 @@ func (kns *knowledgeNetworkService) matchIndirectRelations(ctx context.Context,
 	}
 
 	return relations, nil
-}
-
-// Build batch query conditions for objects, adapted for SubGraphQueryBaseOnObjects.
-func (kns *knowledgeNetworkService) buildBatchConditionsForObjects(ctx context.Context,
-	query *interfaces.SubGraphQueryBaseOnObjects,
-	currentLevelObjects []interfaces.LevelObject,
-	edge *interfaces.TypeEdge,
-	isForward bool) ([]*cond.CondCfg, map[string][]map[string]any, error) {
-
-	var conditions []*cond.CondCfg
-	viewDataMap := make(map[string][]map[string]any)
-
-	// Handle direct mappings first.
-	directObjects := make([]interfaces.LevelObject, 0)
-	indirectObjects := make([]interfaces.LevelObject, 0)
-
-	for _, levelObj := range currentLevelObjects {
-		switch edge.RelationType.MappingRules.(type) {
-		case []interfaces.Mapping:
-			directObjects = append(directObjects, levelObj)
-		case *interfaces.InDirectMapping:
-			indirectObjects = append(indirectObjects, levelObj)
-		}
-	}
-
-	// Handle direct mappings.
-	if len(directObjects) > 0 {
-		directConditions, err := logics.BuildDirectBatchConditions(directObjects, edge, isForward)
-		if err != nil {
-			return nil, nil, err
-		}
-		conditions = append(conditions, directConditions...)
-	}
-
-	// Handle indirect mappings by batch-querying view data.
-	if len(indirectObjects) > 0 {
-		// Build a temporary SubGraphQueryBaseOnSource to call buildIndirectBatchConditions.
-		tempQuery := &interfaces.SubGraphQueryBaseOnSource{
-			KNID:   query.KNID,
-			Branch: query.Branch,
-			PageQuery: interfaces.PageQuery{
-				NeedTotal: false,
-			},
-			CommonQueryParameters: interfaces.CommonQueryParameters{
-				IncludeLogicParams: query.IncludeLogicParams,
-				IgnoreLocalIndex:   query.IgnoreLocalIndex,
-			},
-		}
-		indirectConditions, indirectViewData, err := kns.buildIndirectBatchConditions(ctx, tempQuery, indirectObjects, edge, isForward)
-		if err != nil {
-			return nil, nil, err
-		}
-		conditions = append(conditions, indirectConditions...)
-
-		// Merge view data mappings.
-		for k, v := range indirectViewData {
-			viewDataMap[k] = v
-		}
-	}
-
-	return conditions, viewDataMap, nil
 }
 
 // Build the subgraph.
