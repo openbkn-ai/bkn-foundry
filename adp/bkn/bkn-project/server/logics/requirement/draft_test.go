@@ -655,3 +655,52 @@ func Test_GetRequirement(t *testing.T) {
 		})
 	})
 }
+
+// bkn-agent refuses a response_format that is not a valid JSON Schema with 400
+// BknAgent.ParamError.FormatError before drafting starts, so every keyword must hold
+// what JSON Schema allows: "required" an array of the object's own properties, never null.
+func Test_DraftResponseFormatIsValidJSONSchema(t *testing.T) {
+	Convey("The response format of pass draft is a valid JSON Schema", t, func() {
+		b, err := json.Marshal(draftResponseFormat())
+		So(err, ShouldBeNil)
+		var schema any
+		So(json.Unmarshal(b, &schema), ShouldBeNil)
+		So(schema.(map[string]any)["type"], ShouldEqual, "object")
+
+		var problems []string
+		var walk func(path string, v any)
+		walk = func(path string, v any) {
+			switch v := v.(type) {
+			case nil:
+				problems = append(problems, path+" is null")
+			case map[string]any:
+				if req, ok := v["required"]; ok {
+					names, isList := req.([]any)
+					props, _ := v["properties"].(map[string]any)
+					if !isList {
+						problems = append(problems, path+"/required is not an array")
+					}
+					for _, n := range names {
+						if _, ok := props[n.(string)]; !ok {
+							problems = append(problems, fmt.Sprintf("%s/required names %v, not a property", path, n))
+						}
+					}
+				}
+				if enum, ok := v["enum"]; ok {
+					if values, isList := enum.([]any); !isList || len(values) == 0 {
+						problems = append(problems, path+"/enum is not a non-empty array")
+					}
+				}
+				for k, child := range v {
+					walk(path+"/"+k, child)
+				}
+			case []any:
+				for i, child := range v {
+					walk(fmt.Sprintf("%s[%d]", path, i), child)
+				}
+			}
+		}
+		walk("", schema)
+		So(problems, ShouldBeEmpty)
+	})
+}
