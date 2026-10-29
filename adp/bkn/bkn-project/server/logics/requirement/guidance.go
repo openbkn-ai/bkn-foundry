@@ -41,6 +41,9 @@ const (
 // maxTests bounds the test questions of one scenario question.
 const maxTests = 20
 
+// maxNoTestsReason bounds, in characters, the reason kept for writing no test questions.
+const maxNoTestsReason = 1000
+
 // checkPending is the check reason of a test question not checked against the data yet.
 const checkPending = "pending"
 
@@ -48,9 +51,10 @@ var testKinds = []string{"paraphrase", "boundary", "not_exist", "variant"}
 
 // guidanceOutput is what the Agent returns in pass guidance.
 type guidanceOutput struct {
-	Tests      []agentTest `json:"tests"`
-	OutOfScope []string    `json:"out_of_scope"`
-	Guidance   string      `json:"guidance"`
+	Tests         []agentTest `json:"tests"`
+	NoTestsReason string      `json:"no_tests_reason"`
+	OutOfScope    []string    `json:"out_of_scope"`
+	Guidance      string      `json:"guidance"`
 }
 
 type agentTest struct {
@@ -78,9 +82,10 @@ func guidanceResponseFormat() map[string]any {
 			"expect": schemaEnum(interfaces.TEST_EXPECT_EXISTS, interfaces.TEST_EXPECT_NOT_EXISTS,
 				interfaces.TEST_EXPECT_SAME_RECORD),
 		}, "text", "kind", "slots", "expect")),
-		"out_of_scope": schemaStrings(),
-		"guidance":     schemaString(),
-	}, "tests", "out_of_scope", "guidance")
+		"no_tests_reason": schemaString(),
+		"out_of_scope":    schemaStrings(),
+		"guidance":        schemaString(),
+	}, "tests", "no_tests_reason", "out_of_scope", "guidance")
 }
 
 // guidanceMessage is the user message of pass guidance: the question, its scenarios, the rules,
@@ -258,18 +263,21 @@ func replaceSpans(text string, spans []valueSpan) string {
 	return text
 }
 
-// buildTests gives the Agent's test questions the server's ids, at most maxTests of them, leaving
-// out those without text or asking about a made-up value they do not say as written. A value is kept only when a document says it; the others are left for
-// the server to fill from the data. None is checked against the data yet.
-func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*interfaces.QuestionTest {
+// buildTests gives the Agent's test questions the server's ids, at most maxTests of them, and
+// counts those it leaves out: without text, asking about a made-up value they do not say as
+// written, or without the place of a slot left empty. A value is kept only when a document says
+// it; the others are left for the server to fill from the data. None is checked against the data
+// yet.
+func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) ([]*interfaces.QuestionTest, int) {
 	texts := make([]string, 0, len(docs))
 	for _, d := range docs {
 		texts = append(texts, normalize([]rune(d.Content)).text)
 	}
-	tests := []*interfaces.QuestionTest{}
+	tests, leftOut := []*interfaces.QuestionTest{}, 0
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
 		if text == "" || len(tests) == maxTests {
+			leftOut++
 			continue
 		}
 		expect := at.Expect
@@ -281,6 +289,10 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 		placed := true
 		for i, s := range at.Slots {
 			value := strings.TrimSpace(s.Value)
+			if value == "" && !strings.Contains(text, slotPlaceholder(i)) {
+				// The value the server fills would stand nowhere in the question.
+				placed = false
+			}
 			if !valueInDocuments(value, texts) {
 				// The text asks about the made-up value: it gives way to the slot, which the
 				// server's value from the data replaces. A text that does not say it as written
@@ -295,6 +307,7 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
 		if !placed {
+			leftOut++
 			continue
 		}
 		text = replaceSpans(text, spans)
@@ -303,7 +316,15 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 			Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkPending},
 		})
 	}
-	return tests
+	return tests, leftOut
+}
+
+// clip keeps at most n characters of s.
+func clip(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
 }
 
 // runAgent starts the requirements Agent as the caller and waits for its task up to the deadline,
@@ -452,7 +473,12 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 		return
 	}
 	done := *g
-	done.Status, done.Tests, done.Guidance = interfaces.GUIDANCE_STATUS_READY, buildTests(&out, docs), strings.TrimSpace(out.Guidance)
+	done.Status, done.Guidance = interfaces.GUIDANCE_STATUS_READY, strings.TrimSpace(out.Guidance)
+	done.Tests, done.LeftOutTests = buildTests(&out, docs)
+	// A reason for writing none applies only when none is kept.
+	if len(done.Tests) == 0 {
+		done.NoTestsReason = clip(strings.TrimSpace(out.NoTestsReason), maxNoTestsReason)
+	}
 	// Checked as the person who generated them, before anyone relies on them, and in time to
 	// record the outcome before another run may take the guidance over.
 	s.checkTests(ctx, caller, spec, draft, done.Tests, g.UpdateTime+guidanceLease.Milliseconds()-finishMargin.Milliseconds())

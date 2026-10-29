@@ -69,9 +69,11 @@ func Test_BuildGuidance(t *testing.T) {
 			}
 			out.Tests[1].Text = "  "
 
-			tests := buildTests(out, nil)
+			tests, leftOut := buildTests(out, nil)
 
 			So(tests, ShouldHaveLength, maxTests)
+			// The blank one, and the one past the most kept.
+			So(leftOut, ShouldEqual, 2)
 			So(tests[0].ID, ShouldEqual, "t1")
 			// The blank one is left out: the second test is the third written.
 			So(tests[1].ID, ShouldEqual, "t2")
@@ -83,7 +85,7 @@ func Test_BuildGuidance(t *testing.T) {
 
 		Convey("A value the Agent gives stays only when a document says it\n", func() {
 			docs := []*interfaces.RequirementDocument{doc("prd", interfaces.REQUIREMENT_DOC_PRD, "例如客户 １０００１ 的订单。")}
-			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 10001 for Acme Ltd?", Slots: []agentSlot{
+			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 10001 for Acme Ltd, {{slot 3}}?", Slots: []agentSlot{
 				{ConceptID: "c2", Property: "customer_id", Value: "10001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
 				{ConceptID: "c2", Property: "customer_id", Value: "  "},
@@ -95,7 +97,7 @@ func Test_BuildGuidance(t *testing.T) {
 		})
 
 		Convey("A value made up is replaced in the text by its slot, for the server's value to take its place\n", func() {
-			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 20001 and of Acme?", Slots: []agentSlot{
+			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 20001 and of Acme?", Slots: []agentSlot{
 				{ConceptID: "c2", Property: "customer_id", Value: "20001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme"},
 			}}}}, nil)
@@ -121,29 +123,31 @@ func Test_BuildGuidance(t *testing.T) {
 					at.Slots = append(at.Slots, agentSlot{ConceptID: "c2", Property: "customer_id", Value: v})
 				}
 
-				tests := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil)
+				tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil)
 
 				So(tests[0].Text, ShouldEqual, c.want)
 			}
 		})
 
-		Convey("A test is left out when its text does not say a made-up value as written\n", func() {
-			tests := buildTests(&guidanceOutput{Tests: []agentTest{
+		Convey("A test is left out when its text does not say a made-up value as written, or where an empty slot stands\n", func() {
+			tests, leftOut := buildTests(&guidanceOutput{Tests: []agentTest{
 				{Text: "Orders in 2024?", Slots: []agentSlot{{ConceptID: "c1", Property: "year", Value: "20"}}},
 				{Text: "Orders of customer 10,001?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}}},
 				// The second value stands only within the first.
 				{Text: "Orders of Acme Ltd?", Slots: []agentSlot{{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
 					{ConceptID: "c2", Property: "short_name", Value: "Acme"}}},
 				{Text: "Orders of a customer?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}}},
+				{Text: "Orders of {{slot 1}}?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: " "}}},
 			}}, nil)
 
 			So(tests, ShouldHaveLength, 1)
+			So(leftOut, ShouldEqual, 4)
 			So(tests[0].ID, ShouldEqual, "t1")
-			So(tests[0].Text, ShouldEqual, "Orders of a customer?")
+			So(tests[0].Text, ShouldEqual, "Orders of {{slot 1}}?")
 		})
 
 		Convey("An expectation the server does not know reads as exists\n", func() {
-			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil)
+			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil)
 
 			So(tests[0].Expect, ShouldEqual, interfaces.TEST_EXPECT_EXISTS)
 			So(tests[1].Expect, ShouldEqual, interfaces.TEST_EXPECT_SAME_RECORD)
@@ -199,7 +203,7 @@ func Test_GenerateGuidance(t *testing.T) {
 				})
 			ba.EXPECT().GetTask(gomock.Any(), caller, "t9").Return(&interfaces.BknAgentTask{TaskID: "t9",
 				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
-				Output: `{"tests":[{"text":"Orders of 10001?","kind":"paraphrase","expect":"exists","slots":[{"concept_id":"c2","property":"customer_id","value":"10001"}]}],"out_of_scope":["Parent company?"],"guidance":"Use the relation."}`}, nil)
+				Output: `{"tests":[{"text":"Orders of 10001?","kind":"paraphrase","expect":"exists","slots":[{"concept_id":"c2","property":"customer_id","value":"10001"}]}],"no_tests_reason":"None fit.","out_of_scope":["Parent company?"],"guidance":"Use the relation."}`}, nil)
 			expectFinish()
 
 			g, err := svc.GenerateGuidance(ctx, token, "p1", "q1", caller)
@@ -216,6 +220,30 @@ func Test_GenerateGuidance(t *testing.T) {
 				Reason: checkConceptNotMapped})
 			So(finished.OutOfScope, ShouldResemble, []string{"Parent company?"})
 			So(finished.Guidance, ShouldEqual, "Use the relation.")
+			// A reason for writing none does not apply to tests kept.
+			So(finished.NoTestsReason, ShouldEqual, "")
+			So(finished.LeftOutTests, ShouldEqual, 0)
+		})
+
+		Convey("Without tests kept, the Agent's reason is recorded, cut to length, and the tests left out counted\n", func() {
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(readySpec(), true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(guidanceDraft(), true, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(nil, nil)
+			ra.EXPECT().StartGenerating(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t9"}, nil)
+			reason := strings.Repeat("金", maxNoTestsReason+5)
+			ba.EXPECT().GetTask(gomock.Any(), caller, "t9").Return(&interfaces.BknAgentTask{TaskID: "t9",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+				Output: `{"tests":[{"text":"Orders of a customer?","expect":"exists","slots":[{"concept_id":"c2","property":"customer_id","value":""}]}],` +
+					`"no_tests_reason":" ` + reason + ` ","out_of_scope":[],"guidance":"g"}`}, nil)
+			expectFinish()
+
+			_, err := svc.GenerateGuidance(ctx, token, "p1", "q1", caller)
+
+			So(err, ShouldBeNil)
+			So(finished.Tests, ShouldBeEmpty)
+			So(finished.LeftOutTests, ShouldEqual, 1)
+			So(finished.NoTestsReason, ShouldEqual, reason[:len("金")*maxNoTestsReason])
 		})
 
 		Convey("Checking stops in time to record the outcome within the run's lease\n", func() {
