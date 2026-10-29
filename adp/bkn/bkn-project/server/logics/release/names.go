@@ -75,9 +75,9 @@ func alike(a string, b string) bool {
 // halfWidth maps a full-width ASCII character, or the ideographic space, to its half-width form.
 func halfWidth(r rune) rune {
 	switch {
-	case r == '　':
+	case r == 0x3000:
 		return ' '
-	case r >= '！' && r <= '～':
+	case r >= 0xff01 && r <= 0xff5e:
 		return r - 0xfee0
 	}
 	return r
