@@ -154,6 +154,7 @@ BUILTIN_AGENT_IDS = (
     "resource-semantic-understanding",
     "bkn-project-drafter",
     "bkn-project-requirements",
+    "bkn-project-answer-judge",
 )
 
 

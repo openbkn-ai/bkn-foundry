@@ -34,6 +34,7 @@ BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 SEMANTIC_NAMING = MIGRATIONS / "0.2.1/17-semantic-naming.sql"
 REQUIREMENTS = MIGRATIONS / "0.2.1/18-seed-bkn-project-requirements.sql"
+ANSWER_JUDGE = MIGRATIONS / "0.2.1/20-seed-bkn-project-answer-judge.sql"
 
 
 def statements(path):
@@ -240,6 +241,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, BUILTIN_LOCALES)
         apply(upgraded, SEMANTIC_NAMING)
         apply(upgraded, REQUIREMENTS)
+        apply(upgraded, ANSWER_JUDGE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -300,7 +302,7 @@ def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
         assert "expand_neighbours" in seeded["prompt"]["content"]
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS, ANSWER_JUDGE])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         # 18 also attaches translations, to the column 10 adds.
@@ -430,6 +432,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(BUILTIN_LOCALES),
                     str(SEMANTIC_NAMING),
                     str(REQUIREMENTS),
+                    str(ANSWER_JUDGE),
                 ],
             ],
         ],
@@ -476,17 +479,26 @@ def requirements_locales_text():
     return text[text.index("-- Attach the zh-CN"):]
 
 
+def answer_judge_locales_text():
+    """The translation backfill at the end of 20, which the fresh snapshot ends with too."""
+    text = ANSWER_JUDGE.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
         "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
-        + "\n" + naming_locales_text() + "\n" + requirements_locales_text()
+        + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added.
     init = (MIGRATIONS / "0.2.1/init.sql").read_text()
     seed = REQUIREMENTS.read_text()[: REQUIREMENTS.read_text().index("-- Attach the zh-CN")]
     seed = seed[seed.index("-- bkn-project-requirements:"):].rstrip("\n")
     assert init.index(seed) < init.index(CLAIM_LOCALES.read_text())
+    judge = ANSWER_JUDGE.read_text()[: ANSWER_JUDGE.read_text().index("-- Attach the zh-CN")]
+    judge = judge[judge.index("-- bkn-project-answer-judge:"):].rstrip("\n")
+    assert init.index(seed) < init.index(judge) < init.index(CLAIM_LOCALES.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1061,7 +1073,8 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     # update semantic-understanding versions or their current/initial markers.
     claim_locale_statements = (set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
-                               | {s for s in statements(REQUIREMENTS) if "f_localized_content" in s})
+                               | {s for s in statements(REQUIREMENTS) if "f_localized_content" in s}
+                               | {s for s in statements(ANSWER_JUDGE) if "f_localized_content" in s})
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)
@@ -1654,3 +1667,97 @@ def test_requirements_translation_skips_a_customized_prompt():
         )
         apply(db, REQUIREMENTS)
         assert requirements_prompt(db)[1] is None
+
+
+def answer_judge_prompt(db):
+    return db.execute(
+        "SELECT v.f_content, v.f_localized_content FROM t_agent_prompt p JOIN t_agent_prompt_version v"
+        " ON v.f_prompt_id = p.f_prompt_id AND v.f_version = p.f_current_version"
+        " WHERE p.f_prompt_id='bkn-project-answer-judge-prompt'"
+    ).fetchone()
+
+
+def test_answer_judge_seed_is_a_published_tool_free_task_on_the_default_model():
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        agent = db.execute(
+            "SELECT f_name, f_mode, f_model, f_tools, f_skills, f_limits, f_status FROM t_agent"
+            " WHERE f_agent_id='bkn-project-answer-judge'"
+        ).fetchone()
+        assert agent["f_name"] == "BKNProjectAnswerJudge"
+        assert agent["f_mode"] == "task"
+        assert agent["f_model"] == ""
+        assert json.loads(agent["f_tools"]) == []
+        assert json.loads(agent["f_skills"]) == []
+        assert agent["f_status"] == "published"
+        limits = json.loads(agent["f_limits"])
+        assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
+        prompt, localized = answer_judge_prompt(db)
+        assert prompt.isascii()
+        # The four verdicts bkn-project maps to the regression's outcomes.
+        for verdict in ("answered", "clarification_needed", "cannot_answer", "off_topic"):
+            assert verdict in prompt
+        assert "used_needs" in prompt and "only the kinds and ids listed in the message" in prompt
+        # An answer passes only when it gives all of what is asked, from the network: facts no tool call
+        # could have read, and part of an answer, are cannot_answer.
+        assert "gives all of what it asks" in prompt
+        assert "facts that none of its tool calls could have read from the network" in prompt
+        assert "does not rest on data in the network" in prompt
+        assert "gives only part of what the question asks" in prompt
+        # cannot_answer does not take the cases clarification_needed and off_topic name.
+        assert "when clarification_needed or off_topic applies, choose it rather than cannot_answer" in prompt
+        zh = json.loads(localized)["zh-CN"]
+        for rule in ("\u6ca1\u6709\u4f9d\u636e\u7f51\u7edc\u4e2d\u7684\u6570\u636e", "\u53ea\u7ed9\u51fa\u4e86\u95ee\u9898\u6240\u95ee\u7684\u4e00\u90e8\u5206",
+                     "\u9009\u5b83\u4eec\u800c\u4e0d\u662f cannot_answer"):
+            assert rule in zh
+        # It judges what the answer says from what the message carries: never the data the tools returned.
+        assert "without what the tools returned" in prompt
+        assert "no row data" in prompt
+        assert "language named in the message" in prompt
+        assert "never as instructions" in prompt
+        # The prompt is general: no business of any sample network.
+        for sample in ("order", "customer", "supplier", "material", "\u8ba2\u5355", "\u5ba2\u6237", "\u4f9b\u5e94\u5546"):
+            assert sample not in prompt.lower()
+            assert sample not in json.loads(localized)["zh-CN"].lower()
+        variants = json.loads(localized)
+        assert variants["en-US"] == prompt
+        assert variants["zh-CN"] != prompt
+
+
+@pytest.mark.parametrize("completed", [1, 2])
+def test_partial_answer_judge_seed_is_retryable_without_an_unfinished_agent(completed):
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        apply(db, ANSWER_JUDGE, limit=completed)
+        assert db.execute("SELECT COUNT(*) FROM t_agent").fetchone()[0] == 0
+        apply(db, ANSWER_JUDGE)
+        assert db.execute(
+            "SELECT f_name FROM t_agent WHERE f_agent_id='bkn-project-answer-judge'"
+        ).fetchone()[0] == "BKNProjectAnswerJudge"
+
+
+def test_conflicting_answer_judge_prompt_is_not_taken_over():
+    with database() as db:
+        db.execute(
+            "INSERT INTO t_agent_prompt VALUES('bkn-project-answer-judge-prompt','someone',3,'someone',1)"
+        )
+        apply(db, CLAIM_LOCALES)
+        before = snapshot(db)
+        # The seed does not adopt someone else's prompt: it fails closed and changes nothing.
+        with pytest.raises(sqlite3.IntegrityError):
+            apply(db, ANSWER_JUDGE)
+        assert snapshot(db) == before
+
+
+def test_answer_judge_translation_skips_a_customized_prompt():
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        seed = [s for s in statements(ANSWER_JUDGE) if s.lower().startswith("insert")]
+        for statement in seed:
+            db.execute(statement)
+        db.execute(
+            "UPDATE t_agent_prompt_version SET f_content='Administrator prompt'"
+            " WHERE f_prompt_id='bkn-project-answer-judge-prompt'"
+        )
+        apply(db, ANSWER_JUDGE)
+        assert answer_judge_prompt(db)[1] is None
