@@ -67,6 +67,18 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft) *interfaces
 		return option(action, http.MethodPatch, base+"/items/"+kind+"/"+id, map[string]any{"adopted": adopted})
 	}
 
+	// Choosing an identity among the properties that can be one; with none, the object type can only
+	// be left out.
+	chooseIdentity := func(ot *interfaces.DraftObjectType) interfaces.PendingOption {
+		choose := option(interfaces.ACTION_CHOOSE_IDENTITY, http.MethodPut, base+"/object_types/"+ot.ID+"/identity",
+			map[string]any{"properties": interfaces.PENDING_PLACEHOLDER_CANDIDATE})
+		choose.Candidates = identityChoices(ot)
+		if choose.Allowed && len(choose.Candidates) == 0 {
+			choose.Allowed, choose.Reason = false, interfaces.ACTION_REASON_NO_KEY_PROPERTY
+		}
+		return choose
+	}
+
 	pending := pendingItems(&draft.Items)
 	needsIdentity := pending[interfaces.BLOCKER_NEEDS_IDENTITY]
 	unadoptedEnds := pending[interfaces.BLOCKER_UNADOPTED_ENDS]
@@ -77,9 +89,7 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft) *interfaces
 		if !slices.Contains(needsIdentity, ot.ID) {
 			continue
 		}
-		choose := option(interfaces.ACTION_CHOOSE_IDENTITY, http.MethodPut, base+"/object_types/"+ot.ID+"/identity",
-			map[string]any{"properties": interfaces.PENDING_PLACEHOLDER_CANDIDATE})
-		choose.Candidates = identityChoices(ot)
+		choose := chooseIdentity(ot)
 		p.Items = append(p.Items, interfaces.PendingItem{
 			Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: ot.ID, Name: ot.Name, Blocking: true,
 			Reason: interfaces.BLOCKER_NEEDS_IDENTITY, Evidence: ot.Key,
@@ -130,10 +140,7 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft) *interfaces
 			ot := findObjectType(&draft.Items, u.ItemID)
 			item.Name, item.Evidence = ot.Name, ot.Key
 			if ot.NeedsIdentity {
-				choose := option(interfaces.ACTION_CHOOSE_IDENTITY, http.MethodPut, base+"/object_types/"+ot.ID+"/identity",
-					map[string]any{"properties": interfaces.PENDING_PLACEHOLDER_CANDIDATE})
-				choose.Candidates = identityChoices(ot)
-				item.Options = append(item.Options, choose)
+				item.Options = append(item.Options, chooseIdentity(ot))
 				if adopt.Allowed {
 					adopt.Allowed, adopt.Reason = false, interfaces.BLOCKER_NEEDS_IDENTITY
 				}

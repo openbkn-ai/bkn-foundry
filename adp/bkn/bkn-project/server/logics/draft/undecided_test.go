@@ -5,6 +5,7 @@
 package draft
 
 import (
+	"encoding/json"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -58,6 +59,21 @@ func Test_UndecidedItems(t *testing.T) {
 			}}
 
 			So(undecidedItems(items), ShouldBeEmpty)
+		})
+
+		Convey("An acceptance read back from the database still decides the items it lists\n", func() {
+			items := draft()
+			items.Decisions = []*interfaces.DraftDecision{{
+				Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ACCEPT_UNDECIDED,
+				After: []string{"object_types/audit_log", "relation_types/customers_to_products"},
+			}}
+			stored, err := json.Marshal(items)
+			So(err, ShouldBeNil)
+			var read interfaces.DraftItems
+			So(json.Unmarshal(stored, &read), ShouldBeNil)
+			So(read.Decisions[0].After, ShouldHaveSameTypeAs, []any{})
+
+			So(undecidedItems(&read), ShouldBeEmpty)
 		})
 
 		Convey("A relation not adopted because of its end is undecided too, for that reason\n", func() {

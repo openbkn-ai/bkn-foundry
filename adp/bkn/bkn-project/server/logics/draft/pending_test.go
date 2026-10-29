@@ -81,6 +81,26 @@ func Test_PendingOf(t *testing.T) {
 			So(adopt.Reason, ShouldEqual, interfaces.ACTION_REASON_END_NEEDS_IDENTITY)
 		})
 
+		Convey("An object type with no property that can identify records cannot have one chosen\n", func() {
+			d := draft()
+			d.Items.Decisions = nil
+			for _, p := range d.Items.ObjectTypes[0].Properties {
+				p.Type = "datetime"
+			}
+			d.Items.ObjectTypes[3].NeedsIdentity = true
+			d.Items.ObjectTypes[3].Properties[0].Type = "decimal"
+
+			p := pendingOf(project, d)
+
+			for _, item := range []interfaces.PendingItem{p.Items[0], p.Items[2]} {
+				choose := item.Options[0]
+				So(choose.Action, ShouldEqual, interfaces.ACTION_CHOOSE_IDENTITY)
+				So(choose.Allowed, ShouldBeFalse)
+				So(choose.Reason, ShouldEqual, interfaces.ACTION_REASON_NO_KEY_PROPERTY)
+				So(choose.Candidates, ShouldBeEmpty)
+			}
+		})
+
 		Convey("Nothing is settled in an archived project\n", func() {
 			archived := &interfaces.Project{ID: "p1", Archived: true}
 

@@ -141,6 +141,9 @@ type ProjectStatusNextAction struct {
 const (
 	ACTION_REASON_ARCHIVED           = "archived"
 	ACTION_REASON_END_NEEDS_IDENTITY = "end_needs_identity"
+	// ACTION_REASON_NO_KEY_PROPERTY is an object type none of whose properties can identify records:
+	// it can only be left out.
+	ACTION_REASON_NO_KEY_PROPERTY = "no_key_property"
 )
 
 // What a pending item can be settled by.
