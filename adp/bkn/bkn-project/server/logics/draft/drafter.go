@@ -325,6 +325,88 @@ func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) err
 	if nulls > 0 || distinct < rows-nulls {
 		objectType.NeedsIdentity, objectType.Adopted = true, false
 		delete(d.keys, table.ID)
+		// A field with nulls makes every pair with it have nulls too: none to count.
+		if nulls > 0 || rows == 0 {
+			return nil
+		}
+		return d.pairIdentity(ctx, table, objectType, key[0])
+	}
+	return nil
+}
+
+// namesAnotherTable tells whether a field's name points at the key of another table drafted
+// with it, as a relation inferred from names would: such a field says whose record it is, not
+// which one.
+func (d *drafter) namesAnotherTable(table *interfaces.VegaTable, field string) bool {
+	for _, other := range d.bySourceName {
+		// Inference refers to a table by one key field, never to a link table.
+		if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
+			continue
+		}
+		// A declared key of several fields is never referred to; without one, any candidate may
+		// become the single field it is keyed by.
+		keys := other.PrimaryKeys
+		if len(keys) > 1 {
+			continue
+		}
+		if len(keys) == 0 {
+			keys = identityCandidates(other)
+		}
+		for _, key := range keys {
+			if nameMatch(field, other, key) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// maxPairCounts bounds the pairs drafting counts for an identity of two fields.
+const maxPairCounts = 4
+
+// pairWords are the last words of fields named as identifiers within a record, such as a line.
+var pairWords = map[string]bool{"id": true, "no": true, "code": true, "seq": true, "line": true}
+
+// pairIdentity looks, for an object type whose identity field has duplicates, for a pair that
+// counts unique and non-null: that field with another key-typed field named as an identifier and
+// not referring to another table, in column order, at most maxPairCounts counts. Line tables are
+// keyed so, by a document and its line. The pair is offered as the identity's candidate; drafting
+// does not take it, a person decides.
+func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
+	objectType *interfaces.DraftObjectType, base string) error {
+	fields := d.fields[table.ID]
+	first, ok := fields[base]
+	if !ok {
+		return nil
+	}
+	refers := map[string]bool{}
+	for _, fk := range table.ForeignKeys {
+		for _, c := range fk.Columns {
+			refers[c] = true
+		}
+	}
+	counted := 0
+	for _, c := range table.Columns {
+		second, ok := fields[c.Name]
+		if !ok || c.Name == base || refers[c.Name] || !keyTypes[bknTypes[c.Type]] || !pairWords[lastWord(words(c.Name))] ||
+			d.namesAnotherTable(table, c.Name) {
+			continue
+		}
+		if counted == maxPairCounts {
+			break
+		}
+		counted++
+		rows, distinct, nulls, err := d.counter.keyTupleStats(ctx, table, []string{base, c.Name})
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			continue
+		}
+		if rows > 0 && nulls == 0 && distinct == rows {
+			objectType.Key.Candidate = []string{first, second}
+			return nil
+		}
 	}
 	return nil
 }
@@ -366,6 +448,10 @@ func (d *drafter) inferKey(ctx context.Context, table *interfaces.VegaTable, obj
 			d.keys[table.ID] = []string{field}
 			return nil
 		}
+	}
+	// Paired with the field whose counts are the evidence, when it has no nulls to make every pair have.
+	if key := objectType.Key; key.Computed && key.Field != "" && key.Nulls == 0 && key.Rows > 0 {
+		return d.pairIdentity(ctx, table, objectType, key.Field)
 	}
 	return nil
 }

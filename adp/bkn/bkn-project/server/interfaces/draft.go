@@ -290,6 +290,9 @@ type DraftKeyEvidence struct {
 	Nulls    int64  `json:"nulls"`
 	// Reason says why the counts were not computed.
 	Reason string `json:"reason,omitempty"`
+	// Candidate is a pair of properties drafting counted unique and non-null together, for an
+	// object type that waits for its identity: offered to choose, never taken by drafting.
+	Candidate []string `json:"candidate,omitempty"`
 }
 
 type DraftRelationType struct {

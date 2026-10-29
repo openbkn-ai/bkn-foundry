@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -404,6 +405,150 @@ func Test_Drafter(t *testing.T) {
 
 			// Names that sort ods first, then dw first: the ids must not swap.
 			So(drafted("A orders", "B orders"), ShouldResemble, drafted("B orders", "A orders"))
+		})
+
+		Convey("A line table offers its document and line together as the identity, for a person to choose\n", func() {
+			lines := table("r_pol", "c1", "purchase_order_lines", 0, nil,
+				col("id", "integer", ""), col("supplier_id", "string", ""), col("line_seq", "integer", ""),
+				col("entry_id", "integer", ""), col("qty", "decimal", ""))
+			lines.ForeignKeys = []interfaces.VegaForeignKey{fk("supplier_id", "suppliers", "supplier_id")}
+			c := sampleCounter()
+			c.keys["r_pol.id"] = [3]int64{100, 40, 0}
+			c.keys["r_pol.id+line_seq"] = [3]int64{100, 90, 0}
+			c.keys["r_pol.id+entry_id"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{lines}, nil)
+
+			So(err, ShouldBeNil)
+			ot := items.ObjectTypes[0]
+			// The referring field is passed over though it would count unique; the line is not.
+			So(ot.Key.Candidate, ShouldResemble, []string{"id", "entry_id"})
+			// Offered, not taken: the identity waits for a person, with the single field's counts.
+			So(ot.NeedsIdentity, ShouldBeTrue)
+			So(ot.Adopted, ShouldBeFalse)
+			So(ot.PrimaryKeys, ShouldBeEmpty)
+			So(ot.Key.Field, ShouldEqual, "id")
+			So(ot.Key.Distinct, ShouldEqual, 40)
+		})
+
+		Convey("A field named for another table drafted with it is not counted as a line\n", func() {
+			c := sampleCounter()
+			c.keys["r_orders"] = [3]int64{800, 798, 0}
+			c.keys["r_orders.order_id+code"] = [3]int64{800, 799, 0}
+			// Each would be chosen were it counted.
+			for _, field := range []string{"customer_id", "salesperson_id", "warehouse_id"} {
+				c.keys["r_orders.order_id+"+field] = [3]int64{800, 800, 0}
+			}
+
+			orders := objectType(run(c), "orders")
+
+			// customer_id refers by its key, salesperson_id and warehouse_id by their tables' names.
+			So(orders.NeedsIdentity, ShouldBeTrue)
+			So(orders.Key.Candidate, ShouldBeNil)
+		})
+
+		Convey("A field with nulls is paired with nothing: every pair would have them\n", func() {
+			c := sampleCounter()
+			c.keys["r_orders"] = [3]int64{800, 790, 10}
+			c.keys["r_orders.order_id+code"] = [3]int64{800, 800, 0}
+
+			So(objectType(run(c), "orders").Key.Candidate, ShouldBeNil)
+		})
+
+		Convey("An inferred identity field with nulls, or a table without rows, is paired with nothing either\n", func() {
+			lines := table("r_pol", "c1", "purchase_order_lines", 0, nil, col("id", "integer", ""), col("entry_id", "integer", ""))
+			for _, counts := range [][3]int64{{100, 40, 5}, {0, 0, 0}} {
+				c := sampleCounter()
+				c.keys["r_pol.id"] = counts
+				c.keys["r_pol.id+entry_id"] = [3]int64{100, 100, 0}
+
+				items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{lines}, nil)
+
+				So(err, ShouldBeNil)
+				So(items.ObjectTypes[0].Key.Candidate, ShouldBeNil)
+			}
+		})
+
+		Convey("A line number is no reference to a table keyed by it with a document\n", func() {
+			receipts := table("r_rl", "c1", "receipt_lines", 0, nil,
+				col("id", "integer", ""), col("line_no", "integer", ""))
+			orderLines := table("r_pl", "c1", "po_lines", 0, []string{"po_id", "line_no"},
+				col("po_id", "integer", ""), col("line_no", "integer", ""))
+			c := sampleCounter()
+			c.keys["r_rl.id"] = [3]int64{100, 40, 0}
+			c.keys["r_rl.id+line_no"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{receipts, orderLines}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "receipt_lines").Key.Candidate, ShouldResemble, []string{"id", "line_no"})
+		})
+
+		Convey("A field named for any identity candidate of a keyless table refers to it\n", func() {
+			receipts := table("r_rl", "c1", "receipt_lines", 0, nil,
+				col("id", "integer", ""), col("supplier_id", "integer", ""))
+			suppliers := table("r_sup", "c1", "supplier", 0, nil,
+				col("id", "integer", ""), col("supplier_id", "integer", ""), col("name", "string", ""))
+			c := sampleCounter()
+			c.keys["r_rl.id"] = [3]int64{100, 40, 0}
+			c.keys["r_rl.id+supplier_id"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{receipts, suppliers}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "receipt_lines").Key.Candidate, ShouldBeNil)
+		})
+
+		Convey("A link table is referred to by no field, as name inference never draws a relation to one\n", func() {
+			lines := table("r_tl", "c1", "tag_lines", 0, nil, col("id", "integer", ""), col("order_tags_id", "integer", ""))
+			links := table("r_ot", "c1", "order_tags", 0, []string{"id"},
+				col("id", "integer", ""), col("order_id", "string", ""), col("tag_id", "string", ""))
+			links.ForeignKeys = []interfaces.VegaForeignKey{fk("order_id", "orders", "order_id"), fk("tag_id", "tags", "tag_id")}
+			c := sampleCounter()
+			c.keys["r_tl.id"] = [3]int64{100, 40, 0}
+			c.keys["r_tl.id+order_tags_id"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{lines, links}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "tag_lines").Key.Candidate, ShouldResemble, []string{"id", "order_tags_id"})
+		})
+
+		Convey("A declared key with duplicates is paired as an inferred one is\n", func() {
+			c := sampleCounter()
+			c.keys["r_orders"] = [3]int64{800, 798, 0}
+			c.keys["r_orders.order_id+code"] = [3]int64{800, 800, 0}
+
+			orders := objectType(run(c), "orders")
+
+			So(orders.NeedsIdentity, ShouldBeTrue)
+			So(orders.Key.Candidate, ShouldResemble, []string{"order_id", "code"})
+		})
+
+		Convey("Pairs are counted at most maxPairCounts times; one that cannot be counted is passed over\n", func() {
+			columns := []interfaces.VegaColumn{col("id", "integer", "")}
+			for i := 1; i <= maxPairCounts+1; i++ {
+				columns = append(columns, col(fmt.Sprintf("part%d_no", i), "integer", ""))
+			}
+			wide := table("r_w", "c1", "wide_lines", 0, nil, columns...)
+			c := sampleCounter()
+			c.keys["r_w.id"] = [3]int64{100, 50, 0}
+			for i := 1; i <= maxPairCounts+1; i++ {
+				c.keys[fmt.Sprintf("r_w.id+part%d_no", i)] = [3]int64{100, 60, 0}
+			}
+			// The last one counted fails; the one after the bound would be unique.
+			c.failed[fmt.Sprintf("r_w.id+part%d_no", maxPairCounts)] = true
+			c.keys[fmt.Sprintf("r_w.id+part%d_no", maxPairCounts+1)] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{wide}, nil)
+			So(err, ShouldBeNil)
+			So(items.ObjectTypes[0].Key.Candidate, ShouldBeNil)
+
+			c.failed = map[string]bool{fmt.Sprintf("r_w.id+part%d_no", maxPairCounts-1): true}
+			c.keys[fmt.Sprintf("r_w.id+part%d_no", maxPairCounts)] = [3]int64{100, 100, 0}
+			items, err = newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{wide}, nil)
+			So(err, ShouldBeNil)
+			So(items.ObjectTypes[0].Key.Candidate, ShouldResemble, []string{"id", fmt.Sprintf("part%d_no", maxPairCounts)})
 		})
 
 		Convey("A keyless table's field named id in another script is still an identity candidate\n", func() {

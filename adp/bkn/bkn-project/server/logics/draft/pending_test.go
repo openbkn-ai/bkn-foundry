@@ -102,6 +102,15 @@ func Test_PendingOf(t *testing.T) {
 			}
 		})
 
+		Convey("A pair drafting counted unique is the first candidate\n", func() {
+			d := draft()
+			d.Items.ObjectTypes[0].Key.Candidate = []string{"order_id", "status"}
+
+			choose := pendingOf(project, d, nil).Items[0].Options[0]
+
+			So(choose.Candidates, ShouldResemble, [][]string{{"order_id", "status"}, {"customer_id"}, {"channel"}, {"order_id"}, {"status"}})
+		})
+
 		Convey("Nothing is settled in an archived project\n", func() {
 			archived := &interfaces.Project{ID: "p1", Archived: true}
 
