@@ -10,6 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -94,6 +96,10 @@ func givenName(table *interfaces.VegaTable) string {
 	return table.Name
 }
 
+// messageRelationName is the localized template a relation drafted from a referring field is named
+// by, in the naming language.
+const messageRelationName = "BknProject.Draft.RelationName"
+
 // relationName names a relation drafted from a referring field, in the naming language: the field's
 // name with its object type's ("物料BOM明细的父项物料编码", "Parent material code of BOM detail"), as
 // the referring fields, not the target, tell apart the relations between the same two types. When
@@ -106,11 +112,9 @@ func (d *drafter) relationName(source *interfaces.DraftObjectType, property stri
 	if p == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
 		return id
 	}
-	name := source.Name + "的" + p.DisplayName
-	if d.language() == interfaces.NAMING_LANGUAGE_EN_US {
-		name = p.DisplayName + " of " + source.Name
-	}
-	if utf8.RuneCountInString(name) > maxDisplayNameRunes {
+	name, err := i18n.Render(i18n.Language(d.language()), messageRelationName,
+		map[string]any{"object_type": source.Name, "field": p.DisplayName})
+	if err != nil || utf8.RuneCountInString(name) > maxDisplayNameRunes {
 		return p.DisplayName
 	}
 	return name

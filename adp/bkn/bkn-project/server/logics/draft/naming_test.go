@@ -240,6 +240,11 @@ func Test_DraftRelationName(t *testing.T) {
 			}
 		})
 
+		Convey("A naming language without a template keeps the referring field's name\n", func() {
+			names := relationNames("fr-FR", schema("物料BOM明细", "BOM所属物料编码", "父项物料编码", "子项物料编码"))
+			So(names["parent_code"], ShouldEqual, "父项物料编码")
+		})
+
 		Convey("Too long a name keeps the referring field's name only, within BKN's 40-character display names\n", func() {
 			// 36 characters: a name BKN takes, too long once the field is joined.
 			long := "物料清单明细记录表包含父子项及用量与损耗率等全部信息字段以及其他扩展属性"
