@@ -12,6 +12,9 @@ type VegaTable struct {
 	CatalogID   string
 	Name        string
 	Description string
+	// APIName is the English short name semantic understanding gave, empty when it gave none;
+	// tables whose physical name is not ASCII take their ids from it.
+	APIName string
 	// SourceName and SourceSchema name the physical table; foreign keys refer to it by them.
 	SourceName   string
 	SourceSchema string
@@ -36,7 +39,10 @@ type VegaColumn struct {
 	Description string
 	// Comment is the database comment; privacy rules read it even when semantic understanding
 	// gave a description.
-	Comment  string
+	Comment string
+	// APIName is the English short name semantic understanding gave, empty when it gave none. Left
+	// out of the JSON when empty, so draft fingerprints of tables without it stay as they were.
+	APIName  string `json:",omitempty"`
 	Nullable bool
 }
 

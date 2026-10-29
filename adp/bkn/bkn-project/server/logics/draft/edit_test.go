@@ -261,7 +261,7 @@ func Test_GenerateDraftGuards(t *testing.T) {
 		da := pmock.NewMockDraftAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
-		svc := &draftService{setting: testSetting, da: da, va: va, ps: ps, run: func(fn func()) {}}
+		svc := &draftService{setting: testSetting, da: da, va: va, ps: ps, ira: &fakeIDRegistry{}, run: func(fn func()) {}}
 		ctx := context.Background()
 
 		Convey("An archived project is not drafted\n", func() {
