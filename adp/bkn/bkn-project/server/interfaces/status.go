@@ -76,6 +76,9 @@ const (
 	ACCEPTS_PARTIAL_DRAFT = "partial_draft"
 	// ACCEPTS_UNDECIDED_ITEMS confirms a draft leaving out the items no one decided on.
 	ACCEPTS_UNDECIDED_ITEMS = "undecided_items"
+	// ACCEPTS_UNRESOLVED_CONFLICTS confirms a draft knowing conflicts between the requirement
+	// documents are unresolved.
+	ACCEPTS_UNRESOLVED_CONFLICTS = "unresolved_conflicts"
 )
 
 // Why an action cannot be done by the caller; otherwise a blocker code.
@@ -95,9 +98,13 @@ type ProjectStatus struct {
 	Blockers []ProjectStatusBlocker `json:"blockers"`
 	// Undecided counts the items drafting left out and no one decided on: they do not block, but
 	// confirming leaves them out only when the confirmation accepts it.
-	Undecided   int                       `json:"undecided"`
-	Stale       []string                  `json:"stale"`
-	NextActions []ProjectStatusNextAction `json:"next_actions"`
+	Undecided int `json:"undecided"`
+	// UnresolvedConflicts counts the conflicts between the requirement documents of a ready
+	// specification without a resolution, deferred ones included: they do not block, but confirming
+	// accepts them.
+	UnresolvedConflicts int                       `json:"unresolved_conflicts"`
+	Stale               []string                  `json:"stale"`
+	NextActions         []ProjectStatusNextAction `json:"next_actions"`
 	// Links are the reads that show the details: the draft, its pending items and the check.
 	Links      map[string]string `json:"links"`
 	ComputedAt int64             `json:"computed_at"`
