@@ -556,7 +556,7 @@
     "gateway": {
       "summary": "在沙箱里跑一段 Python，代码里可以直接调用本服务的工具；适合把多次查询的结果在本地汇总、转换或批量处理。",
       "use_when": "一次问题要串起多次查询再算，或需要循环、分页遍历、临时脚本这类本地计算。",
-      "not_for": "单次取数用对应的查询工具；可售、齐套、产能这类业务口径用已发布函数（search_capabilities）。",
+      "not_for": "单次取数用对应的查询工具；网络挂载了与问题相符的已发布函数时用函数（search_capabilities），不要在代码里自行重算。",
       "next_step": "代码里按工具名调用本服务的工具；run_code 与 run_shell 共用一个按会话隔离的工作目录。",
       "keywords": [
         "跑代码",
@@ -612,7 +612,7 @@
     "description": "检索某个知识网络已挂载的全部能力：Skill、函数工具（含 API 工具）与 MCP 工具，在同一个排序空间里竞争，按相关度混排返回。想找「能做某件事的东西」时用它，不必先猜是 Skill 还是工具。\n每条带 capability_type，据此决定下一步：function / mcp_tool 用 execute_tool 调用（返回带 input_schema），skill 用 get_skill_content 读取、execute_skill 执行。\n可选 types 收窄到 skill / function / mcp_tool；函数工具还可用 metadata_types 再分 openapi（API 工具）与 function。需要该知识网络本身的查看权限；只有对象类等子资源权限或单独的 Skill / 工具授权会被拒绝。范围是该网络挂载的能力，当前账户看不到的函数工具不返回，未挂载则返回空。",
     "gateway": {
       "summary": "查找知识网络挂载的已发布函数、技能和外部工具，返回它们的 ID、用途和入参定义。",
-      "use_when": "业务计算（例如可售数量、齐套与缺料、产能、交期、替代料）或需要使用网络挂载的技能、外部工具时；这类口径以已发布函数为准。",
+      "use_when": "网络挂载了函数、技能或外部工具时，先查有没有与问题相符的；有就用它，口径以已发布函数为准。",
       "not_for": "本服务自带的查询能力用 search_native_tools 找。",
       "next_step": "找到函数后用 execute_tool 执行：toolbox_id 取 owner_id，tool_id 取 capability_id，arguments 按返回的 input_schema 填写。",
       "keywords": [
@@ -638,7 +638,7 @@
       ],
       "example_arguments": {
         "kn_id": "kn_demo",
-        "query": "齐套 缺料"
+        "query": "按产品查询订单明细"
       }
     }
   },
