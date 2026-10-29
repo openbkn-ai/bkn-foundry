@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
 
 const (
@@ -27,6 +30,26 @@ const (
 	// questions are answered one by one, each in at most bkn-agent's five minutes.
 	regressionStaleAfter = 6 * time.Hour
 )
+
+var (
+	rgsOnce sync.Once
+	rgs     interfaces.RegressionService
+)
+
+// NewRegressionService answers with the service's regression store, bkn-agent and git store, and
+// reads the questions from the requirement specification.
+func NewRegressionService() interfaces.RegressionService {
+	rgsOnce.Do(func() {
+		rgs = &regressionService{
+			ra:  logics.RGA,
+			rs:  requirement.NewRequirementService(),
+			ba:  logics.BAA,
+			gs:  logics.GS,
+			run: func(fn func()) { go fn() },
+		}
+	})
+	return rgs
+}
 
 type regressionService struct {
 	ra interfaces.RegressionAccess
