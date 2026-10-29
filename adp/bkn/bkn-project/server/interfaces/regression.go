@@ -64,13 +64,16 @@ type RegressionQuestion struct {
 }
 
 // RegressionResult is how one question did. Missing lists what the release lacks of what it needs;
-// ErrorCode is the answering service's code when it could not be asked.
+// ErrorCode is the answering service's code when it could not be asked. Answer and ToolUses are
+// what an asked question was answered with and the tool calls behind it, kept whatever the outcome
+// so the answer can be judged again later.
 type RegressionResult struct {
-	QuestionID string        `json:"question_id"`
-	Outcome    string        `json:"outcome"`
-	Missing    []ReleaseItem `json:"missing,omitempty"`
-	Answer     string        `json:"answer,omitempty"`
-	ErrorCode  string        `json:"error_code,omitempty"`
+	QuestionID string            `json:"question_id"`
+	Outcome    string            `json:"outcome"`
+	Missing    []ReleaseItem     `json:"missing,omitempty"`
+	Answer     string            `json:"answer,omitempty"`
+	ToolUses   []BknAgentToolUse `json:"tool_uses,omitempty"`
+	ErrorCode  string            `json:"error_code,omitempty"`
 }
 
 //go:generate mockgen -source ../interfaces/regression.go -destination ../interfaces/mock/mock_regression.go

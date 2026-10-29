@@ -125,8 +125,39 @@ func Test_RegressionService(t *testing.T) {
 				{QuestionID: "q1", Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "Supplier S1."},
 				{QuestionID: "q2", Outcome: interfaces.REGRESSION_OUTCOME_MISSING,
 					Missing: []interfaces.ReleaseItem{{Kind: ot, ID: "customer", Name: "customer"}}},
-				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_NO_ANSWER},
+				// The answer is kept as it came, blank too.
+				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_NO_ANSWER, Answer: "  "},
 			})
+		})
+
+		Convey("Each asked question keeps the answer and the tool calls behind it, for a later judge\n", func() {
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+				regQuestion("q1", knowledge, regNeed(ot, "part")), regQuestion("q2", knowledge, regNeed(ot, "part")),
+			), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			uses := []interfaces.BknAgentToolUse{{Name: "query_object_instance",
+				Input: []byte(`{"ot_id":"part"}`), Status: "succeeded"}}
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					if req.Message == "Text of q1" {
+						return &interfaces.BknAgentAnswer{Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "Part P1.",
+							ToolCalls: 1, ToolUses: uses}, nil
+					}
+					// Every call failed: the answer says nothing of the ontology, but is kept.
+					return &interfaces.BknAgentAnswer{Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "Sorry.",
+						ToolCalls: 1, ToolsUnavailable: 1, ToolUses: []interfaces.BknAgentToolUse{{Name: "search_schema",
+							Status: "failed", ErrorKind: "unavailable"}}}, nil
+				}).Times(3)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Results[0], ShouldResemble, interfaces.RegressionResult{QuestionID: "q1",
+				Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "Part P1.", ToolUses: uses})
+			So(finished.Results[1].Answer, ShouldEqual, "Sorry.")
+			So(finished.Results[1].ToolUses, ShouldHaveLength, 1)
 		})
 
 		Convey("A regression whose questions were all answered passes\n", func() {
@@ -188,7 +219,8 @@ func Test_RegressionService(t *testing.T) {
 			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{
 				{QuestionID: "q1", Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "P1."},
 				{QuestionID: "q2", Outcome: interfaces.REGRESSION_OUTCOME_ERROR, ErrorCode: "BknAgent.Model.Unavailable"},
-				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_ERROR, ErrorCode: interfaces.REGRESSION_CODE_TOOLS_UNAVAILABLE},
+				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_ERROR, ErrorCode: interfaces.REGRESSION_CODE_TOOLS_UNAVAILABLE,
+					Answer: "Sorry."},
 				{QuestionID: "q4", Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "P4."},
 			})
 		})

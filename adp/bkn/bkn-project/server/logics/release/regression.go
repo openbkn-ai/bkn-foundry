@@ -164,12 +164,18 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 		AgentID: answerAgentID, Message: q.Text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID,
 	})
 	var agentErr *interfaces.BknAgentError
-	switch {
-	case errors.As(err, &agentErr):
+	if errors.As(err, &agentErr) {
 		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, agentErr.Code
-	case err != nil:
+		return result
+	}
+	if err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Answer question %s on %s: %v", q.ID, networkID, err))
 		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, interfaces.REGRESSION_CODE_UNREACHABLE
+		return result
+	}
+	// What it was answered with is kept whatever the outcome, for the answer to be judged again.
+	result.Answer, result.ToolUses = answer.Answer, answer.ToolUses
+	switch {
 	case answer.Status == interfaces.BKN_AGENT_ANSWER_CANCELLED:
 		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, interfaces.REGRESSION_CODE_CANCELLED
 	case answer.Status != interfaces.BKN_AGENT_ANSWER_SUCCEEDED:
@@ -180,7 +186,7 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 	case strings.TrimSpace(answer.Answer) == "":
 		result.Outcome = interfaces.REGRESSION_OUTCOME_NO_ANSWER
 	default:
-		result.Outcome, result.Answer = interfaces.REGRESSION_OUTCOME_PASSED, answer.Answer
+		result.Outcome = interfaces.REGRESSION_OUTCOME_PASSED
 	}
 	return result
 }
