@@ -79,7 +79,18 @@
     }
   ],
   "counts": {
-    "keys": {},
+    "keys": {
+      "r_dimc.customer_id": [
+        1000,
+        1000,
+        0
+      ],
+      "r_odso.order_id": [
+        30000,
+        30000,
+        0
+      ]
+    },
     "joins": {},
     "codes": {},
     "failed": []

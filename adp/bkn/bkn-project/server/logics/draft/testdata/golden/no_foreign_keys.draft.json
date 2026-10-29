@@ -37,8 +37,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 1000,
+        "distinct": 1000,
         "nulls": 0
       },
       "needs_identity": false
@@ -89,8 +89,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 50000,
+        "distinct": 50000,
         "nulls": 0
       },
       "needs_identity": false
@@ -132,8 +132,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 200,
+        "distinct": 200,
         "nulls": 0
       },
       "needs_identity": false

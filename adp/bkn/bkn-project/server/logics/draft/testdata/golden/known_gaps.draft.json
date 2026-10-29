@@ -37,8 +37,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 30,
+        "distinct": 30,
         "nulls": 0
       },
       "needs_identity": false
@@ -68,11 +68,11 @@
           "missing_description": true
         },
         {
-          "name": "manager_id",
-          "display_name": "manager_id",
+          "name": "parent_employee_id",
+          "display_name": "parent_employee_id",
           "type": "integer",
           "description": "",
-          "mapped_field": "manager_id",
+          "mapped_field": "parent_employee_id",
           "source_of_record": "table",
           "missing_description": true
         },
@@ -89,8 +89,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 400,
+        "distinct": 400,
         "nulls": 0
       },
       "needs_identity": false
@@ -141,8 +141,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 400,
+        "distinct": 400,
         "nulls": 0
       },
       "needs_identity": false
@@ -151,16 +151,14 @@
       "id": "staff_teams",
       "name": "staff_teams",
       "description": "",
-      "adopted": true,
+      "adopted": false,
       "table": {
         "resource_id": "r_link",
         "name": "staff_teams",
         "catalog_id": "c1"
       },
-      "primary_keys": [
-        "staff_id"
-      ],
-      "display_key": "staff_id",
+      "primary_keys": null,
+      "display_key": "",
       "properties": [
         {
           "name": "staff_id",
@@ -183,24 +181,61 @@
         }
       ],
       "key": {
-        "source": "inferred",
+        "source": "none",
         "field": "staff_id",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 900,
+        "distinct": 400,
         "nulls": 0
       },
-      "needs_identity": false
+      "needs_identity": true
     }
   ],
-  "relation_types": [],
+  "relation_types": [
+    {
+      "id": "staff_teams_to_staff",
+      "name": "staff_teams_to_staff",
+      "description": "",
+      "source": "staff_teams",
+      "target": "staff",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "staff_id",
+          "target_property": "staff_id"
+        }
+      ],
+      "adopted": false,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 900,
+        "nulls": 0,
+        "hits": 900,
+        "orphans": 0,
+        "hit_rate": 1,
+        "source_distinct": 400
+      },
+      "proposed_because": "end_not_adopted"
+    }
+  ],
   "value_types": [
     {
       "id": "teams",
       "name": "teams",
       "description": "",
       "base_type": "string",
-      "values": null,
+      "values": [
+        {
+          "value": "T01",
+          "display": "Platform"
+        },
+        {
+          "value": "T02",
+          "display": "Data"
+        }
+      ],
       "code_table": {
         "resource_id": "r_team",
         "name": "teams",

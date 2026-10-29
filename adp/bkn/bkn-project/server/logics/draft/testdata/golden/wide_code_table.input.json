@@ -111,7 +111,18 @@
     }
   ],
   "counts": {
-    "keys": {},
+    "keys": {
+      "r_st.code": [
+        12,
+        12,
+        0
+      ],
+      "r_t.ticket_id": [
+        3000,
+        3000,
+        0
+      ]
+    },
     "joins": {
       "r_t.status_code": [
         3000,

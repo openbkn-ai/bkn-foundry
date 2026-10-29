@@ -37,8 +37,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 300,
+        "distinct": 300,
         "nulls": 0
       },
       "needs_identity": false
@@ -80,8 +80,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 4000,
+        "distinct": 4000,
         "nulls": 0
       },
       "needs_identity": false
@@ -132,8 +132,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 9000,
+        "distinct": 9000,
         "nulls": 0
       },
       "needs_identity": false
@@ -175,8 +175,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 500,
+        "distinct": 500,
         "nulls": 0
       },
       "needs_identity": false
@@ -218,8 +218,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 80,
+        "distinct": 80,
         "nulls": 0
       },
       "needs_identity": false
@@ -261,8 +261,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 700,
+        "distinct": 700,
         "nulls": 0
       },
       "needs_identity": false

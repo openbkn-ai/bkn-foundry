@@ -80,8 +80,8 @@
       "key": {
         "source": "primary_key",
         "computed": true,
-        "rows": 10,
-        "distinct": 10,
+        "rows": 50,
+        "distinct": 50,
         "nulls": 0
       },
       "needs_identity": false

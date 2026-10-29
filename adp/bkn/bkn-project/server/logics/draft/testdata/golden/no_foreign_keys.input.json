@@ -110,7 +110,23 @@
     }
   ],
   "counts": {
-    "keys": {},
+    "keys": {
+      "r_c.customer_id": [
+        1000,
+        1000,
+        0
+      ],
+      "r_o.order_id": [
+        50000,
+        50000,
+        0
+      ],
+      "r_p.product_id": [
+        200,
+        200,
+        0
+      ]
+    },
     "joins": {
       "r_o.customer_id": [
         50000,

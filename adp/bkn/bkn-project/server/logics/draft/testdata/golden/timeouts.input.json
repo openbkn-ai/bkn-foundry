@@ -67,7 +67,13 @@
     }
   ],
   "counts": {
-    "keys": {},
+    "keys": {
+      "r_dim.dim_id": [
+        50,
+        50,
+        0
+      ]
+    },
     "joins": {},
     "codes": {},
     "failed": [

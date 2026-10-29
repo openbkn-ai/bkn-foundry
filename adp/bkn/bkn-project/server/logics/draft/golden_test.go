@@ -37,36 +37,80 @@ type goldenCase struct {
 	} `json:"counts"`
 }
 
-func (c *goldenCase) counter() *fakeCounter {
-	f := &fakeCounter{
-		keys: map[string][3]int64{}, joins: map[joinKey][4]int64{},
-		codes: c.Counts.Codes, failed: map[string]bool{},
-	}
-	for k, v := range c.Counts.Keys {
-		f.keys[k] = v
-	}
-	for k, v := range c.Counts.Joins {
-		table, field, _ := strings.Cut(k, ".")
-		f.joins[joinKey{table, field}] = v
-	}
-	for _, k := range c.Counts.Failed {
-		f.failed[k] = true
-	}
-	return f
+// goldenCounter answers only what the case lists: a count drafting asks for that the case does not
+// list is recorded, and fails the case, so no default can become a golden expectation.
+type goldenCounter struct {
+	c        *goldenCase
+	unlisted []string
 }
 
-// draftGolden drafts the case's tables, in the order given, as JSON.
-func draftGolden(c *goldenCase, tables []*interfaces.VegaTable) ([]byte, error) {
+func (g *goldenCounter) failed(names ...string) bool {
+	for _, name := range names {
+		if slices.Contains(g.c.Counts.Failed, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *goldenCounter) keyStats(_ context.Context, table *interfaces.VegaTable, field string) (int64, int64, int64, error) {
+	if g.failed(table.ID, table.ID+"."+field) {
+		return 0, 0, 0, errors.New("timeout")
+	}
+	s, ok := g.c.Counts.Keys[table.ID+"."+field]
+	if !ok {
+		g.unlisted = append(g.unlisted, "keys "+table.ID+"."+field)
+		return 0, 0, 0, errors.New("unlisted")
+	}
+	return s[0], s[1], s[2], nil
+}
+
+func (g *goldenCounter) keyTupleStats(ctx context.Context, table *interfaces.VegaTable,
+	fields []string) (int64, int64, int64, error) {
+	return g.keyStats(ctx, table, strings.Join(fields, "+"))
+}
+
+func (g *goldenCounter) joinStats(_ context.Context, source *interfaces.VegaTable, field string,
+	_ *interfaces.VegaTable, _ string) (int64, int64, int64, int64, error) {
+	if g.failed(source.ID, source.ID+"."+field) {
+		return 0, 0, 0, 0, errors.New("timeout")
+	}
+	s, ok := g.c.Counts.Joins[source.ID+"."+field]
+	if !ok {
+		g.unlisted = append(g.unlisted, "joins "+source.ID+"."+field)
+		return 0, 0, 0, 0, errors.New("unlisted")
+	}
+	return s[0], s[1], s[2], s[3], nil
+}
+
+func (g *goldenCounter) codeValues(_ context.Context, table *interfaces.VegaTable, _ string, _ string,
+	_ int64) ([]interfaces.DraftEnumValue, error) {
+	if g.failed(table.ID) {
+		return nil, errors.New("timeout")
+	}
+	values, ok := g.c.Counts.Codes[table.ID]
+	if !ok {
+		g.unlisted = append(g.unlisted, "codes "+table.ID)
+		return nil, errors.New("unlisted")
+	}
+	return values, nil
+}
+
+// draftGolden drafts the case's tables, in the order given, as JSON, and lists the counts drafting
+// asked for that the case does not list.
+func draftGolden(c *goldenCase, tables []*interfaces.VegaTable) ([]byte, []string, error) {
 	clones := make([]*interfaces.VegaTable, 0, len(tables))
 	for _, t := range tables {
 		clone := *t
 		clones = append(clones, &clone)
 	}
-	items, err := newDrafter(testSetting, c.counter()).draft(context.Background(), clones, nil)
+	counter := &goldenCounter{c: c}
+	items, err := newDrafter(testSetting, counter).draft(context.Background(), clones, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return json.MarshalIndent(items, "", "  ")
+	drafted, err := json.MarshalIndent(items, "", "  ")
+	return drafted, counter.unlisted, err
 }
 
 func Test_GoldenDrafts(t *testing.T) {
@@ -81,15 +125,19 @@ func Test_GoldenDrafts(t *testing.T) {
 			Convey(name+"\n", func() {
 				data, err := os.ReadFile(input)
 				So(err, ShouldBeNil)
+				// Input keys are Go field names; a misspelled one would be dropped unseen.
 				var c goldenCase
-				So(json.Unmarshal(data, &c), ShouldBeNil)
+				dec := json.NewDecoder(bytes.NewReader(data))
+				dec.DisallowUnknownFields()
+				So(dec.Decode(&c), ShouldBeNil)
 
-				drafted, err := draftGolden(&c, c.Tables)
+				drafted, unlisted, err := draftGolden(&c, c.Tables)
 				So(err, ShouldBeNil)
+				So(unlisted, ShouldBeEmpty)
 				// The same tables listed in another order draft the same, byte for byte.
 				reversed := slices.Clone(c.Tables)
 				slices.Reverse(reversed)
-				again, err := draftGolden(&c, reversed)
+				again, _, err := draftGolden(&c, reversed)
 				So(err, ShouldBeNil)
 				So(string(again), ShouldEqual, string(drafted))
 

@@ -1,5 +1,5 @@
 {
-  "description": "Known gaps, drafted as they are today (wp1-review R1-R3): no relation for the self-referencing manager_id (R1); none for staff.dept_id (integer) to departments.dept_id (large_integer), as types must be equal (R2); the link table staff_teams, with no declared foreign keys, becomes an entity identified by staff_id (R3). When a gap is closed, this draft changes in review.",
+  "description": "Known gaps, drafted as they are today (wp1-review R1-R3): no relation for the self-referencing parent_employee_id (R1, the self-reference is excluded); none for staff.dept_id (integer) to departments.dept_id (large_integer), as types must be equal (R2); the link table staff_teams, with no declared foreign keys, is drafted as an entity waiting for an identity instead of a relation between staff and teams (R3). When a gap is closed, this draft changes in review.",
   "tables": [
     {
       "ID": "r_emp",
@@ -23,7 +23,7 @@
           "Nullable": true
         },
         {
-          "Name": "manager_id",
+          "Name": "parent_employee_id",
           "Type": "integer",
           "Description": "",
           "Comment": "",
@@ -182,14 +182,29 @@
     }
   ],
   "counts": {
-    "keys": {},
-    "joins": {
-      "r_emp.manager_id": [
-        400,
-        1,
-        0,
-        60
+    "keys": {
+      "r_dept.dept_id": [
+        30,
+        30,
+        0
       ],
+      "r_emp.employee_id": [
+        400,
+        400,
+        0
+      ],
+      "r_staff.staff_id": [
+        400,
+        400,
+        0
+      ],
+      "r_link.staff_id": [
+        900,
+        400,
+        0
+      ]
+    },
+    "joins": {
       "r_staff.dept_id": [
         400,
         0,
@@ -201,9 +216,32 @@
         0,
         0,
         20
+      ],
+      "r_emp.parent_employee_id": [
+        400,
+        1,
+        0,
+        60
+      ],
+      "r_link.staff_id": [
+        900,
+        0,
+        0,
+        400
       ]
     },
-    "codes": {},
+    "codes": {
+      "r_team": [
+        {
+          "value": "T01",
+          "display": "Platform"
+        },
+        {
+          "value": "T02",
+          "display": "Data"
+        }
+      ]
+    },
     "failed": []
   }
 }

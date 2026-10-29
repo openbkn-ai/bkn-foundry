@@ -77,7 +77,18 @@
     }
   ],
   "counts": {
-    "keys": {},
+    "keys": {
+      "r_s.stock_id": [
+        20000,
+        20000,
+        0
+      ],
+      "r_w.warehouse_id": [
+        5,
+        5,
+        0
+      ]
+    },
     "joins": {
       "r_s.warehouse_id": [
         20000,
