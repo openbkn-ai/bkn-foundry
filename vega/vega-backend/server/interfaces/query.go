@@ -74,8 +74,10 @@ type RawQueryResponse struct {
 
 // ColumnInfo column information
 type ColumnInfo struct {
-	Name string `json:"name"` // "List"
-	Type string `json:"type"` // Column type
+	// NativeType 保存结果集的原生类型，供连接器解码行使用，不参与 JSON 输出。
+	NativeType string `json:"-"`
+	Name       string `json:"name"` // "List"
+	Type       string `json:"type"` // Column type
 }
 
 //go:generate mockgen -source ../interfaces/query.go -destination ../interfaces/mock/mock_query.go

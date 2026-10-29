@@ -50,6 +50,9 @@ type Table struct {
 	ResourceID       string
 	SourceIdentifier string
 	Alias            string
+	// ColumnNames 保存资源 schema 中的源字段名，仅用于区分源字段与投影别名。
+	// nil 表示字段信息未知，生成器不得据此假定源字段不存在。
+	ColumnNames []string
 }
 
 // Subquery 显式保留内部 SELECT 的过滤、排序和 LIMIT 边界。

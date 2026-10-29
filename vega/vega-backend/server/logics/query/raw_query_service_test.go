@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"os/exec"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,10 +36,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/sqlglot"
 )
-
-type deadlineInspectingPolicy struct {
-	sawDeadline bool
-}
 
 type recordingPolicy struct {
 	dialects        []string
@@ -130,25 +124,7 @@ func (p *recordingPolicy) ValidateDerivedTable(_ context.Context, _ string, dial
 	return nil
 }
 
-func (p *deadlineInspectingPolicy) ExtractTableResourceIDs(context.Context, string, string) ([]string, error) {
-	return []string{"resource-1"}, nil
-}
-
 func (p *recordingPolicy) ValidateTableReferences(context.Context, string, string, []string) error {
-	return nil
-}
-
-func (p *deadlineInspectingPolicy) ValidateSQL(ctx context.Context, _ string, _ string) error {
-	_, p.sawDeadline = ctx.Deadline()
-	return errors.New("stop after inspecting policy context")
-}
-
-func (p *deadlineInspectingPolicy) ValidateDerivedTable(ctx context.Context, _ string, _ string) error {
-	_, p.sawDeadline = ctx.Deadline()
-	return errors.New("stop after inspecting policy context")
-}
-
-func (p *deadlineInspectingPolicy) ValidateTableReferences(context.Context, string, string, []string) error {
 	return nil
 }
 
@@ -344,7 +320,6 @@ func TestRawQueryServiceExecute(t *testing.T) {
 	}
 	for _, test := range rejectedTSQLTests {
 		t.Run("rejects tsql before connector creation: "+test.name, func(t *testing.T) {
-			requireRawQuerySQLGlotRuntime(t)
 
 			ctrl := gomock.NewController(t)
 			var connectorCreations atomic.Int64
@@ -355,28 +330,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 					return nil, errors.New("connector must not be created")
 				}).AnyTimes()
 
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
 			catalogService := vmock.NewMockCatalogService(ctrl)
 			resourceService := vmock.NewMockResourceService(ctrl)
 			svc := &rawQueryService{cs: catalogService, rs: resourceService, cf: connectorFactory}
-			if test.hasTableReference {
-				resource := &interfaces.Resource{
-					ID:               "resource-1",
-					Enabled:          true,
-					CatalogID:        "catalog-1",
-					SourceIdentifier: "[dbo].[orders]",
-					Status:           interfaces.ResourceStatusActive,
-					SchemaDefinition: []*interfaces.Property{{Name: "id"}},
-				}
-				expectRawQueryResources(resourceService, []string{"resource-1"}, resource)
-				catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-					ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
-				}, nil)
-				resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
-			}
 
 			result, err := svc.Execute(context.Background(), &interfaces.RawQueryRequest{
 				Query:        test.sql,
@@ -547,6 +503,21 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	t.Run("SQL Server receives physical source column names without rewriting query fields", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", OriginalName: "AMOUNT"}, {Name: "id"}}
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeSQLServer)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{
+			Query: "SELECT ROUND(AMOUNT,0) AS AMOUNT,COUNT(*) AS n FROM {{orders}} GROUP BY AMOUNT", QueryFormat: interfaces.QueryFormatSQL,
+		})
+		require.NoError(t, err)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, []string{"AMOUNT", "id"}, tables[0].ColumnNames)
+		assert.Equal(t, "AMOUNT", prepared.builder.GroupByPart[0].(*sb.Column).Name)
+		assert.Equal(t, "amount", resource.SchemaDefinition[0].Name)
+	})
 	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL} {
 		t.Run(connectorType+" composite key statistics use the native parser and builder", func(t *testing.T) {
 			svc, rs, cs, _ := mysqlRawServices(t)
@@ -651,7 +622,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assert.Empty(t, args)
 	})
 
-	for _, target := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL, interfaces.ConnectorTypeHANA, interfaces.ConnectorTypeDoris, interfaces.ConnectorTypeOracle} {
+	for _, target := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL, interfaces.ConnectorTypeHANA, interfaces.ConnectorTypeDoris, interfaces.ConnectorTypeOracle, interfaces.ConnectorTypeSQLServer} {
 		for _, dialect := range []string{"tsql", "oracle", "doris", "generic"} {
 			t.Run(target+" rejects "+dialect+" input before compilation", func(t *testing.T) {
 				svc, rs, cs, _ := mysqlRawServices(t)
@@ -692,105 +663,17 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assertHTTPError(t, err, http.StatusBadRequest)
 	})
 
-	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
-		requireRawQuerySQLGlotRuntime(t)
-		ctrl := gomock.NewController(t)
-		mockCS := vmock.NewMockCatalogService(ctrl)
-		mockRS := vmock.NewMockResourceService(ctrl)
-		resource := &interfaces.Resource{
-			ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-			Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
-			SchemaDefinition: []*interfaces.Property{{Name: "created_at"}},
-		}
-		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
-		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
-		}, nil)
-
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-		patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
-			func(context.Context, string, string, string) (*sqlglot.SQLParseResult, error) {
-				t.Error("ASCII TSQL must not be recompiled")
-				return nil, errors.New("unexpected compilation")
-			})
-		defer patches.Reset()
-
-		prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-			Query: "select DATEPART(YEAR, created_at) as year_value from {{resource-1}} where status = 'active'", QueryFormat: interfaces.QueryFormatSQL, InputDialect: "tsql",
-		})
+	t.Run("SQL Server prepares Unicode MySQL SQL without SQLGlot", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = "[Sales.eu].[ord]]ers]"
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypeSQLServer)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} WHERE id=1 AND name='刘🙂备' ORDER BY id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
 		require.NoError(t, err)
-		assert.Equal(t, "select DATEPART(YEAR, created_at) as year_value from [dbo].[orders] where status = 'active'", prepared.sql)
+		require.NotNil(t, prepared.builder)
+		assert.Empty(t, prepared.sql)
+		assert.Equal(t, "[Sales.eu].[ord]]ers]", prepared.builder.FromPart.(*sb.Table).SourceIdentifier)
 	})
-	for _, inputDialect := range []string{"mysql", "tsql"} {
-		t.Run("normalizes SQL Server Unicode literals from "+inputDialect, func(t *testing.T) {
-			requireRawQuerySQLGlotRuntime(t)
-			ctrl := gomock.NewController(t)
-			mockCS := vmock.NewMockCatalogService(ctrl)
-			mockRS := vmock.NewMockResourceService(ctrl)
-			resource := &interfaces.Resource{
-				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-				Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
-				SchemaDefinition: []*interfaces.Property{{Name: "name"}},
-			}
-			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(1)
-			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-				ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
-			}, nil)
-
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-				Query: "SELECT name FROM {{resource-1}} WHERE name = '刘🙂备'", QueryFormat: interfaces.QueryFormatSQL, InputDialect: inputDialect,
-			})
-			require.NoError(t, err)
-			assert.Equal(t, "SELECT name FROM [dbo].[orders] WHERE name = N'刘🙂备'", prepared.sql)
-		})
-	}
-	for _, tc := range []struct {
-		name          string
-		inputDialect  string
-		connectorType string
-		wantDialect   string
-		wantSQL       string
-	}{
-		{name: "ASCII TSQL input for SQL Server", inputDialect: "tsql", connectorType: interfaces.ConnectorTypeSQLServer, wantDialect: "tsql", wantSQL: "SELECT id FROM [APP].[orders]"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mockCS := vmock.NewMockCatalogService(ctrl)
-			mockRS := vmock.NewMockResourceService(ctrl)
-			resource := &interfaces.Resource{
-				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
-				Schema: "APP", SourceIdentifier: strings.TrimPrefix(tc.wantSQL, "SELECT id FROM "), Status: interfaces.ResourceStatusActive,
-				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
-			}
-			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).Times(2)
-			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-				ID: "catalog-1", Enabled: true, ConnectorType: tc.connectorType,
-			}, nil)
-
-			policy := &recordingPolicy{resourceIDs: []string{"resource-1"}}
-			previousPolicy := rawQueryPolicy
-			rawQueryPolicy = policy
-			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-
-			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-				Query: "SELECT id FROM {{resource-1}}", QueryFormat: interfaces.QueryFormatSQL, InputDialect: tc.inputDialect,
-			})
-			require.NoError(t, err)
-			assert.Equal(t, tc.wantSQL, prepared.sql)
-			assert.Empty(t, policy.dialects)
-			assert.Equal(t, []string{tc.wantDialect}, policy.derivedDialects)
-		})
-	}
 
 	for _, sql := range []string{
 		"SELECT * FROM public.orders /* {{resource-1}} */",
@@ -814,50 +697,12 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.ErrorDetails)
 		})
 	}
-	t.Run("revalidates transpiled SQL for unchanged SQL Server", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := vmock.NewMockCatalogService(ctrl)
-		mockRS := vmock.NewMockResourceService(ctrl)
-		svc := &rawQueryService{cs: mockCS, rs: mockRS}
-		resource := &interfaces.Resource{
-			ID:               "resource-1",
-			Enabled:          true,
-			CatalogID:        "catalog-1",
-			SourceIdentifier: "[orders]",
-			Status:           interfaces.ResourceStatusActive,
-			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
-		}
-		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
-		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).AnyTimes()
-		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
-		}, nil)
-
-		policy := &recordingPolicy{resourceIDs: []string{"resource-1"}}
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = policy
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
-		patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
-			func(context.Context, string, string, string) (*sqlglot.SQLParseResult, error) {
-				return &sqlglot.SQLParseResult{SQL: "SELECT * FROM __vega_resource_0"}, nil
-			})
-		defer patches.Reset()
-		patches.ApplyFunc(sqlglot.BindTableReferences, func(_ context.Context, sql, dialect string, bindings map[string]string) (*sqlglot.SQLParseResult, error) {
-			assert.Equal(t, "SELECT * FROM __vega_resource_0", sql)
-			assert.Equal(t, "tsql", dialect)
-			assert.Equal(t, map[string]string{"__vega_resource_0": "[orders]"}, bindings)
-			return &sqlglot.SQLParseResult{SQL: "SELECT * FROM [orders]", Dialect: "tsql"}, nil
-		})
-
-		prepared, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
-			Query:        "SELECT * FROM {{resource-1}}",
-			QueryFormat:  interfaces.QueryFormatSQL,
-			InputDialect: "mysql",
-		})
-		require.NoError(t, err)
-		assert.Equal(t, "SELECT * FROM [orders]", prepared.sql)
-		assert.Equal(t, []string{"mysql"}, policy.dialects)
-		assert.Equal(t, []string{"tsql"}, policy.derivedDialects)
+	t.Run("SQL Server parse failures do not fall back to SQLGlot", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), false, interfaces.ConnectorTypeSQLServer)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT TOP (3) id FROM {{orders}}", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
 	})
 }
 
@@ -931,10 +776,13 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeSQLServer,
 		}, nil)
 
-		policy := &deadlineInspectingPolicy{}
-		previousPolicy := rawQueryPolicy
-		rawQueryPolicy = policy
-		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+		sawDeadline := false
+		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").DoAndReturn(func(ctx context.Context, _ *sql.Tx, _ string) (*interfaces.Resource, error) {
+			deadline, ok := ctx.Deadline()
+			remaining := time.Until(deadline)
+			sawDeadline = ok && remaining > 0 && remaining <= time.Second
+			return nil, errors.New("metadata unavailable")
+		})
 
 		_, err := svc.executeInitialSQLQuery(context.Background(), &interfaces.RawQueryRequest{
 			Query:           "SELECT * FROM {{resource-1}}",
@@ -944,7 +792,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 			Paging:          interfaces.PagingRequest{Limit: 1},
 		})
 		require.Error(t, err)
-		assert.True(t, policy.sawDeadline)
+		assert.True(t, sawDeadline)
 	})
 }
 
@@ -980,14 +828,6 @@ func TestValidateCursorResourceBinding(t *testing.T) {
 		_, exists = rawQueryCursorSessions.acquire(session.ID)
 		assert.False(t, exists)
 	})
-}
-
-func requireRawQuerySQLGlotRuntime(t *testing.T) {
-	t.Helper()
-	if err := exec.Command("python3", "-c",
-		"import sqlglot; assert callable(getattr(sqlglot, 'parse_one', None))").Run(); err != nil {
-		t.Skip("sqlglot Python runtime is not installed")
-	}
 }
 
 func TestRawQueryServiceExecuteSQL(t *testing.T) {

@@ -343,9 +343,10 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		catalog.ConnectorType == interfaces.ConnectorTypePostgreSQL ||
 		catalog.ConnectorType == interfaces.ConnectorTypeHANA ||
 		catalog.ConnectorType == interfaces.ConnectorTypeDoris ||
-		catalog.ConnectorType == interfaces.ConnectorTypeOracle {
+		catalog.ConnectorType == interfaces.ConnectorTypeOracle ||
+		catalog.ConnectorType == interfaces.ConnectorTypeSQLServer {
 		if inputDialect != "mysql" {
-			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL, PostgreSQL, HANA, Doris and Oracle queries only support mysql input syntax")
+			return nil, sqlBuilderQueryInvalid(ctx, "SQL table queries only support mysql input syntax")
 		}
 		if parseErr != nil {
 			return nil, sqlBuilderQueryInvalid(ctx, parseErr.Error())
@@ -1169,7 +1170,7 @@ func rawQueryValidationError(ctx context.Context, err error) error {
 		WithErrorDetails("raw query rejected by read-only policy")
 }
 
-// prepareSQLBuilder 复用已授权的资源集，只补齐源端标识；SQL 生成由目标连接器负责。
+// prepareSQLBuilder 复用已授权的资源集，补齐源端标识及字段名；SQL 生成由目标连接器负责。
 func (rqs *rawQueryService) prepareSQLBuilder(ctx context.Context, query *sb.SelectBuilder, catalog *interfaces.Catalog, ids []string, warnings []string) (*preparedSQLQuery, error) {
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, sqlBuilderQueryForbidden(ctx)
@@ -1203,6 +1204,16 @@ func (rqs *rawQueryService) prepareSQLBuilder(ctx context.Context, query *sb.Sel
 			versions[table.ResourceID] = resource.UpdateTime
 		}
 		table.SourceIdentifier = resource.SourceIdentifier
+		if resource.SchemaDefinition != nil {
+			table.ColumnNames = make([]string, 0, len(resource.SchemaDefinition))
+			for _, field := range resource.SchemaDefinition {
+				name := field.OriginalName
+				if name == "" {
+					name = field.Name
+				}
+				table.ColumnNames = append(table.ColumnNames, name)
+			}
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

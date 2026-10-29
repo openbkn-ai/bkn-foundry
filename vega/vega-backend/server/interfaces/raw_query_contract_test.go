@@ -333,10 +333,10 @@ func TestRawQueryContractEffectiveInputDialect(t *testing.T) {
 	assert.Equal(t, "tsql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "TSQL"}.EffectiveInputDialect())
 	assert.Equal(t, "oracle", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "ORACLE"}.EffectiveInputDialect())
 	assert.Equal(t, "generic", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "GENERIC"}.EffectiveInputDialect())
-	for _, dialect := range []string{"mysql", "mariadb", "tsql", "TSQL"} {
+	for _, dialect := range []string{"mysql", "mariadb", "MYSQL", "MariaDB"} {
 		require.NoError(t, RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: dialect}.Validate())
 	}
-	for _, dialect := range []string{"oracle", "ORACLE", "OrAcLe", "doris", "DORIS", "DoRiS", "postgres", "trino", "duckdb", "TRINO", "DuckDB", "generic", "GENERIC", "GeNeRiC"} {
+	for _, dialect := range []string{"tsql", "TSQL", "TsQl", "oracle", "ORACLE", "OrAcLe", "doris", "DORIS", "DoRiS", "postgres", "trino", "duckdb", "TRINO", "DuckDB", "generic", "GENERIC", "GeNeRiC"} {
 		require.ErrorContains(t, RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: dialect}.Validate(), "unsupported SQL input_dialect")
 	}
 }

@@ -76,3 +76,26 @@ Raw SQL 的 RAW/LONG RAW/BLOB 保留原始字节（JSON 输出 base64），NUMBE
 源码生成和 mock 测试不代表已完成 Oracle 实库验收。
 
 Oracle SQL 生成按 1 MiB 预算限制（含参数占位符预留），嵌套条件改写超过预算时在连接源库前返回能力错误，避免短输入展开为无界 SQL。
+
+
+## SQL Server
+
+SQL Server SQL 输入同样采用 mysql/mariadb，经 Parser → Builder → EE SQL Server 生成器执行；不再接受独立的 T-SQL 输入方言。
+使用 `@pN` 命名绑定、方括号标识符及 DECIMAL(38) 精度边界；分组表达式共享命名参数。资源准备阶段从 schema_definition 填充 Table.ColumnNames；GROUP BY/HAVING 优先引用同名源字段，只在源字段名列表完整且无同名字段时展开当前 SELECT 的投影别名。
+子查询按输出列判断，SQL 中的星号不展开；字段信息未知时保留源端解析。
+LIMIT 0（包括非零 OFFSET）生成 TOP (0)，LIMIT-only 使用 TOP，其他分页使用 OFFSET/FETCH；offset-only 不补最大 LIMIT。
+子查询中的排序保留在同一 SELECT 内，以 TOP 或 OFFSET 0 满足源端限制。GROUP BY 位置语义交给 SQL Server 检查。
+
+- SQL 查询通道要求数据库兼容级别至少 110；结构化查询直接构造同一套 Builder，并在低兼容级别保留 ROW_NUMBER 分页。
+- 结构化查询保留 binary_mode、原生整数 AVG、CSV/正则能力检查和日历分桶语义；内部 SQLSERVER_ 辅助函数不开放给公共 SQL。COUNT 独立执行，不承诺与数据查询的快照一致。
+- COUNT 使用 COUNT_BIG；复合 COUNT DISTINCT、正则、无符号/JSON CAST 及未知函数返回能力错误。
+- 精确数值绑定为显式 BIGINT/DECIMAL；科学计数法使用 FLOAT(53)。数值运算的结果精度遵循 SQL Server 的类型推导与溢出规则。
+- CONCAT 保持 NULL 传播，CONCAT_WS 跳过 NULL；字符串计算使用 NVARCHAR(MAX)，不隐式截断至 4000 字符。
+- CHAR_LENGTH 保留尾随空格，使用补充字符 collation 按 Unicode 码点计数；LENGTH/OCTET_LENGTH 使用 UTF-8 collation 计算字节数，要求 SQL Server 2019+。
+- SUBSTRING 补齐零/负起点、NULL 与非正长度；LIKE 的字面模式额外转义 SQL Server 的 `[`，动态模式明确拒绝。
+- CHAR 接受 ASCII 整数字面量和 NULL；NOW/CURRENT_TIMESTAMP 精度为 0–6。日期取值使用 DATEPART，DATE_FORMAT 使用固定英文文化的 FORMAT。
+  STR_TO_DATE 只接受已映射的完整 ISO 日期/日期时间格式，格式详见 EE SQL Server README。
+- 除法避免整数截断；除法与取模都通过 NULLIF 保护零除数。来源类型不兼容时由源端拒绝。
+
+Raw SQL 的 GUID 使用原生结果元数据解码，DECIMAL 保留文本精度，二进制保留字节，TIME 使用既有格式；ColumnInfo 内部的 NativeType 不参与 JSON 输出。
+R01–R04 已定义 Parser/Builder、函数、分页/COUNT、持续 Rows 和 NULL/EOF 断言；尚未执行 SQL Server 实库验收。
