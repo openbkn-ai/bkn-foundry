@@ -241,12 +241,13 @@ func valueOutsideSlots(spec *interfaces.RequirementSpec, asked string, t *interf
 			text = strings.ReplaceAll(text, normalize([]rune(f.value)).text, " ")
 		}
 	}
-	stated := []string{normalize([]rune(asked)).text}
+	// Compared as whole tokens: 3 is not stated by a question that says 30.
+	stated := valueTokens(normalize([]rune(asked)).text)
 	for _, r := range spec.Rules {
-		stated = append(stated, normalize([]rune(r.Statement)).text)
+		stated = append(stated, valueTokens(normalize([]rune(r.Statement)).text)...)
 	}
 	for _, token := range valueTokens(text) {
-		if !slices.ContainsFunc(stated, func(s string) bool { return strings.Contains(s, token) }) {
+		if !slices.Contains(stated, token) {
 			return true
 		}
 	}

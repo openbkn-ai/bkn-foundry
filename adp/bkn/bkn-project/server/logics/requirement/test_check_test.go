@@ -178,6 +178,9 @@ func Test_CheckTests(t *testing.T) {
 				{"Which orders?", "客户{{slot 1}}前 10 名的订单？", true},
 				{"Which orders of the last 30 days?", "About {{slot 1}} in the last 30 days?", false},
 				{"Which orders?", "About {{slot 1}} over 50000?", false},
+				// A number within a longer one the question or a rule says is not stated.
+				{"Which orders of the last 30 days?", "About {{slot 1}} in the last 3 days?", true},
+				{"Which orders?", "About {{slot 1}} over 5000?", true},
 				{"Which orders?", "About {{slot 1}}?", false},
 			} {
 				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
