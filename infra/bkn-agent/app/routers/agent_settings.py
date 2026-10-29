@@ -470,7 +470,7 @@ class AgentVersionOut(BaseModel):
 
 async def _versions_out(session: AsyncSession, agent: AgentOut) -> list[AgentVersionOut]:
     contents = (
-        {v.version: v.content for v in await dao.list_prompt_versions(session, agent.prompt_id)}
+        {v.version: v.content for v in await dao.list_prompt_versions(session, agent.prompt_id, localized=True)}
         if agent.prompt_id
         else {}
     )
@@ -498,6 +498,10 @@ async def list_agent_versions(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
+    """List configuration history with Prompt bodies in the negotiated request language.
+
+    Missing translations fall back to canonical content; raw Prompt history is unchanged.
+    """
     await _require_shared_admin(account)
     return await _versions_out(session, await _builtin_agent(session, agent_id))
 

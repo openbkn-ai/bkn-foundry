@@ -30,6 +30,7 @@ CLAIM_LOCALES = MIGRATIONS / "0.2.1/10-claim-prompt-locales.sql"
 PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
 RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
+BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 
 
@@ -232,6 +233,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, CLAIM_LOCALES)
         apply(upgraded, DRAFTER)
         apply(upgraded, SEMANTIC_API_NAME)
+        apply(upgraded, BUILTIN_LOCALES)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -417,6 +419,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(DRAFTER),
                     str(METRIC_DESIGN_BUDGET),
                     str(SEMANTIC_API_NAME),
+                    str(BUILTIN_LOCALES),
                 ],
             ],
         ],
@@ -454,7 +457,7 @@ def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
-        "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text()
+        "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
     )
 
 
@@ -1028,7 +1031,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     init = Path(selected_migrations("0.0.0")[0][0])
     # The optional claim-locale column and guarded translation backfill do not
     # update semantic-understanding versions or their current/initial markers.
-    claim_locale_statements = set(statements(CLAIM_LOCALES))
+    claim_locale_statements = set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)

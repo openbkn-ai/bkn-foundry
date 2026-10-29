@@ -530,7 +530,7 @@ async def get_default_prompt(
 def _localized_prompt_content(version: PromptVersionRow) -> str:
     """Select a stored translation, never translate user-supplied content.
 
-    Canonical management/export/history reads deliberately do not call this.
+    Raw Prompt management/export/history reads deliberately do not call this.
     New manually published versions have no inherited translations.
     """
     variants = version.f_localized_content or {}
@@ -771,7 +771,7 @@ async def next_prompt_version(session: AsyncSession, prompt_id: str) -> int:
     return (latest or 0) + 1
 
 
-async def list_prompt_versions(session: AsyncSession, prompt_id: str):
+async def list_prompt_versions(session: AsyncSession, prompt_id: str, *, localized: bool = False):
     from app.models import PromptVersionOut
 
     rows = (
@@ -784,7 +784,7 @@ async def list_prompt_versions(session: AsyncSession, prompt_id: str):
     return [
         PromptVersionOut(
             version=r.f_version,
-            content=r.f_content,
+            content=_localized_prompt_content(r) if localized else r.f_content,
             vars_schema=r.f_vars_schema,
             create_user=r.f_create_user,
             create_time=r.f_create_time,
