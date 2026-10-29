@@ -59,6 +59,25 @@ type VegaBuildTask struct {
 	Status     string
 }
 
+// VegaIndexKeys are the fields a table's local index identifies records by and refreshes them by.
+type VegaIndexKeys struct {
+	PrimaryKeyFields  []string
+	IncrementalFields []string
+}
+
+// VegaSemanticTask is a semantic understanding task of one table: it writes the names,
+// descriptions and api_names the table and its fields lack.
+type VegaSemanticTask struct {
+	ID         string
+	ResourceID string
+	// Status is pending, running, completed, failed or cancelled.
+	Status string
+	// Applied tells whether the task wrote its result to the table.
+	Applied    bool
+	CreateTime int64
+	FinishTime int64
+}
+
 type VegaColumn struct {
 	Name string
 	// DisplayName is the business name the catalog's semantic understanding gave the field,
@@ -120,6 +139,16 @@ type VegaAccess interface {
 	// CreateBuildTask starts a full batch build of the table's local index as the account and
 	// returns the task id. A refusal is a *VegaError.
 	CreateBuildTask(ctx context.Context, account VegaAccount, resourceID string) (string, error)
+	// UpdateIndexConfig gives the table's index configuration the keys it lacks, as the account,
+	// keeping every key it has; it tells whether it wrote anything. A refusal is a *VegaError.
+	UpdateIndexConfig(ctx context.Context, account VegaAccount, resourceID string, keys VegaIndexKeys) (bool, error)
+	// CreateSemanticTask starts, as the account, a semantic understanding task of the table
+	// that fills only what is empty, written in language (zh-CN or en-US). A refusal is a *VegaError.
+	CreateSemanticTask(ctx context.Context, account VegaAccount, resourceID string, language string) (*VegaSemanticTask, error)
+	// ListSemanticTasks returns the semantic understanding tasks of the catalog's tables, newest
+	// first, and whether the account may see them: listing them needs the catalog's task_manage
+	// permission.
+	ListSemanticTasks(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaSemanticTask, bool, error)
 	// Query runs a SQL statement whose tables are written {{<resource id>}} and returns its rows.
 	Query(ctx context.Context, account VegaAccount, sql string, timeoutSeconds int) ([]map[string]any, error)
 }

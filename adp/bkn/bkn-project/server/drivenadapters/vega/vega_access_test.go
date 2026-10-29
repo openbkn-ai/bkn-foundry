@@ -238,6 +238,150 @@ func Test_VegaAccess(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("UpdateIndexConfig fills only the keys the table lacks and sends the resource back as read\n", func() {
+			type reply struct {
+				code int
+				body string
+			}
+			resourcePath := "/api/vega-backend/in/v1/resources/r1"
+			read := `{"entries":[{"id":"r1","catalog_id":"c1","category":"table","name":"orders","description":"Orders",
+				"tags":["erp"],"enabled":true,"update_time":7,"api_name":"orders",
+				"index_config":{"primary_key_fields":["id"],"default_fulltext_analyzer":"ik"},
+				"schema_definition":[{"name":"id","type":"integer","display_name":"No.","features":[]},
+					{"name":"updated_at","type":"datetime"}]}]}`
+			replies := map[string]reply{http.MethodGet: {http.StatusOK, read}, http.MethodPut: {http.StatusNoContent, ``}}
+			var sent []request
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				req := request{method: r.Method, path: r.URL.Path, accountID: r.Header.Get("x-account-id")}
+				if data, _ := io.ReadAll(r.Body); len(data) > 0 {
+					_ = json.Unmarshal(data, &req.body)
+				}
+				sent = append(sent, req)
+				w.WriteHeader(replies[r.Method].code)
+				_, _ = w.Write([]byte(replies[r.Method].body))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
+			keys := interfaces.VegaIndexKeys{PrimaryKeyFields: []string{"code"}, IncrementalFields: []string{"updated_at"}}
+
+			Convey("A key set already stays; what vega-backend overwrites goes back as read\n", func() {
+				changed, err := each.UpdateIndexConfig(ctx, account, "r1", keys)
+
+				So(err, ShouldBeNil)
+				So(changed, ShouldBeTrue)
+				So(len(sent), ShouldEqual, 2)
+				So(sent[0].method, ShouldEqual, http.MethodGet)
+				So(sent[0].path, ShouldEqual, resourcePath)
+				So(sent[1].method, ShouldEqual, http.MethodPut)
+				So(sent[1].path, ShouldEqual, resourcePath)
+				So(sent[1].accountID, ShouldEqual, "u1")
+				So(sent[1].body, ShouldResemble, map[string]any{
+					"name": "orders", "description": "Orders", "tags": []any{"erp"}, "category": "table",
+					"catalog_id": "c1", "enabled": true, "expected_update_time": float64(7),
+					"index_config": map[string]any{"primary_key_fields": []any{"id"},
+						"incremental_fields": []any{"updated_at"}, "default_fulltext_analyzer": "ik"},
+					// Sent back so that vega-backend adds the default features a build needs.
+					"schema_definition": []any{
+						map[string]any{"name": "id", "type": "integer", "display_name": "No.", "features": []any{}},
+						map[string]any{"name": "updated_at", "type": "datetime"}},
+				})
+			})
+
+			Convey("Nothing to fill writes nothing\n", func() {
+				changed, err := each.UpdateIndexConfig(ctx, account, "r1",
+					interfaces.VegaIndexKeys{PrimaryKeyFields: []string{"code"}})
+
+				So(err, ShouldBeNil)
+				So(changed, ShouldBeFalse)
+				So(len(sent), ShouldEqual, 1)
+			})
+
+			Convey("A refused update is vega-backend's error\n", func() {
+				replies[http.MethodPut] = reply{http.StatusConflict, `{"error_code":"VegaBackend.Resource.UpdateConflict"}`}
+
+				_, err := each.UpdateIndexConfig(ctx, account, "r1", keys)
+
+				var vegaErr *interfaces.VegaError
+				So(errors.As(err, &vegaErr), ShouldBeTrue)
+				So(vegaErr.HTTPCode, ShouldEqual, http.StatusConflict)
+				So(vegaErr.ErrorCode, ShouldEqual, "VegaBackend.Resource.UpdateConflict")
+			})
+
+			Convey("A table the account may not read is vega-backend's error, and nothing is written\n", func() {
+				replies[http.MethodGet] = reply{http.StatusForbidden, `{"error_code":"Public.Forbidden"}`}
+
+				_, err := each.UpdateIndexConfig(ctx, account, "r1", keys)
+
+				var vegaErr *interfaces.VegaError
+				So(errors.As(err, &vegaErr), ShouldBeTrue)
+				So(vegaErr.HTTPCode, ShouldEqual, http.StatusForbidden)
+				So(len(sent), ShouldEqual, 1)
+			})
+		})
+
+		Convey("CreateSemanticTask understands one table, filling only what is empty\n", func() {
+			status, respBody = http.StatusCreated,
+				`{"id":"s1","scope":"resource","catalog_id":"c1","resource_id":"r1","status":"pending","applied":false,"create_time":5}`
+
+			task, err := va.CreateSemanticTask(ctx, account, "r1", "en-US")
+
+			So(err, ShouldBeNil)
+			So(task, ShouldResemble, &interfaces.VegaSemanticTask{ID: "s1", ResourceID: "r1", Status: "pending", CreateTime: 5})
+			So(got[0].method, ShouldEqual, http.MethodPost)
+			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/semantic-understanding-tasks")
+			So(got[0].accountID, ShouldEqual, "u1")
+			So(got[0].body, ShouldResemble, map[string]any{
+				"scope": "resource", "resource_id": "r1", "language": "en-US", "apply_mode": "fill_empty"})
+		})
+
+		Convey("CreateSemanticTask returns vega-backend's refusal\n", func() {
+			status, respBody = http.StatusForbidden, `{"error_code":"Public.Forbidden"}`
+
+			_, err := va.CreateSemanticTask(ctx, account, "r1", "zh-CN")
+
+			var vegaErr *interfaces.VegaError
+			So(errors.As(err, &vegaErr), ShouldBeTrue)
+			So(vegaErr.HTTPCode, ShouldEqual, http.StatusForbidden)
+		})
+
+		Convey("ListSemanticTasks lists a catalog's table tasks only for an account that may manage them\n", func() {
+			type reply struct {
+				code int
+				body string
+			}
+			tasksBody := `{"entries":[{"id":"s1","scope":"resource","resource_id":"r1","status":"completed","applied":true,
+				"create_time":5,"finish_time":9}],"total_count":1}`
+			byPath := map[string]reply{
+				"/api/vega-backend/in/v1/catalogs/c1":                  {http.StatusOK, `{"entries":[{"id":"c1","operations":["task_manage"]}]}`},
+				"/api/vega-backend/in/v1/catalogs/c2":                  {http.StatusOK, `{"entries":[{"id":"c2","operations":["view_detail"]}]}`},
+				"/api/vega-backend/in/v1/semantic-understanding-tasks": {http.StatusOK, tasksBody},
+			}
+			var queries []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/vega-backend/in/v1/semantic-understanding-tasks" {
+					queries = append(queries, r.URL.RawQuery)
+				}
+				w.WriteHeader(byPath[r.URL.Path].code)
+				_, _ = w.Write([]byte(byPath[r.URL.Path].body))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
+
+			tasks, visible, err := each.ListSemanticTasks(ctx, account, "c1")
+			So(err, ShouldBeNil)
+			So(visible, ShouldBeTrue)
+			So(tasks, ShouldResemble, []*interfaces.VegaSemanticTask{
+				{ID: "s1", ResourceID: "r1", Status: "completed", Applied: true, CreateTime: 5, FinishTime: 9}})
+			So(queries, ShouldResemble, []string{"catalog_id=c1&limit=-1&scope=resource"})
+
+			// Without task_manage vega-backend would list nothing, which must not read as no task.
+			tasks, visible, err = each.ListSemanticTasks(ctx, account, "c2")
+			So(err, ShouldBeNil)
+			So(visible, ShouldBeFalse)
+			So(tasks, ShouldBeEmpty)
+			So(len(queries), ShouldEqual, 1)
+		})
+
 		Convey("CreateBuildTask creates a full batch build of the table as the account\n", func() {
 			status, respBody = http.StatusCreated, `{"id":"t9"}`
 
