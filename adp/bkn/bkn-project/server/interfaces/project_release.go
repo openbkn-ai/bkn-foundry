@@ -69,6 +69,8 @@ type ReleaseReview struct {
 	Changes ReleaseChanges `json:"changes"`
 	Risks   ReleaseRisks   `json:"risks"`
 	Release ReleaseTarget  `json:"release"`
+	// Questions are where the project's scenario questions stand with the release.
+	Questions ReleaseQuestions `json:"questions"`
 	// Capabilities is what the release does with each function and Skill.
 	Capabilities []CapabilityPlan `json:"capabilities"`
 	// Signature stands for what the review was made from; publishing refuses another.
@@ -128,6 +130,27 @@ type ReleaseTarget struct {
 	BaseVersion   string `json:"base_version"`
 	MainCommit    string `json:"main_commit"`
 	BranchCommit  string `json:"branch_commit"`
+}
+
+// ReleaseQuestions place the scenario questions of the knowledge layer, those answered from object
+// types and relation types, by where what they need is: AnswerableNew can be answered only once
+// released; Affected can be answered now and the release changes or removes something they need;
+// Unanswerable need something the release does not have, listed in Missing. Total counts them all,
+// Unjudged those that name nothing they need.
+type ReleaseQuestions struct {
+	SpecVersion   int               `json:"spec_version"`
+	Total         int               `json:"total"`
+	Unjudged      int               `json:"unjudged"`
+	AnswerableNew []ReleaseQuestion `json:"answerable_new"`
+	Affected      []ReleaseQuestion `json:"affected"`
+	Unanswerable  []ReleaseQuestion `json:"unanswerable"`
+}
+
+type ReleaseQuestion struct {
+	ID      string        `json:"id"`
+	Text    string        `json:"text"`
+	Needs   []ReleaseItem `json:"needs"`
+	Missing []ReleaseItem `json:"missing,omitempty"`
 }
 
 // SimilarNames is a pair of names of one kind that are the same or nearly so: Added is the item

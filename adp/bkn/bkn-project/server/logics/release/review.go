@@ -46,6 +46,9 @@ type projectReleaseService struct {
 	da  interfaces.DraftAccess
 	ca  interfaces.CheckAccess
 	gs  interfaces.GitStore
+	// rs reads the scenario questions of the project's requirement specification; without it a
+	// review has none.
+	rs interfaces.RequirementService
 }
 
 func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectReleaseService {
@@ -90,6 +93,13 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 		span.SetStatus(codes.Error, "Get check failed")
 		return nil, internalError(ctx, "Get check failed", err)
 	}
+	var questions *interfaces.ScenarioQuestions
+	if s.rs != nil {
+		if questions, err = s.rs.ScenarioQuestions(ctx, projectID); err != nil {
+			span.SetStatus(codes.Error, "Get scenario questions failed")
+			return nil, internalError(ctx, "Get scenario questions failed", err)
+		}
+	}
 	branchFiles, err := s.gs.ReadTree(ctx, entry.KNID, preview.BranchCommit)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read branch failed")
@@ -128,6 +138,7 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 			LiveNetworkID: preview.LiveNetworkID, BaseVersion: preview.BaseVersion,
 			MainCommit: preview.MainCommit, BranchCommit: preview.BranchCommit,
 		},
+		Questions:    releaseQuestions(questions, branchFiles, mainFiles, preview.Changes),
 		Capabilities: preview.Capabilities,
 	}
 	var drift, behind *interfaces.ReleaseRefusal
@@ -164,18 +175,22 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 	review.Blocked = review.Blocked || len(review.Refusals) > 0
 	sort.Strings(review.Accepts)
 
-	updateTime := int64(0)
+	updateTime, questionsTime := int64(0), int64(0)
 	if hasDraft {
 		updateTime = draft.UpdateTime
 	}
-	review.Signature = signature(preview.BranchCommit, preview.MainCommit, updateTime)
+	if questions != nil {
+		questionsTime = questions.UpdateTime
+	}
+	review.Signature = signature(preview.BranchCommit, preview.MainCommit, updateTime, questionsTime)
 	span.SetStatus(codes.Ok, "")
 	return review, nil
 }
 
-// signature stands for the branch, main and draft a review was made from.
-func signature(branchCommit string, mainCommit string, draftUpdateTime int64) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\n%s\n%d", branchCommit, mainCommit, draftUpdateTime)))
+// signature stands for the branch, main, draft and scenario questions a review was made from.
+func signature(branchCommit string, mainCommit string, draftUpdateTime int64, questionsUpdateTime int64) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\n%s\n%d\n%d", branchCommit, mainCommit, draftUpdateTime,
+		questionsUpdateTime)))
 	return hex.EncodeToString(sum[:])
 }
 
