@@ -173,9 +173,22 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 
 			_, err := ba.AnswerOnNetwork(ctx, "Bearer t", req)
 
-			So(err, ShouldNotBeNil)
+			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeTrue)
 			var agentErr *interfaces.BknAgentError
 			So(errors.As(err, &agentErr), ShouldBeFalse)
+		})
+
+		Convey("A stream with an event that does not read is cut short too\n", func() {
+			for _, body := range []string{
+				"event: result\ndata: {not json\n\n",
+				"event: terminal\ndata: {\"status\":\"failed\",\"error\":\"x\"}\n\n",
+			} {
+				respBody = body
+
+				_, err := ba.AnswerOnNetwork(ctx, "Bearer t", req)
+
+				So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeTrue)
+			}
 		})
 
 		Convey("Refusals before answering come back with their status and code\n", func() {
@@ -206,12 +219,13 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			}
 		})
 
-		Convey("A request that does not go through is an error\n", func() {
+		Convey("A request that does not go through is an error, but not a cut answer\n", func() {
 			server.Close()
 
 			_, err := ba.AnswerOnNetwork(ctx, "Bearer t", req)
 
 			So(err, ShouldNotBeNil)
+			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeFalse)
 		})
 	})
 }

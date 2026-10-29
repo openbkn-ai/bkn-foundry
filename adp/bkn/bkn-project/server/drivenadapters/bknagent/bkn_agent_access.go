@@ -199,7 +199,8 @@ func (ba *bknAgentAccess) AnswerOnNetwork(ctx context.Context, token string,
 const maxToolInputBytes = 4096
 
 // readAnswer reads the events of an answer: the tool calls as they started and finished, the result
-// and the terminal event. A stream without a terminal event was cut short.
+// and the terminal event. A stream without a terminal event, or with an event that does not read,
+// was cut short: ErrBknAgentAnswerCut.
 func readAnswer(respBody []byte) (*interfaces.BknAgentAnswer, error) {
 	answer := &interfaces.BknAgentAnswer{}
 	ended := false
@@ -231,7 +232,7 @@ func readAnswer(respBody []byte) (*interfaces.BknAgentAnswer, error) {
 		switch name {
 		case "tool_started", "tool_finished", "result", "terminal":
 			if err := json.Unmarshal([]byte(data), &event); err != nil {
-				return nil, fmt.Errorf("unmarshal %s event: %w", name, err)
+				return nil, fmt.Errorf("%w: unmarshal %s event: %v", interfaces.ErrBknAgentAnswerCut, name, err)
 			}
 		default:
 			continue
@@ -264,14 +265,14 @@ func readAnswer(respBody []byte) (*interfaces.BknAgentAnswer, error) {
 			}
 			if len(event.Error) > 0 {
 				if err := json.Unmarshal(event.Error, &failure); err != nil {
-					return nil, fmt.Errorf("unmarshal terminal error: %w", err)
+					return nil, fmt.Errorf("%w: unmarshal terminal error: %v", interfaces.ErrBknAgentAnswerCut, err)
 				}
 			}
 			answer.Status, answer.ErrorCode, ended = event.Status, failure.Code, true
 		}
 	}
 	if !ended {
-		return nil, fmt.Errorf("answer stream ended without its terminal event")
+		return nil, fmt.Errorf("%w: no terminal event", interfaces.ErrBknAgentAnswerCut)
 	}
 	return answer, nil
 }
