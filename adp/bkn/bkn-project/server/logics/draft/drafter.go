@@ -695,28 +695,42 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 		}
 	}
 
-	rate, computed := relation.Evidence.HitRate, relation.Evidence.Computed
-	switch {
-	case !computed && mustCount:
+	if !relation.Evidence.Computed && mustCount {
+		// A stem only counts may bear out: uncounted, it is not drafted.
 		return false, nil
-	case !computed:
-		// Not counted (another catalog, a failed query): proposed for a person to check, never dropped.
-		relation.ProposedBecause = proposedNotCounted
-	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY && rate < d.setting.SuggestHitRate:
-		relation.ProposedBecause = proposedBelowSuggestRate
-	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY:
-	case rate < d.setting.SuggestHitRate:
-		// Counted and mostly orphans: an inference the data refutes is not proposed.
-		return false, nil
-	case rate < d.setting.AdoptHitRate:
-		relation.ProposedBecause = proposedBelowAdoptRate
-	case relation.Evidence.SourceDistinct < d.setting.MinInferredDistinct:
-		// A field of a few values hits any key by chance, so it is proposed, not adopted.
-		relation.ProposedBecause = proposedFewValues
 	}
-	relation.Adopted = relation.ProposedBecause == ""
+	because, refuted := proposedBecause(d.setting, origin, relation.Evidence)
+	if refuted {
+		return false, nil
+	}
+	relation.ProposedBecause, relation.Adopted = because, because == ""
 	d.items.RelationTypes = append(d.items.RelationTypes, relation)
 	return true, nil
+}
+
+// proposedBecause is why a relation of an origin and its counts is proposed rather than
+// adopted, empty when it is adopted; refuted when it is an inference the counts refute, which
+// is not drafted at all.
+func proposedBecause(setting common.DraftSetting, origin string, evidence interfaces.DraftJoinEvidence) (string, bool) {
+	rate := evidence.HitRate
+	switch {
+	case !evidence.Computed:
+		// Not counted (another catalog, a failed query): proposed for a person to check, never dropped.
+		return proposedNotCounted, false
+	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY && rate < setting.SuggestHitRate:
+		return proposedBelowSuggestRate, false
+	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY:
+		return "", false
+	case rate < setting.SuggestHitRate:
+		// Counted and mostly orphans: an inference the data refutes is not proposed.
+		return "", true
+	case rate < setting.AdoptHitRate:
+		return proposedBelowAdoptRate, false
+	case evidence.SourceDistinct < setting.MinInferredDistinct:
+		// A field of a few values hits any key by chance, so it is proposed, not adopted.
+		return proposedFewValues, false
+	}
+	return "", false
 }
 
 func joinEvidence(rows int64, nulls int64, orphans int64) interfaces.DraftJoinEvidence {
