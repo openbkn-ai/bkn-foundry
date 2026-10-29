@@ -67,6 +67,18 @@ const (
 	BknProject_Index_ConfirmAgain     = "BknProject.Index.ConfirmAgain"
 )
 
+// The semantic understanding of a project's catalogs.
+const (
+	// 400
+	BknProject_Understand_InvalidApplyMode = "BknProject.Understand.InvalidApplyMode"
+
+	// 403
+	BknProject_Understand_NotOwner = "BknProject.Understand.NotOwner"
+
+	// 409
+	BknProject_Understand_NoCatalogs = "BknProject.Understand.NoCatalogs"
+)
+
 var (
 	DraftErrCodeList = []string{
 		BknProject_Draft_NoCatalogs,
@@ -104,5 +116,8 @@ var (
 		BknProject_Index_NotOwner,
 		BknProject_Index_NothingConfirmed,
 		BknProject_Index_ConfirmAgain,
+		BknProject_Understand_InvalidApplyMode,
+		BknProject_Understand_NotOwner,
+		BknProject_Understand_NoCatalogs,
 	}
 )
