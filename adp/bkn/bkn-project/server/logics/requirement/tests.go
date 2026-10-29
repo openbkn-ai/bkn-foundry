@@ -80,12 +80,10 @@ func (s *requirementService) EditTest(ctx context.Context, token string, project
 			if i < 0 {
 				return httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Requirement_TestNotFound)
 			}
-			req, ok, err := s.ra.GetRequirement(ctx, projectID)
+			// Checked against the specification as drafted: none while it is drafted again.
+			req, err := s.readySpecOf(ctx, projectID)
 			if err != nil {
-				return internalError(ctx, "Get requirement failed", err)
-			}
-			if !ok {
-				return httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Requirement_NotFound)
+				return err
 			}
 			test := *g.Tests[i]
 			if edit.Text == nil && edit.Slots == nil && edit.Expect == nil {
