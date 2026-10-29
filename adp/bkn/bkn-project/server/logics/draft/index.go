@@ -45,8 +45,33 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Read tables failed")
 		return nil, internalError(ctx, "Read tables failed", err)
 	}
+	if c := draft.Items.Confirmation; c != nil && c.Commit != "" {
+		s.attachBuilds(ctx, index, projectID, c.Commit)
+	}
 	span.SetStatus(codes.Ok, "")
 	return index, nil
+}
+
+// attachBuilds gives each object type the build that the confirmation of commit started for its
+// table. Without them the readiness still stands.
+func (s *draftService) attachBuilds(ctx context.Context, index *interfaces.ProjectIndex, projectID string,
+	commit string) {
+	builds, err := s.iba.ListBuilds(ctx, projectID, commit)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("List index builds of project %s: %v", projectID, err))
+		return
+	}
+	byResource := map[string]*interfaces.IndexBuild{}
+	for _, b := range builds {
+		byResource[b.ResourceID] = b
+	}
+	for i := range index.ObjectTypes {
+		item := &index.ObjectTypes[i]
+		if b, ok := byResource[item.Table.ResourceID]; ok {
+			item.Build = &interfaces.ProjectIndexBuild{Outcome: b.Outcome, TaskID: b.TaskID, Reason: b.Reason,
+				Time: b.CreateTime}
+		}
+	}
 }
 
 // readIndex reads the readiness of the local indexes of the adopted object types as the account.

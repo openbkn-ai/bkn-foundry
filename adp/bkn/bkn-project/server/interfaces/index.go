@@ -42,6 +42,17 @@ type ProjectIndexItem struct {
 	Missing []string `json:"missing,omitempty"`
 	// Task is the build task under way.
 	Task *ProjectIndexTask `json:"task,omitempty"`
+	// Build is what the last confirmation did to build the table's index.
+	Build *ProjectIndexBuild `json:"build,omitempty"`
+}
+
+type ProjectIndexBuild struct {
+	// Outcome is one of the INDEX_BUILD_* outcomes.
+	Outcome string `json:"outcome"`
+	TaskID  string `json:"task_id,omitempty"`
+	// Reason says why the build could not start.
+	Reason string `json:"reason,omitempty"`
+	Time   int64  `json:"time"`
 }
 
 type ProjectIndexTask struct {
