@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -240,11 +241,24 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeTrue)
 		})
 
-		Convey("A caller that gives up is not a cut answer\n", func() {
+		Convey("A caller that gives up after the reply began is not a cut answer\n", func() {
 			cancelled, cancel := context.WithCancel(ctx)
-			cancel()
+			defer cancel()
+			stalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(sse([2]string{"meta", `{"thread_id":"th1","agent_id":"studio_smart_qa"}`})))
+				w.(http.Flusher).Flush()
+				// The reply has begun: once the client has its headers, the caller gives up while the
+				// body is being read.
+				time.Sleep(200 * time.Millisecond)
+				cancel()
+				<-r.Context().Done()
+			}))
+			defer stalled.Close()
+			giveUp := &bknAgentAccess{httpClient: rest.NewHTTPClient(), baseUrl: stalled.URL + "/api/bkn-agent/v1"}
 
-			_, err := ba.AnswerOnNetwork(cancelled, "Bearer t", req)
+			_, err := giveUp.AnswerOnNetwork(cancelled, "Bearer t", req)
 
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, interfaces.ErrBknAgentAnswerCut), ShouldBeFalse)
