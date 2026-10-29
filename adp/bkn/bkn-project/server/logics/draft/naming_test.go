@@ -160,6 +160,15 @@ func Test_DraftTableName(t *testing.T) {
 			So(name, ShouldEqual, "销售订单")
 		})
 
+		Convey("A name discovery gave, the physical name with its schema, is no name a person gave\n", func() {
+			// Tables discovered before vega 0.2.1 kept their source identifier as their name.
+			t := orders("erp.sales_order", "Sales orders. From ERP")
+			t.SourceSchema = "erp"
+			name, aliases := nameIn(en, t)
+			So(name, ShouldEqual, "Sales orders")
+			So(aliases, ShouldBeNil)
+		})
+
 		Convey("The naming language still comes first: a name in the other language is an alias\n", func() {
 			name, aliases := nameIn(en, orders("销售订单", "Sales orders signed with customers"))
 			So(name, ShouldEqual, "Sales orders signed with customers")

@@ -78,11 +78,20 @@ func (d *drafter) language() string {
 
 // tableName names an item drafted from a table in the naming language, with its aliases: from the
 // name semantic understanding or a person gave it, then the first clause of its description, then
-// its own, as fields are named. A table nobody named keeps its physical name as its name, which is
-// no candidate; semantic understanding writes a sentence as the description, whose first clause
-// names badly.
+// its own, as fields are named. Semantic understanding writes a sentence as the description, whose
+// first clause names badly.
 func (d *drafter) tableName(table *interfaces.VegaTable) (string, []string) {
-	return pickName(d.language(), physicalName(table), table.Name, firstClause(table.Description))
+	return pickName(d.language(), physicalName(table), givenName(table), firstClause(table.Description))
+}
+
+// givenName is the name semantic understanding or a person gave a table, empty while it keeps the
+// name discovery gave it: its physical name, which is no candidate anyway, or, for tables discovered
+// before vega 0.2.1, its physical name with its schema, as vega itself reads a default name.
+func givenName(table *interfaces.VegaTable) string {
+	if table.Name == table.SourceSchema+"."+table.SourceName {
+		return ""
+	}
+	return table.Name
 }
 
 // dropAliasesOfOtherProperties leaves out an alias that is another property's name or display name:
