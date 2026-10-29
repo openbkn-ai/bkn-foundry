@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -296,7 +297,7 @@ func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfac
 
 	// vega-backend lists nothing, with 200, for a catalog the account lacks task_manage on, so the
 	// permission is read first: no tasks would otherwise read as none under way.
-	visible, err := va.mayManageTasks(ctx, account, catalogID)
+	visible, err := va.mayManageTasks(ctx, span, account, catalogID)
 	if err != nil || !visible {
 		return nil, false, err
 	}
@@ -334,19 +335,23 @@ func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfac
 	return tasks, true, nil
 }
 
-// mayManageTasks tells, from GET /catalogs/{id}, whether the account may manage the catalog's tasks.
-// A catalog the account may not see, or that is gone, has none it may manage.
-func (va *vegaAccess) mayManageTasks(ctx context.Context, account interfaces.VegaAccount,
+// mayManageTasks tells, from GET /catalogs/{id}, whether the account may manage the catalog's tasks,
+// recording on the caller's span why it may not. A catalog the account may not see, or that is
+// gone, has none it may manage.
+func (va *vegaAccess) mayManageTasks(ctx context.Context, span trace.Span, account interfaces.VegaAccount,
 	catalogID string) (bool, error) {
 	respCode, respBody, err := va.getCatalogs(ctx, account, []string{catalogID})
 	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog failed")
 		return false, err
 	}
 	switch respCode {
 	case http.StatusOK:
 	case http.StatusForbidden, http.StatusNotFound:
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
 		return false, nil
 	default:
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		return false, vegaError(respCode, respBody)
 	}
 	catalogs := &struct {
@@ -355,9 +360,14 @@ func (va *vegaAccess) mayManageTasks(ctx context.Context, account interfaces.Veg
 		} `json:"entries"`
 	}{}
 	if err := json.Unmarshal(respBody, catalogs); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal catalog failed")
 		return false, fmt.Errorf("unmarshal catalog %s: %w", catalogID, err)
 	}
-	return len(catalogs.Entries) > 0 && slices.Contains(catalogs.Entries[0].Operations, operationTaskManage), nil
+	if len(catalogs.Entries) == 0 || !slices.Contains(catalogs.Entries[0].Operations, operationTaskManage) {
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return false, nil
+	}
+	return true, nil
 }
 
 // UpdateIndexConfig reads the table with GET /resources/{id} and writes it back with PUT
@@ -489,7 +499,7 @@ func (va *vegaAccess) ListSemanticTasks(ctx context.Context, account interfaces.
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
 	// As with build tasks, vega-backend lists nothing, with 200, without task_manage.
-	visible, err := va.mayManageTasks(ctx, account, catalogID)
+	visible, err := va.mayManageTasks(ctx, span, account, catalogID)
 	if err != nil || !visible {
 		return nil, false, err
 	}
