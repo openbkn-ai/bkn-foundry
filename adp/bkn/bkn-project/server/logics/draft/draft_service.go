@@ -49,8 +49,10 @@ type draftService struct {
 	da      interfaces.DraftAccess
 	// ca records the check run after a draft is confirmed.
 	ca interfaces.CheckAccess
-	va interfaces.VegaAccess
-	ps interfaces.ProjectService
+	// ira keeps the ids of items drafted from names that are not ASCII, so drafts do not change them.
+	ira interfaces.IDRegistryAccess
+	va  interfaces.VegaAccess
+	ps  interfaces.ProjectService
 	// ls commits a confirmed draft to its project branch.
 	ls interfaces.LineageService
 	// run drafts in the background; tests replace it to run in line.
@@ -65,6 +67,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			setting: appSetting.DraftSetting,
 			da:      logics.DA,
 			ca:      logics.CA,
+			ira:     logics.IRA,
 			va:      logics.VA,
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
@@ -166,7 +169,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	defer span.End()
 
 	result := &interfaces.Draft{ProjectID: projectID, Status: interfaces.DRAFT_STATUS_READY}
-	items, err := s.draftFromTables(ctx, catalogIDs, caller)
+	items, err := s.draftFromTables(ctx, projectID, catalogIDs, caller)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		result.Status, result.Error = interfaces.DRAFT_STATUS_FAILED, FailureTimeout
@@ -187,7 +190,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	}
 }
 
-func (s *draftService) draftFromTables(ctx context.Context, catalogIDs []string,
+func (s *draftService) draftFromTables(ctx context.Context, projectID string, catalogIDs []string,
 	caller interfaces.AccountInfo) (interfaces.DraftItems, error) {
 	listed := []*interfaces.VegaTable{}
 	for _, catalogID := range catalogIDs {
@@ -227,10 +230,24 @@ func (s *draftService) draftFromTables(ctx context.Context, catalogIDs []string,
 			tables = append(tables, full)
 		}
 	}
+	registered, err := s.ira.ListIDs(ctx, projectID)
+	if err != nil {
+		return interfaces.DraftItems{}, fmt.Errorf("read registered ids: %w", err)
+	}
 	c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}
-	items, err := newDrafter(s.setting, c).draft(ctx, tables, unreadable)
+	d := newDrafter(s.setting, c).withRegisteredIDs(projectID, registered)
+	items, err := d.draft(ctx, tables, unreadable)
 	if err != nil {
 		return items, err
+	}
+	// Ids are registered before the draft is recorded: a draft whose ids later drafts could not
+	// give again must not stand.
+	now := time.Now().UnixMilli()
+	for _, id := range d.recorded {
+		id.CreateTime, id.UpdateTime = now, now
+	}
+	if err := s.ira.RecordIDs(ctx, d.recorded); err != nil {
+		return interfaces.DraftItems{}, fmt.Errorf("record ids: %w", err)
 	}
 	// Tables drafting itself could not read, such as a code table whose values it could not
 	// query, are in items.Unreadable too.

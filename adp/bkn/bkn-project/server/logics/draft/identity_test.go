@@ -60,7 +60,7 @@ func Test_ChooseIdentity(t *testing.T) {
 		ps := pmock.NewMockProjectService(ctrl)
 		setting := testSetting
 		setting.QueryTimeout = 60
-		svc := &draftService{setting: setting, da: da, va: va, ps: ps, run: func(fn func()) { fn() }}
+		svc := &draftService{setting: setting, da: da, va: va, ps: ps, ira: &fakeIDRegistry{}, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
@@ -209,7 +209,7 @@ func Test_RestoreExcluded(t *testing.T) {
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
-		svc := &draftService{setting: testSetting, da: da, va: va, ps: ps, run: func(fn func()) { fn() }}
+		svc := &draftService{setting: testSetting, da: da, va: va, ps: ps, ira: &fakeIDRegistry{}, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()

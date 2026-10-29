@@ -46,6 +46,12 @@ type drafter struct {
 	keys         map[string][]string
 	bySourceName map[string]*interfaces.VegaTable // catalog|schema.name -> table
 	items        interfaces.DraftItems
+
+	// projectID and registered are the project's registered ids; recorded are the ids this draft
+	// registers anew or in place of a placeholder.
+	projectID  string
+	registered map[interfaces.IDKey]*interfaces.RegisteredID
+	recorded   []*interfaces.RegisteredID
 }
 
 func newDrafter(setting common.DraftSetting, c counter) *drafter {
@@ -102,6 +108,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	}
 
 	typeIDs := map[string]bool{}
+	d.reserve(interfaces.ID_KIND_OBJECT_TYPES, "", typeIDs)
 	for _, table := range tables {
 		if d.kinds[table.ID] == tableKindEntity {
 			d.addObjectType(table, typeIDs)
@@ -117,6 +124,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	}
 
 	valueTypeIDs := map[string]bool{}
+	d.reserve(interfaces.ID_KIND_VALUE_TYPES, "", valueTypeIDs)
 	for _, table := range tables {
 		if d.kinds[table.ID] == tableKindCodeTable {
 			if err := d.addValueType(ctx, table, valueTypeIDs); err != nil {
@@ -126,6 +134,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	}
 
 	relationIDs := map[string]bool{}
+	d.reserve(interfaces.ID_KIND_RELATION_TYPES, "", relationIDs)
 	for _, table := range tables {
 		var err error
 		switch d.kinds[table.ID] {
@@ -156,7 +165,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 
 func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]bool) {
 	objectType := &interfaces.DraftObjectType{
-		ID:          uniqueName(idFrom(physicalName(table), idPrefixObjectType), typeIDs),
+		ID:          d.itemID(interfaces.ID_KIND_OBJECT_TYPES, table.ID, physicalName(table), table.APIName, idPrefixObjectType, typeIDs),
 		Name:        displayName(table.Description, table.Name),
 		Description: table.Description,
 		Table:       draftTable(table),
@@ -175,6 +184,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 	}
 
 	names := map[string]bool{}
+	d.reserve(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, ""), names)
 	fields := map[string]string{}
 	for _, c := range table.Columns {
 		bknType := bknTypes[c.Type]
@@ -191,7 +201,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 			})
 			continue
 		}
-		name := uniqueName(idFrom(c.Name, idPrefixProperty), names)
+		name := d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, c.Name), c.Name, c.APIName, idPrefixProperty, names)
 		fields[c.Name] = name
 		objectType.Properties = append(objectType.Properties, newProperty(c, name))
 	}
@@ -352,7 +362,7 @@ func (d *drafter) addValueType(ctx context.Context, table *interfaces.VegaTable,
 		return nil
 	}
 	valueType := &interfaces.DraftValueType{
-		ID:        uniqueName(idFrom(physicalName(table), idPrefixValueType), ids),
+		ID:        d.itemID(interfaces.ID_KIND_VALUE_TYPES, table.ID, physicalName(table), table.APIName, idPrefixValueType, ids),
 		Name:      displayName(table.Description, table.Name),
 		BaseType:  bknTypes[c.Type],
 		Values:    values,
@@ -568,7 +578,7 @@ func (d *drafter) addLinkRelation(table *interfaces.VegaTable, ids map[string]bo
 	}
 	link := draftTable(table)
 	relation := &interfaces.DraftRelationType{
-		ID:            uniqueName(idFrom(physicalName(table), idPrefixRelationType), ids),
+		ID:            d.itemID(interfaces.ID_KIND_RELATION_TYPES, table.ID, physicalName(table), table.APIName, idPrefixRelationType, ids),
 		Source:        ends[0].ID,
 		Target:        ends[1].ID,
 		Origin:        interfaces.DRAFT_ORIGIN_LINK_TABLE,

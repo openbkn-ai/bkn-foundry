@@ -29,6 +29,7 @@ import (
 	draftaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/executionfactory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/vega"
@@ -74,6 +75,7 @@ func Boot() *Application {
 	logics.SetProjectAccess(project.NewProjectAccess(appSetting))
 	logics.SetDraftAccess(draftaccess.NewDraftAccess(appSetting))
 	logics.SetCheckAccess(checkaccess.NewCheckAccess(appSetting))
+	logics.SetIDRegistryAccess(idregistry.NewIDRegistryAccess(appSetting))
 	logics.SetVegaAccess(vega.NewVegaAccess(appSetting))
 	logics.SetGitStore(gitstore.NewGitStore(appSetting))
 	logics.SetBknBackendAccess(bknbackend.NewBknBackendAccess(appSetting))

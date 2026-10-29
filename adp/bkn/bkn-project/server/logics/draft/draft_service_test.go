@@ -31,6 +31,27 @@ func shouldBeHTTPError(err error, status int, code string) {
 	So(httpErr.ErrorCode, ShouldEqual, code)
 }
 
+// fakeIDRegistry keeps registered ids in memory.
+type fakeIDRegistry struct {
+	ids       []*interfaces.RegisteredID
+	recorded  []*interfaces.RegisteredID
+	listErr   error
+	recordErr error
+}
+
+func (f *fakeIDRegistry) ListIDs(_ context.Context, _ string) ([]*interfaces.RegisteredID, error) {
+	return f.ids, f.listErr
+}
+
+func (f *fakeIDRegistry) RecordIDs(_ context.Context, ids []*interfaces.RegisteredID) error {
+	f.recorded = append(f.recorded, ids...)
+	return f.recordErr
+}
+
+func (f *fakeIDRegistry) LockIDs(context.Context, string, []interfaces.IDKey, int64) error {
+	return nil
+}
+
 func Test_DraftService(t *testing.T) {
 	Convey("Test draftService\n", t, func() {
 		ctrl := gomock.NewController(t)
@@ -42,7 +63,8 @@ func Test_DraftService(t *testing.T) {
 		setting.Timeout = time.Minute
 		setting.QueryTimeout = 60
 		ca := pmock.NewMockCheckAccess(ctrl)
-		svc := &draftService{setting: setting, da: da, va: va, ps: ps, ca: ca, run: func(fn func()) { fn() }}
+		ira := &fakeIDRegistry{}
+		svc := &draftService{setting: setting, da: da, va: va, ps: ps, ca: ca, ira: ira, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", CatalogIDs: []string{"c1"}}}
 
@@ -108,6 +130,60 @@ func Test_DraftService(t *testing.T) {
 			// Some tables could not be read: the draft is partial.
 			So(inputs.Partial, ShouldBeTrue)
 		})
+
+		Convey("Drafting gives tables named in Chinese their registered ids and registers new ones\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
+			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{{ID: "r1", CatalogID: "c1"}}, nil)
+			code := col("编号", "string", "")
+			code.APIName = "supplier_code"
+			supplier := table("r1", "c1", "供应商", 2, []string{"编号"}, code)
+			supplier.APIName = "supplier"
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r1"}).Return([]*interfaces.VegaTable{supplier}, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).
+				Return([]map[string]any{{"total": float64(2), "distinct_values": float64(2), "nulls": float64(0)}}, nil).AnyTimes()
+			ira.ids = []*interfaces.RegisteredID{registered(interfaces.ID_KIND_OBJECT_TYPES, "r1", "vendor", interfaces.ID_ORIGIN_SEMANTIC, true)}
+			var finished *interfaces.Draft
+			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
+
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
+			So(finished.Items.ObjectTypes[0].ID, ShouldEqual, "vendor")
+			So(len(ira.recorded), ShouldEqual, 1)
+			So(ira.recorded[0].ID, ShouldEqual, "supplier_code")
+			So(ira.recorded[0].ProjectID, ShouldEqual, "p1")
+			So(ira.recorded[0].CreateTime, ShouldBeGreaterThan, 0)
+			So(ira.recorded[0].UpdateTime, ShouldEqual, ira.recorded[0].CreateTime)
+		})
+
+		for _, failure := range []string{"read", "record"} {
+			Convey("A failure to "+failure+" registered ids fails the draft\n", func() {
+				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+				va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
+				da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
+				va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{{ID: "r1", CatalogID: "c1"}}, nil)
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r1"}).
+					Return([]*interfaces.VegaTable{table("r1", "c1", "供应商", 0, nil, col("名称", "string", ""))}, nil)
+				if failure == "read" {
+					ira.listErr = errors.New("database is down")
+				} else {
+					ira.recordErr = errors.New("database is down")
+				}
+				var finished *interfaces.Draft
+				da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
+
+				_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_FAILED)
+				So(finished.Error, ShouldContainSubstring, "database is down")
+			})
+		}
 
 		Convey("A code table whose values could not be read makes the draft partial\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
