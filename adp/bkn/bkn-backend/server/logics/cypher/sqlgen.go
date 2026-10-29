@@ -697,6 +697,17 @@ func (g *generator) fail(err error) {
 }
 
 func (g *generator) writeJoinCondition(join PlanJoin) {
+	if join.Filtered {
+		// The two ends' conditions are the whole link.
+		if join.Filter == nil {
+			g.out.WriteString("1 = 1")
+			return
+		}
+		if err := g.writePredicate(join.Filter, true); err != nil {
+			g.fail(err)
+		}
+		return
+	}
 	for r, reading := range join.Readings {
 		if r > 0 {
 			g.out.WriteString(" OR ")

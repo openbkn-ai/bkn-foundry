@@ -132,6 +132,11 @@ type PlanJoin struct {
 	Conditions []PlanPredicate
 	// Backing is set for an indirect relation.
 	Backing *PlanBacking
+	// Filtered marks a filtered_cross_join relation: it has no key pairs, and
+	// Filter -- both ends' conditions together, nil when they always hold --
+	// is what links two rows.
+	Filtered bool
+	Filter   PlanPredicate
 }
 
 // PlanBacking is how an indirect relation links its two ends: a row of the
@@ -727,16 +732,14 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 	if err != nil {
 		return &PlanError{Pos: edge.Pos, Err: err}
 	}
-	if relationType.Type == interfaces.RELATION_TYPE_INDIRECT {
+	switch relationType.Type {
+	case interfaces.RELATION_TYPE_DIRECT:
+	case interfaces.RELATION_TYPE_INDIRECT:
 		return p.addIndirectJoin(edge, relationType, left, right)
-	}
-	if relationType.Type != interfaces.RELATION_TYPE_DIRECT {
-		// A filtered cross join has no key pairs to join on: it pairs every
-		// row that passes one side's filter with every row that passes the
-		// other. That is a different SQL shape, so it is refused rather than
-		// approximated.
-		return planErrorf(edge.Pos,
-			"relation type %q is a %s relation; only direct and indirect relations can be used in a pattern yet",
+	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
+		return p.addFilteredCrossJoin(edge, relationType, left, right)
+	default:
+		return planErrorf(edge.Pos, "relation type %q is a %s relation, which a pattern cannot use",
 			relationType.RTName, relationType.Type)
 	}
 
