@@ -167,8 +167,13 @@ type agentDocType struct {
 }
 
 // JSON Schema builders for the response format.
+// An object without required properties leaves "required" out: JSON Schema has no null for it.
 func schemaObject(properties map[string]any, required ...string) map[string]any {
-	return map[string]any{"type": "object", "properties": properties, "required": required}
+	object := map[string]any{"type": "object", "properties": properties}
+	if len(required) > 0 {
+		object["required"] = required
+	}
+	return object
 }
 
 func schemaArray(items map[string]any) map[string]any {
