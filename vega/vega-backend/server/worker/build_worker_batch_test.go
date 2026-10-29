@@ -741,6 +741,102 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 	require.NoError(t, mockDB.ExpectationsWereMet())
 }
 
+// 没有增量字段的全量构建只按主键分批：排序、游标过滤和检查点都只含主键，并能从只含主键的检查点续跑。
+func TestBatchBuildWorkerPagesFullBuildByPrimaryKeyAlone(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	cf := vmock.NewMockConnectorFactory(ctrl)
+	connector := vmock.NewMockTableConnector(ctrl)
+	resource := workerTestResource()
+	resource.IndexConfig.IncrementalFields = nil
+	task := workerTestFullTask(t, resource)
+	task.IndexConfig.IncrementalFields = nil
+	task.IndexName = "build-index"
+	task.Status = interfaces.BuildTaskStatusRunning
+	// 暂停后续跑：检查点只含主键。
+	task.SyncedMark = `{"mode":"batch","cursor":[{"key":"id","value":20}]}`
+	bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
+
+	db, mockDB, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	oldDB := logics.DB
+	logics.DB = db
+	defer func() { logics.DB = oldDB }()
+
+	lim.EXPECT().CheckIndexExist(gomock.Any(), "build-index").Return(true, nil)
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
+	connector.EXPECT().Connect(gomock.Any()).Return(nil)
+	sourceRows := make([]map[string]any, 1500)
+	for i := range sourceRows {
+		sourceRows[i] = map[string]any{"id": int64(i + 21)}
+	}
+	var cursors []int64
+	queryCount := 0
+	connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(2).DoAndReturn(
+		func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			queryCount++
+			require.Len(t, params.Sort, 1)
+			assert.Equal(t, "id", params.Sort[0].Field)
+			require.NotNil(t, params.FilterCondCfg)
+			require.Len(t, params.FilterCondCfg.SubConds, 1)
+			condition := params.FilterCondCfg.SubConds[0].SubConds[0]
+			assert.Equal(t, "id", condition.Name)
+			assert.Equal(t, "gt", condition.Operation)
+			cursor := condition.Value.(int64)
+			cursors = append(cursors, cursor)
+			entries := make([]map[string]any, 0, params.Paging.Limit)
+			for _, row := range sourceRows {
+				if row["id"].(int64) > cursor {
+					entries = append(entries, row)
+					if len(entries) == params.Paging.Limit {
+						break
+					}
+				}
+			}
+			result := &interfaces.QueryResult{Entries: entries}
+			if queryCount == 1 {
+				result.Total = int64(len(sourceRows))
+			}
+			return result, nil
+		})
+	connector.EXPECT().Close(gomock.Any()).Return(nil)
+	bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil).AnyTimes()
+	// 全量构建每批写进度（不走事务），结束时在一个事务里发布索引并完成任务。
+	var progressMarks []string
+	bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+			if progress.SyncedMark != nil {
+				progressMarks = append(progressMarks, *progress.SyncedMark)
+			}
+			return true, nil
+		})
+	lim.EXPECT().IndexDocuments(gomock.Any(), "build-index", gomock.Any()).Times(2).DoAndReturn(successfulIndexDocuments)
+	mockDB.ExpectBegin()
+	mockDB.ExpectCommit()
+	txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+	rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil)
+	var publishedMark string
+	rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, resource.ID,
+		interfaces.ResourceLocalIndexStatusAvailable, "build-index", gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, _ string, _ string, _ string, mark string) (bool, error) {
+			publishedMark = mark
+			return true, nil
+		})
+	bts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, task.ID).Return(true, nil)
+
+	err = bbw.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)
+
+	require.NoError(t, err)
+	assert.Equal(t, []int64{20, 1020}, cursors)
+	require.NotEmpty(t, progressMarks)
+	assert.JSONEq(t, `{"mode":"batch","cursor":[{"key":"id","value":1020}]}`, progressMarks[0])
+	assert.JSONEq(t, `{"mode":"batch","cursor":[{"key":"id","value":1520}]}`, publishedMark)
+	require.NoError(t, mockDB.ExpectationsWereMet())
+}
+
 func TestReconcileTaskFulltextFeatures(t *testing.T) {
 	t.Run("errors when task field is missing from schema features", func(t *testing.T) {
 		schema := []*interfaces.Property{
