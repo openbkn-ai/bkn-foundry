@@ -83,7 +83,7 @@ func Test_BuildGuidance(t *testing.T) {
 
 		Convey("A value the Agent gives stays only when a document says it\n", func() {
 			docs := []*interfaces.RequirementDocument{doc("prd", interfaces.REQUIREMENT_DOC_PRD, "例如客户 １０００１ 的订单。")}
-			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Slots: []agentSlot{
+			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 10001 for Acme Ltd?", Slots: []agentSlot{
 				{ConceptID: "c2", Property: "customer_id", Value: "10001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
 				{ConceptID: "c2", Property: "customer_id", Value: "  "},
@@ -114,8 +114,6 @@ func Test_BuildGuidance(t *testing.T) {
 				{"Orders of customer 20001 at level 1?", []string{"20001", "1"}, "Orders of customer {{slot 1}} at level {{slot 2}}?"},
 				{"Top 10 orders of customer 1?", []string{"1"}, "Top 10 orders of customer {{slot 1}}?"},
 				{"Orders of 1 and of 1?", []string{"1", "1"}, "Orders of {{slot 1}} and of {{slot 2}}?"},
-				{"Orders of Acme Ltd?", []string{"Acme Ltd", "Acme"}, "Orders of {{slot 1}}?"},
-				{"Orders of 7 in 2024?", []string{"20"}, "Orders of 7 in 2024?"},
 				{"客户20001的订单？", []string{"20001"}, "客户{{slot 1}}的订单？"},
 			} {
 				at := agentTest{Text: c.text}
@@ -127,6 +125,21 @@ func Test_BuildGuidance(t *testing.T) {
 
 				So(tests[0].Text, ShouldEqual, c.want)
 			}
+		})
+
+		Convey("A test is left out when its text does not say a made-up value as written\n", func() {
+			tests := buildTests(&guidanceOutput{Tests: []agentTest{
+				{Text: "Orders in 2024?", Slots: []agentSlot{{ConceptID: "c1", Property: "year", Value: "20"}}},
+				{Text: "Orders of customer 10,001?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}}},
+				// The second value stands only within the first.
+				{Text: "Orders of Acme Ltd?", Slots: []agentSlot{{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
+					{ConceptID: "c2", Property: "short_name", Value: "Acme"}}},
+				{Text: "Orders of a customer?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}}},
+			}}, nil)
+
+			So(tests, ShouldHaveLength, 1)
+			So(tests[0].ID, ShouldEqual, "t1")
+			So(tests[0].Text, ShouldEqual, "Orders of a customer?")
 		})
 
 		Convey("An expectation the server does not know reads as exists\n", func() {

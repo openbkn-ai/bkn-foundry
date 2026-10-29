@@ -252,7 +252,7 @@ func replaceSpans(text string, spans []valueSpan) string {
 }
 
 // buildTests gives the Agent's test questions the server's ids, at most maxTests of them, leaving
-// out those without text. A value is kept only when a document says it; the others are left for
+// out those without text or asking about a made-up value they do not say as written. A value is kept only when a document says it; the others are left for
 // the server to fill from the data. None is checked against the data yet.
 func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*interfaces.QuestionTest {
 	texts := make([]string, 0, len(docs))
@@ -271,18 +271,24 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*
 		}
 		slots := make([]interfaces.QuestionTestSlot, 0, len(at.Slots))
 		var spans []valueSpan
+		placed := true
 		for i, s := range at.Slots {
 			value := strings.TrimSpace(s.Value)
 			if !valueInDocuments(value, texts) {
 				// The text asks about the made-up value: it gives way to the slot, which the
-				// server's value from the data replaces.
-				if sp, ok := findValue(text, value, spans); ok {
+				// server's value from the data replaces. A text that does not say it as written
+				// would go on asking about a value no one checks, so the test is left out.
+				if value != "" {
+					sp, ok := findValue(text, value, spans)
 					sp.slot = i
-					spans = append(spans, sp)
+					spans, placed = append(spans, sp), placed && ok
 				}
 				value = ""
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
+		}
+		if !placed {
+			continue
 		}
 		text = replaceSpans(text, spans)
 		tests = append(tests, &interfaces.QuestionTest{
