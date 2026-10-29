@@ -1,0 +1,247 @@
+{
+  "description": "Known gaps, drafted as they are today (wp1-review R1-R3): no relation for the self-referencing parent_employee_id (R1, the self-reference is excluded); none for staff.dept_id (integer) to departments.dept_id (large_integer), as types must be equal (R2); the link table staff_teams, with no declared foreign keys, is drafted as an entity waiting for an identity instead of a relation between staff and teams (R3). When a gap is closed, this draft changes in review.",
+  "tables": [
+    {
+      "ID": "r_emp",
+      "CatalogID": "c1",
+      "Name": "employees",
+      "Description": "",
+      "SourceName": "employees",
+      "SourceSchema": "dw",
+      "Rows": 400,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "employee_id"
+      ],
+      "Columns": [
+        {
+          "Name": "employee_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "parent_employee_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_dept",
+      "CatalogID": "c1",
+      "Name": "departments",
+      "Description": "",
+      "SourceName": "departments",
+      "SourceSchema": "dw",
+      "Rows": 30,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "dept_id"
+      ],
+      "Columns": [
+        {
+          "Name": "dept_id",
+          "Type": "large_integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_staff",
+      "CatalogID": "c1",
+      "Name": "staff",
+      "Description": "",
+      "SourceName": "staff",
+      "SourceSchema": "dw",
+      "Rows": 400,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "staff_id"
+      ],
+      "Columns": [
+        {
+          "Name": "staff_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "dept_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "team_code",
+          "Type": "text",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_team",
+      "CatalogID": "c1",
+      "Name": "teams",
+      "Description": "",
+      "SourceName": "teams",
+      "SourceSchema": "dw",
+      "Rows": 20,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "team_code"
+      ],
+      "Columns": [
+        {
+          "Name": "team_code",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_link",
+      "CatalogID": "c1",
+      "Name": "staff_teams",
+      "Description": "",
+      "SourceName": "staff_teams",
+      "SourceSchema": "dw",
+      "Rows": 900,
+      "RowsCounted": true,
+      "PrimaryKeys": [],
+      "Columns": [
+        {
+          "Name": "staff_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "team_code",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "counts": {
+    "keys": {
+      "r_dept.dept_id": [
+        30,
+        30,
+        0
+      ],
+      "r_emp.employee_id": [
+        400,
+        400,
+        0
+      ],
+      "r_staff.staff_id": [
+        400,
+        400,
+        0
+      ],
+      "r_link.staff_id": [
+        900,
+        400,
+        0
+      ]
+    },
+    "joins": {
+      "r_link.staff_id@r_staff": [
+        900,
+        0,
+        0,
+        400
+      ],
+      "r_emp.parent_employee_id@r_emp": [
+        400,
+        1,
+        0,
+        60
+      ],
+      "r_staff.dept_id@r_dept": [
+        400,
+        0,
+        0,
+        30
+      ],
+      "r_staff.team_code@r_team": [
+        400,
+        0,
+        0,
+        20
+      ]
+    },
+    "codes": {
+      "r_team": [
+        {
+          "value": "T01",
+          "display": "Platform"
+        },
+        {
+          "value": "T02",
+          "display": "Data"
+        }
+      ]
+    },
+    "failed": []
+  }
+}

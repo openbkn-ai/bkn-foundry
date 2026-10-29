@@ -1,0 +1,124 @@
+{
+  "object_types": [
+    {
+      "id": "dim_customer",
+      "name": "dim_customer",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_dimc",
+        "name": "dim_customer",
+        "catalog_id": "dim"
+      },
+      "primary_keys": [
+        "customer_id"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "customer_id",
+          "display_name": "customer_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "customer_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "name",
+          "type": "string",
+          "description": "",
+          "mapped_field": "name",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 1000,
+        "distinct": 1000,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "ods_order",
+      "name": "ods_order",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_odso",
+        "name": "ods_order",
+        "catalog_id": "ods"
+      },
+      "primary_keys": [
+        "order_id"
+      ],
+      "display_key": "order_id",
+      "properties": [
+        {
+          "name": "order_id",
+          "display_name": "order_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "order_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "customer_id",
+          "display_name": "customer_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "customer_id",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 30000,
+        "distinct": 30000,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [
+    {
+      "id": "ods_order_to_dim_customer",
+      "name": "ods_order_to_dim_customer",
+      "description": "",
+      "source": "ods_order",
+      "target": "dim_customer",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "customer_id",
+          "target_property": "customer_id"
+        }
+      ],
+      "adopted": false,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": false,
+        "rows": 0,
+        "nulls": 0,
+        "hits": 0,
+        "orphans": 0,
+        "hit_rate": 0,
+        "source_distinct": 0,
+        "reason": "cross_catalog"
+      },
+      "proposed_because": "not_counted"
+    }
+  ],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}
