@@ -139,12 +139,17 @@ func Test_EditDraftItem(t *testing.T) {
 				relate("by_old_key", "materials", "material_name", "material_name", 1),
 				// Its other end is not adopted.
 				relate("by_region", "regions", "region_id", "region_id", 1),
-				// A person decided on it.
+				// Refuted by the counts on the rates now set.
+				relate("refuted", "suppliers", "supplier_ref", "supplier_code", 0.5),
+				// A person decided not to adopt it.
 				relate("decided", "suppliers", "vendor_code", "supplier_code", 1),
+				// Only renamed, as renaming its object type renames it.
+				relate("renamed", "materials", "part_number", "material_code", 1),
 			}
-			draft.Items.Decisions = []*interfaces.DraftDecision{{
-				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "decided", Action: interfaces.DRAFT_DECISION_RENAME,
-			}}
+			draft.Items.Decisions = []*interfaces.DraftDecision{
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "decided", Action: interfaces.DRAFT_DECISION_UNADOPT},
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "renamed", Action: interfaces.DRAFT_DECISION_RENAME},
+			}
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 			expectWrite()
 			e := edit()
@@ -162,13 +167,16 @@ func Test_EditDraftItem(t *testing.T) {
 				"by_material": proposedBelowAdoptRate,
 				"by_old_key":  proposedEndNotAdopted,
 				"by_region":   proposedEndNotAdopted,
+				"refuted":     proposedEndNotAdopted,
 				"decided":     proposedEndNotAdopted,
+				"renamed":     "adopted",
 			})
-			decisions := got.Items.Decisions[1:]
-			So(decisions, ShouldHaveLength, 2)
+			decisions := got.Items.Decisions[2:]
+			So(decisions, ShouldHaveLength, 3)
 			So(decisions[0].ItemID, ShouldEqual, "orders")
 			So(decisions[1].ItemID, ShouldEqual, "by_supplier")
 			So(decisions[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADOPT)
+			So(decisions[2].ItemID, ShouldEqual, "renamed")
 		})
 
 		Convey("Renaming and describing record what they replaced\n", func() {

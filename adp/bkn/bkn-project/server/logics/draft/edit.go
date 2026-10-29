@@ -201,12 +201,14 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 
 // regateRelations adopts the relations of an object type just adopted that drafting proposed
 // only because it was not, as drafting would have with both ends adopted: on the counts it
-// recorded, while they were counted against the key the target still has. One a person decided
-// on is theirs, and is left as it is.
+// recorded, while they were counted against the key the target still has. One the counts now
+// refute, or a person adopted or not, is left as it is.
 func regateRelations(setting common.DraftSetting, items *interfaces.DraftItems, id string) []*interfaces.DraftDecision {
+	// As undecidedItems counts them: only adopting or not is a decision on the relation itself.
 	decided := map[string]bool{}
 	for _, d := range items.Decisions {
-		if d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES {
+		if d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES &&
+			(d.Action == interfaces.DRAFT_DECISION_ADOPT || d.Action == interfaces.DRAFT_DECISION_UNADOPT) {
 			decided[d.ItemID] = true
 		}
 	}
@@ -222,7 +224,11 @@ func regateRelations(setting common.DraftSetting, items *interfaces.DraftItems, 
 			if len(r.Mapping) != 1 || !slices.Equal(target.PrimaryKeys, []string{r.Mapping[0].TargetProperty}) {
 				continue
 			}
-			because, _ = proposedBecause(setting, r.Origin, r.Evidence)
+			var refuted bool
+			if because, refuted = proposedBecause(setting, r.Origin, r.Evidence); refuted {
+				// Refuted by the counts on the rates now set: it stays for a person to look at.
+				continue
+			}
 		}
 		r.ProposedBecause, r.Adopted = because, because == ""
 		if r.Adopted {
