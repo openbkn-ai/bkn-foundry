@@ -5,9 +5,11 @@
 package driveradapters
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -186,4 +188,174 @@ func (r *restHandler) DeleteRequirementDocument(c *gin.Context, visitor hydra.Vi
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	c.Status(http.StatusNoContent)
+}
+
+// The requirement specification of a project. It follows the project's visibility; only its
+// owner drafts and changes it.
+
+const requirementsActionDraft = "requirements:draft"
+
+func (r *restHandler) GetRequirementByEx(c *gin.Context) { r.withExVisitor(c, r.GetRequirement) }
+func (r *restHandler) AddRequirementItemByEx(c *gin.Context) {
+	r.withExVisitor(c, r.AddRequirementItem)
+}
+func (r *restHandler) EditRequirementItemByEx(c *gin.Context) {
+	r.withExVisitor(c, r.EditRequirementItem)
+}
+func (r *restHandler) DeleteRequirementItemByEx(c *gin.Context) {
+	r.withExVisitor(c, r.DeleteRequirementItem)
+}
+func (r *restHandler) MapRequirementConceptByEx(c *gin.Context) {
+	r.withExVisitor(c, r.MapRequirementConcept)
+}
+func (r *restHandler) ResolveRequirementConflictByEx(c *gin.Context) {
+	r.withExVisitor(c, r.ResolveRequirementConflict)
+}
+func (r *restHandler) DecideRequirementChoiceByEx(c *gin.Context) {
+	r.withExVisitor(c, r.DecideRequirementChoice)
+}
+
+// generateRequirementRequest is the optional body of requirements:draft.
+type generateRequirementRequest struct {
+	// DiscardDecisions agrees to discard the conflict resolutions and choices made.
+	DiscardDecisions bool `json:"discard_decisions"`
+}
+
+// GetRequirement serves GET /projects/{project_id}/requirements.
+func (r *restHandler) GetRequirement(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	view, err := r.rqs.GetRequirement(ctx, visitor.TokenID, id)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, view)
+}
+
+// GenerateRequirement serves POST /projects/{project_id}/requirements:draft and replies 202 with
+// the specification drafting.
+func (r *restHandler) GenerateRequirement(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req generateRequirementRequest
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			replyError(c, span, invalidRequirementBody(c))
+			return
+		}
+	}
+	spec, err := r.rqs.GenerateRequirement(ctx, visitor.TokenID, id, visitorAccount(visitor), req.DiscardDecisions)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, spec)
+}
+
+func invalidRequirementBody(c *gin.Context) error {
+	return httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, perrors.BknProject_Requirement_InvalidRequestBody)
+}
+
+// replySpec runs a change of the specification read from the body and replies the specification
+// with status.
+func replySpec[T any](c *gin.Context, status int,
+	change func(ctx context.Context, body T) (*interfaces.Requirement, error)) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+	span.SetAttributes(attr.Key("project_id").String(c.Param("project_id")))
+
+	var body T
+	if err := c.ShouldBindJSON(&body); err != nil {
+		replyError(c, span, invalidRequirementBody(c))
+		return
+	}
+	spec, err := change(ctx, body)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, status)
+	rest.ReplyOK(c, status, spec)
+}
+
+// AddRequirementItem serves POST /projects/{project_id}/requirements/items/{kind} and replies 201.
+func (r *restHandler) AddRequirementItem(c *gin.Context, visitor hydra.Visitor) {
+	replySpec(c, http.StatusCreated, func(ctx context.Context, edit interfaces.RequirementItemEdit) (*interfaces.Requirement, error) {
+		return r.rqs.AddItem(ctx, visitor.TokenID, c.Param("project_id"), c.Param("kind"), edit, visitorAccount(visitor))
+	})
+}
+
+// EditRequirementItem serves PATCH /projects/{project_id}/requirements/items/{kind}/{item_id}.
+func (r *restHandler) EditRequirementItem(c *gin.Context, visitor hydra.Visitor) {
+	replySpec(c, http.StatusOK, func(ctx context.Context, edit interfaces.RequirementItemEdit) (*interfaces.Requirement, error) {
+		return r.rqs.EditItem(ctx, visitor.TokenID, c.Param("project_id"), c.Param("kind"), c.Param("item_id"), edit,
+			visitorAccount(visitor))
+	})
+}
+
+// DeleteRequirementItem serves DELETE /projects/{project_id}/requirements/items/{kind}/{item_id}
+// with the update time read in the query, and replies the specification after it.
+func (r *restHandler) DeleteRequirementItem(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var updateTime int64
+	if raw := c.Query("update_time"); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			replyError(c, span, invalidRequirementBody(c))
+			return
+		}
+		updateTime = parsed
+	}
+	spec, err := r.rqs.DeleteItem(ctx, visitor.TokenID, id, c.Param("kind"), c.Param("item_id"), updateTime,
+		visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, spec)
+}
+
+// MapRequirementConcept serves PUT /projects/{project_id}/requirements/concepts/{concept_id}/maps-to.
+func (r *restHandler) MapRequirementConcept(c *gin.Context, visitor hydra.Visitor) {
+	replySpec(c, http.StatusOK, func(ctx context.Context, mapping interfaces.RequirementMapping) (*interfaces.Requirement, error) {
+		return r.rqs.MapConcept(ctx, visitor.TokenID, c.Param("project_id"), c.Param("concept_id"), mapping,
+			visitorAccount(visitor))
+	})
+}
+
+// ResolveRequirementConflict serves PUT /projects/{project_id}/requirements/conflicts/{conflict_id}.
+func (r *restHandler) ResolveRequirementConflict(c *gin.Context, visitor hydra.Visitor) {
+	replySpec(c, http.StatusOK, func(ctx context.Context, resolve interfaces.RequirementResolve) (*interfaces.Requirement, error) {
+		return r.rqs.ResolveConflict(ctx, visitor.TokenID, c.Param("project_id"), c.Param("conflict_id"), resolve,
+			visitorAccount(visitor))
+	})
+}
+
+// DecideRequirementChoice serves PUT /projects/{project_id}/requirements/choices/{choice_id}.
+func (r *restHandler) DecideRequirementChoice(c *gin.Context, visitor hydra.Visitor) {
+	replySpec(c, http.StatusOK, func(ctx context.Context, decide interfaces.RequirementDecide) (*interfaces.Requirement, error) {
+		return r.rqs.DecideChoice(ctx, visitor.TokenID, c.Param("project_id"), c.Param("choice_id"), decide,
+			visitorAccount(visitor))
+	})
 }
