@@ -192,6 +192,9 @@ func Test_GenerateGuidance(t *testing.T) {
 					So(g.Question, ShouldEqual, "Which orders?")
 					So(g.Status, ShouldEqual, interfaces.GUIDANCE_STATUS_GENERATING)
 					So(g.Runner, ShouldResemble, caller)
+					// Signed from the draft generating read.
+					So(g.OntologySignature, ShouldEqual, ontologySignature(guidanceDraft(), spec.Spec.Questions[0]))
+					So(g.OntologySignature, ShouldNotBeEmpty)
 					return true, nil
 				})
 			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
@@ -372,9 +375,48 @@ func Test_GetGuidance(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
-		svc := &requirementService{ps: ps, ra: ra}
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da}
 		ctx := context.Background()
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil).AnyTimes()
+
+		Convey("The ontology changed when the needed items sign otherwise now; unknown without a signature or a draft\n", func() {
+			spec := readySpec()
+			spec.CreateTime = 10
+			signed := func(signature string) *interfaces.QuestionGuidance {
+				return &interfaces.QuestionGuidance{ProjectID: "p1", QuestionID: "q1", SpecVersion: 1, Question: "Which orders?",
+					Status: interfaces.GUIDANCE_STATUS_READY, CreateTime: 20, OntologySignature: signature}
+			}
+			now := ontologySignature(guidanceDraft(), spec.Spec.Questions[0])
+			for _, c := range []struct {
+				g       *interfaces.QuestionGuidance
+				draft   bool
+				changed any
+			}{
+				{signed(now), true, false},
+				{signed("0000"), true, true},
+				{signed(""), true, nil},
+				{signed(now), false, nil},
+			} {
+				ra.EXPECT().GetGuidance(gomock.Any(), "p1", "q1").Return(c.g, true, nil)
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+				if c.g.OntologySignature != "" {
+					da.EXPECT().GetDraft(gomock.Any(), "p1").Return(guidanceDraft(), c.draft, nil)
+				}
+
+				view, err := svc.GetGuidance(ctx, token, "p1", "q1")
+
+				So(err, ShouldBeNil)
+				// Only a hint: it leaves current as it is.
+				So(view.Current, ShouldBeTrue)
+				if c.changed == nil {
+					So(view.OntologyChanged, ShouldBeNil)
+				} else {
+					So(*view.OntologyChanged, ShouldEqual, c.changed)
+				}
+			}
+		})
+
 		// Guidance generated at 20, for a specification drafted at 10 unless said otherwise.
 		stored := func(version int, question string) *interfaces.QuestionGuidance {
 			return &interfaces.QuestionGuidance{ProjectID: "p1", QuestionID: "q1", SpecVersion: version, Question: question,
