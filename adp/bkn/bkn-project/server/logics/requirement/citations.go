@@ -1,0 +1,158 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package requirement
+
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+)
+
+// The agent quotes; these rules check that every quote is in the documents. They judge only what
+// the text says, never whether the agent understood it: that is for a person to review.
+
+// Why a drafted item was dropped, stored as codes for the client to word.
+const (
+	rejectedQuoteNotFound    = "quote_not_found"
+	rejectedUnknownDocument  = "unknown_document"
+	rejectedNumberNotInQuote = "number_not_in_quote"
+)
+
+// minQuoteRunes is the shortest quote taken as a basis, not counting spaces: a word or two is
+// found almost anywhere and shows nothing.
+const minQuoteRunes = 4
+
+// normalized is text as quotes are compared: full-width forms as their ASCII ones and every run
+// of whitespace as one space, trimmed. at maps each of its characters to the character of the
+// original text it came from.
+type normalized struct {
+	text string
+	at   []int
+}
+
+func normalize(runes []rune) normalized {
+	var b strings.Builder
+	at := make([]int, 0, len(runes))
+	space := false
+	for i, r := range runes {
+		switch {
+		case r == '\u3000' || unicode.IsSpace(r):
+			space = len(at) > 0
+			continue
+		case r >= '\uff01' && r <= '\uff5e':
+			r -= 0xfee0
+		}
+		if space {
+			b.WriteByte(' ')
+			at = append(at, i-1)
+			space = false
+		}
+		b.WriteRune(r)
+		at = append(at, i)
+	}
+	return normalized{text: b.String(), at: at}
+}
+
+// locateQuote finds quote within one block of the document, as copied from it, and returns the
+// citation with the block and the document's own character offsets.
+func locateQuote(doc *interfaces.RequirementDocument, quote string) (interfaces.RequirementCitation, bool) {
+	q := normalize([]rune(quote))
+	if utf8.RuneCountInString(strings.ReplaceAll(q.text, " ", "")) < minQuoteRunes {
+		return interfaces.RequirementCitation{}, false
+	}
+	content := []rune(doc.Content)
+	for _, block := range doc.Blocks {
+		if block.Start < 0 || block.End > len(content) || block.Start >= block.End {
+			continue
+		}
+		text := normalize(content[block.Start:block.End])
+		i := strings.Index(text.text, q.text)
+		if i < 0 {
+			continue
+		}
+		first := utf8.RuneCountInString(text.text[:i])
+		last := first + utf8.RuneCountInString(q.text) - 1
+		return interfaces.RequirementCitation{
+			DocumentID: doc.ID, Quote: quote, BlockID: block.ID,
+			Start: block.Start + text.at[first], End: block.Start + text.at[last] + 1,
+		}, true
+	}
+	return interfaces.RequirementCitation{}, false
+}
+
+func documentsByID(docs []*interfaces.RequirementDocument) map[string]*interfaces.RequirementDocument {
+	byID := make(map[string]*interfaces.RequirementDocument, len(docs))
+	for _, d := range docs {
+		byID[d.ID] = d
+	}
+	return byID
+}
+
+// checkCitations keeps the citations whose quotes are found, located. When some were given and
+// none is found, reason says why: unknown_document when every one named a document the project
+// does not have, quote_not_found otherwise.
+func checkCitations(citations []interfaces.RequirementCitation,
+	docs map[string]*interfaces.RequirementDocument) ([]interfaces.RequirementCitation, string) {
+	kept := []interfaces.RequirementCitation{}
+	known := false
+	for _, c := range citations {
+		d, ok := docs[c.DocumentID]
+		if !ok {
+			continue
+		}
+		known = true
+		if located, ok := locateQuote(d, c.Quote); ok {
+			kept = append(kept, located)
+		}
+	}
+	switch {
+	case len(citations) == 0 || len(kept) > 0:
+		return kept, ""
+	case !known:
+		return kept, rejectedUnknownDocument
+	default:
+		return kept, rejectedQuoteNotFound
+	}
+}
+
+// numbers lists the runs of digits in text, full-width ones as ASCII. A date or a code gives one
+// run per group of digits.
+func numbers(text string) []string {
+	var runs []string
+	var run strings.Builder
+	for _, r := range text + " " {
+		if r >= '\uff10' && r <= '\uff19' {
+			r -= 0xfee0
+		}
+		if r >= '0' && r <= '9' {
+			run.WriteRune(r)
+			continue
+		}
+		if run.Len() > 0 {
+			runs = append(runs, run.String())
+			run.Reset()
+		}
+	}
+	return runs
+}
+
+// numbersInQuotes tells whether every number in text is a number of one of the quotes, whole: a
+// rule or question must not state a figure, date or code its sources do not.
+func numbersInQuotes(text string, citations []interfaces.RequirementCitation) bool {
+	quoted := map[string]bool{}
+	for _, c := range citations {
+		for _, n := range numbers(c.Quote) {
+			quoted[n] = true
+		}
+	}
+	for _, n := range numbers(text) {
+		if !quoted[n] {
+			return false
+		}
+	}
+	return true
+}
