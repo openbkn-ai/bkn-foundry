@@ -124,6 +124,11 @@ func Test_ReadUpload(t *testing.T) {
 			So(code, ShouldEqual, "")
 		})
 
+		Convey("A name that is not UTF-8 is refused, as this file only\n", func() {
+			_, code := readUpload(interfaces.RequirementUpload{Name: "\xd0\xe8\xc7\xf3.md", Content: []byte("x")})
+			So(code, ShouldEqual, perrors.BknProject_Requirement_InvalidRequestBody)
+		})
+
 		Convey("The name is the file's base name, and a name too long is refused\n", func() {
 			got, code := readUpload(interfaces.RequirementUpload{Name: `C:\docs\prd.md`, Content: []byte("x")})
 			So(code, ShouldEqual, "")
@@ -200,6 +205,27 @@ func Test_Documents(t *testing.T) {
 			So(results[0].Outcome, ShouldEqual, interfaces.REQUIREMENT_UPLOAD_CREATED)
 			So(results[1], ShouldResemble, interfaces.RequirementUploadResult{Name: "b.md",
 				Outcome: interfaces.REQUIREMENT_UPLOAD_REJECTED, Code: perrors.BknProject_Requirement_TooManyDocuments})
+		})
+
+		Convey("A document the project already has is a duplicate even at the limit\n", func() {
+			existing := make([]*interfaces.RequirementDocument, MaxDocuments)
+			for i := range existing {
+				existing[i] = &interfaces.RequirementDocument{ID: "e" + string(rune('a'+i)), SHA256: "other"}
+			}
+			existing[3].SHA256 = hashOf("again")
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().ListDocuments(gomock.Any(), "p1").Return(existing, nil)
+
+			results, err := svc.UploadDocuments(ctx, token, "p1", []interfaces.RequirementUpload{
+				{Name: "again.md", Content: []byte("again")},
+				{Name: "new.md", Content: []byte("new")},
+			}, caller)
+
+			So(err, ShouldBeNil)
+			So(results, ShouldResemble, []interfaces.RequirementUploadResult{
+				{Name: "again.md", Outcome: interfaces.REQUIREMENT_UPLOAD_DUPLICATE, DocumentID: "ed"},
+				{Name: "new.md", Outcome: interfaces.REQUIREMENT_UPLOAD_REJECTED, Code: perrors.BknProject_Requirement_TooManyDocuments},
+			})
 		})
 
 		Convey("A duplicate does not count against the limit\n", func() {
