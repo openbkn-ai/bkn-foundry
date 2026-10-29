@@ -1,6 +1,40 @@
 {
   "object_types": [
     {
+      "id": "bz",
+      "name": "备注表",
+      "description": "备注表",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_bz",
+        "name": "bz",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "bz_id"
+      ],
+      "display_key": "bz_id",
+      "properties": [
+        {
+          "name": "bz_id",
+          "display_name": "备注编号",
+          "type": "string",
+          "description": "备注编号",
+          "mapped_field": "bz_id",
+          "source_of_record": "table",
+          "missing_description": false
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 100,
+        "distinct": 100,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
       "id": "cp",
       "name": "Product",
       "aliases": [

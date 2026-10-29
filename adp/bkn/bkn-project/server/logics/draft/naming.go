@@ -25,11 +25,11 @@ func nameLanguage(name string) string {
 }
 
 // pickName names an item from its candidate names, best first, and the physical name it is
-// drafted from: the first candidate in the project's naming language, the physical name included,
-// else the first candidate, as before naming languages. The candidates in the other language are
-// its aliases; the physical name never is, an abbreviation such as cust_nm meaning nothing to
-// people. Empty, too long and repeated candidates are skipped, and aliases BKN refuses, holding a
-// comma, are left out.
+// drafted from: the first candidate in the project's naming language, else the first candidate, as
+// before naming languages. The physical name names it only when there is no candidate: a name
+// people read in the other language beats an abbreviation such as kh or cust_nm, and the physical
+// name is never an alias. The candidates in the other language are its aliases. Empty, too long and
+// repeated candidates are skipped, and aliases BKN refuses, holding a comma, are left out.
 func pickName(language string, physical string, candidates ...string) (string, []string) {
 	names := []string{}
 	for _, c := range candidates {
@@ -38,15 +38,15 @@ func pickName(language string, physical string, candidates ...string) (string, [
 			names = append(names, c)
 		}
 	}
-	name := ""
-	for _, c := range append(slices.Clone(names), physical) {
+	if len(names) == 0 {
+		return physical, nil
+	}
+	name := names[0]
+	for _, c := range names {
 		if nameLanguage(c) == language {
 			name = c
 			break
 		}
-	}
-	if name == "" {
-		name = append(names, physical)[0]
 	}
 	var aliases []string
 	for _, c := range names {

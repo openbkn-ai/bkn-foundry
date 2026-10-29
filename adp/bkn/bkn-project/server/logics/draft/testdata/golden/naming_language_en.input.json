@@ -1,5 +1,5 @@
 {
-  "description": "The same catalog in an English project: items take the English names semantic understanding gave, and the Chinese ones as aliases. The value type takes its name alone: BKN has no aliases of value types.",
+  "description": "The same catalog in an English project: items take the English names semantic understanding gave, and the Chinese ones as aliases. The value type takes its name alone: BKN has no aliases of value types. bz has only a Chinese description: it takes 备注表, a name people read, not its physical name.",
   "naming_language": "en-US",
   "tables": [
     {
@@ -211,6 +211,31 @@
       ],
       "Indices": null,
       "ForeignKeys": []
+    },
+    {
+      "ID": "r_bz",
+      "CatalogID": "c1",
+      "Name": "bz",
+      "Description": "备注表",
+      "SourceName": "bz",
+      "SourceSchema": "erp",
+      "Rows": 100,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "bz_id"
+      ],
+      "Columns": [
+        {
+          "Name": "bz_id",
+          "Type": "string",
+          "Description": "备注编号",
+          "Comment": "备注编号",
+          "DisplayName": "",
+          "Nullable": false
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
     }
   ],
   "counts": {
@@ -226,6 +251,11 @@
         0
       ],
       "r_dd.dd_id": [
+        100,
+        100,
+        0
+      ],
+      "r_bz.bz_id": [
         100,
         100,
         0
