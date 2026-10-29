@@ -395,6 +395,26 @@ func Test_ProjectStatus(t *testing.T) {
 				So(s.Blockers, ShouldBeEmpty)
 			})
 
+			Convey("Until published, reviewing names the next version after the lineage's newest release\n", func() {
+				for _, c := range []struct {
+					latest *interfaces.Release
+					want   string
+				}{
+					{nil, "1.0.0"},
+					{&interfaces.Release{ProjectID: "p2", Version: "1.0.4", CreateTime: 100}, "1.0.5"},
+					{&interfaces.Release{ProjectID: "p1", Version: "2.3.9", CreateTime: 99}, "2.3.10"},
+				} {
+					s := status(project(), confirmed(), passed, owner, fresh)
+					withRelease(s, project(), c.latest, nil, owner)
+
+					So(*action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldResemble, interfaces.ProjectStatusNextAction{
+						Action: interfaces.ACTION_REVIEW_RELEASE, Method: "GET",
+						Path: "/projects/p1/release-review?version=" + c.want, Allowed: true,
+						Requires: []string{interfaces.ACTION_REQUIRES_VERSION}, SuggestedVersion: c.want,
+					})
+				}
+			})
+
 			Convey("Another project's release, an earlier one, or an outdated confirmation is not this one\n", func() {
 				other := *release
 				other.ProjectID = "p2"
@@ -507,6 +527,21 @@ func Test_GetStatus(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
 				So(s.Release.InUse, ShouldBeTrue)
+			})
+
+			Convey("Before any release, reviewing suggests the first version\n", func() {
+				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+				ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, nil)
+
+				s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_CONFIRMED)
+				for _, a := range s.NextActions {
+					if a.Action == interfaces.ACTION_REVIEW_RELEASE {
+						So(a.Path, ShouldEqual, "/projects/p1/release-review?version=1.0.0")
+					}
+				}
 			})
 
 			Convey("A failure to read the releases is an internal error\n", func() {
