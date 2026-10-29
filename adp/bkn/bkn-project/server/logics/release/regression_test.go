@@ -6,11 +6,13 @@ package release
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -40,7 +42,11 @@ func Test_RegressionService(t *testing.T) {
 		rs := pmock.NewMockRequirementService(mockCtrl)
 		ba := pmock.NewMockBknAgentAccess(mockCtrl)
 		gs := pmock.NewMockGitStore(mockCtrl)
-		svc := &regressionService{ra: ra, rs: rs, ba: ba, gs: gs, run: func(fn func()) { fn() }}
+		da := pmock.NewMockDraftAccess(mockCtrl)
+		pa := pmock.NewMockProjectAccess(mockCtrl)
+		clock := time.UnixMilli(1000)
+		svc := &regressionService{ra: ra, rs: rs, ba: ba, gs: gs, da: da, pa: pa, run: func(fn func()) { fn() },
+			sleep: func(d time.Duration) { clock = clock.Add(d) }, now: func() time.Time { return clock }}
 		ctx := context.Background()
 		const token = "Bearer t"
 		runner := interfaces.AccountInfo{ID: "u1", Type: "user"}
@@ -75,6 +81,31 @@ func Test_RegressionService(t *testing.T) {
 		}
 		answered := func(answer string) *interfaces.BknAgentAnswer {
 			return &interfaces.BknAgentAnswer{Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: answer, ToolCalls: 2}
+		}
+		// The project names its items in English; its draft knows names the release does not have.
+		pa.EXPECT().GetProject(gomock.Any(), "p1").Return(&interfaces.Project{ID: "p1",
+			NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US}, true, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&interfaces.Draft{Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{{ID: "customer", Name: "Customer account"}},
+		}}, true, nil).AnyTimes()
+		// The judge answers by the question it is given: answered unless verdicts says otherwise.
+		verdicts := map[string]judgeOutput{}
+		var judged []judgeInput
+		ba.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+				var in judgeInput
+				So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
+				judged = append(judged, in)
+				out, ok := verdicts[in.Question]
+				if !ok {
+					out = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_ANSWERED, Reason: "R"}
+				}
+				data, _ := json.Marshal(out)
+				return &interfaces.BknAgentTask{TaskID: "j", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: string(data)}, nil
+			}).AnyTimes()
+		passed := func(id string, answer string) interfaces.RegressionResult {
+			return interfaces.RegressionResult{QuestionID: id, Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: answer,
+				Verdict: interfaces.REGRESSION_VERDICT_ANSWERED, Reason: "R"}
 		}
 
 		Convey("Questions of the knowledge layer are answered on the release's network and judged\n", func() {
@@ -122,9 +153,10 @@ func Test_RegressionService(t *testing.T) {
 			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_NOT_PASSED)
 			So(finished.FinishTime, ShouldBeGreaterThan, 0)
 			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{
-				{QuestionID: "q1", Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "Supplier S1."},
+				passed("q1", "Supplier S1."),
+				// Not in the release: named as the draft names it.
 				{QuestionID: "q2", Outcome: interfaces.REGRESSION_OUTCOME_MISSING,
-					Missing: []interfaces.ReleaseItem{{Kind: ot, ID: "customer", Name: "customer"}}},
+					Missing: []interfaces.ReleaseItem{{Kind: ot, ID: "customer", Name: "Customer account"}}},
 				// The answer is kept as it came, blank too.
 				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_NO_ANSWER, Answer: "  "},
 			})
@@ -154,8 +186,9 @@ func Test_RegressionService(t *testing.T) {
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 
 			So(err, ShouldBeNil)
-			So(finished.Results[0], ShouldResemble, interfaces.RegressionResult{QuestionID: "q1",
-				Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "Part P1.", ToolUses: uses})
+			want := passed("q1", "Part P1.")
+			want.ToolUses = uses
+			So(finished.Results[0], ShouldResemble, want)
 			So(finished.Results[1].Answer, ShouldEqual, "Sorry.")
 			So(finished.Results[1].ToolUses, ShouldHaveLength, 1)
 		})
@@ -217,11 +250,11 @@ func Test_RegressionService(t *testing.T) {
 			So(finished.Attempt, ShouldEqual, 2)
 			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_FAILED)
 			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{
-				{QuestionID: "q1", Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "P1."},
+				passed("q1", "P1."),
 				{QuestionID: "q2", Outcome: interfaces.REGRESSION_OUTCOME_ERROR, ErrorCode: "BknAgent.Model.Unavailable"},
 				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_ERROR, ErrorCode: interfaces.REGRESSION_CODE_TOOLS_UNAVAILABLE,
 					Answer: "Sorry."},
-				{QuestionID: "q4", Outcome: interfaces.REGRESSION_OUTCOME_PASSED, Answer: "P4."},
+				passed("q4", "P4."),
 			})
 		})
 
@@ -331,6 +364,237 @@ func Test_RegressionService(t *testing.T) {
 			ra.EXPECT().StartRegression(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, errors.New("db down"))
 			_, _, err = svc.StartRegression(ctx, token, release, runner)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("The judge's verdict decides an answer, with its reason and the needs it used\n", func() {
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+				regQuestion("q1", knowledge, regNeed(ot, "part"), regNeed(ot, "supplier")),
+				regQuestion("q2", knowledge, regNeed(ot, "part")),
+				regQuestion("q3", knowledge, regNeed(ot, "part")),
+				regQuestion("q4", knowledge, regNeed(ot, "part")),
+			), nil)
+			verdicts["Text of q1"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_ANSWERED, Reason: "Listed them.",
+				UsedNeeds: []interfaces.RequirementItemRef{regNeed(ot, "part")}}
+			verdicts["Text of q2"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_CLARIFICATION_NEEDED, Reason: "Asks which one."}
+			verdicts["Text of q3"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_CANNOT_ANSWER, Reason: "No relation between them."}
+			verdicts["Text of q4"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_OFF_TOPIC, Reason: "About something else."}
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			uses := []interfaces.BknAgentToolUse{
+				{Name: "query_object_instance", Input: json.RawMessage(`{"ot_id":"part"}`), Status: "succeeded"},
+				{Name: "search_schema", InputOmitted: true, Status: "succeeded"},
+			}
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(&interfaces.BknAgentAnswer{
+				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "An answer.", ToolCalls: 2, ToolUses: uses}, nil).Times(4)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_NOT_PASSED)
+			outcome := func(i int) (string, string, string) {
+				return finished.Results[i].Outcome, finished.Results[i].Verdict, finished.Results[i].Reason
+			}
+			o, v, r := outcome(0)
+			So([]string{o, v, r}, ShouldResemble, []string{"passed", "answered", "Listed them."})
+			So(finished.Results[0].UsedNeeds, ShouldResemble, []interfaces.RequirementItemRef{regNeed(ot, "part")})
+			o, v, _ = outcome(1)
+			So([]string{o, v}, ShouldResemble, []string{"needs_values", "clarification_needed"})
+			o, v, r = outcome(2)
+			So([]string{o, v, r}, ShouldResemble, []string{"not_answered", "cannot_answer", "No relation between them."})
+			o, v, _ = outcome(3)
+			So([]string{o, v}, ShouldResemble, []string{"not_answered", "off_topic"})
+			// The judge was given the question, the answer, the calls without their output, the needs by
+			// name and the project's naming language.
+			So(judged[0], ShouldResemble, judgeInput{
+				Question: "Text of q1", Answer: "An answer.",
+				ToolCalls: []judgeToolCall{{Name: "query_object_instance", Input: json.RawMessage(`{"ot_id":"part"}`)}, {Name: "search_schema"}},
+				Needs:     []interfaces.ReleaseItem{{Kind: ot, ID: "part", Name: "Part"}, {Kind: ot, ID: "supplier", Name: "Supplier"}},
+				Language:  interfaces.NAMING_LANGUAGE_EN_US,
+			})
+		})
+
+		Convey("A run passes with one passed question; with only questions lacking values it shows nothing\n", func() {
+			for _, c := range []struct {
+				q1, q2 string
+				want   string
+			}{
+				{interfaces.REGRESSION_VERDICT_ANSWERED, interfaces.REGRESSION_VERDICT_CLARIFICATION_NEEDED, interfaces.REGRESSION_STATUS_PASSED},
+				{interfaces.REGRESSION_VERDICT_CLARIFICATION_NEEDED, interfaces.REGRESSION_VERDICT_CLARIFICATION_NEEDED, interfaces.REGRESSION_STATUS_NEEDS_VALUES},
+			} {
+				rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+					regQuestion("q1", knowledge, regNeed(ot, "part")), regQuestion("q2", knowledge, regNeed(ot, "part")),
+				), nil)
+				verdicts["Text of q1"], verdicts["Text of q2"] = judgeOutput{Verdict: c.q1}, judgeOutput{Verdict: c.q2}
+				expectStart()
+				gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+				ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("An answer."), nil).Times(2)
+				expectFinish()
+
+				_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, c.want)
+			}
+		})
+
+		Convey("A question lacking values does not hide one that lacks what it needs\n", func() {
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+				regQuestion("q1", knowledge, regNeed(ot, "part")), regQuestion("q2", knowledge, regNeed(ot, "customer")),
+			), nil)
+			verdicts["Text of q1"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_CLARIFICATION_NEEDED}
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("An answer."), nil)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_NOT_PASSED)
+		})
+
+		Convey("A judge that fails or answers outside its schema is an error, judged once more without asking again\n", func() {
+			for _, c := range []struct {
+				name  string
+				first func() (*interfaces.BknAgentTask, error)
+				code  string
+			}{
+				{"not run", func() (*interfaces.BknAgentTask, error) {
+					return nil, &interfaces.BknAgentError{HTTPCode: http.StatusNotFound, Code: "BknAgent.NotFound"}
+				}, interfaces.REGRESSION_CODE_JUDGE_UNAVAILABLE},
+				{"failed", func() (*interfaces.BknAgentTask, error) {
+					return &interfaces.BknAgentTask{Status: interfaces.BKN_AGENT_TASK_FAILED, FailureDetail: "model"}, nil
+				}, interfaces.REGRESSION_CODE_JUDGE_UNAVAILABLE},
+				{"not json", func() (*interfaces.BknAgentTask, error) {
+					return &interfaces.BknAgentTask{Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: "yes"}, nil
+				}, interfaces.REGRESSION_CODE_JUDGE_INVALID},
+				{"unknown verdict", func() (*interfaces.BknAgentTask, error) {
+					return &interfaces.BknAgentTask{Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{"verdict":"maybe","reason":"x","used_needs":[]}`}, nil
+				}, interfaces.REGRESSION_CODE_JUDGE_INVALID},
+				{"need not given", func() (*interfaces.BknAgentTask, error) {
+					return &interfaces.BknAgentTask{Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+						Output: `{"verdict":"answered","reason":"x","used_needs":[{"kind":"object_type","id":"invented"}]}`}, nil
+				}, interfaces.REGRESSION_CODE_JUDGE_INVALID},
+			} {
+				Convey(c.name+"\n", func() {
+					judge := pmock.NewMockBknAgentAccess(mockCtrl)
+					svc.ba = judge
+					rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+					expectStart()
+					gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+					// Asked once: the retry judges the answer kept.
+					judge.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("An answer."), nil).Times(1)
+					gomock.InOrder(
+						judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
+							func(context.Context, interfaces.BknAgentAccount, *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+								return c.first()
+							}),
+						judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
+							func(context.Context, interfaces.BknAgentAccount, *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+								return c.first()
+							}),
+					)
+					expectFinish()
+
+					_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+					So(err, ShouldBeNil)
+					So(finished.Attempt, ShouldEqual, 2)
+					So(finished.Results[0].Outcome, ShouldEqual, interfaces.REGRESSION_OUTCOME_ERROR)
+					So(finished.Results[0].ErrorCode, ShouldEqual, c.code)
+					// Never falls back to passing on an answer alone.
+					So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_FAILED)
+					So(finished.Results[0].Answer, ShouldEqual, "An answer.")
+				})
+			}
+		})
+
+		Convey("A judge that fails once and then judges decides the question\n", func() {
+			judge := pmock.NewMockBknAgentAccess(mockCtrl)
+			svc.ba = judge
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			judge.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("An answer."), nil).Times(1)
+			gomock.InOrder(
+				judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).Return(nil, errors.New("down")),
+				judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).Return(&interfaces.BknAgentTask{
+					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{"verdict":"answered","reason":"R","used_needs":[]}`}, nil),
+			)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Results[0].Outcome, ShouldEqual, interfaces.REGRESSION_OUTCOME_PASSED)
+			// Nothing of the failed judgement stays.
+			So(finished.Results[0].ErrorCode, ShouldBeEmpty)
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_PASSED)
+		})
+
+		Convey("The judge is asked as the runner with its schema, and waited for until its deadline\n", func() {
+			judge := pmock.NewMockBknAgentAccess(mockCtrl)
+			svc.ba = judge
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+				regQuestion("q1", knowledge, regNeed(ot, "part")), regQuestion("q2", knowledge, regNeed(ot, "part")),
+			), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			judge.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("An answer."), nil).Times(2)
+			var schema map[string]any
+			judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+					So(req.AgentID, ShouldEqual, judgeAgentID)
+					schema = req.ResponseFormat
+					return &interfaces.BknAgentTask{TaskID: "t-" + req.Message[len(req.Message)-30:], Status: interfaces.BKN_AGENT_TASK_PENDING}, nil
+				}).Times(3)
+			// q1's task finishes after a poll; q2's never does, nor its retry.
+			first := true
+			judge.EXPECT().GetTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ interfaces.BknAgentAccount, taskID string) (*interfaces.BknAgentTask, error) {
+					if first {
+						first = false
+						return &interfaces.BknAgentTask{TaskID: taskID, Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+							Output: `{"verdict":"answered","reason":"R","used_needs":[]}`}, nil
+					}
+					return &interfaces.BknAgentTask{TaskID: taskID, Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil
+				}).MinTimes(2)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Results[0].Outcome, ShouldEqual, interfaces.REGRESSION_OUTCOME_PASSED)
+			So(finished.Results[1].ErrorCode, ShouldEqual, interfaces.REGRESSION_CODE_JUDGE_UNAVAILABLE)
+			verdict := schema["properties"].(map[string]any)["verdict"].(map[string]any)
+			So(verdict["enum"], ShouldResemble, []string{"answered", "clarification_needed", "cannot_answer", "off_topic"})
+		})
+
+		Convey("A question with tests is asked through them, one result each, and itself not at all\n", func() {
+			withTests := regQuestion("q1", knowledge, regNeed(ot, "part"))
+			withTests.Tests = []interfaces.ScenarioTest{{ID: "t1", Text: "Which part is P1?"}, {ID: "t2", Text: "Which part is P2?"}}
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(withTests, regQuestion("q2", knowledge, regNeed(ot, "part"))), nil)
+			verdicts["Which part is P2?"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_CANNOT_ANSWER, Reason: "No P2."}
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			var asked []string
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					asked = append(asked, req.Message)
+					return answered("An answer."), nil
+				}).Times(3)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(started.Questions[0].Tests, ShouldResemble, []interfaces.RegressionTest{{ID: "t1", Text: "Which part is P1?"}, {ID: "t2", Text: "Which part is P2?"}})
+			So(asked, ShouldResemble, []string{"Which part is P1?", "Which part is P2?", "Text of q2"})
+			So(finished.Results, ShouldHaveLength, 3)
+			So([]string{finished.Results[0].QuestionID, finished.Results[0].TestID}, ShouldResemble, []string{"q1", "t1"})
+			So([]string{finished.Results[1].TestID, finished.Results[1].Outcome}, ShouldResemble, []string{"t2", "not_answered"})
+			So([]string{finished.Results[2].QuestionID, finished.Results[2].TestID}, ShouldResemble, []string{"q2", ""})
 		})
 
 		Convey("Request ids keep to bkn-agent's form and differ by question and attempt\n", func() {
