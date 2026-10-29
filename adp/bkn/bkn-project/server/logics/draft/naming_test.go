@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -173,6 +174,80 @@ func Test_DraftTableName(t *testing.T) {
 			name, aliases := nameIn(en, orders("销售订单", "Sales orders signed with customers"))
 			So(name, ShouldEqual, "Sales orders signed with customers")
 			So(aliases, ShouldResemble, []string{"销售订单"})
+		})
+	})
+}
+
+func Test_DraftRelationName(t *testing.T) {
+	Convey("Test naming a relation drafted from a field referring to another table\n", t, func() {
+		zh, en := interfaces.NAMING_LANGUAGE_ZH_CN, interfaces.NAMING_LANGUAGE_EN_US
+		// A bill of materials refers to materials three times; only the referring fields tell the
+		// relations apart.
+		schema := func(bomName string, materialCode, parentCode, childCode string) []*interfaces.VegaTable {
+			materials := table("r_mat", "c1", "material", 0, []string{"code"}, col("code", "string", "物料编码"))
+			bom := table("r_bom", "c1", "material_bom", 0, []string{"id"}, col("id", "string", ""),
+				col("material_code", "string", materialCode), col("parent_code", "string", parentCode),
+				col("child_code", "string", childCode))
+			bom.Description = bomName
+			bom.ForeignKeys = []interfaces.VegaForeignKey{fk("material_code", "material", "code"),
+				fk("parent_code", "material", "code"), fk("child_code", "material", "code")}
+			return []*interfaces.VegaTable{materials, bom}
+		}
+		relationNames := func(language string, tables []*interfaces.VegaTable) map[string]string {
+			d := newDrafter(testSetting, sampleCounter()).withNamingLanguage(language)
+			items, err := d.draft(context.Background(), tables, nil)
+			So(err, ShouldBeNil)
+			names := map[string]string{}
+			for _, r := range items.RelationTypes {
+				names[r.Mapping[0].SourceProperty] = r.Name
+			}
+			return names
+		}
+
+		Convey("A Chinese project names it the source's referring field\n", func() {
+			So(relationNames(zh, schema("物料BOM明细", "BOM所属物料编码", "父项物料编码", "子项物料编码")),
+				ShouldResemble, map[string]string{
+					"material_code": "物料BOM明细的BOM所属物料编码",
+					"parent_code":   "物料BOM明细的父项物料编码",
+					"child_code":    "物料BOM明细的子项物料编码",
+				})
+		})
+
+		Convey("An English project names it the referring field of the source\n", func() {
+			So(relationNames(en, schema("BOM detail", "Material code", "Parent material code", "Child material code")),
+				ShouldResemble, map[string]string{
+					"material_code": "Material code of BOM detail",
+					"parent_code":   "Parent material code of BOM detail",
+					"child_code":    "Child material code of BOM detail",
+				})
+		})
+
+		Convey("A field nobody named keeps the relation's id: joining physical names reads no better\n", func() {
+			names := relationNames(zh, schema("物料BOM明细", "", "父项物料编码", ""))
+			So(names["material_code"], ShouldEqual, "material_bom_to_material")
+			So(names["parent_code"], ShouldEqual, "物料BOM明细的父项物料编码")
+			So(names["child_code"], ShouldEqual, "material_bom_to_material_3")
+		})
+
+		Convey("A field whose physical name is not ASCII reads as written: it names the relation\n", func() {
+			materials := table("r_wl", "c1", "物料", 0, []string{"编码"}, col("编码", "string", ""))
+			bom := table("r_bom", "c1", "物料清单", 0, []string{"id"}, col("id", "string", ""), col("父项编码", "string", ""))
+			bom.ForeignKeys = []interfaces.VegaForeignKey{fk("父项编码", "物料", "编码")}
+			names := relationNames(zh, []*interfaces.VegaTable{materials, bom})
+			So(names, ShouldHaveLength, 1)
+			for _, name := range names {
+				So(name, ShouldEqual, "物料清单的父项编码")
+			}
+		})
+
+		Convey("Too long a name keeps the referring field's name only, within BKN's 40-character display names\n", func() {
+			// 36 characters: a name BKN takes, too long once the field is joined.
+			long := "物料清单明细记录表包含父子项及用量与损耗率等全部信息字段以及其他扩展属性"
+			names := relationNames(zh, schema(long, "BOM所属物料编码", "父项物料编码", "子项物料编码"))
+			So(names["parent_code"], ShouldEqual, "父项物料编码")
+			for _, name := range names {
+				So(utf8.RuneCountInString(name), ShouldBeLessThanOrEqualTo, maxDisplayNameRunes)
+			}
 		})
 	})
 }

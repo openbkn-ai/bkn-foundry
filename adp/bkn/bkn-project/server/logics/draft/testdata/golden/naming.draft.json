@@ -323,7 +323,7 @@
     },
     {
       "id": "ot_d38021_to_ot_033ed5",
-      "name": "ot_d38021_to_ot_033ed5",
+      "name": "采购单的供应商编号",
       "description": "",
       "source": "ot_d38021",
       "target": "ot_033ed5",

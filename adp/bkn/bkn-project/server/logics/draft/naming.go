@@ -94,6 +94,28 @@ func givenName(table *interfaces.VegaTable) string {
 	return table.Name
 }
 
+// relationName names a relation drafted from a referring field, in the naming language: the field's
+// name with its object type's ("物料BOM明细的父项物料编码", "Parent material code of BOM detail"), as
+// the referring fields, not the target, tell apart the relations between the same two types. When
+// that is longer than BKN takes for a display name, the field's name alone. A field nobody named
+// keeps an ASCII physical name such as customer_id, and joining technical names reads no better
+// than the id, which also names the target: the relation keeps its id. A physical name that is not
+// ASCII, such as 供应商编号, reads as written.
+func (d *drafter) relationName(source *interfaces.DraftObjectType, property string, id string) string {
+	p := findProperty(source, property)
+	if p == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
+		return id
+	}
+	name := source.Name + "的" + p.DisplayName
+	if d.language() == interfaces.NAMING_LANGUAGE_EN_US {
+		name = p.DisplayName + " of " + source.Name
+	}
+	if utf8.RuneCountInString(name) > maxDisplayNameRunes {
+		return p.DisplayName
+	}
+	return name
+}
+
 // dropAliasesOfOtherProperties leaves out an alias that is another property's name or display name:
 // BKN refuses a package with one.
 func dropAliasesOfOtherProperties(properties []*interfaces.DraftProperty) {
