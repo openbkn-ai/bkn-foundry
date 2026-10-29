@@ -398,7 +398,7 @@ func TestFilteredCrossJoinWithOneCondition(t *testing.T) {
 	relation.MappingRules.(*interfaces.FilteredCrossJoinMapping).TargetCondition = nil
 	got := mustGenerateFiltered(t, filteredSchema(t, relation),
 		"MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) RETURN count(*) AS n")
-	want := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 JOIN {{.res_order}} t1 ON t0.`channel_type` = 'offline'"
+	want := "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 JOIN {{res_order}} t1 ON t0.`channel_type` = 'offline'"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -431,7 +431,7 @@ func TestFilteredCrossJoinWithoutConditionsFollowsTheCrossProductRule(t *testing
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	want := "SELECT COUNT(*) AS `n` FROM {{.res_channel}} t0 JOIN {{.res_order}} t1 ON 1 = 1 WHERE t0.`channel_id` = 10 LIMIT 1000"
+	want := "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 JOIN {{res_order}} t1 ON 1 = 1 WHERE t0.`channel_id` = 10 LIMIT 1000"
 	if got := service.vba.(*recordingVega).request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
 	}
