@@ -105,6 +105,8 @@ config:
       full_name, first_name, last_name, phone, mobile, telephone, id_card, id_number,
       passport, email, address, bank_card, card_number, birth]
     nameFieldKeywords: [name, label, title, 名称, 名字]
+    identifierWords: [id, code, no, num, number, key, sn, 编号, 编码, 代码, 号码]
+    genericStems: [name, remark, desc, description, status, type, 名称, 备注, 描述, 状态, 类型]
   # OTel Collector configuration.
   otel:
     # Service name.
