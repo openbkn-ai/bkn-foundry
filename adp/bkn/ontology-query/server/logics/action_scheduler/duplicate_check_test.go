@@ -163,7 +163,7 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 		omAccess.EXPECT().GetObjectType(gomock.Any(), "kn_001", interfaces.MAIN_BRANCH, "ot_001").
 			Return(interfaces.ObjectType{KNID: "kn_001"}, true, nil)
 
-		ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{
+		ots.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.Objects{
 			Datas: []map[string]any{
 				{
 					interfaces.SYSTEM_PROPERTY_INSTANCE_ID:       "inst-1",
