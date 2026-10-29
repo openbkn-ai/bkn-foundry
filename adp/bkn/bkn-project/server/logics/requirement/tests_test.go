@@ -71,7 +71,7 @@ func Test_TestEdits(t *testing.T) {
 
 			g, err := svc.EditTest(ctx, token, "p1", "q1", "t1", interfaces.RequirementTestEdit{UpdateTime: 20,
 				Text:  ptr("Orders of customer 10002?"),
-				Slots: &[]interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "customer_id", Value: "10002"}}}, caller)
+				Slots: &[]interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "customer_id", Value: "10002", ValueFrom: "sales_order"}}}, caller)
 
 			So(err, ShouldBeNil)
 			So(g.UpdateTime, ShouldEqual, 30)
@@ -80,6 +80,8 @@ func Test_TestEdits(t *testing.T) {
 			So(edited.Edited, ShouldBeTrue)
 			So(edited.Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED})
 			So(saved.Tests[1].Edited, ShouldBeFalse)
+			// A value a person gives says nothing of where the server took one from.
+			So(edited.Slots[0].ValueFrom, ShouldEqual, "")
 		})
 
 		Convey("An edit is refused when empty, too long, of an unknown expectation or concept\n", func() {
