@@ -252,7 +252,7 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 	// Tables drafting itself could not read, such as a code table whose values it could not
 	// query, are in items.Unreadable too.
 	items.Inputs = draftInputsOf(s.setting, catalogIDs, tables, items.Unreadable)
-	items.Inputs.IDs = registryInputsOf(registered, d.recorded)
+	items.Inputs.IDs = registryInputsOf(registered, d.recorded, d.named)
 	return items, nil
 }
 

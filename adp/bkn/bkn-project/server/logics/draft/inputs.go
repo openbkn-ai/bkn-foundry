@@ -96,8 +96,10 @@ func fingerprint(table *interfaces.VegaTable) string {
 }
 
 // registryInputsOf sums up the registry as a draft leaves it: what it read, with what it recorded
-// in place of what that replaced. It is nil when nothing is registered.
-func registryInputsOf(registered []*interfaces.RegisteredID, recorded []*interfaces.RegisteredID) *interfaces.DraftInputIDs {
+// in place of what that replaced. It is nil when nothing is registered. Placeholders are those a
+// later draft can still replace: unlocked, of items this draft named.
+func registryInputsOf(registered []*interfaces.RegisteredID, recorded []*interfaces.RegisteredID,
+	named map[interfaces.IDKey]bool) *interfaces.DraftInputIDs {
 	byKey := map[interfaces.IDKey]*interfaces.RegisteredID{}
 	for _, id := range slices.Concat(registered, recorded) {
 		byKey[id.IDKey] = id
@@ -111,7 +113,7 @@ func registryInputsOf(registered []*interfaces.RegisteredID, recorded []*interfa
 	summary := &interfaces.DraftInputIDs{Count: len(ids)}
 	hash := sha256.New()
 	for _, id := range ids {
-		if id.Origin == interfaces.ID_ORIGIN_FALLBACK {
+		if id.Origin == interfaces.ID_ORIGIN_FALLBACK && !id.Locked && named[id.IDKey] {
 			summary.Placeholders++
 		}
 		line, _ := json.Marshal([]any{id.Kind, id.SourceKey, id.ID, id.Origin, id.Locked})

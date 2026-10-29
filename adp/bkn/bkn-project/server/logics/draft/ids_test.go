@@ -71,6 +71,7 @@ func Test_RegisteredIDs(t *testing.T) {
 				So(id.Locked, ShouldBeFalse)
 			}
 			So(string(d.recorded[0].Basis), ShouldEqual, `{"physical_name":"供应商","api_name":"supplier"}`)
+			So(d.named, ShouldResemble, map[interfaces.IDKey]bool{otKey: true, codeKey: true, phoneKey: true})
 		})
 
 		Convey("Registered ids are kept whatever the short names say now, and not recorded again\n", func() {
@@ -83,6 +84,8 @@ func Test_RegisteredIDs(t *testing.T) {
 			So(items.ObjectTypes[0].ID, ShouldEqual, "vendor")
 			So(propertyNames(items.ObjectTypes[0]), ShouldResemble, []string{"vendor_code", "p_000000"})
 			So(d.recorded, ShouldBeEmpty)
+			// Registered ids it gave again are named too.
+			So(d.named, ShouldResemble, map[interfaces.IDKey]bool{otKey: true, codeKey: true, phoneKey: true})
 		})
 
 		Convey("An unlocked placeholder gives way to a short name; a locked one does not\n", func() {

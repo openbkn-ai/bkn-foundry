@@ -55,6 +55,10 @@ func (d *drafter) itemID(kind string, sourceKey string, physical string, apiName
 	}
 	semantic := shortName.MatchString(apiName)
 	key := interfaces.IDKey{Kind: kind, SourceKey: sourceKey}
+	if d.named == nil {
+		d.named = map[interfaces.IDKey]bool{}
+	}
+	d.named[key] = true
 	if registered, ok := d.registered[key]; ok &&
 		(registered.Locked || registered.Origin != interfaces.ID_ORIGIN_FALLBACK || !semantic) {
 		return registered.ID
