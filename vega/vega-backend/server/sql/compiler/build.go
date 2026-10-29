@@ -118,7 +118,12 @@ func (b *treeBuilder) source(ctx g.IRelationPrimaryContext) sb.SqlNode {
 		return &sb.Table{ResourceID: strings.TrimSpace(text[2 : len(text)-2]), Alias: alias}
 	}
 	if relation := ctx.Relation(); relation != nil {
-		return &sb.JoinedTable{From: b.source(relation.RelationPrimary()), Joins: b.joins(relation.AllJoinPart())}
+		from := b.source(relation.RelationPrimary())
+		joins := b.joins(relation.AllJoinPart())
+		if len(joins) == 0 {
+			return from
+		}
+		return &sb.JoinedTable{From: from, Joins: joins}
 	}
 	return &sb.Subquery{Query: b.query(ctx.SelectQuery()), Alias: alias}
 }

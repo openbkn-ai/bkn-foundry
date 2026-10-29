@@ -8,15 +8,9 @@ package interfaces
 
 import "context"
 
-// Vega raw query accepts these SQL dialects as input. Generating the catalog's
-// own dialect keeps vega from transpiling, which halves its python subprocess
-// count -- see the design note in logics/cypher.
+// Vega raw-query format and paging constants.
 const (
 	VEGA_QUERY_FORMAT_SQL = "sql"
-
-	VEGA_DIALECT_MYSQL    = "mysql"
-	VEGA_DIALECT_POSTGRES = "postgres"
-	VEGA_DIALECT_TSQL     = "tsql"
 
 	// VEGA_PAGING_MODE_SINGLE asks vega-backend for one page rather than a
 	// cursor session, which is what a compiled statement with its own LIMIT
@@ -33,15 +27,10 @@ type RawQueryColumn struct {
 // RawQueryRequest is a read-only SQL query submitted to vega-backend. Table
 // references are placeholders of the form {{<resource_id>}} that vega expands
 // into physical names after checking the caller may read each one.
-//
-// InputDialect must be the catalog's own dialect. Vega only transpiles when it
-// differs from the target, and every transpile costs a python subprocess pair,
-// so matching them keeps the statement on the cheap path -- and makes this
-// service, not sqlglot, responsible for literal escaping.
+// SQL uses Vega's shared parser; the Catalog selects the output dialect.
 type RawQueryRequest struct {
 	Query           string                    `json:"query"`
 	QueryFormat     string                    `json:"query_format"`
-	InputDialect    string                    `json:"input_dialect"`
 	Paging          ResourceDataPagingRequest `json:"paging,omitempty"`
 	QueryTimeoutSec int                       `json:"query_timeout_sec,omitempty"`
 	NeedTotal       bool                      `json:"need_total,omitempty"`

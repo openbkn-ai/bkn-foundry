@@ -178,10 +178,10 @@ openbkn call /api/vega-backend/v1/resources/query -X POST -d '{
 
 **直连 SQL** — `openbkn vega sql`
 
-**简易模式**（不写 JSON body）：SQL 用 `--query` 传入（**请加引号**），方言用 `--input-dialect`。
+**简易模式**（不写 JSON body）：SQL 使用 MySQL SELECT 子集，通过 `--query` 传入（**请加引号**）。
 
 ```bash
-openbkn vega sql --input-dialect mysql \
+openbkn vega sql \
   --query "SELECT * FROM {{res_mysql_supplier}} LIMIT 5"
 ```
 
@@ -226,7 +226,7 @@ openbkn vega connector-type get postgresql
 | 原用途 | 现行做法 |
 |--------|----------|
 | 浏览/查询视图数据 | 直接查资源：`openbkn vega resource query <resource_id> --limit N` |
-| 视图内自定义 SQL | `openbkn vega sql --input-dialect <方言> --query "..."`，用 `{{<resource_id>}}` 占位符引用资源 |
+| 视图内自定义 SQL | `openbkn vega sql --query "..."`，用 `{{<resource_id>}}` 占位符引用资源 |
 | 跨表 JOIN | `openbkn call /api/vega-backend/v1/resources/query -X POST`，同一 Catalog 内多表 JOIN |
 
 对象类若仍绑定在已废弃的 `data_view` 数据源上，查询会失败，需要改绑到 Vega 资源。
@@ -245,7 +245,7 @@ openbkn vega catalog resources cat_pg001 --category table
 
 # 3. 看数
 openbkn vega resource query res_orders_001 --limit 5 --need-total
-openbkn vega sql --input-dialect mysql \
+openbkn vega sql \
   --query "SELECT * FROM {{res_orders_001}} WHERE amount > 10000 ORDER BY amount DESC LIMIT 10"
 
 # 4. 建检索索引（全文 + 向量）
@@ -296,7 +296,6 @@ const connectors = await bkn.vega.connectorTypes();
 const sqlOut = await bkn.vega.sql({
   query: 'SELECT * FROM {{res-001}} LIMIT 5',
   query_format: 'sql',
-  input_dialect: 'mysql',
   paging: { mode: 'single', limit: 1 },
 });
 
@@ -394,7 +393,7 @@ curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/query" \
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/query" \
   -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
-  -d '{"query":"SELECT * FROM {{res_orders_001}} LIMIT 1","query_format":"sql","input_dialect":"mysql","paging":{"mode":"single","limit":1}}'
+  -d '{"query":"SELECT * FROM {{res_orders_001}} LIMIT 1","query_format":"sql","paging":{"mode":"single","limit":1}}'
 
 curl -sk "https://<访问地址>/api/vega-backend/v1/connector-types" \
   -H "Authorization: Bearer $(openbkn auth token)"

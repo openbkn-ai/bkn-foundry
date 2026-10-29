@@ -43,30 +43,6 @@ func convertValue(v any, preserveBinary bool) any {
 	return v
 }
 
-// BuildPagedSQL wraps validated read-only SQL with LIMIT and OFFSET.
-// The inner query retains its own ordering and limits; the newline terminates trailing line comments.
-func (c *MariaDBConnector) BuildPagedSQL(sqlStr string, offset, limit int) string {
-	if offset < 0 {
-		offset = 0
-	}
-	if limit <= 0 {
-		limit = interfaces.DefaultPageLimit
-	}
-	return fmt.Sprintf("SELECT * FROM (%s\n) AS _raw_query_page LIMIT %d OFFSET %d", strings.TrimSpace(sqlStr), limit, offset)
-}
-
-// BuildCountSQL counts the full result of validated SQL, including any original limit.
-// The newline terminates trailing line comments before the wrapper closes.
-func (c *MariaDBConnector) BuildCountSQL(sqlStr string) string {
-	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s\n) AS _raw_query_total", strings.TrimSpace(sqlStr))
-}
-
-// ExecuteRawSQL 不再执行原始 SQL；SQL 查询必须通过 Parser 和 Builder。
-// 保留方法以满足共享 TableConnector 端口，误调用时在建立连接前明确拒绝。
-func (c *MariaDBConnector) ExecuteRawSQL(_ context.Context, _ string) (*interfaces.RawQueryResponse, error) {
-	return nil, interfaces.NewUnsupportedOperationError("ExecuteRawSQL", errors.New("use Parser and ExecuteSQLBuilder for SQL queries"))
-}
-
 // scanQueryRows 保留所选 Binary 内容，其他字节值转为字符串；总数由调用方按接口契约设置。
 func (c *MariaDBConnector) scanQueryRows(rows *sql.Rows, binaryContentColumns map[string]bool) (*interfaces.QueryResult, error) {
 	columns, err := rows.Columns()
@@ -354,7 +330,7 @@ func sqlCalendarGroup(expr sb.SqlNode, unit string) (sb.SqlNode, error) {
 
 // ExecuteSQLBuilder 执行已完成资源授权和来源解析的查询，在执行时生成 SQL 和参数。
 // 结果沿用 RawQueryResponse；TotalCount 是本次返回行数，API 分页和会话由调用层负责。
-// MariaDB/MySQL 与 PG SQL 服务消费 Builder 入口，其他连接器继续沿用 ExecuteRawSQL。
+// SQL 服务统一消费 Builder 入口，由连接器生成源端 SQL 和参数。
 func (c *MariaDBConnector) ExecuteSQLBuilder(ctx context.Context, query *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
 	rows, columns, err := c.OpenSQLBuilder(ctx, query)
 	if err != nil {

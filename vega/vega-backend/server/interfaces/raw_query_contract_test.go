@@ -21,7 +21,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "sql defaults to mysql",
+			name: "SQL request",
 			request: RawQueryContract{
 				Query:       "SELECT * FROM {{orders}}",
 				QueryFormat: QueryFormatSQL,
@@ -30,9 +30,8 @@ func TestRawQueryContractValidate(t *testing.T) {
 		{
 			name: "sql cursor request",
 			request: RawQueryContract{
-				Query:        "SELECT * FROM {{orders}}",
-				QueryFormat:  QueryFormatSQL,
-				InputDialect: "mysql",
+				Query:       "SELECT * FROM {{orders}}",
+				QueryFormat: QueryFormatSQL,
 				Paging: PagingRequest{
 					Mode:  PagingModeCursor,
 					Limit: 100,
@@ -40,37 +39,6 @@ func TestRawQueryContractValidate(t *testing.T) {
 			},
 		},
 
-		{
-			name:    "rejects Doris SQL input",
-			request: RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: "doris"},
-			wantErr: "unsupported SQL input_dialect",
-		},
-		{
-			name: "rejects Oracle SQL input",
-			request: RawQueryContract{
-				Query:        "SELECT * FROM {{orders}}",
-				QueryFormat:  QueryFormatSQL,
-				InputDialect: "oracle",
-			},
-			wantErr: "unsupported SQL input_dialect",
-		},
-		{
-			name: "rejects generic SQL input",
-			request: RawQueryContract{
-				Query:        "SELECT * FROM {{orders}}",
-				QueryFormat:  QueryFormatSQL,
-				InputDialect: "generic",
-			},
-			wantErr: "unsupported SQL input_dialect",
-		},
-		{
-			name: "MariaDB SQL input",
-			request: RawQueryContract{
-				Query:        "SELECT * FROM {{orders}}",
-				QueryFormat:  QueryFormatSQL,
-				InputDialect: "mariadb",
-			},
-		},
 		{
 			name: "cursor first page accepts offset",
 			request: RawQueryContract{
@@ -86,18 +54,16 @@ func TestRawQueryContractValidate(t *testing.T) {
 		{
 			name: "opensearch DSL",
 			request: RawQueryContract{
-				Query:        map[string]any{"resource_id": "resource-1"},
-				QueryFormat:  QueryFormatDSL,
-				InputDialect: "opensearch",
+				Query:       map[string]any{"resource_id": "resource-1"},
+				QueryFormat: QueryFormatDSL,
 			},
 		},
 		{
 			name: "opensearch DSL cursor",
 			request: RawQueryContract{
-				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}},
-				QueryFormat:  QueryFormatDSL,
-				InputDialect: "opensearch",
-				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinPageLimit},
+				Query:       map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}},
+				QueryFormat: QueryFormatDSL,
+				Paging:      PagingRequest{Mode: PagingModeCursor, Limit: MinPageLimit},
 			},
 		},
 		{
@@ -120,47 +86,6 @@ func TestRawQueryContractValidate(t *testing.T) {
 				Query: "SELECT 1",
 			},
 			wantErr: "query_format",
-		},
-		{
-			name: "rejects unsupported format dialect pair",
-			request: RawQueryContract{
-				Query:        "SELECT 1",
-				QueryFormat:  QueryFormatSQL,
-				InputDialect: "opensearch",
-			},
-			wantErr: "unsupported SQL input_dialect",
-		},
-		{
-			name:    "rejects explicit postgres input",
-			request: RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: "postgres"},
-			wantErr: "unsupported SQL input_dialect",
-		},
-		{
-			name:    "rejects case variants of postgres input",
-			request: RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: "Postgres"},
-			wantErr: "unsupported SQL input_dialect",
-		},
-		{
-			name: "rejects unsupported HANA input dialect",
-			request: RawQueryContract{
-				Query: "SELECT 1", QueryFormat: QueryFormatSQL, InputDialect: "hana",
-			},
-			wantErr: "unsupported SQL input_dialect",
-		},
-		{
-			name: "rejects generic dialect for DSL",
-			request: RawQueryContract{
-				Query: map[string]any{}, QueryFormat: QueryFormatDSL, InputDialect: "generic",
-			},
-			wantErr: "DSL input_dialect",
-		},
-		{
-			name: "rejects DSL without dialect",
-			request: RawQueryContract{
-				Query:       map[string]any{},
-				QueryFormat: QueryFormatDSL,
-			},
-			wantErr: "DSL input_dialect",
 		},
 		{
 			name: "rejects cursor without page size",
@@ -235,10 +160,9 @@ func TestRawQueryContractValidate(t *testing.T) {
 		{
 			name: "rejects opensearch result window overflow",
 			request: RawQueryContract{
-				Query:        map[string]any{"resource_id": "resource-1"},
-				QueryFormat:  QueryFormatDSL,
-				InputDialect: "opensearch",
-				Paging:       PagingRequest{Mode: PagingModeSingle, Offset: MaxPageLimit - 5, Limit: 10},
+				Query:       map[string]any{"resource_id": "resource-1"},
+				QueryFormat: QueryFormatDSL,
+				Paging:      PagingRequest{Mode: PagingModeSingle, Offset: MaxPageLimit - 5, Limit: 10},
 			},
 			wantErr: "paging.offset + paging.limit",
 		},
@@ -261,10 +185,9 @@ func TestRawQueryContractValidate(t *testing.T) {
 		{
 			name: "accepts client search after for DSL cursor because execution drops it",
 			request: RawQueryContract{
-				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}, "search_after": []any{"cursor"}},
-				QueryFormat:  QueryFormatDSL,
-				InputDialect: "opensearch",
-				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinPageLimit},
+				Query:       map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}, "search_after": []any{"cursor"}},
+				QueryFormat: QueryFormatDSL,
+				Paging:      PagingRequest{Mode: PagingModeCursor, Limit: MinPageLimit},
 			},
 		},
 	}
@@ -278,6 +201,23 @@ func TestRawQueryContractValidate(t *testing.T) {
 			}
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestRawQueryRequestJSON(t *testing.T) {
+	for _, request := range []RawQueryRequest{
+		{Query: "SELECT id FROM {{orders}}", QueryFormat: QueryFormatSQL},
+		{Query: map[string]any{"resource_id": "orders", "query": map[string]any{"match_all": map[string]any{}}}, QueryFormat: QueryFormatDSL},
+	} {
+		t.Run(string(request.QueryFormat), func(t *testing.T) {
+			encoded, err := sonic.Marshal(request)
+			require.NoError(t, err)
+			var body map[string]any
+			require.NoError(t, sonic.Unmarshal(encoded, &body))
+			assert.Equal(t, string(request.QueryFormat), body["query_format"])
+			assert.Contains(t, body, "query")
+			assert.NotContains(t, body, "input_dialect")
 		})
 	}
 }
@@ -324,19 +264,4 @@ func TestRawQueryRequestRejectsContinuationTimeout(t *testing.T) {
 	}.ValidateContract()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "query_timeout_sec")
-}
-
-func TestRawQueryContractEffectiveInputDialect(t *testing.T) {
-	assert.Equal(t, "mysql", RawQueryContract{QueryFormat: QueryFormatSQL}.EffectiveInputDialect())
-	assert.Equal(t, "mysql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "MySQL"}.EffectiveInputDialect())
-	assert.Equal(t, "mysql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "MariaDB"}.EffectiveInputDialect())
-	assert.Equal(t, "tsql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "TSQL"}.EffectiveInputDialect())
-	assert.Equal(t, "oracle", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "ORACLE"}.EffectiveInputDialect())
-	assert.Equal(t, "generic", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "GENERIC"}.EffectiveInputDialect())
-	for _, dialect := range []string{"mysql", "mariadb", "MYSQL", "MariaDB"} {
-		require.NoError(t, RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: dialect}.Validate())
-	}
-	for _, dialect := range []string{"tsql", "TSQL", "TsQl", "oracle", "ORACLE", "OrAcLe", "doris", "DORIS", "DoRiS", "postgres", "trino", "duckdb", "TRINO", "DuckDB", "generic", "GENERIC", "GeNeRiC"} {
-		require.ErrorContains(t, RawQueryContract{Query: "SELECT * FROM {{orders}}", QueryFormat: QueryFormatSQL, InputDialect: dialect}.Validate(), "unsupported SQL input_dialect")
-	}
 }

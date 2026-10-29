@@ -14,7 +14,7 @@ Parser 使用 `JoinedTable` 保留括号与连接边界，资源准备递归绑�
 - 同一个公共函数名在 Builder 中只有一种含义。连接器可以换函数名、调换源端参数顺序或生成等价表达式，不能仅因源端存在同名函数就直接透传。
 - 公共别名优先在编译器中归一化。`OCTET_LENGTH(value)` 与 `LENGTH(value)` 同义，均表示字节长度；Parser 统一构造 `Function{Name: "LENGTH"}`，保留原表达式的默认输出列名。`CHAR_LENGTH` 表示字符长度。
 - Parser 检查公共函数名单、参数数量、`DISTINCT` 和 `*` 的调用形式；目标连接器检查目标能力并生成 SQL。字段类型及其隐式转换仍由目标数据库检查。
-- 新函数可以逐连接器接入。尚无映射或无法保证已声明语义的参数范围，应返回可分类的能力错误，不回退到 SQLGlot，也不任意透传未知函数或 UDF。
+- 新函数可以逐连接器接入。尚无映射或无法保证已声明语义的参数范围，应返回可分类的能力错误，不任意透传未知函数或 UDF。
 
 ## 内部辅助函数
 
@@ -75,16 +75,15 @@ Oracle SQL 查询使用公共 MySQL 输入语法，经 Parser/Builder 后由 EE 
   Oracle 的转换、非法日期、排序规则及空串规则仍按源端运行时语义执行。
 
 Raw SQL 的 RAW/LONG RAW/BLOB 保留原始字节（JSON 输出 base64），NUMBER 保留精度，SQL NULL 保持 null；
-结构化查询的 binary_mode 不影响 SQL 查询路径。Oracle 结构化查询直接构造同一套 Builder，保留原生 NULL 排序、精确 NUMBER 绑定、日期/时区、CSV 匹配和日历分组语义；binary_mode 继续控制结构化二进制预览，LONG RAW 长度在扫描时计算。内部 ORACLE_ 辅助函数不开放给公共 SQL。COUNT 独立执行，不承诺与数据查询共享快照。
+结构化查询的 binary_mode 不影响 SQL 查询路径。Oracle 结构化查询直接构造同一套 Builder，保留原生 NULL 排序、精确 NUMBER 绑定、日期/时区、CSV 匹配和日历分组语义；binary_mode 继续控制结构化二进制预览，LONG RAW 长度在扫描时计算。内部 ORACLE_XX 辅助函数不开放给公共 SQL。COUNT 独立执行，不承诺与数据查询共享快照。
 结构化 BINARY_FLOAT/DOUBLE 条件按原生浮点范围绑定，通过规范化科学计数法文本和显式格式/NLS 设置转换，不经过驱动的 NUMBER 编码；SUM/AVG/MIN/MAX 的 HAVING 沿用源字段类型，COUNT 仍绑定为 NUMBER。原生 FLOAT 属于 NUMBER，保留精确数值的精度和范围限制。
 源码生成和 mock 测试不代表已完成 Oracle 实库验收。
 
 Oracle SQL 生成按 1 MiB 预算限制（含参数占位符预留），嵌套条件改写超过预算时在连接源库前返回能力错误，避免短输入展开为无界 SQL。
 
-
 ## SQL Server
 
-SQL Server SQL 输入同样采用 mysql/mariadb，经 Parser → Builder → EE SQL Server 生成器执行；不再接受独立的 T-SQL 输入方言。
+SQL Server SQL 输入同样使用公共 MySQL SELECT 子集，经 Parser → Builder → EE SQL Server 生成器执行。
 使用 `@pN` 命名绑定、方括号标识符及 DECIMAL(38) 精度边界；分组表达式共享命名参数。资源准备阶段从 schema_definition 填充 Table.ColumnNames，保留源字段大小写；EE 生成器按不区分大小写比较源字段和投影别名。GROUP BY/HAVING 优先引用同名源字段，只在源字段名列表完整且无同名字段时展开当前 SELECT 的投影别名。
 子查询按输出列判断，SQL 中的星号不展开；字段信息未知时保留源端解析。
 单次执行最多 2098 个业务绑定，为驱动 sp_executesql 保留两个 RPC 参数槽；旧版 ROW_NUMBER 分页的两个绑定也计入此上限，因此分页前最多 2096 个绑定。

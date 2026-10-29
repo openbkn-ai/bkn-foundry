@@ -67,22 +67,6 @@ func convertValue(v any, colName string, origTypeMap map[string]string, preserve
 	}
 }
 
-// BuildPagedSQL applies PostgreSQL paging syntax to a validated query.
-func (c *PostgresqlConnector) BuildPagedSQL(sql string, offset, limit int) string {
-	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_page LIMIT %d OFFSET %d", sql, limit, offset)
-}
-
-// BuildCountSQL applies PostgreSQL total-count syntax to a validated query.
-func (c *PostgresqlConnector) BuildCountSQL(sql string) string {
-	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", sql)
-}
-
-// ExecuteRawSQL 不再执行原始 SQL；SQL 查询必须通过 Parser 和 Builder。
-// 保留方法以满足共享 TableConnector 端口，误调用时在建立连接前明确拒绝。
-func (c *PostgresqlConnector) ExecuteRawSQL(_ context.Context, _ string) (*interfaces.RawQueryResponse, error) {
-	return nil, interfaces.NewUnsupportedOperationError("ExecuteRawSQL", errors.New("use Parser and ExecuteSQLBuilder for SQL queries"))
-}
-
 // ExecuteQuery 为 PostgreSQL 使用公共 Builder，复用既有结果扫描和归一化。
 func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 	query, err := c.buildSelectBuilder(resource, params)

@@ -447,8 +447,7 @@ func TestRawQueryRefusesWithoutCallerIdentity(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := access.RawQuery(tc.ctx, &interfaces.RawQueryRequest{
-				Query:        "SELECT 1 FROM {{.r1}}",
-				InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+				Query: "SELECT 1 FROM {{.r1}}",
 			})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "identity")
@@ -456,7 +455,7 @@ func TestRawQueryRefusesWithoutCallerIdentity(t *testing.T) {
 	}
 }
 
-func TestRawQueryForwardsCallerIdentityAndDialect(t *testing.T) {
+func TestRawQueryForwardsCallerIdentityAndSQLContract(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
 
@@ -478,8 +477,7 @@ func TestRawQueryForwardsCallerIdentityAndDialect(t *testing.T) {
 		interfaces.AccountInfo{ID: "user-42", Type: "user"})
 
 	resp, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
-		Query:        "SELECT o.order_id FROM {{.r1}} o",
-		InputDialect: interfaces.VEGA_DIALECT_POSTGRES,
+		Query: "SELECT o.order_id FROM {{.r1}} o",
 	})
 	require.NoError(t, err)
 
@@ -491,7 +489,7 @@ func TestRawQueryForwardsCallerIdentityAndDialect(t *testing.T) {
 	sent, ok := gotBody.(*interfaces.RawQueryRequest)
 	require.True(t, ok)
 	assert.Equal(t, interfaces.VEGA_QUERY_FORMAT_SQL, sent.QueryFormat, "query_format defaults to sql")
-	assert.Equal(t, interfaces.VEGA_DIALECT_POSTGRES, sent.InputDialect, "dialect must reach vega unchanged")
+	assert.Equal(t, "SELECT o.order_id FROM {{.r1}} o", sent.Query)
 
 	require.Len(t, resp.Columns, 1)
 	assert.Equal(t, "order_id", resp.Columns[0].Name)
@@ -523,8 +521,7 @@ func TestRawQueryClassifiesRefusalWithoutDetail(t *testing.T) {
 				interfaces.AccountInfo{ID: "user-42", Type: "user"})
 
 			_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
-				Query:        "SELECT o.email FROM {{.r1}} o",
-				InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+				Query: "SELECT o.email FROM {{.r1}} o",
 			})
 			var dependencyErr *interfaces.DependencyError
 			require.ErrorAs(t, err, &dependencyErr)
@@ -556,7 +553,7 @@ func TestRawQueryAsRunsUnderTheNamedAccount(t *testing.T) {
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "user-42", Type: "user"})
 	resp, err := access.RawQueryAs(ctx, interfaces.AccountInfo{ID: "proxy-7", Type: interfaces.KNProxyAccountTypeApp},
-		&interfaces.RawQueryRequest{Query: "SELECT t0.id FROM {{.r1}} t0", InputDialect: interfaces.VEGA_DIALECT_MYSQL})
+		&interfaces.RawQueryRequest{Query: "SELECT t0.id FROM {{.r1}} t0"})
 	require.NoError(t, err)
 	require.Len(t, resp.Entries, 1)
 
@@ -587,7 +584,7 @@ func TestRawQueryAsRefusesWithoutAnAccount(t *testing.T) {
 				interfaces.AccountInfo{ID: "user-42", Type: "user"})
 
 			_, err := access.RawQueryAs(ctx, account,
-				&interfaces.RawQueryRequest{Query: "SELECT 1 FROM {{.r1}}", InputDialect: interfaces.VEGA_DIALECT_MYSQL})
+				&interfaces.RawQueryRequest{Query: "SELECT 1 FROM {{.r1}}"})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "account")
 		})
@@ -606,11 +603,8 @@ func TestRawQueryRejectsIncompleteRequest(t *testing.T) {
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 		interfaces.AccountInfo{ID: "user-42", Type: "user"})
 
-	_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{InputDialect: interfaces.VEGA_DIALECT_MYSQL})
+	_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{})
 	require.Error(t, err)
-
-	_, err = access.RawQuery(ctx, &interfaces.RawQueryRequest{Query: "SELECT 1 FROM {{.r1}}"})
-	require.Error(t, err, "an unset dialect would silently take vega's postgres default")
 }
 
 // Three ways the dependency can fail. In each of them the statement, which
@@ -657,8 +651,7 @@ func TestRawQueryDoesNotReturnDependencyDetail(t *testing.T) {
 				interfaces.AccountInfo{ID: "user-42", Type: "user"})
 
 			_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
-				Query:        statement,
-				InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+				Query: statement,
 			})
 			require.Error(t, err)
 			for _, forbidden := range tc.leakFree {

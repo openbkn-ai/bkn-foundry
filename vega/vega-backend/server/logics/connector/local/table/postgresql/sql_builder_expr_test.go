@@ -17,6 +17,29 @@ import (
 
 // TestToSql 检查 PG 目标生成的标识符、绑定编号、类型、子句及拒绝边界。
 func TestToSql(t *testing.T) {
+	for _, input := range []string{
+		"SELECT a.ID FROM ({{r}} a)",
+		"SELECT a.ID FROM ((({{r}} a)))",
+		"SELECT a.ID FROM ({{r}} a) LEFT JOIN (({{p}} p)) ON a.ID=p.ID",
+	} {
+		t.Run("redundant source parentheses: "+input, func(t *testing.T) {
+			query, err := compiler.ParseSQL(input)
+			require.NoError(t, err)
+			require.IsType(t, &sb.Table{}, query.FromPart)
+			query.FromPart.(*sb.Table).SourceIdentifier = `"T"`
+			want := `SELECT "a"."ID" FROM "T" AS "a"`
+			if len(query.JoinsPart) != 0 {
+				require.IsType(t, &sb.Table{}, query.JoinsPart[0].Source)
+				query.JoinsPart[0].Source.(*sb.Table).SourceIdentifier = `"P"`
+				want += ` LEFT JOIN "P" AS "p" ON ("a"."ID" = "p"."ID")`
+			}
+			text, args, err := ToSql(query)
+			require.NoError(t, err)
+			assert.Equal(t, want, text)
+			assert.Empty(t, args)
+		})
+	}
+
 	t.Run("parenthesized join group preserves predicates and binding order", func(t *testing.T) {
 		query, err := compiler.ParseSQL("SELECT a.ID,b.ID AS matched FROM {{r}} a LEFT JOIN ({{r}} m JOIN {{r}} b ON m.ID=b.ID AND b.LABEL='inner') ON a.ID=m.ID AND a.LABEL='outer' WHERE b.ID IS NULL")
 		require.NoError(t, err)

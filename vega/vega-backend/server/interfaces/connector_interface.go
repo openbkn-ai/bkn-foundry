@@ -8,7 +8,10 @@ package interfaces
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
 
 var ErrRowCountUnavailable = errors.New("row statistics unavailable")
@@ -56,7 +59,7 @@ type Connector interface {
 }
 
 // TableConnector defines the interface for relational database connectors.
-// Implementations: mysql, postgresql, dameng, oracle, clickhouse, etc.
+// Implementations: mysql, mariadb, postgresql, hana, doris, oracle and sqlserver.
 type TableConnector interface {
 	Connector
 
@@ -80,17 +83,28 @@ type TableConnector interface {
 	// CountRows counts table or view rows using the generated sourceIdentifier directly, without rebuilding or quoting the table name.
 	CountRows(ctx context.Context, sourceIdentifier string) (int64, error)
 
-	// BuildPagedSQL wraps validated read-only SQL with source-specific pagination using offset and limit.
-	BuildPagedSQL(sqlStr string, offset, limit int) string
-	// BuildCountSQL wraps validated read-only SQL in a query that counts its result rows.
-	BuildCountSQL(sqlStr string) string
 	// ExecuteQuery executes a single-table query using resource and params, taking the table reference directly from resource.SourceIdentifier.
 	// 所有表连接器的明细投影均尝试读取 other，直接返回源值，不按类型排除或包装；真实 NULL 保留。
 	// 内部调用的 BinaryMode=nil 表示不读取 Binary，返回 not_requested；HTTP 入口默认使用 metadata。
 	// other 类型本身不代表不可读取。
 	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
-	// ExecuteRawSQL executes read-only SQL that has passed unified query validation, returning column information, data, and a count.
-	ExecuteRawSQL(ctx context.Context, sqlStr string) (*RawQueryResponse, error)
+
+	// ExecuteSQLBuilder generates SQL and bound parameters, executes the query,
+	// and reads the complete result before closing its Rows. TotalCount is the
+	// number of returned rows; independent COUNT queries are owned by the service.
+	ExecuteSQLBuilder(context.Context, *sqlbuilder.SelectBuilder) (*RawQueryResponse, error)
+
+	// OpenSQLBuilder generates SQL and bound parameters, executes the query once,
+	// and returns its column metadata without advancing Rows. On success, the
+	// caller must close Rows and keep the connector open until reading finishes.
+	OpenSQLBuilder(context.Context, *sqlbuilder.SelectBuilder) (*sql.Rows, []ColumnInfo, error)
+
+	// ScanSQLBuilderRow advances Rows.Next and reads one row using the metadata
+	// returned by OpenSQLBuilder. It normalizes driver values for Raw Query,
+	// preserves binary bytes, and classifies source errors. It returns (nil, nil)
+	// at EOF and leaves connector cleanup to the caller. Structured-query
+	// binary_mode does not apply to this SQL result path.
+	ScanSQLBuilderRow(*sql.Rows, []ColumnInfo) (map[string]any, error)
 }
 
 // FileConnector defines the interface for file/document storage connectors.

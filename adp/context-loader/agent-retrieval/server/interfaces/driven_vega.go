@@ -17,7 +17,6 @@ var maxSafeTOONInteger = big.NewInt(9007199254740991)
 type VegaRawQueryReq struct {
 	Query           string            `json:"query"`                       // MySQL Dialect SQL.
 	QueryFormat     string            `json:"query_format"`                // fixed to sql.
-	InputDialect    string            `json:"input_dialect"`               // fixed to mysql.
 	QueryTimeoutSec int               `json:"query_timeout_sec,omitempty"` // Query timeout (seconds), 1-3600.
 	Paging          VegaPagingRequest `json:"paging"`
 }

@@ -21,16 +21,6 @@ import (
 	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
 
-func TestPostgresqlConnectorExecuteRawSQL(t *testing.T) {
-	connector := &PostgresqlConnector{}
-	result, err := connector.ExecuteRawSQL(context.Background(), "SELECT 1")
-	assert.Nil(t, result)
-	var unsupported *interfaces.UnsupportedOperationError
-	require.ErrorAs(t, err, &unsupported)
-	assert.Equal(t, "ExecuteRawSQL", unsupported.Operation)
-	assert.False(t, connector.connected)
-}
-
 func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 	t.Run("aggregate timezone follows its input rather than same-name source field", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
@@ -312,14 +302,6 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-}
-
-func TestPostgresqlConnectorBuildPagedSQL(t *testing.T) {
-	connector := &PostgresqlConnector{}
-	assert.Equal(t,
-		"SELECT * FROM (SELECT id FROM orders) AS _raw_query_page LIMIT 10 OFFSET 20",
-		connector.BuildPagedSQL("SELECT id FROM orders", 20, 10),
-	)
 }
 
 func TestSQLCalendarGroup(t *testing.T) {

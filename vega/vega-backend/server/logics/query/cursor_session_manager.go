@@ -89,7 +89,7 @@ func (m *cursorSessionManager) capacityErrorLocked(quotaOwnerID string) error {
 	return nil
 }
 
-func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, compiledSQL string, limit, keepAliveSec, queryTimeoutSec int) (*interfaces.CursorSession, error) {
+func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, limit, keepAliveSec, queryTimeoutSec int) (*interfaces.CursorSession, error) {
 	if keepAliveSec == 0 {
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
@@ -104,7 +104,6 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 		QuotaOwnerID:    accountID,
 		CatalogID:       catalogID,
 		ResourceIDs:     append([]string(nil), resourceIDs...),
-		CompiledSQL:     compiledSQL,
 		QueryFormat:     interfaces.QueryFormatSQL,
 		PageLimit:       limit,
 		KeepAliveSec:    keepAliveSec,

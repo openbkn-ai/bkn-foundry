@@ -153,9 +153,8 @@ func (s *objectDataStatsService) sideStats(ctx context.Context,
 	}
 
 	response, err := s.vba.RawQuery(ctx, &interfaces.RawQueryRequest{
-		Query:        statement,
-		QueryFormat:  interfaces.VEGA_QUERY_FORMAT_SQL,
-		InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+		Query:       statement,
+		QueryFormat: interfaces.VEGA_QUERY_FORMAT_SQL,
 		Paging: interfaces.ResourceDataPagingRequest{
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: 1,

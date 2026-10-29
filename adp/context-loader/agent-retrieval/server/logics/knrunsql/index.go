@@ -91,7 +91,6 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 	resp, err := s.vega.RawQuery(ctx, &interfaces.VegaRawQueryReq{
 		Query:           req.SQL,
 		QueryFormat:     "sql",
-		InputDialect:    "mysql",
 		QueryTimeoutSec: req.QueryTimeout,
 		Paging: interfaces.VegaPagingRequest{
 			Mode:  "single",

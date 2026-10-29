@@ -27,7 +27,7 @@ import (
 func TestCursorSessionManagerAcquire(t *testing.T) {
 	t.Run("rejects expired session", func(t *testing.T) {
 		manager := newCursorSessionManager(10, 9)
-		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "SELECT 1", 100, 60, 30)
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, 100, 60, 30)
 		require.NoError(t, err)
 		t.Cleanup(func() { manager.remove(session.ID) })
 
@@ -45,7 +45,7 @@ func TestCursorSessionManagerAcquire(t *testing.T) {
 
 	t.Run("retains active expired session", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
-		session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		session, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 		t.Cleanup(func() { manager.remove(session.ID) })
 		atomic.StoreInt64(&session.ExpiresAtSec, time.Now().Add(-time.Second).Unix())
@@ -63,7 +63,7 @@ func TestCursorSessionManagerAcquire(t *testing.T) {
 
 	t.Run("is exclusive", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
-		session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		session, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 		t.Cleanup(func() { manager.remove(session.ID) })
 
@@ -85,15 +85,15 @@ func TestCursorSessionManagerAcquire(t *testing.T) {
 func TestCursorSessionManagerCreate(t *testing.T) {
 	t.Run("rejects new session at capacity", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
-		first, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		first, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		second, err := manager.create("account-2", "catalog-1", nil, "SELECT 2", 1, 60, 30)
+		second, err := manager.create("account-2", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 
 		got, ok := manager.acquire(first.ID)
 		require.True(t, ok)
 		manager.release(got)
-		third, err := manager.create("account-1", "catalog-1", nil, "SELECT 3", 1, 60, 30)
+		third, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.ErrorIs(t, err, errCursorSessionLimitReached)
 		assert.Nil(t, third)
 
@@ -107,23 +107,23 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 	})
 	t.Run("one account cannot exhaust another account's share", func(t *testing.T) {
 		manager := newCursorSessionManager(3, 2)
-		first, err := manager.create("account-a", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		first, err := manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		_, err = manager.create("account-a", "catalog-1", nil, "SELECT 2", 1, 60, 30)
+		_, err = manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		_, err = manager.create("account-a", "catalog-1", nil, "SELECT 3", 1, 60, 30)
+		_, err = manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 		require.ErrorIs(t, err, errCursorAccountLimitReached)
-		_, err = manager.create("account-b", "catalog-1", nil, "SELECT 4", 1, 60, 30)
+		_, err = manager.create("account-b", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		_, err = manager.create("account-b", "catalog-1", nil, "SELECT 5", 1, 60, 30)
+		_, err = manager.create("account-b", "catalog-1", nil, 1, 60, 30)
 		require.ErrorIs(t, err, errCursorSessionLimitReached)
 		manager.remove(first.ID)
-		_, err = manager.create("account-a", "catalog-1", nil, "SELECT 6", 1, 60, 30)
+		_, err = manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 	})
 	t.Run("raw query and resource data share the account quota", func(t *testing.T) {
 		manager := newCursorSessionManager(4, 1)
-		_, err := manager.create("account-a", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		_, err := manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1"}
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
@@ -154,7 +154,7 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 			workers.Add(1)
 			go func() {
 				defer workers.Done()
-				_, err := manager.create("account-a", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+				_, err := manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 				results <- err
 			}()
 		}
@@ -169,7 +169,7 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 			}
 		}
 		assert.Equal(t, 2, created)
-		_, err := manager.create("account-b", "catalog-1", nil, "SELECT 2", 1, 60, 30)
+		_, err := manager.create("account-b", "catalog-1", nil, 1, 60, 30)
 		assert.NoError(t, err)
 	})
 }
@@ -177,26 +177,26 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 func TestCursorSessionManagerConfigure(t *testing.T) {
 	t.Run("clamps account limit below global limit", func(t *testing.T) {
 		manager := newCursorSessionManager(3, 5)
-		_, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		_, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		_, err = manager.create("account-1", "catalog-1", nil, "SELECT 2", 1, 60, 30)
+		_, err = manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		_, err = manager.create("account-1", "catalog-1", nil, "SELECT 3", 1, 60, 30)
+		_, err = manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.ErrorIs(t, err, errCursorAccountLimitReached)
-		_, err = manager.create("account-2", "catalog-1", nil, "SELECT 4", 1, 60, 30)
+		_, err = manager.create("account-2", "catalog-1", nil, 1, 60, 30)
 		assert.NoError(t, err)
 	})
 	t.Run("reduced capacity applies to new sessions", func(t *testing.T) {
 		manager := newCursorSessionManager(3, 2)
-		first, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		first, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		second, err := manager.create("account-1", "catalog-1", nil, "SELECT 2", 1, 60, 30)
+		second, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
-		third, err := manager.create("account-2", "catalog-1", nil, "SELECT 3", 1, 60, 30)
+		third, err := manager.create("account-2", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 
 		manager.configure(1, 1)
-		fourth, err := manager.create("account-1", "catalog-1", nil, "SELECT 4", 1, 60, 30)
+		fourth, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.ErrorIs(t, err, errCursorSessionLimitReached)
 		assert.Nil(t, fourth)
 
@@ -218,7 +218,7 @@ func TestCursorSessionManagerConfigure(t *testing.T) {
 func TestCursorSessionManagerMarkPageSuccess(t *testing.T) {
 	t.Run("refreshes successful page and expiry timestamps", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
-		session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		session, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 
 		before := time.Now().Unix()
@@ -231,7 +231,7 @@ func TestCursorSessionManagerMarkPageSuccess(t *testing.T) {
 func TestCursorSessionManagerCloseSession(t *testing.T) {
 	t.Run("removes the session", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
-		session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		session, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 
 		manager.closeSession(session.ID)
@@ -242,7 +242,7 @@ func TestCursorSessionManagerCloseSession(t *testing.T) {
 
 func TestCursorSessionManagerCloseForAccount(t *testing.T) {
 	manager := newCursorSessionManager(2, 1)
-	session, err := manager.create("account-a", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+	session, err := manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 	require.NoError(t, err)
 	assert.ErrorIs(t, manager.closeForAccount("account-b", session.ID), errCursorSessionForbidden)
 	assert.ErrorIs(t, manager.closeForAccount("account-a", "missing"), errCursorSessionNotFound)
@@ -251,7 +251,7 @@ func TestCursorSessionManagerCloseForAccount(t *testing.T) {
 	session.Unlock()
 	assert.NoError(t, manager.closeForAccount("account-a", session.ID))
 	assert.ErrorIs(t, manager.closeForAccount("account-a", session.ID), errCursorSessionNotFound)
-	_, err = manager.create("account-b", "catalog-1", nil, "SELECT 2", 1, 60, 30)
+	_, err = manager.create("account-b", "catalog-1", nil, 1, 60, 30)
 	assert.NoError(t, err)
 }
 
@@ -260,7 +260,7 @@ func TestCloseCursorSession(t *testing.T) {
 	manager := newCursorSessionManager(2, 1)
 	rawQueryCursorSessions = manager
 	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
-	session, err := manager.create("account-a", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+	session, err := manager.create("account-a", "catalog-1", nil, 1, 60, 30)
 	require.NoError(t, err)
 
 	err = CloseCursorSession(context.Background(), "account-b", session.ID)
@@ -284,7 +284,7 @@ func TestCloseCursorSession(t *testing.T) {
 func TestCursorSessionManagerRemoveExpiredLocked(t *testing.T) {
 	t.Run("skips active session", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
-		session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+		session, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
 		require.NoError(t, err)
 		session.ExpiresAtSec = time.Now().Add(-time.Second).Unix()
 
@@ -307,7 +307,7 @@ func TestCursorSessionManagerRemoveExpiredLocked(t *testing.T) {
 func TestCursorPagingResponse(t *testing.T) {
 	t.Run("returns cursor and expiry", func(t *testing.T) {
 		manager := newCursorSessionManager(10, 9)
-		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "SELECT 1", 100, 60, 30)
+		session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, 100, 60, 30)
 		require.NoError(t, err)
 		t.Cleanup(func() { manager.remove(session.ID) })
 
@@ -324,7 +324,7 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 	for _, reason := range []string{"remove", "final page", "explicit close", "expired acquire", "expired close", "periodic expiry", "create reclaims expired", "resource data create reclaims expired"} {
 		t.Run(reason, func(t *testing.T) {
 			manager := newCursorSessionManager(2, 1)
-			session, err := manager.create("owner", "catalog", nil, "", 2, 60, 30)
+			session, err := manager.create("owner", "catalog", nil, 2, 60, 30)
 			require.NoError(t, err)
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
@@ -378,7 +378,7 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 				manager.mu.Unlock()
 				closeSQLCursorResources(removed...)
 			case "create reclaims expired":
-				_, err = manager.create("owner", "catalog", nil, "", 1, 60, 30)
+				_, err = manager.create("owner", "catalog", nil, 1, 60, 30)
 				require.NoError(t, err)
 			case "resource data create reclaims expired":
 				_, err = manager.createResourceData("owner", "owner", &interfaces.Resource{ID: "r"}, &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}})

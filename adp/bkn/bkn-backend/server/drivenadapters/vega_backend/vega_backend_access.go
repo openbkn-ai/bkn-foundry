@@ -799,9 +799,6 @@ func (vba *vegaBackendAccess) rawQuery(ctx context.Context, span trace.Span, hea
 	if req == nil || req.Query == "" {
 		return nil, fmt.Errorf("raw query statement is required")
 	}
-	if req.InputDialect == "" {
-		return nil, fmt.Errorf("raw query input dialect is required")
-	}
 	if req.QueryFormat == "" {
 		req.QueryFormat = interfaces.VEGA_QUERY_FORMAT_SQL
 	}

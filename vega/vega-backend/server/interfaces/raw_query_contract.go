@@ -18,7 +18,6 @@ const (
 	PagingModeSingle PagingMode = "single"
 	PagingModeCursor PagingMode = "cursor"
 
-	DefaultInputDialect       = "mysql"
 	DefaultPageLimit          = 20
 	MinPageLimit              = 1
 	MaxPageLimit              = 10000
@@ -51,14 +50,11 @@ type PagingResponse struct {
 	ExpiresAtSec *int64 `json:"expires_at_sec"`
 }
 
-// RawQueryContract is the replacement public request model. It is introduced
-// before the legacy handler is switched so its validation can be reviewed and
-// exercised independently.
+// RawQueryContract defines the SQL and DSL request shapes and paging rules.
 type RawQueryContract struct {
-	Query        any           `json:"query,omitempty"`
-	QueryFormat  QueryFormat   `json:"query_format,omitempty"`
-	InputDialect string        `json:"input_dialect,omitempty"`
-	Paging       PagingRequest `json:"paging,omitempty"`
+	Query       any           `json:"query,omitempty"`
+	QueryFormat QueryFormat   `json:"query_format,omitempty"`
+	Paging      PagingRequest `json:"paging,omitempty"`
 }
 
 // IsContinuation reports whether the request contains a cursor continuation.
@@ -66,25 +62,10 @@ func (r RawQueryContract) IsContinuation() bool {
 	return r.Paging.Cursor != ""
 }
 
-// EffectiveInputDialect applies the SQL-only default defined by the contract.
-func (r RawQueryContract) EffectiveInputDialect() string {
-	if r.QueryFormat == QueryFormatSQL && r.InputDialect == "" {
-		return DefaultInputDialect
-	}
-	dialect := strings.ToLower(r.InputDialect)
-	if r.QueryFormat == QueryFormatSQL {
-		switch dialect {
-		case "mariadb":
-			return "mysql"
-		}
-	}
-	return dialect
-}
-
 // Validate checks the mutually exclusive first-page and continuation forms.
 func (r RawQueryContract) Validate() error {
 	if r.IsContinuation() {
-		if r.Query != nil || r.QueryFormat != "" || r.InputDialect != "" || r.Paging.Mode != "" || r.Paging.Offset != 0 || r.Paging.Limit != 0 || r.Paging.KeepAliveSec != 0 {
+		if r.Query != nil || r.QueryFormat != "" || r.Paging.Mode != "" || r.Paging.Offset != 0 || r.Paging.Limit != 0 || r.Paging.KeepAliveSec != 0 {
 			return fmt.Errorf("cursor continuation must contain only paging.cursor")
 		}
 		return nil
@@ -97,9 +78,6 @@ func (r RawQueryContract) Validate() error {
 		return fmt.Errorf("query_format must be either %q or %q", QueryFormatSQL, QueryFormatDSL)
 	}
 	if err := r.validateQueryShape(); err != nil {
-		return err
-	}
-	if err := r.validateInputDialect(); err != nil {
 		return err
 	}
 
@@ -170,24 +148,6 @@ func (r RawQueryContract) validateQueryShape() error {
 	case QueryFormatDSL:
 		if _, ok := r.Query.(map[string]any); !ok {
 			return fmt.Errorf("query must be a JSON object for DSL input")
-		}
-	}
-	return nil
-}
-
-func (r RawQueryContract) validateInputDialect() error {
-	dialect := r.EffectiveInputDialect()
-	switch r.QueryFormat {
-	case QueryFormatSQL:
-		switch dialect {
-		case "mysql":
-			return nil
-		default:
-			return fmt.Errorf("unsupported SQL input_dialect: %s", r.InputDialect)
-		}
-	case QueryFormatDSL:
-		if dialect != "opensearch" {
-			return fmt.Errorf("DSL input_dialect must be %q", "opensearch")
 		}
 	}
 	return nil

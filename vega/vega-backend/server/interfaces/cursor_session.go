@@ -26,7 +26,6 @@ type CursorSession struct {
 	QuotaOwnerID string
 	CatalogID    string
 	ResourceIDs  []string
-	CompiledSQL  string
 
 	// Builder 通道保存结构化查询；物理名称、目标类型及版本在每次续页前复核。
 	SQLQuery             *sqlbuilder.SelectBuilder
@@ -37,7 +36,7 @@ type CursorSession struct {
 	SQLRows       *sql.Rows
 	SQLColumns    []ColumnInfo
 	SQLPendingRow map[string]any
-	SQLConnector  Connector
+	SQLConnector  TableConnector
 	SQLCancel     context.CancelFunc
 
 	QueryFormat     QueryFormat

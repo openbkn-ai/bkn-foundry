@@ -293,9 +293,6 @@ func TestQueryRunsCompiledStatement(t *testing.T) {
 	if want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 LIMIT 5"; vega.request.Query != want {
 		t.Fatalf("statement = %s, want %s", vega.request.Query, want)
 	}
-	if vega.request.InputDialect != interfaces.VEGA_DIALECT_MYSQL {
-		t.Fatalf("dialect = %s", vega.request.InputDialect)
-	}
 	// vega-backend pages the statement it is handed, defaulting to 20 rows, so
 	// the page has to be asked for explicitly or the result comes back cut
 	// down with nothing to say so.
