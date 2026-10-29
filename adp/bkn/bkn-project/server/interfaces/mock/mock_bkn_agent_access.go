@@ -41,6 +41,21 @@ func (m *MockBknAgentAccess) EXPECT() *MockBknAgentAccessMockRecorder {
 	return m.recorder
 }
 
+// AnswerOnNetwork mocks base method.
+func (m *MockBknAgentAccess) AnswerOnNetwork(ctx context.Context, token string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AnswerOnNetwork", ctx, token, req)
+	ret0, _ := ret[0].(*interfaces.BknAgentAnswer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AnswerOnNetwork indicates an expected call of AnswerOnNetwork.
+func (mr *MockBknAgentAccessMockRecorder) AnswerOnNetwork(ctx, token, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnswerOnNetwork", reflect.TypeOf((*MockBknAgentAccess)(nil).AnswerOnNetwork), ctx, token, req)
+}
+
 // GetTask mocks base method.
 func (m *MockBknAgentAccess) GetTask(ctx context.Context, account interfaces.BknAgentAccount, taskID string) (*interfaces.BknAgentTask, error) {
 	m.ctrl.T.Helper()
