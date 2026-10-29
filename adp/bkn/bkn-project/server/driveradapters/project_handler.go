@@ -33,6 +33,9 @@ func (r *restHandler) GetProjectByEx(c *gin.Context)    { r.withExVisitor(c, r.G
 func (r *restHandler) SetProjectCatalogsByEx(c *gin.Context) {
 	r.withExVisitor(c, r.SetProjectCatalogs)
 }
+func (r *restHandler) SetProjectNamingLanguageByEx(c *gin.Context) {
+	r.withExVisitor(c, r.SetProjectNamingLanguage)
+}
 
 // ProjectActionByEx serves POST /projects/{project_id}:archive and :unarchive.
 func (r *restHandler) ProjectActionByEx(c *gin.Context) {
@@ -146,6 +149,30 @@ func (r *restHandler) SetProjectCatalogs(c *gin.Context, visitor hydra.Visitor) 
 	}
 
 	entry, err := r.ps.SetProjectCatalogs(ctx, visitor.TokenID, id, req.CatalogIDs, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, entry)
+}
+
+// SetProjectNamingLanguage serves PUT /projects/{project_id}/naming-language with {"naming_language"}.
+func (r *restHandler) SetProjectNamingLanguage(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	req := interfaces.SetProjectNamingLanguageRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidRequestBody))
+		return
+	}
+
+	entry, err := r.ps.SetProjectNamingLanguage(ctx, visitor.TokenID, id, req.NamingLanguage, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return

@@ -13,9 +13,16 @@ type CreateProjectRequest struct {
 	KNID       string        `json:"kn_id"`
 	NewKN      *NewKNRequest `json:"new_kn"`
 	CatalogIDs []string      `json:"catalog_ids"`
+	// NamingLanguage defaults to the creator's language when empty.
+	NamingLanguage string `json:"naming_language"`
 }
 
 // NewKNRequest names the network a project creates; bkn-backend makes up an id when ID is empty.
+// SetProjectNamingLanguageRequest sets the language a project names its items in.
+type SetProjectNamingLanguageRequest struct {
+	NamingLanguage string `json:"naming_language"`
+}
+
 // SetProjectCatalogsRequest replaces the data catalogs a project drafts from.
 type SetProjectCatalogsRequest struct {
 	CatalogIDs []string `json:"catalog_ids"`
@@ -59,5 +66,9 @@ type ProjectService interface {
 		caller AccountInfo) (*ProjectEntry, error)
 	// SetProjectCatalogs replaces the project's data catalogs; only its owner may.
 	SetProjectCatalogs(ctx context.Context, token string, id string, catalogIDs []string,
+		caller AccountInfo) (*ProjectEntry, error)
+	// SetProjectNamingLanguage sets the language the project names its items in; only its owner
+	// may. Drafts made before keep their names until drafted again.
+	SetProjectNamingLanguage(ctx context.Context, token string, id string, language string,
 		caller AccountInfo) (*ProjectEntry, error)
 }

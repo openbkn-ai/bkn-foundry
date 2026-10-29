@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -100,8 +101,41 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 			So(stored.CatalogIDs, ShouldResemble, []string{"c1", "c2"})
 			So(stored.Owner, ShouldResemble, owner)
 			So(stored.Archived, ShouldBeFalse)
+			// No naming language given: the creator's, here the default.
+			So(stored.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_ZH_CN)
 			So(entry.Project, ShouldEqual, stored)
 			So(entry.OtherProjects, ShouldEqual, 2)
+		})
+
+		Convey("A project names in the language given, else in its creator's\n", func() {
+			english := context.WithValue(ctx, i18n.LanguageKey, i18n.AmericanEnglish)
+			for _, c := range []struct {
+				ctx   context.Context
+				given string
+				want  string
+			}{
+				{english, "", interfaces.NAMING_LANGUAGE_EN_US},
+				{english, interfaces.NAMING_LANGUAGE_ZH_CN, interfaces.NAMING_LANGUAGE_ZH_CN},
+				{ctx, interfaces.NAMING_LANGUAGE_EN_US, interfaces.NAMING_LANGUAGE_EN_US},
+			} {
+				f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{ID: "orders"}, nil)
+				f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, nil)
+				f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).Return(&interfaces.CreateLineageResult{}, nil)
+				f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
+				f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
+					Return(&interfaces.CreateBranchResult{}, nil)
+				var stored *interfaces.Project
+				f.pa.EXPECT().CreateProject(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, p *interfaces.Project) error { stored = p; return nil })
+				f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{}, nil)
+
+				_, err := f.svc.CreateProject(c.ctx, token, interfaces.CreateProjectRequest{
+					Name: "Orders", KNID: "orders", NamingLanguage: c.given,
+				}, owner, author)
+
+				So(err, ShouldBeNil)
+				So(stored.NamingLanguage, ShouldEqual, c.want)
+			}
 		})
 
 		Convey("A second project of a network shares its lineage and starts from the newest release\n", func() {
@@ -196,6 +230,8 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 					perrors.BknProject_Project_InvalidCatalogIDs},
 				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", CatalogIDs: catalogIDs(maxCatalogIDs + 1)},
 					perrors.BknProject_Project_InvalidCatalogIDs},
+				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", NamingLanguage: "fr-FR"},
+					perrors.BknProject_Project_InvalidNamingLanguage},
 			} {
 				_, err := f.svc.CreateProject(ctx, token, c.req, owner, author)
 				shouldBeHTTPError(err, http.StatusBadRequest, c.code)
@@ -490,6 +526,52 @@ func Test_ProjectService_GetAndArchive(t *testing.T) {
 				_, err = f.svc.SetProjectCatalogs(ctx, token, "p1", ids, owner)
 				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidCatalogIDs)
 			}
+		})
+
+		Convey("The owner sets the naming language; the same one changes nothing\n", func() {
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.pa.EXPECT().SetProjectNamingLanguage(gomock.Any(), "p1", interfaces.NAMING_LANGUAGE_EN_US, gomock.Any()).Return(nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 1}, nil)
+
+			entry, err := f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US, owner)
+
+			So(err, ShouldBeNil)
+			So(entry.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_EN_US)
+			So(entry.UpdateTime, ShouldBeGreaterThan, 1)
+
+			same := stored()
+			same.NamingLanguage = interfaces.NAMING_LANGUAGE_EN_US
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(same, true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{}, nil)
+
+			entry, err = f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US, owner)
+
+			So(err, ShouldBeNil)
+			So(entry.UpdateTime, ShouldEqual, 1)
+		})
+
+		Convey("Only the owner may set the naming language, and an invalid one is refused before any call\n", func() {
+			_, err := f.svc.SetProjectNamingLanguage(ctx, token, "p1", "fr-FR", owner)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidNamingLanguage)
+
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			_, err = f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US,
+				interfaces.AccountInfo{ID: "u2", Type: "user"})
+			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
+		})
+
+		Convey("A naming language write failure is an internal error\n", func() {
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.pa.EXPECT().SetProjectNamingLanguage(gomock.Any(), "p1", interfaces.NAMING_LANGUAGE_EN_US, gomock.Any()).
+				Return(errors.New("db down"))
+
+			_, err := f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US, owner)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Project_InternalError)
 		})
 
 		Convey("A catalogs write failure is an internal error\n", func() {

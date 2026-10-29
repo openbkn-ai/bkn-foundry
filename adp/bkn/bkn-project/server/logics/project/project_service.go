@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
@@ -60,7 +61,7 @@ func (s *projectService) CreateProject(ctx context.Context, token string, req in
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CreateProject")
 	defer span.End()
 
-	name, catalogIDs, err := checkCreate(ctx, &req)
+	name, catalogIDs, language, err := checkCreate(ctx, &req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid request")
 		return nil, err
@@ -108,6 +109,7 @@ func (s *projectService) CreateProject(ctx context.Context, token string, req in
 		Branch:            branch,
 		BaselineNetworkID: baseline,
 		CatalogIDs:        catalogIDs,
+		NamingLanguage:    language,
 		Owner:             owner,
 		CreateTime:        now,
 		UpdateTime:        now,
@@ -281,6 +283,42 @@ func (s *projectService) SetProjectCatalogs(ctx context.Context, token string, i
 	return entries[0], nil
 }
 
+func (s *projectService) SetProjectNamingLanguage(ctx context.Context, token string, id string, language string,
+	caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SetProjectNamingLanguage")
+	defer span.End()
+
+	if !interfaces.IsNamingLanguage(language) {
+		span.SetStatus(codes.Error, "Invalid naming language")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidNamingLanguage)
+	}
+	project, err := s.visibleProject(ctx, token, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, err
+	}
+	if project.Owner != caller {
+		span.SetStatus(codes.Error, "Not the owner")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
+	}
+	// The draft keeps its names; drafting again names in the new language.
+	if project.NamingLanguage != language {
+		project.NamingLanguage = language
+		project.UpdateTime = time.Now().UnixMilli()
+		if err = s.pa.SetProjectNamingLanguage(ctx, id, language, project.UpdateTime); err != nil {
+			span.SetStatus(codes.Error, "Set naming language failed")
+			return nil, internalError(ctx, "Set naming language failed", err)
+		}
+	}
+	entries, err := s.withOtherProjects(ctx, []*interfaces.Project{project})
+	if err != nil {
+		span.SetStatus(codes.Error, "Count projects failed")
+		return nil, internalError(ctx, "Count projects failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return entries[0], nil
+}
+
 // visibleProject returns the project when the caller can see its network. A
 // project the caller cannot see answers like one that does not exist.
 func (s *projectService) visibleProject(ctx context.Context, token string, id string) (*interfaces.Project, error) {
@@ -361,21 +399,30 @@ func (s *projectService) withOtherProjects(ctx context.Context, projects []*inte
 }
 
 // checkCreate returns the trimmed name and the de-duplicated catalog ids of a valid request.
-func checkCreate(ctx context.Context, req *interfaces.CreateProjectRequest) (string, []string, error) {
+// checkCreate returns the project's name, its de-duplicated catalog ids and its naming language:
+// the one given, else the creator's.
+func checkCreate(ctx context.Context, req *interfaces.CreateProjectRequest) (string, []string, string, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" || utf8.RuneCountInString(name) > maxNameRunes {
-		return "", nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidName)
+		return "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidName)
 	}
 	existing := strings.TrimSpace(req.KNID) != ""
 	creating := req.NewKN != nil
 	if existing == creating || (creating && strings.TrimSpace(req.NewKN.Name) == "") {
-		return "", nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidNetwork)
+		return "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidNetwork)
 	}
 	catalogIDs, err := checkCatalogIDs(ctx, req.CatalogIDs)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
-	return name, catalogIDs, nil
+	language := req.NamingLanguage
+	if language == "" {
+		language = string(i18n.GetLanguageByCtx(ctx))
+	}
+	if !interfaces.IsNamingLanguage(language) {
+		return "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidNamingLanguage)
+	}
+	return name, catalogIDs, language, nil
 }
 
 // checkCatalogIDs returns the de-duplicated catalog ids, in their order.
