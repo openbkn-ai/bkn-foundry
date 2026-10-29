@@ -64,6 +64,16 @@ func proposeRelations(ctx context.Context, d *drafter, va interfaces.VegaAccess,
 		}
 	}
 	d.bySourceName[sourceName(targetTable.CatalogID, targetTable.SourceSchema, targetTable.SourceName)] = targetTable
+	// A field the draft already relates to the target is not counted again: refer takes no field
+	// the source does not map.
+	for _, r := range items.RelationTypes {
+		if r.Target != target.ID || r.LinkTable != nil || len(r.Mapping) != 1 {
+			continue
+		}
+		if source := findObjectType(items, r.Source); source != nil {
+			delete(d.fields[source.Table.ResourceID], mappedField(source, r.Mapping[0].SourceProperty))
+		}
+	}
 	relationIDs := map[string]bool{}
 	for _, r := range items.RelationTypes {
 		relationIDs[r.ID] = true

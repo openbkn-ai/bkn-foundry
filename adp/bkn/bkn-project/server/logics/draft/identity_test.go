@@ -193,7 +193,8 @@ func Test_ChooseIdentity(t *testing.T) {
 				table("r_ship", "c1", "shipments", 0, []string{"shipment_id"},
 					col("shipment_id", "string", ""), col("order_no", "string", "")),
 			}
-			counts := func(orphans float64) {
+			// joins is how many joins are counted besides the key.
+			counts := func(orphans float64, joins int) {
 				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_lines", "r_customers", "r_ship"}).Return(tables, nil)
 				va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
 					DoAndReturn(func(_ context.Context, _ interfaces.VegaAccount, sql string, _ int) ([]map[string]any, error) {
@@ -204,13 +205,13 @@ func Test_ChooseIdentity(t *testing.T) {
 								"distinct_values": float64(20)}}, nil
 						}
 						return []map[string]any{{"total": float64(10), "distinct_values": float64(10), "nulls": float64(0)}}, nil
-					}).Times(2)
+					}).Times(1 + joins)
 			}
 
 			Convey("Borne out, it is drafted with its counts, proposed while the order lines are not adopted\n", func() {
 				d := withShipments()
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
-				counts(0)
+				counts(0, 1)
 				expectWrite()
 
 				got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no"), caller)
@@ -230,7 +231,7 @@ func Test_ChooseIdentity(t *testing.T) {
 
 			Convey("Refuted by the counts, it is not drafted\n", func() {
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(withShipments(), true, nil)
-				counts(30)
+				counts(30, 1)
 				expectWrite()
 
 				got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no"), caller)
@@ -246,7 +247,8 @@ func Test_ChooseIdentity(t *testing.T) {
 					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "order_no", TargetProperty: "order_no"}},
 				}}
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
-				counts(0)
+				// Only the key is counted: the relation is not counted again.
+				counts(0, 0)
 				expectWrite()
 
 				got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no"), caller)
