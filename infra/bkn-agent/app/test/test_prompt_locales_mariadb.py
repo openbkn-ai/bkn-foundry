@@ -11,6 +11,8 @@ from pathlib import Path
 import pymysql
 import pytest
 
+from app.test.test_builtin_prompt_locales import LEGACY_SMART_QA
+
 from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, statements, selected_migrations
 
 
@@ -107,6 +109,24 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert cursor.fetchone() == ("Custom admin content", None)
             cursor.execute("SELECT f_content FROM t_agent_prompt_override WHERE f_account_id='test-user'")
             assert cursor.fetchone()[0] == "Custom user content"
+        # Existing Initial configurations can reference an older official Prompt body.
+        with db.cursor() as cursor:
+            for version, creator in ((103, "266c6a42-6131-4d62-8f39-853e7093701c"), (104, "administrator")):
+                cursor.execute("INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_create_user,f_create_time) VALUES (%s,%s,%s,%s,%s)", ("studio_smart_qa_prompt", version, LEGACY_SMART_QA, creator, 1))
+            cursor.execute("UPDATE t_agent_prompt SET f_current_version=103 WHERE f_prompt_id='studio_smart_qa_prompt'")
+            cursor.execute("UPDATE t_agent_version SET f_prompt_version=103 WHERE f_agent_id='studio_smart_qa' AND f_initial=1")
+        before_legacy = saved_rows()
+        apply(BUILTIN_LOCALES)
+        with db.cursor() as cursor:
+            cursor.execute("SELECT f_version,f_content,f_localized_content FROM t_agent_prompt_version WHERE f_prompt_id='studio_smart_qa_prompt' AND f_version IN (103,104) ORDER BY f_version")
+            official, custom = cursor.fetchall()
+            assert official[1] == LEGACY_SMART_QA
+            assert json.loads(official[2])["en-US"].startswith("You are a business knowledge network Q&A assistant")
+            assert custom == (104, LEGACY_SMART_QA, None)
+        after_legacy = saved_rows()
+        assert before_legacy[:3] == after_legacy[:3]
+        apply(BUILTIN_LOCALES)
+        assert saved_rows() == after_legacy
     finally:
         with db.cursor() as cursor:
             cursor.execute(f"DROP DATABASE IF EXISTS `{name}`")

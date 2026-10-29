@@ -79,6 +79,8 @@ Built-in Agents use fixed IDs. Their configuration, shared Prompts, and Prompt h
 All nine built-in Agents ship database-backed Chinese and English system Prompt
 variants. Execution and the effective/shared Agent Prompt read endpoints select
 the same stored variant using the request's negotiated `Accept-Language`.
+The known historical smart Q&A body used by older Initial configurations is also backfilled by exact content hash; Initial is a configuration marker, not a guarantee that its Prompt version already has translations.
+
 A missing translation falls back to that version's canonical content. Request and personal overrides retain
 their existing precedence; shared-only executions still ignore those overrides.
 Publishing a custom shared Prompt creates a new version without inherited
