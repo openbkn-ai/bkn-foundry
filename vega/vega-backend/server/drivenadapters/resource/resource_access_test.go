@@ -51,7 +51,7 @@ func TestResourceAccessCreate(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_builtin,f_enabled,f_status,f_status_message,f_last_discover_status,f_last_discover_time,f_row_count,f_row_count_time,f_schema,f_source_identifier,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_status,f_local_index_name,f_sync_mark,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_builtin,f_enabled,f_status,f_status_message,f_last_discover_status,f_last_discover_time,f_row_count,f_row_count_time,f_schema,f_source_identifier,f_api_name,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_status,f_local_index_name,f_sync_mark,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
 			WithArgs(
 				"resource-1",
 				"catalog-1",
@@ -67,6 +67,7 @@ func TestResourceAccessCreate(t *testing.T) {
 				int64(0), nil, nil,
 				"db1",
 				"public.orders",
+				"",
 				`{"properties":{"row_count":42}}`,
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
 				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
@@ -121,13 +122,26 @@ func TestResourceAccessCreate(t *testing.T) {
 }
 
 func TestResourceAccessGetByID(t *testing.T) {
+	t.Run("reads the api name semantic understanding gave", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		resource := sampleResource()
+		resource.APIName = "supplier"
+		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
+			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(resourceRowValues(resource)...))
+		got, err := access.GetByID(context.Background(), nil, "resource-1")
+		require.NoError(t, err)
+		assert.Equal(t, "supplier", got.APIName)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("reads derived object definition", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
 		values[5] = interfaces.ResourceCategoryLogicalView
-		values[22] = interfaces.LogicType_Derived
-		values[23] = `{"source_resource_id":"source-1","filter_condition":{"field":"amount","operation":">","value":9007199254740993}}`
+		values[23] = interfaces.LogicType_Derived
+		values[24] = `{"source_resource_id":"source-1","filter_condition":{"field":"amount","operation":">","value":9007199254740993}}`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
 		got, err := access.GetByID(context.Background(), nil, "resource-1")
@@ -147,8 +161,8 @@ func TestResourceAccessGetByID(t *testing.T) {
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
 		values[5] = interfaces.ResourceCategoryLogicalView
-		values[22] = interfaces.LogicType_Composite
-		values[23] = `[{"id":"source","type":"resource"}]`
+		values[23] = interfaces.LogicType_Composite
+		values[24] = `[{"id":"source","type":"resource"}]`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
 
@@ -209,7 +223,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
-		values[26] = "not-int64"
+		values[27] = "not-int64"
 
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").
@@ -289,7 +303,7 @@ func TestResourceAccessGetByIDs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
-		values[26] = "not-int64"
+		values[27] = "not-int64"
 
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id IN (?)"))).
 			WithArgs("resource-1").
@@ -586,10 +600,13 @@ func TestResourceAccessUpdateSemanticMetadata(t *testing.T) {
 		resource.LocalIndexName = "vega-build-resource-1-task-1"
 		expectedUpdateTime := resource.UpdateTime - 1
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_schema_definition = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
+		resource.APIName = "supplier"
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_api_name = ?, f_schema_definition = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
 			WithArgs(
 				resource.Name,
 				resource.Description,
+				"supplier",
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
 				"[]",
 				resource.Updater.ID,
@@ -1052,6 +1069,7 @@ func resourceNameRows() *sqlmock.Rows {
 		"f_row_count", "f_row_count_time",
 		"f_schema",
 		"f_source_identifier",
+		"f_api_name",
 		"f_source_metadata",
 		"f_schema_definition",
 		"f_index_config",
@@ -1085,6 +1103,7 @@ func resourceNameRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.RowCount, resource.RowCountTime,
 		resource.Schema,
 		resource.SourceIdentifier,
+		resource.APIName,
 		`{"properties":{"row_count":42}}`,
 		`[{"name":"id","type":"integer"}]`,
 		`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
@@ -1147,6 +1166,7 @@ func resourceRows() *sqlmock.Rows {
 		"f_row_count", "f_row_count_time",
 		"f_schema",
 		"f_source_identifier",
+		"f_api_name",
 		"f_source_metadata",
 		"f_schema_definition",
 		"f_index_config",
@@ -1180,6 +1200,7 @@ func resourceRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.RowCount, resource.RowCountTime,
 		resource.Schema,
 		resource.SourceIdentifier,
+		resource.APIName,
 		`{"properties":{"row_count":42}}`,
 		`[{"name":"id","type":"integer"}]`,
 		`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,

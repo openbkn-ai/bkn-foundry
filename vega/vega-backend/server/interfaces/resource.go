@@ -94,8 +94,10 @@ type Resource struct {
 	LastDiscoverTime   int64  `json:"last_discover_time"`
 
 	// New field: Supports automatic discovery
-	Schema           string         `json:"schema,omitempty"`            // The schema to which it belongs is written by the discovery process
-	SourceIdentifier string         `json:"source_identifier"`           // Source identifier (original table name/path)
+	Schema           string `json:"schema,omitempty"`  // The schema to which it belongs is written by the discovery process
+	SourceIdentifier string `json:"source_identifier"` // Source identifier (original table name/path)
+	// APIName 是语义理解给出的英文短名（snake_case），可用作机器标识；只写一次，之后不再覆盖。
+	APIName          string         `json:"api_name,omitempty"`
 	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // Source configuration (JSON
 	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema Definition
 

@@ -68,6 +68,7 @@ var resourceColumns = []string{
 	"f_row_count_time",
 	"f_schema",
 	"f_source_identifier",
+	"f_api_name",
 	"f_source_metadata",
 	"f_schema_definition",
 	"f_index_config",
@@ -137,6 +138,7 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 		&resource.RowCountTime,
 		&resource.Schema,
 		&resource.SourceIdentifier,
+		&resource.APIName,
 		&sourceMetadata,
 		&schemaDefinition,
 		&indexConfig,
@@ -266,6 +268,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 
 			"f_schema",
 			"f_source_identifier",
+			"f_api_name",
 			"f_source_metadata",
 			"f_schema_definition",
 			"f_index_config",
@@ -302,6 +305,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 
 			resource.Schema,
 			resource.SourceIdentifier,
+			resource.APIName,
 			string(sourceMetadataBytes),
 			string(schemaDefinitionBytes),
 			string(indexConfigBytes),
@@ -809,6 +813,7 @@ func (ra *resourceAccess) UpdateSemanticMetadata(ctx context.Context,
 	builder := sq.Update(RESOURCE_TABLE_NAME).
 		Set("f_name", resource.Name).
 		Set("f_description", resource.Description).
+		Set("f_api_name", resource.APIName).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).
 		Set("f_logic_definition", string(logicDefinitionBytes)).
 		Set("f_updater", resource.Updater.ID).
