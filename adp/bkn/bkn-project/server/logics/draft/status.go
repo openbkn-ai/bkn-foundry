@@ -435,18 +435,17 @@ func (s *draftService) withRequirement(ctx context.Context, projectID string, dr
 	if confirm == nil {
 		return nil
 	}
-	_, unresolved, err := s.requirementState(ctx, projectID)
+	// One read: the conflicts and the questions are of the same specification.
+	req, found, err := s.rqa.GetRequirement(ctx, projectID)
 	if err != nil {
 		return err
 	}
+	_, unresolved := requirementStateOf(req, found)
 	if status.UnresolvedConflicts = len(unresolved); status.UnresolvedConflicts > 0 {
 		confirm.Body["accept_unresolved_conflicts"] = true
 		confirm.Accepts = append(confirm.Accepts, interfaces.ACCEPTS_UNRESOLVED_CONFLICTS)
 	}
-	needed, err := s.neededBy(ctx, projectID)
-	if err != nil {
-		return err
-	}
+	needed := neededOf(req, found)
 	for _, u := range undecidedItems(&draft.Items) {
 		if len(needed[u.Kind+"/"+u.ItemID]) > 0 {
 			status.UndecidedNeeded++

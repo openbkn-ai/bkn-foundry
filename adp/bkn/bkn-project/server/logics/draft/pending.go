@@ -60,9 +60,14 @@ func (s *draftService) neededBy(ctx context.Context, projectID string) (map[stri
 	if err != nil {
 		return nil, err
 	}
+	return neededOf(req, ok), nil
+}
+
+// neededOf is neededBy of a specification read: found, and ready.
+func neededOf(req *interfaces.Requirement, found bool) map[string][]interfaces.PendingQuestion {
 	needed := map[string][]interfaces.PendingQuestion{}
-	if !ok || req.Status != interfaces.REQUIREMENT_STATUS_READY {
-		return needed, nil
+	if !found || req.Status != interfaces.REQUIREMENT_STATUS_READY {
+		return needed
 	}
 	kinds := map[string]string{
 		interfaces.REQUIREMENT_ITEM_OBJECT_TYPE:   interfaces.DRAFT_KIND_OBJECT_TYPES,
@@ -79,7 +84,7 @@ func (s *draftService) neededBy(ctx context.Context, projectID string) (map[stri
 			}
 		}
 	}
-	return needed, nil
+	return needed
 }
 
 // pendingOf lists what waits for a person before the draft can be confirmed — the items

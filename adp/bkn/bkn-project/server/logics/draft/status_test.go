@@ -555,6 +555,30 @@ func Test_GetStatus(t *testing.T) {
 			}
 		})
 
+		Convey("The conflicts and the needed items come from one read of the specification\n", func() {
+			once := pmock.NewMockRequirementAccess(ctrl)
+			needs := []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "audit_log"}}
+			once.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_READY,
+				Spec: interfaces.RequirementSpec{
+					Conflicts: []*interfaces.RequirementConflict{{ID: "k1"}},
+					Questions: []*interfaces.RequirementQuestion{{ID: "q1", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, Needs: needs}},
+				}}, true, nil).Times(1)
+			svc.rqa = once
+			d := confirmableDraft()
+			d.Items.Decisions = nil
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.UnresolvedConflicts, ShouldEqual, 1)
+			So(s.UndecidedNeeded, ShouldEqual, 1)
+		})
+
 		Convey("Without a ready specification nothing is accepted for conflicts\n", func() {
 			for _, spec := range []*interfaces.Requirement{nil, {Status: interfaces.REQUIREMENT_STATUS_DRAFTING,
 				Spec: interfaces.RequirementSpec{Conflicts: []*interfaces.RequirementConflict{{ID: "k1"}}}}} {
