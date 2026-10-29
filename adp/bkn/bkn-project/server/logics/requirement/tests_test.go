@@ -124,7 +124,8 @@ func Test_TestEdits(t *testing.T) {
 			expectContext()
 			va.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]map[string]any{{"n": float64(1)}}, nil)
 			ra.EXPECT().UpdateGuidance(gomock.Any(), gomock.Any(), int64(20)).Return(false, nil)
-			_, err = svc.EditTest(ctx, token, "p1", "q1", "t1", interfaces.RequirementTestEdit{UpdateTime: 20, Text: ptr("x")}, caller)
+			_, err = svc.EditTest(ctx, token, "p1", "q1", "t1", interfaces.RequirementTestEdit{UpdateTime: 20,
+				Text: ptr("Orders of 10001 this year?")}, caller)
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Stale)
 		})
 
