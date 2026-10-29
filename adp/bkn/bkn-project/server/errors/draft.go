@@ -6,18 +6,19 @@ package errors
 
 const (
 	// 400
-	BknProject_Draft_NoCatalogs         = "BknProject.Draft.NoCatalogs"
-	BknProject_Draft_InvalidRequestBody = "BknProject.Draft.InvalidRequestBody"
-	BknProject_Draft_EmptyEdit          = "BknProject.Draft.EmptyEdit"
-	BknProject_Draft_InvalidName        = "BknProject.Draft.InvalidName"
-	BknProject_Draft_InvalidDescription = "BknProject.Draft.InvalidDescription"
-	BknProject_Draft_EndpointNotAdopted = "BknProject.Draft.EndpointNotAdopted"
-	BknProject_Draft_InvalidIdentity    = "BknProject.Draft.InvalidIdentity"
-	BknProject_Draft_NotRestorable      = "BknProject.Draft.NotRestorable"
-	BknProject_Draft_MissingUpdateTime  = "BknProject.Draft.MissingUpdateTime"
-	BknProject_Draft_NeedsIdentity      = "BknProject.Draft.NeedsIdentity"
-	BknProject_Draft_NothingAdopted     = "BknProject.Draft.NothingAdopted"
-	BknProject_Draft_InvalidItem        = "BknProject.Draft.InvalidItem"
+	BknProject_Draft_NoCatalogs            = "BknProject.Draft.NoCatalogs"
+	BknProject_Draft_InvalidRequestBody    = "BknProject.Draft.InvalidRequestBody"
+	BknProject_Draft_EmptyEdit             = "BknProject.Draft.EmptyEdit"
+	BknProject_Draft_InvalidName           = "BknProject.Draft.InvalidName"
+	BknProject_Draft_InvalidDescription    = "BknProject.Draft.InvalidDescription"
+	BknProject_Draft_EndpointNotAdopted    = "BknProject.Draft.EndpointNotAdopted"
+	BknProject_Draft_InvalidIdentity       = "BknProject.Draft.InvalidIdentity"
+	BknProject_Draft_InvalidIncrementalKey = "BknProject.Draft.InvalidIncrementalKey"
+	BknProject_Draft_NotRestorable         = "BknProject.Draft.NotRestorable"
+	BknProject_Draft_MissingUpdateTime     = "BknProject.Draft.MissingUpdateTime"
+	BknProject_Draft_NeedsIdentity         = "BknProject.Draft.NeedsIdentity"
+	BknProject_Draft_NothingAdopted        = "BknProject.Draft.NothingAdopted"
+	BknProject_Draft_InvalidItem           = "BknProject.Draft.InvalidItem"
 
 	// 403
 	BknProject_Draft_NotOwner = "BknProject.Draft.NotOwner"
@@ -75,6 +76,7 @@ var (
 		BknProject_Draft_MissingUpdateTime,
 		BknProject_Draft_NeedsIdentity,
 		BknProject_Draft_InvalidIdentity,
+		BknProject_Draft_InvalidIncrementalKey,
 		BknProject_Draft_NotRestorable,
 		BknProject_Draft_FieldNotFound,
 		BknProject_Draft_InvalidRequestBody,
