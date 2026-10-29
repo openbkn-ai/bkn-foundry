@@ -134,6 +134,65 @@ func Test_EditDraftItem(t *testing.T) {
 			So(decisions[1].Before, ShouldEqual, "Sales orders")
 		})
 
+		Convey("An object type's update field is one of its properties of a type the index accepts\n", func() {
+			draft.Items.ObjectTypes[1].Properties = []*interfaces.DraftProperty{
+				{Name: "id", Type: "integer", MappedField: "id"},
+				{Name: "changed_at", Type: "datetime", MappedField: "updated_at"},
+				{Name: "amount", Type: "float", MappedField: "amount"},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			e := edit()
+
+			Convey("setting it records what it replaced\n", func() {
+				expectWrite()
+				e.IncrementalKey = strPtr(" changed_at ")
+
+				got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				So(err, ShouldBeNil)
+				So(got.Items.ObjectTypes[1].IncrementalKey, ShouldEqual, "changed_at")
+				So(written.Items.Decisions, ShouldHaveLength, 1)
+				d := written.Items.Decisions[0]
+				So([]any{d.Kind, d.ItemID, d.Action, d.Before, d.After}, ShouldResemble, []any{
+					interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", interfaces.DRAFT_DECISION_INCREMENTAL, "", "changed_at"})
+			})
+
+			Convey("an empty value clears it\n", func() {
+				draft.Items.ObjectTypes[1].IncrementalKey = "changed_at"
+				expectWrite()
+				e.IncrementalKey = strPtr("")
+
+				got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				So(err, ShouldBeNil)
+				So(got.Items.ObjectTypes[1].IncrementalKey, ShouldEqual, "")
+				So(written.Items.Decisions[0].Before, ShouldEqual, "changed_at")
+			})
+
+			Convey("the same value writes nothing\n", func() {
+				draft.Items.ObjectTypes[1].IncrementalKey = "changed_at"
+				e.IncrementalKey = strPtr("changed_at")
+
+				got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+				So(err, ShouldBeNil)
+				So(got.Items.Decisions, ShouldBeEmpty)
+			})
+
+			Convey("an unknown property, another type or another kind of item is refused\n", func() {
+				for _, c := range []struct{ kind, id, key string }{
+					{interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "updated_at"},
+					{interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "amount"},
+					{interfaces.DRAFT_KIND_RELATION_TYPES, "orders_customers", "changed_at"},
+				} {
+					e.IncrementalKey = strPtr(c.key)
+					_, err := svc.EditDraftItem(ctx, token, "p1", c.kind, c.id, e, caller)
+					shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+				}
+				So(written, ShouldBeNil)
+			})
+		})
+
 		Convey("An object type without an identity cannot be adopted\n", func() {
 			draft.Items.ObjectTypes[2].NeedsIdentity = true
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
