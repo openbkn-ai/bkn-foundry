@@ -9,7 +9,8 @@ setting belongs to its owner alone. Both only add to the shared Agent; see
 app/core/agent_settings.py for how the layers merge.
 """
 
-from typing import Annotated, Optional
+import hashlib
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel
@@ -28,7 +29,9 @@ from app.models import (
     AgentSetting,
     AgentSettingOut,
     PromptOut,
+    PromptTranslationPut,
     PromptVersionPublish,
+    PromptVersionRow,
     SharedAgentUpdate,
     SharedPromptPublish,
 )
@@ -571,6 +574,11 @@ async def restore_shared_agent(
 class SharedPromptOut(BaseModel):
     prompt: PromptOut
     next_version: int
+    source_language: Literal["zh-CN", "en-US"] | None = None
+    source_content: str
+    source_content_sha256: str
+    content_language: Literal["zh-CN", "en-US"] | None = None
+    translations: dict[str, str]
 
 
 async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPromptOut:
@@ -578,7 +586,35 @@ async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPrompt
         prompt := await dao.get_prompt(session, agent.prompt_id, localized=True)
     ):
         raise not_found("prompt", agent.prompt_id or agent.agent_id)
-    return SharedPromptOut(prompt=prompt, next_version=await dao.next_prompt_version(session, agent.prompt_id))
+    from app.commons.locale import get_effective_locale
+
+    row = await session.get(PromptVersionRow, (agent.prompt_id, prompt.current_version))
+    if row is None:
+        raise not_found("prompt", agent.prompt_id)
+    stored = (
+        row.f_localized_content if isinstance(row.f_localized_content, dict) else {}
+    )
+    variants = {
+        key: value
+        for key, value in stored.items()
+        if key in ("zh-CN", "en-US") and isinstance(value, str) and value
+    }
+    selected = get_effective_locale()
+    return SharedPromptOut(
+        prompt=prompt,
+        next_version=await dao.next_prompt_version(session, agent.prompt_id),
+        source_language=row.f_source_language,
+        source_content=row.f_content,
+        source_content_sha256=hashlib.sha256(row.f_content.encode()).hexdigest(),
+        content_language=selected
+        if selected != row.f_source_language and selected in variants
+        else row.f_source_language,
+        translations={
+            key: value
+            for key, value in variants.items()
+            if key != row.f_source_language
+        },
+    )
 
 
 @router.get("/admin/agents/{agent_id}/prompt", response_model=SharedPromptOut)
@@ -607,6 +643,7 @@ async def publish_shared_prompt(
     await dao.publish_prompt_version(
         session, agent.prompt_id, body.content, body.vars_schema, account.account_id,
         commit=False, preserve_vars_schema="vars_schema" not in body.model_fields_set,
+        source_language=getattr(body, "source_language", None),
     )
     await session.commit()
     return await _shared_prompt(session, agent)
@@ -631,7 +668,42 @@ async def publish_shared_prompt_version(
     await dao.publish_prompt_version(
         session, agent.prompt_id, body.content, body.vars_schema, account.account_id,
         commit=False, preserve_vars_schema="vars_schema" not in body.model_fields_set,
+        source_language=getattr(body, "source_language", None),
         version=body.version,
+    )
+    await session.commit()
+    return await _shared_prompt(session, agent)
+
+
+@router.put(
+    "/admin/agents/{agent_id}/prompt/versions/{version}/translations/{language}",
+    response_model=SharedPromptOut,
+)
+async def put_shared_prompt_translation(
+    body: PromptTranslationPut,
+    language: Literal["zh-CN", "en-US"],
+    account: Annotated[Account, Depends(get_public_account)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    agent_id: str = AgentId,
+    version: int = Path(ge=1),
+):
+    """Add or edit the selected version's translation without creating a version.
+
+    An unmarked legacy original is explicitly labeled by the administrator. A
+    changed active version, original body or source language returns 409.
+    """
+    await _require_shared_admin(account)
+    agent = await _builtin_agent(session, agent_id)
+    await dao.put_prompt_translation(
+        session,
+        agent_id,
+        agent.prompt_id,
+        version,
+        language,
+        body.content,
+        body.source_language,
+        body.source_content_sha256,
+        account.account_id,
     )
     await session.commit()
     return await _shared_prompt(session, agent)

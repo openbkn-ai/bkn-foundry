@@ -43,7 +43,12 @@ where f_prompt_id = 'resource-semantic-understanding-prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '813dff66c8ea6f830601b173347936752f02e545d45781b4bb68266d13855eb1';
+  and sha2(f_content, 256) = '813dff66c8ea6f830601b173347936752f02e545d45781b4bb68266d13855eb1'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- catalog-semantic-understanding-prompt v2
 update t_agent_prompt_version
@@ -60,7 +65,12 @@ where f_prompt_id = 'catalog-semantic-understanding-prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = 'ae1c828147e57c0f6db27029db35ed3efce3c9986deaa34e408c341bb70b1f8d';
+  and sha2(f_content, 256) = 'ae1c828147e57c0f6db27029db35ed3efce3c9986deaa34e408c341bb70b1f8d'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- Current official studio_smart_qa_prompt body
 update t_agent_prompt_version
@@ -95,7 +105,12 @@ where f_prompt_id = 'studio_smart_qa_prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2';
+  and sha2(f_content, 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- business_provenance_optimizer_prompt v1
 update t_agent_prompt_version
@@ -166,7 +181,12 @@ where f_prompt_id = 'business_provenance_optimizer_prompt'
   and f_create_user = 'bdd59f76-19c3-58b0-bf5f-082c4c3cbddb'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = 'b7bfaaf957df4f0c0339b03a2e47dd3cc9c810b2ee5b799f8f7c1fc4b6b072e5';
+  and sha2(f_content, 256) = 'b7bfaaf957df4f0c0339b03a2e47dd3cc9c810b2ee5b799f8f7c1fc4b6b072e5'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- business_provenance_claim_attribution_prompt v1
 update t_agent_prompt_version
@@ -199,7 +219,12 @@ where f_prompt_id = 'business_provenance_claim_attribution_prompt'
   and f_create_user = 'bdd59f76-19c3-58b0-bf5f-082c4c3cbddb'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '82951e10fedd5917845dbca8d97e9c26a9448a2763f2b828a714f9432d92c05a';
+  and sha2(f_content, 256) = '82951e10fedd5917845dbca8d97e9c26a9448a2763f2b828a714f9432d92c05a'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- cypher_generation_prompt v1
 update t_agent_prompt_version
@@ -268,7 +293,12 @@ where f_prompt_id = 'cypher_generation_prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '2bb793c87d28d4513e7c92211df008e779f058285df063e92afde63b6a9fd907';
+  and sha2(f_content, 256) = '2bb793c87d28d4513e7c92211df008e779f058285df063e92afde63b6a9fd907'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- object_metric_designer_prompt v1
 update t_agent_prompt_version
@@ -289,7 +319,12 @@ where f_prompt_id = 'object_metric_designer_prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '04f7548d8eb451eacfc718687c4362305c8d1c715725381a623a278234946d64';
+  and sha2(f_content, 256) = '04f7548d8eb451eacfc718687c4362305c8d1c715725381a623a278234946d64'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- graph_explorer_prompt v1
 update t_agent_prompt_version
@@ -366,7 +401,12 @@ where f_prompt_id = 'graph_explorer_prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '0fc05ddef18daaa4adaccb41c9dc6f258eff99fde7f70813648feb3b03a7b3ae';
+  and sha2(f_content, 256) = '0fc05ddef18daaa4adaccb41c9dc6f258eff99fde7f70813648feb3b03a7b3ae'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- bkn-project-drafter-prompt v1
 update t_agent_prompt_version
@@ -413,7 +453,12 @@ where f_prompt_id = 'bkn-project-drafter-prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '4808bfa2955050cbb8eea9b15f82d023a855cd43c4153b540e2715531d70b198';
+  and sha2(f_content, 256) = '4808bfa2955050cbb8eea9b15f82d023a855cd43c4153b540e2715531d70b198'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- Older official resource template: keep its original behavior and version.
 update t_agent_prompt_version
@@ -442,7 +487,12 @@ where f_prompt_id = 'resource-semantic-understanding-prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '8a0906f82ba04b340056fe7bb63888a56a0c0beec6e61b4ac4d1f751ce745724';
+  and sha2(f_content, 256) = '8a0906f82ba04b340056fe7bb63888a56a0c0beec6e61b4ac4d1f751ce745724'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- Older official resource template: keep its original behavior and version.
 update t_agent_prompt_version
@@ -475,7 +525,12 @@ where f_prompt_id = 'resource-semantic-understanding-prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = '0ab0a265fc0f0953d6f06b001ed0671893f20019ddde4049af1602a742e3e3f3';
+  and sha2(f_content, 256) = '0ab0a265fc0f0953d6f06b001ed0671893f20019ddde4049af1602a742e3e3f3'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);
 
 -- Historical official smart Q&A body from #2206 (VM Prompt v3/v4, including Initial).
 update t_agent_prompt_version
@@ -509,4 +564,9 @@ where f_prompt_id = 'studio_smart_qa_prompt'
   and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and (f_localized_content is null or json_type(f_localized_content) = 'NULL')
-  and sha2(f_content, 256) = 'ba37512d65f3f10f78d9c396e362f32681289164b594d5474c1bd9dde7bc8694';
+  and sha2(f_content, 256) = 'ba37512d65f3f10f78d9c396e362f32681289164b594d5474c1bd9dde7bc8694'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);

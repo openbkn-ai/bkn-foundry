@@ -6,6 +6,18 @@
 # match zh_cn.py exactly; tools/check_i18n_catalogs.py enforces that in CI.
 
 error_messages = {
+    "BknAgent.Prompt.TranslationStale": {
+        "code": "BknAgent.Prompt.TranslationStale",
+        "description": "The prompt or its source language changed. Reload before saving a translation.",
+        "detail": "The prompt or its source language changed. Reload before saving a translation.",
+        "solution": "Reload the prompt and check its source language.",
+    },
+    "BknAgent.Prompt.TranslationIsSource": {
+        "code": "BknAgent.Prompt.TranslationIsSource",
+        "description": "The original language cannot be saved as a translation.",
+        "detail": "The original language cannot be saved as a translation.",
+        "solution": "Reload the prompt and check its source language.",
+    },
     "BknAgent.Agent.BindingChanged": {
         "code": "BknAgent.ParamError.Conflict",
         "description": 'The Agent prompt binding changed concurrently.',

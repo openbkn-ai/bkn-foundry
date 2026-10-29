@@ -61,20 +61,27 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
             assert cursor.fetchall() == ()
+        with db.cursor() as cursor:
+            cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
         before_locales_rerun = saved_rows()
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)
         assert saved_rows() == before_locales_rerun
         with db.cursor() as cursor:
-            cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content FROM t_agent a "
+            cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content, p.f_current_version FROM t_agent a "
                            "JOIN t_agent_prompt p ON p.f_prompt_id=a.f_prompt_id "
                            "JOIN t_agent_prompt_version v ON v.f_prompt_id=p.f_prompt_id "
                            "AND v.f_version=p.f_current_version")
             rows = cursor.fetchall()
             assert len(rows) == 9
-            for agent_id, canonical, variants in rows:
-                variants = json.loads(variants)
-                assert variants.get("zh-CN", canonical) != variants.get("en-US", canonical), agent_id
+            for agent_id, canonical, variants, current in rows:
+                cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
+                initial = cursor.fetchone()
+                if initial and initial[0] == current:
+                    variants = json.loads(variants)
+                    assert variants.get("zh-CN", canonical) != variants.get("en-US", canonical), agent_id
+                else:
+                    assert variants is None, agent_id
         before_index_rerun = saved_rows()
         apply(PROMPT_INDEX)
         apply(PROMPT_INDEX)
@@ -111,18 +118,19 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert cursor.fetchone()[0] == "Custom user content"
         # Existing Initial configurations can reference an older official Prompt body.
         with db.cursor() as cursor:
-            for version, creator in ((103, "266c6a42-6131-4d62-8f39-853e7093701c"), (104, "administrator")):
+            for version, creator in ((103, "266c6a42-6131-4d62-8f39-853e7093701c"), (104, "administrator"), (105, "266c6a42-6131-4d62-8f39-853e7093701c")):
                 cursor.execute("INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_create_user,f_create_time) VALUES (%s,%s,%s,%s,%s)", ("studio_smart_qa_prompt", version, LEGACY_SMART_QA, creator, 1))
             cursor.execute("UPDATE t_agent_prompt SET f_current_version=103 WHERE f_prompt_id='studio_smart_qa_prompt'")
             cursor.execute("UPDATE t_agent_version SET f_prompt_version=103 WHERE f_agent_id='studio_smart_qa' AND f_initial=1")
         before_legacy = saved_rows()
         apply(BUILTIN_LOCALES)
         with db.cursor() as cursor:
-            cursor.execute("SELECT f_version,f_content,f_localized_content FROM t_agent_prompt_version WHERE f_prompt_id='studio_smart_qa_prompt' AND f_version IN (103,104) ORDER BY f_version")
-            official, custom = cursor.fetchall()
+            cursor.execute("SELECT f_version,f_content,f_localized_content FROM t_agent_prompt_version WHERE f_prompt_id='studio_smart_qa_prompt' AND f_version IN (103,104,105) ORDER BY f_version")
+            official, custom, non_initial = cursor.fetchall()
             assert official[1] == LEGACY_SMART_QA
             assert json.loads(official[2])["en-US"].startswith("You are a business knowledge network Q&A assistant")
             assert custom == (104, LEGACY_SMART_QA, None)
+            assert non_initial == (105, LEGACY_SMART_QA, None)
         after_legacy = saved_rows()
         assert before_legacy[:3] == after_legacy[:3]
         apply(BUILTIN_LOCALES)

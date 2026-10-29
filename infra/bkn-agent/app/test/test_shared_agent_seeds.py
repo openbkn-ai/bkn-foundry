@@ -31,6 +31,7 @@ PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
 RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
 BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
+SOURCE_LANGUAGE = MIGRATIONS / "0.2.1/17-prompt-source-language.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 
 
@@ -99,8 +100,9 @@ def apply(db, path, limit=None):
     ]
     for statement in inserts if limit is None else inserts[:limit]:
         if statement.lower().startswith("alter table t_agent_prompt_version"):
-            if "f_localized_content" not in {row[1] for row in db.execute("PRAGMA table_info(t_agent_prompt_version)")}:
-                db.execute("ALTER TABLE t_agent_prompt_version ADD COLUMN f_localized_content TEXT")
+            field = "f_source_language" if "f_source_language" in statement else "f_localized_content"
+            if field not in {row[1] for row in db.execute("PRAGMA table_info(t_agent_prompt_version)")}:
+                db.execute(f"ALTER TABLE t_agent_prompt_version ADD COLUMN {field} TEXT")
         else:
             db.execute(statement)
 
@@ -234,6 +236,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, DRAFTER)
         apply(upgraded, SEMANTIC_API_NAME)
         apply(upgraded, BUILTIN_LOCALES)
+        apply(upgraded, SOURCE_LANGUAGE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -420,6 +423,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(METRIC_DESIGN_BUDGET),
                     str(SEMANTIC_API_NAME),
                     str(BUILTIN_LOCALES),
+                    str(SOURCE_LANGUAGE),
                 ],
             ],
         ],
@@ -431,6 +435,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
 def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
     with database() as db:
         apply(db, PROVENANCE)
+        apply(db, VERSIONS)
         prompt_id = "business_provenance_claim_attribution_prompt"
         original = db.execute("SELECT f_content FROM t_agent_prompt_version WHERE f_prompt_id=?", (prompt_id,)).fetchone()[0]
         apply(db, CLAIM_LOCALES)
@@ -457,7 +462,7 @@ def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
-        "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
+        "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text() + "\n" + SOURCE_LANGUAGE.read_text()
     )
 
 
@@ -1031,7 +1036,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     init = Path(selected_migrations("0.0.0")[0][0])
     # The optional claim-locale column and guarded translation backfill do not
     # update semantic-understanding versions or their current/initial markers.
-    claim_locale_statements = set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
+    claim_locale_statements = set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES)) | set(statements(SOURCE_LANGUAGE))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)

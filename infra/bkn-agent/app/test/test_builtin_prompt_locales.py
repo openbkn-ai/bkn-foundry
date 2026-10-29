@@ -318,10 +318,13 @@ def test_older_official_resource_versions_receive_exact_matching_translations():
         )
         assert {row[0] for row in versions} == {3, 4}
         for version, canonical, localized in versions:
+            initial = db.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1").fetchone()
+            if not initial or version != initial[0]:
+                assert localized is None
+                continue
             variants = json.loads(localized)
             assert variants["zh-CN"] == canonical
             assert "api_name rules" not in variants["en-US"]
-            assert ("Output language rules" in variants["en-US"]) is (version == 4)
 
 
 def test_legacy_initial_smart_qa_locale_backfill_is_guarded_and_idempotent():
@@ -346,7 +349,7 @@ def test_legacy_initial_smart_qa_locale_backfill_is_guarded_and_idempotent():
             (8, LEGACY_SMART_QA, "266c6a42-6131-4d62-8f39-853e7093701c", "{}", None),
         ):
             db.execute(
-                "INSERT INTO t_agent_prompt_version VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time,f_localized_content) VALUES (?,?,?,?,?,?,?)",
                 (
                     "studio_smart_qa_prompt",
                     version,
@@ -361,7 +364,7 @@ def test_legacy_initial_smart_qa_locale_backfill_is_guarded_and_idempotent():
         seeds.apply(db, seeds.BUILTIN_LOCALES)
         after = seeds.snapshot(db)
         assert before[:2] == after[:2] and before[3] == after[3]
-        for version in (3, 4):
+        for version in (4,):
             row = db.execute(
                 "SELECT f_content,f_localized_content FROM t_agent_prompt_version WHERE f_prompt_id='studio_smart_qa_prompt' AND f_version=?",
                 (version,),
@@ -382,7 +385,7 @@ def test_legacy_initial_smart_qa_locale_backfill_is_guarded_and_idempotent():
                     "WHERE",
                 )
             )
-        for version in (5, 6, 7, 8):
+        for version in (3, 5, 6, 7, 8):
             assert [
                 r
                 for r in before[2]
