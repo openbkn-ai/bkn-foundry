@@ -258,6 +258,34 @@ func Test_ChooseIdentity(t *testing.T) {
 				So(got.Items.RelationTypes[0].ID, ShouldEqual, "kept")
 			})
 
+			Convey("A relation recommended from a similar field name keeps that origin\n", func() {
+				d := withShipments()
+				// The shipment names its order line by order_number, which only resembles order_no.
+				d.Items.ObjectTypes[2].Properties[1] = &interfaces.DraftProperty{Name: "order_number", Type: "string", MappedField: "order_number"}
+				stemTables := []*interfaces.VegaTable{tables[0], tables[1],
+					table("r_ship", "c1", "shipments", 0, []string{"shipment_id"},
+						col("shipment_id", "string", ""), col("order_number", "string", ""))}
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_lines", "r_customers", "r_ship"}).Return(stemTables, nil)
+				va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
+					DoAndReturn(func(_ context.Context, _ interfaces.VegaAccount, sql string, _ int) ([]map[string]any, error) {
+						if strings.Contains(sql, "LEFT JOIN") {
+							So(sql, ShouldContainSubstring, "`order_number`")
+							return []map[string]any{{"total": float64(50), "nulls": float64(0), "orphans": float64(0),
+								"distinct_values": float64(20)}}, nil
+						}
+						return []map[string]any{{"total": float64(10), "distinct_values": float64(10), "nulls": float64(0)}}, nil
+					}).Times(2)
+				expectWrite()
+
+				got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no"), caller)
+
+				So(err, ShouldBeNil)
+				So(got.Items.RelationTypes, ShouldHaveLength, 1)
+				So(got.Items.RelationTypes[0].Origin, ShouldEqual, interfaces.DRAFT_ORIGIN_STEM_MATCH)
+				So(got.Items.RelationTypes[0].Evidence.HitRate, ShouldEqual, 1)
+			})
+
 			Convey("Tables that cannot be read draft no relation and keep the choice\n", func() {
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(withShipments(), true, nil)
 				va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).

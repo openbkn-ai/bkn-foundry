@@ -570,8 +570,11 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 		})
 		candidates = append(candidates, stems[:min(len(stems), maxStemCandidates)]...)
 		for _, cand := range candidates {
-			drafted, err := d.refer(ctx, table, source, c.Name, cand.table, cand.key, interfaces.DRAFT_ORIGIN_NAME_MATCH,
-				cand.stem, ids)
+			origin := interfaces.DRAFT_ORIGIN_NAME_MATCH
+			if cand.stem {
+				origin = interfaces.DRAFT_ORIGIN_STEM_MATCH
+			}
+			drafted, err := d.refer(ctx, table, source, c.Name, cand.table, cand.key, origin, cand.stem, ids)
 			if err != nil {
 				return err
 			}

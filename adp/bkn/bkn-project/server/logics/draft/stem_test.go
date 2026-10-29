@@ -112,7 +112,7 @@ func Test_StemRelations(t *testing.T) {
 
 			r := relation(items, "erp_purchase_order", "erp_supplier")
 			So(r, ShouldNotBeNil)
-			So(r.Origin, ShouldEqual, interfaces.DRAFT_ORIGIN_NAME_MATCH)
+			So(r.Origin, ShouldEqual, interfaces.DRAFT_ORIGIN_STEM_MATCH)
 			So(r.Mapping, ShouldResemble, []interfaces.DraftFieldMapping{{SourceProperty: "supplier_number", TargetProperty: "supplier_code"}})
 			So(r.Adopted, ShouldBeTrue)
 			So(r.Evidence, ShouldResemble, interfaces.DraftJoinEvidence{

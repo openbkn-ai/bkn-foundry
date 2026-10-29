@@ -22,7 +22,10 @@ const (
 const (
 	DRAFT_ORIGIN_FOREIGN_KEY = "foreign_key"
 	DRAFT_ORIGIN_NAME_MATCH  = "name_match"
-	DRAFT_ORIGIN_LINK_TABLE  = "link_table"
+	// DRAFT_ORIGIN_STEM_MATCH is a field whose name only resembles the other table's:
+	// supplier_number for erp_supplier's supplier_code.
+	DRAFT_ORIGIN_STEM_MATCH = "stem_match"
+	DRAFT_ORIGIN_LINK_TABLE = "link_table"
 )
 
 // How an object type's key was found.

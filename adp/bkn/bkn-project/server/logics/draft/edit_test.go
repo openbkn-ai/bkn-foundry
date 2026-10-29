@@ -126,6 +126,11 @@ func Test_EditDraftItem(t *testing.T) {
 					Evidence: counted(rate), ProposedBecause: proposedEndNotAdopted,
 				}
 			}
+			stem := func(id, target, field, key string, rate float64) *interfaces.DraftRelationType {
+				r := relate(id, target, field, key, rate)
+				r.Origin = interfaces.DRAFT_ORIGIN_STEM_MATCH
+				return r
+			}
 			draft.Items.ObjectTypes = []*interfaces.DraftObjectType{
 				{ID: "orders", Name: "Orders", PrimaryKeys: []string{"order_id"}},
 				{ID: "suppliers", Name: "Suppliers", Adopted: true, PrimaryKeys: []string{"supplier_code"}},
@@ -134,6 +139,8 @@ func Test_EditDraftItem(t *testing.T) {
 			}
 			draft.Items.RelationTypes = []*interfaces.DraftRelationType{
 				relate("by_supplier", "suppliers", "supplier_number", "supplier_code", 1),
+				// Recommended from a similar field name: re-gated like any inferred relation.
+				stem("by_stem", "materials", "part_no", "material_code", 1),
 				relate("by_material", "materials", "material_number", "material_code", 0.85),
 				// Counted against a key the target no longer has.
 				relate("by_old_key", "materials", "material_name", "material_name", 1),
@@ -164,6 +171,7 @@ func Test_EditDraftItem(t *testing.T) {
 			}
 			So(state, ShouldResemble, map[string]string{
 				"by_supplier": "adopted",
+				"by_stem":     "adopted",
 				"by_material": proposedBelowAdoptRate,
 				"by_old_key":  proposedEndNotAdopted,
 				"by_region":   proposedEndNotAdopted,
@@ -172,11 +180,13 @@ func Test_EditDraftItem(t *testing.T) {
 				"renamed":     "adopted",
 			})
 			decisions := got.Items.Decisions[2:]
-			So(decisions, ShouldHaveLength, 3)
+			So(decisions, ShouldHaveLength, 4)
 			So(decisions[0].ItemID, ShouldEqual, "orders")
 			So(decisions[1].ItemID, ShouldEqual, "by_supplier")
 			So(decisions[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADOPT)
-			So(decisions[2].ItemID, ShouldEqual, "renamed")
+			So(decisions[2].ItemID, ShouldEqual, "by_stem")
+			So(decisions[3].ItemID, ShouldEqual, "renamed")
+			So(findRelationType(&got.Items, "by_stem").Origin, ShouldEqual, interfaces.DRAFT_ORIGIN_STEM_MATCH)
 		})
 
 		Convey("Renaming and describing record what they replaced\n", func() {
