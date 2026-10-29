@@ -500,6 +500,15 @@ type QuestionTest struct {
 	Check  QuestionTestCheck  `json:"check"`
 }
 
+// RequirementTestEdit changes the fields it sets of a test question. UpdateTime is the guidance's
+// as read.
+type RequirementTestEdit struct {
+	UpdateTime int64               `json:"update_time"`
+	Text       *string             `json:"text"`
+	Slots      *[]QuestionTestSlot `json:"slots"`
+	Expect     *string             `json:"expect"`
+}
+
 // QuestionTestSlot is one value a test question uses: the concept it belongs to, the property of
 // the concept's drafted object type it is a value of, and the value.
 type QuestionTestSlot struct {
@@ -651,6 +660,13 @@ type RequirementService interface {
 	// GetGuidance returns a scenario question's test questions and guidance with whether they
 	// still apply to the question as it is.
 	GetGuidance(ctx context.Context, token string, projectID string, questionID string) (*QuestionGuidanceView, error)
+
+	// EditTest changes a test question a person reviewed and checks it against the data again;
+	// DeleteTest removes one, so the regression no longer asks it. Each returns the guidance after.
+	EditTest(ctx context.Context, token string, projectID string, questionID string, testID string,
+		edit RequirementTestEdit, caller AccountInfo) (*QuestionGuidance, error)
+	DeleteTest(ctx context.Context, token string, projectID string, questionID string, testID string,
+		updateTime int64, caller AccountInfo) (*QuestionGuidance, error)
 
 	// ScenarioQuestions returns the project's scenario questions with their needs, for
 	// publishing and the regression after a release, which check visibility themselves. A

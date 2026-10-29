@@ -45,6 +45,7 @@ func Test_ScenarioQuestions(t *testing.T) {
 		Convey("Each question comes with its stored needs, the ones the draft lacks, and no tests yet\n", func() {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(ready, true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, nil)
 
 			got, err := svc.ScenarioQuestions(ctx, "p1")
 
@@ -61,9 +62,50 @@ func Test_ScenarioQuestions(t *testing.T) {
 				}})
 		})
 
+		Convey("Each question asks the test questions that passed their check, from guidance that still applies\n", func() {
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(ready, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			passed := interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return([]*interfaces.QuestionGuidance{
+				{QuestionID: "q1", SpecVersion: 2, Question: "Which orders?", Status: interfaces.GUIDANCE_STATUS_READY,
+					Tests: []*interfaces.QuestionTest{
+						{ID: "t1", Text: "Orders of 10001?", Check: passed},
+						{ID: "t2", Text: "Orders of 99999?", Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED}},
+						{ID: "t3", Text: "Orders of Acme?", Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED}},
+					}},
+				// Generated for another version of the question: it no longer applies.
+				{QuestionID: "q2", SpecVersion: 1, Question: "What rate?", Status: interfaces.GUIDANCE_STATUS_READY,
+					Tests: []*interfaces.QuestionTest{{ID: "t1", Text: "Rate of May?", Check: passed}}},
+			}, nil)
+
+			got, err := svc.ScenarioQuestions(ctx, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.Questions[0].Tests, ShouldResemble, []interfaces.ScenarioTest{{ID: "t1", Text: "Orders of 10001?"}})
+			So(got.Questions[1].Tests, ShouldResemble, []interfaces.ScenarioTest{})
+		})
+
+		Convey("Guidance generated before the specification was drafted again no longer applies\n", func() {
+			again := *ready
+			again.CreateTime = 30
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&again, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return([]*interfaces.QuestionGuidance{
+				{QuestionID: "q1", SpecVersion: 2, Question: "Which orders?", Status: interfaces.GUIDANCE_STATUS_READY, CreateTime: 20,
+					Tests: []*interfaces.QuestionTest{{ID: "t1", Text: "Orders of 10001?",
+						Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}}}},
+			}, nil)
+
+			got, err := svc.ScenarioQuestions(ctx, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.Questions[0].Tests, ShouldResemble, []interfaces.ScenarioTest{})
+		})
+
 		Convey("Without a draft every need is missing\n", func() {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(ready, true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, nil)
 
 			got, err := svc.ScenarioQuestions(ctx, "p1")
 
@@ -92,6 +134,12 @@ func Test_ScenarioQuestions(t *testing.T) {
 
 			_, err := svc.ScenarioQuestions(ctx, "p1")
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
+			_, err = svc.ScenarioQuestions(ctx, "p1")
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
+
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(ready, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, errors.New("db down"))
 			_, err = svc.ScenarioQuestions(ctx, "p1")
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
 		})

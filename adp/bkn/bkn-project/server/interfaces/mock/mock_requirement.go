@@ -398,6 +398,21 @@ func (mr *MockRequirementServiceMockRecorder) DeleteItem(ctx, token, projectID, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteItem", reflect.TypeOf((*MockRequirementService)(nil).DeleteItem), ctx, token, projectID, kind, itemID, updateTime, caller)
 }
 
+// DeleteTest mocks base method.
+func (m *MockRequirementService) DeleteTest(ctx context.Context, token, projectID, questionID, testID string, updateTime int64, caller interfaces.AccountInfo) (*interfaces.QuestionGuidance, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteTest", ctx, token, projectID, questionID, testID, updateTime, caller)
+	ret0, _ := ret[0].(*interfaces.QuestionGuidance)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteTest indicates an expected call of DeleteTest.
+func (mr *MockRequirementServiceMockRecorder) DeleteTest(ctx, token, projectID, questionID, testID, updateTime, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTest", reflect.TypeOf((*MockRequirementService)(nil).DeleteTest), ctx, token, projectID, questionID, testID, updateTime, caller)
+}
+
 // EditItem mocks base method.
 func (m *MockRequirementService) EditItem(ctx context.Context, token, projectID, kind, itemID string, edit interfaces.RequirementItemEdit, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
 	m.ctrl.T.Helper()
@@ -411,6 +426,21 @@ func (m *MockRequirementService) EditItem(ctx context.Context, token, projectID,
 func (mr *MockRequirementServiceMockRecorder) EditItem(ctx, token, projectID, kind, itemID, edit, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EditItem", reflect.TypeOf((*MockRequirementService)(nil).EditItem), ctx, token, projectID, kind, itemID, edit, caller)
+}
+
+// EditTest mocks base method.
+func (m *MockRequirementService) EditTest(ctx context.Context, token, projectID, questionID, testID string, edit interfaces.RequirementTestEdit, caller interfaces.AccountInfo) (*interfaces.QuestionGuidance, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EditTest", ctx, token, projectID, questionID, testID, edit, caller)
+	ret0, _ := ret[0].(*interfaces.QuestionGuidance)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EditTest indicates an expected call of EditTest.
+func (mr *MockRequirementServiceMockRecorder) EditTest(ctx, token, projectID, questionID, testID, edit, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EditTest", reflect.TypeOf((*MockRequirementService)(nil).EditTest), ctx, token, projectID, questionID, testID, edit, caller)
 }
 
 // FailInterrupted mocks base method.

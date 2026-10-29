@@ -114,6 +114,17 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 			drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: rt.ID}] = true
 		}
 	}
+	// The test questions asked are those that passed their check, of guidance generated for the
+	// question as it is now.
+	list, err := s.ra.ListGuidance(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "List guidance failed")
+		return nil, internalError(ctx, "List guidance failed", err)
+	}
+	guidance := map[string]*interfaces.QuestionGuidance{}
+	for _, g := range list {
+		guidance[g.QuestionID] = g
+	}
 	result.SpecVersion, result.UpdateTime = req.Version, req.UpdateTime
 	for _, q := range req.Spec.Questions {
 		question := interfaces.ScenarioQuestion{
@@ -125,6 +136,13 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 		for _, need := range q.Needs {
 			if !drafted[need] {
 				question.MissingItems = append(question.MissingItems, need)
+			}
+		}
+		if g := guidance[q.ID]; g != nil && g.Status == interfaces.GUIDANCE_STATUS_READY && guidanceCurrent(req, q, g) {
+			for _, t := range g.Tests {
+				if t.Check.Outcome == interfaces.TEST_CHECK_PASSED {
+					question.Tests = append(question.Tests, interfaces.ScenarioTest{ID: t.ID, Text: t.Text})
+				}
 			}
 		}
 		result.Questions = append(result.Questions, question)
