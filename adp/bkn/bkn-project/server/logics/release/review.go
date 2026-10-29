@@ -46,21 +46,27 @@ type projectReleaseService struct {
 	da  interfaces.DraftAccess
 	ca  interfaces.CheckAccess
 	gs  interfaces.GitStore
+	ra  interfaces.ReleaseAccess
 	// rs reads the scenario questions of the project's requirement specification; without it a
 	// review has none.
 	rs interfaces.RequirementService
+	// reviewer reviews a release before it is published: the service itself, but for tests.
+	reviewer interfaces.ProjectReleaseService
 }
 
 func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectReleaseService {
 	prsOnce.Do(func() {
-		prs = &projectReleaseService{
+		s := &projectReleaseService{
 			ps:  project.NewProjectService(),
 			drs: draft.NewDraftService(appSetting),
 			ls:  lineage.NewLineageService(),
 			da:  logics.DA,
 			ca:  logics.CA,
 			gs:  logics.GS,
+			ra:  logics.RA,
 		}
+		s.reviewer = s
+		prs = s
 	})
 	return prs
 }

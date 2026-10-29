@@ -160,6 +160,26 @@ type SimilarNames struct {
 	Other ReleaseItem `json:"other"`
 }
 
+// ProjectPublish is the body of a project's release. Signature is that of the review the owner
+// read; Accepts are what the owner accepts of the checks that did not pass.
+type ProjectPublish struct {
+	Version   string   `json:"version"`
+	Notes     string   `json:"notes"`
+	Signature string   `json:"signature"`
+	Accepts   []string `json:"accepts"`
+}
+
+// RELEASE_NOTES_ACCEPTED starts the line of release notes that records, as codes, what the owner
+// accepted to publish.
+const RELEASE_NOTES_ACCEPTED = "Accepted: "
+
+// ProjectDriftCommit is what committing the drift of the live network did: the drift committed to
+// main, and how the project branch was then brought up to it.
+type ProjectDriftCommit struct {
+	Drift *DriftResult      `json:"drift"`
+	Sync  *SyncBranchResult `json:"sync"`
+}
+
 // ProjectReleaseService reviews and publishes a project's releases.
 //
 //go:generate mockgen -source ../interfaces/project_release.go -destination ../interfaces/mock/mock_project_release.go
@@ -168,4 +188,20 @@ type ProjectReleaseService interface {
 	// it may, as the caller.
 	ReviewRelease(ctx context.Context, token string, projectID string, version string,
 		caller AccountInfo) (*ReleaseReview, error)
+	// PublishRelease publishes the project's branch, for the owner, once its review still stands
+	// and every check passed or was accepted.
+	PublishRelease(ctx context.Context, token string, projectID string, req ProjectPublish,
+		caller AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
+	// SyncBranch brings the live version into the project's branch, for the owner.
+	SyncBranch(ctx context.Context, token string, projectID string, caller AccountInfo,
+		author GitAuthor) (*SyncBranchResult, error)
+	// CommitDrift commits the live network's drift to main and syncs the project's branch, for the
+	// owner.
+	CommitDrift(ctx context.Context, token string, projectID string, caller AccountInfo,
+		author GitAuthor) (*ProjectDriftCommit, error)
+	// PlanSwitch reports what switching consumers to a release of the project would do.
+	PlanSwitch(ctx context.Context, token string, projectID string, toNetworkID string) (*SwitchPlan, error)
+	// SwitchConsumers switches consumers to a release of the project, for the owner.
+	SwitchConsumers(ctx context.Context, token string, projectID string, toNetworkID string,
+		caller AccountInfo) (*Switch, error)
 }
