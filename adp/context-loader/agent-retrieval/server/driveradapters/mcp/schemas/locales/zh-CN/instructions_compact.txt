@@ -14,11 +14,11 @@ ContextLoader：常用查询直接调用，其他工具按需加载。
 探索与查询：
 - 不知道 kn_id 时先 list_knowledge_networks；get_kn_detail 看概览，search_schema 找类和指标，用返回的真实 ID 查询。
 - 自然语言召回实例用 search_instance（相关性 Top-K，不是全部）；按条件取数、排序、翻页用 query_object_instance；已建模指标用 query_metric。
-- 聚合、计数、排名、分组和跨对象关联用 run_cypher（只读 Cypher，标签写对象类、关系写关系类、属性写逻辑属性名，聚合按 RETURN 其余列自动分组），一条查询完成，不要用 query_object_instance 拉多页后自行统计；口径已建成指标的走 query_metric。
+- 聚合、计数、排名、分组和跨对象关联用 run_cypher（只读 Cypher，标签写对象类、关系写关系类、属性写逻辑属性名，聚合按 RETURN 其余列自动分组），一条查询完成，不要用 query_object_instance 拉多页后自行统计，总数只取同一过滤条件的 total_count 或聚合结果；口径已建成指标的走 query_metric。
 - 已知路径模板（经过哪些对象类和关系类）批量取数用 query_instance_subgraph。
 
 - 其他能力经按需工具：search_native_tools 找工具；有 ready 就按其 schema/template 调 execute_native_tool，否则先 describe_native_tool。name 填目标工具，arguments 填参数，bkn_context 放外层；候选不能按名称直调。
 
-- 业务计算（可售、齐套缺料、产能、交期、替代料、BOM 等）：get_kn_detail 有挂载函数时，经 execute_native_tool 调 search_capabilities 找已发布函数，再 execute_tool，以函数结果为准；不要用原始、分页或预览数据自行推算。按顶层 comment 的路由、指标和时间基线作答。
+- get_kn_detail 有挂载函数时，先经 execute_native_tool 调 search_capabilities 查与问题相符的已发布函数；有就按其 call 调 execute_tool，以其结果为准，不要改用原始、分页或预览数据代替；函数失败或不适用才走通用查询并说明原因。按顶层 comment 的路由、指标和时间基线作答。
 
 执行行动等会修改数据或调用外部系统的操作，先确认用户的意图。
