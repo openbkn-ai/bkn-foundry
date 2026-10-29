@@ -65,6 +65,10 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 				now.UnixMilli())
 		}
 	}
+	if err := s.withRequirementConflicts(ctx, projectID, status); err != nil {
+		span.SetStatus(codes.Error, "Read requirement failed")
+		return nil, internalError(ctx, "Read requirement failed", err)
+	}
 	// Only a current confirmation can have been published.
 	if status.Confirmation != nil && status.Confirmation.Current {
 		latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: entry.KNID, Limit: 1})
@@ -415,4 +419,29 @@ func anyObjectTypeAdopted(items *interfaces.DraftItems) bool {
 		}
 	}
 	return false
+}
+
+// withRequirementConflicts counts the unresolved conflicts of the project's ready requirement
+// specification and, when a draft can be confirmed, has confirming accept them, as confirming
+// asks.
+func (s *draftService) withRequirementConflicts(ctx context.Context, projectID string,
+	status *interfaces.ProjectStatus) error {
+	var confirm *interfaces.ProjectStatusNextAction
+	for i := range status.NextActions {
+		if status.NextActions[i].Action == interfaces.ACTION_CONFIRM_DRAFT {
+			confirm = &status.NextActions[i]
+		}
+	}
+	if confirm == nil {
+		return nil
+	}
+	_, unresolved, err := s.requirementState(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if status.UnresolvedConflicts = len(unresolved); status.UnresolvedConflicts > 0 {
+		confirm.Body["accept_unresolved_conflicts"] = true
+		confirm.Accepts = append(confirm.Accepts, interfaces.ACCEPTS_UNRESOLVED_CONFLICTS)
+	}
+	return nil
 }
