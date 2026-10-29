@@ -68,8 +68,8 @@ func Test_Stems(t *testing.T) {
 		Convey("The other table's name ending in the stem ranks above its key's stem\n", func() {
 			supplier := table("r_s", "c1", "erp_supplier", 0, nil)
 			product := table("r_p", "c1", "hd_product_view", 0, nil)
-			So(stemMatch("supplier_number", supplier, "supplier_code", testSetting), ShouldEqual, 3)
-			So(stemMatch("material_number", product, "material_code", testSetting), ShouldEqual, 2)
+			So(stemMatch("supplier_number", supplier, "supplier_code", testSetting), ShouldEqual, 4)
+			So(stemMatch("material_number", product, "material_code", testSetting), ShouldEqual, 3)
 			So(stemMatch("supplier_name", supplier, "supplier_code", testSetting), ShouldEqual, 0)
 			So(stemMatch("customer_number", supplier, "supplier_code", testSetting), ShouldEqual, 0)
 		})
@@ -179,6 +179,51 @@ func Test_StemRelations(t *testing.T) {
 
 			So(len(items.ValueTypes), ShouldEqual, 1)
 			So(findProperty(objectType(items, "members"), "member_level_no").ValueTypeID, ShouldEqual, "")
+		})
+
+		Convey("A stem is only drafted counted: not to another catalog, nor when its count fails\n", func() {
+			all := tables("string")
+			// In another catalog, of ids that sort before erp_supplier's: enough to take every place.
+			for _, id := range []string{"r_a_srm", "r_b_srm", "r_c_srm"} {
+				all = append(all, table(id, "c2", "srm_supplier", 0, []string{"supplier_code"}, col("supplier_code", "string", "")))
+			}
+			c := counts([4]int64{200, 0, 0, 120}, [4]int64{})
+			c.failed["r_po.material_number"] = true
+			items := run(c, all)
+
+			So(relation(items, "erp_purchase_order", "srm_supplier"), ShouldBeNil)
+			So(relation(items, "erp_purchase_order", "erp_supplier").Adopted, ShouldBeTrue)
+			So(c.counted, ShouldNotContain, "r_po.supplier_number>r_a_srm")
+			// Both tables the material stem points at were tried; neither was drafted uncounted.
+			So(relation(items, "erp_purchase_order", "erp_material"), ShouldBeNil)
+			So(relation(items, "erp_purchase_order", "hd_product_view"), ShouldBeNil)
+			So(c.counted, ShouldContain, "r_po.material_number>r_a_product")
+		})
+
+		Convey("A business name in words names a table by its whole name or its last words\n", func() {
+			po := table("r_cg", "c1", "cg", 0, []string{"dd"}, col("dd", "string", ""), col("yh", "string", "User ID"))
+			role := table("r_a_role", "c1", "js", 0, []string{"bm"}, col("bm", "string", ""))
+			role.Description = "User role"
+			superuser := table("r_b_su", "c1", "cjyh", 0, []string{"bm"}, col("bm", "string", ""))
+			superuser.Description = "Superuser"
+			user := table("r_c_user", "c1", "yh_b", 0, []string{"bm"}, col("bm", "string", ""))
+			user.Description = "System user"
+			exact := table("r_d_user", "c1", "yh_a", 0, []string{"bm"}, col("bm", "string", ""))
+			exact.Description = "User"
+			c := sampleCounter()
+			c.joins = map[joinKey][4]int64{{"r_cg", "yh"}: {100, 0, 0, 40}}
+			rc := &recordingCounter{fakeCounter: c}
+			items := run(rc, []*interfaces.VegaTable{po, role, superuser, user, exact})
+
+			// The table named User exactly comes first, though its id sorts last.
+			So(rc.counted, ShouldResemble, []string{"r_cg.yh>r_d_user"})
+			So(relation(items, "cg", "yh_a"), ShouldNotBeNil)
+
+			// Refuted, the stem goes on to the name it ends, never to User role or Superuser.
+			c.joins = map[joinKey][4]int64{{"r_cg", "yh"}: {100, 0, 100, 40}}
+			rc.counted = nil
+			run(rc, []*interfaces.VegaTable{po, role, superuser, user, exact})
+			So(rc.counted, ShouldResemble, []string{"r_cg.yh>r_d_user", "r_cg.yh>r_c_user"})
 		})
 
 		Convey("A field whose business name names the other table is a candidate\n", func() {

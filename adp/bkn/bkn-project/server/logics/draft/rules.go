@@ -329,9 +329,9 @@ func stemMatch(field string, other *interfaces.VegaTable, key string, setting co
 	}
 	switch table := words(physicalName(other)); {
 	case len(table) >= len(stem) && slices.Equal(table[len(table)-len(stem):], stem):
-		return 3
+		return 4
 	case slices.Equal(fieldStem(key, setting), stem):
-		return 2
+		return 3
 	}
 	return 0
 }
