@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -71,6 +72,26 @@ func TestManagedProxyAccountLifecycleAPI(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &account)
 	if !account.Enabled || account.LifecycleStatus != managedproxy.StatusActive {
 		t.Fatalf("restored response = %+v", account)
+	}
+}
+
+func TestManagedProxyAccountAPIAcceptsMaximumUnicodeNetworkName(t *testing.T) {
+	r, _, _ := newTestServer(t)
+	name := "BKN proxy: " + strings.Repeat("长度", 64)
+	w := do(t, r, http.MethodPost, "/api/safe/in/v1/managed-proxy-accounts", map[string]any{
+		"managed_resource_type": managedproxy.ResourceKnowledgeNetwork,
+		"managed_resource_id":   strings.Repeat("cd", 64),
+		"name":                  name,
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d body=%s", w.Code, w.Body.String())
+	}
+	var account managedproxy.Account
+	if err := json.Unmarshal(w.Body.Bytes(), &account); err != nil {
+		t.Fatal(err)
+	}
+	if account.Name != name {
+		t.Fatalf("proxy name = %q, want exact Unicode input", account.Name)
 	}
 }
 

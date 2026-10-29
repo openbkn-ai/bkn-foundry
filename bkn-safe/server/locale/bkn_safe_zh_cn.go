@@ -9,6 +9,8 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var bknSafeZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknSafe.Department.Cycle":                           "父部门不能是当前部门、其后代或已有循环中的部门。请选择其他父部门。",
+		"BknSafe.Department.ParentNotFound":                  "父部门或其祖先部门不存在。请刷新部门列表并选择已有的父部门。",
 		"BknSafe.InvalidRequest":                             "请求参数无效。请检查请求参数。",
 		"BknSafe.Unauthorized":                               "认证失败。请提供有效的认证凭据。",
 		"BknSafe.Forbidden":                                  "没有执行此操作的权限。请联系管理员授予所需权限。",
@@ -25,6 +27,7 @@ var bknSafeZhCN = i18n.I18nMessages{
 		"BknSafe.AdminWrite.Immutable":                       "内置对象不能修改。请改为创建或修改自定义对象。",
 		"BknSafe.AdminWrite.NoUpdatableFields":               "未提供可更新字段。请至少提供一个可更新字段。",
 		"BknSafe.AdminWrite.WildcardGrantForbidden":          "不能授予通配资源类型或操作。请指定具体的资源类型和操作。",
+		"BknSafe.AdminWrite.SubResourceWildcardForbidden":    "子资源类型不支持通配授权。请指定具体的资源标识。",
 		"BknSafe.AdminWrite.AdminConsolePermissionForbidden": "不能通过角色权限授予管理控制台能力。请通过受管的管理员角色绑定授予此能力。",
 		"BknSafe.Auth.AccountPlaceholder":                    "账号",
 		"BknSafe.Auth.PasswordPlaceholder":                   "密码",

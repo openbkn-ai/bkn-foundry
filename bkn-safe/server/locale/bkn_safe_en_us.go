@@ -9,6 +9,8 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var bknSafeEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknSafe.Department.Cycle":                           "The parent department cannot be this department, one of its descendants, or part of a department cycle. Choose another parent department.",
+		"BknSafe.Department.ParentNotFound":                  "The parent department or one of its ancestors does not exist. Refresh the department list and choose an existing parent department.",
 		"BknSafe.InvalidRequest":                             "The request parameters are invalid. Check the request parameters.",
 		"BknSafe.Unauthorized":                               "Authentication failed. Provide valid authentication credentials.",
 		"BknSafe.Forbidden":                                  "You are not permitted to perform this operation. Contact an administrator to obtain the required permission.",
@@ -25,6 +27,7 @@ var bknSafeEnUS = i18n.I18nMessages{
 		"BknSafe.AdminWrite.Immutable":                       "Built-in objects cannot be modified. Create or modify a custom object instead.",
 		"BknSafe.AdminWrite.NoUpdatableFields":               "No updatable fields were provided. Provide at least one field that can be updated.",
 		"BknSafe.AdminWrite.WildcardGrantForbidden":          "Wildcard resource types and operations cannot be granted. Specify a concrete resource type and operation.",
+		"BknSafe.AdminWrite.SubResourceWildcardForbidden":    "Wildcard grants are not allowed for sub-resource types. Specify a concrete resource identifier.",
 		"BknSafe.AdminWrite.AdminConsolePermissionForbidden": "The admin console capability cannot be granted through role permissions. Use the managed administrator role binding for this capability.",
 		"BknSafe.Auth.AccountPlaceholder":                    "Account",
 		"BknSafe.Auth.PasswordPlaceholder":                   "Password",

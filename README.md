@@ -152,7 +152,7 @@ In long-running agent scenarios, context inevitably faces explosion, decay, poll
 Beyond "seeing more", Agents must "do it right". BKN Foundry provides constraint engineering capabilities for enterprise-grade safe execution:
 
 - **Explainable decisions** — Uses "Object → Action → Rule → Constraint" knowledge structures to express business intent graphs, grounding tool invocation and parameter selection to explicit semantic boundaries and rule dependencies, making it clear "why this action was taken".
-- **Traceable evidence chain** — From action intent → knowledge node → data source → mapping/operator → final invocation, full-chain tracing is supported. Entities and relationships can be traced back to source data and active rules, enabling audit and review.
+- **Traceable evidence chain** — From action intent → knowledge node → data source → mapping/tool → final invocation, full-chain tracing is supported. Entities and relationships can be traced back to source data and active rules, enabling audit and review.
 - **Controllable execution loop** — Unifies identity and access control down to knowledge network object/action permissions, with pre-execution validation, mid-execution policy interception, and post-execution audit logging, achieving "authorizable, approvable, revocable" security loops.
 - **Risk prevention mechanism** — Models risks as "Risk Types" linked to Action Types; performs risk assessment and simulation before execution, with automatic downgrade/blocking/secondary confirmation when thresholds are hit, blocking high-risk actions before they execute.
 
@@ -167,7 +167,7 @@ Beyond "seeing more", Agents must "do it right". BKN Foundry provides constraint
 | **VEGA** | Data virtualization — hides differences between underlying multi-source & multi-modal data |
 | **Exec Factory** | Execution factory — orchestrates tools, MCP, and Skills |
 | **BKN Safe** | Access control — unified identity, permissions, and policy entry point; security controls and auditing per business object / action |
-| **BKN Trace** | Evidence chain — traces BKN call chains (intent → knowledge node → data source → mapping / operator); traceable and explainable |
+| **BKN Trace** | Evidence chain — traces BKN call chains (intent → knowledge node → data source → mapping / tool); traceable and explainable |
 
 See the full write-up in [BKN Reference Architecture](docs/bkn-architecture.md).
 

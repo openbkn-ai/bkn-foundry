@@ -194,7 +194,7 @@ components:
       name: kn_id
       in: path
       required: true
-      schema: { type: string, maxLength: 64 }
+      schema: { type: string, maxLength: 128 }
   schemas:
     KnowledgeNetworkProxyAccountList:
       type: object

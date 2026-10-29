@@ -78,8 +78,8 @@ func convertLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, erro
 	}
 
 	return map[string]any{
-		"field":      cfg.Field,
-		"operation":  "like",
+		"field":     cfg.Field,
+		"operation": "like",
 		// Forward the value with its escapes intact: vega parses it again, and unescaping early
 		// would turn a literal % into a wildcard
 		"value":      cfg.Value,

@@ -34,9 +34,10 @@ const (
 // Database queue-head fencing ensures that one knowledge network never has two
 // generations in flight, including across several BKN instances.
 type ProxySyncWorker struct {
-	outbox interfaces.KNProxyOutboxAccess
-	proxy  interfaces.ManagedProxyAccess
-	owner  string
+	outbox     interfaces.KNProxyOutboxAccess
+	proxy      interfaces.ManagedProxyAccess
+	permission interfaces.PermissionService
+	owner      string
 
 	enabled       bool
 	workers       int
@@ -55,14 +56,14 @@ type ProxySyncWorker struct {
 
 // NewProxySyncWorker creates one per-process worker pool.
 func NewProxySyncWorker(appSetting *common.AppSetting, outbox interfaces.KNProxyOutboxAccess,
-	proxy interfaces.ManagedProxyAccess) *ProxySyncWorker {
+	proxy interfaces.ManagedProxyAccess, permission interfaces.PermissionService) *ProxySyncWorker {
 	hostname, _ := os.Hostname()
 	if len(hostname) > 64 {
 		hostname = hostname[:64]
 	}
 	workerCtx, cancel := context.WithCancel(context.Background())
 	w := &ProxySyncWorker{
-		outbox: outbox, proxy: proxy, owner: fmt.Sprintf("%s-%d", hostname, os.Getpid()),
+		outbox: outbox, proxy: proxy, permission: permission, owner: fmt.Sprintf("%s-%d", hostname, os.Getpid()),
 		enabled: true, workers: defaultProxySyncWorkers, pollInterval: defaultProxySyncPollInterval,
 		lease: defaultProxySyncLease, maxAttempts: defaultProxySyncMaxAttempts,
 		cleanupPeriod: defaultProxyOutboxCleanupPeriod, retention: defaultProxyOutboxRetention,
@@ -106,7 +107,7 @@ func (w *ProxySyncWorker) start() {
 		logger.Info("ProxySyncWorker is disabled by configuration")
 		return
 	}
-	if w.outbox == nil || w.proxy == nil {
+	if w.outbox == nil || w.proxy == nil || w.permission == nil {
 		logger.Warn("ProxySyncWorker is disabled because a dependency is unavailable")
 		return
 	}
@@ -169,10 +170,15 @@ func (w *ProxySyncWorker) process(owner string, event *interfaces.KNProxyOutboxE
 	renewDone := make(chan struct{})
 	leaseLost := make(chan error, 1)
 	go w.renewLease(ctx, cancel, renewDone, leaseLost, owner, event.ID)
+	proxyApplied := event.SafeApplied
 	var syncErr error
 	if !event.SafeApplied {
 		_, syncErr = w.proxy.SyncGrantDelta(ctx, event.ProxyAccountID, event.GrantorID, event.Generation,
 			event.BaseVersion, event.TargetVersion, event.Upserts, event.Removals)
+		proxyApplied = syncErr == nil
+	}
+	if syncErr == nil {
+		syncErr = w.cleanupAuthorization(ctx, event.AuthorizationCleanups)
 	}
 	cancel()
 	<-renewDone
@@ -208,7 +214,12 @@ func (w *ProxySyncWorker) process(owner string, event *interfaces.KNProxyOutboxE
 			event.ID, event.Generation, completeErr)
 		return
 	}
-	dead := event.AttemptCount >= w.maxAttempts || !retryableProxySyncError(syncErr)
+	// Once the proxy delta has been accepted, authorization cleanup is the
+	// durable completion tail. It must not be made dead by the delivery budget
+	// that applied to the proxy call; completing claims deliberately stop
+	// incrementing AttemptCount and keep retrying this idempotent cleanup.
+	dead := !proxyApplied &&
+		(event.AttemptCount >= w.maxAttempts || !retryableProxySyncError(syncErr))
 	now := time.Now()
 	next := now.Add(proxySyncRetryDelay(event.AttemptCount))
 	if dead {
@@ -217,7 +228,7 @@ func (w *ProxySyncWorker) process(owner string, event *interfaces.KNProxyOutboxE
 	persistCtx, persistCancel := w.persistenceContext()
 	defer persistCancel()
 	if err := w.outbox.Retry(persistCtx, event.ID, owner, proxySyncErrorSummary(syncErr),
-		next.UnixMilli(), now.UnixMilli(), dead, false); err != nil {
+		next.UnixMilli(), now.UnixMilli(), dead, proxyApplied); err != nil {
 		logger.Errorf("ProxySyncWorker failed to persist event %s failure: %v", event.ID, err)
 		return
 	}
@@ -228,6 +239,26 @@ func (w *ProxySyncWorker) process(owner string, event *interfaces.KNProxyOutboxE
 	}
 	logger.Warnf("ProxySyncWorker will retry event %s for kn %s proxy %s generation %d after attempt %d: %v",
 		event.ID, event.KNID, event.ProxyAccountID, event.Generation, event.AttemptCount, syncErr)
+}
+
+func (w *ProxySyncWorker) cleanupAuthorization(ctx context.Context,
+	targets []interfaces.AuthorizationCleanupTarget) error {
+	if len(targets) == 0 {
+		return nil
+	}
+	if w.permission == nil {
+		return errors.New("proxy sync authorization cleanup service is unavailable")
+	}
+	for _, target := range targets {
+		if target.ResourceType == "" || len(target.ResourceIDs) == 0 {
+			return errors.New("proxy sync authorization cleanup target is invalid")
+		}
+		if err := w.permission.DeleteResources(ctx, target.ResourceType, target.ResourceIDs); err != nil {
+			return fmt.Errorf("delete %d %s authorization resources: %w",
+				len(target.ResourceIDs), target.ResourceType, err)
+		}
+	}
+	return nil
 }
 
 func (w *ProxySyncWorker) renewLease(ctx context.Context, cancel context.CancelFunc, done chan<- struct{},
@@ -251,7 +282,7 @@ func (w *ProxySyncWorker) renewLease(ctx context.Context, cancel context.CancelF
 			// The Safe call has finished (or the process is stopping). Its caller
 			// intentionally cancels ctx to join this goroutine; a renewal aborted by
 			// that cancellation is not evidence that another worker owns the event.
-			if ctx.Err() != nil {
+			if ctx.Err() != nil && errors.Is(err, context.Canceled) {
 				return
 			}
 			if err != nil || !ok {

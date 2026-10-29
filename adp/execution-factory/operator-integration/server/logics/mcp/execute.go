@@ -222,7 +222,7 @@ func configListToolsRequest(config *model.MCPServerConfigDB) *ListToolsRequest {
 // servingListToolsRequest describes the version of an MCP Server that its callers are served, and
 // reports whether they are served at all.
 //
-// An editing server is a published server with a draft beside it, the rule Operators and Skills
+// An editing server is a published server with a draft beside it, the rule Skills
 // follow too: its release keeps serving until the draft is published, and the draft reaches only
 // the debug path. The config cannot stand in for the release here — entering editing moves it to a
 // version that may have no instance at all (#1478). A published server is served from its config,

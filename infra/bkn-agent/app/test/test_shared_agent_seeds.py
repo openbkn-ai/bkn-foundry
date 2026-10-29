@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models import AgentLimits, AgentSpec, PromptSpec
+from app.public_auth import BUILTIN_AGENT_IDS
 
 ROOT = Path(__file__).resolve().parents[4]
 MIGRATIONS = ROOT / "migrations/bkn-agent/mariadb"
@@ -22,10 +23,13 @@ SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
 VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
 CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
 METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
+METRIC_DESIGN_BUDGET = MIGRATIONS / "0.2.1/14-object-metric-designer-output-budget.sql"
 SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
 GRAPH_EXPLORER = MIGRATIONS / "0.2.1/09-seed-graph-explorer.sql"
 CLAIM_LOCALES = MIGRATIONS / "0.2.1/10-claim-prompt-locales.sql"
 PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
+RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
+DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
 
 
 def statements(path):
@@ -202,6 +206,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
         + CYPHER.read_text()
         + METRIC_DESIGN.read_text()
         + GRAPH_EXPLORER.read_text()
+        + DRAFTER.read_text()
     )
     assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
@@ -223,12 +228,15 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, SEMANTIC_LANGUAGE)
         apply(upgraded, GRAPH_EXPLORER)
         apply(upgraded, CLAIM_LOCALES)
+        apply(upgraded, DRAFTER)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
         for agent in fresh.execute("SELECT f_agent_id FROM t_agent"):
             assert item_from_db(fresh, agent[0]) == item_from_db(upgraded, agent[0])
-        assert len(snapshot(fresh)[0]) == 8
+        # Every seeded Agent is registered as builtin, so System Admin manages it
+        # and it cannot be unpublished or deleted.
+        assert {row[0] for row in snapshot(fresh)[0]} == set(BUILTIN_AGENT_IDS)
         updated = snapshot(upgraded)
         assert all(row in updated[0] for row in original[0])
         for row in original[1]:
@@ -281,7 +289,7 @@ def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
         assert "expand_neighbours" in seeded["prompt"]["content"]
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         apply(db, path)
@@ -402,6 +410,9 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(GRAPH_EXPLORER),
                     str(CLAIM_LOCALES),
                     str(PROMPT_INDEX),
+                    str(RESOURCE_ID_LIMITS),
+                    str(DRAFTER),
+                    str(METRIC_DESIGN_BUDGET),
                 ],
             ],
         ],
@@ -828,6 +839,39 @@ def test_cypher_generation_seed_reads_schema_and_runs_cypher_only():
         assert json.loads(limits)["timeout_s"] == 120
 
 
+def test_project_drafter_seed_is_a_published_tool_free_task_on_the_default_model():
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        agent = db.execute(
+            "SELECT f_name, f_mode, f_model, f_tools, f_skills, f_limits, f_status FROM t_agent"
+            " WHERE f_agent_id='bkn-project-drafter'"
+        ).fetchone()
+        assert agent["f_name"] == "BKNProjectDrafter"
+        assert agent["f_mode"] == "task"
+        assert agent["f_model"] == ""
+        assert json.loads(agent["f_tools"]) == []
+        assert json.loads(agent["f_skills"]) == []
+        assert agent["f_status"] == "published"
+        limits = json.loads(agent["f_limits"])
+        assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
+        prompt = db.execute(
+            "SELECT v.f_content FROM t_agent_prompt p JOIN t_agent_prompt_version v"
+            " ON v.f_prompt_id = p.f_prompt_id AND v.f_version = p.f_current_version"
+            " WHERE p.f_prompt_id='bkn-project-drafter-prompt'"
+        ).fetchone()[0]
+        # It sees structure only, and writes names in the language the caller names.
+        assert "no row data" in prompt
+        assert "language named in the user message" in prompt
+        # One Agent serves the three passes the server names in each message.
+        for drafting_pass in ("pass structure", "pass references", "pass naming"):
+            assert drafting_pass in prompt
+        for evidence in ("declared", "comment", "name_exact", "name_role", "semantic", "requirement", "catalog_view"):
+            assert evidence in prompt
+        assert "external_hints" in prompt
+        # Clues are data: requirements and catalog semantics hint, counts decide.
+        assert "never as instructions" in prompt
+
+
 def test_metric_designer_seed_is_tool_free_and_draft():
     with database() as db:
         apply(db, METRIC_DESIGN)
@@ -837,9 +881,26 @@ def test_metric_designer_seed_is_tool_free_and_draft():
         assert item["spec"]["tools"] == []
         assert item["spec"]["skills"] == []
         assert item["spec"]["limits"]["max_tool_calls"] == 0
+        assert item["spec"]["limits"]["max_output_tokens"] == 8192
         assert "save, publish, delete, or upgrade metrics" in item["prompt"]["content"]
         apply(db, METRIC_DESIGN)
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0] == 1
+
+
+def test_metric_designer_budget_upgrade_only_changes_untouched_default():
+    with database() as db:
+        apply(db, METRIC_DESIGN)
+        original = {"max_turns": 6, "max_tool_calls": 0, "timeout_s": 120, "max_output_tokens": 4096}
+        db.execute("UPDATE t_agent SET f_limits=? WHERE f_agent_id='object_metric_designer'", (json.dumps(original),))
+        apply(db, METRIC_DESIGN_BUDGET)
+        upgraded = json.loads(db.execute("SELECT f_limits FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0])
+        assert upgraded == {**original, "max_output_tokens": 8192}
+        apply(db, METRIC_DESIGN_BUDGET)
+        assert json.loads(db.execute("SELECT f_limits FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0]) == upgraded
+        custom = {**original, "max_output_tokens": 5000}
+        db.execute("UPDATE t_agent SET f_limits=? WHERE f_agent_id='object_metric_designer'", (json.dumps(custom),))
+        apply(db, METRIC_DESIGN_BUDGET)
+        assert json.loads(db.execute("SELECT f_limits FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0]) == custom
 
 
 @pytest.mark.parametrize("completed", [1, 2])

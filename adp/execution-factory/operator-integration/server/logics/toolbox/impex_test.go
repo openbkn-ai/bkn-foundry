@@ -28,7 +28,6 @@ func TestImport(t *testing.T) {
 		mockProxy := mocks.NewMockProxyHandler(ctrl)
 		mockCategoryManager := mocks.NewMockCategoryManager(ctrl)
 		mockUserMgnt := mocks.NewMockUserManagement(ctrl)
-		mockOperatorMgnt := mocks.NewMockOperatorManager(ctrl)
 		mockIntCompConfigSvc := mocks.NewMockIIntCompConfigService(ctrl)
 		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 		mockAuditLog := mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl)
@@ -43,7 +42,6 @@ func TestImport(t *testing.T) {
 			Logger:           logger.DefaultLogger(),
 			UserMgnt:         mockUserMgnt,
 			Validator:        mockValidator,
-			OperatorMgnt:     mockOperatorMgnt,
 			IntCompConfigSvc: mockIntCompConfigSvc,
 			AuthService:      mockAuthService,
 			AuditLog:         mockAuditLog,
@@ -85,15 +83,6 @@ func TestImport(t *testing.T) {
 				APISpec:    &interfaces.APISpec{},
 			},
 		}
-		// tools := []*model.ToolDB{
-		// 	{
-		// 		ToolID:     "tool_id_1",
-		// 		BoxID:      boxID,
-		// 		Name:       "tool_name_1",
-		// 		SourceType: model.SourceTypeOperator,
-		// 		SourceID:   "operator_id_1",
-		// 	},
-		// }
 		Convey("导入数据为空", func() {
 			err := toolbox.Import(context.TODO(), nil, interfaces.ImportTypeCreate, nil, "")
 			So(err, ShouldNotBeNil)
@@ -313,49 +302,6 @@ func TestImport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			// })
-			// Convey("Failed to import dependencies", func() {.
-			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
-			// 		{
-			// 			ToolInfo:   toolInfo,
-			// 			SourceType: model.SourceTypeOpenAPI,
-			// 		},
-			// 	}
-			// 	importData.Operator = &interfaces.OperatorImpexConfig{
-			// 		Configs: []*interfaces.OperatorImpexItem{{
-			// 			OperatorID: "operator_id_1",
-			// 		}},
-			// 	}
-			// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
-			// 	mockToolBoxDB.EXPECT().InsertToolBox(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil)
-			// 	mockMetadataDB.EXPECT().InsertAPIMetadatas(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
-			// 	mockToolDB.EXPECT().InsertTools(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
-			// 	mockOperatorMgnt.EXPECT().Import(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("Import"))
-			// 	err := toolbox.Import(publicCtx, nil, interfaces.ImportTypeCreate, importData, "")
-			// 	So(err, ShouldNotBeNil)
-			// })
-			// Convey("Failed to add owner permissions", func() {.
-			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
-			// 		{
-			// 			ToolInfo:   toolInfo,
-			// 			SourceType: model.SourceTypeOpenAPI,
-			// 		},
-			// 	}
-			// 	importData.Operator = &interfaces.OperatorImpexConfig{
-			// 		Configs: []*interfaces.OperatorImpexItem{{
-			// 			OperatorID: "operator_id_1",
-			// 		}},
-			// 	}
-			// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
-			// 	mockToolBoxDB.EXPECT().InsertToolBox(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil)
-			// 	mockMetadataDB.EXPECT().InsertAPIMetadatas(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
-			// 	mockToolDB.EXPECT().InsertTools(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil)
-			// 	mockOperatorMgnt.EXPECT().Import(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			// 	mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("CreateOwnerPolicy"))
-			// 	mockAuditLog.EXPECT().Logger(gomock.Any(), gomock.Any())
-			// 	err := toolbox.Import(publicCtx, nil, interfaces.ImportTypeCreate, importData, "")
-			// 	So(err, ShouldBeNil)
-			// 	time.Sleep(100 * time.Millisecond)
-			// })
 			// Convey("Creation mode imported successfully, audit log added", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
@@ -475,7 +421,6 @@ func TestExport(t *testing.T) {
 		mockProxy := mocks.NewMockProxyHandler(ctrl)
 		mockCategoryManager := mocks.NewMockCategoryManager(ctrl)
 		mockUserMgnt := mocks.NewMockUserManagement(ctrl)
-		mockOperatorMgnt := mocks.NewMockOperatorManager(ctrl)
 		mockIntCompConfigSvc := mocks.NewMockIIntCompConfigService(ctrl)
 		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 		mockAuditLog := mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl)
@@ -489,7 +434,6 @@ func TestExport(t *testing.T) {
 			Logger:           logger.DefaultLogger(),
 			UserMgnt:         mockUserMgnt,
 			Validator:        mockValidator,
-			OperatorMgnt:     mockOperatorMgnt,
 			IntCompConfigSvc: mockIntCompConfigSvc,
 			AuthService:      mockAuthService,
 			AuditLog:         mockAuditLog,
@@ -516,8 +460,8 @@ func TestExport(t *testing.T) {
 			{
 				ToolID:     "tool_id_2",
 				BoxID:      boxID,
-				SourceType: model.SourceTypeOperator,
-				SourceID:   "operator_id_1",
+				SourceType: model.SourceTypeFunction,
+				SourceID:   "function_version_1",
 				Parameters: `{}`,
 			},
 		}
@@ -626,7 +570,7 @@ func TestExport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			// })
-			// Convey("Batch data acquisition is successful, there is no dependent operator", func() {.
+			// Convey("Batch data acquisition is successful", func() {.
 			// 	mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
 			// 	mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("")
 			// 	mockToolDB.EXPECT().SelectToolBoxByIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolDB{tools[0]}, nil)
@@ -635,18 +579,6 @@ func TestExport(t *testing.T) {
 			// 	So(err, ShouldBeNil)
 			// })
 		})
-		// Convey("Dependency operator export failed", func() {.
-		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-		// 	mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
-		// 		interfaces.AuthOperationTypeView).Return(ids, nil)
-		// 	mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
-		// 	mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("")
-		// 	mockToolDB.EXPECT().SelectToolBoxByIDs(gomock.Any(), gomock.Any()).Return(tools, nil)
-		// 	mockMetadataDB.EXPECT().SelectListByVersion(gomock.Any(), gomock.Any()).Return([]*model.APIMetadataDB{metadataDB}, nil)
-		// 	mockOperatorMgnt.EXPECT().Export(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("OperatorMgntExport"))
-		// 	_, err := toolbox.Export(publicCtx, exportReq)
-		// 	So(err, ShouldNotBeNil)
-		// })
 		// Convey("Export successful", func() {.
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
 		// 	mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
@@ -655,7 +587,6 @@ func TestExport(t *testing.T) {
 		// 	mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("")
 		// 	mockToolDB.EXPECT().SelectToolBoxByIDs(gomock.Any(), gomock.Any()).Return(tools, nil)
 		// 	mockMetadataDB.EXPECT().SelectListByVersion(gomock.Any(), gomock.Any()).Return([]*model.APIMetadataDB{metadataDB}, nil)
-		// 	mockOperatorMgnt.EXPECT().Export(gomock.Any(), gomock.Any()).Return(&interfaces.ComponentImpexConfigModel{}, nil)
 		// 	data, err := toolbox.Export(publicCtx, exportReq)
 		// 	So(err, ShouldBeNil)
 		// 	So(data, ShouldNotBeNil)

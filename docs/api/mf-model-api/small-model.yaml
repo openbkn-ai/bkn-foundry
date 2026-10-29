@@ -24,7 +24,7 @@ paths:
             application/json:
               schema: {}
         '400':
-          description: Invalid request (Model Factory validation/error envelope).
+          description: Invalid request, including a registered model type mismatch (Model Factory error envelope).
           content:
             application/json:
               schema:
@@ -53,8 +53,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
-      description: Current route signature. Successful results are returned by the controller without
-        a FastAPI response_model; no fixed response object is enforced at this route.
+      description: >-
+        The configured max_documents limits the number of input documents per request.
+        When exceeded, returns HTTP 400 with code ModelFactory.ExternalSmallModel.Used.InvalidParameter
+        before calling the provider. Documents are never truncated or split. Unconfigured limits
+        retain the previous behavior.
+        The registered model type must be reranker; a mismatch returns HTTP 400 with code
+        ModelFactory.ExternalSmallModel.Used.InvalidParameter before any provider or adapter call.
+        Successful results are returned without a FastAPI response_model.
       x-implementation: infra/mf-model-api/app/routers/small_model_router.py
   /small-model/embedding:
     post:
@@ -75,7 +81,7 @@ paths:
             application/json:
               schema: {}
         '400':
-          description: Invalid request (Model Factory validation/error envelope).
+          description: Invalid request, including a registered model type mismatch (Model Factory error envelope).
           content:
             application/json:
               schema:
@@ -104,8 +110,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
-      description: Current route signature. Successful results are returned by the controller without
-        a FastAPI response_model; no fixed response object is enforced at this route.
+        '502':
+          description: Invalid embedding provider or adapter response (ModelFactory.ExternalSmallModel.Used.InvalidResponse).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: >-
+        The registered model type must be embedding; a mismatch returns HTTP 400 with code
+        ModelFactory.ExternalSmallModel.Used.InvalidParameter before any provider or adapter call.
+        Successful provider and adapter responses must contain a non-empty data array of
+        non-empty numeric embedding vectors. Invalid output returns HTTP 502 with code
+        ModelFactory.ExternalSmallModel.Used.InvalidResponse. Provider extension fields are preserved.
       x-implementation: infra/mf-model-api/app/routers/small_model_router.py
   /small-model/embeddings:
     post:
@@ -126,7 +142,7 @@ paths:
             application/json:
               schema: {}
         '400':
-          description: Invalid request (Model Factory validation/error envelope).
+          description: Invalid request, including a registered model type mismatch (Model Factory error envelope).
           content:
             application/json:
               schema:
@@ -155,8 +171,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
-      description: Current route signature. Successful results are returned by the controller without
-        a FastAPI response_model; no fixed response object is enforced at this route.
+        '502':
+          description: Invalid embedding provider or adapter response (ModelFactory.ExternalSmallModel.Used.InvalidResponse).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: >-
+        The registered model type must be embedding; a mismatch returns HTTP 400 with code
+        ModelFactory.ExternalSmallModel.Used.InvalidParameter before any provider or adapter call.
+        Successful provider and adapter responses must contain a non-empty data array of
+        non-empty numeric embedding vectors. Invalid output returns HTTP 502 with code
+        ModelFactory.ExternalSmallModel.Used.InvalidResponse. Provider extension fields are preserved.
       x-implementation: infra/mf-model-api/app/routers/small_model_router.py
 components:
   schemas:

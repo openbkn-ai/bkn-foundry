@@ -31,7 +31,7 @@ BKN（Business Knowledge Network）是基于 Markdown 的声明式建模语言�
 | 概念分组（concept_group） | 把相关对象类组织在一起 |
 | 对象指标（object metric V1） | 归属于对象类、带版本的指标定义，以 JSON 归档 |
 | 资源（resource） | Vega 中的数据资源；对象类和间接关系通过资源 ID 读取数据 |
-| 能力依赖（capabilities） | 网络挂载的 Skill、工具箱工具与 MCP 工具的声明 |
+| 能力依赖（capabilities） | 网络挂载的 Skill、工具箱工具、MCP 工具与知识库的声明 |
 | 定义 | 上述任一类型的单个实例，即一个 `.bkn` 文件或一个指标 JSON 文件 |
 
 ### 1.2 规范版本
@@ -257,15 +257,15 @@ frontmatter 中的其他字段除各章节明确列出的之外，2.x 下一律�
 
 | 对象 | 规则 |
 |------|------|
-| `id` | 匹配 `^[a-z0-9][a-z0-9_-]{0,39}$`：小写字母或数字开头，可含小写字母、数字、`_`、`-`，最长 40 个字符 |
-| `name` | 非空，最长 40 个字符（按 Unicode 字符计） |
+| `id` | 匹配 `^[a-z0-9][a-z0-9_-]{0,127}$`：小写字母或数字开头，可含小写字母、数字、`_`、`-`，最长 128 个字符 |
+| `name` | 非空，最长 128 个字符（按 Unicode 字符计） |
 | `tags` | 最多 5 个；每个去掉首尾空格后非空、最长 40 个字符，且不含下列任一字符：`` / : ? \ " < > \| ： ？ ‘ ’ “ ” ！ 《 》 , # [ ] { } % & * $ ^ ! = . ' `` |
 | 重复 | 网络内同类型的 `id` 不得重复；对象类、行动类、风险类、概念分组、值类型的 `name` 也不得重复。关系类的 `name` 可以重复（如多个「属于」），与后端一致 |
 | 属性名 | 数据属性与逻辑属性的 `Name` 匹配 `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$` |
 
 ### 4.3 生命周期（3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储对象类、关系类、行动类的 `lifecycle`，接口读写它，保存时按本节规则检查，跨定义的规则（`replaced_by`、端点弃用）在任何一方保存时都检查，删除仍被 `replaced_by` 引用的定义时拒绝；上传与导出 3.0 包时随包往返。Context Loader 的概念召回不返回 `deprecated` 的定义，按 ID 查询照常返回；按 ID 查到时提示替代定义仍在实现中（bkn-foundry#2285）。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储对象类、关系类、行动类的 `lifecycle`，接口读写它，保存时按本节规则检查，跨定义的规则（`replaced_by`、端点弃用）在任何一方保存时都检查，删除仍被 `replaced_by` 引用的定义时拒绝；上传与导出 3.0 包时随包往返。Context Loader 的概念召回不返回 `deprecated` 的定义，按 ID 查询照常返回并带上 `lifecycle`（含 `replaced_by`）。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 对象类、关系类、行动类的 frontmatter 可写 `lifecycle`，取值与含义参考 Palantir 的 status；接口与 JSON 导入导出中是同名、同结构的字段：
 
@@ -309,6 +309,7 @@ capabilities:         # 可选，见 §13
   skills: []
   functions: []
   mcp_tools: []
+  knowledge_bases: []
 ---
 ```
 
@@ -531,7 +532,7 @@ Incremental Key: updated_at
 
 ### 6.8 属性声明（3.0）
 
-> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明（`Aliases`、`Semantic`、`Required`、`### Property Constraints` 的全部键）与对象类、行动类的 `aliases`，对象类、行动类接口读写它们，保存时按本节规则校验：`value_type` 须是本网络已有的值类型（§16），别名不得是同类其他定义的名称。上传与导出 3.0 包时它们随包往返。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明（`Aliases`、`Semantic`、`Required`、`### Property Constraints` 的全部键）与对象类、行动类的 `aliases`，对象类、行动类接口读写它们，保存时按本节规则校验：`value_type` 须是本网络已有的值类型（§16），别名不得是同类其他定义的名称。上传与导出 3.0 包时它们随包往返。Context Loader 的 `search_schema` 输出属性声明与对象类、关系类、行动类的 `aliases`，属性的 `Aliases` 只在完整模式输出；引用枚举值类型的属性带上枚举项（§16）。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 属性声明描述数据应当满足的要求，只用于理解与展示，**不校验源数据**；声明本身写错时在导入和保存时拒绝。
 
@@ -767,7 +768,7 @@ value: 启用
 
 ### 7.6 关系声明（3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储关系声明（`reverse_name`、`aliases`、`Cardinality`、`### Relation Constraints`、`importance`、`fallback_for`、`verification`）与关系属性，关系类接口读写它们，保存时按本节规则检查，跨定义的规则（`fallback_for`）在任何一方保存时都检查，删除仍被 `fallback_for` 或 `replaced_by` 引用的关系类时拒绝；上传与导出 3.0 包时随包往返。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储关系声明（`reverse_name`、`aliases`、`Cardinality`、`### Relation Constraints`、`importance`、`fallback_for`、`verification`）与关系属性，关系类接口读写它们，保存时按本节规则检查，跨定义的规则（`fallback_for`）在任何一方保存时都检查，删除仍被 `fallback_for` 或 `replaced_by` 引用的关系类时拒绝；上传与导出 3.0 包时随包往返。Context Loader 的 `search_schema` 输出关系声明与关系属性，主关系与替代路径配对输出并附替代规则，替代路径不单独出现。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 ````markdown
 ---
@@ -1155,8 +1156,8 @@ SKILL.md  sha256:...
 
 ## 13. 能力依赖（capabilities）
 
-`network.bkn` frontmatter 中的 `capabilities` 声明网络挂载了哪些 Skill、工具箱工具和 MCP 工具。
-它只是声明，不携带能力本身：Skill 包、工具箱、MCP 服务通过各自的导入导出渠道迁移，
+`network.bkn` frontmatter 中的 `capabilities` 声明网络挂载了哪些 Skill、工具箱工具、MCP 工具和知识库。
+它只是声明，不携带能力本身：Skill 包、工具箱、MCP 服务、知识库通过各自的渠道迁移，
 类似 package.json 只列依赖、不打包依赖。
 
 行动类与逻辑属性引用的工具（§6.7、§8.6）不必写入 `capabilities`：引用由模型文件本身给出，
@@ -1177,6 +1178,9 @@ capabilities:
     - mcp_id: mcp_erp
       mcp_name: ERP 查询
       tool_name: query_po
+  knowledge_bases:
+    - id: "7"
+      name: 合同库
 ```
 
 | 类别 | 字段 | 说明 |
@@ -1184,6 +1188,7 @@ capabilities:
 | `skills` | `id`、`name` | Skill |
 | `functions` | `box_id`、`tool_id`、`box_name`、`tool_name` | 工具箱中的工具，包括函数工具和 OpenAPI 工具 |
 | `mcp_tools` | `mcp_id`、`mcp_name`、`tool_name` | MCP 工具；工具本身按名称寻址 |
+| `knowledge_bases` | `id`、`name` | 专业版知识库；挂载后网络的托管代理账号可读取整个知识库。目标环境没有知识库服务时列为跳过项（`not_supported`） |
 
 **为什么同时写 ID 和名称：** ID 由各环境自行生成，跨环境不保留；名称是跨环境导入时唯一能匹配的依据。
 
@@ -1193,7 +1198,7 @@ capabilities:
 - 匹配不到的条目不会让导入失败，而是在导入结果中列为跳过项并说明原因。
 - 上传时 `binding_policy=detach` 会忽略整段声明。
 - 2.x：这一段格式错误时被整体忽略，网络仍可导入；写错的类别或字段被静默丢弃。
-- **（3.0）** 格式写错时拒绝并指出位置（类别、条目序号与字段）：`capabilities` 不是映射；出现 `skills`、`functions`、`mcp_tools` 以外的类别，或上表以外的字段；值的类型不对（类别不是列表、条目不是映射、字段不是单个值）；条目缺少匹配所需的字段，在任何环境都无法匹配：`skills` 的 `id`、`name` 都没写，`functions` 的 `box_id` + `tool_id` 与 `box_name` + `tool_name` 两组都不齐全，`mcp_tools` 没写 `tool_name`，或 `mcp_id`、`mcp_name` 都没写。匹配不到的条目与 2.x 相同，列为跳过项，不让导入失败：能否匹配取决于目标环境，不是写法错误。
+- **（3.0）** 格式写错时拒绝并指出位置（类别、条目序号与字段）：`capabilities` 不是映射；出现 `skills`、`functions`、`mcp_tools`、`knowledge_bases` 以外的类别，或上表以外的字段；值的类型不对（类别不是列表、条目不是映射、字段不是单个值）；条目缺少匹配所需的字段，在任何环境都无法匹配：`skills` 的 `id`、`name` 都没写，`functions` 的 `box_id` + `tool_id` 与 `box_name` + `tool_name` 两组都不齐全，`mcp_tools` 没写 `tool_name`，或 `mcp_id`、`mcp_name` 都没写，`knowledge_bases` 的 `id`、`name` 都没写。匹配不到的条目与 2.x 相同，列为跳过项，不让导入失败：能否匹配取决于目标环境，不是写法错误。
 
 ### 13.1 跨环境迁移（现状）
 
@@ -1210,6 +1215,7 @@ BKN 包只携带对工具的**引用**，不携带工具的实现：
 | 工具箱（OpenAPI 工具、函数工具） | 执行工厂 `GET /impex/export/toolbox/{box_id}` 导出，`POST /impex/import/toolbox` 导入；导出内容包含 OpenAPI 元数据、函数代码与服务地址 | 保留 `box_id`、`tool_id` |
 | MCP 服务 | 执行工厂 `GET /impex/export/mcp/{mcp_id}` 导出，`POST /impex/import/mcp` 导入；包含服务配置、工具列表及依赖的工具箱 | 保留 `mcp_id` |
 | Skill | 下载 zip 包后在目标环境注册 | **不保留**，注册时生成新 ID，只能靠 `capabilities` 中的名称匹配 |
+| 知识库（专业版） | 在目标环境的知识库中新建并接入来源 | **不保留**，只能靠 `capabilities` 中的名称匹配；ID 是各环境自增的整数，只有 ID 对应的知识库名称与声明一致时才按 ID 采用；同名多个时不猜，列为跳过项 |
 
 按「先导入工具箱与 MCP，再导入 BKN 包」的顺序，行动与逻辑属性的 ID 引用可以直接对上。注意：
 
@@ -1304,7 +1310,7 @@ BKN 只保存本文定义的结构。业务规则按作用范围放在：
 
 ## 16. 值类型（value_types/*.bkn，3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储值类型，提供值类型接口（`/knowledge-networks/{kn_id}/value-types`），按 3.0 导出时写出 `value_types/`；被数据属性引用的值类型不能删除，修改后的 `base_type` 须仍与引用方的 Type 相同。上传 3.0 包时 `value_types/` 中的值类型先于对象类入库，整网 JSON 导入导出以 `value_types` 携带。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储值类型，提供值类型接口（`/knowledge-networks/{kn_id}/value-types`），按 3.0 导出时写出 `value_types/`；被数据属性引用的值类型不能删除，修改后的 `base_type` 须仍与引用方的 Type 相同。上传 3.0 包时 `value_types/` 中的值类型先于对象类入库，整网 JSON 导入导出以 `value_types` 携带。Context Loader 的 `search_schema` 在引用枚举值类型的属性上展开枚举项（含停用项）；枚举超过展开上限（默认 50 项）或在精简模式下只给项数，可用 `enum_query` 按显示名或编码检索枚举项。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 值类型是「基础类型 + 一组约束」的命名定义，供多个属性复用：`Type` 说明数据怎么存，值类型说明存的是什么、哪些值合法。
 作用范围是单个知识网络；平台不预置值类型。

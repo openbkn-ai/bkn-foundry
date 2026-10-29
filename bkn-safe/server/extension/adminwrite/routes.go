@@ -174,6 +174,9 @@ func writeErr(c *gin.Context, err error) {
 	case errors.Is(err, ErrWildcardGrant):
 		status = http.StatusBadRequest
 		code = httperrors.AdminWriteWildcardGrantForbidden
+	case errors.Is(err, ErrSubResourceWildcard):
+		status = http.StatusBadRequest
+		code = httperrors.AdminWriteSubResourceWildcardForbidden
 	case errors.Is(err, ErrAdminConsolePermission):
 		status = http.StatusForbidden
 		code = httperrors.AdminWriteAdminConsolePermissionForbidden

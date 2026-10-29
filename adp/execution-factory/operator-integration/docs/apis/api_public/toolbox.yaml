@@ -1243,40 +1243,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  # 算子转换成工具
-  /v1/operator/convert/tool:
-    post:
-      summary: "算子转换成工具"
-      description: "算子转换成工具"
-      tags:
-        - 工具
-      parameters:
-        - name: "Authorization"
-          in: "header"
-          required: true
-          description: "认证信息"
-          schema:
-            type: string
-            example: "Bearer token"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ConvertToolReq"
-      responses:
-        "200":
-          description: "算子转换成工具成功"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConvertToolResp"
-        "400":
-          description: "Bad Request"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /v1/function/execute:
     post:
       summary: "函数块执行接口"
@@ -1935,7 +1901,7 @@ components:
             $ref: '#/components/schemas/TLSPolicy'
         metadata_type:
           type: string
-          description: "算子元数据类型"
+          description: "工具箱元数据类型"
           enum: ["openapi", "function"]
         box_id:
           type: string
@@ -2045,7 +2011,6 @@ components:
           description: "资源对象类型"
           enum:
             - "tool"
-            - "operator"
     APISpec:
       type: object
       description: "API Spec 信息"
@@ -2362,36 +2327,6 @@ components:
           items:
             type: string
             description: "工具ID"
-    ConvertToolReq:
-      type: object
-      description: "转换工具请求"
-      required:
-        - box_id
-        - operator_id
-        - operator_version
-      properties:
-        box_id:
-          type: string
-          description: "工具箱ID"
-        operator_id:
-          type: string
-          description: "算子ID"
-        operator_version:
-          type: string
-          description: "算子版本"
-        global_parameters:
-          $ref: "#/components/schemas/Parameters"
-          description: "全局参数"
-    ConvertToolResp:
-      type: object
-      description: "转换工具响应"
-      properties:
-        box_id:
-          type: string
-          description: "工具箱ID"
-        tool_id:
-          type: string
-          description: "工具ID"
     Parameters:
       type: object
       description: "参数"
@@ -2517,7 +2452,7 @@ components:
             properties:
               metadata_type:
                 type: string
-                description: "算子元数据类型"
+                description: "工具箱元数据类型"
                 enum: ["openapi", "function"]
               box_id:
                 type: string

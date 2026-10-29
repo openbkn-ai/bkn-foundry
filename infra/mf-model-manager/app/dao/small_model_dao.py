@@ -26,7 +26,7 @@ class SmallModelDao:
         """
         cursor.execute(
             """select f_model_id, f_model_name, f_model_type, f_model_config, f_adapter, f_adapter_code,
-                      f_batch_size, f_max_tokens, f_embedding_dim, f_default
+                      f_batch_size, f_max_tokens, f_embedding_dim, f_max_documents, f_default
                from t_small_model where f_model_type=%s""",
             config_info.model_type,
         )
@@ -38,7 +38,8 @@ class SmallModelDao:
                     and (item["f_adapter_code"] or "") == (config_info.adapter_code or "")
                     and item["f_batch_size"] == config_info.batch_size
                     and item["f_max_tokens"] == config_info.max_tokens
-                    and item["f_embedding_dim"] == config_info.embedding_dim):
+                    and item["f_embedding_dim"] == config_info.embedding_dim
+                    and item.get("f_max_documents") == config_info.max_documents):
                 return {
                     "id": str(item["f_model_id"]),
                     "name": item["f_model_name"],
@@ -50,12 +51,12 @@ class SmallModelDao:
     @connect_execute_commit_close_db
     def add_model_info(self, config_info: AddExternalSmallModelInfo, userId, connection, cursor):
         sql = """insert into t_small_model(f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_create_by,f_update_by,
-        f_adapter,f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim) 
-                    values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) """
+        f_adapter,f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_max_documents)
+                    values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) """
         value_list = [config_info.model_id, config_info.model_name, config_info.model_type,
                       json.dumps(config_info.model_config, ensure_ascii=False), datetime.datetime.today(),
                       datetime.datetime.today(), userId, userId, config_info.adapter, config_info.adapter_code,
-                      config_info.batch_size, config_info.max_tokens, config_info.embedding_dim]
+                      config_info.batch_size, config_info.max_tokens, config_info.embedding_dim, config_info.max_documents]
 
         cursor.execute(sql, value_list)
 
@@ -79,13 +80,13 @@ class SmallModelDao:
             sql = """insert into t_small_model(
                 f_model_id,f_model_name,f_model_type,f_model_config,f_create_time,f_update_time,
                 f_create_by,f_update_by,f_adapter,f_adapter_code,f_batch_size,f_max_tokens,
-                f_embedding_dim,f_default
-            ) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                f_embedding_dim,f_max_documents,f_default
+            ) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
             cursor.execute(sql, (
                 config_info.model_id, config_info.model_name, config_info.model_type,
                 json.dumps(config_info.model_config, ensure_ascii=False), datetime.datetime.today(),
                 datetime.datetime.today(), userId, userId, config_info.adapter, config_info.adapter_code,
-                config_info.batch_size, config_info.max_tokens, config_info.embedding_dim,
+                config_info.batch_size, config_info.max_tokens, config_info.embedding_dim, config_info.max_documents,
                 1 if is_default else 0,
             ))
             return is_default
@@ -93,10 +94,10 @@ class SmallModelDao:
     @connect_execute_commit_close_db
     def edit_model_info(self, config_info: AddExternalSmallModelInfo, userId, connection, cursor):
         sql = """update t_small_model set f_model_name = %s,f_model_type = %s,f_model_config = %s,f_adapter = %s,f_adapter_code = %s,
-        f_update_time = %s,f_update_by = %s,f_batch_size = %s,f_max_tokens = %s,f_embedding_dim = %s where f_model_id = %s"""
+        f_update_time = %s,f_update_by = %s,f_batch_size = %s,f_max_tokens = %s,f_embedding_dim = %s,f_max_documents = %s where f_model_id = %s"""
         value_list = [config_info.model_name, config_info.model_type, json.dumps(config_info.model_config, ensure_ascii=False),
                       config_info.adapter,config_info.adapter_code, datetime.datetime.today(),
-                      userId, config_info.batch_size, config_info.max_tokens, config_info.embedding_dim,
+                      userId, config_info.batch_size, config_info.max_tokens, config_info.embedding_dim, config_info.max_documents,
                       config_info.model_id]
 
         cursor.execute(sql, value_list)
@@ -104,7 +105,7 @@ class SmallModelDao:
     @connect_execute_close_db
     def get_model_info_by_id(self, model_id, connection, cursor):
         sql = f"""select f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_adapter, 
-        f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_default
+        f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_max_documents,f_default
                     from t_small_model where f_model_id = '{model_id}'"""
 
         cursor.execute(sql)
@@ -114,7 +115,7 @@ class SmallModelDao:
     @connect_execute_close_db
     def get_model_info_by_name(self, model_name, connection, cursor):
         sql = """select f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_adapter, 
-        f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_default
+        f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_max_documents,f_default
                     from t_small_model where f_model_name = %s"""
 
         cursor.execute(sql, model_name)
@@ -141,7 +142,7 @@ class SmallModelDao:
     def get_model_info_list(self, page, size, order, rule, model_name, model_type, model_series, permission_ids,
                             connection, cursor):
         sql = """select f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time, f_create_by,f_update_by,
-        f_adapter,f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_default
+        f_adapter,f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_max_documents,f_default
                     from t_small_model """
         where_list = []
         value_list = []
@@ -209,7 +210,7 @@ class SmallModelDao:
     def get_default_by_type(self, model_type, connection, cursor):
         """Return the system default small model for a model_type."""
         sql = """select f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_adapter,
-        f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_default
+        f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_max_documents,f_default
                     from t_small_model where f_default = 1 and f_model_type = %s"""
         cursor.execute(sql, model_type)
         res = cursor.fetchall()

@@ -369,34 +369,6 @@
                                                             "value": ""
                                                         }
                                                     ]
-                                                },
-                                                {
-                                                    "name": "operator_test",
-                                                    "display_name": "operator_test",
-                                                    "type": "operator",
-                                                    "comment": "pod的算子",
-                                                    "index": true,
-                                                    "data_source": {
-                                                        "type": "operator",
-                                                        "id": "pod_operator"
-                                                    },
-                                                    "parameters": [
-                                                        {
-                                                            "name": "operator_param1",
-                                                            "value_from": "property",
-                                                            "value": "id"
-                                                        },
-                                                        {
-                                                            "name": "operator_param2",
-                                                            "value_from": "property",
-                                                            "value": "pod_name"
-                                                        },
-                                                        {
-                                                            "name": "operator_param3",
-                                                            "value_from": "input",
-                                                            "value": ""
-                                                        }
-                                                    ]
                                                 }
                                             ],
                                             "primary_keys": [
@@ -1511,35 +1483,6 @@
                                                                     "value": ""
                                                                 }
                                                             ]
-                                                        },
-                                                        {
-                                                            "name": "operator_test",
-                                                            "display_name": "operator_test",
-                                                            "type": "operator",
-                                                            "comment": "pod的算子",
-                                                            "index": true,
-                                                            "data_source": {
-                                                                "type": "operator",
-                                                                "id": "pod_operator",
-                                                                "name": ""
-                                                            },
-                                                            "parameters": [
-                                                                {
-                                                                    "name": "operator_param1",
-                                                                    "value_from": "property",
-                                                                    "value": "id"
-                                                                },
-                                                                {
-                                                                    "name": "operator_param2",
-                                                                    "value_from": "property",
-                                                                    "value": "pod_name"
-                                                                },
-                                                                {
-                                                                    "name": "operator_param3",
-                                                                    "value_from": "input",
-                                                                    "value": ""
-                                                                }
-                                                            ]
                                                         }
                                                     ],
                                                     "primary_keys": [
@@ -2183,35 +2126,6 @@
                                                                     "value": ""
                                                                 }
                                                             ]
-                                                        },
-                                                        {
-                                                            "name": "operator_test",
-                                                            "display_name": "operator_test",
-                                                            "type": "operator",
-                                                            "comment": "pod的算子",
-                                                            "index": true,
-                                                            "data_source": {
-                                                                "type": "operator",
-                                                                "id": "pod_operator",
-                                                                "name": ""
-                                                            },
-                                                            "parameters": [
-                                                                {
-                                                                    "name": "operator_param1",
-                                                                    "value_from": "property",
-                                                                    "value": "id"
-                                                                },
-                                                                {
-                                                                    "name": "operator_param2",
-                                                                    "value_from": "property",
-                                                                    "value": "pod_name"
-                                                                },
-                                                                {
-                                                                    "name": "operator_param3",
-                                                                    "value_from": "input",
-                                                                    "value": ""
-                                                                }
-                                                            ]
                                                         }
                                                     ],
                                                     "primary_keys": [
@@ -2573,7 +2487,7 @@
                         "type": "string"
                     },
                     "type": {
-                        "description": "属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator",
+                        "description": "属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool",
                         "type": "string"
                     },
                     "comment": {
@@ -2662,7 +2576,7 @@
                         "type": "string"
                     },
                     "type": {
-                        "description": "属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator",
+                        "description": "属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool",
                         "type": "string"
                     },
                     "comment": {
@@ -2993,7 +2907,7 @@
                         "description": "数据来源类型",
                         "enum": [
                             "metric",
-                            "operator"
+                            "tool"
                         ],
                         "type": "string"
                     },

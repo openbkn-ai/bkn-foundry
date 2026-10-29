@@ -10,6 +10,7 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"Public.UnprocessableEntity":                                     "执行输入校验失败，请修正输入后重试。",
+		"agentRetrieval.SearchSchema.FallbackRule":                       "Source 实例沿本关系没有任何对端时（只看数据、不带查询条件；外键指向不存在的实例也算没有），它的对端改由 {{.Fallback}} 给出；有本关系对端的 Source 实例，{{.Fallback}} 中从它出发的边不用。两个方向查的都是这组边：从 Target 反查时，去掉 {{.Fallback}} 中已有本关系对端的 Source 实例。本关系查询失败、超时、分页未完成、结果截断、无权限或对端被行级权限过滤时不替代，并注明结果不完整。经 {{.Fallback}} 得到的结果按它的 verification 标注。",
 		"agentRetrieval.Detail.FunctionCodeTooLong":                      "代码实际为 {{.Actual}} 个 Unicode 字符，最多允许 {{.Max}} 个。请缩短代码后重试。",
 		"agentRetrieval.Detail.FunctionExecutionTimeout":                 "函数执行超过配置的 {{.Timeout}} 秒超时限制，请减少工作量或调整超时配置。",
 		"agentRetrieval.Detail.FunctionExecutionTimeoutUnknown":          "函数执行超时，请减少工作量或调整超时配置。",
@@ -76,7 +77,7 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"agentRetrieval.Detail.FunctionCodeRequired":                     "沙箱执行必须提供代码。",
 		"agentRetrieval.Detail.FunctionExecutionRequestFailed":           "调用沙箱执行失败。",
 		"agentRetrieval.Detail.FunctionExecutionResponseInvalid":         "沙箱执行响应无效。",
-		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "当前账号缺少临时代码执行权限（算子类型 operator:* 的 execute 权限），代码未执行。请联系管理员授予该权限；知识网络或单个算子上的授权不能代替它。",
+		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "当前账号缺少临时代码执行权限（function:adhoc 的 execute 权限，函数类型级授权也可覆盖），代码未执行。请联系管理员授予该权限；知识网络或单个函数工具箱上的授权不能代替它。",
 		"agentRetrieval.Detail.FunctionAuthorizationUnavailable":         "执行权限校验服务暂时不可用，未能完成授权判定，代码未执行。这不代表缺少权限，请稍后重试；持续失败请联系管理员检查 bkn-safe。",
 		"agentRetrieval.Detail.SkillListRequestFailed":                   "获取技能列表失败。",
 		"agentRetrieval.Detail.SkillListResponseInvalid":                 "技能列表响应无效。",

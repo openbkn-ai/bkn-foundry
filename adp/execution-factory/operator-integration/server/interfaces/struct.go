@@ -43,7 +43,7 @@ type CommonPageResult struct {
 	HasPrev    bool `json:"has_prev"`    // Is there a previous page?.
 }
 
-// BatchNamesReq Batch name request by ID (operator/tool_box/skill unified contract)
+// BatchNamesReq Batch name request by ID (tool_box/skill unified contract)
 type BatchNamesReq struct {
 	IDs []string `json:"ids"` // A list of IDs to be named. An empty list returns empty entries.
 }

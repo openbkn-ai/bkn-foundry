@@ -21,7 +21,7 @@ func TestAuthorizationResourceCatalogCoversEveryObjectGrantProvider(t *testing.T
 		wantPath := map[string]string{
 			"agent":          "/api/bkn-agent/in/v1/authorization-resources",
 			"agent_tpl":      "/api/bkn-agent/in/v1/authorization-resources",
-			"operator":       "/api/agent-operator-integration/internal-v1/authorization-resources",
+			"skill":          "/api/agent-operator-integration/internal-v1/authorization-resources",
 			"connector_type": "/api/vega-backend/in/v1/authorization-resources",
 		}[resourceType]
 		if r.URL.Path != wantPath {
@@ -40,7 +40,7 @@ func TestAuthorizationResourceCatalogCoversEveryObjectGrantProvider(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, resourceType := range []string{"agent", "agent_tpl", "operator", "connector_type"} {
+	for _, resourceType := range []string{"agent", "agent_tpl", "skill", "connector_type"} {
 		t.Run(resourceType, func(t *testing.T) {
 			resourceID := resourceType + "-1"
 			if resourceType == "agent_tpl" {

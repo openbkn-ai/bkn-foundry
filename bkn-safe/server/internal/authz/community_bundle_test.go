@@ -23,7 +23,6 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 		"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"function":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
-		"operator":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"small_model":       {"display", "modify", "delete", "execute"},
 		"large_model":       {"display", "modify", "delete", "execute"},
@@ -47,7 +46,7 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 			}
 		}
 	}
-	for _, unsupported := range []string{"resource", "object_type", "admin-authz", "safe_admin", "unknown"} {
+	for _, unsupported := range []string{"resource", "object_type", "admin-authz", "safe_admin", "operator", "unknown"} {
 		if got, ok := CommunityBundleOperations(unsupported); ok || got != nil {
 			t.Errorf("unsupported type %q returned %v, %v", unsupported, got, ok)
 		}
@@ -229,7 +228,6 @@ func TestIndependentResourceFamilyBundlesUseTheUnifiedRuntimeDecision(t *testing
 		"tool_box":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
 		"function":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
 		"mcp":         {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
-		"operator":    {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
 		"skill":       {view: "view", ops: []string{"view", "modify", "delete", "publish", "unpublish", "execute"}},
 		"small_model": {view: "display", ops: []string{"display", "modify", "delete", "execute"}},
 		"large_model": {view: "display", ops: []string{"display", "modify", "delete", "execute"}},

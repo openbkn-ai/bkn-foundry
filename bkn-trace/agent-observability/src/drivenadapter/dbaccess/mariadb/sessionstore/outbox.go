@@ -18,6 +18,62 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 )
 
+// Each branch reads at most this many eligible IDs through a covering index.
+// Only their bounded union is sorted; payload rows are locked/read afterwards.
+const projectionOutboxCandidatePageSize = 128
+
+const leaseProjectionOutboxCandidatesSQL = `
+    SELECT outbox_id FROM (
+        (SELECT outbox_id
+         FROM bkn_trace_projection_outbox FORCE INDEX (idx_bkn_trace_projection_claim_order)
+         WHERE status='pending' AND outbox_id>? AND available_at<=?
+           AND (locked_until IS NULL OR locked_until<=?)
+         ORDER BY outbox_id LIMIT ?)
+        UNION ALL
+        (SELECT outbox_id
+         FROM bkn_trace_projection_outbox FORCE INDEX (idx_bkn_trace_projection_claim_order)
+         WHERE status='processing' AND outbox_id>? AND available_at<=?
+           AND (locked_until IS NULL OR locked_until<=?)
+         ORDER BY outbox_id LIMIT ?)
+    ) candidates ORDER BY outbox_id LIMIT ?`
+
+func leaseProjectionOutboxRowsSQL(count int) string {
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", count), ",")
+	return `SELECT outbox_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_id,
+            OCTET_LENGTH(payload), attempts, created_at
+        FROM bkn_trace_projection_outbox FORCE INDEX (PRIMARY)
+        WHERE outbox_id IN (` + placeholders + `)
+          AND status IN ('pending', 'processing') AND available_at<=?
+          AND (locked_until IS NULL OR locked_until<=?)
+        ORDER BY outbox_id LIMIT ? FOR UPDATE SKIP LOCKED`
+}
+
+// Candidate discovery is non-locking. A fixed database timestamp keeps time
+// eligibility consistent across both statuses, refills and the locking recheck.
+// Resetting the keyset cursor on every Lease also revisits old delayed/retry IDs.
+func projectionOutboxCandidateIDs(ctx context.Context, tx *sql.Tx, after uint64, asOf time.Time) ([]uint64, error) {
+	rows, err := tx.QueryContext(ctx, leaseProjectionOutboxCandidatesSQL,
+		after, asOf, asOf, projectionOutboxCandidatePageSize,
+		after, asOf, asOf, projectionOutboxCandidatePageSize,
+		projectionOutboxCandidatePageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []uint64
+	for rows.Next() {
+		var id uint64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, rows.Close()
+}
+
 func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration) ([]iprojectionoutbox.Item, error) {
 	if limit <= 0 {
 		limit = 100
@@ -27,52 +83,71 @@ func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `
-		SELECT outbox_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_id,
-			OCTET_LENGTH(payload), attempts, created_at
-		FROM bkn_trace_projection_outbox
-		WHERE status IN ('pending', 'processing') AND available_at<=UTC_TIMESTAMP(6)
-		  AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6))
-		ORDER BY outbox_id LIMIT ? FOR UPDATE SKIP LOCKED`, limit)
-	if err != nil {
+	var asOf time.Time
+	if err := tx.QueryRowContext(ctx, "SELECT UTC_TIMESTAMP(6)").Scan(&asOf); err != nil {
 		return nil, err
 	}
 	var result []iprojectionoutbox.Item
 	var payloadIDs []any
 	remainingBytes := iprojectionoutbox.MaxLeaseBytes
-	for rows.Next() {
-		var item iprojectionoutbox.Item
-		var payloadBytes int64
-		if err := rows.Scan(
-			&item.ID, &item.AggregateType, &item.AggregateID, &item.AggregateVersion,
-			&item.EventType,
-			&item.EventID, &payloadBytes, &item.Attempts, &item.CreatedAt,
-		); err != nil {
-			_ = rows.Close()
+	var after uint64
+	byteBudgetReached := false
+	for len(result) < limit && !byteBudgetReached {
+		ids, err := projectionOutboxCandidateIDs(ctx, tx, after, asOf)
+		if err != nil {
 			return nil, err
 		}
-		if payloadBytes > iprojectionoutbox.MaxPayloadBytes {
-			// Lease the metadata so the worker can quarantine the row without
-			// loading an unbounded body. The SQL source retains its payload.
-			item.PayloadTooLarge = true
-		} else {
-			if payloadBytes > int64(remainingBytes) {
-				break
-			}
-			remainingBytes -= int(payloadBytes)
-			if item.EventType == "artifact.persist_requested" {
-				item.PayloadDeferred = true
-			} else {
-				payloadIDs = append(payloadIDs, item.ID)
-			}
+		if len(ids) == 0 {
+			break
 		}
-		result = append(result, item)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		// The union returned the globally earliest IDs from the two streams.
+		// Advance only through that bounded page, including skipped row locks;
+		// later IDs from either status remain discoverable by the next refill.
+		after = ids[len(ids)-1]
+		args := make([]any, 0, len(ids)+3)
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		args = append(args, asOf, asOf, limit-len(result))
+		rows, err := tx.QueryContext(ctx, leaseProjectionOutboxRowsSQL(len(ids)), args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var item iprojectionoutbox.Item
+			var payloadBytes int64
+			if err := rows.Scan(
+				&item.ID, &item.AggregateType, &item.AggregateID, &item.AggregateVersion,
+				&item.EventType, &item.EventID, &payloadBytes, &item.Attempts, &item.CreatedAt,
+			); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			if payloadBytes > iprojectionoutbox.MaxPayloadBytes {
+				item.PayloadTooLarge = true
+			} else {
+				if payloadBytes > int64(remainingBytes) {
+					byteBudgetReached = true
+					break
+				}
+				remainingBytes -= int(payloadBytes)
+				if item.EventType == "artifact.persist_requested" {
+					item.PayloadDeferred = true
+				} else {
+					payloadIDs = append(payloadIDs, item.ID)
+				}
+			}
+			result = append(result, item)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		if len(ids) < projectionOutboxCandidatePageSize {
+			break
+		}
 	}
 	if len(payloadIDs) > 0 {
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(payloadIDs)), ",")

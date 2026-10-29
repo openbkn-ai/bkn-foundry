@@ -79,8 +79,7 @@ py -m pytest testcases/openbkn-smoke --confcutdir=testcases/openbkn-smoke -q
 
 ### HTTP / CLI / Go
 
-- REST Client: `operator-integration/server/tests/http/` (`env.http`, `operator.http`, ...)
-- Python CLI: `operator-integration/server/tests/tool/operator_client.py`
+- REST Client: `operator-integration/server/tests/http/` (`env.http`, `toolbox.http`, ...)
 - Go tests: `cd operator-integration && ./project.sh -t`
 
 ## L3 -- Full Agent AT
@@ -89,7 +88,7 @@ After `sync-agent-at.ps1`, requires Hydra, `eisoo`, and MySQL `adp` schema:
 
 ```powershell
 pip install -r requirements/requirements.txt
-py -m pytest testcases/data-operator-hub/api/operator/test_get_operator_category.py -q
+py -m pytest testcases/data-operator-hub -q
 ```
 
 Use `--confcutdir=testcases/openbkn-smoke` only for L2; full suite loads root `conftest.py`.

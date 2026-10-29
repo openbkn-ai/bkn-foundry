@@ -8,10 +8,32 @@ package bkn
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestResourceIdentityBoundaries(t *testing.T) {
+	t.Run("resource id", func(t *testing.T) {
+		assert.Empty(t, validateIDString(strings.Repeat("a", 128)))
+		assert.Contains(t, validateIDString(strings.Repeat("a", 129)), "must match")
+		assert.Contains(t, validateIDString("_resource"), "must match")
+		assert.Contains(t, validateIDString("resource@id"), "must match")
+	})
+
+	t.Run("resource name counts Unicode characters", func(t *testing.T) {
+		assert.Empty(t, validateResourceName(strings.Repeat("名", 128)))
+		assert.Contains(t, validateResourceName(strings.Repeat("名", 129)), "exceeds 128")
+	})
+
+	t.Run("non-resource fields keep their existing limit", func(t *testing.T) {
+		assert.Empty(t, validateFieldDisplayName(strings.Repeat("名", 40)))
+		assert.Contains(t, validateFieldDisplayName(strings.Repeat("名", 41)), "exceeds 40")
+		assert.NoError(t, validateTags([]string{strings.Repeat("名", 40)}))
+		assert.Error(t, validateTags([]string{strings.Repeat("名", 41)}))
+	})
+}
 
 func TestValidateNetwork_MissingID(t *testing.T) {
 	net := &BknNetwork{

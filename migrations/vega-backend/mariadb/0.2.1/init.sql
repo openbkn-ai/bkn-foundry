@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     -- 物理数据资源专属字段
     f_schema                  VARCHAR(128) NOT NULL DEFAULT '' COMMENT '所属 schema 名称，由发现流程写入',
     f_source_identifier       VARCHAR(500) NOT NULL DEFAULT '' COMMENT '源端标识(表名/文件路径/索引名等)',
+    f_api_name                VARCHAR(64) NOT NULL DEFAULT '' COMMENT '语义理解给出的英文短名（snake_case），只写一次',
     f_source_metadata         MEDIUMTEXT NOT NULL COMMENT '源端元数据（JSON格式）',
 
     -- Schema相关

@@ -11,6 +11,10 @@ info:
     A direct child allow or deny takes precedence, and a deny wins when both
     effects exist on the same resource. See `../knowledge-network-authorization.md`.
 
+    Resource IDs use lowercase letters, digits, underscores, and hyphens, start
+    with a letter or digit, and contain at most 128 characters. Resource names
+    contain at most 128 Unicode characters.
+
     Strict Tool Box and MCP binding validation uses controlled execution-factory existence
     lookups. A missing or unpublished binding returns 400. Permission/configuration failures,
     downstream 5xx responses, and invalid responses return 502; timeout or unavailable failures
@@ -1044,9 +1048,12 @@ components:
         id:
           description: Action type ID
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Action type name
           type: string
+          maxLength: 128
         aliases:
           description: |
             Other names of the action type (BKN spec 3.0); not its own name or another action type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
@@ -1105,6 +1112,8 @@ components:
         object_type_id:
           description: Object type ID bound to the action type
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         condition:
           $ref: "#/components/schemas/ActionCondition"
           description: Action condition
@@ -1150,6 +1159,7 @@ components:
         name:
           description: Action type name
           type: string
+          maxLength: 128
         aliases:
           description: |
             Other names of the action type (BKN spec 3.0); not its own name or another action type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
@@ -1207,6 +1217,8 @@ components:
         object_type_id:
           description: Object type ID bound to the action type
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         condition:
           $ref: "#/components/schemas/ActionCondition"
           description: Action condition
@@ -1260,9 +1272,12 @@ components:
         id:
           description: Action type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Action type name
           type: string
+          maxLength: 128
         aliases:
           description: |
             Other names of the action type (BKN spec 3.0); not its own name or another action type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
@@ -1395,9 +1410,12 @@ components:
         id:
           description: Action type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Action type name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array

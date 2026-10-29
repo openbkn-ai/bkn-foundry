@@ -80,9 +80,7 @@ func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.POST("/tool-box/:box_id/proxy/:tool_id", middlewareProxyRequest(), r.ToolBoxHandler.ExecuteTool)
 	engine.POST("/tool-box/:box_id/status", r.ToolBoxHandler.UpdateToolBoxStatus)
 
-	// Operators converted into tools.
-	engine.POST("/operator/convert/tool", r.ToolBoxHandler.OperatorToTool)
-	// OpenAPI capability package: operator registration + convert tool (unified bloodline)
+	// OpenAPI capability package: create toolbox tools from one OpenAPI document.
 	engine.POST("/capabilities/openapi-bundle", r.ToolBoxHandler.RegisterOpenApiBundle)
 	// Get published toolbox information in batches.
 	engine.GET("/tool-box/market/:box_id/:fields", r.ToolBoxHandler.GetReleaseToolBoxInfo)

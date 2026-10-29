@@ -55,6 +55,7 @@ var deprecatedSeedRoleIDs = []string{
 
 var withdrawnResourceTypes = []string{
 	"stream_data_pipeline",
+	"operator",
 }
 
 // modelResourceTypes are platform foundations rather than objects whose

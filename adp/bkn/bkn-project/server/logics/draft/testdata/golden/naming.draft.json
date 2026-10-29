@@ -1,0 +1,355 @@
+{
+  "object_types": [
+    {
+      "id": "customer",
+      "name": "Customer",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_cust",
+        "name": "Customer",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "customer_id"
+      ],
+      "display_key": "customer_name",
+      "properties": [
+        {
+          "name": "customer_id",
+          "display_name": "customerId",
+          "type": "string",
+          "description": "",
+          "mapped_field": "customerId",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "customer_name",
+          "display_name": "customerName",
+          "type": "string",
+          "description": "",
+          "mapped_field": "customerName",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 300,
+        "distinct": 300,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "sales_order",
+      "name": "SalesOrder",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_ord",
+        "name": "SalesOrder",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "order_id"
+      ],
+      "display_key": "order_id",
+      "properties": [
+        {
+          "name": "order_id",
+          "display_name": "orderId",
+          "type": "string",
+          "description": "",
+          "mapped_field": "orderId",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "customer_id",
+          "display_name": "customerId",
+          "type": "string",
+          "description": "",
+          "mapped_field": "customerId",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 4000,
+        "distinct": 4000,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "dingdan",
+      "name": "dingdan",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_dd",
+        "name": "dingdan",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "dingdan_bh"
+      ],
+      "display_key": "dingdan_bh",
+      "properties": [
+        {
+          "name": "dingdan_bh",
+          "display_name": "dingdan_bh",
+          "type": "string",
+          "description": "",
+          "mapped_field": "dingdan_bh",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "kehu_bh",
+          "display_name": "kehu_bh",
+          "type": "string",
+          "description": "",
+          "mapped_field": "kehu_bh",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "jine",
+          "display_name": "jine",
+          "type": "decimal",
+          "description": "",
+          "mapped_field": "jine",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 9000,
+        "distinct": 9000,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "kehu",
+      "name": "kehu",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_kh",
+        "name": "kehu",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "kehu_bh"
+      ],
+      "display_key": "kehu_bh",
+      "properties": [
+        {
+          "name": "kehu_bh",
+          "display_name": "客户编号",
+          "type": "string",
+          "description": "客户编号",
+          "mapped_field": "kehu_bh",
+          "source_of_record": "table",
+          "missing_description": false
+        },
+        {
+          "name": "kehu_mc",
+          "display_name": "客户名称",
+          "type": "string",
+          "description": "客户名称",
+          "mapped_field": "kehu_mc",
+          "source_of_record": "table",
+          "missing_description": false
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 500,
+        "distinct": 500,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "ot_033ed5",
+      "name": "供应商",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_zh",
+        "name": "供应商",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "p_a1a5a5"
+      ],
+      "display_key": "p_cbb2ff",
+      "properties": [
+        {
+          "name": "p_a1a5a5",
+          "display_name": "供应商编号",
+          "type": "string",
+          "description": "",
+          "mapped_field": "供应商编号",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "p_cbb2ff",
+          "display_name": "供应商名称",
+          "type": "string",
+          "description": "",
+          "mapped_field": "供应商名称",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 80,
+        "distinct": 80,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "ot_d38021",
+      "name": "采购单",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_po",
+        "name": "采购单",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "p_0e1e9a"
+      ],
+      "display_key": "p_0e1e9a",
+      "properties": [
+        {
+          "name": "p_0e1e9a",
+          "display_name": "采购单号",
+          "type": "string",
+          "description": "",
+          "mapped_field": "采购单号",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "p_a1a5a5",
+          "display_name": "供应商编号",
+          "type": "string",
+          "description": "",
+          "mapped_field": "供应商编号",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 700,
+        "distinct": 700,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [
+    {
+      "id": "sales_order_to_customer",
+      "name": "sales_order_to_customer",
+      "description": "",
+      "source": "sales_order",
+      "target": "customer",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "customer_id",
+          "target_property": "customer_id"
+        }
+      ],
+      "adopted": true,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 4000,
+        "nulls": 0,
+        "hits": 4000,
+        "orphans": 0,
+        "hit_rate": 1,
+        "source_distinct": 290
+      }
+    },
+    {
+      "id": "dingdan_to_kehu",
+      "name": "dingdan_to_kehu",
+      "description": "",
+      "source": "dingdan",
+      "target": "kehu",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "kehu_bh",
+          "target_property": "kehu_bh"
+        }
+      ],
+      "adopted": true,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 9000,
+        "nulls": 0,
+        "hits": 9000,
+        "orphans": 0,
+        "hit_rate": 1,
+        "source_distinct": 480
+      }
+    },
+    {
+      "id": "ot_d38021_to_ot_033ed5",
+      "name": "ot_d38021_to_ot_033ed5",
+      "description": "",
+      "source": "ot_d38021",
+      "target": "ot_033ed5",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "p_a1a5a5",
+          "target_property": "p_a1a5a5"
+        }
+      ],
+      "adopted": true,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 700,
+        "nulls": 0,
+        "hits": 700,
+        "orphans": 0,
+        "hit_rate": 1,
+        "source_distinct": 75
+      }
+    }
+  ],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

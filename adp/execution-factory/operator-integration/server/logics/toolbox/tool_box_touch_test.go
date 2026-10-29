@@ -4,15 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sort"
+	"net/http"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 )
 
@@ -75,6 +77,159 @@ func newTouchFixture(t *testing.T) *touchFixture {
 	return f
 }
 
+func TestDeleteToolBoxReportsCommitFailure(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	db, dbMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.MatchExpectationsInOrder(false)
+	t.Cleanup(func() { _ = db.Close() })
+	dbMock.ExpectBegin()
+	markTx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.ExpectCommit()
+	dbMock.ExpectBegin()
+	deleteTx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.ExpectCommit().WillReturnError(errors.New("commit failed"))
+
+	auth := mocks.NewMockIAuthorizationService(ctrl)
+	boxDB := mocks.NewMockIToolboxDB(ctrl)
+	toolDB := mocks.NewMockIToolDB(ctrl)
+	config := mocks.NewMockIIntCompConfigService(ctrl)
+	dbTx := mocks.NewMockDBTx(ctrl)
+	accessor := &interfaces.AuthAccessor{ID: touchUserID}
+	box := &model.ToolboxDB{BoxID: touchBoxID, Name: "box a", MetadataType: string(interfaces.MetadataTypeAPI)}
+	auth.EXPECT().GetAccessor(gomock.Any(), touchUserID).Return(accessor, nil)
+	boxDB.EXPECT().SelectToolBoxForDelete(gomock.Any(), touchBoxID).Return(true, box, nil)
+	boxDB.EXPECT().SelectToolBox(gomock.Any(), touchBoxID).Return(true, box, nil)
+	auth.EXPECT().CheckDeletePermission(gomock.Any(), accessor, touchBoxID, gomock.Any()).Return(nil)
+	dbTx.EXPECT().GetTx(gomock.Any()).Return(markTx, nil)
+	boxDB.EXPECT().UpdateToolBoxStatus(gomock.Any(), markTx, touchBoxID, model.ToolboxStatusDeleting, touchUserID).Return(nil)
+	dbTx.EXPECT().GetTx(gomock.Any()).Return(deleteTx, nil)
+	toolDB.EXPECT().SelectToolByBoxID(gomock.Any(), touchBoxID).Return(nil, nil)
+	boxDB.EXPECT().DeleteToolBox(gomock.Any(), deleteTx, touchBoxID).Return(nil)
+	config.EXPECT().DeleteConfig(gomock.Any(), deleteTx, interfaces.ComponentTypeToolBox.String(), touchBoxID).Return(nil)
+	auth.EXPECT().DeletePolicy(gomock.Any(), []string{touchBoxID}, gomock.Any()).Return(nil)
+
+	svc := &ToolServiceImpl{
+		Logger: logger.DefaultLogger(), DBTx: dbTx, AuthService: auth, ToolBoxDB: boxDB,
+		ToolDB: toolDB, MetadataService: mocks.NewMockIMetadataService(ctrl), IntCompConfigSvc: config,
+		AuditLog: mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl),
+	}
+	resp, err := svc.DeleteBoxByID(t.Context(), &interfaces.DeleteBoxReq{UserID: touchUserID, BoxID: touchBoxID})
+	if err == nil || resp != nil {
+		t.Fatalf("DeleteBoxByID() = (%#v, %v), want commit error", resp, err)
+	}
+	if err := dbMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteToolBoxResumesAfterPolicyWasRemoved(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	db, dbMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	dbMock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.ExpectCommit()
+
+	auth := mocks.NewMockIAuthorizationService(ctrl)
+	boxDB := mocks.NewMockIToolboxDB(ctrl)
+	toolDB := mocks.NewMockIToolDB(ctrl)
+	config := mocks.NewMockIIntCompConfigService(ctrl)
+	dbTx := mocks.NewMockDBTx(ctrl)
+	accessor := &interfaces.AuthAccessor{ID: touchUserID}
+	box := &model.ToolboxDB{BoxID: touchBoxID, Name: "box a", MetadataType: string(interfaces.MetadataTypeAPI),
+		Status: model.ToolboxStatusDeleting, UpdateUser: touchUserID}
+	auth.EXPECT().GetAccessor(gomock.Any(), touchUserID).Return(accessor, nil)
+	boxDB.EXPECT().SelectToolBoxForDelete(gomock.Any(), touchBoxID).Return(true, box, nil)
+	auth.EXPECT().DeletePolicy(gomock.Any(), []string{touchBoxID}, gomock.Any()).Return(nil)
+	dbTx.EXPECT().GetTx(gomock.Any()).Return(tx, nil)
+	toolDB.EXPECT().SelectToolByBoxID(gomock.Any(), touchBoxID).Return(nil, nil)
+	boxDB.EXPECT().DeleteToolBox(gomock.Any(), tx, touchBoxID).Return(nil)
+	config.EXPECT().DeleteConfig(gomock.Any(), tx, interfaces.ComponentTypeToolBox.String(), touchBoxID).Return(nil)
+
+	svc := &ToolServiceImpl{
+		Logger: logger.DefaultLogger(), DBTx: dbTx, AuthService: auth, ToolBoxDB: boxDB,
+		ToolDB: toolDB, MetadataService: mocks.NewMockIMetadataService(ctrl), IntCompConfigSvc: config,
+		AuditLog: mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl),
+	}
+	resp, err := svc.DeleteBoxByID(t.Context(), &interfaces.DeleteBoxReq{UserID: touchUserID, BoxID: touchBoxID})
+	if err != nil || resp == nil {
+		t.Fatalf("DeleteBoxByID() = (%#v, %v), want success", resp, err)
+	}
+	if err := dbMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteToolBoxStopsBeforePhysicalDeleteWhenSafeRejects(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	db, dbMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.MatchExpectationsInOrder(false)
+	t.Cleanup(func() { _ = db.Close() })
+	dbMock.ExpectBegin()
+	markTx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.ExpectCommit()
+	dbMock.ExpectBegin()
+	restoreTx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbMock.ExpectCommit()
+
+	auth := mocks.NewMockIAuthorizationService(ctrl)
+	boxDB := mocks.NewMockIToolboxDB(ctrl)
+	dbTx := mocks.NewMockDBTx(ctrl)
+	accessor := &interfaces.AuthAccessor{ID: touchUserID}
+	box := &model.ToolboxDB{BoxID: touchBoxID, Name: "box a", Status: string(interfaces.BizStatusPublished),
+		MetadataType: string(interfaces.MetadataTypeAPI), UpdateUser: "editor-1", UpdateTime: 123,
+		ReleaseUser: "publisher-1", ReleaseTime: 456}
+	auth.EXPECT().GetAccessor(gomock.Any(), touchUserID).Return(accessor, nil)
+	boxDB.EXPECT().SelectToolBoxForDelete(gomock.Any(), touchBoxID).Return(true, box, nil)
+	boxDB.EXPECT().SelectToolBox(gomock.Any(), touchBoxID).Return(true, box, nil)
+	auth.EXPECT().CheckDeletePermission(gomock.Any(), accessor, touchBoxID, gomock.Any()).Return(nil)
+	dbTx.EXPECT().GetTx(gomock.Any()).Return(markTx, nil)
+	boxDB.EXPECT().UpdateToolBoxStatus(gomock.Any(), markTx, touchBoxID,
+		model.ToolboxStatusDeleting, touchUserID).Return(nil)
+	auth.EXPECT().DeletePolicy(gomock.Any(), []string{touchBoxID}, gomock.Any()).
+		Return(httperrors.NewHTTPError(t.Context(), http.StatusConflict, "Public.Conflict"))
+	dbTx.EXPECT().GetTx(gomock.Any()).Return(restoreTx, nil)
+	boxDB.EXPECT().RestoreToolBoxAfterDeleteConflict(gomock.Any(), restoreTx, box, touchUserID).Return(nil)
+
+	svc := &ToolServiceImpl{
+		Logger: logger.DefaultLogger(), DBTx: dbTx, AuthService: auth, ToolBoxDB: boxDB,
+		ToolDB: mocks.NewMockIToolDB(ctrl), MetadataService: mocks.NewMockIMetadataService(ctrl),
+		IntCompConfigSvc: mocks.NewMockIIntCompConfigService(ctrl),
+		AuditLog:         mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl),
+	}
+	resp, err := svc.DeleteBoxByID(t.Context(), &interfaces.DeleteBoxReq{UserID: touchUserID, BoxID: touchBoxID})
+	if err == nil || resp != nil {
+		t.Fatalf("DeleteBoxByID() = (%#v, %v), want Safe conflict", resp, err)
+	}
+	if err := dbMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func (f *touchFixture) expectTouchInTx(err error) *gomock.Call {
 	return f.toolBoxDB.EXPECT().TouchToolBox(gomock.Any(), f.tx, touchBoxID, touchUserID).Return(err)
 }
@@ -118,9 +273,10 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 			name: "delete",
 			run: func(t *testing.T, f *touchFixture) error {
 				f.toolDB.EXPECT().SelectToolBoxByID(gomock.Any(), touchBoxID, []string{touchToolID}).
-					Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOperator}}, nil)
+					Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOpenAPI, SourceID: "source-a"}}, nil)
 				gomock.InOrder(
 					f.expectTouchInTx(nil),
+					f.metadata.EXPECT().BatchDeleteMetadata(gomock.Any(), f.tx, interfaces.MetadataTypeAPI, []string{"source-a"}).Return(nil),
 					f.toolDB.EXPECT().DeleteBoxByIDAndTools(gomock.Any(), f.tx, touchBoxID, []string{touchToolID}).Return(nil),
 				)
 				_, err := f.svc.DeleteBoxTool(context.Background(), &interfaces.BatchDeleteToolReq{
@@ -175,37 +331,6 @@ func TestToolBoxTouchFailureOutsideTransactionIsNotReported(t *testing.T) {
 	}
 }
 
-// Deleting an operator disables the tools built from it; each toolbox that lost an enabled tool
-// is touched once, and a toolbox whose tool was already disabled is left alone.
-func TestOperatorDeleteEventTouchesToolBoxesOfDisabledTools(t *testing.T) {
-	f := newTouchFixture(t)
-	const operatorID = "operator-1"
-	f.toolDB.EXPECT().SelectToolBySource(gomock.Any(), model.SourceTypeOperator, operatorID).Return([]*model.ToolDB{
-		{ToolID: "t1", BoxID: "box-a", Status: string(interfaces.ToolStatusTypeEnabled)},
-		{ToolID: "t2", BoxID: "box-a", Status: string(interfaces.ToolStatusTypeEnabled)},
-		{ToolID: "t3", BoxID: "box-b", Status: string(interfaces.ToolStatusTypeEnabled)},
-		{ToolID: "t4", BoxID: "box-c", Status: string(interfaces.ToolStatusTypeDisabled)},
-	}, nil)
-	f.toolDB.EXPECT().UpdateToolStatus(gomock.Any(), gomock.Nil(), gomock.Any(),
-		interfaces.ToolStatusTypeDisabled.String(), touchUserID).Return(nil).Times(3)
-	var touched []string
-	f.toolBoxDB.EXPECT().TouchToolBox(gomock.Any(), gomock.Nil(), gomock.Any(), touchUserID).
-		DoAndReturn(func(_ context.Context, _ *sql.Tx, boxID, _ string) error {
-			touched = append(touched, boxID)
-			return nil
-		}).AnyTimes()
-
-	err := f.svc.HandleOperatorDeleteEvent(context.Background(),
-		[]byte(`{"operator_id":"`+operatorID+`","update_user":"`+touchUserID+`"}`))
-	if err != nil {
-		t.Fatalf("err = %v, want nil", err)
-	}
-	sort.Strings(touched)
-	if len(touched) != 2 || touched[0] != "box-a" || touched[1] != "box-b" {
-		t.Fatalf("touched toolboxes %v, want [box-a box-b]", touched)
-	}
-}
-
 // Deleting a toolbox takes its row before its tool rows, the same order every tool write takes
 // them in, so the two cannot deadlock on the same toolbox.
 func TestDeleteToolBoxRemovesTheToolBoxRowBeforeItsTools(t *testing.T) {
@@ -213,9 +338,10 @@ func TestDeleteToolBoxRemovesTheToolBoxRowBeforeItsTools(t *testing.T) {
 	config := mocks.NewMockIIntCompConfigService(gomock.NewController(t))
 	f.svc.IntCompConfigSvc = config
 	f.toolDB.EXPECT().SelectToolByBoxID(gomock.Any(), touchBoxID).
-		Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOperator}}, nil)
+		Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOpenAPI, SourceID: "source-a"}}, nil)
 	gomock.InOrder(
 		f.toolBoxDB.EXPECT().DeleteToolBox(gomock.Any(), f.tx, touchBoxID).Return(nil),
+		f.metadata.EXPECT().BatchDeleteMetadata(gomock.Any(), f.tx, interfaces.MetadataTypeAPI, []string{"source-a"}).Return(nil),
 		f.toolDB.EXPECT().DeleteBoxByIDAndTools(gomock.Any(), f.tx, touchBoxID, []string{touchToolID}).Return(nil),
 		config.EXPECT().DeleteConfig(gomock.Any(), f.tx, interfaces.ComponentTypeToolBox.String(), touchBoxID).Return(nil),
 	)

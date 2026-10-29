@@ -350,50 +350,29 @@ type ExecuteToolReq struct {
 	HTTPRequestParams `json:",inline"`
 }
 
-// ConvertOperatorToToolReq operator converts tool request.
-type ConvertOperatorToToolReq struct {
-	UserID           string            `header:"user_id" validate:"required"` // User ID, internal use.
-	OperatorID       string            `json:"operator_id" validate:"required"`
-	BoxID            string            `json:"box_id" validate:"required"`
-	UseRule          string            `json:"use_rule"`          // Usage rules.
-	ExtendInfo       map[string]string `json:"extend_info"`       // Extended information.
-	GlobalParameters *ParametersStruct `json:"global_parameters"` // global parameters.
-}
-
-// ConvertOperatorToToolResp operator is converted into a tool and returns the result.
-type ConvertOperatorToToolResp struct {
-	BoxID  string `json:"box_id"`
-	ToolID string `json:"tool_id"` // Tool ID.
-}
-
-// RegisterOpenApiBundleReq OpenAPI capability package registration: register the operator first, and then convert it into a tool (establishing blood relationship)
+// RegisterOpenApiBundleReq OpenAPI capability package registration: create one tool per OpenAPI
+// operation in the target toolbox, creating the toolbox first when only box_name is given.
 type RegisterOpenApiBundleReq struct {
-	UserID                 string                  `header:"user_id" validate:"required"`
-	BoxID                  string                  `json:"box_id"`                                // Already has a toolbox ID (optional with box_name)
-	BoxName                string                  `json:"box_name"`                              // New toolbox name.
-	BoxDesc                string                  `json:"box_desc"`                              // Toolbox description.
-	BoxSvcURL              string                  `json:"box_svc_url" validate:"required"`       // Toolbox service address.
-	Category               BizCategory             `json:"box_category" default:"other_category"` // Classification.
-	UseRule                string                  `json:"use_rule"`                              // Tool usage rules.
-	Data                   string                  `json:"data" validate:"required"`              // OpenAPI 3.0 documentation.
-	Description            string                  `json:"description"`                           // Operator description.
-	DirectPublish          bool                    `json:"direct_publish,omitempty"`              // Publish the operator directly after registration.
-	OperatorInfo           *OperatorInfo           `json:"operator_info"`                         // Operator information.
-	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control"`              // Operator execution control.
-	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty"`                 // Extended information.
+	UserID     string                 `header:"user_id" validate:"required"`
+	BoxID      string                 `json:"box_id"`                                // Already has a toolbox ID (optional with box_name)
+	BoxName    string                 `json:"box_name"`                              // New toolbox name.
+	BoxDesc    string                 `json:"box_desc"`                              // Toolbox description.
+	BoxSvcURL  string                 `json:"box_svc_url" validate:"required"`       // Toolbox service address.
+	Category   BizCategory            `json:"box_category" default:"other_category"` // Classification.
+	UseRule    string                 `json:"use_rule"`                              // Tool usage rules.
+	Data       string                 `json:"data" validate:"required"`              // OpenAPI 3.0 documentation.
+	ExtendInfo map[string]interface{} `json:"extend_info,omitempty"`                 // Extended information of the created tools.
 }
 
-// OpenApiBundleLink operator and tool association.
+// OpenApiBundleLink a tool created by the bundle.
 type OpenApiBundleLink struct {
-	OperatorID string `json:"operator_id"`
-	ToolID     string `json:"tool_id"`
+	ToolID string `json:"tool_id"`
 }
 
 // RegisterOpenApiBundleResp OpenAPI capability package registration result.
 type RegisterOpenApiBundleResp struct {
 	BoxID        string              `json:"box_id"`
 	ToolIDs      []string            `json:"tool_ids"`
-	OperatorIDs  []string            `json:"operator_ids"`
 	Links        []OpenApiBundleLink `json:"links"`
 	FailureCount int                 `json:"failure_count,omitempty"`
 	Failures     []string            `json:"failures,omitempty"`
@@ -464,9 +443,7 @@ type IToolService interface {
 	ExecuteTool(ctx context.Context, req *ExecuteToolReq) (resp *HTTPResponse, err error)
 	// Tool execution (excluding permission verification and audit logs)
 	ExecuteToolCore(ctx context.Context, req *ExecuteToolReq) (resp *HTTPResponse, err error)
-	// Operators converted into tools.
-	ConvertOperatorToTool(ctx context.Context, req *ConvertOperatorToToolReq) (resp *ConvertOperatorToToolResp, err error)
-	// OpenAPI capability package: operator registration + convert tool (unified bloodline)
+	// OpenAPI capability package: create the toolbox tools from one OpenAPI document.
 	RegisterOpenApiBundle(ctx context.Context, req *RegisterOpenApiBundleReq) (resp *RegisterOpenApiBundleResp, err error)
 	GetReleaseToolBoxInfo(ctx context.Context, req *GetReleaseToolBoxInfoReq) (resp []*GetReleaseToolBoxInfoResp, err error)
 	// market interface.
@@ -481,13 +458,6 @@ type IToolService interface {
 	// transaction, so the per-write index hooks never fire for them; the importer calls this once
 	// the transaction has committed (#1483).
 	ReconcileCapabilityIndexAsync(ctx context.Context)
-	// event handling.
-	ToolBoxEventHandler
-}
-
-// ToolBoxEventHandler event handling interface.
-type ToolBoxEventHandler interface {
-	HandleOperatorDeleteEvent(ctx context.Context, message []byte) error
 }
 
 // Retrieval channel reported on every tool search hit. Only "like" occurs today: the tool index

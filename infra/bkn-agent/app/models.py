@@ -60,7 +60,7 @@ class NetworkSettingRow(Base):
     __tablename__ = "t_agent_network_setting"
 
     f_agent_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    f_kn_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_kn_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     f_content: Mapped[dict] = mapped_column(JSON)
     f_version: Mapped[int] = mapped_column(Integer, default=1)
     f_update_user: Mapped[str] = mapped_column(String(50))
@@ -381,7 +381,7 @@ ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_
 
 class ExecutionScope(BaseModel):
     model_config = {"extra": "forbid"}
-    kn_id: str = Field(min_length=1, max_length=50, pattern=_ID_PATTERN)
+    kn_id: str = Field(min_length=1, max_length=128, pattern=_ID_PATTERN)
     # The graph explorer's canvas: snapshot, selection, canvas_id and revision.
     # Required by an Agent that mounts the graph_explorer builtin provider, which
     # validates it; other Agents must not receive it.
@@ -493,6 +493,25 @@ class PromptSpec(BaseModel):
 class PromptPublish(BaseModel):
     content: str = Field(min_length=1)
     vars_schema: Optional[dict[str, Any]] = None
+
+
+# Match Studio trim whitespace; consume the whole value for generated clients.
+_SHARED_PROMPT_CONTENT_PATTERN = (
+    r"^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a"
+    r"\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$"
+)
+
+
+class SharedPromptPublish(PromptPublish):
+    content: str = Field(
+        min_length=1,
+        pattern=_SHARED_PROMPT_CONTENT_PATTERN,
+        description="Must contain a character outside ECMAScript trim whitespace; original formatting is preserved.",
+    )
+
+
+class PromptVersionPublish(SharedPromptPublish):
+    version: int = Field(ge=1, le=2147483647, strict=True)
 
 
 class PromptRollback(BaseModel):

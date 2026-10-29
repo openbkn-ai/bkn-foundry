@@ -102,7 +102,7 @@ func (s *skillRepositoryDB) UpdateSkill(ctx context.Context, tx *sql.Tx, skill *
 		orm = s.orm.WithTx(tx)
 	}
 	skill.UpdateTime = time.Now().UnixNano()
-	_, err := orm.Update(tbSkillRepository).SetData(map[string]interface{}{
+	row, err := orm.Update(tbSkillRepository).SetData(map[string]interface{}{
 		"f_name":          skill.Name,
 		"f_description":   skill.Description,
 		"f_skill_content": skill.SkillContent,
@@ -118,8 +118,19 @@ func (s *skillRepositoryDB) UpdateSkill(ctx context.Context, tx *sql.Tx, skill *
 		"f_delete_user":   skill.DeleteUser,
 		"f_category":      skill.Category,
 		"f_is_deleted":    skill.IsDeleted,
-	}).WhereEq("f_skill_id", skill.SkillID).Execute(ctx)
-	return err
+	}).WhereEq("f_skill_id", skill.SkillID).
+		WhereEq("f_is_deleted", false).Execute(ctx)
+	if err != nil {
+		return err
+	}
+	ok, err := checkAffected(row)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("update skill failed: skill is deleting or missing")
+	}
+	return nil
 }
 
 func (s *skillRepositoryDB) UpdateSkillStatus(ctx context.Context, tx *sql.Tx, skillID string, status string, updateUser string) (err error) {
@@ -131,7 +142,8 @@ func (s *skillRepositoryDB) UpdateSkillStatus(ctx context.Context, tx *sql.Tx, s
 		"f_status":      status,
 		"f_update_time": time.Now().UnixNano(),
 		"f_update_user": updateUser,
-	}).WhereEq("f_skill_id", skillID).Execute(ctx)
+	}).WhereEq("f_skill_id", skillID).
+		WhereEq("f_is_deleted", false).Execute(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "update skill status error")
 		return
@@ -157,8 +169,22 @@ func (s *skillRepositoryDB) UpdateSkillDeleted(ctx context.Context, tx *sql.Tx, 
 		"f_update_time": time.Now().UnixNano(),
 		"f_update_user": updateUser,
 	}
-	_, err := orm.Update(tbSkillRepository).SetData(updateData).WhereEq("f_skill_id", skillID).Execute(ctx)
-	return err
+	update := orm.Update(tbSkillRepository).SetData(updateData).WhereEq("f_skill_id", skillID)
+	if isDeleted {
+		update = update.WhereEq("f_is_deleted", false)
+	}
+	row, err := update.Execute(ctx)
+	if err != nil {
+		return err
+	}
+	ok, err := checkAffected(row)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("update skill deletion marker failed: skill is deleting or missing")
+	}
+	return nil
 }
 
 func (s *skillRepositoryDB) SelectSkillByID(ctx context.Context, tx *sql.Tx, skillID string) (skill *model.SkillRepositoryDB, err error) {
@@ -306,7 +332,11 @@ func (s *skillRepositoryDB) SelectSkillByName(ctx context.Context, tx *sql.Tx, n
 	for _, s := range status {
 		args = append(args, s)
 	}
-	err = orm.Select().From(tbSkillRepository).WhereEq("f_name", name).WhereIn("f_status", args...).First(ctx, skillDB)
+	err = orm.Select().From(tbSkillRepository).
+		WhereEq("f_name", name).
+		WhereEq("f_is_deleted", false).
+		WhereIn("f_status", args...).
+		First(ctx, skillDB)
 	exist, err := checkHasQueryErr(err)
 	return exist, skillDB, err
 }

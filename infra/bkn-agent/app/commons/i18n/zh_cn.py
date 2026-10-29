@@ -83,6 +83,12 @@ error_messages = {
         "detail": "执行失败。",
         "solution": "请检查执行记录，必要时使用新的请求 ID 重试。",
     },
+    "BknAgent.MetricDesign.ProposalInvalid": {
+        "code": "BknAgent.MetricDesign.ProposalInvalid",
+        "description": "对象指标设计建议未通过校验。",
+        "detail": "对象指标修改建议不符合字段要求，请查看出错字段和原因后重试。",
+        "solution": "可补充指标描述后重试；持续出现时请提供执行 ID。",
+    },
     "BknAgent.Auth.AccountRequired": {
         "code": "BknAgent.Auth.AccountRequired",
         "description": "缺少调用方身份",
@@ -152,6 +158,13 @@ error_messages = {
         "detail_template": "prompt {prompt_id} 无版本 {version}",
         "detail": "目标版本不存在",
         "solution": "",
+    },
+    "BknAgent.Prompt.VersionConflict": {
+        "code": "BknAgent.Prompt.VersionConflict",
+        "description": "请求的提示词版本已存在或版本号不连续。",
+        "detail_template": "请求版本 {version}，下一个可用版本 {next_version}。",
+        "detail": "本次发布与当前版本历史冲突。",
+        "solution": "请刷新版本历史并核对发布结果，再决定是否重新发布。",
     },
     "BknAgent.Prompt.Conflict": {
         "code": "BknAgent.ParamError.Conflict",

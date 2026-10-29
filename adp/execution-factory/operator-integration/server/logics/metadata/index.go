@@ -23,11 +23,10 @@ import (
 
 // metadataService unified metadata management service.
 type metadataService struct {
-	Logger             interfaces.Logger
-	APIMetadataDB      model.IAPIMetadataDB
-	FuncMetadataDB     model.IFunctionMetadataDB
-	OperatorRegisterDB model.IOperatorRegisterDB
-	ParserRegistry     *parsers.Registry
+	Logger         interfaces.Logger
+	APIMetadataDB  model.IAPIMetadataDB
+	FuncMetadataDB model.IFunctionMetadataDB
+	ParserRegistry *parsers.Registry
 }
 
 var (
@@ -39,11 +38,10 @@ var (
 func NewMetadataService() interfaces.IMetadataService {
 	mOnce.Do(func() {
 		mManager = &metadataService{
-			Logger:             config.NewConfigLoader().GetLogger(),
-			APIMetadataDB:      dbaccess.NewAPIMetadataDB(),
-			FuncMetadataDB:     dbaccess.NewFunctionMetadataDB(),
-			OperatorRegisterDB: dbaccess.NewOperatorManagerDB(),
-			ParserRegistry:     parsers.NewRegistry(),
+			Logger:         config.NewConfigLoader().GetLogger(),
+			APIMetadataDB:  dbaccess.NewAPIMetadataDB(),
+			FuncMetadataDB: dbaccess.NewFunctionMetadataDB(),
+			ParserRegistry: parsers.NewRegistry(),
 		}
 	})
 	return mManager
@@ -64,12 +62,6 @@ func (m *metadataService) GetMetadataBySource(ctx context.Context, sourceID stri
 		has, metadata, err = m.APIMetadataDB.SelectByVersion(ctx, sourceID)
 	case model.SourceTypeFunction:
 		has, metadata, err = m.FuncMetadataDB.SelectByVersion(ctx, sourceID)
-	case model.SourceTypeOperator:
-		var operatorDB *model.OperatorRegisterDB
-		has, operatorDB, err = m.OperatorRegisterDB.SelectByOperatorID(ctx, nil, sourceID)
-		if err == nil && has {
-			has, metadata, err = m.GetMetadataBySource(ctx, operatorDB.MetadataVersion, model.SourceType(operatorDB.MetadataType))
-		}
 	default:
 		err = fmt.Errorf("unsupported source type: %s", sourceType)
 	}
@@ -138,32 +130,6 @@ func (m *metadataService) BatchGetMetadataBySourceIDs(ctx context.Context, sourc
 						sourceIDToMetadata[metadata.Version] = metadata
 					}
 					resultMutex.Unlock()
-				}
-			case model.SourceTypeOperator:
-				var operatorList []*model.OperatorRegisterDB
-				operatorList, localErr = utils.BatchQueryWithContext(ctx, sourceIDList,
-					interfaces.DefaultBatchSize, m.OperatorRegisterDB.SelectByOperatorIDs)
-				if localErr != nil {
-					m.Logger.WithContext(ctx).Errorf("batch query operator metadata failed, err: %v", localErr)
-					localErr = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, localErr.Error())
-				} else {
-					operatorSourceMap := map[model.SourceType][]string{}
-					for _, operator := range operatorList {
-						operatorSourceMap[model.SourceType(operator.MetadataType)] = append(operatorSourceMap[model.SourceType(operator.MetadataType)],
-							operator.MetadataVersion)
-					}
-					var operatorSourceIDToMetadata map[string]interfaces.IMetadataDB
-					operatorSourceIDToMetadata, localErr = m.BatchGetMetadataBySourceIDs(ctx, operatorSourceMap)
-					if localErr != nil {
-						m.Logger.WithContext(ctx).Errorf("batch query operator metadata failed, err: %v", localErr)
-						localErr = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, localErr.Error())
-					} else {
-						resultMutex.Lock()
-						for _, operatorDB := range operatorList {
-							sourceIDToMetadata[operatorDB.OperatorID] = operatorSourceIDToMetadata[operatorDB.MetadataVersion]
-						}
-						resultMutex.Unlock()
-					}
 				}
 			}
 			// handling errors.

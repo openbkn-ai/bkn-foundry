@@ -1776,3 +1776,65 @@ func TestObjectGrantsDelegateCannotWriteWildcardOrTouchPublic(t *testing.T) {
 		t.Errorf("administrator removing the public row: want 204, got %d", w.Code)
 	}
 }
+
+// A grantor need not hold a direct grant on the object. The owner-facing read
+// must resolve that actor without giving the reader user-directory access.
+func TestObjectGrantsResolveCreatorsIndependentlyOfGrantees(t *testing.T) {
+	for _, subject := range []string{"u-mate", "role-readers"} {
+		t.Run(subject, func(t *testing.T) {
+			r, e, db := ownerGrantFixtureWithDB(t)
+			if err := db.Create(&model.Role{ID: "role-readers", Name: "Readers", Source: model.RoleSourceCustom}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Model(&model.User{}).Where("id = ?", "u-stranger").Update("name", "Grantor Name").Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, creator := range []string{"u-stranger", "deleted-user", "system:publisher"} {
+				if err := e.SetProfessionalObjectPermissionsBy(subject, "knowledge_network", "kn-mine",
+					[]string{"view_detail"}, authz.EffectAllow, authz.AuthoritySourceAdminAuthz, creator); err != nil {
+					t.Fatal(err)
+				}
+			}
+			const path = "/api/safe/v1/me/object-grants?resource_type=knowledge_network&resource_id=kn-mine"
+			w := tokReq(t, r, http.MethodGet, path, nil, "u-owner")
+			if w.Code != http.StatusOK {
+				t.Fatalf("read: %d %s", w.Code, w.Body.String())
+			}
+			var response struct {
+				Entries []struct {
+					AccessorID string           `json:"accessor_id"`
+					Grants     []map[string]any `json:"grants"`
+				} `json:"entries"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			found := 0
+			for _, entry := range response.Entries {
+				if entry.AccessorID == "u-stranger" {
+					t.Fatal("grantor unexpectedly present as a grantee")
+				}
+				if entry.AccessorID != subject {
+					continue
+				}
+				for _, source := range entry.Grants {
+					found++
+					if source["created_by"] == "u-stranger" {
+						if source["created_by_name"] != "Grantor Name" || source["created_by_account"] != "stranger" {
+							t.Fatalf("grantor display missing: %+v", source)
+						}
+					} else if source["created_by_name"] != nil || source["created_by_account"] != nil {
+						t.Fatalf("missing/system actor must have no directory identity: %+v", source)
+					}
+				}
+			}
+			if found != 3 {
+				t.Fatalf("got %d sources, want 3", found)
+			}
+			// Being named as the grantor does not authorize reading the object.
+			if denied := tokReq(t, r, http.MethodGet, path, nil, "u-stranger"); denied.Code != http.StatusForbidden {
+				t.Fatalf("unauthorized read: %d %s", denied.Code, denied.Body.String())
+			}
+		})
+	}
+}

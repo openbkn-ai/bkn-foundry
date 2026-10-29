@@ -71,7 +71,7 @@ var errorcodeEnUS = i18n.I18nMessages{
 		"BknBackend.Validation.Detail.RequestedResourcesNotFound":        "Requested resources were not found: {{.resources}}.",
 		"BknBackend.Validation.Detail.MetricNameAlreadyExists":           "Metric name {{.name}} already exists.",
 		"BknBackend.Validation.Detail.NameLengthExceeded":                "The {{.objectType}} named {{.objectName}} exceeds the maximum length of {{.limit}}.",
-		"BknBackend.Validation.Detail.IdentifierInvalid":                 "id must contain only lowercase letters, digits, underscores, and hyphens; it cannot start with an underscore or exceed 40 characters (received {{.id}}).",
+		"BknBackend.Validation.Detail.IdentifierInvalid":                 "id must contain only lowercase letters, digits, underscores, and hyphens; it cannot start with an underscore or exceed 128 characters (received {{.id}}).",
 		"BknBackend.Validation.Detail.RequestBindingFailed":              "Failed to bind request parameters.",
 		"BknBackend.Validation.Detail.KnowledgeNetworkModuleTypeInvalid": "The module type must be knowledge_network.",
 		"BknBackend.Validation.Detail.ConceptGroupModuleTypeInvalid":     "The module type must be concept_group.",

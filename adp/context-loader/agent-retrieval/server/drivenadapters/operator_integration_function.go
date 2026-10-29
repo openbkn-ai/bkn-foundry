@@ -29,7 +29,7 @@ import (
 // The internal endpoint /internal-v1/function/exec/:version runs only a
 // registered function version and cannot execute arbitrary code.
 //
-// The public API enforces the caller's execute permission on the operator type.
+// The public API enforces the caller's execute permission on function:adhoc.
 // Calling the internal endpoint with a service identity would bypass that check,
 // so this request carries the original caller bearer token.
 const executeFunctionURI = "/v1/function/execute"
@@ -148,7 +148,7 @@ const (
 // /v1/function/execute.
 //
 // The endpoint's gate separates a denial (403 CommonUseForbidden: the caller lacks
-// execute on the operator type) from an authorization outage (503
+// execute on function:adhoc) from an authorization outage (503
 // CommonAuthorizationUnavailable: bkn-safe gave no decision). The code runs in
 // neither case, but only a denial is fixed by requesting a grant, so each gets its
 // own reason. Both used to reach the caller as the same generic sandbox failure.

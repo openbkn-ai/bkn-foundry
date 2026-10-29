@@ -17,8 +17,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 )
 
-// Aligned with adp bkn-backend/interfaces/common.go RegexPattern_NonBuiltin_ID
-var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
+// Aligned with adp bkn-backend/interfaces/common.go RegexPattern_NonBuiltin_ID.
+var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,127}$`)
 
 // Property names: adp RegexPattern_Property_Name
 var propertyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$`)
@@ -32,9 +32,10 @@ const nameInvalidChars = `/:?\"<>|：？''""！《》,#[]{}%&*$^!=.'`
 const tagInvalidChars = nameInvalidChars + "\u2018\u2019\u201c\u201d"
 
 const (
-	objectNameMaxLength = 40
-	tagsMaxNumber       = 5
-	maxPropertyNum      = 1000
+	resourceNameMaxLength = 128
+	fieldNameMaxLength    = 40
+	tagsMaxNumber         = 5
+	maxPropertyNum        = 1000
 )
 
 var validDataSourceTypes = map[string]bool{
@@ -155,7 +156,7 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 		}
 	}
 	if doc.Name != "" {
-		if err := validateObjectName(doc.Name, "knowledge_network"); err != "" {
+		if err := validateResourceName(doc.Name); err != "" {
 			appendError(result, "network.bkn", "name", "invalid_name", err)
 		}
 	}
@@ -365,13 +366,24 @@ func validateIDString(id string) string {
 	return ""
 }
 
-func validateObjectName(name string, _ string) string {
+func validateResourceName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "name must not be empty"
 	}
-	if utf8.RuneCountInString(name) > objectNameMaxLength {
-		return fmt.Sprintf("name length exceeds %d characters", objectNameMaxLength)
+	if utf8.RuneCountInString(name) > resourceNameMaxLength {
+		return fmt.Sprintf("name length exceeds %d characters", resourceNameMaxLength)
+	}
+	return ""
+}
+
+func validateFieldDisplayName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "name must not be empty"
+	}
+	if utf8.RuneCountInString(name) > fieldNameMaxLength {
+		return fmt.Sprintf("name length exceeds %d characters", fieldNameMaxLength)
 	}
 	return ""
 }
@@ -385,8 +397,8 @@ func validateTags(tags []string) error {
 		if tag == "" {
 			return fmt.Errorf("tag must not be empty")
 		}
-		if utf8.RuneCountInString(tag) > objectNameMaxLength {
-			return fmt.Errorf("tag %q exceeds max length %d", tag, objectNameMaxLength)
+		if utf8.RuneCountInString(tag) > fieldNameMaxLength {
+			return fmt.Errorf("tag %q exceeds max length %d", tag, fieldNameMaxLength)
 		}
 		if strings.ContainsAny(tag, tagInvalidChars) {
 			return fmt.Errorf("tag %q contains invalid characters", tag)
@@ -468,7 +480,7 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 		if err := validatePropertyName(lp.Name); err != nil {
 			appendError(result, table, "logic_properties", "invalid_property_name", err.Error())
 		}
-		if msg := validateObjectName(lp.DisplayName, ""); msg != "" {
+		if msg := validateFieldDisplayName(lp.DisplayName); msg != "" {
 			appendError(result, table, "logic_properties", "invalid_display_name", fmt.Sprintf("logic property %q: %s", lp.Name, msg))
 		}
 		if strings.TrimSpace(lp.Type) != "" {
@@ -544,7 +556,7 @@ func validateDataPropertyRows(result *ValidationResult, table string, props []*D
 		if err := validatePropertyName(dp.Name); err != nil {
 			appendError(result, table, "data_properties", "invalid_property_name", err.Error())
 		}
-		if msg := validateObjectName(dp.DisplayName, ""); msg != "" {
+		if msg := validateFieldDisplayName(dp.DisplayName); msg != "" {
 			appendError(result, table, "data_properties", "invalid_display_name", fmt.Sprintf("property %q: %s", dp.Name, msg))
 		}
 		if strings.TrimSpace(dp.Type) != "" {
@@ -783,7 +795,7 @@ func validateDefFrontmatter(result *ValidationResult, table, typ, id, name strin
 		}
 	}
 	if strings.TrimSpace(name) != "" {
-		if err := validateObjectName(name, ""); err != "" {
+		if err := validateResourceName(name); err != "" {
 			appendError(result, table, "name", "invalid_name", err)
 		}
 	}

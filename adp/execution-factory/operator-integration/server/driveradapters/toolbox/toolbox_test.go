@@ -15,27 +15,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestConvertOperatorToToolExposesCommittedToolIDForManagementAudit(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	toolService := mocks.NewMockIToolService(gomock.NewController(t))
-	toolService.EXPECT().ConvertOperatorToTool(gomock.Any(), gomock.Any()).Return(
-		&interfaces.ConvertOperatorToToolResp{BoxID: "box-1", ToolID: "created-tool-1"}, nil,
-	)
-	handler := &toolBoxHandler{ToolService: toolService}
-	engine := gin.New()
-	gotToolID := ""
-	engine.Use(func(c *gin.Context) { c.Next(); gotToolID = c.GetString("bkn.operation_audit.tool_id") })
-	engine.POST("/operator/convert/tool", handler.OperatorToTool)
-	request := httptest.NewRequest(http.MethodPost, "/operator/convert/tool", strings.NewReader(`{"operator_id":"op-1","box_id":"box-1"}`))
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("user_id", "user-1")
-	response := httptest.NewRecorder()
-	engine.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || gotToolID != "created-tool-1" {
-		t.Fatalf("response=%d audit tool ID=%q, want created-tool-1", response.Code, gotToolID)
-	}
-}
-
 func TestOpenAPIBundleExposesPartialResultForManagementAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	toolService := mocks.NewMockIToolService(gomock.NewController(t))

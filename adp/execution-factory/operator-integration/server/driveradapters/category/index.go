@@ -1,4 +1,4 @@
-// Package category Operator classification.
+// Package category category HTTP handlers shared by toolboxes, MCP servers and skills.
 package category
 
 import (

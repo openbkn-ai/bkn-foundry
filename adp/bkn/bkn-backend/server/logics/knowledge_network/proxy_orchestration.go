@@ -38,11 +38,12 @@ type proxyPublishPlan struct {
 	resolvedSources []interfaces.ProxyGrantResolvedSource
 	// grants is the preflight's decision on the desired source set: which
 	// sources it checked and which best-effort sources it left out.
-	grants         *proxyGrantSelection
-	lockOwner      string
-	syncGeneration int64
-	createdMapping bool
-	delta          *proxyGrantDelta
+	grants                *proxyGrantSelection
+	lockOwner             string
+	syncGeneration        int64
+	createdMapping        bool
+	delta                 *proxyGrantDelta
+	authorizationCleanups []interfaces.AuthorizationCleanupTarget
 }
 
 type missingProxyPermission struct {
@@ -219,7 +220,7 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 func (kns *knowledgeNetworkService) createProxyMapping(ctx context.Context, kn *interfaces.KN) (*interfaces.KNProxyAccount, bool, error) {
 	account, created, err := kns.mpa.Create(ctx, kn.KNID, "BKN proxy: "+kn.KNName)
 	if err != nil {
-		return nil, false, proxyHTTPError(ctx, http.StatusServiceUnavailable, "create managed knowledge network proxy")
+		return nil, false, managedProxyDependencyHTTPError(ctx, "create managed knowledge network proxy", err)
 	}
 	now := time.Now().UnixMilli()
 	mapping := &interfaces.KNProxyAccount{
@@ -473,21 +474,24 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		}
 	}
 
+	if err := mutate(mutationCtx, tx); err != nil {
+		rollback()
+		cleanupCreatedAuthorization()
+		return err
+	}
+	plan.authorizationCleanups = cleanupTracker.PendingResources()
 	staged, err := kns.stageProxyDelta(mutationCtx, tx, plan)
 	if err != nil {
 		rollback()
+		cleanupCreatedAuthorization()
 		return err
 	}
 	if !staged {
 		if err := kns.markProxyPending(mutationCtx, tx, plan); err != nil {
 			rollback()
+			cleanupCreatedAuthorization()
 			return err
 		}
-	}
-	if err := mutate(mutationCtx, tx); err != nil {
-		rollback()
-		cleanupCreatedAuthorization()
-		return err
 	}
 	if err := tx.Commit(); err != nil {
 		rollback()
@@ -495,16 +499,19 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		return proxyHTTPError(ctx, http.StatusInternalServerError, "commit child resource publication")
 	}
 	committed = true
-	if cleanupTrackerOwner {
-		_ = cleanupTracker.Cleanup(mutationCtx, kns.ps)
-	}
 	if staged {
 		plan.grants.logSkipped(ctx, plan.mapping.KNID)
 		otellog.LogInfo(ctx, fmt.Sprintf("Queued proxy publication generation %d with %d affected bindings",
 			plan.syncGeneration, len(plan.delta.bindings)))
 		return nil
 	}
-	return kns.finishProxyDeltaPublish(ctx, plan)
+	if err := kns.finishProxyDeltaPublish(ctx, plan); err != nil {
+		return err
+	}
+	if cleanupTrackerOwner {
+		return cleanupTracker.Cleanup(mutationCtx, kns.ps)
+	}
+	return nil
 }
 
 // PublishKNCapabilityMutation serializes capability rows with proxy grant
@@ -582,7 +589,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 			rollback()
 			return nil, preflightErr
 		}
-		if err := refuseNewlyMountedSkillsWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
+		if err := refuseNewlyMountedCapabilitiesWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
 			rollback()
 			return nil, err
 		}
@@ -612,7 +619,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 				rollback()
 				return nil, preflightErr
 			}
-			if err := refuseNewlyMountedSkillsWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
+			if err := refuseNewlyMountedCapabilitiesWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
 				rollback()
 				return nil, err
 			}
@@ -633,7 +640,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 			// Mounting a Skill is where its grant is vouched for, so the mounter must
 			// hold execute on it, as for a tool. Everywhere else a Skill grant is best
 			// effort; this is the one write that asks for it by name.
-			if err := refuseNewlyMountedSkillsWithoutGrant(ctx, grants, currentBindings, result.Bindings); err != nil {
+			if err := refuseNewlyMountedCapabilitiesWithoutGrant(ctx, grants, currentBindings, result.Bindings); err != nil {
 				rollback()
 				return nil, err
 			}
@@ -995,12 +1002,65 @@ func (kns *knowledgeNetworkService) renewProxyLock(ctx context.Context, plan *pr
 	acquired, err := kns.kpa.RenewLock(ctx, plan.mapping.KNID, plan.lockOwner,
 		now.UnixMilli(), now.Add(proxyLockLease).UnixMilli())
 	if err != nil {
+		// Preserve intentional cancellation so the heartbeat can distinguish it
+		// from a real backend or ownership failure.
+		if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+			return ctxErr
+		}
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "renew knowledge network publish lock")
 	}
 	if !acquired {
 		return proxyHTTPError(ctx, http.StatusConflict, "knowledge network publication lock expired")
 	}
 	return nil
+}
+
+// keepProxyLockAlive renews the deletion lease until stop is called. A lost
+// lease cancels the derived context so no later cleanup step can race a new
+// publisher that acquired the same network.
+func (kns *knowledgeNetworkService) keepProxyLockAlive(ctx context.Context,
+	plan *proxyPublishPlan) (context.Context, func() error) {
+	return kns.keepProxyLockAliveAtInterval(ctx, plan, proxyLockLease/3)
+}
+
+func (kns *knowledgeNetworkService) keepProxyLockAliveAtInterval(ctx context.Context,
+	plan *proxyPublishPlan, interval time.Duration) (context.Context, func() error) {
+	if plan == nil {
+		return ctx, func() error { return nil }
+	}
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	stopping := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				if err := kns.renewProxyLock(heartbeatCtx, plan); err != nil {
+					if errors.Is(err, context.Canceled) {
+						select {
+						case <-stopping:
+							done <- nil
+							return
+						default:
+						}
+					}
+					cancel()
+					done <- err
+					return
+				}
+			}
+		}
+	}()
+	return heartbeatCtx, func() error {
+		close(stopping)
+		cancel()
+		return <-done
+	}
 }
 
 func (kns *knowledgeNetworkService) releaseProxyLock(ctx context.Context, plan *proxyPublishPlan) {
@@ -1024,13 +1084,23 @@ func (kns *knowledgeNetworkService) prepareProxyDelete(ctx context.Context, knID
 	if err != nil {
 		return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "knowledge network proxy mapping is unavailable")
 	}
-	// Existing installations can contain main-branch networks before proxy
-	// backfill. Treat the missing mapping as legacy cleanup so upgrades do not
-	// block deletion while the backfill is still pending.
+	createdMapping := false
+	// Existing installations can contain main-branch networks from before proxy
+	// mappings were introduced. Materialize a mapping before deletion so legacy
+	// networks use the same persistent lease as every child mutation instead of
+	// falling back to an unsafe process-local lock.
 	if mapping == nil {
-		return nil, nil
+		kn, loadErr := kns.kna.GetKNByID(ctx, knID, branch)
+		if loadErr != nil || kn == nil {
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load legacy knowledge network for proxy deletion")
+		}
+		mapping, createdMapping, err = kns.createProxyMapping(ctx, kn)
+		if err != nil {
+			return nil, err
+		}
 	}
-	plan := &proxyPublishPlan{mapping: mapping, delegatorID: grantorID, lockOwner: uuid.NewString(), modelVersion: mapping.PublishedModelVersion}
+	plan := &proxyPublishPlan{mapping: mapping, delegatorID: grantorID, lockOwner: uuid.NewString(),
+		modelVersion: mapping.PublishedModelVersion, createdMapping: createdMapping}
 	if err := kns.acquireProxyLock(ctx, knID, plan.lockOwner); err != nil {
 		return nil, err
 	}
@@ -1041,24 +1111,61 @@ func (kns *knowledgeNetworkService) prepareProxyDelete(ctx context.Context, knID
 	}
 	plan.mapping = lockedMapping
 	plan.modelVersion = lockedMapping.PublishedModelVersion
-	if lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleArchived &&
+	if !createdMapping && lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleArchived &&
+		lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleDeleting &&
 		(lockedMapping.SyncStatus != interfaces.KNProxySyncReady ||
 			lockedMapping.PublishedGeneration != lockedMapping.SyncGeneration) {
 		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
 		return nil, proxyHTTPError(ctx, http.StatusConflict, "knowledge network proxy synchronization is pending")
 	}
+	// Persist the delete intent before any irreversible external cleanup. All
+	// publication paths reject this lifecycle, so a failed DELETE cannot be
+	// revived by an ordinary model update after its short lease is released.
+	if lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleDeleting {
+		if err := kns.kpa.SetLifecycle(ctx, knID, interfaces.KNProxyLifecycleDeleting,
+			time.Now().UnixMilli()); err != nil {
+			kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable,
+				"record knowledge network deletion state")
+		}
+		lockedMapping.LifecycleStatus = interfaces.KNProxyLifecycleDeleting
+	}
 	return plan, nil
 }
 
 func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, plan *proxyPublishPlan) error {
+	if err := kns.revokeProxyDelete(ctx, plan); err != nil {
+		return err
+	}
+	return kns.finalizeProxyAuthorizationDelete(ctx, plan)
+}
+
+// finalizeProxyAuthorizationDelete removes the parent authorization before
+// making the archived mapping reusable. Keeping the mapping deleting until the
+// Safe call succeeds prevents a concurrent import from restoring the proxy
+// while the old network policy still exists.
+func (kns *knowledgeNetworkService) finalizeProxyAuthorizationDelete(ctx context.Context, plan *proxyPublishPlan) error {
 	if plan == nil {
 		return nil
 	}
-	if plan.mapping.LifecycleStatus == interfaces.KNProxyLifecycleArchived {
-		if err := kns.kpa.DeletePublishedSnapshot(ctx, plan.mapping.KNID); err != nil {
-			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear archived knowledge network proxy grant snapshot")
-		}
-		return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID})
+	if err := kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID}); err != nil {
+		return err
+	}
+	if err := kns.kpa.SetLifecycle(ctx, plan.mapping.KNID, interfaces.KNProxyLifecycleArchived,
+		time.Now().UnixMilli()); err != nil {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable,
+			"record completed knowledge network deletion")
+	}
+	plan.mapping.LifecycleStatus = interfaces.KNProxyLifecycleArchived
+	return nil
+}
+
+// revokeProxyDelete disables the network proxy and removes every grant derived
+// from its bindings while the network row and its own delete permission still
+// exist. Generic child-policy cleanup may run only after this succeeds.
+func (kns *knowledgeNetworkService) revokeProxyDelete(ctx context.Context, plan *proxyPublishPlan) error {
+	if plan == nil {
+		return nil
 	}
 	account, err := kns.mpa.Disable(ctx, plan.mapping.ProxyAccountID)
 	if err != nil {
@@ -1069,12 +1176,6 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 	// repair the mapping without regressing it to disabling. Grant cleanup is
 	// still replayed because revoking an empty desired set is idempotent.
 	alreadyArchived := account.LifecycleStatus == interfaces.KNProxyLifecycleArchived
-	if !alreadyArchived {
-		if err := kns.kpa.SetLifecycle(ctx, plan.mapping.KNID, interfaces.KNProxyLifecycleDisabling,
-			time.Now().UnixMilli()); err != nil {
-			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record disabled knowledge network proxy")
-		}
-	}
 	if err := kns.renewProxyLock(ctx, plan); err != nil {
 		return err
 	}
@@ -1095,11 +1196,14 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "archive knowledge network proxy")
 		}
 	}
-	if err := kns.kpa.SetLifecycle(ctx, plan.mapping.KNID, interfaces.KNProxyLifecycleArchived,
-		time.Now().UnixMilli()); err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record archived knowledge network proxy")
+	if plan.mapping.LifecycleStatus != interfaces.KNProxyLifecycleDeleting {
+		if err := kns.kpa.SetLifecycle(ctx, plan.mapping.KNID, interfaces.KNProxyLifecycleDeleting,
+			time.Now().UnixMilli()); err != nil {
+			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "retain knowledge network deletion state")
+		}
+		plan.mapping.LifecycleStatus = interfaces.KNProxyLifecycleDeleting
 	}
-	return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID})
+	return nil
 }
 
 // FinalizeKNProxyDeletion resumes the recoverable tail of an ordered deletion
@@ -1114,6 +1218,49 @@ func (kns *knowledgeNetworkService) FinalizeKNProxyDeletion(ctx context.Context,
 	}
 	if mapping == nil {
 		return proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
+	}
+	if mapping.LifecycleStatus == interfaces.KNProxyLifecycleDeleting {
+		plan := &proxyPublishPlan{mapping: mapping, lockOwner: uuid.NewString()}
+		if err := kns.acquireProxyLock(ctx, knID, plan.lockOwner); err != nil {
+			return err
+		}
+		defer kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+
+		lockedMapping, loadErr := kns.kpa.Get(ctx, knID)
+		if loadErr != nil || lockedMapping == nil {
+			return proxyHTTPError(ctx, http.StatusServiceUnavailable,
+				"refresh knowledge network proxy deletion state")
+		}
+		plan.mapping = lockedMapping
+		if lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleDeleting {
+			return proxyHTTPError(ctx, http.StatusConflict,
+				"knowledge network proxy deletion state changed")
+		}
+
+		kn, loadErr := kns.kna.GetKNByID(ctx, knID, interfaces.MAIN_BRANCH)
+		if loadErr != nil {
+			return proxyHTTPError(ctx, http.StatusServiceUnavailable,
+				"check knowledge network deletion completion")
+		}
+		if kn != nil {
+			if err := kns.ps.CheckPermission(ctx,
+				interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID},
+				[]string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
+				return err
+			}
+			return proxyHTTPError(ctx, http.StatusConflict,
+				"knowledge network deletion has not committed")
+		}
+		// The durable deleting marker proves that an authorized deletion already
+		// committed. Resume this idempotent tail even when the parent policy was
+		// removed before the previous lifecycle update failed.
+		heartbeatCtx, stopHeartbeat := kns.keepProxyLockAlive(ctx, plan)
+		finalizeErr := kns.finalizeProxyAuthorizationDelete(heartbeatCtx, plan)
+		heartbeatErr := stopHeartbeat()
+		if finalizeErr != nil {
+			return finalizeErr
+		}
+		return heartbeatErr
 	}
 	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID},
 		[]string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
@@ -1458,6 +1605,37 @@ func accountIDFromContext(ctx context.Context) string {
 
 func proxyHTTPError(ctx context.Context, status int, detail string) *httperrors.HTTPError {
 	return httperrors.NewHTTPError(ctx, status, berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(detail)
+}
+
+func managedProxyDependencyHTTPError(ctx context.Context, operation string, cause error) *httperrors.HTTPError {
+	var statusErr *interfaces.ManagedProxyStatusError
+	if !errors.As(cause, &statusErr) {
+		return proxyHTTPError(ctx, http.StatusServiceUnavailable, operation)
+	}
+	detail := fmt.Sprintf("%s: bkn-safe returned status %d", operation, statusErr.StatusCode)
+	if code := publicDependencyErrorCode(statusErr.ErrorCode); code != "" {
+		detail += " (" + code + ")"
+	}
+	status := http.StatusBadGateway
+	if statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode >= http.StatusInternalServerError {
+		status = http.StatusServiceUnavailable
+	}
+	return proxyHTTPError(ctx, status, detail)
+}
+
+func publicDependencyErrorCode(code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" || len(code) > 128 {
+		return ""
+	}
+	for _, char := range code {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
+			char >= '0' && char <= '9' || char == '.' || char == '_' || char == '-' {
+			continue
+		}
+		return ""
+	}
+	return code
 }
 
 func proxyStateHTTPError(ctx context.Context, status int, code, detail string) *httperrors.HTTPError {

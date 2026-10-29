@@ -23,7 +23,7 @@ func TestCategoryListMarksLocalizedCacheableResponse(t *testing.T) {
 	handler := &categoryHandler{CategoryManager: manager}
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	request := httptest.NewRequest(http.MethodGet, "/operator/category", nil)
+	request := httptest.NewRequest(http.MethodGet, "/category", nil)
 	ctx.Request = request.WithContext(i18n.WithLanguage(request.Context(), i18n.AmericanEnglish))
 
 	handler.CategoryList(ctx)

@@ -14,6 +14,35 @@
 
 **升级：** 从 0.1.3 升级到 0.1.4 且需要清理不兼容的历史 Trace 数据时，参见[生产升级与历史数据清理](bkn-trace-0.1.3-to-0.1.4-upgrade.md)。
 
+资源规划与实测边界见[资源配置与 Agent / Trace 容量参考](bkn-trace-resources.md)。
+
+## Community 与 EE 接口边界
+
+Community 提供受授权的基础事实和技术 Trace 读取。企业原生业务溯源需要目标
+Trace 服务实际装配 EE 实现，并通过运行时许可及当前身份的记录授权。
+路径前缀均为 `/api/agent-observability/v1`：
+
+| 接口 | 范围 |
+| --- | --- |
+| `GET /interactions/{id}`、`GET /interactions/{id}/operations` | Core 已记录事实 |
+| `GET /interactions/{id}/business-graph` | Core 已记录组装修订的授权投影，不等于 EE 原生详情或解释 |
+| `GET /traces`、`GET /traces/{trace_id}` | Core 技术执行读取 |
+| `GET /business-provenance/conversations`、`GET /business-provenance/interactions` | EE 业务检索 |
+| `GET /business-provenance/interactions/{id}` | EE 原生业务解析详情 |
+| `GET /business-provenance/interactions/{id}/explanations` | EE 已有解释，只读；返回 `ready` 或 `not_generated` |
+
+Community 不挂载这些 EE 路由，0.2.0 已有此边界。普通 404 不能单独判断为记录不存在、
+缺许可证或网关错误：EE 许可门也可能返回同样的普通 404。Core 标准读取的结构化
+`resource_not_disclosed` 则表示当前范围不可披露；基础读取 200 不证明企业入口可用。
+
+不要用其他 EE 服务、证书或角色推断目标 Trace 镜像已包含企业实现。客户端应保留
+已授权的基础事实，对企业视图如实显示不可用/未披露。解释 GET 不生成内容；显式生成
+使用独立的 EE POST，不能在打开面板或可用性探测时隐式调用。非空企业验收需要已有
+真实记录和实际授权；`completed` 或 Operations 非空不能替代 `ready` 解释验收。
+
+旧 trace/request Evidence Chain、Business Graph、Evidence Node 路径不属于当前挂载的
+企业读取合同。完整边界与排查说明见[服务 README](../../../bkn-trace/agent-observability/README.md#community-与-ee-读取边界2517)。
+
 ## Interaction 自动完成链路的限制
 
 启用可靠答案交接后，Core 在同一 SQL 事务中保存答案任务并结束业务。

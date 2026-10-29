@@ -11,6 +11,7 @@ var ErrorMessagesEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"Public.UnprocessableEntity":                                     "Invalid execution input. Correct the input before retrying.",
+		"agentRetrieval.SearchSchema.FallbackRule":                       "When a Source instance has no counterpart along this relation (judged on the data alone, without the query's conditions; a foreign key pointing at a missing instance counts as none), its counterparts come from {{.Fallback}}; for a Source instance that has one, its edges in {{.Fallback}} are not used. Both directions read this same set of edges: when querying from Target, drop the Source instances in {{.Fallback}} that already have a counterpart along this relation. Do not substitute when the query on this relation fails, times out, is not fully paged, is truncated, is denied, or its counterpart is filtered by row-level permissions; say the result is incomplete instead. Label results reached through {{.Fallback}} by its verification.",
 		"agentRetrieval.Detail.FunctionCodeTooLong":                      "Code contains {{.Actual}} Unicode characters; the maximum is {{.Max}}. Shorten the code before retrying.",
 		"agentRetrieval.Detail.FunctionExecutionTimeout":                 "Function execution timed out after {{.Timeout}} seconds. Reduce the work or adjust the timeout.",
 		"agentRetrieval.Detail.FunctionExecutionTimeoutUnknown":          "Function execution timed out. Reduce the work or adjust the timeout.",
@@ -77,7 +78,7 @@ var ErrorMessagesEnUS = i18n.I18nMessages{
 		"agentRetrieval.Detail.FunctionCodeRequired":                     "Code is required for sandbox execution.",
 		"agentRetrieval.Detail.FunctionExecutionRequestFailed":           "Unable to execute the sandbox function.",
 		"agentRetrieval.Detail.FunctionExecutionResponseInvalid":         "The sandbox execution response is invalid.",
-		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "This account lacks permission to run ad hoc code (execute on the operator type, operator:*), so the code was not run. Ask an administrator for that grant; grants on a knowledge network or a single operator do not cover it.",
+		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "This account lacks permission to run ad hoc code (execute on function:adhoc, which a type-wide function grant also covers), so the code was not run. Ask an administrator for that grant; grants on a knowledge network or a single function toolbox do not cover it.",
 		"agentRetrieval.Detail.FunctionAuthorizationUnavailable":         "The execution permission check is temporarily unavailable, so no authorization decision was made and the code was not run. This does not mean the permission is missing. Retry later; if it keeps failing, ask an administrator to check bkn-safe.",
 		"agentRetrieval.Detail.SkillListRequestFailed":                   "Unable to retrieve the skill list.",
 		"agentRetrieval.Detail.SkillListResponseInvalid":                 "The skill list response is invalid.",

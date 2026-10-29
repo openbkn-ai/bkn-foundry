@@ -190,7 +190,7 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPRequest) (*http.Request, error) {
 	// Handle URL and path parameters.
 	requestURL := substitutePathParams(req.URL, req.PathParams)
-	// If the path template still has unreplaced placeholders, it will be directly rejected to avoid sending invalid URLs such as "/market/{operator_id}" to downstream users.
+	// If the path template still has unreplaced placeholders, it will be directly rejected to avoid sending invalid URLs such as "/market/{box_id}" to downstream users.
 	if unresolved := unresolvedPathPlaceholders(requestURL); len(unresolved) > 0 {
 		missing := strings.Join(unresolved, ", ")
 		return nil, myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtProxyPathParamMissing,

@@ -178,7 +178,7 @@ func TestRowFilterResolverFailureIsUnavailable(t *testing.T) {
 }
 
 func TestRowFilterUsesCanonicalSafeObjectReference(t *testing.T) {
-	objectTypeRef := strings.Repeat("k", 40) + "/" + strings.Repeat("o", 40)
+	objectTypeRef := strings.Repeat("k", 128) + "/" + strings.Repeat("o", 128)
 	if !coresocket.ValidObjectTypeRef(objectTypeRef) {
 		t.Fatalf("ValidObjectTypeRef(%q) = false", objectTypeRef)
 	}

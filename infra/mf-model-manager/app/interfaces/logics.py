@@ -349,6 +349,8 @@ class AddExternalSmallModel(BaseModel):
     adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
     adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
     batch_size: int = Field(description="Batch size")
+    max_documents: Optional[conint(strict=True, ge=1, le=2147483647)] = Field(
+        default=None, description="Maximum input documents per rerank request; null means no local limit")
     max_tokens: Optional[int] = Field(default=None, description="Maximum token count")
     embedding_dim: Optional[int] = Field(default=None, description="Embedding dimension")
     default: StrictBool = Field(default=False, description="Whether to set this model as the system default")
@@ -396,6 +398,12 @@ class AddExternalSmallModel(BaseModel):
         
         return values
 
+    @root_validator
+    def validate_max_documents_type(cls, values):
+        if values.get("max_documents") is not None and values.get("model_type") == "embedding":
+            raise ValueError("max_documents is only supported for reranker models")
+        return values
+
 
 class TestSmallModel(BaseModel):
     model_id: Optional[StrictStr] = Field(None, description="Configuration ID", min_length=19, max_length=19)
@@ -405,6 +413,8 @@ class TestSmallModel(BaseModel):
     adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
     adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
     batch_size: Optional[int] = Field(description="Batch size")
+    max_documents: Optional[conint(strict=True, ge=1, le=2147483647)] = Field(
+        default=None, description="Maximum input documents per rerank request; null means no local limit")
     max_tokens: Optional[int] = Field(default=None, description="Maximum token count")
     embedding_dim: Optional[int] = Field(default=None, description="Embedding dimension")
     change: Optional[bool] = Field(default=False, description="Whether api_key in model_config was changed")
@@ -452,6 +462,12 @@ class TestSmallModel(BaseModel):
                 raise RequestValidationError([{"loc": ('body', k), "type": "value_error.missing"}])
         return v
 
+    @root_validator
+    def validate_max_documents_type(cls, values):
+        if values.get("max_documents") is not None and values.get("model_type") == "embedding":
+            raise ValueError("max_documents is only supported for reranker models")
+        return values
+
 
 class EditExternalSmallModel(BaseModel):
     model_id: StrictStr = Field(description="Configuration ID", min_length=19, max_length=19)
@@ -461,6 +477,8 @@ class EditExternalSmallModel(BaseModel):
     adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
     adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
     batch_size: int = Field(description="Batch size")
+    max_documents: Optional[conint(strict=True, ge=1, le=2147483647)] = Field(
+        default=None, description="Maximum input documents per rerank request; null means no local limit")
     max_tokens: Optional[int] = Field(default=None, description="Maximum token count")
     embedding_dim: Optional[int] = Field(default=None, description="Embedding dimension")
     change: Optional[bool] = Field(default=False, description="Whether api_key in model_config was changed")
@@ -499,6 +517,12 @@ class EditExternalSmallModel(BaseModel):
                 raise RequestValidationError([{"loc": ('body', "embedding_dim"), "type": "value_error.missing",
                                                "msg": "embedding_dim is required when model_type is embedding"}])
 
+        return values
+
+    @root_validator
+    def validate_max_documents_type(cls, values):
+        if values.get("max_documents") is not None and values.get("model_type") == "embedding":
+            raise ValueError("max_documents is only supported for reranker models")
         return values
 
 

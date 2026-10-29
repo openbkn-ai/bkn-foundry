@@ -6,11 +6,13 @@ package lineage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5"
@@ -179,6 +181,24 @@ func Test_LineageService_SyncBranch(t *testing.T) {
 			})
 		})
 
+		Convey("A branch kept in BKN 2.x syncs with a main now kept in BKN 3.0\n", func() {
+			_, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited on the branch.", "A supplier."), "branch edit", author)
+			So(err, ShouldBeNil)
+			main3 := definitions("A part.", "A supplier, edited live.")
+			main3["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+			_, err = realGS.CommitFiles(ctx, id, "main", main3, "drift as 3.0", author)
+			So(err, ShouldBeNil)
+
+			result, err := svc.SyncBranch(ctx, id, branch, author)
+
+			So(err, ShouldBeNil)
+			So(result.Result, ShouldEqual, interfaces.SYNC_RESULT_MERGED)
+			files, err := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+			So(err, ShouldBeNil)
+			So(string(files["network.bkn"]), ShouldContainSubstring, `bkn_spec: "3.0"`)
+			So(string(files["object_types/part.bkn"]), ShouldContainSubstring, "A part, edited on the branch.")
+		})
+
 		Convey("A conflict replies 409 with the conflicts and commits nothing\n", func() {
 			branchHead, err := realGS.CommitFiles(ctx, id, branch, definitions("Branch wording.", "A supplier."), "branch edit", author)
 			So(err, ShouldBeNil)
@@ -263,6 +283,50 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusForbidden)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_BknBackendRequestFailed)
+		})
+
+		Convey("A network bkn-backend cannot export as BKN 3.0 says what to fix, and leaves no lineage\n", func() {
+			found := map[string]any{"misplaced_parameters": []any{map[string]any{"action_type_id": "restock"}}}
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{
+				HTTPCode: http.StatusBadRequest,
+				BaseError: httperrors.BaseError{
+					ErrorCode:    "BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck",
+					ErrorDetails: found,
+				},
+			})
+
+			_, err := svc.CreateLineage(ctx, token, id, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NetworkNeedsCheck)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, found)
+			_, refErr := realGS.ResolveRef(ctx, id, "main")
+			So(refErr, ShouldNotBeNil)
+		})
+
+		Convey("A network whose definitions do not read back as BKN 3.0 names the one to fix, and leaves no lineage\n", func() {
+			const unreadable = `load object_types/part.bkn: data property name is empty`
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{
+				HTTPCode: http.StatusBadRequest,
+				BaseError: httperrors.BaseError{
+					ErrorCode:    "BknBackend.KnowledgeNetwork.ExportNotReadableAsV3",
+					ErrorDetails: unreadable,
+				},
+			})
+
+			_, err := svc.CreateLineage(ctx, token, id, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NetworkNotReadableAsV3)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldEqual, unreadable)
+			_, refErr := realGS.ResolveRef(ctx, id, "main")
+			So(refErr, ShouldNotBeNil)
 		})
 
 		Convey("A bkn-backend server error is a bad gateway\n", func() {
@@ -385,6 +449,229 @@ func Test_LineageService_CommitDefinitions(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
 
 			_, err = svc.CommitDefinitions(ctx, id, "project/none", base, "", author)
+			_, code = httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotFound)
+		})
+	})
+}
+
+func Test_LineageService_PreflightDefinitions(t *testing.T) {
+	Convey("Test lineageService PreflightDefinitions\n", t, func() {
+		svc := &lineageService{gs: realGS}
+		ctx := context.Background()
+		const branch = "project/p1"
+		v3 := func() map[string][]byte {
+			files := definitions("A part.", "A supplier.")
+			files["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+			return files
+		}
+		lineage := func(files map[string][]byte) string {
+			id := newLineageID()
+			_, err := realGS.InitLineage(ctx, id, files, "init", author)
+			So(err, ShouldBeNil)
+			_, err = svc.CreateBranch(ctx, id, branch, "")
+			So(err, ShouldBeNil)
+			return id
+		}
+
+		Convey("It lists the paths adding would be refused for, as adding does, and commits nothing\n", func() {
+			id := lineage(v3())
+			before, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+
+			preflight, err := svc.PreflightDefinitions(ctx, id, branch,
+				[]string{"object_types/part.bkn", "object_types/plant.bkn"}, nil)
+
+			So(err, ShouldBeNil)
+			So(preflight.NotV3, ShouldBeEmpty)
+			So(preflight.Existing, ShouldResemble, []string{"object_types/part.bkn"})
+			after, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			So(after, ShouldEqual, before)
+		})
+
+		Convey("A path the draft owns is not in the way\n", func() {
+			id := lineage(v3())
+
+			preflight, err := svc.PreflightDefinitions(ctx, id, branch,
+				[]string{"object_types/part.bkn"}, []string{"object_types/part.bkn"})
+
+			So(err, ShouldBeNil)
+			So(preflight.Existing, ShouldBeEmpty)
+		})
+
+		Convey("A lineage still in BKN 2.x needs its drift committed, then the branch synced\n", func() {
+			id := lineage(definitions("A part.", "A supplier."))
+
+			preflight, err := svc.PreflightDefinitions(ctx, id, branch, []string{"object_types/plant.bkn"}, nil)
+
+			So(err, ShouldBeNil)
+			So(preflight.NotV3, ShouldEqual, interfaces.DEFINITIONS_LINEAGE_NOT_V3)
+
+			_, err = realGS.CommitFiles(ctx, id, "main", v3(), "drift as 3.0", author)
+			So(err, ShouldBeNil)
+			preflight, err = svc.PreflightDefinitions(ctx, id, branch, []string{"object_types/plant.bkn"}, nil)
+
+			So(err, ShouldBeNil)
+			So(preflight.NotV3, ShouldEqual, interfaces.DEFINITIONS_BRANCH_NOT_V3)
+		})
+
+		Convey("main and an unknown branch are refused as adding refuses them\n", func() {
+			id := lineage(v3())
+
+			_, err := svc.PreflightDefinitions(ctx, id, "main", nil, nil)
+			status, _ := httpCode(err)
+			So(status, ShouldEqual, http.StatusForbidden)
+
+			_, err = svc.PreflightDefinitions(ctx, id, "project/none", nil, nil)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_LineageService_AddDefinitions(t *testing.T) {
+	Convey("Test lineageService AddDefinitions\n", t, func() {
+		svc := &lineageService{gs: realGS}
+		ctx := context.Background()
+		id := newLineageID()
+		const branch = "project/p1"
+		base := definitions("A part.", "A supplier.")
+		base["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+		_, err := realGS.InitLineage(ctx, id, base, "init", author)
+		So(err, ShouldBeNil)
+		_, err = svc.CreateBranch(ctx, id, branch, "")
+		So(err, ShouldBeNil)
+
+		Convey("The files join what the branch holds, which stays as it is\n", func() {
+			plant := objectType("plant", "Plant", "A plant.")
+
+			result, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{"object_types/plant.bkn": plant}, nil, "confirm", author)
+
+			So(err, ShouldBeNil)
+			So(result.Changed, ShouldResemble, interfaces.PathDiff{Added: []string{"object_types/plant.bkn"}, Changed: []string{}, Removed: []string{}})
+			files, err := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+			So(err, ShouldBeNil)
+			So(files["object_types/plant.bkn"], ShouldResemble, plant)
+			So(files["object_types/part.bkn"], ShouldResemble, base["object_types/part.bkn"])
+			So(files["network.bkn"], ShouldResemble, base["network.bkn"])
+		})
+
+		Convey("What the same source wrote before is replaced, and removed once no longer written\n", func() {
+			first := map[string][]byte{
+				"object_types/plant.bkn": objectType("plant", "Plant", "A plant."),
+				"object_types/depot.bkn": objectType("depot", "Depot", "A depot."),
+			}
+			_, err := svc.AddDefinitions(ctx, id, branch, first, nil, "confirm", author)
+			So(err, ShouldBeNil)
+			again := map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant, renamed.")}
+
+			result, err := svc.AddDefinitions(ctx, id, branch, again,
+				[]string{"object_types/plant.bkn", "object_types/depot.bkn"}, "confirm again", author)
+
+			So(err, ShouldBeNil)
+			So(result.Changed, ShouldResemble, interfaces.PathDiff{
+				Added: []string{}, Changed: []string{"object_types/plant.bkn"}, Removed: []string{"object_types/depot.bkn"},
+			})
+			files, _ := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+			So(files["object_types/part.bkn"], ShouldResemble, base["object_types/part.bkn"])
+			_, kept := files["object_types/depot.bkn"]
+			So(kept, ShouldBeFalse)
+		})
+
+		Convey("Nothing left to write removes what the same source wrote before\n", func() {
+			first := map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}
+			_, err := svc.AddDefinitions(ctx, id, branch, first, nil, "confirm", author)
+			So(err, ShouldBeNil)
+
+			result, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{},
+				[]string{"object_types/plant.bkn"}, "confirm nothing", author)
+
+			So(err, ShouldBeNil)
+			So(result.Changed.Removed, ShouldResemble, []string{"object_types/plant.bkn"})
+		})
+
+		Convey("A path the branch holds is refused and listed, and nothing is committed\n", func() {
+			before, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+
+			_, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{
+				"object_types/part.bkn":  objectType("part", "Part", "Another part."),
+				"object_types/plant.bkn": objectType("plant", "Plant", "A plant."),
+			}, nil, "", author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_DefinitionsExist)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, []string{"object_types/part.bkn"})
+			after, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			So(after, ShouldEqual, before)
+		})
+
+		Convey("Files the BKN loader cannot read with the branch are refused\n", func() {
+			_, err := svc.AddDefinitions(ctx, id, branch,
+				map[string][]byte{"object_types/plant.bkn": []byte("---\ntype: object_type\nid: plant\n---\n")}, nil, "", author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+		})
+
+		Convey("An object type named as one the branch holds is refused, though the loader reads it\n", func() {
+			_, err := svc.AddDefinitions(ctx, id, branch,
+				map[string][]byte{"object_types/part2.bkn": objectType("part2", "Part", "Another part.")}, nil, "", author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			details, ok := httpErr.ErrorDetails.([]interfaces.DefinitionError)
+			So(ok, ShouldBeTrue)
+			So(details, ShouldNotBeEmpty)
+			So(details[0].Message, ShouldNotBeEmpty)
+			reply, _ := json.Marshal(details[0])
+			So(string(reply), ShouldStartWith, `{"table":`)
+		})
+
+		Convey("A branch still kept in BKN 2.x is refused until it syncs\n", func() {
+			id2 := newLineageID()
+			_, err := realGS.InitLineage(ctx, id2, definitions("A part.", "A supplier."), "init", author)
+			So(err, ShouldBeNil)
+			_, err = svc.CreateBranch(ctx, id2, branch, "")
+			So(err, ShouldBeNil)
+
+			plant := map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}
+
+			_, err = svc.AddDefinitions(ctx, id2, branch, plant, nil, "", author)
+
+			// main is 2.x too: syncing would change nothing until its drift is committed.
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_LineageNotV3)
+
+			Convey("and once main is 3.0, syncing the branch is what is left\n", func() {
+				main3 := definitions("A part.", "A supplier.")
+				main3["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+				_, err := realGS.CommitFiles(ctx, id2, "main", main3, "drift as 3.0", author)
+				So(err, ShouldBeNil)
+
+				_, err = svc.AddDefinitions(ctx, id2, branch, plant, nil, "", author)
+
+				_, code := httpCode(err)
+				So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotV3)
+			})
+		})
+
+		Convey("main, nothing to add and an unknown branch are refused\n", func() {
+			_, err := svc.AddDefinitions(ctx, id, "main", base, nil, "", author)
+			status, _ := httpCode(err)
+			So(status, ShouldEqual, http.StatusForbidden)
+
+			_, err = svc.AddDefinitions(ctx, id, branch, map[string][]byte{}, nil, "", author)
+			_, code := httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+
+			_, err = svc.AddDefinitions(ctx, id, "project/none",
+				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, nil, "", author)
 			_, code = httpCode(err)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotFound)
 		})

@@ -58,6 +58,8 @@ spec:
           env:
               - name: BKN_SAFE_URL
                 value: {{ .Values.bknSafe.url | quote }}
+              - name: BKN_SAFE_RESOURCE_CLEANUP_TIMEOUT
+                value: {{ .Values.bknSafe.resourceCleanupTimeout | default "30s" | quote }}
             {{- if .Values.skill }}
               - name: SKILL_INTERNAL_READ_AUTHZ
                 value: {{ .Values.skill.internalReadAuthz | default "shadow" | quote }}

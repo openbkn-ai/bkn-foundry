@@ -6,17 +6,62 @@
 - 类型化 Trace 列表接口：`GET /api/agent-observability/v1/traces`
 - 单 Trace 技术详情接口：`GET /api/agent-observability/v1/traces/{trace_id}`
 - Evidence 事件接收接口：`POST /api/agent-observability/v1/evidence/events`
-- 企业 Evidence Chain 查询接口：`GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain`
-- 企业 Request Evidence Chain 查询接口：`GET /api/agent-observability/v1/business-provenance/requests/{request_id}/evidence-chain`
-- 企业 Business Graph 查询接口：`GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/business-graph`
-- 企业 Request Business Graph 查询接口：`GET /api/agent-observability/v1/business-provenance/requests/{request_id}/business-graph`
-- Evidence Node 查询接口（企业业务溯源）：`GET /api/agent-observability/v1/business-provenance/evidence-nodes/{node_id}?trace_id=...`
+- 受管 Interaction 读取：`GET /api/agent-observability/v1/interactions/{interaction_id}`
+- 已记录 Operations 读取：`GET /api/agent-observability/v1/interactions/{interaction_id}/operations`
+- Core 业务语义组装修订：`GET /api/agent-observability/v1/interactions/{interaction_id}/business-graph`
 - OpenSearch 查询客户端
 - 阶段二 Evidence ingestion 校验、归一化和可替换存储接口，支持内存 store 与 OpenSearch evidence index store
 - Swagger 文档生成
 - Docker 镜像构建
 - Helm Deployment Chart
 - GitHub Actions 构建与发布流水线
+
+## Community 与 EE 读取边界（#2517）
+
+以下路径均以 `/api/agent-observability/v1` 为前缀，描述当前主线实现。
+Community 0.2.0（`81d57528`）已有同样的企业路由装配边界；升级 Community
+镜像不会自动获得 EE 原生业务溯源接口。公开 Core OpenAPI 不包含 EE 路由。
+
+| 读取入口 | 制品与含义 |
+| --- | --- |
+| `GET /interactions/{interaction_id}` | Core：受管 Interaction 生命周期及已记录事实 |
+| `GET /interactions/{interaction_id}/operations` | Core：已记录调用的输入、输出/错误等事实 |
+| `GET /interactions/{interaction_id}/business-graph` | Core：已记录业务语义组装修订的授权投影；不是 EE 原生解析详情或解释结果 |
+| `GET /traces`、`GET /traces/{trace_id}` | Core：技术执行列表与详情，继续受当前读取授权和展示范围约束 |
+| `GET /business-provenance/conversations`、`GET /business-provenance/interactions` | EE：业务会话/交互检索，Community 不挂载 |
+| `GET /business-provenance/interactions/{interaction_id}` | EE：当前交互的企业业务解析详情，Community 不挂载 |
+| `GET /business-provenance/interactions/{interaction_id}/explanations` | EE：只读查询当前授权作用域的解释；不存在已生成结果时为 `not_generated`，存在时为 `ready` |
+
+EE 实例必须实际包含并装配企业实现，通过运行时企业许可门，再经过 Core 的当前身份
+与记录范围授权。安装其他 EE 服务或拥有企业证书，不会让 Community Trace 二进制
+装配不存在的实现。管理员角色也不能替代许可或记录授权。
+
+### 如何解释 404
+
+- Community 的企业路由没有注册，普通 `404 page not found` 符合实现边界，不说明
+  Interaction 丢失，也不是单凭这一响应就能判定的网关故障。
+- 当前 EE 许可门未通过时也刻意返回相同的普通 404；企业详情中的未披露记录也可能
+  返回 404。因此状态、Content-Type 或响应体不能独立区分缺路由、未许可和未披露。
+- 标准 Core 读取在缺少有效身份时返回 401；`resource_not_disclosed` 是该读取合同的
+  结构化 404，表示请求的记录在当前授权范围中不可披露，不能证明记录不存在。
+- 标准 Interaction/Operations 返回 200，仅证明这些基础事实可读，不证明 EE 原生详情
+  或解释已安装、获许可或获得授权。排查时分别核对目标 Trace 镜像/装配、运行时许可和
+  当前记录授权，不根据一次 404 自动选择“缺许可证”等单一原因。
+
+解释 GET 不触发生成。只有显式生成动作才调用独立的 EE
+`POST /business-provenance/interactions/{interaction_id}/explanations`，仍需当前许可与授权；
+打开面板或探测可用性不能代替用户发起生成。`completed`、Operations 非空或 Core 图可读，
+都不意味着已有 `ready` 解释，也不代表解释或事实完整。
+
+外部客户端可继续显示已授权的 Core/本地事实，将企业原生视图标为不可用或未披露；
+不能把基础图转换成伪造的 EE 节点、关系或解释。企业功能的非空验收应使用获授权 EE
+环境中已有的真实记录，分别保留详情和解释读取结果。没有现成解释时保留 `not_generated`，
+不为验收制造生成请求。本说明不把其他部署的成功结果反向记为原 Community 环境通过。
+
+旧的 `/business-provenance/traces/.../evidence-chain`、
+`/business-provenance/requests/.../business-graph` 和
+`/business-provenance/evidence-nodes/...` 等 trace/request/node 读取示例不属于当前挂载合同，
+不能将内部 Evidence Store 模型或旧响应 envelope 当成当前可调用的 HTTP 接口。
 
 ## Span display and browsing (#2158)
 
@@ -289,7 +334,7 @@ python3 scripts/bkn_trace_e2e_lite_probe.py \
 
 本地自签 HTTPS 网关可以加 `--insecure`。写入模式仍只写最小诊断 span、claim、evidence ref 和 business ref，不包含 prompt、完整 SQL、行级数据、token 或裸对象存储 URL。由于 collector 到 OpenSearch 可能存在短暂可见性延迟，查询类 endpoint 默认重试 3 次，可用 `--retries` 和 `--retry-delay` 调整。
 
-阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、最小 Evidence Chain 查询、Business Graph 查询和 Evidence Node 查询；默认使用内存 repository，生产或共享测试环境可切换到 OpenSearch evidence index store。
+历史 Evidence Store 模型包含 `trace`、`events`、Claim、evidence ref 和 business ref，并保留内存与 OpenSearch 存储实现。内部存储模型不决定当前公开路由；受管证据写入采用下文 BKN Trace 3.0 合同，读取范围见前述 Community/EE 边界。
 
 ### BKN Trace 3.0 Interaction 业务语义图
 
@@ -390,14 +435,9 @@ OPENSEARCH_EVIDENCE_INDEX=bkn-trace-evidence-v1
 
 Evidence 与 Artifact 存储在首次读写时由运行时 `EnsureIndex` 创建或更新 mapping；Chart 不再渲染独立的索引初始化 Hook。启用 OpenSearch Evidence Store 的服务身份须具备目标索引的创建及 mapping 更新权限。
 
-Evidence Chain 与 Business Graph 查询支持可选 `limit` 参数，限制本次读取的 evidence trace 批次数：
-
-```http
-GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain?limit=100
-GET /api/agent-observability/v1/business-provenance/requests/{request_id}/business-graph?limit=100
-```
-
-`limit` 取值范围为 `1..1000`，默认 `1000`。命中上限时响应会返回 `partial=true`、`partial_reason=["evidence_query_truncated"]`，并设置 `page.truncated=true`，调用方不得把该结果展示为完整证据链。
+Evidence Store 的内部查询预算不构成公开 HTTP 合同。当前读取入口及 Core/EE
+差异见[读取边界](#community-与-ee-读取边界2517)，不要向未挂载的旧 trace/request
+企业路径发送查询或沿用其 `limit`、`page`、`partial_reason` 响应假设。
 
 单 Trace 技术详情包含归一化 OTel Span 图与 Operation 调用事实：
 
@@ -572,120 +612,20 @@ Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须�
 
 升级存量环境时，如果部署 values 覆盖了 `ingress.paths`，Helm 不会合并 chart 新增路径，必须显式补充 `/api/observability/v1`。扩容到多副本前也必须先配置共享的 `observability.cursorSigning.existingSecret`，否则不同 Pod 签发的游标不能互相验证。
 
-查询仍依据事件生产方或 resolver 声明的 `visibility` 做节点级响应过滤，并区分 `redacted`、`hidden`、`omitted`、`unresolved`、`unauthorized` 统计。`unauthorized` 引用只进入汇总和 `partial_reason[]`，不会展开 `ref_id`、`policy_decision_ref` 或其他节点详情。更细粒度的对象/属性级实时策略裁决仍属于后续阶段。
+Core 业务语义图的当前读取合同见前述“BKN Trace 3.0 Interaction 业务语义图”；
+企业原生详情与解释见[读取边界](#community-与-ee-读取边界2517)。内部证据模型不代表
+同名 HTTP 路由已挂载，旧 Evidence Chain / Evidence Node envelope 不再作为当前调用示例。
 
-当前查询侧尚未接入受权 Resolver/display 服务，业务图节点因此只投影注册引用字段，不信任或返回事件中的 `label` 等显示信息；存在可见业务引用时返回 `partial=true` 与 `resolver_unresolved`。受权业务名称和详情补全由后续独立任务实现。
+### 历史 Evidence Store 模型（非当前 HTTP 合同）
 
-Evidence Chain 查询返回稳定 envelope：
+以下 2.0/2.1 聚合模型说明保留的旧存储实现，不是当前 `/evidence/events` 的 BKN Trace 3.0 写入合同，也不声明旧查询路由可用。
 
-```json
-{
-  "trace_id": "9c0d...",
-  "bkn.request.id": "req_handler_001",
-  "partial": false,
-  "partial_reason": [],
-  "visibility_summary": {
-    "authorized_ref_count": 2,
-    "redacted_ref_count": 0,
-    "hidden_ref_count": 0,
-    "omitted_ref_count": 0,
-    "unresolved_ref_count": 0,
-    "unauthorized_ref_count": 0
-  },
-  "page": {
-    "next_cursor": null,
-    "node_count": 3,
-    "edge_count": 2,
-    "truncated": false
-  },
-  "data": {
-    "claims": [],
-    "evidence_refs": [],
-    "business_refs": []
-  }
-}
-```
+旧 Evidence ingestion 模型写入 `2.1.0`，读取兼容 `2.0.0`。2.1 事件执行精确 payload/ref allowlist、类型、枚举、hash、敏感值、trace/span/time join 校验。一般事实允许先于其父事件异步到达：首次查询返回 `causality_missing`，父事件补到后自动恢复完整；claim 的 `source_event_ids` 缺失仍返回 `source_event_missing`，Action 前态乱序继续原子拒绝。混合 2.0/2.1 历史按每个 event 的版本保留 `causality_missing`。
 
-Business Graph 查询返回从 `business.refs.resolved` 派生的业务语义图：
+该旧 OpenSearch 模型使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 account/application principal 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
 
-```json
-{
-  "trace_id": "9c0d...",
-  "bkn.request.id": "req_handler_002",
-  "partial": false,
-  "partial_reason": [],
-  "visibility_summary": {
-    "authorized_ref_count": 0,
-    "redacted_ref_count": 0,
-    "hidden_ref_count": 0,
-    "omitted_ref_count": 0,
-    "unresolved_ref_count": 0
-  },
-  "page": {
-    "next_cursor": null,
-    "node_count": 2,
-    "edge_count": 1,
-    "truncated": false
-  },
-  "data": {
-    "nodes": [
-      {
-        "id": "claim:claim_handler_business",
-        "node_type": "claim",
-        "claim_id": "claim_handler_business"
-      },
-      {
-        "id": "business:object:kn_demo:customer",
-        "node_type": "object",
-        "display": {
-          "name": "客户",
-          "business_path": ["客户"],
-          "resolution_status": "resolved",
-          "source_version": "main"
-        }
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge:1",
-        "source_id": "claim:claim_handler_business",
-        "target_id": "business:object:kn_demo:customer",
-        "edge_type": "claim_to_object"
-      }
-    ]
-  }
-}
-```
-
-Business Graph 只消费已进入 BKN Trace 的 `business_refs`，并复用当前用户身份调用 BKN / Vega resolver 做实时授权投影。`unresolved` 与 `unauthorized` 不会生成业务节点或边；resolver 不可用会明确标记披露降级。没有安全实例级授权接口的对象实例、行动实例和函数引用保持 fail-closed，不能仅凭父类型权限披露。
-
-Evidence Node 查询用于打开单个可见节点详情：
-
-```http
-GET /api/agent-observability/v1/business-provenance/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d...
-GET /api/agent-observability/v1/business-provenance/evidence-nodes/business_ref%3Aobject%3Acustomer?request_id=req_handler_002
-```
-
-首版 node id 格式：
-
-```text
-claim:{claim_id}
-evidence_ref:{ref_id}
-business_ref:{ref_id}
-```
-
-查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved`、`unauthorized` 节点不会通过详情接口展开。
-
-Evidence ingestion 默认写入 `2.1.0`，读取兼容 `2.0.0`。2.1 事件执行精确 payload/ref allowlist、类型、枚举、hash、敏感值、trace/span/time join 校验。一般事实允许先于其父事件异步到达：首次查询返回 `causality_missing`，父事件补到后自动恢复完整；claim 的 `source_event_ids` 缺失仍返回 `source_event_missing`，Action 前态乱序继续原子拒绝。混合 2.0/2.1 历史按每个 event 的版本保留 `causality_missing`。
-
-OpenSearch 当前仍使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 account/application principal 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
-
-持久化 evidence 可通过企业业务溯源接口回查：
-
-```text
-GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain
-GET /api/agent-observability/v1/business-provenance/requests/{request_id}/evidence-chain
-```
+已记录的 Interaction、Operations 和业务语义组装修订通过前述 Core 读取入口查询；
+EE 原生详情/解释需要实际装配的企业接口及相应许可、授权。两类响应不能互相替代。
 
 生成 Swagger 文档：
 
@@ -887,3 +827,156 @@ OpenSearch返回401/403时，该条输出`opensearch_auth_failed`，不输出凭
 仍使用原有有界读取路径。该维护工具不把未知或真实缺口当成完整，也不补造
 历史调用结束结果；SQL快照仍复用既有实现，命令应在具备数据库维护权限的
 受控环境中串行运行。报告可能含内部记录ID，应按现场诊断文件保护。
+
+### MariaDB 投影领取性能回归
+
+在本模块目录运行 `make test-outbox-performance`，设置
+`BKN_TRACE_OUTBOX_PERF_ADMIN_DSN` 为隔离 MariaDB 11.4 测试服务器的 admin DSN
+（含 `parseTime=true&multiStatements=true`，允许创建和删除数据库）。测试创建并
+清理独立数据库，使用生产 Core 建表脚本，不修改共享审计库。CI 使用相同入口，
+缺少 DSN 时 Makefile 直接失败，避免把跳过测试当作通过。
+
+历史数据集包含 190,148 条终态任务和 14,213 条 pending，最早 pending ID 为
+190149，每条 payload 约 1 KiB；建议测试服务器使用 128 MiB InnoDB buffer pool。
+测试输出候选查询与真实 `FOR UPDATE SKIP LOCKED` 查询的 EXPLAIN；候选分支须使用
+claim-order 覆盖索引且不对大表排序，加锁查询须使用限定候选 ID 的主键路径。
+计时覆盖完整 `Lease()`：事务开始、数据库时钟、候选发现、加锁重检、payload 读取、租约更新和提交；
+20 次单条领取、100 条批量领取和空队列领取均须在独立的 2 秒 deadline 内完成。
+另有跨状态 ID 顺序、跨页锁定前缀补领、候选变更重检、延迟任务重新可用、
+并发领取、过期租约恢复、旧 token fencing 及有数据索引迁移幂等回归。
+结果用于约束代表性数据下的领取路径，不代表其他硬件或任意积压规模的耗时保证。
+
+领取依赖 v040 新增的 `(status, outbox_id, available_at, locked_until)` 覆盖索引。
+每个状态最多取 128 个候选 ID，仅合并排序至多 256 个 ID；之后按主键加锁重检。
+遇到行锁或过期候选时通过 ID 游标补页，每次新领取从头开始，避免遗漏较早的重试任务。
+一次领取共用数据库时间快照，保持跨状态和补页时的时间资格一致。原 pending 索引保留。
+该路径仍可能扫描大量时间未到或有效租约的索引项，不承诺任意分布下的恒定扫描量。
+升级与恢复需同时核对物理索引和迁移账本，见下文“v040 升级与恢复约束”。
+
+更大积压的容量实验使用 `make test-outbox-scale`，另需设置
+`BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL` 为隔离 OpenSearch 实例。该入口独立运行，
+创建约 19 万条历史终态任务及 10 万／50 万条全部到期的 pending，
+分别采样 20 次单条和 10 次百条完整领取事务，输出延迟分位数、错误及超时次数。
+随后使用生产 `projectorsvc.Worker`（BatchSize=1、领取超时 2s、lease 30s），
+分别连接空 sink 和真实 OpenSearch sink，测量交付吞吐及领取／投影／ACK 耗时占比。
+空 sink 只测量 SQL 消费能力，不作为端到端吞吐；真实 sink 的 SQL 交付数与
+OpenSearch 文档数须一致。默认每种 sink 测量 30s，可用
+`BKN_TRACE_OUTBOX_SCALE_WORKER_DURATION=60s` 延长，每 10s 输出一个窗口。
+每种 sink 测量前会在计时之外恢复合成夹具到指定 pending 数量，并核对交付数与
+实际剩余 pending 的差值。CI 独立容量步骤运行相同数据集，每种 sink 测量 10s；
+本地持续吞吐验证建议使用 60s。夹具恢复不用于生产数据。
+采样边界在事务之间检查，避免主动取消最后一笔事务制造假超时。
+2s 门槛失败仍会继续收集后续阶段数据，最后以失败状态退出，不把容量问题静默通过。
+
+`make test-outbox-million` 运行同一压测的 100 万 pending 数据集；也可通过
+`BKN_TRACE_OUTBOX_SCALE_SIZES=1000000` 或逗号分隔列表指定 1～500 万的夹具规模。
+该参数不改变默认 CI 的 10 万／50 万数据集。
+
+`make test-outbox-soak` 运行持续生产与消费实验，默认每档 5 分钟，共 30 分钟。
+阶梯为 1、2、5、10、20、40 次生命周期调用／秒，分别等价于 10～400 个每 10 秒
+调用一次的活跃合成 Agent。每个 Agent 复用会话，每轮真实调用 Session 服务的
+Start、EnsureOperation、CompleteOperationAttempt、Terminate，输入和结果约 1 KiB，
+答案约 16 KiB；真实单槽 worker 处理投影和答案持久化到 OpenSearch。
+这不包含 LLM、MCP 网络传输、鉴权、真实业务工具、完整应用的租约回收和失败补偿，
+不能直接视为完整 Agent 并发上限；失败调用遗留 active interaction 会影响后续档位。
+测试先校准每次调用的任务数（含答案落库后的追加任务），再每 30 秒记录实际流入、
+交付、backlog、最早 pending 年龄、领取与交付分位数。另每约 5 秒探测一次自然
+refresh 后的 OpenSearch 搜索可见性，20 秒超时单独计数，不主动刷新索引。
+高负载积压不会在阶段之间清空；测试完成代表实验执行成功，不代表所有负载档满足 SLO。
+`BKN_TRACE_OUTBOX_SOAK_STAGE_DURATION` 可覆盖每档时长，短测仅用于校验测试工具，
+正式持续负载实验应保留 5m。长测不加入常规 CI，需显式 opt-in、隔离数据库与索引。
+
+### v040 升级与恢复约束
+
+`GET_LOCK(..., 30)` 的 30 秒是其他启动实例等待迁移建议锁的预算，不是索引构建上限。
+当前 Chart 的 startup probe 为 `periodSeconds: 10`、`failureThreshold: 12`，启动窗口约两分钟。
+大 outbox 的索引构建若超过这些窗口，等待锁的副本可能启动失败，迁移实例也可能被重启。
+不能仅凭缩为一个副本就认为长 DDL 已被解决。
+
+升级前应在代表性数据上评估索引构建时长、空间、I/O 与 metadata lock 影响，并安排受控窗口。
+需要预建索引时，由运维按
+[原始 v040 SQL](https://github.com/openbkn-ai/bkn-foundry/blob/6c0da73e31e5b7e26441336ea7bc0dfbca256370/bkn-trace/agent-observability/migrations/mariadb/v040/init.sql)
+创建并核对索引名、列顺序和定义；不要让多副本
+同时承担首次大表 DDL。之后由一个受控升级实例沿现有允许自动迁移的启动流程完成迁移
+清单校验和账本登记，确认就绪后再将其余副本升级为同一迁移兼容镜像并恢复自动伸缩。
+该实例正常启动后可能消费任务，
+应纳入升级影响范围。若不预建索引，单实例迁移仍必须具有覆盖实测 DDL 耗时的启动窗口；
+不能假设当前 Chart 提供了可直接设置的探针时长参数。
+
+预建索引后，`CREATE INDEX IF NOT EXISTS` 可跳过同名索引的重复创建，**账本登记仍必须完成**。
+只手工建索引、未登记 `040`，在 `autoMigrate=false` 的环境仍会报 schema 落后并拒绝启动。
+不得手工伪造校验和来代替正常迁移。在线 DDL 仍有 metadata lock 和资源开销，不能承诺零写入影响；
+参见 [MariaDB CREATE INDEX](https://mariadb.com/docs/server/reference/sql-statements/data-definition/create/create-index)。
+
+v040 写入 `bkn_trace_schema_migrations` 后，不包含该版本的旧镜像会报
+`schema migration 040 is newer than this BKN Trace image`，即使索引保留且 SQL 向后兼容，
+也不能只回退镜像；关闭自动迁移同样不会绕过账本检查。部署系统的自动镜像回退也受此约束。
+
+本变更默认采用**兼容当前账本的前滚修复**。若必须恢复旧版本，应使用升级前一致性备份
+及经过验证的恢复方案，评估升级后写入的恢复点/数据损失，并在独立批准的维护窗口执行。
+不将删除单条迁移账本记录作为常规回滚步骤，也不关闭版本/校验和校验。
+仍有新代码运行时不得先删索引，否则 `FORCE INDEX` 领取会失败。
+
+### Issue #2585 开发环境测量记录
+
+以下为特定开发环境的可复现记录和待验证候选设置，不是产品手册的生产并发等级。
+相关实现与复现入口见 [PR #2597](https://github.com/openbkn-ai/bkn-foundry/pull/2597)
+及本节之前的 `make test-outbox-*` 说明。
+
+| 项目 | 本次实测 | 与生产配置的差异 |
+| --- | --- | --- |
+| Docker VM | 6 vCPU、约 15.6 GiB，共享已有开发负载 | 非独占生产环境 |
+| Trace/负载驱动 | 宿主 Go 进程，无 Pod CPU 硬限制 | Chart 默认 requests 100m/128Mi、limits 500m/512Mi |
+| MariaDB | 11.4.13、buffer pool 128 MiB | 不是生产内存推荐值 |
+| Core 连接池 | 最大 32、Go 默认最多 2 idle | 生产代码为 16 open / 4 idle |
+| OpenSearch | 2.19.4、heap 512 MiB、容器上限 1.5 GiB | 测试配置 |
+| 投影 worker | 单个、BatchSize=1、领取预算 2s、lease 30s | 未验证水平扩容容量 |
+
+各规模另有 190,148 条历史终态记录；每种 sink 前在计时外恢复准确 pending 数量。
+完整领取包含 BeginTx、数据库时间、候选、加锁重检、payload、租约更新和 Commit。
+
+| 初始 pending | 单条采样最大（20 次） | 百条采样最大（10 次） | 真实 OpenSearch worker（每阶段 60s） |
+| --- | ---: | ---: | ---: |
+| 100,000 | 4.95ms | 57.04ms | 237.1 任务/s |
+| 500,000 | 7.11ms | 80.00ms | 82.2 任务/s |
+| 1,000,000 | 22.46ms | 155.23ms | 50.5 任务/s |
+
+上述实验均无领取超时，SQL 交付量、pending 减少量与 OpenSearch 文档数一致。
+前一轮没有逐阶段恢复积压的有序领取测试同样通过，但吞吐不同；这里采用准确恢复规模的
+最终复测数据。宿主负载、缓存和实验配置有波动，不能外推为稳定生产 SLA。
+
+持续负载实验总计约 30 分钟，每档 5 分钟、阶段间不清积压。模型为每个合成 Agent 每 10 秒
+一轮、每轮一个工具调用、约 1 KiB 输入/结果、16 KiB 答案，复用会话一轮实测 10 条任务，
+首次新会话 12 条，均包含答案持久化后的追加任务。
+
+| 活跃 Agent 等价 | 目标调用/s | 发生器发起 | 调用失败 | pending 净增加 | 阶段末 pending |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10 | 1 | 300 | 0 | 8 | 8 |
+| 20 | 2 | 599 | 0 | 29 | 37 |
+| 50 | 5 | 1,500 | 0 | 6 | 43 |
+| 100 | 10 | 2,994 | 1 | 6,133 | 6,176 |
+| 200 | 20 | 5,963 | 1,128 | 25,646 | 31,821 |
+| 400 | 40 | 11,785 | 6,437 | 33,541 | 65,361 |
+
+最后一档丢弃 82 个无法排入的请求，实际处理 11,703 个；阶段间交接会有在途任务。
+50 档查询可见性抽样 p95 约 2.19s、p99 约 4.21s；100 档起出现大量超过 20s 的探测超时。
+高档不能仅用少量成功探测的分位数判断可用性。长测领取零超时，最慢约 1.13s，投影重试/
+死信均为零；这些指标不等于业务容量充足。每档仅五分钟也不构成长期稳态容量认证。
+
+实验只覆盖 Session 服务、SQL、worker、真实 OpenSearch 与答案持久化，未覆盖完整
+MCP/HTTP、鉴权、LLM、真实业务工具、Evidence Kafka、租约回收器及失败补偿。
+生命周期死锁重试耗尽和遗留 active interaction 会影响后续高档错误率，不能当作生产错误率。
+100 万静态积压实验与持续流入实验分开执行，未验证两者同时施压的查询新鲜度。
+
+以下候选资源数值未经上述限额复测，不是默认配置、Agent 等级或容量承诺：
+
+| 组件 | 下一轮验收候选 | 需要观察 |
+| --- | --- | --- |
+| agent-observability | 1 副本；requests 1CPU/512Mi；limits 2CPU/1Gi | throttling、RSS、请求与消费延迟 |
+| MariaDB 专用预算 | 2vCPU/4Gi，buffer pool 先 2Gi，SSD | 工作集、物理读、fsync、锁和连接等待 |
+| OpenSearch 单节点 | 2vCPU/4Gi，heap 2Gi，SSD | heap/GC、索引、refresh 与查询延迟 |
+| Core 池与 worker | 先按生产 16 open/4 idle、单 worker 验收 | 多副本连接与锁竞争、恢复余量 |
+
+资源规划方法和验收维度见
+[容量参考手册](https://github.com/openbkn-ai/bkn-foundry/blob/main/help/zh/manual/bkn-trace-resources.md)。
+本记录不包含完整平台安装规格，不代表已完成生产 DDL、上线或现场 Trace 恢复验收。

@@ -75,6 +75,12 @@ error_messages = {
         "detail": "The execution failed.",
         "solution": "Check the trace and retry with a new request ID if appropriate.",
     },
+    "BknAgent.MetricDesign.ProposalInvalid": {
+        "code": "BknAgent.MetricDesign.ProposalInvalid",
+        "description": "The metric design proposal failed validation.",
+        "detail": "The suggested metric changes are invalid. Review the field and reason, then retry.",
+        "solution": "Retry the request or adjust the metric description; report the run ID if it persists.",
+    },
     "BknAgent.Auth.AccountRequired": {
         "code": "BknAgent.Auth.AccountRequired",
         "description": "Caller identity is missing.",
@@ -144,6 +150,13 @@ error_messages = {
         "detail_template": "Prompt {prompt_id} has no version {version}.",
         "detail": "The target version does not exist.",
         "solution": "",
+    },
+    "BknAgent.Prompt.VersionConflict": {
+        "code": "BknAgent.Prompt.VersionConflict",
+        "description": "The requested Prompt version already exists or is out of sequence.",
+        "detail_template": "Requested version {version}; next available version {next_version}.",
+        "detail": "The publication conflicts with the current version history.",
+        "solution": "Refresh the version history and check the publication result before publishing again.",
     },
     "BknAgent.Prompt.Conflict": {
         "code": "BknAgent.ParamError.Conflict",

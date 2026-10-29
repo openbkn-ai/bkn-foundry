@@ -68,3 +68,36 @@ func TestMigrateKeepsLegacyOperationsGrantable(t *testing.T) {
 		t.Fatalf("legacy operation derived_to_operation_id = %q, want empty", operation.DerivedToOperationID)
 	}
 }
+
+func TestResourceIdentifierColumnWidths(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		model any
+		field string
+		want  int
+	}{
+		{&model.ProxyGrantSource{}, "ResourceID", 257},
+		{&model.ProxyGrantPolicy{}, "ResourceID", 257},
+		{&model.ProxyGrantAuditLog{}, "ResourceID", 257},
+		{&model.AuthorizationGrant{}, "Object", 322},
+		{&model.PermissionRequest{}, "ResourceID", 257},
+		{&model.ResourceParent{}, "ResourceID", 257},
+		{&model.AuthzDecision{}, "ResourceID", 257},
+	}
+	for _, test := range tests {
+		statement := &gorm.Statement{DB: db}
+		if err := statement.Parse(test.model); err != nil {
+			t.Fatal(err)
+		}
+		field := statement.Schema.LookUpField(test.field)
+		if field == nil || field.Size != test.want {
+			t.Errorf("%T.%s size = %v, want %d", test.model, test.field, field, test.want)
+		}
+	}
+}

@@ -108,7 +108,7 @@ func TestKnDetailIgnoresUnusableBindings(t *testing.T) {
 		capabilities: []*interfaces.CapabilityRef{
 			{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "s1"},
 			{CapabilityType: interfaces.CapabilityTypeSkill, CapabilityID: "   "},
-			{CapabilityType: "operator", CapabilityID: "o1"},
+			{CapabilityType: "unknown", CapabilityID: "u1"},
 			nil,
 		},
 	}

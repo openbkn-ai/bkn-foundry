@@ -24,6 +24,10 @@ from app.core.llm import normalize_response_format
 
 logger = logging.getLogger(__name__)
 
+
+class StructuredOutputError(RuntimeError):
+    """The model exhausted the bounded JSON/schema correction path."""
+
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
 
 
@@ -168,7 +172,7 @@ async def structured_extract_with_path(
                 ("assistant", text),
                 ("user", f"上面的输出不合法（{e}）。请重新只输出严格符合 schema 的 JSON。"),
             ]
-    raise RuntimeError(
+    raise StructuredOutputError(
         "structured output failed: not supported natively and the prompt "
         f"fallback was still invalid ({last_err})"
     )

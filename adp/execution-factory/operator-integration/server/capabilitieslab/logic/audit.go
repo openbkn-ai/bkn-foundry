@@ -5,8 +5,6 @@
 package logic
 
 import (
-	"context"
-
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
@@ -72,20 +70,6 @@ func auditFromSkillDetail(item *client.SkillDetailResponse) *model.Audit {
 	})
 }
 
-func auditFromOperator(item *client.OperatorDetailResponse) *model.Audit {
-	if item == nil {
-		return nil
-	}
-	return compactAudit(&model.Audit{
-		CreateUser:  item.CreateUser,
-		CreateTime:  item.CreateTime,
-		UpdateUser:  item.UpdateUser,
-		UpdateTime:  item.UpdateTime,
-		ReleaseUser: item.ReleaseUser,
-		ReleaseTime: item.ReleaseTime,
-	})
-}
-
 func compactAudit(audit *model.Audit) *model.Audit {
 	if audit == nil {
 		return nil
@@ -99,15 +83,4 @@ func compactAudit(audit *model.Audit) *model.Audit {
 		return nil
 	}
 	return audit
-}
-
-func (s *Service) enrichOrchestrationAudit(ctx context.Context, orchestration *model.Orchestration) {
-	if orchestration == nil || orchestration.OperatorID == "" {
-		return
-	}
-	operator, err := s.Client.GetOperator(ctx, orchestration.OperatorID)
-	if err != nil {
-		return
-	}
-	orchestration.Audit = auditFromOperator(operator)
 }

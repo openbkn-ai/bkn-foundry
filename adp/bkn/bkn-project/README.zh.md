@@ -14,10 +14,24 @@
   `main` 同步进分支。
 - 线上网络与 `main` 之间的漂移检查。
 - 把项目分支发布为新网络 `<lineage_id>_v<major>_<minor>_<patch>`，名称为
-  `<基础名称> · <版本>`（ID 与名称均截断到 40 个字符），并在 git 中打标签 `v<version>`。
+  `<基础名称> · <版本>`（ID 与名称均截断到 128 个字符），并在 git 中打标签 `v<version>`。
 - 项目（`t_bkn_project_project`）：每个项目在所属网络谱系的分支
   `project/<id>` 上修改该网络；同一网络的项目共用一个谱系。能看到该网络的
   调用方才能看到项目。
+- 本体草稿（`t_bkn_project_draft`）：按规则根据项目数据目录的表结构起草本体。
+  实体表起草为对象类，主键用全表统计核对；没有声明主键的表，取一个全表唯一且无
+  空值的标识类字段作为推断主键。代码表起草为枚举；关联表起草为多对多关系；声明的
+  外键、以及按对方主键命名的字段（含带角色前缀的，如 parent_lot_id）起草为关系，
+  用全表命中率核对。无法计数的推断关系作为"未核对"保留；取值很少的字段（少于
+  `draft.minInferredDistinct`，默认 10）推断出的关系只推荐不采用。推荐而未采用的关系在
+  `proposed_because` 中说明原因：`not_counted`、`below_suggest_hit_rate`、
+  `below_adopt_hit_rate`、`few_values` 或 `end_not_adopted`（一端的对象类还在等人
+  决定）。个人信息字段（隐私关键词按词匹配）排除。优先使用数据目录语义
+  理解给出的名称和描述。ID 只由物理表名、字段名生成，不使用语义理解写回的名称，因此
+  不随语言或重新理解而变化：按词用 `_` 连接，驼峰拆开（`customerId` 得到 `customer_id`）；
+  物理名不是 ASCII 时（BKN 的 ID 不能含中文），用类别前缀加名称的短哈希（`ot_…`、`p_…`、
+  `vt_…`、`rt_…`）。名称匹配按物理名原文比较。以调用方身份读取 vega-backend，只取回计数
+  和代码表取值。
 - 健康检查与就绪检查接口。
 
 ## API
@@ -25,6 +39,13 @@
 前缀：`/api/bkn-project/v1`。除 `/health` 和 `/ready` 外的接口都需要 OAuth
 令牌，与 bkn-backend 的外部接口一样通过 Hydra 校验。从 bkn-backend 导出时使用
 调用方的令牌，因此 bkn-backend 的权限同样生效。
+
+所有谱系都按 BKN 3.0 保存：导出时向 bkn-backend 请求 `bkn_spec=3.0`，`main`、
+项目分支和发布读回的内容都遵循 3.0 规则，草稿写出的值类型只有 3.0 能容纳。
+bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出要修正的内容，
+不会建出任何东西：行动参数未通过网络检查时为 `BknProject.Lineage.NetworkNeedsCheck`，
+有定义按 3.0 规则读不回时为 `BknProject.Lineage.NetworkNotReadableAsV3`。以 2.x
+开始的谱系在提交漂移时转为 3.0，其分支在同步时转为 3.0。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -44,6 +65,17 @@
 | GET | `/projects?archived=&name=&limit=&cursor=` | 调用方可见网络下的项目，按时间倒序，游标分页。`archived` 为 `false`（默认）、`true` 或 `all`；`name` 按包含匹配。每条带 `other_projects`：同一网络下其他未归档项目的数量 |
 | GET | `/projects/{project_id}` | 项目详情；调用方看不到其网络时同样返回 404 |
 | POST | `/projects/{project_id}:archive`、`:unarchive` | 归档（默认列表不显示）或取消归档，只有负责人可以操作（否则 403），不影响已发布版本 |
+| PUT | `/projects/{project_id}/catalogs` | 替换项目起草所用的数据目录。请求体 `{"catalog_ids"}`（必填，可为空数组，自动去重）。只有负责人可以操作（否则 403）。草稿保持不变，重新起草时读取新的目录。400 `Project.InvalidRequestBody`、`Project.InvalidCatalogIDs` |
+| GET | `/projects/{project_id}/status` | 项目当前所处的位置，按调用者从草稿、确认记录和校验结果实时计算，不存储；同样的数据返回同样的结果（`computed_at` 和调用者能做什么除外）。`stage`：`archived`、`no_draft`、`drafting`、`draft_failed`、`deciding`、`ready_to_confirm`、`check_not_started`、`checking`、`check_needs_attention` 或 `confirmed`。`blockers`（`code`、`count`、`waiting_for`：`owner`、`editor` 或 `system`）：`no_catalogs`、`needs_identity`、`unadopted_ends`、`nothing_adopted`、`branch_not_v3`、`lineage_not_v3`、`definitions_exist`（草稿可以确认时，事先读取项目分支得到）、`check_issues`、`check_partial`、`check_failed`。`undecided` 是起草时没采纳、也还没人决定的项数（在 `pending` 中列出）。`stale`：`confirmation_outdated`、`check_outdated`。`next_actions`：可以发出的请求，包括 `action`（`unarchive`、`set_catalogs`、`generate_draft`、`adopt_items`、`confirm_draft`、`run_check`、`sync_branch`、`commit_drift`、`wait`）、`method`、相对 API 根的 `path`、`body` 模板、调用者能否发出 `allowed`（不能时带 `reason`：`not_owner`、`running` 或阻断项的 code）、`wait` 的 `retry_after_s`、重新起草会丢弃的 `discards_decisions`，以及确认所带的 `accepts`：认可部分起草（`partial_draft`）或认可暂不纳入未决项（`undecided_items`）。`links` 指向草稿、待定项和校验。code 只给机器用，界面文案由客户端映射。404 与 `GET /projects/{project_id}` 相同 |
+| GET | `/projects/{project_id}/pending` | 确认草稿前需要人来决定的事，即确认时会检查的待定项（`needs_identity`、`unadopted_ends`），先按类别、再按 ID 排序。每项带 `options`，即能解决它的请求：`choose_identity`（附 `candidates`：先是起草时算过的那个属性，再是其余能作标识的属性，按名称排序；任选一个替换 `$candidate`；没有任何属性能作标识时不可用，`reason` 为 `no_key_property`）、`adopt_end`（那一端的对象类还需先定标识时不可用，`reason` 为 `end_needs_identity`）、`unadopt`；这些是 `blocking` 的。之后是不阻断的一类：起草时没采纳、也还没人决定的项（`reason` 为 `undecided`，`because` 为 `needs_identity`、关系的 `proposed_because` 或 `not_adopted`），附 `adopt`（对象类还需定标识、或关系两端未全部采纳时不可用），没有标识的对象类另附 `choose_identity`。请求体里的 `$draft_update_time` 要换成最后一次读到的草稿更新时间；每次编辑都会推进它。在有成文的推荐规则之前，`recommendation` 一律为 null。`evidence` 是起草时的计数。草稿未就绪时列表为空；没有草稿时 404 `Draft.NotFound` |
+| POST | `/projects/{project_id}/ontology/draft:generate` | 后台根据项目数据目录的表起草本体：返回 202 和状态为 `drafting` 的草稿。可选请求体 `{"discard_decisions": true}` 表示同意丢弃当前草稿上已做的决定。400 `Draft.NoCatalogs`；409：正在起草时 `Draft.Drafting`，草稿已有决定且未同意丢弃时 `Draft.HasDecisions`（针对整份草稿的决定 `accept_partial` 不算在内：重新起草时直接丢弃，新草稿重新判断是否部分起草），项目已归档时 `Draft.ProjectArchived`，项目的数据目录已不存在时 `Draft.CatalogMissing`（vega-backend 返回 404；`error_details` 列出这些目录；否则起草会在其中读不到任何表）。调用方没有目录详情权限（403）时，仍按其能读的表起草 |
+| GET | `/projects/{project_id}/ontology/draft` | 草稿：`status`（`drafting`、`ready`，或 `failed` 并带 `error`：`interrupted`、`timeout` 或 vega-backend 的返回）和 `items`：`object_types`、`relation_types`、`value_types`、`excluded`、`unreadable`，每条带证据和是否默认采用；`decisions`，即人做过的修改，按时间先后排列；以及 `inputs`，即草稿的来源：`rules_version`、规则的 `settings`、`catalog_ids`、读到的每张表及其结构 `fingerprint`（SHA-256，不含任何数据值）和 `rows`，有读不到的表时 `partial` 为 true。还没有草稿时 404 `Draft.NotFound` |
+| PATCH | `/projects/{project_id}/ontology/draft/items/{kind}/{item_id}` | 修改已就绪草稿中的一项；`kind` 为 `object_types`、`relation_types` 或 `value_types`。请求体：修改所基于的草稿 `update_time`，以及 `adopted`、`name`（1–128 个字符）、`description`（最长 1000）中的任意几项。每处修改都记为一条决定，带被替换的值；不采用某个对象类时，连到它的关系类一并改为不采用。返回草稿。400 `Draft.MissingUpdateTime`、`Draft.EmptyEdit`、`Draft.NeedsIdentity`（对象类还没选定唯一标识就采用）、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.EndpointNotAdopted`（关系类两端的对象类没有都采用）；404 `Draft.ItemNotFound`；409 `Draft.Stale`（`update_time` 之后草稿已被修改，需重新加载）、`Draft.NotReady`、`Draft.ProjectArchived` |
+| PUT | `/projects/{project_id}/ontology/draft/object_types/{item_id}/identity` | 选定对象类的唯一标识属性。请求体：`update_time` 和 `properties`，即一个或多个不重复的属性，类型须为 `string`、`text`、`integer` 或 `unsigned integer`。单属性的标识会以调用者身份做全表计数，有重复或空值也照样接受，计数写入 `key`（`source` 为 `chosen`）；复合标识不计数。清除 `needs_identity`；是否采用仍需单独修改。400 `Draft.MissingUpdateTime`、`Draft.InvalidIdentity`；404 `Draft.ItemNotFound`；409 同修改草稿项 |
+| POST | `/projects/{project_id}/ontology/draft:restore` | 把被隐私规则排除的字段恢复为属性，字段信息以调用者身份从 vega-backend 重新读取。请求体：`update_time`、`object_type`、`field`。400 `Draft.MissingUpdateTime`、`Draft.NotRestorable`（因类型无法映射而排除）；404 `Draft.ItemNotFound`；409 `Draft.FieldNotFound`（字段已不在表中，或无权读取），以及同修改草稿项的情形 |
+| POST | `/projects/{project_id}/ontology/draft:confirm` | 确认就绪的草稿：把已采纳的项写成 BKN 3.0 定义，提交到项目分支，与分支已有内容并存；返回草稿，`items.confirmation` 记录 `commit`、`by`、`time`、`files`、`skipped_value_types`。`items.confirmation.update_time` 等于草稿的 `update_time` 时为已确认；之后任何编辑都会推进草稿的更新时间，再次确认会替换或删除上次确认写入的文件（`files`），分支上的其他内容不会被替换。重新起草会保留 `items.confirmation`（不再算已确认），之后的确认仍能替换或删除这些文件。确认的 commit 随后在后台校验（`ontology/check`）。请求体 `{"update_time","accept_partial","accept_undecided"}`：起草时没采纳、也还没人决定的项（见 `pending`），只有带 `accept_undecided: true` 才会被暂不纳入，并记一条 `accept_undecided` 决定，以 `kind/item_id` 列出这些项，之后它们就算已决定；不带时 409 `Draft.UndecidedNotAccepted`（`error_details`：这些项）。起草时有表读不到（`inputs.partial`）的草稿，只有带 `accept_partial: true` 才能确认，并记一条 `accept_partial` 决定，列出那些表；不带时 409 `Draft.PartialNotAccepted`（`error_details`：这些表的资源 ID）。仅负责人：403 `Draft.NotOwner`。400 `Draft.MissingUpdateTime`、`Draft.NothingAdopted`、`Draft.InvalidItem`；409 `Draft.HasPending`（`error_details`：仍需选定唯一标识的已采纳对象类、两端未全部采纳的已采纳关系）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Lineage.DefinitionsExist`（分支上已有同路径的定义，列出）、`Lineage.BranchNotV3`（先同步分支）、`Lineage.LineageNotV3`（main 也是 2.x：先提交漂移，再同步分支）；与分支合并后不符合 BKN 校验时 400 `Lineage.InvalidDefinitions`（`error_details`：`table`、`column`、`code`、`message`）。被拒的确认不改变草稿：处理原因后可用同一个 `update_time` 再次确认。BKN 3.0 不接受的值类型（如基础类型为 `text`）不写入，列在 `skipped_value_types`，引用它的属性保留基础类型 |
+| GET | `/projects/{project_id}/ontology/check` | 上次确认的校验。确认后在后台自动运行，以确认人的身份计数：`commit`、`status`（`running`、`passed`、`issues`、`partial`，或 `failed`；服务重启中断时 `error` 为 `interrupted`）、`attempt`、`runner`、`start_time`、`finish_time` 和 `results`：`keys`（每个对象类的唯一标识：`rows`、`duplicates`、`nulls`）、`relations`（每个关系的 `joins`，每连到一端一条：`rows`、`nulls`、`orphans`、`hit_rate`）、`excluded_mapped`（映射到隐私规则排除字段的属性）、`coverage`（唯一标识和关联共 `total` 项，算出 `counted` 项）。每一项带 `state`：`counted`；`not_counted` 并带 `reason`（`cross_catalog`、`several_fields`、`unmapped`、`no_key`）；或 `failed`（`query_failed`、`timeout`）。`issues` 表示唯一标识有重复或缺失，或映射了排除字段；`partial` 表示没发现问题，但有的项没算到，因此不算 `passed`；孤儿记录只报告，不判定。一次失败后自动重试一次，只重算失败项。结果只作提示，不会撤销确认。还没有校验时 404 `Check.NotFound` |
+| POST | `/projects/{project_id}/ontology/check:run` | 以调用者身份重新校验上次确认的全部内容，返回 202 和校验（`running`）。仅负责人：403 `Check.NotOwner`。409 `Draft.ProjectArchived`、`Check.NothingConfirmed`、`Check.Running`（这次确认正在校验）、`Check.ConfirmAgain`（确认后草稿又改过，而那次确认从未校验过：请再确认一次） |
 
 ## 本地开发
 
@@ -56,5 +88,11 @@ I18N_MODE_UT=true go test ./...
 
 配置文件：`server/config/bkn-project-config.yaml`。表结构由 data-migrator
 根据 `migrations/bkn-project/` 创建。
+
+起草规则在 `draft` 下（括号内为默认值）：`codeTableMaxRows`（500）和
+`codeTableMaxColumns`（3）界定代码表；`adoptHitRate`（0.95）和 `suggestHitRate`
+（0.8）按命中率给关系分档；`privacyKeywords` 按字段名或注释匹配个人信息；
+`queryTimeout`（60 秒）限制每条计数查询，`timeout`（10 分钟）限制整次起草。起草在
+服务进程内运行：重启时仍在起草中的草稿置为失败，原因为 `interrupted`。
 
 使用 `make generate-mock` 重新生成 mock（需要 `go.uber.org/mock` 的 `mockgen`）。

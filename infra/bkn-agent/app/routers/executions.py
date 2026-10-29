@@ -22,6 +22,7 @@ from app.commons.i18n import build_error_content
 from app.config import config
 from app.core import builtin_tools
 from app.core.graph import stream_chat
+from app.core.llm import build_chat_model
 from app.core.public_chat import PublicChat
 from app.db import SessionLocal, get_session
 from app.errors import err, not_found
@@ -32,7 +33,12 @@ from app.metric_design import (
     AGENT_ID as METRIC_AGENT_ID,
     PROTOCOL as METRIC_PROTOCOL,
     MetricDesignRequest,
-    PROPOSAL_SCHEMA,
+    PROPOSAL_INVALID_CODE,
+    MetricProposalError,
+    encode_proposal_failure,
+    proposal_instructions,
+    proposal_schema,
+    repair_proposal,
     validate_proposal,
 )
 from app.public_auth import (
@@ -67,8 +73,19 @@ def _identity(account: Account) -> dict:
 def _failure(code: str | None, upstream: dict | None = None) -> dict:
     """The terminal error: the code's own localized text, and the upstream's
     error when it gave one (live stream only; GET returns the code and text)."""
+    diagnostic = None
+    if code and code.startswith("{"):
+        try:
+            candidate = json.loads(code)
+            if isinstance(candidate, dict) and candidate.get("code") == PROPOSAL_INVALID_CODE:
+                diagnostic = candidate
+                code = PROPOSAL_INVALID_CODE
+        except ValueError:
+            pass
     code = code if code and code.startswith("BknAgent.") else "BknAgent.Execution.Failed"
     error = {"code": code, "detail": build_error_content(code)["detail"]}
+    if diagnostic:
+        error.update({key: diagnostic[key] for key in ("stage", "field", "reason") if isinstance(diagnostic.get(key), str)})
     if upstream:
         error["upstream"] = upstream
     return error
@@ -321,11 +338,12 @@ async def _execute_impl(
                         agent_id=agent.agent_id,
                         thread_id=thread_id,
                         message=req.message,
-                        response_format=PROPOSAL_SCHEMA if metric_request else None,
+                        response_format=proposal_schema(metric_request) if metric_request else None,
                     ),
                     account.account_id,
                     account.account_type,
                     public=public,
+                    **({"system_extension": proposal_instructions(metric_request)} if metric_request else {}),
                 )
                 async for event in stream:
                     # Old graph emits done/error after its own cleanup; public
@@ -335,11 +353,26 @@ async def _execute_impl(
                     elif event.startswith("event: error\n"):
                         status = "failed"
                         data = json.loads(event.split("data: ", 1)[1])
-                        failure = data["code"]
+                        failure = (
+                            encode_proposal_failure(MetricProposalError(
+                                "model output did not match the proposal schema", stage="schema"
+                            ))
+                            if metric_request and data["code"] == PROPOSAL_INVALID_CODE
+                            else data["code"]
+                        )
                         upstream = data.get("upstream")
                     elif metric_request and event.startswith("event: structured\n"):
                         data = json.loads(event.split("data: ", 1)[1])
-                        proposal = validate_proposal(data["content"], metric_request)
+                        try:
+                            proposal = validate_proposal(data["content"], metric_request)
+                        except MetricProposalError as error:
+                            model = build_chat_model(
+                                agent.model,
+                                streaming=False,
+                                max_output_tokens=agent.limits.max_output_tokens if agent.limits else None,
+                            )
+                            proposal = await repair_proposal(model, data["content"], metric_request, error)
+                        public.final = proposal["summary"]
                     elif not event.startswith("event: meta\n"):
                         yield event
             if status == "succeeded":
@@ -371,6 +404,13 @@ async def _execute_impl(
         except TimeoutError:
             status = "failed"
             failure = "BknAgent.Chat.Timeout"
+        except MetricProposalError as exc:
+            logger.warning(
+                "metric proposal rejected run_id=%s stage=%s field=%s reason=%s",
+                run_id, exc.stage, exc.field, exc,
+            )
+            status = "failed"
+            failure = encode_proposal_failure(exc)
         except HTTPException as exc:
             status = "failed"
             failure = (

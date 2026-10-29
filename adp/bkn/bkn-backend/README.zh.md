@@ -135,6 +135,7 @@ Helm values：
 | Value | 默认值 | 含义 |
 | --- | --- | --- |
 | `bknSafe.url` | `http://bkn-safe:3000` | bkn-safe 服务根地址 |
+| `knowledgeBase.url` | `""` | 企业版 kb-api 根地址（`KB_API_URL`），知识网络挂载知识库时读取；未部署 kb-api 时留空，此时挂载知识库会被拒绝 |
 | `auth.knChildResourceFilterChunkSize` | `0` | 可选调用方分块大小；`0` 表示单次发送，不是服务端限制 |
 
 资源、操作和错误语义见

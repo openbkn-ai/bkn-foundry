@@ -596,6 +596,7 @@ paths:
     get:
       summary: List Versions
       operationId: capabilitiesLabListVersions
+      description: Only `skill` capabilities return a release history. Other kinds, including `http`, return just the current version entry (or an empty list when the capability has no version).
       responses:
         '200':
           description: Successful response
@@ -603,29 +604,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/VersionListResponse'
-        '502':
-          description: Request or upstream operation failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIErrorResponse'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-  /capabilities/{id}/orchestration:
-    get:
-      summary: Get Orchestration
-      operationId: capabilitiesLabGetOrchestration
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrchestrationDetailResponse'
         '502':
           description: Request or upstream operation failed.
           content:
@@ -677,6 +655,7 @@ paths:
     post:
       summary: Republish Version
       operationId: capabilitiesLabRepublishVersion
+      description: Only `skill` capabilities support republishing a historical version. Other kinds, including `http`, fail with 502 and `republish not supported for this capability kind`.
       responses:
         '200':
           description: Successful response
@@ -759,99 +738,6 @@ paths:
             schema:
               $ref: '#/components/schemas/PublishCapabilityRequest'
       description: An omitted status defaults to published.
-  /capabilities/{id}/orchestration/enable:
-    post:
-      summary: Enable Orchestration
-      operationId: capabilitiesLabEnableOrchestration
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnableOrchestrationResponse'
-        '502':
-          description: Request or upstream operation failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIErrorResponse'
-        '400':
-          description: Request or upstream operation failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIErrorResponse'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EnableOrchestrationRequest'
-  /capabilities/{id}/orchestration/config:
-    post:
-      summary: Update Orchestration Config
-      operationId: capabilitiesLabUpdateOrchestrationConfig
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrchestrationDetailResponse'
-        '502':
-          description: Request or upstream operation failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIErrorResponse'
-        '400':
-          description: Request or upstream operation failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIErrorResponse'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateOrchestrationConfigRequest'
-  /capabilities/{id}/orchestration/disable:
-    post:
-      summary: Disable Orchestration
-      operationId: capabilitiesLabDisableOrchestration
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DisableOrchestrationResponse'
-        '502':
-          description: Request or upstream operation failed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIErrorResponse'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
   /capabilities/{id}/export:
     get:
       summary: Export Capability
@@ -1243,21 +1129,6 @@ components:
           type: string
         path:
           type: string
-    Orchestration:
-      type: object
-      properties:
-        enabled:
-          type: boolean
-        operator_id:
-          type: string
-        operator_name:
-          type: string
-        audit:
-          anyOf:
-          - $ref: '#/components/schemas/Audit'
-          - type: 'null'
-      required:
-      - enabled
     Audit:
       type: object
       properties:
@@ -1296,10 +1167,6 @@ components:
         endpoint:
           anyOf:
           - $ref: '#/components/schemas/Endpoint'
-          - type: 'null'
-        orchestration:
-          anyOf:
-          - $ref: '#/components/schemas/Orchestration'
           - type: 'null'
         audit:
           anyOf:
@@ -1397,8 +1264,6 @@ components:
           type: string
         group:
           $ref: '#/components/schemas/GroupInput'
-        orchestration_enabled:
-          type: boolean
       required:
       - openapi_spec
       - service_url
@@ -1415,8 +1280,6 @@ components:
           type: string
         group:
           $ref: '#/components/schemas/GroupInput'
-        orchestration_enabled:
-          type: boolean
       required:
       - openapi_spec
       - service_url
@@ -1425,10 +1288,6 @@ components:
       properties:
         capability:
           $ref: '#/components/schemas/Capability'
-        links:
-          type: array
-          items:
-            $ref: '#/components/schemas/Link'
       required:
       - capability
     ImportOpenApiCapabilityResponse:
@@ -1440,10 +1299,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Capability'
-        links:
-          type: array
-          items:
-            $ref: '#/components/schemas/Link'
         failure_count:
           type: integer
           format: int64
@@ -1454,16 +1309,6 @@ components:
       required:
       - box_id
       - capabilities
-    Link:
-      type: object
-      properties:
-        operator_id:
-          type: string
-        tool_id:
-          type: string
-      required:
-      - operator_id
-      - tool_id
     VersionEntry:
       type: object
       properties:
@@ -1544,84 +1389,6 @@ components:
       properties:
         status:
           type: string
-    EnableOrchestrationResponse:
-      type: object
-      properties:
-        operator_id:
-          type: string
-        audit:
-          anyOf:
-          - $ref: '#/components/schemas/Audit'
-          - type: 'null'
-      required:
-      - operator_id
-    OperatorRetryConditions:
-      type: object
-      properties:
-        status_code:
-          type: array
-          items:
-            type: integer
-        error_codes:
-          type: array
-          items:
-            type: string
-    OperatorRetryPolicy:
-      type: object
-      properties:
-        max_attempts:
-          type: integer
-          format: int64
-        initial_delay:
-          type: integer
-          format: int64
-        max_delay:
-          type: integer
-          format: int64
-        backoff_factor:
-          type: integer
-          format: int64
-        retry_conditions:
-          $ref: '#/components/schemas/OperatorRetryConditions'
-    OperatorExecuteControl:
-      type: object
-      properties:
-        timeout:
-          type: integer
-          format: int64
-        retry_policy:
-          $ref: '#/components/schemas/OperatorRetryPolicy'
-    EnableOrchestrationRequest:
-      type: object
-      properties:
-        operator_execute_control:
-          $ref: '#/components/schemas/OperatorExecuteControl'
-    DisableOrchestrationResponse:
-      type: object
-      properties:
-        enabled:
-          type: boolean
-        operator_id:
-          type: string
-      required:
-      - enabled
-    OrchestrationDetailResponse:
-      type: object
-      properties:
-        enabled:
-          type: boolean
-        operator_id:
-          type: string
-        tool_id:
-          type: string
-        box_id:
-          type: string
-        audit:
-          anyOf:
-          - $ref: '#/components/schemas/Audit'
-          - type: 'null'
-      required:
-      - enabled
     UpdateCapabilityRequest:
       type: object
       properties:
@@ -1915,5 +1682,3 @@ components:
       - mcp_sse_wizard
       - skill_files
       - hide_legacy_execution_factory_menu
-    UpdateOrchestrationConfigRequest:
-      $ref: '#/components/schemas/EnableOrchestrationRequest'

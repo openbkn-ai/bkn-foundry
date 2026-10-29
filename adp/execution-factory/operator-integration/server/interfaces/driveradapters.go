@@ -10,8 +10,3 @@ import "github.com/gin-gonic/gin"
 type HTTPRouterInterface interface {
 	RegisterRouter(engine *gin.RouterGroup)
 }
-
-// MQHandler MQ processing interface.
-type MQHandler interface {
-	Subscribe()
-}

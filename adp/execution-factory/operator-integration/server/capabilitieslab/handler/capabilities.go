@@ -59,13 +59,9 @@ func (h *CapabilitiesHandler) RegisterRoutes(group *gin.RouterGroup) {
 
 	cap := group.Group("/capabilities/:id")
 	cap.GET("/versions", h.ListVersions)
-	cap.GET("/orchestration", h.GetOrchestration)
 	cap.POST("/debug", h.DebugCapability)
 	cap.POST("/versions/republish", h.RepublishVersion)
 	cap.POST("/publish", h.PublishCapability)
-	cap.POST("/orchestration/enable", h.EnableOrchestration)
-	cap.POST("/orchestration/config", h.UpdateOrchestrationConfig)
-	cap.POST("/orchestration/disable", h.DisableOrchestration)
 	cap.GET("/export", h.ExportCapability)
 	cap.GET("/skill/content", h.GetSkillContent)
 	cap.POST("/skill/files/read", h.ReadSkillFile)
@@ -245,62 +241,6 @@ func (h *CapabilitiesHandler) PublishCapability(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"ok": true, "status": status})
-}
-
-func (h *CapabilitiesHandler) EnableOrchestration(c *gin.Context) {
-
-	var req model.EnableOrchestrationRequest
-	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
-		writeBadRequest(c, err.Error())
-		return
-	}
-
-	resp, err := h.Service.EnableOrchestration(c.Request.Context(), c.Param("id"), req)
-	if err != nil {
-		writeBadGateway(c, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, resp)
-}
-
-func (h *CapabilitiesHandler) DisableOrchestration(c *gin.Context) {
-
-	resp, err := h.Service.DisableOrchestration(c.Request.Context(), c.Param("id"))
-	if err != nil {
-		writeBadGateway(c, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, resp)
-}
-
-func (h *CapabilitiesHandler) GetOrchestration(c *gin.Context) {
-
-	resp, err := h.Service.GetOrchestrationDetail(c.Request.Context(), c.Param("id"))
-	if err != nil {
-		writeBadGateway(c, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, resp)
-}
-
-func (h *CapabilitiesHandler) UpdateOrchestrationConfig(c *gin.Context) {
-
-	var req model.UpdateOrchestrationConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
-		writeBadRequest(c, err.Error())
-		return
-	}
-
-	resp, err := h.Service.UpdateOrchestrationConfig(c.Request.Context(), c.Param("id"), req)
-	if err != nil {
-		writeBadGateway(c, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, resp)
 }
 
 func (h *CapabilitiesHandler) UpdateHttpCapability(c *gin.Context) {

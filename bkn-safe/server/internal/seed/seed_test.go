@@ -220,7 +220,7 @@ func TestApplyRemovesWithdrawnResourceTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := map[string]string{"stream_data_pipeline": "view_detail"}
+	legacy := map[string]string{"stream_data_pipeline": "view_detail", "operator": "execute"}
 	for resourceType, operation := range legacy {
 		if err := db.Create(&model.ResourceType{ID: resourceType, Name: resourceType}).Error; err != nil {
 			t.Fatal(err)
@@ -966,7 +966,7 @@ func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
 	if err := e.AssignRole(user, roleID); err != nil {
 		t.Fatal(err)
 	}
-	for _, resourceType := range []string{"operator", "skill", "mcp", "function", "tool_box"} {
+	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
 		if err := e.GrantRolePermission(roleID, resourceType, "*", "publish"); err != nil {
 			t.Fatal(err)
 		}
@@ -975,12 +975,12 @@ func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, resourceType := range []string{"operator", "skill", "mcp", "function", "tool_box"} {
+	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
 		for _, tc := range []struct {
 			operation string
 			want      bool
 		}{
-			{"create", resourceType != "operator"},
+			{"create", true},
 			{"publish", false},
 		} {
 			got, err := e.Check(user, resourceType, "other-owner-resource", tc.operation)

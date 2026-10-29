@@ -97,8 +97,8 @@ const (
 type ProxyGrantSource struct {
 	ID              string     `json:"id" gorm:"primaryKey;size:64"`
 	ProxyAccountID  string     `json:"proxy_account_id" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:1;index:idx_proxy_grant_tuple,priority:1"`
-	ResourceType    string     `json:"resource_type" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:2;index:idx_proxy_grant_tuple,priority:2"`
-	ResourceID      string     `json:"resource_id" gorm:"size:128;uniqueIndex:uidx_proxy_grant_source,priority:3;index:idx_proxy_grant_tuple,priority:3"`
+	ResourceType    string     `json:"resource_type" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:2;index:idx_proxy_grant_tuple,priority:2;index:idx_proxy_grant_source_resource_lifecycle,priority:1"`
+	ResourceID      string     `json:"resource_id" gorm:"size:257;uniqueIndex:uidx_proxy_grant_source,priority:3;index:idx_proxy_grant_tuple,priority:3;index:idx_proxy_grant_source_resource_lifecycle,priority:2"`
 	Operation       string     `json:"operation" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:4;index:idx_proxy_grant_tuple,priority:4"`
 	SourceType      string     `json:"source_type" gorm:"size:32;uniqueIndex:uidx_proxy_grant_source,priority:5;index"`
 	SourceID        string     `json:"source_id" gorm:"size:128;uniqueIndex:uidx_proxy_grant_source,priority:6;index"`
@@ -106,7 +106,7 @@ type ProxyGrantSource struct {
 	BindingType     string     `json:"binding_type" gorm:"size:64"`
 	BindingID       string     `json:"binding_id" gorm:"size:128"`
 	GrantedBy       string     `json:"granted_by" gorm:"size:64;index"`
-	LifecycleStatus string     `json:"lifecycle_status" gorm:"size:16;index"`
+	LifecycleStatus string     `json:"lifecycle_status" gorm:"size:16;index;index:idx_proxy_grant_source_resource_lifecycle,priority:3"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty" gorm:"index"`
@@ -129,7 +129,7 @@ func (ProxyGrantSource) TableName() string { return "proxy_grant_source" }
 type ProxyGrantPolicy struct {
 	ProxyAccountID string `gorm:"primaryKey;size:64"`
 	ResourceType   string `gorm:"primaryKey;size:64"`
-	ResourceID     string `gorm:"primaryKey;size:128"`
+	ResourceID     string `gorm:"primaryKey;size:257"`
 	Operation      string `gorm:"primaryKey;size:64"`
 	PolicyOwned    bool   `gorm:"not null"`
 	CreatedAt      time.Time
@@ -150,7 +150,7 @@ type ProxyGrantAuditLog struct {
 	GrantorID      string    `json:"grantor_id" gorm:"size:64;index"`
 	ProxyAccountID string    `json:"proxy_account_id" gorm:"size:64;index"`
 	ResourceType   string    `json:"resource_type" gorm:"size:64"`
-	ResourceID     string    `json:"resource_id" gorm:"size:128"`
+	ResourceID     string    `json:"resource_id" gorm:"size:257"`
 	Operation      string    `json:"operation" gorm:"size:64"`
 	SourceType     string    `json:"source_type" gorm:"size:32"`
 	SourceID       string    `json:"source_id" gorm:"size:128"`
@@ -167,10 +167,10 @@ func (ProxyGrantAuditLog) TableName() string { return "proxy_grant_audit_log" }
 // used only to narrow exact-tuple lookups; the query still verifies every tuple
 // field, so correctness never depends on hash uniqueness.
 type AuthorizationGrant struct {
-	GrantID         string `json:"grant_id" gorm:"primaryKey;size:64"`
+	GrantID         string `json:"grant_id" gorm:"primaryKey;size:64;index:idx_authorization_grant_object_grant,priority:2"`
 	ProjectionKey   string `json:"projection_key" gorm:"size:64;index"`
 	AccessorID      string `json:"accessor_id" gorm:"size:64;index:idx_authorization_grant_scope,priority:1"`
-	Object          string `json:"object" gorm:"size:255"`
+	Object          string `json:"object" gorm:"size:322;index:idx_authorization_grant_object_grant,priority:1"`
 	Operation       string `json:"operation" gorm:"size:64"`
 	Effect          string `json:"effect" gorm:"size:16;index:idx_authorization_grant_scope,priority:2"`
 	PolicySource    string `json:"policy_source" gorm:"size:32;index:idx_authorization_grant_scope,priority:3"`
@@ -201,7 +201,7 @@ type PermissionRequest struct {
 	// history list. It is read-only and never becomes a request table column.
 	ReviewedAt   *time.Time `json:"reviewed_at,omitempty" gorm:"-"`
 	ResourceType string     `json:"resource_type" gorm:"size:64;index"`
-	ResourceID   string     `json:"resource_id" gorm:"size:128;index"`
+	ResourceID   string     `json:"resource_id" gorm:"size:257;index"`
 	// ResourceName is an immutable display snapshot supplied when the request
 	// is created. Authorization and resource liveness always use ResourceType
 	// and ResourceID; retaining this name keeps historical requests readable
@@ -405,7 +405,7 @@ func (o Operation) IsGrantable() bool {
 // the instance itself count.
 type ResourceParent struct {
 	ResourceTypeID string `gorm:"primaryKey;size:64"`
-	ResourceID     string `gorm:"primaryKey;size:128"`
+	ResourceID     string `gorm:"primaryKey;size:257"`
 	ParentTypeID   string `gorm:"size:64;index:idx_resource_parent_parent,priority:1"`
 	ParentID       string `gorm:"size:128;index:idx_resource_parent_parent,priority:2"`
 	UpdatedAt      time.Time
@@ -475,7 +475,7 @@ type AuthzDecision struct {
 	ID           string `json:"id" gorm:"primaryKey;size:64"`
 	AccessorID   string `json:"accessor_id" gorm:"size:64;index:idx_authz_decision_accessor_time,priority:1"`
 	ResourceType string `json:"resource_type" gorm:"size:64;index"`
-	ResourceID   string `json:"resource_id" gorm:"size:128"`
+	ResourceID   string `json:"resource_id" gorm:"size:257"`
 	Operation    string `json:"operation" gorm:"size:128"`
 	// Scope is the evaluation scope the caller asked for (effective | local).
 	Scope string `json:"scope" gorm:"size:16"`

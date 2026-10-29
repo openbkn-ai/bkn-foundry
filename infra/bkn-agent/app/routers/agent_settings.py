@@ -9,7 +9,7 @@ setting belongs to its owner alone. Both only add to the shared Agent; see
 app/core/agent_settings.py for how the layers merge.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel
@@ -28,8 +28,9 @@ from app.models import (
     AgentSetting,
     AgentSettingOut,
     PromptOut,
-    PromptPublish,
+    PromptVersionPublish,
     SharedAgentUpdate,
+    SharedPromptPublish,
 )
 from app.public_auth import (
     BUILTIN_AGENT_IDS,
@@ -44,7 +45,7 @@ router = APIRouter()
 
 _ID = r"^[0-9A-Za-z_.-]+$"
 AgentId = Path(min_length=1, max_length=50, pattern=_ID)
-KnId = Path(min_length=1, max_length=50, pattern=_ID)
+KnId = Path(min_length=1, max_length=128, pattern=_ID)
 
 
 async def _public_agent(session: AsyncSession, agent_id: str) -> AgentOut:
@@ -192,7 +193,7 @@ def _tools(names: Optional[set[str]]) -> Optional[list[str]]:
 @router.get("/me/agents/{agent_id}/config", response_model=AgentConfigOut)
 async def get_agent_config(
     agent_id: str = AgentId,
-    kn_id: str = Query(min_length=1, max_length=50, pattern=_ID),
+    kn_id: str = Query(min_length=1, max_length=128, pattern=_ID),
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
@@ -565,6 +566,7 @@ async def restore_shared_agent(
 
 class SharedPromptOut(BaseModel):
     prompt: PromptOut
+    next_version: int
 
 
 async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPromptOut:
@@ -572,7 +574,7 @@ async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPrompt
         prompt := await dao.get_prompt(session, agent.prompt_id, localized=True)
     ):
         raise not_found("prompt", agent.prompt_id or agent.agent_id)
-    return SharedPromptOut(prompt=prompt)
+    return SharedPromptOut(prompt=prompt, next_version=await dao.next_prompt_version(session, agent.prompt_id))
 
 
 @router.get("/admin/agents/{agent_id}/prompt", response_model=SharedPromptOut)
@@ -587,7 +589,7 @@ async def get_shared_prompt(
 
 @router.put("/admin/agents/{agent_id}/prompt", response_model=SharedPromptOut)
 async def publish_shared_prompt(
-    body: PromptPublish,
+    body: SharedPromptPublish,
     agent_id: str = AgentId,
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
@@ -601,6 +603,31 @@ async def publish_shared_prompt(
     await dao.publish_prompt_version(
         session, agent.prompt_id, body.content, body.vars_schema, account.account_id,
         commit=False, preserve_vars_schema="vars_schema" not in body.model_fields_set,
+    )
+    await session.commit()
+    return await _shared_prompt(session, agent)
+
+
+@router.post("/admin/agents/{agent_id}/prompt/versions", response_model=SharedPromptOut)
+async def publish_shared_prompt_version(
+    body: PromptVersionPublish,
+    account: Annotated[Account, Depends(get_public_account)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    agent_id: str = AgentId,
+):
+    """Publish exactly the required target Prompt version.
+
+    Use next_version from the shared Prompt read response and retain it across
+    retries. An existing or out-of-sequence target returns 409 without creating
+    another Prompt or Agent version. After rollback, next_version still follows
+    the maximum historical version. Omit vars_schema to retain the active schema;
+    an object replaces it and explicit null clears it.
+    """
+    agent = await _shared_editor(session, account, agent_id)
+    await dao.publish_prompt_version(
+        session, agent.prompt_id, body.content, body.vars_schema, account.account_id,
+        commit=False, preserve_vars_schema="vars_schema" not in body.model_fields_set,
+        version=body.version,
     )
     await session.commit()
     return await _shared_prompt(session, agent)

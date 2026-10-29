@@ -17,7 +17,7 @@ BKN Foundry 平台包括 ADP、Decision Agent、AI Store 等关键子系统。
 
 ## Execution Factory 定义
 
-Execution Factory 是一个开源的算子与工具管理平台，旨在连接大语言模型（LLMs）与实际业务能力。通过支持 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)，它提供了一套标准化的机制来注册、管理和执行各种算子（Operators）及工具（Tools），帮助开发者快速构建强大的 AI Agent 应用。
+Execution Factory 是一个开源的工具、MCP 与技能管理平台，旨在连接大语言模型（LLMs）与实际业务能力。通过支持 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)，它提供了一套标准化的机制来注册、管理和执行各种工具（Tools），帮助开发者快速构建强大的 AI Agent 应用。
 
 ## 核心组件
 
@@ -25,9 +25,8 @@ Execution Factory 以单一服务 `operator-integration` 交付，对外暴露�
 
 ### Operator Integration (`operator-integration`)
 
-核心集成服务平台，负责算子和工具的全生命周期管理。
+核心集成服务平台，负责工具、MCP 与技能的全生命周期管理。
 
-- **算子管理**：支持算子的注册、版本控制、发布与下架。
 - **工具箱（Toolbox）**：支持将多个工具组合成工具箱，便于统一管理和调用。
 - **MCP 支持**：作为 MCP Server，向 LLM 提供标准化的工具调用接口。
 - **多协议适配**：支持 HTTP、SSE 等多种通信协议。
@@ -37,14 +36,14 @@ Execution Factory 以单一服务 `operator-integration` 交付，对外暴露�
 
 | 前缀 | 用途 |
 | --- | --- |
-| `/api/agent-operator-integration/v1` | 公开面：算子、工具箱、MCP、技能的管理接口。 |
+| `/api/agent-operator-integration/v1` | 公开面：工具箱、MCP、技能的管理接口。 |
 | `/api/agent-operator-integration/internal-v1` | 服务间接口。仅集群内可达，不面向浏览器。 |
 | `/api/capabilities-lab/v1` | 能力面：把工具、MCP、技能压平为统一的 capability 模型。原为独立的 capabilities-lab 服务，已合并为本服务的一个路由组，路径保持不变。 |
 
 ## 特性
 
 - **标准化接口**：基于 MCP 协议，实现模型与工具的解耦。
-- **灵活扩展**：支持多种编程语言编写的算子（如 Go, Python 等）。
+- **灵活扩展**：支持 OpenAPI 工具与 Python 函数工具。
 - **可观测性**：集成了 OpenTelemetry，提供全链路追踪能力。
 - **高性能**：基于 Go 语言开发，具备高并发处理能力。
 

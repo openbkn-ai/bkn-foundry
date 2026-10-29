@@ -118,7 +118,7 @@ Allowed logging: secure enums, length/count, full SHA-256, controlled action/too
 
 ## 10. Reliability and current boundaries.
 
-- This batch is first connected to toolbox `ExecuteTool`; MCP, operator proxy and sandbox will reuse the same helper later.
+- This batch is first connected to toolbox `ExecuteTool`; MCP and sandbox will reuse the same helper later.
 - The action path is fail-closed when the emitter is not configured, is not 2xx, times out, or approved is not confirmed, and no side effects are performed; ordinary non-Action tool calls maintain the original behavior.
 - HTTP emitter uses bounded retry, and the original serialized event and timestamp remain unchanged.
 - Redis gate does not set a TTL to prevent repeated side effects after restarting. If the process crashes after the side effects are completed but before the results are written to the gate, the status will remain in `executing` permanently and retry will be refused. Manual reconciliation is required; transactional execution log/outbox is not implemented in this batch.

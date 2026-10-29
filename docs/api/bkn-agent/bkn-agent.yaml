@@ -306,7 +306,10 @@ paths:
         '200':
           description: Scoped SSE execution. Emits meta, token, proposal, usage, result,
             and terminal. The proposal is validated and persisted before successful
-            terminal; GET /executions/{run_id} can recover it.
+            terminal; GET /executions/{run_id} can recover it. Invalid proposals return
+            BknAgent.MetricDesign.ProposalInvalid with stage, field, and reason in
+            terminal.error and the recovered execution error; run_id is included in
+            the event and execution record.
           content:
             text/event-stream:
               schema:
@@ -439,7 +442,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       - name: agent_id
@@ -480,7 +483,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       - name: agent_id
@@ -527,7 +530,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       - name: agent_id
@@ -578,7 +581,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       responses:
@@ -920,7 +923,58 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PromptPublish'
+              $ref: '#/components/schemas/SharedPromptPublish'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedPromptOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/versions:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Publish Shared Prompt Version
+      description: 'Publish exactly the required target Prompt version.
+
+
+        Use next_version from the shared Prompt read response and retain it across
+
+        retries. An existing or out-of-sequence target returns 409 without creating
+
+        another Prompt or Agent version. After rollback, next_version still follows
+
+        the maximum historical version. Omit vars_schema to retain the active schema;
+
+        an object replaces it and explicit null clears it.'
+      operationId: publish_shared_prompt_version_api_bkn_agent_v1_admin_agents__agent_id__prompt_versions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptVersionPublish'
       responses:
         '200':
           description: Successful Response
@@ -2233,7 +2287,7 @@ components:
       properties:
         kn_id:
           type: string
-          maxLength: 50
+          maxLength: 128
           minLength: 1
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
@@ -2431,7 +2485,7 @@ components:
           title: Scope
         object_type_id:
           type: string
-          maxLength: 100
+          maxLength: 128
           minLength: 1
           title: Object Type Id
       additionalProperties: false
@@ -2613,13 +2667,13 @@ components:
       properties:
         kn_id:
           type: string
-          maxLength: 50
+          maxLength: 128
           minLength: 1
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
         owner_object_type_id:
           type: string
-          maxLength: 100
+          maxLength: 128
           minLength: 1
           title: Owner Object Type Id
         metric_type:
@@ -2896,6 +2950,31 @@ components:
       - create_user
       - create_time
       title: PromptVersionOut
+    PromptVersionPublish:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          pattern: ^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$
+          title: Content
+          description: Must contain a character outside ECMAScript trim whitespace;
+            original formatting is preserved.
+        vars_schema:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Vars Schema
+        version:
+          type: integer
+          maximum: 2147483647.0
+          minimum: 1.0
+          title: Version
+      type: object
+      required:
+      - content
+      - version
+      title: PromptVersionPublish
     RunRequest:
       properties:
         agent_id:
@@ -3045,10 +3124,33 @@ components:
       properties:
         prompt:
           $ref: '#/components/schemas/PromptOut'
+        next_version:
+          type: integer
+          title: Next Version
       type: object
       required:
       - prompt
+      - next_version
       title: SharedPromptOut
+    SharedPromptPublish:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          pattern: ^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$
+          title: Content
+          description: Must contain a character outside ECMAScript trim whitespace;
+            original formatting is preserved.
+        vars_schema:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - content
+      title: SharedPromptPublish
     TaskOut:
       properties:
         task_id:

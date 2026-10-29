@@ -49,14 +49,6 @@ func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interface
 		s.Logger.WithContext(ctx).Warnf("[Import] batchImportToolBoxMetadata err:%v", err)
 		return
 	}
-	// Import dependencies.
-	if data.Operator != nil && len(data.Operator.Configs) > 0 {
-		err = s.OperatorMgnt.Import(ctx, tx, mode, data.Operator, userID)
-		if err != nil {
-			s.Logger.WithContext(ctx).Warnf("[Import] OperatorMgnt.Import err:%v", err)
-			return
-		}
-	}
 	// Import post-processing.
 	err = s.importPostProcess(ctx, createMap, updateMap, accessor)
 	if err != nil {
@@ -532,7 +524,6 @@ func (s *ToolServiceImpl) importCheck(ctx context.Context, item *interfaces.Tool
 				Code:         toolImpexItem.Code,
 			}
 			metadataList = append(metadataList, metadataDB)
-		case model.SourceTypeOperator:
 		}
 	}
 	return
@@ -603,32 +594,19 @@ func (s *ToolServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq)
 		return
 	}
 	// Get tool information in the toolbox in batches.
-	toolBoxConfig, depOperatorIDs, err := s.batchGetToolBoxInfo(ctx, boxDBs)
+	toolBoxConfig, err := s.batchGetToolBoxInfo(ctx, boxDBs)
 	if err != nil {
 		return
 	}
 	data = &interfaces.ComponentImpexConfigModel{
 		Toolbox: toolBoxConfig,
 	}
-	// Obtain operator dependency information in batches.
-	depOperatorIDs = utils.UniqueStrings(depOperatorIDs)
-	if len(depOperatorIDs) == 0 {
-		return
-	}
-	operatorImpexConfig, err := s.OperatorMgnt.Export(ctx, &interfaces.ExportReq{
-		UserID: req.UserID,
-		IDs:    depOperatorIDs,
-	})
-	if err != nil {
-		return
-	}
-	data.Operator = operatorImpexConfig.Operator
 	return
 }
 
 // Get tool information in the toolbox in batches.
 func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*model.ToolboxDB) (toolBoxInfo *interfaces.ToolBoxImpexConfig,
-	depOperatorIDs []string, err error) {
+	err error) {
 	toolsMap := map[string][]*interfaces.ToolImpexItem{} // Export information of tools under the toolbox.
 	toolBoxInfo = &interfaces.ToolBoxImpexConfig{
 		Configs: []*interfaces.ToolBoxImpexItem{},
@@ -687,9 +665,6 @@ func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*mod
 			sourceMap[model.SourceTypeOpenAPI] = append(sourceMap[model.SourceTypeOpenAPI], toolDB.SourceID)
 		case model.SourceTypeFunction:
 			sourceMap[model.SourceTypeFunction] = append(sourceMap[model.SourceTypeFunction], toolDB.SourceID)
-		case model.SourceTypeOperator:
-			sourceMap[model.SourceTypeOperator] = append(sourceMap[model.SourceTypeOperator], toolDB.SourceID)
-			depOperatorIDs = append(depOperatorIDs, toolDB.SourceID)
 		}
 		toolsMap[toolDB.BoxID] = append(toolsMap[toolDB.BoxID], toolImpexItem)
 	}
@@ -708,19 +683,16 @@ func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*mod
 				continue
 			}
 			toolInfo.MetadataType = interfaces.MetadataType(metadataDB.GetType())
-			if toolInfo.SourceType != model.SourceTypeOperator {
-				// The operator tool does not directly export metadata, but exports it through operator dependencies.
-				toolInfo.Metadata = metadata.MetadataDBToStruct(metadataDB)
-				dependencies := []interfaces.DependencyInfo{}
-				if metadataDB.GetDependencies() != "" {
-					dependencies = utils.JSONToObject[[]interfaces.DependencyInfo](metadataDB.GetDependencies())
-				}
-				toolInfo.FunctionContent = interfaces.FunctionContent{
-					ScriptType:      interfaces.ScriptType(metadataDB.GetScriptType()),
-					Code:            metadataDB.GetCode(),
-					Dependencies:    dependencies,
-					DependenciesURL: metadataDB.GetDependenciesURL(),
-				}
+			toolInfo.Metadata = metadata.MetadataDBToStruct(metadataDB)
+			dependencies := []interfaces.DependencyInfo{}
+			if metadataDB.GetDependencies() != "" {
+				dependencies = utils.JSONToObject[[]interfaces.DependencyInfo](metadataDB.GetDependencies())
+			}
+			toolInfo.FunctionContent = interfaces.FunctionContent{
+				ScriptType:      interfaces.ScriptType(metadataDB.GetScriptType()),
+				Code:            metadataDB.GetCode(),
+				Dependencies:    dependencies,
+				DependenciesURL: metadataDB.GetDependenciesURL(),
 			}
 			toolBox.Tools = append(toolBox.Tools, toolInfo)
 		}

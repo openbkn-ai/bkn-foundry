@@ -20,6 +20,7 @@ func networkWithCapabilities() *BknNetwork {
 				Functions: []*BknCapabilityFunction{{
 					BoxID: "box-1", ToolID: "tool-1", BoxName: "供应链计算", ToolName: "BOM 多层展开",
 				}},
+				KnowledgeBases: []*BknCapabilityKnowledgeBase{{ID: "7", Name: "合同库"}},
 			},
 		},
 	}
@@ -44,6 +45,10 @@ func TestCapabilitiesRoundTrip(t *testing.T) {
 	fn := parsed.Capabilities.Functions[0]
 	if fn.BoxID != "box-1" || fn.ToolID != "tool-1" || fn.BoxName != "供应链计算" || fn.ToolName != "BOM 多层展开" {
 		t.Fatalf("function not round-tripped: %+v", fn)
+	}
+	if len(parsed.Capabilities.KnowledgeBases) != 1 || parsed.Capabilities.KnowledgeBases[0].ID != "7" ||
+		parsed.Capabilities.KnowledgeBases[0].Name != "合同库" {
+		t.Fatalf("knowledge base not round-tripped: %+v", parsed.Capabilities.KnowledgeBases)
 	}
 }
 

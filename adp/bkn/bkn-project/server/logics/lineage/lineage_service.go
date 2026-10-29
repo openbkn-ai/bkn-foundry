@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"path"
 	"slices"
+	"sort"
 	"sync"
 
 	"github.com/go-git/go-git/v5"
@@ -160,6 +161,183 @@ func (s *lineageService) CommitDefinitions(ctx context.Context, lineageID string
 	}
 	span.SetStatus(codes.Ok, "")
 	return result, nil
+}
+
+// AddDefinitions reads the branch, writes files and commits under one hold of the lineage lock, so
+// nothing a concurrent writer committed in between is lost. It replaces only what the same source
+// wrote before (owned), removing what of it files no longer hold; any other path the branch holds
+// is refused, listed. The branch has to be kept in BKN 3.0, the rules the files are written in; a
+// branch started in 2.x moves to 3.0 when it syncs.
+func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, branch string,
+	files map[string][]byte, owned []string, message string,
+	author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "AddDefinitions")
+	defer span.End()
+
+	if err := checkProjectBranch(ctx, branch); err != nil {
+		span.SetStatus(codes.Error, "Invalid branch")
+		return nil, err
+	}
+	// Nothing to write is a request only when nothing written before is to be removed either.
+	if len(files) == 0 && len(owned) == 0 {
+		span.SetStatus(codes.Error, "Empty definitions")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions)
+	}
+	if message == "" {
+		message = fmt.Sprintf("add definitions on %s", branch)
+	}
+
+	result := &interfaces.CommitDefinitionsResult{}
+	err := s.gs.WithLineageLock(ctx, lineageID, func(gs interfaces.GitStore) error {
+		before, err := gs.ResolveRef(ctx, lineageID, branchRef(branch))
+		if err != nil {
+			return err
+		}
+		current, err := gs.ReadTree(ctx, lineageID, branchRef(branch))
+		if err != nil {
+			return err
+		}
+		notV3, err := notKeptInV3(ctx, gs, lineageID, current)
+		if err != nil {
+			return err
+		}
+		if notV3 != "" {
+			code := perrors.BknProject_Lineage_BranchNotV3
+			if notV3 == interfaces.DEFINITIONS_LINEAGE_NOT_V3 {
+				code = perrors.BknProject_Lineage_LineageNotV3
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, code)
+		}
+		mine := make(map[string]bool, len(owned))
+		for _, p := range owned {
+			mine[p] = true
+		}
+		merged := make(map[string][]byte, len(current)+len(files))
+		for p, data := range current {
+			if !mine[p] {
+				merged[p] = data
+			}
+		}
+		paths := make([]string, 0, len(files))
+		for p, data := range files {
+			paths = append(paths, p)
+			merged[p] = data
+		}
+		if existing := existingPaths(current, paths, owned); len(existing) > 0 {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DefinitionsExist).
+				WithErrorDetails(existing)
+		}
+		if clash := fileAlsoDirectory(merged); clash != "" {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+				WithErrorDetails(fmt.Sprintf("path %q is both a file and a directory", clash))
+		}
+		// Refuse what the BKN loader cannot read now, such as a value type named as one the
+		// branch has; stored, it would only fail later in sync or publish.
+		fsys := bkn.NewMemoryFileSystem()
+		fsys.AddFiles(merged)
+		if _, err := bkn.LoadNetworkWithFS(fsys, "."); err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+				WithErrorDetails(err.Error())
+		}
+		// The loader lets through what the specification's checks refuse, such as an object type
+		// named as one the branch holds; only what these files bring in is refused.
+		introduced, err := merge.IntroducedErrors(current, merged)
+		if err != nil {
+			return err
+		}
+		if len(introduced) > 0 {
+			details := make([]interfaces.DefinitionError, 0, len(introduced))
+			for _, ve := range introduced {
+				details = append(details, interfaces.DefinitionError{
+					Table: ve.Table, Column: ve.Column, Code: ve.Code, Message: ve.Message,
+				})
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+				WithErrorDetails(details)
+		}
+		if result.Commit, err = gs.CommitFiles(ctx, lineageID, branch, merged, message, author); err != nil {
+			return err
+		}
+		diff, err := gs.Diff(ctx, lineageID, before, result.Commit)
+		if err != nil {
+			return err
+		}
+		result.Changed = *diff
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, "Add definitions failed")
+		return nil, toHTTPError(ctx, "Add definitions failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
+// PreflightDefinitions reads the branch without the lineage lock: it tells what adding would be
+// refused for now, and adding checks again under the lock.
+func (s *lineageService) PreflightDefinitions(ctx context.Context, lineageID string, branch string,
+	paths []string, owned []string) (*interfaces.DefinitionsPreflight, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "PreflightDefinitions")
+	defer span.End()
+
+	if err := checkProjectBranch(ctx, branch); err != nil {
+		span.SetStatus(codes.Error, "Invalid branch")
+		return nil, err
+	}
+	current, err := s.gs.ReadTree(ctx, lineageID, branchRef(branch))
+	if err != nil {
+		span.SetStatus(codes.Error, "Read branch failed")
+		return nil, toHTTPError(ctx, "Read branch failed", err)
+	}
+	preflight := &interfaces.DefinitionsPreflight{Existing: []string{}}
+	if preflight.NotV3, err = notKeptInV3(ctx, s.gs, lineageID, current); err != nil {
+		span.SetStatus(codes.Error, "Read main failed")
+		return nil, toHTTPError(ctx, "Read main failed", err)
+	}
+	preflight.Existing = append(preflight.Existing, existingPaths(current, paths, owned)...)
+	span.SetStatus(codes.Ok, "")
+	return preflight, nil
+}
+
+// notKeptInV3 says why a branch whose definitions are current is not kept in BKN 3.0, or nothing
+// when it is. Syncing moves the branch to 3.0 only once main is; until then main's drift has to be
+// committed first, which writes main in 3.0.
+func notKeptInV3(ctx context.Context, gs interfaces.GitStore, lineageID string,
+	current map[string][]byte) (string, error) {
+	if keptInV3(current) {
+		return "", nil
+	}
+	mainFiles, err := gs.ReadTree(ctx, lineageID, branchRef(interfaces.GIT_MAIN_BRANCH))
+	if err != nil {
+		return "", err
+	}
+	if !keptInV3(mainFiles) {
+		return interfaces.DEFINITIONS_LINEAGE_NOT_V3, nil
+	}
+	return interfaces.DEFINITIONS_BRANCH_NOT_V3, nil
+}
+
+// existingPaths lists, sorted, the paths the branch holds that the definitions do not own: adding
+// them would replace what someone else wrote.
+func existingPaths(current map[string][]byte, paths []string, owned []string) []string {
+	mine := make(map[string]bool, len(owned))
+	for _, p := range owned {
+		mine[p] = true
+	}
+	var existing []string
+	for _, p := range paths {
+		if _, ok := current[p]; ok && !mine[p] {
+			existing = append(existing, p)
+		}
+	}
+	sort.Strings(existing)
+	return existing
+}
+
+// keptInV3 reports whether a set of definitions declares BKN 3.0 in its network.bkn.
+func keptInV3(files map[string][]byte) bool {
+	network, err := bkn.ParseNetworkFile(string(files[bkn.RootFileName]), bkn.RootFileName)
+	return err == nil && network.BknSpec == bkn.BknSpecV3
 }
 
 // SyncBranch reads both heads, decides and writes under one hold of the lineage
@@ -316,6 +494,14 @@ func branchRef(name string) string {
 }
 
 // toHTTPError maps an error of the git store or bkn-backend to the reply.
+// v3ExportRefusals maps bkn-backend's refusals to export a network as BKN 3.0 to bkn-project's
+// codes: some action parameters are misplaced or invalid, or a definition does not read back
+// under the 3.0 rules.
+var v3ExportRefusals = map[string]string{
+	"BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck": perrors.BknProject_Lineage_NetworkNeedsCheck,
+	"BknBackend.KnowledgeNetwork.ExportNotReadableAsV3":   perrors.BknProject_Lineage_NetworkNotReadableAsV3,
+}
+
 func toHTTPError(ctx context.Context, operation string, err error) error {
 	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
@@ -339,6 +525,15 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 			WithErrorDetails(details)
 	}
 	var backendErr *interfaces.BknBackendError
+	if errors.As(err, &backendErr) {
+		// The network's own definitions need fixing before a lineage can hold it as BKN 3.0;
+		// bkn-backend names what to fix, which goes on as it is. Its own advice to export as
+		// 2.x is not one a lineage can take.
+		if code, ok := v3ExportRefusals[backendErr.ErrorCode]; ok {
+			otellog.LogWarn(ctx, fmt.Sprintf("%s: %v", operation, err))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, code).WithErrorDetails(backendErr.ErrorDetails)
+		}
+	}
 	if errors.As(err, &backendErr) {
 		// A 4xx is the caller's to fix and keeps its status; anything else is a bad gateway.
 		status := backendErr.HTTPCode

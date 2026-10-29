@@ -33,8 +33,8 @@ import (
 
 const (
 	// maxNetworkIDLength and maxNetworkNameRunes are the bkn-backend limits on a network.
-	maxNetworkIDLength  = 40
-	maxNetworkNameRunes = 40
+	maxNetworkIDLength  = 128
+	maxNetworkNameRunes = 128
 	// maxProjectIDRunes and maxNotesBytes are what the release table holds:
 	// f_project_id VARCHAR(40) and f_notes TEXT.
 	maxProjectIDRunes = 40
@@ -387,7 +387,7 @@ func tagRef(name string) string {
 }
 
 // releaseNetworkID is <lineage_id>_v<major>_<minor>_<patch>. bkn-backend allows
-// 40 characters of [a-z0-9_-], so a long lineage id is cut, and the "_" or "-"
+// 128 characters of [a-z0-9_-], so a long lineage id is cut, and the "_" or "-"
 // the cut leaves at its end dropped. The version always survives whole.
 func releaseNetworkID(lineageID string, version string) string {
 	suffix := "_v" + strings.ReplaceAll(version, ".", "_")
@@ -398,7 +398,7 @@ func releaseNetworkID(lineageID string, version string) string {
 	return prefix + suffix
 }
 
-// releaseNetworkName is <base name> · <version>, at most 40 characters, the base
+// releaseNetworkName is <base name> · <version>, at most 128 characters, the base
 // name cut to fit. The base name is the branch's network name without the
 // version an earlier release appended to it.
 func releaseNetworkName(name string, version string) string {

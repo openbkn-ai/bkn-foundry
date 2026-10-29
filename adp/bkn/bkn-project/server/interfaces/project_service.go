@@ -16,6 +16,11 @@ type CreateProjectRequest struct {
 }
 
 // NewKNRequest names the network a project creates; bkn-backend makes up an id when ID is empty.
+// SetProjectCatalogsRequest replaces the data catalogs a project drafts from.
+type SetProjectCatalogsRequest struct {
+	CatalogIDs []string `json:"catalog_ids"`
+}
+
 type NewKNRequest struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -51,5 +56,8 @@ type ProjectService interface {
 	GetProject(ctx context.Context, token string, id string) (*ProjectEntry, error)
 	// SetProjectArchived archives or unarchives a visible project; only its owner may.
 	SetProjectArchived(ctx context.Context, token string, id string, archived bool,
+		caller AccountInfo) (*ProjectEntry, error)
+	// SetProjectCatalogs replaces the project's data catalogs; only its owner may.
+	SetProjectCatalogs(ctx context.Context, token string, id string, catalogIDs []string,
 		caller AccountInfo) (*ProjectEntry, error)
 }

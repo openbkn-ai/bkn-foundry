@@ -118,9 +118,8 @@ func (c *OperatorIntegrationClient) ImportImpex(
 
 func DetectImpexComponentType(data []byte) (string, error) {
 	var probe struct {
-		Operator *json.RawMessage `json:"operator"`
-		Toolbox  *json.RawMessage `json:"toolbox"`
-		MCP      *json.RawMessage `json:"mcp"`
+		Toolbox *json.RawMessage `json:"toolbox"`
+		MCP     *json.RawMessage `json:"mcp"`
 	}
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return "", fmt.Errorf("invalid impex json")
@@ -131,8 +130,6 @@ func DetectImpexComponentType(data []byte) (string, error) {
 		return "toolbox", nil
 	case probe.MCP != nil:
 		return "mcp", nil
-	case probe.Operator != nil:
-		return "operator", nil
 	default:
 		return "", fmt.Errorf("unsupported impex payload")
 	}

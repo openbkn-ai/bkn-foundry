@@ -8,6 +8,8 @@ moduleName: agent-operator-integration
 # bkn-safe API used for authorization, directory lookups, and AppKey introspection.
 bknSafe:
   url: "http://bkn-safe:3000"
+  # Timeout for resource policy teardown only. Other authorization calls keep their short timeout.
+  resourceCleanupTimeout: "30s"
 
 # Set to dev for development mode.
 runMode: release
@@ -68,17 +70,13 @@ service:
     periodSeconds: 5
     timeoutSeconds: 5
     failureThreshold: 30
-  operator:
-    importFileSizeLimit: 2097152 # Import file size limit is 2M.
-    importOperatorMaxCount: 10 # Maximum number of operators imported in batches.
-    descriptionLengthLimit: 500 # Length limit of operator description, unit character.
   mcp:
     connTimeout: 30 # Unit: seconds.
     maxInstances: 100 # Maximum number of instances.
     instanceTTL: 1800 # Unit second.
     cleanupInterval: 600 # Unit second.
   category:
-    initSwitch: true # Whether to initialize operator classification.
+    initSwitch: true # Whether to initialize built-in categories.
   proxyModule:
     defaultTimeout: 300 # Unit second.
     maxTimeout: 300 # Unit second.

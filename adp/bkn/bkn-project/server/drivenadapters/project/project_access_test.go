@@ -190,6 +190,25 @@ func Test_ProjectAccess(t *testing.T) {
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
+		Convey("SetProjectCatalogs stores the catalog ids as JSON and the update time\n", func() {
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_catalog_ids = ?, f_update_time = ? WHERE f_id = ?")).
+				WithArgs(`["c2","c3"]`, int64(9), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+
+			So(pa.SetProjectCatalogs(ctx, "p1", []string{"c2", "c3"}, 9), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("SetProjectCatalogs stores no catalog ids as an empty array and returns the update error\n", func() {
+			smock.ExpectExec("UPDATE t_bkn_project_project").WithArgs("[]", int64(9), "p1").
+				WillReturnError(errors.New("lock wait timeout"))
+
+			err := pa.SetProjectCatalogs(ctx, "p1", nil, 9)
+			// A statement with other arguments would fail on the mismatch instead.
+			So(err, ShouldBeError, "lock wait timeout")
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("SetProjectArchived returns the update error\n", func() {
 			smock.ExpectExec("UPDATE t_bkn_project_project").WillReturnError(errors.New("lock wait timeout"))
 

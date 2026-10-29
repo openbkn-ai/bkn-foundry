@@ -127,6 +127,21 @@ func TestPermissionRequestTextUnicodeBoundaries(t *testing.T) {
 	}
 }
 
+func TestPermissionRequestAcceptsMaximumLengthChildResourceID(t *testing.T) {
+	maximum := strings.Repeat("k", 128) + "/" + strings.Repeat("o", 128)
+	create := CreateInput{
+		RequesterID: "requester", ResourceType: "object_type", ResourceID: maximum,
+		Operation: "view_detail", Reason: "need access",
+	}
+	if !validCreate(&create) {
+		t.Fatal("validCreate rejected a 257-character child resource ID")
+	}
+	create.ResourceID = maximum + "x"
+	if validCreate(&create) {
+		t.Fatal("validCreate accepted a 258-character child resource ID")
+	}
+}
+
 func TestRequestPageOrderDoesNotUseClientSortText(t *testing.T) {
 	page := normalizePage(PageOptions{
 		Sort:      "created_at DESC; DROP TABLE permission_request",

@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -488,7 +489,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 		d := &model.Department{ID: req.ID}
 		directory.ApplyDepartmentWrite(d, writeIn)
 		if err := dir.CreateDepartment(c.Request.Context(), d); err != nil {
-			serverError(c, err)
+			writeDepartmentValidationError(c, err)
 			return
 		}
 		setAuditOperation(c, "create", d.ID, d.Name)
@@ -527,7 +528,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 			return
 		}
 		if err != nil {
-			serverError(c, err)
+			writeDepartmentValidationError(c, err)
 			return
 		}
 		c.Status(http.StatusNoContent)
@@ -607,6 +608,10 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 
 func writeDepartmentValidationError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, directory.ErrDepartmentCycle):
+		httperrors.WriteCode(c, http.StatusBadRequest, httperrors.DepartmentCycle, nil)
+	case errors.Is(err, directory.ErrUnknownDepartment):
+		httperrors.WriteCode(c, http.StatusBadRequest, httperrors.DepartmentParentNotFound, nil)
 	case errors.Is(err, directory.ErrUnknownUser):
 		replyPublicError(c, http.StatusBadRequest)
 	case errors.Is(err, directory.ErrDuplicateDepartmentCode):

@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -94,6 +95,37 @@ func TestDiffProxyGrantSourcesTouchesRetainedButDoesNotAdvanceVersion(t *testing
 	version, err := proxyGrantTransitionVersion("sha256:base", additions, removals)
 	if err != nil || version != "sha256:base" {
 		t.Fatalf("proxyGrantTransitionVersion() = (%q, %v)", version, err)
+	}
+}
+
+func TestStageProxyDeltaCarriesAuthorizationCleanupInDurableEvent(t *testing.T) {
+	outbox := &proxyOutboxAccessStub{}
+	service := &knowledgeNetworkService{kpoa: outbox}
+	cleanups := []interfaces.AuthorizationCleanupTarget{{
+		ResourceType: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		ResourceIDs:  []string{"kn-1/object-1"},
+	}}
+	plan := &proxyPublishPlan{
+		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"},
+		delegatorID: "editor-1",
+		lockOwner:   "request-1",
+		delta: &proxyGrantDelta{
+			baseVersion:   "v1",
+			targetVersion: "v2",
+			bindings: []interfaces.KNProxyBindingRef{{
+				BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE,
+				BindingID:   "object-1",
+			}},
+		},
+		authorizationCleanups: cleanups,
+	}
+
+	staged, err := service.stageProxyDelta(t.Context(), nil, plan)
+	if err != nil || !staged {
+		t.Fatalf("stageProxyDelta() = (%t, %v), want staged", staged, err)
+	}
+	if len(outbox.events) != 1 || !reflect.DeepEqual(outbox.events[0].AuthorizationCleanups, cleanups) {
+		t.Fatalf("staged authorization cleanups = %#v, want %#v", outbox.events, cleanups)
 	}
 }
 
@@ -271,13 +303,13 @@ func TestDeniedExistingSkillDeltaRemovesOnlyItsMaterializedGrant(t *testing.T) {
 		delta.targetVersion == delta.baseVersion {
 		t.Fatalf("materialized skill delta = %#v", delta)
 	}
-	err = refuseNewlyMountedSkillsWithoutGrant(t.Context(), selection,
+	err = refuseNewlyMountedCapabilitiesWithoutGrant(t.Context(), selection,
 		[]*interfaces.CapabilityBinding{{ID: "binding-1"}},
 		[]*interfaces.CapabilityBinding{{ID: "binding-1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL}})
 	if err != nil {
 		t.Fatalf("existing best-effort skill was rejected: %v", err)
 	}
-	err = refuseNewlyMountedSkillsWithoutGrant(t.Context(), selection, nil,
+	err = refuseNewlyMountedCapabilitiesWithoutGrant(t.Context(), selection, nil,
 		[]*interfaces.CapabilityBinding{{ID: "binding-1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL}})
 	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {

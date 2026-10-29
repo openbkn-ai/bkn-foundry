@@ -22,7 +22,10 @@ info:
     proxy.
 
     Accepted resource type and operation pairs: `resource` with `view_detail` or `query_data`;
-    `tool_box`, `function`, `mcp` and `skill` with `execute`. Any other pair is rejected with 400. A `skill`
+    `tool_box`, `function`, `mcp` and `skill` with `execute`; `knowledge_base` with `query_data`.
+    Any other pair is rejected with 400. A `knowledge_base` source lets kb-api's read API serve a
+    knowledge base bound to the network to the network's proxy; its required `view_detail` is
+    derived from the registry and cannot be requested explicitly. A `skill`
     source lets Context Loader read a Skill mounted on the network as the network's proxy; the
     execution factory's Skill read accepts `execute`. Context Loader never runs a Skill as the proxy.
 servers:
@@ -367,11 +370,11 @@ components:
       properties:
         resource_type:
           type: string
-          enum: [resource, tool_box, function, mcp, skill]
+          enum: [resource, tool_box, function, mcp, skill, knowledge_base]
         resource_id:
           type: string
           minLength: 1
-          maxLength: 128
+          maxLength: 257
         operation:
           type: string
           enum: [view_detail, query_data, execute]
@@ -422,9 +425,11 @@ components:
           type: string
         resource_type:
           type: string
-          enum: [resource, tool_box, mcp, skill]
+          enum: [resource, tool_box, mcp, skill, knowledge_base]
         resource_id:
           type: string
+          minLength: 1
+          maxLength: 257
         operation:
           type: string
           enum: [view_detail, query_data, execute]
@@ -497,11 +502,11 @@ components:
       properties:
         resource_type:
           type: string
-          enum: [resource, tool_box, mcp, skill]
+          enum: [resource, tool_box, mcp, skill, knowledge_base]
         resource_id:
           type: string
           minLength: 1
-          maxLength: 128
+          maxLength: 257
         operation:
           type: string
           enum: [view_detail, query_data, execute]

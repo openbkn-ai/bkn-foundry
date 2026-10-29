@@ -329,6 +329,34 @@ async def main(monkeypatch):
             result = await asyncio.wait_for(pending, 3)
             check('body-only-publisher-inherits-current-schema-after-wait',
                 result.prompt.vars_schema == schema and result.prompt.content == 'body-only follower')
+        from fastapi import HTTPException
+
+        from app.models import PromptVersionPublish
+
+        async with factory() as s:
+            target = await dao.next_prompt_version(s, other_prompt)
+            prompt_count = len(await dao.list_prompt_versions(s, other_prompt))
+            agent_count = len(await dao.list_versions(s, AGENT))
+
+        async def publish_target(content):
+            async with factory() as s:
+                try:
+                    return await routes.publish_shared_prompt_version(
+                        PromptVersionPublish(content=content, version=target),
+                        agent_id=AGENT, account=Account('admin', 'user'), session=s)
+                except HTTPException as failure:
+                    return failure
+
+        outcomes = await asyncio.wait_for(asyncio.gather(
+            publish_target('same-version admin A'), publish_target('same-version admin B')), 5)
+        check('same-target-publishers-one-success-one-conflict',
+            sorted(value.status_code if isinstance(value, HTTPException) else 200 for value in outcomes) == [200, 409])
+        replay = await publish_target('same-version retry')
+        check('committed-target-retry-is-conflict', isinstance(replay, HTTPException) and replay.status_code == 409)
+        async with factory() as s:
+            check('target-conflicts-create-no-prompt-or-agent-history',
+                len(await dao.list_prompt_versions(s, other_prompt)) == prompt_count + 1 and
+                len(await dao.list_versions(s, AGENT)) == agent_count + 1)
     finally:
         await engine.dispose()
         with db.cursor() as c:

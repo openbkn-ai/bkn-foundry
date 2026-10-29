@@ -73,6 +73,7 @@ type DataProperty struct {
 
 	// BKN spec 3.0 property declarations (SPECIFICATION.md §6.8), stored and returned by
 	// bkn-backend. A property without declarations carries none of them.
+	Aliases     []string             `json:"aliases,omitempty"`
 	Semantic    string               `json:"semantic,omitempty"`
 	Required    bool                 `json:"required,omitempty"` // Absent means false; bkn-backend omits false
 	Constraints *PropertyConstraints `json:"constraints,omitempty"`
@@ -142,6 +143,12 @@ type ObjectType struct {
 	// resource for this response, so condition_operations are missing rather than empty: what the
 	// object type can be searched by is unknown, not "nothing".
 	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitempty"`
+	// Lifecycle says whether the object type is still in use (BKN spec 3.0 §4.3); nil is active.
+	// It reaches every answer that carries the object type, so one looked up by id says what
+	// replaces it.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
+	// Aliases are other names of the object type (BKN spec 3.0 §6.8). search_schema surfaces them.
+	Aliases []string `json:"aliases,omitempty"`
 
 	// RelatedMetrics are published Object Metrics V1 owned by this object type.
 	// get_object_types fills this list for caller-visible definitions.
@@ -185,6 +192,75 @@ type RelationType struct {
 	TargetObjectType   any    `json:"target_object_type,omitempty"` // Provide name when viewing details
 	MappingRules       any    `json:"mapping_rules,omitempty"`      // Mapping rules based on type, direct corresponds to []Mapping structure
 	Type               string `json:"type"`                         // Relation type
+
+	// BKN spec 3.0 relation declarations (SPECIFICATION.md §7.6), as bkn-backend returns them.
+	// Relation properties ride in mapping_rules.properties of an indirect relation.
+	ReverseName  string               `json:"reverse_name,omitempty"`
+	Aliases      []string             `json:"aliases,omitempty"`
+	Cardinality  string               `json:"cardinality,omitempty"`
+	Constraints  *RelationConstraints `json:"constraints,omitempty"`
+	Importance   string               `json:"importance,omitempty"`
+	FallbackFor  string               `json:"fallback_for,omitempty"`
+	Verification string               `json:"verification,omitempty"`
+	Lifecycle    *Lifecycle           `json:"lifecycle,omitempty"`
+}
+
+// RelationConstraints is a relation type's ### Relation Constraints (SPECIFICATION.md §7.6).
+type RelationConstraints struct {
+	Required        []string `json:"required,omitempty"`
+	Characteristics []string `json:"characteristics,omitempty"`
+}
+
+// Lifecycle is the lifecycle of an object, relation or action type (SPECIFICATION.md §4.3). nil,
+// or status active, is a type still in use.
+type Lifecycle struct {
+	Status     string `json:"status"`
+	Reason     string `json:"reason,omitempty"`
+	ReplacedBy string `json:"replaced_by,omitempty"`
+}
+
+// Lifecycle status values.
+const (
+	LifecycleActive     = "active"
+	LifecycleDeprecated = "deprecated"
+)
+
+// Relation importance values.
+const (
+	RelationImportancePrimary   = "primary"
+	RelationImportanceSecondary = "secondary"
+)
+
+// Inactive returns the lifecycle when it says something, and nil for a type still in use.
+func (l *Lifecycle) Inactive() *Lifecycle {
+	if l == nil || ((l.Status == "" || l.Status == LifecycleActive) && l.Reason == "" && l.ReplacedBy == "") {
+		return nil
+	}
+	return l
+}
+
+// IsFallback reports whether the relation is the fallback path of a primary relation.
+func (r *RelationType) IsFallback() bool {
+	return r != nil && r.FallbackFor != "" && r.Importance == RelationImportanceSecondary
+}
+
+// MayHaveFallback reports whether a fallback path may point at the relation. The spec allows one
+// only on an active primary direct or indirect relation with many_to_one or one_to_one
+// cardinality and no characteristics, so the many relations that do not qualify cost no lookup.
+func (r *RelationType) MayHaveFallback() bool {
+	if r == nil || r.Lifecycle.Inactive() != nil {
+		return false
+	}
+	if r.Importance != "" && r.Importance != RelationImportancePrimary {
+		return false
+	}
+	if r.Cardinality != "many_to_one" && r.Cardinality != "one_to_one" {
+		return false
+	}
+	if r.Type != "direct" && r.Type != "indirect" {
+		return false
+	}
+	return r.Constraints == nil || len(r.Constraints.Characteristics) == 0
 }
 
 // ActionType Action type structure definition
@@ -197,6 +273,10 @@ type ActionType struct {
 	Score      float64  `json:"_score,omitempty"`      // Score
 
 	ObjectTypeID string `json:"object_type_id"` // Object type ID bound to action type
+	// Lifecycle says whether the action type is still in use (BKN spec 3.0 §4.3); nil is active.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
+	// Aliases are other names of the action type (BKN spec 3.0 §8.2). search_schema surfaces them.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 // ConceptGroup BKN concept group structure used by exported knowledge-network detail.
@@ -517,10 +597,13 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 	for _, a := range d.ActionTypes {
 		if a != nil {
 			a.Score = 0
+			a.Aliases = nil
 		}
 	}
-	// Property declarations are search_schema's to surface; no level of this answer carries them.
+	// Property and relation declarations are search_schema's to surface; no level of this answer
+	// carries them, except lifecycle and the fallback marking (see OmitRelationDeclarations).
 	OmitPropertyDeclarations(d.ObjectTypes)
+	OmitRelationDeclarations(d.RelationTypes)
 	if level == DetailLevelFull {
 		return
 	}
@@ -883,6 +966,30 @@ type KNProxyResolver interface {
 	ResolveKNProxyBinding(ctx context.Context, binding KNProxyBinding) (*KNProxyAccount, error)
 }
 
+// ValueTypeReader reads a knowledge network's value types. It is implemented by the bkn-backend
+// client next to BknBackendAccess rather than inside it, so that test doubles of that interface
+// need not grow a method only search_schema uses.
+type ValueTypeReader interface {
+	// ListValueTypes returns every value type of the network's main branch.
+	ListValueTypes(ctx context.Context, knID string) ([]*ValueType, error)
+}
+
+// ValueType is a BKN spec 3.0 value type (SPECIFICATION.md §16), as bkn-backend returns it. Only
+// the enum is read: search_schema expands it on the properties that name the value type.
+type ValueType struct {
+	ID       string           `json:"id"`
+	Name     string           `json:"name"`
+	BaseType string           `json:"base_type"`
+	Enum     []*ValueTypeEnum `json:"enum,omitempty"`
+}
+
+// ValueTypeEnum is one enum item. The value is text whatever the base type.
+type ValueTypeEnum struct {
+	Value      string `json:"value"`
+	Display    string `json:"display"`
+	Deprecated bool   `json:"deprecated,omitempty"`
+}
+
 // CapabilityRef is one capability a knowledge network branch has bound. Only the reference
 // travels: the master data lives in the execution factory, and Context Loader reads it there
 // directly, so having bkn-backend fill in names would only add a hop.
@@ -944,21 +1051,42 @@ const (
 	CapabilityTypeMCPTool = "mcp_tool"
 )
 
-// OmitPropertyDeclarations clears the BKN spec 3.0 property declarations from the given object
-// types. Only search_schema surfaces them; get_kn_detail and get_object_types answer as they did
-// before declarations existed, which keeps their size where it was.
+// OmitPropertyDeclarations clears the BKN spec 3.0 property declarations and the object type and
+// property aliases from the given object types. Only search_schema surfaces them; get_kn_detail
+// and get_object_types answer as they did before declarations existed, which keeps their size
+// where it was.
 func OmitPropertyDeclarations(objectTypes []*ObjectType) {
 	for _, o := range objectTypes {
 		if o == nil {
 			continue
 		}
+		o.Aliases = nil
 		for _, p := range o.DataProperties {
 			if p == nil {
 				continue
 			}
+			p.Aliases = nil
 			p.Semantic = ""
 			p.Required = false
 			p.Constraints = nil
 		}
+	}
+}
+
+// OmitRelationDeclarations clears the BKN spec 3.0 relation declarations from the given relation
+// types, keeping the ones a caller needs to use a relation listed or looked up by id safely:
+// lifecycle says what replaces a deprecated relation, and importance with fallback_for marks a
+// fallback path, which these answers list beside its primary. Without them a caller could add up
+// the results of both (SPECIFICATION.md §7.6). search_schema surfaces the rest.
+func OmitRelationDeclarations(relationTypes []*RelationType) {
+	for _, r := range relationTypes {
+		if r == nil {
+			continue
+		}
+		r.ReverseName = ""
+		r.Aliases = nil
+		r.Cardinality = ""
+		r.Constraints = nil
+		r.Verification = ""
 	}
 }

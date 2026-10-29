@@ -34,8 +34,11 @@ const (
 	AdminWriteImmutable                       = "BknSafe.AdminWrite.Immutable"
 	AdminWriteNoUpdatableFields               = "BknSafe.AdminWrite.NoUpdatableFields"
 	AdminWriteWildcardGrantForbidden          = "BknSafe.AdminWrite.WildcardGrantForbidden"
+	AdminWriteSubResourceWildcardForbidden    = "BknSafe.AdminWrite.SubResourceWildcardForbidden"
 	AdminWriteAdminConsolePermissionForbidden = "BknSafe.AdminWrite.AdminConsolePermissionForbidden"
 	ResourceExisted                           = "RESOURCE_EXISTED"
+	DepartmentCycle                           = "BknSafe.Department.Cycle"
+	DepartmentParentNotFound                  = "BknSafe.Department.ParentNotFound"
 )
 
 var (
@@ -55,8 +58,11 @@ var (
 		AdminWriteImmutable,
 		AdminWriteNoUpdatableFields,
 		AdminWriteWildcardGrantForbidden,
+		AdminWriteSubResourceWildcardForbidden,
 		AdminWriteAdminConsolePermissionForbidden,
 		ResourceExisted,
+		DepartmentCycle,
+		DepartmentParentNotFound,
 	}
 )
 

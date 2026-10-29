@@ -67,8 +67,8 @@ func NewUnifiedProxyHandler() UnifiedProxyHandler {
 
 // FunctionExecute function execution.
 //
-// This interface executes any code submitted by the caller in the sandbox, so the public interface requires the caller to hold execute on the operator type.
-// Permissions (see #345). There has been no authorization determination on the public face before, and any account holding a valid token - including those with empty permission sets.
+// This interface executes any code submitted by the caller in the sandbox, so the public interface requires the caller to hold execute on the function type
+// (see #345). There has been no authorization determination on the public face before, and any account holding a valid token - including those with empty permission sets.
 // Account - you can use this to gain code execution capabilities in the sandbox.
 func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 	var err error

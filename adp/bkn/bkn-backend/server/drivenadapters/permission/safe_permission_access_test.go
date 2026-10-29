@@ -68,6 +68,22 @@ func newFilterStub(t *testing.T, reply map[string][]string) (*safePermissionAcce
 	return &safePermissionAccess{safe: newSafeClient(srv.URL)}, calls
 }
 
+func TestSafeClientUsesDedicatedResourceCleanupTimeout(t *testing.T) {
+	t.Setenv(resourceCleanupTimeoutEnv, "17s")
+	client := newSafeClient("http://bkn-safe:3000")
+	if client.http.Timeout != defaultSafeTimeout {
+		t.Fatalf("regular timeout = %s, want %s", client.http.Timeout, defaultSafeTimeout)
+	}
+	if client.cleanupHTTP.Timeout != 17*time.Second {
+		t.Fatalf("cleanup timeout = %s, want 17s", client.cleanupHTTP.Timeout)
+	}
+
+	t.Setenv(resourceCleanupTimeoutEnv, "invalid")
+	if got := newSafeClient("http://bkn-safe:3000").cleanupHTTP.Timeout; got != defaultResourceCleanupTimeout {
+		t.Fatalf("invalid cleanup timeout fallback = %s, want %s", got, defaultResourceCleanupTimeout)
+	}
+}
+
 func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

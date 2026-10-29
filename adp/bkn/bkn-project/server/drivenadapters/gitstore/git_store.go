@@ -49,7 +49,7 @@ const BKN_DIR = "bkn"
 
 // lineageIDPattern is the bkn-backend network id rule. Checking it also keeps
 // the repository path inside the root directory.
-var lineageIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
+var lineageIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,127}$`)
 
 var (
 	gsOnce   sync.Once

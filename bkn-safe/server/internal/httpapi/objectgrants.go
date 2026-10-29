@@ -27,7 +27,7 @@ import (
 // under /admin (admin-only). It manages the "grant a specific object to a
 // specific user or role" matrix that sits ON TOP of role-based RBAC: each grant
 // binds one accessor to concrete ops on one concrete resource instance
-// (catalog/operator/knowledge_network/…).
+// (catalog/tool_box/knowledge_network/…).
 //
 // This is the gateway-exposed, audited management surface for object grants.
 // The internal /api/safe/v1/authz/policies endpoints stay for service-to-service
@@ -113,11 +113,11 @@ const (
 	//
 	// The three types that carry data no longer have one: sharing a knowledge
 	// network, a data connection or a table is its creator's call, so the grant
-	// sits on the object rather than the type (#513, #977, #1150). network_builder
-	// still holds it type-wide on connector_type, stream_data_pipeline and the
-	// execution-factory types (operator, skill, mcp, tool_box), and a custom role
-	// may be given one anywhere — this branch is what makes such a grant decide
-	// something.
+	// sits on the object rather than the type (#513, #977, #1150). A role may
+	// still hold it type-wide — for example on connector_type or the
+	// execution-factory types (tool_box, function, mcp, skill) — and a custom
+	// role may be given one anywhere; this branch is what makes such a grant
+	// decide something.
 	authorityTypeAuthorize grantAuthority = "type-authorize"
 )
 
@@ -854,6 +854,10 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			}
 			entries = append(entries, entry)
 		}
+		if err := populateGrantCreators(c, db, entries); err != nil {
+			serverError(c, err)
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
 	})
 
@@ -944,6 +948,54 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 	g.POST("/object-grants", setObjectGrantHandler(e, db, dir, catalog, reviewerSync))
 	g.POST("/object-grants/revoke", revokeObjectGrantBatchHandler(e, db, dir, catalog))
 	g.DELETE("/object-grants", revokeObjectGrantHandler(e, db, dir, catalog))
+}
+
+// populateGrantCreators enriches only sources already authorized by the object-scoped
+// read. Grantors need not be grantees. Do not expose directory fields beyond the
+// display name/account, or treat historical/system actors as directory users.
+func populateGrantCreators(c *gin.Context, db *gorm.DB, entries []gin.H) error {
+	ids := make([]string, 0)
+	seen := map[string]bool{}
+	var sources []gin.H
+	for _, entry := range entries {
+		grants, _ := entry["grants"].([]gin.H)
+		for _, grant := range grants {
+			id, _ := grant["created_by"].(string)
+			authority, _ := grant["authority_source"].(string)
+			if id == "" || id == authority || strings.HasPrefix(id, "system:") {
+				continue
+			}
+			sources = append(sources, grant)
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var users []model.User
+	if err := db.WithContext(c.Request.Context()).Select("id", "name", "account").
+		Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return err
+	}
+	identities := make(map[string]model.User, len(users))
+	for _, user := range users {
+		identities[user.ID] = user
+	}
+	for _, source := range sources {
+		id, _ := source["created_by"].(string)
+		if user, ok := identities[id]; ok {
+			if user.Name != "" {
+				source["created_by_name"] = user.Name
+			}
+			if user.Account != "" {
+				source["created_by_account"] = user.Account
+			}
+		}
+	}
+	return nil
 }
 
 type grantAccessorIdentity struct {

@@ -1,0 +1,229 @@
+openapi: "3.0.2"
+info:
+  title: "执行工厂分类私有接口"
+  description: "工具箱、MCP Server 与 Skill 共用的分类管理接口，用于集群内部服务调用，无需接口认证信息"
+  version: "1.0.0"
+servers:
+  - url: "http://{host}:{port}/api/agent-operator-integration/internal-v1"
+    description: "执行工厂私有接口地址"
+    variables:
+      host:
+        default: "agent-operator-integration"
+        description: "服务地址"
+      port:
+        default: "9000"
+        description: "服务端口"
+
+paths:
+  /category:
+    get:
+      summary: "获取分类列表"
+      description: "返回工具箱、MCP Server 与 Skill 共用的分类列表，`name` 随请求语言本地化。"
+      tags:
+        - "分类管理"
+      parameters:
+        - $ref: "#/components/parameters/AccountID"
+        - $ref: "#/components/parameters/AccountType"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryInfo"
+        "500":
+          description: "内部错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: "新建分类"
+      description: "新建分类。内部接口不做 tool_box 类型权限判定。"
+      tags:
+        - "分类管理"
+      parameters:
+        - $ref: "#/components/parameters/AccountID"
+        - $ref: "#/components/parameters/AccountType"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryReq"
+      responses:
+        "200":
+          description: "新建成功"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryInfo"
+        "400":
+          description: "参数错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "分类已存在"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: "内部错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /category/{category_type}:
+    put:
+      summary: "更新分类"
+      description: "更新指定分类的名称。"
+      tags:
+        - "分类管理"
+      parameters:
+        - $ref: "#/components/parameters/AccountID"
+        - $ref: "#/components/parameters/AccountType"
+        - $ref: "#/components/parameters/CategoryType"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoryReq"
+      responses:
+        "200":
+          description: "更新成功"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryInfo"
+        "400":
+          description: "参数错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "分类不存在"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: "内部错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      summary: "删除分类"
+      description: "删除指定分类。内置的 other_category 不可删除（返回 403）。"
+      tags:
+        - "分类管理"
+      parameters:
+        - $ref: "#/components/parameters/AccountID"
+        - $ref: "#/components/parameters/AccountType"
+        - $ref: "#/components/parameters/CategoryType"
+      responses:
+        "200":
+          description: "删除成功"
+        "400":
+          description: "参数错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "内置分类不可删除"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "分类不存在"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: "内部错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  parameters:
+    AccountID:
+      name: x-account-id
+      in: header
+      description: "用户 ID"
+      required: false
+      schema:
+        type: string
+    AccountType:
+      name: x-account-type
+      in: header
+      description: "用户类型"
+      required: false
+      schema:
+        type: string
+    CategoryType:
+      name: category_type
+      in: path
+      description: "分类机器值"
+      required: true
+      schema:
+        type: string
+  schemas:
+    CategoryInfo:
+      type: object
+      properties:
+        category_type:
+          type: string
+          description: "分类机器值"
+        name:
+          type: string
+          description: "分类显示名，支持国际化"
+    CreateCategoryReq:
+      type: object
+      required:
+        - name
+      properties:
+        category_type:
+          type: string
+          description: "分类机器值"
+        name:
+          type: string
+          description: "分类名称"
+    UpdateCategoryReq:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: "新的分类名称"
+    Error:
+      type: object
+      description: "错误信息"
+      properties:
+        code:
+          type: string
+          description: "错误码"
+        description:
+          type: string
+          description: "错误信息"
+        detail:
+          type: object
+          description: "错误详情"
+        solution:
+          type: string
+          description: "错误解决方案"
+        link:
+          type: string
+          description: "错误链接"

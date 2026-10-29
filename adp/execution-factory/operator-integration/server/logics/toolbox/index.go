@@ -21,7 +21,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/intcomp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/operator"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy"
 	proxyexecution "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy_execution"
 )
@@ -46,7 +45,6 @@ type ToolServiceImpl struct {
 	Logger           interfaces.Logger
 	UserMgnt         interfaces.UserManagement
 	Validator        interfaces.Validator
-	OperatorMgnt     interfaces.OperatorManager
 	IntCompConfigSvc interfaces.IIntCompConfigService
 	AuthService      interfaces.IAuthorizationService
 	AuditLog         interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
@@ -78,7 +76,6 @@ func NewToolServiceImpl() interfaces.IToolService {
 			UserMgnt:         drivenadapters.NewUserManagementClient(),
 			Validator:        validator.NewValidator(),
 			CategoryManager:  category.NewCategoryManager(),
-			OperatorMgnt:     operator.NewOperatorManager(),
 			IntCompConfigSvc: intcomp.NewIntCompConfigService(),
 			AuthService:      auth.NewAuthServiceImpl(),
 			AuditLog:         metric.NewAuditLogBuilder(),

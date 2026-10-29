@@ -11,11 +11,43 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
+
+func TestSafeAuthorizationUsesDedicatedResourceCleanupTimeout(t *testing.T) {
+	t.Setenv(resourceCleanupTimeoutEnv, "17s")
+	client := newSafeAuthorization("http://bkn-safe:3000", testLogger{})
+	if client.http.Timeout != defaultSafeTimeout {
+		t.Fatalf("regular timeout = %s, want %s", client.http.Timeout, defaultSafeTimeout)
+	}
+	if client.cleanupHTTP.Timeout != 17*time.Second {
+		t.Fatalf("cleanup timeout = %s, want 17s", client.cleanupHTTP.Timeout)
+	}
+
+	t.Setenv(resourceCleanupTimeoutEnv, "0s")
+	if got := newSafeAuthorization("http://bkn-safe:3000", testLogger{}).cleanupHTTP.Timeout; got != defaultResourceCleanupTimeout {
+		t.Fatalf("non-positive cleanup timeout fallback = %s, want %s", got, defaultResourceCleanupTimeout)
+	}
+}
+
+func TestSafeAuthorizationPreservesCleanupConflictStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "resource has active proxy grant sources", http.StatusConflict)
+	}))
+	defer server.Close()
+
+	err := newSafeAuthorization(server.URL, testLogger{}).DeletePolicy(t.Context(),
+		&interfaces.AuthDeletePolicyRequest{Resources: []*interfaces.AuthResource{{Type: "skill", ID: "skill-1"}}})
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok || httpErr.HTTPCode != http.StatusConflict {
+		t.Fatalf("DeletePolicy() error = %#v, want HTTP 409", err)
+	}
+}
 
 // fakeAuthz serves the bkn-safe authz endpoints the adapter uses.
 func fakeAuthz(t *testing.T) *httptest.Server {
@@ -290,8 +322,8 @@ func TestSafeAuthorizationOperationChecksPreservesOrderedDecisions(t *testing.T)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"allowed": false,
 			"results": []map[string]any{
-				{"resource_type": "operator", "resource_id": "op-1", "operation": "delete", "allowed": true},
-				{"resource_type": "operator", "resource_id": "op-2", "operation": "delete", "allowed": false},
+				{"resource_type": "skill", "resource_id": "skill-1", "operation": "delete", "allowed": true},
+				{"resource_type": "skill", "resource_id": "skill-2", "operation": "delete", "allowed": false},
 			},
 		})
 	}))
@@ -301,8 +333,8 @@ func TestSafeAuthorizationOperationChecksPreservesOrderedDecisions(t *testing.T)
 		context.Background(), &interfaces.AuthOperationChecksRequest{
 			Accessor: &interfaces.AuthAccessor{ID: "user-1"},
 			Checks: []*interfaces.AuthOperationRequirement{
-				{Resource: &interfaces.AuthResource{Type: "operator", ID: "op-1"}, Operation: interfaces.AuthOperationTypeDelete},
-				{Resource: &interfaces.AuthResource{Type: "operator", ID: "op-2"}, Operation: interfaces.AuthOperationTypeDelete},
+				{Resource: &interfaces.AuthResource{Type: "skill", ID: "skill-1"}, Operation: interfaces.AuthOperationTypeDelete},
+				{Resource: &interfaces.AuthResource{Type: "skill", ID: "skill-2"}, Operation: interfaces.AuthOperationTypeDelete},
 			},
 		})
 	if err != nil {

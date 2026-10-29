@@ -41,6 +41,21 @@ func (m *MockLineageService) EXPECT() *MockLineageServiceMockRecorder {
 	return m.recorder
 }
 
+// AddDefinitions mocks base method.
+func (m *MockLineageService) AddDefinitions(ctx context.Context, lineageID, branch string, files map[string][]byte, owned []string, message string, author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddDefinitions", ctx, lineageID, branch, files, owned, message, author)
+	ret0, _ := ret[0].(*interfaces.CommitDefinitionsResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddDefinitions indicates an expected call of AddDefinitions.
+func (mr *MockLineageServiceMockRecorder) AddDefinitions(ctx, lineageID, branch, files, owned, message, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddDefinitions", reflect.TypeOf((*MockLineageService)(nil).AddDefinitions), ctx, lineageID, branch, files, owned, message, author)
+}
+
 // CheckDrift mocks base method.
 func (m *MockLineageService) CheckDrift(ctx context.Context, token, lineageID, knID string, commit bool, author interfaces.GitAuthor) (*interfaces.DriftResult, error) {
 	m.ctrl.T.Helper()
@@ -114,6 +129,21 @@ func (m *MockLineageService) PlanSwitch(ctx context.Context, token, lineageID, t
 func (mr *MockLineageServiceMockRecorder) PlanSwitch(ctx, token, lineageID, toNetworkID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanSwitch", reflect.TypeOf((*MockLineageService)(nil).PlanSwitch), ctx, token, lineageID, toNetworkID)
+}
+
+// PreflightDefinitions mocks base method.
+func (m *MockLineageService) PreflightDefinitions(ctx context.Context, lineageID, branch string, paths, owned []string) (*interfaces.DefinitionsPreflight, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PreflightDefinitions", ctx, lineageID, branch, paths, owned)
+	ret0, _ := ret[0].(*interfaces.DefinitionsPreflight)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PreflightDefinitions indicates an expected call of PreflightDefinitions.
+func (mr *MockLineageServiceMockRecorder) PreflightDefinitions(ctx, lineageID, branch, paths, owned any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreflightDefinitions", reflect.TypeOf((*MockLineageService)(nil).PreflightDefinitions), ctx, lineageID, branch, paths, owned)
 }
 
 // PublishRelease mocks base method.

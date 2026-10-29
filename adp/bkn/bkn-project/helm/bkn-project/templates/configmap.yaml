@@ -13,6 +13,8 @@ data:
       {{- toYaml .Values.config.otel | nindent 6 }}
     gitStore:
       {{- toYaml .Values.config.gitStore | nindent 6 }}
+    draft:
+      {{- toYaml .Values.config.draft | nindent 6 }}
     depServices:
       {{- toYaml .Values.depServices | nindent 6 }}
 

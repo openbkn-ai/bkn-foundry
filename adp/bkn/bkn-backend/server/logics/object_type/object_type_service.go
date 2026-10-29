@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1418,7 +1419,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
 		defer func() {
 			if trackerOwner && err == nil {
-				_ = cleanupTracker.Cleanup(ctx, ots.ps)
+				err = cleanupTracker.Cleanup(ctx, ots.ps)
 			}
 		}()
 	}
@@ -2379,7 +2380,58 @@ func (ots *objectTypeService) enrichObjectTypes(ctx context.Context, objectTypes
 			return err
 		}
 	}
+	ots.enrichObjectTypeRowCounts(ctx, objectTypes, resources)
 	return nil
+}
+
+// enrichObjectTypeRowCounts reuses the resource batch already read for the response.
+// Missing measurements or policy decisions never trigger a count query or fail the model read.
+func (ots *objectTypeService) enrichObjectTypeRowCounts(ctx context.Context,
+	objectTypes []*interfaces.ObjectType, resources map[string]vegaResourceLookup) {
+	candidates := make(map[string]*interfaces.ObjectType)
+	var refs []string
+	for _, ot := range objectTypes {
+		if ot == nil {
+			continue
+		}
+		ot.RowCount, ot.RowCountTime = nil, nil
+		if ot.DataSource == nil || ot.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+			continue
+		}
+		resource, err := resources[ot.DataSource.ID].resourceFor(ot)
+		if err != nil || resource == nil || resource.RowCount == nil || *resource.RowCount < 0 ||
+			resource.RowCountTime == nil || *resource.RowCountTime <= 0 {
+			continue
+		}
+		ref := interfaces.KNChildResourceID(ot.KNID, ot.OTID)
+		candidates[ref] = ot
+		refs = append(refs, ref)
+	}
+	if len(refs) == 0 {
+		return
+	}
+	operations, err := permission.FilterKNChildResourceIDsWithAnyOperation(ctx, ots.ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, refs)
+	if err != nil {
+		return
+	}
+	var decisions []interfaces.RowFilterDecisionEntry
+	// The row-filter API accepts at most 100 object types per call.
+	for batch := range slices.Chunk(refs, 100) {
+		entries, err := ots.ps.ResolveRowFilters(ctx, batch)
+		if err == nil {
+			decisions = append(decisions, entries...)
+		}
+	}
+	for _, decision := range decisions {
+		ot := candidates[decision.ObjectTypeRef]
+		if ot == nil || decision.Predicate.Kind != "true" ||
+			!slices.Contains(operations[decision.ObjectTypeRef].Operations, interfaces.OPERATION_TYPE_QUERY_DATA) {
+			continue
+		}
+		resource, _ := resources[ot.DataSource.ID].resourceFor(ot)
+		ot.RowCount, ot.RowCountTime = resource.RowCount, resource.RowCountTime
+	}
 }
 
 // enrichObjectTypeIndexStatuses projects only the response-time index state required by summary
@@ -2393,6 +2445,7 @@ func (ots *objectTypeService) enrichObjectTypeIndexStatuses(ctx context.Context,
 			ots.projectObjectTypeIndexStatus(ctx, objectType, resources)
 		}
 	}
+	ots.enrichObjectTypeRowCounts(ctx, objectTypes, resources)
 }
 
 // projectObjectTypeIndexStatus applies the shared index-state semantics and returns the readable

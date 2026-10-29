@@ -115,6 +115,10 @@ type ObjectType struct {
 	// finishes rebuilding an index.
 	IndexStatus *ObjectTypeIndexStatus `json:"index_status,omitempty" mapstructure:"-"`
 
+	// RowCount is Vega's exact measurement, exposed only with query_data permission and no row filter.
+	RowCount     *int64 `json:"row_count" mapstructure:"-"`
+	RowCountTime *int64 `json:"row_count_time,omitempty" mapstructure:"-"`
+
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
 	Updater    AccountInfo `json:"updater" mapstructure:"updater"`
@@ -358,6 +362,17 @@ func (p *DataProperty) UnmarshalJSON(data []byte) error {
 // included.
 func (p *DataProperty) Declares(field string) bool {
 	return p != nil && p.declared[field]
+}
+
+// DropImpliedRequired clears required on a primary key, which is required by definition, and
+// forgets that the JSON carried it: a later check of the same property must not read the cleared
+// value as a written false.
+func (p *DataProperty) DropImpliedRequired() {
+	if p == nil {
+		return
+	}
+	p.Required = false
+	delete(p.declared, DECLARATION_REQUIRED)
 }
 
 // HasDeclarations reports whether the property carries any declaration. Required on a primary key

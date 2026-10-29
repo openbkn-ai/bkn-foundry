@@ -12,7 +12,6 @@ type SourceType string
 
 const (
 	SourceTypeOpenAPI  SourceType = "openapi"  // openapi
-	SourceTypeOperator SourceType = "operator" // Operators converted into tools.
 	SourceTypeFunction SourceType = "function" // function.
 )
 

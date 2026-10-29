@@ -98,6 +98,21 @@ func Test_ProjectRestHandler(t *testing.T) {
 			So(serve(handler, http.MethodPost, base+"/p1:unarchive").Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 
+		Convey("PUT catalogs replaces the catalogs for the caller; the field is required\n", func() {
+			ps.EXPECT().SetProjectCatalogs(gomock.Any(), "Bearer t", "p1", []string{"c2"}, caller).Return(entry, nil)
+			So(serveBody(handler, http.MethodPut, base+"/p1/catalogs", []byte(`{"catalog_ids":["c2"]}`)).Result().StatusCode,
+				ShouldEqual, http.StatusOK)
+
+			ps.EXPECT().SetProjectCatalogs(gomock.Any(), "Bearer t", "p1", []string{}, caller).Return(entry, nil)
+			So(serveBody(handler, http.MethodPut, base+"/p1/catalogs", []byte(`{"catalog_ids":[]}`)).Result().StatusCode,
+				ShouldEqual, http.StatusOK)
+
+			for _, body := range []string{`{}`, `{"catalog_ids":null}`, `not json`} {
+				So(serveBody(handler, http.MethodPut, base+"/p1/catalogs", []byte(body)).Result().StatusCode,
+					ShouldEqual, http.StatusBadRequest)
+			}
+		})
+
 		Convey("Any other POST on a project is not found\n", func() {
 			for _, path := range []string{base + "/p1", base + "/p1:delete", base + "/:archive"} {
 				So(serve(handler, http.MethodPost, path).Result().StatusCode, ShouldEqual, http.StatusNotFound)

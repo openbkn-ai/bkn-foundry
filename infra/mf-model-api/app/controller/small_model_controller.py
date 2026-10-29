@@ -19,6 +19,32 @@ from app.utils.permission_manager import PermissionManager, permission_manager
 
 # Small-model type constants aligned with t_small_model.f_model_type.
 RERANKER_MODEL_TYPE = "reranker"
+EMBEDDING_MODEL_TYPE = "embedding"
+
+
+def _model_type_error(model_info, expected):
+    actual = model_info.get("f_model_type")
+    if actual == expected:
+        return None
+    error = ModelFactory_ExternalSmallModel_Used_InvalidParameter.copy()
+    error["detail"] = f"Model type mismatch: expected {expected}, got {actual}."
+    error["solution"] = f"Select a registered {expected} model."
+    return JSONResponse(status_code=400, content=error)
+
+
+def _embedding_response_error(result):
+    """Check the final response, including normalized providers and adapters."""
+    data = result.get("data") if isinstance(result, dict) else None
+    if isinstance(data, list) and data and all(
+            isinstance(item, dict) and isinstance(item.get("embedding"), list) and
+            item["embedding"] and all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                for value in item["embedding"])
+            for item in data):
+        return None
+    return JSONResponse(status_code=502,
+                        content=ModelFactory_ExternalSmallModel_Used_InvalidResponse.copy())
+
 
 # The default model is an administrator-controlled pointer, not a concrete
 # configuration. Named configurations may be cached for a day, but caching the
@@ -450,10 +476,16 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
                                                                           role=role)
             if not permission:
                 return JSONResponse(status_code=403, content=NotPermissionError)
+        type_error = _model_type_error(model_info, EMBEDDING_MODEL_TYPE)
+        if type_error is not None:
+            return type_error
         client = InnerClient(url=config_info.get("api_url", ""), model_name=config_info.get("api_model", ""),
                              api_key=config_info.get("api_key", ""), adapter=adapter, adapter_code=adapter_code,
                              embedding_dim=model_info.get("f_embedding_dim"))
         res_dict = await client.embedding(texts)
+        response_error = _embedding_response_error(res_dict)
+        if response_error is not None:
+            return response_error
         prompt_tokens = res_dict.get("usage", {}).get("prompt_tokens")
         total_tokens = res_dict.get("usage", {}).get("total_tokens")
         if get_logger():
@@ -539,6 +571,14 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
             await redis_util.set_str(key=cache_key, value=str(model_info),
                                      expire=_model_cache_ttl(is_default))
 
+        # Older API instances cached rows without limits. Reload once during rolling upgrades.
+        if model_info and "f_max_documents" not in model_info[0]:
+            model_info = _load_small_model(is_default, RERANKER_MODEL_TYPE, model_name, model_id)
+            if not model_info:
+                return JSONResponse(status_code=404 if not is_default else 400,
+                                    content=_model_missing_error(is_default))
+            await redis_util.set_str(key=cache_key, value=str(model_info),
+                                     expire=_model_cache_ttl(is_default))
         model_info = model_info[0]
         model_name = model_info["f_model_name"]
         config_info = json.loads(model_info["f_model_config"])
@@ -552,6 +592,16 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
                                                                           role=role)
             if not permission:
                 return JSONResponse(status_code=403, content=NotPermissionError)
+        type_error = _model_type_error(model_info, RERANKER_MODEL_TYPE)
+        if type_error is not None:
+            return type_error
+        max_documents = model_info.get("f_max_documents")
+        if max_documents is not None and len(documents) > max_documents:
+            error_dict = ModelFactory_ExternalSmallModel_Used_InvalidParameter.copy()
+            error_dict["solution"] = "Reduce documents or increase the configured max_documents limit."
+            error_dict["detail"] = (
+                f"documents count {len(documents)} exceeds max_documents={max_documents}.")
+            return JSONResponse(status_code=400, content=error_dict)
         client = InnerClient(url=config_info.get("api_url", ""), model_name=config_info.get("api_model", ""),
                              api_key=config_info.get("api_key", ""), adapter=adapter, adapter_code=adapter_code)
         res_dict = await client.reranker(query=query, documents=documents)

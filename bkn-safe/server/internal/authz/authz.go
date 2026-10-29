@@ -117,9 +117,27 @@ type Enforcer struct {
 	registry  *Registry
 }
 
+// casbinRule keeps the adapter projection aligned with the domain limits.
+// V1 stores "<resource_type>:<resource_id>": a 64-character resource type,
+// one separator, and a 257-character knowledge-network child reference.
+// The bounded fields also keep the adapter's composite unique index below
+// MariaDB's index-byte limit under utf8mb4.
+type casbinRule struct {
+	ID    uint   `gorm:"primaryKey;autoIncrement"`
+	Ptype string `gorm:"size:16"`
+	V0    string `gorm:"size:64"`
+	V1    string `gorm:"size:322"`
+	V2    string `gorm:"size:64"`
+	V3    string `gorm:"size:16"`
+	V4    string `gorm:"size:32"`
+	V5    string `gorm:"size:64"`
+}
+
+func (casbinRule) TableName() string { return "casbin_rule" }
+
 // New builds an Enforcer using a GORM-backed policy store on the given db.
 func New(db *gorm.DB) (*Enforcer, error) {
-	adapter, err := gormadapter.NewAdapterByDB(db)
+	adapter, err := gormadapter.NewAdapterByDBWithCustomTable(db, &casbinRule{})
 	if err != nil {
 		return nil, fmt.Errorf("new gorm adapter: %w", err)
 	}
@@ -979,8 +997,8 @@ func (en *Enforcer) RemoveAccessor(accessorID string) error {
 // after ensuring no managed proxy policy remains. Proxy policies belong
 // exclusively to proxy-grant sources, and the KN deletion flow must remove
 // those sources before generic resource policy cleanup.
-func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) error {
-	return en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
+func (en *Enforcer) RemoveResourcePolicies(ctx context.Context, resourceType, resourceID string) error {
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
 		var activeSources int64
 		if err := tx.db.Model(&safemodel.ProxyGrantSource{}).
 			Where("resource_type = ? AND resource_id = ? AND lifecycle_status = ?", resourceType, resourceID, "active").
@@ -990,8 +1008,11 @@ func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) erro
 		if activeSources > 0 {
 			return ErrManagedProxyPolicies
 		}
-		_, err := tx.enforcer.removePolicyGrants(PolicyFilter{Object: obj(resourceType, resourceID)})
-		return err
+		if _, err := tx.enforcer.removePolicyGrants(PolicyFilter{Object: obj(resourceType, resourceID)}); err != nil {
+			return err
+		}
+		return tx.db.Where("resource_type_id = ? AND resource_id = ?", resourceType, resourceID).
+			Delete(&safemodel.ResourceParent{}).Error
 	})
 }
 

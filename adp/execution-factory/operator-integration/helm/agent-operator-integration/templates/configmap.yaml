@@ -18,10 +18,6 @@ data:
       pod_id: {{ .Values.service.podID | quote }}
       machine_id: {{ .Values.service.machineID | quote }}
       debug: {{ .Values.service.debug }}
-    operator:
-      import_file_size_limit: {{ .Values.service.operator.importFileSizeLimit }}
-      import_operator_max_count: {{ .Values.service.operator.importOperatorMaxCount }}
-      operator_description_length_limit: {{ .Values.service.operator.descriptionLengthLimit }}
     mcp:
       conn_timeout: {{ .Values.service.mcp.connTimeout }}
       max_instances: {{ .Values.service.mcp.maxInstances }}

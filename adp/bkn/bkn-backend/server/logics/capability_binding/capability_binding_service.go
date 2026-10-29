@@ -45,6 +45,9 @@ type capabilityBindingService struct {
 	db         *sql.DB
 	cba        interfaces.CapabilityBindingAccess
 	aoa        interfaces.AgentOperatorAccess
+	// kba reads knowledge base identities from kb-api; it answers ErrKnowledgeBaseUnavailable
+	// where kb-api is not deployed.
+	kba interfaces.KnowledgeBaseAccess
 	// ota and ata are read to answer why a capability is in the network. The model is the truth
 	// about what uses a tool, so the answer is computed from it rather than copied into the
 	// binding table — a copy has to be maintained on every edit, and the one that drifts is the
@@ -61,6 +64,7 @@ func NewCapabilityBindingService(appSetting *common.AppSetting) interfaces.Capab
 			db:         logics.DB,
 			cba:        logics.CBA,
 			aoa:        logics.AOA,
+			kba:        logics.KBA,
 			ota:        logics.OTA,
 			ata:        logics.ATA,
 			ps:         permission.NewPermissionService(appSetting),
@@ -71,7 +75,7 @@ func NewCapabilityBindingService(appSetting *common.AppSetting) interfaces.Capab
 
 // normalizeAttachEntry validates one mount item and returns its canonical three-part identity.
 //
-// A skill has no owning container, so a stray owner_id is dropped rather than stored: keeping it
+// A skill or a knowledge base has no owning container, so a stray owner_id is dropped rather than stored: keeping it
 // would create a second row for the same skill that the unique key cannot collapse, and repeated
 // mounts would stop being idempotent.
 func normalizeAttachEntry(ctx context.Context, entry *interfaces.AttachCapabilityEntry) (capabilityType, ownerID,
@@ -108,7 +112,7 @@ func normalizeAttachEntry(ctx context.Context, entry *interfaces.AttachCapabilit
 			WithErrorDetails(fmt.Sprintf("comment exceeds %d characters", maxCommentLength))
 	}
 	switch capabilityType {
-	case interfaces.CAPABILITY_TYPE_SKILL:
+	case interfaces.CAPABILITY_TYPE_SKILL, interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE:
 		ownerID = ""
 	case interfaces.CAPABILITY_TYPE_FUNCTION, interfaces.CAPABILITY_TYPE_MCP_TOOL:
 		// Both name a tool inside a container — a tool box, or an MCP Server — and the id alone

@@ -5,8 +5,10 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -79,6 +81,49 @@ func TestRoleGrantAndWildcard(t *testing.T) {
 		if got != c.want {
 			t.Errorf("Check(%s, %s:%s, %s) = %v, want %v — %s", c.sub, c.typ, c.id, c.op, got, c.want, c.why)
 		}
+	}
+}
+
+func TestMaximumLengthChildResourceGrantPersists(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	resourceID := strings.Repeat("k", 128) + "/" + strings.Repeat("o", 128)
+	mustNoErr(t, e.GrantObjectPermission("reader", "object_type", resourceID, "view_detail"))
+
+	var grant model.AuthorizationGrant
+	if err := db.Where("accessor_id = ?", "reader").First(&grant).Error; err != nil {
+		t.Fatal(err)
+	}
+	if grant.Object != "object_type:"+resourceID {
+		t.Fatalf("authorization grant object = %q, want full child reference", grant.Object)
+	}
+	var object string
+	if err := db.Table("casbin_rule").Select("v1").Where("v0 = ?", "reader").Scan(&object).Error; err != nil {
+		t.Fatal(err)
+	}
+	if object != grant.Object {
+		t.Fatalf("casbin object = %q, want %q", object, grant.Object)
+	}
+	allowed, err := e.Check("reader", "object_type", resourceID, "view_detail")
+	if err != nil || !allowed {
+		t.Fatalf("maximum-length child grant allowed = %v, error = %v", allowed, err)
+	}
+}
+
+func TestCasbinRuleObjectColumnWidth(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statement := &gorm.Statement{DB: db}
+	if err := statement.Parse(&casbinRule{}); err != nil {
+		t.Fatal(err)
+	}
+	field := statement.Schema.LookUpField("V1")
+	if field == nil {
+		t.Fatal("casbinRule.V1 field is missing")
+	}
+	if field.Size != 322 {
+		t.Fatalf("casbinRule.V1 size = %d, want 322", field.Size)
 	}
 }
 
@@ -178,7 +223,7 @@ func TestFunctionGrantDoesNotCrossResourceTypes(t *testing.T) {
 		{"function", "box-2", false},
 		{"tool_box", "box-1", false},
 		{"mcp", "box-1", false},
-		{"operator", "box-1", false},
+		{"skill", "box-1", false},
 		{"knowledge_network", "box-1", false},
 	} {
 		got, err := e.Check(user, tc.resourceType, tc.resourceID, "execute")
@@ -438,13 +483,19 @@ func TestRemoveResourcePolicies(t *testing.T) {
 	if err := db.Create(&source).Error; err != nil {
 		t.Fatal(err)
 	}
+	parent := model.ResourceParent{
+		ResourceTypeID: "pipeline", ResourceID: "p1", ParentTypeID: "workspace", ParentID: "w1",
+	}
+	if err := db.Create(&parent).Error; err != nil {
+		t.Fatal(err)
+	}
 	mustNoErr(t, e.GrantObjectPermission(proxy, "pipeline", "p1", "read"))
 
 	ok, _ := e.Check(user, "pipeline", "p1", "read")
 	if !ok {
 		t.Fatal("expected read before removal")
 	}
-	if err := e.RemoveResourcePolicies("pipeline", "p1"); !errors.Is(err, ErrManagedProxyPolicies) {
+	if err := e.RemoveResourcePolicies(t.Context(), "pipeline", "p1"); !errors.Is(err, ErrManagedProxyPolicies) {
 		t.Fatalf("RemoveResourcePolicies() error = %v, want managed proxy conflict", err)
 	}
 	if ok, _ := e.Check(user, "pipeline", "p1", "read"); !ok {
@@ -453,12 +504,54 @@ func TestRemoveResourcePolicies(t *testing.T) {
 	if err := db.Model(&source).Update("lifecycle_status", "revoked").Error; err != nil {
 		t.Fatal(err)
 	}
-	mustNoErr(t, e.RemoveResourcePolicies("pipeline", "p1"))
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := e.RemoveResourcePolicies(canceled, "pipeline", "p1"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("RemoveResourcePolicies() error = %v, want context cancellation", err)
+	}
+	if ok, _ := e.Check(user, "pipeline", "p1", "read"); !ok {
+		t.Error("ordinary policy changed despite context cancellation")
+	}
+	var parentCount int64
+	if err := db.Model(&model.ResourceParent{}).
+		Where("resource_type_id = ? AND resource_id = ?", "pipeline", "p1").
+		Count(&parentCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if parentCount != 1 {
+		t.Fatalf("resource parent count after canceled cleanup = %d, want 1", parentCount)
+	}
+
+	mustNoErr(t, e.RemoveResourcePolicies(t.Context(), "pipeline", "p1"))
 	if ok, _ := e.Check(user, "pipeline", "p1", "read"); ok {
 		t.Error("read still allowed after RemoveResourcePolicies")
 	}
 	if ok, _ := e.Check(proxy, "pipeline", "p1", "read"); ok {
 		t.Error("unsourced proxy policy still allowed after RemoveResourcePolicies")
+	}
+	if err := db.Model(&model.ResourceParent{}).
+		Where("resource_type_id = ? AND resource_id = ?", "pipeline", "p1").
+		Count(&parentCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if parentCount != 0 {
+		t.Fatalf("resource parent count after cleanup = %d, want 0", parentCount)
+	}
+}
+
+func TestResourceCleanupIndexesMigrated(t *testing.T) {
+	_, db := newTestEnforcerDB(t)
+	tests := []struct {
+		model any
+		name  string
+	}{
+		{model: &model.AuthorizationGrant{}, name: "idx_authorization_grant_object_grant"},
+		{model: &model.ProxyGrantSource{}, name: "idx_proxy_grant_source_resource_lifecycle"},
+	}
+	for _, test := range tests {
+		if !db.Migrator().HasIndex(test.model, test.name) {
+			t.Errorf("migration did not create index %s", test.name)
+		}
 	}
 }
 
@@ -537,7 +630,7 @@ func TestAccessibleResources(t *testing.T) {
 	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d1:default", "list"))
 	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d2:default", "list"))
 	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d3:default", "view")) // wrong op
-	mustNoErr(t, e.GrantObjectPermission("u-1", "operator", "op1", "list"))         // wrong type
+	mustNoErr(t, e.GrantObjectPermission("u-1", "skill", "op1", "list"))            // wrong type
 	// role-inherited grant
 	mustNoErr(t, e.GrantObjectPermission(role, "data_flow", "d4:default", "list"))
 	mustNoErr(t, e.AssignRole("u-1", role))

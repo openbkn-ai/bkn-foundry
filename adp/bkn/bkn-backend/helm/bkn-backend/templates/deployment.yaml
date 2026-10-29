@@ -88,6 +88,12 @@ spec:
             value: {{ .Values.bknSafe.url | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          - name: BKN_SAFE_RESOURCE_CLEANUP_TIMEOUT
+            value: {{ .Values.bknSafe.resourceCleanupTimeout | default "30s" | quote }}
+          {{- with (.Values.knowledgeBase | default dict).url }}
+          - name: KB_API_URL
+            value: {{ . | quote }}
+          {{- end }}
           {{- if .Values.auditPublisher.enabled }}
           - name: BKN_AUDIT_KAFKA_ENABLED
             value: "true"

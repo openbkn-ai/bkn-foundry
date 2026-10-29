@@ -82,7 +82,6 @@ func (s *mcpServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces
 			Toolbox: &interfaces.ToolBoxImpexConfig{
 				Configs: []*interfaces.ToolBoxImpexItem{},
 			},
-			Operator: data.Operator,
 		}
 		for _, tbItem := range data.Toolbox.Configs {
 			if _, ok := depToolBoxMap[tbItem.BoxID]; ok {
@@ -490,10 +489,6 @@ func (s *mcpServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq) 
 	}
 	if toolboxImpexConfig.Toolbox != nil {
 		data.Toolbox = toolboxImpexConfig.Toolbox
-	}
-
-	if toolboxImpexConfig.Operator != nil {
-		data.Operator = toolboxImpexConfig.Operator
 	}
 	return
 }

@@ -162,6 +162,10 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	// authorization cost bounded by the response rather than the coarse candidate pool.
 	rankedRelations := s.rankConcepts(ctx, req.Query, objects, relations,
 		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
+	// A fallback path answers through its primary relation, so the two are paired here, after the
+	// TopK cut: a recalled fallback brings its primary in, and a recalled primary brings its
+	// fallback along. Both share their endpoints, so the object types selected below still cover them.
+	rankedRelations, fallbacks := s.pairFallbackRelations(ctx, req.KnID, rankedRelations)
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
 	readTimeout := s.schemaReadTimeout()
 	selectedObjects, schemaUnavailable, err := objectpermission.FilterObjectTypesDegrading(ctx, s.schemaAccess,
@@ -177,8 +181,9 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 
 	brief := boolValue(config.SchemaBrief)
 	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)
-	relationTypesLocal := s.convertRelationTypesToLocal(rankedRelations, brief)
+	relationTypesLocal := s.convertRelationTypesToLocal(ctx, rankedRelations, fallbacks, brief)
 	actionTypesLocal := s.convertActionTypesToLocal(actions, req.KnID, objects)
+	s.expandEnums(ctx, req.KnID, objectTypesLocal, relationTypesLocal, brief, req.EnumQuery)
 
 	if boolValue(config.IncludeSampleData) && len(objectTypesLocal) > 0 {
 		if err := s.fetchAuthorizedSampleData(ctx, req.KnID, objectTypesLocal, brief); err != nil {
@@ -993,12 +998,14 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 			ConceptType:          conceptType,
 			ConceptID:            obj.ID,
 			ConceptName:          obj.Name,
+			Aliases:              obj.Aliases,
 			Comment:              obj.Comment,
 			Tags:                 tags,
 			DataSource:           dataSource,
 			PrimaryKeys:          primaryKeys,
 			Score:                obj.Score,
 			EffectivePermissions: obj.EffectivePermissions,
+			Lifecycle:            obj.Lifecycle.Inactive(),
 
 			SearchCapabilitiesUnknown: obj.DataSourceMetadataUnavailable,
 		}
@@ -1006,19 +1013,8 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 		if len(obj.DataProperties) > 0 {
 			localObj.DataProperties = make([]*interfaces.KnSearchDataProperty, len(obj.DataProperties))
 			for j, prop := range obj.DataProperties {
-				p := &interfaces.KnSearchDataProperty{
-					Name:                prop.Name,
-					Type:                prop.Type,
-					ConditionOperations: prop.ConditionOperations,
-					Semantic:            prop.Semantic,
-				}
-				if !brief {
-					p.Comment = prop.Comment
-					p.Required = prop.Required
-					if c := prop.Constraints; c != nil {
-						p.Unit, p.CRS, p.Timezone = c.Unit, c.CRS, c.Timezone
-					}
-				}
+				p := convertDeclaredProperty(prop, brief)
+				p.ConditionOperations = prop.ConditionOperations
 				if includeColumns {
 					p.Column = mappedFieldColumn(prop.MappedField, prop.Name)
 				}
@@ -1060,23 +1056,76 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 //
 // The cost is bounded by how few relations one search returns — measured on the test deployment,
 // 10 relations and about 300 bytes — where get_kn_detail returns every relation of the network.
-func (s *localSearchImpl) convertRelationTypesToLocal(relations []*interfaces.RelationType, brief bool) []*interfaces.KnSearchRelationType {
+//
+// The 3.0 relation declarations are short and decide how a relation may be walked and aggregated,
+// so they appear at either level; relation properties follow the object type property rules.
+// fallbacks maps a primary relation id to its fallback path, which is attached to the primary
+// with the rule for using it (see pairFallbackRelations).
+func (s *localSearchImpl) convertRelationTypesToLocal(ctx context.Context, relations []*interfaces.RelationType,
+	fallbacks map[string]*interfaces.RelationType, brief bool) []*interfaces.KnSearchRelationType {
 	result := make([]*interfaces.KnSearchRelationType, len(relations))
 	for i, rel := range relations {
 		var conceptType string
 		if !brief {
 			conceptType = "relation_type"
 		}
-		result[i] = &interfaces.KnSearchRelationType{
+		local := &interfaces.KnSearchRelationType{
 			ConceptType:        conceptType,
 			ConceptID:          rel.ID,
 			ConceptName:        rel.Name,
+			Aliases:            rel.Aliases,
 			Comment:            rel.Comment,
 			SourceObjectTypeID: rel.SourceObjectTypeID,
 			TargetObjectTypeID: rel.TargetObjectTypeID,
+			ReverseName:        rel.ReverseName,
+			Cardinality:        rel.Cardinality,
+			Verification:       rel.Verification,
+			Lifecycle:          rel.Lifecycle.Inactive(),
 		}
+		if rel.Importance != interfaces.RelationImportancePrimary {
+			local.Importance = rel.Importance
+		}
+		if c := rel.Constraints; c != nil {
+			local.Required, local.Characteristics = c.Required, c.Characteristics
+		}
+		for _, prop := range relationProperties(rel.MappingRules) {
+			local.DataProperties = append(local.DataProperties, convertDeclaredProperty(prop, brief))
+		}
+		if fb := fallbacks[rel.ID]; fb != nil {
+			local.Fallback = &interfaces.KnSearchRelationFallback{
+				RelationID:   fb.ID,
+				RelationName: fb.Name,
+				Comment:      fb.Comment,
+				Verification: fb.Verification,
+				Rule:         fallbackRule(ctx, fb.ID),
+			}
+		}
+		result[i] = local
 	}
 	return result
+}
+
+// convertDeclaredProperty converts a data property of an object type or an indirect relation:
+// name, type, semantic and value_type at either level, comment and the other declarations in full
+// mode. expandEnums then fills in the enum of the value type.
+func convertDeclaredProperty(prop *interfaces.DataProperty, brief bool) *interfaces.KnSearchDataProperty {
+	p := &interfaces.KnSearchDataProperty{
+		Name:     prop.Name,
+		Type:     prop.Type,
+		Semantic: prop.Semantic,
+	}
+	if prop.Constraints != nil {
+		p.ValueType = prop.Constraints.ValueType
+	}
+	if !brief {
+		p.Comment = prop.Comment
+		p.Aliases = prop.Aliases
+		p.Required = prop.Required
+		if c := prop.Constraints; c != nil {
+			p.Unit, p.CRS, p.Timezone = c.Unit, c.CRS, c.Timezone
+		}
+	}
+	return p
 }
 
 func (s *localSearchImpl) convertActionTypesToLocal(
@@ -1097,11 +1146,13 @@ func (s *localSearchImpl) convertActionTypesToLocal(
 		result[i] = &interfaces.KnSearchActionType{
 			ID:             act.ID,
 			Name:           act.Name,
+			Aliases:        act.Aliases,
 			ObjectTypeID:   act.ObjectTypeID,
 			ObjectTypeName: objNameMap[act.ObjectTypeID],
 			Comment:        act.Comment,
 			Tags:           act.Tags,
 			KnID:           knID,
+			Lifecycle:      act.Lifecycle.Inactive(),
 		}
 	}
 	return result

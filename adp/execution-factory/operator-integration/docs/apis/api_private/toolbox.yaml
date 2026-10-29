@@ -563,7 +563,7 @@ components:
       properties:
         metadata_type:
           type: string
-          description: "算子元数据类型"
+          description: "工具箱元数据类型"
           enum: ["openapi", "function"]
         box_id:
           type: string
@@ -666,7 +666,6 @@ components:
           description: "资源对象类型"
           enum:
             - "tool"
-            - "operator"
     APISpec:
       type: object
       description: "API Spec 信息"

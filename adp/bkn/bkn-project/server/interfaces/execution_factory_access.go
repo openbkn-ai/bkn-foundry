@@ -44,7 +44,7 @@ func (e *ExecutionFactoryError) Error() string {
 //go:generate mockgen -source ../interfaces/execution_factory_access.go -destination ../interfaces/mock/mock_execution_factory_access.go
 type ExecutionFactoryAccess interface {
 	// ExportToolbox returns the impex export of a toolbox: its tools, their
-	// metadata, function code and dependencies, and the operators they use.
+	// metadata, function code and dependencies.
 	ExportToolbox(ctx context.Context, token string, boxID string) ([]byte, error)
 	// ImportToolbox imports an impex export in IMPEX_MODE_CREATE or IMPEX_MODE_UPSERT.
 	// The toolbox and tool ids are taken from data.

@@ -129,3 +129,17 @@ func (mr *MockProjectAccessMockRecorder) SetProjectArchived(ctx, id, archived, u
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectArchived", reflect.TypeOf((*MockProjectAccess)(nil).SetProjectArchived), ctx, id, archived, updateTime)
 }
+
+// SetProjectCatalogs mocks base method.
+func (m *MockProjectAccess) SetProjectCatalogs(ctx context.Context, id string, catalogIDs []string, updateTime int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetProjectCatalogs", ctx, id, catalogIDs, updateTime)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetProjectCatalogs indicates an expected call of SetProjectCatalogs.
+func (mr *MockProjectAccessMockRecorder) SetProjectCatalogs(ctx, id, catalogIDs, updateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectCatalogs", reflect.TypeOf((*MockProjectAccess)(nil).SetProjectCatalogs), ctx, id, catalogIDs, updateTime)
+}

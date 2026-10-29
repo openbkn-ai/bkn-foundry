@@ -31,6 +31,9 @@ type SearchSchemaReq struct {
 	// Not entering the request contract: the comparison operator can be deduced according to the attribute type, and issuing it one by one is pure noise to the Agent; while REST.
 	// The caller (and consumers like Studio who are directly connected to BKN) still get the full amount.
 	IndexOpsOnly bool `json:"-"`
+	// EnumQuery looks up the enum items of the returned properties by display name or code, for an
+	// enum search_schema does not expand: one over the expansion limit, or any enum in brief mode.
+	EnumQuery *string `json:"enum_query,omitempty"`
 }
 
 // SearchSchemaScope search_schema scope controls

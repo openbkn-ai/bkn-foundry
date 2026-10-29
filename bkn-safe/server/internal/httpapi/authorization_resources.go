@@ -35,7 +35,6 @@ const (
 	functionResourceType         = "function"
 	mcpResourceType              = "mcp"
 	skillResourceType            = "skill"
-	operatorResourceType         = "operator"
 )
 
 type AuthorizationResource struct {
@@ -132,10 +131,6 @@ func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, veg
 	if err != nil {
 		return nil, err
 	}
-	operators, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", operatorResourceType)
-	if err != nil {
-		return nil, err
-	}
 	return &authorizationResourceCatalog{providers: map[string]AuthorizationResourceProvider{
 		knowledgeNetworkResourceType: knowledgeNetworks,
 		agentResourceType:            agents,
@@ -152,7 +147,6 @@ func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, veg
 		functionResourceType:         functions,
 		mcpResourceType:              mcp,
 		skillResourceType:            skills,
-		operatorResourceType:         operators,
 	}}, nil
 }
 
