@@ -446,17 +446,21 @@ func (t *semanticTask) toTask() *interfaces.VegaSemanticTask {
 		CreateTime: t.CreateTime, FinishTime: t.FinishTime}
 }
 
-// CreateSemanticTask calls POST /semantic-understanding-tasks for one table. vega-backend answers
+// CreateSemanticTask calls POST /semantic-understanding-tasks for one table, filling only what is
+// empty unless applyMode says otherwise. vega-backend answers
 // 201 with the task, or with the one under way for the same input.
 func (va *vegaAccess) CreateSemanticTask(ctx context.Context, account interfaces.VegaAccount,
-	resourceID string, language string) (*interfaces.VegaSemanticTask, error) {
+	resourceID string, language string, applyMode string) (*interfaces.VegaSemanticTask, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateSemanticTask")
 	defer span.End()
 
 	httpUrl := va.baseUrl + "/semantic-understanding-tasks"
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
 
-	body := map[string]any{"scope": "resource", "resource_id": resourceID, "language": language, "apply_mode": "fill_empty"}
+	if applyMode == "" {
+		applyMode = interfaces.VEGA_SEMANTIC_APPLY_FILL_EMPTY
+	}
+	body := map[string]any{"scope": "resource", "resource_id": resourceID, "language": language, "apply_mode": applyMode}
 	respCode, respBody, err := va.httpClient.PostNoUnmarshal(ctx, httpUrl, headers(account), body)
 	logger.Debugf("CreateSemanticTask finished, response code is [%d]", respCode)
 	if err != nil {

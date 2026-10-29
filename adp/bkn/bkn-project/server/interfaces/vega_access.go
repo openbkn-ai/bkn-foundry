@@ -65,6 +65,16 @@ type VegaIndexKeys struct {
 	IncrementalFields []string
 }
 
+// How a semantic understanding task writes its result to the table.
+const (
+	// VEGA_SEMANTIC_APPLY_FILL_EMPTY writes only what is empty, keeping what people wrote; the default.
+	VEGA_SEMANTIC_APPLY_FILL_EMPTY = "fill_empty"
+	// VEGA_SEMANTIC_APPLY_FORCE overwrites names and descriptions; an api_name is never overwritten.
+	VEGA_SEMANTIC_APPLY_FORCE = "force"
+	// VEGA_SEMANTIC_APPLY_DRY_RUN writes nothing and only records the result.
+	VEGA_SEMANTIC_APPLY_DRY_RUN = "dry_run"
+)
+
 // VegaSemanticTask is a semantic understanding task of one table: it writes the names,
 // descriptions and api_names the table and its fields lack.
 type VegaSemanticTask struct {
@@ -142,9 +152,11 @@ type VegaAccess interface {
 	// UpdateIndexConfig gives the table's index configuration the keys it lacks, as the account,
 	// keeping every key it has; it tells whether it wrote anything. A refusal is a *VegaError.
 	UpdateIndexConfig(ctx context.Context, account VegaAccount, resourceID string, keys VegaIndexKeys) (bool, error)
-	// CreateSemanticTask starts, as the account, a semantic understanding task of the table
-	// that fills only what is empty, written in language (zh-CN or en-US). A refusal is a *VegaError.
-	CreateSemanticTask(ctx context.Context, account VegaAccount, resourceID string, language string) (*VegaSemanticTask, error)
+	// CreateSemanticTask starts, as the account, a semantic understanding task of the table written
+	// in language (zh-CN or en-US) and applied by applyMode, one of the VEGA_SEMANTIC_APPLY_* modes;
+	// empty fills only what is empty. A refusal is a *VegaError.
+	CreateSemanticTask(ctx context.Context, account VegaAccount, resourceID string, language string,
+		applyMode string) (*VegaSemanticTask, error)
 	// ListSemanticTasks returns the semantic understanding tasks of the catalog's tables, newest
 	// first, and whether the account may see them: listing them needs the catalog's task_manage
 	// permission.

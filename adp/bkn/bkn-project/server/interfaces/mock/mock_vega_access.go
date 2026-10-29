@@ -57,18 +57,18 @@ func (mr *MockVegaAccessMockRecorder) CreateBuildTask(ctx, account, resourceID a
 }
 
 // CreateSemanticTask mocks base method.
-func (m *MockVegaAccess) CreateSemanticTask(ctx context.Context, account interfaces.VegaAccount, resourceID, language string) (*interfaces.VegaSemanticTask, error) {
+func (m *MockVegaAccess) CreateSemanticTask(ctx context.Context, account interfaces.VegaAccount, resourceID, language, applyMode string) (*interfaces.VegaSemanticTask, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateSemanticTask", ctx, account, resourceID, language)
+	ret := m.ctrl.Call(m, "CreateSemanticTask", ctx, account, resourceID, language, applyMode)
 	ret0, _ := ret[0].(*interfaces.VegaSemanticTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateSemanticTask indicates an expected call of CreateSemanticTask.
-func (mr *MockVegaAccessMockRecorder) CreateSemanticTask(ctx, account, resourceID, language any) *gomock.Call {
+func (mr *MockVegaAccessMockRecorder) CreateSemanticTask(ctx, account, resourceID, language, applyMode any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSemanticTask", reflect.TypeOf((*MockVegaAccess)(nil).CreateSemanticTask), ctx, account, resourceID, language)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSemanticTask", reflect.TypeOf((*MockVegaAccess)(nil).CreateSemanticTask), ctx, account, resourceID, language, applyMode)
 }
 
 // GetTables mocks base method.

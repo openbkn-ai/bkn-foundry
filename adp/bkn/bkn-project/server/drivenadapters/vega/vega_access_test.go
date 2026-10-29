@@ -319,11 +319,11 @@ func Test_VegaAccess(t *testing.T) {
 			})
 		})
 
-		Convey("CreateSemanticTask understands one table, filling only what is empty\n", func() {
+		Convey("CreateSemanticTask fills only what is empty unless asked otherwise\n", func() {
 			status, respBody = http.StatusCreated,
 				`{"id":"s1","scope":"resource","catalog_id":"c1","resource_id":"r1","status":"pending","applied":false,"create_time":5}`
 
-			task, err := va.CreateSemanticTask(ctx, account, "r1", "en-US")
+			task, err := va.CreateSemanticTask(ctx, account, "r1", "en-US", "")
 
 			So(err, ShouldBeNil)
 			So(task, ShouldResemble, &interfaces.VegaSemanticTask{ID: "s1", ResourceID: "r1", Status: "pending", CreateTime: 5})
@@ -332,12 +332,17 @@ func Test_VegaAccess(t *testing.T) {
 			So(got[0].accountID, ShouldEqual, "u1")
 			So(got[0].body, ShouldResemble, map[string]any{
 				"scope": "resource", "resource_id": "r1", "language": "en-US", "apply_mode": "fill_empty"})
+
+			_, err = va.CreateSemanticTask(ctx, account, "r1", "en-US", interfaces.VEGA_SEMANTIC_APPLY_FORCE)
+
+			So(err, ShouldBeNil)
+			So(got[1].body["apply_mode"], ShouldEqual, "force")
 		})
 
 		Convey("CreateSemanticTask returns vega-backend's refusal\n", func() {
 			status, respBody = http.StatusForbidden, `{"error_code":"Public.Forbidden"}`
 
-			_, err := va.CreateSemanticTask(ctx, account, "r1", "zh-CN")
+			_, err := va.CreateSemanticTask(ctx, account, "r1", "zh-CN", interfaces.VEGA_SEMANTIC_APPLY_FILL_EMPTY)
 
 			var vegaErr *interfaces.VegaError
 			So(errors.As(err, &vegaErr), ShouldBeTrue)
