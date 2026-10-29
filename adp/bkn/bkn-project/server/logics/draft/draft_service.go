@@ -57,6 +57,8 @@ type draftService struct {
 	ps  interfaces.ProjectService
 	// ls commits a confirmed draft to its project branch.
 	ls interfaces.LineageService
+	// ra tells whether a release published the confirmation.
+	ra interfaces.ReleaseAccess
 	// run drafts in the background; tests replace it to run in line.
 	run func(fn func())
 	// checkRuns holds each project's running check, a *checkRun, so a later run can stop it.
@@ -74,6 +76,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			iba:     logics.IBA,
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
+			ra:      logics.RA,
 			run:     func(fn func()) { go fn() },
 		}
 	})
