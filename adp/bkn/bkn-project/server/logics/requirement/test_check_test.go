@@ -125,6 +125,71 @@ func Test_CheckTests(t *testing.T) {
 				ShouldEqual, checkCompositeIdentity)
 		})
 
+		sample := func(sql string, row map[string]any) {
+			va.EXPECT().Query(gomock.Any(), caller, sql, checkQueryTimeout).Return([]map[string]any{row}, nil)
+		}
+
+		Convey("An empty value of a record expected to exist is the first value of its field, by identity\n", func() {
+			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": float64(10001)})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Slots[0].Value, ShouldEqual, "10001")
+		})
+
+		Convey("An empty value of a record expected not to exist is a real one with its last digits changed\n", func() {
+			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "C-0042"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-0000'", float64(0))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-0000'", float64(0))
+			tt := test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Slots[0].Value, ShouldEqual, "C-0000")
+		})
+
+		Convey("A value without digits, or whose changed forms both exist, gives no absent value\n", func() {
+			sample("SELECT `name` AS v0 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "Acme"})
+			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("full_name", ""))),
+				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkNoAbsentValue})
+
+			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v0": "7"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '9'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '0'", float64(1))
+			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", ""))).Reason,
+				ShouldEqual, checkNoAbsentValue)
+		})
+
+		Convey("Empty values naming one record come from one row, beside the values given\n", func() {
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v1": "Acme Ltd"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
+			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' OR `name` = 'Acme Ltd'", float64(1))
+			tt := test(interfaces.TEST_EXPECT_SAME_RECORD, slot("customer_id", "10001"), slot("full_name", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Slots[1].Value, ShouldEqual, "Acme Ltd")
+		})
+
+		Convey("A table with no value to take, or a read that fails, leaves the test not checked\n", func() {
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return([]map[string]any{}, nil)
+			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))).Reason,
+				ShouldEqual, checkNoValueInData)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("forbidden"))
+			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))).Reason,
+				ShouldEqual, checkQueryFailed)
+		})
+
+		Convey("A field the privacy rules excluded is never read or counted\n", func() {
+			draft.Items.Excluded = []*interfaces.DraftExcludedField{{ObjectType: "customer", Field: "name"}}
+			for _, value := range []string{"", "Acme Ltd"} {
+				So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("full_name", value))),
+					ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkExcludedField})
+			}
+		})
+
 		Convey("A count that fails is not checked\n", func() {
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("forbidden"))
 			So(svc.checkTest(ctx, caller, &spec, draft, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))),
