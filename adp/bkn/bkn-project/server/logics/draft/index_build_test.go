@@ -14,6 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -122,6 +123,168 @@ func Test_BuildIndexes(t *testing.T) {
 			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).Return(errors.New("db is down"))
 
 			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_BuildIndex(t *testing.T) {
+	Convey("Test the owner's retry of the confirmation's local index builds\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		da := pmock.NewMockDraftAccess(ctrl)
+		ps := pmock.NewMockProjectService(ctrl)
+		va := pmock.NewMockVegaAccess(ctrl)
+		iba := pmock.NewMockIndexBuildAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, ps: ps, va: va, iba: iba}
+		ctx := context.Background()
+		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
+		confirmed := func() *interfaces.Draft {
+			d := confirmableDraft()
+			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: readTime, Commit: "c1"}
+			return d
+		}
+		var adopted *interfaces.DraftObjectType
+		for _, ot := range confirmed().Items.ObjectTypes {
+			if ot.Adopted && adopted == nil {
+				adopted = ot
+			}
+		}
+		configured := interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"u"}}
+
+		Convey("The owner builds the confirmed tables again and gets the readiness with the builds\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).
+				Return([]*interfaces.VegaTable{{ID: adopted.Table.ResourceID, Index: configured}}, nil).Times(2)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).AnyTimes()
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, adopted.Table.ResourceID).Return("t9", nil)
+			var recorded []*interfaces.IndexBuild
+			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, builds []*interfaces.IndexBuild) error {
+					recorded = builds
+					return nil
+				})
+			iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c1").DoAndReturn(
+				func(context.Context, string, string) ([]*interfaces.IndexBuild, error) { return recorded, nil })
+
+			index, err := svc.BuildIndex(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(recorded, ShouldHaveLength, 1)
+			So(recorded[0].Commit, ShouldEqual, "c1")
+			var built *interfaces.ProjectIndexItem
+			for i := range index.ObjectTypes {
+				if index.ObjectTypes[i].ID == adopted.ID {
+					built = &index.ObjectTypes[i]
+				}
+			}
+			So(built.Build.Outcome, ShouldEqual, interfaces.INDEX_BUILD_CREATED)
+			So(built.Build.TaskID, ShouldEqual, "t9")
+		})
+
+		Convey("A caller who leaves does not stop the builds or their record\n", func() {
+			left, cancel := context.WithCancel(ctx)
+			cancel()
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).
+				Return([]*interfaces.VegaTable{{ID: adopted.Table.ResourceID, Index: configured}}, nil).Times(2)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).AnyTimes()
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, adopted.Table.ResourceID).DoAndReturn(
+				func(c context.Context, _ interfaces.AccountInfo, _ string) (string, error) {
+					So(c.Err(), ShouldBeNil)
+					return "t9", nil
+				})
+			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(c context.Context, _ []*interfaces.IndexBuild) error {
+					So(c.Err(), ShouldBeNil)
+					return nil
+				})
+			iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c1").Return(nil, nil)
+
+			_, err := svc.BuildIndex(left, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Only the owner may retry\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+
+			_, err := svc.BuildIndex(ctx, token, "p1", interfaces.AccountInfo{ID: "u2", Type: "user"})
+
+			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Index_NotOwner)
+		})
+
+		Convey("An archived project is refused\n", func() {
+			archived := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, Archived: true}}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(archived, nil)
+
+			_, err := svc.BuildIndex(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_ProjectArchived)
+		})
+
+		Convey("Nothing confirmed has nothing to build\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).Times(2)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			_, err := svc.BuildIndex(ctx, token, "p1", caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Index_NothingConfirmed)
+
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			_, err = svc.BuildIndex(ctx, token, "p1", caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Index_NothingConfirmed)
+
+			// A confirmation claimed and refused before its commit confirmed nothing.
+			claimed := confirmableDraft()
+			claimed.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: readTime, Pending: []string{"a.bkn"}}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(claimed, true, nil)
+			_, err = svc.BuildIndex(ctx, token, "p1", caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Index_NothingConfirmed)
+		})
+
+		Convey("A draft changed since its confirmation is confirmed again first\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).Times(2)
+			edited := confirmed()
+			edited.UpdateTime = readTime + 1
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(edited, true, nil)
+			_, err := svc.BuildIndex(ctx, token, "p1", caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Index_ConfirmAgain)
+
+			drafting := confirmed()
+			drafting.Status = interfaces.DRAFT_STATUS_DRAFTING
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(drafting, true, nil)
+			_, err = svc.BuildIndex(ctx, token, "p1", caller)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Index_ConfirmAgain)
+		})
+
+		Convey("A build that cannot be recorded is an internal error\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).
+				Return([]*interfaces.VegaTable{{ID: adopted.Table.ResourceID, Index: configured}}, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).AnyTimes()
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, adopted.Table.ResourceID).Return("t9", nil)
+			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).Return(errors.New("db is down"))
+
+			_, err := svc.BuildIndex(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
+		})
+
+		Convey("A failure reading the readiness after the build is an internal error\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			first := va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).
+				Return([]*interfaces.VegaTable{{ID: adopted.Table.ResourceID, Index: configured}}, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).AnyTimes()
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, adopted.Table.ResourceID).Return("t9", nil)
+			iba.EXPECT().RecordBuilds(gomock.Any(), gomock.Any()).Return(nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("vega is down")).After(first)
+
+			_, err := svc.BuildIndex(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
 		})
 	})
 }
