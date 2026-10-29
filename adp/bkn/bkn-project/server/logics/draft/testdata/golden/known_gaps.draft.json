@@ -1,0 +1,221 @@
+{
+  "object_types": [
+    {
+      "id": "departments",
+      "name": "departments",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_dept",
+        "name": "departments",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "dept_id"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "dept_id",
+          "display_name": "dept_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "dept_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "name",
+          "type": "string",
+          "description": "",
+          "mapped_field": "name",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "employees",
+      "name": "employees",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_emp",
+        "name": "employees",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "employee_id"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "employee_id",
+          "display_name": "employee_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "employee_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "manager_id",
+          "display_name": "manager_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "manager_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "name",
+          "type": "string",
+          "description": "",
+          "mapped_field": "name",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "staff",
+      "name": "staff",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_staff",
+        "name": "staff",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "staff_id"
+      ],
+      "display_key": "staff_id",
+      "properties": [
+        {
+          "name": "staff_id",
+          "display_name": "staff_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "staff_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "dept_id",
+          "display_name": "dept_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "dept_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "team_code",
+          "display_name": "team_code",
+          "type": "text",
+          "description": "",
+          "mapped_field": "team_code",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "staff_teams",
+      "name": "staff_teams",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_link",
+        "name": "staff_teams",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "staff_id"
+      ],
+      "display_key": "staff_id",
+      "properties": [
+        {
+          "name": "staff_id",
+          "display_name": "staff_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "staff_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "team_code",
+          "display_name": "team_code",
+          "type": "string",
+          "description": "",
+          "mapped_field": "team_code",
+          "value_type_id": "teams",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "inferred",
+        "field": "staff_id",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [],
+  "value_types": [
+    {
+      "id": "teams",
+      "name": "teams",
+      "description": "",
+      "base_type": "string",
+      "values": null,
+      "code_table": {
+        "resource_id": "r_team",
+        "name": "teams",
+        "catalog_id": "c1"
+      },
+      "used_by": [
+        {
+          "object_type": "staff_teams",
+          "property": "team_code"
+        }
+      ],
+      "adopted": true
+    }
+  ],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

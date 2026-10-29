@@ -1,0 +1,158 @@
+{
+  "object_types": [
+    {
+      "id": "status_codes",
+      "name": "status_codes",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_st",
+        "name": "status_codes",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "code"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "code",
+          "display_name": "code",
+          "type": "string",
+          "description": "",
+          "mapped_field": "code",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "name",
+          "type": "string",
+          "description": "",
+          "mapped_field": "name",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "category",
+          "display_name": "category",
+          "type": "string",
+          "description": "",
+          "mapped_field": "category",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "sort_order",
+          "display_name": "sort_order",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "sort_order",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "color",
+          "display_name": "color",
+          "type": "string",
+          "description": "",
+          "mapped_field": "color",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "note",
+          "display_name": "note",
+          "type": "string",
+          "description": "",
+          "mapped_field": "note",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "tickets",
+      "name": "tickets",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_t",
+        "name": "tickets",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "ticket_id"
+      ],
+      "display_key": "ticket_id",
+      "properties": [
+        {
+          "name": "ticket_id",
+          "display_name": "ticket_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "ticket_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "status_code",
+          "display_name": "status_code",
+          "type": "string",
+          "description": "",
+          "mapped_field": "status_code",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [
+    {
+      "id": "tickets_to_status_codes",
+      "name": "tickets_to_status_codes",
+      "description": "",
+      "source": "tickets",
+      "target": "status_codes",
+      "origin": "foreign_key",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "status_code",
+          "target_property": "code"
+        }
+      ],
+      "adopted": true,
+      "verification": "confirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 3000,
+        "nulls": 0,
+        "hits": 3000,
+        "orphans": 0,
+        "hit_rate": 1,
+        "source_distinct": 12
+      }
+    }
+  ],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

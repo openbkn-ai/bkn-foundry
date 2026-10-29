@@ -1,0 +1,124 @@
+{
+  "object_types": [
+    {
+      "id": "big_fact",
+      "name": "big_fact",
+      "description": "",
+      "adopted": false,
+      "table": {
+        "resource_id": "r_big",
+        "name": "big_fact",
+        "catalog_id": "c1"
+      },
+      "primary_keys": null,
+      "display_key": "",
+      "properties": [
+        {
+          "name": "fact_id",
+          "display_name": "fact_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "fact_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "dim_id",
+          "display_name": "dim_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "dim_id",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "none",
+        "field": "fact_id",
+        "computed": false,
+        "rows": 0,
+        "distinct": 0,
+        "nulls": 0,
+        "reason": "query_failed: timeout"
+      },
+      "needs_identity": true
+    },
+    {
+      "id": "dim",
+      "name": "dim",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_dim",
+        "name": "dim",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "dim_id"
+      ],
+      "display_key": "label",
+      "properties": [
+        {
+          "name": "dim_id",
+          "display_name": "dim_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "dim_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "label",
+          "display_name": "label",
+          "type": "string",
+          "description": "",
+          "mapped_field": "label",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [
+    {
+      "id": "big_fact_to_dim",
+      "name": "big_fact_to_dim",
+      "description": "",
+      "source": "big_fact",
+      "target": "dim",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "dim_id",
+          "target_property": "dim_id"
+        }
+      ],
+      "adopted": false,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": false,
+        "rows": 0,
+        "nulls": 0,
+        "hits": 0,
+        "orphans": 0,
+        "hit_rate": 0,
+        "source_distinct": 0,
+        "reason": "query_failed: timeout"
+      },
+      "proposed_because": "not_counted"
+    }
+  ],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

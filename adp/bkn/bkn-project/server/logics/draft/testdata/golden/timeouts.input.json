@@ -1,0 +1,79 @@
+{
+  "description": "Counts that fail (timeouts, permissions): kept, unverified, never dropped or guessed.",
+  "tables": [
+    {
+      "ID": "r_big",
+      "CatalogID": "c1",
+      "Name": "big_fact",
+      "Description": "",
+      "SourceName": "big_fact",
+      "SourceSchema": "dw",
+      "Rows": 0,
+      "RowsCounted": false,
+      "PrimaryKeys": [],
+      "Columns": [
+        {
+          "Name": "fact_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "dim_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_dim",
+      "CatalogID": "c1",
+      "Name": "dim",
+      "Description": "",
+      "SourceName": "dim",
+      "SourceSchema": "dw",
+      "Rows": 50,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "dim_id"
+      ],
+      "Columns": [
+        {
+          "Name": "dim_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "label",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "counts": {
+    "keys": {},
+    "joins": {},
+    "codes": {},
+    "failed": [
+      "r_big",
+      "r_big.fact_id",
+      "r_big.dim_id"
+    ]
+  }
+}

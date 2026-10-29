@@ -1,0 +1,200 @@
+{
+  "object_types": [
+    {
+      "id": "customers",
+      "name": "customers",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_c",
+        "name": "customers",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "customer_id"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "customer_id",
+          "display_name": "customer_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "customer_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "name",
+          "type": "string",
+          "description": "",
+          "mapped_field": "name",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "orders",
+      "name": "orders",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_o",
+        "name": "orders",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "order_id"
+      ],
+      "display_key": "order_id",
+      "properties": [
+        {
+          "name": "order_id",
+          "display_name": "order_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "order_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "customer_id",
+          "display_name": "customer_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "customer_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "product_id",
+          "display_name": "product_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "product_id",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "products",
+      "name": "products",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_p",
+        "name": "products",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "product_id"
+      ],
+      "display_key": "name",
+      "properties": [
+        {
+          "name": "product_id",
+          "display_name": "product_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "product_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "name",
+          "display_name": "name",
+          "type": "string",
+          "description": "",
+          "mapped_field": "name",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [
+    {
+      "id": "orders_to_customers",
+      "name": "orders_to_customers",
+      "description": "",
+      "source": "orders",
+      "target": "customers",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "customer_id",
+          "target_property": "customer_id"
+        }
+      ],
+      "adopted": true,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 50000,
+        "nulls": 0,
+        "hits": 49880,
+        "orphans": 120,
+        "hit_rate": 0.9976,
+        "source_distinct": 990
+      }
+    },
+    {
+      "id": "orders_to_products",
+      "name": "orders_to_products",
+      "description": "",
+      "source": "orders",
+      "target": "products",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "product_id",
+          "target_property": "product_id"
+        }
+      ],
+      "adopted": true,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 50000,
+        "nulls": 300,
+        "hits": 47700,
+        "orphans": 2000,
+        "hit_rate": 0.959758551307847,
+        "source_distinct": 180
+      }
+    }
+  ],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

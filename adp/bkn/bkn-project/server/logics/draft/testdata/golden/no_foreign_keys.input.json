@@ -1,0 +1,131 @@
+{
+  "description": "A connector that reports no foreign keys: relations only by name and full-table hit rate.",
+  "tables": [
+    {
+      "ID": "r_c",
+      "CatalogID": "c1",
+      "Name": "customers",
+      "Description": "",
+      "SourceName": "customers",
+      "SourceSchema": "dw",
+      "Rows": 1000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "customer_id"
+      ],
+      "Columns": [
+        {
+          "Name": "customer_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_o",
+      "CatalogID": "c1",
+      "Name": "orders",
+      "Description": "",
+      "SourceName": "orders",
+      "SourceSchema": "dw",
+      "Rows": 50000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "order_id"
+      ],
+      "Columns": [
+        {
+          "Name": "order_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "customer_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "product_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_p",
+      "CatalogID": "c1",
+      "Name": "products",
+      "Description": "",
+      "SourceName": "products",
+      "SourceSchema": "dw",
+      "Rows": 200,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "product_id"
+      ],
+      "Columns": [
+        {
+          "Name": "product_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "counts": {
+    "keys": {},
+    "joins": {
+      "r_o.customer_id": [
+        50000,
+        0,
+        120,
+        990
+      ],
+      "r_o.product_id": [
+        50000,
+        300,
+        2000,
+        180
+      ]
+    },
+    "codes": {},
+    "failed": []
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "description": "Layers in separate catalogs (ODS / DIM): relations across catalogs cannot be counted.",
+  "tables": [
+    {
+      "ID": "r_dimc",
+      "CatalogID": "dim",
+      "Name": "dim_customer",
+      "Description": "",
+      "SourceName": "dim_customer",
+      "SourceSchema": "dw",
+      "Rows": 1000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "customer_id"
+      ],
+      "Columns": [
+        {
+          "Name": "customer_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_odso",
+      "CatalogID": "ods",
+      "Name": "ods_order",
+      "Description": "",
+      "SourceName": "ods_order",
+      "SourceSchema": "dw",
+      "Rows": 30000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "order_id"
+      ],
+      "Columns": [
+        {
+          "Name": "order_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "customer_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [
+        {
+          "Columns": [
+            "customer_id"
+          ],
+          "RefTable": "dw.dim_customer",
+          "RefColumns": [
+            "customer_id"
+          ]
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "keys": {},
+    "joins": {},
+    "codes": {},
+    "failed": []
+  }
+}

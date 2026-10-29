@@ -1,0 +1,130 @@
+{
+  "description": "Declared keys with duplicates and nulls, and keyless tables whose candidates are not unique.",
+  "tables": [
+    {
+      "ID": "r_a",
+      "CatalogID": "c1",
+      "Name": "accounts",
+      "Description": "",
+      "SourceName": "accounts",
+      "SourceSchema": "dw",
+      "Rows": 1000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "account_id"
+      ],
+      "Columns": [
+        {
+          "Name": "account_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "owner",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_e",
+      "CatalogID": "c1",
+      "Name": "events",
+      "Description": "",
+      "SourceName": "events",
+      "SourceSchema": "dw",
+      "Rows": 80000,
+      "RowsCounted": true,
+      "PrimaryKeys": [],
+      "Columns": [
+        {
+          "Name": "id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "event_code",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "payload",
+          "Type": "json",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_l",
+      "CatalogID": "c1",
+      "Name": "ledger",
+      "Description": "",
+      "SourceName": "ledger",
+      "SourceSchema": "dw",
+      "Rows": 5000,
+      "RowsCounted": true,
+      "PrimaryKeys": [],
+      "Columns": [
+        {
+          "Name": "ledger_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "amount",
+          "Type": "decimal",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "counts": {
+    "keys": {
+      "r_a": [
+        1000,
+        990,
+        0
+      ],
+      "r_e.id": [
+        80000,
+        79000,
+        0
+      ],
+      "r_l.ledger_id": [
+        5000,
+        4990,
+        10
+      ]
+    },
+    "joins": {},
+    "codes": {},
+    "failed": []
+  }
+}

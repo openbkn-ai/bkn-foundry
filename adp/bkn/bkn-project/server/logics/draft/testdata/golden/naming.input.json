@@ -1,0 +1,236 @@
+{
+  "description": "Field names in camelCase, pinyin and Chinese: name matching relates them all. Known gap (wp1-review G1): Chinese table and field names become IDs field, field_2, ...; meaningful and colliding-free IDs for them are not decided yet.",
+  "tables": [
+    {
+      "ID": "r_kh",
+      "CatalogID": "c1",
+      "Name": "kehu",
+      "Description": "",
+      "SourceName": "kehu",
+      "SourceSchema": "dw",
+      "Rows": 500,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "kehu_bh"
+      ],
+      "Columns": [
+        {
+          "Name": "kehu_bh",
+          "Type": "string",
+          "Description": "客户编号",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "kehu_mc",
+          "Type": "string",
+          "Description": "客户名称",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_dd",
+      "CatalogID": "c1",
+      "Name": "dingdan",
+      "Description": "",
+      "SourceName": "dingdan",
+      "SourceSchema": "dw",
+      "Rows": 9000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "dingdan_bh"
+      ],
+      "Columns": [
+        {
+          "Name": "dingdan_bh",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "kehu_bh",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "jine",
+          "Type": "decimal",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_cust",
+      "CatalogID": "c1",
+      "Name": "Customer",
+      "Description": "",
+      "SourceName": "Customer",
+      "SourceSchema": "dw",
+      "Rows": 300,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "customerId"
+      ],
+      "Columns": [
+        {
+          "Name": "customerId",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "customerName",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_ord",
+      "CatalogID": "c1",
+      "Name": "SalesOrder",
+      "Description": "",
+      "SourceName": "SalesOrder",
+      "SourceSchema": "dw",
+      "Rows": 4000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "orderId"
+      ],
+      "Columns": [
+        {
+          "Name": "orderId",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "customerId",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_zh",
+      "CatalogID": "c1",
+      "Name": "供应商",
+      "Description": "",
+      "SourceName": "供应商",
+      "SourceSchema": "dw",
+      "Rows": 80,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "供应商编号"
+      ],
+      "Columns": [
+        {
+          "Name": "供应商编号",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "供应商名称",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_po",
+      "CatalogID": "c1",
+      "Name": "采购单",
+      "Description": "",
+      "SourceName": "采购单",
+      "SourceSchema": "dw",
+      "Rows": 700,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "采购单号"
+      ],
+      "Columns": [
+        {
+          "Name": "采购单号",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "供应商编号",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "counts": {
+    "keys": {},
+    "joins": {
+      "r_dd.kehu_bh": [
+        9000,
+        0,
+        0,
+        480
+      ],
+      "r_ord.customerId": [
+        4000,
+        0,
+        0,
+        290
+      ],
+      "r_po.供应商编号": [
+        700,
+        0,
+        0,
+        75
+      ]
+    },
+    "codes": {},
+    "failed": []
+  }
+}

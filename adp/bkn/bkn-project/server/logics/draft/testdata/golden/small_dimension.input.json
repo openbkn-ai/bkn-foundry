@@ -1,0 +1,92 @@
+{
+  "description": "A legitimate small dimension: few distinct values referring to it, full hit rate.",
+  "tables": [
+    {
+      "ID": "r_w",
+      "CatalogID": "c1",
+      "Name": "warehouse",
+      "Description": "",
+      "SourceName": "warehouse",
+      "SourceSchema": "dw",
+      "Rows": 5,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "warehouse_id"
+      ],
+      "Columns": [
+        {
+          "Name": "warehouse_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "city",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_s",
+      "CatalogID": "c1",
+      "Name": "stock",
+      "Description": "",
+      "SourceName": "stock",
+      "SourceSchema": "dw",
+      "Rows": 20000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "stock_id"
+      ],
+      "Columns": [
+        {
+          "Name": "stock_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "warehouse_id",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "qty",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    }
+  ],
+  "counts": {
+    "keys": {},
+    "joins": {
+      "r_s.warehouse_id": [
+        20000,
+        0,
+        0,
+        5
+      ]
+    },
+    "codes": {},
+    "failed": []
+  }
+}

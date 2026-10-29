@@ -1,0 +1,145 @@
+{
+  "object_types": [
+    {
+      "id": "accounts",
+      "name": "accounts",
+      "description": "",
+      "adopted": false,
+      "table": {
+        "resource_id": "r_a",
+        "name": "accounts",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "account_id"
+      ],
+      "display_key": "account_id",
+      "properties": [
+        {
+          "name": "account_id",
+          "display_name": "account_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "account_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "owner",
+          "display_name": "owner",
+          "type": "string",
+          "description": "",
+          "mapped_field": "owner",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 1000,
+        "distinct": 990,
+        "nulls": 0
+      },
+      "needs_identity": true
+    },
+    {
+      "id": "events",
+      "name": "events",
+      "description": "",
+      "adopted": false,
+      "table": {
+        "resource_id": "r_e",
+        "name": "events",
+        "catalog_id": "c1"
+      },
+      "primary_keys": null,
+      "display_key": "",
+      "properties": [
+        {
+          "name": "id",
+          "display_name": "id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "event_code",
+          "display_name": "event_code",
+          "type": "string",
+          "description": "",
+          "mapped_field": "event_code",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "payload",
+          "display_name": "payload",
+          "type": "json",
+          "description": "",
+          "mapped_field": "payload",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "none",
+        "field": "id",
+        "computed": true,
+        "rows": 80000,
+        "distinct": 79000,
+        "nulls": 0
+      },
+      "needs_identity": true
+    },
+    {
+      "id": "ledger",
+      "name": "ledger",
+      "description": "",
+      "adopted": false,
+      "table": {
+        "resource_id": "r_l",
+        "name": "ledger",
+        "catalog_id": "c1"
+      },
+      "primary_keys": null,
+      "display_key": "",
+      "properties": [
+        {
+          "name": "ledger_id",
+          "display_name": "ledger_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "ledger_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "amount",
+          "display_name": "amount",
+          "type": "decimal",
+          "description": "",
+          "mapped_field": "amount",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "none",
+        "field": "ledger_id",
+        "computed": true,
+        "rows": 5000,
+        "distinct": 4990,
+        "nulls": 10
+      },
+      "needs_identity": true
+    }
+  ],
+  "relation_types": [],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

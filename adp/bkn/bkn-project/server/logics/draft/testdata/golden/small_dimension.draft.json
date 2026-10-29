@@ -1,0 +1,132 @@
+{
+  "object_types": [
+    {
+      "id": "stock",
+      "name": "stock",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_s",
+        "name": "stock",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "stock_id"
+      ],
+      "display_key": "stock_id",
+      "properties": [
+        {
+          "name": "stock_id",
+          "display_name": "stock_id",
+          "type": "string",
+          "description": "",
+          "mapped_field": "stock_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "warehouse_id",
+          "display_name": "warehouse_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "warehouse_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "qty",
+          "display_name": "qty",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "qty",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    },
+    {
+      "id": "warehouse",
+      "name": "warehouse",
+      "description": "",
+      "adopted": true,
+      "table": {
+        "resource_id": "r_w",
+        "name": "warehouse",
+        "catalog_id": "c1"
+      },
+      "primary_keys": [
+        "warehouse_id"
+      ],
+      "display_key": "warehouse_id",
+      "properties": [
+        {
+          "name": "warehouse_id",
+          "display_name": "warehouse_id",
+          "type": "integer",
+          "description": "",
+          "mapped_field": "warehouse_id",
+          "source_of_record": "table",
+          "missing_description": true
+        },
+        {
+          "name": "city",
+          "display_name": "city",
+          "type": "string",
+          "description": "",
+          "mapped_field": "city",
+          "source_of_record": "table",
+          "missing_description": true
+        }
+      ],
+      "key": {
+        "source": "primary_key",
+        "computed": true,
+        "rows": 10,
+        "distinct": 10,
+        "nulls": 0
+      },
+      "needs_identity": false
+    }
+  ],
+  "relation_types": [
+    {
+      "id": "stock_to_warehouse",
+      "name": "stock_to_warehouse",
+      "description": "",
+      "source": "stock",
+      "target": "warehouse",
+      "origin": "name_match",
+      "cardinality": "many_to_one",
+      "mapping": [
+        {
+          "source_property": "warehouse_id",
+          "target_property": "warehouse_id"
+        }
+      ],
+      "adopted": false,
+      "verification": "unconfirmed",
+      "evidence": {
+        "computed": true,
+        "rows": 20000,
+        "nulls": 0,
+        "hits": 20000,
+        "orphans": 0,
+        "hit_rate": 1,
+        "source_distinct": 5
+      },
+      "proposed_because": "few_values"
+    }
+  ],
+  "value_types": [],
+  "excluded": [],
+  "unreadable": [],
+  "decisions": null
+}

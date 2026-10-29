@@ -1,0 +1,126 @@
+{
+  "description": "A code-like table with more fields than a code table has: drafted as an entity, not an enum.",
+  "tables": [
+    {
+      "ID": "r_st",
+      "CatalogID": "c1",
+      "Name": "status_codes",
+      "Description": "",
+      "SourceName": "status_codes",
+      "SourceSchema": "dw",
+      "Rows": 12,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "code"
+      ],
+      "Columns": [
+        {
+          "Name": "code",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "name",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "category",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "sort_order",
+          "Type": "integer",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "color",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "note",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": []
+    },
+    {
+      "ID": "r_t",
+      "CatalogID": "c1",
+      "Name": "tickets",
+      "Description": "",
+      "SourceName": "tickets",
+      "SourceSchema": "dw",
+      "Rows": 3000,
+      "RowsCounted": true,
+      "PrimaryKeys": [
+        "ticket_id"
+      ],
+      "Columns": [
+        {
+          "Name": "ticket_id",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        },
+        {
+          "Name": "status_code",
+          "Type": "string",
+          "Description": "",
+          "Comment": "",
+          "DisplayName": "",
+          "Nullable": true
+        }
+      ],
+      "Indices": null,
+      "ForeignKeys": [
+        {
+          "Columns": [
+            "status_code"
+          ],
+          "RefTable": "dw.status_codes",
+          "RefColumns": [
+            "code"
+          ]
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "keys": {},
+    "joins": {
+      "r_t.status_code": [
+        3000,
+        0,
+        0,
+        12
+      ]
+    },
+    "codes": {},
+    "failed": []
+  }
+}
