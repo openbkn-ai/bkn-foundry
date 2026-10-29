@@ -427,6 +427,21 @@ func (mr *MockRequirementServiceMockRecorder) FailInterrupted(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FailInterrupted", reflect.TypeOf((*MockRequirementService)(nil).FailInterrupted), ctx)
 }
 
+// GenerateGuidance mocks base method.
+func (m *MockRequirementService) GenerateGuidance(ctx context.Context, token, projectID, questionID string, caller interfaces.AccountInfo) (*interfaces.QuestionGuidance, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GenerateGuidance", ctx, token, projectID, questionID, caller)
+	ret0, _ := ret[0].(*interfaces.QuestionGuidance)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GenerateGuidance indicates an expected call of GenerateGuidance.
+func (mr *MockRequirementServiceMockRecorder) GenerateGuidance(ctx, token, projectID, questionID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateGuidance", reflect.TypeOf((*MockRequirementService)(nil).GenerateGuidance), ctx, token, projectID, questionID, caller)
+}
+
 // GenerateRequirement mocks base method.
 func (m *MockRequirementService) GenerateRequirement(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, discardDecisions bool) (*interfaces.Requirement, error) {
 	m.ctrl.T.Helper()
@@ -455,6 +470,21 @@ func (m *MockRequirementService) GetDocument(ctx context.Context, token, project
 func (mr *MockRequirementServiceMockRecorder) GetDocument(ctx, token, projectID, documentID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockRequirementService)(nil).GetDocument), ctx, token, projectID, documentID)
+}
+
+// GetGuidance mocks base method.
+func (m *MockRequirementService) GetGuidance(ctx context.Context, token, projectID, questionID string) (*interfaces.QuestionGuidanceView, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGuidance", ctx, token, projectID, questionID)
+	ret0, _ := ret[0].(*interfaces.QuestionGuidanceView)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetGuidance indicates an expected call of GetGuidance.
+func (mr *MockRequirementServiceMockRecorder) GetGuidance(ctx, token, projectID, questionID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGuidance", reflect.TypeOf((*MockRequirementService)(nil).GetGuidance), ctx, token, projectID, questionID)
 }
 
 // GetRequirement mocks base method.

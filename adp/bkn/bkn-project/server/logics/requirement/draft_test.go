@@ -584,6 +584,7 @@ func Test_RequirementDrafting(t *testing.T) {
 
 		Convey("FailInterrupted fails what a previous run left drafting\n", func() {
 			ra.EXPECT().FailDrafting(gomock.Any(), failureInterrupted, int64(1000)).Return(int64(1), nil)
+			ra.EXPECT().FailGenerating(gomock.Any(), failureInterrupted, int64(1000)).Return(int64(0), nil)
 
 			So(svc.FailInterrupted(ctx), ShouldBeNil)
 		})

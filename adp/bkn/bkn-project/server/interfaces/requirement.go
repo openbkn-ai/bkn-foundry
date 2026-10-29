@@ -480,6 +480,14 @@ type QuestionGuidance struct {
 	UpdateTime  int64       `json:"update_time"`
 }
 
+// QuestionGuidanceView is a question's guidance as the client reads it. Current is false when the
+// specification was drafted again or the question reworded since it was generated: it no longer
+// applies, and the regression does not ask its test questions.
+type QuestionGuidanceView struct {
+	*QuestionGuidance
+	Current bool `json:"current"`
+}
+
 // QuestionTest is a scenario question asked with concrete values. Kind is paraphrase, boundary,
 // not_exist or variant; it says how the Agent meant it. Expect says what the data must show.
 type QuestionTest struct {
@@ -635,6 +643,14 @@ type RequirementService interface {
 	// DecideChoice records the option chosen for a modelling choice.
 	DecideChoice(ctx context.Context, token string, projectID string, choiceID string, decide RequirementDecide,
 		caller AccountInfo) (*Requirement, error)
+
+	// GenerateGuidance generates a scenario question's test questions and development guidance in
+	// the background and returns them generating.
+	GenerateGuidance(ctx context.Context, token string, projectID string, questionID string,
+		caller AccountInfo) (*QuestionGuidance, error)
+	// GetGuidance returns a scenario question's test questions and guidance with whether they
+	// still apply to the question as it is.
+	GetGuidance(ctx context.Context, token string, projectID string, questionID string) (*QuestionGuidanceView, error)
 
 	// ScenarioQuestions returns the project's scenario questions with their needs, for
 	// publishing and the regression after a release, which check visibility themselves. A
