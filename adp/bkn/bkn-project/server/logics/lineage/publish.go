@@ -224,6 +224,12 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 			return nil, err
 		}
 	}
+	// main now has what the release committed after the branch head; the branch follows it, so the
+	// project's next release starts from the version it published, not behind it. Should this fail,
+	// the next release review shows the branch behind and syncing brings it up, so the release stands.
+	if _, err := gs.FastForward(ctx, lineageID, req.Branch, commit); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Bring branch %s up to main after release %s failed: %v", req.Branch, tag, err))
+	}
 
 	return &interfaces.PublishReleaseResult{Release: release, NetworkID: networkID, Tag: tag, Commit: commit}, nil
 }
