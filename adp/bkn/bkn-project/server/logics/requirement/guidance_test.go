@@ -68,18 +68,32 @@ func Test_BuildGuidance(t *testing.T) {
 			}
 			out.Tests[1].Text = "  "
 
-			tests := buildTests(out)
+			tests := buildTests(out, nil)
 
 			So(tests, ShouldHaveLength, maxTests)
 			So(tests[0].ID, ShouldEqual, "t1")
 			So(tests[1].ID, ShouldEqual, "t2")
 			So(tests[1].Text, ShouldNotEqual, "  ")
-			So(tests[0].Slots, ShouldResemble, []interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "customer_id", Value: "10001"}})
+			// No document says 10001: the Agent made it up, so the server fills it.
+			So(tests[0].Slots, ShouldResemble, []interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}})
 			So(tests[0].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkPending})
 		})
 
+		Convey("A value the Agent gives stays only when a document says it\n", func() {
+			docs := []*interfaces.RequirementDocument{doc("prd", interfaces.REQUIREMENT_DOC_PRD, "例如客户 １０００１ 的订单。")}
+			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Slots: []agentSlot{
+				{ConceptID: "c2", Property: "customer_id", Value: "10001"},
+				{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
+				{ConceptID: "c2", Property: "customer_id", Value: "  "},
+			}}}}, docs)
+
+			So(tests[0].Slots[0].Value, ShouldEqual, "10001")
+			So(tests[0].Slots[1].Value, ShouldEqual, "")
+			So(tests[0].Slots[2].Value, ShouldEqual, "")
+		})
+
 		Convey("An expectation the server does not know reads as exists\n", func() {
-			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}})
+			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil)
 
 			So(tests[0].Expect, ShouldEqual, interfaces.TEST_EXPECT_EXISTS)
 			So(tests[1].Expect, ShouldEqual, interfaces.TEST_EXPECT_SAME_RECORD)
@@ -116,6 +130,8 @@ func Test_GenerateGuidance(t *testing.T) {
 			spec := readySpec()
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(guidanceDraft(), true, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
+				doc("prd", interfaces.REQUIREMENT_DOC_PRD, "Orders of customer 10001 are asked about.")}, nil)
 			ra.EXPECT().StartGenerating(gomock.Any(), gomock.Any(), int64(1000)-agentDeadline.Milliseconds()-time.Minute.Milliseconds()).DoAndReturn(
 				func(_ context.Context, g *interfaces.QuestionGuidance, _ int64) (bool, error) {
 					So(g.SpecVersion, ShouldEqual, 1)
@@ -144,6 +160,7 @@ func Test_GenerateGuidance(t *testing.T) {
 			So(finished.RunID, ShouldEqual, "run1")
 			So(finished.AgentTaskID, ShouldEqual, "t9")
 			So(finished.Tests[0].Text, ShouldEqual, "Orders of 10001?")
+			So(finished.Tests[0].Slots[0].Value, ShouldEqual, "10001")
 			// Checked before it is recorded: c2 maps to nothing in this specification.
 			So(finished.Tests[0].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED,
 				Reason: checkConceptNotMapped})
@@ -175,6 +192,7 @@ func Test_GenerateGuidance(t *testing.T) {
 				clock = 1000
 				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(readySpec(), true, nil)
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(guidanceDraft(), true, nil)
+				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(nil, nil)
 				ra.EXPECT().StartGenerating(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 				c.expect()
 				expectFinish()
@@ -203,6 +221,7 @@ func Test_GenerateGuidance(t *testing.T) {
 
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(readySpec(), true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(guidanceDraft(), true, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(nil, nil)
 			ra.EXPECT().StartGenerating(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 			_, err = svc.GenerateGuidance(ctx, token, "p1", "q1", caller)
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Generating)

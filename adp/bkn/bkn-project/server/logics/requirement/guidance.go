@@ -179,9 +179,25 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 	return "pass guidance\nlanguage: " + language + "\n" + string(body), nil
 }
 
+// valueInDocuments tells whether a value is written in one of the documents, compared as quotes
+// are: a value the documents do not say, the Agent made up.
+func valueInDocuments(value string, docs []*interfaces.RequirementDocument) bool {
+	v := normalize([]rune(value)).text
+	if v == "" {
+		return false
+	}
+	for _, d := range docs {
+		if strings.Contains(normalize([]rune(d.Content)).text, v) {
+			return true
+		}
+	}
+	return false
+}
+
 // buildTests gives the Agent's test questions the server's ids, at most maxTests of them, leaving
-// out those without text. None is checked against the data yet.
-func buildTests(out *guidanceOutput) []*interfaces.QuestionTest {
+// out those without text. A value is kept only when a document says it; the others are left for
+// the server to fill from the data. None is checked against the data yet.
+func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) []*interfaces.QuestionTest {
 	tests := []*interfaces.QuestionTest{}
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
@@ -194,7 +210,11 @@ func buildTests(out *guidanceOutput) []*interfaces.QuestionTest {
 		}
 		slots := make([]interfaces.QuestionTestSlot, 0, len(at.Slots))
 		for _, s := range at.Slots {
-			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: s.Value})
+			value := strings.TrimSpace(s.Value)
+			if !valueInDocuments(value, docs) {
+				value = ""
+			}
+			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
 		tests = append(tests, &interfaces.QuestionTest{
 			ID: fmt.Sprintf("t%d", len(tests)+1), Text: text, Kind: at.Kind, Slots: slots, Expect: expect,
@@ -286,6 +306,11 @@ func (s *requirementService) GenerateGuidance(ctx context.Context, token string,
 	if !ok {
 		draft = nil
 	}
+	docs, err := s.ra.GetDocuments(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get documents failed")
+		return nil, internalError(ctx, "Get documents failed", err)
+	}
 
 	now := s.now()
 	g := &interfaces.QuestionGuidance{
@@ -305,15 +330,15 @@ func (s *requirementService) GenerateGuidance(ctx context.Context, token string,
 	}
 	spec, language := req.Spec, entry.NamingLanguage
 	runCtx := context.WithoutCancel(ctx)
-	s.run(func() { s.generate(runCtx, g, &spec, q, draft, language, caller) })
+	s.run(func() { s.generate(runCtx, g, &spec, q, draft, docs, language, caller) })
 	span.SetStatus(codes.Ok, "")
 	return g, nil
 }
 
 // generate runs the Agent and records the test questions and guidance, or why it failed.
 func (s *requirementService) generate(ctx context.Context, g *interfaces.QuestionGuidance,
-	spec *interfaces.RequirementSpec, q *interfaces.RequirementQuestion, draft *interfaces.Draft, language string,
-	caller interfaces.AccountInfo) {
+	spec *interfaces.RequirementSpec, q *interfaces.RequirementQuestion, draft *interfaces.Draft,
+	docs []*interfaces.RequirementDocument, language string, caller interfaces.AccountInfo) {
 	finish := func(done *interfaces.QuestionGuidance) {
 		done.UpdateTime = s.now()
 		if _, err := s.ra.FinishGenerating(ctx, done); err != nil {
@@ -345,7 +370,7 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 		return
 	}
 	done := *g
-	done.Status, done.Tests, done.Guidance = interfaces.GUIDANCE_STATUS_READY, buildTests(&out), strings.TrimSpace(out.Guidance)
+	done.Status, done.Tests, done.Guidance = interfaces.GUIDANCE_STATUS_READY, buildTests(&out, docs), strings.TrimSpace(out.Guidance)
 	// Checked as the person who generated them, before anyone relies on them.
 	s.checkTests(ctx, caller, spec, draft, done.Tests)
 	done.OutOfScope = []string{}
