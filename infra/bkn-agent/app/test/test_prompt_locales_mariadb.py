@@ -11,7 +11,8 @@ from pathlib import Path
 import pymysql
 import pytest
 
-from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, statements, selected_migrations
+from app.public_auth import BUILTIN_AGENT_IDS
+from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, statements, selected_migrations
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
@@ -62,6 +63,8 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         before_locales_rerun = saved_rows()
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)
+        apply(REQUIREMENTS)
+        apply(REQUIREMENTS)
         assert saved_rows() == before_locales_rerun
         with db.cursor() as cursor:
             cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content FROM t_agent a "
@@ -69,7 +72,7 @@ def test_claim_locale_migration_on_mariadb(upgrade):
                            "JOIN t_agent_prompt_version v ON v.f_prompt_id=p.f_prompt_id "
                            "AND v.f_version=p.f_current_version")
             rows = cursor.fetchall()
-            assert len(rows) == 9
+            assert len(rows) == len(BUILTIN_AGENT_IDS)
             for agent_id, canonical, variants in rows:
                 variants = json.loads(variants)
                 assert variants.get("zh-CN", canonical) != variants.get("en-US", canonical), agent_id

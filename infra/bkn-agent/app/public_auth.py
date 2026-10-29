@@ -153,6 +153,7 @@ BUILTIN_AGENT_IDS = (
     "catalog-semantic-understanding",
     "resource-semantic-understanding",
     "bkn-project-drafter",
+    "bkn-project-requirements",
 )
 
 
