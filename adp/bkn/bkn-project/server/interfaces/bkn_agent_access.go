@@ -6,6 +6,7 @@ package interfaces
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
@@ -79,14 +80,27 @@ type BknAgentAnswerRequest struct {
 // BknAgentAnswer is how an answer ended. ErrorCode is bkn-agent's code for a failed one, such as
 // BknAgent.Model.Unavailable or BknAgent.Chat.Timeout. The tool counts are of the calls the Agent
 // made on the network, as streamed: a replayed answer has none. A tool call is unavailable when it
-// did not go through, and failed otherwise when the tool returned an error.
+// did not go through, and failed otherwise when the tool returned an error. ToolUses are those
+// calls in the order they started, with what they were asked.
 type BknAgentAnswer struct {
-	Status           string `json:"status"`
-	Answer           string `json:"answer"`
-	ErrorCode        string `json:"error_code,omitempty"`
-	ToolCalls        int    `json:"tool_calls"`
-	ToolsUnavailable int    `json:"tools_unavailable"`
-	ToolsFailed      int    `json:"tools_failed"`
+	Status           string            `json:"status"`
+	Answer           string            `json:"answer"`
+	ErrorCode        string            `json:"error_code,omitempty"`
+	ToolCalls        int               `json:"tool_calls"`
+	ToolsUnavailable int               `json:"tools_unavailable"`
+	ToolsFailed      int               `json:"tools_failed"`
+	ToolUses         []BknAgentToolUse `json:"tool_uses,omitempty"`
+}
+
+// BknAgentToolUse is one tool call of an answer: the tool, its input as bkn-agent streamed it, and
+// how it finished (succeeded or failed, with error_kind unavailable or error); Status is empty for
+// a call the answer ended before finishing. An input too large to keep is left out, InputOmitted.
+type BknAgentToolUse struct {
+	Name         string          `json:"name"`
+	Input        json.RawMessage `json:"input,omitempty"`
+	InputOmitted bool            `json:"input_omitted,omitempty"`
+	Status       string          `json:"status,omitempty"`
+	ErrorKind    string          `json:"error_kind,omitempty"`
 }
 
 //go:generate mockgen -source ../interfaces/bkn_agent_access.go -destination ../interfaces/mock/mock_bkn_agent_access.go

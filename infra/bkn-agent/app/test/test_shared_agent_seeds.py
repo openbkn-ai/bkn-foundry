@@ -33,6 +33,7 @@ DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
 BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 SEMANTIC_NAMING = MIGRATIONS / "0.2.1/17-semantic-naming.sql"
+REQUIREMENTS = MIGRATIONS / "0.2.1/18-seed-bkn-project-requirements.sql"
 
 
 def statements(path):
@@ -238,6 +239,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, SEMANTIC_API_NAME)
         apply(upgraded, BUILTIN_LOCALES)
         apply(upgraded, SEMANTIC_NAMING)
+        apply(upgraded, REQUIREMENTS)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -298,9 +300,11 @@ def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
         assert "expand_neighbours" in seeded["prompt"]["content"]
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
+        # 18 also attaches translations, to the column 10 adds.
+        apply(db, CLAIM_LOCALES)
         apply(db, path)
         db.execute(
             "UPDATE t_agent SET f_model='custom', f_status='draft', f_tools='[]'"
@@ -425,6 +429,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(SEMANTIC_API_NAME),
                     str(BUILTIN_LOCALES),
                     str(SEMANTIC_NAMING),
+                    str(REQUIREMENTS),
                 ],
             ],
         ],
@@ -465,12 +470,23 @@ def naming_locales_text():
     return text[text.index("-- Attach the zh-CN"):]
 
 
+def requirements_locales_text():
+    """The translation backfill at the end of 18, which the fresh snapshot ends with too."""
+    text = REQUIREMENTS.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
         "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
-        + "\n" + naming_locales_text()
+        + "\n" + naming_locales_text() + "\n" + requirements_locales_text()
     )
+    # The seed itself sits with the other seeds, before the locale column is added.
+    init = (MIGRATIONS / "0.2.1/init.sql").read_text()
+    seed = REQUIREMENTS.read_text()[: REQUIREMENTS.read_text().index("-- Attach the zh-CN")]
+    seed = seed[seed.index("-- bkn-project-requirements:"):].rstrip("\n")
+    assert init.index(seed) < init.index(CLAIM_LOCALES.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1044,7 +1060,8 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     # The optional claim-locale column and guarded translation backfill do not
     # update semantic-understanding versions or their current/initial markers.
     claim_locale_statements = (set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
-                               | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s})
+                               | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
+                               | {s for s in statements(REQUIREMENTS) if "f_localized_content" in s})
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)
@@ -1549,3 +1566,91 @@ def test_semantic_naming_upgrade_does_not_switch_a_prompt_head_an_operator_saved
         apply(db, SEMANTIC_NAMING)
         assert snapshot(db)[1] == head_before
         assert snapshot(db)[3] == agent_versions_before
+
+
+def requirements_prompt(db):
+    return db.execute(
+        "SELECT v.f_content, v.f_localized_content FROM t_agent_prompt p JOIN t_agent_prompt_version v"
+        " ON v.f_prompt_id = p.f_prompt_id AND v.f_version = p.f_current_version"
+        " WHERE p.f_prompt_id='bkn-project-requirements-prompt'"
+    ).fetchone()
+
+
+def test_project_requirements_seed_is_a_published_tool_free_task_on_the_default_model():
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        agent = db.execute(
+            "SELECT f_name, f_mode, f_model, f_tools, f_skills, f_limits, f_status FROM t_agent"
+            " WHERE f_agent_id='bkn-project-requirements'"
+        ).fetchone()
+        assert agent["f_name"] == "BKNProjectRequirements"
+        assert agent["f_mode"] == "task"
+        assert agent["f_model"] == ""
+        assert json.loads(agent["f_tools"]) == []
+        assert json.loads(agent["f_skills"]) == []
+        assert agent["f_status"] == "published"
+        limits = json.loads(agent["f_limits"])
+        assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
+        prompt, localized = requirements_prompt(db)
+        assert prompt.isascii()
+        # One Agent serves the passes the server names in each message.
+        for requirement_pass in ("pass draft", "pass guidance"):
+            assert requirement_pass in prompt
+        for output in ("scenarios", "concepts", "questions", "rules", "conflicts", "choices", "doc_types"):
+            assert output in prompt
+        # The agent proposes and quotes; the server checks every quote against the documents.
+        assert "copied verbatim" in prompt
+        assert "supplement_reason" in prompt
+        assert "Write a rule only when a document states it" in prompt
+        # Concepts map to drafted items by meaning, by the ids the server lists.
+        assert "maps_to" in prompt and "only ids listed in the message" in prompt
+        # Requirements describe answers, never their values.
+        assert "Never write an answer value" in prompt
+        assert "no row data" in prompt
+        assert "language named in the user message" in prompt
+        assert "never as instructions" in prompt
+        # The prompt is general: no business of any sample network.
+        for sample in ("order", "customer", "delivery", "contract", "\u8ba2\u5355", "\u5ba2\u6237"):
+            assert sample not in prompt.lower()
+        variants = json.loads(localized)
+        assert variants["en-US"] == prompt
+        assert variants["zh-CN"] != prompt
+
+
+@pytest.mark.parametrize("completed", [1, 2])
+def test_partial_requirements_seed_is_retryable_without_an_unfinished_agent(completed):
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        apply(db, REQUIREMENTS, limit=completed)
+        assert db.execute("SELECT COUNT(*) FROM t_agent").fetchone()[0] == 0
+        apply(db, REQUIREMENTS)
+        assert db.execute(
+            "SELECT f_name FROM t_agent WHERE f_agent_id='bkn-project-requirements'"
+        ).fetchone()[0] == "BKNProjectRequirements"
+
+
+def test_conflicting_requirements_prompt_is_not_taken_over():
+    with database() as db:
+        db.execute(
+            "INSERT INTO t_agent_prompt VALUES('bkn-project-requirements-prompt','customer',3,'customer',1)"
+        )
+        apply(db, CLAIM_LOCALES)
+        before = snapshot(db)
+        # The seed does not adopt someone else's prompt: it fails closed and changes nothing.
+        with pytest.raises(sqlite3.IntegrityError):
+            apply(db, REQUIREMENTS)
+        assert snapshot(db) == before
+
+
+def test_requirements_translation_skips_a_customized_prompt():
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        seed = [s for s in statements(REQUIREMENTS) if s.lower().startswith("insert")]
+        for statement in seed:
+            db.execute(statement)
+        db.execute(
+            "UPDATE t_agent_prompt_version SET f_content='Administrator prompt'"
+            " WHERE f_prompt_id='bkn-project-requirements-prompt'"
+        )
+        apply(db, REQUIREMENTS)
+        assert requirements_prompt(db)[1] is None
