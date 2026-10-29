@@ -33,10 +33,12 @@ var verdicts = []string{
 	interfaces.REGRESSION_VERDICT_OFF_TOPIC,
 }
 
-// judgeInput is the message the judge reads: the question asked, the answer as written, the tool
-// calls behind it without what they returned, the needs by name, and the language of the reason.
+// judgeInput is the message the judge reads: the question asked, what a test question expects of
+// the data, the answer as written, the tool calls behind it without what they returned, the needs
+// by name, and the language of the reason.
 type judgeInput struct {
 	Question  string                   `json:"question"`
+	Expect    string                   `json:"expect,omitempty"`
 	Answer    string                   `json:"answer"`
 	ToolCalls []judgeToolCall          `json:"tool_calls"`
 	Needs     []interfaces.ReleaseItem `json:"needs"`
@@ -82,12 +84,12 @@ func judgeResponseFormat() map[string]any {
 // not be run, failed or did not finish (judge_unavailable), or said what its schema does not allow
 // or named a need it was not given (judge_invalid).
 func (s *regressionService) judgeAnswer(ctx context.Context, runner interfaces.AccountInfo, question string,
-	answer string, uses []interfaces.BknAgentToolUse, needs []interfaces.ReleaseItem, language string) (*judgeOutput, string) {
+	expect string, answer string, uses []interfaces.BknAgentToolUse, needs []interfaces.ReleaseItem, language string) (*judgeOutput, string) {
 	calls := make([]judgeToolCall, 0, len(uses))
 	for _, u := range uses {
 		calls = append(calls, judgeToolCall{Name: u.Name, Input: u.Input})
 	}
-	message, err := json.Marshal(judgeInput{Question: question, Answer: answer, ToolCalls: calls, Needs: needs,
+	message, err := json.Marshal(judgeInput{Question: question, Expect: expect, Answer: answer, ToolCalls: calls, Needs: needs,
 		Language: language})
 	if err != nil {
 		return nil, interfaces.REGRESSION_CODE_JUDGE_UNAVAILABLE

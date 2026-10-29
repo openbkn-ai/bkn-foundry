@@ -83,9 +83,12 @@ type RegressionQuestion struct {
 	Tests []RegressionTest     `json:"tests,omitempty"`
 }
 
+// RegressionTest is a test question asked in its question's place, with what it expects of the
+// data: exists, not_exists or same_record.
 type RegressionTest struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Expect string `json:"expect,omitempty"`
 }
 
 // RegressionResult is how one question, or one of its tests, did. Missing lists what the release
