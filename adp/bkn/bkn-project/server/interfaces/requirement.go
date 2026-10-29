@@ -495,6 +495,10 @@ type QuestionGuidance struct {
 type QuestionGuidanceView struct {
 	*QuestionGuidance
 	Current bool `json:"current"`
+	// OntologyChanged is true when the drafted items the question needs changed since the guidance
+	// was generated; it only says so, and regenerating brings it back. Null when unknown: guidance
+	// generated before it was signed, or no draft to compare.
+	OntologyChanged *bool `json:"ontology_changed"`
 }
 
 // QuestionTest is a scenario question asked with concrete values. Kind is paraphrase, boundary,

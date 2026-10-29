@@ -422,6 +422,8 @@ func (s *requirementService) GenerateGuidance(ctx context.Context, token string,
 		ProjectID: projectID, QuestionID: q.ID, SpecVersion: req.Version, Question: q.Text,
 		Status: interfaces.GUIDANCE_STATUS_GENERATING, Tests: []*interfaces.QuestionTest{}, OutOfScope: []string{},
 		RunID: s.newID(), Runner: caller, CreateTime: now, UpdateTime: now,
+		// Of the draft generating reads, so that a later change to it shows.
+		OntologySignature: ontologySignature(draft, q),
 	}
 	staleBefore := now - guidanceLease.Milliseconds()
 	started, err := s.ra.StartGenerating(ctx, g, staleBefore)
@@ -526,6 +528,17 @@ func (s *requirementService) GetGuidance(ctx context.Context, token string, proj
 	if found && req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		q := questionOf(&req.Spec, questionID)
 		view.Current = q != nil && guidanceCurrent(req, q, g)
+		if q != nil && g.OntologySignature != "" {
+			draft, ok, err := s.da.GetDraft(ctx, projectID)
+			if err != nil {
+				span.SetStatus(codes.Error, "Get draft failed")
+				return nil, internalError(ctx, "Get draft failed", err)
+			}
+			if ok {
+				changed := ontologySignature(draft, q) != g.OntologySignature
+				view.OntologyChanged = &changed
+			}
+		}
 	}
 	span.SetStatus(codes.Ok, "")
 	return view, nil
