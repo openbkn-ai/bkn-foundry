@@ -41,11 +41,15 @@ var (
 func NewRegressionService() interfaces.RegressionService {
 	rgsOnce.Do(func() {
 		rgs = &regressionService{
-			ra:  logics.RGA,
-			rs:  requirement.NewRequirementService(),
-			ba:  logics.BAA,
-			gs:  logics.GS,
-			run: func(fn func()) { go fn() },
+			ra:    logics.RGA,
+			rs:    requirement.NewRequirementService(),
+			ba:    logics.BAA,
+			gs:    logics.GS,
+			da:    logics.DA,
+			pa:    logics.PA,
+			run:   func(fn func()) { go fn() },
+			sleep: time.Sleep,
+			now:   time.Now,
 		}
 	})
 	return rgs
@@ -57,8 +61,14 @@ type regressionService struct {
 	rs interfaces.RequirementService
 	ba interfaces.BknAgentAccess
 	gs interfaces.GitStore
-	// run answers in the background; tests replace it to run in line.
-	run func(fn func())
+	// da names what a release lacks as the project's draft does; pa gives the language of reasons.
+	da interfaces.DraftAccess
+	pa interfaces.ProjectAccess
+	// run answers in the background; tests replace it to run in line. sleep and now pace the
+	// waiting for a judgement.
+	run   func(fn func())
+	sleep func(time.Duration)
+	now   func() time.Time
 }
 
 func (s *regressionService) StartRegression(ctx context.Context, token string, release *interfaces.Release,
@@ -125,15 +135,62 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 	for _, q := range sq.Questions {
 		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE {
 			needs := append([]interfaces.RequirementItemRef{}, q.Needs...)
-			questions = append(questions, interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs})
+			var tests []interfaces.RegressionTest
+			for _, t := range q.Tests {
+				tests = append(tests, interfaces.RegressionTest{ID: t.ID, Text: t.Text})
+			}
+			questions = append(questions, interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests})
 		}
 	}
 	return questions, nil
 }
 
-// answer judges each question against the release's definitions and, when it has all it needs,
-// against the answer the network gives; the questions that could not be asked are asked once more.
-// It records the outcome as the run that started.
+// regressionAsk is one question to ask: a question, or one of its tests in its place.
+type regressionAsk struct {
+	question interfaces.RegressionQuestion
+	testID   string
+	text     string
+}
+
+// regressionAsks lists what a run asks: each question's tests when it has them, else the question.
+func regressionAsks(questions []interfaces.RegressionQuestion) []regressionAsk {
+	asks := []regressionAsk{}
+	for _, q := range questions {
+		if len(q.Tests) == 0 {
+			asks = append(asks, regressionAsk{question: q, text: q.Text})
+			continue
+		}
+		for _, t := range q.Tests {
+			asks = append(asks, regressionAsk{question: q, testID: t.ID, text: t.Text})
+		}
+	}
+	return asks
+}
+
+// regressionContext is what a run judges against: the release's items by name, the names the
+// project's draft gives, and the language reasons are written in.
+type regressionContext struct {
+	defined  map[interfaces.ReleaseItem]string
+	drafted  map[interfaces.ReleaseItem]string
+	language string
+}
+
+// name names an item as the release does, else as the draft does, else by its id.
+func (c *regressionContext) name(kind string, id string) interfaces.ReleaseItem {
+	key := interfaces.ReleaseItem{Kind: kind, ID: id}
+	if name, ok := c.defined[key]; ok {
+		key.Name = name
+	} else if name, ok := c.drafted[key]; ok && name != "" {
+		key.Name = name
+	} else {
+		key.Name = id
+	}
+	return key
+}
+
+// answer asks each question, or its tests, on the release's network, has the judge decide each
+// answer, and asks once more what could not be asked; a judgement that failed is made once more
+// from the answer kept. It records the outcome as the run that started.
 func (s *regressionService) answer(ctx context.Context, token string, release *interfaces.Release,
 	r *interfaces.Regression) {
 	defer func() {
@@ -148,35 +205,68 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 		r.Status, r.Error = interfaces.REGRESSION_STATUS_FAILED, interfaces.REGRESSION_ERROR_DEFINITIONS_UNREADABLE
 		return
 	}
-	defined := map[interfaces.ReleaseItem]bool{}
-	for p := range files {
-		if kindOf(p) != "" {
-			it := itemAt(p, files)
-			defined[interfaces.ReleaseItem{Kind: it.Kind, ID: it.ID}] = true
-		}
-	}
+	rc := s.regressionContext(ctx, release.ProjectID, files)
 
-	r.Results = make([]interfaces.RegressionResult, len(r.Questions))
-	for i, q := range r.Questions {
-		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 1, q, defined)
+	asks := regressionAsks(r.Questions)
+	r.Results = make([]interfaces.RegressionResult, len(asks))
+	for i, a := range asks {
+		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 1, a, r.Runner, rc)
 	}
-	for i, q := range r.Questions {
-		if r.Results[i].Outcome == interfaces.REGRESSION_OUTCOME_ERROR {
-			r.Attempt = 2
-			r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 2, q, defined)
+	for i, a := range asks {
+		result := r.Results[i]
+		if result.Outcome != interfaces.REGRESSION_OUTCOME_ERROR {
+			continue
 		}
+		r.Attempt = 2
+		if result.ErrorCode == interfaces.REGRESSION_CODE_JUDGE_UNAVAILABLE ||
+			result.ErrorCode == interfaces.REGRESSION_CODE_JUDGE_INVALID {
+			r.Results[i] = s.decide(ctx, a, result, r.Runner, rc)
+			continue
+		}
+		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 2, a, r.Runner, rc)
 	}
 	r.Status = regressionStatus(r.Results)
 }
 
-// judge decides one question: missing when the release lacks something it needs, and otherwise by
-// the answer the network gives. A question that could not be asked is an error, not the ontology's.
+// regressionContext reads the names a run judges with. The draft and the project are read as they
+// are now; a failure to read them leaves names to ids and reasons to the default language.
+func (s *regressionService) regressionContext(ctx context.Context, projectID string,
+	files map[string][]byte) *regressionContext {
+	rc := &regressionContext{defined: map[interfaces.ReleaseItem]string{}, drafted: map[interfaces.ReleaseItem]string{},
+		language: interfaces.NAMING_LANGUAGE_ZH_CN}
+	for p := range files {
+		if kindOf(p) != "" {
+			it := itemAt(p, files)
+			rc.defined[interfaces.ReleaseItem{Kind: it.Kind, ID: it.ID}] = it.Name
+		}
+	}
+	if draft, ok, err := s.da.GetDraft(ctx, projectID); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read draft of project %s: %v", projectID, err))
+	} else if ok {
+		for _, ot := range draft.Items.ObjectTypes {
+			rc.drafted[interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: ot.ID}] = ot.Name
+		}
+		for _, rt := range draft.Items.RelationTypes {
+			rc.drafted[interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: rt.ID}] = rt.Name
+		}
+	}
+	if project, ok, err := s.pa.GetProject(ctx, projectID); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read project %s: %v", projectID, err))
+	} else if ok && interfaces.IsNamingLanguage(project.NamingLanguage) {
+		rc.language = project.NamingLanguage
+	}
+	return rc
+}
+
+// judge decides one ask: missing when the release lacks something its question needs, and
+// otherwise by the answer the network gives and what the judge says of it. A question that could
+// not be asked, or an answer that could not be judged, is an error, not the ontology's.
 func (s *regressionService) judge(ctx context.Context, token string, networkID string, runID string, index int,
-	attempt int, q interfaces.RegressionQuestion, defined map[interfaces.ReleaseItem]bool) interfaces.RegressionResult {
-	result := interfaces.RegressionResult{QuestionID: q.ID}
-	for _, n := range q.Needs {
-		if !defined[interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID}] {
-			result.Missing = append(result.Missing, interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID, Name: n.ID})
+	attempt int, a regressionAsk, runner interfaces.AccountInfo, rc *regressionContext) interfaces.RegressionResult {
+	result := interfaces.RegressionResult{QuestionID: a.question.ID, TestID: a.testID}
+	for _, n := range a.question.Needs {
+		if _, ok := rc.defined[interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID}]; !ok {
+			result.Missing = append(result.Missing, rc.name(n.Kind, n.ID))
 		}
 	}
 	if len(result.Missing) > 0 {
@@ -184,7 +274,7 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 		return result
 	}
 	answer, err := s.ba.AnswerOnNetwork(ctx, token, &interfaces.BknAgentAnswerRequest{
-		AgentID: answerAgentID, Message: q.Text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID,
+		AgentID: answerAgentID, Message: a.text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID,
 	})
 	var agentErr *interfaces.BknAgentError
 	if errors.As(err, &agentErr) {
@@ -192,7 +282,7 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 		return result
 	}
 	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Answer question %s on %s: %v", q.ID, networkID, err))
+		otellog.LogWarn(ctx, fmt.Sprintf("Answer question %s on %s: %v", a.question.ID, networkID, err))
 		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, interfaces.REGRESSION_CODE_UNREACHABLE
 		if errors.Is(err, interfaces.ErrBknAgentAnswerCut) {
 			result.ErrorCode = interfaces.REGRESSION_CODE_ANSWER_INTERRUPTED
@@ -212,24 +302,65 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 	case strings.TrimSpace(answer.Answer) == "":
 		result.Outcome = interfaces.REGRESSION_OUTCOME_NO_ANSWER
 	default:
-		result.Outcome = interfaces.REGRESSION_OUTCOME_PASSED
+		return s.decide(ctx, a, result, runner, rc)
 	}
 	return result
 }
 
-// regressionStatus is failed while a question could not be asked; not passed when one lacks what
-// it needs or got no answer; passed otherwise.
+// decide has the judge say whether the answer kept in result answers what was asked, and takes its
+// verdict: answered passes; a question lacking a specific value needs values, which is not the
+// ontology's fault; an answer that cannot answer or is about something else is not answered. A
+// judgement that cannot be had is an error, never a pass.
+func (s *regressionService) decide(ctx context.Context, a regressionAsk, result interfaces.RegressionResult,
+	runner interfaces.AccountInfo, rc *regressionContext) interfaces.RegressionResult {
+	needs := make([]interfaces.ReleaseItem, 0, len(a.question.Needs))
+	for _, n := range a.question.Needs {
+		needs = append(needs, rc.name(n.Kind, n.ID))
+	}
+	result.ErrorCode, result.Verdict, result.Reason, result.UsedNeeds = "", "", "", nil
+	out, code := s.judgeAnswer(ctx, runner, a.text, result.Answer, result.ToolUses, needs, rc.language)
+	if out == nil {
+		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, code
+		return result
+	}
+	result.Verdict, result.Reason, result.UsedNeeds = out.Verdict, out.Reason, out.UsedNeeds
+	switch out.Verdict {
+	case interfaces.REGRESSION_VERDICT_ANSWERED:
+		result.Outcome = interfaces.REGRESSION_OUTCOME_PASSED
+	case interfaces.REGRESSION_VERDICT_CLARIFICATION_NEEDED:
+		result.Outcome = interfaces.REGRESSION_OUTCOME_NEEDS_VALUES
+	default:
+		result.Outcome = interfaces.REGRESSION_OUTCOME_NOT_ANSWERED
+	}
+	return result
+}
+
+// regressionStatus is failed while a question could not be asked or judged; not passed when one
+// lacks what it needs, got no answer or was not answered; passed when one passed; and needs values
+// when every question judged lacked a specific value, which shows nothing of what the ontology can
+// answer.
 func regressionStatus(results []interfaces.RegressionResult) string {
-	status := interfaces.REGRESSION_STATUS_PASSED
+	failed, notPassed, passed := false, false, false
 	for _, r := range results {
 		switch r.Outcome {
 		case interfaces.REGRESSION_OUTCOME_ERROR:
-			return interfaces.REGRESSION_STATUS_FAILED
-		case interfaces.REGRESSION_OUTCOME_MISSING, interfaces.REGRESSION_OUTCOME_NO_ANSWER:
-			status = interfaces.REGRESSION_STATUS_NOT_PASSED
+			failed = true
+		case interfaces.REGRESSION_OUTCOME_MISSING, interfaces.REGRESSION_OUTCOME_NO_ANSWER,
+			interfaces.REGRESSION_OUTCOME_NOT_ANSWERED:
+			notPassed = true
+		case interfaces.REGRESSION_OUTCOME_PASSED:
+			passed = true
 		}
 	}
-	return status
+	switch {
+	case failed:
+		return interfaces.REGRESSION_STATUS_FAILED
+	case notPassed:
+		return interfaces.REGRESSION_STATUS_NOT_PASSED
+	case passed:
+		return interfaces.REGRESSION_STATUS_PASSED
+	}
+	return interfaces.REGRESSION_STATUS_NEEDS_VALUES
 }
 
 // clientRequestID names one ask of one question in a run, in bkn-agent's form for request ids:

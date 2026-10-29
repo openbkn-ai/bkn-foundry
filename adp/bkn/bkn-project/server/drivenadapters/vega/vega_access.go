@@ -5,6 +5,7 @@
 package vega
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -594,7 +595,10 @@ func (va *vegaAccess) Query(ctx context.Context, account interfaces.VegaAccount,
 	result := &struct {
 		Entries []map[string]any `json:"entries"`
 	}{}
-	if err := json.Unmarshal(respBody, result); err != nil {
+	// Numbers stay as written: a float64 rounds identities past 2^53, such as snowflake ids.
+	decoder := json.NewDecoder(bytes.NewReader(respBody))
+	decoder.UseNumber()
+	if err := decoder.Decode(result); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal rows failed")
 		return nil, fmt.Errorf("unmarshal rows: %w", err)
 	}
