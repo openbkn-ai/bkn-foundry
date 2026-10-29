@@ -92,6 +92,16 @@ func Test_BuildGuidance(t *testing.T) {
 			So(tests[0].Slots[2].Value, ShouldEqual, "")
 		})
 
+		Convey("A value made up is replaced in the text by its slot, for the server's value to take its place\n", func() {
+			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 20001 and of Acme?", Slots: []agentSlot{
+				{ConceptID: "c2", Property: "customer_id", Value: "20001"},
+				{ConceptID: "c2", Property: "full_name", Value: "Acme"},
+			}}}}, nil)
+
+			So(tests[0].Text, ShouldEqual, "Orders of {{slot 1}} and of {{slot 2}}?")
+			So(tests[0].Slots[0].Value, ShouldEqual, "")
+		})
+
 		Convey("An expectation the server does not know reads as exists\n", func() {
 			tests := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil)
 
