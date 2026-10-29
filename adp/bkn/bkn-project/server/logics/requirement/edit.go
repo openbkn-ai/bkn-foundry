@@ -153,12 +153,14 @@ func onlyFields(ctx context.Context, edit interfaces.RequirementItemEdit, kind s
 		"category": edit.Category != nil, "definition": edit.Definition != nil, "text": edit.Text != nil,
 		"layer": edit.Layer != nil, "template": edit.Template != nil, "answer_shape": edit.AnswerShape != nil,
 		"scenario_ids": edit.ScenarioIDs != nil, "needs": edit.Needs != nil, "statement": edit.Statement != nil,
+		"follow_concepts": edit.FollowConcepts != nil,
 	}
 	allowed := map[string][]string{
 		interfaces.REQUIREMENT_KIND_SCENARIOS: {"name", "actor", "trigger", "decision", "knowledge"},
 		interfaces.REQUIREMENT_KIND_CONCEPTS:  {"term", "category", "definition"},
-		interfaces.REQUIREMENT_KIND_QUESTIONS: {"text", "layer", "template", "answer_shape", "scenario_ids", "needs"},
-		interfaces.REQUIREMENT_KIND_RULES:     {"statement"},
+		interfaces.REQUIREMENT_KIND_QUESTIONS: {"text", "layer", "template", "answer_shape", "scenario_ids", "needs",
+			"follow_concepts"},
+		interfaces.REQUIREMENT_KIND_RULES: {"statement"},
 	}[kind]
 	setSome := false
 	for field, isSet := range set {
@@ -257,6 +259,13 @@ func applyQuestion(ctx context.Context, q *interfaces.RequirementQuestion, edit 
 		}
 		q.ScenarioIDs = ids
 	}
+	if edit.FollowConcepts != nil {
+		if !*edit.FollowConcepts || edit.Needs != nil {
+			return invalidItem(ctx, "follow_concepts is true, and set without needs")
+		}
+		q.NeedsSource = interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS
+		followConcepts(spec)
+	}
 	if edit.Needs != nil {
 		needs := []interfaces.RequirementItemRef{}
 		for _, need := range *edit.Needs {
@@ -276,16 +285,33 @@ func applyRule(ctx context.Context, r *interfaces.RequirementRule, edit interfac
 	return setText(ctx, "statement", edit.Statement, maxItemTextRunes, true, &r.Statement)
 }
 
-// nextID is the next id of a kind: one past the highest given, so a removed item's id is not
-// given to another.
-func nextID[T any](prefix string, items []T, idOf func(T) string) string {
-	highest := 0
+// nextID is the next id of a kind: one past the highest ever given, recorded in the specification,
+// so a removed item's id, the highest one included, is not given to another.
+func nextID[T any](spec *interfaces.RequirementSpec, prefix string, items []T, idOf func(T) string) string {
+	highest := spec.LastIDs[prefix]
 	for _, item := range items {
 		if n, err := strconv.Atoi(strings.TrimPrefix(idOf(item), prefix)); err == nil && n > highest {
 			highest = n
 		}
 	}
+	if spec.LastIDs == nil {
+		spec.LastIDs = map[string]int{}
+	}
+	spec.LastIDs[prefix] = highest + 1
 	return fmt.Sprintf("%s%d", prefix, highest+1)
+}
+
+// recordIDs notes the ids items have before one is removed, so removing the highest does not
+// free it.
+func recordIDs[T any](spec *interfaces.RequirementSpec, prefix string, items []T, idOf func(T) string) {
+	for _, item := range items {
+		if n, err := strconv.Atoi(strings.TrimPrefix(idOf(item), prefix)); err == nil && n > spec.LastIDs[prefix] {
+			if spec.LastIDs == nil {
+				spec.LastIDs = map[string]int{}
+			}
+			spec.LastIDs[prefix] = n
+		}
+	}
 }
 
 func find[T any](items []T, id string, idOf func(T) string) (int, bool) {
@@ -380,7 +406,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 				if edit.Name == nil {
 					return invalidItem(ctx, "name is empty")
 				}
-				s := &interfaces.RequirementScenario{ID: nextID("s", spec.Scenarios, scenarioID), Knowledge: []string{},
+				s := &interfaces.RequirementScenario{ID: nextID(spec, "s", spec.Scenarios, scenarioID), Knowledge: []string{},
 					Capabilities: []interfaces.RequirementCapability{}, Citations: empty, Edited: true}
 				if err := applyScenario(ctx, s, edit); err != nil {
 					return err
@@ -390,7 +416,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 				if edit.Term == nil {
 					return invalidItem(ctx, "term is empty")
 				}
-				c := &interfaces.RequirementConcept{ID: nextID("c", spec.Concepts, conceptID), Category: "object",
+				c := &interfaces.RequirementConcept{ID: nextID(spec, "c", spec.Concepts, conceptID), Category: "object",
 					Citations: empty, Edited: true}
 				if err := applyConcept(ctx, c, edit); err != nil {
 					return err
@@ -400,7 +426,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 				if edit.Text == nil {
 					return invalidItem(ctx, "text is empty")
 				}
-				q := &interfaces.RequirementQuestion{ID: nextID("q", spec.Questions, questionID), ScenarioIDs: []string{},
+				q := &interfaces.RequirementQuestion{ID: nextID(spec, "q", spec.Questions, questionID), ScenarioIDs: []string{},
 					Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
 					Basis: interfaces.RequirementBasis{ConceptIDs: []string{}, Metrics: []string{}, Functions: []string{},
 						Skills: []string{}},
@@ -414,7 +440,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 				if edit.Statement == nil {
 					return invalidItem(ctx, "statement is empty")
 				}
-				r := &interfaces.RequirementRule{ID: nextID("r", spec.Rules, ruleID), CompilesTo: "other",
+				r := &interfaces.RequirementRule{ID: nextID(spec, "r", spec.Rules, ruleID), CompilesTo: "other",
 					Citations: empty, Edited: true}
 				if err := applyRule(ctx, r, edit); err != nil {
 					return err
@@ -446,6 +472,7 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 				if !ok {
 					return notFound(ctx)
 				}
+				recordIDs(spec, "s", spec.Scenarios, scenarioID)
 				spec.Scenarios = slices.Delete(spec.Scenarios, i, i+1)
 				for _, q := range spec.Questions {
 					q.ScenarioIDs = slices.DeleteFunc(q.ScenarioIDs, func(id string) bool { return id == itemID })
@@ -455,6 +482,7 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 				if !ok {
 					return notFound(ctx)
 				}
+				recordIDs(spec, "c", spec.Concepts, conceptID)
 				spec.Concepts = slices.Delete(spec.Concepts, i, i+1)
 				for _, q := range spec.Questions {
 					q.Basis.ConceptIDs = slices.DeleteFunc(q.Basis.ConceptIDs, func(id string) bool { return id == itemID })
@@ -465,12 +493,14 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 				if !ok {
 					return notFound(ctx)
 				}
+				recordIDs(spec, "q", spec.Questions, questionID)
 				spec.Questions = slices.Delete(spec.Questions, i, i+1)
 			case interfaces.REQUIREMENT_KIND_RULES:
 				i, ok := find(spec.Rules, itemID, ruleID)
 				if !ok {
 					return notFound(ctx)
 				}
+				recordIDs(spec, "r", spec.Rules, ruleID)
 				spec.Rules = slices.Delete(spec.Rules, i, i+1)
 			default:
 				return notFound(ctx)
@@ -531,6 +561,10 @@ func (s *requirementService) ResolveConflict(ctx context.Context, token string, 
 			if resolve.DocumentID != "" && !slices.ContainsFunc(conflict.Sides, func(side interfaces.RequirementConflictSide) bool {
 				return side.DocumentID == resolve.DocumentID
 			}) {
+				return invalid
+			}
+			// Handed to the business, a conflict is left unresolved: no side or conclusion with it.
+			if resolve.Deferred && (resolve.DocumentID != "" || textValue != "") {
 				return invalid
 			}
 			if !resolve.Deferred && resolve.DocumentID == "" && textValue == "" {
