@@ -453,7 +453,17 @@ func Test_VegaAccess(t *testing.T) {
 			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/resources/query")
 			So(got[0].body["query"], ShouldEqual, "SELECT COUNT(*) AS total FROM {{r1}}")
 			So(got[0].body["query_timeout_sec"], ShouldEqual, 60)
-			So(rows[0]["total"], ShouldEqual, 800)
+			So(rows[0]["total"], ShouldEqual, json.Number("800"))
+		})
+
+		Convey("Query keeps numbers as written, so a large identity is not rounded\n", func() {
+			respBody = `{"entries":[{"id":1234567890123456789,"rate":0.1}]}`
+
+			rows, err := va.Query(ctx, account, "SELECT id FROM {{r1}}", 60)
+
+			So(err, ShouldBeNil)
+			So(rows[0]["id"], ShouldEqual, json.Number("1234567890123456789"))
+			So(rows[0]["rate"], ShouldEqual, json.Number("0.1"))
 		})
 
 		Convey("A vega-backend error keeps its status and code\n", func() {

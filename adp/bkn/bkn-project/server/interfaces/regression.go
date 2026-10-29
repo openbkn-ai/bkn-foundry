@@ -23,6 +23,9 @@ const (
 	REGRESSION_STATUS_FAILED = "failed"
 	// REGRESSION_STATUS_NO_QUESTIONS: the project had no questions to answer.
 	REGRESSION_STATUS_NO_QUESTIONS = "no_questions"
+	// REGRESSION_STATUS_NEEDS_VALUES: every question judged lacked a specific value to ask about,
+	// so the regression shows nothing of what the ontology can answer.
+	REGRESSION_STATUS_NEEDS_VALUES = "needs_values"
 )
 
 // Outcomes of a question.
@@ -32,8 +35,22 @@ const (
 	REGRESSION_OUTCOME_MISSING = "missing"
 	// REGRESSION_OUTCOME_NO_ANSWER: the question was answered with nothing.
 	REGRESSION_OUTCOME_NO_ANSWER = "no_answer"
+	// REGRESSION_OUTCOME_NEEDS_VALUES: the question is a template lacking a specific value, and the
+	// answer asked for it; that is not the ontology's fault.
+	REGRESSION_OUTCOME_NEEDS_VALUES = "needs_values"
+	// REGRESSION_OUTCOME_NOT_ANSWERED: the answer could not answer the question, or was about something
+	// else; Reason says why.
+	REGRESSION_OUTCOME_NOT_ANSWERED = "not_answered"
 	// REGRESSION_OUTCOME_ERROR: the question could not be asked; ErrorCode says why.
 	REGRESSION_OUTCOME_ERROR = "error"
+)
+
+// What the answer judge said of an answer.
+const (
+	REGRESSION_VERDICT_ANSWERED             = "answered"
+	REGRESSION_VERDICT_CLARIFICATION_NEEDED = "clarification_needed"
+	REGRESSION_VERDICT_CANNOT_ANSWER        = "cannot_answer"
+	REGRESSION_VERDICT_OFF_TOPIC            = "off_topic"
 )
 
 // Regression is the regression of one release, kept in t_bkn_project_regression.
@@ -57,23 +74,36 @@ type Regression struct {
 	FinishTime int64  `json:"finish_time"`
 }
 
+// RegressionQuestion is a question answered. When it has Tests, the tests are asked in its place,
+// each with specific values; otherwise the question itself is.
 type RegressionQuestion struct {
 	ID    string               `json:"id"`
 	Text  string               `json:"text"`
 	Needs []RequirementItemRef `json:"needs"`
+	Tests []RegressionTest     `json:"tests,omitempty"`
 }
 
-// RegressionResult is how one question did. Missing lists what the release lacks of what it needs;
-// ErrorCode is the answering service's code when it could not be asked. Answer and ToolUses are
-// what an asked question was answered with and the tool calls behind it, kept whatever the outcome
-// so the answer can be judged again later.
+type RegressionTest struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+// RegressionResult is how one question, or one of its tests, did. Missing lists what the release
+// lacks of what it needs; ErrorCode is the answering service's code when it could not be asked.
+// Answer and ToolUses are what an asked question was answered with and the tool calls behind it,
+// kept whatever the outcome. Verdict, Reason and UsedNeeds are what the answer judge said of the
+// answer: the verdict the outcome follows, why, and which needs the answer used.
 type RegressionResult struct {
-	QuestionID string            `json:"question_id"`
-	Outcome    string            `json:"outcome"`
-	Missing    []ReleaseItem     `json:"missing,omitempty"`
-	Answer     string            `json:"answer,omitempty"`
-	ToolUses   []BknAgentToolUse `json:"tool_uses,omitempty"`
-	ErrorCode  string            `json:"error_code,omitempty"`
+	QuestionID string               `json:"question_id"`
+	TestID     string               `json:"test_id,omitempty"`
+	Outcome    string               `json:"outcome"`
+	Verdict    string               `json:"verdict,omitempty"`
+	Reason     string               `json:"reason,omitempty"`
+	UsedNeeds  []RequirementItemRef `json:"used_needs,omitempty"`
+	Missing    []ReleaseItem        `json:"missing,omitempty"`
+	Answer     string               `json:"answer,omitempty"`
+	ToolUses   []BknAgentToolUse    `json:"tool_uses,omitempty"`
+	ErrorCode  string               `json:"error_code,omitempty"`
 }
 
 //go:generate mockgen -source ../interfaces/regression.go -destination ../interfaces/mock/mock_regression.go
@@ -112,6 +142,11 @@ const (
 	REGRESSION_CODE_CANCELLED = "cancelled"
 	// REGRESSION_CODE_TOOLS_UNAVAILABLE: no call of the answering Agent reached the network.
 	REGRESSION_CODE_TOOLS_UNAVAILABLE = "tools_unavailable"
+	// REGRESSION_CODE_JUDGE_UNAVAILABLE: the answer judge could not be run, failed or timed out.
+	REGRESSION_CODE_JUDGE_UNAVAILABLE = "judge_unavailable"
+	// REGRESSION_CODE_JUDGE_INVALID: the answer judge returned what its schema does not allow, or a
+	// need it was not given.
+	REGRESSION_CODE_JUDGE_INVALID = "judge_invalid"
 )
 
 type RegressionService interface {
