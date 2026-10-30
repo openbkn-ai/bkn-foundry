@@ -289,7 +289,8 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		Trace             json.RawMessage                     `json:"_trace"`
 		PermissionImpacts []interfaces.ObjectPermissionImpact `json:"permission_impacts"`
 	}
-	if err := sonic.Unmarshal(respBody, &wire); err != nil {
+	// Keep dynamic numbers exact before REST or TOON formats the query rows.
+	if err := unmarshalPrecise(respBody, &wire); err != nil {
 		b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal response failed: %v\n", err)
 		return nil, err
 	}

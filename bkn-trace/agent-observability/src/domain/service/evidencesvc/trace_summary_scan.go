@@ -24,9 +24,9 @@ const maxScannedSummaryPageRetention = 10000
 
 func needsTraceSummaryScan(o evidencevo.SummaryQueryOptions) bool {
 	shared := o.Scope.AccessProfile != nil && evidencevo.NeedsCrossAccountCandidates(o.Scope) && !evidencevo.HasGlobalTraceAccess(*o.Scope.AccessProfile)
-	return (o.Status != "" || o.ErrorKeyword != "" || shared) &&
+	return (o.Status != "" || o.ErrorKeyword != "" || o.Keyword != "" || shared) &&
 		o.TraceID == "" && o.ConversationID == "" && o.InteractionID == "" &&
-		o.AgentOrApp == "" && o.Keyword == "" && o.KnowledgeNetwork == "" &&
+		o.AgentOrApp == "" && o.KnowledgeNetwork == "" &&
 		o.RecordIntegrity == "" && o.EvidenceCompleteness == "" &&
 		o.ExcludeAgentOrApp == "" && len(o.ExcludeAgentOrApps) == 0 &&
 		(o.Scope.View == "" || o.Scope.View == evidencevo.AccessViewBusiness || o.Scope.View == evidencevo.AccessViewTechnical)
@@ -67,7 +67,9 @@ func (s *Service) listScannedTraceSummaryPage(ctx context.Context, o evidencevo.
 	if status == "" && strings.TrimSpace(o.ErrorKeyword) != "" {
 		status = "error"
 	}
-	err = s.scanMatchedTraceSummaries(ctx, source, o, iprojectionsource.Query{Scope: o.Scope, From: o.From, To: o.To, Status: status, Tool: o.Tool, SummaryOnly: true}, func(trace evidencevo.TraceSummary) error {
+	query := iprojectionsource.Query{Scope: o.Scope, From: o.From, To: o.To, Status: status, Tool: o.Tool, SummaryOnly: true}
+	query.FilterTraceCandidates = s.traceErrorCandidateFilter(o)
+	err = s.scanMatchedTraceSummaries(ctx, source, o, query, func(trace evidencevo.TraceSummary) error {
 		total++
 		if hasCursor && !traceScanAfter(trace, cursor) {
 			return nil

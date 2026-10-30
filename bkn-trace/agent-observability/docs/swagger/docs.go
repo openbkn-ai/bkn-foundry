@@ -2624,13 +2624,13 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Started at or after this RFC3339 timestamp",
+                        "description": "Started at or after this RFC3339 timestamp; omitted means no lower time bound",
                         "name": "from",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Started at or before this RFC3339 timestamp",
+                        "description": "Started at or before this RFC3339 timestamp; omitted means no upper time bound",
                         "name": "to",
                         "in": "query"
                     },
@@ -2666,7 +2666,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Trace, request, operation, or error keyword",
+                        "description": "Case-insensitive substring of trace/request/conversation/interaction IDs, agent/app, root service/operation, or recorded error summary; incomplete searches return a resource error",
                         "name": "keyword",
                         "in": "query"
                     }
@@ -2703,7 +2703,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable",
+                        "description": "SUMMARY_QUERY_TIMEOUT, PROJECTION_LAG, or SUMMARY_DEPENDENCY_UNAVAILABLE",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }

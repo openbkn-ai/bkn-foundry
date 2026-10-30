@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
@@ -529,6 +530,52 @@ func TestRawQueryClassifiesRefusalWithoutDetail(t *testing.T) {
 			assert.Equal(t, tc.kind, dependencyErr.Kind)
 			assert.NotContains(t, err.Error(), "email")
 			assert.NotContains(t, err.Error(), "r1")
+		})
+	}
+}
+
+// #2090: vega-backend stops a statement at its query_timeout_sec and answers
+// with the same 500 as any other failure. A failure that took the whole
+// timeout is that stop, and is classified as a timeout so the caller can say
+// so; one that came back sooner, or a query that set no timeout, is not.
+func TestRawQueryClassifiesStatementTimeoutByElapsedTime(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		status     int
+		timeoutSec int
+		elapsed    time.Duration
+		kind       interfaces.DependencyErrorKind
+	}{
+		{"failed at the timeout", http.StatusInternalServerError, 30, 30*time.Second + 15*time.Millisecond, interfaces.DependencyTimeout},
+		{"failed before the timeout", http.StatusInternalServerError, 30, 2 * time.Second, interfaces.DependencyDownstreamError},
+		{"no timeout set", http.StatusInternalServerError, 0, 90 * time.Second, interfaces.DependencyDownstreamError},
+		{"refused after the timeout stays a refusal", http.StatusForbidden, 30, 31 * time.Second, interfaces.DependencyForbidden},
+		{"answered 504", http.StatusGatewayTimeout, 30, time.Second, interfaces.DependencyTimeout},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCtrl := gomock.NewController(t)
+			mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+			mockHTTPClient.EXPECT().
+				PostNoUnmarshal(gomock.Any(), "http://vega/resources/query", gomock.Any(), gomock.Any()).
+				Return(tc.status, []byte(`{"error_code":"VegaBackend.Query.ExecuteFailed","error_details":"query execution failed"}`), nil)
+
+			start := time.Unix(1_700_000_000, 0)
+			readings := []time.Time{start, start.Add(tc.elapsed)}
+			access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega", now: func() time.Time {
+				reading := readings[0]
+				readings = readings[1:]
+				return reading
+			}}
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "user-42", Type: "user"})
+
+			_, err := access.RawQuery(ctx, &interfaces.RawQueryRequest{
+				Query: "SELECT count(*) FROM {{.r1}} t", QueryTimeoutSec: tc.timeoutSec,
+			})
+			var dependencyErr *interfaces.DependencyError
+			require.ErrorAs(t, err, &dependencyErr)
+			assert.Equal(t, tc.kind, dependencyErr.Kind)
+			assert.Equal(t, tc.status, dependencyErr.HTTPStatus)
 		})
 	}
 }

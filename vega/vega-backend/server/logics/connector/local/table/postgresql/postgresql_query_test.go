@@ -333,8 +333,8 @@ func TestSQLCalendarGroup(t *testing.T) {
 			require.NoError(t, err)
 			text, args, err := renderFilterSQL(expr)
 			require.NoError(t, err)
-			assert.Equal(t, `TO_CHAR(DATE_TRUNC($1, "created_at"), $2)`, text)
-			assert.Equal(t, []any{tt.interval, tt.want}, args)
+			assert.Equal(t, `TO_CHAR(DATE_TRUNC('`+tt.name+`', "created_at"), '`+tt.want+`')`, text)
+			assert.Equal(t, []any(nil), args)
 		})
 	}
 }
@@ -359,11 +359,11 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 		Paging:      interfaces.PagingRequest{Limit: 20},
 		NeedTotal:   true,
 	}
-	expectedQuery := `SELECT TO_CHAR(DATE_TRUNC($1, "createdAt"), $2) AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC($1, "createdAt"), $2) ORDER BY "createdAt" ASC NULLS LAST LIMIT 20`
-	mock.ExpectQuery(expectedQuery).WithArgs("day", "YYYY-MM-DD").
+	expectedQuery := `SELECT TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') ORDER BY "createdAt" ASC NULLS LAST LIMIT 20`
+	mock.ExpectQuery(expectedQuery).WithoutArgs().
 		WillReturnRows(sqlmock.NewRows([]string{"createdAt", "__value"}).AddRow("2024-01-01", 1))
 
-	mock.ExpectQuery(`SELECT COUNT(*) FROM (SELECT TO_CHAR(DATE_TRUNC($1, "createdAt"), $2) AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC($1, "createdAt"), $2)) AS "_resource_total"`).WithArgs("day", "YYYY-MM-DD").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`SELECT COUNT(*) FROM (SELECT TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD')) AS "_resource_total"`).WithoutArgs().WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	result, err := connector.ExecuteQuery(context.Background(), resource, params)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"createdAt", "__value"}, result.Columns)

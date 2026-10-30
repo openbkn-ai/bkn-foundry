@@ -190,7 +190,7 @@ func (c *PostgresqlConnector) buildSelectBuilder(resource *interfaces.Resource, 
 				case params.BinaryMode != nil && *params.BinaryMode == interfaces.BinaryModeMetadata:
 					expr = &sb.Function{Name: "OCTET_LENGTH", Args: []sb.SqlNode{expr}}
 				default:
-					expr = &sb.Param{Value: nil}
+					expr = &sb.Literal{Value: nil}
 				}
 			}
 			query.Columns(&sb.Alias{Expr: expr, Name: name})
@@ -301,7 +301,7 @@ func sqlCalendarGroup(expr sb.SqlNode, unit string) (sb.SqlNode, error) {
 	default:
 		return nil, interfaces.NewConditionBuildError("unsupported calendar interval")
 	}
-	return &sb.Function{Name: "TO_CHAR", Args: []sb.SqlNode{&sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Param{Value: unit}, expr}}, &sb.Param{Value: format}}}, nil
+	return &sb.Function{Name: "TO_CHAR", Args: []sb.SqlNode{&sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Literal{Value: unit}, expr}}, &sb.Literal{Value: format}}}, nil
 }
 
 // scanQueryRows 复用原始字段类型和聚合别名信息，保留带时区值与二进制内容。

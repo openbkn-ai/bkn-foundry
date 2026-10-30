@@ -63,6 +63,19 @@ EE 实例必须实际包含并装配企业实现，通过运行时企业许可�
 `/business-provenance/evidence-nodes/...` 等 trace/request/node 读取示例不属于当前挂载合同，
 不能将内部 Evidence Store 模型或旧响应 envelope 当成当前可调用的 HTTP 接口。
 
+## Retained 0.2.0 Evidence enablement (#2573)
+
+The standalone Chart's disabled Evidence consumer is intentional; the complete
+installer enables it and checks the topic. See the operational guide in
+[English](../../help/en/manual/bkn-trace-evidence-enablement.md) or
+[中文](../../help/zh/manual/bkn-trace-evidence-enablement.md) for the matching
+deployment/admission contract, retained-message preservation and real native
+explanation acceptance. A working Audit consumer, a healthy HTTP listener or a
+stored `ready` explanation snapshot does not establish successful attribution.
+The guide's explicit question/generation acceptance is a separately authorized
+deployment-remediation test; ordinary route probes and read-only acceptance
+continue to preserve `not_generated` without generating new requests.
+
 ## Span display and browsing (#2158)
 
 Technical detail keeps its existing single graph read: at most 1,001 raw records,
@@ -208,6 +221,55 @@ cleanup, while late or changed technical versions retain their existing guards.
 The bounded Trace batches above limit package loading without a streaming
 redesign. List/detail query paths are unchanged.
 
+## Trace keyword searches (#2676)
+
+`GET /api/agent-observability/v1/traces?keyword=...` matches a case-insensitive
+substring of the Trace, request, conversation and interaction IDs, agent/app,
+root service, root operation, or recorded error summary. Question/answer bodies
+are outside this field set. Omitting `from` or `to` leaves that time boundary
+unrestricted; the server does not insert a default time window.
+
+Ordinary keyword queries use the existing authorized receipt PIT scanner with
+bounded batches and summary artifact reads. A successful response has an
+exact matching `total`; cursor traversal can reach matches beyond the former
+2,000-candidate compatibility window. Each request scans its matching scope to
+compute that count, so wide queries still cost more than narrow ones. The scan
+keeps its existing 30-second deadline, 65,536 distinct Trace identity limit,
+10,000-receipt expansion limit and bounded result-page retention.
+
+If those budgets are exceeded, the request fails with
+`422 SUMMARY_QUERY_BUDGET_EXCEEDED` or `503 SUMMARY_QUERY_TIMEOUT` rather than
+returning an incomplete count or false empty result. Keyword queries that use
+the compatibility reader (including combined filters outside the scanner's
+supported set) also fail with the budget error when their input is truncated.
+Narrow the explicit time range or filters before retrying. This endpoint does
+not silently shorten the query range or increase the old candidate cap.
+
+## Error-keyword query cost and storage failures (#2675)
+
+Trace `error_keyword` searches in global scopes screen lightweight receipt
+identities against the existing first-failure metadata before loading complete
+Trace receipts, related Interactions and artifacts. Screening reuses the same
+recorded error-summary formatter as final matching: ordinary errors keep the
+first 512 Unicode code points and wrapped execution stderr keeps the last 512.
+It does not search arbitrary input/output or discarded error text. All matching
+candidates remain reachable; existing scan, time and result-retention budgets
+still apply. No index field, schema migration or historical backfill is needed.
+
+Candidate screening never authorizes a result. Complete receipt/Interaction
+authorization and final summary matching still run for every possible match.
+Owner and shared-network scopes retain complete candidate discovery and Interaction
+expansion, because an authorized sibling, including a mixed-owner historical receipt, may not appear in the initial receipt
+scope. Older stores without narrow first-failure metadata also retain the
+complete scanner. These paths retain their existing read cost.
+
+PIT requests preserve rejected HTTP status and a bounded exception type while
+discarding storage reasons, query text and document content. OpenSearch 429 and
+5xx errors return `503 SUMMARY_DEPENDENCY_UNAVAILABLE`; the caller may retry
+later. The server performs no additional automatic retries. Diagnostic warnings
+include the response Trace ID, dependency status and safe exception type; read
+requests do not produce business audit events or additional business Traces.
+
 ## Root-service discovery (#2140)
 
 `GET /api/agent-observability/v1/trace-root-services` returns bounded canonical
@@ -222,7 +284,7 @@ their original spelling for the existing service filter. `has_more` means more
 names match than fit in this selection; refine `q` to find them. This is not a
 paginated global service inventory and does not provide approximate Trace counts.
 
-Simple owner/global queries use the same hot SQL receipt membership as ordinary
+Simple global queries use the same hot SQL receipt membership as ordinary
 Trace lists. Status/error, shared-scope and exact-Trace queries reuse the bounded
 authorized receipt scanner. Root-service SQL metadata and service filtering now
 select source facts through authorized receipt tuples, so an earlier foreign

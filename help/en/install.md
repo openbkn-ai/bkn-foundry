@@ -18,12 +18,16 @@ Prepare the host, network, and client tooling before you deploy.
 
 > Run installation as `root` or with `sudo`.
 
-| Item | Minimum | Recommended |
+| Item | Minimum (testing and learning) | Recommended (minimum for production) |
 | --- | --- | --- |
 | OS | **Ubuntu Server** **22.04 LTS or later**, **Rocky Linux / AlmaLinux / CentOS Stream** 8+, **openEuler** 23+ | Ubuntu **22.04 LTS**, or RPM-based **8+** |
-| CPU | 16 cores | 16 cores |
-| Memory | 48 GB | 64 GB |
-| Disk | 200 GB | 500 GB |
+| CPU | 4 cores | 16 cores or more |
+| Memory | 8 GB | 32 GB or more |
+| Disk | 50 GB | 500 GB or more |
+
+The minimum configuration still requires full deployment and runtime validation; it does not mean the default installation has been verified on that hardware. For constrained hosts, explicitly use `sudo bash ./deploy.sh --distro=k3s openbkn install`; the default kubeadm path retains each service chart's resource settings. These requirements do not change system service charts or guarantee capacity under production workloads.
+
+Preflight uses decimal GB (1 GB = 1,000,000,000 bytes) and the logical CPU count returned by `nproc`. Below minimum is `[FAIL]`, minimum met but below recommended is `[WARN]`, and recommended met is `[OK]`. Disk checks measure **available space** on the filesystems containing `/`, `/var`, and the container image directory, rather than nominal disk capacity; repeated checks of the same filesystem are not additive. Images and data share the disk budget; allow space for the OS, images, data growth, and upgrades.
 
 `preflight.sh` and `deploy.sh` support both **Ubuntu/Debian** (apt) and **Rocky/Alma/CentOS Stream/openEuler** (dnf/yum) as documented in `README.md`.
 
@@ -123,7 +127,7 @@ Common flags:
 | `--fix-allow=LIST` | Comma-separated fix names to auto-approve, others are skipped (e.g. `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`; legacy alias `k8s-apt-source`). Run `sudo bash ./preflight.sh --list-fixes` to see all fix names available on this host. |
 | `--role=target\|admin\|both` | `target` = `kubectl`/`helm` only, `admin` = `openbkn` / Node / npm, `both` (default) covers all |
 | `--no-recheck` | Do not re-run full checks after fixes |
-| `--lenient` | Downgrade install-blocking `[FAIL]` items (sysctl / kernel modules / containerd / kubectl / helm / swap / broken apt sources / missing kubeadm or containerd install candidate / ulimit / inotify / vm.max_map_count / overlay) back to `[WARN]`. Same as `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`. |
+| `--lenient` | Downgrade strict-mode `[FAIL]` items (sysctl / kernel modules / containerd / kubectl / helm / swap / broken apt sources / missing kubeadm or containerd install candidate / ulimit / inotify / vm.max_map_count / overlay) back to `[WARN]`. Same as `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`; it does not downgrade hardware checks below minimum or guarantee a report without `[FAIL]`. |
 | `--skip=LIST` | Comma-separated check names to skip |
 | `--report=PATH` | Append the full log to this file |
 | `--output=json` | Emit JSON summary to stdout (human logs to stderr); requires `python3` |
@@ -133,14 +137,14 @@ Common environment variables:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `KUBE_DISTRO` | `k3s` | Shared with `deploy.sh`: **`k3s`** vs **`k8s`** (kubeadm stack). Legacy `kubeadm` is accepted as an alias for **`k8s`**. Set this when you cannot place `--distro` before the module on `deploy.sh`. |
+| `KUBE_DISTRO` | `k8s` (new hosts) | Shared with `deploy.sh`: **`k3s`** vs **`k8s`** (kubeadm stack). Without an explicit choice, deployment scripts can detect an existing cluster; hosts without one default to **`k8s`**. Legacy `kubeadm` is accepted as an alias for **`k8s`**. Set this when you cannot place `--distro` before the module on `deploy.sh`. |
 | `PREFLIGHT_STRICT` | `true` | When `true`, install-blocking items that `--fix` can resolve are reported as `[FAIL]` (so `--check-only` exits `1`). Set `false` to revert to `[WARN]`. |
 | `PREFLIGHT_STRICT_SOURCES` | `true` | When `true`, also verify `apt-cache policy kubeadm` / `containerd.io` / `containerd` (and the `dnf`/`yum` equivalents) actually return install candidates — `apt-get update` succeeding alone is no longer enough. |
 | `PREFLIGHT_K8S_APT_MINOR` | auto | Pin the `pkgs.k8s.io` minor version (e.g. `v1.28`). Otherwise detected from installed `kubeadm`, falls back to `v1.28`. |
 
 Exit codes: **0** all OK · **1** any FAIL present · **2** only WARN (no FAIL).
 
-> Run preflight **before** every `deploy.sh openbkn install` on a new host. Re-running it is safe — already-satisfied checks are reported as `OK` and skipped. If you intentionally run on a low-spec lab box (memory / disk below recommendation, no Docker CE repo, etc.), use `--lenient` to keep the report informative without blocking install.
+> Run preflight **before** every `deploy.sh openbkn install` on a new host. Hardware that meets minimum but falls below recommended is already `[WARN]`, without `--lenient`. That flag only relaxes strict-mode checks; hardware below minimum remains `[FAIL]`. Add the required resources before installing.
 
 ### Reading the report: `Summary` and `Conclusion`
 
@@ -161,7 +165,7 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
     …
 
 [INFO] Hint: most install-blocking [FAIL] items are auto-fixable — re-run: sudo bash ./preflight.sh --fix
-[INFO]       Need to bypass strict severity … ? sudo bash ./preflight.sh --check-only --lenient
+[INFO]       Relax strict-mode checks only: sudo bash ./preflight.sh --check-only --lenient
 
 ================================================================
   Conclusion
@@ -169,7 +173,7 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
   … preflight above is NOT all clear — fix that before treating deploy as ready.
   Typical loop:
     sudo bash ./preflight.sh --fix          # … (per-item y/N unless -y)
-    sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] are gone (or use --lenient)
+    sudo bash ./preflight.sh --check-only   # add required hardware and resolve blocking items until no [FAIL] remain
   Only then install:
     sudo bash ./deploy.sh openbkn install
     sudo bash ./deploy.sh openbkn install
@@ -559,7 +563,7 @@ Most install-blocking issues that `preflight.sh` flags as `[FAIL]` can be auto-f
 sudo bash ./preflight.sh --fix -y                         # apply every fix non-interactively
 sudo bash ./preflight.sh --fix --fix-allow=k8s-pkgs-repo # only configure / migrate the K8s package source (legacy: k8s-apt-source)
 sudo bash ./preflight.sh --fix --fix-allow=containerd-install
-sudo bash ./preflight.sh --check-only --lenient           # only WARN, never FAIL (lab-box mode)
+sudo bash ./preflight.sh --check-only --lenient           # relax strict-mode checks only; insufficient hardware remains FAIL
 ```
 
 When in doubt, also collect:

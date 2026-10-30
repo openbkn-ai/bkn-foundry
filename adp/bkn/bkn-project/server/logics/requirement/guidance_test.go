@@ -61,6 +61,30 @@ func Test_BuildGuidance(t *testing.T) {
 			})
 		})
 
+		Convey("The message carries the items of the path that joins what the question needs\n", func() {
+			draft := &interfaces.Draft{Items: interfaces.DraftItems{
+				ObjectTypes: []*interfaces.DraftObjectType{{ID: "sales_order", Name: "Order"}, {ID: "customer", Name: "Customer"},
+					{ID: "invoice", Name: "Invoice"}},
+				RelationTypes: []*interfaces.DraftRelationType{
+					{ID: "inv_order", Source: "invoice", Target: "sales_order", Adopted: true},
+					{ID: "inv_customer", Source: "invoice", Target: "customer", Adopted: true},
+				},
+			}}
+			// It names the order and the customer only; invoices join them in this draft.
+			named := &interfaces.RequirementQuestion{ID: "q9", Text: "Whose orders?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
+				Needs: []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"},
+					{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}}}
+			bare := spec
+			bare.Concepts = nil
+
+			message, err := buildGuidanceMessage(interfaces.NAMING_LANGUAGE_EN_US, &bare, named, draft)
+
+			So(err, ShouldBeNil)
+			So(message, ShouldContainSubstring, `"id":"invoice"`)
+			So(message, ShouldContainSubstring, `"id":"inv_order"`)
+			So(message, ShouldContainSubstring, `"id":"inv_customer"`)
+		})
+
 		Convey("Tests get the server's ids, at most maxTests, and are not checked yet\n", func() {
 			out := &guidanceOutput{Guidance: "Use the relation.", OutOfScope: []string{"Parent company?"}}
 			for i := range maxTests + 2 {
@@ -369,6 +393,27 @@ func Test_GenerateGuidance(t *testing.T) {
 	})
 }
 
+func Test_TestsNote(t *testing.T) {
+	Convey("Test what a question's tests show as a whole\n", t, func() {
+		check := func(outcome, reason string) *interfaces.QuestionTest {
+			return &interfaces.QuestionTest{Check: interfaces.QuestionTestCheck{Outcome: outcome, Reason: reason}}
+		}
+		unknownConcept := check(interfaces.TEST_CHECK_NOT_CHECKED, checkUnknownConcept)
+		unknownProperty := check(interfaces.TEST_CHECK_NOT_CHECKED, checkUnknownProperty)
+
+		So(testsNote([]*interfaces.QuestionTest{unknownConcept, unknownProperty}), ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
+		So(testsNote([]*interfaces.QuestionTest{unknownConcept}), ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
+		for _, tests := range [][]*interfaces.QuestionTest{
+			nil,
+			{unknownConcept, check(interfaces.TEST_CHECK_PASSED, "")},
+			{unknownConcept, check(interfaces.TEST_CHECK_NOT_CHECKED, checkQueryFailed)},
+			{check(interfaces.TEST_CHECK_FAILED, checkRecordNotFound)},
+		} {
+			So(testsNote(tests), ShouldEqual, "")
+		}
+	})
+}
+
 func Test_GetGuidance(t *testing.T) {
 	Convey("Test GetGuidance\n", t, func() {
 		ctrl := gomock.NewController(t)
@@ -447,6 +492,21 @@ func Test_GetGuidance(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(view.Current, ShouldEqual, c.current)
 			}
+		})
+
+		Convey("Reading notes when no test could be checked, from the tests as they are\n", func() {
+			g := stored(1, "Which orders?")
+			g.Tests = []*interfaces.QuestionTest{{ID: "t1", Check: interfaces.QuestionTestCheck{
+				Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkUnknownConcept}}}
+			spec := readySpec()
+			spec.CreateTime = 10
+			ra.EXPECT().GetGuidance(gomock.Any(), "p1", "q1").Return(g, true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+
+			view, err := svc.GetGuidance(ctx, token, "p1", "q1")
+
+			So(err, ShouldBeNil)
+			So(view.TestsNote, ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
 		})
 
 		Convey("A question with no test questions generated is 404\n", func() {

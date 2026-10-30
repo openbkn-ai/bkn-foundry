@@ -867,6 +867,9 @@ type CypherQueryReq struct {
 	// Explain asks for the query's plan instead of its rows: the query is
 	// compiled and authorized as it would be to run, and nothing is read.
 	Explain bool `json:"explain,omitempty"`
+	// TimeoutSec asks bkn-backend for a statement timeout shorter than its
+	// configured one, in seconds; zero leaves the configured one.
+	TimeoutSec int `json:"timeout_sec,omitempty"`
 }
 
 // CypherQueryColumn is one output column of a Cypher query.

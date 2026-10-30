@@ -5,6 +5,7 @@
 package release
 
 import (
+	"maps"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -121,6 +122,45 @@ func Test_ReleaseQuestions(t *testing.T) {
 
 			So(q.Unanswerable, ShouldHaveLength, 1)
 			So(q.Unanswerable[0].Missing, ShouldResemble, []interfaces.ReleaseItem{item(rt, "purchase_order", "purchase_order")})
+		})
+
+		Convey("The path joining what a question needs is judged as its needs are\n", func() {
+			withPath := question("q1", knowledge, need(ot, "part"), need(ot, "purchase_order"))
+			withPath.Path = []interfaces.RequirementItemRef{need(rt, "supplier_has_purchase_order"), need(ot, "supplier")}
+			sq := &interfaces.ScenarioQuestions{Questions: []interfaces.ScenarioQuestion{withPath}}
+
+			q := releaseQuestions(sq, branchFiles, mainFiles, diff)
+
+			// The branch has the relation but not supplier, which the path goes through.
+			So(q.AnswerableNew, ShouldBeEmpty)
+			So(q.Unanswerable, ShouldResemble, []interfaces.ReleaseQuestion{{ID: "q1", Text: "Text of q1",
+				Needs: []interfaces.ReleaseItem{part, purchaseOrder}, Path: []interfaces.ReleaseItem{relation, supplier},
+				Missing: []interfaces.ReleaseItem{supplier}}})
+
+			// With supplier released, it is answerable once released.
+			branch := maps.Clone(branchFiles)
+			branch["object_types/supplier.bkn"] = objectTypeBKN("supplier", "Supplier", true)
+			q = releaseQuestions(sq, branch, mainFiles, interfaces.PathDiff{})
+			So(q.AnswerableNew, ShouldHaveLength, 1)
+			So(q.AnswerableNew[0].Path, ShouldResemble, []interfaces.ReleaseItem{relation, supplier})
+		})
+
+		Convey("A question whose object types nothing joins is unanswerable, the gap named as people read it\n", func() {
+			apart := question("q1", knowledge, need(ot, "part"), need(ot, "purchase_order"))
+			apart.Unconnected = []interfaces.ScenarioUnconnected{{From: "part", To: "purchase_order"}}
+			sq := &interfaces.ScenarioQuestions{Questions: []interfaces.ScenarioQuestion{apart}}
+
+			q := releaseQuestions(sq, branchFiles, mainFiles, diff)
+
+			So(q.AnswerableNew, ShouldBeEmpty)
+			So(q.Unanswerable, ShouldResemble, []interfaces.ReleaseQuestion{{ID: "q1", Text: "Text of q1",
+				Needs:       []interfaces.ReleaseItem{part, purchaseOrder},
+				Unconnected: []interfaces.ReleaseUnconnected{{From: part, To: purchaseOrder}}}})
+
+			// Named as main has it when the branch lacks it, else by its id.
+			apart.Unconnected = []interfaces.ScenarioUnconnected{{From: "supplier", To: "carrier"}}
+			q = releaseQuestions(&interfaces.ScenarioQuestions{Questions: []interfaces.ScenarioQuestion{apart}}, branchFiles, mainFiles, diff)
+			So(q.Unanswerable[0].Unconnected, ShouldResemble, []interfaces.ReleaseUnconnected{{From: supplier, To: item(ot, "carrier", "carrier")}})
 		})
 
 		Convey("Without a specification there are no questions, and the lists are empty, not null\n", func() {

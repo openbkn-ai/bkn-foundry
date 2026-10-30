@@ -5,7 +5,6 @@
 package compiler
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -21,25 +20,25 @@ func TestTreeBuilderExpressions(t *testing.T) {
 		input, want string
 		args        []any
 	}{
-		{"1+2*3-4/2%2", "((? + (? * ?)) - ((? / ?) % ?))", []any{json.Number("1"), json.Number("2"), json.Number("3"), json.Number("4"), json.Number("2"), json.Number("2")}},
-		{"-1 + +2", "((-?) + (+?))", []any{json.Number("1"), json.Number("2")}},
-		{"NOT (a=1 OR b<>2) AND c<=3", "((NOT ((`a` = ?) OR (`b` <> ?))) AND (`c` <= ?))", []any{json.Number("1"), json.Number("2"), json.Number("3")}},
-		{"a!=1 OR a>2 OR a>=3 OR a<4", "((`a` <> ?) OR (`a` > ?) OR (`a` >= ?) OR (`a` < ?))", []any{json.Number("1"), json.Number("2"), json.Number("3"), json.Number("4")}},
+		{"1+2*3-4/2%2", "((1 + (2 * 3)) - ((4 / 2) % 2))", nil},
+		{"-1 + +2", "((-1) + (+2))", nil},
+		{"NOT (a=1 OR b<>2) AND c<=3", "((NOT ((`a` = 1) OR (`b` <> 2))) AND (`c` <= 3))", nil},
+		{"a!=1 OR a>2 OR a>=3 OR a<4", "((`a` <> 1) OR (`a` > 2) OR (`a` >= 3) OR (`a` < 4))", nil},
 		{"a IS NULL OR b IS NOT NULL", "((`a` IS NULL) OR (`b` IS NOT NULL))", nil},
-		{"a NOT IN (1,NULL)", "(`a` NOT IN (?, ?))", []any{json.Number("1"), nil}},
-		{"a BETWEEN 1 AND 2", "(`a` BETWEEN ? AND ?)", []any{json.Number("1"), json.Number("2")}},
-		{"a NOT BETWEEN 1 AND 2", "(`a` NOT BETWEEN ? AND ?)", []any{json.Number("1"), json.Number("2")}},
-		{"a LIKE 'x%_y'", "(`a` LIKE ? ESCAPE ?)", []any{"x%_y", "\\"}},
-		{"a NOT LIKE 'x!%' ESCAPE '!'", "(`a` NOT LIKE ? ESCAPE ?)", []any{"x!%", "!"}},
+		{"a NOT IN (1,NULL)", "(`a` NOT IN (1, NULL))", nil},
+		{"a BETWEEN 1 AND 2", "(`a` BETWEEN 1 AND 2)", nil},
+		{"a NOT BETWEEN 1 AND 2", "(`a` NOT BETWEEN 1 AND 2)", nil},
+		{"a LIKE 'x%_y'", "(`a` LIKE 'x%_y' ESCAPE CONCAT('', CHAR(92 USING ascii)))", nil},
+		{"a NOT LIKE 'x!%' ESCAPE '!'", "(`a` NOT LIKE 'x!%' ESCAPE '!')", nil},
 		{"COUNT(DISTINCT a)", "COUNT(DISTINCT `a`)", nil},
-		{"COALESCE(a,0)", "COALESCE(`a`, ?)", []any{json.Number("0")}},
-		{"OCTET_LENGTH('中文')", "LENGTH(?)", []any{"中文"}},
-		{"octet_length(NULL)", "LENGTH(?)", []any{nil}},
+		{"COALESCE(a,0)", "COALESCE(`a`, 0)", nil},
+		{"OCTET_LENGTH('中文')", "LENGTH('中文')", nil},
+		{"octet_length(NULL)", "LENGTH(NULL)", nil},
 		{"CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()", nil},
 		{"CURRENT_TIMESTAMP()", "CURRENT_TIMESTAMP()", nil},
-		{"CASE a WHEN 1 THEN 'one' ELSE NULL END", "CASE `a` WHEN ? THEN ? ELSE ? END", []any{json.Number("1"), "one", nil}},
-		{"CASE WHEN a=1 THEN 'one' WHEN a=2 THEN 'two' END", "CASE WHEN (`a` = ?) THEN ? WHEN (`a` = ?) THEN ? END", []any{json.Number("1"), "one", json.Number("2"), "two"}},
-		{"CAST(1.2300 AS DECIMAL(12,4))", "CAST(CAST(? AS DECIMAL(5,4)) AS DECIMAL(12,4))", []any{json.Number("1.2300")}},
+		{"CASE a WHEN 1 THEN 'one' ELSE NULL END", "CASE `a` WHEN 1 THEN 'one' ELSE NULL END", nil},
+		{"CASE WHEN a=1 THEN 'one' WHEN a=2 THEN 'two' END", "CASE WHEN (`a` = 1) THEN 'one' WHEN (`a` = 2) THEN 'two' END", nil},
+		{"CAST(1.2300 AS DECIMAL(12,4))", "CAST(CAST(1.2300 AS DECIMAL(5,4)) AS DECIMAL(12,4))", nil},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			query, err := ParseSQL("SELECT " + tc.input + " FROM {{x}}")
@@ -143,7 +142,7 @@ func TestTreeBuilderGroupPosition(t *testing.T) {
 	} {
 		query, err := ParseSQL(input)
 		require.NoError(t, err)
-		_, ok := query.GroupByPart[0].(*sb.Param)
+		_, ok := query.GroupByPart[0].(*sb.Literal)
 		assert.True(t, ok, input)
 	}
 }
@@ -154,14 +153,14 @@ func TestTreeBuilderProjectionNames(t *testing.T) {
 		names       []string
 		args        []any
 	}{
-		{"SELECT 1,2 FROM {{x}}", "SELECT ? AS `1`, ? AS `2` FROM `orders`", []string{"1", "2"}, []any{json.Number("1"), json.Number("2")}},
-		{"SELECT 001,1.20,1e2 FROM {{x}}", "SELECT ? AS `001`, CAST(? AS DECIMAL(3,2)) AS `1.20`, ? AS `1e2` FROM `orders`", []string{"001", "1.20", "1e2"}, []any{json.Number("1"), json.Number("1.20"), json.Number("1e2")}},
-		{"SELECT 'label','a`b','' FROM {{x}}", "SELECT ? AS `label`, ? AS `a``b`, ? AS `` FROM `orders`", []string{"label", "a`b", ""}, []any{"label", "a`b", ""}},
-		{"SELECT 1 +  2, SUM(id) FROM {{x}}", "SELECT (? + ?) AS `1 +  2`, SUM(`id`) AS `SUM(id)` FROM `orders`", []string{"1 +  2", "SUM(id)"}, []any{json.Number("1"), json.Number("2")}},
-		{"SELECT ((001)),(id),a.* FROM {{x}} a", "SELECT ? AS `001`, `id`, `a`.* FROM `orders` AS `a`", []string{"001"}, []any{json.Number("1")}},
-		{"SELECT q.`1` FROM (SELECT 1 FROM {{x}}) q", "SELECT `q`.`1` FROM (SELECT ? AS `1` FROM `orders`) AS `q`", nil, []any{json.Number("1")}},
+		{"SELECT 1,2 FROM {{x}}", "SELECT 1 AS `1`, 2 AS `2` FROM `orders`", []string{"1", "2"}, nil},
+		{"SELECT 001,1.20,1e2 FROM {{x}}", "SELECT 1 AS `001`, CAST(1.20 AS DECIMAL(3,2)) AS `1.20`, 1e2 AS `1e2` FROM `orders`", []string{"001", "1.20", "1e2"}, nil},
+		{"SELECT 'label','a`b','' FROM {{x}}", "SELECT 'label' AS `label`, 'a`b' AS `a``b`, '' AS `` FROM `orders`", []string{"label", "a`b", ""}, nil},
+		{"SELECT 1 +  2, SUM(id) FROM {{x}}", "SELECT (1 + 2) AS `1 +  2`, SUM(`id`) AS `SUM(id)` FROM `orders`", []string{"1 +  2", "SUM(id)"}, nil},
+		{"SELECT ((001)),(id),a.* FROM {{x}} a", "SELECT 1 AS `001`, `id`, `a`.* FROM `orders` AS `a`", []string{"001"}, nil},
+		{"SELECT q.`1` FROM (SELECT 1 FROM {{x}}) q", "SELECT `q`.`1` FROM (SELECT 1 AS `1` FROM `orders`) AS `q`", nil, nil},
 		{"SELECT NOW(6) FROM {{x}}", "SELECT NOW(6) AS `NOW(6)` FROM `orders`", []string{"NOW(6)"}, nil},
-		{"SELECT 1 AS explicit_name FROM {{x}}", "SELECT ? AS `explicit_name` FROM `orders`", []string{"explicit_name"}, []any{json.Number("1")}},
+		{"SELECT 1 AS explicit_name FROM {{x}}", "SELECT 1 AS `explicit_name` FROM `orders`", []string{"explicit_name"}, nil},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			query, err := ParseSQL(tc.input)
@@ -202,7 +201,7 @@ func TestTreeBuilderProjectionNames(t *testing.T) {
 		assert.Equal(t, CodeUnsupported, failure.Code)
 		query, err = ParseSQL("SELECT 'a\\0b' AS label FROM {{x}}")
 		require.NoError(t, err)
-		assert.Equal(t, "a\x00b", query.ColumnsPart[0].(*sb.Alias).Expr.(*sb.Param).Value)
+		assert.Equal(t, "a\x00b", query.ColumnsPart[0].(*sb.Alias).Expr.(*sb.Literal).Value)
 	})
 
 }

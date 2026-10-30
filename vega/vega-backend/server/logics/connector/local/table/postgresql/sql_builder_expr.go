@@ -163,8 +163,8 @@ func (b *pgSQLBuffer) node(node sb.SqlNode) {
 	start := len(b.tokens)
 	computed := true
 	switch node.(type) {
-	case *sb.Column, *sb.Param, *sb.Star, *sb.Alias, *sb.Table, *sb.Subquery,
-		*sb.SelectBuilder, *sb.Join, *sb.JoinedTable, *sb.Order:
+	case *sb.Column, *sb.Param, *sb.Literal, *sb.Star, *sb.Alias, *sb.Table,
+		*sb.Subquery, *sb.SelectBuilder, *sb.Join, *sb.JoinedTable, *sb.Order:
 		computed = false
 	}
 	b.writeNode(node)
@@ -228,6 +228,8 @@ func (b *pgSQLBuffer) writeNode(node sb.SqlNode) {
 			}
 			b.identifier(n.Name)
 		}
+	case *sb.Literal:
+		b.constant(n.Value)
 	case *sb.Param:
 		b.parameter(n.Value)
 	case *sb.Star:
@@ -341,7 +343,7 @@ func (b *pgSQLBuffer) writeNode(node sb.SqlNode) {
 		b.node(n.Pattern)
 		if n.Escape != nil {
 			b.write(" ESCAPE ")
-			b.parameter(*n.Escape)
+			b.constant(*n.Escape)
 		}
 		b.write(")")
 	case *sb.Contains:
@@ -465,13 +467,13 @@ func (b *pgSQLBuffer) selectQuery(q *sb.SelectBuilder) {
 				b.write(", ")
 			}
 			// 整数字面量保留位置语义，范围及聚合合法性由源端判断。
-			if param, ok := group.(*sb.Param); ok && param != nil {
+			if param, ok := group.(*sb.Literal); ok && param != nil {
 				if number, ok := param.Value.(json.Number); ok && len(number) > 0 && strings.IndexFunc(string(number), func(r rune) bool { return r < '0' || r > '9' }) == -1 {
 					b.write(string(number))
 					continue
 				}
 			}
-			b.node(group)
+			b.sortGroupExpression(group)
 		}
 	}
 	if len(q.HavingPart) > 0 {
@@ -546,7 +548,7 @@ func (b *pgSQLBuffer) order(o sb.Order) {
 		}
 		b.write(strconv.FormatUint(o.Position, 10))
 	} else {
-		b.node(o.Expr)
+		b.sortGroupExpression(o.Expr)
 	}
 	if o.Descending {
 		b.write(" DESC")
@@ -560,6 +562,26 @@ func (b *pgSQLBuffer) order(o sb.Order) {
 	} else {
 		b.write(" NULLS LAST")
 	}
+}
+
+// sortGroupExpression 避免 PG 将独立的非整数常量按 SQL92 位置语法解析。
+func (b *pgSQLBuffer) sortGroupExpression(node sb.SqlNode) {
+	if literal, ok := node.(*sb.Literal); ok && literal != nil {
+		target := ""
+		switch literal.Value.(type) {
+		case nil, string:
+			target = "TEXT"
+		case bool:
+			target = "BOOLEAN"
+		}
+		if target != "" {
+			b.write("CAST(")
+			b.node(node)
+			b.write(" AS " + target + ")")
+			return
+		}
+	}
+	b.node(node)
 }
 
 // cast 将逻辑类型映射为 PG 类型；没有对应能力时明确拒绝。
@@ -715,12 +737,12 @@ func (b *pgSQLBuffer) function(f sb.Function) {
 		}
 		b.write("LOCALTIMESTAMP")
 		if len(f.Args) == 1 {
-			p, ok := f.Args[0].(*sb.Param)
-			if !ok || p == nil {
+			p, ok := sb.ScalarValue(f.Args[0])
+			if !ok {
 				b.fail("temporal precision must be a literal")
 				return
 			}
-			n, ok := p.Value.(json.Number)
+			n, ok := p.(json.Number)
 			v, err := strconv.ParseUint(string(n), 10, 8)
 			if !ok || err != nil || v > 6 {
 				b.fail("temporal precision is out of range")
@@ -808,12 +830,12 @@ func (b *pgSQLBuffer) function(f sb.Function) {
 			b.fail("date formatting requires two arguments")
 			return
 		}
-		p, ok := f.Args[1].(*sb.Param)
-		if !ok || p == nil {
+		p, ok := sb.ScalarValue(f.Args[1])
+		if !ok {
 			b.fail("date format must be a string literal")
 			return
 		}
-		format, ok := p.Value.(string)
+		format, ok := p.(string)
 		if !ok {
 			b.fail("date format must be a string literal")
 			return
@@ -827,13 +849,13 @@ func (b *pgSQLBuffer) function(f sb.Function) {
 			b.write("TO_CHAR(CAST(")
 			b.node(f.Args[0])
 			b.write(" AS TIMESTAMP), ")
-			b.parameter(mapped)
+			b.scalar(f.Args[1], mapped)
 			b.write(")")
 		} else {
 			b.write("CAST(TO_TIMESTAMP(CAST(")
 			b.node(f.Args[0])
 			b.write(" AS TEXT), ")
-			b.parameter(mapped)
+			b.scalar(f.Args[1], mapped)
 			b.write(") AS TIMESTAMP)")
 		}
 		return
@@ -917,4 +939,56 @@ func (b *pgSQLBuffer) substring(args []sb.SqlNode) {
 		b.write(" AS INTEGER)")
 	}
 	b.write(") END")
+}
+
+// constant 序列化 SQL 字面量；E 字符串不依赖 standard_conforming_strings。
+func (b *pgSQLBuffer) constant(value any) {
+	switch v := value.(type) {
+	case nil:
+		b.write("NULL")
+	case bool:
+		if v {
+			b.write("TRUE")
+		} else {
+			b.write("FALSE")
+		}
+	case string:
+		if !utf8.ValidString(v) || strings.ContainsRune(v, 0) {
+			b.fail("PostgreSQL text literal contains invalid characters")
+			return
+		}
+		if strings.ContainsRune(v, '\\') {
+			b.write("E'" + strings.NewReplacer("\\", "\\\\", "'", "''").Replace(v) + "'")
+		} else {
+			b.write("'" + strings.ReplaceAll(v, "'", "''") + "'")
+		}
+	default:
+		number, err := sb.LiteralNumber(value)
+		if err != nil {
+			b.err = err
+			return
+		}
+		temporary := &pgSQLBuffer{}
+		temporary.parameter(number)
+		if temporary.err != nil {
+			b.err = temporary.err
+			return
+		}
+		for _, part := range temporary.tokens {
+			if part.parameter != nil {
+				b.write(string(number))
+			} else {
+				b.write(part.text)
+			}
+		}
+	}
+}
+
+// scalar 在函数参数转换后保留原节点的字面量或绑定语义。
+func (b *pgSQLBuffer) scalar(node sb.SqlNode, value any) {
+	if _, ok := node.(*sb.Literal); ok {
+		b.constant(value)
+	} else {
+		b.parameter(value)
+	}
 }

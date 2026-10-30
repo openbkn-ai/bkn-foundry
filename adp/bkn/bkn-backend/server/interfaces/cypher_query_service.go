@@ -18,8 +18,13 @@ const (
 	// the page ceiling of vega-backend's raw query interface, which would
 	// otherwise cut the result down without saying so.
 	CYPHER_MAX_LIMIT = 10000
-	// CYPHER_DEFAULT_TIMEOUT_SEC bounds one statement at the connector.
-	CYPHER_DEFAULT_TIMEOUT_SEC = 30
+	// CYPHER_DEFAULT_TIMEOUT_SEC bounds one statement at the connector when
+	// the service is not configured otherwise; see
+	// common.ServerSetting.CypherQueryTimeoutSec.
+	CYPHER_DEFAULT_TIMEOUT_SEC = 55
+	// CYPHER_MAX_TIMEOUT_SEC is the most vega-backend accepts for one
+	// statement; a configured timeout past it is held to it.
+	CYPHER_MAX_TIMEOUT_SEC = 3600
 	// CYPHER_MAX_PATH_LENGTH bounds how many relationships one pattern may
 	// hold. Each is a join, and the row limit bounds what comes back rather
 	// than what it costs to produce, so the number of joins is bounded here.
@@ -50,6 +55,10 @@ type CypherQuery struct {
 	// read, authorized and compiled exactly as it would be to run, so it is
 	// refused in exactly the same cases, but nothing is read from the data.
 	Explain bool
+	// TimeoutSec asks for a shorter statement timeout than the service's
+	// configured one; zero means the configured one. More than that is
+	// refused.
+	TimeoutSec int
 }
 
 // CypherQueryResult carries the rows a query produced. The generated SQL is

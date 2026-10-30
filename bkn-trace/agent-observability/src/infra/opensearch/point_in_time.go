@@ -107,6 +107,12 @@ func (c *Client) pointInTimeRequest(ctx context.Context, method, path string, bo
 		return nil, fmt.Errorf("execute receipt snapshot request: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		// Keep status/type even if the error body is malformed, oversized or
+		// interrupted. Never retain raw storage reasons or request/document data.
+		raw, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		return nil, &StatusError{Operation: "receipt snapshot", StatusCode: response.StatusCode, Type: pointInTimeErrorType(raw)}
+	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, maxPointInTimeResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read receipt snapshot response: %w", err)
@@ -114,8 +120,22 @@ func (c *Client) pointInTimeRequest(ctx context.Context, method, path string, bo
 	if len(raw) > maxPointInTimeResponseBytes {
 		return nil, ErrPointInTimeResponseBudgetExceeded
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("receipt snapshot request failed with HTTP %d", response.StatusCode)
-	}
 	return raw, nil
+}
+
+func pointInTimeErrorType(raw []byte) string {
+	var result struct {
+		Error struct {
+			Type string `json:"type"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(raw, &result) != nil || len(result.Error.Type) > 128 {
+		return ""
+	}
+	for _, r := range result.Error.Type {
+		if r != '_' && (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return ""
+		}
+	}
+	return result.Error.Type
 }

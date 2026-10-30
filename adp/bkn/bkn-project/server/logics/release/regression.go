@@ -5,9 +5,11 @@
 package release
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
@@ -139,7 +143,11 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 			for _, t := range q.Tests {
 				tests = append(tests, interfaces.RegressionTest{ID: t.ID, Text: t.Text, Expect: t.Expect})
 			}
-			questions = append(questions, interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests})
+			question := interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests}
+			if len(q.Path) > 0 {
+				question.Path = append([]interfaces.RequirementItemRef{}, q.Path...)
+			}
+			questions = append(questions, question)
 		}
 	}
 	return questions, nil
@@ -170,10 +178,12 @@ func regressionAsks(questions []interfaces.RegressionQuestion) []regressionAsk {
 }
 
 // regressionContext is what a run judges against: the release's items by name, the names the
-// project's draft gives, and the language reasons are written in.
+// project's draft gives, the display names of the release's items and properties, and the language
+// reasons are written in.
 type regressionContext struct {
 	defined  map[interfaces.ReleaseItem]string
 	drafted  map[interfaces.ReleaseItem]string
+	glossary []judgeName
 	language string
 }
 
@@ -240,8 +250,24 @@ func (s *regressionService) regressionContext(ctx context.Context, projectID str
 		if kindOf(p) != "" {
 			it := itemAt(p, files)
 			rc.defined[interfaces.ReleaseItem{Kind: it.Kind, ID: it.ID}] = it.Name
+			if it.Name != it.ID {
+				rc.glossary = append(rc.glossary, judgeName{Kind: it.Kind, ID: it.ID, Name: it.Name})
+			}
+		}
+		if kindOf(p) == interfaces.RELEASE_ITEM_OBJECT_TYPE {
+			if ot, err := bkn.ParseObjectTypeFile(string(files[p]), p); err == nil && ot.ID != "" {
+				for _, dp := range ot.DataProperties {
+					if dp.DisplayName != "" && dp.DisplayName != dp.Name {
+						rc.glossary = append(rc.glossary, judgeName{Kind: judgeNameProperty, ID: dp.Name, Name: dp.DisplayName,
+							ObjectType: ot.ID})
+					}
+				}
+			}
 		}
 	}
+	slices.SortFunc(rc.glossary, func(a, b judgeName) int {
+		return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.ObjectType, b.ObjectType), cmp.Compare(a.ID, b.ID))
+	})
 	if draft, ok, err := s.da.GetDraft(ctx, projectID); err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Read draft of project %s: %v", projectID, err))
 	} else if ok {
@@ -266,7 +292,8 @@ func (s *regressionService) regressionContext(ctx context.Context, projectID str
 func (s *regressionService) judge(ctx context.Context, token string, networkID string, runID string, index int,
 	attempt int, a regressionAsk, runner interfaces.AccountInfo, rc *regressionContext) interfaces.RegressionResult {
 	result := interfaces.RegressionResult{QuestionID: a.question.ID, TestID: a.testID}
-	for _, n := range a.question.Needs {
+	// What joins its object types counts as needed too: the release lacking it is missing.
+	for _, n := range a.question.Rests() {
 		if _, ok := rc.defined[interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID}]; !ok {
 			result.Missing = append(result.Missing, rc.name(n.Kind, n.ID))
 		}
@@ -312,15 +339,28 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 // decide has the judge say whether the answer kept in result answers what was asked, and takes its
 // verdict: answered passes; a question lacking a specific value needs values, which is not the
 // ontology's fault; an answer that cannot answer or is about something else is not answered. A
-// judgement that cannot be had is an error, never a pass.
+// judgement that cannot be had is an error, never a pass. A reason that names a tool the answer
+// called is judged once more; named again, the judgement stands with a warning.
 func (s *regressionService) decide(ctx context.Context, a regressionAsk, result interfaces.RegressionResult,
 	runner interfaces.AccountInfo, rc *regressionContext) interfaces.RegressionResult {
-	needs := make([]interfaces.ReleaseItem, 0, len(a.question.Needs))
-	for _, n := range a.question.Needs {
+	needs := make([]interfaces.ReleaseItem, 0, len(a.question.Needs)+len(a.question.Path))
+	for _, n := range a.question.Rests() {
 		needs = append(needs, rc.name(n.Kind, n.ID))
 	}
+	names := namesIn(rc.glossary, result.ToolUses)
 	result.ErrorCode, result.Verdict, result.Reason, result.UsedNeeds = "", "", "", nil
-	out, code := s.judgeAnswer(ctx, runner, a.text, a.expect, result.Answer, result.ToolUses, needs, rc.language)
+	out, code := s.judgeAnswer(ctx, runner, a.text, a.expect, result.Answer, result.ToolUses, needs, names, rc.language)
+	if out != nil && toolNamedIn(out.Reason, result.ToolUses) {
+		// A judgement made again that cannot be had leaves the first to stand.
+		if again, _ := s.judgeAnswer(ctx, runner, a.text, a.expect, result.Answer, result.ToolUses, needs, names,
+			rc.language); again != nil {
+			out = again
+		}
+		if toolNamedIn(out.Reason, result.ToolUses) {
+			otellog.LogWarn(ctx, fmt.Sprintf("Reason of question %s names a tool: %s", a.question.ID, out.Reason))
+			result.Warning = interfaces.REGRESSION_WARNING_REASON_HAS_TOOL_NAME
+		}
+	}
 	if out == nil {
 		result.Outcome, result.ErrorCode = interfaces.REGRESSION_OUTCOME_ERROR, code
 		return result

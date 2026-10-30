@@ -19,6 +19,7 @@ var cypherEnUS = i18n.I18nMessages{
 		"BknBackend.Cypher.Forbidden":                                    "The data source refused a resource the query reads. Please ask the administrator to publish the knowledge network and synchronize its proxy account, or to grant access to the resources behind these object types.",
 		"BknBackend.Cypher.PropertyForbidden":                            "The query reads a property you may not read in full. Please remove the listed properties from the query or ask the administrator for full access to them.",
 		"BknBackend.Cypher.ReadBudgetExceeded":                           "The query would read more rows than one execution may. Please add conditions on the nodes the pattern matches so that fewer rows are read.",
+		"BknBackend.Cypher.QueryTimeout":                                 "The query did not finish within its time limit and was stopped. Please add conditions on the nodes the pattern matches so that less data is read or joined, then try again.",
 		"BknBackend.Cypher.PropertyForbidden.Detail.NotFull":             "Full access is required to every property the query reads; it is not granted for: {{.properties}}.",
 		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSource":         "The query reads object types stored in a dataset or an index, or in more than one data source. Such data takes the basic forms only: MATCH, OPTIONAL MATCH, WHERE, returning properties and aggregates, ORDER BY / SKIP / LIMIT, and WITH to filter after aggregating or by an earlier stage's values. CASE, coalesce, totals over groups, comparing two lists, passing nodes on to the next MATCH, and collect are not available there (returning nodes and relationships is); rewrite the query without them.",
 		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceTooLarge": "The query reads object types stored in a dataset or an index, or in more than one data source, which are read table by table and joined; this one reads more than the limit allows or runs out of time, so narrow it with conditions.",
@@ -26,5 +27,6 @@ var cypherEnUS = i18n.I18nMessages{
 		"BknBackend.Cypher.InvalidParameter.Detail.QueryRequired":        "query is required.",
 		"BknBackend.Cypher.InvalidParameter.Detail.QueryTooLong":         "query must not exceed {{.max}} characters.",
 		"BknBackend.Cypher.InvalidParameter.Detail.LimitExceeded":        "LIMIT must not exceed {{.max}}.",
+		"BknBackend.Cypher.InvalidParameter.Detail.TimeoutOutOfRange":    "timeout_sec must be between 1 and {{.max}} seconds; leave it out to use the configured {{.max}} seconds.",
 	},
 }

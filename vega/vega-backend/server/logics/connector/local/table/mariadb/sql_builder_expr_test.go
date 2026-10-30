@@ -225,8 +225,11 @@ func TestLikeToSql(t *testing.T) {
 			want := "(`name`" + keyword + "?"
 			wantArgs := []any{"a%_b"}
 			if escape != nil {
-				want += " ESCAPE ?"
-				wantArgs = append(wantArgs, *escape)
+				escaped := "'" + strings.ReplaceAll(*escape, "'", "''") + "'"
+				if *escape == "\\" {
+					escaped = "CONCAT('', CHAR(92 USING ascii))"
+				}
+				want += " ESCAPE " + escaped
 			}
 			want += ")"
 			text, args, err := render((&sb.Like{Expr: &sb.Column{Name: "name"}, Pattern: &sb.Param{Value: "a%_b"}, Escape: escape, Negated: negated}))
@@ -379,4 +382,36 @@ func TestNumericLiteralSQL(t *testing.T) {
 		assert.Empty(t, text)
 		assert.Nil(t, args)
 	}
+}
+
+func TestLiteralSQL(t *testing.T) {
+	for _, tc := range []struct {
+		value any
+		want  string
+	}{
+		{nil, "NULL"}, {true, "TRUE"}, {false, "FALSE"},
+		{"O'Reilly中文", "'O''Reilly中文'"}, {"", "''"},
+		{"a\\b", "CONCAT('a', CHAR(92 USING ascii), 'b')"},
+		{"a\x00b", "CONCAT('a', CHAR(0 USING ascii), 'b')"},
+		{"\\", "CONCAT('', CHAR(92 USING ascii))"},
+		{"\\\x00中文'", "CONCAT('', CHAR(92,0 USING ascii), '中文''')"},
+		{json.Number("1.23000000000000000001"), "CAST(1.23000000000000000001 AS DECIMAL(21,20))"},
+		{uint64(18446744073709551615), "18446744073709551615"},
+	} {
+		text, args, err := literalSQL(tc.value)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, text)
+		assert.Empty(t, args)
+	}
+	for _, value := range []any{json.Number("1); SELECT 2"), json.Number("1e999"), []byte("x"), &sb.Column{Name: "x"}, string([]byte{0xff})} {
+		text, args, err := literalSQL(value)
+		require.Error(t, err)
+		assert.Empty(t, text)
+		assert.Empty(t, args)
+	}
+	query := sb.Select(&sb.Literal{Value: "fixed"}, &sb.Param{Value: "business"})
+	text, args, err := ToSql(query)
+	require.NoError(t, err)
+	assert.Equal(t, "SELECT 'fixed', ?", text)
+	assert.Equal(t, []any{"business"}, args)
 }

@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Trace `keyword` searches traverse the existing bounded authorized PIT scanner beyond the compatibility candidate window, preserving exact counts and cursor paging. Truncated compatibility keyword reads return an explicit resource-budget error. Omitted time bounds remain unrestricted. (#2676)
+
+- Screen global Trace error-keyword candidates using existing scoped first-failure metadata before receipt/Interaction/artifact expansion, preserving summary truncation and complete authorized results. Preserve PIT storage rejection status/type and return explicit retryable dependency errors with sanitized diagnostics. Owner/shared-network and legacy-store scans retain their complete authorization path. (#2675)
+
 - Claim MariaDB projection work through ordered, bounded ID candidate pages using the v040 covering index, then lock and revalidate selected rows. Preserve ID ordering, `SKIP LOCKED`, payload budgets and lease fencing; add historical-volume, 100k/500k pending capacity and real worker/OpenSearch throughput regressions. (#2585)
 
 ### Changed

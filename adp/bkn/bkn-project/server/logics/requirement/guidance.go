@@ -167,7 +167,9 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 			mapped[*c.MapsTo] = true
 		}
 	}
-	for _, need := range q.Needs {
+	// With the path that joins them in the draft, so the Agent sees the way between them.
+	path, _ := questionPath(q, draft)
+	for _, need := range append(append([]interfaces.RequirementItemRef{}, q.Needs...), path...) {
 		mapped[need] = true
 	}
 	if draft != nil {
@@ -501,6 +503,21 @@ func guidanceCurrent(req *interfaces.Requirement, q *interfaces.RequirementQuest
 	return req.Version == g.SpecVersion && q.Text == g.Question && g.CreateTime >= req.CreateTime
 }
 
+// testsNote says what a question's tests show as a whole: none_checkable when it has some and
+// each names a concept or property its items do not have.
+func testsNote(tests []*interfaces.QuestionTest) string {
+	if len(tests) == 0 {
+		return ""
+	}
+	for _, t := range tests {
+		// Only a test not checked has these reasons.
+		if t.Check.Reason != checkUnknownConcept && t.Check.Reason != checkUnknownProperty {
+			return ""
+		}
+	}
+	return interfaces.TESTS_NOTE_NONE_CHECKABLE
+}
+
 func (s *requirementService) GetGuidance(ctx context.Context, token string, projectID string,
 	questionID string) (*interfaces.QuestionGuidanceView, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetQuestionGuidance")
@@ -524,7 +541,7 @@ func (s *requirementService) GetGuidance(ctx context.Context, token string, proj
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
-	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g}
+	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g, TestsNote: testsNote(g.Tests)}
 	if found && req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		q := questionOf(&req.Spec, questionID)
 		view.Current = q != nil && guidanceCurrent(req, q, g)
