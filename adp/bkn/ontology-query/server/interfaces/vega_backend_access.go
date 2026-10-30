@@ -25,12 +25,6 @@ type ResourceDataPagingResponse struct {
 	ExpiresAtSec *int64  `json:"expires_at_sec"`
 }
 
-// ResourceDataCursorCloser releases an unfinished Vega cursor. Normal reads
-// close their cursor automatically after the final page.
-type ResourceDataCursorCloser interface {
-	CloseResourceDataCursor(context.Context, string, string) error
-}
-
 // ResourceSchemaResponse is the restricted subset of Vega resource detail
 // that ontology-query may expose in an object-type context.
 type ResourceSchemaResponse struct {

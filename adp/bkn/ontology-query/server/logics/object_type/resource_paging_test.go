@@ -35,7 +35,6 @@ type vegaSessionPoolStub struct {
 
 type vegaCursorPageStub struct {
 	params        *interfaces.ResourceDataQueryParams
-	closedCursor  string
 	failNextPage  bool
 	missingPaging bool
 }
@@ -86,11 +85,6 @@ func (v *vegaCursorPageStub) QueryResourceData(_ context.Context, resourceID str
 		QuerySource: "local_index", Paging: &interfaces.ResourceDataPagingResponse{}}, nil
 }
 
-func (v *vegaCursorPageStub) CloseResourceDataCursor(_ context.Context, _, cursor string) error {
-	v.closedCursor = cursor
-	return nil
-}
-
 func TestStreamObjectsByObjectTypeIDProjectsEveryManagedBatch(t *testing.T) {
 	vega := &vegaCursorPageStub{}
 	service := resourcePagingService(t, vega, 1)
@@ -107,7 +101,7 @@ func TestStreamObjectsByObjectTypeIDProjectsEveryManagedBatch(t *testing.T) {
 		t.Fatalf("managed object batches=%#v error=%v", batches, err)
 	}
 	if vega.params == nil || vega.params.Paging.Mode != interfaces.ResourceDataPagingModeCursor ||
-		vega.params.IgnoreLocalIndex != nil || vega.closedCursor != "" ||
+		vega.params.IgnoreLocalIndex != nil ||
 		len(vega.params.Sort) == 0 || vega.params.Sort[len(vega.params.Sort)-1].Field != "customer_id" {
 		t.Fatalf("managed stream plan=%#v", vega.params)
 	}
@@ -136,8 +130,8 @@ func TestStreamObjectsByObjectTypeIDRejectsFailedCursorContinuation(t *testing.T
 	consumed := 0
 	err := service.StreamObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1),
 		func(interfaces.Objects) error { consumed++; return nil })
-	if err == nil || consumed != 1 || vega.closedCursor != "cursor-1" {
-		t.Fatalf("failed cursor continuation: error=%v consumed=%d closed=%q", err, consumed, vega.closedCursor)
+	if err == nil || consumed != 1 {
+		t.Fatalf("failed cursor continuation: error=%v consumed=%d", err, consumed)
 	}
 }
 
@@ -440,9 +434,9 @@ func TestObjectAggregateRejectsMaskedMeasureBeforeVega(t *testing.T) {
 	}
 }
 
-func TestObjectCountRowsUsesAuthorizedPhysicalCount(t *testing.T) {
+func TestObjectCountRowsUsesAuthorizedVegaTotal(t *testing.T) {
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries: []map[string]any{{"__value": json.Number("100001")}}, QuerySource: "local_index",
+		Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: 100001, QuerySource: "local_index",
 		Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
@@ -456,9 +450,8 @@ func TestObjectCountRowsUsesAuthorizedPhysicalCount(t *testing.T) {
 	}
 	params := vega.lastParams
 	if params == nil || params.FilterCondition == nil || params.Paging.Mode != interfaces.ResourceDataPagingModeSingle ||
-		params.Aggregation["property"] != "*" || params.Aggregation["aggr"] != "count" ||
-		params.IgnoreLocalIndex != nil || len(params.GroupBy) != 0 ||
-		len(params.OutputFields) != 1 || params.OutputFields[0] != "__value" {
+		params.Paging.Limit != 1 || !params.NeedTotal || params.Aggregation != nil ||
+		params.IgnoreLocalIndex != nil || len(params.GroupBy) != 0 {
 		t.Fatalf("count request = %#v", params)
 	}
 }

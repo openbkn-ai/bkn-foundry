@@ -16,6 +16,7 @@ import (
 	"maps"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -290,7 +291,7 @@ func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context
 			queryCopy.ExcludeSystemProperties = nil
 		}
 	} else {
-		// COUNT(*) has no property operand. Do not inherit a caller projection:
+		// Row count has no property operand. Do not inherit a caller projection:
 		// object-type and row-filter authorization still apply, while Vega owns
 		// the physical row-count implementation.
 		queryCopy.Properties = nil
@@ -753,20 +754,6 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			KeepAliveSec: int(continuousScanCursorTTL / time.Second),
 		}
 		activeCursor := ""
-		defer func() {
-			if activeCursor == "" {
-				return
-			}
-			closer, ok := ots.vba.(interfaces.ResourceDataCursorCloser)
-			if !ok {
-				return
-			}
-			closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			if closeErr := closer.CloseResourceDataCursor(closeCtx, objectType.DataSource.ID, activeCursor); closeErr != nil {
-				logger.Warnf("close unfinished resource cursor failed: %v", closeErr)
-			}
-		}()
 		var scanned int64
 		for {
 			if err := ctx.Err(); err != nil {
@@ -840,18 +827,25 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		// execution deliberately leaves physical source selection to Vega.
 		params.IgnoreLocalIndex = &query.IgnoreLocalIndex
 		resp, nextOffset, err = ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable, continuousScan)
-	} else {
-		measureField := "*"
-		if aggregate.operation != "count_rows" {
-			measure, exists := plan.properties[aggregate.measureProperty]
-			if !exists || measure.MappedField.Name == "" {
-				return unavailableOperationPropertyError(ctx)
-			}
-			measureField = measure.MappedField.Name
+	} else if aggregate.operation == "count_rows" {
+		// Vega's existing need_total contract counts the authorized filtered
+		// resource rows. Only one detail row is requested and never returned to
+		// the metric caller; the physical count and source remain Vega's choice.
+		params.Sort = nil
+		params.NeedTotal = true
+		params.Paging = interfaces.ResourceDataPagingRequest{
+			Mode: interfaces.ResourceDataPagingModeSingle, Limit: 1,
 		}
+		resp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
+	} else {
+		measure, exists := plan.properties[aggregate.measureProperty]
+		if !exists || measure.MappedField.Name == "" {
+			return unavailableOperationPropertyError(ctx)
+		}
+		measureField := measure.MappedField.Name
 		params.Sort = nil
 		operation := aggregate.operation
-		if operation == "count_rows" || operation == "count_present" {
+		if operation == "count_present" {
 			operation = "count"
 		}
 		params.Aggregation = map[string]any{"property": measureField,
@@ -889,6 +883,12 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails("vega resource query returned nil")
 	}
 	if aggregate != nil {
+		if aggregate.operation == "count_rows" {
+			resps.Datas = []map[string]any{{"__value": json.Number(strconv.FormatInt(resp.TotalCount, 10))}}
+			resps.QuerySource = resp.QuerySource
+			resps.TotalCount = resp.TotalCount
+			return nil
+		}
 		resps.Datas = make([]map[string]any, 0, len(resp.Entries))
 		for _, entry := range resp.Entries {
 			row := map[string]any{"__value": entry["__value"]}

@@ -32,7 +32,6 @@ var (
 type vegaBackendAccess struct {
 	appSetting *common.AppSetting
 	httpClient rest.HTTPClient
-	rawClient  *http.Client
 	baseURL    string
 }
 
@@ -42,7 +41,6 @@ func NewVegaBackendAccess(appSetting *common.AppSetting) interfaces.VegaBackendA
 		vb = &vegaBackendAccess{
 			appSetting: appSetting,
 			httpClient: common.NewHTTPClient(),
-			rawClient:  rest.NewRawHTTPClient(),
 			baseURL:    appSetting.VegaBackendUrl,
 		}
 	})
@@ -144,40 +142,6 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 		return nil, fmt.Errorf("unmarshal QueryResourceData response: %w", err)
 	}
 	return &response, nil
-}
-
-// CloseResourceDataCursor releases an unfinished proxied cursor. The same
-// binding headers used for data pages keep cleanup scoped to its caller.
-func (v *vegaBackendAccess) CloseResourceDataCursor(ctx context.Context, resourceID, cursor string) error {
-	if cursor == "" {
-		return nil
-	}
-	headers, err := v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationQueryData)
-	if err != nil {
-		return err
-	}
-	httpURL := fmt.Sprintf("%s/proxy/resources/%s/cursors/%s", v.baseURL,
-		url.PathEscape(resourceID), url.PathEscape(cursor))
-	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, httpURL, nil)
-	if err != nil {
-		return fmt.Errorf("create resource cursor cleanup request: %w", err)
-	}
-	for name, value := range headers {
-		request.Header.Set(name, value)
-	}
-	client := v.rawClient
-	if client == nil {
-		client = rest.NewRawHTTPClient()
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return fmt.Errorf("resource cursor cleanup request failed: %w", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusNoContent && response.StatusCode != http.StatusNotFound {
-		return interfaces.NewVegaDownstreamError(response.StatusCode, "")
-	}
-	return nil
 }
 
 // normalizeResourceDataQueryParams applies the default paging mode without
