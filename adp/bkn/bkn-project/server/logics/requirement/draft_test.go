@@ -357,6 +357,32 @@ func Test_BuildSpec(t *testing.T) {
 				{Kind: rejectedBasis, Text: "Date lookup Skill (c)", Reason: rejectedBasisNotInDocuments}})
 		})
 
+		Convey("A filter backed by functions alone is a filter on properties: knowledge, its functions rejected\n", func() {
+			out := &draftOutput{Questions: []agentQuestion{
+				{Text: "a", Type: "filter", Layer: "capability", SupplementReason: "r", Functions: []string{"window check", "status check"}},
+				// A metric, a skill the documents name, or another type keeps what it rests on.
+				{Text: "b", Type: "filter", Layer: "capability", SupplementReason: "r", Metrics: []string{"late count"}, Functions: []string{"window check"}},
+				{Text: "c", Type: "filter", Layer: "capability", SupplementReason: "r", Functions: []string{"window check"}, Skills: []string{"signed change"}},
+				{Text: "d", Type: "judge", Layer: "capability", SupplementReason: "r", Functions: []string{"approval check"}},
+			}}
+
+			spec, _ := buildSpec(out, docs, draft)
+
+			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
+			So(spec.Questions[0].Basis.Functions, ShouldResemble, []string{})
+			for i, fns := range [][]string{{"window check"}, {"window check"}, {"approval check"}} {
+				So(spec.Questions[i+1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+				So(spec.Questions[i+1].Basis.Functions, ShouldResemble, fns)
+			}
+			rejected := []interfaces.RequirementRejected{}
+			for _, r := range spec.Rejected {
+				rejected = append(rejected, *r)
+			}
+			So(rejected, ShouldResemble, []interfaces.RequirementRejected{
+				{Kind: rejectedBasis, Text: "window check (a)", Reason: rejectedFunctionOnFilter},
+				{Kind: rejectedBasis, Text: "status check (a)", Reason: rejectedFunctionOnFilter}})
+		})
+
 		Convey("A conflict keeps the sides found, needs two documents, and gets the authority's suggestion\n", func() {
 			out := &draftOutput{Conflicts: []agentConflict{
 				{Topic: "Email confirmation", Kind: conflictRule, Sides: []agentConflictSide{

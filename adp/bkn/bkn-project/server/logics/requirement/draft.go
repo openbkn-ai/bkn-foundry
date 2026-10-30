@@ -75,7 +75,12 @@ const (
 	rejectedTooFewOptions = "too_few_options"
 	// rejectedBasisNotInDocuments is a skill a question rests on that no document names.
 	rejectedBasisNotInDocuments = "basis_not_in_documents"
+	// rejectedFunctionOnFilter is a function a question its own type calls a filter rests on alone.
+	rejectedFunctionOnFilter = "function_on_filter"
 )
+
+// questionTypeFilter is the type of a question that filters records on their properties.
+const questionTypeFilter = "filter"
 
 // draftOutput is what the Agent returns in pass draft. Its ids are its own, for items to refer to
 // each other within the output; the server gives every item its own id.
@@ -235,7 +240,7 @@ func draftResponseFormat() map[string]any {
 		}, "id", "term", "category", "citations")),
 		"questions": schemaArray(schemaObject(map[string]any{
 			"id": schemaString(), "text": schemaString(), "scenario_ids": schemaStrings(),
-			"type": schemaEnum("point_in_time", "provenance", "filter", "compare", "aggregate", "count",
+			"type": schemaEnum("point_in_time", "provenance", questionTypeFilter, "compare", "aggregate", "count",
 				"disambiguate", "judge", "metric"),
 			"layer":    schemaEnum(interfaces.REQUIREMENT_LAYER_KNOWLEDGE, interfaces.REQUIREMENT_LAYER_CAPABILITY),
 			"template": schemaString(), "answer_shape": schemaString(), "concept_ids": schemaStrings(),
@@ -540,10 +545,18 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 				reject(rejectedBasis, s+" ("+q.Text+")", rejectedBasisNotInDocuments)
 			}
 		}
-		// Said capability for nothing but such skills, it is a lookup: knowledge.
-		servedOnly := len(metrics)+len(functions)+len(skills) == 0 && len(named(q.Skills)) > 0
+		// A filter on properties names no function: a question typed a filter that rests on functions
+		// alone, with no metric or skill, filters all the same, as its type says.
+		if q.Type == questionTypeFilter && len(metrics)+len(skills) == 0 {
+			for _, f := range functions {
+				reject(rejectedBasis, f+" ("+q.Text+")", rejectedFunctionOnFilter)
+			}
+			functions = []string{}
+		}
+		// Said capability for nothing that stands, it is a lookup: knowledge.
+		dropped := len(named(q.Metrics))+len(named(q.Functions))+len(named(q.Skills)) > 0
 		layer := interfaces.REQUIREMENT_LAYER_CAPABILITY
-		if (q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE || servedOnly) && len(metrics)+len(functions)+len(skills) == 0 {
+		if (q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE || dropped) && len(metrics)+len(functions)+len(skills) == 0 {
 			layer = interfaces.REQUIREMENT_LAYER_KNOWLEDGE
 		}
 		question := &interfaces.RequirementQuestion{
