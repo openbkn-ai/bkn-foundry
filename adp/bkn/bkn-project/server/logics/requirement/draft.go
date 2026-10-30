@@ -56,11 +56,16 @@ const (
 )
 
 // agentDeadline is how long drafting waits for the Agent: its own time limit, with a minute for
-// bkn-agent to record the outcome. pollInterval is how often it asks.
+// bkn-agent to record the outcome. pollInterval is how often it asks. draftDeadline is how long a
+// drafting may run: it asks the Agent at most twice.
 const (
 	agentDeadline = 6 * time.Minute
 	pollInterval  = 2 * time.Second
+	draftDeadline = 2 * agentDeadline
 )
+
+// structuredOutputFailed is how bkn-agent names a failure to give its answer as the schema asks.
+const structuredOutputFailed = "StructuredOutputError"
 
 // taskReadTimeout bounds one read of the Agent's task, so a bkn-agent that takes the connection
 // and never answers cannot hold drafting past its deadline.
@@ -881,7 +886,7 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	}
 	// A specification still drafting past the Agent's deadline, with a minute to record it, has
 	// ended without being recorded; it no longer holds the project.
-	staleBefore := now - agentDeadline.Milliseconds() - time.Minute.Milliseconds()
+	staleBefore := now - draftDeadline.Milliseconds() - time.Minute.Milliseconds()
 	started, err := s.ra.StartDrafting(ctx, req, staleBefore, discardDecisions)
 	switch {
 	case errors.Is(err, interfaces.ErrRequirementHasDecisions):
@@ -899,6 +904,41 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	s.run(func() { s.draft(runCtx, req, project, docs, caller) })
 	span.SetStatus(codes.Ok, "")
 	return req, nil
+}
+
+// askDraft runs the Agent once for the specification and waits for it up to agentDeadline: its
+// answer, or the failure code with why.
+func (s *requirementService) askDraft(ctx context.Context, req *interfaces.Requirement, caller interfaces.AccountInfo,
+	message string) (*draftOutput, string, error) {
+	task, err := s.ba.RunTask(ctx, caller, &interfaces.BknAgentRunRequest{
+		AgentID: requirementAgentID, Message: message, ResponseFormat: draftResponseFormat(),
+	})
+	if err != nil {
+		return nil, startFailure(err), err
+	}
+	req.AgentTaskID = task.TaskID
+	deadline := s.now() + agentDeadline.Milliseconds()
+	for !task.Terminal() {
+		if s.now() >= deadline {
+			return nil, failureAgentTimeout, fmt.Errorf("task %s did not finish", task.TaskID)
+		}
+		s.sleep(pollInterval)
+		// A failed or slow read is retried until the deadline: the task goes on in bkn-agent.
+		readCtx, cancel := context.WithTimeout(ctx, taskReadTimeout)
+		read, err := s.ba.GetTask(readCtx, caller, task.TaskID)
+		cancel()
+		if err == nil {
+			task = read
+		}
+	}
+	if task.Status != interfaces.BKN_AGENT_TASK_SUCCEEDED {
+		return nil, failureAgentFailed, errors.New(task.FailureDetail)
+	}
+	var out draftOutput
+	if err := json.Unmarshal([]byte(task.Output), &out); err != nil {
+		return nil, failureOutputInvalid, err
+	}
+	return &out, "", nil
 }
 
 // draft runs the Agent and records the checked specification, or why drafting failed.
@@ -936,42 +976,24 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		fail(failureAgentUnavailable, err)
 		return
 	}
-	task, err := s.ba.RunTask(ctx, caller, &interfaces.BknAgentRunRequest{
-		AgentID: requirementAgentID, Message: message, ResponseFormat: draftResponseFormat(),
-	})
-	if err != nil {
-		fail(startFailure(err), err)
-		return
+	out, failure, err := s.askDraft(ctx, req, caller, message)
+	// A model without structured output sometimes writes JSON with a field missing or broken, and
+	// asked again, writes it whole: it is asked once more. A run that ran out of time is not.
+	retried := failure == failureOutputInvalid ||
+		failure == failureAgentFailed && strings.Contains(err.Error(), structuredOutputFailed)
+	if retried {
+		logger.Warnf("Requirement drafting of project %s asks the Agent again (%s): %v", req.ProjectID, failure, err)
+		out, failure, err = s.askDraft(ctx, req, caller, message)
 	}
-	req.AgentTaskID = task.TaskID
-	deadline := s.now() + agentDeadline.Milliseconds()
-	for !task.Terminal() {
-		if s.now() >= deadline {
-			fail(failureAgentTimeout, fmt.Errorf("task %s did not finish", task.TaskID))
-			return
-		}
-		s.sleep(pollInterval)
-		// A failed or slow read is retried until the deadline: the task goes on in bkn-agent.
-		readCtx, cancel := context.WithTimeout(ctx, taskReadTimeout)
-		read, err := s.ba.GetTask(readCtx, caller, task.TaskID)
-		cancel()
-		if err == nil {
-			task = read
-		}
-	}
-	if task.Status != interfaces.BKN_AGENT_TASK_SUCCEEDED {
-		fail(failureAgentFailed, errors.New(task.FailureDetail))
-		return
-	}
-	var out draftOutput
-	if err := json.Unmarshal([]byte(task.Output), &out); err != nil {
-		fail(failureOutputInvalid, err)
+	if failure != "" {
+		logger.Errorf("Requirement drafting of project %s failed (%s, asked again: %t): %v", req.ProjectID, failure, retried, err)
+		finish(interfaces.REQUIREMENT_STATUS_FAILED, failure, &interfaces.RequirementSpec{DraftRetried: retried}, nil)
 		return
 	}
 
 	byID := documentsByID(docs)
-	spec, types := buildSpec(&out, byID, draft)
-	spec.TablesOmitted, spec.PropertiesOmitted = omitted, propertiesOmitted
+	spec, types := buildSpec(out, byID, draft)
+	spec.TablesOmitted, spec.PropertiesOmitted, spec.DraftRetried = omitted, propertiesOmitted, retried
 	if len(unlisted) > 0 {
 		spec.CatalogsUnlisted = unlisted
 	}
