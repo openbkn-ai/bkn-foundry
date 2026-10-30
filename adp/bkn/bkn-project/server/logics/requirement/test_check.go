@@ -811,6 +811,10 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 			wanted[i] = fields[i].field
 		}
 		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, given[f.objectType])
+		if reason == checkNoValueInData && len(given[f.objectType]) > 0 {
+			// No row has the values given: the check says so, with the others from any row.
+			values, reason = s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, nil)
+		}
 		if reason != "" {
 			return reason
 		}

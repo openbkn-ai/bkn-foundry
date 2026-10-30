@@ -387,6 +387,16 @@ func Test_CheckTests(t *testing.T) {
 			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 			So(tt.Text, ShouldEqual, "About 10001 and Acme Ltd?")
 
+			// A given value no row has fills the others from any row, and the test fails on it.
+			va.EXPECT().Query(gomock.Any(), caller,
+				"SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = 'C-9999' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				checkQueryTimeout).Return([]map[string]any{}, nil)
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v1": "Acme"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+			tt = test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "C-9999"), slot("full_name", ""))
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt),
+				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordNotFound})
+
 			// The record that should not exist names no row: the others are taken from any.
 			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v1": "Acme"})
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
