@@ -76,6 +76,9 @@ const (
 	ACCEPTS_PARTIAL_DRAFT = "partial_draft"
 	// ACCEPTS_UNDECIDED_ITEMS confirms a draft leaving out the items no one decided on.
 	ACCEPTS_UNDECIDED_ITEMS = "undecided_items"
+	// ACCEPTS_UNRESOLVED_CONFLICTS confirms a draft knowing conflicts between the requirement
+	// documents are unresolved.
+	ACCEPTS_UNRESOLVED_CONFLICTS = "unresolved_conflicts"
 )
 
 // Why an action cannot be done by the caller; otherwise a blocker code.
@@ -95,9 +98,16 @@ type ProjectStatus struct {
 	Blockers []ProjectStatusBlocker `json:"blockers"`
 	// Undecided counts the items drafting left out and no one decided on: they do not block, but
 	// confirming leaves them out only when the confirmation accepts it.
-	Undecided   int                       `json:"undecided"`
-	Stale       []string                  `json:"stale"`
-	NextActions []ProjectStatusNextAction `json:"next_actions"`
+	Undecided int `json:"undecided"`
+	// UndecidedNeeded counts those of them a knowledge question of the ready requirement
+	// specification needs: confirming without them leaves the question without its answer.
+	UndecidedNeeded int `json:"undecided_needed"`
+	// UnresolvedConflicts counts the conflicts between the requirement documents of a ready
+	// specification without a resolution, deferred ones included: they do not block, but confirming
+	// accepts them.
+	UnresolvedConflicts int                       `json:"unresolved_conflicts"`
+	Stale               []string                  `json:"stale"`
+	NextActions         []ProjectStatusNextAction `json:"next_actions"`
 	// Links are the reads that show the details: the draft, its pending items and the check.
 	Links      map[string]string `json:"links"`
 	ComputedAt int64             `json:"computed_at"`
@@ -189,6 +199,10 @@ const PENDING_REASON_UNDECIDED = "undecided"
 // sender last read it: each edit moves it on.
 const PENDING_PLACEHOLDER_UPDATE_TIME = "$draft_update_time"
 
+// PENDING_CANDIDATES_NO_UNIQUE says why choosing an identity has no candidates: drafting counted no
+// property, nor pair of them, unique and non-null. A person may still send the properties they know.
+const PENDING_CANDIDATES_NO_UNIQUE = "no_unique_candidate"
+
 // PENDING_PLACEHOLDER_CANDIDATE stands for one of an option's candidates.
 const PENDING_PLACEHOLDER_CANDIDATE = "$candidate"
 
@@ -217,10 +231,20 @@ type PendingItem struct {
 	// Evidence is what drafting counted for the item: the key for an object type, the join for a
 	// relation.
 	Evidence any `json:"evidence,omitempty"`
+	// NeededBy are the knowledge questions of the ready requirement specification that need the
+	// item to be answered.
+	NeededBy []PendingQuestion `json:"needed_by,omitempty"`
+}
+
+// PendingQuestion is a scenario question a pending item is needed by.
+type PendingQuestion struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
 }
 
 // PendingOption is a request that settles a pending item. Candidates, for choosing an identity,
-// are the property lists to send in place of $candidate, the one drafting counted first.
+// are the property lists to send in place of $candidate: only those drafting counted unique and
+// non-null.
 type PendingOption struct {
 	Action     string         `json:"action"`
 	Method     string         `json:"method"`
@@ -229,6 +253,8 @@ type PendingOption struct {
 	Allowed    bool           `json:"allowed"`
 	Reason     string         `json:"reason,omitempty"`
 	Candidates [][]string     `json:"candidates,omitempty"`
+	// CandidatesReason says why an option that takes candidates has none.
+	CandidatesReason string `json:"candidates_reason,omitempty"`
 }
 
 type PendingRecommendation struct {

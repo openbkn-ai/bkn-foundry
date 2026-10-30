@@ -6,11 +6,13 @@ package release
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
@@ -87,8 +89,70 @@ func (s *projectReleaseService) PublishRelease(ctx context.Context, token string
 		span.SetStatus(codes.Error, "Publish release failed")
 		return nil, err
 	}
+	// The regression never undoes or fails the release; one that cannot start is run again later.
+	if _, _, err := s.rgs.StartRegression(ctx, token, result.Release, caller); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Start regression of %s: %v", result.NetworkID, err))
+	}
 	span.SetStatus(codes.Ok, "")
 	return result, nil
+}
+
+// GetRegression returns the regression of a release of the project.
+func (s *projectReleaseService) GetRegression(ctx context.Context, token string, projectID string,
+	networkID string) (*interfaces.Regression, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetRegression")
+	defer span.End()
+
+	entry, err := s.ps.GetProject(ctx, token, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, err
+	}
+	if _, err := s.checkProjectRelease(ctx, entry, networkID); err != nil {
+		span.SetStatus(codes.Error, "Not a release of the project")
+		return nil, err
+	}
+	r, exist, err := s.rga.GetRegression(ctx, networkID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get regression failed")
+		return nil, internalError(ctx, "Get regression failed", err)
+	}
+	if !exist {
+		span.SetStatus(codes.Error, "Regression not found")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Release_RegressionNotFound)
+	}
+	span.SetStatus(codes.Ok, "")
+	return r, nil
+}
+
+// RunRegression starts the regression of a release of the project again, as the caller.
+func (s *projectReleaseService) RunRegression(ctx context.Context, token string, projectID string,
+	networkID string, caller interfaces.AccountInfo) (*interfaces.Regression, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "RunRegression")
+	defer span.End()
+
+	entry, err := s.ownedProject(ctx, token, projectID, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Project not runnable")
+		return nil, err
+	}
+	release, err := s.checkProjectRelease(ctx, entry, networkID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Not a release of the project")
+		return nil, err
+	}
+	r, started, err := s.rgs.StartRegression(ctx, token, release, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Start regression failed")
+		return nil, internalError(ctx, "Start regression failed", err)
+	}
+	if !started {
+		span.SetStatus(codes.Error, "Regression running")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_RegressionRunning).
+			WithErrorDetails(map[string]any{"network_id": networkID})
+	}
+	span.SetStatus(codes.Ok, "")
+	return r, nil
 }
 
 // SyncBranch brings main, the live version, into the project's branch.
@@ -158,7 +222,7 @@ func (s *projectReleaseService) PlanSwitch(ctx context.Context, token string, pr
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
 	}
-	if err := s.checkProjectRelease(ctx, entry, toNetworkID); err != nil {
+	if _, err := s.checkProjectRelease(ctx, entry, toNetworkID); err != nil {
 		span.SetStatus(codes.Error, "Not a release of the project")
 		return nil, err
 	}
@@ -182,7 +246,7 @@ func (s *projectReleaseService) SwitchConsumers(ctx context.Context, token strin
 		span.SetStatus(codes.Error, "Project not switchable")
 		return nil, err
 	}
-	if err := s.checkProjectRelease(ctx, entry, toNetworkID); err != nil {
+	if _, err := s.checkProjectRelease(ctx, entry, toNetworkID); err != nil {
 		span.SetStatus(codes.Error, "Not a release of the project")
 		return nil, err
 	}
@@ -211,16 +275,17 @@ func (s *projectReleaseService) ownedProject(ctx context.Context, token string, 
 	return entry, nil
 }
 
-// checkProjectRelease refuses a network that no release of the project created.
+// checkProjectRelease returns the release that created networkID, refusing a network that no
+// release of the project created.
 func (s *projectReleaseService) checkProjectRelease(ctx context.Context, entry *interfaces.ProjectEntry,
-	networkID string) error {
+	networkID string) (*interfaces.Release, error) {
 	release, exist, err := s.ra.GetReleaseByNetworkID(ctx, networkID)
 	if err != nil {
-		return internalError(ctx, "Get release failed", err)
+		return nil, internalError(ctx, "Get release failed", err)
 	}
 	if !exist || release.LineageID != entry.KNID || release.ProjectID != entry.ID {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_NotProjectRelease).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_NotProjectRelease).
 			WithErrorDetails(map[string]any{"network_id": networkID})
 	}
-	return nil
+	return release, nil
 }

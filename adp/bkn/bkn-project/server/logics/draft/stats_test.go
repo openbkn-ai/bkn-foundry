@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -103,6 +104,19 @@ func Test_VegaCounter(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []interfaces.DraftEnumValue{{Value: "T1", Display: "Tier 1"}, {Value: "2", Display: ""}})
 			So(vega.sql[0], ShouldEqual, "SELECT `code` AS code_value, `name` AS display_value FROM {{r_customers}} ORDER BY `code` LIMIT 501")
+		})
+	})
+}
+
+func Test_NumberAndText(t *testing.T) {
+	Convey("Test reading counts and values as vega-backend returns them\n", t, func() {
+		Convey("Numbers come as written; a large one keeps every digit\n", func() {
+			So(number(json.Number("800")), ShouldEqual, 800)
+			So(number(json.Number("1234567890123456789")), ShouldEqual, 1234567890123456789)
+			So(number(float64(3)), ShouldEqual, 3)
+			So(number("12"), ShouldEqual, 12)
+			So(text(json.Number("1234567890123456789")), ShouldEqual, "1234567890123456789")
+			So(text(json.Number("0.1")), ShouldEqual, "0.1")
 		})
 	})
 }

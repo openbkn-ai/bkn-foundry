@@ -56,6 +56,21 @@ func (mr *MockProjectReleaseServiceMockRecorder) CommitDrift(ctx, token, project
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitDrift", reflect.TypeOf((*MockProjectReleaseService)(nil).CommitDrift), ctx, token, projectID, caller, author)
 }
 
+// GetRegression mocks base method.
+func (m *MockProjectReleaseService) GetRegression(ctx context.Context, token, projectID, networkID string) (*interfaces.Regression, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRegression", ctx, token, projectID, networkID)
+	ret0, _ := ret[0].(*interfaces.Regression)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRegression indicates an expected call of GetRegression.
+func (mr *MockProjectReleaseServiceMockRecorder) GetRegression(ctx, token, projectID, networkID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegression", reflect.TypeOf((*MockProjectReleaseService)(nil).GetRegression), ctx, token, projectID, networkID)
+}
+
 // PlanSwitch mocks base method.
 func (m *MockProjectReleaseService) PlanSwitch(ctx context.Context, token, projectID, toNetworkID string) (*interfaces.SwitchPlan, error) {
 	m.ctrl.T.Helper()
@@ -99,6 +114,21 @@ func (m *MockProjectReleaseService) ReviewRelease(ctx context.Context, token, pr
 func (mr *MockProjectReleaseServiceMockRecorder) ReviewRelease(ctx, token, projectID, version, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReviewRelease", reflect.TypeOf((*MockProjectReleaseService)(nil).ReviewRelease), ctx, token, projectID, version, caller)
+}
+
+// RunRegression mocks base method.
+func (m *MockProjectReleaseService) RunRegression(ctx context.Context, token, projectID, networkID string, caller interfaces.AccountInfo) (*interfaces.Regression, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunRegression", ctx, token, projectID, networkID, caller)
+	ret0, _ := ret[0].(*interfaces.Regression)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunRegression indicates an expected call of RunRegression.
+func (mr *MockProjectReleaseServiceMockRecorder) RunRegression(ctx, token, projectID, networkID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunRegression", reflect.TypeOf((*MockProjectReleaseService)(nil).RunRegression), ctx, token, projectID, networkID, caller)
 }
 
 // SwitchConsumers mocks base method.

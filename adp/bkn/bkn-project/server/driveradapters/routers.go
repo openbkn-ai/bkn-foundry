@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/version"
 )
 
@@ -49,6 +50,7 @@ type restHandler struct {
 	ps         interfaces.ProjectService
 	drs        interfaces.DraftService
 	prs        interfaces.ProjectReleaseService
+	rqs        interfaces.RequirementService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
@@ -61,6 +63,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		ps:         project.NewProjectService(),
 		drs:        draft.NewDraftService(appSetting),
 		prs:        release.NewProjectReleaseService(appSetting),
+		rqs:        requirement.NewRequirementService(),
 	}
 }
 
@@ -113,6 +116,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id/releases", r.PublishProjectByEx)
 	apiV1.GET("/projects/:project_id/switch-plan", r.PlanProjectSwitchByEx)
 	apiV1.POST("/projects/:project_id/switches", r.SwitchProjectByEx)
+	// What a release's scenario questions got on its network, and running that again:
+	// regression:run is a custom method on the release.
+	apiV1.GET("/projects/:project_id/releases/:network_id/regression", r.GetRegressionByEx)
+	apiV1.POST("/projects/:project_id/releases/:network_id/:action", r.ReleaseActionByEx)
 
 	// Ontology drafts: drafting, restoring an excluded field and confirming are custom methods,
 	// ontology/draft:generate, draft:restore and draft:confirm; people edit items one by one and
@@ -124,6 +131,29 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
 	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id/identity", r.ChooseIdentityByEx)
+
+	// Requirement documents of a project.
+	apiV1.POST("/projects/:project_id/requirements/documents", r.UploadRequirementDocumentsByEx)
+	apiV1.GET("/projects/:project_id/requirements/documents", r.ListRequirementDocumentsByEx)
+	apiV1.GET("/projects/:project_id/requirements/documents/:document_id", r.GetRequirementDocumentByEx)
+	apiV1.PATCH("/projects/:project_id/requirements/documents/:document_id", r.SetRequirementDocumentTypeByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/documents/:document_id", r.DeleteRequirementDocumentByEx)
+
+	// The requirement specification of a project; requirements:draft is served with the other
+	// project actions.
+	apiV1.GET("/projects/:project_id/requirements", r.GetRequirementByEx)
+	apiV1.POST("/projects/:project_id/requirements/items/:kind", r.AddRequirementItemByEx)
+	apiV1.PATCH("/projects/:project_id/requirements/items/:kind/:item_id", r.EditRequirementItemByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/items/:kind/:item_id", r.DeleteRequirementItemByEx)
+	apiV1.PUT("/projects/:project_id/requirements/concepts/:concept_id/maps-to", r.MapRequirementConceptByEx)
+	apiV1.PUT("/projects/:project_id/requirements/conflicts/:conflict_id", r.ResolveRequirementConflictByEx)
+	apiV1.PUT("/projects/:project_id/requirements/choices/:choice_id", r.DecideRequirementChoiceByEx)
+
+	// Test questions and development guidance of a scenario question.
+	apiV1.POST("/projects/:project_id/requirements/questions/:question_id/:action", r.QuestionActionByEx)
+	apiV1.GET("/projects/:project_id/requirements/questions/:question_id/dev", r.GetGuidanceByEx)
+	apiV1.PUT("/projects/:project_id/requirements/questions/:question_id/tests/:test_id", r.EditTestByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/questions/:question_id/tests/:test_id", r.DeleteTestByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }

@@ -43,6 +43,7 @@ const (
 	BknProject_Requirement_NoDocuments         = "BknProject.Requirement.NoDocuments"
 	BknProject_Requirement_NoCatalogs          = "BknProject.Requirement.NoCatalogs"
 	BknProject_Requirement_InputsTooLarge      = "BknProject.Requirement.InputsTooLarge"
+	BknProject_Requirement_InvalidTest         = "BknProject.Requirement.InvalidTest"
 
 	// 403
 	BknProject_Requirement_NotOwner = "BknProject.Requirement.NotOwner"
@@ -51,9 +52,11 @@ const (
 	BknProject_Requirement_NotFound         = "BknProject.Requirement.NotFound"
 	BknProject_Requirement_DocumentNotFound = "BknProject.Requirement.DocumentNotFound"
 	BknProject_Requirement_ItemNotFound     = "BknProject.Requirement.ItemNotFound"
+	BknProject_Requirement_TestNotFound     = "BknProject.Requirement.TestNotFound"
 
 	// 409
 	BknProject_Requirement_Drafting        = "BknProject.Requirement.Drafting"
+	BknProject_Requirement_Generating      = "BknProject.Requirement.Generating"
 	BknProject_Requirement_Stale           = "BknProject.Requirement.Stale"
 	BknProject_Requirement_HasDecisions    = "BknProject.Requirement.HasDecisions"
 	BknProject_Requirement_ProjectArchived = "BknProject.Requirement.ProjectArchived"
@@ -96,5 +99,8 @@ var (
 		BknProject_Requirement_HasDecisions,
 		BknProject_Requirement_ProjectArchived,
 		BknProject_Requirement_InternalError,
+		BknProject_Requirement_InvalidTest,
+		BknProject_Requirement_TestNotFound,
+		BknProject_Requirement_Generating,
 	}
 )

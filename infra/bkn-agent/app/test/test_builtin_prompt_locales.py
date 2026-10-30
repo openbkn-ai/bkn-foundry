@@ -18,7 +18,12 @@ from app.models import AgentRow, AgentVersionRow, Base, PromptRow, PromptVersion
 from app.routers.agent_settings import _shared_prompt, _versions_out
 from app.test import test_shared_agent_seeds as seeds
 
-ENGLISH_ORIGINALS = {"object_metric_designer", "bkn-project-drafter", "bkn-project-requirements"}
+ENGLISH_ORIGINALS = {
+    "object_metric_designer",
+    "bkn-project-drafter",
+    "bkn-project-requirements",
+    "bkn-project-answer-judge",
+}
 
 # Official historical template from commit ab9ae6d64 (VM Prompt v3/v4).
 LEGACY_SMART_QA = """你是业务知识网络问答助手，基于当前授权知识网络中的对象、关系、指标和数据回答业务问题。

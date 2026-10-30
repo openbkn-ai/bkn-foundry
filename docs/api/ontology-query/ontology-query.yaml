@@ -2676,7 +2676,9 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
-          description: 请求参数错误
+          description: |
+            请求参数错误。条件命中或指定的对象超过执行上限（环境变量 `ACTION_EXECUTION_MAX_OBJECTS`，默认 10000）时，
+            整个执行被拒绝（`OntologyQuery.ActionExecution.InvalidParameter`），不会只执行其中一部分。
         "404":
           content:
             application/json:
@@ -4481,10 +4483,16 @@ components:
           - $ref: '#/components/schemas/MCPSource'
           description: 行动资源
         actions:
-          description: 各对象的实例化后的行动参数，顺序与请求的对象唯一标识数组一致
+          description: |
+            各对象的实例化后的行动参数，顺序与请求的对象唯一标识数组一致。
+            按条件命中的对象超过执行上限（环境变量 `ACTION_EXECUTION_MAX_OBJECTS`，默认 10000）时，只列出上限数量的对象。
           type: array
           items:
             $ref: '#/components/schemas/ActionParam'
+        total_count:
+          description: |
+            满足行动条件（及请求的对象唯一标识）的对象总数。大于 `actions` 的长度时，说明命中超过执行上限，列表不完整，执行会被拒绝。
+          type: integer
     condition_or:
       description: or 的过滤条件
       required:

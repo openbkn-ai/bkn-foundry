@@ -24,6 +24,8 @@ var (
 	BBA interfaces.BknBackendAccess
 	EFA interfaces.ExecutionFactoryAccess
 	RQA interfaces.RequirementAccess
+	BAA interfaces.BknAgentAccess
+	RGA interfaces.RegressionAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -76,4 +78,12 @@ func SetExecutionFactoryAccess(efa interfaces.ExecutionFactoryAccess) {
 
 func SetRequirementAccess(rqa interfaces.RequirementAccess) {
 	RQA = rqa
+}
+
+func SetBknAgentAccess(baa interfaces.BknAgentAccess) {
+	BAA = baa
+}
+
+func SetRegressionAccess(rga interfaces.RegressionAccess) {
+	RGA = rga
 }

@@ -36,7 +36,14 @@ func Test_ProjectReleaseService_Publish(t *testing.T) {
 		ls := pmock.NewMockLineageService(mockCtrl)
 		ra := pmock.NewMockReleaseAccess(mockCtrl)
 		reviewer := pmock.NewMockProjectReleaseService(mockCtrl)
-		svc := &projectReleaseService{ps: ps, ls: ls, ra: ra, reviewer: reviewer}
+		rgs := pmock.NewMockRegressionService(mockCtrl)
+		rga := pmock.NewMockRegressionAccess(mockCtrl)
+		svc := &projectReleaseService{ps: ps, ls: ls, ra: ra, reviewer: reviewer, rgs: rgs, rga: rga}
+		// A release's regression starts after it; tests of publishing that do not look at it allow it.
+		allowRegression := func() {
+			rgs.EXPECT().StartRegression(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.Regression{}, true, nil).AnyTimes()
+		}
 		ctx := context.Background()
 		author := interfaces.GitAuthor{Name: reviewOwner.ID}
 		other := interfaces.AccountInfo{ID: "u2", Type: "user"}
@@ -58,10 +65,38 @@ func Test_ProjectReleaseService_Publish(t *testing.T) {
 			Version: "1.1.0", Notes: "Purchase orders.", Signature: "sig",
 			Accepts: []string{interfaces.RELEASE_ACCEPT_INDEX_NOT_READY},
 		}
-		published := &interfaces.PublishReleaseResult{NetworkID: "supply_v1_1_0", Tag: "v1.1.0"}
+		released := &interfaces.Release{LineageID: "supply", NetworkID: "supply_v1_1_0", Version: "1.1.0", ProjectID: "p1"}
+		published := &interfaces.PublishReleaseResult{Release: released, NetworkID: "supply_v1_1_0", Tag: "v1.1.0"}
 
 		Convey("Publishing\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), reviewToken, "p1").Return(project, nil)
+
+			Convey("A published release starts its regression as the publisher\n", func() {
+				reviewer.EXPECT().ReviewRelease(gomock.Any(), reviewToken, "p1", "1.1.0", reviewOwner).Return(review, nil)
+				ls.EXPECT().PublishRelease(gomock.Any(), reviewToken, "supply", gomock.Any(), reviewOwner, author).
+					Return(published, nil)
+				rgs.EXPECT().StartRegression(gomock.Any(), reviewToken, released, reviewOwner).
+					Return(&interfaces.Regression{}, true, nil)
+
+				_, err := svc.PublishRelease(ctx, reviewToken, "p1", request, reviewOwner, author)
+
+				So(err, ShouldBeNil)
+			})
+
+			Convey("A regression that cannot start leaves the release published\n", func() {
+				reviewer.EXPECT().ReviewRelease(gomock.Any(), reviewToken, "p1", "1.1.0", reviewOwner).Return(review, nil)
+				ls.EXPECT().PublishRelease(gomock.Any(), reviewToken, "supply", gomock.Any(), reviewOwner, author).
+					Return(published, nil)
+				rgs.EXPECT().StartRegression(gomock.Any(), reviewToken, released, reviewOwner).
+					Return(nil, false, errors.New("db down"))
+
+				result, err := svc.PublishRelease(ctx, reviewToken, "p1", request, reviewOwner, author)
+
+				So(err, ShouldBeNil)
+				So(result, ShouldEqual, published)
+			})
+
+			allowRegression()
 
 			Convey("A release whose review stands and whose failures are accepted is published, recording them\n", func() {
 				reviewer.EXPECT().ReviewRelease(gomock.Any(), reviewToken, "p1", "1.1.0", reviewOwner).Return(review, nil)
@@ -269,6 +304,102 @@ func Test_ProjectReleaseService_Publish(t *testing.T) {
 
 				_, code, _ := errorOf(err)
 				So(code, ShouldEqual, perrors.BknProject_Release_NotOwner)
+			})
+		})
+
+		Convey("A release's regression is read by who can read the project, and run again by its owner\n", func() {
+			release := &interfaces.Release{LineageID: "supply", NetworkID: "supply_v1_1_0", Version: "1.1.0", ProjectID: "p1"}
+			regression := &interfaces.Regression{NetworkID: "supply_v1_1_0", Status: interfaces.REGRESSION_STATUS_PASSED}
+			ps.EXPECT().GetProject(gomock.Any(), reviewToken, "p1").Return(project, nil).AnyTimes()
+
+			Convey("Reading\n", func() {
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "supply_v1_1_0").Return(release, true, nil)
+
+				Convey("A regression is returned as stored\n", func() {
+					rga.EXPECT().GetRegression(gomock.Any(), "supply_v1_1_0").Return(regression, true, nil)
+
+					got, err := svc.GetRegression(ctx, reviewToken, "p1", "supply_v1_1_0")
+
+					So(err, ShouldBeNil)
+					So(got, ShouldEqual, regression)
+				})
+
+				Convey("A release without one is 404\n", func() {
+					rga.EXPECT().GetRegression(gomock.Any(), "supply_v1_1_0").Return(nil, false, nil)
+
+					_, err := svc.GetRegression(ctx, reviewToken, "p1", "supply_v1_1_0")
+
+					status, code, _ := errorOf(err)
+					So(status, ShouldEqual, http.StatusNotFound)
+					So(code, ShouldEqual, perrors.BknProject_Release_RegressionNotFound)
+				})
+
+				Convey("A failure to read it is an internal error\n", func() {
+					rga.EXPECT().GetRegression(gomock.Any(), "supply_v1_1_0").Return(nil, false, errors.New("db down"))
+
+					_, err := svc.GetRegression(ctx, reviewToken, "p1", "supply_v1_1_0")
+
+					status, _, _ := errorOf(err)
+					So(status, ShouldEqual, http.StatusInternalServerError)
+				})
+			})
+
+			Convey("A network no release of the project created is refused, read or run\n", func() {
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "other_v1_0_0").Return(nil, false, nil).Times(2)
+
+				_, err := svc.GetRegression(ctx, reviewToken, "p1", "other_v1_0_0")
+				_, code, _ := errorOf(err)
+				So(code, ShouldEqual, perrors.BknProject_Release_NotProjectRelease)
+
+				_, err = svc.RunRegression(ctx, reviewToken, "p1", "other_v1_0_0", reviewOwner)
+				_, code, _ = errorOf(err)
+				So(code, ShouldEqual, perrors.BknProject_Release_NotProjectRelease)
+			})
+
+			Convey("Running again starts it as the owner, with the release\n", func() {
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "supply_v1_1_0").Return(release, true, nil)
+				running := &interfaces.Regression{NetworkID: "supply_v1_1_0", Status: interfaces.REGRESSION_STATUS_RUNNING}
+				rgs.EXPECT().StartRegression(gomock.Any(), reviewToken, release, reviewOwner).Return(running, true, nil)
+
+				got, err := svc.RunRegression(ctx, reviewToken, "p1", "supply_v1_1_0", reviewOwner)
+
+				So(err, ShouldBeNil)
+				So(got, ShouldEqual, running)
+			})
+
+			Convey("Running again while it runs is refused\n", func() {
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "supply_v1_1_0").Return(release, true, nil)
+				rgs.EXPECT().StartRegression(gomock.Any(), reviewToken, release, reviewOwner).
+					Return(&interfaces.Regression{}, false, nil)
+
+				_, err := svc.RunRegression(ctx, reviewToken, "p1", "supply_v1_1_0", reviewOwner)
+
+				status, code, _ := errorOf(err)
+				So(status, ShouldEqual, http.StatusConflict)
+				So(code, ShouldEqual, perrors.BknProject_Release_RegressionRunning)
+			})
+
+			Convey("A failure to start is an internal error\n", func() {
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "supply_v1_1_0").Return(release, true, nil)
+				rgs.EXPECT().StartRegression(gomock.Any(), reviewToken, release, reviewOwner).
+					Return(nil, false, errors.New("db down"))
+
+				_, err := svc.RunRegression(ctx, reviewToken, "p1", "supply_v1_1_0", reviewOwner)
+
+				status, _, _ := errorOf(err)
+				So(status, ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("Only the owner of an unarchived project runs it again\n", func() {
+				_, err := svc.RunRegression(ctx, reviewToken, "p1", "supply_v1_1_0", other)
+				_, code, _ := errorOf(err)
+				So(code, ShouldEqual, perrors.BknProject_Release_NotOwner)
+
+				project.Archived = true
+				_, err = svc.RunRegression(ctx, reviewToken, "p1", "supply_v1_1_0", reviewOwner)
+				_, code, _ = errorOf(err)
+				So(code, ShouldEqual, perrors.BknProject_Release_ProjectArchived)
+				project.Archived = false
 			})
 		})
 

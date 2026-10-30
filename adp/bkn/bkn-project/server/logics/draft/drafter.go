@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -325,6 +326,88 @@ func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) err
 	if nulls > 0 || distinct < rows-nulls {
 		objectType.NeedsIdentity, objectType.Adopted = true, false
 		delete(d.keys, table.ID)
+		// A field with nulls makes every pair with it have nulls too: none to count.
+		if nulls > 0 || rows == 0 {
+			return nil
+		}
+		return d.pairIdentity(ctx, table, objectType, key[0])
+	}
+	return nil
+}
+
+// namesAnotherTable tells whether a field's name points at the key of another table drafted
+// with it, as a relation inferred from names would: such a field says whose record it is, not
+// which one.
+func (d *drafter) namesAnotherTable(table *interfaces.VegaTable, field string) bool {
+	for _, other := range d.bySourceName {
+		// Inference refers to a table by one key field, never to a link table.
+		if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
+			continue
+		}
+		// A declared key of several fields is never referred to; without one, any candidate may
+		// become the single field it is keyed by.
+		keys := other.PrimaryKeys
+		if len(keys) > 1 {
+			continue
+		}
+		if len(keys) == 0 {
+			keys = identityCandidates(other)
+		}
+		for _, key := range keys {
+			if nameMatch(field, other, key) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// maxPairCounts bounds the pairs drafting counts for an identity of two fields.
+const maxPairCounts = 4
+
+// pairWords are the last words of fields named as identifiers within a record, such as a line.
+var pairWords = map[string]bool{"id": true, "no": true, "code": true, "seq": true, "line": true}
+
+// pairIdentity looks, for an object type whose identity field has duplicates, for a pair that
+// counts unique and non-null: that field with another key-typed field named as an identifier and
+// not referring to another table, in column order, at most maxPairCounts counts. Line tables are
+// keyed so, by a document and its line. The pair is offered as the identity's candidate; drafting
+// does not take it, a person decides.
+func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
+	objectType *interfaces.DraftObjectType, base string) error {
+	fields := d.fields[table.ID]
+	first, ok := fields[base]
+	if !ok {
+		return nil
+	}
+	refers := map[string]bool{}
+	for _, fk := range table.ForeignKeys {
+		for _, c := range fk.Columns {
+			refers[c] = true
+		}
+	}
+	counted := 0
+	for _, c := range table.Columns {
+		second, ok := fields[c.Name]
+		if !ok || c.Name == base || refers[c.Name] || !keyTypes[bknTypes[c.Type]] || !pairWords[lastWord(words(c.Name))] ||
+			d.namesAnotherTable(table, c.Name) {
+			continue
+		}
+		if counted == maxPairCounts {
+			break
+		}
+		counted++
+		rows, distinct, nulls, err := d.counter.keyTupleStats(ctx, table, []string{base, c.Name})
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			continue
+		}
+		if rows > 0 && nulls == 0 && distinct == rows {
+			objectType.Key.Candidate = []string{first, second}
+			return nil
+		}
 	}
 	return nil
 }
@@ -366,6 +449,10 @@ func (d *drafter) inferKey(ctx context.Context, table *interfaces.VegaTable, obj
 			d.keys[table.ID] = []string{field}
 			return nil
 		}
+	}
+	// Paired with the field whose counts are the evidence, when it has no nulls to make every pair have.
+	if key := objectType.Key; key.Computed && key.Field != "" && key.Nulls == 0 && key.Rows > 0 {
+		return d.pairIdentity(ctx, table, objectType, key.Field)
 	}
 	return nil
 }
@@ -428,7 +515,7 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 		}
 		linked[fk.Columns[0]] = true
 		if _, err := d.refer(ctx, table, source, fk.Columns[0], target, fk.RefColumns[0],
-			interfaces.DRAFT_ORIGIN_FOREIGN_KEY, ids); err != nil {
+			interfaces.DRAFT_ORIGIN_FOREIGN_KEY, false, ids); err != nil {
 			return err
 		}
 	}
@@ -447,8 +534,10 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 			table *interfaces.VegaTable
 			key   string
 			rank  int
+			// stem is a candidate the counts alone may bear out: it is not drafted uncounted.
+			stem bool
 		}
-		candidates := []candidate{}
+		candidates, stems := []candidate{}, []candidate{}
 		for _, other := range tables {
 			if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
 				continue
@@ -464,12 +553,28 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 				continue
 			}
 			if rank := nameMatch(c.Name, other, otherKey[0]); rank > 0 {
-				candidates = append(candidates, candidate{other, otherKey[0], rank})
+				candidates = append(candidates, candidate{other, otherKey[0], rank, false})
+			} else if d.kinds[other.ID] == tableKindEntity && other.CatalogID == table.CatalogID {
+				// Only relations within the catalog: refer counts those, while it takes a code
+				// table's enum, and a relation to another catalog, uncounted.
+				if rank := d.stemMatch(source, c.Name, other, otherKey[0]); rank > 0 {
+					stems = append(stems, candidate{other, otherKey[0], rank, true})
+				}
 			}
 		}
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].rank > candidates[j].rank })
+		// Stems point less surely than names: after them, the surer first and then by table id,
+		// and only a few, as each is counted.
+		sort.Slice(stems, func(i, j int) bool {
+			return cmp.Or(cmp.Compare(stems[j].rank, stems[i].rank), cmp.Compare(stems[i].table.ID, stems[j].table.ID)) < 0
+		})
+		candidates = append(candidates, stems[:min(len(stems), maxStemCandidates)]...)
 		for _, cand := range candidates {
-			drafted, err := d.refer(ctx, table, source, c.Name, cand.table, cand.key, interfaces.DRAFT_ORIGIN_NAME_MATCH, ids)
+			origin := interfaces.DRAFT_ORIGIN_NAME_MATCH
+			if cand.stem {
+				origin = interfaces.DRAFT_ORIGIN_STEM_MATCH
+			}
+			drafted, err := d.refer(ctx, table, source, c.Name, cand.table, cand.key, origin, cand.stem, ids)
 			if err != nil {
 				return err
 			}
@@ -502,10 +607,44 @@ func nameMatch(field string, other *interfaces.VegaTable, key string) int {
 	return 0
 }
 
+// maxStemCandidates bounds how many tables one field's stem is counted against.
+const maxStemCandidates = 3
+
+// stemMatch ranks how a field of source points at another table by its stem, 0 when it does
+// not: by its name (see stemMatch), else by its business name naming the other table's object
+// type, the whole name above its end (or, in a script without words, any part of it). Either is
+// only a candidate; refer drafts it when the counts bear it out.
+func (d *drafter) stemMatch(source *interfaces.DraftObjectType, field string, other *interfaces.VegaTable,
+	key string) int {
+	if rank := stemMatch(field, other, key, d.setting); rank > 0 {
+		return rank
+	}
+	p := findProperty(source, d.fields[source.Table.ResourceID][field])
+	if p == nil {
+		return 0
+	}
+	target := d.objectTypes[other.ID]
+	stem := businessStem(p.DisplayName, d.setting)
+	if stem == "" || target == nil {
+		return 0
+	}
+	name, stemWords := words(target.Name), words(stem)
+	switch {
+	case slices.Equal(name, stemWords):
+		return 2
+	case isASCII(stem) && len(name) > len(stemWords) && slices.Equal(name[len(name)-len(stemWords):], stemWords),
+		!isASCII(stem) && strings.Contains(strings.ToLower(target.Name), stem):
+		return 1
+	}
+	return 0
+}
+
 // refer drafts what a field referring to another table's key becomes: an enum when the other
-// table is a code table, else a relation checked by full-table counts.
+// table is a code table, else a relation checked by full-table counts. A relation that only
+// counts may bear out (mustCount) is not drafted when it could not be counted.
 func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source *interfaces.DraftObjectType,
-	field string, target *interfaces.VegaTable, key string, origin string, ids map[string]bool) (bool, error) {
+	field string, target *interfaces.VegaTable, key string, origin string, mustCount bool,
+	ids map[string]bool) (bool, error) {
 	property, ok := d.fields[table.ID][field]
 	if !ok {
 		return false, nil
@@ -559,26 +698,42 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 		}
 	}
 
-	rate, computed := relation.Evidence.HitRate, relation.Evidence.Computed
-	switch {
-	case !computed:
-		// Not counted (another catalog, a failed query): proposed for a person to check, never dropped.
-		relation.ProposedBecause = proposedNotCounted
-	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY && rate < d.setting.SuggestHitRate:
-		relation.ProposedBecause = proposedBelowSuggestRate
-	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY:
-	case rate < d.setting.SuggestHitRate:
-		// Counted and mostly orphans: an inference the data refutes is not proposed.
+	if !relation.Evidence.Computed && mustCount {
+		// A stem only counts may bear out: uncounted, it is not drafted.
 		return false, nil
-	case rate < d.setting.AdoptHitRate:
-		relation.ProposedBecause = proposedBelowAdoptRate
-	case relation.Evidence.SourceDistinct < d.setting.MinInferredDistinct:
-		// A field of a few values hits any key by chance, so it is proposed, not adopted.
-		relation.ProposedBecause = proposedFewValues
 	}
-	relation.Adopted = relation.ProposedBecause == ""
+	because, refuted := proposedBecause(d.setting, origin, relation.Evidence)
+	if refuted {
+		return false, nil
+	}
+	relation.ProposedBecause, relation.Adopted = because, because == ""
 	d.items.RelationTypes = append(d.items.RelationTypes, relation)
 	return true, nil
+}
+
+// proposedBecause is why a relation of an origin and its counts is proposed rather than
+// adopted, empty when it is adopted; refuted when it is an inference the counts refute, which
+// is not drafted at all.
+func proposedBecause(setting common.DraftSetting, origin string, evidence interfaces.DraftJoinEvidence) (string, bool) {
+	rate := evidence.HitRate
+	switch {
+	case !evidence.Computed:
+		// Not counted (another catalog, a failed query): proposed for a person to check, never dropped.
+		return proposedNotCounted, false
+	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY && rate < setting.SuggestHitRate:
+		return proposedBelowSuggestRate, false
+	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY:
+		return "", false
+	case rate < setting.SuggestHitRate:
+		// Counted and mostly orphans: an inference the data refutes is not proposed.
+		return "", true
+	case rate < setting.AdoptHitRate:
+		return proposedBelowAdoptRate, false
+	case evidence.SourceDistinct < setting.MinInferredDistinct:
+		// A field of a few values hits any key by chance, so it is proposed, not adopted.
+		return proposedFewValues, false
+	}
+	return "", false
 }
 
 func joinEvidence(rows int64, nulls int64, orphans int64) interfaces.DraftJoinEvidence {

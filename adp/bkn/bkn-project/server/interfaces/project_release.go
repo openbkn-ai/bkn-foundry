@@ -69,6 +69,8 @@ type ReleaseReview struct {
 	Changes ReleaseChanges `json:"changes"`
 	Risks   ReleaseRisks   `json:"risks"`
 	Release ReleaseTarget  `json:"release"`
+	// Questions are where the project's scenario questions stand with the release.
+	Questions ReleaseQuestions `json:"questions"`
 	// Capabilities is what the release does with each function and Skill.
 	Capabilities []CapabilityPlan `json:"capabilities"`
 	// Signature stands for what the review was made from; publishing refuses another.
@@ -130,6 +132,27 @@ type ReleaseTarget struct {
 	BranchCommit  string `json:"branch_commit"`
 }
 
+// ReleaseQuestions place the scenario questions of the knowledge layer, those answered from object
+// types and relation types, by where what they need is: AnswerableNew can be answered only once
+// released; Affected can be answered now and the release changes or removes something they need;
+// Unanswerable need something the release does not have, listed in Missing. Total counts them all,
+// Unjudged those that name nothing they need.
+type ReleaseQuestions struct {
+	SpecVersion   int               `json:"spec_version"`
+	Total         int               `json:"total"`
+	Unjudged      int               `json:"unjudged"`
+	AnswerableNew []ReleaseQuestion `json:"answerable_new"`
+	Affected      []ReleaseQuestion `json:"affected"`
+	Unanswerable  []ReleaseQuestion `json:"unanswerable"`
+}
+
+type ReleaseQuestion struct {
+	ID      string        `json:"id"`
+	Text    string        `json:"text"`
+	Needs   []ReleaseItem `json:"needs"`
+	Missing []ReleaseItem `json:"missing,omitempty"`
+}
+
 // SimilarNames is a pair of names of one kind that are the same or nearly so: Added is the item
 // the release adds, Other the one it meets.
 type SimilarNames struct {
@@ -166,7 +189,7 @@ type ProjectReleaseService interface {
 	ReviewRelease(ctx context.Context, token string, projectID string, version string,
 		caller AccountInfo) (*ReleaseReview, error)
 	// PublishRelease publishes the project's branch, for the owner, once its review still stands
-	// and every check passed or was accepted.
+	// and every check passed or was accepted, and then starts its regression in the background.
 	PublishRelease(ctx context.Context, token string, projectID string, req ProjectPublish,
 		caller AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
 	// SyncBranch brings the live version into the project's branch, for the owner.
@@ -178,6 +201,13 @@ type ProjectReleaseService interface {
 		author GitAuthor) (*ProjectDriftCommit, error)
 	// PlanSwitch reports what switching consumers to a release of the project would do.
 	PlanSwitch(ctx context.Context, token string, projectID string, toNetworkID string) (*SwitchPlan, error)
+	// GetRegression returns the regression of a release of the project, read by anyone who can
+	// read the project.
+	GetRegression(ctx context.Context, token string, projectID string, networkID string) (*Regression, error)
+	// RunRegression starts the regression of a release of the project again, for the owner, with
+	// the questions the specification has now, and returns it, running.
+	RunRegression(ctx context.Context, token string, projectID string, networkID string,
+		caller AccountInfo) (*Regression, error)
 	// SwitchConsumers switches consumers to a release of the project, for the owner.
 	SwitchConsumers(ctx context.Context, token string, projectID string, toNetworkID string,
 		caller AccountInfo) (*Switch, error)

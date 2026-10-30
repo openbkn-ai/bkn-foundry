@@ -27,7 +27,7 @@ where f_source_language is null
       '8cbd985c3fd9cd13ea12405ce569afd2f8f41f416524b83b0ad97e236e199244'
   );
 
--- Official Object Metric Designer, Project Drafter and Requirements originals are English.
+-- Official Object Metric Designer, Project Drafter, Requirements and Answer Judge originals are English.
 update t_agent_prompt_version
 set f_source_language = 'en-US'
 where f_source_language is null
@@ -35,5 +35,9 @@ where f_source_language is null
   and sha2(f_content, 256) in (
       '04f7548d8eb451eacfc718687c4362305c8d1c715725381a623a278234946d64',
       '4808bfa2955050cbb8eea9b15f82d023a855cd43c4153b540e2715531d70b198',
-      '37614ef9fed4d6263fa6c4106da596b4efd7751c279d7e9468ce2755d4185d61'
+      '37614ef9fed4d6263fa6c4106da596b4efd7751c279d7e9468ce2755d4185d61',
+      'e4900d7667d1a2267a85f201a12fdf93d3623b1929c85eea951143c0da7596b8',
+      '847b459cb91977a69ab301cd66e04ead9166050647038c14bf4ff87e68b0e1b2',
+      'd169780f870b47202eb4790acd480851f70de61a1a817cbfb580f23a8520accd',
+      'bfcb1b21e62c17286514921221130dcc3b4fdb1581948d623b1207e0bc20ad51'
   );

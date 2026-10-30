@@ -31,10 +31,14 @@ PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
 RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
 BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
-SOURCE_LANGUAGE = MIGRATIONS / "0.2.1/19-prompt-source-language.sql"
+SOURCE_LANGUAGE = MIGRATIONS / "0.2.1/24-prompt-source-language.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 SEMANTIC_NAMING = MIGRATIONS / "0.2.1/17-semantic-naming.sql"
 REQUIREMENTS = MIGRATIONS / "0.2.1/18-seed-bkn-project-requirements.sql"
+ANSWER_JUDGE = MIGRATIONS / "0.2.1/20-seed-bkn-project-answer-judge.sql"
+ANSWER_JUDGE_EXPECT = MIGRATIONS / "0.2.1/21-answer-judge-test-expect.sql"
+REQUIREMENTS_V2 = MIGRATIONS / "0.2.1/22-requirements-guidance-v2.sql"
+REQUIREMENTS_V3 = MIGRATIONS / "0.2.1/23-requirements-guidance-v3.sql"
 
 
 def statements(path):
@@ -242,6 +246,10 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, BUILTIN_LOCALES)
         apply(upgraded, SEMANTIC_NAMING)
         apply(upgraded, REQUIREMENTS)
+        apply(upgraded, ANSWER_JUDGE)
+        apply(upgraded, ANSWER_JUDGE_EXPECT)
+        apply(upgraded, REQUIREMENTS_V2)
+        apply(upgraded, REQUIREMENTS_V3)
         apply(upgraded, SOURCE_LANGUAGE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
@@ -303,7 +311,7 @@ def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
         assert "expand_neighbours" in seeded["prompt"]["content"]
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS, ANSWER_JUDGE])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         # 18 also attaches translations, to the column 10 adds.
@@ -433,6 +441,10 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(BUILTIN_LOCALES),
                     str(SEMANTIC_NAMING),
                     str(REQUIREMENTS),
+                    str(ANSWER_JUDGE),
+                    str(ANSWER_JUDGE_EXPECT),
+                    str(REQUIREMENTS_V2),
+                    str(REQUIREMENTS_V3),
                     str(SOURCE_LANGUAGE),
                 ],
             ],
@@ -476,8 +488,14 @@ def naming_locales_text():
 
 
 def requirements_locales_text():
-    """The translation backfill at the end of 18, which the fresh snapshot ends with too."""
-    text = REQUIREMENTS.read_text()
+    """The v3 translation backfill at the end of 23, which the fresh snapshot ends with too."""
+    text = REQUIREMENTS_V3.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
+def answer_judge_locales_text():
+    """The translation backfill of the judge's v2 at the end of 21, which the fresh snapshot ends with too."""
+    text = ANSWER_JUDGE_EXPECT.read_text()
     return text[text.index("-- Attach the zh-CN"):]
 
 
@@ -485,13 +503,17 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
         "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
-        + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + SOURCE_LANGUAGE.read_text()
+        + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text() + "\n" + SOURCE_LANGUAGE.read_text()
     )
-    # The seed itself sits with the other seeds, before the locale column is added.
+    # The seed itself sits with the other seeds, before the locale column is added; a fresh
+    # install starts at v3, so its prompt is the body 23 writes.
     init = (MIGRATIONS / "0.2.1/init.sql").read_text()
-    seed = REQUIREMENTS.read_text()[: REQUIREMENTS.read_text().index("-- Attach the zh-CN")]
-    seed = seed[seed.index("-- bkn-project-requirements:"):].rstrip("\n")
-    assert init.index(seed) < init.index(CLAIM_LOCALES.read_text())
+    seed = init.index("-- bkn-project-requirements:")
+    v3 = [s for s in statements(REQUIREMENTS_V3) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v3[v3.index("select v.f_prompt_id, 3,") + len("select v.f_prompt_id, 3,"):v3.index("v.f_vars_schema,")].strip()
+    assert init.index("select 'bkn-project-requirements-prompt', 3,\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
+    # The judge is seeded at its latest version, after the other seeds and before the locale column.
+    assert seed < init.index("-- bkn-project-answer-judge:") < init.index(CLAIM_LOCALES.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1067,7 +1089,8 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     claim_locale_statements = (set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
                                | set(statements(SOURCE_LANGUAGE))
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
-                               | {s for s in statements(REQUIREMENTS) if "f_localized_content" in s})
+                               | {s for s in statements(REQUIREMENTS_V3) if "f_localized_content" in s}
+                               | {s for s in statements(ANSWER_JUDGE_EXPECT) if "f_localized_content" in s})
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)
@@ -1431,7 +1454,7 @@ def semantic_prompt_version(db, version):
         "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=?",
         (version,),
     ).fetchone())
-    # Compare migration 17's payload independently of language metadata from 19.
+    # Compare migration 17's payload independently of language metadata from 24.
     # The source-language backfill has its own fresh/upgrade/guard regressions.
     result.pop("f_source_language", None)
     return result
@@ -1664,3 +1687,545 @@ def test_requirements_translation_skips_a_customized_prompt():
         )
         apply(db, REQUIREMENTS)
         assert requirements_prompt(db)[1] is None
+
+
+RQ = "bkn-project-requirements"
+
+
+def requirements_prompt_version(db, version):
+    result = dict(db.execute(
+        "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=?",
+        (version,),
+    ).fetchone())
+    # Compare migrations 22/23 independently of metadata maintained by 24.
+    result.pop("f_source_language", None)
+    return result
+
+
+def requirements_v1_state(db, start):
+    """The Agent just before 21: seeded by 18, or installed from an earlier 0.2.1 snapshot at v1."""
+    if start == "upgraded":
+        apply(db, CLAIM_LOCALES)
+        apply(db, REQUIREMENTS)
+        return
+    with database() as seeded:
+        requirements_v1_state(seeded, "upgraded")
+        v1 = requirements_prompt_version(seeded, 1)
+    apply(db, Path(selected_migrations("0.0.0")[0][0]))
+    db.execute(
+        "UPDATE t_agent_prompt_version SET f_version=1,f_content=?,f_localized_content=? WHERE f_prompt_id='bkn-project-requirements-prompt'",
+        (v1["f_content"], v1["f_localized_content"]),
+    )
+    db.execute("UPDATE t_agent_prompt SET f_current_version=1 WHERE f_prompt_id='bkn-project-requirements-prompt'")
+    db.execute(f"UPDATE t_agent_version SET f_prompt_version=1 WHERE f_agent_id='{RQ}'")
+
+
+def requirements_v2_state(db, start):
+    """The Agent just before 23: upgraded through 22, or installed from an earlier 0.2.1 snapshot at v2."""
+    if start == "upgraded":
+        requirements_v1_state(db, "upgraded")
+        apply(db, REQUIREMENTS_V2)
+        return
+    with database() as upgraded:
+        requirements_v2_state(upgraded, "upgraded")
+        v2 = requirements_prompt_version(upgraded, 2)
+    apply(db, Path(selected_migrations("0.0.0")[0][0]))
+    db.execute(
+        "UPDATE t_agent_prompt_version SET f_version=2,f_content=?,f_localized_content=? WHERE f_prompt_id='bkn-project-requirements-prompt'",
+        (v2["f_content"], v2["f_localized_content"]),
+    )
+    db.execute("UPDATE t_agent_prompt SET f_current_version=2 WHERE f_prompt_id='bkn-project-requirements-prompt'")
+    db.execute(f"UPDATE t_agent_version SET f_prompt_version=2 WHERE f_agent_id='{RQ}'")
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_requirements_v2_upgrade_matches_fresh_install_and_keeps_history(start):
+    with database() as db, database() as fresh:
+        # A fresh install is at v3 now; 22 is compared with an install as it was at v2.
+        requirements_v2_state(fresh, "installed")
+        requirements_v1_state(db, start)
+        old = requirements_prompt_version(db, 1)
+        history = snapshot(db)[3]
+        apply(db, REQUIREMENTS_V2)
+        assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
+        new = requirements_prompt_version(db, 2)
+        assert new == requirements_prompt_version(fresh, 2)
+        # Only pass guidance changes: what comes before it is v1's.
+        cut = old["f_content"].index("pass guidance, for one scenario question")
+        assert new["f_content"][:cut] == old["f_content"][:cut]
+        guidance = new["f_content"][cut:]
+        for rule in ("write at least one paraphrase", "no_tests_reason", "one of the property names the message lists",
+                     "is no slot", "{{slot N}}", "Write no other date, number or code in the text",
+                     "never states facts about the data", "the first slot names the record that should not exist"):
+            assert rule in guidance
+        old_locales, new_locales = json.loads(old["f_localized_content"]), json.loads(new["f_localized_content"])
+        assert new_locales["en-US"] == new["f_content"]
+        zh_cut = old_locales["zh-CN"].index("pass guidance\uff0c")
+        assert new_locales["zh-CN"][:zh_cut] == old_locales["zh-CN"][:zh_cut]
+        for rule in ("no_tests_reason", "{{slot N}}", "\u81f3\u5c11\u5199\u4e00\u6761 paraphrase",
+                     "\u7edd\u4e0d\u9648\u8ff0\u5173\u4e8e\u6570\u636e\u7684\u4e8b\u5b9e"):
+            assert rule in new_locales["zh-CN"][zh_cut:]
+        # Earlier prompt and Agent versions stay; only the initial/current markers move.
+        assert requirements_prompt_version(db, 1) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            f"SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='{RQ}' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(2, 1, 1)]
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V2)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
+def test_requirements_v2_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        requirements_v1_state(db, "upgraded")
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=1"
+            )
+        elif customization in ("zh-CN", "en-US"):
+            # An administrator's translation of v1 is a customization too.
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom') WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=1",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('bkn-project-requirements-prompt',2,'custom newer prompt',null,'operator',2000)"
+            )
+            if customization == "higher-version":
+                db.execute("UPDATE t_agent_prompt SET f_current_version=2 WHERE f_prompt_id='bkn-project-requirements-prompt'")
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V2)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_requirements_v2_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            requirements_v1_state(connection, "upgraded")
+            if customized:
+                connection.execute(f"UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='{RQ}'")
+        apply(expected, REQUIREMENTS_V2)
+        apply(db, REQUIREMENTS_V2, limit=limit)
+        apply(db, REQUIREMENTS_V2)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_requirements_v2_upgrade_does_not_reverse_an_operator_rollback():
+    with database() as db:
+        requirements_v1_state(db, "upgraded")
+        apply(db, REQUIREMENTS_V2)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_current_version=1,f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+        )
+        db.execute(f"UPDATE t_agent_version SET f_current=0 WHERE f_agent_id='{RQ}'")
+        db.execute(f"UPDATE t_agent_version SET f_current=1 WHERE f_agent_id='{RQ}' AND f_prompt_version=1")
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V2)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_requirements_v2_upgrade_keeps_custom_settings_and_official_baseline(start):
+    with database() as db:
+        requirements_v1_state(db, start)
+        original = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_version=1").fetchone())
+        db.execute(
+            f"UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='{RQ}'", ('{"max_turns":17}',)
+        )
+        apply(db, REQUIREMENTS_V2)
+        baseline = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_initial=1").fetchone())
+        current = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_current=1").fetchone())
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (2, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (2, "custom-model", '{"max_turns":17}')
+
+
+def test_requirements_v2_upgrade_does_not_switch_a_prompt_head_an_operator_saved():
+    with database() as db:
+        requirements_v1_state(db, "upgraded")
+        db.execute(
+            "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=500 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+        )
+        head_before, agent_versions_before = snapshot(db)[1], snapshot(db)[3]
+        apply(db, REQUIREMENTS_V2)
+        assert snapshot(db)[1] == head_before
+        assert snapshot(db)[3] == agent_versions_before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
+def test_requirements_v3_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        requirements_v2_state(db, "upgraded")
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=2"
+            )
+        elif customization in ("zh-CN", "en-US"):
+            # An administrator's translation of v2 is a customization too.
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom') WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=2",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('bkn-project-requirements-prompt',3,'custom newer prompt',null,'operator',2000)"
+            )
+            if customization == "higher-version":
+                db.execute("UPDATE t_agent_prompt SET f_current_version=3 WHERE f_prompt_id='bkn-project-requirements-prompt'")
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V3)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_requirements_v3_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            requirements_v2_state(connection, "upgraded")
+            if customized:
+                connection.execute(f"UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='{RQ}'")
+        apply(expected, REQUIREMENTS_V3)
+        apply(db, REQUIREMENTS_V3, limit=limit)
+        apply(db, REQUIREMENTS_V3)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_requirements_v3_upgrade_does_not_reverse_an_operator_rollback():
+    with database() as db:
+        requirements_v2_state(db, "upgraded")
+        apply(db, REQUIREMENTS_V3)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_current_version=2,f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+        )
+        db.execute(f"UPDATE t_agent_version SET f_current=0 WHERE f_agent_id='{RQ}'")
+        db.execute(f"UPDATE t_agent_version SET f_current=1 WHERE f_agent_id='{RQ}' AND f_prompt_version=2")
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V3)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_requirements_v3_upgrade_keeps_custom_settings_and_official_baseline(start):
+    with database() as db:
+        requirements_v2_state(db, start)
+        original = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_version=1").fetchone())
+        db.execute(
+            f"UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='{RQ}'", ('{"max_turns":17}',)
+        )
+        apply(db, REQUIREMENTS_V3)
+        baseline = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_initial=1").fetchone())
+        current = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_current=1").fetchone())
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (3, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (3, "custom-model", '{"max_turns":17}')
+
+
+def test_requirements_v3_upgrade_does_not_switch_a_prompt_head_an_operator_saved():
+    with database() as db:
+        requirements_v2_state(db, "upgraded")
+        db.execute(
+            "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=500 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+        )
+        head_before, agent_versions_before = snapshot(db)[1], snapshot(db)[3]
+        apply(db, REQUIREMENTS_V3)
+        assert snapshot(db)[1] == head_before
+        assert snapshot(db)[3] == agent_versions_before
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_requirements_v3_upgrade_matches_fresh_install_and_keeps_history(start):
+    with database() as db, database() as fresh:
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        requirements_v2_state(db, start)
+        old = requirements_prompt_version(db, 2)
+        history = snapshot(db)[3]
+        apply(db, REQUIREMENTS_V3)
+        assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
+        new = requirements_prompt_version(db, 3)
+        assert new == requirements_prompt_version(fresh, 3)
+        # Only the boundary rule changes, in both languages.
+        assert "never states, assumes or asks to suppose a fact about the data" in new["f_content"]
+        assert "never states facts about the data" in old["f_content"]
+        cut = old["f_content"].index("A boundary test")
+        assert new["f_content"][:cut] == old["f_content"][:cut]
+        assert new["f_content"].endswith(old["f_content"][old["f_content"].index(" In a not_exist test"):])
+        old_locales, new_locales = json.loads(old["f_localized_content"]), json.loads(new["f_localized_content"])
+        assert new_locales["en-US"] == new["f_content"]
+        zh_cut = old_locales["zh-CN"].index("\u8fb9\u754c\u60c5\u51b5")
+        assert new_locales["zh-CN"][:zh_cut] == old_locales["zh-CN"][:zh_cut]
+        assert "\u7edd\u4e0d\u9648\u8ff0\u3001\u5047\u5b9a" in new_locales["zh-CN"]
+        assert requirements_prompt_version(db, 2) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            f"SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='{RQ}' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(3, 1, 1)]
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V3)
+        assert snapshot(db) == before
+
+
+def answer_judge_prompt(db):
+    return db.execute(
+        "SELECT v.f_content, v.f_localized_content FROM t_agent_prompt p JOIN t_agent_prompt_version v"
+        " ON v.f_prompt_id = p.f_prompt_id AND v.f_version = p.f_current_version"
+        " WHERE p.f_prompt_id='bkn-project-answer-judge-prompt'"
+    ).fetchone()
+
+
+def test_answer_judge_seed_is_a_published_tool_free_task_on_the_default_model():
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        agent = db.execute(
+            "SELECT f_name, f_mode, f_model, f_tools, f_skills, f_limits, f_status FROM t_agent"
+            " WHERE f_agent_id='bkn-project-answer-judge'"
+        ).fetchone()
+        assert agent["f_name"] == "BKNProjectAnswerJudge"
+        assert agent["f_mode"] == "task"
+        assert agent["f_model"] == ""
+        assert json.loads(agent["f_tools"]) == []
+        assert json.loads(agent["f_skills"]) == []
+        assert agent["f_status"] == "published"
+        limits = json.loads(agent["f_limits"])
+        assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
+        prompt, localized = answer_judge_prompt(db)
+        assert prompt.isascii()
+        # A fresh install seeds the latest version directly.
+        assert [tuple(row) for row in db.execute(
+            "SELECT f_version FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-answer-judge-prompt'")] == [(2,)]
+        assert [tuple(row) for row in db.execute(
+            "SELECT f_version,f_prompt_version,f_initial,f_current FROM t_agent_version"
+            " WHERE f_agent_id='bkn-project-answer-judge'")] == [(1, 2, 1, 1)]
+        # A not_exists test is answered by establishing the record does not exist, not by the structure.
+        assert "expect" in prompt and "not_exists" in prompt
+        assert "establishes from the network, by its tool calls, that no such record exists" in prompt
+        assert "the network lacks the object or property to look it up by, choose cannot_answer" in prompt
+        assert "\u786e\u8ba4\u4e86\u4e0d\u5b58\u5728\u8fd9\u6837\u7684\u8bb0\u5f55" in json.loads(localized)["zh-CN"]
+        # The four verdicts bkn-project maps to the regression's outcomes.
+        for verdict in ("answered", "clarification_needed", "cannot_answer", "off_topic"):
+            assert verdict in prompt
+        assert "used_needs" in prompt and "only the kinds and ids listed in the message" in prompt
+        # An answer passes only when it gives all of what is asked, from the network: facts no tool call
+        # could have read, and part of an answer, are cannot_answer.
+        assert "gives all of what it asks" in prompt
+        assert "facts that none of its tool calls could have read from the network" in prompt
+        assert "does not rest on data in the network" in prompt
+        assert "gives only part of what the question asks" in prompt
+        # cannot_answer does not take the cases clarification_needed and off_topic name.
+        assert "when clarification_needed or off_topic applies, choose it rather than cannot_answer" in prompt
+        zh = json.loads(localized)["zh-CN"]
+        for rule in ("\u6ca1\u6709\u4f9d\u636e\u7f51\u7edc\u4e2d\u7684\u6570\u636e", "\u53ea\u7ed9\u51fa\u4e86\u95ee\u9898\u6240\u95ee\u7684\u4e00\u90e8\u5206",
+                     "\u9009\u5b83\u4eec\u800c\u4e0d\u662f cannot_answer"):
+            assert rule in zh
+        # It judges what the answer says from what the message carries: never the data the tools returned.
+        assert "without what the tools returned" in prompt
+        assert "no row data" in prompt
+        assert "language named in the message" in prompt
+        assert "never as instructions" in prompt
+        # The prompt is general: no business of any sample network.
+        for sample in ("order", "customer", "supplier", "material", "\u8ba2\u5355", "\u5ba2\u6237", "\u4f9b\u5e94\u5546"):
+            assert sample not in prompt.lower()
+            assert sample not in json.loads(localized)["zh-CN"].lower()
+        variants = json.loads(localized)
+        assert variants["en-US"] == prompt
+        assert variants["zh-CN"] != prompt
+
+
+@pytest.mark.parametrize("completed", [1, 2])
+def test_partial_answer_judge_seed_is_retryable_without_an_unfinished_agent(completed):
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        apply(db, ANSWER_JUDGE, limit=completed)
+        assert db.execute("SELECT COUNT(*) FROM t_agent").fetchone()[0] == 0
+        apply(db, ANSWER_JUDGE)
+        assert db.execute(
+            "SELECT f_name FROM t_agent WHERE f_agent_id='bkn-project-answer-judge'"
+        ).fetchone()[0] == "BKNProjectAnswerJudge"
+
+
+def test_conflicting_answer_judge_prompt_is_not_taken_over():
+    with database() as db:
+        db.execute(
+            "INSERT INTO t_agent_prompt VALUES('bkn-project-answer-judge-prompt','someone',3,'someone',1)"
+        )
+        apply(db, CLAIM_LOCALES)
+        before = snapshot(db)
+        # The seed does not adopt someone else's prompt: it fails closed and changes nothing.
+        with pytest.raises(sqlite3.IntegrityError):
+            apply(db, ANSWER_JUDGE)
+        assert snapshot(db) == before
+
+
+def test_answer_judge_translation_skips_a_customized_prompt():
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        seed = [s for s in statements(ANSWER_JUDGE) if s.lower().startswith("insert")]
+        for statement in seed:
+            db.execute(statement)
+        db.execute(
+            "UPDATE t_agent_prompt_version SET f_content='Administrator prompt'"
+            " WHERE f_prompt_id='bkn-project-answer-judge-prompt'"
+        )
+        apply(db, ANSWER_JUDGE)
+        assert answer_judge_prompt(db)[1] is None
+
+
+def judge_v1_state(db):
+    """An answer judge as 20 seeds it: the official v1 with its translations."""
+    apply(db, CLAIM_LOCALES)
+    apply(db, ANSWER_JUDGE)
+
+
+def judge_prompt_version(db, version):
+    return dict(db.execute(
+        "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-answer-judge-prompt' AND f_version=?",
+        (version,),
+    ).fetchone())
+
+
+def test_answer_judge_v2_upgrade_matches_fresh_install_and_keeps_history():
+    with database() as db, database() as fresh:
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        judge_v1_state(db)
+        old = judge_prompt_version(db, 1)
+        history = snapshot(db)[3]
+        apply(db, ANSWER_JUDGE_EXPECT)
+        assert item_from_db(db, "bkn-project-answer-judge") == item_from_db(fresh, "bkn-project-answer-judge")
+        new = judge_prompt_version(db, 2)
+        assert new["f_content"] == judge_prompt_version(fresh, 2)["f_content"]
+        assert new["f_localized_content"] == judge_prompt_version(fresh, 2)["f_localized_content"]
+        assert new["f_content"].startswith(old["f_content"] + "\n\n")
+        assert "not_exists" in new["f_content"][len(old["f_content"]):]
+        old_locales, new_locales = json.loads(old["f_localized_content"]), json.loads(new["f_localized_content"])
+        assert new_locales["en-US"] == new["f_content"]
+        assert new_locales["zh-CN"].startswith(old_locales["zh-CN"] + "\n\n") and "not_exists" in new_locales["zh-CN"]
+        assert judge_prompt_version(db, 1) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            "SELECT f_prompt_version,f_initial,f_current FROM t_agent_version"
+            " WHERE f_agent_id='bkn-project-answer-judge' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(2, 1, 1)]
+        before = snapshot(db)
+        apply(db, ANSWER_JUDGE_EXPECT)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
+def test_answer_judge_v2_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        judge_v1_state(db)
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt'"
+                " WHERE f_prompt_id='bkn-project-answer-judge-prompt' AND f_version=1"
+            )
+        elif customization in ("zh-CN", "en-US"):
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom')"
+                " WHERE f_prompt_id='bkn-project-answer-judge-prompt' AND f_version=1",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time)"
+                " VALUES('bkn-project-answer-judge-prompt',2,'custom newer prompt',null,'operator',2000)"
+            )
+            if customization == "higher-version":
+                db.execute("UPDATE t_agent_prompt SET f_current_version=2 WHERE f_prompt_id='bkn-project-answer-judge-prompt'")
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=3000"
+                    " WHERE f_prompt_id='bkn-project-answer-judge-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, ANSWER_JUDGE_EXPECT)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_answer_judge_v2_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            judge_v1_state(connection)
+            if customized:
+                connection.execute("UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='bkn-project-answer-judge'")
+        apply(expected, ANSWER_JUDGE_EXPECT)
+        apply(db, ANSWER_JUDGE_EXPECT, limit=limit)
+        apply(db, ANSWER_JUDGE_EXPECT)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_answer_judge_v2_upgrade_does_not_reverse_an_operator_rollback():
+    with database() as db:
+        judge_v1_state(db)
+        apply(db, ANSWER_JUDGE_EXPECT)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_current_version=1,f_update_user='operator',f_update_time=3000"
+            " WHERE f_prompt_id='bkn-project-answer-judge-prompt'"
+        )
+        db.execute("UPDATE t_agent_version SET f_current=0 WHERE f_agent_id='bkn-project-answer-judge'")
+        db.execute("UPDATE t_agent_version SET f_current=1 WHERE f_agent_id='bkn-project-answer-judge' AND f_prompt_version=1")
+        before = snapshot(db)
+        apply(db, ANSWER_JUDGE_EXPECT)
+        assert snapshot(db) == before
+
+
+def test_answer_judge_v2_upgrade_keeps_custom_settings_and_official_baseline():
+    with database() as db:
+        judge_v1_state(db)
+        original = dict(db.execute(
+            "SELECT * FROM t_agent_version WHERE f_agent_id='bkn-project-answer-judge' AND f_version=1").fetchone())
+        db.execute(
+            "UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='bkn-project-answer-judge'",
+            ('{"max_turns":3}',),
+        )
+        apply(db, ANSWER_JUDGE_EXPECT)
+        baseline = dict(db.execute(
+            "SELECT * FROM t_agent_version WHERE f_agent_id='bkn-project-answer-judge' AND f_initial=1").fetchone())
+        current = dict(db.execute(
+            "SELECT * FROM t_agent_version WHERE f_agent_id='bkn-project-answer-judge' AND f_current=1").fetchone())
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (2, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (2, "custom-model", '{"max_turns":3}')
+
+
+def test_answer_judge_v2_upgrade_does_not_switch_a_prompt_head_an_operator_saved():
+    with database() as db:
+        judge_v1_state(db)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=500"
+            " WHERE f_prompt_id='bkn-project-answer-judge-prompt'"
+        )
+        head_before, agent_versions_before = snapshot(db)[1], snapshot(db)[3]
+        apply(db, ANSWER_JUDGE_EXPECT)
+        assert snapshot(db)[1] == head_before
+        assert snapshot(db)[3] == agent_versions_before

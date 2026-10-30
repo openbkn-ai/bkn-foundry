@@ -7,6 +7,7 @@ package draft
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -34,7 +35,7 @@ func Test_PendingOf(t *testing.T) {
 		}
 
 		Convey("Each pending item comes with the requests that settle it, in one order\n", func() {
-			p := pendingOf(project, draft())
+			p := pendingOf(project, draft(), nil)
 
 			So(p.DraftUpdateTime, ShouldEqual, 100)
 			So(len(p.Items), ShouldEqual, 2)
@@ -47,8 +48,9 @@ func Test_PendingOf(t *testing.T) {
 					Action: interfaces.ACTION_CHOOSE_IDENTITY, Method: "PUT",
 					Path: "/projects/p1/ontology/draft/object_types/orders/identity",
 					Body: map[string]any{"update_time": "$draft_update_time", "properties": "$candidate"},
-					// What drafting counted first, then the other key-typed properties by name.
-					Allowed: true, Candidates: [][]string{{"customer_id"}, {"channel"}, {"order_id"}, {"status"}},
+					// Drafting counted customer_id with duplicates and nothing else: no candidate, and why.
+					// Uncounted properties are none: choosing one could merge records.
+					Allowed: true, Candidates: [][]string{}, CandidatesReason: interfaces.PENDING_CANDIDATES_NO_UNIQUE,
 				},
 				{
 					Action: interfaces.ACTION_UNADOPT, Method: "PATCH", Path: "/projects/p1/ontology/draft/items/object_types/orders",
@@ -75,7 +77,7 @@ func Test_PendingOf(t *testing.T) {
 			d := draft()
 			d.Items.ObjectTypes[3].NeedsIdentity = true
 
-			adopt := pendingOf(project, d).Items[1].Options[0]
+			adopt := pendingOf(project, d, nil).Items[1].Options[0]
 
 			So(adopt.Allowed, ShouldBeFalse)
 			So(adopt.Reason, ShouldEqual, interfaces.ACTION_REASON_END_NEEDS_IDENTITY)
@@ -90,7 +92,7 @@ func Test_PendingOf(t *testing.T) {
 			d.Items.ObjectTypes[3].NeedsIdentity = true
 			d.Items.ObjectTypes[3].Properties[0].Type = "decimal"
 
-			p := pendingOf(project, d)
+			p := pendingOf(project, d, nil)
 
 			for _, item := range []interfaces.PendingItem{p.Items[0], p.Items[2]} {
 				choose := item.Options[0]
@@ -98,13 +100,43 @@ func Test_PendingOf(t *testing.T) {
 				So(choose.Allowed, ShouldBeFalse)
 				So(choose.Reason, ShouldEqual, interfaces.ACTION_REASON_NO_KEY_PROPERTY)
 				So(choose.Candidates, ShouldBeEmpty)
+				So(choose.CandidatesReason, ShouldEqual, "")
+			}
+		})
+
+		Convey("A pair drafting counted unique is the first candidate\n", func() {
+			d := draft()
+			d.Items.ObjectTypes[0].Key.Candidate = []string{"order_id", "status"}
+
+			choose := pendingOf(project, d, nil).Items[0].Options[0]
+
+			// Only the pair: the counted field had duplicates and the others were not counted.
+			So(choose.Candidates, ShouldResemble, [][]string{{"order_id", "status"}})
+			So(choose.CandidatesReason, ShouldEqual, "")
+		})
+
+		Convey("A counted field that is unique and non-null is a candidate\n", func() {
+			d := draft()
+			d.Items.ObjectTypes[0].Key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_INFERRED, Field: "customer_id",
+				Computed: true, Rows: 10, Distinct: 10}
+
+			choose := pendingOf(project, d, nil).Items[0].Options[0]
+
+			So(choose.Candidates, ShouldResemble, [][]string{{"customer_id"}})
+			for _, key := range []interfaces.DraftKeyEvidence{
+				{Field: "customer_id", Computed: true, Rows: 10, Distinct: 9, Nulls: 1},
+				{Field: "customer_id", Computed: true, Rows: 0},
+				{Field: "customer_id", Rows: 10, Distinct: 10},
+			} {
+				d.Items.ObjectTypes[0].Key = key
+				So(pendingOf(project, d, nil).Items[0].Options[0].Candidates, ShouldBeEmpty)
 			}
 		})
 
 		Convey("Nothing is settled in an archived project\n", func() {
 			archived := &interfaces.Project{ID: "p1", Archived: true}
 
-			for _, item := range pendingOf(archived, draft()).Items {
+			for _, item := range pendingOf(archived, draft(), nil).Items {
 				for _, option := range item.Options {
 					So(option.Allowed, ShouldBeFalse)
 					So(option.Reason, ShouldEqual, interfaces.ACTION_REASON_ARCHIVED)
@@ -114,7 +146,7 @@ func Test_PendingOf(t *testing.T) {
 
 		Convey("It lists what confirming checks, no more and no less\n", func() {
 			d := draft()
-			p := pendingOf(project, d)
+			p := pendingOf(project, d, nil)
 			pending := pendingItems(&d.Items)
 
 			So(len(p.Items), ShouldEqual, len(pending["needs_identity"])+len(pending["unadopted_ends"]))
@@ -127,7 +159,7 @@ func Test_PendingOf(t *testing.T) {
 			d.Items.RelationTypes = append(d.Items.RelationTypes, compileFixture().RelationTypes[3])
 			d.Items.RelationTypes[3].ProposedBecause = "below_adopt_hit_rate"
 
-			p := pendingOf(project, d)
+			p := pendingOf(project, d, nil)
 
 			So(len(p.Items), ShouldEqual, 4)
 			for _, item := range p.Items[:2] {
@@ -146,7 +178,7 @@ func Test_PendingOf(t *testing.T) {
 		})
 
 		Convey("A draft with nothing pending lists nothing, as an empty list\n", func() {
-			out, err := json.Marshal(pendingOf(project, confirmableDraft()))
+			out, err := json.Marshal(pendingOf(project, confirmableDraft(), nil))
 
 			So(err, ShouldBeNil)
 			So(string(out), ShouldContainSubstring, `"items":[]`)
@@ -160,21 +192,59 @@ func Test_GetPending(t *testing.T) {
 		defer ctrl.Finish()
 		da := pmock.NewMockDraftAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
-		svc := &draftService{setting: testSetting, da: da, ps: ps}
+		rqa := pmock.NewMockRequirementAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, ps: ps, rqa: rqa}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 
-		Convey("A ready draft lists its pending items\n", func() {
+		Convey("A ready draft lists its pending items, each with the knowledge questions that need it\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			d := confirmableDraft()
 			d.Items.ObjectTypes[0].NeedsIdentity = true
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ot := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: d.Items.ObjectTypes[0].ID}
+			rqa.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_READY,
+				Spec: interfaces.RequirementSpec{Questions: []*interfaces.RequirementQuestion{
+					// Needing it twice names the question once.
+					{ID: "q1", Text: "Which ones?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+						Needs: []interfaces.RequirementItemRef{ot, ot}},
+					// A question a metric answers needs more than the item; it is not named.
+					{ID: "q2", Text: "How many?", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Needs: []interfaces.RequirementItemRef{ot}},
+					{ID: "q3", Text: "Of whom?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, Needs: []interfaces.RequirementItemRef{
+						{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: d.Items.ObjectTypes[0].ID}, ot}},
+				}}}, true, nil)
 
 			p, err := svc.GetPending(ctx, token, "p1")
 
 			So(err, ShouldBeNil)
 			So(len(p.Items), ShouldEqual, 1)
 			So(p.DraftUpdateTime, ShouldEqual, readTime)
+			So(p.Items[0].NeededBy, ShouldResemble, []interfaces.PendingQuestion{{ID: "q1", Text: "Which ones?"}, {ID: "q3", Text: "Of whom?"}})
+		})
+
+		Convey("A specification not ready names no question\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			d := confirmableDraft()
+			d.Items.ObjectTypes[0].NeedsIdentity = true
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			rqa.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_DRAFTING,
+				Spec: interfaces.RequirementSpec{Questions: []*interfaces.RequirementQuestion{{ID: "q1", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+					Needs: []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: d.Items.ObjectTypes[0].ID}}}}}}, true, nil)
+
+			p, err := svc.GetPending(ctx, token, "p1")
+
+			So(err, ShouldBeNil)
+			So(p.Items[0].NeededBy, ShouldBeNil)
+		})
+
+		Convey("A specification that cannot be read fails the list\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			rqa.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, errors.New("db down"))
+
+			_, err := svc.GetPending(ctx, token, "p1")
+
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("A draft not ready lists nothing yet\n", func() {

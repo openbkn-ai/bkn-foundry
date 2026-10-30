@@ -115,6 +115,80 @@ func Test_EditDraftItem(t *testing.T) {
 			So(got.Items.Decisions[0].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADOPT)
 		})
 
+		Convey("Adopting an object type adopts the relations proposed only for it, on their counts\n", func() {
+			counted := func(rate float64) interfaces.DraftJoinEvidence {
+				return interfaces.DraftJoinEvidence{Computed: true, Rows: 100, Hits: int64(rate * 100), HitRate: rate, SourceDistinct: 50}
+			}
+			relate := func(id, target, field, key string, rate float64) *interfaces.DraftRelationType {
+				return &interfaces.DraftRelationType{
+					ID: id, Source: "orders", Target: target, Origin: interfaces.DRAFT_ORIGIN_NAME_MATCH,
+					Mapping:  []interfaces.DraftFieldMapping{{SourceProperty: field, TargetProperty: key}},
+					Evidence: counted(rate), ProposedBecause: proposedEndNotAdopted,
+				}
+			}
+			stem := func(id, target, field, key string, rate float64) *interfaces.DraftRelationType {
+				r := relate(id, target, field, key, rate)
+				r.Origin = interfaces.DRAFT_ORIGIN_STEM_MATCH
+				return r
+			}
+			draft.Items.ObjectTypes = []*interfaces.DraftObjectType{
+				{ID: "orders", Name: "Orders", PrimaryKeys: []string{"order_id"}},
+				{ID: "suppliers", Name: "Suppliers", Adopted: true, PrimaryKeys: []string{"supplier_code"}},
+				{ID: "materials", Name: "Materials", Adopted: true, PrimaryKeys: []string{"material_code"}},
+				{ID: "regions", Name: "Regions", PrimaryKeys: []string{"region_id"}},
+			}
+			draft.Items.RelationTypes = []*interfaces.DraftRelationType{
+				relate("by_supplier", "suppliers", "supplier_number", "supplier_code", 1),
+				// Recommended from a similar field name: re-gated like any inferred relation.
+				stem("by_stem", "materials", "part_no", "material_code", 1),
+				relate("by_material", "materials", "material_number", "material_code", 0.85),
+				// Counted against a key the target no longer has.
+				relate("by_old_key", "materials", "material_name", "material_name", 1),
+				// Its other end is not adopted.
+				relate("by_region", "regions", "region_id", "region_id", 1),
+				// Refuted by the counts on the rates now set.
+				relate("refuted", "suppliers", "supplier_ref", "supplier_code", 0.5),
+				// A person decided not to adopt it.
+				relate("decided", "suppliers", "vendor_code", "supplier_code", 1),
+				// Only renamed, as renaming its object type renames it.
+				relate("renamed", "materials", "part_number", "material_code", 1),
+			}
+			draft.Items.Decisions = []*interfaces.DraftDecision{
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "decided", Action: interfaces.DRAFT_DECISION_UNADOPT},
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "renamed", Action: interfaces.DRAFT_DECISION_RENAME},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			expectWrite()
+			e := edit()
+			e.Adopted = boolPtr(true)
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+			So(err, ShouldBeNil)
+			state := map[string]string{}
+			for _, r := range got.Items.RelationTypes {
+				state[r.ID] = strings.TrimSpace(map[bool]string{true: "adopted", false: ""}[r.Adopted] + " " + r.ProposedBecause)
+			}
+			So(state, ShouldResemble, map[string]string{
+				"by_supplier": "adopted",
+				"by_stem":     "adopted",
+				"by_material": proposedBelowAdoptRate,
+				"by_old_key":  proposedEndNotAdopted,
+				"by_region":   proposedEndNotAdopted,
+				"refuted":     proposedEndNotAdopted,
+				"decided":     proposedEndNotAdopted,
+				"renamed":     "adopted",
+			})
+			decisions := got.Items.Decisions[2:]
+			So(decisions, ShouldHaveLength, 4)
+			So(decisions[0].ItemID, ShouldEqual, "orders")
+			So(decisions[1].ItemID, ShouldEqual, "by_supplier")
+			So(decisions[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADOPT)
+			So(decisions[2].ItemID, ShouldEqual, "by_stem")
+			So(decisions[3].ItemID, ShouldEqual, "renamed")
+			So(findRelationType(&got.Items, "by_stem").Origin, ShouldEqual, interfaces.DRAFT_ORIGIN_STEM_MATCH)
+		})
+
 		Convey("Renaming and describing record what they replaced\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 			expectWrite()

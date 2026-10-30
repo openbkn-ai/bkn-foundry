@@ -65,6 +65,10 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 				now.UnixMilli())
 		}
 	}
+	if err := s.withRequirement(ctx, projectID, draft, status); err != nil {
+		span.SetStatus(codes.Error, "Read requirement failed")
+		return nil, internalError(ctx, "Read requirement failed", err)
+	}
 	// Only a current confirmation can have been published.
 	if status.Confirmation != nil && status.Confirmation.Current {
 		latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: entry.KNID, Limit: 1})
@@ -415,4 +419,37 @@ func anyObjectTypeAdopted(items *interfaces.DraftItems) bool {
 		}
 	}
 	return false
+}
+
+// withRequirement counts, when a draft can be confirmed, the unresolved conflicts of the project's
+// ready requirement specification, having confirming accept them as confirming asks, and the
+// undecided items its knowledge questions need.
+func (s *draftService) withRequirement(ctx context.Context, projectID string, draft *interfaces.Draft,
+	status *interfaces.ProjectStatus) error {
+	var confirm *interfaces.ProjectStatusNextAction
+	for i := range status.NextActions {
+		if status.NextActions[i].Action == interfaces.ACTION_CONFIRM_DRAFT {
+			confirm = &status.NextActions[i]
+		}
+	}
+	if confirm == nil {
+		return nil
+	}
+	// One read: the conflicts and the questions are of the same specification.
+	req, found, err := s.rqa.GetRequirement(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	_, unresolved := requirementStateOf(req, found)
+	if status.UnresolvedConflicts = len(unresolved); status.UnresolvedConflicts > 0 {
+		confirm.Body["accept_unresolved_conflicts"] = true
+		confirm.Accepts = append(confirm.Accepts, interfaces.ACCEPTS_UNRESOLVED_CONFLICTS)
+	}
+	needed := neededOf(req, found)
+	for _, u := range undecidedItems(&draft.Items) {
+		if len(needed[u.Kind+"/"+u.ItemID]) > 0 {
+			status.UndecidedNeeded++
+		}
+	}
+	return nil
 }

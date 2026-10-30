@@ -84,7 +84,7 @@ The admin shared-Prompt read returns canonical `source_content`, `source_languag
 
 `PUT /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/versions/{version}/translations/{language}` adds or edits one translation using the existing management permission. It requires the original language and canonical-content SHA-256. It never creates a Prompt/Agent version or changes the active pointer. Changed active versions/originals/language metadata are rejected with 409. Concurrent writes serialize on the parent Prompt to merge languages without losing updates. Existing translations are preserved, including data from older preview backfills.
 
-The migration `19-prompt-source-language.sql` adds the nullable language column; prepare and approve migrations before deploying the ORM. There is no automatic translation service.
+The migration `24-prompt-source-language.sql` adds the nullable language column; prepare and approve migrations before deploying the ORM. There is no automatic translation service.
 
 The locale backfill is `0.2.1/10-claim-prompt-locales.sql`; the normal migrator
 runs it with the other `0.2.1` deltas when upgrading from an earlier release. The

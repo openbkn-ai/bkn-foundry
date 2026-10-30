@@ -24,6 +24,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknagent"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknbackend"
 	checkaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/check"
 	draftaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/draft"
@@ -32,11 +33,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/indexbuild"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
+	regressionaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/regression"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
+	requirementaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/requirement"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/vega"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
+	releaselogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
 
 // Application is a booted bkn-project process that has not started serving yet.
@@ -82,11 +87,21 @@ func Boot() *Application {
 	logics.SetGitStore(gitstore.NewGitStore(appSetting))
 	logics.SetBknBackendAccess(bknbackend.NewBknBackendAccess(appSetting))
 	logics.SetExecutionFactoryAccess(executionfactory.NewExecutionFactoryAccess(appSetting))
+	logics.SetBknAgentAccess(bknagent.NewBknAgentAccess(appSetting))
+	logics.SetRequirementAccess(requirementaccess.NewRequirementAccess(appSetting))
+	logics.SetRegressionAccess(regressionaccess.NewRegressionAccess(appSetting))
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.
 	if err := draft.NewDraftService(appSetting).FailInterrupted(context.Background()); err != nil {
 		logger.Errorf("Failed to fail interrupted drafts: %v", err)
+	}
+	if err := requirement.NewRequirementService().FailInterrupted(context.Background()); err != nil {
+		logger.Errorf("Failed to fail interrupted requirement drafting: %v", err)
+	}
+	// So do the regressions of releases.
+	if err := releaselogic.NewRegressionService().FailInterrupted(context.Background()); err != nil {
+		logger.Errorf("Failed to fail interrupted regressions: %v", err)
 	}
 
 	return &Application{

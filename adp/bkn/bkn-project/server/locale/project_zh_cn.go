@@ -41,5 +41,8 @@ var projectZhCN = i18n.I18nMessages{
 		"BknProject.Requirement.HasDecisions":        "需求规格已有裁决 重新起草会丢弃已做的冲突裁决和建模取舍，确认丢弃后才能重新起草。",
 		"BknProject.Requirement.ProjectArchived":     "项目已归档 归档的项目不能修改需求规格和需求资料。",
 		"BknProject.Requirement.InternalError":       "内部错误 需求规格处理失败，请联系管理员。",
+		"BknProject.Requirement.InvalidTest":         "测试问法不合法 测试问法不能为空、不能过长，取值所属的概念必须存在，见 error_details。",
+		"BknProject.Requirement.TestNotFound":        "测试问法不存在 这个场景问题没有这条测试问法。",
+		"BknProject.Requirement.Generating":          "正在生成 这个场景问题的测试问法与开发指导正在生成，请等它完成后再试。",
 	},
 }

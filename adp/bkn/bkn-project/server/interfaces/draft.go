@@ -22,7 +22,10 @@ const (
 const (
 	DRAFT_ORIGIN_FOREIGN_KEY = "foreign_key"
 	DRAFT_ORIGIN_NAME_MATCH  = "name_match"
-	DRAFT_ORIGIN_LINK_TABLE  = "link_table"
+	// DRAFT_ORIGIN_STEM_MATCH is a field whose name only resembles the other table's:
+	// supplier_number for erp_supplier's supplier_code.
+	DRAFT_ORIGIN_STEM_MATCH = "stem_match"
+	DRAFT_ORIGIN_LINK_TABLE = "link_table"
 )
 
 // How an object type's key was found.
@@ -71,6 +74,9 @@ const (
 	// DRAFT_DECISION_ACCEPT_UNDECIDED confirms a draft leaving out the items drafting did not adopt
 	// and no one decided on, listed in After as kind/item_id.
 	DRAFT_DECISION_ACCEPT_UNDECIDED = "accept_undecided"
+	// DRAFT_DECISION_ACCEPT_UNRESOLVED_CONFLICTS records confirming while conflicts between the
+	// requirement documents were unresolved; After lists them.
+	DRAFT_DECISION_ACCEPT_UNRESOLVED_CONFLICTS = "accept_unresolved_conflicts"
 )
 
 // Limits of what people write into a draft, those of BKN definitions.
@@ -180,6 +186,9 @@ type DraftConfirmation struct {
 	// SkippedValueTypes are adopted value types BKN 3.0 would refuse; their properties keep
 	// their base type.
 	SkippedValueTypes []string `json:"skipped_value_types"`
+	// RequirementVersion is the n of the requirement specification rq-n the draft was confirmed
+	// against; 0 when the project had no ready specification.
+	RequirementVersion int `json:"requirement_version,omitempty"`
 }
 
 // DraftConfirm asks to commit the draft made at UpdateTime to the project branch.
@@ -189,6 +198,9 @@ type DraftConfirm struct {
 	AcceptPartial bool `json:"accept_partial"`
 	// AcceptUndecided confirms a draft leaving out the items no one decided on.
 	AcceptUndecided bool `json:"accept_undecided"`
+	// AcceptUnresolvedConflicts confirms a draft knowing conflicts between the requirement
+	// documents are unresolved: they are a risk to see, not a gate.
+	AcceptUnresolvedConflicts bool `json:"accept_unresolved_conflicts"`
 }
 
 // DraftDecision records one change a person made to a draft item. Before and After are the
@@ -281,6 +293,9 @@ type DraftKeyEvidence struct {
 	Nulls    int64  `json:"nulls"`
 	// Reason says why the counts were not computed.
 	Reason string `json:"reason,omitempty"`
+	// Candidate is a pair of properties drafting counted unique and non-null together, for an
+	// object type that waits for its identity: offered to choose, never taken by drafting.
+	Candidate []string `json:"candidate,omitempty"`
 }
 
 type DraftRelationType struct {

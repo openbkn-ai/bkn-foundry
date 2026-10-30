@@ -56,7 +56,14 @@ func Test_ConfirmDraft(t *testing.T) {
 		iba := pmock.NewMockIndexBuildAccess(ctrl)
 		// What a confirmation starts in the background, held so a test can run it.
 		var ran []func()
-		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, ira: ira, va: va, iba: iba,
+		// The project's requirement specification; none unless a test sets one.
+		rqa := pmock.NewMockRequirementAccess(ctrl)
+		var requirement *interfaces.Requirement
+		rqa.EXPECT().GetRequirement(gomock.Any(), "p1").DoAndReturn(
+			func(context.Context, string) (*interfaces.Requirement, bool, error) {
+				return requirement, requirement != nil, nil
+			}).AnyTimes()
+		svc := &draftService{da: da, ps: ps, ls: ls, ca: ca, ira: ira, va: va, iba: iba, rqa: rqa,
 			run: func(fn func()) { ran = append(ran, fn) }}
 		// The object type names the branch keeps beside what a confirmation writes.
 		var branchNames []string
@@ -145,6 +152,79 @@ func Test_ConfirmDraft(t *testing.T) {
 					return nil
 				})
 			ran[1]()
+		})
+
+		withConflicts := func(status string) *interfaces.Requirement {
+			return &interfaces.Requirement{ProjectID: "p1", Version: 3, Status: status, Spec: interfaces.RequirementSpec{
+				Conflicts: []*interfaces.RequirementConflict{
+					{ID: "k1"},
+					{ID: "k2", Deferred: true, Resolution: &interfaces.RequirementResolution{Reason: "ask sales"}},
+					{ID: "k3", Resolution: &interfaces.RequirementResolution{DocumentID: "pol", Reason: "policy governs"}},
+				}}}
+		}
+		expectCommit := func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+			ls.EXPECT().AddDefinitions(gomock.Any(), "supply", "project/p1", gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any()).Return(&interfaces.CommitDefinitionsResult{Commit: "c1"}, nil)
+		}
+
+		Convey("Unresolved requirement conflicts, deferred ones too, are confirmed only when accepted\n", func() {
+			requirement = withConflicts(interfaces.REQUIREMENT_STATUS_READY)
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_ConflictsNotAccepted)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, []string{"k1", "k2"})
+			So(checked, ShouldBeEmpty)
+		})
+
+		Convey("An accepted confirmation records the conflicts it accepted and the specification version\n", func() {
+			requirement = withConflicts(interfaces.REQUIREMENT_STATUS_READY)
+			expectCommit()
+			accepting := confirm
+			accepting.AcceptUnresolvedConflicts = true
+
+			draft, err := svc.ConfirmDraft(ctx, token, "p1", accepting, caller)
+
+			So(err, ShouldBeNil)
+			So(draft.Items.Confirmation.RequirementVersion, ShouldEqual, 3)
+			last := draft.Items.Decisions[len(draft.Items.Decisions)-1]
+			So(last.Kind, ShouldEqual, interfaces.DRAFT_KIND_DRAFT)
+			So(last.Action, ShouldEqual, interfaces.DRAFT_DECISION_ACCEPT_UNRESOLVED_CONFLICTS)
+			So(last.After, ShouldResemble, []string{"k1", "k2"})
+			So(last.By, ShouldResemble, caller)
+		})
+
+		Convey("A specification with every conflict resolved needs no acceptance, and still gives its version\n", func() {
+			requirement = withConflicts(interfaces.REQUIREMENT_STATUS_READY)
+			requirement.Spec.Conflicts = requirement.Spec.Conflicts[2:]
+			expectCommit()
+
+			draft, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			So(err, ShouldBeNil)
+			So(draft.Items.Confirmation.RequirementVersion, ShouldEqual, 3)
+			for _, d := range draft.Items.Decisions {
+				So(d.Action, ShouldNotEqual, interfaces.DRAFT_DECISION_ACCEPT_UNRESOLVED_CONFLICTS)
+			}
+		})
+
+		Convey("A specification drafting or failed is no specification to confirm against\n", func() {
+			for _, status := range []string{interfaces.REQUIREMENT_STATUS_DRAFTING, interfaces.REQUIREMENT_STATUS_FAILED} {
+				requirement = withConflicts(status)
+				expectCommit()
+
+				draft, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+				So(err, ShouldBeNil)
+				So(draft.Items.Confirmation.RequirementVersion, ShouldEqual, 0)
+			}
 		})
 
 		Convey("A failure to read the registered ids writes nothing and locks nothing\n", func() {

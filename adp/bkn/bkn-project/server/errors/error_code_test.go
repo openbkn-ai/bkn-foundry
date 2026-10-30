@@ -48,3 +48,15 @@ func TestProjectReleaseCodesAreRegistered(t *testing.T) {
 		}
 	}
 }
+
+// The codes a release's regression replies with are registered, so each renders in both languages.
+func TestRegressionCodesAreRegistered(t *testing.T) {
+	for _, code := range []string{
+		perrors.BknProject_Release_RegressionNotFound,
+		perrors.BknProject_Release_RegressionRunning,
+	} {
+		if !slices.Contains(perrors.ReleaseErrCodeList, code) {
+			t.Fatalf("%s is not registered", code)
+		}
+	}
+}
