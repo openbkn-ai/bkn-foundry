@@ -74,6 +74,9 @@ def test_invoke_waits_for_terminal_state(monkeypatch):
         async def published(session, agent_id):
             return _agent(agent_id)
 
+        async def current_version(session, agent_id):
+            return None
+
         async def create_task(session, agent_id, task_input, account_id, parent_thread_id=None):
             return TaskOut(task_id="t-1", agent_id=agent_id, status="pending", create_time=1, update_time=1)
 
@@ -89,6 +92,7 @@ def test_invoke_waits_for_terminal_state(monkeypatch):
             return TaskOut(task_id=task_id, agent_id="a-1", status="succeeded", output="done", create_time=1, update_time=2)
 
         monkeypatch.setattr(dao, "get_agent", published)
+        monkeypatch.setattr(dao, "current_version", current_version)
         monkeypatch.setattr(dao, "create_task", create_task)
         monkeypatch.setattr(runner, "execute_task", execute)
         monkeypatch.setattr(dao, "get_task", get_task)

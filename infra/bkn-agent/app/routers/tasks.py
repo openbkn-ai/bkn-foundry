@@ -30,12 +30,15 @@ async def invoke(
     if not agent or agent.status != "published":
         raise not_found("agent", agent_id)
 
+    agent, execution = await dao.task_agent(session, agent, req.agent_version)
     task_input = {
         "message": req.message,
         "prompt_vars": req.prompt_vars,
         "skills": req.skills,
         "prompt_override": req.prompt_override,
         "response_format": req.response_format,
+        "agent_version": req.agent_version,
+        "execution": execution,
     }
     task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
     thinking_token = llm.set_thinking_mode(head_request.headers.get("x-bkn-agent-thinking-mode", ""))
@@ -59,12 +62,15 @@ async def run(
     if agent.mode != "task":
         raise bad_request("BknAgent.Task.ModeMismatch", agent_id=req.agent_id, mode=agent.mode)
 
+    agent, execution = await dao.task_agent(session, agent, req.agent_version)
     task_input = {
         "message": req.message,
         "prompt_vars": req.prompt_vars,
         "skills": req.skills,
         "prompt_override": req.prompt_override,
         "response_format": req.response_format,
+        "agent_version": req.agent_version,
+        "execution": execution,
     }
     task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
     runner.submit_task(task.task_id, agent, task_input, account.account_id, account.account_type)
