@@ -126,8 +126,18 @@ type agentQuestion struct {
 	Metrics          []string        `json:"metrics"`
 	Functions        []string        `json:"functions"`
 	Skills           []string        `json:"skills"`
+	Inputs           []agentInput    `json:"inputs"`
+	RelativeWindow   bool            `json:"relative_window"`
 	Citations        []agentCitation `json:"citations"`
 	SupplementReason string          `json:"supplement_reason"`
+}
+
+// agentInput is an input of a question as the Agent writes it: its concept by the Agent's own id.
+type agentInput struct {
+	Name      string `json:"name"`
+	ConceptID string `json:"concept_id"`
+	Property  string `json:"property"`
+	Role      string `json:"role"`
 }
 
 type agentRule struct {
@@ -226,8 +236,13 @@ func draftResponseFormat() map[string]any {
 			"layer":    schemaEnum(interfaces.REQUIREMENT_LAYER_KNOWLEDGE, interfaces.REQUIREMENT_LAYER_CAPABILITY),
 			"template": schemaString(), "answer_shape": schemaString(), "concept_ids": schemaStrings(),
 			"metrics": schemaStrings(), "functions": schemaStrings(), "skills": schemaStrings(),
-			"citations": citations, "supplement_reason": schemaString(),
-		}, "id", "text", "type", "layer", "citations")),
+			"inputs": schemaArray(schemaObject(map[string]any{
+				"name": schemaString(), "concept_id": schemaString(), "property": schemaString(),
+				"role": schemaEnum(interfaces.REQUIREMENT_INPUT_RECORD, interfaces.REQUIREMENT_INPUT_REFERENCE_TIME),
+			}, "name", "concept_id", "property", "role")),
+			"relative_window": map[string]any{"type": "boolean"},
+			"citations":       citations, "supplement_reason": schemaString(),
+		}, "id", "text", "type", "layer", "inputs", "relative_window", "citations")),
 		"rules": schemaArray(schemaObject(map[string]any{
 			"statement":   schemaString(),
 			"compiles_to": schemaEnum("constraint", "metric_definition", "code_pattern", "enum", "other"),
@@ -482,6 +497,33 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			if concept.MapsTo != nil && !slices.Contains(question.Needs, *concept.MapsTo) {
 				question.Needs = append(question.Needs, *concept.MapsTo)
 			}
+		}
+		// What it is asked about, kept only when it stands; one that does not is listed rejected.
+		inputs := []interfaces.RequirementInput{}
+		for _, in := range q.Inputs {
+			input := interfaces.RequirementInput{Name: strings.TrimSpace(in.Name), Property: in.Property, Role: in.Role}
+			if concept, ok := concepts[in.ConceptID]; ok {
+				input.ConceptID = concept.ID
+			}
+			reason := inputProblem(input, spec, draft, question.Template)
+			if reason == "" && slices.ContainsFunc(inputs, func(kept interfaces.RequirementInput) bool { return kept.Name == input.Name }) {
+				reason = inputDuplicateName
+			}
+			if reason != "" {
+				reject(rejectedInput, input.Name+" ("+q.Text+")", reason)
+				continue
+			}
+			inputs = append(inputs, input)
+		}
+		// A period counted back from a time that is not stated depends on when it is asked.
+		if needsReferenceTime(q.RelativeWindow, inputs) {
+			reject(rejectedQuestion, q.Text, rejectedWindowWithoutRefTime)
+			continue
+		}
+		question.RelativeWindow = q.RelativeWindow
+		// None given is no input value; given but none standing is not known, as before inputs.
+		if len(q.Inputs) == 0 || len(inputs) > 0 {
+			question.Inputs = &inputs
 		}
 		spec.Questions = append(spec.Questions, question)
 	}

@@ -49,6 +49,14 @@ func Test_BuildGuidance(t *testing.T) {
 			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
 			So(body.Question.ID, ShouldEqual, "q1")
 			So(body.Question.Text, ShouldEqual, "Which orders?")
+			So(message, ShouldNotContainSubstring, `"inputs"`)
+			withNone := *q
+			withNone.Inputs = &[]interfaces.RequirementInput{}
+			withNone.RelativeWindow = true
+			message, err = buildGuidanceMessage(interfaces.NAMING_LANGUAGE_EN_US, &spec, &withNone, draft)
+			So(err, ShouldBeNil)
+			So(message, ShouldContainSubstring, `"inputs":[]`)
+			So(message, ShouldContainSubstring, `"relative_window":true`)
 			So(body.Scenarios[0].ID, ShouldEqual, "s1")
 			So(body.Rules[0].Statement, ShouldEqual, "Signed changes only")
 			So(body.Concepts, ShouldHaveLength, 2)
@@ -93,7 +101,7 @@ func Test_BuildGuidance(t *testing.T) {
 			}
 			out.Tests[1].Text = "  "
 
-			tests, leftOut := buildTests(out, nil)
+			tests, leftOut := buildTests(out, nil, nil)
 
 			So(tests, ShouldHaveLength, maxTests)
 			// The blank one, and the one past the most kept.
@@ -113,7 +121,7 @@ func Test_BuildGuidance(t *testing.T) {
 				{ConceptID: "c2", Property: "customer_id", Value: "10001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
 				{ConceptID: "c2", Property: "customer_id", Value: "  "},
-			}}}}, docs)
+			}}}}, docs, nil)
 
 			So(tests[0].Slots[0].Value, ShouldEqual, "10001")
 			So(tests[0].Slots[1].Value, ShouldEqual, "")
@@ -124,7 +132,7 @@ func Test_BuildGuidance(t *testing.T) {
 			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 20001 and of Acme?", Slots: []agentSlot{
 				{ConceptID: "c2", Property: "customer_id", Value: "20001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme"},
-			}}}}, nil)
+			}}}}, nil, nil)
 
 			So(tests[0].Text, ShouldEqual, "Orders of {{slot 1}} and of {{slot 2}}?")
 			So(tests[0].Slots[0].Value, ShouldEqual, "")
@@ -147,7 +155,7 @@ func Test_BuildGuidance(t *testing.T) {
 					at.Slots = append(at.Slots, agentSlot{ConceptID: "c2", Property: "customer_id", Value: v})
 				}
 
-				tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil)
+				tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil, nil)
 
 				So(tests[0].Text, ShouldEqual, c.want)
 			}
@@ -162,7 +170,7 @@ func Test_BuildGuidance(t *testing.T) {
 					{ConceptID: "c2", Property: "short_name", Value: "Acme"}}},
 				{Text: "Orders of a customer?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}}},
 				{Text: "Orders of {{slot 1}}?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: " "}}},
-			}}, nil)
+			}}, nil, nil)
 
 			So(tests, ShouldHaveLength, 1)
 			So(leftOut, ShouldEqual, 4)
@@ -170,8 +178,44 @@ func Test_BuildGuidance(t *testing.T) {
 			So(tests[0].Text, ShouldEqual, "Orders of {{slot 1}}?")
 		})
 
+		Convey("A question with inputs keeps the tests that name them, and a question with none keeps no test\n", func() {
+			slot := func(concept, property, value string) agentSlot {
+				return agentSlot{ConceptID: concept, Property: property, Value: value}
+			}
+			out := &guidanceOutput{Tests: []agentTest{
+				{Text: "Lines of {{slot 1}}?", Slots: []agentSlot{slot("c1", "order_no", "")}},
+				// An answer field as a slot.
+				{Text: "Lines of {{slot 1}} for {{slot 2}}?", Slots: []agentSlot{slot("c1", "order_no", ""), slot("c3", "amount", "")}},
+				{Text: "Lines of an order?"},
+				{Text: "{{slot 1}} and {{slot 2}} are one order?", Expect: interfaces.TEST_EXPECT_SAME_RECORD,
+					Slots: []agentSlot{slot("c1", "order_no", ""), slot("c1", "order_date", "")}},
+				// The same property twice names nothing a second way.
+				{Text: "{{slot 1}} and {{slot 2}} are one order?", Expect: interfaces.TEST_EXPECT_SAME_RECORD,
+					Slots: []agentSlot{slot("c1", "order_no", ""), slot("c1", "order_no", "")}},
+				{Text: "{{slot 1}} and {{slot 2}} are one order?", Expect: interfaces.TEST_EXPECT_SAME_RECORD,
+					Slots: []agentSlot{slot("c1", "order_no", ""), slot("c2", "customer_id", "")}},
+			}}
+			asked := &interfaces.RequirementQuestion{Inputs: &[]interfaces.RequirementInput{
+				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD},
+				{Name: "customer", ConceptID: "c2", Property: "customer_id", Role: interfaces.REQUIREMENT_INPUT_RECORD}}}
+
+			tests, leftOut := buildTests(out, nil, asked)
+			So(tests, ShouldHaveLength, 2)
+			So(tests[0].Text, ShouldEqual, "Lines of {{slot 1}}?")
+			So(tests[1].Slots[1].Property, ShouldEqual, "order_date")
+			So(leftOut, ShouldEqual, 4)
+
+			tests, leftOut = buildTests(out, nil, &interfaces.RequirementQuestion{Inputs: &[]interfaces.RequirementInput{}})
+			So(tests, ShouldBeEmpty)
+			So(leftOut, ShouldEqual, 6)
+
+			// Drafted before inputs: as before.
+			tests, _ = buildTests(out, nil, &interfaces.RequirementQuestion{})
+			So(tests, ShouldHaveLength, 6)
+		})
+
 		Convey("An expectation the server does not know reads as exists\n", func() {
-			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil)
+			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil, nil)
 
 			So(tests[0].Expect, ShouldEqual, interfaces.TEST_EXPECT_EXISTS)
 			So(tests[1].Expect, ShouldEqual, interfaces.TEST_EXPECT_SAME_RECORD)
@@ -401,16 +445,30 @@ func Test_TestsNote(t *testing.T) {
 		unknownConcept := check(interfaces.TEST_CHECK_NOT_CHECKED, checkUnknownConcept)
 		unknownProperty := check(interfaces.TEST_CHECK_NOT_CHECKED, checkUnknownProperty)
 
-		So(testsNote([]*interfaces.QuestionTest{unknownConcept, unknownProperty}), ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
-		So(testsNote([]*interfaces.QuestionTest{unknownConcept}), ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
+		So(testsNote([]*interfaces.QuestionTest{unknownConcept, unknownProperty}, nil), ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
+		So(testsNote([]*interfaces.QuestionTest{unknownConcept}, nil), ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
 		for _, tests := range [][]*interfaces.QuestionTest{
 			nil,
 			{unknownConcept, check(interfaces.TEST_CHECK_PASSED, "")},
 			{unknownConcept, check(interfaces.TEST_CHECK_NOT_CHECKED, checkQueryFailed)},
 			{check(interfaces.TEST_CHECK_FAILED, checkRecordNotFound)},
 		} {
-			So(testsNote(tests), ShouldEqual, "")
+			So(testsNote(tests, nil), ShouldEqual, "")
 		}
+
+		named := func(concepts ...string) *interfaces.QuestionTest {
+			t := check(interfaces.TEST_CHECK_PASSED, "")
+			for _, c := range concepts {
+				t.Slots = append(t.Slots, interfaces.QuestionTestSlot{ConceptID: c})
+			}
+			return t
+		}
+		asked := &interfaces.RequirementQuestion{Inputs: &[]interfaces.RequirementInput{{ConceptID: "c1"}, {ConceptID: "c2"}}}
+		So(testsNote(nil, asked), ShouldEqual, interfaces.TESTS_NOTE_INPUTS_UNTESTED)
+		So(testsNote([]*interfaces.QuestionTest{named("c1"), named("c2")}, asked), ShouldEqual, interfaces.TESTS_NOTE_INPUTS_UNTESTED)
+		So(testsNote([]*interfaces.QuestionTest{named("c1"), named("c2", "c1")}, asked), ShouldEqual, "")
+		So(testsNote(nil, &interfaces.RequirementQuestion{Inputs: &[]interfaces.RequirementInput{}}), ShouldEqual, "")
+		So(testsNote(nil, &interfaces.RequirementQuestion{}), ShouldEqual, "")
 	})
 }
 
@@ -507,6 +565,19 @@ func Test_GetGuidance(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(view.TestsNote, ShouldEqual, interfaces.TESTS_NOTE_NONE_CHECKABLE)
+		})
+
+		Convey("Reading notes a question whose inputs no test names, from the question as it is\n", func() {
+			spec := readySpec()
+			spec.CreateTime = 10
+			spec.Spec.Questions[0].Inputs = &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1"}}
+			ra.EXPECT().GetGuidance(gomock.Any(), "p1", "q1").Return(stored(1, "Which orders?"), true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+
+			view, err := svc.GetGuidance(ctx, token, "p1", "q1")
+
+			So(err, ShouldBeNil)
+			So(view.TestsNote, ShouldEqual, interfaces.TESTS_NOTE_INPUTS_UNTESTED)
 		})
 
 		Convey("A question with no test questions generated is 404\n", func() {

@@ -390,3 +390,108 @@ func Test_RequirementEdits(t *testing.T) {
 		})
 	})
 }
+
+func Test_QuestionInputEdits(t *testing.T) {
+	Convey("A person's inputs of a question are checked as drafting checks them\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 100 }}
+		ctx := context.Background()
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).AnyTimes()
+		draft := testDraft()
+		draft.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{
+			{Name: "order_no", Type: "string"}, {Name: "order_date", Type: "date"}}
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+
+		withInputs := func() *interfaces.Requirement {
+			req := readySpec()
+			req.Spec.Questions[0].Template = "Lines of {order}?"
+			req.Spec.Questions[0].Inputs = &[]interfaces.RequirementInput{
+				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}}
+			return req
+		}
+		var saved *interfaces.Requirement
+		expectRead := func() { ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(withInputs(), true, nil) }
+		expectSave := func() {
+			ra.EXPECT().UpdateRequirement(gomock.Any(), gomock.Any(), int64(7)).DoAndReturn(
+				func(_ context.Context, req *interfaces.Requirement, _ int64) (bool, error) {
+					saved = req
+					return true, nil
+				})
+		}
+		record := func(name, concept, property string) interfaces.RequirementInput {
+			return interfaces.RequirementInput{Name: name, ConceptID: concept, Property: property,
+				Role: interfaces.REQUIREMENT_INPUT_RECORD}
+		}
+		asOf := interfaces.RequirementInput{Name: "as_of", ConceptID: "c1", Property: "order_date",
+			Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}
+
+		Convey("Inputs set with their template stand, and a question set to none has none\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Orders of {customer} in the 30 days before {as_of}?"),
+					Inputs:         &[]interfaces.RequirementInput{record("customer", "c2", ""), asOf},
+					RelativeWindow: ptr(true)}, caller)
+			So(err, ShouldBeNil)
+			q := saved.Spec.Questions[0]
+			So(*q.Inputs, ShouldResemble, []interfaces.RequirementInput{record("customer", "c2", ""), asOf})
+			So(q.RelativeWindow, ShouldBeTrue)
+			So(q.Edited, ShouldBeTrue)
+
+			expectRead()
+			expectSave()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{}}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[0].Inputs, ShouldNotBeNil)
+			So(*saved.Spec.Questions[0].Inputs, ShouldBeEmpty)
+		})
+
+		Convey("Deleting a concept takes it out of the inputs\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS, "c1", 7, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[0].Inputs, ShouldNotBeNil)
+			So(*saved.Spec.Questions[0].Inputs, ShouldBeEmpty)
+			So(saved.Spec.Questions[1].Inputs, ShouldBeNil)
+		})
+
+		Convey("Inputs that would not stand are refused, naming the input\n", func() {
+			for _, c := range []struct {
+				edit interfaces.RequirementItemEdit
+				says string
+			}{
+				{interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Lines of a given order?")}, inputNotInTemplate},
+				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c9", "order_no")}}, inputUnknownConcept},
+				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c1", "amount")}}, inputUnknownProperty},
+				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c1", "order_no"),
+					record("order", "c1", "order_date")}}, inputDuplicateName},
+				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1",
+					Property: "order_no", Role: "kind"}}}, inputUnknownRole},
+				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1",
+					Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}}, inputNotTime},
+				{interfaces.RequirementItemEdit{UpdateTime: 7, RelativeWindow: ptr(true)}, rejectedWindowWithoutRefTime},
+			} {
+				expectRead()
+				_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1", c.edit, caller)
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+				So(err.Error(), ShouldContainSubstring, c.says)
+			}
+		})
+
+		Convey("A question drafted before inputs takes a window or a template edit as before\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q2",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Whose orders?"), RelativeWindow: ptr(true)}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[1].Inputs, ShouldBeNil)
+		})
+	})
+}

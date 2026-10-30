@@ -43,7 +43,7 @@ func invalidItem(ctx context.Context, detail string) error {
 }
 
 // change is one edit of the specification, applied to a copy read for it.
-type change func(spec *interfaces.RequirementSpec, drafted map[interfaces.RequirementItemRef]bool) error
+type change func(spec *interfaces.RequirementSpec, drafted *draftedItems) error
 
 // update reads the project's ready specification, applies the change and writes it over the
 // specification as the caller read it.
@@ -85,18 +85,27 @@ func (s *requirementService) update(ctx context.Context, token string, projectID
 	return req, nil
 }
 
-// draftedItems are the object types and relation types of the project's draft.
-func (s *requirementService) draftedItems(ctx context.Context, projectID string) (map[interfaces.RequirementItemRef]bool, error) {
-	drafted := map[interfaces.RequirementItemRef]bool{}
+// draftedItems are the object types and relation types of the project's draft, by reference, and
+// the draft itself (nil without one) for what edits check against it.
+type draftedItems struct {
+	refs  map[interfaces.RequirementItemRef]bool
+	draft *interfaces.Draft
+}
+
+func (d *draftedItems) has(ref interfaces.RequirementItemRef) bool { return d.refs[ref] }
+
+func (s *requirementService) draftedItems(ctx context.Context, projectID string) (*draftedItems, error) {
+	drafted := &draftedItems{refs: map[interfaces.RequirementItemRef]bool{}}
 	draft, ok, err := s.da.GetDraft(ctx, projectID)
 	if err != nil || !ok {
 		return drafted, err
 	}
+	drafted.draft = draft
 	for _, ot := range draft.Items.ObjectTypes {
-		drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}] = true
+		drafted.refs[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}] = true
 	}
 	for _, rt := range draft.Items.RelationTypes {
-		drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: rt.ID}] = true
+		drafted.refs[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: rt.ID}] = true
 	}
 	return drafted, nil
 }
@@ -153,13 +162,14 @@ func onlyFields(ctx context.Context, edit interfaces.RequirementItemEdit, kind s
 		"category": edit.Category != nil, "definition": edit.Definition != nil, "text": edit.Text != nil,
 		"layer": edit.Layer != nil, "template": edit.Template != nil, "answer_shape": edit.AnswerShape != nil,
 		"scenario_ids": edit.ScenarioIDs != nil, "needs": edit.Needs != nil, "statement": edit.Statement != nil,
-		"follow_concepts": edit.FollowConcepts != nil,
+		"follow_concepts": edit.FollowConcepts != nil, "inputs": edit.Inputs != nil,
+		"relative_window": edit.RelativeWindow != nil,
 	}
 	allowed := map[string][]string{
 		interfaces.REQUIREMENT_KIND_SCENARIOS: {"name", "actor", "trigger", "decision", "knowledge"},
 		interfaces.REQUIREMENT_KIND_CONCEPTS:  {"term", "category", "definition"},
 		interfaces.REQUIREMENT_KIND_QUESTIONS: {"text", "layer", "template", "answer_shape", "scenario_ids", "needs",
-			"follow_concepts"},
+			"follow_concepts", "inputs", "relative_window"},
 		interfaces.REQUIREMENT_KIND_RULES: {"statement"},
 	}[kind]
 	setSome := false
@@ -226,7 +236,7 @@ func applyConcept(ctx context.Context, c *interfaces.RequirementConcept, edit in
 }
 
 func applyQuestion(ctx context.Context, q *interfaces.RequirementQuestion, edit interfaces.RequirementItemEdit,
-	spec *interfaces.RequirementSpec, drafted map[interfaces.RequirementItemRef]bool) error {
+	spec *interfaces.RequirementSpec, drafted *draftedItems) error {
 	for _, f := range []struct {
 		name   string
 		value  *string
@@ -269,7 +279,7 @@ func applyQuestion(ctx context.Context, q *interfaces.RequirementQuestion, edit 
 	if edit.Needs != nil {
 		needs := []interfaces.RequirementItemRef{}
 		for _, need := range *edit.Needs {
-			if !drafted[need] {
+			if !drafted.has(need) {
 				return invalidItem(ctx, need.Kind+" "+need.ID+" is not in the draft")
 			}
 			if !slices.Contains(needs, need) {
@@ -277,6 +287,43 @@ func applyQuestion(ctx context.Context, q *interfaces.RequirementQuestion, edit 
 			}
 		}
 		q.Needs, q.NeedsSource = needs, interfaces.REQUIREMENT_NEEDS_FROM_PERSON
+	}
+	if edit.Inputs != nil {
+		inputs := slices.Clone(*edit.Inputs)
+		if inputs == nil {
+			inputs = []interfaces.RequirementInput{}
+		}
+		q.Inputs = &inputs
+	}
+	if edit.RelativeWindow != nil {
+		q.RelativeWindow = *edit.RelativeWindow
+	}
+	if edit.Inputs != nil || edit.Template != nil || edit.RelativeWindow != nil {
+		return checkInputs(ctx, q, spec, drafted.draft)
+	}
+	return nil
+}
+
+// checkInputs refuses a question whose inputs, after an edit of them or of the template, do not
+// stand as drafting would keep them.
+func checkInputs(ctx context.Context, q *interfaces.RequirementQuestion, spec *interfaces.RequirementSpec,
+	draft *interfaces.Draft) error {
+	var inputs []interfaces.RequirementInput
+	if q.Inputs != nil {
+		inputs = *q.Inputs
+	}
+	names := map[string]bool{}
+	for _, in := range inputs {
+		if names[in.Name] {
+			return invalidItem(ctx, fmt.Sprintf("input %s: %s", in.Name, inputDuplicateName))
+		}
+		names[in.Name] = true
+		if problem := inputProblem(in, spec, draft, q.Template); problem != "" {
+			return invalidItem(ctx, fmt.Sprintf("input %s: %s", in.Name, problem))
+		}
+	}
+	if q.Inputs != nil && needsReferenceTime(q.RelativeWindow, inputs) {
+		return invalidItem(ctx, rejectedWindowWithoutRefTime)
 	}
 	return nil
 }
@@ -334,7 +381,7 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 	defer span.End()
 
 	req, err := s.update(ctx, token, projectID, edit.UpdateTime, caller,
-		func(spec *interfaces.RequirementSpec, drafted map[interfaces.RequirementItemRef]bool) error {
+		func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
 			switch kind {
 			case interfaces.REQUIREMENT_KIND_SCENARIOS:
 				i, ok := find(spec.Scenarios, itemID, scenarioID)
@@ -394,7 +441,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 
 	empty := []interfaces.RequirementCitation{}
 	req, err := s.update(ctx, token, projectID, edit.UpdateTime, caller,
-		func(spec *interfaces.RequirementSpec, drafted map[interfaces.RequirementItemRef]bool) error {
+		func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
 			if !slices.Contains(itemKinds, kind) {
 				return notFound(ctx)
 			}
@@ -465,7 +512,7 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 	defer span.End()
 
 	req, err := s.update(ctx, token, projectID, updateTime, caller,
-		func(spec *interfaces.RequirementSpec, _ map[interfaces.RequirementItemRef]bool) error {
+		func(spec *interfaces.RequirementSpec, _ *draftedItems) error {
 			switch kind {
 			case interfaces.REQUIREMENT_KIND_SCENARIOS:
 				i, ok := find(spec.Scenarios, itemID, scenarioID)
@@ -486,6 +533,11 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 				spec.Concepts = slices.Delete(spec.Concepts, i, i+1)
 				for _, q := range spec.Questions {
 					q.Basis.ConceptIDs = slices.DeleteFunc(q.Basis.ConceptIDs, func(id string) bool { return id == itemID })
+					if q.Inputs != nil {
+						inputs := slices.DeleteFunc(slices.Clone(*q.Inputs),
+							func(in interfaces.RequirementInput) bool { return in.ConceptID == itemID })
+						q.Inputs = &inputs
+					}
 				}
 				followConcepts(spec)
 			case interfaces.REQUIREMENT_KIND_QUESTIONS:
@@ -521,12 +573,12 @@ func (s *requirementService) MapConcept(ctx context.Context, token string, proje
 	defer span.End()
 
 	req, err := s.update(ctx, token, projectID, mapping.UpdateTime, caller,
-		func(spec *interfaces.RequirementSpec, drafted map[interfaces.RequirementItemRef]bool) error {
+		func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
 			i, ok := find(spec.Concepts, conceptID, func(c *interfaces.RequirementConcept) string { return c.ID })
 			if !ok {
 				return notFound(ctx)
 			}
-			if mapping.MapsTo != nil && !drafted[*mapping.MapsTo] {
+			if mapping.MapsTo != nil && !drafted.has(*mapping.MapsTo) {
 				return invalidItem(ctx, mapping.MapsTo.Kind+" "+mapping.MapsTo.ID+" is not in the draft")
 			}
 			spec.Concepts[i].MapsTo, spec.Concepts[i].Edited = mapping.MapsTo, true
@@ -548,7 +600,7 @@ func (s *requirementService) ResolveConflict(ctx context.Context, token string, 
 
 	invalid := httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidResolution)
 	req, err := s.update(ctx, token, projectID, resolve.UpdateTime, caller,
-		func(spec *interfaces.RequirementSpec, _ map[interfaces.RequirementItemRef]bool) error {
+		func(spec *interfaces.RequirementSpec, _ *draftedItems) error {
 			i, ok := find(spec.Conflicts, conflictID, func(k *interfaces.RequirementConflict) string { return k.ID })
 			if !ok {
 				return notFound(ctx)
@@ -589,7 +641,7 @@ func (s *requirementService) DecideChoice(ctx context.Context, token string, pro
 	defer span.End()
 
 	req, err := s.update(ctx, token, projectID, decide.UpdateTime, caller,
-		func(spec *interfaces.RequirementSpec, _ map[interfaces.RequirementItemRef]bool) error {
+		func(spec *interfaces.RequirementSpec, _ *draftedItems) error {
 			i, ok := find(spec.Choices, choiceID, func(f *interfaces.RequirementChoice) string { return f.ID })
 			if !ok {
 				return notFound(ctx)

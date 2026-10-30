@@ -108,6 +108,9 @@ type guidanceQuestion struct {
 	Layer       string `json:"layer"`
 	Template    string `json:"template,omitempty"`
 	AnswerShape string `json:"answer_shape,omitempty"`
+	// Inputs are what the tests' slots name; [] says the question has none to name.
+	Inputs         *[]interfaces.RequirementInput `json:"inputs,omitempty"`
+	RelativeWindow bool                           `json:"relative_window,omitempty"`
 }
 
 type guidanceScenario struct {
@@ -145,7 +148,7 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 	draft *interfaces.Draft) (string, error) {
 	msg := guidanceMessage{
 		Question: guidanceQuestion{ID: q.ID, Text: q.Text, Type: q.Type, Layer: q.Layer, Template: q.Template,
-			AnswerShape: q.AnswerShape},
+			AnswerShape: q.AnswerShape, Inputs: q.Inputs, RelativeWindow: q.RelativeWindow},
 		Scenarios: []guidanceScenario{}, Rules: []guidanceRule{}, Concepts: []guidanceConcept{},
 		ObjectTypes: []guidanceObjectType{}, RelationTypes: []messageRelationType{},
 	}
@@ -271,8 +274,10 @@ func replaceSpans(text string, spans []valueSpan) string {
 // counts those it leaves out: without text, asking about a made-up value they do not say as
 // written, or without the place of a slot left empty. A value is kept only when a document says
 // it; the others are left for the server to fill from the data. None is checked against the data
-// yet.
-func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) ([]*interfaces.QuestionTest, int) {
+// yet. A question with inputs keeps only the tests that ask about them (see offInputs).
+func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
+	q *interfaces.RequirementQuestion) ([]*interfaces.QuestionTest, int) {
+	concepts := inputConcepts(q)
 	texts := make([]string, 0, len(docs))
 	for _, d := range docs {
 		texts = append(texts, normalize([]rune(d.Content)).text)
@@ -310,7 +315,7 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) ([]
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
-		if !placed {
+		if !placed || (concepts != nil && offInputs(slots, expect, concepts)) {
 			leftOut++
 			continue
 		}
@@ -480,7 +485,7 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	}
 	done := *g
 	done.Status, done.Guidance = interfaces.GUIDANCE_STATUS_READY, strings.TrimSpace(out.Guidance)
-	done.Tests, done.LeftOutTests = buildTests(&out, docs)
+	done.Tests, done.LeftOutTests = buildTests(&out, docs, q)
 	// A reason for writing none applies only when none is kept.
 	if len(done.Tests) == 0 {
 		done.NoTestsReason = clip(strings.TrimSpace(out.NoTestsReason), maxNoTestsReason)
@@ -503,9 +508,14 @@ func guidanceCurrent(req *interfaces.Requirement, q *interfaces.RequirementQuest
 	return req.Version == g.SpecVersion && q.Text == g.Question && g.CreateTime >= req.CreateTime
 }
 
-// testsNote says what a question's tests show as a whole: none_checkable when it has some and
-// each names a concept or property its items do not have.
-func testsNote(tests []*interfaces.QuestionTest) string {
+// testsNote says what a question's tests show as a whole: inputs_untested when the question has
+// inputs and no test names each of their concepts; none_checkable when it has some and each names
+// a concept or property its items do not have. q is nil when the specification is not read.
+func testsNote(tests []*interfaces.QuestionTest, q *interfaces.RequirementQuestion) string {
+	if concepts := inputConcepts(q); len(concepts) > 0 && !slices.ContainsFunc(tests,
+		func(t *interfaces.QuestionTest) bool { return namesAll(t.Slots, concepts) }) {
+		return interfaces.TESTS_NOTE_INPUTS_UNTESTED
+	}
 	if len(tests) == 0 {
 		return ""
 	}
@@ -541,9 +551,10 @@ func (s *requirementService) GetGuidance(ctx context.Context, token string, proj
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
-	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g, TestsNote: testsNote(g.Tests)}
+	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g, TestsNote: testsNote(g.Tests, nil)}
 	if found && req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		q := questionOf(&req.Spec, questionID)
+		view.TestsNote = testsNote(g.Tests, q)
 		view.Current = q != nil && guidanceCurrent(req, q, g)
 		if q != nil && g.OntologySignature != "" {
 			draft, ok, err := s.da.GetDraft(ctx, projectID)

@@ -233,12 +233,34 @@ type RequirementQuestion struct {
 	Basis       RequirementBasis `json:"basis"`
 	// Needs are the drafted items the question depends on; NeedsSource says whether they follow
 	// its concepts or a person set them.
-	Needs            []RequirementItemRef  `json:"needs"`
-	NeedsSource      string                `json:"needs_source"`
+	Needs       []RequirementItemRef `json:"needs"`
+	NeedsSource string               `json:"needs_source"`
+	// Inputs are what the question is asked about, each named {name} in its template: absent for a
+	// specification drafted before questions had them, empty for a question with no input value.
+	Inputs *[]RequirementInput `json:"inputs,omitempty"`
+	// RelativeWindow says the question asks about a period counted back from a reference time, such
+	// as the last 30 days; one of its inputs is then that reference time.
+	RelativeWindow   bool                  `json:"relative_window,omitempty"`
 	Citations        []RequirementCitation `json:"citations"`
 	SupplementReason string                `json:"supplement_reason,omitempty"`
 	Edited           bool                  `json:"edited"`
 }
+
+// RequirementInput is a value a scenario question is asked about: a record named by a property of
+// a concept, or the reference time a relative period counts back from (Role reference_time), on a
+// time property.
+type RequirementInput struct {
+	Name      string `json:"name"`
+	ConceptID string `json:"concept_id"`
+	Property  string `json:"property"`
+	Role      string `json:"role"`
+}
+
+// The roles of a question's input.
+const (
+	REQUIREMENT_INPUT_RECORD         = "record"
+	REQUIREMENT_INPUT_REFERENCE_TIME = "reference_time"
+)
 
 // RequirementBasis is what a question rests on, as bkn-eval's answer sets name it.
 type RequirementBasis struct {
@@ -364,6 +386,10 @@ type RequirementItemEdit struct {
 	AnswerShape *string               `json:"answer_shape"`
 	ScenarioIDs *[]string             `json:"scenario_ids"`
 	Needs       *[]RequirementItemRef `json:"needs"`
+	// Inputs replaces a question's inputs, checked against its concepts, the draft and its template;
+	// RelativeWindow says whether it counts a period back from a reference time.
+	Inputs         *[]RequirementInput `json:"inputs"`
+	RelativeWindow *bool               `json:"relative_window"`
 	// FollowConcepts set to true gives a question's needs back to its concepts.
 	FollowConcepts *bool   `json:"follow_concepts"`
 	Statement      *string `json:"statement"`
@@ -512,15 +538,19 @@ type QuestionGuidanceView struct {
 	// was generated; it only says so, and regenerating brings it back. Null when unknown: guidance
 	// generated before it was signed, or no draft to compare.
 	OntologyChanged *bool `json:"ontology_changed"`
-	// TestsNote is a code for what the tests show as a whole, for the client to word: none_checkable
-	// when every test names a concept or property the question's items do not have. Computed when
-	// read, from the tests' checks; empty otherwise.
+	// TestsNote is a code for what the tests show as a whole, for the client to word:
+	// inputs_untested when the question has inputs and no test names each; none_checkable when every
+	// test names a concept or property the question's items do not have. Computed when read, from
+	// the question and the tests' checks; empty otherwise.
 	TestsNote string `json:"tests_note,omitempty"`
 }
 
 // TESTS_NOTE_NONE_CHECKABLE says no test of a question could be checked, each naming a concept or
 // property the question's items do not have: the Agent wrote them about something else.
 const TESTS_NOTE_NONE_CHECKABLE = "none_checkable"
+
+// TESTS_NOTE_INPUTS_UNTESTED says a question has inputs and no test names a value of each.
+const TESTS_NOTE_INPUTS_UNTESTED = "inputs_untested"
 
 // QuestionTest is a scenario question asked with concrete values. Kind is paraphrase, boundary,
 // not_exist or variant; it says how the Agent meant it. Expect says what the data must show.

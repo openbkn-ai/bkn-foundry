@@ -178,6 +178,83 @@ func Test_BuildSpec(t *testing.T) {
 			So(spec.Rejected[0].Reason, ShouldEqual, rejectedNumberNotInQuote)
 		})
 
+		Convey("A question's inputs are kept only when they stand; the others are listed rejected\n", func() {
+			withProps := testDraft()
+			withProps.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{
+				{Name: "order_no", Type: "string"}, {Name: "signed_on", Type: "date"}}
+			orderRef := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"}
+			record := func(name, concept, property string) agentInput {
+				return agentInput{Name: name, ConceptID: concept, Property: property, Role: interfaces.REQUIREMENT_INPUT_RECORD}
+			}
+			out := &draftOutput{
+				Concepts: []agentConcept{{ID: "ord", Term: "Order", SupplementReason: "r", MapsTo: &orderRef},
+					{ID: "loose", Term: "Channel", SupplementReason: "r"}},
+				Questions: []agentQuestion{
+					{Text: "a", Template: "Lines of order {order} by {missing} as {kind}?", SupplementReason: "r", Inputs: []agentInput{
+						record("order", "ord", "order_no"),
+						record("order", "ord", "order_no"),                                    // the same name again
+						record("nobody", "ghost", "order_no"),                                 // no such concept
+						record("missing", "ord", "nope"),                                      // no such property
+						record("absent", "ord", "order_no"),                                   // not in the template
+						{Name: "kind", ConceptID: "ord", Property: "order_no", Role: "guess"}, // no such role
+					}},
+					// A concept not drafted yet: its property cannot be checked, and stands.
+					{Text: "b", Template: "Orders of {channel}?", SupplementReason: "r", Inputs: []agentInput{
+						record("channel", "loose", "anything")}},
+					// No input value at all.
+					{Text: "c", Template: "Which orders are late?", SupplementReason: "r", Inputs: []agentInput{}},
+					// Given inputs, none standing: not known, as before questions had inputs.
+					{Text: "d", Template: "Lines of an order?", SupplementReason: "r", Inputs: []agentInput{record("order", "ord", "order_no")}},
+					// A period counted back: its reference time is an input on a time property.
+					{Text: "e", Template: "Orders of {order} in the 30 days before {as_of}?", SupplementReason: "r", RelativeWindow: true,
+						Inputs: []agentInput{record("order", "ord", "order_no"),
+							{Name: "as_of", ConceptID: "ord", Property: "signed_on", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
+					// Without one it depends on when it is asked: the question is rejected.
+					{Text: "f", Template: "Orders of {order} in the last 30 days?", SupplementReason: "r", RelativeWindow: true,
+						Inputs: []agentInput{record("order", "ord", "order_no")}},
+					// A reference time on a property that is no time.
+					{Text: "g", Template: "Orders before {as_of}?", SupplementReason: "r", RelativeWindow: true,
+						Inputs: []agentInput{{Name: "as_of", ConceptID: "ord", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
+					// A reference time on a concept not drafted names no property: it cannot be told a time.
+					{Text: "h", Template: "Sales of {channel} before {as_of}?", SupplementReason: "r", Inputs: []agentInput{
+						record("channel", "loose", "anything"),
+						{Name: "as_of", ConceptID: "loose", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
+				},
+			}
+
+			spec, _ := buildSpec(out, docs, withProps)
+
+			byText := map[string]*interfaces.RequirementQuestion{}
+			for _, q := range spec.Questions {
+				byText[q.Text] = q
+			}
+			So(*byText["a"].Inputs, ShouldResemble, []interfaces.RequirementInput{
+				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}})
+			So(*byText["b"].Inputs, ShouldResemble, []interfaces.RequirementInput{
+				{Name: "channel", ConceptID: "c2", Property: "anything", Role: interfaces.REQUIREMENT_INPUT_RECORD}})
+			So(*byText["c"].Inputs, ShouldBeEmpty)
+			So(byText["d"].Inputs, ShouldBeNil)
+			So(*byText["e"].Inputs, ShouldHaveLength, 2)
+			So(byText["e"].RelativeWindow, ShouldBeTrue)
+			So(byText["f"], ShouldBeNil)
+			So(byText["g"], ShouldBeNil)
+			reasons := map[string]string{}
+			for _, r := range spec.Rejected {
+				reasons[r.Kind+" "+r.Text] = r.Reason
+			}
+			So(reasons["input order (a)"], ShouldEqual, inputDuplicateName)
+			So(reasons["input kind (a)"], ShouldEqual, inputUnknownRole)
+			So(reasons["input nobody (a)"], ShouldEqual, inputUnknownConcept)
+			So(reasons["input missing (a)"], ShouldEqual, inputUnknownProperty)
+			So(reasons["input absent (a)"], ShouldEqual, inputNotInTemplate)
+			So(reasons["input order (d)"], ShouldEqual, inputNotInTemplate)
+			So(reasons["question f"], ShouldEqual, rejectedWindowWithoutRefTime)
+			So(reasons["input as_of (g)"], ShouldEqual, inputNotTime)
+			So(reasons["question g"], ShouldEqual, rejectedWindowWithoutRefTime)
+			So(reasons["input as_of (h)"], ShouldEqual, inputNotTime)
+			So(*byText["h"].Inputs, ShouldHaveLength, 1)
+		})
+
 		Convey("A question's layer is knowledge only when said so\n", func() {
 			out := &draftOutput{Questions: []agentQuestion{
 				{Text: "a", Layer: "knowledge", SupplementReason: "r"},
