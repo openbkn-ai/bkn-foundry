@@ -41,6 +41,9 @@ type Query struct {
 	// OmitSummaryTerminalContent is an internal metadata-only facet read.
 	// It excludes all artifact content, including terminal preview bodies.
 	OmitSummaryTerminalContent bool
+	// FilterTraceCandidates is used only for global summary scans. Owner/shared
+	// Interaction grants require the unfiltered discovery/expansion path.
+	FilterTraceCandidates TraceSummaryCandidateFilter `json:"-"`
 }
 
 type Result struct {

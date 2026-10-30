@@ -67,7 +67,9 @@ func (s *Service) listScannedTraceSummaryPage(ctx context.Context, o evidencevo.
 	if status == "" && strings.TrimSpace(o.ErrorKeyword) != "" {
 		status = "error"
 	}
-	err = s.scanMatchedTraceSummaries(ctx, source, o, iprojectionsource.Query{Scope: o.Scope, From: o.From, To: o.To, Status: status, Tool: o.Tool, SummaryOnly: true}, func(trace evidencevo.TraceSummary) error {
+	query := iprojectionsource.Query{Scope: o.Scope, From: o.From, To: o.To, Status: status, Tool: o.Tool, SummaryOnly: true}
+	query.FilterTraceCandidates = s.traceErrorCandidateFilter(o)
+	err = s.scanMatchedTraceSummaries(ctx, source, o, query, func(trace evidencevo.TraceSummary) error {
 		total++
 		if hasCursor && !traceScanAfter(trace, cursor) {
 			return nil

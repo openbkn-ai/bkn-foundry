@@ -150,6 +150,7 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.failed to query evidence chain":                                              "failed to query evidence chain",
 		"AgentObservability.Message.failed to query evidence node":                                               "failed to query evidence node",
 		"AgentObservability.Message.failed to query execution summaries":                                         "failed to query execution summaries",
+		"AgentObservability.Message.trace storage is temporarily unavailable; retry the query later":             "trace storage is temporarily unavailable; retry the query later",
 		"AgentObservability.Message.execution summary projection is catching up; retry the same page":            "execution summary projection is catching up; retry the same page",
 		queryTimeoutMessageID: "trace query exceeded its time budget; narrow the time range or filters before retrying",
 		queryBudgetMessageID:  "trace query exceeds its resource budget; narrow the time range or filters, or use cursor pagination instead of a deep page",

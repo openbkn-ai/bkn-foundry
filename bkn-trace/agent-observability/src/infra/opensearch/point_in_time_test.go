@@ -8,10 +8,34 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+func TestReceiptSnapshotPreservesRejectedStatusAndSanitizedType(t *testing.T) {
+	for _, body := range []string{
+		`{"error":{"type":"circuit_breaking_exception","reason":"secret-query-and-document"},"status":429}`,
+		`{"error":{"type":"unsafe secret type","reason":"secret-query-and-document"}}`,
+		`not-json`,
+		strings.Repeat("x", maxPointInTimeResponseBytes+1),
+	} {
+		client := NewWithHTTPClient("http://local", AuthConfig{}, &http.Client{Transport: spanBoundedTransport(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 429, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})})
+		_, err := client.OpenPointInTime(context.Background(), "core")
+		var status *StatusError
+		if !errors.As(err, &status) || status.StatusCode != 429 || status.Body != "" || strings.Contains(err.Error(), "secret") {
+			t.Fatalf("lost status or leaked response body: %v", err)
+		}
+		if strings.Contains(body, `"type":"circuit_breaking_exception"`) && status.Type != "circuit_breaking_exception" {
+			t.Fatalf("lost exception type: %+v", status)
+		}
+	}
+}
 
 func TestReceiptSnapshotLifecycleAndPartialResponseRejection(t *testing.T) {
 	partial := false

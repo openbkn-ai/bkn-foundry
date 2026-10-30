@@ -114,6 +114,8 @@ type RegressionResult struct {
 	Answer     string               `json:"answer,omitempty"`
 	ToolUses   []BknAgentToolUse    `json:"tool_uses,omitempty"`
 	ErrorCode  string               `json:"error_code,omitempty"`
+	// Warning notes what is off in a judgement that still stands.
+	Warning string `json:"warning,omitempty"`
 }
 
 //go:generate mockgen -source ../interfaces/regression.go -destination ../interfaces/mock/mock_regression.go
@@ -140,6 +142,10 @@ const (
 	// REGRESSION_ERROR_DEFINITIONS_UNREADABLE: the release's definitions could not be read.
 	REGRESSION_ERROR_DEFINITIONS_UNREADABLE = "definitions_unreadable"
 )
+
+// REGRESSION_WARNING_REASON_HAS_TOOL_NAME: the judge's reason names a tool the answer called, even
+// when judged once more; the reason is kept as written.
+const REGRESSION_WARNING_REASON_HAS_TOOL_NAME = "reason_has_tool_name"
 
 // Codes of a question that could not be asked, besides the answering service's own.
 const (

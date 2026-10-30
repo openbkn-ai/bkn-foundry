@@ -6,18 +6,47 @@
 package httphandler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
+
+func TestSummaryStorageRejectionIsRetryableAndLogsOnlySafeDiagnostics(t *testing.T) {
+	var logs bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	for _, status := range []int{429, 503} {
+		logs.Reset()
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/traces?error_keyword=private-keyword", nil)
+		request.Header.Set("x-trace-id", "0123456789abcdef0123456789abcdef")
+		writeSummaryQueryError(response, request, fmt.Errorf("query: %w", &opensearch.StatusError{Operation: "receipt snapshot", StatusCode: status, Type: "circuit_breaking_exception", Body: "private-storage-reason"}))
+		var body map[string]json.RawMessage
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != 503 || string(body["error_code"]) != `"SUMMARY_DEPENDENCY_UNAVAILABLE"` || body["total"] != nil || body["entries"] != nil || !strings.Contains(string(body["trace_id"]), "0123456789abcdef0123456789abcdef") {
+			t.Fatalf("storage rejection became generic failure/partial success: %d %s", response.Code, response.Body.String())
+		}
+		if !strings.Contains(logs.String(), "circuit_breaking_exception") || !strings.Contains(logs.String(), fmt.Sprint(status)) || !strings.Contains(logs.String(), "0123456789abcdef0123456789abcdef") || strings.Contains(logs.String(), "private") || strings.Contains(response.Body.String(), "private") {
+			t.Fatalf("missing safe diagnostic or leaked request/body: log=%s response=%s", logs.String(), response.Body.String())
+		}
+	}
+}
 
 func TestSummaryBudgetErrorsDistinguishDeterministicRejectionFromTimeout(t *testing.T) {
 	for _, tc := range []struct {
