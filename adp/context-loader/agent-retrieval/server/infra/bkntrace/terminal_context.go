@@ -5,7 +5,10 @@
 
 package bkntrace
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // RecordToolFailure retains a classification supplied by the executing handler.
 // It never reads caller arguments or MCP structured content. Unmanaged calls
@@ -63,4 +66,33 @@ func retainedBusinessRefs(ctx context.Context) []BusinessRef {
 	outcome.mu.Lock()
 	defer outcome.mu.Unlock()
 	return append([]BusinessRef(nil), outcome.businessRefs...)
+}
+
+// Schema snapshot IDs come from the definitions actually returned by the
+// handler, not caller declarations or names. Retain them for the receipt even
+// when evidence publication is disabled or fails, as for resolved SQL targets.
+func retainSchemaSnapshotTargets(ctx context.Context, kind, knID string, ids []string) {
+	outcome := evidenceOutcomeFromContext(ctx)
+	knID = strings.TrimSpace(knID)
+	if outcome == nil || knID == "" || (kind != "object" && kind != "relation") {
+		return
+	}
+	for _, ref := range requestDerivedBusinessRefsFromContext(ctx) {
+		if ref.RefType == "knowledge_network" && ref.RefID != "kn:"+knID {
+			return
+		}
+	}
+	refType := trace30RefType(kind)
+	targets := make([]BusinessRef, 0, len(ids))
+	for _, id := range ids {
+		refID := kind + ":" + knID + ":" + strings.TrimSpace(id)
+		if trace30CanonicalRefID(refType, refID) {
+			targets = append(targets, BusinessRef{RefType: refType, RefID: refID, Version: "unversioned"})
+		}
+	}
+	outcome.mu.Lock()
+	defer outcome.mu.Unlock()
+	if !outcome.closed {
+		outcome.businessRefs = mergeBusinessRefs(outcome.businessRefs, targets)
+	}
 }
