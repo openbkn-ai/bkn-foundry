@@ -517,6 +517,7 @@ func (s *draftService) DraftSourceChanges(ctx context.Context, token string, pro
 		span.SetStatus(codes.Error, "Record ids failed")
 		return nil, internalError(ctx, "Record ids failed", err)
 	}
+	withRecordedIDs(&draft.Items, registered, d.recorded)
 	if err := s.commit(ctx, draft, decisions, caller); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
@@ -641,4 +642,23 @@ func applySourceChanges(items *interfaces.DraftItems, changes *interfaces.Source
 		}
 	}
 	return decisions
+}
+
+// withRecordedIDs sums up the registered ids again with those drafting the changes recorded: the
+// placeholders drafting counted stay, and each new placeholder is added.
+func withRecordedIDs(items *interfaces.DraftItems, registered []*interfaces.RegisteredID, recorded []*interfaces.RegisteredID) {
+	if items.Inputs == nil || len(recorded) == 0 {
+		return
+	}
+	placeholders := 0
+	if items.Inputs.IDs != nil {
+		placeholders = items.Inputs.IDs.Placeholders
+	}
+	for _, id := range recorded {
+		if id.Origin == interfaces.ID_ORIGIN_FALLBACK && !id.Locked {
+			placeholders++
+		}
+	}
+	items.Inputs.IDs = registryInputsOf(registered, recorded, nil)
+	items.Inputs.IDs.Placeholders = placeholders
 }

@@ -371,6 +371,42 @@ const publishedRegions = "---\ntype: object_type\nid: regions\nname: Regions\n--
 const publishedCustomers = "---\ntype: object_type\nid: customers\nname: Customers\n---\n\n## ObjectType: Customers\n\n" +
 	"### Data Source\n\n| Type | ID | Name |\n|------|----|------|\n| resource | t_customers | customers |\n"
 
+func Test_WithRecordedIDs(t *testing.T) {
+	Convey("Test summing up the ids drafting the changes recorded\n", t, func() {
+		key := func(field string) interfaces.IDKey {
+			return interfaces.IDKey{Kind: interfaces.ID_KIND_PROPERTIES, SourceKey: propertySourceKey("t_customers", field)}
+		}
+		registered := []*interfaces.RegisteredID{{IDKey: key("名称"), ID: "p_aaaaaa", Origin: interfaces.ID_ORIGIN_FALLBACK}}
+		items := &interfaces.DraftItems{Inputs: &interfaces.DraftInputs{IDs: &interfaces.DraftInputIDs{Count: 1, Placeholders: 1, Fingerprint: "f"}}}
+
+		Convey("A new placeholder is counted beside those drafting counted, and the summary changes\n", func() {
+			withRecordedIDs(items, registered, []*interfaces.RegisteredID{
+				{IDKey: key("等级"), ID: "p_bbbbbb", Origin: interfaces.ID_ORIGIN_FALLBACK},
+				{IDKey: key("区域"), ID: "region", Origin: interfaces.ID_ORIGIN_SEMANTIC},
+			})
+
+			So(items.Inputs.IDs.Count, ShouldEqual, 3)
+			So(items.Inputs.IDs.Placeholders, ShouldEqual, 2)
+			So(items.Inputs.IDs.Fingerprint, ShouldNotEqual, "f")
+		})
+
+		Convey("A draft without ids before gets a summary\n", func() {
+			items.Inputs.IDs = nil
+
+			withRecordedIDs(items, nil, []*interfaces.RegisteredID{{IDKey: key("等级"), ID: "p_bbbbbb", Origin: interfaces.ID_ORIGIN_FALLBACK}})
+
+			So(items.Inputs.IDs.Count, ShouldEqual, 1)
+			So(items.Inputs.IDs.Placeholders, ShouldEqual, 1)
+		})
+
+		Convey("Nothing recorded leaves the summary as it was\n", func() {
+			withRecordedIDs(items, registered, nil)
+
+			So(items.Inputs.IDs.Fingerprint, ShouldEqual, "f")
+		})
+	})
+}
+
 func Test_GetSourceChanges(t *testing.T) {
 	Convey("Test reading a project's source changes\n", t, func() {
 		ctrl := gomock.NewController(t)
@@ -539,6 +575,8 @@ func Test_DraftSourceChanges(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(ira.recorded, ShouldHaveLength, 1)
 				So(ira.recorded[0].ID, ShouldEqual, "region")
+				So(draft.Items.Inputs.IDs.Count, ShouldEqual, 1)
+				So(draft.Items.Inputs.IDs.Placeholders, ShouldEqual, 0)
 			})
 		})
 
