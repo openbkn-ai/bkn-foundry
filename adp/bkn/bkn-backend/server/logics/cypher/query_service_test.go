@@ -25,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -1050,7 +1051,7 @@ func TestQueryReportsRefusalWhenProxyUnavailable(t *testing.T) {
 
 // #1545: vega-backend refusing a resource was reported as a 500 with nothing
 // to diagnose. It is a 403 with its own code now, and still carries nothing
-// from the statement.
+// from the statement. A timeout likewise has its own code (#2090).
 func TestQueryReportsVegaRefusalAsForbidden(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -1077,6 +1078,21 @@ func TestQueryReportsVegaRefusalAsForbidden(t *testing.T) {
 			status: http.StatusInternalServerError,
 			code:   berrors.BknBackend_Cypher_QueryFailed,
 		},
+		// #2090: a statement the data source could not finish within its time
+		// limit read as a generic failure. It has its own code now, so a
+		// caller knows to narrow the query rather than retry.
+		{
+			name:   "statement stopped at its timeout by vega-backend",
+			err:    interfaces.NewDependencyError("vega", "raw_query", interfaces.DependencyTimeout, http.StatusInternalServerError),
+			status: http.StatusGatewayTimeout,
+			code:   berrors.BknBackend_Cypher_QueryTimeout,
+		},
+		{
+			name:   "request to vega-backend timed out",
+			err:    interfaces.NewDependencyError("vega", "raw_query", interfaces.DependencyTimeout, 0),
+			status: http.StatusGatewayTimeout,
+			code:   berrors.BknBackend_Cypher_QueryTimeout,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			vega := &recordingVega{err: tc.err}
@@ -1094,6 +1110,66 @@ func TestQueryReportsVegaRefusalAsForbidden(t *testing.T) {
 			if strings.Contains(err.Error(), "f_total") || strings.Contains(err.Error(), "orders") ||
 				strings.Contains(err.Error(), "SELECT") {
 				t.Fatalf("error leaked the statement: %v", err)
+			}
+		})
+	}
+}
+
+// #2090: the statement timeout was fixed at 30 seconds. It is the service's
+// configured value now, 55 seconds unless set, held to what vega-backend
+// accepts, and a request may ask for less but never for more.
+func TestQueryStatementTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		configured int
+		requested  int
+		want       int
+	}{
+		{name: "default", want: 55},
+		{name: "configured", configured: 40, want: 40},
+		{name: "configured past what vega-backend accepts", configured: 5000, want: 3600},
+		{name: "requested shorter", requested: 10, want: 10},
+		{name: "requested exactly the configured", configured: 40, requested: 40, want: 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vega := &recordingVega{}
+			service := testService(t, vega, &stubPermission{})
+			service.appSetting = &common.AppSetting{ServerSetting: common.ServerSetting{CypherQueryTimeoutSec: tc.configured}}
+
+			_, err := service.Query(callerContext(), interfaces.CypherQuery{
+				KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.amount",
+				TimeoutSec: tc.requested,
+			})
+			if err != nil {
+				t.Fatalf("Query: %v", err)
+			}
+			if got := vega.request.QueryTimeoutSec; got != tc.want {
+				t.Fatalf("query_timeout_sec = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// A timeout past the configured one is refused before anything runs, rather
+// than quietly cut down, so the caller knows they will not get it.
+func TestQueryRefusesTimeoutOutOfRange(t *testing.T) {
+	for _, requested := range []int{56, -1} {
+		t.Run(strconv.Itoa(requested), func(t *testing.T) {
+			vega := &recordingVega{}
+			service := testService(t, vega, &stubPermission{})
+
+			_, err := service.Query(callerContext(), interfaces.CypherQuery{
+				KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.amount",
+				TimeoutSec: requested,
+			})
+			if got := statusOf(t, err); got != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", got, http.StatusBadRequest)
+			}
+			if got := errorCodeOf(t, err); got != berrors.BknBackend_Cypher_InvalidParameter {
+				t.Fatalf("code = %s, want %s", got, berrors.BknBackend_Cypher_InvalidParameter)
+			}
+			if vega.request != nil {
+				t.Fatal("a query with a refused timeout reached vega-backend")
 			}
 		})
 	}

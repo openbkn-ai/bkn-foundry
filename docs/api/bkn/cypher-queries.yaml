@@ -131,7 +131,16 @@ paths:
         "500":
           description: |-
             BknBackend.Cypher.QueryFailed: the compiled statement failed to run for a reason other
-            than a refused resource. The dependency's message is not passed through.
+            than a refused resource or a timeout. The dependency's message is not passed through.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "504":
+          description: |-
+            BknBackend.Cypher.QueryTimeout: the data source did not finish the compiled statement
+            within its timeout (timeout_sec, or the configured 55 seconds) and stopped it. Retrying the same query will time out
+            again; add conditions on the nodes the pattern matches so that less data is read or joined.
           content:
             application/json:
               schema:
@@ -187,6 +196,14 @@ components:
             then empty and plan is set. One exception: explain does not see where the data lives,
             so a form refused only on datasets, indexes or across data sources (see the query
             description) passes explain and is refused when run.
+        timeout_sec:
+          type: integer
+          minimum: 1
+          description: |-
+            How long the compiled statement may run at the data source, in seconds. Leave it out
+            to use the service's configured timeout (55 seconds unless the deployment sets
+            BKN_CYPHER_QUERY_TIMEOUT_SEC). It can only shorten that timeout: a value above it, or
+            below 1, is refused with BknBackend.Cypher.InvalidParameter.
         query:
           type: string
           maxLength: 8192

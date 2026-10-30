@@ -47,6 +47,10 @@ type RunCypherReq struct {
 	ObjectProperties map[string][]string `json:"object_properties"`
 	// Explain asks for the plan instead of the rows; nothing is read.
 	Explain bool `json:"explain"`
+	// TimeoutSec asks for a shorter statement timeout than bkn-backend's
+	// configured one, in seconds. Only the REST face takes it; the MCP tool
+	// clears it, since an agent would set it as high as it could.
+	TimeoutSec int `json:"timeout_sec"`
 }
 
 // KnCypherService runs one read-only Cypher query against a knowledge network.
@@ -105,6 +109,7 @@ func (s *knCypherService) RunCypher(ctx context.Context, req *RunCypherReq) (*in
 		Parameters:       req.Parameters,
 		ObjectProperties: req.ObjectProperties,
 		Explain:          req.Explain,
+		TimeoutSec:       req.TimeoutSec,
 	})
 	if req.Explain {
 		// An explained query reads nothing, so it is no evidence of a read

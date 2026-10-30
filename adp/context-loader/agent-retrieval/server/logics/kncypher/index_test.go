@@ -47,6 +47,7 @@ func TestRunCypherCarriesTheQueryAcrossUntouched(t *testing.T) {
 		Query:            query,
 		Parameters:       map[string]any{"floor": 100},
 		ObjectProperties: map[string][]string{"o": {"order_no"}},
+		TimeoutSec:       10,
 	})
 	if err != nil {
 		t.Fatalf("RunCypher() error = %v", err)
@@ -67,6 +68,9 @@ func TestRunCypherCarriesTheQueryAcrossUntouched(t *testing.T) {
 	}
 	if got := bkn.req.ObjectProperties["o"]; len(got) != 1 || got[0] != "order_no" {
 		t.Fatalf("object_properties = %v, want them carried across", bkn.req.ObjectProperties)
+	}
+	if bkn.req.TimeoutSec != 10 {
+		t.Fatalf("timeout_sec = %d, want it carried across", bkn.req.TimeoutSec)
 	}
 }
 

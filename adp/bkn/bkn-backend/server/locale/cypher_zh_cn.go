@@ -19,6 +19,7 @@ var cypherZhCN = i18n.I18nMessages{
 		"BknBackend.Cypher.Forbidden":                                    "数据源拒绝读取查询涉及的资源。请联系管理员发布知识网络并完成代理账号同步，或授予这些对象类所绑定资源的访问权限。",
 		"BknBackend.Cypher.PropertyForbidden":                            "查询读取了当前用户无完整访问权限的属性。请从查询中移除所列属性，或联系管理员授予这些属性的完整访问权限。",
 		"BknBackend.Cypher.ReadBudgetExceeded":                           "查询需要读取的数据行超过单次执行上限。请为模式中的节点增加过滤条件，减少需要读取的数据行。",
+		"BknBackend.Cypher.QueryTimeout":                                 "查询在执行时限内没有完成，已被终止。请为模式中的节点增加过滤条件，减少需要读取或关联的数据后重试。",
 		"BknBackend.Cypher.PropertyForbidden.Detail.NotFull":             "查询读取的每个属性都需要完整访问权限，以下属性未获授权：{{.properties}}。",
 		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSource":         "查询读到的对象类存放在数据集或索引里，或者分布在多个数据源中。这类数据只支持基础写法：MATCH、OPTIONAL MATCH、WHERE、RETURN 属性和聚合、ORDER BY / SKIP / LIMIT、WITH 聚合后过滤和按值过滤（半连接）。CASE、coalesce、对分组再统计、比较两个列表、把节点传给下一个 MATCH 和 collect 都不可用（返回节点和关系可以），请改写。",
 		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceTooLarge": "查询读到的对象类存放在数据集或索引里，或者分布在多个数据源中，需要逐表读取后关联；这次要读的数据超过上限或超时，请加条件缩小范围。",
@@ -26,5 +27,6 @@ var cypherZhCN = i18n.I18nMessages{
 		"BknBackend.Cypher.InvalidParameter.Detail.QueryRequired":        "query 不能为空。",
 		"BknBackend.Cypher.InvalidParameter.Detail.QueryTooLong":         "query 长度不能超过 {{.max}} 个字符。",
 		"BknBackend.Cypher.InvalidParameter.Detail.LimitExceeded":        "LIMIT 不能超过 {{.max}}。",
+		"BknBackend.Cypher.InvalidParameter.Detail.TimeoutOutOfRange":    "timeout_sec 必须在 1 到 {{.max}} 之间（秒），不传则使用服务配置的 {{.max}} 秒。",
 	},
 }

@@ -47,6 +47,12 @@ type ServerSetting struct {
 	// through the resource data API and joins in memory. BKN_CYPHER_EXECUTOR
 	// overrides the file.
 	CypherExecutor string `mapstructure:"cypherExecutor"`
+	// CypherQueryTimeoutSec is how long one Cypher statement may run at the
+	// data source, and the most a request may ask for. It stays under the
+	// gateway's 60-second read timeout so that a timeout is reported by this
+	// service rather than cut off by the gateway. BKN_CYPHER_QUERY_TIMEOUT_SEC
+	// overrides the file.
+	CypherQueryTimeoutSec int `mapstructure:"cypherQueryTimeoutSec"`
 }
 
 // The Cypher executors CypherExecutor selects between.
@@ -54,6 +60,9 @@ const (
 	CypherExecutorSQL      = "sql"
 	CypherExecutorBindJoin = "bindjoin"
 )
+
+// DefaultCypherQueryTimeoutSec is CypherQueryTimeoutSec when nothing sets it.
+const DefaultCypherQueryTimeoutSec = 55
 
 // AppSetting contains application configuration.
 type AppSetting struct {
@@ -126,6 +135,8 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("server.proxySyncWorkerEnabled", true)
 	vp.SetDefault("server.cypherExecutor", CypherExecutorSQL)
 	_ = vp.BindEnv("server.cypherExecutor", "BKN_CYPHER_EXECUTOR")
+	vp.SetDefault("server.cypherQueryTimeoutSec", DefaultCypherQueryTimeoutSec)
+	_ = vp.BindEnv("server.cypherQueryTimeoutSec", "BKN_CYPHER_QUERY_TIMEOUT_SEC")
 
 	vp.AddConfigPath(configPath)
 	vp.SetConfigName(configName)

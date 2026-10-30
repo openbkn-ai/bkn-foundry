@@ -139,6 +139,9 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if err := validateQueryText(ctx, query.Query); err != nil {
 		return nil, err
 	}
+	if err := s.validateTimeout(ctx, query.TimeoutSec); err != nil {
+		return nil, err
+	}
 	compiled, err := s.compile(ctx, query)
 	if err != nil {
 		return nil, err
@@ -214,7 +217,7 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: compiled.rowLimit,
 		},
-		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
+		QueryTimeoutSec: s.statementTimeoutSec(query),
 	})
 	if unsupportedSource(err) && afterBindJoin {
 		return nil, outsideSQLTooLarge(ctx)
@@ -250,7 +253,7 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: read.rowLimit,
 		},
-		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
+		QueryTimeoutSec: s.statementTimeoutSec(query),
 	})
 	if unsupportedSource(err) {
 		return s.queryOutsideSQL(ctx, query, compiled)
@@ -639,9 +642,11 @@ func (s *cypherQueryService) execute(ctx context.Context, query interfaces.Cyphe
 	request interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	span := trace.SpanFromContext(ctx)
 	callerRequest := request
+	started := time.Now()
 	response, err := s.vba.RawQuery(ctx, &callerRequest)
 	if err == nil || !vegaRefused(err) {
 		span.SetAttributes(attribute.String(spanAttrExecutionPath, executionPathCaller))
+		logExecutionFailure(query.KNID, plan, request, time.Since(started), err)
 		return response, err
 	}
 
@@ -659,7 +664,10 @@ func (s *cypherQueryService) execute(ctx context.Context, query interfaces.Cyphe
 		query.KNID, caller.ID, proxy.account.ID, strings.Join(proxy.resourceIDs, ","))
 	span.SetAttributes(attribute.String(spanAttrExecutionPath, executionPathProxy))
 	proxyRequest := request
-	return s.vba.RawQueryAs(ctx, proxy.account, &proxyRequest)
+	started = time.Now()
+	response, err = s.vba.RawQueryAs(ctx, proxy.account, &proxyRequest)
+	logExecutionFailure(query.KNID, plan, request, time.Since(started), err)
+	return response, err
 }
 
 // executor is the configured way to run a compiled query.
@@ -723,7 +731,7 @@ func (s *cypherQueryService) runBindJoin(ctx context.Context, query interfaces.C
 	span := trace.SpanFromContext(ctx)
 	timeout := s.bindJoinTimeout
 	if timeout <= 0 {
-		timeout = interfaces.CYPHER_DEFAULT_TIMEOUT_SEC * time.Second
+		timeout = time.Duration(s.statementTimeoutSec(query)) * time.Second
 	}
 	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -778,6 +786,73 @@ var errBindJoinTimeout = errors.New("the bind-join executor ran out of time")
 func vegaRefused(err error) bool {
 	var dependencyErr *interfaces.DependencyError
 	return errors.As(err, &dependencyErr) && dependencyErr.HTTPStatus == http.StatusForbidden
+}
+
+// configuredTimeoutSec is how long one statement may run unless a request asks
+// for less, held to what vega-backend accepts.
+func (s *cypherQueryService) configuredTimeoutSec() int {
+	seconds := 0
+	if s.appSetting != nil {
+		seconds = s.appSetting.ServerSetting.CypherQueryTimeoutSec
+	}
+	if seconds <= 0 {
+		return interfaces.CYPHER_DEFAULT_TIMEOUT_SEC
+	}
+	return min(seconds, interfaces.CYPHER_MAX_TIMEOUT_SEC)
+}
+
+// statementTimeoutSec is the timeout one query's statement runs under: the
+// one it asked for, or the configured one. validateTimeout has already held
+// what it asked for to the configured one.
+func (s *cypherQueryService) statementTimeoutSec(query interfaces.CypherQuery) int {
+	if query.TimeoutSec > 0 {
+		return query.TimeoutSec
+	}
+	return s.configuredTimeoutSec()
+}
+
+// validateTimeout refuses a timeout the service would not honor rather than
+// clamping it, so a caller asking for more time is told it will not get it.
+func (s *cypherQueryService) validateTimeout(ctx context.Context, seconds int) error {
+	maxSeconds := s.configuredTimeoutSec()
+	if seconds >= 0 && seconds <= maxSeconds {
+		return nil
+	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.TimeoutOutOfRange",
+		map[string]any{"max": maxSeconds})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidParameter).
+		WithErrorDetails(localizedText)
+}
+
+// dependencyTimedOut reports a statement the data source did not finish in
+// time: vega-backend stopping it at the statement's timeout, or the request to
+// vega-backend itself running out of time.
+func dependencyTimedOut(err error) bool {
+	var dependencyErr *interfaces.DependencyError
+	return errors.As(err, &dependencyErr) && dependencyErr.Kind == interfaces.DependencyTimeout
+}
+
+// logExecutionFailure records a statement the data source failed to run, with
+// what is needed to tell a slow source from a broken one: the resources it
+// reads, how long it ran and how it failed. The statement itself is left out
+// since it names physical tables and columns. A refusal is not logged here; it
+// is recorded on the span with the proxy decision.
+func logExecutionFailure(knID string, plan *Plan, request interfaces.RawQueryRequest,
+	elapsed time.Duration, err error) {
+	if err == nil || vegaRefused(err) || unsupportedSource(err) {
+		return
+	}
+	kind, status := interfaces.DependencyErrorKind("unknown"), 0
+	var dependencyErr *interfaces.DependencyError
+	if errors.As(err, &dependencyErr) {
+		kind, status = dependencyErr.Kind, dependencyErr.HTTPStatus
+	}
+	logger.Warnf("Cypher query on knowledge network %s failed after %s: kind=%s status=%d timeout_sec=%d resources=%s",
+		knID, elapsed.Round(time.Millisecond), kind, status, request.QueryTimeoutSec,
+		strings.Join(planResourceIDs(plan), ","))
 }
 
 // resolveProxy returns what a refused statement may run under through the
@@ -1067,6 +1142,9 @@ func graphOutsideSQL(read *graphRead) bool {
 func executionError(ctx context.Context, err error) error {
 	if vegaRefused(err) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_Cypher_Forbidden)
+	}
+	if dependencyTimedOut(err) {
+		return httperrors.NewHTTPError(ctx, http.StatusGatewayTimeout, berrors.BknBackend_Cypher_QueryTimeout)
 	}
 	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_QueryFailed)
 }

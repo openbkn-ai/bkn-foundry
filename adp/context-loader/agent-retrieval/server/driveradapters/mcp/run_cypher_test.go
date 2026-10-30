@@ -113,6 +113,31 @@ func (r refusingCypher) RunCypher(context.Context, *kncypher.RunCypherReq) (*int
 
 type returningCypher struct{ resp *interfaces.CypherQueryResp }
 
+// recordingCypher keeps the request the tool handed the service.
+type recordingCypher struct{ req *kncypher.RunCypherReq }
+
+func (r *recordingCypher) RunCypher(_ context.Context, req *kncypher.RunCypherReq) (*interfaces.CypherQueryResp, error) {
+	r.req = req
+	return &interfaces.CypherQueryResp{}, nil
+}
+
+// #2090: only the REST face takes a statement timeout. An agent would ask for
+// as much as it could, so one sent to the tool is dropped.
+func TestRunCypherToolDropsTheTimeout(t *testing.T) {
+	cypher := &recordingCypher{}
+	handler := handleRunCypher(cypher, nil)
+
+	result, err := handler(context.Background(), newCallToolRequest(map[string]any{
+		"kn_id": "kn-1", "query": "MATCH (o:Order) RETURN count(*) AS total", "timeout_sec": 55,
+	}))
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+	if cypher.req == nil || cypher.req.TimeoutSec != 0 {
+		t.Fatalf("request = %+v, want no timeout", cypher.req)
+	}
+}
+
 func (r returningCypher) RunCypher(context.Context, *kncypher.RunCypherReq) (*interfaces.CypherQueryResp, error) {
 	return r.resp, nil
 }
