@@ -812,8 +812,16 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		}
 		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, given[f.objectType])
 		if reason == checkNoValueInData && len(given[f.objectType]) > 0 {
-			// No row has the values given: the check says so, with the others from any row.
-			values, reason = s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, nil)
+			// No row has the values given: the check says so, with the others from any row. A row
+			// that has them but not the rest has no value to take, as any other row would not be it.
+			n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s",
+				f.objectType.Table.ResourceID, strings.Join(given[f.objectType], " AND ")))
+			if err != nil {
+				return queryFailure(err)
+			}
+			if n == 0 {
+				values, reason = s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, nil)
+			}
 		}
 		if reason != "" {
 			return reason
