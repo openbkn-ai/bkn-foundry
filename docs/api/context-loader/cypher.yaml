@@ -280,7 +280,7 @@ components:
           type: integer
           minimum: 1
           description: |
-            查询在数据源上的执行时限（秒）。不传则使用 bkn-backend 配置的时限（默认 55 秒，部署可通过
+            查询在数据源上的执行时限（秒），查询执行的所有语句（UNION 的各分支、bind-join 及其 SQL 回退）共用这一个时限。不传则使用 bkn-backend 配置的时限（默认 55 秒，部署可通过
             `BKN_CYPHER_QUERY_TIMEOUT_SEC` 调整）。只能比配置值更短：超过配置值或小于 1 返回
             `BknBackend.Cypher.InvalidParameter`。仅本 REST 接口接受；MCP 工具 `run_cypher` 不接受此参数，传了也会被忽略。
 

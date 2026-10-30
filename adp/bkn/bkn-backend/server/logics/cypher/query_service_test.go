@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.opentelemetry.io/otel"
@@ -1247,3 +1248,82 @@ func TestQueryRowFilterGroupsListParameterCondition(t *testing.T) {
 // A row filter is ANDed onto the caller's condition, so a caller's OR must stay
 // grouped: without the parentheses the filter would bind to one branch only and
 // the other would read rows the filter hides.
+
+// clockedVega answers every raw query at once but moves the service's clock on
+// by a fixed step, recording the timeout each statement was sent with.
+type clockedVega struct {
+	*recordingVega
+	timeouts []int
+	advance  func()
+}
+
+func (v *clockedVega) RawQuery(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	v.timeouts = append(v.timeouts, req.QueryTimeoutSec)
+	v.advance()
+	return &interfaces.RawQueryResponse{}, nil
+}
+
+// #2090 review: the parts of a UNION ran one after another, each with the
+// whole timeout, so the request could run well past it. They share one
+// deadline now: a later part gets what is left, and none once it is gone.
+func TestQueryUnionPartsShareTheTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		step     time.Duration
+		timeouts []int
+		timedOut bool
+	}{
+		{name: "time left for the second part", step: 4 * time.Second, timeouts: []int{10, 6}},
+		{name: "no time left for the second part", step: 11 * time.Second, timeouts: []int{10}, timedOut: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Unix(1_700_000_000, 0)
+			vega := &clockedVega{recordingVega: &recordingVega{}}
+			vega.advance = func() { now = now.Add(tc.step) }
+			service := testService(t, vega.recordingVega, &stubPermission{})
+			service.vba = vega
+			service.now = func() time.Time { return now }
+
+			_, err := service.Query(callerContext(), interfaces.CypherQuery{
+				KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, TimeoutSec: 10,
+				Query: "MATCH (o:Order) RETURN o.id AS v UNION ALL MATCH (o:Order) RETURN o.amount AS v",
+			})
+			if !slices.Equal(vega.timeouts, tc.timeouts) {
+				t.Fatalf("statement timeouts = %v, want %v", vega.timeouts, tc.timeouts)
+			}
+			if !tc.timedOut {
+				if err != nil {
+					t.Fatalf("Query: %v", err)
+				}
+				return
+			}
+			if got := statusOf(t, err); got != http.StatusGatewayTimeout {
+				t.Fatalf("status = %d, want %d", got, http.StatusGatewayTimeout)
+			}
+			if got := errorCodeOf(t, err); got != berrors.BknBackend_Cypher_QueryTimeout {
+				t.Fatalf("code = %s, want %s", got, berrors.BknBackend_Cypher_QueryTimeout)
+			}
+		})
+	}
+}
+
+// #2090 review: the bind-join executor took the whole timeout and the SQL it
+// falls back to took another. When SQL follows, the executor gets half of
+// what is left, so the fallback still answers within the request's timeout.
+func TestBindJoinTimeoutLeavesTimeForTheFallback(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	service := &cypherQueryService{now: func() time.Time { return now }}
+	ctx := context.WithValue(context.Background(), queryDeadlineKey{}, now.Add(50*time.Second))
+	query := interfaces.CypherQuery{}
+
+	if got := service.bindJoinTimeoutFor(ctx, query, true); got != 25*time.Second {
+		t.Fatalf("with a fallback = %s, want 25s", got)
+	}
+	if got := service.bindJoinTimeoutFor(ctx, query, false); got != 50*time.Second {
+		t.Fatalf("without a fallback = %s, want 50s", got)
+	}
+	now = now.Add(50 * time.Second)
+	if _, err := service.statementTimeoutSec(ctx, query); statusOf(t, err) != http.StatusGatewayTimeout {
+		t.Fatalf("a statement with no time left was not refused as a timeout: %v", err)
+	}
+}

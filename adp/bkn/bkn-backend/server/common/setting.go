@@ -47,8 +47,9 @@ type ServerSetting struct {
 	// through the resource data API and joins in memory. BKN_CYPHER_EXECUTOR
 	// overrides the file.
 	CypherExecutor string `mapstructure:"cypherExecutor"`
-	// CypherQueryTimeoutSec is how long one Cypher statement may run at the
-	// data source, and the most a request may ask for. It stays under the
+	// CypherQueryTimeoutSec is how long one Cypher query may run at the data
+	// source, every statement it runs together, and the most a request may
+	// ask for. It stays under the
 	// gateway's 60-second read timeout so that a timeout is reported by this
 	// service rather than cut off by the gateway. BKN_CYPHER_QUERY_TIMEOUT_SEC
 	// overrides the file.

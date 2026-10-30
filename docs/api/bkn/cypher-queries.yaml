@@ -200,7 +200,8 @@ components:
           type: integer
           minimum: 1
           description: |-
-            How long the compiled statement may run at the data source, in seconds. Leave it out
+            How long the query may run at the data source, in seconds. Every statement it runs (the
+            parts of a UNION, or a bind-join and its SQL fallback) shares this one limit. Leave it out
             to use the service's configured timeout (55 seconds unless the deployment sets
             BKN_CYPHER_QUERY_TIMEOUT_SEC). It can only shorten that timeout: a value above it, or
             below 1, is refused with BknBackend.Cypher.InvalidParameter.
