@@ -780,10 +780,13 @@ jobs:
           # 本 job 只产出评审文件，评论由 verdict 统一发布。
           classify_inline_comments: "false"
           include_fix_links: "false"
+          # effort 用 high、verify 保持 xhigh。Anthropic 公布的 Opus 5.5 数据里，xhigh 比 high
+          # 只高约 1.4 分，成本约 2.5 倍；bkn-foundry 由 max 降到 xhigh 后单次评审从 $1.95 降到
+          # $0.77，省下的主要是轮次。verify 只在有阻塞项时运行、负责驳回误报，那里不省。
           settings: |
             {
               "env": {
-                "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"
+                "CLAUDE_CODE_EFFORT_LEVEL": "high"
               }
             }
           # 给了 github_token，action 就不走 OIDC 换 Claude App token，job 也就不需要
@@ -1051,8 +1054,7 @@ jobs:
           #
           # 轮次上限 80：#662 曾在 60 触顶零产出。分片后单片实际轮数远低于此，这个值
           # 是余量而非目标，跑不满不计费。
-          # 只有一个 agent，没必要在 effort 上省——它要独自承担整轮判断。轮次上限从 80
-          # 抬到 200：这是当初逼出分片的那个约束，放开它才是单 agent 方案成立的前提。
+          # 轮次上限从 80 抬到 200：这是当初逼出分片的那个约束，放开它才是单 agent 方案成立的前提。
           # 旧注释保留如下：effort 与轮次按片分档；contract 片要在全仓比对多处声明，
           # 保持 xhigh；模块片做的是「读 diff 找问题」，high 足够，而 xhigh 每轮多生成的
           # 思考 token 是实打实的成本。低风险片只做一致性核对，25 轮绰绰有余。
