@@ -13,7 +13,7 @@ import pytest
 
 from app.public_auth import BUILTIN_AGENT_IDS
 from app.test.test_builtin_prompt_locales import ENGLISH_ORIGINALS, LEGACY_SMART_QA
-from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, ANSWER_JUDGE, ANSWER_JUDGE_EXPECT, SOURCE_LANGUAGE, statements, selected_migrations
+from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, ANSWER_JUDGE, ANSWER_JUDGE_EXPECT, SOURCE_LANGUAGE, ANSWER_JUDGE_REASON, statements, selected_migrations
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
@@ -74,6 +74,8 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         apply(ANSWER_JUDGE_EXPECT)
         apply(SOURCE_LANGUAGE)
         apply(SOURCE_LANGUAGE)
+        apply(ANSWER_JUDGE_REASON)
+        apply(ANSWER_JUDGE_REASON)
         assert saved_rows() == before_locales_rerun
         with db.cursor() as cursor:
             cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content, p.f_current_version, v.f_source_language FROM t_agent a "
