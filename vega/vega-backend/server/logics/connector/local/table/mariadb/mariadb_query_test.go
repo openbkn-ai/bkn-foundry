@@ -626,6 +626,36 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		assert.Equal(t, []any{3}, args)
 	})
 
+	t.Run("count column distinguishes empty source from all null values", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			Aggregation:  &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "__value"},
+			Having:       &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0},
+			OutputFields: []string{"__value"}, Paging: interfaces.PagingRequest{Limit: 1},
+		})
+		require.NoError(t, err)
+		sql, args, err := ToSql(builder)
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT COUNT(`id`) AS `__value` FROM `yanfeng_kb`.`fact` HAVING (COUNT(*) > ?) LIMIT 1",
+			sql)
+		assert.Equal(t, []any{0}, args)
+	})
+
+	t.Run("distinct numeric count retains empty-set guard", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count_distinct", Alias: "__value"},
+			Having:      &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0},
+			Paging:      interfaces.PagingRequest{Limit: 1},
+		})
+		require.NoError(t, err)
+		sql, args, err := ToSql(builder)
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT COUNT(DISTINCT `id`) AS `__value` FROM `yanfeng_kb`.`fact` HAVING (COUNT(*) > ?) LIMIT 1",
+			sql)
+		assert.Equal(t, []any{0}, args)
+	})
+
 	t.Run("count star and custom alias bind WHERE before HAVING", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			Aggregation:      &interfaces.Aggregation{Property: "*", Aggr: "count", Alias: "total"},

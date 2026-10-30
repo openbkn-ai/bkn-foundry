@@ -12,7 +12,8 @@ info:
     stated knowledge network, and currently has the exact resource permission
     in bkn-safe. These checks are not cached.
 
-    Only schema inspection and filtered resource-data queries are exposed. This
+    Only schema inspection, filtered resource-data queries, and their cursor
+    cleanup are exposed. This
     surface does not provide resource discovery, raw SQL, write, administration,
     build, or task operations.
 
@@ -160,6 +161,50 @@ paths:
           $ref: "#/components/responses/NotFound"
         "406":
           $ref: "#/components/responses/NotAcceptable"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /proxy/resources/{id}/cursors/{cursor}:
+    delete:
+      summary: Release a proxied resource-data cursor
+      description: |
+        Requires the current `query_data` proxy binding. The cursor must belong
+        to the managed account, original caller, and resource ID in the path. An already
+        closed or expired cursor returns 404.
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+        - name: cursor
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AccountID"
+        - $ref: "#/components/parameters/AccountType"
+        - $ref: "#/components/parameters/CallerID"
+        - $ref: "#/components/parameters/CallerType"
+        - $ref: "#/components/parameters/KnowledgeNetworkID"
+        - $ref: "#/components/parameters/ChildType"
+        - $ref: "#/components/parameters/ChildID"
+        - $ref: "#/components/parameters/ProxyVersion"
+        - $ref: "#/components/parameters/TargetType"
+        - $ref: "#/components/parameters/TargetID"
+        - name: x-bkn-operation
+          in: header
+          required: true
+          schema:
+            type: string
+            const: query_data
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "204":
+          description: Cursor session released
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "500":

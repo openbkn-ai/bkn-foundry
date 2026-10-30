@@ -17,7 +17,7 @@
 | [health.yaml](health.yaml) | Health | `GET /api/vega-backend/v1/health`, returning the platform version |
 | [resource.yaml](resource.yaml) | Resource | `GET/POST /resources`, `GET/PUT/DELETE /resources/{id(s)}` |
 | [resource-data.yaml](resource-data.yaml) | ResourceData | `POST/PUT /resources/{id}/data`, `GET/PUT/DELETE /resources/{id}/data/{doc_id(s)}` |
-| [proxy-resource-read.yaml](proxy-resource-read.yaml) | ProxyResourceRead | Cluster-internal, read-only proxy access: `GET /proxy/resources/{id}/schema`, `POST /proxy/resources/{id}/data` |
+| [proxy-resource-read.yaml](proxy-resource-read.yaml) | ProxyResourceRead | Cluster-internal proxy reads and cursor cleanup: `GET /proxy/resources/{id}/schema`, `POST /proxy/resources/{id}/data`, `DELETE /proxy/resources/{id}/cursors/{cursor}` |
 | [raw-query.yaml](raw-query.yaml) | RawQuery | `POST /resources/query` |
 | [build-task.yaml](build-task.yaml) | BuildTask | `GET/POST /build-tasks`, `GET/DELETE /build-tasks/{id(s)}`, `POST .../start`, `POST .../stop` |
 | [semantic-understanding-task.yaml](semantic-understanding-task.yaml) | SemanticUnderstandingTask | `GET/POST /semantic-understanding-tasks`, `GET/DELETE /semantic-understanding-tasks/{id(s)}` |

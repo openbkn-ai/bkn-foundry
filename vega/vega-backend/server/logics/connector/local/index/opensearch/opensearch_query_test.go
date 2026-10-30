@@ -152,6 +152,45 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	assert.Equal(t, int64(4), result.Total)
 }
 
+func TestOpenSearchCountAllUsesExactHitTotal(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		relation string
+		wantErr  bool
+	}{
+		{name: "exact total", relation: "eq"},
+		{name: "lower bound is not exact", relation: "gte", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					var query map[string]any
+					require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
+					assert.Equal(t, true, query["track_total_hits"])
+					assert.NotContains(t, query, "aggs")
+					body := `{"hits":{"total":{"value":100001,"relation":"` + test.relation + `"},"hits":[]}}`
+					return &http.Response{StatusCode: http.StatusOK,
+						Header: http.Header{"Content-Type": []string{"application/json"}},
+						Body:   io.NopCloser(strings.NewReader(body))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{client: client, enabled: true}
+			result, err := connector.ExecuteQuery(context.Background(), "orders", &interfaces.Resource{},
+				&interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count", Alias: "__value"}})
+			if test.wantErr {
+				require.ErrorContains(t, err, "exact total")
+				assert.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 1)
+			assert.Equal(t, json.Number("100001"), result.Entries[0]["__value"])
+		})
+	}
+}
+
 func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
 	for _, fieldName := range []string{"body", "body_alias"} {
 		t.Run(fieldName, func(t *testing.T) {

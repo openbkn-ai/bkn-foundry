@@ -513,6 +513,11 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 		return nil, err
 	}
+	var err error
+	params, err = planExactAggregateQuery(ctx, resource, params)
+	if err != nil {
+		return nil, err
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		if err := rds.validateOutputFieldsParams(resource, params); err != nil {
 			httpErr, _ := outputFieldHTTPError(ctx, err)
@@ -594,6 +599,45 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 
 func isIndexAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {
 	return params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
+}
+
+// planExactAggregateQuery keeps the physical-path decision inside Vega.
+// OpenSearch COUNT(*) uses an exact hit total and is independent of field
+// representation. Numeric/cardinality operations can use double or approximate
+// operators, so a table routes those operations to its source. For resources
+// whose index is the source of truth, unsupported exact operations must fall
+// back to a complete detail cursor scan instead of returning an inexact value.
+func planExactAggregateQuery(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryParams, error) {
+	// Preserve the established public Vega query behavior. The exact-or-error
+	// contract applies to the trusted knowledge-network proxy boundary used by
+	// object queries; ordinary resource-data clients did not opt into it.
+	if !interfaces.IsTrustedProxyRead(ctx) || resource == nil || params == nil || params.Aggregation == nil {
+		return params, nil
+	}
+	if resource.Category == interfaces.ResourceCategoryTable {
+		if !resourcelogic.HasAvailableLocalIndex(resource) || shouldIgnoreLocalIndex(params) {
+			return params, nil
+		}
+		if params.Aggregation.Aggr == "count" && params.Aggregation.Property == "*" &&
+			len(params.GroupBy) == 0 && params.Having == nil {
+			return params, nil
+		}
+		planned := *params
+		useSource := true
+		planned.IgnoreLocalIndex = &useSource
+		return &planned, nil
+	}
+	if resource.Category == interfaces.ResourceCategoryDataset || resource.Category == interfaces.ResourceCategoryIndex {
+		if params.Aggregation.Aggr == "count" && params.Aggregation.Property == "*" &&
+			len(params.GroupBy) == 0 && params.Having == nil {
+			return params, nil
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("exact aggregate is not supported by this index execution path; use a complete detail scan")
+	}
+	return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		WithErrorDetails("exact aggregate is not supported by this resource execution path; use a complete detail scan")
 }
 
 func resourceDataPaginationCategory(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) string {

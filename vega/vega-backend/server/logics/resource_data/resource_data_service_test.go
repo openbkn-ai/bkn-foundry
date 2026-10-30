@@ -975,6 +975,46 @@ func TestResourceDataPaginationCategoryUsesPhysicalEngine(t *testing.T) {
 	}
 }
 
+func TestPlanExactAggregateQuery(t *testing.T) {
+	exactContext := interfaces.WithTrustedProxyRead(context.Background())
+	countAll := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"}}
+	table := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "orders-index"}
+	planned, err := planExactAggregateQuery(exactContext, table, countAll)
+	require.NoError(t, err)
+	assert.Same(t, countAll, planned)
+	assert.False(t, shouldIgnoreLocalIndex(planned))
+	assert.Nil(t, countAll.IgnoreLocalIndex)
+
+	sum := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"}}
+	planned, err = planExactAggregateQuery(exactContext, table, sum)
+	require.NoError(t, err)
+	require.NotSame(t, sum, planned)
+	assert.True(t, shouldIgnoreLocalIndex(planned))
+	assert.Nil(t, sum.IgnoreLocalIndex)
+
+	index := &interfaces.Resource{Category: interfaces.ResourceCategoryIndex}
+	planned, err = planExactAggregateQuery(exactContext, index, countAll)
+	require.NoError(t, err)
+	assert.Same(t, countAll, planned)
+
+	_, err = planExactAggregateQuery(exactContext, index, sum)
+	require.Error(t, err)
+	var httpErr *httperrors.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+
+	_, err = planExactAggregateQuery(exactContext,
+		&interfaces.Resource{Category: interfaces.ResourceCategoryLogicalView}, countAll)
+	require.Error(t, err)
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+
+	planned, err = planExactAggregateQuery(context.Background(), index, sum)
+	require.NoError(t, err)
+	assert.Same(t, sum, planned)
+}
+
 func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
