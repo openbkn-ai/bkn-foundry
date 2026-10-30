@@ -426,22 +426,24 @@ func Test_RegressionService(t *testing.T) {
 			})
 		})
 
+		named := map[string][]byte{
+			"object_types/supplier.bkn": []byte("---\ntype: object_type\nid: supplier\nname: Supplier\n---\n\n## ObjectType: Supplier\n\n" +
+				"### Data Properties\n\n| Name | Display Name | Type | Description | Mapped Field |\n|------|--------------|------|-------------|--------------|\n" +
+				"| supplier_code | Supplier code | string | | supplier_code |\n| supplier_note | | string | | supplier_note |\n" +
+				"| supplier_city | City | string | | supplier_city |\n| region | region | string | | region |\n| Region_Code | Region code | string | | region_code |\n"),
+			// The same property id on two object types is named for each.
+			"object_types/part.bkn": []byte("---\ntype: object_type\nid: part\nname: Part\n---\n\n## ObjectType: Part\n\n" +
+				"### Data Properties\n\n| Name | Display Name | Type | Description | Mapped Field |\n|------|--------------|------|-------------|--------------|\n" +
+				"| supplier_code | Supplier no. | string | | supplier_code |\n"),
+			"object_types/plant.bkn":           objectTypeFile("plant", "Plant"),
+			"object_types/bin.bkn":             objectTypeFile("bin", "bin"),
+			"object_types/bin-2.bkn":           objectTypeFile("bin-2", "Bin 2"),
+			"relation_types/supplier_part.bkn": []byte("---\ntype: relation_type\nid: supplier_part\nname: Supplies\n---\n\n## RelationType: Supplies\n"),
+		}
+
 		Convey("The judge is given the display names of what the tool calls name, and of nothing else\n", func() {
 			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
 			expectStart()
-			named := map[string][]byte{
-				"object_types/supplier.bkn": []byte("---\ntype: object_type\nid: supplier\nname: Supplier\n---\n\n## ObjectType: Supplier\n\n" +
-					"### Data Properties\n\n| Name | Display Name | Type | Description | Mapped Field |\n|------|--------------|------|-------------|--------------|\n" +
-					"| supplier_code | Supplier code | string | | supplier_code |\n| supplier_note | | string | | supplier_note |\n" +
-					"| supplier_city | City | string | | supplier_city |\n| region | region | string | | region |\n"),
-				// The same property id on two object types is named for each.
-				"object_types/part.bkn": []byte("---\ntype: object_type\nid: part\nname: Part\n---\n\n## ObjectType: Part\n\n" +
-					"### Data Properties\n\n| Name | Display Name | Type | Description | Mapped Field |\n|------|--------------|------|-------------|--------------|\n" +
-					"| supplier_code | Supplier no. | string | | supplier_code |\n"),
-				"object_types/plant.bkn":           objectTypeFile("plant", "Plant"),
-				"object_types/bin.bkn":             objectTypeFile("bin", "bin"),
-				"relation_types/supplier_part.bkn": []byte("---\ntype: relation_type\nid: supplier_part\nname: Supplies\n---\n\n## RelationType: Supplies\n"),
-			}
 			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(named, nil)
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(&interfaces.BknAgentAnswer{
 				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "None.", ToolCalls: 2, ToolUses: []interfaces.BknAgentToolUse{
@@ -461,6 +463,30 @@ func Test_RegressionService(t *testing.T) {
 				{Kind: judgeNameProperty, ID: "supplier_code", Name: "Supplier no.", ObjectType: "part"},
 				{Kind: judgeNameProperty, ID: "supplier_city", Name: "City", ObjectType: "supplier"},
 				{Kind: judgeNameProperty, ID: "supplier_code", Name: "Supplier code", ObjectType: "supplier"},
+				{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_part", Name: "Supplies"},
+			})
+		})
+
+		Convey("A query names what its words name, for the judge to be given their display names\n", func() {
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(named, nil)
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(&interfaces.BknAgentAnswer{
+				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "None.", ToolCalls: 1, ToolUses: []interfaces.BknAgentToolUse{
+					{Name: "run_cypher", Input: json.RawMessage(`{"query":"MATCH (s:supplier)-[:supplier_part]->(p:part), (b:bin-2) WHERE s.supplier_city = 'Paris' AND s.Region_Code = 'R1' RETURN p"}`)},
+				}}, nil)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			// Ids keep their digits and hyphens; property names their capitals.
+			So(judged[0].Names, ShouldResemble, []judgeName{
+				{Kind: ot, ID: "bin-2", Name: "Bin 2"},
+				{Kind: ot, ID: "part", Name: "Part"},
+				{Kind: ot, ID: "supplier", Name: "Supplier"},
+				{Kind: judgeNameProperty, ID: "Region_Code", Name: "Region code", ObjectType: "supplier"},
+				{Kind: judgeNameProperty, ID: "supplier_city", Name: "City", ObjectType: "supplier"},
 				{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_part", Name: "Supplies"},
 			})
 		})

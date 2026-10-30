@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -147,15 +148,22 @@ func (s *regressionService) judgeAnswer(ctx context.Context, runner interfaces.A
 	return &out, ""
 }
 
+// idWords are the words a string may name an id or a property with: both are letters, digits, '_'
+// and '-', and only property names have capitals.
+var idWords = regexp.MustCompile(`[A-Za-z0-9_-]+`)
+
 // namesIn are the names in glossary of what the tool calls name: an id their input carries as a
-// value or a key.
+// word of a value, a query's included, or a key.
 func namesIn(glossary []judgeName, uses []interfaces.BknAgentToolUse) []judgeName {
 	said := map[string]bool{}
 	var walk func(v any)
 	walk = func(v any) {
 		switch v := v.(type) {
 		case string:
-			said[v] = true
+			// A query, such as Cypher or SQL, names ids among its other words.
+			for _, w := range idWords.FindAllString(v, -1) {
+				said[w] = true
+			}
 		case []any:
 			for _, e := range v {
 				walk(e)
