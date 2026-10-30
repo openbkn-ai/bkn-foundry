@@ -47,7 +47,14 @@ const maxNoTestsReason = 1000
 // checkPending is the check reason of a test question not checked against the data yet.
 const checkPending = "pending"
 
-var testKinds = []string{"paraphrase", "boundary", "not_exist", "variant"}
+var testKinds = []string{"paraphrase", "boundary", interfaces.TEST_KIND_NOT_EXIST, "variant"}
+
+// kindExpects is what a test of each kind expects of the data, whatever the Agent wrote: a
+// paraphrase or a boundary asks about a record that exists, a variant names one record twice.
+var kindExpects = map[string]string{
+	"paraphrase": interfaces.TEST_EXPECT_EXISTS, "boundary": interfaces.TEST_EXPECT_EXISTS,
+	interfaces.TEST_KIND_NOT_EXIST: interfaces.TEST_EXPECT_NOT_EXISTS, "variant": interfaces.TEST_EXPECT_SAME_RECORD,
+}
 
 // guidanceOutput is what the Agent returns in pass guidance.
 type guidanceOutput struct {
@@ -108,6 +115,11 @@ type guidanceQuestion struct {
 	Layer       string `json:"layer"`
 	Template    string `json:"template,omitempty"`
 	AnswerShape string `json:"answer_shape,omitempty"`
+	// Inputs are what the tests' slots name; [] says the question has none to name.
+	Inputs         *[]interfaces.RequirementInput `json:"inputs,omitempty"`
+	RelativeWindow bool                           `json:"relative_window,omitempty"`
+	// ServerTests says the server writes the template and not_exist tests, so the Agent writes neither.
+	ServerTests bool `json:"server_tests,omitempty"`
 }
 
 type guidanceScenario struct {
@@ -145,7 +157,8 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 	draft *interfaces.Draft) (string, error) {
 	msg := guidanceMessage{
 		Question: guidanceQuestion{ID: q.ID, Text: q.Text, Type: q.Type, Layer: q.Layer, Template: q.Template,
-			AnswerShape: q.AnswerShape},
+			AnswerShape: q.AnswerShape, Inputs: q.Inputs, RelativeWindow: q.RelativeWindow,
+			ServerTests: len(serverTests(q, unmappedConcepts(spec))) > 0},
 		Scenarios: []guidanceScenario{}, Rules: []guidanceRule{}, Concepts: []guidanceConcept{},
 		ObjectTypes: []guidanceObjectType{}, RelationTypes: []messageRelationType{},
 	}
@@ -271,20 +284,36 @@ func replaceSpans(text string, spans []valueSpan) string {
 // counts those it leaves out: without text, asking about a made-up value they do not say as
 // written, or without the place of a slot left empty. A value is kept only when a document says
 // it; the others are left for the server to fill from the data. None is checked against the data
-// yet.
-func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) ([]*interfaces.QuestionTest, int) {
+// yet. A question with inputs keeps only the tests that ask about them (see offInputs), after
+// those the server writes from its template (see serverTests): then the Agent's not_exist ones,
+// which the server's stands for, are left out too, and so are those with a slot of a concept that
+// maps to no object type: no field holds its value. A test's kind decides what it expects.
+func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
+	q *interfaces.RequirementQuestion, spec *interfaces.RequirementSpec) ([]*interfaces.QuestionTest, int) {
+	concepts, unmapped := inputConcepts(q), unmappedConcepts(spec)
 	texts := make([]string, 0, len(docs))
 	for _, d := range docs {
 		texts = append(texts, normalize([]rune(d.Content)).text)
 	}
-	tests, leftOut := []*interfaces.QuestionTest{}, 0
+	tests, leftOut := serverTests(q, unmapped), 0
+	for i, t := range tests {
+		t.ID = fmt.Sprintf("t%d", i+1)
+	}
+	anchored := len(tests) > 0
+	template := ""
+	if q != nil {
+		template = q.Template
+	}
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
-		if text == "" || len(tests) == maxTests {
+		if text == "" || len(tests) == maxTests || len(tests) > 0 && tests[0].ByServer && at.Kind == interfaces.TEST_KIND_NOT_EXIST {
 			leftOut++
 			continue
 		}
-		expect := at.Expect
+		expect, known := kindExpects[at.Kind]
+		if !known {
+			expect = at.Expect
+		}
 		if expect != interfaces.TEST_EXPECT_NOT_EXISTS && expect != interfaces.TEST_EXPECT_SAME_RECORD {
 			expect = interfaces.TEST_EXPECT_EXISTS
 		}
@@ -310,7 +339,15 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) ([]
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
-		if !placed {
+		// One value names the same record only as an empty slot beside the server's template test,
+		// filled from and checked against that test's record; otherwise it would only ever be said
+		// not checkable.
+		// What follows the question, where the question itself says nothing more, is no part of it.
+		if !placed || afterQuestion(text) != "" && afterQuestion(template) == "" ||
+			expect == interfaces.TEST_EXPECT_SAME_RECORD && len(slots) < 2 &&
+				!(anchored && len(slots) == 1 && slots[0].Value == "") ||
+			(concepts != nil && (offInputs(slots, expect, concepts) ||
+				slices.ContainsFunc(slots, func(s interfaces.QuestionTestSlot) bool { return unmapped[s.ConceptID] }))) {
 			leftOut++
 			continue
 		}
@@ -321,6 +358,16 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument) ([]
 		})
 	}
 	return tests, leftOut
+}
+
+// afterQuestion is what a text says after its last question mark; none without one.
+func afterQuestion(text string) string {
+	i := max(strings.LastIndex(text, "?"), strings.LastIndex(text, "\uff1f"))
+	if i < 0 {
+		return ""
+	}
+	_, size := utf8.DecodeRuneInString(text[i:])
+	return strings.TrimSpace(text[i+size:])
 }
 
 // clip keeps at most n characters of s.
@@ -480,7 +527,7 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	}
 	done := *g
 	done.Status, done.Guidance = interfaces.GUIDANCE_STATUS_READY, strings.TrimSpace(out.Guidance)
-	done.Tests, done.LeftOutTests = buildTests(&out, docs)
+	done.Tests, done.LeftOutTests = buildTests(&out, docs, q, spec)
 	// A reason for writing none applies only when none is kept.
 	if len(done.Tests) == 0 {
 		done.NoTestsReason = clip(strings.TrimSpace(out.NoTestsReason), maxNoTestsReason)
@@ -503,9 +550,14 @@ func guidanceCurrent(req *interfaces.Requirement, q *interfaces.RequirementQuest
 	return req.Version == g.SpecVersion && q.Text == g.Question && g.CreateTime >= req.CreateTime
 }
 
-// testsNote says what a question's tests show as a whole: none_checkable when it has some and
-// each names a concept or property its items do not have.
-func testsNote(tests []*interfaces.QuestionTest) string {
+// testsNote says what a question's tests show as a whole: inputs_untested when the question has
+// inputs and no test names each of their concepts; none_checkable when it has some and each names
+// a concept or property its items do not have. q is nil when the specification is not read.
+func testsNote(tests []*interfaces.QuestionTest, q *interfaces.RequirementQuestion) string {
+	if concepts := inputConcepts(q); len(concepts) > 0 && !slices.ContainsFunc(tests,
+		func(t *interfaces.QuestionTest) bool { return namesAll(t.Slots, concepts) }) {
+		return interfaces.TESTS_NOTE_INPUTS_UNTESTED
+	}
 	if len(tests) == 0 {
 		return ""
 	}
@@ -541,9 +593,10 @@ func (s *requirementService) GetGuidance(ctx context.Context, token string, proj
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
-	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g, TestsNote: testsNote(g.Tests)}
+	view := &interfaces.QuestionGuidanceView{QuestionGuidance: g, TestsNote: testsNote(g.Tests, nil)}
 	if found && req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		q := questionOf(&req.Spec, questionID)
+		view.TestsNote = testsNote(g.Tests, q)
 		view.Current = q != nil && guidanceCurrent(req, q, g)
 		if q != nil && g.OntologySignature != "" {
 			draft, ok, err := s.da.GetDraft(ctx, projectID)

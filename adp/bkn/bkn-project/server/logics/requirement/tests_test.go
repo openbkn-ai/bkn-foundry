@@ -84,6 +84,31 @@ func Test_TestEdits(t *testing.T) {
 			So(edited.Slots[0].ValueFrom, ShouldEqual, "")
 		})
 
+		Convey("An edited same_record test is checked against the server's template test\n", func() {
+			g := storedGuidance()
+			g.Tests[0].Kind, g.Tests[0].ByServer = interfaces.TEST_KIND_TEMPLATE, true
+			ra.EXPECT().GetGuidance(gomock.Any(), "p1", "q1").Return(g, true, nil)
+			expectContext()
+			draft.Items.ObjectTypes[1].PrimaryKeys = []string{"customer_id"}
+			va.EXPECT().Query(gomock.Any(), caller,
+				"SELECT `name` AS v0 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				checkQueryTimeout).Return([]map[string]any{{"v0": "Acme Ltd"}}, nil)
+			for sql, n := range map[string]float64{
+				"SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'":        1,
+				"SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd' AND `cust_id` = '10001'": 1,
+			} {
+				va.EXPECT().Query(gomock.Any(), caller, sql, checkQueryTimeout).Return([]map[string]any{{"n": n}}, nil)
+			}
+			expectSave()
+
+			_, err := svc.EditTest(ctx, token, "p1", "q1", "t2", interfaces.RequirementTestEdit{UpdateTime: 20,
+				Text: ptr("Orders of {{slot 1}}?"), Expect: ptr(interfaces.TEST_EXPECT_SAME_RECORD),
+				Slots: &[]interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "full_name"}}}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Tests[1].Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+		})
+
 		Convey("An edit is refused when empty, too long, of an unknown expectation or concept\n", func() {
 			for _, edit := range []interfaces.RequirementTestEdit{
 				{UpdateTime: 20},

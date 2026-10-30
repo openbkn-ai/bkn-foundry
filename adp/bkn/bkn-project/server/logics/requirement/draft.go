@@ -12,9 +12,11 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -40,6 +42,18 @@ const maxInputRunes = 120000
 // maxMessageTables bounds the tables named to the Agent: they are clues, and a catalog may hold
 // thousands. The specification counts those left out, so the owner sees it.
 const maxMessageTables = 500
+
+// maxMessageProperties bounds the properties named of one object type, its keys and times first:
+// inputs name those, and a wide table would make the message long for little.
+const maxMessageProperties = 50
+
+// maxSpecScenarios and maxSpecConcepts bound what a specification keeps, the first ones the Agent
+// gives: its answer is one JSON document, and the longer it is, the likelier a model writes it
+// wrong or runs out of time. The prompt states the same bounds.
+const (
+	maxSpecScenarios = 10
+	maxSpecConcepts  = 40
+)
 
 // agentDeadline is how long drafting waits for the Agent: its own time limit, with a minute for
 // bkn-agent to record the outcome. pollInterval is how often it asks.
@@ -67,11 +81,21 @@ const (
 	rejectedScenario      = "scenario"
 	rejectedConcept       = "concept"
 	rejectedQuestion      = "question"
+	rejectedBasis         = "basis"
 	rejectedRule          = "rule"
 	rejectedConflict      = "conflict"
 	rejectedChoice        = "choice"
 	rejectedTooFewOptions = "too_few_options"
+	// rejectedTooMany is an item past the most a specification keeps of its kind.
+	rejectedTooMany = "too_many"
+	// rejectedBasisNotInDocuments is a skill a question rests on that no document names.
+	rejectedBasisNotInDocuments = "basis_not_in_documents"
+	// rejectedFunctionOnFilter is a function a question its own type calls a filter rests on alone.
+	rejectedFunctionOnFilter = "function_on_filter"
 )
+
+// questionTypeFilter is the type of a question that filters records on their properties.
+const questionTypeFilter = "filter"
 
 // draftOutput is what the Agent returns in pass draft. Its ids are its own, for items to refer to
 // each other within the output; the server gives every item its own id.
@@ -126,8 +150,18 @@ type agentQuestion struct {
 	Metrics          []string        `json:"metrics"`
 	Functions        []string        `json:"functions"`
 	Skills           []string        `json:"skills"`
+	Inputs           []agentInput    `json:"inputs"`
+	RelativeWindow   bool            `json:"relative_window"`
 	Citations        []agentCitation `json:"citations"`
 	SupplementReason string          `json:"supplement_reason"`
+}
+
+// agentInput is an input of a question as the Agent writes it: its concept by the Agent's own id.
+type agentInput struct {
+	Name      string `json:"name"`
+	ConceptID string `json:"concept_id"`
+	Property  string `json:"property"`
+	Role      string `json:"role"`
 }
 
 type agentRule struct {
@@ -221,13 +255,18 @@ func draftResponseFormat() map[string]any {
 		}, "id", "term", "category", "citations")),
 		"questions": schemaArray(schemaObject(map[string]any{
 			"id": schemaString(), "text": schemaString(), "scenario_ids": schemaStrings(),
-			"type": schemaEnum("point_in_time", "provenance", "filter", "compare", "aggregate", "count",
+			"type": schemaEnum("point_in_time", "provenance", questionTypeFilter, "compare", "aggregate", "count",
 				"disambiguate", "judge", "metric"),
 			"layer":    schemaEnum(interfaces.REQUIREMENT_LAYER_KNOWLEDGE, interfaces.REQUIREMENT_LAYER_CAPABILITY),
 			"template": schemaString(), "answer_shape": schemaString(), "concept_ids": schemaStrings(),
 			"metrics": schemaStrings(), "functions": schemaStrings(), "skills": schemaStrings(),
-			"citations": citations, "supplement_reason": schemaString(),
-		}, "id", "text", "type", "layer", "citations")),
+			"inputs": schemaArray(schemaObject(map[string]any{
+				"name": schemaString(), "concept_id": schemaString(), "property": schemaString(),
+				"role": schemaEnum(interfaces.REQUIREMENT_INPUT_RECORD, interfaces.REQUIREMENT_INPUT_REFERENCE_TIME),
+			}, "name", "concept_id", "property", "role")),
+			"relative_window": map[string]any{"type": "boolean"},
+			"citations":       citations, "supplement_reason": schemaString(),
+		}, "id", "text", "type", "layer", "inputs", "relative_window", "citations")),
 		"rules": schemaArray(schemaObject(map[string]any{
 			"statement":   schemaString(),
 			"compiles_to": schemaEnum("constraint", "metric_definition", "code_pattern", "enum", "other"),
@@ -256,7 +295,8 @@ func draftResponseFormat() map[string]any {
 }
 
 // draftMessage is the user message of pass draft: the documents block by block, the tables of
-// the project's catalogs by name, and the items already drafted with their ids, as data.
+// the project's catalogs by name, and the items already drafted with their ids (an object type
+// with its properties and primary keys), as data.
 type draftMessage struct {
 	Documents     []messageDocument     `json:"documents"`
 	Tables        []messageTable        `json:"tables"`
@@ -283,9 +323,13 @@ type messageTable struct {
 }
 
 type messageObjectType struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Aliases []string `json:"aliases,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Aliases     []string          `json:"aliases,omitempty"`
+	PrimaryKeys []string          `json:"primary_keys,omitempty"`
+	Properties  []messageProperty `json:"properties"`
+	// PropertiesOmitted counts its properties past maxMessageProperties.
+	PropertiesOmitted int `json:"properties_omitted,omitempty"`
 }
 
 type messageRelationType struct {
@@ -295,9 +339,30 @@ type messageRelationType struct {
 	Target string `json:"target"`
 }
 
-// buildDraftMessage also returns how many tables it left out.
+// questionNotes are what a person should see about a question, computed when it is read.
+func questionNotes(q *interfaces.RequirementQuestion) []string {
+	var notes []string
+	if b := q.Basis; q.Layer == interfaces.REQUIREMENT_LAYER_CAPABILITY &&
+		len(b.Metrics)+len(b.Functions)+len(b.Skills) == 0 {
+		notes = append(notes, interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS)
+	}
+	var inputs []interfaces.RequirementInput
+	if q.Inputs != nil {
+		inputs = *q.Inputs
+	}
+	if needsReferenceTime(q.RelativeWindow, inputs) {
+		notes = append(notes, interfaces.QUESTION_NOTE_REFERENCE_TIME_UNBOUND)
+	}
+	if slices.ContainsFunc(inputs, func(in interfaces.RequirementInput) bool { return in.PropertyFromKey }) {
+		notes = append(notes, interfaces.QUESTION_NOTE_INPUT_PROPERTY_FROM_KEY)
+	}
+	return notes
+}
+
+// buildDraftMessage also returns how many tables, and how many properties of object types, it left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
-	draft *interfaces.Draft) (string, int, error) {
+	draft *interfaces.Draft) (string, int, int, error) {
+	propertiesOmitted := 0
 	msg := draftMessage{
 		Documents: []messageDocument{}, Tables: []messageTable{},
 		ObjectTypes: []messageObjectType{}, RelationTypes: []messageRelationType{},
@@ -318,7 +383,30 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 	}
 	if draft != nil {
 		for _, ot := range draft.Items.ObjectTypes {
-			msg.ObjectTypes = append(msg.ObjectTypes, messageObjectType{ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases})
+			mot := messageObjectType{ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases, PrimaryKeys: ot.PrimaryKeys,
+				Properties: []messageProperty{}}
+			// Keys name a record and times a moment, as inputs do: they go first.
+			rank := func(p *interfaces.DraftProperty) int {
+				switch {
+				case slices.Contains(ot.PrimaryKeys, p.Name):
+					return 0
+				case timeTypes[p.Type]:
+					return 1
+				}
+				return 2
+			}
+			props := slices.Clone(ot.Properties)
+			slices.SortStableFunc(props, func(a, b *interfaces.DraftProperty) int { return rank(a) - rank(b) })
+			for _, p := range props[:min(len(props), maxMessageProperties)] {
+				mp := messageProperty{Name: p.Name, Type: p.Type}
+				if p.DisplayName != p.Name {
+					mp.DisplayName = p.DisplayName
+				}
+				mot.Properties = append(mot.Properties, mp)
+			}
+			mot.PropertiesOmitted = len(props) - len(mot.Properties)
+			propertiesOmitted += mot.PropertiesOmitted
+			msg.ObjectTypes = append(msg.ObjectTypes, mot)
 		}
 		for _, rt := range draft.Items.RelationTypes {
 			msg.RelationTypes = append(msg.RelationTypes, messageRelationType{ID: rt.ID, Name: rt.Name,
@@ -327,9 +415,9 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
-	return "pass draft\nlanguage: " + language + "\n" + string(body), len(tables) - len(msg.Tables), nil
+	return "pass draft\nlanguage: " + language + "\n" + string(body), len(tables) - len(msg.Tables), propertiesOmitted, nil
 }
 
 // citationsOf turns the Agent's citations into the specification's, still to be located.
@@ -354,6 +442,75 @@ func basisOf(cs []agentCitation, supplementReason string, docs map[string]*inter
 		return nil, rejectedQuoteNotFound
 	}
 	return kept, ""
+}
+
+// recordValuesInText says the numbers of a question's text its quotes do not show are values of
+// the records it names: the text is its template with each {name} slot filled, the template shows
+// only numbers its quotes show, and every number standing where a slot is filled is one the
+// documents give, as an example of a record. A number outside the slots is a condition, which its
+// quotes must show.
+func recordValuesInText(q agentQuestion, citations []interfaces.RequirementCitation,
+	docs map[string]*interfaces.RequirementDocument) bool {
+	template := normalize([]rune(q.Template)).text
+	literals := templateSlot.Split(template, -1)
+	// Without a slot, the text is the template, whose numbers are its quotes' or not.
+	if !numbersInQuotes(template, citations) {
+		return false
+	}
+	pattern := "^"
+	for i, l := range literals {
+		if i > 0 {
+			pattern += "(.+?)"
+		}
+		pattern += regexp.QuoteMeta(l)
+	}
+	filled := regexp.MustCompile(pattern + "$").FindStringSubmatch(normalize([]rune(q.Text)).text)
+	if filled == nil {
+		return false
+	}
+	given := map[string]bool{}
+	for _, d := range docs {
+		for _, n := range numbers(d.Content) {
+			given[n] = true
+		}
+	}
+	for _, value := range filled[1:] {
+		for _, n := range numbers(value) {
+			if !given[n] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// templateSlot is a {name} slot of a question's template.
+var templateSlot = regexp.MustCompile(`\{[^{}]+\}`)
+
+// namedInDocuments says a name stands in a block of the documents, compared without case,
+// whitespace, underscores or hyphens, as names are written in prose and as identifiers.
+func namedInDocuments(name string, docs map[string]*interfaces.RequirementDocument) bool {
+	squeeze := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if r == '_' || r == '-' || r == '\u3000' || unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, strings.ToLower(normalize([]rune(s)).text))
+	}
+	n := squeeze(name)
+	if n == "" {
+		return false
+	}
+	for _, d := range docs {
+		content := []rune(d.Content)
+		for _, b := range d.Blocks {
+			if b.Start >= 0 && b.End <= len(content) && b.Start < b.End && strings.Contains(squeeze(string(content[b.Start:b.End])), n) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func orEmpty(s []string) []string {
@@ -401,6 +558,9 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	scenarioIDs := map[string]string{}
 	for _, s := range out.Scenarios {
 		citations, reason := basisOf(s.Citations, s.SupplementReason, docs, true)
+		if reason == "" && len(spec.Scenarios) == maxSpecScenarios {
+			reason = rejectedTooMany
+		}
 		if reason != "" {
 			reject(rejectedScenario, s.Name, reason)
 			continue
@@ -423,6 +583,9 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	concepts := map[string]*interfaces.RequirementConcept{}
 	for _, c := range out.Concepts {
 		citations, reason := basisOf(c.Citations, c.SupplementReason, docs, true)
+		if reason == "" && len(spec.Concepts) == maxSpecConcepts {
+			reason = rejectedTooMany
+		}
 		if reason != "" {
 			reject(rejectedConcept, c.Term, reason)
 			continue
@@ -445,7 +608,7 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 
 	for _, q := range out.Questions {
 		citations, reason := basisOf(q.Citations, q.SupplementReason, docs, true)
-		if reason == "" && len(citations) > 0 && !numbersInQuotes(q.Text, citations) {
+		if reason == "" && len(citations) > 0 && !numbersInQuotes(q.Text, citations) && !recordValuesInText(q, citations, docs) {
 			reason = rejectedNumberNotInQuote
 		}
 		if reason != "" {
@@ -455,9 +618,30 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		// A question that rests on a metric, function or skill needs more than the ontology and its
 		// facts, whatever layer the Agent gave it: it is not asked in the knowledge regression.
 		// Blank names are none: an Agent's placeholder neither moves the question nor stays in its basis.
-		metrics, functions, skills := named(q.Metrics), named(q.Functions), named(q.Skills)
+		metrics, functions := named(q.Metrics), named(q.Functions)
+		// A skill is something the documents ask for by name; one the Agent designed to serve the
+		// answer is not what the question rests on, and does not make a lookup a capability. Metrics
+		// and functions are named by the Agent from the rules, and stand as given.
+		skills := []string{}
+		for _, s := range named(q.Skills) {
+			if namedInDocuments(s, docs) {
+				skills = append(skills, s)
+			} else {
+				reject(rejectedBasis, s+" ("+q.Text+")", rejectedBasisNotInDocuments)
+			}
+		}
+		// A filter on properties names no function: a question typed a filter that rests on functions
+		// alone, with no metric or skill, filters all the same, as its type says.
+		if q.Type == questionTypeFilter && len(metrics)+len(skills) == 0 {
+			for _, f := range functions {
+				reject(rejectedBasis, f+" ("+q.Text+")", rejectedFunctionOnFilter)
+			}
+			functions = []string{}
+		}
+		// Said capability for nothing that stands, it is a lookup: knowledge.
+		dropped := len(named(q.Metrics))+len(named(q.Functions))+len(named(q.Skills)) > 0
 		layer := interfaces.REQUIREMENT_LAYER_CAPABILITY
-		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE && len(metrics)+len(functions)+len(skills) == 0 {
+		if (q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE || dropped) && len(metrics)+len(functions)+len(skills) == 0 {
 			layer = interfaces.REQUIREMENT_LAYER_KNOWLEDGE
 		}
 		question := &interfaces.RequirementQuestion{
@@ -482,6 +666,40 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			if concept.MapsTo != nil && !slices.Contains(question.Needs, *concept.MapsTo) {
 				question.Needs = append(question.Needs, *concept.MapsTo)
 			}
+		}
+		// What it is asked about, kept only when it stands; one that does not is listed rejected.
+		inputs := []interfaces.RequirementInput{}
+		for _, in := range q.Inputs {
+			input := interfaces.RequirementInput{Name: strings.TrimSpace(in.Name), Property: in.Property, Role: in.Role}
+			if concept, ok := concepts[in.ConceptID]; ok {
+				input.ConceptID = concept.ID
+			}
+			given := input.Name
+			if input.Property != "" {
+				given += "." + input.Property
+			}
+			keyed(&input, spec, draft)
+			reason := inputProblem(input, spec, draft, question.Template)
+			if reason == "" && slices.ContainsFunc(inputs, func(kept interfaces.RequirementInput) bool { return kept.Name == input.Name }) {
+				reason = inputDuplicateName
+			}
+			if reason != "" {
+				reject(rejectedInput, given+" ("+q.Text+")", reason)
+				continue
+			}
+			inputs = append(inputs, input)
+		}
+		// A period counted back from a time that is not stated depends on when it is asked. The
+		// question stays, noted when read; a reference time given but rejected is listed already.
+		if q.RelativeWindow && !slices.ContainsFunc(q.Inputs, func(in agentInput) bool {
+			return in.Role == interfaces.REQUIREMENT_INPUT_REFERENCE_TIME
+		}) {
+			reject(rejectedInput, interfaces.REQUIREMENT_INPUT_REFERENCE_TIME+" ("+q.Text+")", rejectedWindowWithoutRefTime)
+		}
+		question.RelativeWindow = q.RelativeWindow
+		// None given is no input value; given but none standing is not known, as before inputs.
+		if len(q.Inputs) == 0 || len(inputs) > 0 {
+			question.Inputs = &inputs
 		}
 		spec.Questions = append(spec.Questions, question)
 	}
@@ -693,7 +911,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	if err != nil || !ok {
 		draft = nil
 	}
-	message, omitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft)
+	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return
@@ -733,7 +951,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 
 	byID := documentsByID(docs)
 	spec, types := buildSpec(&out, byID, draft)
-	spec.TablesOmitted = omitted
+	spec.TablesOmitted, spec.PropertiesOmitted = omitted, propertiesOmitted
 	if len(unlisted) > 0 {
 		spec.CatalogsUnlisted = unlisted
 	}
@@ -790,6 +1008,9 @@ func (s *requirementService) GetRequirement(ctx context.Context, token string,
 		if f.Decision == nil {
 			view.UndecidedChoices++
 		}
+	}
+	for _, q := range req.Spec.Questions {
+		q.Notes = questionNotes(q)
 	}
 	if req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		docs, err := s.ra.ListDocuments(ctx, projectID)
