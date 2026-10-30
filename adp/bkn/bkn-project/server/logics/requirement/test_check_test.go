@@ -346,6 +346,32 @@ func Test_CheckTests(t *testing.T) {
 				So(pathOf(hop, needs, slotOn), ShouldBeNil)
 				hop.Items.ObjectTypes[2].Table.CatalogID = "c1"
 
+				// Filled through the line, saying so; from any material when no line reaches a supplier.
+				hopSQL := p.sample("r-mat", "code", "code")
+				for _, c := range []struct {
+					rows  []map[string]any
+					value string
+					from  string
+				}{
+					{[]map[string]any{{"v": "101-000005"}}, "101-000005", "po_line"},
+					{[]map[string]any{}, "101-000002", ""},
+				} {
+					va.EXPECT().Query(gomock.Any(), caller, hopSQL, checkQueryTimeout).Return(c.rows, nil)
+					if c.from == "" {
+						sample("SELECT `code` AS v0 FROM {{r-mat}} WHERE `code` IS NOT NULL ORDER BY `code` LIMIT 1",
+							map[string]any{"v0": "101-000002"})
+					}
+					tt := &interfaces.QuestionTest{Text: "Suppliers of {{slot 1}}?", Expect: interfaces.TEST_EXPECT_EXISTS,
+						Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "material_code"}}}
+
+					reason := svc.fill(ctx, caller, tt, []*slotField{{objectType: hop.Items.ObjectTypes[0], field: "code"}},
+						func(f *slotField) *relationPath { return pathOf(hop, needs, f) })
+
+					So(reason, ShouldEqual, "")
+					So(tt.Slots[0].Value, ShouldEqual, c.value)
+					So(tt.Slots[0].ValueFrom, ShouldEqual, c.from)
+				}
+
 				// A relation back to the slot's own object type is no way to the other one.
 				back := *hop
 				back.Items.RelationTypes = []*interfaces.DraftRelationType{hop.Items.RelationTypes[2],
