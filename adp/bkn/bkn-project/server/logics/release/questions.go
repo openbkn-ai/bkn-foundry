@@ -38,34 +38,46 @@ func releaseQuestions(sq *interfaces.ScenarioQuestions, branchFiles map[string][
 			q.Unjudged++
 			continue
 		}
-		needs, missing := []interfaces.ReleaseItem{}, []interfaces.ReleaseItem{}
+		missing := []interfaces.ReleaseItem{}
 		live, affected := true, false
-		for _, n := range question.Needs {
-			k := interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID}
-			it, inBranch := branch[k]
-			if !inBranch {
-				it = k
-				it.Name = k.ID
-				if m, ok := main[k]; ok {
-					it = m
+		// What it needs is what it names and the path that joins them; both are judged alike.
+		judge := func(refs []interfaces.RequirementItemRef) []interfaces.ReleaseItem {
+			items := []interfaces.ReleaseItem{}
+			for _, n := range refs {
+				k := interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID}
+				it, inBranch := branch[k]
+				if !inBranch {
+					it = named(k, main)
+					missing = append(missing, it)
 				}
-				missing = append(missing, it)
+				items = append(items, it)
+				if _, ok := main[k]; !ok {
+					live = false
+				}
+				affected = affected || touched[k]
 			}
-			needs = append(needs, it)
-			if _, ok := main[k]; !ok {
-				live = false
-			}
-			affected = affected || touched[k]
+			return items
 		}
-		entry := interfaces.ReleaseQuestion{ID: question.ID, Text: question.Text, Needs: needs}
+		entry := interfaces.ReleaseQuestion{ID: question.ID, Text: question.Text, Needs: judge(question.Needs)}
+		if path := judge(question.Path); len(path) > 0 {
+			entry.Path = path
+		}
+		for _, u := range question.Unconnected {
+			from := interfaces.ReleaseItem{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: u.From}
+			to := interfaces.ReleaseItem{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: u.To}
+			entry.Unconnected = append(entry.Unconnected, interfaces.ReleaseUnconnected{
+				From: namedIn(from, branch, main), To: namedIn(to, branch, main)})
+		}
 		switch {
 		case live && affected:
 			q.Affected = append(q.Affected, entry)
-		case !live && len(missing) == 0:
+		case !live && len(missing) == 0 && len(entry.Unconnected) == 0:
 			q.AnswerableNew = append(q.AnswerableNew, entry)
 		}
-		if len(missing) > 0 {
-			entry.Missing = missing
+		if len(missing) > 0 || len(entry.Unconnected) > 0 {
+			if len(missing) > 0 {
+				entry.Missing = missing
+			}
 			q.Unanswerable = append(q.Unanswerable, entry)
 		}
 	}
@@ -82,6 +94,24 @@ func itemsOf(files map[string][]byte) map[interfaces.ReleaseItem]interfaces.Rele
 		}
 	}
 	return items
+}
+
+// named is an item the branch lacks, named as main has it, else by its id.
+func named(k interfaces.ReleaseItem, main map[interfaces.ReleaseItem]interfaces.ReleaseItem) interfaces.ReleaseItem {
+	if m, ok := main[k]; ok {
+		return m
+	}
+	k.Name = k.ID
+	return k
+}
+
+// namedIn is an item named as the branch has it, else as main has it, else by its id.
+func namedIn(k interfaces.ReleaseItem, branch map[interfaces.ReleaseItem]interfaces.ReleaseItem,
+	main map[interfaces.ReleaseItem]interfaces.ReleaseItem) interfaces.ReleaseItem {
+	if b, ok := branch[k]; ok {
+		return b
+	}
+	return named(k, main)
 }
 
 // key is an item without its name, as a need refers to it.

@@ -80,7 +80,14 @@ type RegressionQuestion struct {
 	ID    string               `json:"id"`
 	Text  string               `json:"text"`
 	Needs []RequirementItemRef `json:"needs"`
+	// Path is what joined its object types in the draft when the run started, needed as Needs are.
+	Path  []RequirementItemRef `json:"path,omitempty"`
 	Tests []RegressionTest     `json:"tests,omitempty"`
+}
+
+// Rests are what the question rests on: what it names, and the path that joined them.
+func (q RegressionQuestion) Rests() []RequirementItemRef {
+	return append(append([]RequirementItemRef{}, q.Needs...), q.Path...)
 }
 
 // RegressionTest is a test question asked in its question's place, with what it expects of the

@@ -106,7 +106,9 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 		return nil, internalError(ctx, "Get draft failed", err)
 	}
 	drafted := map[interfaces.RequirementItemRef]bool{}
+	var current *interfaces.Draft
 	if ok {
+		current = draft
 		for _, ot := range draft.Items.ObjectTypes {
 			drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}] = true
 		}
@@ -133,6 +135,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 			MissingItems: []interfaces.RequirementItemRef{},
 			Tests:        []interfaces.ScenarioTest{},
 		}
+		question.Path, question.Unconnected = questionPath(q, current)
 		for _, need := range q.Needs {
 			if !drafted[need] {
 				question.MissingItems = append(question.MissingItems, need)
