@@ -32,7 +32,7 @@ func exportSpec() *interfaces.Requirement {
 			ScenarioIDs: []string{"s1"}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
 			Inputs: &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1", Property: "order_no",
 				Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}},
-		{ID: "q2", Text: "Which orders need approval?", ScenarioIDs: []string{"s1", "s9"}, Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY,
+		{ID: "q2", Text: "Which orders need approval?", Template: "Which orders need approval?", ScenarioIDs: []string{"s1", "s9"}, Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY,
 			AnswerShape: "orders", Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1", "c9"},
 				Metrics: []string{"order amount"}, Functions: []string{"approval check"}, Skills: []string{}}},
 		{ID: "q3", Text: "Whose orders?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE},
@@ -88,7 +88,9 @@ func Test_BuildExport(t *testing.T) {
 			So(yaml.Unmarshal(body, &got), ShouldBeNil)
 			So(got.Format, ShouldEqual, "bkn-project-requirements-eval/v1")
 			So(got.AnswerSetAccess, ShouldEqual, "forbidden")
-			So(got.Questions, ShouldHaveLength, 2)
+			// A question with no template is left out, named: its text may hold a record's value.
+			So(got.Questions, ShouldHaveLength, 1)
+			So(got.WithoutTemplate, ShouldResemble, []string{"q3"})
 			// The template, not the text the documents' example stands in.
 			So(got.Questions[0].Question, ShouldEqual, "Lines of order {order}?")
 			So(got.Questions[0].Inputs, ShouldResemble, []exportInput{{Name: "order", Concept: "Order", Property: "order_no",
@@ -99,14 +101,53 @@ func Test_BuildExport(t *testing.T) {
 				{Kind: "variant", Question: "Lines of the order {Order.order_no} placed by {Customer.full_name}?",
 					Expect: interfaces.TEST_EXPECT_SAME_RECORD},
 			})
-			// Drafted with no template: its text; its tests were for another wording.
-			So(got.Questions[1].Question, ShouldEqual, "Whose orders?")
-			So(got.Questions[1].Tests, ShouldBeEmpty)
-			for _, value := range []string{"SO-1002", "SO-9999", "SO-10021", "ACME", "passed"} {
+			for _, value := range []string{"SO-1002", "SO-9999", "SO-10021", "ACME", "passed", "Whose orders"} {
 				So(string(body), ShouldNotContainSubstring, value)
 			}
 			So(string(body), ShouldNotContainSubstring, "example")
 			So(string(body), ShouldNotContainSubstring, "check")
+		})
+
+		Convey("Workshop leaves out a question with no template too\n", func() {
+			req.Spec.Questions[1].Template = ""
+			req.Spec.Questions[1].Text = "Does order SO-1002 need approval?"
+			body, err := buildExport(exportTargetWorkshop, req, nil)
+			So(err, ShouldBeNil)
+			var got workshopExport
+			So(yaml.Unmarshal(body, &got), ShouldBeNil)
+			So(got.Questions, ShouldBeEmpty)
+			So(got.WithoutTemplate, ShouldResemble, []string{"q2"})
+			So(string(body), ShouldNotContainSubstring, "SO-1002")
+		})
+
+		Convey("A value is replaced where it stands whole, and never inside a name already written\n", func() {
+			slot := func(concept, property, value string) interfaces.QuestionTestSlot {
+				return interfaces.QuestionTestSlot{ConceptID: concept, Property: property, Value: value}
+			}
+			for _, c := range []struct {
+				text  string
+				slots []interfaces.QuestionTestSlot
+				want  string
+			}{
+				// 1 stands whole once; the 1 of 10 is part of another number.
+				{"Orders of customer 1 in the last 10 days?", []interfaces.QuestionTestSlot{slot("c2", "id", "1")},
+					"Orders of customer {Customer.id} in the last 10 days?"},
+				// A short value is no part of a word, nor of a name an earlier slot wrote.
+				{"Is A the id of order SO-1?", []interfaces.QuestionTestSlot{slot("c1", "order_no", "SO-1"), slot("c2", "id", "id"),
+					slot("c2", "code", "A")}, "Is {Customer.code} the {Customer.id} of order {Order.order_no}?"},
+				// Values written in CJK stand whole without spaces.
+				{"客户张三的订单？", []interfaces.QuestionTestSlot{slot("c2", "name", "张三")}, "客户{Customer.name}的订单？"},
+				// The first 1 is part of 10.
+				{"Order 10 of customer 1?", []interfaces.QuestionTestSlot{slot("c2", "id", "1")}, "Order 10 of customer {Customer.id}?"},
+				// One value inside another: the longer is replaced first, and the shorter only where it stands apart.
+				{"客户张三丰和张三？", []interfaces.QuestionTestSlot{slot("c2", "name", "张三"), slot("c2", "alias", "张三丰")},
+					"客户{Customer.alias}和{Customer.name}？"},
+				// A slot still to fill.
+				{"Orders of {{slot 1}}?", []interfaces.QuestionTestSlot{slot("c2", "id", "")}, "Orders of {Customer.id}?"},
+			} {
+				So(withoutValues(&interfaces.QuestionTest{Text: c.text, Slots: c.slots}, map[string]string{"c1": "Order", "c2": "Customer"}),
+					ShouldEqual, c.want)
+			}
 		})
 
 		Convey("Guidance not ready, or of another version or older than the specification, is not exported\n", func() {

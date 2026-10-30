@@ -33,7 +33,10 @@ type workshopExport struct {
 	ProjectID   string             `yaml:"project_id"`
 	SpecVersion int                `yaml:"spec_version"`
 	Questions   []workshopQuestion `yaml:"questions"`
-	Rules       []exportRule       `yaml:"rules"`
+	// WithoutTemplate names the questions left out for having no template: their text may say a
+	// value of a record.
+	WithoutTemplate []string     `yaml:"questions_without_template,omitempty"`
+	Rules           []exportRule `yaml:"rules"`
 }
 
 type workshopQuestion struct {
@@ -65,6 +68,7 @@ type evalExport struct {
 	ProjectID       string         `yaml:"project_id"`
 	SpecVersion     int            `yaml:"spec_version"`
 	Questions       []evalQuestion `yaml:"questions"`
+	WithoutTemplate []string       `yaml:"questions_without_template,omitempty"`
 }
 
 type evalQuestion struct {
@@ -98,12 +102,6 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 	for _, c := range spec.Concepts {
 		terms[c.ID] = c.Term
 	}
-	asked := func(q *interfaces.RequirementQuestion) string {
-		if strings.TrimSpace(q.Template) != "" {
-			return q.Template
-		}
-		return q.Text
-	}
 	if target == exportTargetWorkshop {
 		out := workshopExport{Format: "bkn-project-requirements-workshop/v1", ProjectID: req.ProjectID,
 			SpecVersion: req.Version, Questions: []workshopQuestion{}, Rules: []exportRule{}}
@@ -115,7 +113,11 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 			if q.Layer != interfaces.REQUIREMENT_LAYER_CAPABILITY {
 				continue
 			}
-			wq := workshopQuestion{ID: q.ID, Question: asked(q), AnswerShape: q.AnswerShape,
+			if strings.TrimSpace(q.Template) == "" {
+				out.WithoutTemplate = append(out.WithoutTemplate, q.ID)
+				continue
+			}
+			wq := workshopQuestion{ID: q.ID, Question: q.Template, AnswerShape: q.AnswerShape,
 				Basis: exportBasis{Metrics: q.Basis.Metrics, Functions: q.Basis.Functions, Skills: q.Basis.Skills}}
 			for _, id := range q.ScenarioIDs {
 				if name, ok := scenarios[id]; ok {
@@ -145,7 +147,11 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 		if q.Layer != interfaces.REQUIREMENT_LAYER_KNOWLEDGE {
 			continue
 		}
-		eq := evalQuestion{ID: q.ID, Question: asked(q), AnswerShape: q.AnswerShape}
+		if strings.TrimSpace(q.Template) == "" {
+			out.WithoutTemplate = append(out.WithoutTemplate, q.ID)
+			continue
+		}
+		eq := evalQuestion{ID: q.ID, Question: q.Template, AnswerShape: q.AnswerShape}
 		if q.Inputs != nil {
 			for _, in := range *q.Inputs {
 				eq.Inputs = append(eq.Inputs, exportInput{Name: in.Name, Concept: terms[in.ConceptID],
@@ -163,24 +169,60 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 }
 
 // withoutValues is a test's text with each slot, filled in or still to fill, written as the
-// concept and property it is a value of. A longer value goes first, so one that contains another
-// is replaced whole.
+// concept and property it is a value of. A value is replaced only where it stands whole, longer
+// values first, and never within a name already written: the text is cut into the spans found and
+// put together once.
 func withoutValues(t *interfaces.QuestionTest, terms map[string]string) string {
+	type span struct {
+		start, end int
+		name       string
+	}
 	text := t.Text
+	var spans []span
+	free := func(start, end int) bool {
+		return !slices.ContainsFunc(spans, func(s span) bool { return start < s.end && s.start < end })
+	}
+	mark := func(value string, name string, at []int) {
+		for _, i := range at {
+			if free(i, i+len(value)) {
+				spans = append(spans, span{i, i + len(value), name})
+			}
+		}
+	}
+	name := func(s interfaces.QuestionTestSlot) string { return "{" + terms[s.ConceptID] + "." + s.Property + "}" }
+	for i, s := range t.Slots {
+		p := slotPlaceholder(i)
+		var at []int
+		for from := 0; ; {
+			k := strings.Index(text[from:], p)
+			if k < 0 {
+				break
+			}
+			at = append(at, from+k)
+			from += k + len(p)
+		}
+		mark(p, name(s), at)
+	}
 	order := make([]int, len(t.Slots))
 	for i := range order {
 		order[i] = i
 	}
 	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(len(t.Slots[b].Value), len(t.Slots[a].Value)) })
 	for _, i := range order {
-		s := t.Slots[i]
-		name := "{" + terms[s.ConceptID] + "." + s.Property + "}"
-		text = strings.ReplaceAll(text, slotPlaceholder(i), name)
-		if v := strings.TrimSpace(s.Value); v != "" {
-			text = strings.ReplaceAll(text, v, name)
+		if v := strings.TrimSpace(t.Slots[i].Value); v != "" {
+			mark(v, name(t.Slots[i]), wholeAt(text, v))
 		}
 	}
-	return text
+	slices.SortFunc(spans, func(a, b span) int { return cmp.Compare(a.start, b.start) })
+	var b strings.Builder
+	last := 0
+	for _, s := range spans {
+		b.WriteString(text[last:s.start])
+		b.WriteString(s.name)
+		last = s.end
+	}
+	b.WriteString(text[last:])
+	return b.String()
 }
 
 // ExportRequirement writes the project's ready specification for Workshop or bkn-eval as YAML,
