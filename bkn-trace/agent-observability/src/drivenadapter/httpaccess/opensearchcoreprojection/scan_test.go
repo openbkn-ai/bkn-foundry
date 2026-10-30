@@ -28,6 +28,7 @@ type scanFixture struct {
 	opened, closed, seedPages int
 	closeStatus               int
 	interactionQueries        int
+	receiptQueries            int
 	malformed                 string
 	seedBody                  map[string]any
 }
@@ -65,6 +66,7 @@ func (f *scanFixture) serve(w http.ResponseWriter, r *http.Request) {
 		f.seedBody = q
 		rows = f.seeds
 	} else {
+		f.receiptQueries++
 		if strings.Contains(fmt.Sprint(q["query"]), "interaction_id.keyword") {
 			f.interactionQueries++
 		}

@@ -40,6 +40,9 @@ func (s *Source) ScanTraceSummaryProjection(ctx context.Context, query iprojecti
 	if p := query.Scope.AccessProfile; p != nil && !evidencevo.HasGlobalTraceAccess(*p) && !evidencevo.NeedsCrossAccountCandidates(query.Scope) && p.EffectiveSubjectID == "" && p.ApplicationPrincipalID == "" {
 		return nil
 	}
+	if query.Scope.AccessProfile == nil || !evidencevo.HasGlobalTraceAccess(*query.Scope.AccessProfile) {
+		query.FilterTraceCandidates = nil
+	}
 	pit, err := s.client.OpenPointInTime(ctx, s.index)
 	if err != nil {
 		return err
@@ -67,8 +70,32 @@ func (s *Source) ScanTraceSummaryProjection(ctx context.Context, query iprojecti
 		return nil
 	}
 	filters := scanSeedFilters(query)
-	err = s.scanReceiptPages(ctx, pit, filters, []string{"trace_id", "interaction_id"}, 0, func(page []receiptDocument) error {
+	fields := []string{"trace_id", "interaction_id"}
+	if query.FilterTraceCandidates != nil {
+		fields = append(fields, "conversation_id", "owner")
+	}
+	err = s.scanReceiptPages(ctx, pit, filters, fields, 0, func(page []receiptDocument) error {
+		var possible map[string]bool
+		if query.FilterTraceCandidates != nil {
+			candidates := make([]iprojectionsource.TraceSummaryCandidate, 0, len(page))
+			for _, r := range page {
+				if receiptMatchesScope(r, query.Scope) {
+					candidates = append(candidates, iprojectionsource.TraceSummaryCandidate{TraceID: r.TraceID, ConversationID: r.ConversationID, InteractionID: r.InteractionID})
+				}
+			}
+			ids, filterErr := query.FilterTraceCandidates(ctx, candidates)
+			if filterErr != nil {
+				return filterErr
+			}
+			possible = make(map[string]bool, len(ids))
+			for _, id := range ids {
+				possible[id] = true
+			}
+		}
 		for _, r := range page {
+			if possible != nil && !possible[r.TraceID] {
+				continue
+			}
 			if err := enqueue(r.TraceID); err != nil {
 				return err
 			}
@@ -78,6 +105,13 @@ func (s *Source) ScanTraceSummaryProjection(ctx context.Context, query iprojecti
 	if err != nil {
 		return err
 	}
+	expandSibling := enqueue
+	if query.FilterTraceCandidates != nil {
+		// Global discovery covers every candidate in the PIT already.
+		// A sibling must pass its own metadata filter, not bypass it through an
+		// otherwise matching Interaction. Owner/shared discovery never filters.
+		expandSibling = func(string) error { return nil }
+	}
 	for offset := 0; offset < len(pending); {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -85,7 +119,7 @@ func (s *Source) ScanTraceSummaryProjection(ctx context.Context, query iprojecti
 		end := min(offset+scanBatchSize, len(pending))
 		ids := append([]string(nil), pending[offset:end]...)
 		offset = end
-		result, err := s.scanTraceBatch(ctx, pit, query, ids, enqueue)
+		result, err := s.scanTraceBatch(ctx, pit, query, ids, expandSibling)
 		if err != nil {
 			return err
 		}

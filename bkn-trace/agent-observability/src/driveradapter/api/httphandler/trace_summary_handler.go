@@ -8,6 +8,7 @@ package httphandler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
@@ -43,7 +45,7 @@ import (
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 422 {object} rdto.ErrorResponse
-// @Failure 503 {object} rdto.ErrorResponse
+// @Failure 503 {object} rdto.ErrorResponse "SUMMARY_QUERY_TIMEOUT, PROJECTION_LAG, or SUMMARY_DEPENDENCY_UNAVAILABLE"
 // @Failure 500 {object} rdto.ErrorResponse
 // @Router /traces [get]
 func (h *EvidenceHandler) ListTraceExecutions(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +139,12 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 }
 
 func writeSummaryQueryError(w http.ResponseWriter, r *http.Request, err error) {
+	var storageError *opensearch.StatusError
+	if errors.As(err, &storageError) && (storageError.StatusCode == http.StatusTooManyRequests || storageError.StatusCode >= http.StatusInternalServerError) {
+		slog.WarnContext(r.Context(), "summary query storage dependency unavailable", "trace_id", ensureResponseTraceID(w, r), "dependency", "opensearch", "status", storageError.StatusCode, "error_type", storageError.Type)
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "SUMMARY_DEPENDENCY_UNAVAILABLE", Message: "trace storage is temporarily unavailable; retry the query later"})
+		return
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "SUMMARY_QUERY_TIMEOUT", Message: "trace query exceeded its time budget; narrow the time range or filters before retrying"})
 		return
