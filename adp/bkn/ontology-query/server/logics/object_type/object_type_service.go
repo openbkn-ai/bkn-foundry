@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -539,7 +540,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		// source result without a physical read, not an unknown query source.
 		resps.QuerySource = "source"
 		if aggregate != nil && aggregate.operation == "count_rows" {
-			resps.Datas = []map[string]any{{"__value": int64(0)}}
+			resps.Datas = []map[string]any{{"__value": json.Number("0")}}
 		}
 	}
 

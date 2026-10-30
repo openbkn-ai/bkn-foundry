@@ -329,7 +329,7 @@ func TestObjectAggregateRejectsMaskedMeasureBeforeVega(t *testing.T) {
 
 func TestObjectCountRowsUsesAuthorizedSourceCount(t *testing.T) {
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries: []map[string]any{{"__value": int64(100001)}}, QuerySource: "source",
+		Entries: []map[string]any{{"__value": json.Number("100001")}}, QuerySource: "source",
 		Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
@@ -337,7 +337,7 @@ func TestObjectCountRowsUsesAuthorizedSourceCount(t *testing.T) {
 	query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationEq,
 		Value: "customer-1"}
 	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "", "count_rows", nil)
-	if err != nil || len(result.Datas) != 1 || result.Datas[0]["__value"] != int64(100001) ||
+	if err != nil || len(result.Datas) != 1 || result.Datas[0]["__value"] != json.Number("100001") ||
 		result.QuerySource != "source" {
 		t.Fatalf("authorized row count = %#v, error %v", result, err)
 	}
@@ -381,7 +381,7 @@ func TestObjectMetricSourceReadsTreatDeniedRowsAsCompleteEmptyResult(t *testing.
 				result.Cursor != "" || len(vega.paramsHistory) != 0 || len(result.Datas) != wantRows {
 				t.Fatalf("authorized empty result = %#v, Vega reads = %d, error = %v", result, len(vega.paramsHistory), err)
 			}
-			if tc.wantCountRow && result.Datas[0]["__value"] != int64(0) {
+			if tc.wantCountRow && result.Datas[0]["__value"] != json.Number("0") {
 				t.Fatalf("empty row count = %#v", result.Datas)
 			}
 		})
@@ -403,13 +403,13 @@ func TestObjectCountRowsRejectsIncompletePrimaryProjection(t *testing.T) {
 
 func TestObjectCountPropertyKeepsEmptySetDistinctFromNullValues(t *testing.T) {
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries: []map[string]any{{"__value": int64(0)}}, QuerySource: "source",
+		Entries: []map[string]any{{"__value": json.Number("0")}}, QuerySource: "source",
 		Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
 	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1),
 		"id", "count_present", nil)
-	if err != nil || len(result.Datas) != 1 || result.Datas[0]["__value"] != int64(0) {
+	if err != nil || len(result.Datas) != 1 || result.Datas[0]["__value"] != json.Number("0") {
 		t.Fatalf("property count = %#v, error %v", result, err)
 	}
 	params := vega.lastParams
