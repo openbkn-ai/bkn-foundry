@@ -51,6 +51,7 @@ func NewRegressionService() interfaces.RegressionService {
 			gs:    logics.GS,
 			da:    logics.DA,
 			pa:    logics.PA,
+			va:    logics.VA,
 			run:   func(fn func()) { go fn() },
 			sleep: time.Sleep,
 			now:   time.Now,
@@ -68,6 +69,8 @@ type regressionService struct {
 	// da names what a release lacks as the project's draft does; pa gives the language of reasons.
 	da interfaces.DraftAccess
 	pa interfaces.ProjectAccess
+	// va tells which tables the release's types read are gone.
+	va interfaces.VegaAccess
 	// run answers in the background; tests replace it to run in line. sleep and now pace the
 	// waiting for a judgement.
 	run   func(fn func())
@@ -181,6 +184,8 @@ func regressionAsks(questions []interfaces.RegressionQuestion) []regressionAsk {
 // project's draft gives, the display names of the release's items and properties, and the language
 // reasons are written in.
 type regressionContext struct {
+	// gone are the items, by kind and id, whose table is gone in vega.
+	gone     map[interfaces.ReleaseItem]bool
 	defined  map[interfaces.ReleaseItem]string
 	drafted  map[interfaces.ReleaseItem]string
 	glossary []judgeName
@@ -218,6 +223,7 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 		return
 	}
 	rc := s.regressionContext(ctx, release.ProjectID, files)
+	rc.gone = s.goneTables(ctx, r.Runner, files)
 
 	asks := regressionAsks(r.Questions)
 	r.Results = make([]interfaces.RegressionResult, len(asks))
@@ -302,6 +308,16 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 		result.Outcome = interfaces.REGRESSION_OUTCOME_MISSING
 		return result
 	}
+	// Asked on a table that is gone, it would only tell that.
+	for _, n := range a.question.Rests() {
+		if rc.gone[interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID}] {
+			result.MissingTables = append(result.MissingTables, rc.name(n.Kind, n.ID))
+		}
+	}
+	if len(result.MissingTables) > 0 {
+		result.Outcome = interfaces.REGRESSION_OUTCOME_DATA_SOURCE_MISSING
+		return result
+	}
 	answer, err := s.ba.AnswerOnNetwork(ctx, token, &interfaces.BknAgentAnswerRequest{
 		AgentID: answerAgentID, Message: a.text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID,
 	})
@@ -377,7 +393,28 @@ func (s *regressionService) decide(ctx context.Context, a regressionAsk, result 
 	return result
 }
 
-// regressionStatus is failed while a question could not be asked or judged; not passed when one
+// goneTables reads, as the runner, which of the tables the release's types read are gone in vega:
+// the items bound to them, by kind and id. Without an answer from vega none is taken for gone.
+func (s *regressionService) goneTables(ctx context.Context, runner interfaces.AccountInfo,
+	files map[string][]byte) map[interfaces.ReleaseItem]bool {
+	gone := map[interfaces.ReleaseItem]bool{}
+	bound := boundTables(files)
+	if len(bound) == 0 {
+		return gone
+	}
+	missing, err := s.va.MissingTables(ctx, runner, tableIDs(bound))
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read tables of a release: %v", err))
+		return gone
+	}
+	for _, it := range goneItems(bound, missing) {
+		gone[interfaces.ReleaseItem{Kind: it.Kind, ID: it.ID}] = true
+	}
+	return gone
+}
+
+// regressionStatus is data_source_missing when a question was not asked for a table that is gone;
+// otherwise it is failed while a question could not be asked or judged; not passed when one
 // lacks what it needs, got no answer or was not answered; passed when one passed; and needs values
 // when every question judged lacked a specific value, which shows nothing of what the ontology can
 // answer.
@@ -385,6 +422,8 @@ func regressionStatus(results []interfaces.RegressionResult) string {
 	failed, notPassed, passed := false, false, false
 	for _, r := range results {
 		switch r.Outcome {
+		case interfaces.REGRESSION_OUTCOME_DATA_SOURCE_MISSING:
+			return interfaces.REGRESSION_STATUS_DATA_SOURCE_MISSING
 		case interfaces.REGRESSION_OUTCOME_ERROR:
 			failed = true
 		case interfaces.REGRESSION_OUTCOME_MISSING, interfaces.REGRESSION_OUTCOME_NO_ANSWER,

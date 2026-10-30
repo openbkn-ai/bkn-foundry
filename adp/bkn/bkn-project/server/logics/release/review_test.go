@@ -85,6 +85,42 @@ name: %s
 `, id, name, name))
 }
 
+// linkRelationTypeBKN is a relation type joining through the link table resource linkTable.
+func linkRelationTypeBKN(id string, name string, linkTable string) []byte {
+	return []byte(fmt.Sprintf(`---
+type: relation_type
+id: %s
+name: %s
+---
+
+## RelationType: %s
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| part | purchase_order | indirect |
+
+### Backing Resource
+
+| Type | ID |
+|------|----|
+| resource | %s |
+
+### Source Mapping
+
+| Source Property | Resource Property |
+|-----------------|-------------------|
+| id | part_id |
+
+### Target Mapping
+
+| Resource Property | Target Property |
+|-------------------|-----------------|
+| order_id | id |
+`, id, name, name, linkTable))
+}
+
 func item(kind string, id string, name string) interfaces.ReleaseItem {
 	return interfaces.ReleaseItem{Kind: kind, ID: id, Name: name}
 }
@@ -117,7 +153,17 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 		da := pmock.NewMockDraftAccess(mockCtrl)
 		ca := pmock.NewMockCheckAccess(mockCtrl)
 		gs := pmock.NewMockGitStore(mockCtrl)
-		svc := &projectReleaseService{ps: ps, drs: drs, ls: ls, da: da, ca: ca, gs: gs}
+		// What vega answers for the bound tables; all there unless a test says otherwise.
+		va := pmock.NewMockVegaAccess(mockCtrl)
+		var goneTables []string
+		var tablesErr error
+		var askedTables [][]string
+		va.EXPECT().MissingTables(gomock.Any(), reviewOwner, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.VegaAccount, ids []string) ([]string, error) {
+				askedTables = append(askedTables, ids)
+				return goneTables, tablesErr
+			}).AnyTimes()
+		svc := &projectReleaseService{ps: ps, drs: drs, ls: ls, da: da, ca: ca, gs: gs, va: va}
 		ctx := context.Background()
 
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{
@@ -173,16 +219,85 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			return r
 		}
 
-		Convey("A release whose checks all pass lists the seven checks, what it adds and its risks\n", func() {
+		Convey("The tables every type on the branch reads are asked of vega once, as the caller\n", func() {
+			branchFiles["object_types/supplier_copy.bkn"] = objectTypeBKN("supplier_copy", "Supplier copy", true)
+			// Two object types on one table, and a relation through a link table.
+			branchFiles["object_types/supplier_copy.bkn"] = []byte(strings.Replace(string(branchFiles["object_types/supplier_copy.bkn"]),
+				"view_supplier_copy", "view_supplier", 1))
+			branchFiles["relation_types/part_in_order.bkn"] = linkRelationTypeBKN("part_in_order", "Part in order", "order_lines")
+			defer delete(branchFiles, "object_types/supplier_copy.bkn")
+			defer delete(branchFiles, "relation_types/part_in_order.bkn")
+			expect()
+			expectIndex()
+
+			r := review()
+
+			So(askedTables, ShouldResemble, [][]string{{"view_part", "view_purchase_order", "view_supplier", "order_lines"}})
+			So(checkOf(r, interfaces.RELEASE_CHECK_DATA_SOURCE).Passed, ShouldBeTrue)
+		})
+
+		Convey("A table gone blocks publishing and names what reads it; it cannot be accepted\n", func() {
+			branchFiles["object_types/supplier_copy.bkn"] = []byte(strings.Replace(string(objectTypeBKN("supplier_copy", "Supplier copy", true)),
+				"view_supplier_copy", "view_supplier", 1))
+			branchFiles["relation_types/part_in_order.bkn"] = linkRelationTypeBKN("part_in_order", "Part in order", "order_lines")
+			defer delete(branchFiles, "object_types/supplier_copy.bkn")
+			defer delete(branchFiles, "relation_types/part_in_order.bkn")
+			goneTables = []string{"view_supplier", "order_lines"}
+			expect()
+			expectIndex()
+
+			r := review()
+
+			c := checkOf(r, interfaces.RELEASE_CHECK_DATA_SOURCE)
+			So(c.Passed, ShouldBeFalse)
+			So(c.Reason, ShouldEqual, interfaces.RELEASE_REASON_TABLE_MISSING)
+			So(c.Accept, ShouldBeEmpty)
+			So(c.Details, ShouldResemble, []interfaces.ReleaseItem{
+				item(interfaces.RELEASE_ITEM_OBJECT_TYPE, "supplier", "Supplier"),
+				item(interfaces.RELEASE_ITEM_OBJECT_TYPE, "supplier_copy", "Supplier copy"),
+				item(interfaces.RELEASE_ITEM_RELATION_TYPE, "part_in_order", "Part in order"),
+			})
+			So(r.Blocked, ShouldBeTrue)
+			So(r.Accepts, ShouldBeEmpty)
+		})
+
+		Convey("Tables vega cannot tell about block publishing too\n", func() {
+			tablesErr = errors.New("vega down")
+			expect()
+			expectIndex()
+
+			r := review()
+
+			c := checkOf(r, interfaces.RELEASE_CHECK_DATA_SOURCE)
+			So(c.Passed, ShouldBeFalse)
+			So(c.Reason, ShouldEqual, interfaces.RELEASE_REASON_DATA_SOURCE_UNREADABLE)
+			So(c.Accept, ShouldBeEmpty)
+			So(r.Blocked, ShouldBeTrue)
+		})
+
+		Convey("A branch binding no table asks nothing\n", func() {
+			saved := branchFiles
+			branchFiles = map[string][]byte{"network.bkn": []byte(networkBKN)}
+			defer func() { branchFiles = saved }()
+			draft = nil
+			expect()
+
+			r := review()
+
+			So(askedTables, ShouldBeEmpty)
+			So(checkOf(r, interfaces.RELEASE_CHECK_DATA_SOURCE).Passed, ShouldBeTrue)
+		})
+
+		Convey("A release whose checks all pass lists the eight checks, what it adds and its risks\n", func() {
 			expect()
 			expectIndex()
 
 			r := review()
 
 			So(checkCodes(r), ShouldResemble, []string{
-				interfaces.RELEASE_CHECK_CONFIRMED, interfaces.RELEASE_CHECK_MAPPED, interfaces.RELEASE_CHECK_NAMES,
-				interfaces.RELEASE_CHECK_DRIFT, interfaces.RELEASE_CHECK_CHECK, interfaces.RELEASE_CHECK_INDEX,
-				interfaces.RELEASE_CHECK_BASELINE,
+				interfaces.RELEASE_CHECK_CONFIRMED, interfaces.RELEASE_CHECK_MAPPED, interfaces.RELEASE_CHECK_DATA_SOURCE,
+				interfaces.RELEASE_CHECK_NAMES, interfaces.RELEASE_CHECK_DRIFT, interfaces.RELEASE_CHECK_CHECK,
+				interfaces.RELEASE_CHECK_INDEX, interfaces.RELEASE_CHECK_BASELINE,
 			})
 			for _, c := range r.Checks {
 				So(c.Passed, ShouldBeTrue)

@@ -192,6 +192,29 @@ func Test_ProjectReleaseService_Publish(t *testing.T) {
 				})
 			})
 
+			Convey("Tables gone cannot be accepted: the release is refused with that check\n", func() {
+				gone := interfaces.ReleaseCheck{Code: interfaces.RELEASE_CHECK_DATA_SOURCE,
+					Reason:  interfaces.RELEASE_REASON_TABLE_MISSING,
+					Details: []interfaces.ReleaseItem{{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: "part", Name: "Part"}}}
+				review.Checks = append(review.Checks, gone)
+				review.Blocked = true
+				request.Accepts = acceptable
+				reviewer.EXPECT().ReviewRelease(gomock.Any(), reviewToken, "p1", "1.1.0", reviewOwner).Return(review, nil)
+
+				_, err := svc.PublishRelease(ctx, reviewToken, "p1", request, reviewOwner, author)
+
+				_, code, details := errorOf(err)
+				So(code, ShouldEqual, perrors.BknProject_Release_ChecksFailed)
+				So(details.(map[string]any)["checks"], ShouldContain, gone)
+
+				request.Accepts = []string{interfaces.RELEASE_REASON_TABLE_MISSING}
+				ps.EXPECT().GetProject(gomock.Any(), reviewToken, "p1").Return(project, nil)
+				_, err = svc.PublishRelease(ctx, reviewToken, "p1", request, reviewOwner, author)
+				status, code, _ := errorOf(err)
+				So(status, ShouldEqual, http.StatusBadRequest)
+				So(code, ShouldEqual, perrors.BknProject_Release_InvalidAccepts)
+			})
+
 			Convey("A blocked release is refused whatever is accepted\n", func() {
 				review.Blocked = true
 				review.Refusals = []interfaces.ReleaseRefusal{{Code: perrors.BknProject_Release_VersionExists}}

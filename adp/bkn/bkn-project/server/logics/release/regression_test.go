@@ -29,6 +29,12 @@ func regQuestion(id string, layer string, needs ...interfaces.RequirementItemRef
 	return interfaces.ScenarioQuestion{ID: id, Text: "Text of " + id, Layer: layer, Needs: needs}
 }
 
+// objectTypeWithTable is an object type reading the table resource table.
+func objectTypeWithTable(id string, name string, table string) []byte {
+	return []byte(fmt.Sprintf("---\ntype: object_type\nid: %s\nname: %s\n---\n\n## ObjectType: %s\n\n"+
+		"### Data Source\n\n| Type | ID | Name |\n|------|----|------|\n| resource | %s | %s |\n", id, name, name, table, table))
+}
+
 func objectTypeFile(id string, name string) []byte {
 	return []byte(fmt.Sprintf("---\ntype: object_type\nid: %s\nname: %s\n---\n\n## ObjectType: %s\n", id, name, name))
 }
@@ -45,7 +51,8 @@ func Test_RegressionService(t *testing.T) {
 		da := pmock.NewMockDraftAccess(mockCtrl)
 		pa := pmock.NewMockProjectAccess(mockCtrl)
 		clock := time.UnixMilli(1000)
-		svc := &regressionService{ra: ra, rs: rs, ba: ba, gs: gs, da: da, pa: pa, run: func(fn func()) { fn() },
+		va := pmock.NewMockVegaAccess(mockCtrl)
+		svc := &regressionService{ra: ra, rs: rs, ba: ba, gs: gs, da: da, pa: pa, va: va, run: func(fn func()) { fn() },
 			sleep: func(d time.Duration) { clock = clock.Add(d) }, now: func() time.Time { return clock }}
 		ctx := context.Background()
 		const token = "Bearer t"
@@ -577,6 +584,81 @@ func Test_RegressionService(t *testing.T) {
 
 				So(err, ShouldBeNil)
 				So(finished.Status, ShouldEqual, c.want)
+			}
+		})
+
+		Convey("Questions needing an item whose table is gone are not asked; the others are, and the run says so\n", func() {
+			bound := map[string][]byte{
+				"network.bkn":                       files["network.bkn"],
+				"object_types/supplier.bkn":         objectTypeWithTable("supplier", "Supplier", "t_supplier"),
+				"object_types/part.bkn":             objectTypeWithTable("part", "Part", "t_part"),
+				"object_types/part_copy.bkn":        objectTypeWithTable("part_copy", "Part copy", "t_part"),
+				"relation_types/supplier_parts.bkn": linkRelationTypeBKN("supplier_parts", "Supplies", "t_supplier_part"),
+				"object_types/without_a_source.bkn": objectTypeFile("without_a_source", "Without a source"),
+			}
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+				regQuestion("q1", knowledge, regNeed(ot, "supplier")),
+				// Gone only on its path: the link table.
+				withPath(regQuestion("q2", knowledge, regNeed(ot, "supplier")), regNeed(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_parts")),
+				regQuestion("q3", knowledge, regNeed(ot, "part"), regNeed(ot, "part_copy")),
+				// Not in the release at all: missing comes first.
+				regQuestion("q4", knowledge, regNeed(ot, "customer"), regNeed(ot, "part")),
+			), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(bound, nil)
+			// One read, as the runner, each table once; a refused table (left out of the reply) is there.
+			va.EXPECT().MissingTables(gomock.Any(), runner, []string{"t_part", "t_supplier", "t_supplier_part"}).
+				Return([]string{"t_part", "t_supplier_part"}, nil)
+			var asked []string
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					asked = append(asked, req.Message)
+					return answered("Supplier S1."), nil
+				})
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(asked, ShouldResemble, []string{"Text of q1"})
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_DATA_SOURCE_MISSING)
+			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{
+				passed("q1", "Supplier S1."),
+				{QuestionID: "q2", Outcome: interfaces.REGRESSION_OUTCOME_DATA_SOURCE_MISSING,
+					MissingTables: []interfaces.ReleaseItem{{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_parts", Name: "Supplies"}}},
+				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_DATA_SOURCE_MISSING,
+					MissingTables: []interfaces.ReleaseItem{{Kind: ot, ID: "part", Name: "Part"}, {Kind: ot, ID: "part_copy", Name: "Part copy"}}},
+				{QuestionID: "q4", Outcome: interfaces.REGRESSION_OUTCOME_MISSING,
+					Missing: []interfaces.ReleaseItem{{Kind: ot, ID: "customer", Name: "Customer account"}}},
+			})
+		})
+
+		Convey("When vega cannot tell, every question is asked as before\n", func() {
+			bound := map[string][]byte{
+				"network.bkn":               files["network.bkn"],
+				"object_types/supplier.bkn": objectTypeWithTable("supplier", "Supplier", "t_supplier"),
+			}
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "supplier"))), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(bound, nil)
+			va.EXPECT().MissingTables(gomock.Any(), runner, []string{"t_supplier"}).Return(nil, errors.New("vega down"))
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("Supplier S1."), nil)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_PASSED)
+		})
+
+		Convey("Tables gone rank above every other status\n", func() {
+			gone := interfaces.RegressionResult{Outcome: interfaces.REGRESSION_OUTCOME_DATA_SOURCE_MISSING}
+			for _, other := range []string{interfaces.REGRESSION_OUTCOME_ERROR, interfaces.REGRESSION_OUTCOME_MISSING,
+				interfaces.REGRESSION_OUTCOME_NEEDS_VALUES, interfaces.REGRESSION_OUTCOME_PASSED} {
+				So(regressionStatus([]interfaces.RegressionResult{{Outcome: other}, gone}), ShouldEqual,
+					interfaces.REGRESSION_STATUS_DATA_SOURCE_MISSING)
+				So(regressionStatus([]interfaces.RegressionResult{gone, {Outcome: other}}), ShouldEqual,
+					interfaces.REGRESSION_STATUS_DATA_SOURCE_MISSING)
 			}
 		})
 
