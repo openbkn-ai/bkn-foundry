@@ -13,11 +13,97 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/toon-format/toon-go"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
 )
+
+func TestRunCypherToolPreservesExactNumbers(t *testing.T) {
+	for _, format := range []string{"json", "toon", ""} {
+		t.Run("format="+format, func(t *testing.T) {
+			resp := &interfaces.CypherQueryResp{Entries: []map[string]any{{
+				"safe":       json.Number("9007199254740991"),
+				"even":       json.Number("9007199254740992"),
+				"odd":        json.Number("9007199254740993"),
+				"negative":   json.Number("-9007199254740993"),
+				"exact_text": "9007199254740993",
+				"nested":     map[string]any{"value": json.Number("9007199254740993")},
+			}}}
+			arguments := map[string]any{"kn_id": "kn-1", "query": "MATCH (p:precision_sample) RETURN p"}
+			if format != "" {
+				arguments["response_format"] = format
+			}
+			result, err := handleRunCypher(returningCypher{resp: resp}, nil)(context.Background(), newCallToolRequest(arguments))
+			if err != nil || result == nil || result.IsError {
+				t.Fatalf("result = %+v, err = %v", result, err)
+			}
+			// Structured content keeps JSON numbers even when the text is TOON.
+			raw, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var envelope struct {
+				Structured struct {
+					Entries []map[string]any `json:"entries"`
+				} `json:"structuredContent"`
+			}
+			decoder := json.NewDecoder(strings.NewReader(string(raw)))
+			decoder.UseNumber()
+			if err := decoder.Decode(&envelope); err != nil {
+				t.Fatal(err)
+			}
+			if len(envelope.Structured.Entries) != 1 || envelope.Structured.Entries[0]["odd"] != json.Number("9007199254740993") {
+				t.Fatalf("structured content lost precision: %s", raw)
+			}
+			var decoded struct {
+				Entries []map[string]any `json:"entries" toon:"entries"`
+			}
+			text := resultText(result)
+			if format == "json" {
+				decoder := json.NewDecoder(strings.NewReader(text))
+				decoder.UseNumber()
+				if err := decoder.Decode(&decoded); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := toon.Unmarshal([]byte(text), &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if len(decoded.Entries) != 1 {
+				t.Fatalf("entries = %+v", decoded.Entries)
+			}
+			row := decoded.Entries[0]
+			for key, digits := range map[string]string{"even": "9007199254740992", "odd": "9007199254740993", "negative": "-9007199254740993"} {
+				var want any = digits
+				if format == "json" {
+					want = json.Number(digits)
+				}
+				if row[key] != want {
+					t.Errorf("%s = %T(%v), want %T(%v); text = %s", key, row[key], row[key], want, want, text)
+				}
+			}
+			if row["exact_text"] != "9007199254740993" {
+				t.Errorf("text control = %#v", row["exact_text"])
+			}
+			var wantNested any = "9007199254740993"
+			var wantSafe any = float64(9007199254740991)
+			if format == "json" {
+				wantNested = json.Number("9007199254740993")
+				wantSafe = json.Number("9007199254740991")
+			}
+			if nested, ok := row["nested"].(map[string]any); !ok || nested["value"] != wantNested {
+				t.Errorf("nested = %#v, want value %v", row["nested"], wantNested)
+			}
+			if row["safe"] != wantSafe {
+				t.Errorf("safe = %T(%v), want %T(%v)", row["safe"], row["safe"], wantSafe, wantSafe)
+			}
+			if resp.Entries[0]["odd"] != json.Number("9007199254740993") {
+				t.Fatal("formatting mutated the original response")
+			}
+		})
+	}
+}
 
 type refusingCypher struct{ err error }
 
