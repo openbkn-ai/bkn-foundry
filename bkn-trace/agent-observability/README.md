@@ -72,6 +72,9 @@ installer enables it and checks the topic. See the operational guide in
 deployment/admission contract, retained-message preservation and real native
 explanation acceptance. A working Audit consumer, a healthy HTTP listener or a
 stored `ready` explanation snapshot does not establish successful attribution.
+The guide's explicit question/generation acceptance is a separately authorized
+deployment-remediation test; ordinary route probes and read-only acceptance
+continue to preserve `not_generated` without generating new requests.
 
 ## Span display and browsing (#2158)
 

@@ -47,8 +47,9 @@ effective policy state cannot be established, preserve the safe disabled state
 until an authorized operator explicitly enables capture through the existing
 control surface. Do not turn capture on by guessing the old state.
 
-The installer creates an absent topic with the required timestamp setting; it
-does not alter an incompatible existing topic. Confirm this behavior in the
+The installer creates an absent topic with the required timestamp setting. Its
+preflight rejects an incompatible existing topic and stops installation before
+Core rollout; it does not modify that topic. Confirm this behavior in the
 installer version used for the retained release before applying any rollout.
 
 ## Preserve and classify retained topic records
@@ -76,6 +77,14 @@ changes, validator bypass or rewriting old records as live capture. Neither a
 successful topic check nor consumer startup certifies old data as accepted.
 
 ## Verify one real read-only Interaction
+
+This is a separately authorized environment-remediation acceptance test, not a
+route-availability probe. The deployment owner must authorize the selected real
+read-only question and explicit explanation generation. Without that authority,
+perform only reads of existing records/explanations and preserve `not_generated`;
+the ordinary read-only acceptance rule in the service README still applies.
+Prefer an existing real Interaction when its recorded inputs can be repaired.
+Create a new read-only Interaction only when that specific test is authorized.
 
 After the reviewed deployment change, check the configured Evidence consumer
 specifically. `/health/ready` returning HTTP 200 is insufficient: lifecycle
