@@ -63,6 +63,71 @@ func Test_CheckTests(t *testing.T) {
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordNotFound})
 		})
 
+		Convey("The server's tests ask about the documents' example: in the template test when the data has it, else in the not_exist test\n", func() {
+			withExample := *asked
+			withExample.Inputs = &[]interfaces.RequirementInput{{Name: "customer", ConceptID: "c2", Property: "customer_id",
+				Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "10001"}}
+			serverTest := func(kind, expect string) *interfaces.QuestionTest {
+				tt := test(expect, slot("customer_id", ""))
+				tt.Kind, tt.ByServer = kind, true
+				return tt
+			}
+			template := serverTest(interfaces.TEST_KIND_TEMPLATE, interfaces.TEST_EXPECT_EXISTS)
+			absent := serverTest(interfaces.TEST_KIND_NOT_EXIST, interfaces.TEST_EXPECT_NOT_EXISTS)
+			agents := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
+
+			// Counted once, for both tests.
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			svc.useExamples(ctx, caller, &spec, draft, &withExample, []*interfaces.QuestionTest{template, absent, agents})
+			So(template.Slots[0].Value, ShouldEqual, "10001")
+			So(template.Text, ShouldEqual, "About 10001?")
+			So(absent.Slots[0].Value, ShouldEqual, "")
+			So(agents.Slots[0].Value, ShouldEqual, "")
+
+			// A record the documents give that the data lacks is the one that does not exist.
+			template = serverTest(interfaces.TEST_KIND_TEMPLATE, interfaces.TEST_EXPECT_EXISTS)
+			absent = serverTest(interfaces.TEST_KIND_NOT_EXIST, interfaces.TEST_EXPECT_NOT_EXISTS)
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(0))
+			svc.useExamples(ctx, caller, &spec, draft, &withExample, []*interfaces.QuestionTest{template, absent})
+			So(template.Slots[0].Value, ShouldEqual, "")
+			So(absent.Slots[0].Value, ShouldEqual, "10001")
+			So(absent.Text, ShouldEqual, "About 10001?")
+
+			// A failed count uses neither; nor is a value already given replaced.
+			template = serverTest(interfaces.TEST_KIND_TEMPLATE, interfaces.TEST_EXPECT_EXISTS)
+			absent = serverTest(interfaces.TEST_KIND_NOT_EXIST, interfaces.TEST_EXPECT_NOT_EXISTS)
+			absent.Slots[0].Value = "99999"
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("boom"))
+			svc.useExamples(ctx, caller, &spec, draft, &withExample, []*interfaces.QuestionTest{template, absent})
+			So(template.Slots[0].Value, ShouldEqual, "")
+			So(absent.Slots[0].Value, ShouldEqual, "99999")
+
+			// A value already given stays, and the example is not even counted.
+			template = serverTest(interfaces.TEST_KIND_TEMPLATE, interfaces.TEST_EXPECT_EXISTS)
+			template.Slots[0].Value = "20002"
+			svc.useExamples(ctx, caller, &spec, draft, &withExample, []*interfaces.QuestionTest{template})
+			So(template.Slots[0].Value, ShouldEqual, "20002")
+
+			// Only the not_exist test's first slot names the record that does not exist; its others are real.
+			twoInputs := *asked
+			twoInputs.Inputs = &[]interfaces.RequirementInput{{Name: "name", ConceptID: "c2", Property: "full_name",
+				Role: interfaces.REQUIREMENT_INPUT_RECORD}, (*withExample.Inputs)[0]}
+			absent = serverTest(interfaces.TEST_KIND_NOT_EXIST, interfaces.TEST_EXPECT_NOT_EXISTS)
+			absent.Slots = []interfaces.QuestionTestSlot{slot("full_name", ""), slot("customer_id", "")}
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(0))
+			svc.useExamples(ctx, caller, &spec, draft, &twoInputs, []*interfaces.QuestionTest{absent})
+			So(absent.Slots[1].Value, ShouldEqual, "")
+
+			// Checking asks the template test about the example.
+			template = serverTest(interfaces.TEST_KIND_TEMPLATE, interfaces.TEST_EXPECT_EXISTS)
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			svc.now = func() int64 { return 0 }
+			svc.checkTests(ctx, caller, &spec, draft, &withExample, []*interfaces.QuestionTest{template}, 1<<40)
+			So(template.Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(template.Slots[0].Value, ShouldEqual, "10001")
+		})
+
 		Convey("A record expected not to exist passes only when no value is found\n", func() {
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '99999'", float64(0))
 			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", "99999"))),
@@ -312,6 +377,42 @@ func Test_CheckTests(t *testing.T) {
 			So(tt.Text, ShouldEqual, "About C-9999 and Acme?")
 		})
 
+		Convey("An empty value of a record that exists is taken from the row of the values given beside it\n", func() {
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v1": "Acme Ltd"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"), slot("full_name", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Text, ShouldEqual, "About 10001 and Acme Ltd?")
+
+			// A given value no row has fills the others from any row, and the test fails on it.
+			va.EXPECT().Query(gomock.Any(), caller,
+				"SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = 'C-9999' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				checkQueryTimeout).Return([]map[string]any{}, nil)
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v1": "Acme"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+			tt = test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "C-9999"), slot("full_name", ""))
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt),
+				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordNotFound})
+
+			// A record the data has with no value in the empty slot's field is not named by another's.
+			va.EXPECT().Query(gomock.Any(), caller,
+				"SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = 'C-1' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				checkQueryTimeout).Return([]map[string]any{}, nil)
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-1'", float64(1))
+			tt = test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "C-1"), slot("full_name", ""))
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt), ShouldResemble, notChecked(checkNoValueInData))
+
+			// The record that should not exist names no row: the others are taken from any.
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v1": "Acme"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+			tt = test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", "C-9999"), slot("full_name", ""))
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+		})
+
 		Convey("A value for a record that exists is taken from the records the question's relation reaches\n", func() {
 			pathDraft := guidanceDraft()
 			pathDraft.Items.ObjectTypes[1].Table = interfaces.DraftTable{ResourceID: "r-cust"}
@@ -335,6 +436,17 @@ func Test_CheckTests(t *testing.T) {
 				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 				So(tt.Slots[0].Value, ShouldEqual, "10007")
 				So(tt.Slots[0].ValueFrom, ShouldEqual, "sales_order")
+			})
+
+			Convey("but beside a value given of the same record, from that record's row\n", func() {
+				sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+					map[string]any{"v1": "Acme Ltd"})
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
+				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"), slot("full_name", ""))
+
+				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+				So(tt.Slots[1].Value, ShouldEqual, "Acme Ltd")
 			})
 
 			Convey("or, when it reaches none, from any record, saying nothing of a path\n", func() {
