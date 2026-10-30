@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -227,7 +228,14 @@ func (s *projectReleaseService) Rollback(ctx context.Context, token string, proj
 		span.SetStatus(codes.Error, "Plan outdated")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Rollback_PlanOutdated)
 	}
-	sw, err := s.ls.SwitchConsumers(ctx, token, entry.KNID, interfaces.SwitchRequest{ToNetworkID: plan.To.NetworkID}, caller)
+	// The switch checks, under the lineage's lock, that consumers are still where the plan found them.
+	sw, err := s.ls.SwitchConsumers(ctx, token, entry.KNID,
+		interfaces.SwitchRequest{ToNetworkID: plan.To.NetworkID, FromNetworkID: plan.From.NetworkID}, caller)
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == perrors.BknProject_Lineage_InUseChanged {
+		span.SetStatus(codes.Error, "Plan outdated")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Rollback_PlanOutdated)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Switch consumers failed")
 		return nil, err

@@ -151,6 +151,9 @@ type ReleaseRefusal struct {
 type SwitchRequest struct {
 	// ToNetworkID is a network of the lineage: one a release created, or the base network.
 	ToNetworkID string `json:"to_network_id"`
+	// FromNetworkID, when set, is the network the caller expects in use: the switch is refused
+	// when another switch moved consumers since, checked under the lineage's lock.
+	FromNetworkID string `json:"from_network_id,omitempty"`
 }
 
 // SwitchPlan is what switching the lineage to ToNetworkID would do to the

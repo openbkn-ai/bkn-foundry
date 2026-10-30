@@ -71,7 +71,7 @@ func Test_LineageService_Switch(t *testing.T) {
 					return nil
 				})
 
-			sw, err := svc.SwitchConsumers(ctx, token, id, interfaces.SwitchRequest{ToNetworkID: v1}, operator)
+			sw, err := svc.SwitchConsumers(ctx, token, id, interfaces.SwitchRequest{ToNetworkID: v1, FromNetworkID: id}, operator)
 
 			So(err, ShouldBeNil)
 			So(sw, ShouldEqual, recorded)
@@ -247,6 +247,16 @@ func Test_LineageService_Switch(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(recorded.Schedules, ShouldResemble, []interfaces.SwitchedSchedule{{FromID: "s1", ToID: "t1", Name: "nightly"}})
+		})
+
+		Convey("A switch expecting another network in use is refused under the lock, before any schedule moves\n", func() {
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(&interfaces.Switch{ID: "sw1", ToNetworkID: id + "_v0_9_0"}, true, nil)
+
+			_, err := svc.SwitchConsumers(ctx, token, id, interfaces.SwitchRequest{ToNetworkID: v1, FromNetworkID: id}, operator)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InUseChanged)
 		})
 
 		Convey("Targets outside the lineage, the network in use and unknown lineages are refused before any schedule is read\n", func() {

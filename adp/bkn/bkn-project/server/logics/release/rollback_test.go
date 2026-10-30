@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -148,12 +149,29 @@ func Test_Rollback(t *testing.T) {
 			expectPlan("refs/tags/v1.2.0", "refs/tags/v1.1.0", "supply_v1_1_0")
 			switched := &interfaces.Switch{ID: "sw2", FromNetworkID: "supply_v1_2_0", ToNetworkID: "supply_v1_1_0"}
 			ls.EXPECT().SwitchConsumers(gomock.Any(), reviewToken, "supply",
-				interfaces.SwitchRequest{ToNetworkID: "supply_v1_1_0"}, reviewOwner).Return(switched, nil)
+				interfaces.SwitchRequest{ToNetworkID: "supply_v1_1_0", FromNetworkID: "supply_v1_2_0"}, reviewOwner).Return(switched, nil)
 
 			got, err := svc.Rollback(ctx, reviewToken, "p1", interfaces.ProjectRollback{Signature: plan.Signature}, reviewOwner)
 
 			So(err, ShouldBeNil)
 			So(got, ShouldEqual, switched)
+		})
+
+		Convey("A switch landing between the plan and the rollback is caught under the lineage's lock\n", func() {
+			inUse("supply_v1_2_0")
+			expectPlan("refs/tags/v1.2.0", "refs/tags/v1.1.0", "supply_v1_1_0")
+			plan, err := svc.PlanRollback(ctx, reviewToken, "p1")
+			So(err, ShouldBeNil)
+			expectPlan("refs/tags/v1.2.0", "refs/tags/v1.1.0", "supply_v1_1_0")
+			ls.EXPECT().SwitchConsumers(gomock.Any(), reviewToken, "supply",
+				interfaces.SwitchRequest{ToNetworkID: "supply_v1_1_0", FromNetworkID: "supply_v1_2_0"}, reviewOwner).
+				Return(nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_InUseChanged))
+
+			_, err = svc.Rollback(ctx, reviewToken, "p1", interfaces.ProjectRollback{Signature: plan.Signature}, reviewOwner)
+
+			status, code, _ := errorOf(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Rollback_PlanOutdated)
 		})
 
 		Convey("A plan that no longer stands is refused, and so is no plan at all\n", func() {
