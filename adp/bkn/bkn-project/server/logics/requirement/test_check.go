@@ -414,12 +414,53 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, tests []*interfaces.QuestionTest, deadline int64) {
 	ctx, cancel := context.WithDeadline(ctx, time.UnixMilli(deadline))
 	defer cancel()
+	s.useExamples(ctx, caller, spec, draft, q, tests)
 	for _, t := range tests {
 		if s.now() >= deadline {
 			t.Check = notChecked(checkTimeout)
 			continue
 		}
 		t.Check = s.checkAnchored(ctx, caller, spec, draft, q, t, anchorOf(tests))
+	}
+}
+
+// useExamples puts the records the documents give as examples into the server's tests, in place of
+// values sampled from the data: into a slot of a record that exists when the data has it, and as
+// the record that does not exist (the not_exist test's first slot) when it lacks it. A slot with a
+// value, or an example the data cannot be asked about, is left as it is.
+func (s *requirementService) useExamples(ctx context.Context, caller interfaces.AccountInfo,
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, tests []*interfaces.QuestionTest) {
+	if q == nil || q.Inputs == nil {
+		return
+	}
+	exists := map[string]bool{}
+	known := map[string]bool{}
+	for _, t := range tests {
+		if !t.ByServer {
+			continue
+		}
+		for i, slot := range t.Slots {
+			k := slices.IndexFunc(*q.Inputs, func(in interfaces.RequirementInput) bool {
+				return in.Example != "" && in.ConceptID == slot.ConceptID && in.Property == slot.Property
+			})
+			if slot.Value != "" || k < 0 {
+				continue
+			}
+			example := (*q.Inputs)[k].Example
+			if _, counted := known[example]; !counted {
+				known[example] = false
+				if f, reason := resolveSlot(spec, draft, slot); reason == "" {
+					n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",
+						f.objectType.Table.ResourceID, quoteField(f.field), quoteValue(example)))
+					known[example], exists[example] = err == nil, n > 0
+				}
+			}
+			absent := t.Kind == interfaces.TEST_KIND_NOT_EXIST && i == 0
+			if known[example] && exists[example] != absent {
+				t.Slots[i].Value = example
+				t.Text = strings.ReplaceAll(t.Text, slotPlaceholder(i), example)
+			}
+		}
 	}
 }
 

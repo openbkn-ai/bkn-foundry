@@ -263,6 +263,9 @@ type RequirementInput struct {
 	ConceptID string `json:"concept_id"`
 	Property  string `json:"property"`
 	Role      string `json:"role"`
+	// Example is a value of a record input the documents state, as written; the server's template
+	// test asks about it when the data has it, and its not_exist test when the data does not.
+	Example string `json:"example,omitempty"`
 	// PropertyFromKey says drafting named no property of the object type and the server took its
 	// key; an edit of the inputs clears it.
 	PropertyFromKey bool `json:"property_from_key,omitempty"`

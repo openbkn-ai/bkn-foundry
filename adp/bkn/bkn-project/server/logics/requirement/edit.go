@@ -90,6 +90,8 @@ func (s *requirementService) update(ctx context.Context, token string, projectID
 type draftedItems struct {
 	refs  map[interfaces.RequirementItemRef]bool
 	draft *interfaces.Draft
+	// docs are the project's documents, read only for an edit that gives an input's example.
+	docs map[string]*interfaces.RequirementDocument
 }
 
 func (d *draftedItems) has(ref interfaces.RequirementItemRef) bool { return d.refs[ref] }
@@ -296,6 +298,19 @@ func applyQuestion(ctx context.Context, q *interfaces.RequirementQuestion, edit 
 		// The person names each property: none is the server's key any more.
 		for i := range inputs {
 			inputs[i].PropertyFromKey = false
+			// A moment is taken from the data; a record's example is one the documents state.
+			if inputs[i].Example = strings.TrimSpace(inputs[i].Example); inputs[i].Example == "" {
+				continue
+			}
+			if inputs[i].Role != interfaces.REQUIREMENT_INPUT_RECORD {
+				inputs[i].Example = ""
+				continue
+			}
+			cited, ok := exampleCitation(inputs[i].Example, drafted.docs)
+			if !ok {
+				return invalidItem(ctx, fmt.Sprintf("input %s: %s", inputs[i].Name, rejectedExampleNotInDocuments))
+			}
+			q.Citations = citeExample(q.Citations, inputs[i].Example, cited)
 		}
 		q.Inputs = &inputs
 	}
@@ -418,6 +433,15 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 					return err
 				}
 				spec.Questions[i].Edited = true
+				if edit.Inputs != nil && slices.ContainsFunc(*edit.Inputs, func(in interfaces.RequirementInput) bool {
+					return strings.TrimSpace(in.Example) != ""
+				}) {
+					docs, err := s.ra.GetDocuments(ctx, projectID)
+					if err != nil {
+						return internalError(ctx, "Get requirement documents failed", err)
+					}
+					drafted.docs = documentsByID(docs)
+				}
 				return applyQuestion(ctx, spec.Questions[i], edit, spec, drafted)
 			case interfaces.REQUIREMENT_KIND_RULES:
 				i, ok := find(spec.Rules, itemID, ruleID)
