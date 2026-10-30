@@ -434,6 +434,7 @@ func EmitSchemaDefinitionEvents(ctx context.Context, logger interfaces.Logger, k
 }
 
 func EmitSchemaSnapshotEvents(ctx context.Context, logger interfaces.Logger, kind, knID string, ids []string, definition any, complete bool) string {
+	retainSchemaSnapshotTargets(ctx, kind, knID, ids)
 	if !EvidenceEnabled() {
 		return ""
 	}
