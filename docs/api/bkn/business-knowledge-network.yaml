@@ -4,6 +4,13 @@ info:
   title: BKN 知识网络 · 知识网络 API
   version: 0.1.0
   description: |
+    Authentication requires an OAuth access token, for example the token returned
+    by `openbkn auth token` after `openbkn auth login`. AppKeys (`bak_`) are not
+    supported by these BKN management REST APIs, including read-only list and
+    detail requests. An AppKey can be active in Safe and accepted by Context
+    Loader while this service rejects it with HTTP 401 / `Public.Unauthorized`.
+    Resource authorization is evaluated after successful authentication.
+
     Knowledge-network CRUD uses `knowledge_network:{kn_id}`. Create requires
     `knowledge_network:*:create`; detail, list, update, and delete use the
     corresponding instance operations. Lists are authorization-filtered before
