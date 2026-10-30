@@ -21,6 +21,25 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
+func TestVegaBackendAccessCloseResourceDataCursorUsesTrustedProxy(t *testing.T) {
+	controller := gomock.NewController(t)
+	client := rmock.NewMockHTTPClient(controller)
+	client.EXPECT().DeleteNoUnmarshal(gomock.Any(),
+		"http://vega/proxy/resources/resource-1/cursors/cursor-1", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string) (int, []byte, error) {
+			if headers[interfaces.HTTPHeaderBKNOperation] != interfaces.PermissionOperationQueryData ||
+				headers[interfaces.HTTPHeaderBKNTargetID] != "resource-1" {
+				t.Fatalf("cursor cleanup proxy headers = %#v", headers)
+			}
+			return http.StatusNoContent, nil, nil
+		})
+	access := &vegaBackendAccess{httpClient: client, baseURL: "http://vega"}
+	if err := access.CloseResourceDataCursor(trustedResourceProxyContext(context.Background(), "resource-1"),
+		"resource-1", "cursor-1"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestVegaBackendAccessBuildProxyHeadersPropagatesDualPrincipalAndTraceContext(t *testing.T) {
 	convey.Convey("buildProxyHeaders includes trusted dual-principal and BKN trace context headers", t, func() {
 		traceID := trace.TraceID{0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65}
@@ -188,6 +207,7 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 					"nested":{"uint64_max":18446744073709551615}
 				}],
 				"total_count":1,
+				"aggregate_input_type":"decimal",
 				"paging":{"next_cursor":"vega-cursor","expires_at_sec":12345}
 			}`), nil)
 
@@ -200,6 +220,7 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(response.Entries, convey.ShouldHaveLength, 1)
 		convey.So(response.TotalCount, convey.ShouldEqual, int64(1))
+		convey.So(response.AggregateInputType, convey.ShouldEqual, "decimal")
 
 		expected := map[string]string{
 			"int64_max":  "9223372036854775807",

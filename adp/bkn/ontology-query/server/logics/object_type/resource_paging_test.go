@@ -31,6 +31,7 @@ type vegaSessionPoolStub struct {
 	sessions      int
 	singleReads   int
 	lastSessionID string
+	closedCursor  string
 }
 
 func (v *vegaSessionPoolStub) QueryResourceData(_ context.Context, _ string,
@@ -54,6 +55,29 @@ func (v *vegaSessionPoolStub) QueryResourceData(_ context.Context, _ string,
 
 func (v *vegaSessionPoolStub) GetResourceSchema(context.Context, string) (*interfaces.ResourceSchemaResponse, error) {
 	return &interfaces.ResourceSchemaResponse{SchemaDefinition: []map[string]any{}}, nil
+}
+
+func (v *vegaSessionPoolStub) CloseResourceDataCursor(_ context.Context, resourceID, cursor string) error {
+	if resourceID != "resource-1" || cursor != v.lastSessionID || v.sessions == 0 {
+		return fmt.Errorf("unexpected cursor cleanup %q/%q", resourceID, cursor)
+	}
+	v.closedCursor = cursor
+	v.sessions--
+	return nil
+}
+
+func TestObjectScanCursorCanBeClosedAfterInterruptedScan(t *testing.T) {
+	vega := &vegaSessionPoolStub{limit: 1}
+	service := resourcePagingService(t, vega, 2)
+	ctx := resourcePagingContext()
+	result, err := service.GetObjectsByObjectTypeIDForScan(ctx, resourcePagingQuery(1))
+	if err != nil || result.ResourceCursor == "" || vega.sessions != 1 {
+		t.Fatalf("initial source cursor = %#v, sessions = %d, error = %v", result, vega.sessions, err)
+	}
+	err = service.CloseObjectScanCursor(ctx, "kn-1", "main", "customer", result.ResourceCursor)
+	if err != nil || vega.sessions != 0 || vega.closedCursor != result.ResourceCursor {
+		t.Fatalf("cursor cleanup = %v, sessions = %d, cursor = %q", err, vega.sessions, vega.closedCursor)
+	}
 }
 
 func resourcePagingService(t *testing.T, vba interfaces.VegaBackendAccess, getCalls int) *objectTypeService {
@@ -303,6 +327,146 @@ func TestObjectAggregateRejectsMaskedMeasureBeforeVega(t *testing.T) {
 	}
 }
 
+func TestObjectCountRowsUsesAuthorizedSourceCount(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{{"__value": int64(100001)}}, QuerySource: "source",
+		Paging: &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	query := resourcePagingQuery(10000)
+	query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationEq,
+		Value: "customer-1"}
+	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "", "count_rows", nil)
+	if err != nil || len(result.Datas) != 1 || result.Datas[0]["__value"] != int64(100001) ||
+		result.QuerySource != "source" {
+		t.Fatalf("authorized row count = %#v, error %v", result, err)
+	}
+	params := vega.lastParams
+	if params == nil || params.FilterCondition == nil || params.Paging.Mode != interfaces.ResourceDataPagingModeSingle ||
+		params.Aggregation["property"] != "*" || params.Aggregation["aggr"] != "count" ||
+		params.IgnoreLocalIndex == nil || !*params.IgnoreLocalIndex || len(params.GroupBy) != 0 ||
+		len(params.OutputFields) != 1 || params.OutputFields[0] != "__value" {
+		t.Fatalf("count request = %#v", params)
+	}
+}
+
+func TestObjectMetricSourceReadsTreatDeniedRowsAsCompleteEmptyResult(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		read         func(*objectTypeService, *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error)
+		wantCountRow bool
+	}{
+		{name: "row count", read: func(service *objectTypeService, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+			return service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "", "count_rows", nil)
+		}, wantCountRow: true},
+		{name: "property count", read: func(service *objectTypeService, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+			return service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "id", "count_present", nil)
+		}},
+		{name: "continuous scan", read: func(service *objectTypeService, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+			return service.GetObjectsByObjectTypeIDForScan(resourcePagingContext(), query)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
+			service := resourcePagingService(t, vega, 1)
+			service.rowFilters = predicateRowFilterStub{predicate: interfaces.RowFilterPredicate{Kind: "false"}}
+			query := resourcePagingQuery(10000)
+			query.IgnoreLocalIndex = true
+			result, err := tc.read(service, query)
+			wantRows := 0
+			if tc.wantCountRow {
+				wantRows = 1
+			}
+			if err != nil || result.QuerySource != "source" || !result.RowFilterApplied ||
+				result.Cursor != "" || len(vega.paramsHistory) != 0 || len(result.Datas) != wantRows {
+				t.Fatalf("authorized empty result = %#v, Vega reads = %d, error = %v", result, len(vega.paramsHistory), err)
+			}
+			if tc.wantCountRow && result.Datas[0]["__value"] != int64(0) {
+				t.Fatalf("empty row count = %#v", result.Datas)
+			}
+		})
+	}
+}
+
+func TestObjectCountRowsRejectsIncompletePrimaryProjection(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
+	service := resourcePagingService(t, vega, 1)
+	service.propertyAccess = propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+		"id": interfaces.PropertyAccessMasked,
+	}}
+	_, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(100), "", "count_rows", nil)
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || len(vega.paramsHistory) != 0 {
+		t.Fatalf("incomplete primary projection error = %v, Vega requests = %d", err, len(vega.paramsHistory))
+	}
+}
+
+func TestObjectCountPropertyKeepsEmptySetDistinctFromNullValues(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{{"__value": int64(0)}}, QuerySource: "source",
+		Paging: &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1),
+		"id", "count_present", nil)
+	if err != nil || len(result.Datas) != 1 || result.Datas[0]["__value"] != int64(0) {
+		t.Fatalf("property count = %#v, error %v", result, err)
+	}
+	params := vega.lastParams
+	if params == nil || params.Aggregation["property"] != "customer_id" ||
+		params.Aggregation["aggr"] != "count" || params.Having["field"] != "count(*)" ||
+		params.Having["operation"] != ">" || params.Having["value"] != 0 {
+		t.Fatalf("property count request = %#v", params)
+	}
+}
+
+func TestObjectCountPropertyRequiresFullPrimaryProjection(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
+	service := resourcePagingService(t, vega, 1)
+	service.propertyAccess = propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+		"id": interfaces.PropertyAccessMasked,
+	}}
+	_, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), "id", "count_present", nil)
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || len(vega.paramsHistory) != 0 {
+		t.Fatalf("incomplete primary projection error = %v, Vega requests = %d", err, len(vega.paramsHistory))
+	}
+}
+
+func TestObjectExactNumericAggregateRetainsAuthorizationAndSourceType(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{{"__value": "100001.25"}}, QuerySource: "source",
+		AggregateInputType: "decimal", Paging: &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	query := resourcePagingQuery(1)
+	query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationEq,
+		Value: "customer-1"}
+	result, inputType, err := service.AggregateExactNumericByObjectTypeID(resourcePagingContext(), query, "id", "sum")
+	if err != nil || inputType != "decimal" || len(result.Datas) != 1 || result.Datas[0]["__value"] != "100001.25" {
+		t.Fatalf("exact numeric aggregate = %#v, input type = %q, error %v", result, inputType, err)
+	}
+	params := vega.lastParams
+	if params == nil || params.FilterCondition == nil || params.IgnoreLocalIndex == nil || !*params.IgnoreLocalIndex ||
+		params.Aggregation["property"] != "customer_id" || params.Aggregation["aggr"] != "sum" ||
+		params.Having["field"] != "count(*)" || params.Having["operation"] != ">" {
+		t.Fatalf("exact numeric request = %#v", params)
+	}
+}
+
+func TestObjectExactNumericAggregateRequiresFullPrimaryProjection(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
+	service := resourcePagingService(t, vega, 1)
+	service.propertyAccess = propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+		"id": interfaces.PropertyAccessMasked,
+	}}
+	_, _, err := service.AggregateExactNumericByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), "id", "sum")
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || len(vega.paramsHistory) != 0 {
+		t.Fatalf("incomplete primary projection error = %v, Vega requests = %d", err, len(vega.paramsHistory))
+	}
+}
+
 func TestResourceContinuationBeyondIndexWindowEndsWhenDataShrank(t *testing.T) {
 	const limit = 6000
 	fullPage := make([]map[string]any, limit)
@@ -352,6 +516,14 @@ func TestUnstableResourceSortNeverReturnsContinuation(t *testing.T) {
 	}
 	if vega.lastParams.Paging.Mode != interfaces.ResourceDataPagingModeSingle || result.ResourceNextOffset != 0 {
 		t.Fatalf("paging = %#v, next offset = %d", vega.lastParams.Paging, result.ResourceNextOffset)
+	}
+	vega.paramsHistory = nil
+	query.RequireCompleteScan = true
+	err = service.getObjectsFromResource(context.Background(), query, objectType, &result,
+		plan.fieldPropertyMap(), plan, true, nil)
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusUnprocessableEntity || len(vega.paramsHistory) != 0 {
+		t.Fatalf("complete scan accepted an unstable primary key: error=%v, requests=%d", err, len(vega.paramsHistory))
 	}
 }
 

@@ -47,6 +47,9 @@ type ObjectQueryBaseOnObjectType struct {
 	// returned to API clients.
 	EffectiveRowFilterDigest string `json:"-"`
 	RowFilterNoResults       bool   `json:"-"`
+	// RequireCompleteScan rejects a resource whose identity cannot support
+	// stable pagination. It is set only by internal complete-result consumers.
+	RequireCompleteScan bool `json:"-"`
 	CommonQueryParameters
 
 	// Compatibility fields for validating identities and property sets in property queries.
@@ -70,6 +73,7 @@ type Objects struct {
 	Cursor               string                         `json:"cursor,omitempty"`
 	OverallMs            int64                          `json:"overall_ms"`
 	QuerySource          string                         `json:"query_source,omitempty"` // Actual Vega query channel: source or local_index.
+	AggregateInputType   string                         `json:"-"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 	// RowFilterApplied reports that the caller's effective row filter narrowed
 	// this query. It never exposes the predicate itself, so callers can explain

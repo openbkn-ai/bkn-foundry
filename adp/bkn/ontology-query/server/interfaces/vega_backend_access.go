@@ -12,11 +12,12 @@ import (
 
 // DatasetQueryResponse matches bkn-backend / vega resource data response shape.
 type DatasetQueryResponse struct {
-	QuerySource string                      `json:"query_source"`
-	Entries     []map[string]any            `json:"entries"`
-	TotalCount  int64                       `json:"total_count"`
-	SearchAfter []any                       `json:"search_after"`
-	Paging      *ResourceDataPagingResponse `json:"paging"`
+	QuerySource        string                      `json:"query_source"`
+	AggregateInputType string                      `json:"aggregate_input_type,omitempty"`
+	Entries            []map[string]any            `json:"entries"`
+	TotalCount         int64                       `json:"total_count"`
+	SearchAfter        []any                       `json:"search_after"`
+	Paging             *ResourceDataPagingResponse `json:"paging"`
 }
 
 // ResourceDataPagingResponse is the cursor envelope returned by Vega resource data queries.

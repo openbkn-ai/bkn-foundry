@@ -56,6 +56,7 @@ type objectAggregateSpec struct {
 	measureProperty string
 	operation       string
 	groupBy         []string
+	exactNumeric    bool
 }
 
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
@@ -253,19 +254,82 @@ func (ots *objectTypeService) ScanObjectsByObjectTypeID(ctx context.Context,
 	return result, nil
 }
 
+type resourceDataCursorCloser interface {
+	CloseResourceDataCursor(context.Context, string, string) error
+}
+
+// CloseObjectScanCursor releases a trusted proxy resource cursor after an
+// interrupted metric scan. The raw cursor never crosses a public API.
+func (ots *objectTypeService) CloseObjectScanCursor(ctx context.Context,
+	knID, branch, objectTypeID, resourceCursor string) error {
+	if branch != interfaces.MAIN_BRANCH || resourceCursor == "" {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter)
+	}
+	objectType, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, objectTypeID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+			oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+	}
+	if objectType.DataSource == nil || objectType.DataSource.ID == "" {
+		return logics.MissingObjectTypeDataSourceError(ctx, objectType.OTID)
+	}
+	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
+	}
+	if ots.proxy == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed)
+	}
+	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+		KNID: knID, ChildType: interfaces.PermissionResourceTypeObjectType,
+		ChildID: objectType.OTID, TargetType: interfaces.ProxyTargetTypeResource,
+		TargetID: objectType.DataSource.ID, Operation: interfaces.PermissionOperationQueryData,
+	})
+	if err != nil {
+		return err
+	}
+	closer, ok := ots.vba.(resourceDataCursorCloser)
+	if !ok {
+		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed)
+	}
+	return closer.CloseResourceDataCursor(interfaces.WithTrustedProxyContext(ctx, proxyContext),
+		objectType.DataSource.ID, resourceCursor)
+}
+
 // AggregateObjectsByObjectTypeID uses the same proxy, property and row-filter
 // decisions as object reads. It is intentionally an internal opt-in operation;
 // public callers cannot construct its aggregate specification.
 func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType, measureProperty, operation string,
 	groupBy []string) (interfaces.Objects, error) {
-	if query == nil || measureProperty == "" || operation != "count" || len(groupBy) > 1 {
+	countRows := operation == "count_rows" && measureProperty == "" && len(groupBy) == 0
+	countPresent := operation == "count_present" && measureProperty != "" && len(groupBy) == 0
+	if query == nil || !countRows && !countPresent && (measureProperty == "" || operation != "count" || len(groupBy) > 1) {
 		return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported object aggregate")
 	}
 	queryCopy := *query
-	queryCopy.Properties = append([]string{measureProperty}, groupBy...)
-	queryCopy.RequiredFullProperties = append([]string(nil), queryCopy.Properties...)
+	if !countRows {
+		queryCopy.Properties = append([]string{measureProperty}, groupBy...)
+		queryCopy.RequiredFullProperties = append([]string(nil), queryCopy.Properties...)
+		if countPresent {
+			queryCopy.IgnoreLocalIndex = true
+			queryCopy.ObjectQueryInfo = nil
+			queryCopy.ExcludeSystemProperties = nil
+		}
+	} else {
+		// COUNT(*) is valid only when the authorized object projection emits
+		// exactly one object for every physical row. The service selects and
+		// checks the full primary-key projection after loading the schema.
+		queryCopy.IgnoreLocalIndex = true
+		queryCopy.ObjectQueryInfo = nil
+		queryCopy.ExcludeSystemProperties = nil
+	}
 	queryCopy.Cursor = ""
 	queryCopy.ResourceCursor = ""
 	queryCopy.ResourceOffset = 0
@@ -274,6 +338,33 @@ func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context
 	return ots.getObjectsByObjectTypeID(ctx, &queryCopy, false, &objectAggregateSpec{
 		measureProperty: measureProperty, operation: operation, groupBy: append([]string(nil), groupBy...),
 	})
+}
+
+// AggregateExactNumericByObjectTypeID keeps the object authorization boundary
+// and asks Vega for the physical input type observed by its source query.
+// Callers must verify that proof before accepting a numeric aggregate value.
+func (ots *objectTypeService) AggregateExactNumericByObjectTypeID(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, measureProperty, operation string) (interfaces.Objects, string, error) {
+	if query == nil || measureProperty == "" ||
+		(operation != "sum" && operation != "min" && operation != "max" && operation != "count_distinct") {
+		return interfaces.Objects{}, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported exact numeric aggregate")
+	}
+	queryCopy := *query
+	queryCopy.Properties = []string{measureProperty}
+	queryCopy.RequiredFullProperties = []string{measureProperty}
+	queryCopy.IgnoreLocalIndex = true
+	queryCopy.ObjectQueryInfo = nil
+	queryCopy.ExcludeSystemProperties = nil
+	queryCopy.Cursor = ""
+	queryCopy.ResourceCursor = ""
+	queryCopy.ResourceOffset = 0
+	queryCopy.Offset = 0
+	queryCopy.Sort = nil
+	result, err := ots.getObjectsByObjectTypeID(ctx, &queryCopy, false, &objectAggregateSpec{
+		measureProperty: measureProperty, operation: operation, exactNumeric: true,
+	})
+	return result, result.AggregateInputType, err
 }
 
 func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
@@ -309,6 +400,25 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		return resps, httpErr
 	}
 	objectType.KNID = query.KNID
+	if aggregate != nil && (aggregate.operation == "count_rows" || aggregate.operation == "count_present" || aggregate.exactNumeric) {
+		if len(objectType.PrimaryKeys) == 0 {
+			return resps, unavailableOperationPropertyError(ctx)
+		}
+		mapped := make(map[string]bool, len(objectType.DataProperties))
+		for _, property := range objectType.DataProperties {
+			mapped[property.Name] = property.MappedField.Name != ""
+		}
+		for _, key := range objectType.PrimaryKeys {
+			if !mapped[key] {
+				return resps, unavailableOperationPropertyError(ctx)
+			}
+		}
+		query.Properties = append([]string(nil), objectType.PrimaryKeys...)
+		if aggregate.exactNumeric || aggregate.operation == "count_present" {
+			query.Properties = append(query.Properties, aggregate.measureProperty)
+		}
+		query.RequiredFullProperties = append([]string(nil), query.Properties...)
+	}
 	if query.ObjectQueryInfo != nil {
 		for _, instanceIdentity := range query.ObjectQueryInfo.InstanceIdentity {
 			for _, key := range objectType.PrimaryKeys {
@@ -423,6 +533,13 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan, continuousScan, aggregate)
 		if err != nil {
 			return resps, err
+		}
+	} else if query.IgnoreLocalIndex {
+		// The authorized row predicate is FALSE. This is a complete empty
+		// source result without a physical read, not an unknown query source.
+		resps.QuerySource = "source"
+		if aggregate != nil && aggregate.operation == "count_rows" {
+			resps.Datas = []map[string]any{{"__value": int64(0)}}
 		}
 	}
 
@@ -634,6 +751,11 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	if query.ResourceCursor == "" && aggregate == nil {
 		resourceSort, stable = appendResourceSortTieBreakers(resourceSort, objectType)
 	}
+	if continuousScan && query.RequireCompleteScan && !stable {
+		return httperrors.NewHTTPError(ctx, http.StatusUnprocessableEntity,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			WithErrorDetails("complete object scan requires fully mapped primary keys for stable pagination")
+	}
 
 	viewQuery := interfaces.ViewQuery{
 		NeedTotal:         query.NeedTotal,
@@ -682,13 +804,24 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	if aggregate == nil {
 		resp, nextOffset, err = ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable, continuousScan)
 	} else {
-		measure, exists := plan.properties[aggregate.measureProperty]
-		if !exists || measure.MappedField.Name == "" {
-			return unavailableOperationPropertyError(ctx)
+		measureField := "*"
+		if aggregate.operation != "count_rows" {
+			measure, exists := plan.properties[aggregate.measureProperty]
+			if !exists || measure.MappedField.Name == "" {
+				return unavailableOperationPropertyError(ctx)
+			}
+			measureField = measure.MappedField.Name
 		}
 		params.Sort = nil
-		params.Aggregation = map[string]any{"property": measure.MappedField.Name,
-			"aggr": aggregate.operation, "alias": "__value"}
+		operation := aggregate.operation
+		if operation == "count_rows" || operation == "count_present" {
+			operation = "count"
+		}
+		params.Aggregation = map[string]any{"property": measureField,
+			"aggr": operation, "alias": "__value"}
+		if aggregate.operation == "count_present" || aggregate.exactNumeric {
+			params.Having = map[string]any{"field": "count(*)", "operation": ">", "value": 0}
+		}
 		params.OutputFields = []string{"__value"}
 		for _, name := range aggregate.groupBy {
 			property, found := plan.properties[name]
@@ -728,6 +861,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			resps.Datas = append(resps.Datas, row)
 		}
 		resps.QuerySource = resp.QuerySource
+		resps.AggregateInputType = resp.AggregateInputType
 		resps.TotalCount = resp.TotalCount
 		return nil
 	}

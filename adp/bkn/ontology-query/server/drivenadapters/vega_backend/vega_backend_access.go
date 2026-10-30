@@ -144,6 +144,25 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	return &response, nil
 }
 
+// CloseResourceDataCursor releases a Vega cursor through the same trusted
+// resource binding used for the data query that created it.
+func (v *vegaBackendAccess) CloseResourceDataCursor(ctx context.Context, resourceID, cursor string) error {
+	httpURL := fmt.Sprintf("%s/proxy/resources/%s/cursors/%s", v.baseURL,
+		url.PathEscape(resourceID), url.PathEscape(cursor))
+	headers, err := v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationQueryData)
+	if err != nil {
+		return err
+	}
+	status, _, err := v.httpClient.DeleteNoUnmarshal(ctx, httpURL, headers)
+	if err != nil {
+		return fmt.Errorf("CloseResourceDataCursor http request failed: %w", err)
+	}
+	if status != http.StatusNoContent {
+		return interfaces.NewVegaDownstreamError(status, "")
+	}
+	return nil
+}
+
 // normalizeResourceDataQueryParams applies the default paging mode without
 // changing the caller-owned request.
 func normalizeResourceDataQueryParams(params *interfaces.ResourceDataQueryParams) *interfaces.ResourceDataQueryParams {
