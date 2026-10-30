@@ -66,7 +66,7 @@ func TestResourceQueryPreservesScoreMetadata(t *testing.T) {
 			}
 			vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{Entries: []map[string]any{row}}}
 			var result interfaces.Objects
-			if err := (&objectTypeService{vba: vega}).getObjectsFromResource(context.Background(), query, objectType, &result, plan.fieldPropertyMap(), plan, false, nil); err != nil {
+			if err := (&objectTypeService{vba: vega}).getObjectsFromResource(context.Background(), query, objectType, &result, plan.fieldPropertyMap(), plan, false, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if len(result.Datas) != 1 {
