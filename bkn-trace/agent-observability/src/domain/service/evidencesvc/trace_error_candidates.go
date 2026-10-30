@@ -17,7 +17,7 @@ import (
 
 func (s *Service) traceErrorCandidateFilter(o evidencevo.SummaryQueryOptions) iprojectionsource.TraceSummaryCandidateFilter {
 	keyword := strings.ToLower(strings.TrimSpace(o.ErrorKeyword))
-	if keyword == "" || s.sessionStore == nil || o.Scope.AccessProfile != nil && evidencevo.NeedsCrossAccountCandidates(o.Scope) && !evidencevo.HasGlobalTraceAccess(*o.Scope.AccessProfile) {
+	if keyword == "" || s.sessionStore == nil || o.Scope.AccessProfile == nil || !evidencevo.HasGlobalTraceAccess(*o.Scope.AccessProfile) {
 		return nil
 	}
 	return func(ctx context.Context, candidates []iprojectionsource.TraceSummaryCandidate) ([]string, error) {

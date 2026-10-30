@@ -40,7 +40,7 @@ func (s *Source) ScanTraceSummaryProjection(ctx context.Context, query iprojecti
 	if p := query.Scope.AccessProfile; p != nil && !evidencevo.HasGlobalTraceAccess(*p) && !evidencevo.NeedsCrossAccountCandidates(query.Scope) && p.EffectiveSubjectID == "" && p.ApplicationPrincipalID == "" {
 		return nil
 	}
-	if query.Scope.AccessProfile != nil && evidencevo.NeedsCrossAccountCandidates(query.Scope) && !evidencevo.HasGlobalTraceAccess(*query.Scope.AccessProfile) {
+	if query.Scope.AccessProfile == nil || !evidencevo.HasGlobalTraceAccess(*query.Scope.AccessProfile) {
 		query.FilterTraceCandidates = nil
 	}
 	pit, err := s.client.OpenPointInTime(ctx, s.index)
@@ -107,9 +107,9 @@ func (s *Source) ScanTraceSummaryProjection(ctx context.Context, query iprojecti
 	}
 	expandSibling := enqueue
 	if query.FilterTraceCandidates != nil {
-		// Owner/global discovery covers every candidate in the PIT already.
+		// Global discovery covers every candidate in the PIT already.
 		// A sibling must pass its own metadata filter, not bypass it through an
-		// otherwise matching Interaction. Shared-network discovery never filters.
+		// otherwise matching Interaction. Owner/shared discovery never filters.
 		expandSibling = func(string) error { return nil }
 	}
 	for offset := 0; offset < len(pending); {

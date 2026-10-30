@@ -210,7 +210,7 @@ redesign. List/detail query paths are unchanged.
 
 ## Error-keyword query cost and storage failures (#2675)
 
-Trace `error_keyword` searches in owner/global scopes screen lightweight receipt
+Trace `error_keyword` searches in global scopes screen lightweight receipt
 identities against the existing first-failure metadata before loading complete
 Trace receipts, related Interactions and artifacts. Screening reuses the same
 recorded error-summary formatter as final matching: ordinary errors keep the
@@ -221,8 +221,8 @@ still apply. No index field, schema migration or historical backfill is needed.
 
 Candidate screening never authorizes a result. Complete receipt/Interaction
 authorization and final summary matching still run for every possible match.
-Shared-network scopes retain complete candidate discovery and Interaction
-expansion, because an authorized sibling may not appear in the initial receipt
+Owner and shared-network scopes retain complete candidate discovery and Interaction
+expansion, because an authorized sibling, including a mixed-owner historical receipt, may not appear in the initial receipt
 scope. Older stores without narrow first-failure metadata also retain the
 complete scanner. These paths retain their existing read cost.
 
@@ -247,7 +247,7 @@ their original spelling for the existing service filter. `has_more` means more
 names match than fit in this selection; refine `q` to find them. This is not a
 paginated global service inventory and does not provide approximate Trace counts.
 
-Simple owner/global queries use the same hot SQL receipt membership as ordinary
+Simple global queries use the same hot SQL receipt membership as ordinary
 Trace lists. Status/error, shared-scope and exact-Trace queries reuse the bounded
 authorized receipt scanner. Root-service SQL metadata and service filtering now
 select source facts through authorized receipt tuples, so an earlier foreign

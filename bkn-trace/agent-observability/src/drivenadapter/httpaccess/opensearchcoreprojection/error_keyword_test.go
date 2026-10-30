@@ -40,9 +40,6 @@ func TestErrorKeywordScreensBeforeReceiptAndArtifactExpansion(t *testing.T) {
 			// A nonmatching sibling still participates in authorization, but
 			// must not be enqueued for its own Trace expansion after filtering.
 			f.seeds[2099].InteractionID, f.receipts[2099].InteractionID = last.InteractionID, last.InteractionID
-			foreign := scanReceipt("foreign", last.TraceID, "private", "other-owner", "private-tool", last.IssuedAt)
-			foreign.ConversationID = "private"
-			f.seeds, f.receipts = append(f.seeds, foreign), append(f.receipts, foreign)
 			sessions := sessionstore.New()
 			err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 				tx.SaveOperationCallFact(sessionvo.OperationCallFact{TraceID: last.TraceID, ConversationID: last.ConversationID, InteractionID: last.InteractionID, OperationID: "failed", Attempt: 1, Status: sessionvo.AttemptFailed, StartedAt: time.Unix(1, 0), Error: &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadInline, Inline: json.RawMessage(`"Unicode needle 错误"`)}})
@@ -56,7 +53,8 @@ func TestErrorKeywordScreensBeforeReceiptAndArtifactExpansion(t *testing.T) {
 			artifacts := &scanArtifactSource{}
 			source.artifacts = artifacts
 			svc := evidencesvc.New(evidencestore.New(), evidencesvc.WithProjectionSource(source), evidencesvc.WithSessionStore(sessions))
-			page, err := svc.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}, ErrorKeyword: keyword, Limit: 20})
+			scope := evidencevo.QueryScope{AccountID: "owner", AccountType: "user", AccessProfile: &evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: "owner", Roles: []string{"admin"}}}
+			page, err := svc.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: scope, ErrorKeyword: keyword, Limit: 20})
 			want, expansions := 0, 0
 			if keyword == "NEEDLE 错误" {
 				want, expansions = 1, 2 // selected Trace receipts + its complete Interaction
@@ -108,7 +106,7 @@ func TestErrorCandidateFilterFailureClosesSnapshotWithoutVisiting(t *testing.T) 
 	source := scanSource(t, f)
 	failure := errors.New("failure metadata unavailable")
 	visited := false
-	err := source.ScanTraceSummaryProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}, FilterTraceCandidates: func(context.Context, []iprojectionsource.TraceSummaryCandidate) ([]string, error) {
+	err := source.ScanTraceSummaryProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccessProfile: &evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}}}, FilterTraceCandidates: func(context.Context, []iprojectionsource.TraceSummaryCandidate) ([]string, error) {
 		return nil, failure
 	}}, func(iprojectionsource.Result) error { visited = true; return nil })
 	if !errors.Is(err, failure) || visited || f.closed != 1 || f.receiptQueries != 0 {
@@ -137,7 +135,7 @@ func TestErrorKeywordScreeningKeepsExactTotalAndCursorTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := evidencesvc.New(evidencestore.New(), evidencesvc.WithProjectionSource(scanSource(t, f)), evidencesvc.WithSessionStore(store))
-	opts := evidencevo.SummaryQueryOptions{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}, ErrorKeyword: "NEEDLE", Limit: 1}
+	opts := evidencevo.SummaryQueryOptions{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user", AccessProfile: &evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: "owner", Roles: []string{"admin"}}}, ErrorKeyword: "NEEDLE", Limit: 1}
 	seen := map[string]bool{}
 	for pageNumber := 0; ; pageNumber++ {
 		page, err := svc.ListTraceExecutions(context.Background(), opts)
@@ -152,5 +150,36 @@ func TestErrorKeywordScreeningKeepsExactTotalAndCursorTraversal(t *testing.T) {
 	}
 	if len(seen) != 3 || seen["t1"] || !seen["t0"] || !seen["t3"] {
 		t.Fatalf("matching boundary or exclusion lost: %v", seen)
+	}
+}
+
+func TestErrorKeywordOwnerScanPreservesMixedOwnerInteractionSibling(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprint("legacy-", legacy), func(t *testing.T) {
+			own := scanReceipt("own", "own", "i", "owner", "own-tool", "2026-10-29T00:00:01Z")
+			own.ConversationID, own.Status = "conv", "completed"
+			sibling := scanReceipt("sibling", "sibling", "i", "other", "sibling-tool", "2026-10-29T00:00:00Z")
+			sibling.ConversationID, sibling.Status = "conv", "error"
+			// The existing whole-Interaction rule uses the first receipt's owner.
+			// Preserve this historical input's behavior without assuming all
+			// sibling TraceIDs appear in the owner-scoped seed query.
+			f := &scanFixture{seeds: []receiptDocument{own}, receipts: []receiptDocument{own, sibling}}
+			store := sessionstore.New()
+			if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+				tx.SaveOperationCallFact(sessionvo.OperationCallFact{TraceID: sibling.TraceID, ConversationID: "conv", InteractionID: "i", OperationID: "failure", Attempt: 1, Status: sessionvo.AttemptFailed, StartedAt: time.Unix(1, 0), Error: &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadInline, Inline: json.RawMessage(`"sibling needle"`)}})
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			scope := evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}
+			if !legacy {
+				scope.AccessProfile = &evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: "owner", Roles: []string{"normal_user"}}
+			}
+			svc := evidencesvc.New(evidencestore.New(), evidencesvc.WithProjectionSource(scanSource(t, f)), evidencesvc.WithSessionStore(store))
+			page, err := svc.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: scope, ErrorKeyword: "NEEDLE", Limit: 20})
+			if err != nil || page.Total != 1 || len(page.Entries) != 1 || page.Entries[0].TraceID != sibling.TraceID || page.Partial || page.Truncated {
+				t.Fatalf("mixed-owner sibling disappeared: page=%+v err=%v", page, err)
+			}
+		})
 	}
 }

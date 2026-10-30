@@ -56,7 +56,9 @@ func TestErrorCandidateFilterPreservesFirstFailureAndUnicodeSummary(t *testing.T
 				t.Fatal(err)
 			}
 			svc := New(evidencestore.New(), WithSessionStore(store))
-			filter := svc.traceErrorCandidateFilter(evidencevo.SummaryQueryOptions{Scope: summaryScope("owner"), ErrorKeyword: tc.keyword})
+			scope := summaryScope("owner")
+			scope.AccessProfile = &evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: "owner", Roles: []string{"admin"}}
+			filter := svc.traceErrorCandidateFilter(evidencevo.SummaryQueryOptions{Scope: scope, ErrorKeyword: tc.keyword})
 			got, err := filter(context.Background(), []iprojectionsource.TraceSummaryCandidate{{TraceID: "t", ConversationID: "c", InteractionID: "i"}, {TraceID: "t", ConversationID: "c", InteractionID: "i"}, {TraceID: "other", ConversationID: "c", InteractionID: "i"}})
 			if err != nil || tc.want && (len(got) != 1 || got[0] != "t") || !tc.want && len(got) != 0 {
 				t.Fatalf("candidate membership=%v want_match=%v err=%v", got, tc.want, err)
@@ -68,13 +70,18 @@ func TestErrorCandidateFilterPreservesFirstFailureAndUnicodeSummary(t *testing.T
 func TestErrorCandidateFilterLegacyAndSharedScopesKeepCompleteScanner(t *testing.T) {
 	store := sessionstore.New()
 	svc := New(evidencestore.New(), WithSessionStore(authorizationLegacyStore{store}))
-	filter := svc.traceErrorCandidateFilter(evidencevo.SummaryQueryOptions{Scope: summaryScope("owner"), ErrorKeyword: "absent"})
+	scope := summaryScope("owner")
+	scope.AccessProfile = &evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: "owner", Roles: []string{"admin"}}
+	filter := svc.traceErrorCandidateFilter(evidencevo.SummaryQueryOptions{Scope: scope, ErrorKeyword: "absent"})
 	candidates := []iprojectionsource.TraceSummaryCandidate{{TraceID: "a"}, {TraceID: "b"}, {TraceID: "a"}}
 	got, err := filter(context.Background(), candidates)
 	if err != nil || !reflect.DeepEqual(got, []string{"a", "b"}) {
 		t.Fatalf("legacy store pruned without failure metadata: %v %v", got, err)
 	}
 	opts := evidencevo.SummaryQueryOptions{Scope: summaryScope("owner"), ErrorKeyword: "needle"}
+	if svc.traceErrorCandidateFilter(opts) != nil {
+		t.Fatal("owner scopes must preserve mixed-owner Interaction siblings")
+	}
 	opts.Scope.AccessProfile = &evidencevo.AccessProfile{AccountActive: true, EffectiveSubjectID: "owner", Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"managed"}}
 	if svc.traceErrorCandidateFilter(opts) != nil || New(evidencestore.New()).traceErrorCandidateFilter(opts) != nil {
 		t.Fatal("shared/no-store scope must preserve the complete scanner")
