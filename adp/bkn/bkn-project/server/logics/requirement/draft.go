@@ -363,6 +363,17 @@ func orEmpty(s []string) []string {
 	return s
 }
 
+// named keeps the names that are not blank, trimmed.
+func named(names []string) []string {
+	kept := []string{}
+	for _, n := range names {
+		if n = strings.TrimSpace(n); n != "" {
+			kept = append(kept, n)
+		}
+	}
+	return kept
+}
+
 // buildSpec checks what the Agent proposed and builds the specification from what passes, with
 // the server's ids; everything dropped is listed in rejected. It also returns the document types
 // the Agent suggests, for known documents and types only.
@@ -443,15 +454,17 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		}
 		// A question that rests on a metric, function or skill needs more than the ontology and its
 		// facts, whatever layer the Agent gave it: it is not asked in the knowledge regression.
+		// Blank names are none: an Agent's placeholder neither moves the question nor stays in its basis.
+		metrics, functions, skills := named(q.Metrics), named(q.Functions), named(q.Skills)
 		layer := interfaces.REQUIREMENT_LAYER_CAPABILITY
-		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE && len(q.Metrics)+len(q.Functions)+len(q.Skills) == 0 {
+		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE && len(metrics)+len(functions)+len(skills) == 0 {
 			layer = interfaces.REQUIREMENT_LAYER_KNOWLEDGE
 		}
 		question := &interfaces.RequirementQuestion{
 			ID: fmt.Sprintf("q%d", len(spec.Questions)+1), Text: q.Text, ScenarioIDs: []string{},
 			Type: q.Type, Layer: layer, Template: q.Template, AnswerShape: q.AnswerShape,
-			Basis: interfaces.RequirementBasis{ConceptIDs: []string{}, Metrics: orEmpty(q.Metrics),
-				Functions: orEmpty(q.Functions), Skills: orEmpty(q.Skills)},
+			Basis: interfaces.RequirementBasis{ConceptIDs: []string{}, Metrics: metrics,
+				Functions: functions, Skills: skills},
 			Needs: []interfaces.RequirementItemRef{}, NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
 			Citations: citations, SupplementReason: q.SupplementReason,
 		}

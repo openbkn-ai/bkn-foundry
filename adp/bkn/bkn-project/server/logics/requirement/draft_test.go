@@ -187,6 +187,8 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "d", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"amount over threshold"}},
 				{Text: "e", Layer: "knowledge", SupplementReason: "r", Functions: []string{"approval check"}},
 				{Text: "f", Layer: "knowledge", SupplementReason: "r", Skills: []string{"approver lookup"}},
+				// Blank names are none: still knowledge, and not kept.
+				{Text: "g", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"", " "}, Functions: []string{" "}},
 			}}
 
 			spec, _ := buildSpec(out, docs, draft)
@@ -194,9 +196,12 @@ func Test_BuildSpec(t *testing.T) {
 			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
 			So(spec.Questions[1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
 			So(spec.Questions[2].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
-			for _, q := range spec.Questions[3:] {
+			for _, q := range spec.Questions[3:6] {
 				So(q.Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
 			}
+			So(spec.Questions[6].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
+			So(spec.Questions[6].Basis.Metrics, ShouldResemble, []string{})
+			So(spec.Questions[3].Basis.Metrics, ShouldResemble, []string{"amount over threshold"})
 		})
 
 		Convey("A conflict keeps the sides found, needs two documents, and gets the authority's suggestion\n", func() {
