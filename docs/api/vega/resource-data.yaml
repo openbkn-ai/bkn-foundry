@@ -614,6 +614,12 @@ components:
           description: 本次查询实际使用的数据路径。`local_index` 表示 table 的本地索引；`source` 表示未使用该本地索引。
           type: string
           enum: [local_index, source]
+        aggregate_input_type:
+          description: |
+            仅在 table 源库执行整数或 DECIMAL 字段聚合时返回，用于说明本次聚合输入字段的资源类型。
+            不返回完整资源 schema；字段缺失、非数值类型或非源库路径时省略。
+          type: string
+          enum: [integer, decimal]
         entries:
           description: |
             文档条目。table、index 等外部数据源已声明的 `json` 字段以普通字符串返回，

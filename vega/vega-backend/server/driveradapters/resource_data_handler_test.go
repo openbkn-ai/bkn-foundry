@@ -29,6 +29,22 @@ import (
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
 
+func TestSourceAggregateInputTypeOnlyReportsNumericSourceFields(t *testing.T) {
+	resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "amount", Type: interfaces.DataType_Decimal},
+			{Name: "title", Type: interfaces.DataType_String},
+		}}
+	params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"}}
+	assert.Equal(t, interfaces.DataType_Decimal, sourceAggregateInputType(resource, params, interfaces.ResourceQuerySourceSource))
+	assert.Empty(t, sourceAggregateInputType(resource, params, interfaces.ResourceQuerySourceLocalIndex))
+	params.Aggregation.Property = "title"
+	assert.Empty(t, sourceAggregateInputType(resource, params, interfaces.ResourceQuerySourceSource))
+	resource.Category = interfaces.ResourceCategoryDataset
+	params.Aggregation.Property = "amount"
+	assert.Empty(t, sourceAggregateInputType(resource, params, interfaces.ResourceQuerySourceSource))
+}
+
 func setupResourceDataHandlerTest(
 	t *testing.T,
 ) (*gin.Engine, *vmock.MockResourceService, *vmock.MockDatasetService, *vmock.MockResourceDataService) {
@@ -180,6 +196,25 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"entries"`)
 		assert.Contains(t, w.Body.String(), `"query_source":"local_index"`)
 		assert.Contains(t, w.Body.String(), `"total_count":1`)
+	})
+
+	t.Run("reports the physical type of a source numeric aggregate", func(t *testing.T) {
+		engine, rs, _, rds := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.Category = interfaces.ResourceCategoryTable
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal}}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{
+			Entries: []map[string]any{{"__value": "100001.25"}}, QuerySource: interfaces.ResourceQuerySourceSource,
+		}, nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
+			strings.NewReader(`{"aggregation":{"property":"amount","aggr":"sum","alias":"__value"},"output_fields":["__value"],"paging":{"limit":1}}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"aggregate_input_type":"decimal"`)
 	})
 
 	t.Run("rejects negative offset before querying", func(t *testing.T) {
