@@ -134,7 +134,8 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 	}
 	for _, q := range sq.Questions {
 		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE {
-			needs := append([]interfaces.RequirementItemRef{}, q.Needs...)
+			// What it rests on in the draft counts as needed: the release lacking it is missing.
+			needs := append(append([]interfaces.RequirementItemRef{}, q.Needs...), q.Path...)
 			var tests []interfaces.RegressionTest
 			for _, t := range q.Tests {
 				tests = append(tests, interfaces.RegressionTest{ID: t.ID, Text: t.Text, Expect: t.Expect})
