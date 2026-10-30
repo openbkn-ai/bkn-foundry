@@ -18,12 +18,16 @@
 
 > ⚠️ 安装过程需以 `root` 或 `sudo` 执行。
 
-| 项 | 最低 | 推荐 |
+| 项 | 最低（测试、学习使用） | 推荐（生产环境最低配置） |
 | --- | --- | --- |
 | 🖥️ 操作系统 | **Ubuntu Server** **22.04 LTS** 及以上，或 **Rocky Linux / AlmaLinux / CentOS Stream** **8** 及以上，**openEuler** **23** 及以上 | **Ubuntu** **22.04 LTS**，或 RPM 系 **8+** |
-| ⚙️ CPU | 16 核 | 16 核 |
-| 🧠 内存 | 48 GB | 64 GB |
-| 💾 磁盘 | 200 GB | 500 GB |
+| ⚙️ CPU | 4 核 | 16 核及以上 |
+| 🧠 内存 | 8 GB | 32 GB 及以上 |
+| 💾 磁盘 | 50 GB | 500 GB 及以上 |
+
+最低配置尚需完整部署及运行验证，不代表默认安装已验证可用。资源较少时建议显式使用 `sudo bash ./deploy.sh --distro=k3s openbkn install`；默认 kubeadm 路径沿用各服务 Chart 的资源配置。以上要求不调整系统服务 Chart，也不代表生产负载下的容量保证。
+
+预检中的 GB 按十进制计算（1 GB = 1,000,000,000 字节），CPU 按 `nproc` 返回的逻辑核数检查。低于最低要求记为 `[FAIL]`，达到最低但未达到推荐配置记为 `[WARN]`，达到推荐配置记为 `[OK]`。磁盘检查 `/`、`/var` 和容器镜像目录所在文件系统的**剩余空间**，不是磁盘标称总容量；同一文件系统的检查结果不累加。镜像与数据共用磁盘预算，仍需为系统、镜像、数据增长及升级预留空间。
 
 `preflight.sh` 与 `deploy.sh` **同时支持** **Ubuntu / Debian**（apt）与 **Rocky / Alma / CentOS Stream / openEuler**（dnf/yum），详见 `README.zh.md`。
 
@@ -124,7 +128,7 @@ sudo bash ./preflight.sh --help         # 全部参数
 | `--fix-allow=LIST` | 仅自动确认指定修复项（其余跳过），如 `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`（旧名 `k8s-apt-source` 仍可作别名）。可用 `sudo bash ./preflight.sh --list-fixes` 查看本机当前可用的全部修复名 |
 | `--role=target\|admin\|both` | `target` = 仅 `kubectl`/`helm`；`admin` = `openbkn` / Node / npm；`both`（默认）= 全部 |
 | `--no-recheck` | 修复完不再重新跑一遍完整检查 |
-| `--lenient` | 把「会阻塞 install + `--fix` 能搞定」的 `[FAIL]` 项（sysctl / 内核模块 / containerd / kubectl / helm / swap / apt 源损坏 / 缺 kubeadm 或 containerd 安装候选 / ulimit / inotify / vm.max_map_count / overlay）降回 `[WARN]`。等同 `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`。 |
+| `--lenient` | 把严格模式管理的 `[FAIL]` 项（sysctl / 内核模块 / containerd / kubectl / helm / swap / apt 源损坏 / 缺 kubeadm 或 containerd 安装候选 / ulimit / inotify / vm.max_map_count / overlay）降回 `[WARN]`。等同 `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`；不会降级低于最低硬件要求的 `[FAIL]`，也不保证报告中没有 `[FAIL]`。 |
 | `--skip=LIST` | 跳过指定检查项 |
 | `--report=PATH` | 完整日志追加到该文件 |
 | `--output=json` | 以 JSON 输出到 stdout（人类日志到 stderr，需 `python3`） |
@@ -134,14 +138,14 @@ sudo bash ./preflight.sh --help         # 全部参数
 
 | 变量 | 默认 | 作用 |
 | --- | --- | --- |
-| `KUBE_DISTRO` | `k3s` | 与 `deploy.sh` 共用：**`k3s`** 与 **`k8s`**（kubeadm 栈）。历史值 **`kubeadm`** 仍可作为 **`k8s`** 的别名。若不能把 `deploy.sh` 的 `--distro` 写在模块前，可改用本变量。 |
+| `KUBE_DISTRO` | `k8s`（新主机） | 与 `deploy.sh` 共用：**`k3s`** 与 **`k8s`**（kubeadm 栈）。未显式指定时，部署脚本可探测已有集群；无已有集群时默认使用 **`k8s`**。历史值 **`kubeadm`** 仍可作为 **`k8s`** 的别名。若不能把 `deploy.sh` 的 `--distro` 写在模块前，可改用本变量。 |
 | `PREFLIGHT_STRICT` | `true` | 为 `true` 时，`--fix` 能修复的「阻塞 install」项以 `[FAIL]` 报告（让 `--check-only` 退出码为 `1`）；设 `false` 退回 `[WARN]`。 |
 | `PREFLIGHT_STRICT_SOURCES` | `true` | 为 `true` 时，会额外验证 `apt-cache policy kubeadm` / `containerd.io` / `containerd`（以及 `dnf`/`yum` 等价命令）确实有安装候选——光 `apt-get update` 成功不算数。 |
 | `PREFLIGHT_K8S_APT_MINOR` | 自动 | 锁定 `pkgs.k8s.io` minor 版本（如 `v1.28`）。否则从已装的 `kubeadm` 推断，回退 `v1.28`。 |
 
 退出码：**0** 全 OK；**1** 有 FAIL；**2** 仅有 WARN（无 FAIL）。
 
-> 每台新主机在跑 `deploy.sh openbkn install` 前都建议跑一次 preflight；可重复执行——已经满足的项会按 `OK` 报告并跳过。如果你**有意**在低配 lab 机器上跑（内存/磁盘低于推荐、没装 Docker CE 源等），用 `--lenient` 让报告依然能看，但不会因为这些项而阻塞 install。
+> 每台新主机在跑 `deploy.sh openbkn install` 前都建议跑一次 preflight。硬件达到最低但低于推荐配置时会报告 `[WARN]`，无需用 `--lenient` 降级。`--lenient` 仅放宽严格模式管理的检查；低于最低硬件要求仍为 `[FAIL]`，应先补足资源再安装。
 
 ### Preflight 报告：`Summary` 与 `Conclusion`
 
@@ -162,7 +166,7 @@ sudo bash ./preflight.sh --help         # 全部参数
     …
 
 [INFO] Hint: most install-blocking [FAIL] items are auto-fixable — re-run: sudo bash ./preflight.sh --fix
-[INFO]       Need to bypass strict severity … ? sudo bash ./preflight.sh --check-only --lenient
+[INFO]       Relax strict-mode checks only: sudo bash ./preflight.sh --check-only --lenient
 
 ================================================================
   Conclusion
@@ -170,7 +174,7 @@ sudo bash ./preflight.sh --help         # 全部参数
   No BKN Foundry releases detected, but preflight above is NOT all clear — fix that before treating deploy as ready.
   Typical loop:
     sudo bash ./preflight.sh --fix          # …（默认每项 y/N；加 -y 全自动）
-    sudo bash ./preflight.sh --check-only   # 再检查直到关键 [FAIL] 消失（或配合 --lenient）
+    sudo bash ./preflight.sh --check-only   # 补足硬件并修复阻塞项，直到 [FAIL] 消失
   Only then install:
     sudo bash ./deploy.sh openbkn install              # 完整安装
   Finally: sudo bash ./onboard.sh from openbkn-deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + openbkn on PATH；sudo bash ./preflight.sh --fix helps …)
@@ -558,7 +562,7 @@ openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 sudo bash ./preflight.sh --fix -y                         # 全部自动确认修
 sudo bash ./preflight.sh --fix --fix-allow=k8s-pkgs-repo # 只配置 / 迁移 K8s 源（也可用 k8s-apt-source）
 sudo bash ./preflight.sh --fix --fix-allow=containerd-install
-sudo bash ./preflight.sh --check-only --lenient           # 只看 WARN，不 FAIL（lab 机模式）
+sudo bash ./preflight.sh --check-only --lenient           # 仅放宽严格模式检查；硬件不足仍 FAIL
 ```
 
 定位问题时还可以收集：
