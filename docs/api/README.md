@@ -14,7 +14,17 @@ This directory contains the OpenAPI documentation for bkn-foundry services. YAML
 
 ## 🔑 Calling the APIs
 
-Published business APIs require authentication through `Authorization: Bearer <token>`. Obtain a token with one of these methods: **1. CLI login** (`openbkn auth login`, which stores the token in `~/.bkn/` and sends it automatically); **2. AppKey** (`POST /api/safe/v1/me/api-keys` issues a `bak_` key for automation); **3. device authorization flow** (an integrated application directs the user to sign in through `POST /oauth2/device/auth` without registering a client). The authentication section on the generated documentation home page contains complete examples.
+Published business APIs require authentication through `Authorization: Bearer <token>`. The accepted credential depends on the service and operation; OAuth access tokens and AppKeys are not interchangeable across all APIs.
+
+| API surface | Credential to use |
+| --- | --- |
+| BKN management REST APIs under `/api/bkn-backend/v1`, including `GET /knowledge-networks` | OAuth access token; AppKeys are not supported, including for read-only GET requests |
+| Context Loader read-only retrieval and MCP under `/api/agent-retrieval/...` | OAuth access token or a user-issued `bak_` AppKey, subject to resource permissions |
+| Other service APIs | OAuth access token; do not infer AppKey support from its availability in Context Loader |
+
+Obtain an OAuth access token through **CLI login** (`openbkn auth login`, which stores the token in `~/.bkn/` and sends and refreshes it automatically), or the **device authorization flow** (`POST /oauth2/device/auth`) for applications acting on behalf of users. For a management request from curl or another integration, use the token returned by `openbkn auth token`.
+
+For Context Loader retrieval/MCP automation, issue an AppKey through `POST /api/safe/v1/me/api-keys` using an OAuth token, or use `openbkn appkey create`. An AppKey being active in Safe establishes its validity and owner, not acceptance by every service. BKN management APIs can therefore return HTTP 401 / `Public.Unauthorized` for an active AppKey. Use OAuth for those requests rather than changing resource grants. MCP initialization success alone does not establish permission to execute tools. The authentication section on the generated documentation home page contains complete examples. The existing authentication guide limits AppKeys to read-only use; execution-operation support must be confirmed separately before relying on it.
 
 ## 🗂️ Modules
 

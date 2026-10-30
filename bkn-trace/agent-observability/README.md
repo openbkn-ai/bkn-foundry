@@ -63,6 +63,19 @@ EE 实例必须实际包含并装配企业实现，通过运行时企业许可�
 `/business-provenance/evidence-nodes/...` 等 trace/request/node 读取示例不属于当前挂载合同，
 不能将内部 Evidence Store 模型或旧响应 envelope 当成当前可调用的 HTTP 接口。
 
+## Retained 0.2.0 Evidence enablement (#2573)
+
+The standalone Chart's disabled Evidence consumer is intentional; the complete
+installer enables it and checks the topic. See the operational guide in
+[English](../../help/en/manual/bkn-trace-evidence-enablement.md) or
+[中文](../../help/zh/manual/bkn-trace-evidence-enablement.md) for the matching
+deployment/admission contract, retained-message preservation and real native
+explanation acceptance. A working Audit consumer, a healthy HTTP listener or a
+stored `ready` explanation snapshot does not establish successful attribution.
+The guide's explicit question/generation acceptance is a separately authorized
+deployment-remediation test; ordinary route probes and read-only acceptance
+continue to preserve `not_generated` without generating new requests.
+
 ## Span display and browsing (#2158)
 
 Technical detail keeps its existing single graph read: at most 1,001 raw records,
@@ -207,6 +220,30 @@ already archived frozen technical documents may have finished before SQL refuses
 cleanup, while late or changed technical versions retain their existing guards.
 The bounded Trace batches above limit package loading without a streaming
 redesign. List/detail query paths are unchanged.
+
+## Trace keyword searches (#2676)
+
+`GET /api/agent-observability/v1/traces?keyword=...` matches a case-insensitive
+substring of the Trace, request, conversation and interaction IDs, agent/app,
+root service, root operation, or recorded error summary. Question/answer bodies
+are outside this field set. Omitting `from` or `to` leaves that time boundary
+unrestricted; the server does not insert a default time window.
+
+Ordinary keyword queries use the existing authorized receipt PIT scanner with
+bounded batches and summary artifact reads. A successful response has an
+exact matching `total`; cursor traversal can reach matches beyond the former
+2,000-candidate compatibility window. Each request scans its matching scope to
+compute that count, so wide queries still cost more than narrow ones. The scan
+keeps its existing 30-second deadline, 65,536 distinct Trace identity limit,
+10,000-receipt expansion limit and bounded result-page retention.
+
+If those budgets are exceeded, the request fails with
+`422 SUMMARY_QUERY_BUDGET_EXCEEDED` or `503 SUMMARY_QUERY_TIMEOUT` rather than
+returning an incomplete count or false empty result. Keyword queries that use
+the compatibility reader (including combined filters outside the scanner's
+supported set) also fail with the budget error when their input is truncated.
+Narrow the explicit time range or filters before retrying. This endpoint does
+not silently shorten the query range or increase the old candidate cap.
 
 ## Root-service discovery (#2140)
 

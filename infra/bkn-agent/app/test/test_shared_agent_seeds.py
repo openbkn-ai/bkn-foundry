@@ -31,6 +31,7 @@ PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
 RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
 BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
+SOURCE_LANGUAGE = MIGRATIONS / "0.2.1/25-prompt-source-language.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 SEMANTIC_NAMING = MIGRATIONS / "0.2.1/17-semantic-naming.sql"
 REQUIREMENTS = MIGRATIONS / "0.2.1/18-seed-bkn-project-requirements.sql"
@@ -39,7 +40,7 @@ ANSWER_JUDGE_EXPECT = MIGRATIONS / "0.2.1/21-answer-judge-test-expect.sql"
 REQUIREMENTS_V2 = MIGRATIONS / "0.2.1/22-requirements-guidance-v2.sql"
 REQUIREMENTS_V3 = MIGRATIONS / "0.2.1/23-requirements-guidance-v3.sql"
 REQUIREMENTS_V4 = MIGRATIONS / "0.2.1/24-requirements-guidance-v4.sql"
-REQUIREMENTS_V5 = MIGRATIONS / "0.2.1/25-requirements-guidance-v5.sql"
+REQUIREMENTS_V5 = MIGRATIONS / "0.2.1/27-requirements-guidance-v5.sql"
 
 
 def statements(path):
@@ -109,8 +110,9 @@ def apply(db, path, limit=None):
     ]
     for statement in inserts if limit is None else inserts[:limit]:
         if statement.lower().startswith("alter table t_agent_prompt_version"):
-            if "f_localized_content" not in {row[1] for row in db.execute("PRAGMA table_info(t_agent_prompt_version)")}:
-                db.execute("ALTER TABLE t_agent_prompt_version ADD COLUMN f_localized_content TEXT")
+            field = "f_source_language" if "f_source_language" in statement else "f_localized_content"
+            if field not in {row[1] for row in db.execute("PRAGMA table_info(t_agent_prompt_version)")}:
+                db.execute(f"ALTER TABLE t_agent_prompt_version ADD COLUMN {field} TEXT")
         else:
             db.execute(statement)
 
@@ -251,6 +253,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, REQUIREMENTS_V2)
         apply(upgraded, REQUIREMENTS_V3)
         apply(upgraded, REQUIREMENTS_V4)
+        apply(upgraded, SOURCE_LANGUAGE)
         apply(upgraded, REQUIREMENTS_V5)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
@@ -447,6 +450,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(REQUIREMENTS_V2),
                     str(REQUIREMENTS_V3),
                     str(REQUIREMENTS_V4),
+                    str(SOURCE_LANGUAGE),
                     str(REQUIREMENTS_V5),
                 ],
             ],
@@ -459,6 +463,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
 def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
     with database() as db:
         apply(db, PROVENANCE)
+        apply(db, VERSIONS)
         prompt_id = "business_provenance_claim_attribution_prompt"
         original = db.execute("SELECT f_content FROM t_agent_prompt_version WHERE f_prompt_id=?", (prompt_id,)).fetchone()[0]
         apply(db, CLAIM_LOCALES)
@@ -489,7 +494,7 @@ def naming_locales_text():
 
 
 def requirements_locales_text():
-    """The v5 translation backfill at the end of 25, which the fresh snapshot ends with too."""
+    """The v5 translation backfill at the end of 27, which the fresh snapshot ends with too."""
     text = REQUIREMENTS_V5.read_text()
     return text[text.index("-- Attach the zh-CN"):]
 
@@ -507,12 +512,13 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
-    # install starts at v5, so its prompt is the body 25 writes.
+    # install starts at v5, so its prompt is the body 27 writes.
     init = (MIGRATIONS / "0.2.1/init.sql").read_text()
+    assert init.index(SOURCE_LANGUAGE.read_text()) < init.index("insert into t_agent_prompt_version")
     seed = init.index("-- bkn-project-requirements:")
     v5 = [s for s in statements(REQUIREMENTS_V5) if s.startswith("insert into t_agent_prompt_version")][0]
     body = v5[v5.index("select v.f_prompt_id, 5,") + len("select v.f_prompt_id, 5,"):v5.index("v.f_vars_schema,")].strip()
-    assert init.index("select 'bkn-project-requirements-prompt', 5,\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
+    assert init.index("select 'bkn-project-requirements-prompt', 5, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
     # The judge is seeded at its latest version, after the other seeds and before the locale column.
     assert seed < init.index("-- bkn-project-answer-judge:") < init.index(CLAIM_LOCALES.read_text())
 
@@ -1088,6 +1094,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     # The optional claim-locale column and guarded translation backfill do not
     # update semantic-understanding versions or their current/initial markers.
     claim_locale_statements = (set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
+                               | set(statements(SOURCE_LANGUAGE))
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V5) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_EXPECT) if "f_localized_content" in s})
@@ -1450,10 +1457,14 @@ def semantic_v5_state(db, start):
 
 
 def semantic_prompt_version(db, version):
-    return dict(db.execute(
+    result = dict(db.execute(
         "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=?",
         (version,),
     ).fetchone())
+    # Compare migration 17's payload independently of language metadata from 25.
+    # Source-language metadata has its own fresh/upgrade preservation regressions.
+    result.pop("f_source_language", None)
+    return result
 
 
 @pytest.mark.parametrize("start", ["upgraded", "installed"])
@@ -1689,10 +1700,13 @@ RQ = "bkn-project-requirements"
 
 
 def requirements_prompt_version(db, version):
-    return dict(db.execute(
+    result = dict(db.execute(
         "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=?",
         (version,),
     ).fetchone())
+    # Compare migrations 22/23 independently of metadata maintained by 24.
+    result.pop("f_source_language", None)
+    return result
 
 
 def requirements_v1_state(db, start):
@@ -2087,10 +2101,11 @@ def test_requirements_v4_upgrade_does_not_switch_a_prompt_head_an_operator_saved
 
 
 def requirements_v4_state(db, start):
-    """The Agent just before 25: upgraded through 24, or installed from an earlier 0.2.1 snapshot at v4."""
+    """The Agent just before 27: upgraded through 24 and 25, or installed from an earlier 0.2.1 snapshot at v4."""
     if start == "upgraded":
         requirements_v3_state(db, "upgraded")
         apply(db, REQUIREMENTS_V4)
+        apply(db, SOURCE_LANGUAGE)
         return
     with database() as upgraded:
         requirements_v4_state(upgraded, "upgraded")
@@ -2173,7 +2188,7 @@ def test_requirements_v5_upgrade_preserves_operator_prompt_choices(customization
 
 
 @pytest.mark.parametrize("customized", [False, True])
-@pytest.mark.parametrize("limit", range(1, 9))
+@pytest.mark.parametrize("limit", range(1, 10))
 def test_requirements_v5_upgrade_resumes_between_statements(limit, customized):
     with database() as db, database() as expected:
         for connection in (db, expected):
@@ -2250,9 +2265,8 @@ def test_requirements_v5_upgrade_matches_fresh_install_and_keeps_history(start):
                      "never turning into a question about all records", "whatever shape the answer has, a list too",
                      "only a question with no value to ask about at all", "by a property that identifies it such as a code or an id, never a name"):
             assert rule in content
-        # v4's rule that a list gets no tests is gone.
+        # v4's rule that a list gets no tests is gone; its other rules stay.
         assert "such as a list or a filter, gets no tests" not in content
-        # v4's rules stay.
         assert "never an object type id" in content and "applies a rule's condition or threshold" in content
         old_locales, new_locales = json.loads(old["f_localized_content"]), json.loads(new["f_localized_content"])
         assert new_locales["en-US"] == content
@@ -2268,9 +2282,30 @@ def test_requirements_v5_upgrade_matches_fresh_install_and_keeps_history(start):
             f"SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='{RQ}' AND (f_initial=1 OR f_current=1)"
         ).fetchall()
         assert [tuple(row) for row in rows] == [(5, 1, 1)]
+        # The official v5 body is labelled English, upgraded as installed.
+        assert db.execute(
+            "SELECT f_source_language FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=5"
+        ).fetchone()[0] == "en-US"
         before = snapshot(db)
         apply(db, REQUIREMENTS_V5)
         assert snapshot(db) == before
+
+
+def test_requirements_v5_label_leaves_an_administrators_choice():
+    with database() as db:
+        requirements_v4_state(db, "upgraded")
+        statements_ = [s for s in statements(REQUIREMENTS_V5) if s.lower().startswith(("insert", "update"))]
+        label = next(s for s in statements_ if "set f_source_language" in s)
+        for statement in statements_[:statements_.index(label)]:
+            db.execute(statement)
+        # An administrator chose another language before the label is applied.
+        db.execute(
+            "UPDATE t_agent_prompt_version SET f_source_language='zh-CN' WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=5"
+        )
+        db.execute(label)
+        assert db.execute(
+            "SELECT f_source_language FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=5"
+        ).fetchone()[0] == "zh-CN"
 
 
 def answer_judge_prompt(db):

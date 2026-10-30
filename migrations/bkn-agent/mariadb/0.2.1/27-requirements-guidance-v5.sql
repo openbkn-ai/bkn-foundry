@@ -15,7 +15,8 @@
 -- rules as 24: upgrade only the untouched official v4 (body and translations),
 -- keep customized prompts, every historical prompt/Agent version and the
 -- operator's runtime settings; replay resumes interrupted updates. A fresh
--- install starts at v5.
+-- install starts at v5; either way the official v5 body is labelled en-US, its
+-- original language (25 adds the column and leaves legacy originals unmarked).
 
 USE openbkn;
 
@@ -200,6 +201,15 @@ where f_agent_id = 'bkn-project-requirements'
       where p.f_prompt_id = 'bkn-project-requirements-prompt' and p.f_current_version = 5
         and sha2(v.f_content, 256) = '5c9eac35bcfe9ae06fdfbe06933cd23ae3d3371910d395d9cfbd4c823225f53c'
   );
+
+-- Label the official v5 body as written in English, as a fresh install does; never over an
+-- administrator's choice or another body.
+update t_agent_prompt_version
+set f_source_language = 'en-US'
+where f_prompt_id = 'bkn-project-requirements-prompt' and f_version = 5
+  and f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
+  and sha2(f_content, 256) = '5c9eac35bcfe9ae06fdfbe06933cd23ae3d3371910d395d9cfbd4c823225f53c'
+  and f_source_language is null;
 
 -- Attach the zh-CN and en-US translations to the exact official v5 body only.
 update t_agent_prompt_version

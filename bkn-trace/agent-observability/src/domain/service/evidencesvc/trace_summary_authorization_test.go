@@ -75,7 +75,8 @@ func TestTraceSummaryFailureRequiresAuthorizedTuple(t *testing.T) {
 				if err := svc.applyTraceMetadata(context.Background(), traces, evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}, false, visible); err != nil {
 					t.Fatal(err)
 				}
-				if matchesTraceFilters(traces[0], evidencevo.SummaryQueryOptions{ErrorKeyword: "private-collision-marker"}) {
+				if matchesTraceFilters(traces[0], evidencevo.SummaryQueryOptions{ErrorKeyword: "private-collision-marker"}) ||
+					matchesTraceFilters(traces[0], evidencevo.SummaryQueryOptions{Keyword: "private-collision-marker"}) {
 					t.Error("unauthorized tuple influenced keyword membership")
 				}
 				if allowed {
