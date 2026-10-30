@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -24,6 +25,12 @@ func (v *scriptedVega) QueryResourceData(_ context.Context, _ string,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 	index := len(v.history)
 	v.history = append(v.history, params.Paging)
+	// Like Vega, a cursor continuation carries the cursor and nothing else.
+	if params.Paging.Cursor != "" && !reflect.DeepEqual(*params,
+		interfaces.ResourceDataQueryParams{Paging: interfaces.ResourceDataPagingRequest{Cursor: params.Paging.Cursor}}) {
+		return nil, interfaces.NewVegaDownstreamError(http.StatusBadRequest,
+			`{"error_details":"cursor continuation must contain only paging.cursor"}`)
+	}
 	if index < len(v.errs) && v.errs[index] != nil {
 		return nil, v.errs[index]
 	}
@@ -45,7 +52,15 @@ func rowsPage(size int, next string) *interfaces.DatasetQueryResponse {
 
 func scanCounting(vega interfaces.VegaBackendAccess, stopAfter int) (int, error) {
 	read := 0
-	err := ScanResourceData(context.Background(), vega, "resource", interfaces.ResourceDataQueryParams{}, 2,
+	ignoreLocalIndex := true
+	params := interfaces.ResourceDataQueryParams{
+		IgnoreLocalIndex: &ignoreLocalIndex,
+		FilterCondition:  map[string]any{"field": "campaign_id", "operation": "in", "value": []any{104}},
+		Sort:             []*interfaces.SortParams{{Field: "campaign_id"}, {Field: "customer_id"}},
+		OutputFields:     []string{"campaign_id", "customer_id"},
+		NeedTotal:        true,
+	}
+	err := ScanResourceData(context.Background(), vega, "resource", params, 2,
 		func(rows []map[string]any) (bool, error) {
 			read += len(rows)
 			return stopAfter <= 0 || read < stopAfter, nil
