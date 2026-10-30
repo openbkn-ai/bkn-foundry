@@ -41,6 +41,9 @@ type CypherQueryRequest struct {
 	// Explain returns the query's plan instead of its rows; see
 	// interfaces.CypherQuery.
 	Explain bool `json:"explain,omitempty"`
+	// TimeoutSec bounds how long the statement may run, in seconds; see
+	// interfaces.CypherQuery.
+	TimeoutSec int `json:"timeout_sec,omitempty"`
 }
 
 func (r *restHandler) RunCypherQueryByEx(c *gin.Context) {
@@ -99,6 +102,7 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 		Parameters:       body.Parameters,
 		ObjectProperties: body.ObjectProperties,
 		Explain:          body.Explain,
+		TimeoutSec:       body.TimeoutSec,
 	})
 	if err != nil {
 		replyHandlerError(c, span, ctx, err)

@@ -26,6 +26,10 @@ const (
 	// executor can answer it, so it is refused rather than answered from part
 	// of its evidence.
 	BknBackend_Cypher_ReadBudgetExceeded = "BknBackend.Cypher.ReadBudgetExceeded"
+	// BknBackend_Cypher_QueryTimeout is the data source not finishing the
+	// statement within its time limit. It is kept apart from QueryFailed so a
+	// caller knows to narrow the query rather than retry or call for help.
+	BknBackend_Cypher_QueryTimeout = "BknBackend.Cypher.QueryTimeout"
 )
 
 var CypherErrCodeList = []string{
@@ -39,4 +43,5 @@ var CypherErrCodeList = []string{
 	BknBackend_Cypher_Forbidden,
 	BknBackend_Cypher_PropertyForbidden,
 	BknBackend_Cypher_ReadBudgetExceeded,
+	BknBackend_Cypher_QueryTimeout,
 }

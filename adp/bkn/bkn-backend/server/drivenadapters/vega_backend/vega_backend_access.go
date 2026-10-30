@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -36,6 +37,15 @@ type vegaBackendAccess struct {
 	appSetting *common.AppSetting
 	httpClient rest.HTTPClient
 	baseUrl    string
+	// now reads the clock a raw query is timed with; nil is the wall clock.
+	now func() time.Time
+}
+
+func (vba *vegaBackendAccess) clock() time.Time {
+	if vba.now != nil {
+		return vba.now()
+	}
+	return time.Now()
 }
 
 // NewVegaBackendAccess creates a new vega-backend access instance
@@ -394,6 +404,16 @@ func rawQuerySourceUnsupported(status int, body []byte) bool {
 	default:
 		return false
 	}
+}
+
+// rawQueryTimedOut reports a raw query vega-backend gave up on at the
+// statement's own timeout. vega-backend answers that with the same 500 as any
+// other failed statement and nothing in the body tells them apart, so it is
+// read off the time the failure took: one that ran the whole query_timeout_sec
+// is the statement having been stopped there.
+func rawQueryTimedOut(req *interfaces.RawQueryRequest, kind interfaces.DependencyErrorKind, elapsed time.Duration) bool {
+	return kind == interfaces.DependencyDownstreamError && req.QueryTimeoutSec > 0 &&
+		elapsed >= time.Duration(req.QueryTimeoutSec)*time.Second
 }
 
 func dependencyKindForStatus(status int) interfaces.DependencyErrorKind {
@@ -810,7 +830,9 @@ func (vba *vegaBackendAccess) rawQuery(ctx context.Context, span trace.Span, hea
 		HttpContentType: rest.ContentTypeJson,
 	})
 
+	started := vba.clock()
 	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, req)
+	elapsed := vba.clock().Sub(started)
 	logger.Debugf("RawQuery finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
@@ -826,6 +848,9 @@ func (vba *vegaBackendAccess) rawQuery(ctx context.Context, span trace.Span, hea
 		kind := dependencyKindForStatus(respCode)
 		if rawQuerySourceUnsupported(respCode, respData) {
 			kind = interfaces.DependencyUnsupportedSource
+		}
+		if rawQueryTimedOut(req, kind, elapsed) {
+			kind = interfaces.DependencyTimeout
 		}
 		err := interfaces.NewDependencyError("vega", "raw_query", kind, respCode)
 		common.LogSafeError(ctx, fmt.Sprintf("RawQuery returned HTTP %d", respCode), err)
