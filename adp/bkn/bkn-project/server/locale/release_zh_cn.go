@@ -9,6 +9,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var releaseZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknProject.Release.UnfinishedAttempt":   "上次发布未完成 这个版本号上次发布时没能完成记录，此后分支又有改动；请换一个新版本号发布，详见 error_details。",
 		"BknProject.Rollback.PrecheckRequired":   "未做回退预检 请先读取回退预检并带上其签名；没有预检不能回退。",
 		"BknProject.Rollback.PlanOutdated":       "回退预检已过期 读取预检之后使用方又有切换，或调度有变化；请重新读取再回退。",
 		"BknProject.Rollback.NoPrevious":         "没有可回退的版本 使用方正在用谱系最初的网络，没有更早的版本。",

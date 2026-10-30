@@ -263,8 +263,8 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 				So(tagAgain, ShouldEqual, branchHead)
 			})
 
-			Convey("and the same version from a moved branch replies 409\n", func() {
-				_, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited again.", "A supplier."), "edit", author)
+			Convey("and the same version from a moved branch replies 409 as unfinished, naming the network\n", func() {
+				moved, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited again.", "A supplier."), "edit", author)
 				So(err, ShouldBeNil)
 				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
 
@@ -272,7 +272,52 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 
 				status, code := httpCode(err)
 				So(status, ShouldEqual, http.StatusConflict)
-				So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
+				So(code, ShouldEqual, perrors.BknProject_Release_UnfinishedAttempt)
+				So(errorDetails(err), ShouldResemble, map[string]any{
+					"tag": "v1.0.0", "commit": branchHead, "branch_commit": moved, "network_id": networkID,
+				})
+			})
+		})
+
+		Convey("A network imported by an attempt whose release failed to record is imported over and recorded on retry\n", func() {
+			id := newLineageID()
+			live, branchHead := setUp(id)
+			networkID := id + "_v1_0_0"
+			mainBefore, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
+			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{KNID: networkID}, nil)
+			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(errors.New("Data too long for column 'f_project_id'"))
+
+			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			So(err, ShouldNotBeNil)
+			mainAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			So(mainAfter, ShouldEqual, mainBefore)
+
+			Convey("the retry does not refuse the network as someone else's: it imports over it and records the release\n", func() {
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
+				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+				bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+				imported := bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{KNID: networkID}, nil)
+				var recorded *interfaces.Release
+				ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).After(imported).DoAndReturn(
+					func(_ context.Context, r *interfaces.Release) error {
+						recorded = r
+						return nil
+					})
+				bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(live, nil)
+
+				result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+				So(err, ShouldBeNil)
+				So(result.Release, ShouldEqual, recorded)
+				So(recorded.NetworkID, ShouldEqual, networkID)
+				So(recorded.Version, ShouldEqual, "1.0.0")
+				tagHead, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+				So(tagHead, ShouldEqual, branchHead)
 			})
 		})
 

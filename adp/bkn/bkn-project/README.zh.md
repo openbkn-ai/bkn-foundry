@@ -67,7 +67,7 @@ bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出
 | GET | `/ready` | 数据库可达时返回 200，否则返回 503 |
 | GET | `/lineages/{lineage_id}/releases?limit=&cursor=` | 谱系下的发布记录，按时间倒序，游标分页。最新一次发布的 `state` 为 `live`，更早的为 `archived`；切换使用方不改变状态 |
 | GET | `/releases/{network_id}` | 产生该网络的发布记录 |
-| POST | `/lineages/{lineage_id}/releases` | 请求体 `{"branch","version","project_id","notes"}`。发布该分支：返回 201 `{"release","network_id","tag","commit"}`。409 `BranchBehind`（请先同步分支）、`Drift`（路径见 `error_details`，请提交漂移并同步）、`VersionExists`，或 `CapabilitiesSkipped`（网络已导入但未记录发布；从同一分支头以同一版本重新发布会覆盖该网络） |
+| POST | `/lineages/{lineage_id}/releases` | 请求体 `{"branch","version","project_id","notes"}`。发布该分支：返回 201 `{"release","network_id","tag","commit"}`。409 `BranchBehind`（请先同步分支）、`Drift`（路径见 `error_details`，请提交漂移并同步）、`VersionExists`、`UnfinishedAttempt`（这个版本号此前的一次发布打了标签后中断、可能已导入网络但未记录发布，而标签在另一个分支头上；`error_details` 给出 `tag`、标签的 `commit`、当前 `branch_commit` 和 `network_id`；请换新版本号发布），或 `CapabilitiesSkipped`（网络已导入但未记录发布）。任何这类失败（包括发布记录写入失败）之后，从同一分支头以同一版本重新发布，会覆盖那次导入的网络并补写发布记录 |
 | POST | `/lineages` | 请求体 `{"kn_id"}`。导出线上网络并在 `main` 上创建谱系；返回 201 `{"lineage_id","commit"}`，已存在返回 409 |
 | POST | `/lineages/{lineage_id}/branches` | 请求体 `{"name","from"}`（`from` 默认 `main`）；返回 201 `{"name","commit"}`，已存在返回 409 |
 | PUT | `/lineages/{lineage_id}/branches/{branch}/definitions?message=` | 请求体为 bkn-backend 导出格式的 BKN tar 包（`application/octet-stream`，最大 64 MiB），替换分支上的定义；返回 `{"commit","changed":{"added","changed","removed"}}`。对 `main` 返回 403 |
