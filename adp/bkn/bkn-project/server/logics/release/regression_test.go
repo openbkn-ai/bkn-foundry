@@ -421,8 +421,139 @@ func Test_RegressionService(t *testing.T) {
 				Question: "Text of q1", Answer: "An answer.",
 				ToolCalls: []judgeToolCall{{Name: "query_object_instance", Input: json.RawMessage(`{"ot_id":"part"}`)}, {Name: "search_schema"}},
 				Needs:     []interfaces.ReleaseItem{{Kind: ot, ID: "part", Name: "Part"}, {Kind: ot, ID: "supplier", Name: "Supplier"}},
+				Names:     []judgeName{{Kind: ot, ID: "part", Name: "Part"}},
 				Language:  interfaces.NAMING_LANGUAGE_EN_US,
 			})
+		})
+
+		named := map[string][]byte{
+			"object_types/supplier.bkn": []byte("---\ntype: object_type\nid: supplier\nname: Supplier\n---\n\n## ObjectType: Supplier\n\n" +
+				"### Data Properties\n\n| Name | Display Name | Type | Description | Mapped Field |\n|------|--------------|------|-------------|--------------|\n" +
+				"| supplier_code | Supplier code | string | | supplier_code |\n| supplier_note | | string | | supplier_note |\n" +
+				"| supplier_city | City | string | | supplier_city |\n| region | region | string | | region |\n| Region_Code | Region code | string | | region_code |\n"),
+			// The same property id on two object types is named for each.
+			"object_types/part.bkn": []byte("---\ntype: object_type\nid: part\nname: Part\n---\n\n## ObjectType: Part\n\n" +
+				"### Data Properties\n\n| Name | Display Name | Type | Description | Mapped Field |\n|------|--------------|------|-------------|--------------|\n" +
+				"| supplier_code | Supplier no. | string | | supplier_code |\n"),
+			"object_types/plant.bkn":           objectTypeFile("plant", "Plant"),
+			"object_types/bin.bkn":             objectTypeFile("bin", "bin"),
+			"object_types/bin-2.bkn":           objectTypeFile("bin-2", "Bin 2"),
+			"relation_types/supplier_part.bkn": []byte("---\ntype: relation_type\nid: supplier_part\nname: Supplies\n---\n\n## RelationType: Supplies\n"),
+		}
+
+		Convey("The judge is given the display names of what the tool calls name, and of nothing else\n", func() {
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(named, nil)
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(&interfaces.BknAgentAnswer{
+				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "None.", ToolCalls: 2, ToolUses: []interfaces.BknAgentToolUse{
+					{Name: "query_object_instance", Input: json.RawMessage(`{"ot_id":"supplier","fields":["supplier_code","supplier_note","region"]}`)},
+					// A property named as a key counts too.
+					{Name: "get_relation", Input: json.RawMessage(`{"rt_id":"supplier_part","filter":{"supplier_city":"Paris"},"via":"bin"}`)},
+				}}, nil)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			// Part is a need, not named by a call; Plant is named by nothing. What has no display name
+			// of its own, or one the same as its id, gives none.
+			So(judged[0].Names, ShouldResemble, []judgeName{
+				{Kind: ot, ID: "supplier", Name: "Supplier"},
+				{Kind: judgeNameProperty, ID: "supplier_code", Name: "Supplier no.", ObjectType: "part"},
+				{Kind: judgeNameProperty, ID: "supplier_city", Name: "City", ObjectType: "supplier"},
+				{Kind: judgeNameProperty, ID: "supplier_code", Name: "Supplier code", ObjectType: "supplier"},
+				{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_part", Name: "Supplies"},
+			})
+		})
+
+		Convey("A query names what its words name, for the judge to be given their display names\n", func() {
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(named, nil)
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(&interfaces.BknAgentAnswer{
+				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "None.", ToolCalls: 1, ToolUses: []interfaces.BknAgentToolUse{
+					{Name: "run_cypher", Input: json.RawMessage(`{"query":"MATCH (s:supplier)-[:supplier_part]->(p:part), (b:bin-2) WHERE s.supplier_city = 'Paris' AND s.Region_Code = 'R1' RETURN p"}`)},
+				}}, nil)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			// Ids keep their digits and hyphens; property names their capitals.
+			So(judged[0].Names, ShouldResemble, []judgeName{
+				{Kind: ot, ID: "bin-2", Name: "Bin 2"},
+				{Kind: ot, ID: "part", Name: "Part"},
+				{Kind: ot, ID: "supplier", Name: "Supplier"},
+				{Kind: judgeNameProperty, ID: "Region_Code", Name: "Region code", ObjectType: "supplier"},
+				{Kind: judgeNameProperty, ID: "supplier_city", Name: "City", ObjectType: "supplier"},
+				{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_part", Name: "Supplies"},
+			})
+		})
+
+		Convey("A reason naming a tool the answer called is judged once more, and kept with a warning if it names one again\n", func() {
+			for _, c := range []struct {
+				name    string
+				second  string
+				reason  string
+				warning string
+			}{
+				{"judged again without it", "Found no such supplier.", "Found no such supplier.", ""},
+				{"named again", "By query_object_instance, no such supplier.", "By query_object_instance, no such supplier.",
+					interfaces.REGRESSION_WARNING_REASON_HAS_TOOL_NAME},
+				// A judgement made again that cannot be had leaves the first to stand.
+				{"not judged again", "", "Via query_object_instance, none.", interfaces.REGRESSION_WARNING_REASON_HAS_TOOL_NAME},
+			} {
+				Convey(c.name+"\n", func() {
+					judge := pmock.NewMockBknAgentAccess(mockCtrl)
+					svc.ba = judge
+					rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+					expectStart()
+					gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+					judge.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(&interfaces.BknAgentAnswer{
+						Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "None.", ToolCalls: 1,
+						ToolUses: []interfaces.BknAgentToolUse{{Name: "query_object_instance"}}}, nil).Times(1)
+					judgement := func(reason string) (*interfaces.BknAgentTask, error) {
+						if reason == "" {
+							return nil, errors.New("down")
+						}
+						data, _ := json.Marshal(judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_CANNOT_ANSWER, Reason: reason})
+						return &interfaces.BknAgentTask{Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: string(data)}, nil
+					}
+					gomock.InOrder(
+						judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).Return(judgement("Via query_object_instance, none.")),
+						judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).Return(judgement(c.second)),
+					)
+					expectFinish()
+
+					_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+					So(err, ShouldBeNil)
+					// The verdict stands either way; the wording does not make the run fail.
+					So(finished.Results[0].Outcome, ShouldEqual, interfaces.REGRESSION_OUTCOME_NOT_ANSWERED)
+					So(finished.Results[0].Reason, ShouldEqual, c.reason)
+					So(finished.Results[0].Warning, ShouldEqual, c.warning)
+					So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_NOT_PASSED)
+				})
+			}
+		})
+
+		Convey("A reason naming a tool the answer did not call is not judged again\n", func() {
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+			verdicts["Text of q1"] = judgeOutput{Verdict: interfaces.REGRESSION_VERDICT_ANSWERED, Reason: "Not by search_schema."}
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(&interfaces.BknAgentAnswer{
+				Status: interfaces.BKN_AGENT_ANSWER_SUCCEEDED, Answer: "An answer.", ToolCalls: 1,
+				// A call without a name names nothing.
+				ToolUses: []interfaces.BknAgentToolUse{{Name: "query_object_instance"}, {}}}, nil)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(judged, ShouldHaveLength, 1)
+			So(finished.Results[0].Warning, ShouldBeEmpty)
 		})
 
 		Convey("A run passes with one passed question; with only questions lacking values it shows nothing\n", func() {
