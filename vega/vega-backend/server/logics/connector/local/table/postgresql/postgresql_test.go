@@ -39,13 +39,13 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 
 		fields := connector.GetFieldConfig()
 		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
-			"host":     {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
-			"port":     {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
-			"username": {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-			"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-			"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
-			"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-			"options":  {Name: "连接参数", Type: "object", Description: "可选；仅支持 timezone、sslmode、connect_timeout、application_name、fallback_application_name、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件；客户端编码使用驱动默认 UTF8，不支持配置；timezone 未配置时使用 Vega 服务 TZ（默认 UTC），空字符串或纯空白不发送启动参数，使用数据库默认会话时区；非空值去除两端空白后由 PG 在连接测试时验证，不转换偏移符号", Required: false, Encrypted: false},
+			"host":     {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
+			"port":     {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
+			"username": {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+			"password": {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+			"database": {Name: "Database", Type: "string", Description: "Target PostgreSQL database", Required: true, Encrypted: false},
+			"schemas":  {Name: "Schemas", Type: "array", Description: "Optional schema names; leave empty to discover non-system schemas in the current database, or list schemas to restrict discovery", Required: false, Encrypted: false},
+			"options":  {Name: "Connection options", Type: "object", Description: "Optional; only timezone, sslmode, connect_timeout, application_name, fallback_application_name, statement_timeout, lock_timeout and idle_in_transaction_session_timeout are supported. connect_timeout is a non-negative integer in seconds; session timeouts accept milliseconds or strings with PostgreSQL time units, and 0 disables them. sslmode defaults to disable; SSL files are unsupported. Client encoding uses the driver default UTF8 and cannot be configured. timezone: if omitted, use the Vega service TZ (default UTC); an empty or whitespace-only string omits the startup parameter and uses the database session default. Non-empty values are trimmed and validated by PostgreSQL during the connection test, without offset sign conversion.", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)

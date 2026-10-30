@@ -38,12 +38,12 @@ func TestMariaDBConnectorMetadataAndConfig(t *testing.T) {
 
 		fields := connector.GetFieldConfig()
 		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
-			"host":      {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
-			"port":      {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
-			"username":  {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-			"password":  {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-			"databases": {Name: "数据库列表", Type: "array", Description: "数据库名称列表（可选，为空则连接实例级别）", Required: false, Encrypted: false},
-			"options":   {Name: "连接参数", Type: "object", Description: "连接参数（如 charset, timeout）；time_zone 未配置时使用服务时区，空字符串不设置会话时区，非空值由数据库验证；loc 始终使用服务时区", Required: false, Encrypted: false},
+			"host":      {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
+			"port":      {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
+			"username":  {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+			"password":  {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+			"databases": {Name: "Databases", Type: "array", Description: "Optional database names; leave empty to connect at instance scope", Required: false, Encrypted: false},
+			"options":   {Name: "Connection options", Type: "object", Description: "Optional connection options such as charset and timeout. time_zone: if omitted, use the service time zone; an empty or whitespace-only string leaves the database session default. Non-empty values are trimmed and validated by the database. Driver loc always uses the service time zone.", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)

@@ -27,6 +27,49 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
+func TestOpenSearchConnectorMetadataAndNew(t *testing.T) {
+	connector := &OpenSearchConnector{}
+
+	assert.Equal(t, interfaces.ConnectorTypeOpenSearch, connector.GetType())
+	assert.Equal(t, interfaces.ConnectorTypeOpenSearch, connector.GetName())
+	assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
+	assert.Equal(t, interfaces.ConnectorCategoryIndex, connector.GetCategory())
+	assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
+
+	assert.False(t, connector.GetEnabled())
+	connector.SetEnabled(true)
+	assert.True(t, connector.GetEnabled())
+	fields := connector.GetFieldConfig()
+	assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
+		"host":           {Name: "Host", Type: "string", Description: "OpenSearch server host", Required: true, Encrypted: false},
+		"port":           {Name: "Port", Type: "integer", Description: "OpenSearch server port", Required: true, Encrypted: false},
+		"username":       {Name: "Username", Type: "string", Description: "Authentication username", Required: false, Encrypted: false},
+		"password":       {Name: "Password", Type: "string", Description: "Authentication password", Required: false, Encrypted: true},
+		"index_patterns": {Name: "Index patterns", Type: "array", Description: "Optional index matching patterns, such as log-*", Required: false, Encrypted: false},
+	}, fields)
+	require.Contains(t, fields, "password")
+	assert.True(t, fields["password"].Encrypted)
+	require.Contains(t, fields, "index_patterns")
+	assert.False(t, fields["index_patterns"].Required)
+
+	instance, err := connector.New(interfaces.ConnectorConfig{
+		"host":           "127.0.0.1",
+		"port":           9200,
+		"username":       "admin",
+		"password":       "secret",
+		"index_patterns": []string{"log-*", "metric-*"},
+	})
+	require.NoError(t, err)
+	require.IsType(t, &OpenSearchConnector{}, instance)
+	osConnector := instance.(*OpenSearchConnector)
+	require.NotNil(t, osConnector.Config)
+	assert.Equal(t, "127.0.0.1", osConnector.Config.Host)
+	assert.Equal(t, 9200, osConnector.Config.Port)
+	assert.Equal(t, []string{"log-*", "metric-*"}, osConnector.Config.IndexPatterns)
+	require.NoError(t, osConnector.Close(t.Context()))
+	assert.Nil(t, osConnector.client)
+}
+
 func TestDeleteDocumentsByQueryRejectsEmptyFilter(t *testing.T) {
 	connector := &OpenSearchConnector{}
 
