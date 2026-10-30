@@ -95,9 +95,9 @@ func questionPath(q *interfaces.RequirementQuestion, draft *interfaces.Draft) ([
 	for _, need := range q.Needs {
 		named[need] = true
 	}
-	// A relation type the question names joins its ends.
+	// A relation type the question names joins its ends, once adopted: one left out joins nothing.
 	for _, rt := range draft.Items.RelationTypes {
-		if named[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: rt.ID}] {
+		if rt.Adopted && named[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: rt.ID}] {
 			if _, ok := group[rt.Source]; ok {
 				if _, ok := group[rt.Target]; ok {
 					join(rt.Source, rt.Target)

@@ -99,6 +99,13 @@ func Test_QuestionPath(t *testing.T) {
 				relation("mat_sup_b", "material", "supplier")}
 			path, _ = questionPath(question(ot("material"), ot("supplier"), rel("mat_sup_b")), d)
 			So(path, ShouldBeEmpty)
+
+			// A named relation not adopted joins nothing: the gap is reported.
+			d.Items.RelationTypes = []*interfaces.DraftRelationType{relation("mat_sup_b", "material", "supplier")}
+			d.Items.RelationTypes[0].Adopted = false
+			path, unconnected := questionPath(question(ot("material"), ot("supplier"), rel("mat_sup_b")), d)
+			So(path, ShouldBeEmpty)
+			So(unconnected, ShouldResemble, []interfaces.ScenarioUnconnected{{From: "material", To: "supplier"}})
 		})
 
 		Convey("A group apart is named once\n", func() {
