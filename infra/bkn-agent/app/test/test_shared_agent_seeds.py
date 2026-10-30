@@ -31,6 +31,7 @@ PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
 RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 DRAFTER = MIGRATIONS / "0.2.1/13-seed-bkn-project-drafter.sql"
 BUILTIN_LOCALES = MIGRATIONS / "0.2.1/16-builtin-prompt-locales.sql"
+SOURCE_LANGUAGE = MIGRATIONS / "0.2.1/25-prompt-source-language.sql"
 SEMANTIC_API_NAME = MIGRATIONS / "0.2.1/15-semantic-api-name.sql"
 SEMANTIC_NAMING = MIGRATIONS / "0.2.1/17-semantic-naming.sql"
 REQUIREMENTS = MIGRATIONS / "0.2.1/18-seed-bkn-project-requirements.sql"
@@ -108,8 +109,9 @@ def apply(db, path, limit=None):
     ]
     for statement in inserts if limit is None else inserts[:limit]:
         if statement.lower().startswith("alter table t_agent_prompt_version"):
-            if "f_localized_content" not in {row[1] for row in db.execute("PRAGMA table_info(t_agent_prompt_version)")}:
-                db.execute("ALTER TABLE t_agent_prompt_version ADD COLUMN f_localized_content TEXT")
+            field = "f_source_language" if "f_source_language" in statement else "f_localized_content"
+            if field not in {row[1] for row in db.execute("PRAGMA table_info(t_agent_prompt_version)")}:
+                db.execute(f"ALTER TABLE t_agent_prompt_version ADD COLUMN {field} TEXT")
         else:
             db.execute(statement)
 
@@ -250,6 +252,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, REQUIREMENTS_V2)
         apply(upgraded, REQUIREMENTS_V3)
         apply(upgraded, REQUIREMENTS_V4)
+        apply(upgraded, SOURCE_LANGUAGE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -445,6 +448,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(REQUIREMENTS_V2),
                     str(REQUIREMENTS_V3),
                     str(REQUIREMENTS_V4),
+                    str(SOURCE_LANGUAGE),
                 ],
             ],
         ],
@@ -456,6 +460,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
 def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
     with database() as db:
         apply(db, PROVENANCE)
+        apply(db, VERSIONS)
         prompt_id = "business_provenance_claim_attribution_prompt"
         original = db.execute("SELECT f_content FROM t_agent_prompt_version WHERE f_prompt_id=?", (prompt_id,)).fetchone()[0]
         apply(db, CLAIM_LOCALES)
@@ -506,10 +511,11 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v4, so its prompt is the body 24 writes.
     init = (MIGRATIONS / "0.2.1/init.sql").read_text()
+    assert init.index(SOURCE_LANGUAGE.read_text()) < init.index("insert into t_agent_prompt_version")
     seed = init.index("-- bkn-project-requirements:")
     v4 = [s for s in statements(REQUIREMENTS_V4) if s.startswith("insert into t_agent_prompt_version")][0]
     body = v4[v4.index("select v.f_prompt_id, 4,") + len("select v.f_prompt_id, 4,"):v4.index("v.f_vars_schema,")].strip()
-    assert init.index("select 'bkn-project-requirements-prompt', 4,\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
+    assert init.index("select 'bkn-project-requirements-prompt', 4, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
     # The judge is seeded at its latest version, after the other seeds and before the locale column.
     assert seed < init.index("-- bkn-project-answer-judge:") < init.index(CLAIM_LOCALES.read_text())
 
@@ -1085,6 +1091,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
     # The optional claim-locale column and guarded translation backfill do not
     # update semantic-understanding versions or their current/initial markers.
     claim_locale_statements = (set(statements(CLAIM_LOCALES)) | set(statements(BUILTIN_LOCALES))
+                               | set(statements(SOURCE_LANGUAGE))
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V4) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_EXPECT) if "f_localized_content" in s})
@@ -1447,10 +1454,14 @@ def semantic_v5_state(db, start):
 
 
 def semantic_prompt_version(db, version):
-    return dict(db.execute(
+    result = dict(db.execute(
         "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=?",
         (version,),
     ).fetchone())
+    # Compare migration 17's payload independently of language metadata from 25.
+    # Source-language metadata has its own fresh/upgrade preservation regressions.
+    result.pop("f_source_language", None)
+    return result
 
 
 @pytest.mark.parametrize("start", ["upgraded", "installed"])
@@ -1686,10 +1697,13 @@ RQ = "bkn-project-requirements"
 
 
 def requirements_prompt_version(db, version):
-    return dict(db.execute(
+    result = dict(db.execute(
         "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=?",
         (version,),
     ).fetchone())
+    # Compare migrations 22/23 independently of metadata maintained by 24.
+    result.pop("f_source_language", None)
+    return result
 
 
 def requirements_v1_state(db, start):

@@ -76,18 +76,15 @@ There is none. Published Agents used to be registered automatically in the Execu
 
 Built-in Agents use fixed IDs. Their configuration, shared Prompts, and Prompt history live in existing database tables. `core-data-migrator` installs all default data; there is no JSON config package, extra bootstrap table, or application startup Job, and the former `deploy/` directory has been removed. Administrators edit shared configuration through the existing management API. Initialization does not overwrite existing Agents.
 
-All nine built-in Agents ship database-backed Chinese and English system Prompt
-variants. Execution and the effective/shared Agent Prompt read endpoints select
-the same stored variant using the request's negotiated `Accept-Language`.
-A missing translation falls back to that version's canonical content. Request and personal overrides retain
-their existing precedence; shared-only executions still ignore those overrides.
-Publishing a custom shared Prompt creates a new version without inherited
-translations, so that exact administrator content applies in every language.
-Raw Prompt management and export continue to return canonical content.
-The admin Agent version history selects the requested language for comparisons;
-raw Prompt version history stays canonical. Re-activating an official version also restores its language variants.
-Saving the English effective/shared content as a new administrator version, even
-without editing it, publishes that English text as canonical for every language.
+Default translations are provided only for the Prompt version referenced by a built-in Agent's Initial configuration. Initial is resolved by its stored Prompt reference, not by assuming Prompt version 1. Other versions start without translations; administrators may add or edit them explicitly.
+
+Each Prompt version has an optional original language (`f_source_language`). Fresh-install defaults explicitly declare their Chinese or English original language. The schema migration does not identify or backfill legacy languages; administrators confirm an unmarked original’s language when editing it or adding a translation. New Studio publications explicitly select the original language and create a version without inherited translations.
+
+The admin shared-Prompt read returns canonical `source_content`, `source_language`, a canonical-content hash, stored `translations`, and the actually selected `content_language`. A matching translation is displayed/executed; otherwise the canonical original is used. Raw Prompt reads/exports remain canonical.
+
+`PUT /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/versions/{version}/translations/{language}` adds or edits one translation using the existing management permission. It requires the original language and canonical-content SHA-256. It never creates a Prompt/Agent version or changes the active pointer. Changed active versions/originals/language metadata are rejected with 409. Concurrent writes serialize on the parent Prompt to merge languages without losing updates. Existing translations are preserved, including data from older preview backfills.
+
+The migration `25-prompt-source-language.sql` adds the nullable language column; prepare and approve migrations before deploying the ORM. There is no automatic translation service.
 
 The locale backfill is `0.2.1/10-claim-prompt-locales.sql`; the normal migrator
 runs it with the other `0.2.1` deltas when upgrading from an earlier release. The
