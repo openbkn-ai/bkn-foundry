@@ -53,8 +53,8 @@ func Test_ScenarioQuestions(t *testing.T) {
 			So(got, ShouldResemble, &interfaces.ScenarioQuestions{SpecVersion: 2, UpdateTime: 7,
 				Questions: []interfaces.ScenarioQuestion{
 					{ID: "q1", Text: "Which orders?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
-						Needs:        []interfaces.RequirementItemRef{ot, rt, gone, wrongKind},
-						Path: []interfaces.RequirementItemRef{}, Unconnected: []interfaces.ScenarioUnconnected{},
+						Needs: []interfaces.RequirementItemRef{ot, rt, gone, wrongKind},
+						Path:  []interfaces.RequirementItemRef{}, Unconnected: []interfaces.ScenarioUnconnected{},
 						MissingItems: []interfaces.RequirementItemRef{gone, wrongKind},
 						Tests:        []interfaces.ScenarioTest{}},
 					{ID: "q2", Text: "What rate?", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY,
@@ -117,7 +117,7 @@ func Test_ScenarioQuestions(t *testing.T) {
 							{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}, {Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "carrier"}}},
 				}}}
 			d := &interfaces.Draft{Items: interfaces.DraftItems{
-				ObjectTypes: []*interfaces.DraftObjectType{{ID: "customer"}, {ID: "order"}, {ID: "carrier"}},
+				ObjectTypes:   []*interfaces.DraftObjectType{{ID: "customer"}, {ID: "order"}, {ID: "carrier"}},
 				RelationTypes: []*interfaces.DraftRelationType{{ID: "order_customer", Source: "order", Target: "customer", Adopted: true}},
 			}}
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(linked, true, nil)
