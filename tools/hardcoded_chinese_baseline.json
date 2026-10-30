@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2465,
+  "violation_count": 2439,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -292,14 +292,14 @@
       "52b440a4cd6439e95479",
       "d038c5409f96290468ca",
       "44ae164e353b75291edf",
-      "d06290db521316960fae",
-      "baf787759e8fc264e83a",
-      "86b7bd5f1dc49c5817fb",
       "1812eee7bde9dd4eaed7",
+      "86b7bd5f1dc49c5817fb",
       "d39d731f751219dca582",
       "b775fd1aefba59943b61",
+      "baf787759e8fc264e83a",
       "b32ad3e17d962f64215b",
       "7e3f1f43d0654b7667f8",
+      "d06290db521316960fae",
       "c2ffab82cab0df6fdd50",
       "a41bd818b8e17ff8a14c",
       "c0bb673241fb6e25b0b4",
@@ -2709,40 +2709,6 @@
     ],
     "vega/vega-backend/server/interfaces/common.go": [
       "5b81ba30abed40658417"
-    ],
-    "vega/vega-backend/server/logics/connector/local/fileset/anyshare/anyshare.go": [
-      "05e6aeaf6b9970378796",
-      "bae30c839ba49200c97f",
-      "6b00f9b595589002f3a7",
-      "ac01a1a95d1b5da6c289",
-      "ffd7cbb2f1163eaa8fda",
-      "1e176c9e4fab9a41a8c3",
-      "978bcfc0c751394e4cd0",
-      "c00c8d77eb0873d70978",
-      "cb3634718412f8b83c27"
-    ],
-    "vega/vega-backend/server/logics/connector/local/index/opensearch/opensearch.go": [
-      "0b380bc411e372a9db2b",
-      "596fd25b2d98db486cb4",
-      "7154e003b620fd9c1004",
-      "79fa622a2967d3a4c7ff",
-      "7419575f108f0d6d827a"
-    ],
-    "vega/vega-backend/server/logics/connector/local/table/mariadb/mariadb.go": [
-      "f6e81e6c82c981d10b20",
-      "f11a75619c9205b3d4d3",
-      "52a01a87e11bf4e6dadb",
-      "9be2b5dab21889edb697",
-      "d45e5983c286eba1d61a",
-      "be8f9bed1bfe811c4fcd"
-    ],
-    "vega/vega-backend/server/logics/connector/local/table/postgresql/postgresql.go": [
-      "853ab6674fd19c91d648",
-      "da8d01c7dd3085da9b55",
-      "fd11b7373811445f64da",
-      "7197e33c2e443f864010",
-      "27f83978d665c74fae40",
-      "5e94e0b951f8cd3a122b"
     ]
   }
 }

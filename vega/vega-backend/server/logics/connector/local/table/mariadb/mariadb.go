@@ -47,6 +47,7 @@ var (
 	}
 	// allowedOptions lists the driver settings accepted by the connector.
 	allowedOptions = map[string]struct{}{
+		"time_zone":    {},
 		"charset":      {},
 		"collation":    {},
 		"timeout":      {},
@@ -133,12 +134,12 @@ func (c *MariaDBConnector) GetSensitiveFields() []string {
 // GetFieldConfig describes the fields shared by the MariaDB and MySQL connectors.
 func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":      {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
-		"port":      {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
-		"username":  {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-		"password":  {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-		"databases": {Name: "数据库列表", Type: "array", Description: "数据库名称列表（可选，为空则连接实例级别）", Required: false, Encrypted: false},
-		"options":   {Name: "连接参数", Type: "object", Description: "连接参数（如 charset, timeout 等）", Required: false, Encrypted: false},
+		"host":      {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
+		"port":      {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
+		"username":  {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+		"password":  {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+		"databases": {Name: "Databases", Type: "array", Description: "Optional database names; leave empty to connect at instance scope", Required: false, Encrypted: false},
+		"options":   {Name: "Connection options", Type: "object", Description: "Optional connection options such as charset and timeout. time_zone: if omitted, use the service time zone; an empty or whitespace-only string leaves the database session default. Non-empty values are trimmed and validated by the database. Driver loc always uses the service time zone.", Required: false, Encrypted: false},
 	}
 }
 
@@ -199,6 +200,12 @@ func (c *MariaDBConnector) normalizeOptions(options map[string]any) (map[string]
 			return nil, fmt.Errorf("duplicate mariadb option %q", name)
 		}
 		switch name {
+		case "time_zone":
+			zone, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("mariadb option %q must be a string", name)
+			}
+			value = strings.TrimSpace(zone)
 		case "charset", "collation":
 			text, ok := value.(string)
 			if !ok || strings.TrimSpace(text) == "" {
@@ -239,12 +246,22 @@ func (c *MariaDBConnector) connectionString() string {
 	values.Set("charset", "utf8mb4")
 	values.Set("parseTime", "true")
 
-	// Options override defaults; connector-controlled time zone settings are applied last.
+	// time_zone 显式为空时不设置会话时区；其余值由数据库验证，loc 保持服务时区。
+	serverZone := common.ServerTimeZone()
+	zone := serverZone
 	for k, v := range c.config.Options {
+		if k == "time_zone" {
+			zone = v.(string)
+			continue
+		}
 		values.Set(k, v.(string))
 	}
-	values.Set("loc", common.ServerTimeZone())
-	values.Set("time_zone", "'"+common.ServerTimeZone()+"'")
+	values.Set("loc", serverZone)
+	if zone != "" {
+		// 驱动将系统变量值作为 SQL 表达式发送，URL 编码前先转义字符串字面量。
+		escaped := strings.ReplaceAll(strings.ReplaceAll(zone, "\\", "\\\\"), "'", "''")
+		values.Set("time_zone", "'"+escaped+"'")
+	}
 
 	return fmt.Sprintf("%s:%s@tcp(%s)/?%s",
 		c.config.Username,
