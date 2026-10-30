@@ -84,6 +84,23 @@ func Test_TestEdits(t *testing.T) {
 			So(edited.Slots[0].ValueFrom, ShouldEqual, "")
 		})
 
+		Convey("An edited test whose table is gone says so\n", func() {
+			expectRead()
+			expectContext()
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).
+				Return(nil, &interfaces.VegaError{HTTPCode: http.StatusForbidden})
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r-cust"}).Return([]string{"r-cust"}, nil)
+			expectSave()
+
+			_, err := svc.EditTest(ctx, token, "p1", "q1", "t1", interfaces.RequirementTestEdit{UpdateTime: 20,
+				Text:  ptr("Orders of customer 10002?"),
+				Slots: &[]interfaces.QuestionTestSlot{{ConceptID: "c2", Property: "customer_id", Value: "10002"}}}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Tests[0].Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED,
+				Reason: checkTableMissing})
+		})
+
 		Convey("An edited same_record test is checked against the server's template test\n", func() {
 			g := storedGuidance()
 			g.Tests[0].Kind, g.Tests[0].ByServer = interfaces.TEST_KIND_TEMPLATE, true
