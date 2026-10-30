@@ -25,10 +25,7 @@
 <div align="center">
 
 <a href="https://youtu.be/xarWAhN5cQg?si=Z28Uug7__WDknbiO">
-  <picture>
-    <source srcset="help/openbkn-in-3-minutes-preview.webp" type="image/webp">
-    <img src="help/openbkn-in-3-minutes-preview.gif" alt="OpenBKN video preview; click to watch the full 3-minute video on YouTube" width="640" height="360">
-  </picture>
+  <img src="help/openbkn-in-3-minutes-preview.webp" alt="OpenBKN video preview; click to watch the full 3-minute video on YouTube" width="640" height="360">
 </a>
 
 **[▶ Watch the full 3-minute OpenBKN video on YouTube](https://youtu.be/xarWAhN5cQg?si=Z28Uug7__WDknbiO)**
