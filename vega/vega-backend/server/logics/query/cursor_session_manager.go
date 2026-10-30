@@ -126,7 +126,7 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	return session, nil
 }
 
-func (m *cursorSessionManager) createResourceData(accountID, quotaOwnerID string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.CursorSession, error) {
+func (m *cursorSessionManager) createResourceData(accountID, quotaOwnerID, proxyCallerID string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.CursorSession, error) {
 	keepAliveSec := params.Paging.KeepAliveSec
 	if keepAliveSec == 0 {
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
@@ -137,19 +137,20 @@ func (m *cursorSessionManager) createResourceData(accountID, quotaOwnerID string
 		return nil, fmt.Errorf("generate cursor session UUIDv7: %w", err)
 	}
 	session := &interfaces.CursorSession{
-		ID:                     generatedID.String(),
-		AccountID:              accountID,
-		QuotaOwnerID:           quotaOwnerID,
-		CatalogID:              resource.CatalogID,
-		ResourceIDs:            []string{resource.ID},
-		ResourceDataResourceID: resource.ID,
-		ResourceDataUpdateTime: resource.UpdateTime,
-		ResourceDataParams:     cloneResourceDataQueryParams(params),
-		ResourceDataCategory:   resource.Category,
-		PageLimit:              params.Paging.Limit,
-		KeepAliveSec:           keepAliveSec,
-		CreatedAtSec:           now,
-		ExpiresAtSec:           now + int64(keepAliveSec),
+		ID:                        generatedID.String(),
+		AccountID:                 accountID,
+		QuotaOwnerID:              quotaOwnerID,
+		ResourceDataProxyCallerID: proxyCallerID,
+		CatalogID:                 resource.CatalogID,
+		ResourceIDs:               []string{resource.ID},
+		ResourceDataResourceID:    resource.ID,
+		ResourceDataUpdateTime:    resource.UpdateTime,
+		ResourceDataParams:        cloneResourceDataQueryParams(params),
+		ResourceDataCategory:      resource.Category,
+		PageLimit:                 params.Paging.Limit,
+		KeepAliveSec:              keepAliveSec,
+		CreatedAtSec:              now,
+		ExpiresAtSec:              now + int64(keepAliveSec),
 	}
 	m.mu.Lock()
 	expired := m.removeExpiredLocked(now)
@@ -238,7 +239,7 @@ func (m *cursorSessionManager) closeForAccount(accountID, cursor string) error {
 	return m.closeForAccountResource(accountID, "", "", cursor)
 }
 
-func (m *cursorSessionManager) closeForAccountResource(accountID, quotaOwnerID, resourceID, cursor string) error {
+func (m *cursorSessionManager) closeForAccountResource(accountID, callerID, resourceID, cursor string) error {
 	m.mu.Lock()
 	session, ok := m.sessions[cursor]
 	if !ok {
@@ -249,11 +250,13 @@ func (m *cursorSessionManager) closeForAccountResource(accountID, quotaOwnerID, 
 		m.mu.Unlock()
 		return errCursorSessionForbidden
 	}
-	if resourceID != "" && session.ResourceDataResourceID != resourceID {
+	// A proxied cursor must be closed through the proxy endpoint bound to its original caller and resource.
+	if resourceID == "" && session.ResourceDataProxyCallerID != "" {
 		m.mu.Unlock()
 		return errCursorSessionNotFound
 	}
-	if quotaOwnerID != "" && session.QuotaOwnerID != quotaOwnerID {
+	if resourceID != "" && (session.ResourceDataResourceID != resourceID ||
+		session.ResourceDataProxyCallerID == "" || session.ResourceDataProxyCallerID != callerID) {
 		m.mu.Unlock()
 		return errCursorSessionNotFound
 	}

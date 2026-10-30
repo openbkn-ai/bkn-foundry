@@ -47,11 +47,19 @@ func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID
 func ExecuteInitialResourceDataCursorWithCategoryRunner(ctx context.Context, accountID string, resource *interfaces.Resource,
 	source *interfaces.Resource, paginationCategory string, params *interfaces.ResourceDataQueryParams,
 	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
+	proxyCallerID := ""
+	if interfaces.IsTrustedProxyRead(ctx) {
+		proxyCallerID = interfaces.CursorQuotaOwner(ctx)
+		if proxyCallerID == "" {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails("trusted proxy cursor requires the original caller")
+		}
+	}
 	quotaOwnerID := interfaces.CursorQuotaOwner(ctx)
 	if quotaOwnerID == "" {
 		quotaOwnerID = accountID
 	}
-	session, err := rawQueryCursorSessions.createResourceData(accountID, quotaOwnerID, resource, params)
+	session, err := rawQueryCursorSessions.createResourceData(accountID, quotaOwnerID, proxyCallerID, resource, params)
 	if err != nil {
 		return nil, cursorSessionCreateError(ctx, err)
 	}
@@ -87,11 +95,10 @@ func ExecuteResourceDataCursorContinuationWithRunner(ctx context.Context, accoun
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
-	quotaOwnerID := interfaces.CursorQuotaOwner(ctx)
-	if quotaOwnerID == "" {
-		quotaOwnerID = accountID
+	if (session.ResourceDataProxyCallerID != "") != interfaces.IsTrustedProxyRead(ctx) {
+		return nil, cursorNotFoundError(ctx)
 	}
-	if session.QuotaOwnerID != quotaOwnerID {
+	if session.ResourceDataProxyCallerID != "" && session.ResourceDataProxyCallerID != interfaces.CursorQuotaOwner(ctx) {
 		return nil, cursorNotFoundError(ctx)
 	}
 	if resource == nil || session.ResourceDataResourceID != resource.ID {

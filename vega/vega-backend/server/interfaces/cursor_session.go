@@ -21,8 +21,8 @@ type CursorSession struct {
 
 	ID        string
 	AccountID string
-	// QuotaOwnerID may be the trusted caller behind an internal access account.
-	// AccountID remains the authority for cursor continuation and close.
+	// QuotaOwnerID may identify the caller behind an internal access account for quota accounting.
+	// Ordinary cursors are authorized by AccountID; proxied resource cursors also validate ResourceDataProxyCallerID.
 	QuotaOwnerID string
 	CatalogID    string
 	ResourceIDs  []string
@@ -45,10 +45,12 @@ type CursorSession struct {
 	SearchAfter     []any
 
 	ResourceDataResourceID string
-	ResourceDataUpdateTime int64
-	ResourceDataParams     *ResourceDataQueryParams
-	ResourceDataCategory   string
-	ResourceDataSource     *ResourceDataCursorSource
+	// Only proxied read cursors bind the original caller; ordinary resource cursors still continue by AccountID.
+	ResourceDataProxyCallerID string
+	ResourceDataUpdateTime    int64
+	ResourceDataParams        *ResourceDataQueryParams
+	ResourceDataCategory      string
+	ResourceDataSource        *ResourceDataCursorSource
 
 	PageOffset int
 	PageLimit  int

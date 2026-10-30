@@ -127,21 +127,21 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 		require.NoError(t, err)
 		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1"}
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
-		_, err = manager.createResourceData("account-a", "account-a", resource, params)
+		_, err = manager.createResourceData("account-a", "account-a", "", resource, params)
 		require.ErrorIs(t, err, errCursorAccountLimitReached)
-		_, err = manager.createResourceData("account-b", "account-b", resource, params)
+		_, err = manager.createResourceData("account-b", "account-b", "", resource, params)
 		assert.NoError(t, err)
 	})
 	t.Run("resource data uses the caller quota while retaining the access account", func(t *testing.T) {
 		manager := newCursorSessionManager(4, 1)
 		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1"}
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
-		first, err := manager.createResourceData("admin", "caller-a", resource, params)
+		first, err := manager.createResourceData("admin", "caller-a", "", resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, "admin", first.AccountID)
-		_, err = manager.createResourceData("admin", "caller-a", resource, params)
+		_, err = manager.createResourceData("admin", "caller-a", "", resource, params)
 		require.ErrorIs(t, err, errCursorAccountLimitReached)
-		second, err := manager.createResourceData("admin", "caller-b", resource, params)
+		second, err := manager.createResourceData("admin", "caller-b", "", resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, "admin", second.AccountID)
 		assert.ErrorIs(t, manager.closeForAccount("caller-b", first.ID), errCursorSessionForbidden)
@@ -287,10 +287,20 @@ func TestCloseResourceDataCursorSessionRequiresBoundResource(t *testing.T) {
 	rawQueryCursorSessions = manager
 	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
 	resource := &interfaces.Resource{ID: "resource-a", CatalogID: "catalog-1"}
-	session, err := manager.createResourceData("account-a", "caller-a", resource,
+	ordinary, err := manager.createResourceData("account-a", "caller-a", "", resource,
 		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
 	require.NoError(t, err)
 	var httpErr *httperrors.HTTPError
+	err = CloseResourceDataCursorSession(context.Background(), "account-a", "caller-a", "resource-a", ordinary.ID)
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+	require.NoError(t, CloseCursorSession(context.Background(), "account-a", ordinary.ID))
+	session, err := manager.createResourceData("account-a", "caller-a", "caller-a", resource,
+		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
+	require.NoError(t, err)
+	err = CloseCursorSession(context.Background(), "account-a", session.ID)
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 	err = CloseResourceDataCursorSession(context.Background(), "account-a", "caller-a", "resource-b", session.ID)
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
@@ -406,7 +416,7 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 				_, err = manager.create("owner", "catalog", nil, 1, 60, 30)
 				require.NoError(t, err)
 			case "resource data create reclaims expired":
-				_, err = manager.createResourceData("owner", "owner", &interfaces.Resource{ID: "r"}, &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}})
+				_, err = manager.createResourceData("owner", "owner", "", &interfaces.Resource{ID: "r"}, &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}})
 				require.NoError(t, err)
 			}
 			assert.ErrorIs(t, ctx.Err(), context.Canceled)

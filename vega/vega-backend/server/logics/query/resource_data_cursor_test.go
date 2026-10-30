@@ -109,20 +109,50 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 		executor := func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
 		}
-		first, err := ExecuteInitialResourceDataCursor(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"),
+		firstCtx := interfaces.WithTrustedProxyRead(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"))
+		first, err := ExecuteInitialResourceDataCursor(firstCtx,
 			"proxy-account", resource,
 			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
 		require.NoError(t, err)
 		require.NotNil(t, first.Paging.NextCursor)
 
-		_, err = ExecuteResourceDataCursorContinuation(interfaces.WithCursorQuotaOwner(context.Background(), "caller-b"),
+		_, err = ExecuteResourceDataCursorContinuation(interfaces.WithTrustedProxyRead(interfaces.WithCursorQuotaOwner(context.Background(), "caller-b")),
 			"proxy-account", resource, *first.Paging.NextCursor, executor)
 		assertHTTPError(t, err, http.StatusNotFound)
-		_, err = ExecuteResourceDataCursorContinuation(context.Background(),
+		_, err = ExecuteResourceDataCursorContinuation(interfaces.WithTrustedProxyRead(context.Background()),
 			"proxy-account", resource, *first.Paging.NextCursor, executor)
 		assertHTTPError(t, err, http.StatusNotFound)
 		_, err = ExecuteResourceDataCursorContinuation(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"),
 			"proxy-account", resource, *first.Paging.NextCursor, executor)
+		assertHTTPError(t, err, http.StatusNotFound)
+		_, err = ExecuteResourceDataCursorContinuation(firstCtx,
+			"proxy-account", resource, *first.Paging.NextCursor, executor)
+		require.NoError(t, err)
+	})
+
+	t.Run("ordinary internal cursor remains account-bound when caller header changes", func(t *testing.T) {
+		previousManager := rawQueryCursorSessions
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
+		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
+		executor := func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
+		}
+		first, err := ExecuteInitialResourceDataCursor(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"),
+			"service-account", resource,
+			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
+		require.NoError(t, err)
+		require.NotNil(t, first.Paging.NextCursor)
+		_, err = ExecuteResourceDataCursorContinuation(interfaces.WithTrustedProxyRead(
+			interfaces.WithCursorQuotaOwner(context.Background(), "caller-a")),
+			"service-account", resource, *first.Paging.NextCursor, executor)
+		assertHTTPError(t, err, http.StatusNotFound)
+		second, err := ExecuteResourceDataCursorContinuation(interfaces.WithCursorQuotaOwner(context.Background(), "caller-b"),
+			"service-account", resource, *first.Paging.NextCursor, executor)
+		require.NoError(t, err)
+		require.NotNil(t, second.Paging.NextCursor)
+		_, err = ExecuteResourceDataCursorContinuation(context.Background(),
+			"service-account", resource, *second.Paging.NextCursor, executor)
 		require.NoError(t, err)
 	})
 
@@ -288,6 +318,18 @@ func TestExecuteResourceDataCursorContinuationWithRunnerRejectsChangedSource(t *
 }
 
 func TestExecuteInitialResourceDataCursor(t *testing.T) {
+	t.Run("proxy cursor requires a trusted caller", func(t *testing.T) {
+		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
+		_, err := ExecuteInitialResourceDataCursor(interfaces.WithTrustedProxyRead(context.Background()),
+			"proxy-account", resource,
+			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
+			func(context.Context, *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				t.Fatal("unbound proxy cursor must not execute")
+				return nil, 0, nil
+			})
+		assertHTTPError(t, err, http.StatusForbidden)
+	})
+
 	t.Run("accounts quota to trusted caller and binds cursor to access account", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
 		manager := newCursorSessionManager(4, 1)
