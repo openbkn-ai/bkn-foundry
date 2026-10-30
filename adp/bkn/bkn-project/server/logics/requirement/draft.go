@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -67,10 +68,13 @@ const (
 	rejectedScenario      = "scenario"
 	rejectedConcept       = "concept"
 	rejectedQuestion      = "question"
+	rejectedBasis         = "basis"
 	rejectedRule          = "rule"
 	rejectedConflict      = "conflict"
 	rejectedChoice        = "choice"
 	rejectedTooFewOptions = "too_few_options"
+	// rejectedBasisNotInDocuments is a skill a question rests on that no document names.
+	rejectedBasisNotInDocuments = "basis_not_in_documents"
 )
 
 // draftOutput is what the Agent returns in pass draft. Its ids are its own, for items to refer to
@@ -399,6 +403,32 @@ func basisOf(cs []agentCitation, supplementReason string, docs map[string]*inter
 	return kept, ""
 }
 
+// namedInDocuments says a name stands in a block of the documents, compared without case,
+// whitespace, underscores or hyphens, as names are written in prose and as identifiers.
+func namedInDocuments(name string, docs map[string]*interfaces.RequirementDocument) bool {
+	squeeze := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if r == '_' || r == '-' || r == '\u3000' || unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, strings.ToLower(normalize([]rune(s)).text))
+	}
+	n := squeeze(name)
+	if n == "" {
+		return false
+	}
+	for _, d := range docs {
+		content := []rune(d.Content)
+		for _, b := range d.Blocks {
+			if b.Start >= 0 && b.End <= len(content) && b.Start < b.End && strings.Contains(squeeze(string(content[b.Start:b.End])), n) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func orEmpty(s []string) []string {
 	if s == nil {
 		return []string{}
@@ -498,9 +528,22 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		// A question that rests on a metric, function or skill needs more than the ontology and its
 		// facts, whatever layer the Agent gave it: it is not asked in the knowledge regression.
 		// Blank names are none: an Agent's placeholder neither moves the question nor stays in its basis.
-		metrics, functions, skills := named(q.Metrics), named(q.Functions), named(q.Skills)
+		metrics, functions := named(q.Metrics), named(q.Functions)
+		// A skill is something the documents ask for by name; one the Agent designed to serve the
+		// answer is not what the question rests on, and does not make a lookup a capability. Metrics
+		// and functions are named by the Agent from the rules, and stand as given.
+		skills := []string{}
+		for _, s := range named(q.Skills) {
+			if namedInDocuments(s, docs) {
+				skills = append(skills, s)
+			} else {
+				reject(rejectedBasis, s+" ("+q.Text+")", rejectedBasisNotInDocuments)
+			}
+		}
+		// Said capability for nothing but such skills, it is a lookup: knowledge.
+		servedOnly := len(metrics)+len(functions)+len(skills) == 0 && len(named(q.Skills)) > 0
 		layer := interfaces.REQUIREMENT_LAYER_CAPABILITY
-		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE && len(metrics)+len(functions)+len(skills) == 0 {
+		if (q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE || servedOnly) && len(metrics)+len(functions)+len(skills) == 0 {
 			layer = interfaces.REQUIREMENT_LAYER_KNOWLEDGE
 		}
 		question := &interfaces.RequirementQuestion{

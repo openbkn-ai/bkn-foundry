@@ -304,7 +304,7 @@ func Test_BuildSpec(t *testing.T) {
 				// Said knowledge, but resting on a metric, a function or a skill: more than the ontology.
 				{Text: "d", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"amount over threshold"}},
 				{Text: "e", Layer: "knowledge", SupplementReason: "r", Functions: []string{"approval check"}},
-				{Text: "f", Layer: "knowledge", SupplementReason: "r", Skills: []string{"approver lookup"}},
+				{Text: "f", Layer: "knowledge", SupplementReason: "r", Skills: []string{"Signed-Change"}},
 				// Blank names are none: still knowledge, and not kept.
 				{Text: "g", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"", " "}, Functions: []string{" "}},
 			}}
@@ -320,6 +320,41 @@ func Test_BuildSpec(t *testing.T) {
 			So(spec.Questions[6].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
 			So(spec.Questions[6].Basis.Metrics, ShouldResemble, []string{})
 			So(spec.Questions[3].Basis.Metrics, ShouldResemble, []string{"amount over threshold"})
+		})
+
+		Convey("A skill stands in a question's basis only when the documents name it\n", func() {
+			out := &draftOutput{
+				// A skill the Agent designed for a scenario in the same pass names nothing the documents ask for.
+				Scenarios: []agentScenario{{Name: "Answer", SupplementReason: "r", Capabilities: []interfaces.RequirementCapability{
+					{Kind: "skill", Name: "Date lookup Skill"}}}},
+				Questions: []agentQuestion{
+					// A lookup the Agent rests on a serving skill of its own: knowledge after all.
+					{Text: "a", Layer: "capability", SupplementReason: "r", Skills: []string{"Date lookup Skill", " ", "__"}},
+					// Named by the documents, compared without case, spaces, underscores or hyphens.
+					{Text: "b", Layer: "knowledge", SupplementReason: "r", Skills: []string{"signed_change", "Date lookup Skill"}},
+					// Metrics and functions are named by the Agent: they stand as given.
+					{Text: "c", Layer: "knowledge", SupplementReason: "r", Functions: []string{"approval check"}, Skills: []string{"Date lookup Skill"}},
+				},
+			}
+
+			spec, _ := buildSpec(out, docs, draft)
+
+			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
+			So(spec.Questions[0].Basis.Skills, ShouldResemble, []string{})
+			So(spec.Questions[1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+			So(spec.Questions[1].Basis.Skills, ShouldResemble, []string{"signed_change"})
+			So(spec.Questions[2].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+			So(spec.Questions[2].Basis.Functions, ShouldResemble, []string{"approval check"})
+			So(spec.Scenarios[0].Capabilities, ShouldHaveLength, 1)
+			rejected := []interfaces.RequirementRejected{}
+			for _, r := range spec.Rejected {
+				rejected = append(rejected, *r)
+			}
+			So(rejected, ShouldResemble, []interfaces.RequirementRejected{
+				{Kind: rejectedBasis, Text: "Date lookup Skill (a)", Reason: rejectedBasisNotInDocuments},
+				{Kind: rejectedBasis, Text: "__ (a)", Reason: rejectedBasisNotInDocuments},
+				{Kind: rejectedBasis, Text: "Date lookup Skill (b)", Reason: rejectedBasisNotInDocuments},
+				{Kind: rejectedBasis, Text: "Date lookup Skill (c)", Reason: rejectedBasisNotInDocuments}})
 		})
 
 		Convey("A conflict keeps the sides found, needs two documents, and gets the authority's suggestion\n", func() {

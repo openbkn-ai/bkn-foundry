@@ -2430,6 +2430,7 @@ def test_requirements_v6_upgrade_matches_fresh_install_and_keeps_history(start):
                      "What the answer returns is never an input",
                      "one of the property names the message lists for that concept's object type",
                      "its concept is theirs, never a concept of the moment itself",
+                     "naming one never makes a lookup capability",
                      "an object type also with its properties (name and type) and primary keys",
                      # pass guidance: the slots are the inputs; the server writes the template and not_exist tests
                      # when it says so, and otherwise the Agent writes a not_exist test.
