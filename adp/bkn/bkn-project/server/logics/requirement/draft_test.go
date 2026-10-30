@@ -893,6 +893,8 @@ func Test_RequirementDrafting(t *testing.T) {
 				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
 				So(finished.Error, ShouldEqual, c.code)
 				So(finished.Spec.Scenarios, ShouldBeEmpty)
+				// Only an answer that does not parse was asked for again.
+				So(finished.Spec.DraftRetried, ShouldEqual, c.code == failureOutputInvalid)
 			}
 		})
 
@@ -916,6 +918,26 @@ func Test_RequirementDrafting(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 				So(finished.Spec.Scenarios, ShouldHaveLength, 1)
+				So(finished.Spec.DraftRetried, ShouldBeTrue)
+				So(finished.AgentTaskID, ShouldEqual, "t2")
+			})
+
+			Convey("and so is an answer that does not parse\n", func() {
+				expectStart()
+				expectContext()
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
+					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: "Here is the spec: {"}, nil)
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t2"}, nil)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t2").Return(&interfaces.BknAgentTask{TaskID: "t2",
+					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
+				ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+				expectFinish()
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 				So(finished.Spec.DraftRetried, ShouldBeTrue)
 				So(finished.AgentTaskID, ShouldEqual, "t2")
 			})
