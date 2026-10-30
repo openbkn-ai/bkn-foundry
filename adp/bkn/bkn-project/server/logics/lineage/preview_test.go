@@ -129,6 +129,20 @@ func Test_LineageService_PreviewRelease(t *testing.T) {
 				map[string]any{"network_id": networkID, "lineage_id": id, "version": "1.0.0"})
 		})
 
+		Convey("A version a release recorded, its tag behind the branch since, is refused only as published\n", func() {
+			mainHead, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			So(realGS.Tag(ctx, id, "v1.0.0", mainHead), ShouldBeNil)
+			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(
+				&interfaces.Release{LineageID: id, NetworkID: networkID, Version: "1.0.0"}, true, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+
+			preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+			So(err, ShouldBeNil)
+			So(refusalCodes(preview), ShouldResemble, []string{perrors.BknProject_Release_VersionExists})
+		})
+
 		Convey("A tag of the version at another commit is refused as an unfinished attempt\n", func() {
 			mainHead, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
 			So(realGS.Tag(ctx, id, "v1.0.0", mainHead), ShouldBeNil)

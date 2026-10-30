@@ -277,6 +277,9 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 	switch {
 	case err == nil && tagHead == branchHead:
 		checked.retry = true
+	case err == nil && recorded:
+		// A recorded release's tag is behind its branch once the branch moves on; VersionExists
+		// already says so.
 	case err == nil:
 		if refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_UnfinishedAttempt).
 			WithErrorDetails(map[string]any{"tag": preview.Tag, "commit": tagHead, "branch_commit": branchHead,
