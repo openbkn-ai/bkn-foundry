@@ -97,6 +97,21 @@ func Test_DraftRestHandler(t *testing.T) {
 				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("A question about an object type is handed to the service, and its answer replied\n", func() {
+			drs.EXPECT().AskObjectType(gomock.Any(), "Bearer t", "p1", "order_lines",
+				interfaces.DraftAskRequest{Question: "用什么做唯一标识？"}, caller).
+				Return(&interfaces.DraftAskAnswer{Answer: "用订单号和行号。", Suggestion: &interfaces.DraftAskSuggestion{
+					Field: interfaces.DRAFT_ASK_FIELD_IDENTITY, Properties: []string{"order_no", "line_no"}}}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/draft/object_types/order_lines/ask",
+				[]byte(`{"question":"用什么做唯一标识？"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"field":"identity"`)
+			So(serveBody(handler, http.MethodPost, base+"/draft/object_types/order_lines/ask", []byte(`[`)).
+				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("draft:restore restores the excluded field the body names\n", func() {
 			drs.EXPECT().RestoreExcluded(gomock.Any(), "Bearer t", "p1",
 				interfaces.DraftRestore{UpdateTime: 7, ObjectType: "customers", Field: "Phone"}, caller).

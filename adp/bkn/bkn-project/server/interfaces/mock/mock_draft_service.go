@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// AskObjectType mocks base method.
+func (m *MockDraftService) AskObjectType(ctx context.Context, token, projectID, itemID string, req interfaces.DraftAskRequest, caller interfaces.AccountInfo) (*interfaces.DraftAskAnswer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AskObjectType", ctx, token, projectID, itemID, req, caller)
+	ret0, _ := ret[0].(*interfaces.DraftAskAnswer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AskObjectType indicates an expected call of AskObjectType.
+func (mr *MockDraftServiceMockRecorder) AskObjectType(ctx, token, projectID, itemID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AskObjectType", reflect.TypeOf((*MockDraftService)(nil).AskObjectType), ctx, token, projectID, itemID, req, caller)
+}
+
 // BuildIndex mocks base method.
 func (m *MockDraftService) BuildIndex(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
 	m.ctrl.T.Helper()
