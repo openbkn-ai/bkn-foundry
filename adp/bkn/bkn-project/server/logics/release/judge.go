@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -33,16 +34,29 @@ var verdicts = []string{
 	interfaces.REGRESSION_VERDICT_OFF_TOPIC,
 }
 
+// judgeNameProperty is the kind of a property's name; ObjectType says whose it is.
+const judgeNameProperty = "property"
+
 // judgeInput is the message the judge reads: the question asked, what a test question expects of
 // the data, the answer as written, the tool calls behind it without what they returned, the needs
-// by name, and the language of the reason.
+// by name, the display names of what the tool calls name, and the language of the reason.
 type judgeInput struct {
 	Question  string                   `json:"question"`
 	Expect    string                   `json:"expect,omitempty"`
 	Answer    string                   `json:"answer"`
 	ToolCalls []judgeToolCall          `json:"tool_calls"`
 	Needs     []interfaces.ReleaseItem `json:"needs"`
+	Names     []judgeName              `json:"names,omitempty"`
 	Language  string                   `json:"language"`
+}
+
+// judgeName is the display name of an object type, relation type or property, for the reason to
+// name it by.
+type judgeName struct {
+	Kind       string `json:"kind"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	ObjectType string `json:"object_type,omitempty"`
 }
 
 type judgeToolCall struct {
@@ -84,13 +98,14 @@ func judgeResponseFormat() map[string]any {
 // not be run, failed or did not finish (judge_unavailable), or said what its schema does not allow
 // or named a need it was not given (judge_invalid).
 func (s *regressionService) judgeAnswer(ctx context.Context, runner interfaces.AccountInfo, question string,
-	expect string, answer string, uses []interfaces.BknAgentToolUse, needs []interfaces.ReleaseItem, language string) (*judgeOutput, string) {
+	expect string, answer string, uses []interfaces.BknAgentToolUse, needs []interfaces.ReleaseItem, names []judgeName,
+	language string) (*judgeOutput, string) {
 	calls := make([]judgeToolCall, 0, len(uses))
 	for _, u := range uses {
 		calls = append(calls, judgeToolCall{Name: u.Name, Input: u.Input})
 	}
 	message, err := json.Marshal(judgeInput{Question: question, Expect: expect, Answer: answer, ToolCalls: calls, Needs: needs,
-		Language: language})
+		Names: names, Language: language})
 	if err != nil {
 		return nil, interfaces.REGRESSION_CODE_JUDGE_UNAVAILABLE
 	}
@@ -130,4 +145,46 @@ func (s *regressionService) judgeAnswer(ctx context.Context, runner interfaces.A
 		}
 	}
 	return &out, ""
+}
+
+// namesIn are the names in glossary of what the tool calls name: an id their input carries as a
+// value or a key.
+func namesIn(glossary []judgeName, uses []interfaces.BknAgentToolUse) []judgeName {
+	said := map[string]bool{}
+	var walk func(v any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case string:
+			said[v] = true
+		case []any:
+			for _, e := range v {
+				walk(e)
+			}
+		case map[string]any:
+			for k, e := range v {
+				said[k] = true
+				walk(e)
+			}
+		}
+	}
+	for _, u := range uses {
+		var input any
+		if json.Unmarshal(u.Input, &input) == nil {
+			walk(input)
+		}
+	}
+	names := []judgeName{}
+	for _, n := range glossary {
+		if said[n.ID] {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// toolNamedIn is whether reason names a tool of uses.
+func toolNamedIn(reason string, uses []interfaces.BknAgentToolUse) bool {
+	return slices.ContainsFunc(uses, func(u interfaces.BknAgentToolUse) bool {
+		return u.Name != "" && strings.Contains(reason, u.Name)
+	})
 }
