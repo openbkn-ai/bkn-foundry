@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -309,7 +310,8 @@ func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) err
 	key := d.keys[table.ID]
 	switch {
 	case objectType.NeedsIdentity:
-		return nil
+		// No field to count alone: only a pair may identify the records.
+		return d.pairIdentity(ctx, table, objectType, "", false)
 	case len(key) != 1:
 		objectType.Key.Reason = reasonCompositeKey
 		return nil
@@ -326,11 +328,10 @@ func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) err
 	if nulls > 0 || distinct < rows-nulls {
 		objectType.NeedsIdentity, objectType.Adopted = true, false
 		delete(d.keys, table.ID)
-		// A field with nulls makes every pair with it have nulls too: none to count.
-		if nulls > 0 || rows == 0 {
+		if rows == 0 {
 			return nil
 		}
-		return d.pairIdentity(ctx, table, objectType, key[0])
+		return d.pairIdentity(ctx, table, objectType, key[0], nulls > 0)
 	}
 	return nil
 }
@@ -362,52 +363,102 @@ func (d *drafter) namesAnotherTable(table *interfaces.VegaTable, field string) b
 	return false
 }
 
-// maxPairCounts bounds the pairs drafting counts for an identity of two fields.
-const maxPairCounts = 4
+// Bounds of the search for an identity of two fields: the pairs counted, the fields paired when
+// the table has no identifier of its own, the pairs offered, and the time all their counts take.
+const (
+	maxPairCounts     = 6
+	maxPairFields     = 4
+	maxPairCandidates = 3
+)
+
+// pairTimeout bounds the counts of one table's pairs; tests shorten it.
+var pairTimeout = 30 * time.Second
 
 // pairWords are the last words of fields named as identifiers within a record, such as a line.
 var pairWords = map[string]bool{"id": true, "no": true, "code": true, "seq": true, "line": true}
 
-// pairIdentity looks, for an object type whose identity field has duplicates, for a pair that
-// counts unique and non-null: that field with another key-typed field named as an identifier and
-// not referring to another table, in column order, at most maxPairCounts counts. Line tables are
-// keyed so, by a document and its line. The pair is offered as the identity's candidate; drafting
-// does not take it, a person decides.
+// pairIdentity looks, for an object type that no single field identifies, for pairs of fields that
+// count unique and non-null. A table with an identifier of its own (base, a field that refers to no
+// other table) pairs it with another key-typed field named as an identifier that refers to no table
+// either: a line table is keyed by its document and line, and a field saying whose record it is
+// does not say which one. A table whose identifier refers to another table, such as a bill of
+// materials keyed by a material, or that has none, pairs among its key-typed fields that are keys,
+// foreign keys or named as identifiers: the first maxPairFields, in column order. At most
+// maxPairCounts pairs are counted and maxPairCandidates offered, in column order; counts that take
+// longer than pairTimeout offer none. The pairs are offered as the identity's candidates; drafting
+// does not take one, a person decides. baseNulls says base has nulls: every pair with it has too.
 func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
-	objectType *interfaces.DraftObjectType, base string) error {
+	objectType *interfaces.DraftObjectType, base string, baseNulls bool) error {
 	fields := d.fields[table.ID]
-	first, ok := fields[base]
-	if !ok {
-		return nil
-	}
 	refers := map[string]bool{}
 	for _, fk := range table.ForeignKeys {
 		for _, c := range fk.Columns {
 			refers[c] = true
 		}
 	}
-	counted := 0
-	for _, c := range table.Columns {
-		second, ok := fields[c.Name]
-		if !ok || c.Name == base || refers[c.Name] || !keyTypes[bknTypes[c.Type]] || !pairWords[lastWord(words(c.Name))] ||
-			d.namesAnotherTable(table, c.Name) {
-			continue
+	referring := func(field string) bool { return refers[field] || d.namesAnotherTable(table, field) }
+	pairs := [][2]string{}
+	if _, ok := fields[base]; ok && !referring(base) {
+		if baseNulls {
+			return nil
 		}
-		if counted == maxPairCounts {
-			break
+		for _, c := range table.Columns {
+			if _, ok := fields[c.Name]; !ok || c.Name == base || !keyTypes[bknTypes[c.Type]] ||
+				!pairWords[lastWord(words(c.Name))] || referring(c.Name) {
+				continue
+			}
+			pairs = append(pairs, [2]string{base, c.Name})
 		}
-		counted++
-		rows, distinct, nulls, err := d.counter.keyTupleStats(ctx, table, []string{base, c.Name})
+	} else {
+		declared := map[string]bool{}
+		for _, k := range table.PrimaryKeys {
+			declared[k] = true
+		}
+		pool := []string{}
+		for _, c := range table.Columns {
+			if _, ok := fields[c.Name]; !ok || !keyTypes[bknTypes[c.Type]] || (c.Name == base && baseNulls) ||
+				!(declared[c.Name] || refers[c.Name] || pairWords[lastWord(words(c.Name))]) {
+				continue
+			}
+			if len(pool) == maxPairFields {
+				break
+			}
+			pool = append(pool, c.Name)
+		}
+		for i := range pool {
+			for _, second := range pool[i+1:] {
+				pairs = append(pairs, [2]string{pool[i], second})
+			}
+		}
+	}
+	if len(pairs) > maxPairCounts {
+		pairs = pairs[:maxPairCounts]
+	}
+
+	countCtx, cancel := context.WithTimeout(ctx, pairTimeout)
+	defer cancel()
+	found := [][]string{}
+	for _, pair := range pairs {
+		rows, distinct, nulls, err := d.counter.keyTupleStats(countCtx, table, pair[:])
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			if countCtx.Err() != nil {
+				// Out of time: what was found is left unoffered rather than offered in part.
+				return nil
+			}
 			continue
 		}
 		if rows > 0 && nulls == 0 && distinct == rows {
-			objectType.Key.Candidate = []string{first, second}
-			return nil
+			found = append(found, []string{fields[pair[0]], fields[pair[1]]})
+			if len(found) == maxPairCandidates {
+				break
+			}
 		}
+	}
+	if len(found) > 0 {
+		objectType.Key.Candidate, objectType.Key.Candidates = found[0], found
 	}
 	return nil
 }
@@ -450,9 +501,9 @@ func (d *drafter) inferKey(ctx context.Context, table *interfaces.VegaTable, obj
 			return nil
 		}
 	}
-	// Paired with the field whose counts are the evidence, when it has no nulls to make every pair have.
-	if key := objectType.Key; key.Computed && key.Field != "" && key.Nulls == 0 && key.Rows > 0 {
-		return d.pairIdentity(ctx, table, objectType, key.Field)
+	// Paired with the field whose counts are the evidence; a table without rows has no pair either.
+	if key := objectType.Key; key.Computed && key.Field != "" && key.Rows > 0 {
+		return d.pairIdentity(ctx, table, objectType, key.Field, key.Nulls > 0)
 	}
 	return nil
 }

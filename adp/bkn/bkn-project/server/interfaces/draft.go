@@ -296,6 +296,9 @@ type DraftKeyEvidence struct {
 	// Candidate is a pair of properties drafting counted unique and non-null together, for an
 	// object type that waits for its identity: offered to choose, never taken by drafting.
 	Candidate []string `json:"candidate,omitempty"`
+	// Candidates are every pair drafting counted so, in column order, Candidate first; absent in
+	// drafts made before it listed more than one.
+	Candidates [][]string `json:"candidates,omitempty"`
 }
 
 type DraftRelationType struct {

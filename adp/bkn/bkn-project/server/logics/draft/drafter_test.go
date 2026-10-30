@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -38,6 +39,10 @@ type fakeCounter struct {
 	joins  map[joinKey][4]int64 // rows, nulls, orphans, distinct source values
 	codes  map[string][]interfaces.DraftEnumValue
 	failed map[string]bool // table id or table.field whose queries fail
+	// slow are table.field+field keys whose counts wait until their context ends.
+	slow map[string]bool
+	// tuples are the keys of several fields counted, in order.
+	tuples []string
 }
 
 func (f *fakeCounter) keyStats(_ context.Context, table *interfaces.VegaTable, field string) (int64, int64, int64, error) {
@@ -56,7 +61,13 @@ func (f *fakeCounter) keyStats(_ context.Context, table *interfaces.VegaTable, f
 
 func (f *fakeCounter) keyTupleStats(ctx context.Context, table *interfaces.VegaTable,
 	fields []string) (int64, int64, int64, error) {
-	return f.keyStats(ctx, table, strings.Join(fields, "+"))
+	key := strings.Join(fields, "+")
+	f.tuples = append(f.tuples, table.ID+"."+key)
+	if f.slow[table.ID+"."+key] {
+		<-ctx.Done()
+		return 0, 0, 0, ctx.Err()
+	}
+	return f.keyStats(ctx, table, key)
 }
 
 func (f *fakeCounter) joinStats(_ context.Context, source *interfaces.VegaTable, field string,
@@ -551,6 +562,133 @@ func Test_Drafter(t *testing.T) {
 			items, err = newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{wide}, nil)
 			So(err, ShouldBeNil)
 			So(items.ObjectTypes[0].Key.Candidate, ShouldResemble, []string{"id", fmt.Sprintf("part%d_no", maxPairCounts)})
+		})
+
+		Convey("A bill of materials keyed by the materials it refers to offers pairs of its references\n", func() {
+			material := table("r_mat", "c1", "material", 0, []string{"material_code"},
+				col("material_code", "string", ""), col("name", "string", ""))
+			bom := func() *interfaces.VegaTable {
+				t := table("r_bom", "c1", "material_bom", 0, nil,
+					col("material_code", "string", ""), col("bom_material_code", "string", ""),
+					col("parent_material_code", "string", ""), col("bom_level", "integer", ""),
+					col("usage_qty", "decimal", ""))
+				t.ForeignKeys = []interfaces.VegaForeignKey{
+					fk("bom_material_code", "material", "material_code"), fk("parent_material_code", "material", "material_code"),
+				}
+				return t
+			}
+			c := sampleCounter()
+			c.keys["r_bom.material_code"] = [3]int64{300, 120, 0}
+			for _, pair := range []string{"material_code+bom_material_code", "material_code+parent_material_code",
+				"bom_material_code+parent_material_code"} {
+				c.keys["r_bom."+pair] = [3]int64{300, 250, 0}
+			}
+			draft := func() *interfaces.DraftObjectType {
+				items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{bom(), material}, nil)
+				So(err, ShouldBeNil)
+				return objectType(items, "material_bom")
+			}
+
+			Convey("only the pairs that count unique and non-null, in column order\n", func() {
+				c.keys["r_bom.material_code+parent_material_code"] = [3]int64{300, 300, 0}
+				c.keys["r_bom.bom_material_code+parent_material_code"] = [3]int64{300, 300, 0}
+
+				ot := draft()
+
+				So(ot.NeedsIdentity, ShouldBeTrue)
+				So(ot.Key.Candidates, ShouldResemble, [][]string{
+					{"material_code", "parent_material_code"}, {"bom_material_code", "parent_material_code"},
+				})
+				So(ot.Key.Candidate, ShouldResemble, []string{"material_code", "parent_material_code"})
+				// A field neither a key nor named as an identifier is not paired.
+				for _, counted := range c.tuples {
+					So(counted, ShouldNotContainSubstring, "usage_qty")
+				}
+			})
+
+			Convey("none when no pair is unique\n", func() {
+				So(draft().Key.Candidates, ShouldBeNil)
+			})
+
+			Convey("none when the counts outlast their time, even those found before\n", func() {
+				pairTimeout = 20 * time.Millisecond
+				defer func() { pairTimeout = 30 * time.Second }()
+				c.keys["r_bom.material_code+bom_material_code"] = [3]int64{300, 300, 0}
+				c.slow = map[string]bool{"r_bom.material_code+parent_material_code": true}
+
+				ot := draft()
+
+				So(ot.Key.Candidates, ShouldBeNil)
+				So(ot.Key.Candidate, ShouldBeNil)
+			})
+
+			Convey("at most maxPairCandidates\n", func() {
+				for _, pair := range []string{"material_code+bom_material_code", "material_code+parent_material_code",
+					"material_code+bom_level", "bom_material_code+parent_material_code"} {
+					c.keys["r_bom."+pair] = [3]int64{300, 300, 0}
+				}
+				t := bom()
+				t.Columns[3] = col("bom_line_no", "integer", "")
+				c.keys["r_bom.material_code+bom_line_no"] = [3]int64{300, 300, 0}
+				items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{t, material}, nil)
+
+				So(err, ShouldBeNil)
+				So(objectType(items, "material_bom").Key.Candidates, ShouldHaveLength, maxPairCandidates)
+			})
+		})
+
+		Convey("A table no single field can identify is still offered a pair\n", func() {
+			movements := table("r_mv", "c1", "stock_movements", 0, nil,
+				col("doc_no", "string", ""), col("line_seq", "integer", ""), col("qty", "decimal", ""))
+			c := sampleCounter()
+			c.keys["r_mv.doc_no"] = [3]int64{50, 20, 0}
+			c.keys["r_mv.doc_no+line_seq"] = [3]int64{50, 50, 0}
+			nameless := table("r_nk", "c1", "transfers", 0, nil,
+				col("qty", "decimal", ""), col("warehouse_code", "string", ""), col("lot_no", "string", ""))
+			c.keys["r_nk.warehouse_code+lot_no"] = [3]int64{40, 40, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{movements, nameless}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "stock_movements").Key.Candidates, ShouldResemble, [][]string{{"doc_no", "line_seq"}})
+			// No field is a candidate alone: the pairs of its identifiers are counted.
+			So(objectType(items, "transfers").Key.Source, ShouldEqual, interfaces.DRAFT_KEY_NONE)
+			So(objectType(items, "transfers").Key.Candidates, ShouldResemble, [][]string{{"warehouse_code", "lot_no"}})
+		})
+
+		Convey("A table without an identifier of its own pairs only its first maxPairFields identifiers\n", func() {
+			columns := []interfaces.VegaColumn{col("qty", "decimal", "")}
+			for i := 1; i <= maxPairFields+1; i++ {
+				columns = append(columns, col(fmt.Sprintf("part%d_no", i), "string", ""))
+			}
+			wide := table("r_wd", "c1", "wide_moves", 0, nil, columns...)
+			c := sampleCounter()
+			for i := 1; i <= maxPairFields+1; i++ {
+				for j := i + 1; j <= maxPairFields+1; j++ {
+					c.keys[fmt.Sprintf("r_wd.part%d_no+part%d_no", i, j)] = [3]int64{100, 60, 0}
+				}
+			}
+			// Unique, but its second field is past the bound.
+			c.keys[fmt.Sprintf("r_wd.part1_no+part%d_no", maxPairFields+1)] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{wide}, nil)
+
+			So(err, ShouldBeNil)
+			So(items.ObjectTypes[0].Key.Candidates, ShouldBeNil)
+			So(len(c.tuples), ShouldBeLessThanOrEqualTo, maxPairCounts)
+		})
+
+		Convey("A single field that identifies the records leaves no pair counted\n", func() {
+			lines := table("r_pol", "c1", "purchase_order_lines", 0, nil,
+				col("id", "integer", ""), col("line_seq", "integer", ""), col("entry_id", "integer", ""))
+			c := sampleCounter()
+			c.keys["r_pol.id"] = [3]int64{100, 100, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{lines}, nil)
+
+			So(err, ShouldBeNil)
+			So(items.ObjectTypes[0].PrimaryKeys, ShouldResemble, []string{"id"})
+			So(c.tuples, ShouldBeEmpty)
 		})
 
 		Convey("A keyless table's field named id in another script is still an identity candidate\n", func() {

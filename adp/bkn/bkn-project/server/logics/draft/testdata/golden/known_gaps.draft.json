@@ -186,7 +186,17 @@
         "computed": true,
         "rows": 900,
         "distinct": 400,
-        "nulls": 0
+        "nulls": 0,
+        "candidate": [
+          "staff_id",
+          "team_code"
+        ],
+        "candidates": [
+          [
+            "staff_id",
+            "team_code"
+          ]
+        ]
       },
       "needs_identity": true
     }
