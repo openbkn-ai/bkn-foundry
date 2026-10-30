@@ -44,6 +44,7 @@ var projectZhCN = i18n.I18nMessages{
 		"BknProject.Requirement.InternalError":       "内部错误 需求规格处理失败，请联系管理员。",
 		"BknProject.Requirement.InvalidTest":         "测试问法不合法 测试问法不能为空、不能过长，取值所属的概念必须存在，见 error_details。",
 		"BknProject.Requirement.TestNotFound":        "测试问法不存在 这个场景问题没有这条测试问法。",
+		"BknProject.Requirement.InvalidExportTarget": "导出对象不合法 target 只能是 workshop 或 eval。",
 		"BknProject.Requirement.Generating":          "正在生成 这个场景问题的测试问法与开发指导正在生成，请等它完成后再试。",
 	},
 }

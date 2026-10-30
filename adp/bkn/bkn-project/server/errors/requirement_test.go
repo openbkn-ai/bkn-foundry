@@ -42,6 +42,7 @@ func TestRequirementCodesAreRegisteredAndWorded(t *testing.T) {
 		perrors.BknProject_Requirement_InvalidTest,
 		perrors.BknProject_Requirement_TestNotFound,
 		perrors.BknProject_Requirement_Generating,
+		perrors.BknProject_Requirement_InvalidExportTarget,
 	}
 	seen := map[i18n.Language]map[string]string{}
 	for _, code := range codes {

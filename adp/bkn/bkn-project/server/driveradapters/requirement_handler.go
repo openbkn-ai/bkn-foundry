@@ -7,6 +7,7 @@ package driveradapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -196,6 +197,9 @@ func (r *restHandler) DeleteRequirementDocument(c *gin.Context, visitor hydra.Vi
 const requirementsActionDraft = "requirements:draft"
 
 func (r *restHandler) GetRequirementByEx(c *gin.Context) { r.withExVisitor(c, r.GetRequirement) }
+func (r *restHandler) ExportRequirementByEx(c *gin.Context) {
+	r.withExVisitor(c, r.ExportRequirement)
+}
 func (r *restHandler) AddRequirementItemByEx(c *gin.Context) {
 	r.withExVisitor(c, r.AddRequirementItem)
 }
@@ -237,6 +241,26 @@ func (r *restHandler) GetRequirement(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, view)
+}
+
+// ExportRequirement serves GET /projects/{project_id}/requirements/export?target=workshop|eval, the
+// specification as a YAML file to download.
+func (r *restHandler) ExportRequirement(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, target := c.Param("project_id"), c.Query("target")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("target").String(target))
+
+	body, name, err := r.rqs.ExportRequirement(ctx, visitor.TokenID, id, target)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	c.Data(http.StatusOK, "application/yaml; charset=utf-8", body)
 }
 
 // GenerateRequirement serves POST /projects/{project_id}/requirements:draft and replies 202 with

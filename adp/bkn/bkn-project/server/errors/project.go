@@ -59,11 +59,12 @@ const (
 	BknProject_Requirement_TestNotFound     = "BknProject.Requirement.TestNotFound"
 
 	// 409
-	BknProject_Requirement_Drafting        = "BknProject.Requirement.Drafting"
-	BknProject_Requirement_Generating      = "BknProject.Requirement.Generating"
-	BknProject_Requirement_Stale           = "BknProject.Requirement.Stale"
-	BknProject_Requirement_HasDecisions    = "BknProject.Requirement.HasDecisions"
-	BknProject_Requirement_ProjectArchived = "BknProject.Requirement.ProjectArchived"
+	BknProject_Requirement_Drafting            = "BknProject.Requirement.Drafting"
+	BknProject_Requirement_Generating          = "BknProject.Requirement.Generating"
+	BknProject_Requirement_InvalidExportTarget = "BknProject.Requirement.InvalidExportTarget"
+	BknProject_Requirement_Stale               = "BknProject.Requirement.Stale"
+	BknProject_Requirement_HasDecisions        = "BknProject.Requirement.HasDecisions"
+	BknProject_Requirement_ProjectArchived     = "BknProject.Requirement.ProjectArchived"
 
 	// 500
 	BknProject_Requirement_InternalError = "BknProject.Requirement.InternalError"
@@ -107,5 +108,6 @@ var (
 		BknProject_Requirement_InvalidTest,
 		BknProject_Requirement_TestNotFound,
 		BknProject_Requirement_Generating,
+		BknProject_Requirement_InvalidExportTarget,
 	}
 )

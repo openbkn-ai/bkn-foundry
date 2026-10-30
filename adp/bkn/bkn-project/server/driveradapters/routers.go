@@ -142,6 +142,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	// The requirement specification of a project; requirements:draft is served with the other
 	// project actions.
 	apiV1.GET("/projects/:project_id/requirements", r.GetRequirementByEx)
+	apiV1.GET("/projects/:project_id/requirements/export", r.ExportRequirementByEx)
 	apiV1.POST("/projects/:project_id/requirements/items/:kind", r.AddRequirementItemByEx)
 	apiV1.PATCH("/projects/:project_id/requirements/items/:kind/:item_id", r.EditRequirementItemByEx)
 	apiV1.DELETE("/projects/:project_id/requirements/items/:kind/:item_id", r.DeleteRequirementItemByEx)

@@ -726,6 +726,9 @@ type RequirementService interface {
 		discardDecisions bool) (*Requirement, error)
 	// GetRequirement returns the project's specification with what is computed from it.
 	GetRequirement(ctx context.Context, token string, projectID string) (*RequirementView, error)
+	// ExportRequirement writes the ready specification for target workshop or eval as YAML, with
+	// no value of a record, and returns it with its file name.
+	ExportRequirement(ctx context.Context, token string, projectID string, target string) ([]byte, string, error)
 	// FailInterrupted fails the specifications a previous run of the service left drafting.
 	FailInterrupted(ctx context.Context) error
 
