@@ -10,11 +10,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -41,7 +43,7 @@ func TestMariaDBConnectorMetadataAndConfig(t *testing.T) {
 			"username":  {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
 			"password":  {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
 			"databases": {Name: "数据库列表", Type: "array", Description: "数据库名称列表（可选，为空则连接实例级别）", Required: false, Encrypted: false},
-			"options":   {Name: "连接参数", Type: "object", Description: "连接参数（如 charset, timeout 等）", Required: false, Encrypted: false},
+			"options":   {Name: "连接参数", Type: "object", Description: "连接参数（如 charset, timeout）；time_zone 未配置时使用服务时区，空字符串不设置会话时区，非空值由数据库验证；loc 始终使用服务时区", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
@@ -198,6 +200,9 @@ func TestMariaDBConnectorNormalizeOptions(t *testing.T) {
 		wantErr string
 	}{
 		{"empty", nil, ""},
+		{"null timezone", map[string]any{"time_zone": nil}, "time_zone"},
+		{"numeric timezone", map[string]any{"time_zone": 8}, "time_zone"},
+		{"boolean timezone", map[string]any{"time_zone": false}, "time_zone"},
 		{"charset fallback", map[string]any{"charset": "utf8mb4,utf8"}, ""},
 		{"collation", map[string]any{"collation": "utf8mb4_general_ci"}, ""},
 		{"timeout", map[string]any{"timeout": "500ms"}, ""},
@@ -257,7 +262,57 @@ func TestMariaDBConnectorNormalizeOptions(t *testing.T) {
 	}
 }
 
-func TestMariaDBConnectorConnectionStringSupportsIPv6(t *testing.T) {
+func TestMariaDBConnectorConnectionString(t *testing.T) {
+	t.Run("missing service zone preserves the UTC default", func(t *testing.T) {
+		t.Setenv("TZ", "")
+		instance, err := NewMySQLConnector().New(validMariaDBConfig(3306))
+		require.NoError(t, err)
+		parsed, err := mysql.ParseDSN(instance.(*MariaDBConnector).connectionString())
+		require.NoError(t, err)
+		assert.Equal(t, "'UTC'", parsed.Params["time_zone"])
+		assert.Equal(t, "UTC", parsed.Loc.String())
+	})
+
+	t.Run("time_zone distinguishes absent empty and user supplied values", func(t *testing.T) {
+		t.Setenv("TZ", "Asia/Shanghai")
+		cases := []struct {
+			name    string
+			options map[string]any
+			want    string
+			present bool
+		}{
+			{"absent", nil, "'Asia/Shanghai'", true},
+			{"empty", map[string]any{"time_zone": ""}, "", false},
+			{"blank", map[string]any{"time_zone": "  "}, "", false},
+			{"offset", map[string]any{"time_zone": "+08:00"}, "'+08:00'", true},
+			{"name", map[string]any{"time_zone": "Asia/Shanghai"}, "'Asia/Shanghai'", true},
+			{"trimmed", map[string]any{"time_zone": " UTC "}, "'UTC'", true},
+			{"database validates", map[string]any{"time_zone": "Unknown/Zone"}, "'Unknown/Zone'", true},
+			{"offset is database validated", map[string]any{"time_zone": "+99:99"}, "'+99:99'", true},
+			{"SQL string escaping", map[string]any{"time_zone": "zone';SET @x=1;--"}, "'zone'';SET @x=1;--'", true},
+			{"backslash escaping", map[string]any{"time_zone": `zone\';SET @x=1;--`}, `'zone\\'';SET @x=1;--'`, true},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, builder := range []interfaces.TableConnector{NewMySQLConnector(), NewMariaDBConnector()} {
+					cfg := validMariaDBConfig(3306)
+					cfg["options"] = tc.options
+					originalOptions := maps.Clone(tc.options)
+					instance, err := builder.New(cfg)
+					require.NoError(t, err)
+					dsn := instance.(*MariaDBConnector).connectionString()
+					parsed, err := mysql.ParseDSN(dsn)
+					require.NoError(t, err)
+					zone, exists := parsed.Params["time_zone"]
+					assert.Equal(t, tc.present, exists)
+					assert.Equal(t, tc.want, zone)
+					assert.Equal(t, "Asia/Shanghai", parsed.Loc.String())
+					assert.True(t, parsed.ParseTime)
+					assert.Equal(t, originalOptions, cfg["options"])
+				}
+			})
+		}
+	})
 	t.Setenv("TZ", "Asia/Shanghai")
 	connector := &MariaDBConnector{config: &mariadbConfig{
 		Host: "2001:db8::1", Port: 3306, Username: "root", Password: "secret",

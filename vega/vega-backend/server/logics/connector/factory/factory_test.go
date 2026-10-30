@@ -20,7 +20,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 )
 
 func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
@@ -506,30 +505,22 @@ func TestConnectorFactoryValidateBuildSchema(t *testing.T) {
 	})
 }
 
-func TestPostgresqlOptionsFollowRequestLanguage(t *testing.T) {
-	locale.Register()
+func TestConnectorFactoryGetConnectorFieldConfig(t *testing.T) {
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
 	t.Cleanup(entitlement.ResetForTest)
 	cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
 	cf.RegisterCoreLocalConnectors()
 	ct := &interfaces.ConnectorType{Type: interfaces.ConnectorTypePostgreSQL, Mode: interfaces.ConnectorModeLocal, Category: interfaces.ConnectorCategoryTable}
-	for _, test := range []struct {
-		language          i18n.Language
-		name, description string
-	}{
-		{i18n.SimplifiedChinese, "连接参数", "可选；仅支持"},
-		{i18n.AmericanEnglish, "Connection options", "Optional; only"},
-		{i18n.SimplifiedChinese, "连接参数", "可选；仅支持"},
-	} {
-		ctx := context.WithValue(context.Background(), i18n.LanguageKey, test.language)
+	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		ctx := context.WithValue(context.Background(), i18n.LanguageKey, language)
 		fields, err := cf.GetConnectorFieldConfig(ctx, ct)
 		require.NoError(t, err)
-		require.Equal(t, test.name, fields["options"].Name)
-		require.Contains(t, fields["options"].Description, test.description)
-		require.Contains(t, fields["options"].Description, "idle_in_transaction_session_timeout")
-		require.Contains(t, fields["options"].Description, "UTF8")
-		require.Equal(t, "object", fields["options"].Type)
-		require.False(t, fields["options"].Required)
-		require.False(t, fields["options"].Encrypted)
+		assert.Equal(t, "连接参数", fields["options"].Name)
+		assert.Contains(t, fields["options"].Description, "可选；仅支持")
+		assert.Contains(t, fields["options"].Description, "timezone")
+		assert.Contains(t, fields["options"].Description, "idle_in_transaction_session_timeout")
+		assert.Equal(t, "object", fields["options"].Type)
+		assert.False(t, fields["options"].Required)
+		assert.False(t, fields["options"].Encrypted)
 	}
 }

@@ -55,6 +55,7 @@ var (
 		"pg_toast":           true,
 	}
 	allowedOptions = map[string]struct{}{
+		"timezone":                            {},
 		"sslmode":                             {},
 		"connect_timeout":                     {},
 		"application_name":                    {},
@@ -138,7 +139,7 @@ func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFi
 		"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
 		"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
 		"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-		"options":  {Name: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Name", Type: "object", Description: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Description", Required: false, Encrypted: false},
+		"options":  {Name: "连接参数", Type: "object", Description: "可选；仅支持 timezone、sslmode、connect_timeout、application_name、fallback_application_name、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件；客户端编码使用驱动默认 UTF8，不支持配置；timezone 未配置时使用 Vega 服务 TZ（默认 UTC），空字符串或纯空白不发送启动参数，使用数据库默认会话时区；非空值去除两端空白后由 PG 在连接测试时验证，不转换偏移符号", Required: false, Encrypted: false},
 	}
 }
 
@@ -196,6 +197,12 @@ func (c *PostgresqlConnector) normalizeOptions(options map[string]any) (map[stri
 			return nil, fmt.Errorf("duplicate postgresql option %q", name)
 		}
 		switch name {
+		case "timezone":
+			zone, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("postgresql option timezone must be a string")
+			}
+			value = strings.TrimSpace(zone)
 		case "sslmode":
 			mode, ok := value.(string)
 			if !ok {
@@ -270,8 +277,14 @@ func (c *PostgresqlConnector) connectionString() string {
 		Path:   "/" + strings.TrimPrefix(c.config.Database, "/"),
 	}
 	q := u.Query()
+	// 未配置时沿用服务时区；显式空串不发送启动参数，非空原生值由 PG 验证。
+	q.Set("timezone", common.ServerTimeZone())
 	if c.config.Options != nil {
 		for k, v := range c.config.Options {
+			if k == "timezone" && v == "" {
+				q.Del(k)
+				continue
+			}
 			if integer, ok := common.NumberAsInt64(v); ok {
 				// Encode integer options without scientific notation when serializing JSON numbers.
 				q.Set(k, strconv.FormatInt(integer, 10))
@@ -283,7 +296,6 @@ func (c *PostgresqlConnector) connectionString() string {
 	if q.Get("sslmode") == "" {
 		q.Set("sslmode", "disable")
 	}
-	q.Set("timezone", common.ServerTimeZone())
 	u.RawQuery = q.Encode()
 	return u.String()
 }
