@@ -135,8 +135,10 @@ type ReleaseTarget struct {
 // ReleaseQuestions place the scenario questions of the knowledge layer, those answered from object
 // types and relation types, by where what they need is: AnswerableNew can be answered only once
 // released; Affected can be answered now and the release changes or removes something they need;
-// Unanswerable need something the release does not have, listed in Missing. Total counts them all,
-// Unjudged those that name nothing they need.
+// Unanswerable need something the release does not have, listed in Missing, or need object types
+// that nothing in the draft joins, listed in Unconnected. What a question needs is what it names
+// and the path that joins those in the draft (Path). Total counts them all, Unjudged those that
+// name nothing they need.
 type ReleaseQuestions struct {
 	SpecVersion   int               `json:"spec_version"`
 	Total         int               `json:"total"`
@@ -147,10 +149,20 @@ type ReleaseQuestions struct {
 }
 
 type ReleaseQuestion struct {
-	ID      string        `json:"id"`
-	Text    string        `json:"text"`
-	Needs   []ReleaseItem `json:"needs"`
-	Missing []ReleaseItem `json:"missing,omitempty"`
+	ID    string        `json:"id"`
+	Text  string        `json:"text"`
+	Needs []ReleaseItem `json:"needs"`
+	// Path is what joins the object types it needs in the draft, derived when the review is made.
+	Path        []ReleaseItem        `json:"path,omitempty"`
+	Missing     []ReleaseItem        `json:"missing,omitempty"`
+	Unconnected []ReleaseUnconnected `json:"unconnected,omitempty"`
+}
+
+// ReleaseUnconnected is two object types a question needs that no adopted path in the draft joins,
+// named for people to read.
+type ReleaseUnconnected struct {
+	From ReleaseItem `json:"from"`
+	To   ReleaseItem `json:"to"`
 }
 
 // SimilarNames is a pair of names of one kind that are the same or nearly so: Added is the item

@@ -387,9 +387,9 @@ func (p *relationPath) sample(table string, field string, order string) string {
 }
 
 // pathOf finds where a slot's values are taken from, so that the question can follow them: the
-// first relation the question needs, in its order, that joins the slot's object type to another;
-// else, through one object type between them, the first adopted relation in the draft's order to
-// an object type that an adopted relation joins to another one the question needs. Only relations
+// first relation the question names, in its order, that joins the slot's object type to another;
+// else the route its path takes (graph.route, as questionPath finds it) to the first other object
+// type it needs: a relation between them, or one through an object type between. Only relations
 // on one field are followed, not through a link table, nor across catalogs: one query cannot read
 // two.
 func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotField) *relationPath {
@@ -428,11 +428,7 @@ func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotF
 		}
 		return ownField, ot, otherField
 	}
-	needed := map[string]bool{}
 	for _, need := range q.Needs {
-		if need.Kind == interfaces.REQUIREMENT_ITEM_OBJECT_TYPE {
-			needed[need.ID] = true
-		}
 		if need.Kind != interfaces.REQUIREMENT_ITEM_RELATION_TYPE {
 			continue
 		}
@@ -446,22 +442,26 @@ func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotF
 			}
 		}
 	}
-	for _, first := range draft.Items.RelationTypes {
-		if !first.Adopted {
+	// Else the way to another object type the question needs, as its path is found: a relation
+	// between them, or one through an object type between, adopted and that one query can read.
+	g := graphOf(draft)
+	readable := func(h hop) bool {
+		_, ot, _ := join(h.relation, h.from)
+		return ot != nil
+	}
+	for _, need := range q.Needs {
+		if need.Kind != interfaces.REQUIREMENT_ITEM_OBJECT_TYPE || need.ID == f.objectType.ID {
 			continue
 		}
-		own, between, toSlot := join(first, f.objectType.ID)
-		if between == nil {
-			continue
-		}
-		for _, second := range draft.Items.RelationTypes {
-			if !second.Adopted || second == first {
-				continue
-			}
-			toNext, ot, other := join(second, between.ID)
-			if ot == nil || !needed[ot.ID] || ot.ID == f.objectType.ID {
-				continue
-			}
+		r := g.route(f.objectType.ID, need.ID, readable)
+		switch len(r) {
+		case 1:
+			own, ot, other := join(r[0].relation, f.objectType.ID)
+			return &relationPath{through: true, objectType: ot.ID, own: own,
+				reached: fmt.Sprintf("SELECT DISTINCT %s FROM {{%s}}", quoteField(other), ot.Table.ResourceID), column: other}
+		case 2:
+			own, between, toSlot := join(r[0].relation, f.objectType.ID)
+			toNext, ot, other := join(r[1].relation, between.ID)
 			// The rows between that refer to a record of the needed object type, and the slot's
 			// values they refer to.
 			reached := fmt.Sprintf("SELECT DISTINCT i.%s FROM {{%s}} i JOIN (SELECT DISTINCT %s FROM {{%s}}) c ON i.%s = c.%s",
