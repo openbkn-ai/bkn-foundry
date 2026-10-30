@@ -208,11 +208,68 @@ func Test_DraftSourceChangesCompare(t *testing.T) {
 func Test_ApplySourceChanges(t *testing.T) {
 	Convey("Test drafting the source changes\n", t, func() {
 		draft := syncedDraft()
+		var registered []*interfaces.RegisteredID
+		var d *drafter
 		apply := func(tables ...*interfaces.VegaTable) []*interfaces.DraftDecision {
 			read := readOf(nil, tables...)
 			changes := draftSourceChanges(draft, read, testSetting.PrivacyKeywords)
-			return applySourceChanges(&draft.Items, changes, read, testSetting.PrivacyKeywords, testSetting.NameFieldKeywords)
+			d = newDrafter(testSetting, nil).withRegisteredIDs("p1", registered)
+			return applySourceChanges(&draft.Items, changes, read, d)
 		}
+
+		Convey("An added field named in another script takes the id registered for it, else registers one\n", func() {
+			customers := customersTable()
+			customers.Columns = append(customers.Columns,
+				interfaces.VegaColumn{Name: "等级", DisplayName: "等级", Type: "string"},
+				interfaces.VegaColumn{Name: "区域", APIName: "region", Type: "string"})
+			registered = []*interfaces.RegisteredID{{ProjectID: "p1", ID: "grade", Origin: interfaces.ID_ORIGIN_SEMANTIC,
+				IDKey: interfaces.IDKey{Kind: interfaces.ID_KIND_PROPERTIES, SourceKey: propertySourceKey("t_customers", "等级")}}}
+
+			apply(customers, ordersTable(), customerTagsTable())
+
+			ot := draft.Items.ObjectTypes[0]
+			So(findProperty(ot, "grade").MappedField, ShouldEqual, "等级")
+			So(findProperty(ot, "region").MappedField, ShouldEqual, "区域")
+			So(d.recorded, ShouldHaveLength, 1)
+			So(d.recorded[0].ID, ShouldEqual, "region")
+			So(d.recorded[0].SourceKey, ShouldEqual, propertySourceKey("t_customers", "区域"))
+		})
+
+		Convey("An id registered for another field of the table is not taken by a new field\n", func() {
+			customers := customersTable()
+			customers.Columns = append(customers.Columns, interfaces.VegaColumn{Name: "region", Type: "string"})
+			registered = []*interfaces.RegisteredID{{ProjectID: "p1", ID: "region", Origin: interfaces.ID_ORIGIN_SEMANTIC,
+				IDKey: interfaces.IDKey{Kind: interfaces.ID_KIND_PROPERTIES, SourceKey: propertySourceKey("t_customers", "区域")}}}
+
+			apply(customers, ordersTable(), customerTagsTable())
+
+			So(findProperty(draft.Items.ObjectTypes[0], "region"), ShouldBeNil)
+			So(findProperty(draft.Items.ObjectTypes[0], "region_2").MappedField, ShouldEqual, "region")
+		})
+
+		Convey("Once drafted, a link table that lost a join field is in step: its relation waits for a person\n", func() {
+			tags := customerTagsTable()
+			tags.Columns = tags.Columns[:1]
+
+			apply(customersTable(), ordersTable(), tags)
+
+			again := draftSourceChanges(draft, readOf(nil, customersTable(), ordersTable(), tags), testSetting.PrivacyKeywords)
+			So(again.State, ShouldEqual, interfaces.SOURCE_CHANGES_IN_STEP)
+		})
+
+		Convey("A relation people adopted before is undecided again once drafting the changes leaves it out\n", func() {
+			draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{
+				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "customer_tags", Action: interfaces.DRAFT_DECISION_ADOPT})
+			tags := customerTagsTable()
+			tags.Columns = tags.Columns[:1]
+
+			decisions := apply(customersTable(), ordersTable(), tags)
+			draft.Items.Decisions = append(draft.Items.Decisions, decisions...)
+
+			So(undecidedItems(&draft.Items), ShouldContain, undecidedItem{
+				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "customer_tags", Because: interfaces.DRAFT_PROPOSED_FIELD_REMOVED,
+			})
+		})
 
 		Convey("Added columns become properties or excluded fields by the drafting rules\n", func() {
 			customers := customersTable()
@@ -336,7 +393,9 @@ func Test_GetSourceChanges(t *testing.T) {
 		Convey("A type only published is compared as published; one in the draft is marked published\n", func() {
 			customers := customersTable()
 			customers.Columns = append(customers.Columns, interfaces.VegaColumn{Name: "segment", Type: "string"})
-			regions := &interfaces.VegaTable{ID: "t_regions", Columns: []interfaces.VegaColumn{{Name: "code", Type: "integer"}}}
+			// The published definitions do not record what drafting excluded: email is never added.
+			regions := &interfaces.VegaTable{ID: "t_regions", Columns: []interfaces.VegaColumn{
+				{Name: "code", Type: "integer"}, {Name: "email", Type: "string"}}}
 			va.EXPECT().MissingTables(gomock.Any(), caller, ids).Return(nil, nil)
 			va.EXPECT().GetTables(gomock.Any(), caller, ids).Return([]*interfaces.VegaTable{customers, ordersTable(), customerTagsTable(), regions}, nil)
 
@@ -354,6 +413,7 @@ func Test_GetSourceChanges(t *testing.T) {
 			So(changeOf(got, "regions", "code").Change, ShouldEqual, interfaces.SOURCE_CHANGE_RETYPED)
 			So(changeOf(got, "regions", "label").Change, ShouldEqual, interfaces.SOURCE_CHANGE_REMOVED)
 			So(changeOf(got, "regions", "label").PropertyName, ShouldEqual, "Region label")
+			So(changeOf(got, "regions", "email"), ShouldBeNil)
 		})
 
 		Convey("Gone tables come from MissingTables and are not read\n", func() {
@@ -389,7 +449,8 @@ func Test_DraftSourceChanges(t *testing.T) {
 		ps := pmock.NewMockProjectService(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		// No git store or lineage service: drafting the changes writes neither.
-		svc := &draftService{setting: testSetting, da: da, ps: ps, va: va}
+		ira := &fakeIDRegistry{}
+		svc := &draftService{setting: testSetting, da: da, ps: ps, va: va, ira: ira}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller}}
 		draft := syncedDraft()
@@ -452,6 +513,33 @@ func Test_DraftSourceChanges(t *testing.T) {
 
 			_, errCode := codeOf(err)
 			So(errCode, ShouldEqual, perrors.BknProject_Draft_NoSourceChanges)
+		})
+
+		Convey("Ids the draft's new properties need are registered before the draft is written\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			tables[0].Columns = append(tables[0].Columns, interfaces.VegaColumn{Name: "区域", APIName: "region", Type: "string"})
+			signature := sourceSignature(draft, readOf(nil, tables...))
+			expectRead()
+
+			Convey("and a failure to register them leaves the draft unwritten\n", func() {
+				ira.recordErr = errors.New("db down")
+
+				_, err := svc.DraftSourceChanges(ctx, token, "p1", interfaces.SourceChangesDraft{Signature: signature}, caller)
+
+				code, _ := codeOf(err)
+				So(code, ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("then the draft is written\n", func() {
+				da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+
+				_, err := svc.DraftSourceChanges(ctx, token, "p1", interfaces.SourceChangesDraft{Signature: signature}, caller)
+
+				So(err, ShouldBeNil)
+				So(ira.recorded, ShouldHaveLength, 1)
+				So(ira.recorded[0].ID, ShouldEqual, "region")
+			})
 		})
 
 		Convey("vega not answering is unavailable\n", func() {

@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -301,7 +302,8 @@ func draftSourceChanges(draft *interfaces.Draft, read *sourceTables, privacyKeyw
 		}
 	}
 	for _, rt := range draft.Items.RelationTypes {
-		if rt.LinkTable == nil {
+		// One not adopted waits for a person already; drafting the changes left one so.
+		if rt.LinkTable == nil || !rt.Adopted {
 			continue
 		}
 		if read.missing[rt.LinkTable.ResourceID] {
@@ -385,7 +387,13 @@ func withPublished(changes *interfaces.SourceChanges, draft *interfaces.Draft, p
 		for _, k := range ot.PrimaryKeys {
 			keyed[k] = true
 		}
-		if c := compareColumns(properties, nil, keyed, nil, table, privacyKeywords, language); len(c) > 0 {
+		// Published definitions do not record the columns drafting excluded, so a column the rules
+		// leave out is not reported as added: drafting would never map it.
+		c := slices.DeleteFunc(compareColumns(properties, nil, keyed, nil, table, privacyKeywords, language),
+			func(c interfaces.SourceColumnChange) bool {
+				return c.Change == interfaces.SOURCE_CHANGE_ADDED && c.Excluded != ""
+			})
+		if len(c) > 0 {
 			changes.ObjectTypes = append(changes.ObjectTypes, interfaces.SourceObjectTypeChanges{
 				ID: ot.ID, Name: ot.Name, Table: ot.DataSource.Name, Published: true, Changes: c,
 			})
@@ -493,7 +501,22 @@ func (s *draftService) DraftSourceChanges(ctx context.Context, token string, pro
 		span.SetStatus(codes.Error, "No source changes")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_NoSourceChanges)
 	}
-	decisions := applySourceChanges(&draft.Items, changes, read, s.setting.PrivacyKeywords, s.setting.NameFieldKeywords)
+	registered, err := s.ira.ListIDs(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read registered ids failed")
+		return nil, internalError(ctx, "Read registered ids failed", err)
+	}
+	d := newDrafter(s.setting, nil).withRegisteredIDs(projectID, registered).withNamingLanguage(draftLanguage(draft))
+	decisions := applySourceChanges(&draft.Items, changes, read, d)
+	// Ids are registered before the draft is written, as drafting does: later drafts give them again.
+	now := time.Now().UnixMilli()
+	for _, id := range d.recorded {
+		id.CreateTime, id.UpdateTime = now, now
+	}
+	if err := s.ira.RecordIDs(ctx, d.recorded); err != nil {
+		span.SetStatus(codes.Error, "Record ids failed")
+		return nil, internalError(ctx, "Record ids failed", err)
+	}
 	if err := s.commit(ctx, draft, decisions, caller); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
@@ -509,9 +532,10 @@ func (s *draftService) DraftSourceChanges(ctx context.Context, token string, pro
 // identity again, and a relation that loses a field it joins by, to adopt it again. The fingerprints
 // of the tables changed are those read.
 func applySourceChanges(items *interfaces.DraftItems, changes *interfaces.SourceChanges, read *sourceTables,
-	privacyKeywords []string, nameKeywords []string) []*interfaces.DraftDecision {
+	d *drafter) []*interfaces.DraftDecision {
 	decisions := []*interfaces.DraftDecision{}
 	language := itemsLanguage(items)
+	privacyKeywords, nameKeywords := d.setting.PrivacyKeywords, d.setting.NameFieldKeywords
 	changedTables := map[string]bool{}
 	unadopt := map[string]bool{}
 	for _, otc := range changes.ObjectTypes {
@@ -521,10 +545,12 @@ func applySourceChanges(items *interfaces.DraftItems, changes *interfaces.Source
 		ot := findObjectType(items, otc.ID)
 		table := read.tables[ot.Table.ResourceID]
 		changedTables[table.ID] = true
+		// Property ids are named as drafting names them: an id registered for the field stays.
 		taken := map[string]bool{}
 		for _, p := range ot.Properties {
 			taken[p.Name] = true
 		}
+		d.reserve(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, ""), taken)
 		keys := keyFields(table)
 		gone := map[string]bool{}
 		lostKey := false
@@ -538,7 +564,9 @@ func applySourceChanges(items *interfaces.DraftItems, changes *interfaces.Source
 					})
 					continue
 				}
-				ot.Properties = append(ot.Properties, newProperty(col, uniqueName(idFrom(col.Name, idPrefixProperty), taken), language))
+				name := d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, col.Name), col.Name, col.APIName,
+					idPrefixProperty, taken)
+				ot.Properties = append(ot.Properties, newProperty(col, name, language))
 			case c.Change == interfaces.SOURCE_CHANGE_REMOVED || c.Unsupported:
 				gone[c.Property] = true
 				if c.Unsupported {
