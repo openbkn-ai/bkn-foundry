@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// AskObjectType mocks base method.
+func (m *MockDraftService) AskObjectType(ctx context.Context, token, projectID, itemID string, req interfaces.DraftAskRequest, caller interfaces.AccountInfo) (*interfaces.DraftAskAnswer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AskObjectType", ctx, token, projectID, itemID, req, caller)
+	ret0, _ := ret[0].(*interfaces.DraftAskAnswer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AskObjectType indicates an expected call of AskObjectType.
+func (mr *MockDraftServiceMockRecorder) AskObjectType(ctx, token, projectID, itemID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AskObjectType", reflect.TypeOf((*MockDraftService)(nil).AskObjectType), ctx, token, projectID, itemID, req, caller)
+}
+
 // BuildIndex mocks base method.
 func (m *MockDraftService) BuildIndex(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
 	m.ctrl.T.Helper()
@@ -84,6 +99,21 @@ func (m *MockDraftService) ConfirmDraft(ctx context.Context, token, projectID st
 func (mr *MockDraftServiceMockRecorder) ConfirmDraft(ctx, token, projectID, confirm, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfirmDraft", reflect.TypeOf((*MockDraftService)(nil).ConfirmDraft), ctx, token, projectID, confirm, caller)
+}
+
+// DraftSourceChanges mocks base method.
+func (m *MockDraftService) DraftSourceChanges(ctx context.Context, token, projectID string, req interfaces.SourceChangesDraft, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DraftSourceChanges", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DraftSourceChanges indicates an expected call of DraftSourceChanges.
+func (mr *MockDraftServiceMockRecorder) DraftSourceChanges(ctx, token, projectID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DraftSourceChanges", reflect.TypeOf((*MockDraftService)(nil).DraftSourceChanges), ctx, token, projectID, req, caller)
 }
 
 // EditDraftItem mocks base method.
@@ -188,6 +218,21 @@ func (m *MockDraftService) GetPending(ctx context.Context, token, projectID stri
 func (mr *MockDraftServiceMockRecorder) GetPending(ctx, token, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPending", reflect.TypeOf((*MockDraftService)(nil).GetPending), ctx, token, projectID)
+}
+
+// GetSourceChanges mocks base method.
+func (m *MockDraftService) GetSourceChanges(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.SourceChanges, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSourceChanges", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(*interfaces.SourceChanges)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSourceChanges indicates an expected call of GetSourceChanges.
+func (mr *MockDraftServiceMockRecorder) GetSourceChanges(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSourceChanges", reflect.TypeOf((*MockDraftService)(nil).GetSourceChanges), ctx, token, projectID, caller)
 }
 
 // GetStatus mocks base method.

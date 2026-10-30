@@ -373,3 +373,35 @@ type DraftExcludedField struct {
 	Reason     string `json:"reason"`
 	Keyword    string `json:"keyword"`
 }
+
+// Fields an answer of Ask AI may suggest changing, each by an edit the draft already takes:
+// the name and description by EditDraftItem, the identity by ChooseIdentity.
+const (
+	DRAFT_ASK_FIELD_NAME        = "name"
+	DRAFT_ASK_FIELD_DESCRIPTION = "description"
+	DRAFT_ASK_FIELD_IDENTITY    = "identity"
+)
+
+// DRAFT_ASK_QUESTION_MAX_LENGTH bounds a question to Ask AI, in characters.
+const DRAFT_ASK_QUESTION_MAX_LENGTH = 500
+
+// DraftAskRequest is a question about one item of the draft.
+type DraftAskRequest struct {
+	Question string `json:"question"`
+}
+
+// DraftAskAnswer is Ask AI's answer about one item, and at most one change it suggests. Nothing is
+// changed until a person adopts the suggestion through the edit it names.
+type DraftAskAnswer struct {
+	Answer     string              `json:"answer"`
+	Suggestion *DraftAskSuggestion `json:"suggestion"`
+}
+
+// DraftAskSuggestion is a change to one field: Value for the name or the description, Properties
+// for the identity.
+type DraftAskSuggestion struct {
+	Field      string   `json:"field"`
+	Value      string   `json:"value,omitempty"`
+	Properties []string `json:"properties,omitempty"`
+	Reason     string   `json:"reason"`
+}

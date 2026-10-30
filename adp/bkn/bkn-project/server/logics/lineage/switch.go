@@ -59,6 +59,10 @@ func (s *lineageService) SwitchConsumers(ctx context.Context, token string, line
 		if err != nil {
 			return err
 		}
+		if req.FromNetworkID != "" && req.FromNetworkID != from {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_InUseChanged).
+				WithErrorDetails(map[string]any{"network_id": from})
+		}
 		moved, err := s.moveSchedules(ctx, token, from, req.ToNetworkID, latest)
 		if err != nil {
 			return err

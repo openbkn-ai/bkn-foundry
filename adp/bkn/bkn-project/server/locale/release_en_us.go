@@ -9,6 +9,10 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var releaseEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknProject.Rollback.PrecheckRequired":   "Rollback Not Prechecked. Read the rollback plan first and send its signature; a rollback is never made without one.",
+		"BknProject.Rollback.PlanOutdated":       "Rollback Plan Outdated. Consumers were switched, or the schedules changed, after you read the plan; read it again before rolling back.",
+		"BknProject.Rollback.NoPrevious":         "Nothing to Roll Back To. Consumers use the network the lineage started from; there is no earlier version.",
+		"BknProject.Rollback.NotProjectRelease":  "Not This Project's Release. Consumers use a version another project published; only that project can roll it back.",
 		"BknProject.Release.InvalidVersion":      "Invalid Version. version must be X.Y.Z with digits only and no leading zeros, at most 32 characters.",
 		"BknProject.Release.InvalidProjectID":    "Invalid Project ID. project_id must be at most 40 characters.",
 		"BknProject.Release.InvalidNotes":        "Invalid Notes. notes must be at most 65535 bytes.",

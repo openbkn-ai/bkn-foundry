@@ -193,7 +193,7 @@ func TestVegaUsesPropertyProjection(t *testing.T) {
 	}}}
 	service := &objectTypeService{vba: vega}
 	var vegaResult interfaces.Objects
-	if err := service.getObjectsFromResource(context.Background(), query, objectType, &vegaResult, plan.fieldPropertyMap(), plan, false, nil); err != nil {
+	if err := service.getObjectsFromResource(context.Background(), query, objectType, &vegaResult, plan.fieldPropertyMap(), plan, false, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(vegaResult.Datas) != 1 || vegaResult.Datas[0]["id"] != "customer-1" ||

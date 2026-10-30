@@ -127,6 +127,22 @@ func Test_ProjectReleaseRestHandler(t *testing.T) {
 				ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("The rollback plan is read, and rollbacks rolls back with its signature and replies 201\n", func() {
+			prs.EXPECT().PlanRollback(gomock.Any(), "Bearer t", "p1").
+				Return(&interfaces.RollbackPlan{ProjectID: "p1", Signature: "sig"}, nil)
+			w := serve(handler, http.MethodGet, base+"/rollback-plan")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"signature":"sig"`)
+
+			prs.EXPECT().Rollback(gomock.Any(), "Bearer t", "p1", interfaces.ProjectRollback{Signature: "sig"}, caller).
+				Return(&interfaces.Switch{ID: "s2", ToNetworkID: "supply_v1_0_0"}, nil)
+			w = serveBody(handler, http.MethodPost, base+"/rollbacks", []byte(`{"signature":"sig"}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
+			So(w.Body.String(), ShouldContainSubstring, `"id":"s2"`)
+			So(serveBody(handler, http.MethodPost, base+"/rollbacks", []byte(`[`)).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("A release's regression is read for the network the path names\n", func() {
 			prs.EXPECT().GetRegression(gomock.Any(), "Bearer t", "p1", "supply_v1_1_0").Return(&interfaces.Regression{
 				NetworkID: "supply_v1_1_0", Status: interfaces.REGRESSION_STATUS_NOT_PASSED,

@@ -155,6 +155,7 @@ BUILTIN_AGENT_IDS = (
     "bkn-project-drafter",
     "bkn-project-requirements",
     "bkn-project-answer-judge",
+    "bkn-project-ontology-ask",
 )
 
 

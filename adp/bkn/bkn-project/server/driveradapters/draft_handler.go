@@ -28,6 +28,7 @@ const (
 	checkActionRun           = "check:run"
 	indexActionBuild         = "index:build"
 	catalogsActionUnderstand = "catalogs:understand"
+	sourceChangesActionDraft = "source-changes:draft"
 )
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
@@ -37,6 +38,7 @@ func (r *restHandler) GetStatusByEx(c *gin.Context)      { r.withExVisitor(c, r.
 func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.GetPending) }
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
 func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
+func (r *restHandler) AskObjectTypeByEx(c *gin.Context)  { r.withExVisitor(c, r.AskObjectType) }
 
 // generateDraftRequest is the optional body of draft:generate.
 type generateDraftRequest struct {
@@ -75,6 +77,8 @@ func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.CommitProjectDrift)
 	case requirementsActionDraft:
 		r.withExVisitor(c, r.GenerateRequirement)
+	case sourceChangesActionDraft:
+		r.withExVisitor(c, r.DraftSourceChanges)
 	default:
 		replyNotFound(c)
 	}
@@ -344,6 +348,30 @@ func (r *restHandler) ChooseIdentity(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, draft)
 }
 
+// AskObjectType serves POST /projects/{project_id}/ontology/draft/object_types/{item_id}/ask: Ask AI
+// about one object type. It reads the draft and never changes it.
+func (r *restHandler) AskObjectType(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, itemID := c.Param("project_id"), c.Param("item_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("item_id").String(itemID))
+
+	var req interfaces.DraftAskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	answer, err := r.drs.AskObjectType(ctx, visitor.TokenID, id, itemID, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, answer)
+}
+
 func (r *restHandler) RestoreExcluded(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -358,6 +386,49 @@ func (r *restHandler) RestoreExcluded(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	draft, err := r.drs.RestoreExcluded(ctx, visitor.TokenID, id, restore, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+func (r *restHandler) GetSourceChangesByEx(c *gin.Context) { r.withExVisitor(c, r.GetSourceChanges) }
+
+// GetSourceChanges replies how the tables the project binds differ from what it maps.
+func (r *restHandler) GetSourceChanges(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	changes, err := r.drs.GetSourceChanges(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, changes)
+}
+
+// DraftSourceChanges applies the source changes read to the draft and replies the draft.
+func (r *restHandler) DraftSourceChanges(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.SourceChangesDraft
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	draft, err := r.drs.DraftSourceChanges(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return

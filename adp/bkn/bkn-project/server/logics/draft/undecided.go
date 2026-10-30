@@ -25,7 +25,8 @@ const undecidedNotAdopted = "not_adopted"
 
 // undecidedItems lists the object types and relations drafting did not adopt and no one decided on,
 // by kind then item ID. An item is decided by adopting or not adopting it, or by a confirmation
-// that accepted it as undecided; choosing an identity alone does not say whether it is in. They do
+// that accepted it as undecided, until drafting the source changes leaves a relation out again;
+// choosing an identity alone does not say whether it is in. They do
 // not block confirming, but confirming them unawares would leave them out silently.
 func undecidedItems(items *interfaces.DraftItems) []undecidedItem {
 	decided := map[string]bool{}
@@ -33,6 +34,10 @@ func undecidedItems(items *interfaces.DraftItems) []undecidedItem {
 		switch {
 		case d.Action == interfaces.DRAFT_DECISION_ADOPT || d.Action == interfaces.DRAFT_DECISION_UNADOPT:
 			decided[d.Kind+"/"+d.ItemID] = true
+		case d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES && d.Action == interfaces.DRAFT_DECISION_SYNC:
+			// Drafting the source changes left the relation out for a person to decide again,
+			// whatever was decided on it before.
+			delete(decided, d.Kind+"/"+d.ItemID)
 		case d.Kind == interfaces.DRAFT_KIND_DRAFT && d.Action == interfaces.DRAFT_DECISION_ACCEPT_UNDECIDED:
 			if refs, ok := d.After.([]string); ok {
 				for _, ref := range refs {

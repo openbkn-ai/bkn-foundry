@@ -97,6 +97,21 @@ func Test_DraftRestHandler(t *testing.T) {
 				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("A question about an object type is handed to the service, and its answer replied\n", func() {
+			drs.EXPECT().AskObjectType(gomock.Any(), "Bearer t", "p1", "order_lines",
+				interfaces.DraftAskRequest{Question: "用什么做唯一标识？"}, caller).
+				Return(&interfaces.DraftAskAnswer{Answer: "用订单号和行号。", Suggestion: &interfaces.DraftAskSuggestion{
+					Field: interfaces.DRAFT_ASK_FIELD_IDENTITY, Properties: []string{"order_no", "line_no"}}}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/draft/object_types/order_lines/ask",
+				[]byte(`{"question":"用什么做唯一标识？"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"field":"identity"`)
+			So(serveBody(handler, http.MethodPost, base+"/draft/object_types/order_lines/ask", []byte(`[`)).
+				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("draft:restore restores the excluded field the body names\n", func() {
 			drs.EXPECT().RestoreExcluded(gomock.Any(), "Bearer t", "p1",
 				interfaces.DraftRestore{UpdateTime: 7, ObjectType: "customers", Field: "Phone"}, caller).
@@ -149,6 +164,24 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(serveBody(handler, http.MethodPost, project+"/catalogs:understand", []byte(`{`)).Result().StatusCode,
 				ShouldEqual, http.StatusBadRequest)
 			So(serve(handler, http.MethodPost, project+"/catalogs:unknown").Result().StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("The source changes are read as the caller, and source-changes:draft drafts them with the signature read\n", func() {
+			const project = "/api/bkn-project/v1/projects/p1"
+			drs.EXPECT().GetSourceChanges(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.SourceChanges{ProjectID: "p1", State: interfaces.SOURCE_CHANGES_CHANGED, Signature: "s1"}, nil)
+
+			w := serve(handler, http.MethodGet, project+"/source-changes")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"state":"changed"`)
+
+			drs.EXPECT().DraftSourceChanges(gomock.Any(), "Bearer t", "p1", interfaces.SourceChangesDraft{Signature: "s1"}, caller).
+				Return(&interfaces.Draft{ProjectID: "p1"}, nil)
+			So(serveBody(handler, http.MethodPost, project+"/source-changes:draft", []byte(`{"signature":"s1"}`)).Result().StatusCode,
+				ShouldEqual, http.StatusOK)
+			So(serveBody(handler, http.MethodPost, project+"/source-changes:draft", []byte(`{`)).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("The understanding is read as the caller\n", func() {
