@@ -10,6 +10,28 @@ from app.config import config
 
 
 _thinking_mode: ContextVar[str] = ContextVar("bkn_agent_thinking_mode", default="")
+_task_usage: ContextVar[Optional[dict]] = ContextVar("bkn_agent_task_usage", default=None)
+
+
+def set_task_usage(usage: dict) -> Token:
+    return _task_usage.set(usage)
+
+
+def reset_task_usage(token: Token) -> None:
+    _task_usage.reset(token)
+
+
+def record_task_prompt(version: Optional[int]) -> None:
+    usage = _task_usage.get()
+    if usage is not None:
+        usage["prompt_version"] = version
+
+
+def _record_task_model(model: str, metadata: dict) -> None:
+    usage = _task_usage.get()
+    if usage is not None and usage.get("model") == model:
+        # LangChain exposes the provider's response.model as model_name.
+        usage["model_id"] = metadata.get("model_name") or metadata.get("model") or None
 
 
 def set_thinking_mode(value: str) -> Token:
@@ -116,6 +138,11 @@ class TraceChatOpenAI(ChatOpenAI):
                 **evidence.model_context_headers(messages, operation_id),
             }
         result = await super()._agenerate(messages, stop, run_manager, **kwargs)
+        if result.generations:
+            _record_task_model(self.model_name, {
+                **(result.llm_output or {}),
+                **result.generations[0].message.response_metadata,
+            })
         if operation_id and result.generations:
             _record_model_response(result.generations[0].message, operation_id)
         return result
@@ -149,6 +176,7 @@ class TraceChatOpenAI(ChatOpenAI):
             if isinstance(candidate_body, dict):
                 trace_body.update(candidate_body)
             yield chunk
+        _record_task_model(self.model_name, response_metadata)
         if operation_id:
             receipt = type(
                 "ModelFactReceipt",
