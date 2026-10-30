@@ -1,0 +1,254 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package requirement
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+	"gopkg.in/yaml.v3"
+
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+)
+
+// exportSpec is a specification with a capability question, a knowledge question asked about a
+// record the documents give as an example, and an older one with no template.
+func exportSpec() *interfaces.Requirement {
+	req := readySpec()
+	req.CreateTime = 10
+	spec := &req.Spec
+	spec.Rules[0].CompilesTo = "constraint"
+	spec.Questions = []*interfaces.RequirementQuestion{
+		{ID: "q1", Text: "Lines of order SO-1002?", Template: "Lines of order {order}?", AnswerShape: "a list of lines",
+			ScenarioIDs: []string{"s1"}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+			Inputs: &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1", Property: "order_no",
+				Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}},
+		{ID: "q2", Text: "Which orders need approval?", Template: "Which orders need approval?", ScenarioIDs: []string{"s1", "s9"}, Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY,
+			AnswerShape: "orders", Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1", "c9"},
+				Metrics: []string{"order amount"}, Functions: []string{"approval check"}, Skills: []string{}}},
+		{ID: "q3", Text: "Whose orders?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE},
+	}
+	return req
+}
+
+func exportGuidance() []*interfaces.QuestionGuidance {
+	return []*interfaces.QuestionGuidance{
+		{QuestionID: "q1", Question: "Lines of order SO-1002?", SpecVersion: 1, CreateTime: 20, Status: interfaces.GUIDANCE_STATUS_READY,
+			Tests: []*interfaces.QuestionTest{
+				{ID: "t1", Kind: interfaces.TEST_KIND_TEMPLATE, Text: "Lines of order SO-1002?", Expect: interfaces.TEST_EXPECT_EXISTS, ByServer: true,
+					Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "order_no", Value: "SO-1002"}},
+					Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}},
+				{ID: "t2", Kind: interfaces.TEST_KIND_NOT_EXIST, Text: "Lines of order SO-9999?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS,
+					Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "order_no", Value: "SO-9999"}}},
+				// A slot still to fill, and a value that contains another.
+				{ID: "t3", Kind: "variant", Text: "Lines of the order SO-10021 placed by {{slot 2}}?", Expect: interfaces.TEST_EXPECT_SAME_RECORD,
+					Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "order_no", Value: "SO-10021"},
+						{ConceptID: "c2", Property: "full_name"}}},
+			}},
+		// Generated for an earlier wording: not exported.
+		{QuestionID: "q3", Question: "Whose orders were they?", SpecVersion: 1, CreateTime: 20, Status: interfaces.GUIDANCE_STATUS_READY,
+			Tests: []*interfaces.QuestionTest{{ID: "t1", Text: "Orders of ACME?", Expect: interfaces.TEST_EXPECT_EXISTS}}},
+	}
+}
+
+func Test_BuildExport(t *testing.T) {
+	Convey("Test what is exported for Workshop and bkn-eval\n", t, func() {
+		req := exportSpec()
+
+		Convey("Workshop gets the capability questions with what they rest on, and the rules\n", func() {
+			body, err := buildExport(exportTargetWorkshop, req, exportGuidance())
+
+			So(err, ShouldBeNil)
+			var got workshopExport
+			So(yaml.Unmarshal(body, &got), ShouldBeNil)
+			So(got.Format, ShouldEqual, "bkn-project-requirements-workshop/v1")
+			So(got.ProjectID, ShouldEqual, "p1")
+			So(got.SpecVersion, ShouldEqual, 1)
+			So(got.Questions, ShouldResemble, []workshopQuestion{{ID: "q2", Question: "Which orders need approval?",
+				AnswerShape: "orders", Scenarios: []string{"Answer"},
+				Basis: exportBasis{Concepts: []string{"Order"}, Metrics: []string{"order amount"}, Functions: []string{"approval check"}}}})
+			So(got.Rules, ShouldResemble, []exportRule{{ID: "r1", Statement: "Signed changes only", CompilesTo: "constraint"}})
+			So(string(body), ShouldNotContainSubstring, "q1")
+		})
+
+		Convey("bkn-eval gets the knowledge questions and their current tests, and no value of a record\n", func() {
+			body, err := buildExport(exportTargetEval, req, exportGuidance())
+
+			So(err, ShouldBeNil)
+			var got evalExport
+			So(yaml.Unmarshal(body, &got), ShouldBeNil)
+			So(got.Format, ShouldEqual, "bkn-project-requirements-eval/v1")
+			So(got.AnswerSetAccess, ShouldEqual, "forbidden")
+			// A question with no template is left out, named: its text may hold a record's value.
+			So(got.Questions, ShouldHaveLength, 1)
+			So(got.WithoutTemplate, ShouldResemble, []string{"q3"})
+			// The template, not the text the documents' example stands in.
+			So(got.Questions[0].Question, ShouldEqual, "Lines of order {order}?")
+			So(got.Questions[0].Inputs, ShouldResemble, []exportInput{{Name: "order", Concept: "Order", Property: "order_no",
+				Role: interfaces.REQUIREMENT_INPUT_RECORD}})
+			So(got.Questions[0].Tests, ShouldResemble, []exportTest{
+				{Kind: interfaces.TEST_KIND_TEMPLATE, Question: "Lines of order {Order.order_no}?", Expect: interfaces.TEST_EXPECT_EXISTS},
+				{Kind: interfaces.TEST_KIND_NOT_EXIST, Question: "Lines of order {Order.order_no}?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS},
+				{Kind: "variant", Question: "Lines of the order {Order.order_no} placed by {Customer.full_name}?",
+					Expect: interfaces.TEST_EXPECT_SAME_RECORD},
+			})
+			for _, value := range []string{"SO-1002", "SO-9999", "SO-10021", "ACME", "passed", "Whose orders"} {
+				So(string(body), ShouldNotContainSubstring, value)
+			}
+			So(string(body), ShouldNotContainSubstring, "example")
+			So(string(body), ShouldNotContainSubstring, "check")
+		})
+
+		Convey("Workshop leaves out a question with no template too\n", func() {
+			req.Spec.Questions[1].Template = ""
+			req.Spec.Questions[1].Text = "Does order SO-1002 need approval?"
+			body, err := buildExport(exportTargetWorkshop, req, nil)
+			So(err, ShouldBeNil)
+			var got workshopExport
+			So(yaml.Unmarshal(body, &got), ShouldBeNil)
+			So(got.Questions, ShouldBeEmpty)
+			So(got.WithoutTemplate, ShouldResemble, []string{"q2"})
+			So(string(body), ShouldNotContainSubstring, "SO-1002")
+		})
+
+		Convey("No value of a test stays: whole places first, then any place it stands, never inside a name written\n", func() {
+			slot := func(concept, property, value string) interfaces.QuestionTestSlot {
+				return interfaces.QuestionTestSlot{ConceptID: concept, Property: property, Value: value}
+			}
+			for _, c := range []struct {
+				text  string
+				slots []interfaces.QuestionTestSlot
+				want  string
+			}{
+				// The 1 of 10 goes too: which place the server filled is not known, and no value may stay.
+				{"Orders of customer 1 in the last 10 days?", []interfaces.QuestionTestSlot{slot("c2", "id", "1")},
+					"Orders of customer {Customer.id} in the last {Customer.id}0 days?"},
+				// A short value is no part of a word, nor of a name an earlier slot wrote.
+				{"Is A the id of order SO-1?", []interfaces.QuestionTestSlot{slot("c1", "order_no", "SO-1"), slot("c2", "id", "id"),
+					slot("c2", "code", "A")}, "Is {Customer.code} the {Customer.id} of order {Order.order_no}?"},
+				// Values written in CJK stand whole without spaces.
+				{"客户张三的订单？", []interfaces.QuestionTestSlot{slot("c2", "name", "张三")}, "客户{Customer.name}的订单？"},
+				// A value both whole and against letters: every place goes.
+				{"客户ID3最近 3 笔订单？", []interfaces.QuestionTestSlot{slot("c2", "id", "3")}, "客户ID{Customer.id}最近 {Customer.id} 笔订单？"},
+				// Two slots with one value: no place keeps it.
+				{"订单 1 属于客户ID1？", []interfaces.QuestionTestSlot{slot("c1", "order_no", "1"), slot("c2", "id", "1")},
+					"订单 {Order.order_no} 属于客户ID{Order.order_no}？"},
+				// One value inside another: the longer is replaced first, and the shorter only where it stands apart.
+				{"客户张三丰和张三？", []interfaces.QuestionTestSlot{slot("c2", "name", "张三"), slot("c2", "alias", "张三丰")},
+					"客户{Customer.alias}和{Customer.name}？"},
+				// Filled in where its placeholder stood, against letters on both sides: no value stays.
+				{"客户ID1001的订单？", []interfaces.QuestionTestSlot{slot("c2", "id", "1001")}, "客户ID{Customer.id}的订单？"},
+				{"Lines of SO-1002-A?", []interfaces.QuestionTestSlot{slot("c1", "order_no", "SO-1002")}, "Lines of {Order.order_no}-A?"},
+				// A slot still to fill.
+				{"Orders of {{slot 1}}?", []interfaces.QuestionTestSlot{slot("c2", "id", "")}, "Orders of {Customer.id}?"},
+			} {
+				So(withoutValues(&interfaces.QuestionTest{Text: c.text, Slots: c.slots}, map[string]string{"c1": "Order", "c2": "Customer"}),
+					ShouldEqual, c.want)
+			}
+		})
+
+		Convey("The server's tests are asked as the template is, each input its concept and property\n", func() {
+			req.Spec.Questions[0].Template = "客户ID{order}最近 3 笔订单？"
+			guidance := exportGuidance()
+			guidance[0].Tests = []*interfaces.QuestionTest{{ID: "t1", Kind: interfaces.TEST_KIND_TEMPLATE, ByServer: true,
+				Text: "客户ID3最近 3 笔订单？", Expect: interfaces.TEST_EXPECT_EXISTS,
+				Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "order_no", Value: "3"}}}}
+			body, err := buildExport(exportTargetEval, req, guidance)
+			So(err, ShouldBeNil)
+			var got evalExport
+			So(yaml.Unmarshal(body, &got), ShouldBeNil)
+			So(got.Questions[0].Tests[0].Question, ShouldEqual, "客户ID{Order.order_no}最近 3 笔订单？")
+		})
+
+		Convey("Guidance not ready, or of another version or older than the specification, is not exported\n", func() {
+			for _, change := range []func(g *interfaces.QuestionGuidance){
+				func(g *interfaces.QuestionGuidance) { g.Status = interfaces.GUIDANCE_STATUS_GENERATING },
+				func(g *interfaces.QuestionGuidance) { g.SpecVersion = 2 },
+				func(g *interfaces.QuestionGuidance) { g.CreateTime = 5 },
+			} {
+				guidance := exportGuidance()
+				change(guidance[0])
+				body, err := buildExport(exportTargetEval, req, guidance)
+				So(err, ShouldBeNil)
+				var got evalExport
+				So(yaml.Unmarshal(body, &got), ShouldBeNil)
+				So(got.Questions[0].Tests, ShouldBeEmpty)
+			}
+		})
+	})
+}
+
+func Test_ExportRequirement(t *testing.T) {
+	Convey("Test ExportRequirement\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra}
+		ctx := context.Background()
+		entry := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
+
+		Convey("A ready specification exports, read as the caller, with a file name of the project and target\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(entry, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(exportSpec(), true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(exportGuidance(), nil)
+
+			body, name, err := svc.ExportRequirement(ctx, token, "p1", exportTargetEval)
+
+			So(err, ShouldBeNil)
+			So(name, ShouldEqual, "p1-rq-1-eval.yaml")
+			So(string(body), ShouldContainSubstring, "answer_set_access: forbidden")
+		})
+
+		Convey("An unknown target is refused before anything is read\n", func() {
+			_, _, err := svc.ExportRequirement(ctx, token, "p1", "answers")
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidExportTarget)
+		})
+
+		Convey("Without a ready specification there is nothing to export\n", func() {
+			for _, read := range []func(){
+				func() { ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil) },
+				func() {
+					drafting := exportSpec()
+					drafting.Status = interfaces.REQUIREMENT_STATUS_DRAFTING
+					ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(drafting, true, nil)
+				},
+			} {
+				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(entry, nil)
+				read()
+				_, _, err := svc.ExportRequirement(ctx, token, "p1", exportTargetWorkshop)
+				shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_NotFound)
+			}
+		})
+
+		Convey("A project the caller cannot see, or a failed read, is an error\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(nil, errors.New("no project"))
+			_, _, err := svc.ExportRequirement(ctx, token, "p1", exportTargetWorkshop)
+			So(err, ShouldNotBeNil)
+
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(entry, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(exportSpec(), true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, errors.New("down"))
+			_, _, err = svc.ExportRequirement(ctx, token, "p1", exportTargetEval)
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
+		})
+
+		Convey("Workshop reads no guidance\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(entry, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(exportSpec(), true, nil)
+			body, name, err := svc.ExportRequirement(ctx, token, "p1", exportTargetWorkshop)
+			So(err, ShouldBeNil)
+			So(name, ShouldEqual, "p1-rq-1-workshop.yaml")
+			So(strings.HasPrefix(string(body), "format: bkn-project-requirements-workshop/v1"), ShouldBeTrue)
+		})
+	})
+}

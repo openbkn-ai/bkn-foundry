@@ -443,6 +443,22 @@ func (mr *MockRequirementServiceMockRecorder) EditTest(ctx, token, projectID, qu
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EditTest", reflect.TypeOf((*MockRequirementService)(nil).EditTest), ctx, token, projectID, questionID, testID, edit, caller)
 }
 
+// ExportRequirement mocks base method.
+func (m *MockRequirementService) ExportRequirement(ctx context.Context, token, projectID, target string) ([]byte, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExportRequirement", ctx, token, projectID, target)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ExportRequirement indicates an expected call of ExportRequirement.
+func (mr *MockRequirementServiceMockRecorder) ExportRequirement(ctx, token, projectID, target any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportRequirement", reflect.TypeOf((*MockRequirementService)(nil).ExportRequirement), ctx, token, projectID, target)
+}
+
 // FailInterrupted mocks base method.
 func (m *MockRequirementService) FailInterrupted(ctx context.Context) error {
 	m.ctrl.T.Helper()

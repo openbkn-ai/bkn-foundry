@@ -48,6 +48,29 @@ func Test_RequirementSpecRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"status":"ready"`)
 		})
 
+		Convey("The specification is exported as a YAML file for the target asked for\n", func() {
+			rqs.EXPECT().ExportRequirement(gomock.Any(), "Bearer t", "p1", "eval").
+				Return([]byte("answer_set_access: forbidden\n"), "p1-rq-1-eval.yaml", nil)
+
+			w := serve(handler, http.MethodGet, base+"/export?target=eval")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Header().Get("Content-Type"), ShouldEqual, "application/yaml; charset=utf-8")
+			So(w.Header().Get("Content-Disposition"), ShouldEqual, `attachment; filename="p1-rq-1-eval.yaml"`)
+			So(w.Body.String(), ShouldEqual, "answer_set_access: forbidden\n")
+		})
+
+		Convey("An export the service refuses is replied as its error\n", func() {
+			rqs.EXPECT().ExportRequirement(gomock.Any(), "Bearer t", "p1", "").
+				Return(nil, "", httpError(http.StatusBadRequest, perrors.BknProject_Requirement_InvalidExportTarget))
+
+			w := serve(handler, http.MethodGet, base+"/export")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_InvalidExportTarget)
+			So(w.Header().Get("Content-Disposition"), ShouldBeEmpty)
+		})
+
 		Convey("requirements:draft starts drafting and replies 202, discarding decisions only when asked\n", func() {
 			drafting := &interfaces.Requirement{ProjectID: "p1", Status: interfaces.REQUIREMENT_STATUS_DRAFTING}
 			rqs.EXPECT().GenerateRequirement(gomock.Any(), "Bearer t", "p1", caller, false).Return(drafting, nil)
