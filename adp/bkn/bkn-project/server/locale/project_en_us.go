@@ -17,6 +17,7 @@ var projectEnUS = i18n.I18nMessages{
 		"BknProject.Project.InvalidNamingLanguage":   "Invalid Naming Language. naming_language must be zh-CN or en-US.",
 		"BknProject.Project.NotOwner":                "Not the Project Owner. Only the project owner may change the project.",
 		"BknProject.Project.NotFound":                "Project Not Found. The project does not exist, or you cannot see its knowledge network.",
+		"BknProject.Project.CatalogMissing":          "Data Catalog Deleted. A selected data catalog no longer exists; choose another one.",
 		"BknProject.Project.BknBackendRequestFailed": "bkn-backend Request Failed. bkn-backend refused the request; error_details holds its reply.",
 		"BknProject.Project.InternalError":           "Internal Error. Please contact the administrator.",
 		"BknProject.Requirement.InvalidRequestBody":  "Invalid Request Body. The request body must be valid JSON.",

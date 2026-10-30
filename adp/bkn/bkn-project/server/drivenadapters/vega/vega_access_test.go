@@ -100,6 +100,70 @@ func Test_VegaAccess(t *testing.T) {
 			So(vegaErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
 
+		Convey("MissingTables asks once and takes the ids left out for missing\n", func() {
+			respBody = `{"entries":[{"id":"r1","name":"orders"},{"id":"r3","name":"parts"}]}`
+
+			missing, err := va.MissingTables(ctx, account, []string{"r1", "r 2", "r3"})
+
+			So(err, ShouldBeNil)
+			So(missing, ShouldResemble, []string{"r 2"})
+			So(len(got), ShouldEqual, 1)
+			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/resources/r1,r 2,r3")
+			So(got[0].query, ShouldEqual, "ignore_missing=true")
+			So(got[0].accountID, ShouldEqual, "u1")
+
+			got, respBody = nil, `{"entries":[{"id":"r1"}]}`
+			missing, err = va.MissingTables(ctx, account, []string{"r1"})
+			So(err, ShouldBeNil)
+			So(missing, ShouldBeEmpty)
+
+			got = nil
+			missing, err = va.MissingTables(ctx, account, nil)
+			So(err, ShouldBeNil)
+			So(missing, ShouldBeEmpty)
+			So(got, ShouldBeEmpty)
+		})
+
+		Convey("MissingTables asks each table when the batch is refused; a refused table is not missing\n", func() {
+			// vega-backend looks ids up before checking view_detail: a deleted table is left out with
+			// 200, and only a table that exists can refuse, then for the whole batch.
+			byPath := map[string]struct {
+				code int
+				body string
+			}{
+				"/api/vega-backend/in/v1/resources/r1,r2,r3": {http.StatusForbidden, `{"error_code":"Public.Forbidden"}`},
+				"/api/vega-backend/in/v1/resources/r1":       {http.StatusOK, `{"entries":[{"id":"r1"}]}`},
+				"/api/vega-backend/in/v1/resources/r2":       {http.StatusForbidden, `{"error_code":"Public.Forbidden"}`},
+				"/api/vega-backend/in/v1/resources/r3":       {http.StatusOK, `{"entries":[]}`},
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reply := byPath[r.URL.Path]
+				w.WriteHeader(reply.code)
+				_, _ = w.Write([]byte(reply.body))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
+
+			missing, err := each.MissingTables(ctx, account, []string{"r1", "r2", "r3"})
+
+			So(err, ShouldBeNil)
+			So(missing, ShouldResemble, []string{"r3"})
+
+			// One table alone refused, as a built-in table is for a non-admin: present.
+			missing, err = each.MissingTables(ctx, account, []string{"r2"})
+			So(err, ShouldBeNil)
+			So(missing, ShouldBeEmpty)
+
+			byPath["/api/vega-backend/in/v1/resources/r3"] = struct {
+				code int
+				body string
+			}{http.StatusInternalServerError, `{"error_code":"VegaBackend.Resource.InternalError"}`}
+			_, err = each.MissingTables(ctx, account, []string{"r1", "r2", "r3"})
+			var vegaErr *interfaces.VegaError
+			So(errors.As(err, &vegaErr), ShouldBeTrue)
+			So(vegaErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
 		Convey("GetTables reads the structure, with vega's types and the exact row count\n", func() {
 			respBody = `{"entries":[{"id":"r1","catalog_id":"c1","name":"orders","row_count":800,
 				"estimated_row_count":790,

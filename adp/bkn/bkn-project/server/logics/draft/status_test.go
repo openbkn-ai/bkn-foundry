@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
@@ -469,7 +470,21 @@ func Test_GetStatus(t *testing.T) {
 			func(context.Context, string) (*interfaces.Requirement, bool, error) {
 				return requirement, requirement != nil, requirementErr
 			}).AnyTimes()
-		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls, ra: ra, rqa: rqa}
+		// What vega answers for the catalogs and the tables; all there unless a test says otherwise.
+		va := pmock.NewMockVegaAccess(ctrl)
+		var missingCatalogs, missingTables []string
+		var catalogsErr, tablesErr error
+		var askedTables [][]string
+		va.EXPECT().MissingCatalogs(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(context.Context, interfaces.VegaAccount, []string) ([]string, error) {
+				return missingCatalogs, catalogsErr
+			}).AnyTimes()
+		va.EXPECT().MissingTables(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.VegaAccount, ids []string) ([]string, error) {
+				askedTables = append(askedTables, ids)
+				return missingTables, tablesErr
+			}).AnyTimes()
+		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls, ra: ra, rqa: rqa, va: va}
 		ctx := context.Background()
 		action := func(s *interfaces.ProjectStatus, name string) *interfaces.ProjectStatusNextAction {
 			for i := range s.NextActions {
@@ -484,7 +499,7 @@ func Test_GetStatus(t *testing.T) {
 		}}
 
 		Convey("A draft ready to confirm is preflighted with the paths confirming would write\n", func() {
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			d := confirmableDraft()
 			d.Items.Confirmation = &interfaces.DraftConfirmation{Files: []string{"object_types/old.bkn"},
 				Pending: []string{"object_types/stopped.bkn"}}
@@ -508,7 +523,7 @@ func Test_GetStatus(t *testing.T) {
 					{ID: "k2", Deferred: true, Resolution: &interfaces.RequirementResolution{Reason: "ask"}},
 					{ID: "k3", Resolution: &interfaces.RequirementResolution{DocumentID: "pol", Reason: "policy"}},
 				}}}
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -541,7 +556,7 @@ func Test_GetStatus(t *testing.T) {
 					// No one decided on leaving audit_log out.
 					d.Items.Decisions = nil
 				}
-				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+				ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 				ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 				ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -566,7 +581,7 @@ func Test_GetStatus(t *testing.T) {
 			svc.rqa = once
 			d := confirmableDraft()
 			d.Items.Decisions = nil
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -583,7 +598,7 @@ func Test_GetStatus(t *testing.T) {
 			for _, spec := range []*interfaces.Requirement{nil, {Status: interfaces.REQUIREMENT_STATUS_DRAFTING,
 				Spec: interfaces.RequirementSpec{Conflicts: []*interfaces.RequirementConflict{{ID: "k1"}}}}} {
 				requirement = spec
-				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+				ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
 				ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 				ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -600,7 +615,7 @@ func Test_GetStatus(t *testing.T) {
 		Convey("With no draft to confirm, conflicts are not counted\n", func() {
 			requirement = &interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_READY,
 				Spec: interfaces.RequirementSpec{Conflicts: []*interfaces.RequirementConflict{{ID: "k1"}}}}
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 
@@ -612,7 +627,7 @@ func Test_GetStatus(t *testing.T) {
 
 		Convey("A specification that cannot be read fails the status\n", func() {
 			requirementErr = errors.New("db down")
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -624,7 +639,7 @@ func Test_GetStatus(t *testing.T) {
 		})
 
 		Convey("Other stages read nothing of the branch\n", func() {
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 
@@ -635,7 +650,7 @@ func Test_GetStatus(t *testing.T) {
 		})
 
 		Convey("A preflight that fails leaves the status without what it would tell\n", func() {
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -651,7 +666,7 @@ func Test_GetStatus(t *testing.T) {
 		Convey("A current confirmation is read against the lineage's newest release and switch\n", func() {
 			d := confirmableDraft()
 			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: d.UpdateTime, Commit: "c1", Time: 100}
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
 
@@ -700,9 +715,298 @@ func Test_GetStatus(t *testing.T) {
 			})
 		})
 
+		Convey("Data sources: what the draft binds is read against vega as the caller\n", func() {
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			// Adopted object types and the link table of an adopted relation; not audit_log, which
+			// is left out, nor a code table, whose values the definitions keep.
+			So(askedTables, ShouldResemble, [][]string{{"res_orders", "res_customers", "res_products", "res_order_lines"}})
+			So(s.DataSources, ShouldResemble, &interfaces.ProjectStatusDataSources{
+				Network:  interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_OK, Total: 1},
+				Catalogs: interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_OK, Total: 1},
+				Tables:   interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_OK, Total: 4},
+			})
+			So(s.Blockers, ShouldBeEmpty)
+			So(action(s, interfaces.ACTION_CONFIRM_DRAFT).Allowed, ShouldBeTrue)
+		})
+
+		Convey("Deleted tables block confirming and are named by their items\n", func() {
+			missingTables = []string{"res_customers", "res_order_lines"}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Tables, ShouldResemble, interfaces.ProjectStatusDependency{
+				State: interfaces.DATA_SOURCE_MISSING, Total: 4, Missing: 2,
+				Affected: []interfaces.ProjectStatusAffected{
+					{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: "customers", Name: "Customers", Table: "customers"},
+					{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: "orders_to_products", Name: "Contains", Table: "order_lines"},
+				},
+			})
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_TABLE_MISSING, Count: 2, WaitingFor: interfaces.WAITING_FOR_OWNER},
+			})
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+			So(confirm.Allowed, ShouldBeFalse)
+			So(confirm.Reason, ShouldEqual, interfaces.BLOCKER_TABLE_MISSING)
+			// Drafting again binds the tables there are now.
+			So(action(s, interfaces.ACTION_GENERATE_DRAFT).Allowed, ShouldBeTrue)
+		})
+
+		Convey("Items on one table ask it once and are both named; what blocks besides comes after\n", func() {
+			other := interfaces.AccountInfo{ID: "u2", Type: "user"}
+			d := confirmableDraft()
+			d.Items.ObjectTypes[2].Table = d.Items.ObjectTypes[1].Table
+			own := pmock.NewMockVegaAccess(ctrl)
+			own.EXPECT().MissingCatalogs(gomock.Any(), other, []string{"c1"}).Return(nil, nil)
+			own.EXPECT().MissingTables(gomock.Any(), other, []string{"res_orders", "res_customers", "res_order_lines"}).
+				Return([]string{"res_customers"}, nil)
+			svc.va = own
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", other).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{Existing: []string{"object_types/orders.bkn"}}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", other)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Tables.Total, ShouldEqual, 4)
+			So(s.DataSources.Tables.Missing, ShouldEqual, 2)
+			So(s.DataSources.Tables.Affected[1].ID, ShouldEqual, "products")
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_TABLE_MISSING, Count: 2, WaitingFor: interfaces.WAITING_FOR_OWNER},
+				{Code: interfaces.BLOCKER_DEFINITIONS_EXIST, Count: 1, WaitingFor: interfaces.WAITING_FOR_EDITOR},
+			})
+			// An action refused already keeps its reason.
+			So(action(s, interfaces.ACTION_CONFIRM_DRAFT).Reason, ShouldEqual, interfaces.BLOCKER_DEFINITIONS_EXIST)
+		})
+
+		Convey("A draft that failed binds nothing, whatever items it kept\n", func() {
+			d := confirmableDraft()
+			d.Status = interfaces.DRAFT_STATUS_FAILED
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_DRAFT_FAILED)
+			So(askedTables, ShouldBeEmpty)
+			So(s.DataSources.Tables, ShouldResemble, interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_NOT_BOUND})
+		})
+
+		Convey("A deleted catalog refuses drafting and asks for the catalogs again\n", func() {
+			missingCatalogs, missingTables = []string{"c1"}, []string{"res_orders", "res_customers", "res_products", "res_order_lines"}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Catalogs, ShouldResemble, interfaces.ProjectStatusDependency{
+				State: interfaces.DATA_SOURCE_MISSING, Total: 1, Missing: 1})
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_CATALOG_MISSING, Count: 1, WaitingFor: interfaces.WAITING_FOR_OWNER},
+				{Code: interfaces.BLOCKER_TABLE_MISSING, Count: 4, WaitingFor: interfaces.WAITING_FOR_OWNER},
+			})
+			generate := action(s, interfaces.ACTION_GENERATE_DRAFT)
+			So(generate.Allowed, ShouldBeFalse)
+			So(generate.Reason, ShouldEqual, interfaces.BLOCKER_CATALOG_MISSING)
+			set := action(s, interfaces.ACTION_SET_CATALOGS)
+			So(set, ShouldNotBeNil)
+			So(set.Allowed, ShouldBeTrue)
+			So(set.Path, ShouldEqual, "/projects/p1/catalogs")
+			So(action(s, interfaces.ACTION_CONFIRM_DRAFT).Reason, ShouldEqual, interfaces.BLOCKER_TABLE_MISSING)
+		})
+
+		Convey("Before any draft, a deleted catalog is the blocker and nothing is bound\n", func() {
+			missingCatalogs = []string{"c1"}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(askedTables, ShouldBeEmpty)
+			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_NOT_BOUND)
+			So(s.Blockers[0].Code, ShouldEqual, interfaces.BLOCKER_CATALOG_MISSING)
+			So(action(s, interfaces.ACTION_GENERATE_DRAFT).Reason, ShouldEqual, interfaces.BLOCKER_CATALOG_MISSING)
+			// Only the owner may choose the catalogs again.
+			other := interfaces.AccountInfo{ID: "u2", Type: "user"}
+			va2 := pmock.NewMockVegaAccess(ctrl)
+			va2.EXPECT().MissingCatalogs(gomock.Any(), other, []string{"c1"}).Return([]string{"c1"}, nil)
+			svc.va = va2
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", other).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			s, err = svc.GetStatus(ctx, token, "p1", other)
+			So(err, ShouldBeNil)
+			So(action(s, interfaces.ACTION_SET_CATALOGS).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
+			So(len(s.NextActions), ShouldEqual, 2)
+		})
+
+		Convey("A vega that does not answer is unreachable and blocks nothing\n", func() {
+			catalogsErr, tablesErr = errors.New("vega down"), errors.New("vega down")
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Catalogs, ShouldResemble, interfaces.ProjectStatusDependency{
+				State: interfaces.DATA_SOURCE_UNREACHABLE, Total: 1})
+			So(s.DataSources.Tables, ShouldResemble, interfaces.ProjectStatusDependency{
+				State: interfaces.DATA_SOURCE_UNREACHABLE, Total: 4})
+			So(s.Blockers, ShouldBeEmpty)
+			So(action(s, interfaces.ACTION_CONFIRM_DRAFT).Allowed, ShouldBeTrue)
+		})
+
+		Convey("A drafting project reads no vega\n", func() {
+			d := confirmableDraft()
+			d.Status, d.UpdateTime = interfaces.DRAFT_STATUS_DRAFTING, time.Now().UnixMilli()
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			svc.va = pmock.NewMockVegaAccess(ctrl)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_DRAFTING)
+			So(s.DataSources, ShouldBeNil)
+		})
+
+		Convey("A project without catalogs has none to miss\n", func() {
+			bare := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "supply", Owner: caller}}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(bare, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			svc.va = pmock.NewMockVegaAccess(ctrl)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Catalogs, ShouldResemble, interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_NOT_BOUND})
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_NO_CATALOGS, WaitingFor: interfaces.WAITING_FOR_OWNER}})
+		})
+
+		Convey("A deleted network leaves its owner only archiving\n", func() {
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil).AnyTimes()
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Network, ShouldResemble, interfaces.ProjectStatusDependency{
+				State: interfaces.DATA_SOURCE_MISSING, Total: 1, Missing: 1})
+			So(s.Blockers[0], ShouldResemble, interfaces.ProjectStatusBlocker{
+				Code: interfaces.BLOCKER_NETWORK_MISSING, Count: 1, WaitingFor: interfaces.WAITING_FOR_OWNER})
+			archive := action(s, interfaces.ACTION_ARCHIVE)
+			So(archive, ShouldResemble, &interfaces.ProjectStatusNextAction{
+				Action: interfaces.ACTION_ARCHIVE, Method: http.MethodPost, Path: "/projects/p1:archive", Allowed: true})
+			for _, a := range s.NextActions {
+				if a.Action != interfaces.ACTION_ARCHIVE {
+					So(a.Allowed, ShouldBeFalse)
+					So(a.Reason, ShouldEqual, interfaces.BLOCKER_NETWORK_MISSING)
+				}
+			}
+		})
+
+		Convey("An archived project shows what is gone, and can still be unarchived\n", func() {
+			archived := &interfaces.ProjectEntry{Project: &interfaces.Project{
+				ID: "p1", KNID: "supply", Owner: caller, CatalogIDs: []string{"c1"}, Archived: true}}
+			missingCatalogs, missingTables = []string{"c1"}, []string{"res_orders"}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(archived, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_ARCHIVED)
+			So(s.DataSources.Tables.Missing, ShouldEqual, 1)
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_CATALOG_MISSING, Count: 1, WaitingFor: interfaces.WAITING_FOR_OWNER},
+				{Code: interfaces.BLOCKER_TABLE_MISSING, Count: 1, WaitingFor: interfaces.WAITING_FOR_OWNER},
+			})
+			So(s.NextActions, ShouldHaveLength, 1)
+			So(s.NextActions[0].Action, ShouldEqual, interfaces.ACTION_UNARCHIVE)
+			So(s.NextActions[0].Allowed, ShouldBeTrue)
+		})
+
+		Convey("A published project whose tables are gone shows it, and checking and drafting again stay\n", func() {
+			missingTables = []string{"res_products"}
+			d := confirmableDraft()
+			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: d.UpdateTime, Commit: "c1", Time: 100}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(
+				[]*interfaces.Release{{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply_v1_1_0", CreateTime: 200}}, nil)
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(&interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, true, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_TABLE_MISSING, Count: 1, WaitingFor: interfaces.WAITING_FOR_OWNER},
+			})
+			run := action(s, interfaces.ACTION_RUN_CHECK)
+			So(run.Allowed, ShouldBeFalse)
+			So(run.Reason, ShouldEqual, interfaces.BLOCKER_TABLE_MISSING)
+			So(action(s, interfaces.ACTION_GENERATE_DRAFT).Allowed, ShouldBeTrue)
+		})
+
+		Convey("A confirmed project whose tables are gone cannot go on to review\n", func() {
+			missingTables = []string{"res_products"}
+			d := confirmableDraft()
+			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: d.UpdateTime, Commit: "c1", Time: 100}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_CONFIRMED)
+			review := action(s, interfaces.ACTION_REVIEW_RELEASE)
+			So(review.Allowed, ShouldBeFalse)
+			So(review.Reason, ShouldEqual, interfaces.BLOCKER_TABLE_MISSING)
+			So(review.Path, ShouldEqual, "/projects/p1/release-review?version=1.0.0")
+		})
+
 		Convey("A project the caller cannot see answers as the project service does\n", func() {
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").
-				Return(nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound))
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).
+				Return(nil, false, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound))
 
 			_, err := svc.GetStatus(ctx, token, "p1", caller)
 

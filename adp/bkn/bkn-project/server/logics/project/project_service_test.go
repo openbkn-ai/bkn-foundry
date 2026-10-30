@@ -42,6 +42,7 @@ type fixture struct {
 	ra  *pmock.MockReleaseAccess
 	bba *pmock.MockBknBackendAccess
 	ls  *pmock.MockLineageService
+	va  *pmock.MockVegaAccess
 }
 
 func newFixture(ctrl *gomock.Controller) *fixture {
@@ -50,8 +51,9 @@ func newFixture(ctrl *gomock.Controller) *fixture {
 		ra:  pmock.NewMockReleaseAccess(ctrl),
 		bba: pmock.NewMockBknBackendAccess(ctrl),
 		ls:  pmock.NewMockLineageService(ctrl),
+		va:  pmock.NewMockVegaAccess(ctrl),
 	}
-	f.svc = &projectService{pa: f.pa, ra: f.ra, bba: f.bba, ls: f.ls}
+	f.svc = &projectService{pa: f.pa, ra: f.ra, bba: f.bba, ls: f.ls, va: f.va}
 	return f
 }
 
@@ -492,6 +494,7 @@ func Test_ProjectService_GetAndArchive(t *testing.T) {
 		Convey("The owner replaces the catalogs, de-duplicated, keeping the draft as it is\n", func() {
 			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.va.EXPECT().MissingCatalogs(gomock.Any(), owner, []string{"c2", "c3"}).Return(nil, nil)
 			f.pa.EXPECT().SetProjectCatalogs(gomock.Any(), "p1", []string{"c2", "c3"}, gomock.Any()).Return(nil)
 			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 1}, nil)
 
@@ -574,9 +577,82 @@ func Test_ProjectService_GetAndArchive(t *testing.T) {
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Project_InternalError)
 		})
 
+		Convey("A deleted catalog is refused before anything is written; a refused one is not deleted\n", func() {
+			// MissingCatalogs takes only vega's 404 for missing: a catalog the owner may not see in
+			// detail is still set, as before.
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil).Times(2)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil).Times(2)
+			f.va.EXPECT().MissingCatalogs(gomock.Any(), owner, []string{"c2", "gone"}).Return([]string{"gone"}, nil)
+
+			_, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c2", "gone"}, owner)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Project_CatalogMissing)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, []string{"gone"})
+
+			f.va.EXPECT().MissingCatalogs(gomock.Any(), owner, []string{"c2"}).Return(nil, errors.New("vega down"))
+
+			_, err = f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c2"}, owner)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Project_InternalError)
+		})
+
+		Convey("Status and archiving reach the owner's project whose network was deleted, and no one else's\n", func() {
+			deleted := &interfaces.BknBackendError{HTTPCode: http.StatusNotFound}
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil).AnyTimes()
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), []string{"orders"}).
+				Return(map[string]int64{"orders": 2}, nil).AnyTimes()
+
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(nil, deleted)
+			entry, missing, err := f.svc.GetProjectForStatus(ctx, token, "p1", owner)
+			So(err, ShouldBeNil)
+			So(missing, ShouldBeTrue)
+			So(entry.ID, ShouldEqual, "p1")
+			So(entry.OtherProjects, ShouldEqual, 1)
+
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			_, missing, err = f.svc.GetProjectForStatus(ctx, token, "p1", owner)
+			So(err, ShouldBeNil)
+			So(missing, ShouldBeFalse)
+
+			// Someone else cannot tell a deleted network from one hidden from them.
+			other := interfaces.AccountInfo{ID: "u2", Type: "user"}
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(nil, deleted)
+			_, _, err = f.svc.GetProjectForStatus(ctx, token, "p1", other)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
+
+			// Access taken away from the owner is a refusal, not a deleted network.
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusForbidden})
+			_, _, err = f.svc.GetProjectForStatus(ctx, token, "p1", owner)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
+
+			// A visibility that cannot be verified shows nothing.
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").
+				Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError})
+			_, _, err = f.svc.GetProjectForStatus(ctx, token, "p1", owner)
+			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Project_BknBackendRequestFailed)
+
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(nil, deleted)
+			f.pa.EXPECT().SetProjectArchived(gomock.Any(), "p1", true, gomock.Any()).Return(nil)
+			entry, err = f.svc.SetProjectArchived(ctx, token, "p1", true, owner)
+			So(err, ShouldBeNil)
+			So(entry.Archived, ShouldBeTrue)
+
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(nil, deleted)
+			_, err = f.svc.SetProjectArchived(ctx, token, "p1", true, other)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
+
+			// Other routes still need the network.
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(nil, deleted)
+			_, err = f.svc.GetProject(ctx, token, "p1")
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
+		})
+
 		Convey("A catalogs write failure is an internal error\n", func() {
 			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.va.EXPECT().MissingCatalogs(gomock.Any(), owner, []string{"c2"}).Return([]string{}, nil)
 			f.pa.EXPECT().SetProjectCatalogs(gomock.Any(), "p1", []string{"c2"}, gomock.Any()).Return(errors.New("db down"))
 
 			_, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c2"}, owner)

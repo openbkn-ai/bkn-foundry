@@ -71,6 +71,22 @@ func (mr *MockProjectServiceMockRecorder) GetProject(ctx, token, id any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProject", reflect.TypeOf((*MockProjectService)(nil).GetProject), ctx, token, id)
 }
 
+// GetProjectForStatus mocks base method.
+func (m *MockProjectService) GetProjectForStatus(ctx context.Context, token, id string, caller interfaces.AccountInfo) (*interfaces.ProjectEntry, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetProjectForStatus", ctx, token, id, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectEntry)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetProjectForStatus indicates an expected call of GetProjectForStatus.
+func (mr *MockProjectServiceMockRecorder) GetProjectForStatus(ctx, token, id, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProjectForStatus", reflect.TypeOf((*MockProjectService)(nil).GetProjectForStatus), ctx, token, id, caller)
+}
+
 // ListProjects mocks base method.
 func (m *MockProjectService) ListProjects(ctx context.Context, token, archived, name string, limit int, cursor string) (*interfaces.ProjectList, error) {
 	m.ctrl.T.Helper()

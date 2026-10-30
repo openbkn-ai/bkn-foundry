@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,7 +35,7 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetStatus")
 	defer span.End()
 
-	entry, err := s.ps.GetProject(ctx, token, projectID)
+	entry, networkMissing, err := s.ps.GetProjectForStatus(ctx, token, projectID, caller)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
@@ -90,8 +91,167 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 		}
 		withRelease(status, entry.Project, newest, sw, caller)
 	}
+	// Polled while drafting, which reads the catalogs itself.
+	if status.Stage != interfaces.PROJECT_STAGE_DRAFTING {
+		status.DataSources = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
+		withDataSources(status, entry.Project, caller)
+	}
 	span.SetStatus(codes.Ok, "")
 	return status, nil
+}
+
+// boundTable is a table a draft item reads its records from.
+type boundTable struct {
+	resourceID string
+	item       interfaces.ProjectStatusAffected
+}
+
+// boundTables are the tables of a ready draft's adopted object types and the link tables of its
+// adopted relation types, in the draft's order. A value type's values are in the definitions.
+func boundTables(draft *interfaces.Draft) []boundTable {
+	if draft == nil || draft.Status != interfaces.DRAFT_STATUS_READY {
+		return nil
+	}
+	bound := []boundTable{}
+	for _, ot := range draft.Items.ObjectTypes {
+		if ot.Adopted && ot.Table.ResourceID != "" {
+			bound = append(bound, boundTable{resourceID: ot.Table.ResourceID, item: interfaces.ProjectStatusAffected{
+				Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Table: ot.Table.Name,
+			}})
+		}
+	}
+	for _, rt := range draft.Items.RelationTypes {
+		if rt.Adopted && rt.LinkTable != nil && rt.LinkTable.ResourceID != "" {
+			bound = append(bound, boundTable{resourceID: rt.LinkTable.ResourceID, item: interfaces.ProjectStatusAffected{
+				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Table: rt.LinkTable.Name,
+			}})
+		}
+	}
+	return bound
+}
+
+// dataSources reads, as the caller, whether the project's catalogs and the tables its draft binds
+// are still in vega; networkMissing is what reading the project told of its network. vega not
+// answering leaves the dependency unreachable.
+func (s *draftService) dataSources(ctx context.Context, project *interfaces.Project, draft *interfaces.Draft,
+	networkMissing bool, caller interfaces.AccountInfo) *interfaces.ProjectStatusDataSources {
+	ds := &interfaces.ProjectStatusDataSources{
+		Network: interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_OK, Total: 1},
+	}
+	if networkMissing {
+		ds.Network.State, ds.Network.Missing = interfaces.DATA_SOURCE_MISSING, 1
+	}
+
+	ds.Catalogs = interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_NOT_BOUND, Total: len(project.CatalogIDs)}
+	if len(project.CatalogIDs) > 0 {
+		missing, err := s.va.MissingCatalogs(ctx, caller, project.CatalogIDs)
+		switch {
+		case err != nil:
+			otellog.LogWarn(ctx, fmt.Sprintf("Read catalogs of project %s: %v", project.ID, err))
+			ds.Catalogs.State = interfaces.DATA_SOURCE_UNREACHABLE
+		case len(missing) > 0:
+			ds.Catalogs.State, ds.Catalogs.Missing = interfaces.DATA_SOURCE_MISSING, len(missing)
+		default:
+			ds.Catalogs.State = interfaces.DATA_SOURCE_OK
+		}
+	}
+
+	bound := boundTables(draft)
+	ds.Tables = interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_NOT_BOUND, Total: len(bound)}
+	if len(bound) == 0 {
+		return ds
+	}
+	ids, seen := []string{}, map[string]bool{}
+	for _, b := range bound {
+		if !seen[b.resourceID] {
+			seen[b.resourceID] = true
+			ids = append(ids, b.resourceID)
+		}
+	}
+	missing, err := s.va.MissingTables(ctx, caller, ids)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read tables of project %s: %v", project.ID, err))
+		ds.Tables.State = interfaces.DATA_SOURCE_UNREACHABLE
+		return ds
+	}
+	gone := map[string]bool{}
+	for _, id := range missing {
+		gone[id] = true
+	}
+	ds.Tables.State = interfaces.DATA_SOURCE_OK
+	for _, b := range bound {
+		if gone[b.resourceID] {
+			ds.Tables.Affected = append(ds.Tables.Affected, b.item)
+		}
+	}
+	if ds.Tables.Missing = len(ds.Tables.Affected); ds.Tables.Missing > 0 {
+		ds.Tables.State = interfaces.DATA_SOURCE_MISSING
+	}
+	return ds
+}
+
+// withDataSources has what is gone block the project, ahead of what else does, and refuses the
+// actions it stops. A deleted network leaves the owner only archiving; a deleted catalog, choosing
+// the catalogs again; a deleted table, drafting again. An archived project only shows it, and
+// what cannot be told blocks nothing.
+func withDataSources(s *interfaces.ProjectStatus, project *interfaces.Project, caller interfaces.AccountInfo) {
+	ds := s.DataSources
+	blockers := []interfaces.ProjectStatusBlocker{}
+	for _, d := range []struct {
+		dep  interfaces.ProjectStatusDependency
+		code string
+	}{
+		{ds.Network, interfaces.BLOCKER_NETWORK_MISSING},
+		{ds.Catalogs, interfaces.BLOCKER_CATALOG_MISSING},
+		{ds.Tables, interfaces.BLOCKER_TABLE_MISSING},
+	} {
+		if d.dep.State == interfaces.DATA_SOURCE_MISSING {
+			blockers = append(blockers, interfaces.ProjectStatusBlocker{
+				Code: d.code, Count: d.dep.Missing, WaitingFor: interfaces.WAITING_FOR_OWNER,
+			})
+		}
+	}
+	if len(blockers) == 0 {
+		return
+	}
+	s.Blockers = append(blockers, s.Blockers...)
+	if s.Stage == interfaces.PROJECT_STAGE_ARCHIVED {
+		return
+	}
+	base := "/projects/" + project.ID
+	isOwner := caller.ID == project.Owner.ID
+	ownerOnly := func(a interfaces.ProjectStatusNextAction) interfaces.ProjectStatusNextAction {
+		a.Allowed = isOwner
+		if !isOwner {
+			a.Reason = interfaces.ACTION_REASON_NOT_OWNER
+		}
+		return a
+	}
+	refuse := func(code string, actions ...string) {
+		for i := range s.NextActions {
+			if a := &s.NextActions[i]; a.Allowed && (len(actions) == 0 || slices.Contains(actions, a.Action)) {
+				a.Allowed, a.Reason = false, code
+			}
+		}
+	}
+
+	if ds.Network.State == interfaces.DATA_SOURCE_MISSING {
+		refuse(interfaces.BLOCKER_NETWORK_MISSING)
+		s.NextActions = append([]interfaces.ProjectStatusNextAction{ownerOnly(interfaces.ProjectStatusNextAction{
+			Action: interfaces.ACTION_ARCHIVE, Method: http.MethodPost, Path: base + ":archive",
+		})}, s.NextActions...)
+		return
+	}
+	if ds.Tables.State == interfaces.DATA_SOURCE_MISSING {
+		refuse(interfaces.BLOCKER_TABLE_MISSING,
+			interfaces.ACTION_CONFIRM_DRAFT, interfaces.ACTION_RUN_CHECK, interfaces.ACTION_REVIEW_RELEASE)
+	}
+	if ds.Catalogs.State == interfaces.DATA_SOURCE_MISSING {
+		refuse(interfaces.BLOCKER_CATALOG_MISSING, interfaces.ACTION_GENERATE_DRAFT)
+		s.NextActions = append([]interfaces.ProjectStatusNextAction{ownerOnly(interfaces.ProjectStatusNextAction{
+			Action: interfaces.ACTION_SET_CATALOGS, Method: http.MethodPut, Path: base + "/catalogs",
+		})}, s.NextActions...)
+	}
 }
 
 // withRelease reads a status against latest, the lineage's newest release or nil before any. Until

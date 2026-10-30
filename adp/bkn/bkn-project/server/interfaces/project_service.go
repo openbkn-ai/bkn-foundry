@@ -61,10 +61,16 @@ type ProjectService interface {
 		cursor string) (*ProjectList, error)
 	// GetProject returns a visible project, and 404 for one the caller cannot see.
 	GetProject(ctx context.Context, token string, id string) (*ProjectEntry, error)
-	// SetProjectArchived archives or unarchives a visible project; only its owner may.
+	// GetProjectForStatus is GetProject, but returns its owner a project whose network bkn-backend
+	// no longer has, with networkMissing true; to anyone else that project is not found.
+	GetProjectForStatus(ctx context.Context, token string, id string, caller AccountInfo) (entry *ProjectEntry,
+		networkMissing bool, err error)
+	// SetProjectArchived archives or unarchives a visible project; only its owner may, also when
+	// its network was deleted.
 	SetProjectArchived(ctx context.Context, token string, id string, archived bool,
 		caller AccountInfo) (*ProjectEntry, error)
-	// SetProjectCatalogs replaces the project's data catalogs; only its owner may.
+	// SetProjectCatalogs replaces the project's data catalogs; only its owner may, and not with a
+	// catalog that no longer exists (409).
 	SetProjectCatalogs(ctx context.Context, token string, id string, catalogIDs []string,
 		caller AccountInfo) (*ProjectEntry, error)
 	// SetProjectNamingLanguage sets the language the project names its items in; only its owner

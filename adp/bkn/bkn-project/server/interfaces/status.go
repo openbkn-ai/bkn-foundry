@@ -37,6 +37,20 @@ const (
 	BLOCKER_CHECK_ISSUES      = "check_issues"
 	BLOCKER_CHECK_PARTIAL     = "check_partial"
 	BLOCKER_CHECK_FAILED      = "check_failed"
+	// What the project depends on that is gone, from its data sources.
+	BLOCKER_NETWORK_MISSING = "network_missing"
+	BLOCKER_CATALOG_MISSING = "catalog_missing"
+	BLOCKER_TABLE_MISSING   = "table_missing"
+)
+
+// States of what a project depends on.
+const (
+	DATA_SOURCE_OK      = "ok"
+	DATA_SOURCE_MISSING = "missing"
+	// DATA_SOURCE_UNREACHABLE: the service did not tell; it blocks nothing.
+	DATA_SOURCE_UNREACHABLE = "unreachable"
+	// DATA_SOURCE_NOT_BOUND: there is nothing to depend on yet, such as no catalogs or no adopted items.
+	DATA_SOURCE_NOT_BOUND = "not_bound"
 )
 
 // Who a blocker waits for.
@@ -54,6 +68,7 @@ const (
 
 // What can be done next.
 const (
+	ACTION_ARCHIVE        = "archive"
 	ACTION_UNARCHIVE      = "unarchive"
 	ACTION_SET_CATALOGS   = "set_catalogs"
 	ACTION_GENERATE_DRAFT = "generate_draft"
@@ -94,8 +109,11 @@ type ProjectStatus struct {
 	Confirmation *ProjectStatusConfirmed `json:"confirmation,omitempty"`
 	Check        *ProjectStatusCheck     `json:"check,omitempty"`
 	// Release is the release that published the current confirmation.
-	Release  *ProjectStatusRelease  `json:"release,omitempty"`
-	Blockers []ProjectStatusBlocker `json:"blockers"`
+	Release *ProjectStatusRelease `json:"release,omitempty"`
+	// DataSources is whether what the project depends on is still there, read on each status but
+	// while drafting.
+	DataSources *ProjectStatusDataSources `json:"data_sources,omitempty"`
+	Blockers    []ProjectStatusBlocker    `json:"blockers"`
 	// Undecided counts the items drafting left out and no one decided on: they do not block, but
 	// confirming leaves them out only when the confirmation accepts it.
 	Undecided int `json:"undecided"`
@@ -111,6 +129,34 @@ type ProjectStatus struct {
 	// Links are the reads that show the details: the draft, its pending items and the check.
 	Links      map[string]string `json:"links"`
 	ComputedAt int64             `json:"computed_at"`
+}
+
+// ProjectStatusDataSources is what a project depends on: its network in bkn-backend, its catalogs
+// and the tables its draft binds in vega, as the caller reads them.
+type ProjectStatusDataSources struct {
+	Network  ProjectStatusDependency `json:"network"`
+	Catalogs ProjectStatusDependency `json:"catalogs"`
+	// Tables are those of the adopted object types and the link tables of adopted relation types; a
+	// value type keeps its values in the definitions.
+	Tables ProjectStatusDependency `json:"tables"`
+}
+
+// ProjectStatusDependency is the state of one kind of dependency, with how many there are and how
+// many are gone. Only the tables name what they affect.
+type ProjectStatusDependency struct {
+	State    string                  `json:"state"`
+	Total    int                     `json:"total"`
+	Missing  int                     `json:"missing"`
+	Affected []ProjectStatusAffected `json:"affected,omitempty"`
+}
+
+// ProjectStatusAffected is a draft item whose table is gone, by its name and the table's.
+type ProjectStatusAffected struct {
+	// Kind is object_types or relation_types.
+	Kind  string `json:"kind"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Table string `json:"table"`
 }
 
 type ProjectStatusDraft struct {
