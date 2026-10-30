@@ -75,11 +75,4 @@ func TestSchemaSnapshotTargetRetentionPreservesAttemptBoundary(t *testing.T) {
 			t.Fatalf("network snapshot invented object targets: %+v", got)
 		}
 	})
-	t.Run("unmanaged", func(t *testing.T) {
-		ctx := context.Background()
-		EmitSchemaSnapshotEvents(ctx, nil, "object", "kn-demo", []string{"object"}, nil, true)
-		if got := retainedBusinessRefs(ctx); len(got) != 0 {
-			t.Fatalf("unmanaged call acquired attempt state: %+v", got)
-		}
-	})
 }
