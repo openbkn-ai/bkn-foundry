@@ -339,6 +339,29 @@ func Test_BuildGuidance(t *testing.T) {
 			So(tests, ShouldHaveLength, 2)
 		})
 
+		Convey("A test that goes on after its question is left out, unless the template does too\n", func() {
+			out := &guidanceOutput{Tests: []agentTest{
+				{Text: "Lines of {{slot 1}}? Give the number as written.", Slots: []agentSlot{{ConceptID: "c1", Property: "order_no"}}},
+				{Text: "Lines of {{slot 1}}？给出原样的编号。", Slots: []agentSlot{{ConceptID: "c1", Property: "order_no"}}},
+				// Spaces after it are nothing.
+				{Text: "Lines of {{slot 1}}? ", Slots: []agentSlot{{ConceptID: "c1", Property: "order_no"}}},
+				{Text: "List the lines of {{slot 1}}.", Slots: []agentSlot{{ConceptID: "c1", Property: "order_no"}}},
+			}}
+
+			tests, leftOut := buildTests(out, nil, &interfaces.RequirementQuestion{Template: "Lines of {order}? "}, nil)
+			So(leftOut, ShouldEqual, 2)
+			So(tests, ShouldHaveLength, 2)
+			So(tests[0].Text, ShouldEqual, "Lines of {{slot 1}}?")
+
+			tests, leftOut = buildTests(out, nil, &interfaces.RequirementQuestion{Template: "Lines of {order}? List each one."}, nil)
+			So(leftOut, ShouldEqual, 0)
+			So(tests, ShouldHaveLength, 4)
+
+			// Without a question to compare with, it is left out all the same.
+			_, leftOut = buildTests(out, nil, nil, nil)
+			So(leftOut, ShouldEqual, 2)
+		})
+
 		Convey("A test's kind decides what it expects\n", func() {
 			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{
 				{Text: "a", Kind: "paraphrase", Expect: interfaces.TEST_EXPECT_SAME_RECORD},

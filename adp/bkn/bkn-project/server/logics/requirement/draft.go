@@ -443,6 +443,29 @@ func basisOf(cs []agentCitation, supplementReason string, docs map[string]*inter
 	return kept, ""
 }
 
+// recordValuesInText says the numbers of a question's text its quotes do not show are values of
+// the records it names: the template, where each record stands as its slot, has none its quotes do
+// not show, and the documents give each of them elsewhere, as an example of a record. A number the
+// template says too is a condition, which its quotes must show.
+func recordValuesInText(q agentQuestion, citations []interfaces.RequirementCitation,
+	docs map[string]*interfaces.RequirementDocument) bool {
+	if strings.TrimSpace(q.Template) == "" || !numbersInQuotes(q.Template, citations) {
+		return false
+	}
+	given := map[string]bool{}
+	for _, d := range docs {
+		for _, n := range numbers(d.Content) {
+			given[n] = true
+		}
+	}
+	for _, n := range numbers(q.Text) {
+		if !given[n] {
+			return false
+		}
+	}
+	return true
+}
+
 // namedInDocuments says a name stands in a block of the documents, compared without case,
 // whitespace, underscores or hyphens, as names are written in prose and as identifiers.
 func namedInDocuments(name string, docs map[string]*interfaces.RequirementDocument) bool {
@@ -564,7 +587,7 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 
 	for _, q := range out.Questions {
 		citations, reason := basisOf(q.Citations, q.SupplementReason, docs, true)
-		if reason == "" && len(citations) > 0 && !numbersInQuotes(q.Text, citations) {
+		if reason == "" && len(citations) > 0 && !numbersInQuotes(q.Text, citations) && !recordValuesInText(q, citations, docs) {
 			reason = rejectedNumberNotInQuote
 		}
 		if reason != "" {

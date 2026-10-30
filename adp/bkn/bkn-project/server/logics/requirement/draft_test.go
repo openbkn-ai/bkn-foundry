@@ -178,6 +178,31 @@ func Test_BuildSpec(t *testing.T) {
 			So(spec.Rejected[0].Reason, ShouldEqual, rejectedNumberNotInQuote)
 		})
 
+		Convey("A record's value the documents give elsewhere does not drop a question whose template holds its slot\n", func() {
+			quote := []agentCitation{cite("prd", "A new date confirmed by email updates the agreed date directly.")}
+			out := &draftOutput{Questions: []agentQuestion{
+				// 2 is in another block of the documents, and the template names the order by its slot.
+				{Text: "When is order 2 due?", Template: "When is order {order} due?", Citations: quote},
+				// 7 is in no document: made up. Nor is 22, though 2 is.
+				{Text: "When is order 7 due?", Template: "When is order {order} due?", Citations: quote},
+				{Text: "When is order 22 due?", Template: "When is order {order} due?", Citations: quote},
+				// The template says the number itself: a condition, not a record named.
+				{Text: "Which orders wait 2 days?", Template: "Which orders wait 2 days?", Citations: quote},
+				// No template to show it is a record's value.
+				{Text: "When is order 2 due?", Citations: quote},
+			}}
+
+			spec, _ := buildSpec(out, docs, draft)
+
+			So(spec.Questions, ShouldHaveLength, 1)
+			So(spec.Questions[0].Text, ShouldEqual, "When is order 2 due?")
+			So(spec.Questions[0].Template, ShouldEqual, "When is order {order} due?")
+			So(spec.Rejected, ShouldHaveLength, 4)
+			for _, r := range spec.Rejected {
+				So(r.Reason, ShouldEqual, rejectedNumberNotInQuote)
+			}
+		})
+
 		Convey("A question's inputs are kept only when they stand; the others are listed rejected\n", func() {
 			withProps := testDraft()
 			withProps.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{

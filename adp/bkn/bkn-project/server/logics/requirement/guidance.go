@@ -300,6 +300,10 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 		t.ID = fmt.Sprintf("t%d", i+1)
 	}
 	anchored := len(tests) > 0
+	template := ""
+	if q != nil {
+		template = q.Template
+	}
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
 		if text == "" || len(tests) == maxTests || len(tests) > 0 && tests[0].ByServer && at.Kind == interfaces.TEST_KIND_NOT_EXIST {
@@ -338,8 +342,10 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 		// One value names the same record only as an empty slot beside the server's template test,
 		// filled from and checked against that test's record; otherwise it would only ever be said
 		// not checkable.
-		if !placed || expect == interfaces.TEST_EXPECT_SAME_RECORD && len(slots) < 2 &&
-			!(anchored && len(slots) == 1 && slots[0].Value == "") ||
+		// What follows the question, where the question itself says nothing more, is no part of it.
+		if !placed || afterQuestion(text) != "" && afterQuestion(template) == "" ||
+			expect == interfaces.TEST_EXPECT_SAME_RECORD && len(slots) < 2 &&
+				!(anchored && len(slots) == 1 && slots[0].Value == "") ||
 			(concepts != nil && (offInputs(slots, expect, concepts) ||
 				slices.ContainsFunc(slots, func(s interfaces.QuestionTestSlot) bool { return unmapped[s.ConceptID] }))) {
 			leftOut++
@@ -352,6 +358,16 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 		})
 	}
 	return tests, leftOut
+}
+
+// afterQuestion is what a text says after its last question mark; none without one.
+func afterQuestion(text string) string {
+	i := max(strings.LastIndex(text, "?"), strings.LastIndex(text, "\uff1f"))
+	if i < 0 {
+		return ""
+	}
+	_, size := utf8.DecodeRuneInString(text[i:])
+	return strings.TrimSpace(text[i+size:])
 }
 
 // clip keeps at most n characters of s.
