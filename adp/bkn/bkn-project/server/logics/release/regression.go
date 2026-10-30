@@ -134,13 +134,16 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 	}
 	for _, q := range sq.Questions {
 		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE {
-			// What it rests on in the draft counts as needed: the release lacking it is missing.
-			needs := append(append([]interfaces.RequirementItemRef{}, q.Needs...), q.Path...)
+			needs := append([]interfaces.RequirementItemRef{}, q.Needs...)
 			var tests []interfaces.RegressionTest
 			for _, t := range q.Tests {
 				tests = append(tests, interfaces.RegressionTest{ID: t.ID, Text: t.Text, Expect: t.Expect})
 			}
-			questions = append(questions, interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests})
+			question := interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests}
+			if len(q.Path) > 0 {
+				question.Path = append([]interfaces.RequirementItemRef{}, q.Path...)
+			}
+			questions = append(questions, question)
 		}
 	}
 	return questions, nil
@@ -267,7 +270,8 @@ func (s *regressionService) regressionContext(ctx context.Context, projectID str
 func (s *regressionService) judge(ctx context.Context, token string, networkID string, runID string, index int,
 	attempt int, a regressionAsk, runner interfaces.AccountInfo, rc *regressionContext) interfaces.RegressionResult {
 	result := interfaces.RegressionResult{QuestionID: a.question.ID, TestID: a.testID}
-	for _, n := range a.question.Needs {
+	// What joins its object types counts as needed too: the release lacking it is missing.
+	for _, n := range a.question.Rests() {
 		if _, ok := rc.defined[interfaces.ReleaseItem{Kind: n.Kind, ID: n.ID}]; !ok {
 			result.Missing = append(result.Missing, rc.name(n.Kind, n.ID))
 		}
@@ -316,8 +320,8 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 // judgement that cannot be had is an error, never a pass.
 func (s *regressionService) decide(ctx context.Context, a regressionAsk, result interfaces.RegressionResult,
 	runner interfaces.AccountInfo, rc *regressionContext) interfaces.RegressionResult {
-	needs := make([]interfaces.ReleaseItem, 0, len(a.question.Needs))
-	for _, n := range a.question.Needs {
+	needs := make([]interfaces.ReleaseItem, 0, len(a.question.Needs)+len(a.question.Path))
+	for _, n := range a.question.Rests() {
 		needs = append(needs, rc.name(n.Kind, n.ID))
 	}
 	result.ErrorCode, result.Verdict, result.Reason, result.UsedNeeds = "", "", "", nil

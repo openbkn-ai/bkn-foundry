@@ -144,8 +144,9 @@ func Test_RegressionService(t *testing.T) {
 				{ID: "q1", Text: "Text of q1", Needs: []interfaces.RequirementItemRef{regNeed(ot, "supplier")}},
 				{ID: "q2", Text: "Text of q2", Needs: []interfaces.RequirementItemRef{regNeed(ot, "customer"), regNeed(ot, "part")}},
 				{ID: "q3", Text: "Text of q3", Needs: []interfaces.RequirementItemRef{}},
-				{ID: "q5", Text: "Text of q5", Needs: []interfaces.RequirementItemRef{regNeed(ot, "supplier"),
-					regNeed(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_part")}},
+				// The path kept apart from what the specification names.
+				{ID: "q5", Text: "Text of q5", Needs: []interfaces.RequirementItemRef{regNeed(ot, "supplier")},
+					Path: []interfaces.RequirementItemRef{regNeed(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_part")}},
 			})
 			// The question that lacks what it needs is not asked.
 			So(asked, ShouldHaveLength, 2)
@@ -200,7 +201,8 @@ func Test_RegressionService(t *testing.T) {
 		})
 
 		Convey("A regression whose questions were all answered passes\n", func() {
-			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+				withPath(regQuestion("q1", knowledge, regNeed(ot, "part")), regNeed(ot, "supplier"))), nil)
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(files, nil)
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("Part P1."), nil)
@@ -211,6 +213,9 @@ func Test_RegressionService(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_PASSED)
 			So(finished.Attempt, ShouldEqual, 1)
+			// The judge is told the path among what the question needs.
+			So(judged[len(judged)-1].Needs, ShouldResemble, []interfaces.ReleaseItem{
+				{Kind: ot, ID: "part", Name: "Part"}, {Kind: ot, ID: "supplier", Name: "Supplier"}})
 		})
 
 		Convey("Questions that could not be asked are asked once more, alone, and fail the run if they fail again\n", func() {
