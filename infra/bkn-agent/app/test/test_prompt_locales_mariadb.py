@@ -84,7 +84,7 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert len(rows) == len(BUILTIN_AGENT_IDS)
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
-                assert source_language == expected, agent_id
+                assert source_language == (expected if upgrade == "fresh" else None), agent_id
                 cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
                 initial = cursor.fetchone()
                 if variants is not None:
@@ -143,9 +143,9 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             official, custom, non_initial = cursor.fetchall()
             assert official[1] == LEGACY_SMART_QA
             assert json.loads(official[2])["en-US"].startswith("You are a business knowledge network Q&A assistant")
-            assert official[3] == "zh-CN"
+            assert official[3] is None
             assert custom == (104, LEGACY_SMART_QA, None, None)
-            assert non_initial == (105, LEGACY_SMART_QA, None, "zh-CN")
+            assert non_initial == (105, LEGACY_SMART_QA, None, None)
         after_legacy = saved_rows()
         assert before_legacy[:3] == after_legacy[:3]
         apply(BUILTIN_LOCALES)

@@ -123,7 +123,7 @@ def test_official_locale_migration_preserves_versions_and_is_idempotent():
 @pytest.mark.parametrize(
     "agent_id", ["resource-semantic-understanding", "bkn-project-requirements"]
 )
-def test_source_language_backfill_is_guarded_and_preserves_content(agent_id):
+def test_source_language_migration_preserves_unmarked_legacy_data(agent_id):
     with official_database() as db:
         row = db.execute(
             "SELECT v.* FROM t_agent a JOIN t_agent_prompt p ON p.f_prompt_id=a.f_prompt_id "
@@ -144,8 +144,11 @@ def test_source_language_backfill_is_guarded_and_preserves_content(agent_id):
             ),
         ):
             db.execute(
-                "INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_create_user,f_create_time,f_source_language) VALUES (?,?,?,?,?,?)",
-                (row["f_prompt_id"], version, content, creator, 1, language),
+                "INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_create_user,f_create_time,f_source_language,f_localized_content) VALUES (?,?,?,?,?,?,?)",
+                (
+                    row["f_prompt_id"], version, content, creator, 1, language,
+                    json.dumps({"en-US": "Existing translation"}),
+                ),
             )
         before = seeds.snapshot(db)
         seeds.apply(db, seeds.SOURCE_LANGUAGE)
@@ -156,20 +159,13 @@ def test_source_language_backfill_is_guarded_and_preserves_content(agent_id):
             )
         )
         assert results == {
-            101: expected,
+            101: None,
             102: None,
             103: None,
             104: "en-US" if expected == "zh-CN" else "zh-CN",
         }
         after = seeds.snapshot(db)
-        assert before[:2] == after[:2] and before[3] == after[3]
-        columns = [
-            r[1] for r in db.execute("PRAGMA table_info(t_agent_prompt_version)")
-        ]
-        language_index = columns.index("f_source_language")
-        assert [r[:language_index] + r[language_index + 1 :] for r in before[2]] == [
-            r[:language_index] + r[language_index + 1 :] for r in after[2]
-        ]
+        assert after == before
         seeds.apply(db, seeds.SOURCE_LANGUAGE)
         assert seeds.snapshot(db) == after
 

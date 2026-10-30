@@ -503,15 +503,16 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
         "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
-        + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text() + "\n" + SOURCE_LANGUAGE.read_text()
+        + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v3, so its prompt is the body 23 writes.
     init = (MIGRATIONS / "0.2.1/init.sql").read_text()
+    assert init.index(SOURCE_LANGUAGE.read_text()) < init.index("insert into t_agent_prompt_version")
     seed = init.index("-- bkn-project-requirements:")
     v3 = [s for s in statements(REQUIREMENTS_V3) if s.startswith("insert into t_agent_prompt_version")][0]
     body = v3[v3.index("select v.f_prompt_id, 3,") + len("select v.f_prompt_id, 3,"):v3.index("v.f_vars_schema,")].strip()
-    assert init.index("select 'bkn-project-requirements-prompt', 3,\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
+    assert init.index("select 'bkn-project-requirements-prompt', 3, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
     # The judge is seeded at its latest version, after the other seeds and before the locale column.
     assert seed < init.index("-- bkn-project-answer-judge:") < init.index(CLAIM_LOCALES.read_text())
 
