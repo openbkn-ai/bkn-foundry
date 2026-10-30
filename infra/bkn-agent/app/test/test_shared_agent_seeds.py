@@ -2245,13 +2245,19 @@ def test_requirements_v5_upgrade_matches_fresh_install_and_keeps_history(start):
         for rule in ("A filter on properties", "is knowledge and names no function",
                      "Only applying a rule's condition or threshold, an aggregate", "makes the question capability",
                      "A question about what a term means is no scenario question",
-                     "Split a term with several meanings into concepts, one per meaning", "nothing they ask for is dropped"):
+                     "Split a term with several meanings into concepts, one per meaning", "nothing they ask for is dropped",
+                     # A question about one record keeps saying so, and is tested with that record as its slot.
+                     "never turning into a question about all records", "whatever shape the answer has, a list too",
+                     "only a question with no value to ask about at all", "by a property that identifies it such as a code or an id, never a name"):
             assert rule in content
+        # v4's rule that a list gets no tests is gone.
+        assert "such as a list or a filter, gets no tests" not in content
         # v4's rules stay.
         assert "never an object type id" in content and "applies a rule's condition or threshold" in content
         old_locales, new_locales = json.loads(old["f_localized_content"]), json.loads(new["f_localized_content"])
         assert new_locales["en-US"] == content
-        for rule in ("\u5bf9\u5c5e\u6027\u7684\u7b5b\u9009", "\u4e0d\u662f\u573a\u666f\u95ee\u9898", "\u591a\u4e49\u8bcd\u62c6\u6210\u591a\u4e2a\u6982\u5ff5"):
+        for rule in ("\u5bf9\u5c5e\u6027\u7684\u7b5b\u9009", "\u4e0d\u662f\u573a\u666f\u95ee\u9898", "\u591a\u4e49\u8bcd\u62c6\u6210\u591a\u4e2a\u6982\u5ff5",
+                     "\u5217\u8868\u4e5f\u4e00\u6837", "\u7edd\u4e0d\u7528\u540d\u79f0"):
             assert rule in new_locales["zh-CN"]
         assert requirements_prompt_version(db, 4) == old
         updated = snapshot(db)[3]
