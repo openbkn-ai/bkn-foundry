@@ -208,6 +208,30 @@ cleanup, while late or changed technical versions retain their existing guards.
 The bounded Trace batches above limit package loading without a streaming
 redesign. List/detail query paths are unchanged.
 
+## Trace keyword searches (#2676)
+
+`GET /api/agent-observability/v1/traces?keyword=...` matches a case-insensitive
+substring of the Trace, request, conversation and interaction IDs, agent/app,
+root service, root operation, or recorded error summary. Question/answer bodies
+are outside this field set. Omitting `from` or `to` leaves that time boundary
+unrestricted; the server does not insert a default time window.
+
+Ordinary keyword queries use the existing authorized receipt PIT scanner with
+bounded batches and summary artifact reads. A successful response has an
+exact matching `total`; cursor traversal can reach matches beyond the former
+2,000-candidate compatibility window. Each request scans its matching scope to
+compute that count, so wide queries still cost more than narrow ones. The scan
+keeps its existing 30-second deadline, 65,536 distinct Trace identity limit,
+10,000-receipt expansion limit and bounded result-page retention.
+
+If those budgets are exceeded, the request fails with
+`422 SUMMARY_QUERY_BUDGET_EXCEEDED` or `503 SUMMARY_QUERY_TIMEOUT` rather than
+returning an incomplete count or false empty result. Keyword queries that use
+the compatibility reader (including combined filters outside the scanner's
+supported set) also fail with the budget error when their input is truncated.
+Narrow the explicit time range or filters before retrying. This endpoint does
+not silently shorten the query range or increase the old candidate cap.
+
 ## Root-service discovery (#2140)
 
 `GET /api/agent-observability/v1/trace-root-services` returns bounded canonical

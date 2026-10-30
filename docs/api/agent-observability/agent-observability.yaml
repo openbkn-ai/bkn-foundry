@@ -3907,11 +3907,13 @@ paths:
         in: query
         name: interaction_id
         type: string
-      - description: Started at or after this RFC3339 timestamp
+      - description: Started at or after this RFC3339 timestamp; omitted means no
+          lower time bound
         in: query
         name: from
         type: string
-      - description: Started at or before this RFC3339 timestamp
+      - description: Started at or before this RFC3339 timestamp; omitted means no
+          upper time bound
         in: query
         name: to
         type: string
@@ -3935,7 +3937,9 @@ paths:
         in: query
         name: error_keyword
         type: string
-      - description: Trace, request, operation, or error keyword
+      - description: Case-insensitive substring of trace/request/conversation/interaction
+          IDs, agent/app, root service/operation, or recorded error summary; incomplete
+          searches return a resource error
         in: query
         name: keyword
         type: string
