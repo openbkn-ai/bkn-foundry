@@ -224,6 +224,10 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 		return nil, perrors.BknProject_Draft_AskUnavailable
 	}
 	for !task.Terminal() {
+		// A request the client or the gateway cut has no one to answer: stop waiting.
+		if ctx.Err() != nil {
+			return nil, perrors.BknProject_Draft_AskUnavailable
+		}
 		if !s.clock().Before(deadline) {
 			otellog.LogWarn(ctx, fmt.Sprintf("Ask AI task %s did not finish", task.TaskID))
 			return nil, perrors.BknProject_Draft_AskTimeout

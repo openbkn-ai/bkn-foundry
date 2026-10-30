@@ -151,6 +151,22 @@ func Test_AskObjectType(t *testing.T) {
 			So(clock.Sub(time.Unix(0, 0)), ShouldBeLessThanOrEqualTo, askDeadline+askPoll)
 		})
 
+		Convey("A request cut while waiting stops waiting at once\n", func() {
+			readDraft(askDraft())
+			cut, cancel := context.WithCancel(ctx)
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
+				DoAndReturn(func(context.Context, interfaces.AccountInfo, *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+					cancel()
+					return &interfaces.BknAgentTask{TaskID: "k1", Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil
+				})
+
+			_, err := svc.AskObjectType(cut, token, "p1", "order_lines", interfaces.DraftAskRequest{Question: "问"}, caller)
+
+			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
+			// No poll was made: the task is never read, and no time passed.
+			So(clock, ShouldEqual, time.Unix(0, 0))
+		})
+
 		Convey("An Agent that cannot run, fails or answers outside its schema is unavailable\n", func() {
 			for _, run := range []func(){
 				func() { ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("down")) },
