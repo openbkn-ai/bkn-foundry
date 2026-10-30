@@ -200,9 +200,15 @@ func Test_PendingOf(t *testing.T) {
 			So(item.Options, ShouldResemble, []interfaces.PendingOption{{
 				Action: interfaces.ACTION_SET_INCREMENTAL_KEY, Method: "PATCH",
 				Path:    "/projects/p1/ontology/draft/items/object_types/orders",
-				Body:    map[string]any{"update_time": "$draft_update_time", "incremental_key": "$candidate"},
-				Allowed: true, Candidates: [][]string{{"ordered_at"}, {"ship_date"}},
+				Body:    map[string]any{"update_time": "$draft_update_time", "incremental_key": "$value"},
+				Allowed: true, Values: []string{"ordered_at", "ship_date"},
 			}})
+			// A value put in place of $value is the string the PATCH takes.
+			body, err := json.Marshal(map[string]any{"update_time": 100, "incremental_key": item.Options[0].Values[0]})
+			So(err, ShouldBeNil)
+			var edit interfaces.DraftItemEdit
+			So(json.Unmarshal(body, &edit), ShouldBeNil)
+			So(*edit.IncrementalKey, ShouldEqual, "ordered_at")
 			// Each candidate is one the PATCH of incremental_key accepts.
 			for typ := range timeTypes {
 				So(incrementalTypes[typ], ShouldBeTrue)

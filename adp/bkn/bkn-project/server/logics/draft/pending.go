@@ -210,13 +210,13 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 		}
 		set := option(interfaces.ACTION_SET_INCREMENTAL_KEY, http.MethodPatch,
 			base+"/items/"+interfaces.DRAFT_KIND_OBJECT_TYPES+"/"+ot.ID,
-			map[string]any{"incremental_key": interfaces.PENDING_PLACEHOLDER_CANDIDATE})
+			map[string]any{"incremental_key": interfaces.PENDING_PLACEHOLDER_VALUE})
 		for _, prop := range ot.Properties {
 			if timeTypes[prop.Type] {
-				set.Candidates = append(set.Candidates, []string{prop.Name})
+				set.Values = append(set.Values, prop.Name)
 			}
 		}
-		if len(set.Candidates) == 0 {
+		if len(set.Values) == 0 {
 			continue
 		}
 		p.Items = append(p.Items, interfaces.PendingItem{

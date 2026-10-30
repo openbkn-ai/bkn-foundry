@@ -1178,6 +1178,20 @@ func Test_GetStatus(t *testing.T) {
 			So(listed, ShouldBeEmpty)
 		})
 
+		Convey("A deleted network refuses understanding too\n", func() {
+			catalogTables["c1"] = described(2, 2)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Hints, ShouldHaveLength, 1)
+			understand := action(s, interfaces.ACTION_UNDERSTAND_CATALOGS)
+			So([]any{understand.Allowed, understand.Reason}, ShouldResemble, []any{false, interfaces.BLOCKER_NETWORK_MISSING})
+		})
+
 		Convey("Deciding and ready to confirm still hint: drafting again picks the names up\n", func() {
 			catalogTables["c1"] = described(2, 2)
 			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)

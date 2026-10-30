@@ -92,13 +92,14 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 		withRelease(status, entry.Project, newest, sw, caller)
 	}
 	// Polled while drafting, which reads the catalogs itself.
+	// Before what is gone refuses the actions it stops, understanding among them.
+	if namingStages[status.Stage] {
+		s.withCatalogsHint(ctx, entry.Project, caller, status)
+	}
 	if status.Stage != interfaces.PROJECT_STAGE_DRAFTING {
 		status.DataSources = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
 		withDataSources(status, entry.Project, caller)
 		s.withSourceChanges(ctx, status, entry.Project, draft, caller)
-	}
-	if namingStages[status.Stage] {
-		s.withCatalogsHint(ctx, entry.Project, caller, status)
 	}
 	span.SetStatus(codes.Ok, "")
 	return status, nil

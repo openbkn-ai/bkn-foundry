@@ -281,6 +281,9 @@ const PENDING_CANDIDATES_NO_UNIQUE = "no_unique_candidate"
 // PENDING_PLACEHOLDER_CANDIDATE stands for one of an option's candidates.
 const PENDING_PLACEHOLDER_CANDIDATE = "$candidate"
 
+// PENDING_PLACEHOLDER_VALUE stands for one of an option's values.
+const PENDING_PLACEHOLDER_VALUE = "$value"
+
 // ProjectPending lists what waits for a person before the draft can be confirmed, each with the
 // requests that settle it, in one order: by kind, then item ID.
 type ProjectPending struct {
@@ -328,6 +331,8 @@ type PendingOption struct {
 	Allowed    bool           `json:"allowed"`
 	Reason     string         `json:"reason,omitempty"`
 	Candidates [][]string     `json:"candidates,omitempty"`
+	// Values, for an option that sets one value, are those to send in place of $value.
+	Values []string `json:"values,omitempty"`
 	// CandidatesReason says why an option that takes candidates has none.
 	CandidatesReason string `json:"candidates_reason,omitempty"`
 }
