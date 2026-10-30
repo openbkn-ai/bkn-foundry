@@ -463,6 +463,10 @@ class InvokeRequest(BaseModel):
     """Synchronous one-shot execution; agent_id is taken from the path."""
 
     message: str = Field(min_length=1)
+    agent_version: Optional[int] = Field(
+        default=None, ge=1, le=2147483647, strict=True,
+        description="Run this existing agent version; omitted uses the current configuration.",
+    )
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
@@ -473,6 +477,10 @@ class InvokeRequest(BaseModel):
 
 class RunRequest(BaseModel):
     agent_id: str
+    agent_version: Optional[int] = Field(
+        default=None, ge=1, le=2147483647, strict=True,
+        description="Run this existing agent version; omitted uses the current configuration.",
+    )
     message: str = Field(min_length=1)
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
@@ -606,6 +614,10 @@ class ThreadOut(BaseModel):
 class TaskOut(BaseModel):
     task_id: str
     agent_id: str
+    agent_version: Optional[int] = None
+    prompt_version: Optional[int] = None
+    model: Optional[str] = None
+    model_id: Optional[str] = None
     status: Literal["pending", "running", "succeeded", "failed"]
     input: Optional[dict] = None
     output: Optional[str] = None

@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commons.i18n import localized_message
 from app.commons.locale import get_effective_locale
-from app.errors import err
+from app.config import config
+from app.errors import err, not_found
 from app.models import (
+    AgentLimits,
     AgentOut,
     AgentRow,
     AgentSpec,
@@ -153,6 +155,31 @@ def _version_snapshot(version: AgentVersionRow) -> dict:
         "tools": version.f_tools or [],
         "limits": version.f_limits or None,
         "prompt_version": version.f_prompt_version,
+    }
+
+
+async def task_agent(
+    session: AsyncSession, agent: AgentOut, version: Optional[int]
+) -> tuple[AgentOut, dict]:
+    """Select a run's configuration without changing the shared current version."""
+    snapshot = (
+        await session.get(AgentVersionRow, (agent.agent_id, version))
+        if version is not None else await current_version(session, agent.agent_id)
+    )
+    if version is not None:
+        if snapshot is None or snapshot.f_deleted:
+            raise not_found("agent_version", f"{agent.agent_id}@{version}")
+        agent = agent.model_copy(update={
+            "model": snapshot.f_model or "",
+            "tools": snapshot.f_tools or [],
+            "limits": AgentLimits.model_validate(snapshot.f_limits) if snapshot.f_limits else None,
+            "prompt_id": agent.prompt_id if snapshot.f_prompt_version is not None else None,
+        }, deep=True)
+    return agent, {
+        "agent_version": snapshot.f_version if snapshot else None,
+        "prompt_version": snapshot.f_prompt_version if snapshot else None,
+        "model": agent.model or config.DEFAULT_MODEL,
+        "model_id": None,
     }
 
 
@@ -415,9 +442,14 @@ async def touch_thread(session: AsyncSession, thread_id: str, agent_id: str, acc
 
 
 def _task_out(row: TaskRow) -> TaskOut:
+    execution = (row.f_input or {}).get("execution") or {}
     return TaskOut(
         task_id=row.f_task_id,
         agent_id=row.f_agent_id,
+        agent_version=execution.get("agent_version"),
+        prompt_version=execution.get("prompt_version"),
+        model=execution.get("model"),
+        model_id=execution.get("model_id"),
         status=row.f_status,
         input=row.f_input,
         output=row.f_output,
@@ -472,11 +504,14 @@ async def set_task_status(
     status: str,
     output: Optional[str] = None,
     failure_detail: Optional[str] = None,
+    execution: Optional[dict] = None,
 ) -> None:
     row = await session.get(TaskRow, task_id)
     if not row:
         return
     row.f_status = status
+    if execution is not None:
+        row.f_input = {**(row.f_input or {}), "execution": dict(execution)}
     if output is not None:
         row.f_output = output
     if failure_detail is not None:
@@ -515,14 +550,15 @@ async def recover_stale_tasks(session: AsyncSession) -> int:
 
 
 async def get_default_prompt(
-    session: AsyncSession, prompt_id: str
+    session: AsyncSession, prompt_id: str, version: Optional[int] = None
 ) -> Optional[tuple[str, Optional[dict], int]]:
-    """The agent default layer: the body of the version named by
-    t_agent_prompt.current_version."""
-    head = await session.get(PromptRow, prompt_id)
-    if not head:
-        return None
-    version = await session.get(PromptVersionRow, (prompt_id, head.f_current_version))
+    """Read a pinned Prompt version, or the current version when omitted."""
+    if version is None:
+        head = await session.get(PromptRow, prompt_id)
+        if not head:
+            return None
+        version = head.f_current_version
+    version = await session.get(PromptVersionRow, (prompt_id, version))
     if not version:
         return None
     return _localized_prompt_content(version), version.f_vars_schema, version.f_version

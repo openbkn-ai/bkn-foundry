@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from app import dao, evidence, observability
 from app.config import config
-from app.core import context_loader
+from app.core import context_loader, llm
 from app.core.llm import build_chat_model
 from app.core.structured import structured_extract_with_path
 from app.core.prompt import resolve_prompt
@@ -35,6 +35,7 @@ async def run_agent_once(
     depth: int,
     response_format: Optional[dict[str, Any]] = None,
     task_id: Optional[str] = None,
+    prompt_version: Optional[int] = None,
 ) -> str:
     if evidence.has_interaction():
         # The parent turn already has an interaction open; agent-as-tool takes
@@ -69,6 +70,7 @@ async def run_agent_once(
                 depth,
                 response_format,
                 task_id,
+                prompt_version,
             )
             return sub_answer
         except Exception as e:
@@ -119,6 +121,7 @@ async def run_agent_once(
             depth,
             response_format,
             task_id,
+            prompt_version,
         )
         return answer
     except Exception as e:
@@ -150,6 +153,7 @@ async def _run_agent_once_core(
     depth: int,
     response_format: Optional[dict[str, Any]] = None,
     task_id: Optional[str] = None,
+    prompt_version: Optional[int] = None,
 ) -> str:
     """One-shot stateless execution: a single graph run with no checkpointer,
     shared by /run and agent-as-tool.
@@ -165,8 +169,11 @@ async def _run_agent_once_core(
 
     async with SessionLocal() as session:
         system_prompt, prompt_source, prompt_version = await resolve_prompt(
-            session, agent, account_id, prompt_override, prompt_vars
+            session, agent, account_id, prompt_override, prompt_vars,
+            **({"prompt_version": prompt_version} if prompt_version is not None else {}),
         )
+    if depth == 1:
+        llm.record_task_prompt(prompt_version)
     skill_ids = list(dict.fromkeys([*agent.skills, *skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
     tools = await load_tools(
@@ -247,9 +254,12 @@ async def execute_task(task_id: str, agent: AgentOut, req_input: dict, account_i
     """Run to a terminal state and persist it, where succeeded must mean the
     result is actually usable. /run executes this in the background while
     /invoke waits for it synchronously."""
-    async with SessionLocal() as session:
-        await dao.set_task_status(session, task_id, "running")
+    execution = dict(req_input.get("execution") or {})
+    execution["model"] = agent.model or config.DEFAULT_MODEL
+    token = llm.set_task_usage(execution)
     try:
+        async with SessionLocal() as session:
+            await dao.set_task_status(session, task_id, "running", execution=execution)
         output = await run_agent_once(
             agent,
             req_input["message"],
@@ -261,15 +271,18 @@ async def execute_task(task_id: str, agent: AgentOut, req_input: dict, account_i
             depth=1,
             response_format=req_input.get("response_format"),
             task_id=task_id,
+            **({"prompt_version": execution.get("prompt_version")} if req_input.get("agent_version") is not None else {}),
         )
         async with SessionLocal() as session:
             # succeeded must mean the result is usable (the vega build-task lesson)
-            await dao.set_task_status(session, task_id, "succeeded", output=output)
+            await dao.set_task_status(session, task_id, "succeeded", output=output, execution=execution)
     except Exception as e:  # A failure must persist failure_detail; never swallow the error
         detail = getattr(e, "detail", None)
         detail_text = str(detail) if detail else f"{type(e).__name__}: {e}"
         async with SessionLocal() as session:
-            await dao.set_task_status(session, task_id, "failed", failure_detail=detail_text)
+            await dao.set_task_status(session, task_id, "failed", failure_detail=detail_text, execution=execution)
+    finally:
+        llm.reset_task_usage(token)
 
 
 def submit_task(task_id: str, agent: AgentOut, req_input: dict, account_id: str, account_type: str) -> None:

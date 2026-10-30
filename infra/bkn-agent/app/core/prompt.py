@@ -48,6 +48,7 @@ async def resolve_prompt(
     prompt_vars: dict[str, Any],
     *,
     shared_only: bool = False,
+    prompt_version: Optional[int] = None,
 ) -> tuple[str, str, Optional[int]]:
     """Resolve across three layers: request level > caller override > the agent
     default version. All three share one vars_schema. An invalid prompt_id must
@@ -63,7 +64,11 @@ async def resolve_prompt(
 
     if not agent.prompt_id:
         raise err(409, "BknAgent.Prompt.Unbound", agent_id=agent.agent_id)
-    default = await dao.get_default_prompt(session, agent.prompt_id)
+    default = (
+        await dao.get_default_prompt(session, agent.prompt_id, prompt_version)
+        if prompt_version is not None
+        else await dao.get_default_prompt(session, agent.prompt_id)
+    )
     if default is None:
         raise err(409, "BknAgent.Prompt.Missing", prompt_id=agent.prompt_id)
     content, version_schema, version = default

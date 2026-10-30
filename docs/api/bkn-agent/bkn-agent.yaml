@@ -2467,6 +2467,14 @@ components:
           type: string
           minLength: 1
           title: Message
+        agent_version:
+          anyOf:
+          - type: integer
+            maximum: 2147483647.0
+            minimum: 1.0
+          - type: 'null'
+          title: Agent Version
+          description: Run this existing agent version; omitted uses the current configuration.
         skills:
           items:
             type: string
@@ -3072,6 +3080,14 @@ components:
         agent_id:
           type: string
           title: Agent Id
+        agent_version:
+          anyOf:
+          - type: integer
+            maximum: 2147483647.0
+            minimum: 1.0
+          - type: 'null'
+          title: Agent Version
+          description: Run this existing agent version; omitted uses the current configuration.
         message:
           type: string
           minLength: 1
@@ -3289,6 +3305,26 @@ components:
         agent_id:
           type: string
           title: Agent Id
+        agent_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Agent Version
+        prompt_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Prompt Version
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        model_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model Id
         status:
           type: string
           enum:

@@ -137,6 +137,25 @@ func TestRunCypherQueryPassesTheBranch(t *testing.T) {
 	}
 }
 
+// #2090: a caller may ask for a shorter statement timeout; the value reaches
+// the service, which decides whether it is allowed.
+func TestRunCypherQueryPassesTheTimeout(t *testing.T) {
+	engine, cypherQueries, knowledgeNetworks := cypherTestHandler(t)
+	knowledgeNetworks.EXPECT().CheckKNExistByID(gomock.Any(), cypherKNID, interfaces.MAIN_BRANCH).
+		Return(cypherKNID, true, nil)
+	cypherQueries.EXPECT().
+		Query(gomock.Any(), interfaces.CypherQuery{
+			KNID: cypherKNID, Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id", TimeoutSec: 10,
+		}).
+		Return(&interfaces.CypherQueryResult{}, nil)
+
+	recorder := postCypher(engine, cypherURL("in/", cypherKNID),
+		`{"query":"MATCH (o:Order) RETURN o.id","timeout_sec":10}`, nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 // The caller's identity has to be in the context before the service runs:
 // everything below authorizes against it.
 func TestRunCypherQueryPutsTheCallerInContext(t *testing.T) {

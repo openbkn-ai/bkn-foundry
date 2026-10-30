@@ -33,6 +33,11 @@ func ScanResourceData(ctx context.Context, vba interfaces.VegaBackendAccess, res
 	}
 	query := func(paging interfaces.ResourceDataPagingRequest) (*interfaces.DatasetQueryResponse, error) {
 		pageParams := params
+		if paging.Cursor != "" {
+			// Vega rejects a continuation that repeats the query; the cursor
+			// session already holds it.
+			pageParams = interfaces.ResourceDataQueryParams{}
+		}
 		pageParams.Paging = paging
 		resp, err := vba.QueryResourceData(ctx, resourceID, &pageParams)
 		if err == nil && resp == nil {

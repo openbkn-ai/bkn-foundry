@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -16,9 +17,57 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
+
+// #2455: compare decoded rows with the original number tokens, including nested
+// graph values. Formatting a rounded float as a string cannot restore its digits.
+func TestRunCypherQueryPreservesDynamicNumbers(t *testing.T) {
+	const body = `{"columns":[],"entries":[{
+		"safe":9007199254740991,"even":9007199254740992,"odd":9007199254740993,
+		"negative_safe":-9007199254740991,"negative_even":-9007199254740992,
+		"negative":-9007199254740993,"small":42,"fraction":1.25,"exponent":1e3,
+		"exact_text":"9007199254740993","empty":null,"flag":true,
+		"node":{"properties":{"large_value":9007199254740993}},
+		"collected":[-9007199254740993,{"value":9007199254740993}]
+	}]}`
+	ctrl := gomock.NewController(t)
+	mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(http.StatusOK, []byte(body), nil)
+	client := &bknBackendAccess{logger: mocks.NewMockLogger(ctrl), baseURL: "http://bkn", httpClient: mockHTTPClient}
+	resp, err := client.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{
+		KnID: "kn-1", Query: "MATCH (p:precision_sample) RETURN p.large_value",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodeEntries := func(raw string) []map[string]any {
+		t.Helper()
+		var decoded struct {
+			Entries []map[string]any `json:"entries"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&decoded); err != nil {
+			t.Fatal(err)
+		}
+		return decoded.Entries
+	}
+	want := decodeEntries(body)
+	if !reflect.DeepEqual(resp.Entries, want) {
+		t.Fatalf("decoded entries = %#v, want exact json.Number values %#v", resp.Entries, want)
+	}
+	_, raw, err := rest.MarshalResponse(rest.FormatJSON, resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decodeEntries(string(raw)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("REST JSON entries = %#v, want %#v; body = %s", got, want, raw)
+	}
+}
 
 // #1545: bkn-backend refuses a Cypher query with 403 and a code of its own --
 // a property the caller may not read in full, or a resource the data source

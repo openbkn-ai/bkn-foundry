@@ -544,6 +544,9 @@ func handleRunCypher(svc kncypher.KnCypherService,
 		if err := bindPreciseArguments(req, cypherReq); err != nil {
 			return inputValidationToolError(ctx, err.Error()), nil
 		}
+		// The tool's schema has no timeout; one an agent sends anyway is
+		// dropped so that the statement runs under the configured timeout.
+		cypherReq.TimeoutSec = 0
 
 		resp, err := svc.RunCypher(ctx, cypherReq)
 		if err != nil {

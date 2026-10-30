@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"maps"
 	"math"
 	"net/url"
 	"strings"
@@ -38,13 +39,13 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 
 		fields := connector.GetFieldConfig()
 		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
-			"host":     {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
-			"port":     {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
-			"username": {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-			"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-			"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
-			"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-			"options":  {Name: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Name", Type: "object", Description: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Description", Required: false, Encrypted: false},
+			"host":     {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
+			"port":     {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
+			"username": {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+			"password": {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+			"database": {Name: "Database", Type: "string", Description: "Target PostgreSQL database", Required: true, Encrypted: false},
+			"schemas":  {Name: "Schemas", Type: "array", Description: "Optional schema names; leave empty to discover non-system schemas in the current database, or list schemas to restrict discovery", Required: false, Encrypted: false},
+			"options":  {Name: "Connection options", Type: "object", Description: "Optional; only timezone, sslmode, connect_timeout, application_name, fallback_application_name, statement_timeout, lock_timeout and idle_in_transaction_session_timeout are supported. connect_timeout is a non-negative integer in seconds; session timeouts accept milliseconds or strings with PostgreSQL time units, and 0 disables them. sslmode defaults to disable; SSL files are unsupported. Client encoding uses the driver default UTF8 and cannot be configured. timezone: if omitted, use the Vega service TZ (default UTC); an empty or whitespace-only string omits the startup parameter and uses the database session default. Non-empty values are trimmed and validated by PostgreSQL during the connection test, without offset sign conversion.", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
@@ -210,7 +211,10 @@ func TestPostgresqlConnectorNormalizeOptions(t *testing.T) {
 		{"SSL key file", map[string]any{"sslkey": "client.key"}, "unsupported"},
 		{"SSL root certificate file", map[string]any{"sslrootcert": "ca.crt"}, "unsupported"},
 		{"target override", map[string]any{"host": "other"}, "unsupported"},
-		{"time zone override", map[string]any{"timezone": "UTC"}, "unsupported"},
+		{"numeric time zone", map[string]any{"timezone": 8}, "timezone"},
+		{"null time zone", map[string]any{"timezone": nil}, "timezone"},
+		{"boolean time zone", map[string]any{"timezone": true}, "timezone"},
+		{"MySQL parameter name", map[string]any{"time_zone": "+08:00"}, "unsupported"},
 		{"duplicate option", map[string]any{"sslmode": "require", " sslmode ": "disable"}, "duplicate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -231,6 +235,41 @@ func TestPostgresqlConnectorNormalizeOptions(t *testing.T) {
 }
 
 func TestPostgresqlConnectorConnectionStringSupportsIPv6(t *testing.T) {
+	t.Run("timezone distinguishes absence empty and native database strings", func(t *testing.T) {
+		cases := []struct {
+			name, server, want string
+			options            map[string]any
+			present            bool
+		}{
+			{"absent", "Asia/Shanghai", "Asia/Shanghai", nil, true},
+			{"default UTC", "", "UTC", nil, true},
+			{"empty", "Asia/Shanghai", "", map[string]any{"timezone": ""}, false},
+			{"blank", "Asia/Shanghai", "", map[string]any{"timezone": "  "}, false},
+			{"named", "UTC", "Asia/Shanghai", map[string]any{"timezone": "Asia/Shanghai"}, true},
+			{"offset unchanged", "UTC", "+08:00", map[string]any{"timezone": "+08:00"}, true},
+			{"POSIX unchanged", "UTC", "UTC-08:00", map[string]any{"timezone": "UTC-08:00"}, true},
+			{"trimmed", "UTC", "Asia/Shanghai", map[string]any{"timezone": " Asia/Shanghai "}, true},
+			{"database validates", "UTC", "Unknown/Zone", map[string]any{"timezone": "Unknown/Zone"}, true},
+			{"URL encoding", "UTC", "zone&application_name=other", map[string]any{"timezone": "zone&application_name=other"}, true},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Setenv("TZ", tc.server)
+				cfg := validPostgresqlConfig(5432)
+				cfg["options"] = tc.options
+				originalOptions := maps.Clone(tc.options)
+				instance, err := NewPostgresqlConnector().New(cfg)
+				require.NoError(t, err)
+				parsed, err := url.Parse(instance.(*PostgresqlConnector).connectionString())
+				require.NoError(t, err)
+				assert.Equal(t, tc.present, parsed.Query().Has("timezone"))
+				assert.Equal(t, tc.want, parsed.Query().Get("timezone"))
+				assert.False(t, parsed.Query().Has("time_zone"))
+				assert.False(t, parsed.Query().Has("application_name"))
+				assert.Equal(t, originalOptions, cfg["options"])
+			})
+		}
+	})
 	t.Setenv("TZ", "Asia/Shanghai")
 	connector := &PostgresqlConnector{config: &postgresqlConfig{
 		Host: "2001:db8::1", Port: 5432, Username: "user", Password: "secret", Database: "app",

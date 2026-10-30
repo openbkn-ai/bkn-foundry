@@ -219,7 +219,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource, par
 				case params.BinaryMode != nil && *params.BinaryMode == interfaces.BinaryModeMetadata:
 					expr = &sb.Function{Name: "OCTET_LENGTH", Args: []sb.SqlNode{expr}}
 				default:
-					expr = &sb.Param{Value: nil}
+					expr = &sb.Literal{Value: nil}
 				}
 			}
 			query.Columns(&sb.Alias{Expr: expr, Name: name})
@@ -321,7 +321,7 @@ func sqlCalendarGroup(expr sb.SqlNode, unit string) (sb.SqlNode, error) {
 	case interfaces.CALENDAR_UNIT_YEAR:
 		format = "%Y"
 	case interfaces.CALENDAR_UNIT_QUARTER:
-		return &sb.Function{Name: "CONCAT", Args: []sb.SqlNode{&sb.Function{Name: "YEAR", Args: []sb.SqlNode{expr}}, &sb.Param{Value: "-Q"}, &sb.Function{Name: "QUARTER", Args: []sb.SqlNode{expr}}}}, nil
+		return &sb.Function{Name: "CONCAT", Args: []sb.SqlNode{&sb.Function{Name: "YEAR", Args: []sb.SqlNode{expr}}, &sb.Literal{Value: "-Q"}, &sb.Function{Name: "QUARTER", Args: []sb.SqlNode{expr}}}}, nil
 	default:
 		return nil, interfaces.NewConditionBuildError("unsupported calendar interval")
 	}
@@ -427,6 +427,10 @@ func render(node sb.SqlNode) (string, []any, error) {
 	case *sb.Column:
 		if n != nil {
 			return columnSql(*n)
+		}
+	case *sb.Literal:
+		if n != nil {
+			return literalSQL(n.Value)
 		}
 	case *sb.Param:
 		if n != nil {
@@ -571,13 +575,13 @@ func ToSql(q *sb.SelectBuilder) (string, []any, error) {
 				b.writeString(", ")
 			}
 			// 整数字面量保留位置语义，范围及聚合合法性由源端判断。
-			if param, ok := group.(*sb.Param); ok && param != nil {
+			if param, ok := group.(*sb.Literal); ok && param != nil {
 				if number, ok := param.Value.(json.Number); ok && len(number) > 0 && strings.IndexFunc(string(number), func(r rune) bool { return r < '0' || r > '9' }) == -1 {
 					b.writeString(string(number))
 					continue
 				}
 			}
-			b.writePart(group)
+			b.writeSortGroupExpression(group)
 		}
 	}
 	if len(q.HavingPart) != 0 {
@@ -701,9 +705,20 @@ func orderSql(o sb.Order) (string, []any, error) {
 			b.writeString(" ASC, ")
 		}
 	}
-	b.writePart(o.Expr)
+	b.writeSortGroupExpression(o.Expr)
 	b.writeString(direction)
 	return b.result()
+}
+
+// writeSortGroupExpression 防止 MariaDB 将独立布尔字面量按整数位置序号解析。
+func (b *sqlBuffer) writeSortGroupExpression(expr sb.SqlNode) {
+	if literal, ok := expr.(*sb.Literal); ok && literal != nil {
+		if _, boolean := literal.Value.(bool); boolean {
+			b.writePart(&sb.Cast{Expr: literal, Type: sb.CastInteger})
+			return
+		}
+	}
+	b.writePart(expr)
 }
 
 func quoteIdentifier(name string) (string, error) {

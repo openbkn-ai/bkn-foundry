@@ -55,6 +55,7 @@ var (
 		"pg_toast":           true,
 	}
 	allowedOptions = map[string]struct{}{
+		"timezone":                            {},
 		"sslmode":                             {},
 		"connect_timeout":                     {},
 		"application_name":                    {},
@@ -132,13 +133,13 @@ func (c *PostgresqlConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns connection form fields matching the connector-type migration.
 func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":     {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
-		"port":     {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
-		"username": {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-		"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-		"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
-		"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-		"options":  {Name: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Name", Type: "object", Description: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Description", Required: false, Encrypted: false},
+		"host":     {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
+		"port":     {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
+		"username": {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+		"password": {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+		"database": {Name: "Database", Type: "string", Description: "Target PostgreSQL database", Required: true, Encrypted: false},
+		"schemas":  {Name: "Schemas", Type: "array", Description: "Optional schema names; leave empty to discover non-system schemas in the current database, or list schemas to restrict discovery", Required: false, Encrypted: false},
+		"options":  {Name: "Connection options", Type: "object", Description: "Optional; only timezone, sslmode, connect_timeout, application_name, fallback_application_name, statement_timeout, lock_timeout and idle_in_transaction_session_timeout are supported. connect_timeout is a non-negative integer in seconds; session timeouts accept milliseconds or strings with PostgreSQL time units, and 0 disables them. sslmode defaults to disable; SSL files are unsupported. Client encoding uses the driver default UTF8 and cannot be configured. timezone: if omitted, use the Vega service TZ (default UTC); an empty or whitespace-only string omits the startup parameter and uses the database session default. Non-empty values are trimmed and validated by PostgreSQL during the connection test, without offset sign conversion.", Required: false, Encrypted: false},
 	}
 }
 
@@ -196,6 +197,12 @@ func (c *PostgresqlConnector) normalizeOptions(options map[string]any) (map[stri
 			return nil, fmt.Errorf("duplicate postgresql option %q", name)
 		}
 		switch name {
+		case "timezone":
+			zone, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("postgresql option timezone must be a string")
+			}
+			value = strings.TrimSpace(zone)
 		case "sslmode":
 			mode, ok := value.(string)
 			if !ok {
@@ -270,8 +277,14 @@ func (c *PostgresqlConnector) connectionString() string {
 		Path:   "/" + strings.TrimPrefix(c.config.Database, "/"),
 	}
 	q := u.Query()
+	// 未配置时沿用服务时区；显式空串不发送启动参数，非空原生值由 PG 验证。
+	q.Set("timezone", common.ServerTimeZone())
 	if c.config.Options != nil {
 		for k, v := range c.config.Options {
+			if k == "timezone" && v == "" {
+				q.Del(k)
+				continue
+			}
 			if integer, ok := common.NumberAsInt64(v); ok {
 				// Encode integer options without scientific notation when serializing JSON numbers.
 				q.Set(k, strconv.FormatInt(integer, 10))
@@ -283,7 +296,6 @@ func (c *PostgresqlConnector) connectionString() string {
 	if q.Get("sslmode") == "" {
 		q.Set("sslmode", "disable")
 	}
-	q.Set("timezone", common.ServerTimeZone())
 	u.RawQuery = q.Encode()
 	return u.String()
 }
