@@ -372,9 +372,14 @@ type relationPath struct {
 	other      string
 }
 
-// condition keeps the rows of the slot's object type the relation reaches.
-func (p *relationPath) condition() string {
-	return fmt.Sprintf("%s IN (SELECT %s FROM {{%s}})", quoteField(p.own), quoteField(p.other), p.table)
+// sample reads the first value of field among the rows of table the relation reaches, ordered by
+// order. vega-backend parses no subquery in WHERE, so the rows are joined with the other end's
+// distinct values, as drafting's join counts are. It holds no value, only names.
+func (p *relationPath) sample(table string, field string, order string) string {
+	return fmt.Sprintf("SELECT a.%s AS v FROM {{%s}} a JOIN (SELECT DISTINCT %s FROM {{%s}}) b ON a.%s = b.%s "+
+		"WHERE a.%s IS NOT NULL ORDER BY a.%s LIMIT 1",
+		quoteField(field), table, quoteField(p.other), p.table, quoteField(p.own), quoteField(p.other),
+		quoteField(field), quoteField(order))
 }
 
 // pathOf finds the first relation the question needs, in its order, that joins the slot's object
@@ -501,15 +506,18 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		absent := t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0
 		if p := path(f); p != nil && !absent {
 			// A record the question's path reaches, so asking about it can show something.
-			values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
-				map[int]string{i: f.field}, []string{p.condition()})
-			if reason == checkQueryFailed {
-				return reason
+			sql := p.sample(f.objectType.Table.ResourceID, f.field, orderField(f))
+			rows, err := s.va.Query(ctx, caller, sql, checkQueryTimeout)
+			if err != nil {
+				logger.Warnf("Read a value along a relation for a test question failed: %v; statement: %s", err, sql)
+				return checkQueryFailed
 			}
-			if reason == "" {
-				set(i, values[i])
-				t.Slots[i].ValueFrom = p.objectType
-				continue
+			if len(rows) > 0 {
+				if v, ok := valueText(rows[0]["v"]); ok {
+					set(i, v)
+					t.Slots[i].ValueFrom = p.objectType
+					continue
+				}
 			}
 		}
 		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
