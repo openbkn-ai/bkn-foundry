@@ -405,7 +405,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 
 // QueryActions queries actions.
 func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.QueryActionsRequest) (resp *interfaces.QueryActionsResponse, err error) {
-	uri := fmt.Sprintf(queryActionsURI, req.KnID, req.AtID)
+	uri := fmt.Sprintf(queryActionsURI, url.PathEscape(req.KnID), url.PathEscape(req.AtID))
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Build the request body.
@@ -449,7 +449,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 
 // ExecuteActions executes actions asynchronously and returns execution_id.
 func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interfaces.ExecuteActionsRequest) (resp *interfaces.ExecuteActionsResponse, err error) {
-	uri := fmt.Sprintf(executeActionsURI, req.KnID, req.AtID)
+	uri := fmt.Sprintf(executeActionsURI, url.PathEscape(req.KnID), url.PathEscape(req.AtID))
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Buildrequest body (real execution, carries dynamic parameters; does not set method-override, so it is a real POST)
@@ -502,7 +502,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 
 // GetActionExecution queries the status and result of a single action execution.
 func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
-	uri := fmt.Sprintf(getActionExecutionURI, req.KnID, req.ExecutionID)
+	uri := fmt.Sprintf(getActionExecutionURI, url.PathEscape(req.KnID), url.PathEscape(req.ExecutionID))
 	if req.ResultsLimit != nil || req.ResultsOffset != nil {
 		uri = fmt.Sprintf(getActionLogURI, url.PathEscape(req.KnID), url.PathEscape(req.ExecutionID))
 		query := url.Values{}
@@ -542,7 +542,7 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 
 // ListActionExecutions lists action execution history with filters and pagination.
 func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
-	uri := fmt.Sprintf(listActionExecutionsURI, req.KnID)
+	uri := fmt.Sprintf(listActionExecutionsURI, url.PathEscape(req.KnID))
 	reqURL := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	query := url.Values{}
