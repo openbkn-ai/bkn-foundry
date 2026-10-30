@@ -239,11 +239,12 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1 := c.Group("/api/vega-backend/in/v1")
 	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
-		// The proxy surface exposes only schema and data queries, not the full internal resource API.
+		// The proxy surface exposes only schema, data queries and cursor cleanup.
 		proxyResources := apiInV1.Group("/proxy/resources")
 		{
 			proxyResources.GET("/:id/schema", r.GetResourceSchemaByProxy)
 			proxyResources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByProxy)
+			proxyResources.DELETE("/:id/cursors/:cursor", r.DeleteResourceCursorByProxy)
 		}
 
 		// Catalog APIs - Internal

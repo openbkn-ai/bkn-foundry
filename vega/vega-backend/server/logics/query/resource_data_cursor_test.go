@@ -100,6 +100,32 @@ func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 		assertHTTPError(t, err, 404)
 	})
 
+	t.Run("binds proxy continuation to original caller", func(t *testing.T) {
+		previousManager := rawQueryCursorSessions
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
+		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
+		executor := func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
+		}
+		first, err := ExecuteInitialResourceDataCursor(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"),
+			"proxy-account", resource,
+			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
+		require.NoError(t, err)
+		require.NotNil(t, first.Paging.NextCursor)
+
+		_, err = ExecuteResourceDataCursorContinuation(interfaces.WithCursorQuotaOwner(context.Background(), "caller-b"),
+			"proxy-account", resource, *first.Paging.NextCursor, executor)
+		assertHTTPError(t, err, http.StatusNotFound)
+		_, err = ExecuteResourceDataCursorContinuation(context.Background(),
+			"proxy-account", resource, *first.Paging.NextCursor, executor)
+		assertHTTPError(t, err, http.StatusNotFound)
+		_, err = ExecuteResourceDataCursorContinuation(interfaces.WithCursorQuotaOwner(context.Background(), "caller-a"),
+			"proxy-account", resource, *first.Paging.NextCursor, executor)
+		require.NoError(t, err)
+	})
+
 	t.Run("preserves opensearch search after", func(t *testing.T) {
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = newCursorSessionManager(10, 9)

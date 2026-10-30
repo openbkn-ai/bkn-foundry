@@ -537,14 +537,18 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 			return nil, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails("cursor paging is not implemented for this resource category")
 		}
-		querySource := ""
+		querySource, inputType, exact := "", "", false
 		result, err := querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
 			func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				querySource = resourceQuerySource(resource, pageParams)
+				inputType = aggregateInputType(resource, pageParams)
+				exact = aggregateIsExact(resource, pageParams, querySource, inputType)
 				return rds.query(pageCtx, resource, pageParams)
 			})
 		if result != nil {
 			result.QuerySource = querySource
+			result.AggregateInputType = inputType
+			result.AggregateExact = exact
 		}
 		return result, err
 	}
@@ -565,14 +569,18 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails("cursor paging does not support index aggregation queries")
 			}
-			querySource := ""
+			querySource, inputType, exact := "", "", false
 			result, err := querylogic.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					querySource = resourceQuerySource(resource, pageParams)
+					inputType = aggregateInputType(resource, pageParams)
+					exact = aggregateIsExact(resource, pageParams, querySource, inputType)
 					return rds.query(pageCtx, resource, pageParams)
 				})
 			if result != nil {
 				result.QuerySource = querySource
+				result.AggregateInputType = inputType
+				result.AggregateExact = exact
 			}
 			return result, err
 		}
@@ -584,12 +592,52 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	if err != nil {
 		return nil, err
 	}
+	querySource := resourceQuerySource(resource, params)
 	return &interfaces.ResourceDataQueryResult{
-		Entries:     entries,
-		TotalCount:  total,
-		Paging:      &interfaces.PagingResponse{},
-		QuerySource: resourceQuerySource(resource, params),
+		Entries:            entries,
+		TotalCount:         total,
+		Paging:             &interfaces.PagingResponse{},
+		QuerySource:        querySource,
+		AggregateInputType: aggregateInputType(resource, params),
+		AggregateExact:     aggregateIsExact(resource, params, querySource, aggregateInputType(resource, params)),
 	}, nil
+}
+
+// aggregateInputType reports the declared physical input type independently
+// of the execution path. It does not claim that a physical aggregate is exact.
+func aggregateInputType(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) string {
+	if resource == nil || params == nil || params.Aggregation == nil {
+		return ""
+	}
+	for _, property := range resource.SchemaDefinition {
+		if property != nil && property.Name == params.Aggregation.Property &&
+			(property.Type == interfaces.DataType_Integer || property.Type == interfaces.DataType_Decimal) {
+			return property.Type
+		}
+	}
+	return ""
+}
+
+// aggregateIsExact records whether the selected physical aggregate can prove
+// both exact input coverage and exact operator semantics. The available state
+// of a table's local index does not prove that its input is current with the
+// table; OpenSearch numeric and cardinality operators can also be approximate.
+func aggregateIsExact(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams,
+	querySource, inputType string) bool {
+	if resource == nil || params == nil || params.Aggregation == nil || len(params.GroupBy) != 0 {
+		return false
+	}
+	switch params.Aggregation.Aggr {
+	case "count":
+		return querySource != interfaces.ResourceQuerySourceLocalIndex ||
+			resource.Category != interfaces.ResourceCategoryTable
+	case "sum", "min", "max", "count_distinct":
+		return resource.Category == interfaces.ResourceCategoryTable &&
+			querySource == interfaces.ResourceQuerySourceSource &&
+			(inputType == interfaces.DataType_Integer || inputType == interfaces.DataType_Decimal)
+	default:
+		return false
+	}
 }
 
 func isIndexAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query"
 )
 
 type fakeProxyAuthorizationService struct {
@@ -55,7 +57,43 @@ func setupProxyReadHandlerTest(
 	engine.Use(gin.Recovery(), handler.TraceContextMiddleware())
 	engine.GET("/api/vega-backend/in/v1/proxy/resources/:id/schema", handler.GetResourceSchemaByProxy)
 	engine.POST("/api/vega-backend/in/v1/proxy/resources/:id/data", handler.PostResourceDataByProxy)
+	engine.DELETE("/api/vega-backend/in/v1/proxy/resources/:id/cursors/:cursor", handler.DeleteResourceCursorByProxy)
 	return engine, handler, rs, rds, pas, audit
+}
+
+func TestRestHandlerDeleteResourceCursorByProxy(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+	engine, _, _, _, pas, audit := setupProxyReadHandlerTest(t, nil)
+	called := 0
+	patches := gomonkey.ApplyFunc(query.CloseResourceDataCursorSession,
+		func(_ context.Context, accountID, callerID, resourceID, cursor string) error {
+			called++
+			assert.Equal(t, "proxy-1", accountID)
+			assert.Equal(t, "caller-1", callerID)
+			assert.Equal(t, "resource-1", resourceID)
+			assert.Equal(t, "cursor-1", cursor)
+			return nil
+		})
+	defer patches.Reset()
+	path := "/api/vega-backend/in/v1/proxy/resources/resource-1/cursors/cursor-1"
+	req := httptest.NewRequest(http.MethodDelete, path, nil)
+	setProxyReadHeaders(req, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.ProxyChildTypeObjectType)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, 1, called)
+	require.Len(t, pas.requests, 1)
+	require.Len(t, audit.events, 1)
+	assert.Equal(t, "cursor_cleanup", audit.events[0].Reason)
+
+	denied := httptest.NewRequest(http.MethodDelete,
+		"/api/vega-backend/in/v1/proxy/resources/other/cursors/cursor-1", nil)
+	setProxyReadHeaders(denied, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.ProxyChildTypeObjectType)
+	w = httptest.NewRecorder()
+	engine.ServeHTTP(w, denied)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, 1, called)
 }
 
 func setProxyReadHeaders(req *http.Request, operation, childType string) {
@@ -283,8 +321,9 @@ func TestRestHandlerProxyRouteWhitelist(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]bool{
-		"GET /api/vega-backend/in/v1/proxy/resources/:id/schema": true,
-		"POST /api/vega-backend/in/v1/proxy/resources/:id/data":  true,
+		"GET /api/vega-backend/in/v1/proxy/resources/:id/schema":             true,
+		"POST /api/vega-backend/in/v1/proxy/resources/:id/data":              true,
+		"DELETE /api/vega-backend/in/v1/proxy/resources/:id/cursors/:cursor": true,
 	}, routes)
 }
 

@@ -394,11 +394,15 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 	// Aggregation query: Executed when any of the parameters Aggregation, GroupBy, or Having exists
 	if params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
+		countAll := params.Aggregation != nil && params.Aggregation.Aggr == "count" && params.Aggregation.Property == "*"
+		if countAll && (len(params.GroupBy) != 0 || params.Having != nil) {
+			return nil, fmt.Errorf("count(*) with grouping or having is not supported by this query path")
+		}
 		// Build OpenSearch aggregated queries
 		query := map[string]any{
 			"size": 0, // Aggregation queries do not need to return documents
 		}
-		if params.NeedTotal {
+		if params.NeedTotal || countAll {
 			query["track_total_hits"] = true
 		}
 
@@ -431,19 +435,21 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 
 			aggField := params.Aggregation.Property
-			resolvedField, err := c.exactMatchFieldName(aggField, resource.SchemaDefinition)
-			if err != nil {
-				return nil, fmt.Errorf("resolve aggregation field %q: %w", aggField, err)
+			if !countAll {
+				resolvedField, err := c.exactMatchFieldName(aggField, resource.SchemaDefinition)
+				if err != nil {
+					return nil, fmt.Errorf("resolve aggregation field %q: %w", aggField, err)
+				}
+				aggField = resolvedField
 			}
-			aggField = resolvedField
 			aggFunc := params.Aggregation.Aggr
 
 			switch aggFunc {
 			case "count":
-				metricBody = map[string]any{
-					"value_count": map[string]any{
-						"field": aggField,
-					},
+				if !countAll {
+					metricBody = map[string]any{
+						"value_count": map[string]any{"field": aggField},
+					}
 				}
 			case "count_distinct":
 				metricBody = map[string]any{
@@ -565,7 +571,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}
 
 		// Add the aggregation to the query
-		query["aggs"] = aggs
+		if len(aggs) > 0 {
+			query["aggs"] = aggs
+		}
 
 		// Serialized query
 		queryJSON, err := sonic.Marshal(query)
@@ -606,12 +614,25 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 		// Extract the total number of documents
 		var totalCount int64
+		hasExactTotal := false
 		if hits, ok := result["hits"].(map[string]any); ok {
 			if totalMap, ok := hits["total"].(map[string]any); ok {
 				if value, ok := openSearchInt64(totalMap["value"]); ok {
 					totalCount = value
+					hasExactTotal = totalMap["relation"] == "eq"
 				}
 			}
+		}
+		if countAll {
+			if !hasExactTotal {
+				return nil, fmt.Errorf("count(*) did not receive an exact total hit count")
+			}
+			alias := params.Aggregation.Alias
+			if alias == "" {
+				alias = "__value"
+			}
+			return &interfaces.QueryResult{Entries: []map[string]any{
+				{alias: json.Number(strconv.FormatInt(totalCount, 10))}}, Total: totalCount}, nil
 		}
 
 		// Extract the aggregation results

@@ -181,6 +181,12 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 		"query_source": result.QuerySource,
 		"entries":      result.Entries,
 	}
+	if result.AggregateInputType != "" {
+		resultData["aggregate_input_type"] = result.AggregateInputType
+	}
+	if params.Aggregation != nil || result.AggregateInputType != "" {
+		resultData["aggregate_exact"] = result.AggregateExact
+	}
 	if params.NeedTotal || result.NeedTotal {
 		resultData["total_count"] = result.TotalCount
 	}

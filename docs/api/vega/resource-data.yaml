@@ -614,6 +614,19 @@ components:
           description: 本次查询实际使用的数据路径。`local_index` 表示 table 的本地索引；`source` 表示未使用该本地索引。
           type: string
           enum: [local_index, source]
+        aggregate_input_type:
+          description: |
+            整数或 DECIMAL 字段聚合时返回输入字段的资源类型，与实际选择的 source 或 local_index 路径无关。
+            不返回完整资源 schema；字段缺失或非数值类型时省略。此字段不单独证明聚合结果的精确性。
+          type: string
+          enum: [integer, decimal]
+        aggregate_exact:
+          description: |
+            本次聚合所选物理输入覆盖与算子是否都能证明结果精确。OpenSearch 的浮点数值聚合与近似去重计数返回 false；
+            table 本地索引仅有 `available` 状态时，COUNT 也不标记为精确，因为这不能证明索引与源表同一时点。
+            调用方需要精确值时必须检查该字段，false 时可选择其他可执行计划或返回明确错误。
+            此字段不证明多页读取的同一时点快照。
+          type: boolean
         entries:
           description: |
             文档条目。table、index 等外部数据源已声明的 `json` 字段以普通字符串返回，
