@@ -61,6 +61,30 @@ func Test_BuildGuidance(t *testing.T) {
 			})
 		})
 
+		Convey("The message carries the items of the path that joins what the question needs\n", func() {
+			draft := &interfaces.Draft{Items: interfaces.DraftItems{
+				ObjectTypes: []*interfaces.DraftObjectType{{ID: "sales_order", Name: "Order"}, {ID: "customer", Name: "Customer"},
+					{ID: "invoice", Name: "Invoice"}},
+				RelationTypes: []*interfaces.DraftRelationType{
+					{ID: "inv_order", Source: "invoice", Target: "sales_order", Adopted: true},
+					{ID: "inv_customer", Source: "invoice", Target: "customer", Adopted: true},
+				},
+			}}
+			// It names the order and the customer only; invoices join them in this draft.
+			named := &interfaces.RequirementQuestion{ID: "q9", Text: "Whose orders?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
+				Needs: []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"},
+					{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}}}
+			bare := spec
+			bare.Concepts = nil
+
+			message, err := buildGuidanceMessage(interfaces.NAMING_LANGUAGE_EN_US, &bare, named, draft)
+
+			So(err, ShouldBeNil)
+			So(message, ShouldContainSubstring, `"id":"invoice"`)
+			So(message, ShouldContainSubstring, `"id":"inv_order"`)
+			So(message, ShouldContainSubstring, `"id":"inv_customer"`)
+		})
+
 		Convey("Tests get the server's ids, at most maxTests, and are not checked yet\n", func() {
 			out := &guidanceOutput{Guidance: "Use the relation.", OutOfScope: []string{"Parent company?"}}
 			for i := range maxTests + 2 {

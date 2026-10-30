@@ -94,6 +94,34 @@ func Test_OntologySignature(t *testing.T) {
 			So(ontologySignature(draft(), &ghost), ShouldNotEqual, base)
 		})
 
+		Convey("The path that joins what the question names is signed too\n", func() {
+			pathDraft := func() *interfaces.Draft {
+				return &interfaces.Draft{Items: interfaces.DraftItems{
+					ObjectTypes: []*interfaces.DraftObjectType{{ID: "material", Adopted: true}, {ID: "supplier", Adopted: true},
+						{ID: "po_line", Adopted: true}},
+					RelationTypes: []*interfaces.DraftRelationType{
+						{ID: "po_mat", Source: "po_line", Target: "material", Adopted: true,
+							Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "m", TargetProperty: "code"}}},
+						{ID: "po_sup", Source: "po_line", Target: "supplier", Adopted: true,
+							Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "s", TargetProperty: "code"}}},
+					},
+				}}
+			}
+			two := &interfaces.RequirementQuestion{ID: "q3", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
+				Needs: []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "material"},
+					{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "supplier"}}}
+			joined := ontologySignature(pathDraft(), two)
+			for _, change := range []func(d *interfaces.Draft){
+				func(d *interfaces.Draft) { d.Items.RelationTypes[1].Adopted = false },
+				func(d *interfaces.Draft) { d.Items.RelationTypes[0].Mapping[0].SourceProperty = "other" },
+				func(d *interfaces.Draft) { d.Items.ObjectTypes[2].PrimaryKeys = []string{"id"} },
+			} {
+				d := pathDraft()
+				change(d)
+				So(ontologySignature(d, two), ShouldNotEqual, joined)
+			}
+		})
+
 		Convey("Without a draft there is nothing to sign\n", func() {
 			So(ontologySignature(nil, q), ShouldEqual, "")
 		})
