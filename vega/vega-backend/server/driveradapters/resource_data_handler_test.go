@@ -182,26 +182,6 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"total_count":1`)
 	})
 
-	t.Run("reports the physical type of a source numeric aggregate", func(t *testing.T) {
-		engine, rs, _, rds := setupResourceDataHandlerTest(t)
-		resource := sampleDatasetResource()
-		resource.Category = interfaces.ResourceCategoryTable
-		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal}}
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{
-			Entries: []map[string]any{{"__value": "100001.25"}}, QuerySource: interfaces.ResourceQuerySourceSource,
-			AggregateInputType: interfaces.DataType_Decimal,
-		}, nil)
-		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data",
-			strings.NewReader(`{"aggregation":{"property":"amount","aggr":"sum","alias":"__value"},"output_fields":["__value"],"paging":{"limit":1}}`))
-		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		engine.ServeHTTP(w, req)
-		require.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), `"aggregate_input_type":"decimal"`)
-	})
-
 	t.Run("rejects negative offset before querying", func(t *testing.T) {
 		engine, _, _, _ := setupResourceDataHandlerTest(t)
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"offset":-1,"limit":10}}`))

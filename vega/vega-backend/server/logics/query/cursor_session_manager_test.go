@@ -281,31 +281,6 @@ func TestCloseCursorSession(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 }
 
-func TestCloseResourceDataCursorSessionRequiresBoundResource(t *testing.T) {
-	previousManager := rawQueryCursorSessions
-	manager := newCursorSessionManager(2, 2)
-	rawQueryCursorSessions = manager
-	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
-	resource := &interfaces.Resource{ID: "resource-a", CatalogID: "catalog-1"}
-	session, err := manager.createResourceData("account-a", "caller-a", resource,
-		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
-	require.NoError(t, err)
-	var httpErr *httperrors.HTTPError
-	err = CloseResourceDataCursorSession(context.Background(), "account-a", "caller-a", "resource-b", session.ID)
-	require.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
-	err = CloseResourceDataCursorSession(context.Background(), "account-a", "caller-b", "resource-a", session.ID)
-	require.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
-	err = CloseResourceDataCursorSession(context.Background(), "account-b", "caller-a", "resource-a", session.ID)
-	require.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
-	require.NoError(t, CloseResourceDataCursorSession(context.Background(), "account-a", "caller-a", "resource-a", session.ID))
-	err = CloseResourceDataCursorSession(context.Background(), "account-a", "caller-a", "resource-a", session.ID)
-	require.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
-}
-
 func TestCursorSessionManagerRemoveExpiredLocked(t *testing.T) {
 	t.Run("skips active session", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)

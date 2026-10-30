@@ -23,7 +23,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query"
 )
 
 var trustedProxyContextHeaders = []string{
@@ -129,27 +128,6 @@ func (r *restHandler) PostResourceDataByProxy(c *gin.Context) {
 	}
 	r.recordProxyReadAudit(ctx, request, "allow", "")
 	r.queryProxyResourceData(c, ctx, span, resource)
-}
-
-// DeleteResourceCursorByProxy releases only a resource-data cursor bound to
-// the authorized managed account and target resource.
-func (r *restHandler) DeleteResourceCursorByProxy(c *gin.Context) {
-	ctx, span := oteltrace.StartServerSpan(c)
-	defer span.End()
-	request, err := proxyReadContextFromHeaders(c, interfaces.OPERATION_TYPE_QUERY_DATA)
-	if !r.authorizeProxyRead(c, ctx, request, err) {
-		return
-	}
-	r.recordProxyReadAudit(ctx, request, "allow", "cursor_cleanup")
-	if err := query.CloseResourceDataCursorSession(ctx, request.ProxyID, request.CallerID,
-		request.TargetID, c.Param("cursor")); err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Query_ExecuteFailed)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
-	c.Status(http.StatusNoContent)
 }
 
 func (r *restHandler) loadProxyResource(c *gin.Context, ctx context.Context, span trace.Span,

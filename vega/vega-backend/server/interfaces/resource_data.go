@@ -104,12 +104,11 @@ type ResourceDataQueryParams struct {
 // logic-view queries. Paging follows the same single/cursor contract as raw
 // queries.
 type ResourceDataQueryResult struct {
-	Entries            []map[string]any
-	TotalCount         int64
-	Paging             *PagingResponse
-	NeedTotal          bool
-	QuerySource        string
-	AggregateInputType string
+	Entries     []map[string]any
+	TotalCount  int64
+	Paging      *PagingResponse
+	NeedTotal   bool
+	QuerySource string
 }
 
 // ResourceValue is the JSON representation of a resource field that needs

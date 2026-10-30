@@ -87,13 +87,6 @@ func ExecuteResourceDataCursorContinuationWithRunner(ctx context.Context, accoun
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
-	quotaOwnerID := interfaces.CursorQuotaOwner(ctx)
-	if quotaOwnerID == "" {
-		quotaOwnerID = accountID
-	}
-	if session.QuotaOwnerID != quotaOwnerID {
-		return nil, cursorNotFoundError(ctx)
-	}
 	if resource == nil || session.ResourceDataResourceID != resource.ID {
 		return nil, cursorNotFoundError(ctx)
 	}

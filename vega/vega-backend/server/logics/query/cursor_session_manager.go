@@ -235,10 +235,6 @@ func (m *cursorSessionManager) closeSession(cursor string) {
 }
 
 func (m *cursorSessionManager) closeForAccount(accountID, cursor string) error {
-	return m.closeForAccountResource(accountID, "", "", cursor)
-}
-
-func (m *cursorSessionManager) closeForAccountResource(accountID, quotaOwnerID, resourceID, cursor string) error {
 	m.mu.Lock()
 	session, ok := m.sessions[cursor]
 	if !ok {
@@ -248,14 +244,6 @@ func (m *cursorSessionManager) closeForAccountResource(accountID, quotaOwnerID, 
 	if session.AccountID != accountID {
 		m.mu.Unlock()
 		return errCursorSessionForbidden
-	}
-	if resourceID != "" && session.ResourceDataResourceID != resourceID {
-		m.mu.Unlock()
-		return errCursorSessionNotFound
-	}
-	if quotaOwnerID != "" && session.QuotaOwnerID != quotaOwnerID {
-		m.mu.Unlock()
-		return errCursorSessionNotFound
 	}
 	if !session.TryLock() {
 		m.mu.Unlock()
@@ -289,16 +277,7 @@ func closeSQLCursorResources(sessions ...*interfaces.CursorSession) {
 
 // CloseCursorSession releases a cursor owned by the calling account.
 func CloseCursorSession(ctx context.Context, accountID, cursor string) error {
-	return cursorSessionCloseError(ctx, rawQueryCursorSessions.closeForAccount(accountID, cursor))
-}
-
-// CloseResourceDataCursorSession only releases a cursor for its bound managed
-// account, original caller and resource.
-func CloseResourceDataCursorSession(ctx context.Context, accountID, callerID, resourceID, cursor string) error {
-	return cursorSessionCloseError(ctx, rawQueryCursorSessions.closeForAccountResource(accountID, callerID, resourceID, cursor))
-}
-
-func cursorSessionCloseError(ctx context.Context, err error) error {
+	err := rawQueryCursorSessions.closeForAccount(accountID, cursor)
 	switch {
 	case errors.Is(err, errCursorSessionNotFound):
 		return cursorNotFoundError(ctx)
