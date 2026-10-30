@@ -29,6 +29,8 @@ const (
 	BknProject_Release_Drift               = "BknProject.Release.Drift"
 	BknProject_Release_CapabilitiesSkipped = "BknProject.Release.CapabilitiesSkipped"
 	BknProject_Release_NetworkExists       = "BknProject.Release.NetworkExists"
+	// An earlier attempt of the version left its tag at another branch head.
+	BknProject_Release_UnfinishedAttempt = "BknProject.Release.UnfinishedAttempt"
 	// A project's release.
 	BknProject_Release_ProjectArchived = "BknProject.Release.ProjectArchived"
 	BknProject_Release_ChecksFailed    = "BknProject.Release.ChecksFailed"
@@ -60,6 +62,7 @@ var (
 		BknProject_Release_Drift,
 		BknProject_Release_CapabilitiesSkipped,
 		BknProject_Release_NetworkExists,
+		BknProject_Release_UnfinishedAttempt,
 		BknProject_Release_ProjectArchived,
 		BknProject_Release_ChecksFailed,
 		BknProject_Release_ReviewOutdated,

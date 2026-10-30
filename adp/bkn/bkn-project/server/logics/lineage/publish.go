@@ -269,15 +269,18 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 		return nil, err
 	}
 	preview.BranchCommit = branchHead
-	// A tag without a release row was left by a failed attempt. Only the same
-	// branch head may reuse it; anything else would make the tag lie.
+	// A tag without a release row was left by a failed attempt, which may have
+	// imported the network before recording failed. Only the same branch head may
+	// reuse it: the retry imports over that network and records the release.
+	// Anything else would make the tag lie; the version stays unfinished.
 	tagHead, err := gs.ResolveRef(ctx, lineageID, tagRef(preview.Tag))
 	switch {
 	case err == nil && tagHead == branchHead:
 		checked.retry = true
 	case err == nil:
-		if refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_VersionExists).
-			WithErrorDetails(map[string]any{"tag": preview.Tag, "commit": tagHead})) {
+		if refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_UnfinishedAttempt).
+			WithErrorDetails(map[string]any{"tag": preview.Tag, "commit": tagHead, "branch_commit": branchHead,
+				"network_id": networkID})) {
 			return checked, nil
 		}
 	case !errors.Is(err, plumbing.ErrReferenceNotFound):
