@@ -48,8 +48,9 @@ func Test_PendingOf(t *testing.T) {
 					Action: interfaces.ACTION_CHOOSE_IDENTITY, Method: "PUT",
 					Path: "/projects/p1/ontology/draft/object_types/orders/identity",
 					Body: map[string]any{"update_time": "$draft_update_time", "properties": "$candidate"},
-					// What drafting counted first, then the other key-typed properties by name.
-					Allowed: true, Candidates: [][]string{{"customer_id"}, {"channel"}, {"order_id"}, {"status"}},
+					// Drafting counted customer_id with duplicates and nothing else: no candidate, and why.
+					// Uncounted properties are none: choosing one could merge records.
+					Allowed: true, Candidates: [][]string{}, CandidatesReason: interfaces.PENDING_CANDIDATES_NO_UNIQUE,
 				},
 				{
 					Action: interfaces.ACTION_UNADOPT, Method: "PATCH", Path: "/projects/p1/ontology/draft/items/object_types/orders",
@@ -99,6 +100,7 @@ func Test_PendingOf(t *testing.T) {
 				So(choose.Allowed, ShouldBeFalse)
 				So(choose.Reason, ShouldEqual, interfaces.ACTION_REASON_NO_KEY_PROPERTY)
 				So(choose.Candidates, ShouldBeEmpty)
+				So(choose.CandidatesReason, ShouldEqual, "")
 			}
 		})
 
@@ -108,7 +110,27 @@ func Test_PendingOf(t *testing.T) {
 
 			choose := pendingOf(project, d, nil).Items[0].Options[0]
 
-			So(choose.Candidates, ShouldResemble, [][]string{{"order_id", "status"}, {"customer_id"}, {"channel"}, {"order_id"}, {"status"}})
+			// Only the pair: the counted field had duplicates and the others were not counted.
+			So(choose.Candidates, ShouldResemble, [][]string{{"order_id", "status"}})
+			So(choose.CandidatesReason, ShouldEqual, "")
+		})
+
+		Convey("A counted field that is unique and non-null is a candidate\n", func() {
+			d := draft()
+			d.Items.ObjectTypes[0].Key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_INFERRED, Field: "customer_id",
+				Computed: true, Rows: 10, Distinct: 10}
+
+			choose := pendingOf(project, d, nil).Items[0].Options[0]
+
+			So(choose.Candidates, ShouldResemble, [][]string{{"customer_id"}})
+			for _, key := range []interfaces.DraftKeyEvidence{
+				{Field: "customer_id", Computed: true, Rows: 10, Distinct: 9, Nulls: 1},
+				{Field: "customer_id", Computed: true, Rows: 0},
+				{Field: "customer_id", Rows: 10, Distinct: 10},
+			} {
+				d.Items.ObjectTypes[0].Key = key
+				So(pendingOf(project, d, nil).Items[0].Options[0].Candidates, ShouldBeEmpty)
+			}
 		})
 
 		Convey("Nothing is settled in an archived project\n", func() {
