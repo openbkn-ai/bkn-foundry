@@ -17,6 +17,7 @@ SQL 查询经过 `compiler.ParseSQL → SelectBuilder → 资源准备 → 连�
 
 `ValueFrom_Const` 表示过滤条件与一个值比较，相对于与另一个字段比较；它不是 SQL 内联指令。结构化查询可以同时包含 `Literal` 与 `Param`。
 函数映射、日期格式翻译、时间值转换和 LIKE 模式转换必须保留原输入节点的绑定或字面量身份；内部固定语法值使用 `Literal`。
+例如 SQL Server `STR_TO_DATE` 将受支持的格式选择映射为固定 style 数字（23、121、126），该数字由生成器内联，不占用 args；`DATE_FORMAT` 翻译后仍作为格式文本传递的用户值则保留原节点身份。
 
 ```sql
 SELECT COALESCE(region, 'none') AS region, COUNT(*) AS n
