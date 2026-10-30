@@ -326,6 +326,87 @@ func Test_BuildSpec(t *testing.T) {
 			So(reasons["input missing.nope (a)"], ShouldEqual, "")
 		})
 
+		Convey("An input's example stands only as a whole value the documents state, and the question cites where\n", func() {
+			exDocs := documentsByID([]*interfaces.RequirementDocument{doc("ex", interfaces.REQUIREMENT_DOC_PRD,
+				"Staff ask which lines an order has, such as order SO-1001.",
+				"For example, order SO-1002. Or (SO-1003).", "Lots LOT-7-B, then LOT-7.")})
+			withProps := testDraft()
+			withProps.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{
+				{Name: "order_no", Type: "string"}, {Name: "signed_on", Type: "date"}}
+			orderRef := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"}
+			asked := func(text string, example string) agentQuestion {
+				return agentQuestion{Text: text, Template: "Lines of {order}?",
+					Citations: []agentCitation{cite("ex", "Staff ask which lines an order has")},
+					Inputs: []agentInput{{Name: "order", ConceptID: "ord", Property: "order_no",
+						Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: example}}}
+			}
+			out := &draftOutput{
+				Concepts: []agentConcept{{ID: "ord", Term: "Order", SupplementReason: "r", MapsTo: &orderRef}},
+				Questions: []agentQuestion{
+					// Stated in a block the question does not cite: that block is cited, once.
+					asked("a", " SO-1002 "),
+					// Within parentheses, still the whole value.
+					asked("b", "SO-1003"),
+					// Part of a longer value: not stated.
+					asked("c", "SO-100"),
+					// In no document.
+					asked("d", "SO-9999"),
+					// Stated in the block the question cites already, at its end: nothing to add.
+					asked("e", "SO-1001"),
+					// A hyphen continues a code; a later occurrence may still stand whole.
+					asked("g", "LOT"),
+					asked("h", "LOT-7"),
+					// A reference time is taken from the data, never an example.
+					{Text: "f", Template: "Orders before {as_of}?", SupplementReason: "r", Inputs: []agentInput{
+						{Name: "as_of", ConceptID: "ord", Property: "signed_on", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME, Example: "SO-1002"}}},
+				},
+			}
+
+			spec, _ := buildSpec(out, exDocs, withProps)
+
+			examples := []string{}
+			for _, q := range spec.Questions {
+				examples = append(examples, (*q.Inputs)[0].Example)
+			}
+			So(examples, ShouldResemble, []string{"SO-1002", "SO-1003", "", "", "SO-1001", "", "LOT-7", ""})
+			So(spec.Questions[0].Citations, ShouldHaveLength, 2)
+			So(spec.Questions[0].Citations[1].BlockID, ShouldEqual, "b2")
+			So(spec.Questions[0].Citations[1].Quote, ShouldEqual, "For example, order SO-1002. Or (SO-1003).")
+			So(spec.Questions[1].Citations, ShouldHaveLength, 2)
+			So(spec.Questions[4].Citations, ShouldHaveLength, 1)
+			So(spec.Questions[2].Citations, ShouldHaveLength, 1)
+			reasons := map[string]string{}
+			for _, r := range spec.Rejected {
+				reasons[r.Kind+" "+r.Text] = r.Reason
+			}
+			So(reasons, ShouldResemble, map[string]string{
+				"input_example order=SO-100 (c)":  rejectedExampleNotInDocuments,
+				"input_example order=SO-9999 (d)": rejectedExampleNotInDocuments,
+				"input_example order=LOT (g)":     rejectedExampleNotInDocuments,
+			})
+		})
+
+		Convey("An example in a block the question cites only in part extends that citation to the block\n", func() {
+			exDocs := documentsByID([]*interfaces.RequirementDocument{doc("ex", interfaces.REQUIREMENT_DOC_PRD,
+				"Staff ask which lines an order has. For example, order SO-1002.")})
+			withProps := testDraft()
+			withProps.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{{Name: "order_no", Type: "string"}}
+			orderRef := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"}
+			out := &draftOutput{
+				Concepts: []agentConcept{{ID: "ord", Term: "Order", SupplementReason: "r", MapsTo: &orderRef}},
+				Questions: []agentQuestion{{Text: "a", Template: "Lines of {order}?",
+					Citations: []agentCitation{cite("ex", "Staff ask which lines an order has")},
+					Inputs: []agentInput{{Name: "order", ConceptID: "ord", Property: "order_no",
+						Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}}},
+			}
+
+			spec, _ := buildSpec(out, exDocs, withProps)
+
+			So(spec.Questions[0].Citations, ShouldHaveLength, 1)
+			So(spec.Questions[0].Citations[0].Quote, ShouldEqual, "Staff ask which lines an order has. For example, order SO-1002.")
+			So(spec.Questions[0].Citations[0].Start, ShouldEqual, 0)
+		})
+
 		Convey("A question's layer is knowledge only when said so\n", func() {
 			out := &draftOutput{Questions: []agentQuestion{
 				{Text: "a", Layer: "knowledge", SupplementReason: "r"},
@@ -1061,5 +1142,10 @@ func Test_DraftResponseFormatIsValidJSONSchema(t *testing.T) {
 		}
 		walk("", schema)
 		So(problems, ShouldBeEmpty)
+
+		// An input's example is asked for, and described, since no prompt names it.
+		input := schema.(map[string]any)["properties"].(map[string]any)["questions"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)["inputs"].(map[string]any)["items"].(map[string]any)
+		So(input["required"], ShouldContain, "example")
+		So(input["properties"].(map[string]any)["example"].(map[string]any)["description"], ShouldNotBeEmpty)
 	})
 }

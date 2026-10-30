@@ -503,6 +503,66 @@ func Test_QuestionInputEdits(t *testing.T) {
 			So(*saved.Spec.Questions[0].Inputs, ShouldResemble, []interfaces.RequirementInput{record("order", "c1", "order_no")})
 		})
 
+		Convey("A person's example stands only as a whole value the documents state, and the question cites where\n", func() {
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
+				doc("ex", interfaces.REQUIREMENT_DOC_PRD, "Lines of an order.", "For example, order SO-1002.")}, nil).Times(3)
+			withExample := func(example string) *[]interfaces.RequirementInput {
+				in := record("order", "c1", "order_no")
+				in.Example = example
+				return &[]interfaces.RequirementInput{in}
+			}
+
+			expectRead()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: withExample("SO-100")}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+			So(err.Error(), ShouldContainSubstring, "input order: "+rejectedExampleNotInDocuments)
+
+			expectRead()
+			expectSave()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: withExample(" SO-1002")}, caller)
+			So(err, ShouldBeNil)
+			q := saved.Spec.Questions[0]
+			So((*q.Inputs)[0].Example, ShouldEqual, "SO-1002")
+			So(q.Citations[len(q.Citations)-1].Quote, ShouldEqual, "For example, order SO-1002.")
+
+			// A reference time's example is dropped: a moment is taken from the data.
+			expectRead()
+			expectSave()
+			asOfExample := asOf
+			asOfExample.Example = "SO-1002"
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Lines of {order} before {as_of}?"),
+					Inputs: &[]interfaces.RequirementInput{record("order", "c1", "order_no"), asOfExample}}, caller)
+			So(err, ShouldBeNil)
+			So((*saved.Spec.Questions[0].Inputs)[1].Example, ShouldEqual, "")
+		})
+
+		Convey("A question added with an example is checked against the documents too\n", func() {
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
+				doc("ex", interfaces.REQUIREMENT_DOC_PRD, "For example, order SO-1002.")}, nil)
+			expectRead()
+			expectSave()
+			in := record("order", "c1", "order_no")
+			in.Example = "SO-1002"
+			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS,
+				interfaces.RequirementItemEdit{UpdateTime: 7, Text: ptr("Lines of a given order?"), Template: ptr("Lines of {order}?"),
+					Inputs: &[]interfaces.RequirementInput{in}}, caller)
+			So(err, ShouldBeNil)
+			added := saved.Spec.Questions[len(saved.Spec.Questions)-1]
+			So((*added.Inputs)[0].Example, ShouldEqual, "SO-1002")
+			So(added.Citations, ShouldHaveLength, 1)
+		})
+
+		Convey("Inputs without an example need no documents\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c1", "order_no")}}, caller)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("A drafted window without a reference time does not hold up an edit of the wording\n", func() {
 			unbound := withInputs()
 			unbound.Spec.Questions[0].RelativeWindow = true

@@ -31,7 +31,7 @@ func exportSpec() *interfaces.Requirement {
 		{ID: "q1", Text: "Lines of order SO-1002?", Template: "Lines of order {order}?", AnswerShape: "a list of lines",
 			ScenarioIDs: []string{"s1"}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
 			Inputs: &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1", Property: "order_no",
-				Role: interfaces.REQUIREMENT_INPUT_RECORD}}},
+				Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}},
 		{ID: "q2", Text: "Which orders need approval?", ScenarioIDs: []string{"s1", "s9"}, Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY,
 			AnswerShape: "orders", Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1", "c9"},
 				Metrics: []string{"order amount"}, Functions: []string{"approval check"}, Skills: []string{}}},

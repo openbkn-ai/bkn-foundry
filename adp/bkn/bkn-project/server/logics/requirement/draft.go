@@ -88,6 +88,10 @@ const (
 	rejectedTooFewOptions = "too_few_options"
 	// rejectedTooMany is an item past the most a specification keeps of its kind.
 	rejectedTooMany = "too_many"
+	// rejectedInputExample is an input's example; rejectedExampleNotInDocuments, one the documents
+	// do not state as a whole value.
+	rejectedInputExample          = "input_example"
+	rejectedExampleNotInDocuments = "example_not_in_documents"
 	// rejectedBasisNotInDocuments is a skill a question rests on that no document names.
 	rejectedBasisNotInDocuments = "basis_not_in_documents"
 	// rejectedFunctionOnFilter is a function a question its own type calls a filter rests on alone.
@@ -162,6 +166,7 @@ type agentInput struct {
 	ConceptID string `json:"concept_id"`
 	Property  string `json:"property"`
 	Role      string `json:"role"`
+	Example   string `json:"example"`
 }
 
 type agentRule struct {
@@ -263,7 +268,9 @@ func draftResponseFormat() map[string]any {
 			"inputs": schemaArray(schemaObject(map[string]any{
 				"name": schemaString(), "concept_id": schemaString(), "property": schemaString(),
 				"role": schemaEnum(interfaces.REQUIREMENT_INPUT_RECORD, interfaces.REQUIREMENT_INPUT_REFERENCE_TIME),
-			}, "name", "concept_id", "property", "role")),
+				"example": map[string]any{"type": "string", "description": "A value of this input the documents " +
+					"state, such as a record they give as an example, copied as written; empty when they state none."},
+			}, "name", "concept_id", "property", "role", "example")),
 			"relative_window": map[string]any{"type": "boolean"},
 			"citations":       citations, "supplement_reason": schemaString(),
 		}, "id", "text", "type", "layer", "inputs", "relative_window", "citations")),
@@ -686,6 +693,19 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			if reason != "" {
 				reject(rejectedInput, given+" ("+q.Text+")", reason)
 				continue
+			}
+			if input.Example = strings.TrimSpace(in.Example); input.Example != "" {
+				cited, ok := exampleCitation(input.Example, docs)
+				switch {
+				case input.Role != interfaces.REQUIREMENT_INPUT_RECORD:
+					// A moment is taken from the data.
+					input.Example = ""
+				case !ok:
+					reject(rejectedInputExample, input.Name+"="+input.Example+" ("+q.Text+")", rejectedExampleNotInDocuments)
+					input.Example = ""
+				default:
+					question.Citations = citeExample(question.Citations, input.Example, cited)
+				}
 			}
 			inputs = append(inputs, input)
 		}
