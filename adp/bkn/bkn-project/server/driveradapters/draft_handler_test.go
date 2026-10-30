@@ -166,6 +166,24 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(serve(handler, http.MethodPost, project+"/catalogs:unknown").Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})
 
+		Convey("The source changes are read as the caller, and source-changes:draft drafts them with the signature read\n", func() {
+			const project = "/api/bkn-project/v1/projects/p1"
+			drs.EXPECT().GetSourceChanges(gomock.Any(), "Bearer t", "p1", caller).
+				Return(&interfaces.SourceChanges{ProjectID: "p1", State: interfaces.SOURCE_CHANGES_CHANGED, Signature: "s1"}, nil)
+
+			w := serve(handler, http.MethodGet, project+"/source-changes")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"state":"changed"`)
+
+			drs.EXPECT().DraftSourceChanges(gomock.Any(), "Bearer t", "p1", interfaces.SourceChangesDraft{Signature: "s1"}, caller).
+				Return(&interfaces.Draft{ProjectID: "p1"}, nil)
+			So(serveBody(handler, http.MethodPost, project+"/source-changes:draft", []byte(`{"signature":"s1"}`)).Result().StatusCode,
+				ShouldEqual, http.StatusOK)
+			So(serveBody(handler, http.MethodPost, project+"/source-changes:draft", []byte(`{`)).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("The understanding is read as the caller\n", func() {
 			drs.EXPECT().GetUnderstanding(gomock.Any(), "Bearer t", "p1", caller).
 				Return(&interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{

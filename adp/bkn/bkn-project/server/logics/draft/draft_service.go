@@ -61,6 +61,8 @@ type draftService struct {
 	ls interfaces.LineageService
 	// ra tells whether a release published the confirmation.
 	ra interfaces.ReleaseAccess
+	// gs reads the published definitions the source changes compare.
+	gs interfaces.GitStore
 	// ba answers Ask AI; now and sleep pace waiting for it, replaced by tests.
 	ba    interfaces.BknAgentAccess
 	now   func() time.Time
@@ -84,6 +86,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
 			ra:      logics.RA,
+			gs:      logics.GS,
 			ba:      logics.BAA,
 			now:     time.Now,
 			sleep:   time.Sleep,

@@ -29,17 +29,22 @@ const (
 	BknProject_Draft_ItemNotFound = "BknProject.Draft.ItemNotFound"
 
 	// 409
-	BknProject_Draft_Drafting             = "BknProject.Draft.Drafting"
-	BknProject_Draft_ProjectArchived      = "BknProject.Draft.ProjectArchived"
-	BknProject_Draft_NotReady             = "BknProject.Draft.NotReady"
-	BknProject_Draft_Stale                = "BknProject.Draft.Stale"
-	BknProject_Draft_HasDecisions         = "BknProject.Draft.HasDecisions"
-	BknProject_Draft_FieldNotFound        = "BknProject.Draft.FieldNotFound"
-	BknProject_Draft_CatalogMissing       = "BknProject.Draft.CatalogMissing"
-	BknProject_Draft_HasPending           = "BknProject.Draft.HasPending"
-	BknProject_Draft_PartialNotAccepted   = "BknProject.Draft.PartialNotAccepted"
-	BknProject_Draft_UndecidedNotAccepted = "BknProject.Draft.UndecidedNotAccepted"
-	BknProject_Draft_ConflictsNotAccepted = "BknProject.Draft.ConflictsNotAccepted"
+	BknProject_Draft_Drafting              = "BknProject.Draft.Drafting"
+	BknProject_Draft_ProjectArchived       = "BknProject.Draft.ProjectArchived"
+	BknProject_Draft_NotReady              = "BknProject.Draft.NotReady"
+	BknProject_Draft_Stale                 = "BknProject.Draft.Stale"
+	BknProject_Draft_HasDecisions          = "BknProject.Draft.HasDecisions"
+	BknProject_Draft_FieldNotFound         = "BknProject.Draft.FieldNotFound"
+	BknProject_Draft_CatalogMissing        = "BknProject.Draft.CatalogMissing"
+	BknProject_Draft_HasPending            = "BknProject.Draft.HasPending"
+	BknProject_Draft_PartialNotAccepted    = "BknProject.Draft.PartialNotAccepted"
+	BknProject_Draft_UndecidedNotAccepted  = "BknProject.Draft.UndecidedNotAccepted"
+	BknProject_Draft_ConflictsNotAccepted  = "BknProject.Draft.ConflictsNotAccepted"
+	BknProject_Draft_SourceChangesOutdated = "BknProject.Draft.SourceChangesOutdated"
+	BknProject_Draft_NoSourceChanges       = "BknProject.Draft.NoSourceChanges"
+
+	// 503
+	BknProject_Draft_SourceUnreachable = "BknProject.Draft.SourceUnreachable"
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
@@ -118,6 +123,9 @@ var (
 		BknProject_Draft_PartialNotAccepted,
 		BknProject_Draft_UndecidedNotAccepted,
 		BknProject_Draft_ConflictsNotAccepted,
+		BknProject_Draft_SourceChangesOutdated,
+		BknProject_Draft_NoSourceChanges,
+		BknProject_Draft_SourceUnreachable,
 		BknProject_Check_NotOwner,
 		BknProject_Check_NotFound,
 		BknProject_Check_NothingConfirmed,

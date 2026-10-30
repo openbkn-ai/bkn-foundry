@@ -104,10 +104,14 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	// Semantic understanding of the tables in the project's data catalogs: catalogs:understand
 	// submits it, and its progress is read from vega-backend. Bringing the live version into the
 	// project's branch is branch:sync, and committing the live network's drift first drift:commit.
+	// Drafting the source changes of the tables the draft binds is source-changes:draft.
 	apiV1.POST("/projects/:project_id/:action", r.ProjectDataActionByEx)
 	apiV1.GET("/projects/:project_id/catalogs/understanding", r.GetUnderstandingByEx)
 	// Where a project stands, computed for the caller from its draft, confirmation and check.
 	apiV1.GET("/projects/:project_id/status", r.GetStatusByEx)
+	// How the tables the project binds differ now from what its draft and published definitions map;
+	// drafting them is source-changes:draft.
+	apiV1.GET("/projects/:project_id/source-changes", r.GetSourceChangesByEx)
 	// What waits for a person before the draft can be confirmed, with the requests that settle it.
 	apiV1.GET("/projects/:project_id/pending", r.GetPendingByEx)
 	// A project's releases: what publishing would bring, publishing it, and switching consumers to

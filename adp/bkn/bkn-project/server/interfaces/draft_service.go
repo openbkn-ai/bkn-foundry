@@ -60,6 +60,13 @@ type DraftService interface {
 	// GetUnderstanding returns the semantic understanding of the tables in the project's data
 	// catalogs, read from vega-backend as the caller.
 	GetUnderstanding(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectUnderstanding, error)
+	// GetSourceChanges compares the tables the draft and the published definitions bind, as vega-backend
+	// now records them, with what they map, read as the caller.
+	GetSourceChanges(ctx context.Context, token string, projectID string, caller AccountInfo) (*SourceChanges, error)
+	// DraftSourceChanges applies the source changes to the draft, for the project owner, when they
+	// are still those read, and records them as decisions. It writes nothing else.
+	DraftSourceChanges(ctx context.Context, token string, projectID string, req SourceChangesDraft,
+		caller AccountInfo) (*Draft, error)
 	// FailInterrupted fails the drafts and checks a previous run of the service left going.
 	FailInterrupted(ctx context.Context) error
 }
