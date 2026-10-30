@@ -204,3 +204,48 @@ func (r *restHandler) RunRegression(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, regression)
 }
+
+func (r *restHandler) PlanRollbackByEx(c *gin.Context) { r.withExVisitor(c, r.PlanRollback) }
+
+func (r *restHandler) RollbackByEx(c *gin.Context) { r.withExVisitor(c, r.Rollback) }
+
+// PlanRollback serves GET /projects/{id}/rollback-plan.
+func (r *restHandler) PlanRollback(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	plan, err := r.prs.PlanRollback(ctx, visitor.TokenID, id)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, plan)
+}
+
+// Rollback serves POST /projects/{id}/rollbacks with {"signature"} of the plan read.
+func (r *restHandler) Rollback(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.ProjectRollback
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidRequestBody))
+		return
+	}
+	sw, err := r.prs.Rollback(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
+	rest.ReplyOK(c, http.StatusCreated, sw)
+}

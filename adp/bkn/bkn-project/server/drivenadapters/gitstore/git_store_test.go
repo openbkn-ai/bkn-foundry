@@ -212,6 +212,25 @@ func Test_GitStore(t *testing.T) {
 			So(errors.Is(err, git.ErrRepositoryNotExists), ShouldBeTrue)
 		})
 
+		Convey("RootCommit is the commit the lineage started with, however main moved on\n", func() {
+			root, err := gs.RootCommit(ctx, "orders")
+			So(err, ShouldBeNil)
+			So(root, ShouldEqual, first)
+			So(gs.CreateBranch(ctx, "orders", "project/p1", "main"), ShouldBeNil)
+			_, err = gs.CommitFiles(ctx, "orders", "project/p1", map[string][]byte{"network.bkn": []byte("network v2")}, "branch edit", author)
+			So(err, ShouldBeNil)
+			_, err = gs.FastForward(ctx, "orders", "main", "project/p1")
+			So(err, ShouldBeNil)
+			_, err = gs.CommitFiles(ctx, "orders", "main", map[string][]byte{"network.bkn": []byte("network v3")}, "main edit", author)
+			So(err, ShouldBeNil)
+
+			root, err = gs.RootCommit(ctx, "orders")
+			So(err, ShouldBeNil)
+			So(root, ShouldEqual, first)
+			_, err = gs.RootCommit(ctx, "missing")
+			So(errors.Is(err, git.ErrRepositoryNotExists), ShouldBeTrue)
+		})
+
 		Convey("FastForward moves a branch only forward\n", func() {
 			So(gs.CreateBranch(ctx, "orders", "project/p1", "main"), ShouldBeNil)
 			next, err := gs.CommitFiles(ctx, "orders", "main", map[string][]byte{"network.bkn": []byte("network v2")}, "main edit", author)

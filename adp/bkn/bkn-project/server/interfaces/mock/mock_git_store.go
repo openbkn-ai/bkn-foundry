@@ -205,6 +205,21 @@ func (mr *MockGitStoreMockRecorder) ResolveRef(ctx, lineageID, ref any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRef", reflect.TypeOf((*MockGitStore)(nil).ResolveRef), ctx, lineageID, ref)
 }
 
+// RootCommit mocks base method.
+func (m *MockGitStore) RootCommit(ctx context.Context, lineageID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RootCommit", ctx, lineageID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RootCommit indicates an expected call of RootCommit.
+func (mr *MockGitStoreMockRecorder) RootCommit(ctx, lineageID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RootCommit", reflect.TypeOf((*MockGitStore)(nil).RootCommit), ctx, lineageID)
+}
+
 // Tag mocks base method.
 func (m *MockGitStore) Tag(ctx context.Context, lineageID, name, ref string) error {
 	m.ctrl.T.Helper()

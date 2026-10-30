@@ -71,6 +71,21 @@ func (mr *MockProjectReleaseServiceMockRecorder) GetRegression(ctx, token, proje
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegression", reflect.TypeOf((*MockProjectReleaseService)(nil).GetRegression), ctx, token, projectID, networkID)
 }
 
+// PlanRollback mocks base method.
+func (m *MockProjectReleaseService) PlanRollback(ctx context.Context, token, projectID string) (*interfaces.RollbackPlan, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PlanRollback", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.RollbackPlan)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PlanRollback indicates an expected call of PlanRollback.
+func (mr *MockProjectReleaseServiceMockRecorder) PlanRollback(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanRollback", reflect.TypeOf((*MockProjectReleaseService)(nil).PlanRollback), ctx, token, projectID)
+}
+
 // PlanSwitch mocks base method.
 func (m *MockProjectReleaseService) PlanSwitch(ctx context.Context, token, projectID, toNetworkID string) (*interfaces.SwitchPlan, error) {
 	m.ctrl.T.Helper()
@@ -114,6 +129,21 @@ func (m *MockProjectReleaseService) ReviewRelease(ctx context.Context, token, pr
 func (mr *MockProjectReleaseServiceMockRecorder) ReviewRelease(ctx, token, projectID, version, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReviewRelease", reflect.TypeOf((*MockProjectReleaseService)(nil).ReviewRelease), ctx, token, projectID, version, caller)
+}
+
+// Rollback mocks base method.
+func (m *MockProjectReleaseService) Rollback(ctx context.Context, token, projectID string, req interfaces.ProjectRollback, caller interfaces.AccountInfo) (*interfaces.Switch, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Rollback", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.Switch)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Rollback indicates an expected call of Rollback.
+func (mr *MockProjectReleaseServiceMockRecorder) Rollback(ctx, token, projectID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*MockProjectReleaseService)(nil).Rollback), ctx, token, projectID, req, caller)
 }
 
 // RunRegression mocks base method.

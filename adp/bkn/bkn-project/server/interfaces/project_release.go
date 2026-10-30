@@ -229,4 +229,10 @@ type ProjectReleaseService interface {
 	// SwitchConsumers switches consumers to a release of the project, for the owner.
 	SwitchConsumers(ctx context.Context, token string, projectID string, toNetworkID string,
 		caller AccountInfo) (*Switch, error)
+	// PlanRollback reports what rolling the lineage's consumers back to the network before the one in
+	// use would do, without doing it.
+	PlanRollback(ctx context.Context, token string, projectID string) (*RollbackPlan, error)
+	// Rollback switches the consumers back as the plan read says, for the owner, once it still stands.
+	Rollback(ctx context.Context, token string, projectID string, req ProjectRollback,
+		caller AccountInfo) (*Switch, error)
 }
