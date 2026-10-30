@@ -210,7 +210,20 @@ func withoutValues(t *interfaces.QuestionTest, terms map[string]string) string {
 	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(len(t.Slots[b].Value), len(t.Slots[a].Value)) })
 	for _, i := range order {
 		if v := strings.TrimSpace(t.Slots[i].Value); v != "" {
-			mark(v, name(t.Slots[i]), wholeAt(text, v))
+			// Where a value never stands whole, it was filled in against letters or digits: every
+			// free place it stands goes, so no value is exported.
+			at := wholeAt(text, v)
+			if len(at) == 0 {
+				for from := 0; ; {
+					k := strings.Index(text[from:], v)
+					if k < 0 {
+						break
+					}
+					at = append(at, from+k)
+					from += k + len(v)
+				}
+			}
+			mark(v, name(t.Slots[i]), at)
 		}
 	}
 	slices.SortFunc(spans, func(a, b span) int { return cmp.Compare(a.start, b.start) })

@@ -142,6 +142,9 @@ func Test_BuildExport(t *testing.T) {
 				// One value inside another: the longer is replaced first, and the shorter only where it stands apart.
 				{"客户张三丰和张三？", []interfaces.QuestionTestSlot{slot("c2", "name", "张三"), slot("c2", "alias", "张三丰")},
 					"客户{Customer.alias}和{Customer.name}？"},
+				// Filled in where its placeholder stood, against letters on both sides: no value stays.
+				{"客户ID1001的订单？", []interfaces.QuestionTestSlot{slot("c2", "id", "1001")}, "客户ID{Customer.id}的订单？"},
+				{"Lines of SO-1002-A?", []interfaces.QuestionTestSlot{slot("c1", "order_no", "SO-1002")}, "Lines of {Order.order_no}-A?"},
 				// A slot still to fill.
 				{"Orders of {{slot 1}}?", []interfaces.QuestionTestSlot{slot("c2", "id", "")}, "Orders of {Customer.id}?"},
 			} {
