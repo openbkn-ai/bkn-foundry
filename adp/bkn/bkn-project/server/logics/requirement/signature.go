@@ -46,8 +46,10 @@ func ontologySignature(draft *interfaces.Draft, q *interfaces.RequirementQuestio
 	if draft == nil {
 		return ""
 	}
+	// What the question rests on is what it names and the path that joins them in the draft.
 	needed := map[interfaces.RequirementItemRef]bool{}
-	for _, need := range q.Needs {
+	path, _ := questionPath(q, draft)
+	for _, need := range append(append([]interfaces.RequirementItemRef{}, q.Needs...), path...) {
 		needed[need] = true
 	}
 	include := func(kind string, id string, adopted bool) bool {

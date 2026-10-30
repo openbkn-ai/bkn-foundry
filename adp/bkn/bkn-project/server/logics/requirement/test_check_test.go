@@ -379,6 +379,16 @@ func Test_CheckTests(t *testing.T) {
 					So(tt.Slots[0].ValueFrom, ShouldEqual, c.from)
 				}
 
+				// A relation between the two, though the question does not name it, is the shorter way.
+				between := *hop
+				between.Items.RelationTypes = append([]*interfaces.DraftRelationType{{ID: "mat_sup", Source: "material", Target: "supplier",
+					Adopted: true, Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "material_code", TargetProperty: "supplier_code"}}}},
+					hop.Items.RelationTypes...)
+				short := pathOf(&between, needs, slotOn)
+				So(short.objectType, ShouldEqual, "supplier")
+				So(short.reached, ShouldEqual, "SELECT DISTINCT `sup_code` FROM {{r-sup}}")
+				So(short.through, ShouldBeTrue)
+
 				// A relation back to the slot's own object type is no way to the other one.
 				back := *hop
 				back.Items.RelationTypes = []*interfaces.DraftRelationType{hop.Items.RelationTypes[2],

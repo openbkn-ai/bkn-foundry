@@ -167,7 +167,9 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 			mapped[*c.MapsTo] = true
 		}
 	}
-	for _, need := range q.Needs {
+	// With the path that joins them in the draft, so the Agent sees the way between them.
+	path, _ := questionPath(q, draft)
+	for _, need := range append(append([]interfaces.RequirementItemRef{}, q.Needs...), path...) {
 		mapped[need] = true
 	}
 	if draft != nil {
