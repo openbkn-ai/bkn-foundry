@@ -28,6 +28,7 @@ const (
 	checkActionRun           = "check:run"
 	indexActionBuild         = "index:build"
 	catalogsActionUnderstand = "catalogs:understand"
+	sourceChangesActionDraft = "source-changes:draft"
 )
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
@@ -75,6 +76,8 @@ func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.CommitProjectDrift)
 	case requirementsActionDraft:
 		r.withExVisitor(c, r.GenerateRequirement)
+	case sourceChangesActionDraft:
+		r.withExVisitor(c, r.DraftSourceChanges)
 	default:
 		replyNotFound(c)
 	}
@@ -358,6 +361,49 @@ func (r *restHandler) RestoreExcluded(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	draft, err := r.drs.RestoreExcluded(ctx, visitor.TokenID, id, restore, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+func (r *restHandler) GetSourceChangesByEx(c *gin.Context) { r.withExVisitor(c, r.GetSourceChanges) }
+
+// GetSourceChanges replies how the tables the project binds differ from what it maps.
+func (r *restHandler) GetSourceChanges(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	changes, err := r.drs.GetSourceChanges(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, changes)
+}
+
+// DraftSourceChanges applies the source changes read to the draft and replies the draft.
+func (r *restHandler) DraftSourceChanges(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.SourceChangesDraft
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	draft, err := r.drs.DraftSourceChanges(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return

@@ -484,6 +484,12 @@ func Test_GetStatus(t *testing.T) {
 				askedTables = append(askedTables, ids)
 				return missingTables, tablesErr
 			}).AnyTimes()
+		// The structure of the tables read; none unless a test sets some, which compares nothing.
+		var structure []*interfaces.VegaTable
+		va.EXPECT().GetTables(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(context.Context, interfaces.VegaAccount, []string) ([]*interfaces.VegaTable, error) {
+				return structure, nil
+			}).AnyTimes()
 		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls, ra: ra, rqa: rqa, va: va}
 		ctx := context.Background()
 		action := func(s *interfaces.ProjectStatus, name string) *interfaces.ProjectStatusNextAction {
@@ -793,6 +799,50 @@ func Test_GetStatus(t *testing.T) {
 			})
 			// An action refused already keeps its reason.
 			So(action(s, interfaces.ACTION_CONFIRM_DRAFT).Reason, ShouldEqual, interfaces.BLOCKER_DEFINITIONS_EXIST)
+		})
+
+		Convey("Columns changed since drafting mark the project stale and offer the owner to draft them\n", func() {
+			d := syncedDraft()
+			customers := customersTable()
+			customers.Columns[1].Type = "text"
+			structure = []*interfaces.VegaTable{customers, ordersTable(), customerTagsTable()}
+			other := interfaces.AccountInfo{ID: "u2", Type: "user"}
+			for _, who := range []interfaces.AccountInfo{caller, other} {
+				own := pmock.NewMockVegaAccess(ctrl)
+				own.EXPECT().MissingCatalogs(gomock.Any(), who, gomock.Any()).Return(nil, nil)
+				own.EXPECT().MissingTables(gomock.Any(), who, gomock.Any()).Return(nil, nil)
+				own.EXPECT().GetTables(gomock.Any(), who, []string{"t_customers", "t_orders", "t_customer_tags"}).Return(structure, nil)
+				svc.va = own
+				ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", who).Return(project, false, nil)
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+				ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+				ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(&interfaces.DefinitionsPreflight{}, nil).AnyTimes()
+
+				s, err := svc.GetStatus(ctx, token, "p1", who)
+
+				So(err, ShouldBeNil)
+				So(s.Stale, ShouldContain, interfaces.STALE_SOURCE_CHANGED)
+				a := action(s, interfaces.ACTION_DRAFT_SOURCE_CHANGES)
+				So(a.Path, ShouldEqual, "/projects/p1/source-changes:draft")
+				So(a.Body["signature"], ShouldEqual, sourceSignature(d, readOf(nil, structure...)))
+				So(a.Allowed, ShouldEqual, who == caller)
+			}
+		})
+
+		Convey("Tables as drafted mark nothing\n", func() {
+			structure = []*interfaces.VegaTable{customersTable(), ordersTable(), customerTagsTable()}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(syncedDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stale, ShouldNotContain, interfaces.STALE_SOURCE_CHANGED)
+			So(action(s, interfaces.ACTION_DRAFT_SOURCE_CHANGES), ShouldBeNil)
 		})
 
 		Convey("A draft that failed binds nothing, whatever items it kept\n", func() {

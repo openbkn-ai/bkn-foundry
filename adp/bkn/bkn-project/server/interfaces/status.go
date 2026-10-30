@@ -64,6 +64,8 @@ const (
 const (
 	STALE_CONFIRMATION_OUTDATED = "confirmation_outdated"
 	STALE_CHECK_OUTDATED        = "check_outdated"
+	// STALE_SOURCE_CHANGED: a table the draft binds has columns added, removed or retyped since.
+	STALE_SOURCE_CHANGED = "source_changed"
 )
 
 // What can be done next.
@@ -83,6 +85,8 @@ const (
 	ACTION_REVIEW_RELEASE = "review_release"
 	// ACTION_SWITCH_CONSUMERS switches consumers to the release that published the project.
 	ACTION_SWITCH_CONSUMERS = "switch_consumers"
+	// ACTION_DRAFT_SOURCE_CHANGES drafts the source changes of the tables the draft binds.
+	ACTION_DRAFT_SOURCE_CHANGES = "draft_source_changes"
 )
 
 // What sending an action accepts on the caller's behalf.

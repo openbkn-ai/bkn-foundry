@@ -95,6 +95,7 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 	if status.Stage != interfaces.PROJECT_STAGE_DRAFTING {
 		status.DataSources = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
 		withDataSources(status, entry.Project, caller)
+		s.withSourceChanges(ctx, status, entry.Project, draft, caller)
 	}
 	span.SetStatus(codes.Ok, "")
 	return status, nil
@@ -612,4 +613,43 @@ func (s *draftService) withRequirement(ctx context.Context, projectID string, dr
 		}
 	}
 	return nil
+}
+
+// withSourceChanges marks the project stale when a table its draft binds has columns added, removed
+// or retyped since drafting, and offers the owner to draft them. Tables gone are data_sources'; vega
+// not answering marks nothing.
+func (s *draftService) withSourceChanges(ctx context.Context, status *interfaces.ProjectStatus,
+	project *interfaces.Project, draft *interfaces.Draft, caller interfaces.AccountInfo) {
+	if status.Stage == interfaces.PROJECT_STAGE_ARCHIVED || status.DataSources == nil ||
+		status.DataSources.Tables.State != interfaces.DATA_SOURCE_OK {
+		return
+	}
+	ids := draftSourceIDs(draft)
+	if len(ids) == 0 {
+		return
+	}
+	tables, err := s.va.GetTables(ctx, caller, ids)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read table structure of project %s: %v", project.ID, err))
+		return
+	}
+	read := &sourceTables{tables: map[string]*interfaces.VegaTable{}, missing: map[string]bool{}}
+	for _, t := range tables {
+		read.tables[t.ID] = t
+	}
+	changes := draftSourceChanges(draft, read, s.setting.PrivacyKeywords)
+	if changes.State != interfaces.SOURCE_CHANGES_CHANGED {
+		return
+	}
+	status.Stale = append(status.Stale, interfaces.STALE_SOURCE_CHANGED)
+	action := interfaces.ProjectStatusNextAction{
+		Action: interfaces.ACTION_DRAFT_SOURCE_CHANGES, Method: http.MethodPost,
+		Path: "/projects/" + project.ID + "/source-changes:draft", Body: map[string]any{"signature": changes.Signature},
+		Allowed: caller.ID == project.Owner.ID,
+	}
+	if !action.Allowed {
+		action.Reason = interfaces.ACTION_REASON_NOT_OWNER
+	}
+	status.NextActions = append(status.NextActions, action)
+	status.Links["source_changes"] = "/projects/" + project.ID + "/source-changes"
 }
