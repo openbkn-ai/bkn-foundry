@@ -114,6 +114,8 @@ func Test_RegressionService(t *testing.T) {
 				regQuestion("q2", knowledge, regNeed(ot, "customer"), regNeed(ot, "part")),
 				regQuestion("q3", knowledge),
 				regQuestion("q4", interfaces.REQUIREMENT_LAYER_CAPABILITY, regNeed(ot, "part")),
+				// What joins its object types in the draft counts as needed too.
+				withPath(regQuestion("q5", knowledge, regNeed(ot, "supplier")), regNeed(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_part")),
 			), nil)
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(files, nil)
@@ -142,6 +144,8 @@ func Test_RegressionService(t *testing.T) {
 				{ID: "q1", Text: "Text of q1", Needs: []interfaces.RequirementItemRef{regNeed(ot, "supplier")}},
 				{ID: "q2", Text: "Text of q2", Needs: []interfaces.RequirementItemRef{regNeed(ot, "customer"), regNeed(ot, "part")}},
 				{ID: "q3", Text: "Text of q3", Needs: []interfaces.RequirementItemRef{}},
+				{ID: "q5", Text: "Text of q5", Needs: []interfaces.RequirementItemRef{regNeed(ot, "supplier"),
+					regNeed(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_part")}},
 			})
 			// The question that lacks what it needs is not asked.
 			So(asked, ShouldHaveLength, 2)
@@ -159,6 +163,8 @@ func Test_RegressionService(t *testing.T) {
 					Missing: []interfaces.ReleaseItem{{Kind: ot, ID: "customer", Name: "Customer account"}}},
 				// The answer is kept as it came, blank too.
 				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_NO_ANSWER, Answer: "  "},
+				{QuestionID: "q5", Outcome: interfaces.REGRESSION_OUTCOME_MISSING,
+					Missing: []interfaces.ReleaseItem{{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_part", Name: "supplier_part"}}},
 			})
 		})
 
@@ -643,4 +649,10 @@ func Test_RegressionService(t *testing.T) {
 			So(svc.FailInterrupted(ctx), ShouldBeNil)
 		})
 	})
+}
+
+// withPath gives a scenario question the path that joins what it needs in the draft.
+func withPath(q interfaces.ScenarioQuestion, path ...interfaces.RequirementItemRef) interfaces.ScenarioQuestion {
+	q.Path = path
+	return q
 }
