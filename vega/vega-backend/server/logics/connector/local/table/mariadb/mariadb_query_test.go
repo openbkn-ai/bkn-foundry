@@ -751,6 +751,22 @@ func TestMariaDBConnectorBuildTypedSelectBuilder(t *testing.T) {
 }
 
 func TestToSql(t *testing.T) {
+	t.Run("standalone boolean grouping and ordering retain constant semantics", func(t *testing.T) {
+		for _, value := range []string{"TRUE", "FALSE"} {
+			query, err := compiler.ParseSQL("SELECT COUNT(*) AS n FROM {{r}} GROUP BY " + value + " ORDER BY " + value)
+			require.NoError(t, err)
+			query.FromPart.(*sb.Table).SourceIdentifier = "`t`"
+			text, args, err := ToSql(query)
+			require.NoError(t, err)
+			assert.Equal(t, "SELECT COUNT(*) AS `n` FROM `t` GROUP BY CAST("+value+" AS SIGNED) ORDER BY CAST("+value+" AS SIGNED) ASC", text)
+			assert.Empty(t, args)
+		}
+		query := sb.Select(&sb.Literal{Value: true}).GroupBy(&sb.Param{Value: false}).OrderBy(sb.Order{Expr: &sb.Param{Value: true}})
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT TRUE GROUP BY ? ORDER BY ? ASC", text)
+		assert.Equal(t, []any{false, true}, args)
+	})
 	t.Run("SQL constants preserve repeated grouping expressions", func(t *testing.T) {
 		for _, expression := range []string{
 			"a = '1'", "a * 2", "COALESCE(a, 'none')",
@@ -1007,6 +1023,8 @@ func TestOrderToSql(t *testing.T) {
 	}{
 		{"default asc", sb.Order{Expr: &sb.Column{Name: "id"}}, "`id` ASC", nil},
 		{"default desc", sb.Order{Expr: &sb.Column{Name: "id"}, Descending: true}, "`id` DESC", nil},
+		{"boolean true", sb.Order{Expr: &sb.Literal{Value: true}}, "CAST(TRUE AS SIGNED) ASC", nil},
+		{"boolean false with null ordering", sb.Order{Expr: &sb.Literal{Value: false}, Descending: true, Nulls: sb.NullsFirst}, "(FALSE IS NULL) DESC, CAST(FALSE AS SIGNED) DESC", nil},
 		{"null first", sb.Order{Expr: &sb.Param{Value: 9}, Descending: true, Nulls: sb.NullsFirst}, "(? IS NULL) DESC, ? DESC", []any{9, 9}},
 		{"null last", sb.Order{Expr: &sb.Param{Value: 9}, Nulls: sb.NullsLast}, "(? IS NULL) ASC, ? ASC", []any{9, 9}},
 	} {

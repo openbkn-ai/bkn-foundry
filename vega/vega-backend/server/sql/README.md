@@ -32,6 +32,8 @@ MySQL/MariaDB 的含反斜杠或 NUL 的字符串使用普通字符串片段与 
 
 PostgreSQL 对 GROUP BY/ORDER BY 中独立的字符串、布尔值和 NULL 常量使用显式类型 CAST，避免按 SQL92 位置语法解析而报 `non-integer constant`；这不增加 args，也不删除常量分组，空数据集仍保留原本的分组语义。整数字面量位置引用继续保留。
 
+MySQL/MariaDB 对 GROUP BY/ORDER BY 中独立的布尔常量使用 `CAST(TRUE/FALSE AS SIGNED)`，避免 MariaDB 将 TRUE/FALSE 作为位置序号 1/0；投影及条件中的布尔常量仍按原方式序列化，显式整数位置引用和 Param 绑定保持不变。
+
 Oracle 仅内联不超过 STANDARD 4000 字节上限的 ASCII 字符串。非 ASCII 或超长字符串回退为原有字符串命名绑定：生成器不知道实际数据库字符集，而驱动在发送 SQL 前会再次编码，某些字符可能被转换成引号，因此不能只在 UTF-8 文本上转义后就内联。不额外查询或修改源端配置；LIKE 转义字符保留原先仅支持 ASCII 的边界。重复分组表达式（包括独立的回退字符串常量）复用同一绑定，避免重新引入 SELECT/GROUP BY/HAVING/ORDER BY 不匹配问题。该回退只改变源端表示，Builder 节点仍是 `Literal`，结构化业务值始终保持 `Param`。绑定值的源端类型、编码和长度限制仍适用。
 
 测试必须同时验证：可内联的解析常量不进入 args，长度或编码安全回退保留值及绑定复用，结构化业务值在格式翻译后仍按正确顺序绑定；覆盖重复分组、未投影分组键、HAVING/ORDER BY、嵌套查询、精确数值、字符串转义及驱动字符集编码。生成器测试不能替代目标数据库的实库验收。

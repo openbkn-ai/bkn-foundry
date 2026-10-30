@@ -581,7 +581,7 @@ func ToSql(q *sb.SelectBuilder) (string, []any, error) {
 					continue
 				}
 			}
-			b.writePart(group)
+			b.writeSortGroupExpression(group)
 		}
 	}
 	if len(q.HavingPart) != 0 {
@@ -705,9 +705,20 @@ func orderSql(o sb.Order) (string, []any, error) {
 			b.writeString(" ASC, ")
 		}
 	}
-	b.writePart(o.Expr)
+	b.writeSortGroupExpression(o.Expr)
 	b.writeString(direction)
 	return b.result()
+}
+
+// writeSortGroupExpression 防止 MariaDB 将独立布尔字面量按整数位置序号解析。
+func (b *sqlBuffer) writeSortGroupExpression(expr sb.SqlNode) {
+	if literal, ok := expr.(*sb.Literal); ok && literal != nil {
+		if _, boolean := literal.Value.(bool); boolean {
+			b.writePart(&sb.Cast{Expr: literal, Type: sb.CastInteger})
+			return
+		}
+	}
+	b.writePart(expr)
 }
 
 func quoteIdentifier(name string) (string, error) {
