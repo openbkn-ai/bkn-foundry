@@ -441,8 +441,10 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			reject(rejectedQuestion, q.Text, reason)
 			continue
 		}
+		// A question that rests on a metric, function or skill needs more than the ontology and its
+		// facts, whatever layer the Agent gave it: it is not asked in the knowledge regression.
 		layer := interfaces.REQUIREMENT_LAYER_CAPABILITY
-		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE {
+		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE && len(q.Metrics)+len(q.Functions)+len(q.Skills) == 0 {
 			layer = interfaces.REQUIREMENT_LAYER_KNOWLEDGE
 		}
 		question := &interfaces.RequirementQuestion{

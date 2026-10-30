@@ -183,6 +183,10 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "a", Layer: "knowledge", SupplementReason: "r"},
 				{Text: "b", Layer: "capability", SupplementReason: "r"},
 				{Text: "c", Layer: "whatever", SupplementReason: "r"},
+				// Said knowledge, but resting on a metric, a function or a skill: more than the ontology.
+				{Text: "d", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"amount over threshold"}},
+				{Text: "e", Layer: "knowledge", SupplementReason: "r", Functions: []string{"approval check"}},
+				{Text: "f", Layer: "knowledge", SupplementReason: "r", Skills: []string{"approver lookup"}},
 			}}
 
 			spec, _ := buildSpec(out, docs, draft)
@@ -190,6 +194,9 @@ func Test_BuildSpec(t *testing.T) {
 			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
 			So(spec.Questions[1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
 			So(spec.Questions[2].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+			for _, q := range spec.Questions[3:] {
+				So(q.Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+			}
 		})
 
 		Convey("A conflict keeps the sides found, needs two documents, and gets the authority's suggestion\n", func() {
