@@ -42,6 +42,18 @@ const maxInputRunes = 120000
 // thousands. The specification counts those left out, so the owner sees it.
 const maxMessageTables = 500
 
+// maxMessageProperties bounds the properties named of one object type, its keys and times first:
+// inputs name those, and a wide table would make the message long for little.
+const maxMessageProperties = 50
+
+// maxSpecScenarios and maxSpecConcepts bound what a specification keeps, the first ones the Agent
+// gives: its answer is one JSON document, and the longer it is, the likelier a model writes it
+// wrong or runs out of time. The prompt states the same bounds.
+const (
+	maxSpecScenarios = 10
+	maxSpecConcepts  = 40
+)
+
 // agentDeadline is how long drafting waits for the Agent: its own time limit, with a minute for
 // bkn-agent to record the outcome. pollInterval is how often it asks.
 const (
@@ -73,6 +85,8 @@ const (
 	rejectedConflict      = "conflict"
 	rejectedChoice        = "choice"
 	rejectedTooFewOptions = "too_few_options"
+	// rejectedTooMany is an item past the most a specification keeps of its kind.
+	rejectedTooMany = "too_many"
 	// rejectedBasisNotInDocuments is a skill a question rests on that no document names.
 	rejectedBasisNotInDocuments = "basis_not_in_documents"
 	// rejectedFunctionOnFilter is a function a question its own type calls a filter rests on alone.
@@ -313,6 +327,8 @@ type messageObjectType struct {
 	Aliases     []string          `json:"aliases,omitempty"`
 	PrimaryKeys []string          `json:"primary_keys,omitempty"`
 	Properties  []messageProperty `json:"properties"`
+	// PropertiesOmitted counts its properties past maxMessageProperties.
+	PropertiesOmitted int `json:"properties_omitted,omitempty"`
 }
 
 type messageRelationType struct {
@@ -342,9 +358,10 @@ func questionNotes(q *interfaces.RequirementQuestion) []string {
 	return notes
 }
 
-// buildDraftMessage also returns how many tables it left out.
+// buildDraftMessage also returns how many tables, and how many properties of object types, it left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
-	draft *interfaces.Draft) (string, int, error) {
+	draft *interfaces.Draft) (string, int, int, error) {
+	propertiesOmitted := 0
 	msg := draftMessage{
 		Documents: []messageDocument{}, Tables: []messageTable{},
 		ObjectTypes: []messageObjectType{}, RelationTypes: []messageRelationType{},
@@ -367,9 +384,27 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 		for _, ot := range draft.Items.ObjectTypes {
 			mot := messageObjectType{ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases, PrimaryKeys: ot.PrimaryKeys,
 				Properties: []messageProperty{}}
-			for _, p := range ot.Properties {
-				mot.Properties = append(mot.Properties, messageProperty{Name: p.Name, DisplayName: p.DisplayName, Type: p.Type})
+			// Keys name a record and times a moment, as inputs do: they go first.
+			rank := func(p *interfaces.DraftProperty) int {
+				switch {
+				case slices.Contains(ot.PrimaryKeys, p.Name):
+					return 0
+				case timeTypes[p.Type]:
+					return 1
+				}
+				return 2
 			}
+			props := slices.Clone(ot.Properties)
+			slices.SortStableFunc(props, func(a, b *interfaces.DraftProperty) int { return rank(a) - rank(b) })
+			for _, p := range props[:min(len(props), maxMessageProperties)] {
+				mp := messageProperty{Name: p.Name, Type: p.Type}
+				if p.DisplayName != p.Name {
+					mp.DisplayName = p.DisplayName
+				}
+				mot.Properties = append(mot.Properties, mp)
+			}
+			mot.PropertiesOmitted = len(props) - len(mot.Properties)
+			propertiesOmitted += mot.PropertiesOmitted
 			msg.ObjectTypes = append(msg.ObjectTypes, mot)
 		}
 		for _, rt := range draft.Items.RelationTypes {
@@ -379,9 +414,9 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
-	return "pass draft\nlanguage: " + language + "\n" + string(body), len(tables) - len(msg.Tables), nil
+	return "pass draft\nlanguage: " + language + "\n" + string(body), len(tables) - len(msg.Tables), propertiesOmitted, nil
 }
 
 // citationsOf turns the Agent's citations into the specification's, still to be located.
@@ -479,6 +514,9 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	scenarioIDs := map[string]string{}
 	for _, s := range out.Scenarios {
 		citations, reason := basisOf(s.Citations, s.SupplementReason, docs, true)
+		if reason == "" && len(spec.Scenarios) == maxSpecScenarios {
+			reason = rejectedTooMany
+		}
 		if reason != "" {
 			reject(rejectedScenario, s.Name, reason)
 			continue
@@ -501,6 +539,9 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	concepts := map[string]*interfaces.RequirementConcept{}
 	for _, c := range out.Concepts {
 		citations, reason := basisOf(c.Citations, c.SupplementReason, docs, true)
+		if reason == "" && len(spec.Concepts) == maxSpecConcepts {
+			reason = rejectedTooMany
+		}
 		if reason != "" {
 			reject(rejectedConcept, c.Term, reason)
 			continue
@@ -826,7 +867,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	if err != nil || !ok {
 		draft = nil
 	}
-	message, omitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft)
+	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return
@@ -866,7 +907,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 
 	byID := documentsByID(docs)
 	spec, types := buildSpec(&out, byID, draft)
-	spec.TablesOmitted = omitted
+	spec.TablesOmitted, spec.PropertiesOmitted = omitted, propertiesOmitted
 	if len(unlisted) > 0 {
 		spec.CatalogsUnlisted = unlisted
 	}

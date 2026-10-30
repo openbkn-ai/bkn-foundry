@@ -383,6 +383,37 @@ func Test_BuildSpec(t *testing.T) {
 				{Kind: rejectedBasis, Text: "status check (a)", Reason: rejectedFunctionOnFilter}})
 		})
 
+		Convey("At most maxSpecScenarios scenarios and maxSpecConcepts concepts are kept, the first; the rest are rejected\n", func() {
+			out := &draftOutput{}
+			for i := range maxSpecScenarios + 1 {
+				out.Scenarios = append(out.Scenarios, agentScenario{Name: fmt.Sprintf("s%d", i), SupplementReason: "r"})
+			}
+			// One that does not stand takes no place.
+			out.Concepts = append(out.Concepts, agentConcept{Term: "unquoted"})
+			for i := range maxSpecConcepts + 2 {
+				out.Concepts = append(out.Concepts, agentConcept{Term: fmt.Sprintf("t%d", i), SupplementReason: "r"})
+			}
+			// Past the bound, one that would not stand anyway says why.
+			out.Concepts = append(out.Concepts, agentConcept{Term: "late unquoted"})
+
+			spec, _ := buildSpec(out, docs, draft)
+
+			So(spec.Scenarios, ShouldHaveLength, maxSpecScenarios)
+			So(spec.Concepts, ShouldHaveLength, maxSpecConcepts)
+			So(spec.Concepts[0].Term, ShouldEqual, "t0")
+			reasons := map[string]string{}
+			for _, r := range spec.Rejected {
+				reasons[r.Kind+" "+r.Text] = r.Reason
+			}
+			So(reasons, ShouldResemble, map[string]string{
+				"concept unquoted":                            rejectedQuoteNotFound,
+				"concept late unquoted":                       rejectedQuoteNotFound,
+				fmt.Sprintf("scenario s%d", maxSpecScenarios): rejectedTooMany,
+				fmt.Sprintf("concept t%d", maxSpecConcepts):   rejectedTooMany,
+				fmt.Sprintf("concept t%d", maxSpecConcepts+1): rejectedTooMany,
+			})
+		})
+
 		Convey("A conflict keeps the sides found, needs two documents, and gets the authority's suggestion\n", func() {
 			out := &draftOutput{Conflicts: []agentConflict{
 				{Topic: "Email confirmation", Kind: conflictRule, Sides: []agentConflictSide{
@@ -457,7 +488,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				tables[i] = &interfaces.VegaTable{Name: fmt.Sprintf("t%d", i)}
 			}
 
-			message, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil)
+			message, omitted, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil)
 
 			So(err, ShouldBeNil)
 			So(omitted, ShouldEqual, 5)
@@ -473,7 +504,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				Properties: []*interfaces.DraftProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}},
 			}}}}
 
-			message, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft)
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -482,6 +513,30 @@ func Test_BuildDraftMessage(t *testing.T) {
 			So(body.ObjectTypes[0].PrimaryKeys, ShouldResemble, []string{"code"})
 			So(body.ObjectTypes[0].Properties, ShouldResemble,
 				[]messageProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}})
+		})
+
+		Convey("At most maxMessageProperties properties of an object type go, its keys and times first, and the rest are counted\n", func() {
+			props := []*interfaces.DraftProperty{}
+			for i := range maxMessageProperties + 3 {
+				props = append(props, &interfaces.DraftProperty{Name: fmt.Sprintf("p%d", i), DisplayName: fmt.Sprintf("p%d", i), Type: "string"})
+			}
+			props = append(props, &interfaces.DraftProperty{Name: "made", Type: "datetime"}, &interfaces.DraftProperty{Name: "id", Type: "string"})
+			draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{
+				{ID: "ot1", Name: "Item", PrimaryKeys: []string{"id"}, Properties: props}}}}
+
+			message, _, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft)
+
+			So(err, ShouldBeNil)
+			So(omitted, ShouldEqual, 5)
+			var body draftMessage
+			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
+			sent := body.ObjectTypes[0].Properties
+			So(sent, ShouldHaveLength, maxMessageProperties)
+			So(sent[0], ShouldResemble, messageProperty{Name: "id", Type: "string"})
+			So(sent[1], ShouldResemble, messageProperty{Name: "made", Type: "datetime"})
+			// A display name the same as the name says nothing more.
+			So(sent[2], ShouldResemble, messageProperty{Name: "p0", Type: "string"})
+			So(body.ObjectTypes[0].PropertiesOmitted, ShouldEqual, 5)
 		})
 	})
 }
@@ -644,6 +699,25 @@ func Test_RequirementDrafting(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 			So(finished.Spec.TablesOmitted, ShouldEqual, 3)
+		})
+
+		Convey("Properties beyond what one drafting names of an object type are counted in the specification\n", func() {
+			expectStart()
+			va.EXPECT().ListTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil).Times(2)
+			wide := testDraft()
+			for i := range maxMessageProperties + 2 {
+				wide.Items.ObjectTypes[0].Properties = append(wide.Items.ObjectTypes[0].Properties,
+					&interfaces.DraftProperty{Name: fmt.Sprintf("p%d", i), Type: "string"})
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(wide, true, nil)
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{}`}, nil)
+			expectFinish()
+
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(finished.Spec.PropertiesOmitted, ShouldEqual, 2)
 		})
 
 		Convey("Each way the Agent fails is recorded as its code, with an empty specification\n", func() {

@@ -143,6 +143,9 @@ type RequirementSpec struct {
 	// TablesOmitted counts the tables of the project's catalogs drafting did not name to the Agent:
 	// it names at most a set number, the first ones listed. Absent when none was left out.
 	TablesOmitted int `json:"tables_omitted,omitempty"`
+	// PropertiesOmitted counts the properties of drafted object types drafting did not name to the
+	// Agent, past the most it names of one.
+	PropertiesOmitted int `json:"properties_omitted,omitempty"`
 	// CatalogsUnlisted are the project's catalogs whose tables drafting could not list, so none of
 	// their tables went to the Agent. Absent when every catalog was listed.
 	CatalogsUnlisted []string `json:"catalogs_unlisted,omitempty"`

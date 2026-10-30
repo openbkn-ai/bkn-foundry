@@ -2432,6 +2432,7 @@ def test_requirements_v6_upgrade_matches_fresh_install_and_keeps_history(start):
                      "its concept is theirs, never a concept of the moment itself",
                      "naming one never makes a lookup capability",
                      "not judge: a judge applies a rule's condition",
+                     "in at most 10 scenarios and 40 concepts",
                      "an object type also with its properties (name and type) and primary keys",
                      # pass guidance: the slots are the inputs; the server writes the template and not_exist tests
                      # when it says so, and otherwise the Agent writes a not_exist test.
