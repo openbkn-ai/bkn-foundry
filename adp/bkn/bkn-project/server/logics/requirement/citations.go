@@ -115,31 +115,21 @@ func exampleCitation(value string, docs map[string]*interfaces.RequirementDocume
 
 // standsWhole says value stands in text not as part of a longer code or word written in ASCII.
 func standsWhole(text string, value string) bool {
-	return len(wholeAt(text, value)) > 0
-}
-
-// wholeAt are the byte offsets where value stands in text whole: not continued, on either side,
-// by an ASCII letter, digit, hyphen or underscore when its own edge is one.
-func wholeAt(text string, value string) []int {
 	joins := func(r rune) bool {
 		return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_')
 	}
-	if value == "" {
-		return nil
-	}
 	first, _ := utf8.DecodeRuneInString(value)
 	last, _ := utf8.DecodeLastRuneInString(value)
-	var at []int
 	for from := 0; ; {
 		i := strings.Index(text[from:], value)
 		if i < 0 {
-			return at
+			return false
 		}
 		i += from
 		before, _ := utf8.DecodeLastRuneInString(text[:i])
 		after, _ := utf8.DecodeRuneInString(text[i+len(value):])
 		if !(i > 0 && joins(first) && joins(before)) && !(i+len(value) < len(text) && joins(last) && joins(after)) {
-			at = append(at, i)
+			return true
 		}
 		from = i + 1
 	}

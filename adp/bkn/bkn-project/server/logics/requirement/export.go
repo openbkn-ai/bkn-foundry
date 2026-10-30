@@ -152,6 +152,13 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 			continue
 		}
 		eq := evalQuestion{ID: q.ID, Question: q.Template, AnswerShape: q.AnswerShape}
+		// The template with each input written as its concept and property.
+		named := q.Template
+		if q.Inputs != nil {
+			for _, in := range *q.Inputs {
+				named = strings.ReplaceAll(named, "{"+in.Name+"}", "{"+terms[in.ConceptID]+"."+in.Property+"}")
+			}
+		}
 		if q.Inputs != nil {
 			for _, in := range *q.Inputs {
 				eq.Inputs = append(eq.Inputs, exportInput{Name: in.Name, Concept: terms[in.ConceptID],
@@ -160,7 +167,12 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 		}
 		if g, ok := byQuestion[q.ID]; ok && g.Status == interfaces.GUIDANCE_STATUS_READY && guidanceCurrent(req, q, g) {
 			for _, t := range g.Tests {
-				eq.Tests = append(eq.Tests, exportTest{Kind: t.Kind, Question: withoutValues(t, terms), Expect: t.Expect})
+				asked := withoutValues(t, terms)
+				if t.ByServer && named != "" {
+					// The server wrote it from the template: asked as the template is.
+					asked = named
+				}
+				eq.Tests = append(eq.Tests, exportTest{Kind: t.Kind, Question: asked, Expect: t.Expect})
 			}
 		}
 		out.Questions = append(out.Questions, eq)
@@ -169,9 +181,8 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 }
 
 // withoutValues is a test's text with each slot, filled in or still to fill, written as the
-// concept and property it is a value of. A value is replaced only where it stands whole, longer
-// values first, and never within a name already written: the text is cut into the spans found and
-// put together once.
+// concept and property it is a value of, wherever the value stands, longer values first and never
+// within a name already written. The text is cut into the spans found and put together once.
 func withoutValues(t *interfaces.QuestionTest, terms map[string]string) string {
 	type span struct {
 		start, end int
@@ -191,39 +202,18 @@ func withoutValues(t *interfaces.QuestionTest, terms map[string]string) string {
 	}
 	name := func(s interfaces.QuestionTestSlot) string { return "{" + terms[s.ConceptID] + "." + s.Property + "}" }
 	for i, s := range t.Slots {
-		p := slotPlaceholder(i)
-		var at []int
-		for from := 0; ; {
-			k := strings.Index(text[from:], p)
-			if k < 0 {
-				break
-			}
-			at = append(at, from+k)
-			from += k + len(p)
-		}
-		mark(p, name(s), at)
+		mark(slotPlaceholder(i), name(s), indexAll(text, slotPlaceholder(i)))
 	}
 	order := make([]int, len(t.Slots))
 	for i := range order {
 		order[i] = i
 	}
 	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(len(t.Slots[b].Value), len(t.Slots[a].Value)) })
+	// Which place the server filled is not known, and a value may be filled in against letters or
+	// digits: every place a value stands goes, so none is exported.
 	for _, i := range order {
 		if v := strings.TrimSpace(t.Slots[i].Value); v != "" {
-			// Where a value never stands whole, it was filled in against letters or digits: every
-			// free place it stands goes, so no value is exported.
-			at := wholeAt(text, v)
-			if len(at) == 0 {
-				for from := 0; ; {
-					k := strings.Index(text[from:], v)
-					if k < 0 {
-						break
-					}
-					at = append(at, from+k)
-					from += k + len(v)
-				}
-			}
-			mark(v, name(t.Slots[i]), at)
+			mark(v, name(t.Slots[i]), indexAll(text, v))
 		}
 	}
 	slices.SortFunc(spans, func(a, b span) int { return cmp.Compare(a.start, b.start) })
@@ -236,6 +226,19 @@ func withoutValues(t *interfaces.QuestionTest, terms map[string]string) string {
 	}
 	b.WriteString(text[last:])
 	return b.String()
+}
+
+// indexAll are the byte offsets where s stands in text, not overlapping.
+func indexAll(text string, s string) []int {
+	var at []int
+	for from := 0; ; {
+		k := strings.Index(text[from:], s)
+		if k < 0 {
+			return at
+		}
+		at = append(at, from+k)
+		from += k + len(s)
+	}
 }
 
 // ExportRequirement writes the project's ready specification for Workshop or bkn-eval as YAML,

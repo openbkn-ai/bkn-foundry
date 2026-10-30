@@ -120,7 +120,7 @@ func Test_BuildExport(t *testing.T) {
 			So(string(body), ShouldNotContainSubstring, "SO-1002")
 		})
 
-		Convey("A value is replaced where it stands whole, and never inside a name already written\n", func() {
+		Convey("No value of a test stays: whole places first, then any place it stands, never inside a name written\n", func() {
 			slot := func(concept, property, value string) interfaces.QuestionTestSlot {
 				return interfaces.QuestionTestSlot{ConceptID: concept, Property: property, Value: value}
 			}
@@ -129,16 +129,19 @@ func Test_BuildExport(t *testing.T) {
 				slots []interfaces.QuestionTestSlot
 				want  string
 			}{
-				// 1 stands whole once; the 1 of 10 is part of another number.
+				// The 1 of 10 goes too: which place the server filled is not known, and no value may stay.
 				{"Orders of customer 1 in the last 10 days?", []interfaces.QuestionTestSlot{slot("c2", "id", "1")},
-					"Orders of customer {Customer.id} in the last 10 days?"},
+					"Orders of customer {Customer.id} in the last {Customer.id}0 days?"},
 				// A short value is no part of a word, nor of a name an earlier slot wrote.
 				{"Is A the id of order SO-1?", []interfaces.QuestionTestSlot{slot("c1", "order_no", "SO-1"), slot("c2", "id", "id"),
 					slot("c2", "code", "A")}, "Is {Customer.code} the {Customer.id} of order {Order.order_no}?"},
 				// Values written in CJK stand whole without spaces.
 				{"客户张三的订单？", []interfaces.QuestionTestSlot{slot("c2", "name", "张三")}, "客户{Customer.name}的订单？"},
-				// The first 1 is part of 10.
-				{"Order 10 of customer 1?", []interfaces.QuestionTestSlot{slot("c2", "id", "1")}, "Order 10 of customer {Customer.id}?"},
+				// A value both whole and against letters: every place goes.
+				{"客户ID3最近 3 笔订单？", []interfaces.QuestionTestSlot{slot("c2", "id", "3")}, "客户ID{Customer.id}最近 {Customer.id} 笔订单？"},
+				// Two slots with one value: no place keeps it.
+				{"订单 1 属于客户ID1？", []interfaces.QuestionTestSlot{slot("c1", "order_no", "1"), slot("c2", "id", "1")},
+					"订单 {Order.order_no} 属于客户ID{Order.order_no}？"},
 				// One value inside another: the longer is replaced first, and the shorter only where it stands apart.
 				{"客户张三丰和张三？", []interfaces.QuestionTestSlot{slot("c2", "name", "张三"), slot("c2", "alias", "张三丰")},
 					"客户{Customer.alias}和{Customer.name}？"},
@@ -151,6 +154,19 @@ func Test_BuildExport(t *testing.T) {
 				So(withoutValues(&interfaces.QuestionTest{Text: c.text, Slots: c.slots}, map[string]string{"c1": "Order", "c2": "Customer"}),
 					ShouldEqual, c.want)
 			}
+		})
+
+		Convey("The server's tests are asked as the template is, each input its concept and property\n", func() {
+			req.Spec.Questions[0].Template = "客户ID{order}最近 3 笔订单？"
+			guidance := exportGuidance()
+			guidance[0].Tests = []*interfaces.QuestionTest{{ID: "t1", Kind: interfaces.TEST_KIND_TEMPLATE, ByServer: true,
+				Text: "客户ID3最近 3 笔订单？", Expect: interfaces.TEST_EXPECT_EXISTS,
+				Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "order_no", Value: "3"}}}}
+			body, err := buildExport(exportTargetEval, req, guidance)
+			So(err, ShouldBeNil)
+			var got evalExport
+			So(yaml.Unmarshal(body, &got), ShouldBeNil)
+			So(got.Questions[0].Tests[0].Question, ShouldEqual, "客户ID{Order.order_no}最近 3 笔订单？")
 		})
 
 		Convey("Guidance not ready, or of another version or older than the specification, is not exported\n", func() {
