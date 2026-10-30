@@ -533,10 +533,11 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 				spec.Concepts = slices.Delete(spec.Concepts, i, i+1)
 				for _, q := range spec.Questions {
 					q.Basis.ConceptIDs = slices.DeleteFunc(q.Basis.ConceptIDs, func(id string) bool { return id == itemID })
-					if q.Inputs != nil {
-						inputs := slices.DeleteFunc(slices.Clone(*q.Inputs),
-							func(in interfaces.RequirementInput) bool { return in.ConceptID == itemID })
-						q.Inputs = &inputs
+					// A question that loses an input is no longer known to be asked about
+					// only the rest: its inputs are unknown until drafted again or set.
+					if q.Inputs != nil && slices.ContainsFunc(*q.Inputs,
+						func(in interfaces.RequirementInput) bool { return in.ConceptID == itemID }) {
+						q.Inputs = nil
 					}
 				}
 				followConcepts(spec)

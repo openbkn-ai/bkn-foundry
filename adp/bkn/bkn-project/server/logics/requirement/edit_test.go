@@ -452,14 +452,20 @@ func Test_QuestionInputEdits(t *testing.T) {
 			So(*saved.Spec.Questions[0].Inputs, ShouldBeEmpty)
 		})
 
-		Convey("Deleting a concept takes it out of the inputs\n", func() {
+		Convey("Deleting a concept leaves a question that loses an input to it with inputs unknown\n", func() {
 			expectRead()
 			expectSave()
 			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS, "c1", 7, caller)
 			So(err, ShouldBeNil)
-			So(saved.Spec.Questions[0].Inputs, ShouldNotBeNil)
-			So(*saved.Spec.Questions[0].Inputs, ShouldBeEmpty)
+			So(saved.Spec.Questions[0].Inputs, ShouldBeNil)
 			So(saved.Spec.Questions[1].Inputs, ShouldBeNil)
+
+			// A question whose inputs are of other concepts keeps them.
+			expectRead()
+			expectSave()
+			_, err = svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS, "c2", 7, caller)
+			So(err, ShouldBeNil)
+			So(*saved.Spec.Questions[0].Inputs, ShouldHaveLength, 1)
 		})
 
 		Convey("Inputs that would not stand are refused, naming the input\n", func() {

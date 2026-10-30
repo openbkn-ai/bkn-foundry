@@ -5,6 +5,7 @@
 package requirement
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 
@@ -126,12 +127,19 @@ func namesAll(slots []interfaces.QuestionTestSlot, concepts map[string][]string)
 	return true
 }
 
+// slotMarks are the slot placeholders in a test's text; strayName is a {name} left beside them.
+var (
+	slotMarks = regexp.MustCompile(`\{\{slot [0-9]+\}\}`)
+	strayName = regexp.MustCompile(`\{[^{}]*\}`)
+)
+
 // serverTests are the tests a question's template determines, which the server writes rather than
 // the Agent: the template asked of a record in the data, and, when an input is a record, asked of
 // one that does not exist, named by the first record input. Their slots are the inputs, filled
 // from the data when checked. None for a question without inputs, or with one that names no
 // property or is of a concept that maps to no object type (unmapped): the server cannot tell which
-// field holds its value, and the Agent's tests stand.
+// field holds its value, and the Agent's tests stand; nor when the template names a value no input
+// stands for.
 func serverTests(q *interfaces.RequirementQuestion, unmapped map[string]bool) []*interfaces.QuestionTest {
 	if q == nil || q.Inputs == nil || len(*q.Inputs) == 0 ||
 		slices.ContainsFunc(*q.Inputs, func(in interfaces.RequirementInput) bool {
@@ -146,10 +154,18 @@ func serverTests(q *interfaces.RequirementQuestion, unmapped map[string]bool) []
 			text = strings.ReplaceAll(text, "{"+in.Name+"}", slotPlaceholder(i))
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: in.ConceptID, Property: in.Property})
 		}
+		if strayName.MatchString(slotMarks.ReplaceAllString(text, "")) {
+			// A {name} no input stands for, as when drafting rejected it: the test would ask it.
+			return nil
+		}
 		return &interfaces.QuestionTest{Text: text, Kind: kind, Slots: slots, Expect: expect, ByServer: true,
 			Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkPending}}
 	}
-	tests := []*interfaces.QuestionTest{asked(inputs, interfaces.TEST_KIND_TEMPLATE, interfaces.TEST_EXPECT_EXISTS)}
+	template := asked(inputs, interfaces.TEST_KIND_TEMPLATE, interfaces.TEST_EXPECT_EXISTS)
+	if template == nil {
+		return []*interfaces.QuestionTest{}
+	}
+	tests := []*interfaces.QuestionTest{template}
 	if i := slices.IndexFunc(inputs, func(in interfaces.RequirementInput) bool {
 		return in.Role == interfaces.REQUIREMENT_INPUT_RECORD
 	}); i >= 0 {

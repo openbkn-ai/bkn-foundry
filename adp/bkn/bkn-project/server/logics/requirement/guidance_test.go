@@ -254,6 +254,11 @@ func Test_BuildGuidance(t *testing.T) {
 			So(tests[2].ID, ShouldEqual, "t3")
 			So(tests[2].ByServer, ShouldBeFalse)
 
+			// A {name} no input stands for, as when drafting rejected it: the server writes none.
+			stray := &interfaces.RequirementQuestion{Template: "Stock of {item} by {missing}?", Inputs: &[]interfaces.RequirementInput{(*asked.Inputs)[1]}}
+			tests, _ = buildTests(&guidanceOutput{}, nil, stray, nil)
+			So(tests, ShouldBeEmpty)
+
 			// Only a reference time: no record to make absent.
 			onlyTime := &interfaces.RequirementQuestion{Template: "Stock on {as_of}?", Inputs: &[]interfaces.RequirementInput{(*asked.Inputs)[0]}}
 			tests, _ = buildTests(&guidanceOutput{}, nil, onlyTime, nil)

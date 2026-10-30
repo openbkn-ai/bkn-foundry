@@ -175,9 +175,9 @@ func anchorConditions(spec *interfaces.RequirementSpec, draft *interfaces.Draft,
 	return conditions
 }
 
-// checkAnchored checks a test question; a same_record one names the record of anchor when it has
-// one of the same object type: then its slots together must name that one record, so a single
-// other way to name it, or several fields that name it together, are checked.
+// checkAnchored checks a test question; a same_record one with a slot to fill names the record of
+// anchor when it has one of the same object type: then its slots together must name that one
+// record, so a single other way to name it, or several fields that name it together, are checked.
 func (s *requirementService) checkAnchored(ctx context.Context, caller interfaces.AccountInfo,
 	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, t *interfaces.QuestionTest,
 	anchor *interfaces.QuestionTest) interfaces.QuestionTestCheck {
@@ -211,7 +211,11 @@ func (s *requirementService) checkAnchored(ctx context.Context, caller interface
 				return notChecked(checkSameRecordNeedsOneItem)
 			}
 		}
-		anchored = anchorConditions(spec, draft, anchor, fields[0].objectType)
+		// Only a test with a value to fill names the question's record; one whose values all come
+		// from the documents names the record they say, which the sampled anchor need not be.
+		if slices.ContainsFunc(fields, func(f *slotField) bool { return f.value == "" }) {
+			anchored = anchorConditions(spec, draft, anchor, fields[0].objectType)
+		}
 	}
 	if reason := s.fill(ctx, caller, t, fields, func(f *slotField) *relationPath { return pathOf(draft, q, f) },
 		anchored); reason != "" {

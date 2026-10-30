@@ -184,24 +184,40 @@ func Test_CheckTests(t *testing.T) {
 				interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED})
 			So(tt.Text, ShouldEqual, "About Acme Ltd?")
 
+			// A name several records share names no one record.
 			for _, c := range []struct {
 				records, same float64
 				reason        string
 			}{
-				{1, 0, checkDifferentRecords},
 				{2, 0, checkDifferentRecords},
+				{1, 0, checkDifferentRecords},
 				{0, 0, checkRecordNotFound},
 			} {
-				named(c.records, c.same, "Other Co")
-				So(svc.checkAnchored(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", "Other Co")), anchor),
+				sample("SELECT `name` AS v0 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+					map[string]any{"v0": "Acme Ltd"})
+				named(c.records, c.same, "Acme Ltd")
+				So(svc.checkAnchored(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", "")), anchor),
 					ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: c.reason})
 			}
 
-			// Several fields that name it together are one way of naming it.
-			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` = 'Acme Ltd'", float64(1))
-			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` = 'Acme Ltd' AND `cust_id` = '10001'", float64(1))
+			// Several fields that name it together are one way of naming it: a name the documents
+			// give, with the identifier of the question's record beside it.
+			sample("SELECT `cust_id` AS v1 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` = 'Acme Ltd' AND `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v1": "10001"})
+			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd' AND `cust_id` = '10001'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd' AND `cust_id` = '10001' AND `cust_id` = '10001'", float64(1))
 			So(svc.checkAnchored(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD,
-				slot("customer_id", "10001"), slot("full_name", "Acme Ltd")), anchor).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+				slot("full_name", "Acme Ltd"), slot("customer_id", "")), anchor).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+
+			// Values all from the documents name the record they say, not the sampled one: checked
+			// as two ways of naming one record, as without an anchor.
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Beta Co'", float64(1))
+			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9' OR `name` = 'Beta Co'", float64(1))
+			So(svc.checkAnchored(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD,
+				slot("customer_id", "C-9"), slot("full_name", "Beta Co")), anchor).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(svc.checkAnchored(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", "Beta Co")), anchor).Reason,
+				ShouldEqual, checkSameRecordNeedsTwo)
 		})
 
 		Convey("Only a template test the data bore out anchors, and checking the tests passes it on\n", func() {
@@ -212,9 +228,11 @@ func Test_CheckTests(t *testing.T) {
 			agentWritten.ByServer, agentWritten.Check.Outcome = false, interfaces.TEST_CHECK_PASSED
 			So(anchorOf([]*interfaces.QuestionTest{&agentWritten}), ShouldBeNil)
 
-			variant := test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", "Acme Ltd"))
+			variant := test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", ""))
 			variant.ID = "t2"
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			sample("SELECT `name` AS v0 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v0": "Acme Ltd"})
 			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
 			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd' AND `cust_id` = '10001'", float64(1))
 			svc.now = func() int64 { return 0 }
