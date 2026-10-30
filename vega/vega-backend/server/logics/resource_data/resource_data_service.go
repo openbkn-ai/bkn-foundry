@@ -537,14 +537,16 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 			return nil, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails("cursor paging is not implemented for this resource category")
 		}
-		querySource := ""
+		querySource, aggregateInputType := "", ""
 		result, err := querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
 			func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				querySource = resourceQuerySource(resource, pageParams)
+				aggregateInputType = sourceAggregateInputType(resource, pageParams, querySource)
 				return rds.query(pageCtx, resource, pageParams)
 			})
 		if result != nil {
 			result.QuerySource = querySource
+			result.AggregateInputType = aggregateInputType
 		}
 		return result, err
 	}
@@ -565,14 +567,16 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails("cursor paging does not support index aggregation queries")
 			}
-			querySource := ""
+			querySource, aggregateInputType := "", ""
 			result, err := querylogic.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					querySource = resourceQuerySource(resource, pageParams)
+					aggregateInputType = sourceAggregateInputType(resource, pageParams, querySource)
 					return rds.query(pageCtx, resource, pageParams)
 				})
 			if result != nil {
 				result.QuerySource = querySource
+				result.AggregateInputType = aggregateInputType
 			}
 			return result, err
 		}
@@ -584,12 +588,31 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	if err != nil {
 		return nil, err
 	}
+	querySource := resourceQuerySource(resource, params)
 	return &interfaces.ResourceDataQueryResult{
-		Entries:     entries,
-		TotalCount:  total,
-		Paging:      &interfaces.PagingResponse{},
-		QuerySource: resourceQuerySource(resource, params),
+		Entries:            entries,
+		TotalCount:         total,
+		Paging:             &interfaces.PagingResponse{},
+		QuerySource:        querySource,
+		AggregateInputType: sourceAggregateInputType(resource, params, querySource),
 	}, nil
+}
+
+// sourceAggregateInputType reports the physical input type only for source
+// aggregates over a directly mapped numeric table field.
+func sourceAggregateInputType(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams,
+	querySource string) string {
+	if resource == nil || params == nil || params.Aggregation == nil ||
+		resource.Category != interfaces.ResourceCategoryTable || querySource != interfaces.ResourceQuerySourceSource {
+		return ""
+	}
+	for _, property := range resource.SchemaDefinition {
+		if property != nil && property.Name == params.Aggregation.Property &&
+			(property.Type == interfaces.DataType_Integer || property.Type == interfaces.DataType_Decimal) {
+			return property.Type
+		}
+	}
+	return ""
 }
 
 func isIndexAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {

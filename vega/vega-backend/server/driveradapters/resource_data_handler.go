@@ -181,8 +181,8 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 		"query_source": result.QuerySource,
 		"entries":      result.Entries,
 	}
-	if fieldType := sourceAggregateInputType(resource, params, result.QuerySource); fieldType != "" {
-		resultData["aggregate_input_type"] = fieldType
+	if result.AggregateInputType != "" {
+		resultData["aggregate_input_type"] = result.AggregateInputType
 	}
 	if params.NeedTotal || result.NeedTotal {
 		resultData["total_count"] = result.TotalCount
@@ -199,23 +199,6 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 	rest.ReplyOkWithHeaders(c, http.StatusOK, resultData, map[string]string{
 		interfaces.X_REQUEST_TOOK: time.Since(start).String(),
 	})
-}
-
-// sourceAggregateInputType is execution metadata for authorized numeric
-// aggregates. It does not expose the resource schema or an unmapped field.
-func sourceAggregateInputType(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams,
-	querySource string) string {
-	if resource == nil || params == nil || params.Aggregation == nil ||
-		resource.Category != interfaces.ResourceCategoryTable || querySource != interfaces.ResourceQuerySourceSource {
-		return ""
-	}
-	for _, property := range resource.SchemaDefinition {
-		if property != nil && property.Name == params.Aggregation.Property &&
-			(property.Type == interfaces.DataType_Integer || property.Type == interfaces.DataType_Decimal) {
-			return property.Type
-		}
-	}
-	return ""
 }
 
 // createResourceData handles POST /resources/:id/data + Override: POST.
