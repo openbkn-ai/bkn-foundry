@@ -324,7 +324,7 @@ func (c *MariaDBConnector) ConvertFilterConditionEmpty(condition interfaces.Filt
 		return nil, fmt.Errorf("condition is not *filter_condition.EmptyCond")
 	}
 
-	return &sb.Eq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Param{Value: ""}}, nil
+	return &sb.Eq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Literal{Value: ""}}, nil
 }
 
 // ConvertFilterConditionNotEmpty excludes empty strings.
@@ -334,7 +334,7 @@ func (c *MariaDBConnector) ConvertFilterConditionNotEmpty(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.NotEmptyCond")
 	}
 
-	return &sb.NotEq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Param{Value: ""}}, nil
+	return &sb.NotEq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Literal{Value: ""}}, nil
 }
 
 // ConvertFilterConditionPrefix builds a prefix LIKE predicate with escaped input.
@@ -507,7 +507,7 @@ func sqlConditionValue(field *interfaces.Property, value any) (sb.SqlNode, error
 	if _, native := normalized.(time.Time); native {
 		return &sb.Param{Value: normalized}, nil
 	}
-	return &sb.Function{Name: "FROM_UNIXTIME", Args: []sb.SqlNode{&sb.Arithmetic{Left: &sb.Param{Value: normalized}, Op: sb.Divide, Right: &sb.Param{Value: 1000}}}}, nil
+	return &sb.Function{Name: "FROM_UNIXTIME", Args: []sb.SqlNode{&sb.Arithmetic{Left: &sb.Param{Value: normalized}, Op: sb.Divide, Right: &sb.Literal{Value: 1000}}}}, nil
 }
 
 func sqlSetCondition(expr sb.SqlNode, field *interfaces.Property, values []any, negated bool) (sb.SqlNode, error) {
@@ -556,9 +556,9 @@ func sqlCSVCondition(field *interfaces.Property, values []any, negated bool) sb.
 	nodes := make([]sb.SqlNode, 0, len(values))
 	for _, value := range values {
 		found := &sb.Function{Name: "FIND_IN_SET", Args: []sb.SqlNode{&sb.Param{Value: value}, sqlResourceColumn(field)}}
-		var node sb.SqlNode = &sb.Gt{Left: found, Right: &sb.Param{Value: 0}}
+		var node sb.SqlNode = &sb.Gt{Left: found, Right: &sb.Literal{Value: 0}}
 		if negated {
-			node = &sb.Eq{Left: found, Right: &sb.Param{Value: 0}}
+			node = &sb.Eq{Left: found, Right: &sb.Literal{Value: 0}}
 		}
 		nodes = append(nodes, node)
 	}
@@ -572,19 +572,19 @@ func sqlCSVCondition(field *interfaces.Property, values []any, negated bool) sb.
 
 func sqlBooleanCondition(field *interfaces.Property, value bool) (sb.SqlNode, error) {
 	if field.Type == interfaces.DataType_Boolean {
-		return &sb.Eq{Left: sqlResourceColumn(field), Right: &sb.Param{Value: value}}, nil
+		return &sb.Eq{Left: sqlResourceColumn(field), Right: &sb.Literal{Value: value}}, nil
 	}
 	if !isNumericBoolean(field) {
 		return nil, interfaces.NewConditionBuildError("boolean condition requires BOOLEAN or TINYINT(1)")
 	}
 	if value {
-		return &sb.NotEq{Left: sqlResourceColumn(field), Right: &sb.Param{Value: 0}}, nil
+		return &sb.NotEq{Left: sqlResourceColumn(field), Right: &sb.Literal{Value: 0}}, nil
 	}
-	return &sb.Eq{Left: sqlResourceColumn(field), Right: &sb.Param{Value: 0}}, nil
+	return &sb.Eq{Left: sqlResourceColumn(field), Right: &sb.Literal{Value: 0}}, nil
 }
 
 func sqlDateFormat(expr sb.SqlNode, format string) sb.SqlNode {
-	return &sb.Function{Name: "DATE_FORMAT", Args: []sb.SqlNode{expr, &sb.Param{Value: format}}}
+	return &sb.Function{Name: "DATE_FORMAT", Args: []sb.SqlNode{expr, &sb.Literal{Value: format}}}
 }
 
 // isNumericBoolean recognizes integer-mapped TINYINT(1) fields for Boolean predicates.

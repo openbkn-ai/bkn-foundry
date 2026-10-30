@@ -123,7 +123,7 @@ func likeSql(like sb.Like) (string, []any, error) {
 	b.writePart(like.Pattern)
 	if like.Escape != nil {
 		b.writeString(" ESCAPE ")
-		b.writePart(&sb.Param{Value: *like.Escape})
+		b.writePart(&sb.Literal{Value: *like.Escape})
 	}
 	b.writeByte(')')
 	return b.result()
@@ -178,11 +178,11 @@ func functionSql(f sb.Function) (string, []any, error) {
 		if len(f.Args) != 1 || f.Distinct {
 			return "", nil, fmt.Errorf("invalid temporal function precision")
 		}
-		param, ok := f.Args[0].(*sb.Param)
-		if !ok || param == nil {
+		param, ok := sb.ScalarValue(f.Args[0])
+		if !ok {
 			return "", nil, fmt.Errorf("temporal function precision must be an integer literal")
 		}
-		number, ok := param.Value.(json.Number)
+		number, ok := param.(json.Number)
 		if !ok {
 			return "", nil, fmt.Errorf("temporal function precision must be an integer literal")
 		}
@@ -343,4 +343,54 @@ func numericLiteralSQL(number json.Number) (string, []any, error) {
 		return "", nil, fmt.Errorf("numeric literal exceeds the supported DECIMAL range")
 	}
 	return "CAST(? AS DECIMAL(" + strconv.Itoa(precision) + "," + strconv.Itoa(scale) + "))", []any{number}, nil
+}
+
+// literalSQL 按值类型输出常量；字符串不作为 SQL 片段，特殊字节不依赖反斜杠转义模式。
+func literalSQL(value any) (string, []any, error) {
+	switch v := value.(type) {
+	case nil:
+		return "NULL", nil, nil
+	case bool:
+		if v {
+			return "TRUE", nil, nil
+		}
+		return "FALSE", nil, nil
+	case string:
+		if !utf8.ValidString(v) {
+			return "", nil, fmt.Errorf("string literal is not valid UTF-8")
+		}
+		if strings.ContainsAny(v, "\\\x00") {
+			// 普通字符串片段提供连接的 collation；ASCII CHAR 保持字面量的 coercibility。
+			// 不使用字符集引导符或 CAST，避免覆盖连接/字段的排序规则及优先级。
+			var parts []string
+			for start := 0; start < len(v); {
+				end := strings.IndexAny(v[start:], "\\\x00")
+				if end < 0 {
+					parts = append(parts, "'"+strings.ReplaceAll(v[start:], "'", "''")+"'")
+					break
+				}
+				end += start
+				parts = append(parts, "'"+strings.ReplaceAll(v[start:end], "'", "''")+"'")
+				var bytes []string
+				for end < len(v) && (v[end] == '\\' || v[end] == 0) {
+					bytes = append(bytes, strconv.Itoa(int(v[end])))
+					end++
+				}
+				parts = append(parts, "CHAR("+strings.Join(bytes, ",")+" USING ascii)")
+				start = end
+			}
+			return "CONCAT(" + strings.Join(parts, ", ") + ")", nil, nil
+		}
+		return "'" + strings.ReplaceAll(v, "'", "''") + "'", nil, nil
+	default:
+		number, err := sb.LiteralNumber(value)
+		if err != nil {
+			return "", nil, err
+		}
+		text, _, err := numericLiteralSQL(number)
+		if err != nil {
+			return "", nil, err
+		}
+		return strings.Replace(text, "?", string(number), 1), nil, nil
+	}
 }

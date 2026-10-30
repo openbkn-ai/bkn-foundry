@@ -57,6 +57,13 @@ type Column struct {
 	Name      string
 }
 
+// Literal 是 SQL 字面量或生成器固定常量；由目标方言按类型安全序列化。
+// 通常内联；源端长度或编码安全限制可要求回退绑定，并保留重复分组表达式的绑定复用。
+// Value 不接受 SQL 片段；数值使用 json.Number 保留原始精度。
+type Literal struct {
+	Value any
+}
+
 // Param 是单个绑定值，nil 表示 SQL NULL。Value 不作为 SQL 文本解析，
 // 也不将其中的 SqlNode 当作子表达式展开。数值保留输入精度，不统一转为 float64。
 type Param struct {
@@ -199,6 +206,8 @@ type Cast struct {
 func (*Column) sqlNode() {}
 
 func (*Param) sqlNode() {}
+
+func (*Literal) sqlNode() {}
 
 func (*Star) sqlNode() {}
 

@@ -234,8 +234,8 @@ func TestSQLComparisonUsesSessionTimezoneForTimestampWithoutTimezone(t *testing.
 			require.NoError(t, err)
 			sql, args, err := renderFilterSQL(expr)
 			require.NoError(t, err)
-			assert.Equal(t, `("created_at" >= CAST(TO_TIMESTAMP(CAST((CAST(CAST($1 AS BIGINT) AS NUMERIC) / CAST(CAST($2 AS BIGINT) AS NUMERIC)) AS DOUBLE PRECISION)) AS TIMESTAMP))`, sql)
-			assert.Equal(t, []interface{}{int64(1785295334428), 1000}, args)
+			assert.Equal(t, "(\"created_at\" >= CAST(TO_TIMESTAMP(CAST((CAST(CAST($1 AS BIGINT) AS NUMERIC) / CAST(CAST(1000 AS BIGINT) AS NUMERIC)) AS DOUBLE PRECISION)) AS TIMESTAMP))", sql)
+			assert.Equal(t, []any{int64(1785295334428)}, args)
 		})
 	}
 }
@@ -404,8 +404,8 @@ func TestPostgresqlConnectorConvertFilterConditionCurrent(t *testing.T) {
 		cond := mustNewCond(t, "created_at", "current", filter_condition.CurrentDay)
 		sql, args := toSQL(t, c, cond)
 
-		assert.Equal(t, `(DATE_TRUNC($1, "created_at") = DATE_TRUNC($2, TRANSACTION_TIMESTAMP()))`, sql)
-		assert.Equal(t, []any{"day", "day"}, args)
+		assert.Equal(t, "(DATE_TRUNC('day', \"created_at\") = DATE_TRUNC('day', TRANSACTION_TIMESTAMP()))", sql)
+		assert.Equal(t, []any(nil), args)
 	})
 
 	t.Run("returns error for unsupported format", func(t *testing.T) {
