@@ -19,12 +19,14 @@ type scriptedVega struct {
 	responses []*interfaces.DatasetQueryResponse
 	errs      []error
 	history   []interfaces.ResourceDataPagingRequest
+	requests  []interfaces.ResourceDataQueryParams
 }
 
 func (v *scriptedVega) QueryResourceData(_ context.Context, _ string,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 	index := len(v.history)
 	v.history = append(v.history, params.Paging)
+	v.requests = append(v.requests, *params)
 	// Like Vega, a cursor continuation carries the cursor and nothing else.
 	if params.Paging.Cursor != "" && !reflect.DeepEqual(*params,
 		interfaces.ResourceDataQueryParams{Paging: interfaces.ResourceDataPagingRequest{Cursor: params.Paging.Cursor}}) {
@@ -50,17 +52,22 @@ func rowsPage(size int, next string) *interfaces.DatasetQueryResponse {
 	return page
 }
 
-func scanCounting(vega interfaces.VegaBackendAccess, stopAfter int) (int, error) {
-	read := 0
+// scanQuery is the query every scan test reads, so a request that drops or
+// repeats it shows up against Vega's rules.
+func scanQuery() interfaces.ResourceDataQueryParams {
 	ignoreLocalIndex := true
-	params := interfaces.ResourceDataQueryParams{
+	return interfaces.ResourceDataQueryParams{
 		IgnoreLocalIndex: &ignoreLocalIndex,
 		FilterCondition:  map[string]any{"field": "campaign_id", "operation": "in", "value": []any{104}},
 		Sort:             []*interfaces.SortParams{{Field: "campaign_id"}, {Field: "customer_id"}},
 		OutputFields:     []string{"campaign_id", "customer_id"},
 		NeedTotal:        true,
 	}
-	err := ScanResourceData(context.Background(), vega, "resource", params, 2,
+}
+
+func scanCounting(vega interfaces.VegaBackendAccess, stopAfter int) (int, error) {
+	read := 0
+	err := ScanResourceData(context.Background(), vega, "resource", scanQuery(), 2,
 		func(rows []map[string]any) (bool, error) {
 			read += len(rows)
 			return stopAfter <= 0 || read < stopAfter, nil
@@ -88,6 +95,14 @@ func TestScanResourceDataFollowsACursorPastTheFirstPage(t *testing.T) {
 	if vega.history[1].Mode != interfaces.ResourceDataPagingModeCursor || vega.history[1].Offset != 0 ||
 		vega.history[2].Cursor != "c1" || vega.history[3].Cursor != "c2" {
 		t.Fatalf("paging = %#v", vega.history)
+	}
+	// The first page and the cursor open carry the query; continuations do not.
+	for i := 0; i < 2; i++ {
+		got := vega.requests[i]
+		got.Paging = interfaces.ResourceDataPagingRequest{}
+		if !reflect.DeepEqual(got, scanQuery()) {
+			t.Fatalf("request %d = %#v, want the scan query", i, vega.requests[i])
+		}
 	}
 }
 
