@@ -418,10 +418,23 @@ type ScenarioQuestion struct {
 	Text  string               `json:"text"`
 	Layer string               `json:"layer"`
 	Needs []RequirementItemRef `json:"needs"`
+	// Path is what the question rests on in the current draft beyond its needs: the adopted
+	// relation types, and object types between, that join the object types it needs. Derived
+	// whenever it is read, never stored; none for needs a person set.
+	Path []RequirementItemRef `json:"path"`
+	// Unconnected are the pairs of object types it needs that no adopted path of at most two
+	// relations joins: it cannot be answered from the ontology as drafted.
+	Unconnected []ScenarioUnconnected `json:"unconnected"`
 	// MissingItems are the needs the current draft no longer has.
 	MissingItems []RequirementItemRef `json:"missing_items"`
 	// Tests are the test questions whose data check passed.
 	Tests []ScenarioTest `json:"tests"`
+}
+
+// ScenarioUnconnected names two object types a question needs, by id, that nothing joins.
+type ScenarioUnconnected struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 // ScenarioTest is a test question asked in its question's place. Expect is what it expects of the

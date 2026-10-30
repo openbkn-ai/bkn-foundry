@@ -54,10 +54,12 @@ func Test_ScenarioQuestions(t *testing.T) {
 				Questions: []interfaces.ScenarioQuestion{
 					{ID: "q1", Text: "Which orders?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
 						Needs:        []interfaces.RequirementItemRef{ot, rt, gone, wrongKind},
+						Path: []interfaces.RequirementItemRef{}, Unconnected: []interfaces.ScenarioUnconnected{},
 						MissingItems: []interfaces.RequirementItemRef{gone, wrongKind},
 						Tests:        []interfaces.ScenarioTest{}},
 					{ID: "q2", Text: "What rate?", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY,
-						Needs: []interfaces.RequirementItemRef{}, MissingItems: []interfaces.RequirementItemRef{},
+						Needs: []interfaces.RequirementItemRef{}, Path: []interfaces.RequirementItemRef{},
+						Unconnected: []interfaces.ScenarioUnconnected{}, MissingItems: []interfaces.RequirementItemRef{},
 						Tests: []interfaces.ScenarioTest{}},
 				}})
 		})
@@ -102,6 +104,34 @@ func Test_ScenarioQuestions(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(got.Questions[0].Tests, ShouldResemble, []interfaces.ScenarioTest{})
+		})
+
+		Convey("Each question comes with the path it rests on in the draft, and the types nothing joins\n", func() {
+			linked := &interfaces.Requirement{ProjectID: "p1", Version: 2, Status: interfaces.REQUIREMENT_STATUS_READY,
+				Spec: interfaces.RequirementSpec{Questions: []*interfaces.RequirementQuestion{
+					{ID: "q1", Text: "Who supplies it?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+						NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS, Needs: []interfaces.RequirementItemRef{
+							{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}, {Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "order"}}},
+					{ID: "q2", Text: "Which orders?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+						NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS, Needs: []interfaces.RequirementItemRef{
+							{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}, {Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "carrier"}}},
+				}}}
+			d := &interfaces.Draft{Items: interfaces.DraftItems{
+				ObjectTypes: []*interfaces.DraftObjectType{{ID: "customer"}, {ID: "order"}, {ID: "carrier"}},
+				RelationTypes: []*interfaces.DraftRelationType{{ID: "order_customer", Source: "order", Target: "customer", Adopted: true}},
+			}}
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(linked, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, nil)
+
+			got, err := svc.ScenarioQuestions(ctx, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.Questions[0].Path, ShouldResemble, []interfaces.RequirementItemRef{rt})
+			So(got.Questions[0].Unconnected, ShouldBeEmpty)
+			So(got.Questions[1].Unconnected, ShouldResemble, []interfaces.ScenarioUnconnected{{From: "customer", To: "carrier"}})
+			// Derived, never stored: the specification keeps its needs.
+			So(linked.Spec.Questions[0].Needs, ShouldHaveLength, 2)
 		})
 
 		Convey("Without a draft every need is missing\n", func() {
