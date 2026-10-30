@@ -63,6 +63,19 @@ EE 实例必须实际包含并装配企业实现，通过运行时企业许可�
 `/business-provenance/evidence-nodes/...` 等 trace/request/node 读取示例不属于当前挂载合同，
 不能将内部 Evidence Store 模型或旧响应 envelope 当成当前可调用的 HTTP 接口。
 
+## Retained 0.2.0 Evidence enablement (#2573)
+
+The standalone Chart's disabled Evidence consumer is intentional; the complete
+installer enables it and checks the topic. See the operational guide in
+[English](../../help/en/manual/bkn-trace-evidence-enablement.md) or
+[中文](../../help/zh/manual/bkn-trace-evidence-enablement.md) for the matching
+deployment/admission contract, retained-message preservation and real native
+explanation acceptance. A working Audit consumer, a healthy HTTP listener or a
+stored `ready` explanation snapshot does not establish successful attribution.
+The guide's explicit question/generation acceptance is a separately authorized
+deployment-remediation test; ordinary route probes and read-only acceptance
+continue to preserve `not_generated` without generating new requests.
+
 ## Span display and browsing (#2158)
 
 Technical detail keeps its existing single graph read: at most 1,001 raw records,

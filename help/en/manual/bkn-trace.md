@@ -16,6 +16,8 @@ Typical ingress prefix:
 
 See [resource and Agent / Trace capacity planning](bkn-trace-resources.md) for workload sizing and acceptance boundaries.
 
+For retained 0.2.0 installations, see [Evidence enablement and explanation acceptance](bkn-trace-evidence-enablement.md), including topic-record preservation and explicit regeneration after repair.
+
 ## Community and EE API boundary
 
 Community exposes authorized recorded facts and technical Trace reads. Native
