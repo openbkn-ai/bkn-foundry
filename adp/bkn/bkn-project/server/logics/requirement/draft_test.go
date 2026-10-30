@@ -679,7 +679,8 @@ func Test_RequirementDrafting(t *testing.T) {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-agentDeadline.Milliseconds()-time.Minute.Milliseconds(), false).
+			// A run may wait for the Agent twice, the second time after an answer it could not use.
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-2*agentDeadline.Milliseconds()-time.Minute.Milliseconds(), false).
 				DoAndReturn(func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
 					So(req.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_DRAFTING)
 					So(req.Version, ShouldEqual, 1)
@@ -873,10 +874,11 @@ func Test_RequirementDrafting(t *testing.T) {
 					ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
 						Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil).Times(int(agentDeadline / pollInterval))
 				}, failureAgentTimeout},
+				// An answer that is no JSON is asked for again, once.
 				{"output not JSON", func() {
-					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil)
+					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil).Times(2)
 					ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
-						Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: "Here is the spec: {"}, nil)
+						Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: "Here is the spec: {"}, nil).Times(2)
 				}, failureOutputInvalid},
 			} {
 				clock = 1000
@@ -891,7 +893,84 @@ func Test_RequirementDrafting(t *testing.T) {
 				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
 				So(finished.Error, ShouldEqual, c.code)
 				So(finished.Spec.Scenarios, ShouldBeEmpty)
+				// Only an answer that does not parse was asked for again.
+				So(finished.Spec.DraftRetried, ShouldEqual, c.code == failureOutputInvalid)
 			}
+		})
+
+		Convey("An answer the Agent could not give as the schema asks is asked for once more\n", func() {
+			structured := &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_FAILED,
+				FailureDetail: "StructuredOutputError: structured output failed: not supported natively and the prompt fallback was still invalid"}
+
+			Convey("and the second answer is recorded\n", func() {
+				expectStart()
+				expectContext()
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(structured, nil)
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t2"}, nil)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t2").Return(&interfaces.BknAgentTask{TaskID: "t2",
+					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
+				ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+				expectFinish()
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
+				So(finished.Spec.Scenarios, ShouldHaveLength, 1)
+				So(finished.Spec.DraftRetried, ShouldBeTrue)
+				So(finished.AgentTaskID, ShouldEqual, "t2")
+			})
+
+			Convey("and so is an answer that does not parse\n", func() {
+				expectStart()
+				expectContext()
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
+					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: "Here is the spec: {"}, nil)
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t2"}, nil)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t2").Return(&interfaces.BknAgentTask{TaskID: "t2",
+					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
+				ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+				expectFinish()
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
+				So(finished.Spec.DraftRetried, ShouldBeTrue)
+				So(finished.AgentTaskID, ShouldEqual, "t2")
+			})
+
+			Convey("and when it fails again, drafting fails as before, saying it was asked twice\n", func() {
+				expectStart()
+				expectContext()
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil).Times(2)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(structured, nil).Times(2)
+				expectFinish()
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+				So(finished.Error, ShouldEqual, failureAgentFailed)
+				So(finished.Spec.DraftRetried, ShouldBeTrue)
+			})
+
+			Convey("but a drafting that fails otherwise, or answers at once, is asked once\n", func() {
+				expectStart()
+				expectContext()
+				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil)
+				ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
+					Status: interfaces.BKN_AGENT_TASK_FAILED, FailureDetail: "RateLimitError: structured output was fine"}, nil)
+				expectFinish()
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Error, ShouldEqual, failureAgentFailed)
+				So(finished.Spec.DraftRetried, ShouldBeFalse)
+			})
 		})
 
 		Convey("Drafting needs documents and catalogs, and documents a drafting can read\n", func() {

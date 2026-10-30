@@ -146,6 +146,9 @@ type RequirementSpec struct {
 	// PropertiesOmitted counts the properties of drafted object types drafting did not name to the
 	// Agent, past the most it names of one.
 	PropertiesOmitted int `json:"properties_omitted,omitempty"`
+	// DraftRetried says drafting asked the Agent a second time, its first answer not being the JSON
+	// the schema asks for, as a model without structured output sometimes writes.
+	DraftRetried bool `json:"draft_retried,omitempty"`
 	// CatalogsUnlisted are the project's catalogs whose tables drafting could not list, so none of
 	// their tables went to the Agent. Absent when every catalog was listed.
 	CatalogsUnlisted []string `json:"catalogs_unlisted,omitempty"`
