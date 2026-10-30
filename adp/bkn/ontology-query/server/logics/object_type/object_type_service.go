@@ -10,7 +10,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"sort"
 	"strings"
@@ -56,6 +59,7 @@ type objectAggregateSpec struct {
 	measureProperty string
 	operation       string
 	groupBy         []string
+	propertyValue   bool
 }
 
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
@@ -190,7 +194,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 
 func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
-	return ots.getObjectsByObjectTypeID(ctx, query, false, nil)
+	return ots.getObjectsByObjectTypeID(ctx, query, false, nil, nil)
 }
 
 // GetObjectsByObjectTypeIDForScan keeps a Vega cursor from the first page for
@@ -198,7 +202,19 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 // continue to use stateless first pages so they do not exhaust cursor sessions.
 func (ots *objectTypeService) GetObjectsByObjectTypeIDForScan(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
-	return ots.getObjectsByObjectTypeID(ctx, query, true, nil)
+	return ots.getObjectsByObjectTypeID(ctx, query, true, nil, nil)
+}
+
+// StreamObjectsByObjectTypeID maps and authorizes each Vega-managed batch
+// before handing it to the metric executor. No physical cursor is exposed.
+func (ots *objectTypeService) StreamObjectsByObjectTypeID(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, consume func(interfaces.Objects) error) error {
+	if consume == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("object stream consumer is required")
+	}
+	_, err := ots.getObjectsByObjectTypeID(ctx, query, true, nil, consume)
+	return err
 }
 
 // ScanObjectsByObjectTypeID reads query page by page so callers that act on a
@@ -259,13 +275,29 @@ func (ots *objectTypeService) ScanObjectsByObjectTypeID(ctx context.Context,
 func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType, measureProperty, operation string,
 	groupBy []string) (interfaces.Objects, error) {
-	if query == nil || measureProperty == "" || operation != "count" || len(groupBy) > 1 {
+	countRows := operation == "count_rows" && measureProperty == "" && len(groupBy) == 0
+	countPresent := operation == "count_present" && measureProperty != "" && len(groupBy) == 0
+	if query == nil || !countRows && !countPresent && (measureProperty == "" || operation != "count" || len(groupBy) > 1) {
 		return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported object aggregate")
 	}
 	queryCopy := *query
-	queryCopy.Properties = append([]string{measureProperty}, groupBy...)
-	queryCopy.RequiredFullProperties = append([]string(nil), queryCopy.Properties...)
+	if !countRows {
+		queryCopy.Properties = append([]string{measureProperty}, groupBy...)
+		queryCopy.RequiredFullProperties = append([]string(nil), queryCopy.Properties...)
+		if countPresent {
+			queryCopy.ObjectQueryInfo = nil
+			queryCopy.ExcludeSystemProperties = nil
+		}
+	} else {
+		// COUNT(*) has no property operand. Do not inherit a caller projection:
+		// object-type and row-filter authorization still apply, while Vega owns
+		// the physical row-count implementation.
+		queryCopy.Properties = nil
+		queryCopy.RequiredFullProperties = nil
+		queryCopy.ObjectQueryInfo = nil
+		queryCopy.ExcludeSystemProperties = nil
+	}
 	queryCopy.Cursor = ""
 	queryCopy.ResourceCursor = ""
 	queryCopy.ResourceOffset = 0
@@ -273,11 +305,37 @@ func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context
 	queryCopy.Sort = nil
 	return ots.getObjectsByObjectTypeID(ctx, &queryCopy, false, &objectAggregateSpec{
 		measureProperty: measureProperty, operation: operation, groupBy: append([]string(nil), groupBy...),
-	})
+	}, nil)
+}
+
+// AggregatePropertyByObjectTypeID keeps object authorization, property mapping
+// and row filters in the object-query boundary. Vega owns the physical path and
+// guarantees a successful aggregate result or returns an unsupported error.
+func (ots *objectTypeService) AggregatePropertyByObjectTypeID(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, measureProperty, operation string) (interfaces.Objects, error) {
+	if query == nil || measureProperty == "" ||
+		(operation != "sum" && operation != "avg" && operation != "min" && operation != "max" && operation != "count_distinct") {
+		return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported property aggregate")
+	}
+	queryCopy := *query
+	queryCopy.Properties = []string{measureProperty}
+	queryCopy.RequiredFullProperties = []string{measureProperty}
+	queryCopy.ObjectQueryInfo = nil
+	queryCopy.ExcludeSystemProperties = nil
+	queryCopy.Cursor = ""
+	queryCopy.ResourceCursor = ""
+	queryCopy.ResourceOffset = 0
+	queryCopy.Offset = 0
+	queryCopy.Sort = nil
+	return ots.getObjectsByObjectTypeID(ctx, &queryCopy, false, &objectAggregateSpec{
+		measureProperty: measureProperty, operation: operation, propertyValue: true,
+	}, nil)
 }
 
 func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
-	query *interfaces.ObjectQueryBaseOnObjectType, continuousScan bool, aggregate *objectAggregateSpec) (interfaces.Objects, error) {
+	query *interfaces.ObjectQueryBaseOnObjectType, continuousScan bool, aggregate *objectAggregateSpec,
+	streamConsumer func(interfaces.Objects) error) (interfaces.Objects, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象类的对象数据")
 	defer span.End()
@@ -420,9 +478,16 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 	// an empty set directly; this is not post-query filtering.
 	if !query.RowFilterNoResults {
 		// 3. Request Vega Resource to get data.
-		err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan, continuousScan, aggregate)
+		err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan,
+			continuousScan, aggregate, streamConsumer)
 		if err != nil {
 			return resps, err
+		}
+	} else {
+		// A false authorized predicate is complete without reading a resource.
+		// No physical query path was chosen, so provenance remains empty.
+		if aggregate != nil && aggregate.operation == "count_rows" {
+			resps.Datas = []map[string]any{{"__value": json.Number("0")}}
 		}
 	}
 
@@ -620,7 +685,8 @@ func resourceQueryClientError(ctx context.Context, downstream *interfaces.VegaDo
 
 func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string,
-	plan *propertyAccessPlan, continuousScan bool, aggregate *objectAggregateSpec) error {
+	plan *propertyAccessPlan, continuousScan bool, aggregate *objectAggregateSpec,
+	streamConsumer func(interfaces.Objects) error) error {
 
 	resourceSort, err := logics.MapSortFieldsForDataView(ctx, query.Sort, objectType)
 	if err != nil {
@@ -634,7 +700,6 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	if query.ResourceCursor == "" && aggregate == nil {
 		resourceSort, stable = appendResourceSortTieBreakers(resourceSort, objectType)
 	}
-
 	viewQuery := interfaces.ViewQuery{
 		NeedTotal:         query.NeedTotal,
 		Limit:             query.Limit,
@@ -670,25 +735,130 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	sort.Strings(outputFields)
 	params := &interfaces.ResourceDataQueryParams{
-		IgnoreLocalIndex: &query.IgnoreLocalIndex,
-		NeedTotal:        query.NeedTotal,
-		Sort:             resourceSort,
-		SearchAfter:      query.SearchAfter,
-		FilterCondition:  logics.CondCfgToFilterMap(viewQuery.Filters),
-		OutputFields:     outputFields,
+		NeedTotal:       query.NeedTotal,
+		Sort:            resourceSort,
+		SearchAfter:     query.SearchAfter,
+		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),
+		OutputFields:    outputFields,
+	}
+	if streamConsumer != nil {
+		if !stable {
+			return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+				oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+				WithErrorDetails("object resource has no stable sort for a complete cursor scan")
+		}
+		page := *params
+		page.Paging = interfaces.ResourceDataPagingRequest{
+			Mode: interfaces.ResourceDataPagingModeCursor, Limit: interfaces.MAX_LIMIT,
+			KeepAliveSec: int(continuousScanCursorTTL / time.Second),
+		}
+		activeCursor := ""
+		defer func() {
+			if activeCursor == "" {
+				return
+			}
+			closer, ok := ots.vba.(interfaces.ResourceDataCursorCloser)
+			if !ok {
+				return
+			}
+			closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if closeErr := closer.CloseResourceDataCursor(closeCtx, objectType.DataSource.ID, activeCursor); closeErr != nil {
+				logger.Warnf("close unfinished resource cursor failed: %v", closeErr)
+			}
+		}()
+		var scanned int64
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			response, readErr := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &page)
+			if readErr != nil {
+				return ots.objectResourceQueryError(ctx, readErr, objectType)
+			}
+			if response == nil {
+				return ots.objectResourceQueryError(ctx, fmt.Errorf("vega resource cursor returned no page"), objectType)
+			}
+			if response.Paging == nil {
+				return ots.objectResourceQueryError(ctx, fmt.Errorf("vega resource cursor returned no paging envelope"), objectType)
+			}
+			activeCursor = ""
+			if response.Paging.NextCursor != nil {
+				activeCursor = *response.Paging.NextCursor
+			}
+			if len(response.Entries) == 0 && activeCursor != "" {
+				return ots.objectResourceQueryError(ctx, fmt.Errorf("vega resource cursor returned an empty nonterminal page"), objectType)
+			}
+			decisions, err := ots.rowFilters.ResolveRowFilters(ctx, []string{query.KNID + "/" + objectType.OTID})
+			if err != nil {
+				return err
+			}
+			if len(decisions) != 1 || decisions[0].ObjectTypeRef != query.KNID+"/"+objectType.OTID ||
+				decisions[0].EffectiveRowFilterDigest != query.EffectiveRowFilterDigest {
+				return httperrors.NewHTTPError(ctx, http.StatusConflict, httperrors.PublicError_Conflict).
+					WithErrorDetails("row-filter authorization changed during the object scan")
+			}
+			currentPlan, err := buildPropertyAccessPlan(ctx, ots.propertyAccess, objectType, query, true)
+			if err != nil {
+				return err
+			}
+			if !maps.Equal(currentPlan.decisions, plan.decisions) {
+				return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+					WithErrorDetails("property authorization changed during the object scan")
+			}
+			if len(response.Entries) > 0 {
+				objects, err := ots.projectResourceObjectEntries(ctx, query, objectType, fieldPropMap, plan, response.Entries)
+				if err != nil {
+					return err
+				}
+				batch := interfaces.Objects{Datas: objects,
+					RowFilterApplied: resps.RowFilterApplied, EffectivePermissions: plan.effective}
+				if query.IncludeTypeInfo {
+					filteredObjectType := plan.filterObjectType(objectType)
+					batch.ObjectType = &filteredObjectType
+				}
+				if err := streamConsumer(batch); err != nil {
+					return err
+				}
+				scanned += int64(len(response.Entries))
+			}
+			if activeCursor == "" {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				resps.QuerySource = response.QuerySource
+				resps.TotalCount = scanned
+				return nil
+			}
+			page = interfaces.ResourceDataQueryParams{Paging: interfaces.ResourceDataPagingRequest{Cursor: activeCursor}}
+		}
 	}
 	var resp *interfaces.DatasetQueryResponse
 	var nextOffset int
 	if aggregate == nil {
+		// Preserve the established object-query source preference. Aggregate
+		// execution deliberately leaves physical source selection to Vega.
+		params.IgnoreLocalIndex = &query.IgnoreLocalIndex
 		resp, nextOffset, err = ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable, continuousScan)
 	} else {
-		measure, exists := plan.properties[aggregate.measureProperty]
-		if !exists || measure.MappedField.Name == "" {
-			return unavailableOperationPropertyError(ctx)
+		measureField := "*"
+		if aggregate.operation != "count_rows" {
+			measure, exists := plan.properties[aggregate.measureProperty]
+			if !exists || measure.MappedField.Name == "" {
+				return unavailableOperationPropertyError(ctx)
+			}
+			measureField = measure.MappedField.Name
 		}
 		params.Sort = nil
-		params.Aggregation = map[string]any{"property": measure.MappedField.Name,
-			"aggr": aggregate.operation, "alias": "__value"}
+		operation := aggregate.operation
+		if operation == "count_rows" || operation == "count_present" {
+			operation = "count"
+		}
+		params.Aggregation = map[string]any{"property": measureField,
+			"aggr": operation, "alias": "__value"}
+		if aggregate.operation == "count_present" || aggregate.propertyValue {
+			params.Having = map[string]any{"field": "count(*)", "operation": ">", "value": 0}
+		}
 		params.OutputFields = []string{"__value"}
 		for _, name := range aggregate.groupBy {
 			property, found := plan.properties[name]
@@ -732,29 +902,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		return nil
 	}
 
-	// The access plan is fixed for this request. Preserve declaration order,
-	// but do not recheck every unrequested logical property on every row.
-	selectedLogicProperties := selectedObjectLogicProperties(objectType, plan)
-	objects := make([]map[string]any, 0, len(resp.Entries))
-	for _, col := range resp.Entries {
-		rawObject := map[string]any{}
-		for k, v := range col {
-			if k == interfaces.SORT_FIELD_SCORE {
-				// Score is query metadata; projectRow applies its visibility policy.
-				rawObject[k] = v
-			} else if propName, exists := fieldPropMap[k]; exists {
-				rawObject[propName] = v
-			}
-		}
-		if err := ots.addLogicProperties(ctx, rawObject, selectedLogicProperties); err != nil {
-			return err
-		}
-		object := plan.projectRow(rawObject, &objectType, query)
-		if len(object) > 0 {
-			objects = append(objects, object)
-		} else {
-			logger.Warnf("resource row could not produce a sanitized object for object type [%s/%s]", query.KNID, objectType.OTID)
-		}
+	objects, err := ots.projectResourceObjectEntries(ctx, query, objectType, fieldPropMap, plan, resp.Entries)
+	if err != nil {
+		return err
 	}
 	resps.QuerySource = resp.QuerySource
 	resps.TotalCount = resp.TotalCount
@@ -769,6 +919,53 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	resps.Datas = objects
 	return nil
+}
+
+func (ots *objectTypeService) projectResourceObjectEntries(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, objectType interfaces.ObjectType,
+	fieldPropMap map[string]string, plan *propertyAccessPlan, entries []map[string]any) ([]map[string]any, error) {
+	// The access plan is fixed for this request. Preserve declaration order,
+	// but do not recheck every unrequested logical property on every row.
+	selectedLogicProperties := selectedObjectLogicProperties(objectType, plan)
+	objects := make([]map[string]any, 0, len(entries))
+	for _, col := range entries {
+		rawObject := map[string]any{}
+		for k, v := range col {
+			if k == interfaces.SORT_FIELD_SCORE {
+				// Score is query metadata; projectRow applies its visibility policy.
+				rawObject[k] = v
+			} else if propName, exists := fieldPropMap[k]; exists {
+				rawObject[propName] = v
+			}
+		}
+		if err := ots.addLogicProperties(ctx, rawObject, selectedLogicProperties); err != nil {
+			return nil, err
+		}
+		object := plan.projectRow(rawObject, &objectType, query)
+		if len(object) > 0 {
+			objects = append(objects, object)
+		} else {
+			logger.Warnf("resource row could not produce a sanitized object for object type [%s/%s]", query.KNID, objectType.OTID)
+		}
+	}
+	return objects, nil
+}
+
+func (ots *objectTypeService) objectResourceQueryError(ctx context.Context, err error,
+	objectType interfaces.ObjectType) error {
+	var localHTTPError *httperrors.HTTPError
+	if errors.As(err, &localHTTPError) {
+		return localHTTPError
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+		return resourceQueryClientError(ctx, downstream, objectType.DataProperties)
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+		oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+		WithErrorDetails("object resource query failed")
 }
 
 // vegaIndexResultWindow is Vega's bound on offset+limit for index-backed reads.

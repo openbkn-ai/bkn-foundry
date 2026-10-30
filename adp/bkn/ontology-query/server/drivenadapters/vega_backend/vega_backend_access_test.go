@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -20,6 +21,22 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
+
+func TestVegaBackendAccessCloseResourceDataCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete || request.URL.Path != "/proxy/resources/resource-1/cursors/cursor-1" ||
+			request.Header.Get(interfaces.HTTPHeaderBKNOperation) != interfaces.PermissionOperationQueryData {
+			t.Errorf("unexpected cursor cleanup request: %s %s headers=%v", request.Method, request.URL.Path, request.Header)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	access := &vegaBackendAccess{baseURL: server.URL, rawClient: server.Client()}
+	if err := access.CloseResourceDataCursor(trustedResourceProxyContext(context.Background(), "resource-1"),
+		"resource-1", "cursor-1"); err != nil {
+		t.Fatalf("close resource cursor: %v", err)
+	}
+}
 
 func TestVegaBackendAccessBuildProxyHeadersPropagatesDualPrincipalAndTraceContext(t *testing.T) {
 	convey.Convey("buildProxyHeaders includes trusted dual-principal and BKN trace context headers", t, func() {
