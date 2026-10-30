@@ -329,6 +329,14 @@ func Test_BuildGuidance(t *testing.T) {
 			So(leftOut, ShouldEqual, 0)
 			So(tests, ShouldHaveLength, 4)
 			So(tests[2].Slots, ShouldHaveLength, 1)
+
+			// Beside it, a value the documents give is not checked against its record: left out too.
+			docs := []*interfaces.RequirementDocument{doc("prd", interfaces.REQUIREMENT_DOC_PRD, "The order named Acme.")}
+			given := &guidanceOutput{Tests: []agentTest{{Text: "Lines of the order named Acme?", Kind: "variant",
+				Slots: []agentSlot{{ConceptID: "c1", Property: "name", Value: "Acme"}}}}}
+			tests, leftOut = buildTests(given, docs, asked, nil)
+			So(leftOut, ShouldEqual, 1)
+			So(tests, ShouldHaveLength, 2)
 		})
 
 		Convey("A test's kind decides what it expects\n", func() {

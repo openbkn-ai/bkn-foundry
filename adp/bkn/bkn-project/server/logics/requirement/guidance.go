@@ -335,9 +335,11 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
-		// One value names the same record only beside the server's template test, whose record it is
-		// checked against; alone it would only ever be said not checkable.
-		if !placed || expect == interfaces.TEST_EXPECT_SAME_RECORD && len(slots) < 2 && !anchored ||
+		// One value names the same record only as an empty slot beside the server's template test,
+		// filled from and checked against that test's record; otherwise it would only ever be said
+		// not checkable.
+		if !placed || expect == interfaces.TEST_EXPECT_SAME_RECORD && len(slots) < 2 &&
+			!(anchored && len(slots) == 1 && slots[0].Value == "") ||
 			(concepts != nil && (offInputs(slots, expect, concepts) ||
 				slices.ContainsFunc(slots, func(s interfaces.QuestionTestSlot) bool { return unmapped[s.ConceptID] }))) {
 			leftOut++
