@@ -188,8 +188,13 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "When is order 22 due?", Template: "When is order {order} due?", Citations: quote},
 				// The template says the number itself: a condition, not a record named.
 				{Text: "Which orders wait 2 days?", Template: "Which orders wait 2 days?", Citations: quote},
-				// No template to show it is a record's value.
+				// No template to show it is a record's value; nor one without a slot, or one the text does not fill.
 				{Text: "When is order 2 due?", Citations: quote},
+				{Text: "Which orders wait over 2 days?", Template: "Which orders are late?", Citations: quote},
+				{Text: "Which orders of 2 wait?", Template: "When is order {order} due?", Citations: quote},
+				{Text: "When is order 2 due? Within 7 days.", Template: "When is order {order} due?", Citations: quote},
+				// The number stands outside the slot: a condition.
+				{Text: "When is order A due in 2 days?", Template: "When is order {order} due in 2 days?", Citations: quote},
 			}}
 
 			spec, _ := buildSpec(out, docs, draft)
@@ -197,7 +202,7 @@ func Test_BuildSpec(t *testing.T) {
 			So(spec.Questions, ShouldHaveLength, 1)
 			So(spec.Questions[0].Text, ShouldEqual, "When is order 2 due?")
 			So(spec.Questions[0].Template, ShouldEqual, "When is order {order} due?")
-			So(spec.Rejected, ShouldHaveLength, 4)
+			So(spec.Rejected, ShouldHaveLength, 8)
 			for _, r := range spec.Rejected {
 				So(r.Reason, ShouldEqual, rejectedNumberNotInQuote)
 			}

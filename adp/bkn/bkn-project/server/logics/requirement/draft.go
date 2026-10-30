@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -444,12 +445,27 @@ func basisOf(cs []agentCitation, supplementReason string, docs map[string]*inter
 }
 
 // recordValuesInText says the numbers of a question's text its quotes do not show are values of
-// the records it names: the template, where each record stands as its slot, has none its quotes do
-// not show, and the documents give each of them elsewhere, as an example of a record. A number the
-// template says too is a condition, which its quotes must show.
+// the records it names: the text is its template with each {name} slot filled, the template shows
+// only numbers its quotes show, and every number standing where a slot is filled is one the
+// documents give, as an example of a record. A number outside the slots is a condition, which its
+// quotes must show.
 func recordValuesInText(q agentQuestion, citations []interfaces.RequirementCitation,
 	docs map[string]*interfaces.RequirementDocument) bool {
-	if strings.TrimSpace(q.Template) == "" || !numbersInQuotes(q.Template, citations) {
+	template := normalize([]rune(q.Template)).text
+	literals := templateSlot.Split(template, -1)
+	// Without a slot, the text is the template, whose numbers are its quotes' or not.
+	if !numbersInQuotes(template, citations) {
+		return false
+	}
+	pattern := "^"
+	for i, l := range literals {
+		if i > 0 {
+			pattern += "(.+?)"
+		}
+		pattern += regexp.QuoteMeta(l)
+	}
+	filled := regexp.MustCompile(pattern + "$").FindStringSubmatch(normalize([]rune(q.Text)).text)
+	if filled == nil {
 		return false
 	}
 	given := map[string]bool{}
@@ -458,13 +474,18 @@ func recordValuesInText(q agentQuestion, citations []interfaces.RequirementCitat
 			given[n] = true
 		}
 	}
-	for _, n := range numbers(q.Text) {
-		if !given[n] {
-			return false
+	for _, value := range filled[1:] {
+		for _, n := range numbers(value) {
+			if !given[n] {
+				return false
+			}
 		}
 	}
 	return true
 }
+
+// templateSlot is a {name} slot of a question's template.
+var templateSlot = regexp.MustCompile(`\{[^{}]+\}`)
 
 // namedInDocuments says a name stands in a block of the documents, compared without case,
 // whitespace, underscores or hyphens, as names are written in prose and as identifiers.
