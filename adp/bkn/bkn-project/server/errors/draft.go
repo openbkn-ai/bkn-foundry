@@ -19,6 +19,7 @@ const (
 	BknProject_Draft_NeedsIdentity         = "BknProject.Draft.NeedsIdentity"
 	BknProject_Draft_NothingAdopted        = "BknProject.Draft.NothingAdopted"
 	BknProject_Draft_InvalidItem           = "BknProject.Draft.InvalidItem"
+	BknProject_Draft_InvalidQuestion       = "BknProject.Draft.InvalidQuestion"
 
 	// 403
 	BknProject_Draft_NotOwner = "BknProject.Draft.NotOwner"
@@ -47,6 +48,10 @@ const (
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
+
+	// 502, 504: Ask AI could not answer.
+	BknProject_Draft_AskUnavailable = "BknProject.Draft.AskUnavailable"
+	BknProject_Draft_AskTimeout     = "BknProject.Draft.AskTimeout"
 )
 
 // The check of a confirmed draft.
@@ -110,6 +115,9 @@ var (
 		BknProject_Draft_CatalogMissing,
 		BknProject_Draft_NothingAdopted,
 		BknProject_Draft_InvalidItem,
+		BknProject_Draft_InvalidQuestion,
+		BknProject_Draft_AskUnavailable,
+		BknProject_Draft_AskTimeout,
 		BknProject_Draft_NotOwner,
 		BknProject_Draft_HasPending,
 		BknProject_Draft_PartialNotAccepted,

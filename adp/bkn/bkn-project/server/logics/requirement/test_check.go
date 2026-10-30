@@ -417,6 +417,7 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, tests []*interfaces.QuestionTest, deadline int64) {
 	ctx, cancel := context.WithDeadline(ctx, time.UnixMilli(deadline))
 	defer cancel()
+	s.useExamples(ctx, caller, spec, draft, q, tests)
 	gone := &tablesGone{}
 	for _, t := range tests {
 		if s.now() >= deadline {
@@ -424,6 +425,46 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 			continue
 		}
 		t.Check = s.orGone(ctx, caller, spec, draft, q, t, s.checkAnchored(ctx, caller, spec, draft, q, t, anchorOf(tests)), gone)
+	}
+}
+
+// useExamples puts the records the documents give as examples into the server's tests, in place of
+// values sampled from the data: into a slot of a record that exists when the data has it, and as
+// the record that does not exist (the not_exist test's first slot) when it lacks it. A slot with a
+// value, or an example the data cannot be asked about, is left as it is.
+func (s *requirementService) useExamples(ctx context.Context, caller interfaces.AccountInfo,
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, tests []*interfaces.QuestionTest) {
+	if q == nil || q.Inputs == nil {
+		return
+	}
+	exists := map[string]bool{}
+	known := map[string]bool{}
+	for _, t := range tests {
+		if !t.ByServer {
+			continue
+		}
+		for i, slot := range t.Slots {
+			k := slices.IndexFunc(*q.Inputs, func(in interfaces.RequirementInput) bool {
+				return in.Example != "" && in.ConceptID == slot.ConceptID && in.Property == slot.Property
+			})
+			if slot.Value != "" || k < 0 {
+				continue
+			}
+			example := (*q.Inputs)[k].Example
+			if _, counted := known[example]; !counted {
+				known[example] = false
+				if f, reason := resolveSlot(spec, draft, slot); reason == "" {
+					n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",
+						f.objectType.Table.ResourceID, quoteField(f.field), quoteValue(example)))
+					known[example], exists[example] = err == nil, n > 0
+				}
+			}
+			absent := t.Kind == interfaces.TEST_KIND_NOT_EXIST && i == 0
+			if known[example] && exists[example] != absent {
+				t.Slots[i].Value = example
+				t.Text = strings.ReplaceAll(t.Text, slotPlaceholder(i), example)
+			}
+		}
 	}
 }
 
@@ -798,6 +839,13 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		set(0, value)
 		delete(empty, 0)
 	}
+	// The values given of a record that exists, by object type: its empty slots are taken from their row.
+	given := map[*interfaces.DraftObjectType][]string{}
+	for i, f := range fields {
+		if !empty[i] && !(t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0) {
+			given[f.objectType] = append(given[f.objectType], quoteField(f.field)+" = "+quoteValue(f.value))
+		}
+	}
 	var groups [][]int
 	for i, f := range fields {
 		if !empty[i] {
@@ -812,7 +860,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 	}
 	for _, g := range groups {
 		f := fields[g[0]]
-		if p := path(f); p != nil {
+		if p := path(f); p != nil && len(given[f.objectType]) == 0 {
 			// A record the question's path reaches, so asking about it can show something.
 			names, aliases := []string{}, []string{}
 			for _, i := range g {
@@ -851,7 +899,19 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		for _, i := range g {
 			wanted[i] = fields[i].field
 		}
-		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, nil)
+		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, given[f.objectType])
+		if reason == checkNoValueInData && len(given[f.objectType]) > 0 {
+			// No row has the values given: the check says so, with the others from any row. A row
+			// that has them but not the rest has no value to take, as any other row would not be it.
+			n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s",
+				f.objectType.Table.ResourceID, strings.Join(given[f.objectType], " AND ")))
+			if err != nil {
+				return queryFailure(err)
+			}
+			if n == 0 {
+				values, reason = s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, nil)
+			}
+		}
 		if reason != "" {
 			return reason
 		}

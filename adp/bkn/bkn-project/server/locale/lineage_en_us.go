@@ -17,6 +17,7 @@ var lineageEnUS = i18n.I18nMessages{
 		"BknProject.Lineage.NetworkNeedsCheck":       "Knowledge Network Needs Its Action Parameters Fixed. Some action parameters of this knowledge network are misplaced or invalid, so it cannot be used for a project yet. Fix the parameters listed in error_details as the knowledge network check suggests, then try again.",
 		"BknProject.Lineage.NetworkNotReadableAsV3":  "Knowledge Network Has a Definition BKN 3.0 Cannot Read. A definition of this knowledge network does not read back under the BKN 3.0 rules, so it cannot be used for a project yet. Fix the definition named in error_details in the knowledge network, then try again.",
 		"BknProject.Lineage.InvalidSwitchTarget":     "Invalid switch target. Consumers can only switch to a network a release of the lineage created, or the network the lineage was started from.",
+		"BknProject.Lineage.InUseChanged":            "Network in use changed. Consumers were switched to another network after you read the plan; read it again.",
 		"BknProject.Lineage.AlreadyInUse":            "Network already in use. The lineage's consumers already use this network.",
 		"BknProject.Lineage.MainBranchReadOnly":      "Main Branch Is Read-Only. main changes only by syncing from the live network or by publishing.",
 		"BknProject.Lineage.NotFound":                "Lineage Not Found. Create the lineage from its knowledge network first.",

@@ -43,6 +43,7 @@ REQUIREMENTS_V3 = MIGRATIONS / "0.2.1/23-requirements-guidance-v3.sql"
 REQUIREMENTS_V4 = MIGRATIONS / "0.2.1/24-requirements-guidance-v4.sql"
 REQUIREMENTS_V5 = MIGRATIONS / "0.2.1/27-requirements-guidance-v5.sql"
 REQUIREMENTS_V6 = MIGRATIONS / "0.2.1/28-requirements-guidance-v6.sql"
+ONTOLOGY_ASK = MIGRATIONS / "0.2.1/29-seed-bkn-project-ontology-ask.sql"
 
 
 def statements(path):
@@ -259,6 +260,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, ANSWER_JUDGE_REASON)
         apply(upgraded, REQUIREMENTS_V5)
         apply(upgraded, REQUIREMENTS_V6)
+        apply(upgraded, ONTOLOGY_ASK)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -319,7 +321,7 @@ def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
         assert "expand_neighbours" in seeded["prompt"]["content"]
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS, ANSWER_JUDGE])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS, ANSWER_JUDGE, ONTOLOGY_ASK])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         # 18 also attaches translations, to the column 10 adds.
@@ -458,6 +460,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(ANSWER_JUDGE_REASON),
                     str(REQUIREMENTS_V5),
                     str(REQUIREMENTS_V6),
+                    str(ONTOLOGY_ASK),
                 ],
             ],
         ],
@@ -511,11 +514,18 @@ def answer_judge_locales_text():
     return text[text.index("-- Attach the zh-CN"):]
 
 
+def ontology_ask_locales_text():
+    """The translation backfill at the end of 29, which the fresh snapshot ends with too."""
+    text = ONTOLOGY_ASK.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
         "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
         + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
+        + "\n" + ontology_ask_locales_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
@@ -527,6 +537,10 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     assert init.index("select 'bkn-project-requirements-prompt', 6, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
     # The judge is seeded at its latest version, after the other seeds and before the locale column.
     assert seed < init.index("-- bkn-project-answer-judge:") < init.index(CLAIM_LOCALES.read_text())
+    # Ask AI is seeded after the judge and before the locale column, its source language marked.
+    ask = init.index("-- bkn-project-ontology-ask:")
+    assert init.index("-- bkn-project-answer-judge:") < ask < init.index(CLAIM_LOCALES.read_text())
+    assert init.index("select 'bkn-project-ontology-ask-prompt', 1, 'en-US',", ask) < init.index(CLAIM_LOCALES.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1103,7 +1117,8 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | set(statements(SOURCE_LANGUAGE))
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V6) if "f_localized_content" in s}
-                               | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s})
+                               | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
+                               | {s for s in statements(ONTOLOGY_ASK) if "f_localized_content" in s})
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)
@@ -2880,3 +2895,50 @@ def test_answer_judge_v3_upgrade_does_not_switch_a_head_saved_after_v3_was_writt
         head_before = snapshot(db)[1]
         apply(db, ANSWER_JUDGE_REASON)
         assert snapshot(db)[1] == head_before
+
+
+def ontology_ask_prompt(db):
+    return db.execute(
+        "SELECT v.f_content, v.f_localized_content FROM t_agent_prompt p JOIN t_agent_prompt_version v"
+        " ON v.f_prompt_id = p.f_prompt_id AND v.f_version = p.f_current_version"
+        " WHERE p.f_prompt_id='bkn-project-ontology-ask-prompt'"
+    ).fetchone()
+
+
+def test_ontology_ask_seed_is_a_published_tool_free_task_with_a_bounded_output():
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        agent = db.execute(
+            "SELECT f_name, f_mode, f_model, f_tools, f_skills, f_limits, f_status FROM t_agent"
+            " WHERE f_agent_id='bkn-project-ontology-ask'"
+        ).fetchone()
+        assert agent["f_name"] == "BKNProjectOntologyAsk"
+        assert agent["f_mode"] == "task"
+        assert agent["f_model"] == ""
+        assert json.loads(agent["f_tools"]) == []
+        assert json.loads(agent["f_skills"]) == []
+        assert agent["f_status"] == "published"
+        limits = json.loads(agent["f_limits"])
+        assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
+        # bkn-project waits 45 seconds within the request: the Agent stops first, with a short answer.
+        assert limits["timeout_s"] < 45 and limits["max_output_tokens"] <= 1024
+        prompt, localized = ontology_ask_prompt(db)
+        assert prompt.isascii()
+        # It answers and suggests only; the fields it may suggest are the draft's own edits.
+        assert "you never change the draft" in prompt
+        for field in ("name:", "description:", "identity:", "field to none"):
+            assert field in prompt
+        assert "never guess facts about the data" in prompt
+        assert "It carries no row data." in prompt
+        locales = json.loads(localized)
+        assert locales["en-US"] == prompt
+        assert "\u4ece\u4e0d\u4fee\u6539\u8349\u7a3f" in locales["zh-CN"]
+
+
+def test_ontology_ask_seed_and_translation_are_idempotent_on_an_upgrade():
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK)
+        apply(db, ONTOLOGY_ASK)
+        assert snapshot(db) == before

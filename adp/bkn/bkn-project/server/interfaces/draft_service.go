@@ -25,6 +25,10 @@ type DraftService interface {
 	// single-field key over the full table as the caller, and records it as a decision.
 	ChooseIdentity(ctx context.Context, token string, projectID string, itemID string,
 		identity DraftIdentity, caller AccountInfo) (*Draft, error)
+	// AskObjectType answers a question about one object type of a ready draft from its current
+	// state, as the caller asks bkn-agent, and may suggest one change. It never changes the draft.
+	AskObjectType(ctx context.Context, token string, projectID string, itemID string, req DraftAskRequest,
+		caller AccountInfo) (*DraftAskAnswer, error)
 	// RestoreExcluded maps a field the privacy rules excluded back to a property, reading the
 	// field from vega-backend as the caller, and records it as a decision.
 	RestoreExcluded(ctx context.Context, token string, projectID string, restore DraftRestore,

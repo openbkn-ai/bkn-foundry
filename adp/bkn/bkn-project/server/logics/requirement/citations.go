@@ -5,6 +5,7 @@
 package requirement
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -82,6 +83,73 @@ func locateQuote(doc *interfaces.RequirementDocument, quote string) (interfaces.
 		}, true
 	}
 	return interfaces.RequirementCitation{}, false
+}
+
+// exampleCitation finds a value standing whole in a block of the documents, in id order, and cites
+// the block: a value an ASCII letter, digit, hyphen or underscore continues is part of a longer one.
+func exampleCitation(value string, docs map[string]*interfaces.RequirementDocument) (interfaces.RequirementCitation, bool) {
+	v := normalize([]rune(value)).text
+	if v == "" {
+		return interfaces.RequirementCitation{}, false
+	}
+	ids := make([]string, 0, len(docs))
+	for id := range docs {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		d := docs[id]
+		content := []rune(d.Content)
+		for _, b := range d.Blocks {
+			if b.Start < 0 || b.End > len(content) || b.Start >= b.End {
+				continue
+			}
+			if standsWhole(normalize(content[b.Start:b.End]).text, v) {
+				return interfaces.RequirementCitation{DocumentID: d.ID, Quote: string(content[b.Start:b.End]),
+					BlockID: b.ID, Start: b.Start, End: b.End}, true
+			}
+		}
+	}
+	return interfaces.RequirementCitation{}, false
+}
+
+// standsWhole says value stands in text not as part of a longer code or word written in ASCII.
+func standsWhole(text string, value string) bool {
+	joins := func(r rune) bool {
+		return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_')
+	}
+	first, _ := utf8.DecodeRuneInString(value)
+	last, _ := utf8.DecodeLastRuneInString(value)
+	for from := 0; ; {
+		i := strings.Index(text[from:], value)
+		if i < 0 {
+			return false
+		}
+		i += from
+		before, _ := utf8.DecodeLastRuneInString(text[:i])
+		after, _ := utf8.DecodeRuneInString(text[i+len(value):])
+		if !(i > 0 && joins(first) && joins(before)) && !(i+len(value) < len(text) && joins(last) && joins(after)) {
+			return true
+		}
+		from = i + 1
+	}
+}
+
+// citeExample makes a question cite the block an example stands in: unless a quote already says
+// it, a citation of that block is widened to the block, or the block is cited.
+func citeExample(citations []interfaces.RequirementCitation, example string,
+	block interfaces.RequirementCitation) []interfaces.RequirementCitation {
+	v := normalize([]rune(example)).text
+	for i, c := range citations {
+		if standsWhole(normalize([]rune(c.Quote)).text, v) {
+			return citations
+		}
+		if c.DocumentID == block.DocumentID && c.BlockID == block.BlockID {
+			citations[i] = block
+			return citations
+		}
+	}
+	return append(citations, block)
 }
 
 func documentsByID(docs []*interfaces.RequirementDocument) map[string]*interfaces.RequirementDocument {

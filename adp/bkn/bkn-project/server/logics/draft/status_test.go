@@ -386,6 +386,13 @@ func Test_ProjectStatus(t *testing.T) {
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
 				So(s.Release.InUse, ShouldBeTrue)
 				So(action(s, interfaces.ACTION_SWITCH_CONSUMERS), ShouldBeNil)
+				So(*action(s, interfaces.ACTION_REVIEW_ROLLBACK), ShouldResemble, interfaces.ProjectStatusNextAction{
+					Action: interfaces.ACTION_REVIEW_ROLLBACK, Method: "GET", Path: "/projects/p1/rollback-plan", Allowed: true,
+				})
+				other := interfaces.AccountInfo{ID: "u9", Type: "user"}
+				s = status(project(), confirmed(), passed, other, fresh)
+				withRelease(s, project(), release, &interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, other)
+				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
 			})
 
 			Convey("A partial check published is published, its blocker settled\n", func() {

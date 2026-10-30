@@ -38,6 +38,7 @@ func (r *restHandler) GetStatusByEx(c *gin.Context)      { r.withExVisitor(c, r.
 func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.GetPending) }
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
 func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
+func (r *restHandler) AskObjectTypeByEx(c *gin.Context)  { r.withExVisitor(c, r.AskObjectType) }
 
 // generateDraftRequest is the optional body of draft:generate.
 type generateDraftRequest struct {
@@ -345,6 +346,30 @@ func (r *restHandler) ChooseIdentity(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+// AskObjectType serves POST /projects/{project_id}/ontology/draft/object_types/{item_id}/ask: Ask AI
+// about one object type. It reads the draft and never changes it.
+func (r *restHandler) AskObjectType(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, itemID := c.Param("project_id"), c.Param("item_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("item_id").String(itemID))
+
+	var req interfaces.DraftAskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	answer, err := r.drs.AskObjectType(ctx, visitor.TokenID, id, itemID, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, answer)
 }
 
 func (r *restHandler) RestoreExcluded(c *gin.Context, visitor hydra.Visitor) {
