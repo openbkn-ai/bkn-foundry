@@ -39,6 +39,7 @@
   <tr><td>AppKey (<code>bak_</code>)</td><td>Scripts and automation</td><td><b>Context Loader only</b> (retrieval and MCP, <b>read-only</b>)</td></tr>
   <tr><td>Device authorization flow</td><td>Applications acting on behalf of users</td><td>All service APIs</td></tr>
 </table>
+<p>BKN management REST APIs under <code>/api/bkn-backend/v1</code> require an <b>OAuth access token</b>, including read-only requests such as <code>GET /api/bkn-backend/v1/knowledge-networks</code>. AppKeys are not supported by these APIs. A shared Bearer header format does not make the two credential types interchangeable.</p>
 
 <h2>Method 1 · CLI login (recommended for personal use)</h2>
 <p>Sign in once with the <code>openbkn</code> CLI from <a href="https://github.com/openbkn-ai/bkn-sdk">bkn-sdk</a>. Subsequent commands send and refresh the token automatically. Login uses the OAuth2 <b>device authorization flow</b> (RFC 8628).</p>
@@ -57,8 +58,11 @@ openbkn auth whoami          # Show the current identity
 curl -H "Authorization: Bearer $(openbkn auth token)" \
      https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</code></pre>
 
-<h2>Method 2 · AppKey (recommended for automation)</h2>
+<h2>Method 2 · AppKey (for Context Loader retrieval/MCP automation)</h2>
 <div class="note"><b>Coverage:</b> An AppKey is a long-lived credential for <b>Context Loader</b> retrieval and MCP APIs under <code>/api/agent-retrieval/...</code>. It supports <b>read-only operations only</b>. Write APIs intentionally reject AppKeys. Requests run as the issuer and have the same read scope as the issuer's OAuth token. Use an OAuth token for writes or other services.</div>
+<p>The read-only scope above is the existing authentication-guide boundary. Execution-operation documentation also advertises AppKeys; that discrepancy needs a separate support-boundary decision. Until it is resolved, use OAuth for execution operations rather than treating MCP initialization success as evidence that all tools are supported.</p>
+<h3>Why can an active AppKey return HTTP 401?</h3>
+<p>Safe reporting <code>active: true</code> establishes that the key is valid and identifies its owner. Context Loader routes <code>bak_</code> credentials to Safe for verification, whereas BKN management APIs validate OAuth tokens through Hydra. An active AppKey sent to a BKN management API can therefore return <code>401 / Public.Unauthorized</code> before resource authorization. Changing the owner's roles or knowledge-network grants does not address this credential mismatch. Use the OAuth example above for management requests, including CLI and integration calls. Successful MCP <code>initialize</code> only establishes initialization; business tools still require their own authorization.</p>
 <p>Create and manage an AppKey in the BKN Studio profile page or issue it through the API with an authenticated OAuth token. An AppKey cannot issue another AppKey. <code>name</code> is required; omitting <code>expires_at</code> uses a one-year lifetime.</p>
 <pre><code class="language-bash"># Issue a key with an authenticated OAuth token
 curl -X POST https://&lt;your-instance&gt;/api/safe/v1/me/api-keys \

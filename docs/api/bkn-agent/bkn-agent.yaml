@@ -996,6 +996,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/versions/{version}/translations/{language}:
+    put:
+      tags:
+      - BknAgentExecution
+      summary: Put Shared Prompt Translation
+      description: 'Add or edit the selected version''s translation without creating
+        a version.
+
+
+        An unmarked legacy original is explicitly labeled by the administrator. A
+
+        changed active version, original body or source language returns 409.'
+      operationId: put_shared_prompt_translation_api_bkn_agent_v1_admin_agents__agent_id__prompt_versions__version__translations__language__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: language
+        in: path
+        required: true
+        schema:
+          enum:
+          - zh-CN
+          - en-US
+          type: string
+          title: Language
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          title: Version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptTranslationPut'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedPromptOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/bkn-agent/v1/invoke/{agent_id}:
     post:
       tags:
@@ -2911,6 +2973,29 @@ components:
       - name
       - content
       title: PromptSpec
+    PromptTranslationPut:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          pattern: ^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$
+          title: Content
+        source_language:
+          type: string
+          enum:
+          - zh-CN
+          - en-US
+          title: Source Language
+        source_content_sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Source Content Sha256
+      type: object
+      required:
+      - content
+      - source_language
+      - source_content_sha256
+      title: PromptTranslationPut
     PromptVersionList:
       properties:
         items:
@@ -2964,6 +3049,14 @@ components:
             type: object
           - type: 'null'
           title: Vars Schema
+        source_language:
+          anyOf:
+          - type: string
+            enum:
+            - zh-CN
+            - en-US
+          - type: 'null'
+          title: Source Language
         version:
           type: integer
           maximum: 2147483647.0
@@ -3126,10 +3219,40 @@ components:
         next_version:
           type: integer
           title: Next Version
+        source_language:
+          anyOf:
+          - type: string
+            enum:
+            - zh-CN
+            - en-US
+          - type: 'null'
+          title: Source Language
+        source_content:
+          type: string
+          title: Source Content
+        source_content_sha256:
+          type: string
+          title: Source Content Sha256
+        content_language:
+          anyOf:
+          - type: string
+            enum:
+            - zh-CN
+            - en-US
+          - type: 'null'
+          title: Content Language
+        translations:
+          additionalProperties:
+            type: string
+          type: object
+          title: Translations
       type: object
       required:
       - prompt
       - next_version
+      - source_content
+      - source_content_sha256
+      - translations
       title: SharedPromptOut
     SharedPromptPublish:
       properties:
@@ -3146,6 +3269,14 @@ components:
             type: object
           - type: 'null'
           title: Vars Schema
+        source_language:
+          anyOf:
+          - type: string
+            enum:
+            - zh-CN
+            - en-US
+          - type: 'null'
+          title: Source Language
       type: object
       required:
       - content

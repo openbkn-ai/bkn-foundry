@@ -31,14 +31,14 @@ import (
 // @Param trace_id query string false "Exact trace ID; bypasses list projection scan"
 // @Param conversation_id query string false "Caller-owned conversation ID"
 // @Param interaction_id query string false "One user interaction ID"
-// @Param from query string false "Started at or after this RFC3339 timestamp"
-// @Param to query string false "Started at or before this RFC3339 timestamp"
+// @Param from query string false "Started at or after this RFC3339 timestamp; omitted means no lower time bound"
+// @Param to query string false "Started at or before this RFC3339 timestamp; omitted means no upper time bound"
 // @Param status query string false "Execution status"
 // @Param agent_or_app query string false "Agent or application"
 // @Param service query string false "Root service name"
 // @Param tool query string false "Root operation name"
 // @Param error_keyword query string false "Substring matched against the recorded error summary"
-// @Param keyword query string false "Trace, request, operation, or error keyword"
+// @Param keyword query string false "Case-insensitive substring of trace/request/conversation/interaction IDs, agent/app, root service/operation, or recorded error summary; incomplete searches return a resource error"
 // @Success 200 {object} evidencevo.TraceSummaryPage
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse

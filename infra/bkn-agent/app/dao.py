@@ -1,3 +1,4 @@
+import hashlib
 import time
 import uuid
 from typing import Optional
@@ -533,6 +534,8 @@ def _localized_prompt_content(version: PromptVersionRow) -> str:
     Raw Prompt management/export/history reads deliberately do not call this.
     New manually published versions have no inherited translations.
     """
+    if version.f_source_language == get_effective_locale():
+        return version.f_content
     variants = version.f_localized_content or {}
     translated = variants.get(get_effective_locale()) if isinstance(variants, dict) else None
     return translated if isinstance(translated, str) and translated else version.f_content
@@ -715,6 +718,7 @@ async def publish_prompt_version(
     session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str,
     commit: bool = True,
     *, preserve_vars_schema: bool = False, version: int | None = None,
+    source_language: str | None = None,
 ):
     locked_agent_ids = None
     lock = not commit or version is not None
@@ -748,6 +752,7 @@ async def publish_prompt_version(
             f_prompt_id=prompt_id,
             f_version=latest + 1,
             f_content=content,
+            f_source_language=source_language,
             f_vars_schema=vars_schema,
             f_create_user=account_id,
             f_create_time=now,
@@ -1049,3 +1054,54 @@ async def begin_execution(session: AsyncSession, run_id: str) -> bool:
     )
     await session.commit()
     return result.rowcount == 1
+
+
+async def put_prompt_translation(
+    session: AsyncSession,
+    agent_id: str,
+    prompt_id: str,
+    version: int,
+    language: str,
+    content: str,
+    source_language: str,
+    source_content_sha256: str,
+    account_id: str,
+):
+    """Edit one version's translation, with the same lock order as publish/delete.
+
+    Never record a new Prompt/Agent version or change the active pointer. Locking
+    the parent serializes JSON map updates and prevents concurrent lost locales.
+    """
+    await lock_prompt_agents(session, prompt_id)
+    agent = await _lock_agent(session, agent_id)
+    head = await session.get(
+        PromptRow, prompt_id, populate_existing=True, with_for_update=True
+    )
+    if (
+        not agent
+        or agent.f_prompt_id != prompt_id
+        or not head
+        or head.f_current_version != version
+    ):
+        raise err(409, "BknAgent.Prompt.TranslationStale")
+    row = await session.get(
+        PromptVersionRow,
+        (prompt_id, version),
+        populate_existing=True,
+        with_for_update=True,
+    )
+    if row is None:
+        raise err(404, "BknAgent.NotFound", resource="Prompt", ident=str(version))
+    if hashlib.sha256(row.f_content.encode()).hexdigest() != source_content_sha256:
+        raise err(409, "BknAgent.Prompt.TranslationStale")
+    if row.f_source_language not in (None, source_language):
+        raise err(409, "BknAgent.Prompt.TranslationStale")
+    if language == source_language:
+        raise err(400, "BknAgent.Prompt.TranslationIsSource")
+    variants = dict(row.f_localized_content or {})
+    variants[language] = content
+    row.f_localized_content = variants
+    row.f_source_language = source_language
+    head.f_update_user = account_id
+    head.f_update_time = _now_ms()
+    await session.flush()

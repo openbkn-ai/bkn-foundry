@@ -49,6 +49,7 @@ class PromptVersionRow(Base):
     f_version: Mapped[int] = mapped_column(Integer, primary_key=True)
     f_content: Mapped[str] = mapped_column(Text)
     f_localized_content: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    f_source_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     f_vars_schema: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     f_create_user: Mapped[str] = mapped_column(String(50))
     f_create_time: Mapped[int] = mapped_column(BigInteger)
@@ -503,6 +504,8 @@ _SHARED_PROMPT_CONTENT_PATTERN = (
 
 
 class SharedPromptPublish(PromptPublish):
+    # Older callers may omit this; unknown is explicit, never language detection.
+    source_language: Literal["zh-CN", "en-US"] | None = None
     content: str = Field(
         min_length=1,
         pattern=_SHARED_PROMPT_CONTENT_PATTERN,
@@ -512,6 +515,12 @@ class SharedPromptPublish(PromptPublish):
 
 class PromptVersionPublish(SharedPromptPublish):
     version: int = Field(ge=1, le=2147483647, strict=True)
+
+
+class PromptTranslationPut(BaseModel):
+    content: str = Field(min_length=1, pattern=_SHARED_PROMPT_CONTENT_PATTERN)
+    source_language: Literal["zh-CN", "en-US"]
+    source_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class PromptRollback(BaseModel):

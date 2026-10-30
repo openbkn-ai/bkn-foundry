@@ -25,5 +25,11 @@ components:
       name: Authorization
       description: |
         Application key with the `bak_` prefix. Send it as
-        `Authorization: Bearer bak_xxx` for service-to-service or
-        application-level calls.
+        `Authorization: Bearer bak_xxx` for Context Loader read-only retrieval
+        and MCP under `/api/agent-retrieval/...`. Requests resolve to the key
+        owner's identity and remain subject to resource permissions.
+        Defining this scheme does not enable it on every API; an operation's
+        effective `security` declaration determines the advertised schemes.
+        BKN management REST APIs under `/api/bkn-backend/v1` require OAuth,
+        including read-only GET requests, and do not support AppKeys.
+        An active key in Safe does not imply acceptance by another service.

@@ -12,7 +12,8 @@ import pymysql
 import pytest
 
 from app.public_auth import BUILTIN_AGENT_IDS
-from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, ANSWER_JUDGE, ANSWER_JUDGE_EXPECT, ANSWER_JUDGE_REASON, statements, selected_migrations
+from app.test.test_builtin_prompt_locales import ENGLISH_ORIGINALS, LEGACY_SMART_QA
+from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, ANSWER_JUDGE, ANSWER_JUDGE_EXPECT, SOURCE_LANGUAGE, ANSWER_JUDGE_REASON, statements, selected_migrations
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
@@ -60,6 +61,8 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
             assert cursor.fetchall() == ()
+        with db.cursor() as cursor:
+            cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
         before_locales_rerun = saved_rows()
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)
@@ -69,20 +72,29 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         apply(ANSWER_JUDGE)
         apply(ANSWER_JUDGE_EXPECT)
         apply(ANSWER_JUDGE_EXPECT)
+        apply(SOURCE_LANGUAGE)
+        apply(SOURCE_LANGUAGE)
         apply(ANSWER_JUDGE_REASON)
         apply(ANSWER_JUDGE_REASON)
         assert saved_rows() == before_locales_rerun
         with db.cursor() as cursor:
-            cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content FROM t_agent a "
+            cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content, p.f_current_version, v.f_source_language FROM t_agent a "
                            "JOIN t_agent_prompt p ON p.f_prompt_id=a.f_prompt_id "
                            "JOIN t_agent_prompt_version v ON v.f_prompt_id=p.f_prompt_id "
                            "AND v.f_version=p.f_current_version")
             rows = cursor.fetchall()
             assert len(rows) == len(BUILTIN_AGENT_IDS)
-            for agent_id, canonical, variants in rows:
-                variants = json.loads(variants)
-                assert variants.get("zh-CN", canonical) != variants.get("en-US", canonical), agent_id
-            # The official v5 and its official translations upgrade to v6 on every path.
+            for agent_id, canonical, variants, current, source_language in rows:
+                expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
+                assert source_language == (expected if upgrade == "fresh" else None), agent_id
+                cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
+                initial = cursor.fetchone()
+                if variants is not None:
+                    variants = json.loads(variants)
+                    assert variants.get("zh-CN", canonical) != variants.get("en-US", canonical), agent_id
+                else:
+                    assert not initial or initial[0] != current, agent_id
+            # Preserve main's explicit official v6 upgrade and translations.
             cursor.execute("SELECT f_current_version FROM t_agent_prompt WHERE f_prompt_id='resource-semantic-understanding-prompt'")
             assert cursor.fetchone() == (6,)
         before_index_rerun = saved_rows()
@@ -119,6 +131,27 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert cursor.fetchone() == ("Custom admin content", None)
             cursor.execute("SELECT f_content FROM t_agent_prompt_override WHERE f_account_id='test-user'")
             assert cursor.fetchone()[0] == "Custom user content"
+        # Existing Initial configurations can reference an older official Prompt body.
+        with db.cursor() as cursor:
+            for version, creator in ((103, "266c6a42-6131-4d62-8f39-853e7093701c"), (104, "administrator"), (105, "266c6a42-6131-4d62-8f39-853e7093701c")):
+                cursor.execute("INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_create_user,f_create_time) VALUES (%s,%s,%s,%s,%s)", ("studio_smart_qa_prompt", version, LEGACY_SMART_QA, creator, 1))
+            cursor.execute("UPDATE t_agent_prompt SET f_current_version=103 WHERE f_prompt_id='studio_smart_qa_prompt'")
+            cursor.execute("UPDATE t_agent_version SET f_prompt_version=103 WHERE f_agent_id='studio_smart_qa' AND f_initial=1")
+        before_legacy = saved_rows()
+        apply(BUILTIN_LOCALES)
+        apply(SOURCE_LANGUAGE)
+        with db.cursor() as cursor:
+            cursor.execute("SELECT f_version,f_content,f_localized_content,f_source_language FROM t_agent_prompt_version WHERE f_prompt_id='studio_smart_qa_prompt' AND f_version IN (103,104,105) ORDER BY f_version")
+            official, custom, non_initial = cursor.fetchall()
+            assert official[1] == LEGACY_SMART_QA
+            assert json.loads(official[2])["en-US"].startswith("You are a business knowledge network Q&A assistant")
+            assert official[3] is None
+            assert custom == (104, LEGACY_SMART_QA, None, None)
+            assert non_initial == (105, LEGACY_SMART_QA, None, None)
+        after_legacy = saved_rows()
+        assert before_legacy[:3] == after_legacy[:3]
+        apply(BUILTIN_LOCALES)
+        assert saved_rows() == after_legacy
     finally:
         with db.cursor() as cursor:
             cursor.execute(f"DROP DATABASE IF EXISTS `{name}`")

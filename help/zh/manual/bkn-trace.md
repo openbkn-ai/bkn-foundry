@@ -16,6 +16,8 @@
 
 资源规划与实测边界见[资源配置与 Agent / Trace 容量参考](bkn-trace-resources.md)。
 
+保留 0.2.0 环境的配置核对、旧消息保护和修复后显式重新生成解释，参见[Evidence 启用与原生归因验收](bkn-trace-evidence-enablement.md)。
+
 ## Community 与 EE 接口边界
 
 Community 提供受授权的基础事实和技术 Trace 读取。企业原生业务溯源需要目标
