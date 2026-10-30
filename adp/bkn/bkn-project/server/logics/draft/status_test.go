@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -497,6 +498,26 @@ func Test_GetStatus(t *testing.T) {
 			func(context.Context, interfaces.VegaAccount, []string) ([]*interfaces.VegaTable, error) {
 				return structure, nil
 			}).AnyTimes()
+		// The catalogs' tables, by catalog: described unless a test says otherwise.
+		catalogTables := map[string][]*interfaces.VegaTable{}
+		listErr := map[string]error{}
+		var listed []string
+		va.EXPECT().ListTables(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaTable, error) {
+				listed = append(listed, catalogID)
+				return catalogTables[catalogID], listErr[catalogID]
+			}).AnyTimes()
+		described := func(n int, undescribed int) []*interfaces.VegaTable {
+			tables := []*interfaces.VegaTable{}
+			for i := 0; i < n; i++ {
+				t := &interfaces.VegaTable{ID: fmt.Sprintf("t%d", i), Name: fmt.Sprintf("t%d", i), Description: "What it holds"}
+				if i < undescribed {
+					t.Description = ""
+				}
+				tables = append(tables, t)
+			}
+			return tables
+		}
 		svc := &draftService{setting: testSetting, da: da, ca: ca, ps: ps, ls: ls, ra: ra, rqa: rqa, va: va}
 		ctx := context.Background()
 		action := func(s *interfaces.ProjectStatus, name string) *interfaces.ProjectStatusNextAction {
@@ -785,6 +806,7 @@ func Test_GetStatus(t *testing.T) {
 			d.Items.ObjectTypes[2].Table = d.Items.ObjectTypes[1].Table
 			own := pmock.NewMockVegaAccess(ctrl)
 			own.EXPECT().MissingCatalogs(gomock.Any(), other, []string{"c1"}).Return(nil, nil)
+			own.EXPECT().ListTables(gomock.Any(), other, "c1").Return(nil, nil)
 			own.EXPECT().MissingTables(gomock.Any(), other, []string{"res_orders", "res_customers", "res_order_lines"}).
 				Return([]string{"res_customers"}, nil)
 			svc.va = own
@@ -818,6 +840,7 @@ func Test_GetStatus(t *testing.T) {
 				own := pmock.NewMockVegaAccess(ctrl)
 				own.EXPECT().MissingCatalogs(gomock.Any(), who, gomock.Any()).Return(nil, nil)
 				own.EXPECT().MissingTables(gomock.Any(), who, gomock.Any()).Return(nil, nil)
+				own.EXPECT().ListTables(gomock.Any(), who, gomock.Any()).Return(nil, nil).AnyTimes()
 				own.EXPECT().GetTables(gomock.Any(), who, []string{"t_customers", "t_orders", "t_customer_tags"}).Return(structure, nil)
 				svc.va = own
 				ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", who).Return(project, false, nil)
@@ -911,6 +934,7 @@ func Test_GetStatus(t *testing.T) {
 			other := interfaces.AccountInfo{ID: "u2", Type: "user"}
 			va2 := pmock.NewMockVegaAccess(ctrl)
 			va2.EXPECT().MissingCatalogs(gomock.Any(), other, []string{"c1"}).Return([]string{"c1"}, nil)
+			va2.EXPECT().ListTables(gomock.Any(), other, "c1").Return(nil, nil)
 			svc.va = va2
 			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", other).Return(project, false, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
@@ -1059,6 +1083,114 @@ func Test_GetStatus(t *testing.T) {
 			So(review.Allowed, ShouldBeFalse)
 			So(review.Reason, ShouldEqual, interfaces.BLOCKER_TABLE_MISSING)
 			So(review.Path, ShouldEqual, "/projects/p1/release-review?version=1.0.0")
+		})
+
+		Convey("Catalogs most of whose tables have no description hint at understanding them, blocking nothing\n", func() {
+			two := &interfaces.ProjectEntry{Project: &interfaces.Project{
+				ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller, CatalogIDs: []string{"c1", "c2"}}}
+			// 3 of 5 tables have no description: more than half.
+			catalogTables["c1"], catalogTables["c2"] = described(3, 2), described(2, 1)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(two, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(listed, ShouldResemble, []string{"c1", "c2"})
+			So(s.Hints, ShouldResemble, []interfaces.ProjectStatusHint{
+				{Code: interfaces.HINT_CATALOGS_UNNAMED, Count: 3, Total: 5}})
+			So(s.Blockers, ShouldBeEmpty)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_NO_DRAFT)
+			understand := action(s, interfaces.ACTION_UNDERSTAND_CATALOGS)
+			So(understand, ShouldResemble, &interfaces.ProjectStatusNextAction{
+				Action: interfaces.ACTION_UNDERSTAND_CATALOGS, Method: http.MethodPost, Path: "/projects/p1/catalogs:understand",
+				Allowed: true})
+			So(action(s, interfaces.ACTION_GENERATE_DRAFT).Allowed, ShouldBeTrue)
+
+			// Only its owner may start it.
+			other := interfaces.AccountInfo{ID: "u2", Type: "user"}
+			own := pmock.NewMockVegaAccess(ctrl)
+			own.EXPECT().MissingCatalogs(gomock.Any(), other, gomock.Any()).Return(nil, nil)
+			own.EXPECT().ListTables(gomock.Any(), other, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaTable, error) {
+					return catalogTables[catalogID], nil
+				}).Times(2)
+			svc.va = own
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", other).Return(two, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			s, err = svc.GetStatus(ctx, token, "p1", other)
+			So(err, ShouldBeNil)
+			So(action(s, interfaces.ACTION_UNDERSTAND_CATALOGS).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
+		})
+
+		Convey("Half the tables without a description, a read that fails, or no tables at all: no hint\n", func() {
+			two := &interfaces.ProjectEntry{Project: &interfaces.Project{
+				ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller, CatalogIDs: []string{"c1", "c2"}}}
+			// The second catalog alone would hint; with the first, exactly half is no hint, and a read that
+			// fails gives none at all.
+			catalogTables["c2"] = described(4, 4)
+			for _, c := range []struct {
+				tables []*interfaces.VegaTable
+				err    error
+			}{{described(4, 0), nil}, {described(4, 4), errors.New("vega down")}, {nil, nil}} {
+				catalogTables["c1"], listErr["c1"] = c.tables, c.err
+				if c.tables == nil {
+					catalogTables["c2"] = nil
+				}
+				ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(two, false, nil)
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+				ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+				s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(s.Hints, ShouldBeEmpty)
+				So(action(s, interfaces.ACTION_UNDERSTAND_CATALOGS), ShouldBeNil)
+			}
+		})
+
+		Convey("Once confirmed, or archived, the catalogs are not read for it\n", func() {
+			catalogTables["c1"] = described(2, 2)
+			d := confirmableDraft()
+			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: d.UpdateTime, Commit: "c1", Time: 100}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_CHECK_NOT_STARTED)
+			So(listed, ShouldBeEmpty)
+			So(s.Hints, ShouldBeEmpty)
+
+			archived := &interfaces.ProjectEntry{Project: &interfaces.Project{
+				ID: "p1", KNID: "supply", Owner: caller, CatalogIDs: []string{"c1"}, Archived: true}}
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(archived, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			s, err = svc.GetStatus(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(listed, ShouldBeEmpty)
+		})
+
+		Convey("Deciding and ready to confirm still hint: drafting again picks the names up\n", func() {
+			catalogTables["c1"] = described(2, 2)
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			ls.EXPECT().PreflightDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(&interfaces.DefinitionsPreflight{}, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_READY_TO_CONFIRM)
+			So(s.Hints, ShouldResemble, []interfaces.ProjectStatusHint{{Code: interfaces.HINT_CATALOGS_UNNAMED, Count: 2, Total: 2}})
 		})
 
 		Convey("A project the caller cannot see answers as the project service does\n", func() {

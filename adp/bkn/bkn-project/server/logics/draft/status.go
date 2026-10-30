@@ -97,8 +97,58 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 		withDataSources(status, entry.Project, caller)
 		s.withSourceChanges(ctx, status, entry.Project, draft, caller)
 	}
+	if namingStages[status.Stage] {
+		s.withCatalogsHint(ctx, entry.Project, caller, status)
+	}
 	span.SetStatus(codes.Ok, "")
 	return status, nil
+}
+
+// unnamedTablesHintRatio is the share of the catalogs' tables without a description above which
+// the status hints at understanding them: more than half. Below it most items get business names
+// already, and the rest are left to people.
+const unnamedTablesHintRatio = 0.5
+
+// namingStages are the stages where drafting, or drafting again, is still ahead of confirming, so
+// names understanding gives would reach the draft.
+var namingStages = map[string]bool{
+	interfaces.PROJECT_STAGE_NO_DRAFT: true, interfaces.PROJECT_STAGE_DRAFT_FAILED: true,
+	interfaces.PROJECT_STAGE_DECIDING: true, interfaces.PROJECT_STAGE_READY_TO_CONFIRM: true,
+}
+
+// withCatalogsHint reads, as the caller, the tables of the project's catalogs, and hints at
+// understanding them when more than unnamedTablesHintRatio of them have no description: only
+// semantic understanding or a person writes one. A read that fails gives no hint.
+func (s *draftService) withCatalogsHint(ctx context.Context, project *interfaces.Project,
+	caller interfaces.AccountInfo, status *interfaces.ProjectStatus) {
+	total, unnamed := 0, 0
+	for _, catalogID := range project.CatalogIDs {
+		tables, err := s.va.ListTables(ctx, caller, catalogID)
+		if err != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("List tables of project %s: %v", project.ID, err))
+			return
+		}
+		for _, t := range tables {
+			total++
+			if strings.TrimSpace(t.Description) == "" {
+				unnamed++
+			}
+		}
+	}
+	if float64(unnamed) <= unnamedTablesHintRatio*float64(total) {
+		return
+	}
+	status.Hints = append(status.Hints, interfaces.ProjectStatusHint{
+		Code: interfaces.HINT_CATALOGS_UNNAMED, Count: unnamed, Total: total,
+	})
+	understand := interfaces.ProjectStatusNextAction{
+		Action: interfaces.ACTION_UNDERSTAND_CATALOGS, Method: http.MethodPost,
+		Path: "/projects/" + project.ID + "/catalogs:understand", Allowed: caller.ID == project.Owner.ID,
+	}
+	if !understand.Allowed {
+		understand.Reason = interfaces.ACTION_REASON_NOT_OWNER
+	}
+	status.NextActions = append(status.NextActions, understand)
 }
 
 // boundTable is a table a draft item reads its records from.
@@ -357,6 +407,7 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 	s := &interfaces.ProjectStatus{
 		ProjectID:   project.ID,
 		Blockers:    []interfaces.ProjectStatusBlocker{},
+		Hints:       []interfaces.ProjectStatusHint{},
 		Stale:       []string{},
 		NextActions: []interfaces.ProjectStatusNextAction{},
 		Links: map[string]string{
