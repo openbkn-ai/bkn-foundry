@@ -293,21 +293,27 @@ func applyQuestion(ctx context.Context, q *interfaces.RequirementQuestion, edit 
 		if inputs == nil {
 			inputs = []interfaces.RequirementInput{}
 		}
+		// The person names each property: none is the server's key any more.
+		for i := range inputs {
+			inputs[i].PropertyFromKey = false
+		}
 		q.Inputs = &inputs
 	}
 	if edit.RelativeWindow != nil {
 		q.RelativeWindow = *edit.RelativeWindow
 	}
 	if edit.Inputs != nil || edit.Template != nil || edit.RelativeWindow != nil {
-		return checkInputs(ctx, q, spec, drafted.draft)
+		return checkInputs(ctx, q, spec, drafted.draft, edit.Inputs != nil || edit.RelativeWindow != nil)
 	}
 	return nil
 }
 
 // checkInputs refuses a question whose inputs, after an edit of them or of the template, do not
-// stand as drafting would keep them.
+// stand as drafting would keep them; and, when the inputs or the window were edited (window), one
+// counting a period back from a time no input gives. Drafting keeps such a question, noted, so an
+// edit of its wording alone is not held up by it.
 func checkInputs(ctx context.Context, q *interfaces.RequirementQuestion, spec *interfaces.RequirementSpec,
-	draft *interfaces.Draft) error {
+	draft *interfaces.Draft, window bool) error {
 	var inputs []interfaces.RequirementInput
 	if q.Inputs != nil {
 		inputs = *q.Inputs
@@ -322,7 +328,7 @@ func checkInputs(ctx context.Context, q *interfaces.RequirementQuestion, spec *i
 			return invalidItem(ctx, fmt.Sprintf("input %s: %s", in.Name, problem))
 		}
 	}
-	if q.Inputs != nil && needsReferenceTime(q.RelativeWindow, inputs) {
+	if window && q.Inputs != nil && needsReferenceTime(q.RelativeWindow, inputs) {
 		return invalidItem(ctx, rejectedWindowWithoutRefTime)
 	}
 	return nil

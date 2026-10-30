@@ -182,6 +182,7 @@ func Test_BuildSpec(t *testing.T) {
 			withProps := testDraft()
 			withProps.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{
 				{Name: "order_no", Type: "string"}, {Name: "signed_on", Type: "date"}}
+			withProps.Items.ObjectTypes[0].PrimaryKeys = []string{"order_no"}
 			orderRef := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"}
 			record := func(name, concept, property string) agentInput {
 				return agentInput{Name: name, ConceptID: concept, Property: property, Role: interfaces.REQUIREMENT_INPUT_RECORD}
@@ -194,7 +195,7 @@ func Test_BuildSpec(t *testing.T) {
 						record("order", "ord", "order_no"),
 						record("order", "ord", "order_no"),                                    // the same name again
 						record("nobody", "ghost", "order_no"),                                 // no such concept
-						record("missing", "ord", "nope"),                                      // no such property
+						record("missing", "ord", "nope"),                                      // no such property: the key
 						record("absent", "ord", "order_no"),                                   // not in the template
 						{Name: "kind", ConceptID: "ord", Property: "order_no", Role: "guess"}, // no such role
 					}},
@@ -209,16 +210,21 @@ func Test_BuildSpec(t *testing.T) {
 					{Text: "e", Template: "Orders of {order} in the 30 days before {as_of}?", SupplementReason: "r", RelativeWindow: true,
 						Inputs: []agentInput{record("order", "ord", "order_no"),
 							{Name: "as_of", ConceptID: "ord", Property: "signed_on", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
-					// Without one it depends on when it is asked: the question is rejected.
+					// Without one it depends on when it is asked: the question stays, noted when read.
 					{Text: "f", Template: "Orders of {order} in the last 30 days?", SupplementReason: "r", RelativeWindow: true,
 						Inputs: []agentInput{record("order", "ord", "order_no")}},
-					// A reference time on a property that is no time.
+					// A reference time on a property that is no time: rejected, and the question stays.
 					{Text: "g", Template: "Orders before {as_of}?", SupplementReason: "r", RelativeWindow: true,
 						Inputs: []agentInput{{Name: "as_of", ConceptID: "ord", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
 					// The same, with a reference time on it.
 					{Text: "h", Template: "Sales of {channel} before {as_of}?", SupplementReason: "r", Inputs: []agentInput{
 						record("channel", "loose", "anything"),
 						{Name: "as_of", ConceptID: "loose", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
+					// A record named by no property: the key names it.
+					{Text: "i", Template: "Lines of order {order}?", SupplementReason: "r", Inputs: []agentInput{record("order", "ord", "")}},
+					// A reference time is a time, never the key.
+					{Text: "j", Template: "Orders before {as_of}?", SupplementReason: "r", Inputs: []agentInput{
+						{Name: "as_of", ConceptID: "ord", Property: "nope", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
 				},
 			}
 
@@ -229,29 +235,49 @@ func Test_BuildSpec(t *testing.T) {
 				byText[q.Text] = q
 			}
 			So(*byText["a"].Inputs, ShouldResemble, []interfaces.RequirementInput{
-				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}})
+				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD},
+				{Name: "missing", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD, PropertyFromKey: true}})
+			So(*byText["i"].Inputs, ShouldResemble, []interfaces.RequirementInput{
+				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD, PropertyFromKey: true}})
 			So(byText["b"].Inputs, ShouldBeNil)
 			So(*byText["c"].Inputs, ShouldBeEmpty)
 			So(byText["d"].Inputs, ShouldBeNil)
 			So(*byText["e"].Inputs, ShouldHaveLength, 2)
 			So(byText["e"].RelativeWindow, ShouldBeTrue)
-			So(byText["f"], ShouldBeNil)
-			So(byText["g"], ShouldBeNil)
+			So(byText["f"].RelativeWindow, ShouldBeTrue)
+			So(*byText["f"].Inputs, ShouldHaveLength, 1)
+			So(byText["g"].RelativeWindow, ShouldBeTrue)
+			So(byText["g"].Inputs, ShouldBeNil)
+			So(byText["h"].Inputs, ShouldBeNil)
+			So(spec.Questions, ShouldHaveLength, 10)
 			reasons := map[string]string{}
 			for _, r := range spec.Rejected {
 				reasons[r.Kind+" "+r.Text] = r.Reason
 			}
-			So(reasons["input order (a)"], ShouldEqual, inputDuplicateName)
-			So(reasons["input kind (a)"], ShouldEqual, inputUnknownRole)
-			So(reasons["input nobody (a)"], ShouldEqual, inputUnknownConcept)
-			So(reasons["input missing (a)"], ShouldEqual, inputUnknownProperty)
-			So(reasons["input absent (a)"], ShouldEqual, inputNotInTemplate)
-			So(reasons["input order (d)"], ShouldEqual, inputNotInTemplate)
-			So(reasons["question f"], ShouldEqual, rejectedWindowWithoutRefTime)
-			So(reasons["input as_of (g)"], ShouldEqual, inputNotTime)
-			So(reasons["question g"], ShouldEqual, rejectedWindowWithoutRefTime)
-			So(reasons["input channel (b)"], ShouldEqual, inputConceptNotMapped)
+			So(reasons["input order.order_no (a)"], ShouldEqual, inputDuplicateName)
+			So(reasons["input kind.order_no (a)"], ShouldEqual, inputUnknownRole)
+			So(reasons["input nobody.order_no (a)"], ShouldEqual, inputUnknownConcept)
+			So(reasons["input absent.order_no (a)"], ShouldEqual, inputNotInTemplate)
+			So(reasons["input order.order_no (d)"], ShouldEqual, inputNotInTemplate)
+			So(reasons["input reference_time (f)"], ShouldEqual, rejectedWindowWithoutRefTime)
+			So(reasons["input as_of.order_no (g)"], ShouldEqual, inputNotTime)
+			So(reasons["input channel.anything (b)"], ShouldEqual, inputConceptNotMapped)
 			So(reasons["input as_of (h)"], ShouldEqual, inputConceptNotMapped)
+			So(reasons["input as_of.nope (j)"], ShouldEqual, inputUnknownProperty)
+			// No question is dropped for its inputs: a rejected reference time is the input's alone.
+			So(reasons, ShouldHaveLength, 11)
+
+			// A key of several fields names no record alone: the property stays unknown.
+			withProps.Items.ObjectTypes[0].PrimaryKeys = []string{"order_no", "signed_on"}
+			spec, _ = buildSpec(out, docs, withProps)
+			reasons = map[string]string{}
+			for _, r := range spec.Rejected {
+				reasons[r.Kind+" "+r.Text] = r.Reason
+			}
+			So(reasons["input missing.nope (a)"], ShouldEqual, inputUnknownProperty)
+			So(reasons["input order (i)"], ShouldEqual, inputUnknownProperty)
+			// Nor does the key stand in for a reference time.
+			So(reasons["input as_of.order_no (g)"], ShouldEqual, inputNotTime)
 
 			// Before the project has a draft, a concept maps to nothing yet: its property cannot be
 			// checked and stands, but a reference time with no property cannot be told a time.
@@ -267,7 +293,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Name: "channel", ConceptID: "c2", Property: "anything", Role: interfaces.REQUIREMENT_INPUT_RECORD}})
 			So(reasons["input as_of (h)"], ShouldEqual, inputNotTime)
 			So(*byText["h"].Inputs, ShouldHaveLength, 1)
-			So(reasons["input missing (a)"], ShouldEqual, "")
+			So(reasons["input missing.nope (a)"], ShouldEqual, "")
 		})
 
 		Convey("A question's layer is knowledge only when said so\n", func() {
@@ -379,6 +405,23 @@ func Test_BuildDraftMessage(t *testing.T) {
 			So(body.Tables, ShouldHaveLength, maxMessageTables)
 			So(body.Tables[0].Name, ShouldEqual, "t0")
 		})
+
+		Convey("A drafted object type goes with its properties and primary keys, so an input can name one\n", func() {
+			draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{
+				ID: "ot1", Name: "Item", PrimaryKeys: []string{"code"},
+				Properties: []*interfaces.DraftProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}},
+			}}}}
+
+			message, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft)
+
+			So(err, ShouldBeNil)
+			var body draftMessage
+			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
+			So(body.ObjectTypes, ShouldHaveLength, 1)
+			So(body.ObjectTypes[0].PrimaryKeys, ShouldResemble, []string{"code"})
+			So(body.ObjectTypes[0].Properties, ShouldResemble,
+				[]messageProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}})
+		})
 	})
 }
 
@@ -445,7 +488,7 @@ func Test_RequirementDrafting(t *testing.T) {
 					So(req.Message, ShouldStartWith, "pass draft\nlanguage: en-US\n")
 					So(req.Message, ShouldContainSubstring, `"id":"b2","text":"A new date confirmed by email updates the agreed date directly."`)
 					So(req.Message, ShouldContainSubstring, `"name":"orders","description":"Sales orders"`)
-					So(req.Message, ShouldContainSubstring, `{"id":"sales_order","name":"Sales order","aliases":["Order"]}`)
+					So(req.Message, ShouldContainSubstring, `{"id":"sales_order","name":"Sales order","aliases":["Order"],"properties":[]}`)
 					So(req.Message, ShouldContainSubstring, `{"id":"sales_order_customer","name":"Order of customer","source":"sales_order","target":"customer"}`)
 					return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_PENDING}, nil
 				})
@@ -720,6 +763,15 @@ func Test_GetRequirement(t *testing.T) {
 						{ID: "q3", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, Notes: []string{"stale"}},
 						{ID: "q4", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Metrics: []string{"m"}}},
 						{ID: "q5", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Skills: []string{"s"}}},
+						// A period counted back from a time no input gives, inputs known or not.
+						{ID: "q6", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, RelativeWindow: true,
+							Inputs: &[]interfaces.RequirementInput{{Name: "o", Role: interfaces.REQUIREMENT_INPUT_RECORD}}},
+						{ID: "q7", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, RelativeWindow: true},
+						{ID: "q8", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, RelativeWindow: true,
+							Inputs: &[]interfaces.RequirementInput{{Name: "t", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
+						// An input whose property the server took from the object type's key.
+						{ID: "q9", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+							Inputs: &[]interfaces.RequirementInput{{Name: "o", Role: interfaces.REQUIREMENT_INPUT_RECORD, PropertyFromKey: true}}},
 					},
 				}}
 		}
@@ -739,7 +791,9 @@ func Test_GetRequirement(t *testing.T) {
 			for _, q := range view.Spec.Questions {
 				notes = append(notes, q.Notes)
 			}
-			So(notes, ShouldResemble, [][]string{{interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS}, nil, nil, nil, nil})
+			So(notes, ShouldResemble, [][]string{{interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS}, nil, nil, nil, nil,
+				{interfaces.QUESTION_NOTE_REFERENCE_TIME_UNBOUND}, {interfaces.QUESTION_NOTE_REFERENCE_TIME_UNBOUND}, nil,
+				{interfaces.QUESTION_NOTE_INPUT_PROPERTY_FROM_KEY}})
 			So(view.UndecidedChoices, ShouldEqual, 1)
 			body, _ := json.Marshal(view)
 			So(string(body), ShouldContainSubstring, `"stale":false`)

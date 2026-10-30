@@ -118,6 +118,8 @@ type guidanceQuestion struct {
 	// Inputs are what the tests' slots name; [] says the question has none to name.
 	Inputs         *[]interfaces.RequirementInput `json:"inputs,omitempty"`
 	RelativeWindow bool                           `json:"relative_window,omitempty"`
+	// ServerTests says the server writes the template and not_exist tests, so the Agent writes neither.
+	ServerTests bool `json:"server_tests,omitempty"`
 }
 
 type guidanceScenario struct {
@@ -155,7 +157,8 @@ func buildGuidanceMessage(language string, spec *interfaces.RequirementSpec, q *
 	draft *interfaces.Draft) (string, error) {
 	msg := guidanceMessage{
 		Question: guidanceQuestion{ID: q.ID, Text: q.Text, Type: q.Type, Layer: q.Layer, Template: q.Template,
-			AnswerShape: q.AnswerShape, Inputs: q.Inputs, RelativeWindow: q.RelativeWindow},
+			AnswerShape: q.AnswerShape, Inputs: q.Inputs, RelativeWindow: q.RelativeWindow,
+			ServerTests: len(serverTests(q, unmappedConcepts(spec))) > 0},
 		Scenarios: []guidanceScenario{}, Rules: []guidanceRule{}, Concepts: []guidanceConcept{},
 		ObjectTypes: []guidanceObjectType{}, RelationTypes: []messageRelationType{},
 	}
@@ -287,13 +290,7 @@ func replaceSpans(text string, spans []valueSpan) string {
 // maps to no object type: no field holds its value. A test's kind decides what it expects.
 func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 	q *interfaces.RequirementQuestion, spec *interfaces.RequirementSpec) ([]*interfaces.QuestionTest, int) {
-	concepts := inputConcepts(q)
-	unmapped := map[string]bool{}
-	if spec != nil {
-		for _, c := range spec.Concepts {
-			unmapped[c.ID] = c.MapsTo == nil || c.MapsTo.Kind != interfaces.REQUIREMENT_ITEM_OBJECT_TYPE
-		}
-	}
+	concepts, unmapped := inputConcepts(q), unmappedConcepts(spec)
 	texts := make([]string, 0, len(docs))
 	for _, d := range docs {
 		texts = append(texts, normalize([]rune(d.Content)).text)
@@ -302,6 +299,7 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 	for i, t := range tests {
 		t.ID = fmt.Sprintf("t%d", i+1)
 	}
+	anchored := len(tests) > 0
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
 		if text == "" || len(tests) == maxTests || len(tests) > 0 && tests[0].ByServer && at.Kind == interfaces.TEST_KIND_NOT_EXIST {
@@ -337,8 +335,11 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
-		if !placed || (concepts != nil && (offInputs(slots, expect, concepts) ||
-			slices.ContainsFunc(slots, func(s interfaces.QuestionTestSlot) bool { return unmapped[s.ConceptID] }))) {
+		// One value names the same record only beside the server's template test, whose record it is
+		// checked against; alone it would only ever be said not checkable.
+		if !placed || expect == interfaces.TEST_EXPECT_SAME_RECORD && len(slots) < 2 && !anchored ||
+			(concepts != nil && (offInputs(slots, expect, concepts) ||
+				slices.ContainsFunc(slots, func(s interfaces.QuestionTestSlot) bool { return unmapped[s.ConceptID] }))) {
 			leftOut++
 			continue
 		}

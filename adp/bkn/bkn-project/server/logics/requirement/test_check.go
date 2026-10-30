@@ -7,7 +7,9 @@ package requirement
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
@@ -44,6 +46,7 @@ const (
 	checkSameRecordNeedsOneItem = "same_record_needs_one_object_type"
 	checkCompositeIdentity      = "composite_identity"
 	checkQueryFailed            = "query_failed"
+	checkQueryForbidden         = "query_forbidden"
 	checkExcludedField          = "excluded_field"
 	checkNoValueInData          = "no_value_in_data"
 	checkNoAbsentValue          = "no_absent_value"
@@ -115,6 +118,15 @@ func quoteField(field string) string {
 // quoteValue writes a value as a MySQL string literal.
 func quoteValue(value string) string {
 	return "'" + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), "'", "''") + "'"
+}
+
+// queryFailure is why a read of the data failed: the caller may not read it, or it failed otherwise.
+func queryFailure(err error) string {
+	var vegaErr *interfaces.VegaError
+	if errors.As(err, &vegaErr) && vegaErr.HTTPCode == http.StatusForbidden {
+		return checkQueryForbidden
+	}
+	return checkQueryFailed
 }
 
 func (s *requirementService) count(ctx context.Context, caller interfaces.AccountInfo, sql string) (int64, error) {
@@ -254,7 +266,7 @@ func (s *requirementService) checkAnchored(ctx context.Context, caller interface
 			f.objectType.Table.ResourceID, condition))
 		if err != nil {
 			logger.Warnf("Count for test question %s failed: %v", t.ID, err)
-			return notChecked(checkQueryFailed)
+			return notChecked(queryFailure(err))
 		}
 		switch {
 		case t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && n > 0:
@@ -268,7 +280,7 @@ func (s *requirementService) checkAnchored(ctx context.Context, caller interface
 			quoteField(key), fields[0].objectType.Table.ResourceID, strings.Join(conditions, " OR ")))
 		if err != nil {
 			logger.Warnf("Count for test question %s failed: %v", t.ID, err)
-			return notChecked(checkQueryFailed)
+			return notChecked(queryFailure(err))
 		}
 		if n != 1 {
 			return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkDifferentRecords}
@@ -290,7 +302,7 @@ func (s *requirementService) checkSameAsAnchor(ctx context.Context, caller inter
 		quoteField(key), table, strings.Join(named, " AND ")))
 	if err != nil {
 		logger.Warnf("Count for test question %s failed: %v", t.ID, err)
-		return notChecked(checkQueryFailed)
+		return notChecked(queryFailure(err))
 	}
 	switch {
 	case records == 0:
@@ -302,7 +314,7 @@ func (s *requirementService) checkSameAsAnchor(ctx context.Context, caller inter
 		table, strings.Join(append(named, anchored...), " AND ")))
 	if err != nil {
 		logger.Warnf("Count for test question %s failed: %v", t.ID, err)
-		return notChecked(checkQueryFailed)
+		return notChecked(queryFailure(err))
 	}
 	if same == 0 {
 		return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkDifferentRecords}
@@ -461,7 +473,7 @@ func (s *requirementService) sampleRow(ctx context.Context, caller interfaces.Ac
 		strings.Join(selects, ", "), table, strings.Join(where, " AND "), quoteField(order)), checkQueryTimeout)
 	if err != nil {
 		logger.Warnf("Read a value for a test question failed: %v", err)
-		return nil, checkQueryFailed
+		return nil, queryFailure(err)
 	}
 	if len(rows) == 0 {
 		return nil, checkNoValueInData
@@ -684,7 +696,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 			n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",
 				f.objectType.Table.ResourceID, quoteField(f.field), quoteValue(form)))
 			if err != nil {
-				return checkQueryFailed
+				return queryFailure(err)
 			}
 			if n == 0 {
 				value = form
@@ -727,7 +739,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 			if err != nil {
 				logger.Warnf("Read a value along a relation for a test question failed: %v; statement: %s", err, sql)
 				if !p.through {
-					return checkQueryFailed
+					return queryFailure(err)
 				}
 			}
 			if len(rows) > 0 {

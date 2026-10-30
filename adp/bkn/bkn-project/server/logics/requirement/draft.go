@@ -271,7 +271,8 @@ func draftResponseFormat() map[string]any {
 }
 
 // draftMessage is the user message of pass draft: the documents block by block, the tables of
-// the project's catalogs by name, and the items already drafted with their ids, as data.
+// the project's catalogs by name, and the items already drafted with their ids (an object type
+// with its properties and primary keys), as data.
 type draftMessage struct {
 	Documents     []messageDocument     `json:"documents"`
 	Tables        []messageTable        `json:"tables"`
@@ -298,9 +299,11 @@ type messageTable struct {
 }
 
 type messageObjectType struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Aliases []string `json:"aliases,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Aliases     []string          `json:"aliases,omitempty"`
+	PrimaryKeys []string          `json:"primary_keys,omitempty"`
+	Properties  []messageProperty `json:"properties"`
 }
 
 type messageRelationType struct {
@@ -308,6 +311,26 @@ type messageRelationType struct {
 	Name   string `json:"name"`
 	Source string `json:"source"`
 	Target string `json:"target"`
+}
+
+// questionNotes are what a person should see about a question, computed when it is read.
+func questionNotes(q *interfaces.RequirementQuestion) []string {
+	var notes []string
+	if b := q.Basis; q.Layer == interfaces.REQUIREMENT_LAYER_CAPABILITY &&
+		len(b.Metrics)+len(b.Functions)+len(b.Skills) == 0 {
+		notes = append(notes, interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS)
+	}
+	var inputs []interfaces.RequirementInput
+	if q.Inputs != nil {
+		inputs = *q.Inputs
+	}
+	if needsReferenceTime(q.RelativeWindow, inputs) {
+		notes = append(notes, interfaces.QUESTION_NOTE_REFERENCE_TIME_UNBOUND)
+	}
+	if slices.ContainsFunc(inputs, func(in interfaces.RequirementInput) bool { return in.PropertyFromKey }) {
+		notes = append(notes, interfaces.QUESTION_NOTE_INPUT_PROPERTY_FROM_KEY)
+	}
+	return notes
 }
 
 // buildDraftMessage also returns how many tables it left out.
@@ -333,7 +356,12 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 	}
 	if draft != nil {
 		for _, ot := range draft.Items.ObjectTypes {
-			msg.ObjectTypes = append(msg.ObjectTypes, messageObjectType{ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases})
+			mot := messageObjectType{ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases, PrimaryKeys: ot.PrimaryKeys,
+				Properties: []messageProperty{}}
+			for _, p := range ot.Properties {
+				mot.Properties = append(mot.Properties, messageProperty{Name: p.Name, DisplayName: p.DisplayName, Type: p.Type})
+			}
+			msg.ObjectTypes = append(msg.ObjectTypes, mot)
 		}
 		for _, rt := range draft.Items.RelationTypes {
 			msg.RelationTypes = append(msg.RelationTypes, messageRelationType{ID: rt.ID, Name: rt.Name,
@@ -505,20 +533,27 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			if concept, ok := concepts[in.ConceptID]; ok {
 				input.ConceptID = concept.ID
 			}
+			given := input.Name
+			if input.Property != "" {
+				given += "." + input.Property
+			}
+			keyed(&input, spec, draft)
 			reason := inputProblem(input, spec, draft, question.Template)
 			if reason == "" && slices.ContainsFunc(inputs, func(kept interfaces.RequirementInput) bool { return kept.Name == input.Name }) {
 				reason = inputDuplicateName
 			}
 			if reason != "" {
-				reject(rejectedInput, input.Name+" ("+q.Text+")", reason)
+				reject(rejectedInput, given+" ("+q.Text+")", reason)
 				continue
 			}
 			inputs = append(inputs, input)
 		}
-		// A period counted back from a time that is not stated depends on when it is asked.
-		if needsReferenceTime(q.RelativeWindow, inputs) {
-			reject(rejectedQuestion, q.Text, rejectedWindowWithoutRefTime)
-			continue
+		// A period counted back from a time that is not stated depends on when it is asked. The
+		// question stays, noted when read; a reference time given but rejected is listed already.
+		if q.RelativeWindow && !slices.ContainsFunc(q.Inputs, func(in agentInput) bool {
+			return in.Role == interfaces.REQUIREMENT_INPUT_REFERENCE_TIME
+		}) {
+			reject(rejectedInput, interfaces.REQUIREMENT_INPUT_REFERENCE_TIME+" ("+q.Text+")", rejectedWindowWithoutRefTime)
 		}
 		question.RelativeWindow = q.RelativeWindow
 		// None given is no input value; given but none standing is not known, as before inputs.
@@ -834,11 +869,7 @@ func (s *requirementService) GetRequirement(ctx context.Context, token string,
 		}
 	}
 	for _, q := range req.Spec.Questions {
-		q.Notes = nil
-		if b := q.Basis; q.Layer == interfaces.REQUIREMENT_LAYER_CAPABILITY &&
-			len(b.Metrics)+len(b.Functions)+len(b.Skills) == 0 {
-			q.Notes = []string{interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS}
-		}
+		q.Notes = questionNotes(q)
 	}
 	if req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		docs, err := s.ra.ListDocuments(ctx, projectID)

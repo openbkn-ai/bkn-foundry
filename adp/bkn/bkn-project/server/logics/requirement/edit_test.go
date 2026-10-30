@@ -492,6 +492,28 @@ func Test_QuestionInputEdits(t *testing.T) {
 			}
 		})
 
+		Convey("A person's inputs are their own: a key the server took is no longer marked\n", func() {
+			expectRead()
+			expectSave()
+			keyed := record("order", "c1", "order_no")
+			keyed.PropertyFromKey = true
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{keyed}}, caller)
+			So(err, ShouldBeNil)
+			So(*saved.Spec.Questions[0].Inputs, ShouldResemble, []interfaces.RequirementInput{record("order", "c1", "order_no")})
+		})
+
+		Convey("A drafted window without a reference time does not hold up an edit of the wording\n", func() {
+			unbound := withInputs()
+			unbound.Spec.Questions[0].RelativeWindow = true
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(unbound, true, nil)
+			expectSave()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Lines of order {order}?")}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[0].Template, ShouldEqual, "Lines of order {order}?")
+		})
+
 		Convey("A question drafted before inputs takes a window or a template edit as before\n", func() {
 			expectRead()
 			expectSave()

@@ -243,7 +243,9 @@ type RequirementQuestion struct {
 	RelativeWindow bool `json:"relative_window,omitempty"`
 	// Notes are codes for the client to word, computed when the specification is read and never
 	// stored: capability_without_basis when a capability question names no metric, function or
-	// skill it rests on, so the capability it needs is not named yet.
+	// skill it rests on, so the capability it needs is not named yet; reference_time_unbound when
+	// it counts a period back from a time no input gives; input_property_from_key when an input's
+	// property is its object type's key, taken by the server.
 	Notes            []string              `json:"notes,omitempty"`
 	Citations        []RequirementCitation `json:"citations"`
 	SupplementReason string                `json:"supplement_reason,omitempty"`
@@ -258,6 +260,9 @@ type RequirementInput struct {
 	ConceptID string `json:"concept_id"`
 	Property  string `json:"property"`
 	Role      string `json:"role"`
+	// PropertyFromKey says drafting named no property of the object type and the server took its
+	// key; an edit of the inputs clears it.
+	PropertyFromKey bool `json:"property_from_key,omitempty"`
 }
 
 // The roles of a question's input.
@@ -560,6 +565,14 @@ const TESTS_NOTE_NONE_CHECKABLE = "none_checkable"
 
 // QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS says a capability question names nothing it rests on.
 const QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS = "capability_without_basis"
+
+// QUESTION_NOTE_REFERENCE_TIME_UNBOUND says a question counts a period back from a time none of its
+// inputs gives, so its answer depends on when it is asked and the server writes no tests for it.
+const QUESTION_NOTE_REFERENCE_TIME_UNBOUND = "reference_time_unbound"
+
+// QUESTION_NOTE_INPUT_PROPERTY_FROM_KEY says the server named an input's record by its object
+// type's key, since drafting gave no property of it that the object type has.
+const QUESTION_NOTE_INPUT_PROPERTY_FROM_KEY = "input_property_from_key"
 
 // TESTS_NOTE_INPUTS_UNTESTED says a question has inputs and no test names a value of each.
 const TESTS_NOTE_INPUTS_UNTESTED = "inputs_untested"

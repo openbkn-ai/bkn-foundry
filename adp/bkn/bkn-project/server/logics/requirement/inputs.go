@@ -75,6 +75,31 @@ func inputProblem(in interfaces.RequirementInput, spec *interfaces.RequirementSp
 	return ""
 }
 
+// keyed names a record input by its object type's key when drafting gave no property that object
+// type has: asked about "a given" record, it is the key that names one. Only a key of one field
+// does; a reference time is a time, never a key.
+func keyed(in *interfaces.RequirementInput, spec *interfaces.RequirementSpec, draft *interfaces.Draft) {
+	if draft == nil || in.Role != interfaces.REQUIREMENT_INPUT_RECORD {
+		return
+	}
+	i := slices.IndexFunc(spec.Concepts, func(c *interfaces.RequirementConcept) bool { return c.ID == in.ConceptID })
+	if i < 0 || spec.Concepts[i].MapsTo == nil || spec.Concepts[i].MapsTo.Kind != interfaces.REQUIREMENT_ITEM_OBJECT_TYPE {
+		return
+	}
+	for _, ot := range draft.Items.ObjectTypes {
+		if ot.ID != spec.Concepts[i].MapsTo.ID {
+			continue
+		}
+		if len(ot.PrimaryKeys) != 1 || slices.ContainsFunc(ot.Properties, func(p *interfaces.DraftProperty) bool {
+			return p.Name == in.Property
+		}) {
+			return
+		}
+		in.Property, in.PropertyFromKey = ot.PrimaryKeys[0], true
+		return
+	}
+}
+
 // needsReferenceTime says a question counting a period back has no reference time among its inputs.
 func needsReferenceTime(relativeWindow bool, inputs []interfaces.RequirementInput) bool {
 	return relativeWindow && !slices.ContainsFunc(inputs, func(in interfaces.RequirementInput) bool {
@@ -133,15 +158,27 @@ var (
 	strayName = regexp.MustCompile(`\{[^{}]*\}`)
 )
 
+// unmappedConcepts are the concepts of the specification that map to no object type; none without one.
+func unmappedConcepts(spec *interfaces.RequirementSpec) map[string]bool {
+	unmapped := map[string]bool{}
+	if spec != nil {
+		for _, c := range spec.Concepts {
+			unmapped[c.ID] = c.MapsTo == nil || c.MapsTo.Kind != interfaces.REQUIREMENT_ITEM_OBJECT_TYPE
+		}
+	}
+	return unmapped
+}
+
 // serverTests are the tests a question's template determines, which the server writes rather than
 // the Agent: the template asked of a record in the data, and, when an input is a record, asked of
 // one that does not exist, named by the first record input. Their slots are the inputs, filled
 // from the data when checked. None for a question without inputs, or with one that names no
 // property or is of a concept that maps to no object type (unmapped): the server cannot tell which
 // field holds its value, and the Agent's tests stand; nor when the template names a value no input
-// stands for.
+// stands for, or when it counts a period back from a time no input gives: what it asks then depends
+// on when it is asked.
 func serverTests(q *interfaces.RequirementQuestion, unmapped map[string]bool) []*interfaces.QuestionTest {
-	if q == nil || q.Inputs == nil || len(*q.Inputs) == 0 ||
+	if q == nil || q.Inputs == nil || len(*q.Inputs) == 0 || needsReferenceTime(q.RelativeWindow, *q.Inputs) ||
 		slices.ContainsFunc(*q.Inputs, func(in interfaces.RequirementInput) bool {
 			return in.Property == "" || unmapped[in.ConceptID]
 		}) {

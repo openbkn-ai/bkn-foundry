@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -602,6 +604,22 @@ func Test_CheckTests(t *testing.T) {
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("forbidden"))
 			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))),
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkQueryFailed})
+		})
+
+		Convey("A read the data refuses the caller says so, apart from one that fails\n", func() {
+			refused := &interfaces.VegaError{HTTPCode: http.StatusForbidden}
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, refused)
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))),
+				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkQueryForbidden})
+			// Taking a value to fill a slot too.
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, fmt.Errorf("query: %w", refused))
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))).Reason,
+				ShouldEqual, checkQueryForbidden)
+			// Another status is a failed read.
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil,
+				&interfaces.VegaError{HTTPCode: http.StatusInternalServerError})
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))).Reason,
+				ShouldEqual, checkQueryFailed)
 		})
 	})
 }

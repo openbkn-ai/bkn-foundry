@@ -2428,8 +2428,14 @@ def test_requirements_v6_upgrade_matches_fresh_install_and_keeps_history(start):
         for rule in ("a template with a {name} slot for each of its inputs", "Give its inputs:", "role, record or reference_time",
                      "has no inputs", "set relative_window and give that moment as a reference_time input",
                      "What the answer returns is never an input",
-                     # pass guidance: the slots are the inputs; the server writes the template and not_exist tests.
-                     "its slots are those inputs", "The server itself writes the question as its template asks it and its not_exist test",
+                     "one of the property names the message lists for that concept's object type",
+                     "its concept is theirs, never a concept of the moment itself",
+                     "an object type also with its properties (name and type) and primary keys",
+                     # pass guidance: the slots are the inputs; the server writes the template and not_exist tests
+                     # when it says so, and otherwise the Agent writes a not_exist test.
+                     "its slots are those inputs",
+                     "When the question says server_tests, the server itself writes the question as its template asks it and its not_exist test",
+                     "otherwise write a not_exist test too",
                      "A boundary moves a slot's value or the edge of a window and adds no premise",
                      "another property of the same input's concept", "A question whose inputs are empty gets no tests"):
             assert rule in content
