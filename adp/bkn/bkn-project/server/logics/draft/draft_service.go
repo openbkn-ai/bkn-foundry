@@ -61,6 +61,10 @@ type draftService struct {
 	ls interfaces.LineageService
 	// ra tells whether a release published the confirmation.
 	ra interfaces.ReleaseAccess
+	// ba answers Ask AI; now and sleep pace waiting for it, replaced by tests.
+	ba    interfaces.BknAgentAccess
+	now   func() time.Time
+	sleep func(time.Duration)
 	// run drafts in the background; tests replace it to run in line.
 	run func(fn func())
 	// checkRuns holds each project's running check, a *checkRun, so a later run can stop it.
@@ -80,6 +84,9 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
 			ra:      logics.RA,
+			ba:      logics.BAA,
+			now:     time.Now,
+			sleep:   time.Sleep,
 			run:     func(fn func()) { go fn() },
 		}
 	})
