@@ -2703,7 +2703,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable",
+                        "description": "SUMMARY_QUERY_TIMEOUT, PROJECTION_LAG, or SUMMARY_DEPENDENCY_UNAVAILABLE",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }

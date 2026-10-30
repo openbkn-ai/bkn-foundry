@@ -52,12 +52,19 @@ type StatusError struct {
 	Operation  string
 	StatusCode int
 	Body       string
+	// Type is the bounded OpenSearch exception identifier, without its reason,
+	// document content, query text or other potentially sensitive response data.
+	Type string
 }
 
 func (e *StatusError) Error() string {
+	detail := e.Body
+	if e.Type != "" {
+		detail = e.Type
+	}
 	return fmt.Sprintf(
 		"opensearch %s failed with status %d: %s",
-		e.Operation, e.StatusCode, e.Body,
+		e.Operation, e.StatusCode, detail,
 	)
 }
 

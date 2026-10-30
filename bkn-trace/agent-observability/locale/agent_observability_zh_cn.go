@@ -142,6 +142,7 @@ var agentObservabilityZhCN = i18n.I18nMessages{
 		"AgentObservability.Message.failed to query evidence chain":                                              "证据链查询失败",
 		"AgentObservability.Message.failed to query evidence node":                                               "证据节点查询失败",
 		"AgentObservability.Message.failed to query execution summaries":                                         "执行摘要查询失败",
+		"AgentObservability.Message.trace storage is temporarily unavailable; retry the query later":             "Trace 存储暂时不可用，请稍后重试查询",
 		"AgentObservability.Message.execution summary projection is catching up; retry the same page":            "执行摘要投影正在追平，请重试当前页",
 		queryTimeoutMessageID: "Trace 查询超时，请缩小时间范围或增加筛选条件后重试",
 		queryBudgetMessageID:  "Trace 查询超出资源预算，请缩小时间范围或增加筛选条件；深页查询请改用游标分页",

@@ -208,6 +208,31 @@ cleanup, while late or changed technical versions retain their existing guards.
 The bounded Trace batches above limit package loading without a streaming
 redesign. List/detail query paths are unchanged.
 
+## Error-keyword query cost and storage failures (#2675)
+
+Trace `error_keyword` searches in owner/global scopes screen lightweight receipt
+identities against the existing first-failure metadata before loading complete
+Trace receipts, related Interactions and artifacts. Screening reuses the same
+recorded error-summary formatter as final matching: ordinary errors keep the
+first 512 Unicode code points and wrapped execution stderr keeps the last 512.
+It does not search arbitrary input/output or discarded error text. All matching
+candidates remain reachable; existing scan, time and result-retention budgets
+still apply. No index field, schema migration or historical backfill is needed.
+
+Candidate screening never authorizes a result. Complete receipt/Interaction
+authorization and final summary matching still run for every possible match.
+Shared-network scopes retain complete candidate discovery and Interaction
+expansion, because an authorized sibling may not appear in the initial receipt
+scope. Older stores without narrow first-failure metadata also retain the
+complete scanner. These paths retain their existing read cost.
+
+PIT requests preserve rejected HTTP status and a bounded exception type while
+discarding storage reasons, query text and document content. OpenSearch 429 and
+5xx errors return `503 SUMMARY_DEPENDENCY_UNAVAILABLE`; the caller may retry
+later. The server performs no additional automatic retries. Diagnostic warnings
+include the response Trace ID, dependency status and safe exception type; read
+requests do not produce business audit events or additional business Traces.
+
 ## Root-service discovery (#2140)
 
 `GET /api/agent-observability/v1/trace-root-services` returns bounded canonical
