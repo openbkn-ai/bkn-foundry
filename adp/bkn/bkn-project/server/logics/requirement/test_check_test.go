@@ -712,6 +712,74 @@ func Test_CheckTests(t *testing.T) {
 			So(second.Check, ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkTimeout})
 		})
 
+		Convey("A refused read of a table that is gone says the table is gone, asking vega once per run\n", func() {
+			svc.now = func() int64 { return 0 }
+			refused := &interfaces.VegaError{HTTPCode: http.StatusForbidden}
+			// vega answers a deleted table's query 403, as it does a refused one.
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, refused).Times(2)
+			draft.Items.RelationTypes[0].LinkTable = &interfaces.DraftTable{ResourceID: "r-link"}
+			// Two object types on one table: it is asked once.
+			draft.Items.ObjectTypes[0].Table = interfaces.DraftTable{ResourceID: "r-cust"}
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r-cust", "r-link"}).Return([]string{"r-cust"}, nil)
+			first := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))
+			second := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10002"))
+
+			svc.checkTests(ctx, caller, &spec, draft, asked, []*interfaces.QuestionTest{first, second}, 1<<62)
+
+			gone := interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_NOT_CHECKED, Reason: checkTableMissing}
+			So(first.Check, ShouldResemble, gone)
+			So(second.Check, ShouldResemble, gone)
+		})
+
+		Convey("A refused read of a table that is there, or when vega cannot tell, stays refused\n", func() {
+			svc.now = func() int64 { return 0 }
+			refused := &interfaces.VegaError{HTTPCode: http.StatusForbidden}
+			for _, c := range []struct {
+				missing []string
+				err     error
+			}{{[]string{}, nil}, {nil, errors.New("vega down")}} {
+				va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, refused)
+				va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r-cust"}).Return(c.missing, c.err)
+				t := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))
+
+				svc.checkTests(ctx, caller, &spec, draft, asked, []*interfaces.QuestionTest{t}, 1<<62)
+
+				So(t.Check.Reason, ShouldEqual, checkQueryForbidden)
+			}
+		})
+
+		Convey("Only the tables the test reads count: a gone table it does not read leaves it refused\n", func() {
+			svc.now = func() int64 { return 0 }
+			refused := &interfaces.VegaError{HTTPCode: http.StatusForbidden}
+			draft.Items.ObjectTypes[0].Table = interfaces.DraftTable{ResourceID: "r-order"}
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, refused)
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r-order", "r-cust"}).Return([]string{"r-order"}, nil)
+			// The question needs only the customer.
+			onCustomer := *asked
+			onCustomer.Needs = []interfaces.RequirementItemRef{customerRef}
+			t := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))
+
+			svc.checkTests(ctx, caller, &spec, draft, &onCustomer, []*interfaces.QuestionTest{t}, 1<<62)
+
+			So(t.Check.Reason, ShouldEqual, checkQueryForbidden)
+		})
+
+		Convey("A question needing an item whose table is gone counts it, though no slot is of it\n", func() {
+			svc.now = func() int64 { return 0 }
+			refused := &interfaces.VegaError{HTTPCode: http.StatusForbidden}
+			draft.Items.RelationTypes[0].LinkTable = &interfaces.DraftTable{ResourceID: "r-link"}
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, refused)
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r-cust", "r-link"}).Return([]string{"r-link"}, nil)
+			throughLink := *asked
+			throughLink.Needs = []interfaces.RequirementItemRef{customerRef,
+				{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "sales_order_customer"}}
+			t := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))
+
+			svc.checkTests(ctx, caller, &spec, draft, &throughLink, []*interfaces.QuestionTest{t}, 1<<62)
+
+			So(t.Check.Reason, ShouldEqual, checkTableMissing)
+		})
+
 		Convey("A count that fails is not checked\n", func() {
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("forbidden"))
 			So(svc.checkTest(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "1"))),

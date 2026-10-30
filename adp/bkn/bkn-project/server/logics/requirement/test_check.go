@@ -47,12 +47,15 @@ const (
 	checkCompositeIdentity      = "composite_identity"
 	checkQueryFailed            = "query_failed"
 	checkQueryForbidden         = "query_forbidden"
-	checkExcludedField          = "excluded_field"
-	checkNoValueInData          = "no_value_in_data"
-	checkNoAbsentValue          = "no_absent_value"
-	checkValueNotInText         = "value_not_in_text"
-	checkValueOutsideSlot       = "value_outside_slot"
-	checkTimeout                = "check_timeout"
+	// checkTableMissing: a table the test reads is gone in vega, which answers its query 403 as it
+	// does a refusal.
+	checkTableMissing     = "table_missing"
+	checkExcludedField    = "excluded_field"
+	checkNoValueInData    = "no_value_in_data"
+	checkNoAbsentValue    = "no_absent_value"
+	checkValueNotInText   = "value_not_in_text"
+	checkValueOutsideSlot = "value_outside_slot"
+	checkTimeout          = "check_timeout"
 )
 
 // slotField is where a slot's value is looked for: the table of the drafted object type its
@@ -415,12 +418,13 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 	ctx, cancel := context.WithDeadline(ctx, time.UnixMilli(deadline))
 	defer cancel()
 	s.useExamples(ctx, caller, spec, draft, q, tests)
+	gone := &tablesGone{}
 	for _, t := range tests {
 		if s.now() >= deadline {
 			t.Check = notChecked(checkTimeout)
 			continue
 		}
-		t.Check = s.checkAnchored(ctx, caller, spec, draft, q, t, anchorOf(tests))
+		t.Check = s.orGone(ctx, caller, spec, draft, q, t, s.checkAnchored(ctx, caller, spec, draft, q, t, anchorOf(tests)), gone)
 	}
 }
 
@@ -462,6 +466,91 @@ func (s *requirementService) useExamples(ctx context.Context, caller interfaces.
 			}
 		}
 	}
+}
+
+// tablesGone is which of a draft's tables are gone in vega, read once for a run of checks.
+type tablesGone struct {
+	read bool
+	gone map[string]bool
+}
+
+// orGone is check, but table_missing for a test refused its read when a table it reads is gone:
+// vega answers the query of a deleted table 403, as it does a refusal. vega is asked once, on the
+// first refusal, for every table of the draft; when it cannot tell, the refusal stands.
+func (s *requirementService) orGone(ctx context.Context, caller interfaces.AccountInfo, spec *interfaces.RequirementSpec,
+	draft *interfaces.Draft, q *interfaces.RequirementQuestion, t *interfaces.QuestionTest, check interfaces.QuestionTestCheck,
+	tg *tablesGone) interfaces.QuestionTestCheck {
+	if check.Reason != checkQueryForbidden || draft == nil {
+		return check
+	}
+	if !tg.read {
+		tg.read = true
+		if ids := draftTables(draft); len(ids) > 0 {
+			missing, err := s.va.MissingTables(ctx, caller, ids)
+			if err != nil {
+				logger.Warnf("Read tables of project %s: %v", draft.ProjectID, err)
+			}
+			tg.gone = map[string]bool{}
+			for _, id := range missing {
+				tg.gone[id] = true
+			}
+		}
+	}
+	for _, id := range testTables(spec, draft, q, t) {
+		if tg.gone[id] {
+			return notChecked(checkTableMissing)
+		}
+	}
+	return check
+}
+
+// draftTables are the tables of the draft's object types and its relations' link tables, each once.
+func draftTables(draft *interfaces.Draft) []string {
+	ids, seen := []string{}, map[string]bool{}
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	for _, ot := range draft.Items.ObjectTypes {
+		add(ot.Table.ResourceID)
+	}
+	for _, rt := range draft.Items.RelationTypes {
+		if rt.LinkTable != nil {
+			add(rt.LinkTable.ResourceID)
+		}
+	}
+	return ids
+}
+
+// testTables are the tables a test's reads may touch: those of its slots' object types, and those
+// of the items its question needs, a relation's link table among them.
+func testTables(spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion,
+	t *interfaces.QuestionTest) []string {
+	ids := []string{}
+	for _, slot := range t.Slots {
+		if f, reason := resolveSlot(spec, draft, slot); reason == "" {
+			ids = append(ids, f.objectType.Table.ResourceID)
+		}
+	}
+	for _, need := range q.Needs {
+		switch need.Kind {
+		case interfaces.REQUIREMENT_ITEM_OBJECT_TYPE:
+			for _, ot := range draft.Items.ObjectTypes {
+				if ot.ID == need.ID {
+					ids = append(ids, ot.Table.ResourceID)
+				}
+			}
+		case interfaces.REQUIREMENT_ITEM_RELATION_TYPE:
+			for _, rt := range draft.Items.RelationTypes {
+				if rt.ID == need.ID && rt.LinkTable != nil {
+					ids = append(ids, rt.LinkTable.ResourceID)
+				}
+			}
+		}
+	}
+	return ids
 }
 
 // orderField orders the rows values are taken from, so the same data gives the same value: the
