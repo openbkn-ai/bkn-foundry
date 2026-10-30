@@ -141,6 +141,9 @@ func (e *VegaError) Error() string {
 type VegaAccess interface {
 	// MissingCatalogs returns the catalogs that no longer exist, in their order.
 	MissingCatalogs(ctx context.Context, account VegaAccount, catalogIDs []string) ([]string, error)
+	// MissingTables returns the table resources that no longer exist, in their order. A table the
+	// account may not see is not missing.
+	MissingTables(ctx context.Context, account VegaAccount, ids []string) ([]string, error)
 	// ListTables returns the table resources of the catalog that the account can see.
 	ListTables(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaTable, error)
 	// GetTables returns the tables with their structure; ids the account cannot see are left out.

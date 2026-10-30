@@ -20,6 +20,10 @@ const (
 	// 404
 	BknProject_Project_NotFound = "BknProject.Project.NotFound"
 
+	// 409
+	// BknProject_Project_CatalogMissing: a catalog set on the project no longer exists in vega.
+	BknProject_Project_CatalogMissing = "BknProject.Project.CatalogMissing"
+
 	// 4xx or 502
 	BknProject_Project_BknBackendRequestFailed = "BknProject.Project.BknBackendRequestFailed"
 
@@ -75,6 +79,7 @@ var (
 		BknProject_Project_InvalidNamingLanguage,
 		BknProject_Project_NotOwner,
 		BknProject_Project_NotFound,
+		BknProject_Project_CatalogMissing,
 		BknProject_Project_BknBackendRequestFailed,
 		BknProject_Project_InternalError,
 		BknProject_Requirement_InvalidRequestBody,

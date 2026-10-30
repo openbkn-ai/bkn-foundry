@@ -17,6 +17,7 @@ var projectZhCN = i18n.I18nMessages{
 		"BknProject.Project.InvalidNamingLanguage":   "命名语言不合法 naming_language 只能是 zh-CN 或 en-US。",
 		"BknProject.Project.NotOwner":                "不是项目负责人 只有项目负责人可以修改项目。",
 		"BknProject.Project.NotFound":                "项目不存在 项目不存在，或你无权查看它的知识网络。",
+		"BknProject.Project.CatalogMissing":          "数据目录已被删除 所选的数据目录已不存在，请选择其他数据目录。",
 		"BknProject.Project.BknBackendRequestFailed": "bkn-backend 请求失败 bkn-backend 拒绝了请求，返回内容见 error_details。",
 		"BknProject.Project.InternalError":           "内部错误 请联系管理员。",
 		"BknProject.Requirement.InvalidRequestBody":  "请求体不合法 请求体必须是合法的 JSON。",

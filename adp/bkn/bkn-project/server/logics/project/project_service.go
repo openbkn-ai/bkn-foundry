@@ -47,11 +47,12 @@ type projectService struct {
 	ra  interfaces.ReleaseAccess
 	bba interfaces.BknBackendAccess
 	ls  interfaces.LineageService
+	va  interfaces.VegaAccess
 }
 
 func NewProjectService() interfaces.ProjectService {
 	psOnce.Do(func() {
-		ps = &projectService{pa: logics.PA, ra: logics.RA, bba: logics.BBA, ls: lineage.NewLineageService()}
+		ps = &projectService{pa: logics.PA, ra: logics.RA, bba: logics.BBA, ls: lineage.NewLineageService(), va: logics.VA}
 	})
 	return ps
 }
@@ -214,12 +215,34 @@ func (s *projectService) GetProject(ctx context.Context, token string, id string
 	return entries[0], nil
 }
 
+// GetProjectForStatus is GetProject, but returns the owner's project whose network was deleted
+// too, telling so.
+func (s *projectService) GetProjectForStatus(ctx context.Context, token string, id string,
+	caller interfaces.AccountInfo) (*interfaces.ProjectEntry, bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetProjectForStatus")
+	defer span.End()
+
+	project, networkMissing, err := s.ownersProject(ctx, token, id, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, false, err
+	}
+	entries, err := s.withOtherProjects(ctx, []*interfaces.Project{project})
+	if err != nil {
+		span.SetStatus(codes.Error, "Count projects failed")
+		return nil, false, internalError(ctx, "Count projects failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return entries[0], networkMissing, nil
+}
+
 func (s *projectService) SetProjectArchived(ctx context.Context, token string, id string, archived bool,
 	caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SetProjectArchived")
 	defer span.End()
 
-	project, err := s.visibleProject(ctx, token, id)
+	// The owner archives a project whose network was deleted, which is all it is still good for.
+	project, _, err := s.ownersProject(ctx, token, id, caller)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
@@ -267,6 +290,17 @@ func (s *projectService) SetProjectCatalogs(ctx context.Context, token string, i
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
 	}
 	if !slices.Equal(project.CatalogIDs, catalogIDs) {
+		// Drafting refuses a deleted catalog; setting it would only lead there.
+		missing, err := s.va.MissingCatalogs(ctx, caller, catalogIDs)
+		if err != nil {
+			span.SetStatus(codes.Error, "Check catalogs failed")
+			return nil, internalError(ctx, "Check catalogs failed", err)
+		}
+		if len(missing) > 0 {
+			span.SetStatus(codes.Error, "Catalog missing")
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Project_CatalogMissing).
+				WithErrorDetails(missing)
+		}
 		project.CatalogIDs = catalogIDs
 		project.UpdateTime = time.Now().UnixMilli()
 		if err = s.pa.SetProjectCatalogs(ctx, id, catalogIDs, project.UpdateTime); err != nil {
@@ -330,14 +364,42 @@ func (s *projectService) visibleProject(ctx context.Context, token string, id st
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound)
 	}
 	if _, err = s.bba.GetKN(ctx, token, project.KNID); err != nil {
-		var backendErr *interfaces.BknBackendError
-		if errors.As(err, &backendErr) &&
-			(backendErr.HTTPCode == http.StatusForbidden || backendErr.HTTPCode == http.StatusNotFound) {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound)
-		}
-		return nil, backendHTTPError(ctx, "Get network failed", err)
+		return nil, networkError(ctx, err)
 	}
 	return project, nil
+}
+
+// ownersProject is visibleProject, but for its owner a project whose network bkn-backend no longer
+// has, telling so. bkn-backend answers a missing network 404 before it checks who may see it, so
+// the owner learns nothing of a network another can see; to anyone else the project stays hidden.
+func (s *projectService) ownersProject(ctx context.Context, token string, id string,
+	caller interfaces.AccountInfo) (*interfaces.Project, bool, error) {
+	project, exist, err := s.pa.GetProject(ctx, id)
+	if err != nil {
+		return nil, false, internalError(ctx, "Get project failed", err)
+	}
+	if !exist {
+		return nil, false, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound)
+	}
+	if _, err = s.bba.GetKN(ctx, token, project.KNID); err != nil {
+		var backendErr *interfaces.BknBackendError
+		if errors.As(err, &backendErr) && backendErr.HTTPCode == http.StatusNotFound && project.Owner == caller {
+			return project, true, nil
+		}
+		return nil, false, networkError(ctx, err)
+	}
+	return project, false, nil
+}
+
+// networkError is how a project answers bkn-backend refusing its network: not found when the
+// network is hidden or gone, as for a project that does not exist, and a bad gateway otherwise.
+func networkError(ctx context.Context, err error) error {
+	var backendErr *interfaces.BknBackendError
+	if errors.As(err, &backendErr) &&
+		(backendErr.HTTPCode == http.StatusForbidden || backendErr.HTTPCode == http.StatusNotFound) {
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound)
+	}
+	return backendHTTPError(ctx, "Get network failed", err)
 }
 
 // lineageOf returns the lineage a visible network belongs to: the base network

@@ -257,6 +257,55 @@ func (va *vegaAccess) GetTables(ctx context.Context, account interfaces.VegaAcco
 	return tables, nil
 }
 
+// MissingTables calls GET /resources/{id,id,...}?ignore_missing=true once. vega-backend looks the
+// ids up before it checks view_detail, so the ids it leaves out with 200 are gone. A table the
+// account lacks view_detail on refuses the whole batch with 403: each table is then read on its
+// own, and one refused alone exists.
+func (va *vegaAccess) MissingTables(ctx context.Context, account interfaces.VegaAccount,
+	ids []string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "MissingTables")
+	defer span.End()
+
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	missing := []string{}
+	respCode, entries, err := va.getResources(ctx, account, ids)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get tables failed")
+		return nil, err
+	}
+	if respCode == http.StatusForbidden {
+		if len(ids) == 1 {
+			oteltrace.AddHttpAttrs4Ok(span, respCode)
+			return missing, nil
+		}
+		for _, id := range ids {
+			code, one, err := va.getResources(ctx, account, []string{id})
+			if err != nil {
+				oteltrace.AddHttpAttrs4Error(span, code, "InternalError", "Http get table failed")
+				return nil, err
+			}
+			if code == http.StatusOK && len(one) == 0 {
+				missing = append(missing, id)
+			}
+		}
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+		return missing, nil
+	}
+	found := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		found[entry.ID] = true
+	}
+	for _, id := range ids {
+		if !found[id] {
+			missing = append(missing, id)
+		}
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return missing, nil
+}
+
 // getResources calls GET /resources/{ids}?ignore_missing=true. It returns the resources on 200,
 // none on 403, and an error for any other reply.
 func (va *vegaAccess) getResources(ctx context.Context, account interfaces.VegaAccount,
