@@ -367,6 +367,9 @@ func (s *requirementService) sampleRow(ctx context.Context, caller interfaces.Ac
 // reaches: the slot's field a relation joins on, and the values it is joined with, as a query of
 // the object type at the other end (objectType) and the column it selects.
 type relationPath struct {
+	// through is set for a path through an object type the question does not need: the caller may
+	// not read it, and it may be large, so a failed read falls back to any record.
+	through    bool
 	objectType string
 	own        string
 	reached    string
@@ -464,7 +467,7 @@ func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotF
 			reached := fmt.Sprintf("SELECT DISTINCT i.%s FROM {{%s}} i JOIN (SELECT DISTINCT %s FROM {{%s}}) c ON i.%s = c.%s",
 				quoteField(toSlot), between.Table.ResourceID, quoteField(other), ot.Table.ResourceID,
 				quoteField(toNext), quoteField(other))
-			return &relationPath{objectType: between.ID, own: own, reached: reached, column: toSlot}
+			return &relationPath{through: true, objectType: between.ID, own: own, reached: reached, column: toSlot}
 		}
 	}
 	return nil
@@ -551,7 +554,9 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 			rows, err := s.va.Query(ctx, caller, sql, checkQueryTimeout)
 			if err != nil {
 				logger.Warnf("Read a value along a relation for a test question failed: %v; statement: %s", err, sql)
-				return checkQueryFailed
+				if !p.through {
+					return checkQueryFailed
+				}
 			}
 			if len(rows) > 0 {
 				if v, ok := valueText(rows[0]["v"]); ok {

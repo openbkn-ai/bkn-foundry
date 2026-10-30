@@ -355,8 +355,15 @@ func Test_CheckTests(t *testing.T) {
 				}{
 					{[]map[string]any{{"v": "101-000005"}}, "101-000005", "po_line"},
 					{[]map[string]any{}, "101-000002", ""},
+					// A read through the line that fails (too slow, or the caller may not read lines)
+					// is passed over too.
+					{nil, "101-000002", ""},
 				} {
-					va.EXPECT().Query(gomock.Any(), caller, hopSQL, checkQueryTimeout).Return(c.rows, nil)
+					var err error
+					if c.rows == nil {
+						err = errors.New("timeout")
+					}
+					va.EXPECT().Query(gomock.Any(), caller, hopSQL, checkQueryTimeout).Return(c.rows, err)
 					if c.from == "" {
 						sample("SELECT `code` AS v0 FROM {{r-mat}} WHERE `code` IS NOT NULL ORDER BY `code` LIMIT 1",
 							map[string]any{"v0": "101-000002"})
