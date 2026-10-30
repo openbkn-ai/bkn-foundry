@@ -298,11 +298,106 @@ func Test_CheckTests(t *testing.T) {
 				So(pathOf(&d, withPath, &slotField{objectType: d.Items.ObjectTypes[1], field: "cust_id"}), ShouldBeNil)
 			})
 
+			Convey("through one object type between, when no relation the question needs reaches it\n", func() {
+				// material <- purchase order line -> supplier: the question needs material and supplier only.
+				hop := &interfaces.Draft{Items: interfaces.DraftItems{
+					ObjectTypes: []*interfaces.DraftObjectType{
+						{ID: "material", Table: interfaces.DraftTable{ResourceID: "r-mat", CatalogID: "c1"}, Adopted: true,
+							Properties: []*interfaces.DraftProperty{{Name: "material_code", MappedField: "code"}}},
+						{ID: "po_line", Table: interfaces.DraftTable{ResourceID: "r-po", CatalogID: "c1"}, Adopted: true,
+							Properties: []*interfaces.DraftProperty{{Name: "material_number", MappedField: "mat_no"}, {Name: "supplier_number", MappedField: "sup_no"}}},
+						{ID: "supplier", Table: interfaces.DraftTable{ResourceID: "r-sup", CatalogID: "c1"}, Adopted: true,
+							Properties: []*interfaces.DraftProperty{{Name: "supplier_code", MappedField: "sup_code"}}},
+						{ID: "inventory", Table: interfaces.DraftTable{ResourceID: "r-inv", CatalogID: "c1"}, Adopted: true,
+							Properties: []*interfaces.DraftProperty{{Name: "material_code", MappedField: "mat"}}},
+					},
+					RelationTypes: []*interfaces.DraftRelationType{
+						// Inventory reaches materials but no other needed object type: passed over.
+						{ID: "inv_mat", Source: "inventory", Target: "material", Adopted: true,
+							Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "material_code", TargetProperty: "material_code"}}},
+						{ID: "po_sup", Source: "po_line", Target: "supplier", Adopted: true,
+							Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "supplier_number", TargetProperty: "supplier_code"}}},
+						{ID: "po_mat", Source: "po_line", Target: "material", Adopted: true,
+							Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "material_number", TargetProperty: "material_code"}}},
+					},
+				}}
+				needs := &interfaces.RequirementQuestion{Needs: []interfaces.RequirementItemRef{
+					{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "material"}, {Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "supplier"}}}
+				slotOn := &slotField{objectType: hop.Items.ObjectTypes[0], field: "code"}
+
+				p := pathOf(hop, needs, slotOn)
+
+				So(p.objectType, ShouldEqual, "po_line")
+				// The shape vega-backend accepts: joins on derived tables, no subquery in WHERE.
+				So(p.sample("r-mat", "code", "code"), ShouldEqual,
+					"SELECT a.`code` AS v FROM {{r-mat}} a JOIN (SELECT DISTINCT i.`mat_no` FROM {{r-po}} i JOIN (SELECT DISTINCT `sup_code` FROM {{r-sup}}) c ON i.`sup_no` = c.`sup_code`) b ON a.`code` = b.`mat_no` WHERE a.`code` IS NOT NULL ORDER BY a.`code` LIMIT 1")
+
+				// Not when the question names no other object type, nor through relations not adopted.
+				alone := &interfaces.RequirementQuestion{Needs: needs.Needs[:1]}
+				So(pathOf(hop, alone, slotOn), ShouldBeNil)
+				hop.Items.RelationTypes[2].Adopted = false
+				So(pathOf(hop, needs, slotOn), ShouldBeNil)
+				hop.Items.RelationTypes[2].Adopted = true
+				hop.Items.RelationTypes[1].Adopted = false
+				So(pathOf(hop, needs, slotOn), ShouldBeNil)
+				hop.Items.RelationTypes[1].Adopted = true
+				// Nor across catalogs.
+				hop.Items.ObjectTypes[2].Table.CatalogID = "c2"
+				So(pathOf(hop, needs, slotOn), ShouldBeNil)
+				hop.Items.ObjectTypes[2].Table.CatalogID = "c1"
+
+				// Filled through the line, saying so; from any material when no line reaches a supplier.
+				hopSQL := p.sample("r-mat", "code", "code")
+				for _, c := range []struct {
+					rows  []map[string]any
+					value string
+					from  string
+				}{
+					{[]map[string]any{{"v": "101-000005"}}, "101-000005", "po_line"},
+					{[]map[string]any{}, "101-000002", ""},
+					// A read through the line that fails (too slow, or the caller may not read lines)
+					// is passed over too.
+					{nil, "101-000002", ""},
+				} {
+					var err error
+					if c.rows == nil {
+						err = errors.New("timeout")
+					}
+					va.EXPECT().Query(gomock.Any(), caller, hopSQL, checkQueryTimeout).Return(c.rows, err)
+					if c.from == "" {
+						sample("SELECT `code` AS v0 FROM {{r-mat}} WHERE `code` IS NOT NULL ORDER BY `code` LIMIT 1",
+							map[string]any{"v0": "101-000002"})
+					}
+					tt := &interfaces.QuestionTest{Text: "Suppliers of {{slot 1}}?", Expect: interfaces.TEST_EXPECT_EXISTS,
+						Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "material_code"}}}
+
+					reason := svc.fill(ctx, caller, tt, []*slotField{{objectType: hop.Items.ObjectTypes[0], field: "code"}},
+						func(f *slotField) *relationPath { return pathOf(hop, needs, f) })
+
+					So(reason, ShouldEqual, "")
+					So(tt.Slots[0].Value, ShouldEqual, c.value)
+					So(tt.Slots[0].ValueFrom, ShouldEqual, c.from)
+				}
+
+				// A relation back to the slot's own object type is no way to the other one.
+				back := *hop
+				back.Items.RelationTypes = []*interfaces.DraftRelationType{hop.Items.RelationTypes[2],
+					{ID: "po_alt", Source: "po_line", Target: "material", Adopted: true,
+						Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "supplier_number", TargetProperty: "material_code"}}},
+					hop.Items.RelationTypes[1]}
+				So(pathOf(&back, needs, slotOn).reached, ShouldContainSubstring, "{{r-sup}}")
+
+				// A relation the question needs is followed directly, without a hop.
+				direct := &interfaces.RequirementQuestion{Needs: append(append([]interfaces.RequirementItemRef{}, needs.Needs...),
+					interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "inv_mat"})}
+				So(pathOf(hop, direct, slotOn).objectType, ShouldEqual, "inventory")
+			})
+
 			Convey("from either end of the relation\n", func() {
 				order := pathDraft.Items.ObjectTypes[0]
 				p := pathOf(pathDraft, withPath, &slotField{objectType: order, field: "cust_ref"})
 
-				So(p, ShouldResemble, &relationPath{objectType: "customer", own: "cust_ref", table: "r-cust", other: "cust_id"})
+				So(p.objectType, ShouldEqual, "customer")
 				So(p.sample("r-so", "cust_ref", "so_id"), ShouldEqual,
 					"SELECT a.`cust_ref` AS v FROM {{r-so}} a JOIN (SELECT DISTINCT `cust_id` FROM {{r-cust}}) b ON a.`cust_ref` = b.`cust_id` WHERE a.`cust_ref` IS NOT NULL ORDER BY a.`so_id` LIMIT 1")
 			})

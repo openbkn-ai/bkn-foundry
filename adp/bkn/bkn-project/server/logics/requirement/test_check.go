@@ -363,67 +363,111 @@ func (s *requirementService) sampleRow(ctx context.Context, caller interfaces.Ac
 	return values, ""
 }
 
-// relationPath is a relation the question needs from a slot's object type to another: the slot's
-// field the relation joins on, and the other end's table and field.
+// relationPath is how the rows of a slot's object type are kept to those the question's path
+// reaches: the slot's field a relation joins on, and the values it is joined with, as a query of
+// the object type at the other end (objectType) and the column it selects.
 type relationPath struct {
+	// through is set for a path through an object type the question does not need: the caller may
+	// not read it, and it may be large, so a failed read falls back to any record.
+	through    bool
 	objectType string
 	own        string
-	table      string
-	other      string
+	reached    string
+	column     string
 }
 
-// sample reads the first value of field among the rows of table the relation reaches, ordered by
-// order. vega-backend parses no subquery in WHERE, so the rows are joined with the other end's
-// distinct values, as drafting's join counts are. It holds no value, only names.
+// sample reads the first value of field among the rows of table the path reaches, ordered by order.
+// vega-backend parses no subquery in WHERE, so the rows are joined with the reached values, as
+// drafting's join counts are. It holds no value, only names.
 func (p *relationPath) sample(table string, field string, order string) string {
-	return fmt.Sprintf("SELECT a.%s AS v FROM {{%s}} a JOIN (SELECT DISTINCT %s FROM {{%s}}) b ON a.%s = b.%s "+
+	return fmt.Sprintf("SELECT a.%s AS v FROM {{%s}} a JOIN (%s) b ON a.%s = b.%s "+
 		"WHERE a.%s IS NOT NULL ORDER BY a.%s LIMIT 1",
-		quoteField(field), table, quoteField(p.other), p.table, quoteField(p.own), quoteField(p.other),
+		quoteField(field), table, p.reached, quoteField(p.own), quoteField(p.column),
 		quoteField(field), quoteField(order))
 }
 
-// pathOf finds the first relation the question needs, in its order, that joins the slot's object
-// type to another by one field: values the question can follow are taken from the records it
-// reaches. Relations through a link table, joining on several fields, or across catalogs (one query
-// cannot read both) are not followed.
+// pathOf finds where a slot's values are taken from, so that the question can follow them: the
+// first relation the question needs, in its order, that joins the slot's object type to another;
+// else, through one object type between them, the first adopted relation in the draft's order to
+// an object type that an adopted relation joins to another one the question needs. Only relations
+// on one field are followed, not through a link table, nor across catalogs: one query cannot read
+// two.
 func pathOf(draft *interfaces.Draft, q *interfaces.RequirementQuestion, f *slotField) *relationPath {
 	if draft == nil {
 		return nil
 	}
-	mapped := func(objectType string, property string) (*interfaces.DraftObjectType, string) {
+	field := func(objectType string, property string) (*interfaces.DraftObjectType, string) {
 		for _, ot := range draft.Items.ObjectTypes {
 			if ot.ID != objectType {
 				continue
 			}
 			for _, p := range ot.Properties {
-				if p.Name == property {
+				if p.Name == property && p.MappedField != "" && ot.Table.ResourceID != "" &&
+					ot.Table.CatalogID == f.objectType.Table.CatalogID {
 					return ot, p.MappedField
 				}
 			}
 		}
 		return nil, ""
 	}
+	// join reads a relation from one of its ends: that end's field, and the other end with its field.
+	join := func(rt *interfaces.DraftRelationType, from string) (string, *interfaces.DraftObjectType, string) {
+		if rt.LinkTable != nil || len(rt.Mapping) != 1 || rt.Source == rt.Target {
+			return "", nil, ""
+		}
+		own, other, otherType := rt.Mapping[0].SourceProperty, rt.Mapping[0].TargetProperty, rt.Target
+		if rt.Target == from {
+			own, other, otherType = other, own, rt.Source
+		} else if rt.Source != from {
+			return "", nil, ""
+		}
+		_, ownField := field(from, own)
+		ot, otherField := field(otherType, other)
+		if ownField == "" || ot == nil {
+			return "", nil, ""
+		}
+		return ownField, ot, otherField
+	}
+	needed := map[string]bool{}
 	for _, need := range q.Needs {
+		if need.Kind == interfaces.REQUIREMENT_ITEM_OBJECT_TYPE {
+			needed[need.ID] = true
+		}
 		if need.Kind != interfaces.REQUIREMENT_ITEM_RELATION_TYPE {
 			continue
 		}
 		for _, rt := range draft.Items.RelationTypes {
-			if rt.ID != need.ID || rt.LinkTable != nil || len(rt.Mapping) != 1 || rt.Source == rt.Target {
+			if rt.ID != need.ID {
 				continue
 			}
-			own, other, otherType := rt.Mapping[0].SourceProperty, rt.Mapping[0].TargetProperty, rt.Target
-			if rt.Target == f.objectType.ID {
-				own, other, otherType = other, own, rt.Source
-			} else if rt.Source != f.objectType.ID {
+			if own, ot, other := join(rt, f.objectType.ID); ot != nil {
+				return &relationPath{objectType: ot.ID, own: own,
+					reached: fmt.Sprintf("SELECT DISTINCT %s FROM {{%s}}", quoteField(other), ot.Table.ResourceID), column: other}
+			}
+		}
+	}
+	for _, first := range draft.Items.RelationTypes {
+		if !first.Adopted {
+			continue
+		}
+		own, between, toSlot := join(first, f.objectType.ID)
+		if between == nil {
+			continue
+		}
+		for _, second := range draft.Items.RelationTypes {
+			if !second.Adopted || second == first {
 				continue
 			}
-			_, ownField := mapped(f.objectType.ID, own)
-			ot, otherField := mapped(otherType, other)
-			if ownField == "" || otherField == "" || ot.Table.ResourceID == "" ||
-				ot.Table.CatalogID != f.objectType.Table.CatalogID {
+			toNext, ot, other := join(second, between.ID)
+			if ot == nil || !needed[ot.ID] || ot.ID == f.objectType.ID {
 				continue
 			}
-			return &relationPath{objectType: ot.ID, own: ownField, table: ot.Table.ResourceID, other: otherField}
+			// The rows between that refer to a record of the needed object type, and the slot's
+			// values they refer to.
+			reached := fmt.Sprintf("SELECT DISTINCT i.%s FROM {{%s}} i JOIN (SELECT DISTINCT %s FROM {{%s}}) c ON i.%s = c.%s",
+				quoteField(toSlot), between.Table.ResourceID, quoteField(other), ot.Table.ResourceID,
+				quoteField(toNext), quoteField(other))
+			return &relationPath{through: true, objectType: between.ID, own: own, reached: reached, column: toSlot}
 		}
 	}
 	return nil
@@ -510,7 +554,9 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 			rows, err := s.va.Query(ctx, caller, sql, checkQueryTimeout)
 			if err != nil {
 				logger.Warnf("Read a value along a relation for a test question failed: %v; statement: %s", err, sql)
-				return checkQueryFailed
+				if !p.through {
+					return checkQueryFailed
+				}
 			}
 			if len(rows) > 0 {
 				if v, ok := valueText(rows[0]["v"]); ok {
