@@ -14,6 +14,18 @@
 # stay literal.
 
 error_messages = {
+    "BknAgent.Prompt.TranslationStale": {
+        "code": "BknAgent.Prompt.TranslationStale",
+        "description": "提示词或原文语言已变更，请重新加载后再保存译文。",
+        "detail": "提示词或原文语言已变更，请重新加载后再保存译文。",
+        "solution": "重新加载提示词并确认原文语言。",
+    },
+    "BknAgent.Prompt.TranslationIsSource": {
+        "code": "BknAgent.Prompt.TranslationIsSource",
+        "description": "不能将原文语言保存为译文。",
+        "detail": "不能将原文语言保存为译文。",
+        "solution": "重新加载提示词并确认原文语言。",
+    },
     "BknAgent.Agent.BindingChanged": {
         "code": "BknAgent.ParamError.Conflict",
         "description": 'Agent 的提示词绑定已被并发修改。',

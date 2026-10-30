@@ -20,6 +20,20 @@
 
 </div>
 
+---
+
+<div align="center">
+
+<a href="https://youtu.be/xarWAhN5cQg?si=Z28Uug7__WDknbiO">
+  <img src="help/openbkn-in-3-minutes-preview.webp" alt="OpenBKN video preview; click to watch the full 3-minute video on YouTube" width="640" height="360">
+</a>
+
+**[▶ Watch the full 3-minute OpenBKN video on YouTube](https://youtu.be/xarWAhN5cQg?si=Z28Uug7__WDknbiO)**
+
+</div>
+
+---
+
 OpenBKN is an ontology-driven business knowledge network platform. Through ontology modeling, it turns the data and logic scattered across documents, systems, processes, rules, and expert experience into a business knowledge network that agents can understand, execute, and verify — so agents land accurately, safely, and reliably in real business environments, not just generating answers but continuously creating executable, traceable, and verifiable business value.
 
 **BKN Foundry** is the technical foundation of OpenBKN, providing that business knowledge network with unified data access, safe execution, and governance.

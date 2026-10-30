@@ -28,4 +28,9 @@ where f_prompt_id = 'business_provenance_claim_attribution_prompt'
   and f_create_user = 'bdd59f76-19c3-58b0-bf5f-082c4c3cbddb'
   and (f_vars_schema is null or json_type(f_vars_schema) = 'NULL')
   and f_localized_content is null
-  and sha2(f_content, 256) = '82951e10fedd5917845dbca8d97e9c26a9448a2763f2b828a714f9432d92c05a';
+  and sha2(f_content, 256) = '82951e10fedd5917845dbca8d97e9c26a9448a2763f2b828a714f9432d92c05a'
+  and exists (select 1 from t_agent a join t_agent_version initial_version
+      on initial_version.f_agent_id = a.f_agent_id
+      where a.f_prompt_id = t_agent_prompt_version.f_prompt_id
+        and initial_version.f_initial = 1
+        and initial_version.f_prompt_version = t_agent_prompt_version.f_version);

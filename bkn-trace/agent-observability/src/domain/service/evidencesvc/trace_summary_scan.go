@@ -24,9 +24,9 @@ const maxScannedSummaryPageRetention = 10000
 
 func needsTraceSummaryScan(o evidencevo.SummaryQueryOptions) bool {
 	shared := o.Scope.AccessProfile != nil && evidencevo.NeedsCrossAccountCandidates(o.Scope) && !evidencevo.HasGlobalTraceAccess(*o.Scope.AccessProfile)
-	return (o.Status != "" || o.ErrorKeyword != "" || shared) &&
+	return (o.Status != "" || o.ErrorKeyword != "" || o.Keyword != "" || shared) &&
 		o.TraceID == "" && o.ConversationID == "" && o.InteractionID == "" &&
-		o.AgentOrApp == "" && o.Keyword == "" && o.KnowledgeNetwork == "" &&
+		o.AgentOrApp == "" && o.KnowledgeNetwork == "" &&
 		o.RecordIntegrity == "" && o.EvidenceCompleteness == "" &&
 		o.ExcludeAgentOrApp == "" && len(o.ExcludeAgentOrApps) == 0 &&
 		(o.Scope.View == "" || o.Scope.View == evidencevo.AccessViewBusiness || o.Scope.View == evidencevo.AccessViewTechnical)

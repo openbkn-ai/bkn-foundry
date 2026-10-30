@@ -1838,6 +1838,13 @@ func (s *Service) ListTraceExecutions(ctx context.Context, options evidencevo.Su
 	if err != nil {
 		return evidencevo.TraceSummaryPage{}, err
 	}
+	// A compatibility reader cannot continue beyond its candidate window. Never
+	// report a window-local keyword count as a completed search, even when no
+	// candidate in that window matched. The bounded scanner handles ordinary
+	// keyword queries; narrower selectors and older sources may still land here.
+	if strings.TrimSpace(options.Keyword) != "" && metadata.Truncated {
+		return evidencevo.TraceSummaryPage{}, iprojectionsource.ErrSummaryScanBudgetExceeded
+	}
 	filtered := make([]evidencevo.TraceSummary, 0, len(traces))
 	for _, trace := range traces {
 		if matchesTraceFilters(trace, options) {
