@@ -240,7 +240,11 @@ type RequirementQuestion struct {
 	Inputs *[]RequirementInput `json:"inputs,omitempty"`
 	// RelativeWindow says the question asks about a period counted back from a reference time, such
 	// as the last 30 days; one of its inputs is then that reference time.
-	RelativeWindow   bool                  `json:"relative_window,omitempty"`
+	RelativeWindow bool `json:"relative_window,omitempty"`
+	// Notes are codes for the client to word, computed when the specification is read and never
+	// stored: capability_without_basis when a capability question names no metric, function or
+	// skill it rests on, so the capability it needs is not named yet.
+	Notes            []string              `json:"notes,omitempty"`
 	Citations        []RequirementCitation `json:"citations"`
 	SupplementReason string                `json:"supplement_reason,omitempty"`
 	Edited           bool                  `json:"edited"`
@@ -485,6 +489,11 @@ const (
 	TEST_EXPECT_EXISTS      = "exists"
 	TEST_EXPECT_NOT_EXISTS  = "not_exists"
 	TEST_EXPECT_SAME_RECORD = "same_record"
+
+	// TEST_KIND_TEMPLATE is the question's template asked of a record in the data, written by the
+	// server; the Agent writes the other kinds, and the server a not_exist of the template too.
+	TEST_KIND_TEMPLATE  = "template"
+	TEST_KIND_NOT_EXIST = "not_exist"
 )
 
 // Outcomes of checking a test question against the data. Only a passed one is asked after a
@@ -549,19 +558,24 @@ type QuestionGuidanceView struct {
 // property the question's items do not have: the Agent wrote them about something else.
 const TESTS_NOTE_NONE_CHECKABLE = "none_checkable"
 
+// QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS says a capability question names nothing it rests on.
+const QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS = "capability_without_basis"
+
 // TESTS_NOTE_INPUTS_UNTESTED says a question has inputs and no test names a value of each.
 const TESTS_NOTE_INPUTS_UNTESTED = "inputs_untested"
 
-// QuestionTest is a scenario question asked with concrete values. Kind is paraphrase, boundary,
-// not_exist or variant; it says how the Agent meant it. Expect says what the data must show.
+// QuestionTest is a scenario question asked with concrete values. Kind is template, paraphrase,
+// boundary, not_exist or variant; it says how it was meant. Expect says what the data must show.
+// ByServer marks a test the server wrote from the question's template and inputs.
 type QuestionTest struct {
-	ID     string             `json:"id"`
-	Text   string             `json:"text"`
-	Kind   string             `json:"kind"`
-	Slots  []QuestionTestSlot `json:"slots"`
-	Expect string             `json:"expect"`
-	Edited bool               `json:"edited"`
-	Check  QuestionTestCheck  `json:"check"`
+	ID       string             `json:"id"`
+	Text     string             `json:"text"`
+	Kind     string             `json:"kind"`
+	Slots    []QuestionTestSlot `json:"slots"`
+	Expect   string             `json:"expect"`
+	Edited   bool               `json:"edited"`
+	ByServer bool               `json:"by_server,omitempty"`
+	Check    QuestionTestCheck  `json:"check"`
 }
 
 // RequirementTestEdit changes the fields it sets of a test question. UpdateTime is the guidance's

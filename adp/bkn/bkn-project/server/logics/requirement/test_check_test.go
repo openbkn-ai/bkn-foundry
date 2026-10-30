@@ -153,6 +153,78 @@ func Test_CheckTests(t *testing.T) {
 			So(tt.Text, ShouldEqual, "About 10001?")
 		})
 
+		Convey("Empty values of one object type are taken from one row, so they name one record\n", func() {
+			sample("SELECT `cust_id` AS v0, `name` AS v1 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v0": "10001", "v1": "Acme Ltd"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""), slot("full_name", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Text, ShouldEqual, "About 10001 and Acme Ltd?")
+		})
+
+		Convey("A same_record test names the record of the server's template test\n", func() {
+			anchor := &interfaces.QuestionTest{ID: "t1", Kind: interfaces.TEST_KIND_TEMPLATE, ByServer: true,
+				Slots: []interfaces.QuestionTestSlot{slot("customer_id", "10001")},
+				Check: interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}}
+			named := func(n float64, same float64, name string) {
+				count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `name` = '"+name+"'", n)
+				if n == 1 {
+					count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = '"+name+"' AND `cust_id` = '10001'", same)
+				}
+			}
+
+			// One other way to name it, taken from that record's row.
+			sample("SELECT `name` AS v0 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v0": "Acme Ltd"})
+			named(1, 1, "Acme Ltd")
+			tt := test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", ""))
+			So(svc.checkAnchored(ctx, caller, &spec, draft, asked, tt, anchor), ShouldResemble,
+				interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED})
+			So(tt.Text, ShouldEqual, "About Acme Ltd?")
+
+			for _, c := range []struct {
+				records, same float64
+				reason        string
+			}{
+				{1, 0, checkDifferentRecords},
+				{2, 0, checkDifferentRecords},
+				{0, 0, checkRecordNotFound},
+			} {
+				named(c.records, c.same, "Other Co")
+				So(svc.checkAnchored(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", "Other Co")), anchor),
+					ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: c.reason})
+			}
+
+			// Several fields that name it together are one way of naming it.
+			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` = 'Acme Ltd'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` = 'Acme Ltd' AND `cust_id` = '10001'", float64(1))
+			So(svc.checkAnchored(ctx, caller, &spec, draft, asked, test(interfaces.TEST_EXPECT_SAME_RECORD,
+				slot("customer_id", "10001"), slot("full_name", "Acme Ltd")), anchor).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+		})
+
+		Convey("Only a template test the data bore out anchors, and checking the tests passes it on\n", func() {
+			template := &interfaces.QuestionTest{ID: "t1", Kind: interfaces.TEST_KIND_TEMPLATE, ByServer: true, Text: "About 10001?",
+				Expect: interfaces.TEST_EXPECT_EXISTS, Slots: []interfaces.QuestionTestSlot{slot("customer_id", "10001")}}
+			So(anchorOf([]*interfaces.QuestionTest{template}), ShouldBeNil)
+			agentWritten := *template
+			agentWritten.ByServer, agentWritten.Check.Outcome = false, interfaces.TEST_CHECK_PASSED
+			So(anchorOf([]*interfaces.QuestionTest{&agentWritten}), ShouldBeNil)
+
+			variant := test(interfaces.TEST_EXPECT_SAME_RECORD, slot("full_name", "Acme Ltd"))
+			variant.ID = "t2"
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			count("SELECT COUNT(DISTINCT `cust_id`) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd' AND `cust_id` = '10001'", float64(1))
+			svc.now = func() int64 { return 0 }
+			svc.checkTests(ctx, caller, &spec, draft, asked, []*interfaces.QuestionTest{template, variant}, 1)
+
+			So(template.Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(anchorOf([]*interfaces.QuestionTest{template}), ShouldEqual, template)
+			So(variant.Check.Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+		})
+
 		Convey("A large identity is taken and counted with every digit\n", func() {
 			sample("SELECT `cust_id` AS v0 FROM {{r-cust}} WHERE `cust_id` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
 				map[string]any{"v0": json.Number("1234567890123456789")})
@@ -182,6 +254,12 @@ func Test_CheckTests(t *testing.T) {
 				{"Which orders of the last 30 days?", "About {{slot 1}} in the last 3 days?", true},
 				{"Which orders?", "About {{slot 1}} over 5000?", true},
 				{"Which orders?", "About {{slot 1}}?", false},
+				// Its number with a unit, joined or not, in the question or a rule.
+				{"Which orders of the next 14 days?", "About {{slot 1}} in a 14-day window?", false},
+				{"Which orders in a 14-day window?", "About {{slot 1}} in the next 14 days?", false},
+				{"Which orders of the next 14 days?", "About {{slot 1}} in a 15-day window?", true},
+				{"Which orders of A14?", "About {{slot 1}} at A14?", false},
+				{"Which orders of the next 14 days?", "About {{slot 1}} at A14?", true},
 			} {
 				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", ""))
 				tt.Text = c.text
@@ -372,7 +450,7 @@ func Test_CheckTests(t *testing.T) {
 						Slots: []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "material_code"}}}
 
 					reason := svc.fill(ctx, caller, tt, []*slotField{{objectType: hop.Items.ObjectTypes[0], field: "code"}},
-						func(f *slotField) *relationPath { return pathOf(hop, needs, f) })
+						func(f *slotField) *relationPath { return pathOf(hop, needs, f) }, nil)
 
 					So(reason, ShouldEqual, "")
 					So(tt.Slots[0].Value, ShouldEqual, c.value)
@@ -516,5 +594,18 @@ func Test_valueTokens(t *testing.T) {
 			[]string{"2025-06-30", "10:30", "CUST-10001", "3.5"})
 		So(valueTokens("前 10 名，第3季度"), ShouldResemble, []string{"10", "3"})
 		So(valueTokens("Which orders, and why?"), ShouldResemble, []string{})
+	})
+}
+
+func Test_numberOf(t *testing.T) {
+	Convey("A number with a unit joined to it is its number; a code keeps its letters\n", t, func() {
+		for token, want := range map[string]string{
+			"14-day": "14", "14-Days": "14", "30d": "30", "3.5kg": "3.5", "2h": "2", "6-months": "6", "10pcs": "10",
+			// Not a unit: a code, or letters before the number.
+			"999-A": "999-A", "A14": "A14", "14-ABC": "14-ABC", "LOT-999-A": "LOT-999-A", "2025-06-30": "2025-06-30",
+			"10:30": "10:30", "14": "14", "3.5": "3.5", "12th": "12th",
+		} {
+			So(numberOf(token), ShouldEqual, want)
+		}
 	})
 }

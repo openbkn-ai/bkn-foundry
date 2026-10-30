@@ -47,7 +47,14 @@ const maxNoTestsReason = 1000
 // checkPending is the check reason of a test question not checked against the data yet.
 const checkPending = "pending"
 
-var testKinds = []string{"paraphrase", "boundary", "not_exist", "variant"}
+var testKinds = []string{"paraphrase", "boundary", interfaces.TEST_KIND_NOT_EXIST, "variant"}
+
+// kindExpects is what a test of each kind expects of the data, whatever the Agent wrote: a
+// paraphrase or a boundary asks about a record that exists, a variant names one record twice.
+var kindExpects = map[string]string{
+	"paraphrase": interfaces.TEST_EXPECT_EXISTS, "boundary": interfaces.TEST_EXPECT_EXISTS,
+	interfaces.TEST_KIND_NOT_EXIST: interfaces.TEST_EXPECT_NOT_EXISTS, "variant": interfaces.TEST_EXPECT_SAME_RECORD,
+}
 
 // guidanceOutput is what the Agent returns in pass guidance.
 type guidanceOutput struct {
@@ -274,22 +281,37 @@ func replaceSpans(text string, spans []valueSpan) string {
 // counts those it leaves out: without text, asking about a made-up value they do not say as
 // written, or without the place of a slot left empty. A value is kept only when a document says
 // it; the others are left for the server to fill from the data. None is checked against the data
-// yet. A question with inputs keeps only the tests that ask about them (see offInputs).
+// yet. A question with inputs keeps only the tests that ask about them (see offInputs), after
+// those the server writes from its template (see serverTests): then the Agent's not_exist ones,
+// which the server's stands for, are left out too, and so are those with a slot of a concept that
+// maps to no object type: no field holds its value. A test's kind decides what it expects.
 func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
-	q *interfaces.RequirementQuestion) ([]*interfaces.QuestionTest, int) {
+	q *interfaces.RequirementQuestion, spec *interfaces.RequirementSpec) ([]*interfaces.QuestionTest, int) {
 	concepts := inputConcepts(q)
+	unmapped := map[string]bool{}
+	if spec != nil {
+		for _, c := range spec.Concepts {
+			unmapped[c.ID] = c.MapsTo == nil || c.MapsTo.Kind != interfaces.REQUIREMENT_ITEM_OBJECT_TYPE
+		}
+	}
 	texts := make([]string, 0, len(docs))
 	for _, d := range docs {
 		texts = append(texts, normalize([]rune(d.Content)).text)
 	}
-	tests, leftOut := []*interfaces.QuestionTest{}, 0
+	tests, leftOut := serverTests(q, unmapped), 0
+	for i, t := range tests {
+		t.ID = fmt.Sprintf("t%d", i+1)
+	}
 	for _, at := range out.Tests {
 		text := strings.TrimSpace(at.Text)
-		if text == "" || len(tests) == maxTests {
+		if text == "" || len(tests) == maxTests || len(tests) > 0 && tests[0].ByServer && at.Kind == interfaces.TEST_KIND_NOT_EXIST {
 			leftOut++
 			continue
 		}
-		expect := at.Expect
+		expect, known := kindExpects[at.Kind]
+		if !known {
+			expect = at.Expect
+		}
 		if expect != interfaces.TEST_EXPECT_NOT_EXISTS && expect != interfaces.TEST_EXPECT_SAME_RECORD {
 			expect = interfaces.TEST_EXPECT_EXISTS
 		}
@@ -315,7 +337,8 @@ func buildTests(out *guidanceOutput, docs []*interfaces.RequirementDocument,
 			}
 			slots = append(slots, interfaces.QuestionTestSlot{ConceptID: s.ConceptID, Property: s.Property, Value: value})
 		}
-		if !placed || (concepts != nil && offInputs(slots, expect, concepts)) {
+		if !placed || (concepts != nil && (offInputs(slots, expect, concepts) ||
+			slices.ContainsFunc(slots, func(s interfaces.QuestionTestSlot) bool { return unmapped[s.ConceptID] }))) {
 			leftOut++
 			continue
 		}
@@ -485,7 +508,7 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	}
 	done := *g
 	done.Status, done.Guidance = interfaces.GUIDANCE_STATUS_READY, strings.TrimSpace(out.Guidance)
-	done.Tests, done.LeftOutTests = buildTests(&out, docs, q)
+	done.Tests, done.LeftOutTests = buildTests(&out, docs, q, spec)
 	// A reason for writing none applies only when none is kept.
 	if len(done.Tests) == 0 {
 		done.NoTestsReason = clip(strings.TrimSpace(out.NoTestsReason), maxNoTestsReason)

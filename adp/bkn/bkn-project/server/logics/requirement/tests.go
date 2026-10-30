@@ -129,7 +129,7 @@ func (s *requirementService) EditTest(ctx context.Context, token string, project
 			if q == nil {
 				q = &interfaces.RequirementQuestion{ID: g.QuestionID, Text: g.Question}
 			}
-			test.Check = s.checkTest(ctx, caller, &req.Spec, draft, q, &test)
+			test.Check = s.checkAnchored(ctx, caller, &req.Spec, draft, q, &test, anchorOf(g.Tests))
 			g.Tests[i] = &test
 			return nil
 		})

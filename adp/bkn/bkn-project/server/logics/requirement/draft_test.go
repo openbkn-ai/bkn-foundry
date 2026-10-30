@@ -198,7 +198,7 @@ func Test_BuildSpec(t *testing.T) {
 						record("absent", "ord", "order_no"),                                   // not in the template
 						{Name: "kind", ConceptID: "ord", Property: "order_no", Role: "guess"}, // no such role
 					}},
-					// A concept not drafted yet: its property cannot be checked, and stands.
+					// A concept that maps to no object type of the draft names no field.
 					{Text: "b", Template: "Orders of {channel}?", SupplementReason: "r", Inputs: []agentInput{
 						record("channel", "loose", "anything")}},
 					// No input value at all.
@@ -215,7 +215,7 @@ func Test_BuildSpec(t *testing.T) {
 					// A reference time on a property that is no time.
 					{Text: "g", Template: "Orders before {as_of}?", SupplementReason: "r", RelativeWindow: true,
 						Inputs: []agentInput{{Name: "as_of", ConceptID: "ord", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
-					// A reference time on a concept not drafted names no property: it cannot be told a time.
+					// The same, with a reference time on it.
 					{Text: "h", Template: "Sales of {channel} before {as_of}?", SupplementReason: "r", Inputs: []agentInput{
 						record("channel", "loose", "anything"),
 						{Name: "as_of", ConceptID: "loose", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME}}},
@@ -230,8 +230,7 @@ func Test_BuildSpec(t *testing.T) {
 			}
 			So(*byText["a"].Inputs, ShouldResemble, []interfaces.RequirementInput{
 				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}})
-			So(*byText["b"].Inputs, ShouldResemble, []interfaces.RequirementInput{
-				{Name: "channel", ConceptID: "c2", Property: "anything", Role: interfaces.REQUIREMENT_INPUT_RECORD}})
+			So(byText["b"].Inputs, ShouldBeNil)
 			So(*byText["c"].Inputs, ShouldBeEmpty)
 			So(byText["d"].Inputs, ShouldBeNil)
 			So(*byText["e"].Inputs, ShouldHaveLength, 2)
@@ -251,8 +250,24 @@ func Test_BuildSpec(t *testing.T) {
 			So(reasons["question f"], ShouldEqual, rejectedWindowWithoutRefTime)
 			So(reasons["input as_of (g)"], ShouldEqual, inputNotTime)
 			So(reasons["question g"], ShouldEqual, rejectedWindowWithoutRefTime)
+			So(reasons["input channel (b)"], ShouldEqual, inputConceptNotMapped)
+			So(reasons["input as_of (h)"], ShouldEqual, inputConceptNotMapped)
+
+			// Before the project has a draft, a concept maps to nothing yet: its property cannot be
+			// checked and stands, but a reference time with no property cannot be told a time.
+			spec, _ = buildSpec(out, docs, nil)
+			byText, reasons = map[string]*interfaces.RequirementQuestion{}, map[string]string{}
+			for _, q := range spec.Questions {
+				byText[q.Text] = q
+			}
+			for _, r := range spec.Rejected {
+				reasons[r.Kind+" "+r.Text] = r.Reason
+			}
+			So(*byText["b"].Inputs, ShouldResemble, []interfaces.RequirementInput{
+				{Name: "channel", ConceptID: "c2", Property: "anything", Role: interfaces.REQUIREMENT_INPUT_RECORD}})
 			So(reasons["input as_of (h)"], ShouldEqual, inputNotTime)
 			So(*byText["h"].Inputs, ShouldHaveLength, 1)
+			So(reasons["input missing (a)"], ShouldEqual, "")
 		})
 
 		Convey("A question's layer is knowledge only when said so\n", func() {
@@ -699,6 +714,13 @@ func Test_GetRequirement(t *testing.T) {
 						{ID: "k3", Resolution: &interfaces.RequirementResolution{Reason: "r"}},
 						{ID: "k4", Resolution: &interfaces.RequirementResolution{Reason: "r"}, Deferred: true}},
 					Choices: []*interfaces.RequirementChoice{{ID: "f1"}, {ID: "f2", Decision: &interfaces.RequirementChoiceDecision{OptionID: "o1"}}},
+					Questions: []*interfaces.RequirementQuestion{
+						{ID: "q1", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY},
+						{ID: "q2", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Functions: []string{"f"}}},
+						{ID: "q3", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, Notes: []string{"stale"}},
+						{ID: "q4", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Metrics: []string{"m"}}},
+						{ID: "q5", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Skills: []string{"s"}}},
+					},
 				}}
 		}
 
@@ -712,6 +734,12 @@ func Test_GetRequirement(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(view.Stale, ShouldBeFalse)
 			So(view.UnresolvedConflicts, ShouldEqual, 3)
+			// A capability question that names nothing it rests on is noted, when read.
+			notes := [][]string{}
+			for _, q := range view.Spec.Questions {
+				notes = append(notes, q.Notes)
+			}
+			So(notes, ShouldResemble, [][]string{{interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS}, nil, nil, nil, nil})
 			So(view.UndecidedChoices, ShouldEqual, 1)
 			body, _ := json.Marshal(view)
 			So(string(body), ShouldContainSubstring, `"stale":false`)

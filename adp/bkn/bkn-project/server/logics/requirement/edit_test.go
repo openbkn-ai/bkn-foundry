@@ -434,12 +434,12 @@ func Test_QuestionInputEdits(t *testing.T) {
 			expectRead()
 			expectSave()
 			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
-				interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Orders of {customer} in the 30 days before {as_of}?"),
-					Inputs:         &[]interfaces.RequirementInput{record("customer", "c2", ""), asOf},
+				interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Lines of {order} in the 30 days before {as_of}?"),
+					Inputs:         &[]interfaces.RequirementInput{record("order", "c1", "order_no"), asOf},
 					RelativeWindow: ptr(true)}, caller)
 			So(err, ShouldBeNil)
 			q := saved.Spec.Questions[0]
-			So(*q.Inputs, ShouldResemble, []interfaces.RequirementInput{record("customer", "c2", ""), asOf})
+			So(*q.Inputs, ShouldResemble, []interfaces.RequirementInput{record("order", "c1", "order_no"), asOf})
 			So(q.RelativeWindow, ShouldBeTrue)
 			So(q.Edited, ShouldBeTrue)
 
@@ -470,6 +470,7 @@ func Test_QuestionInputEdits(t *testing.T) {
 				{interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Lines of a given order?")}, inputNotInTemplate},
 				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c9", "order_no")}}, inputUnknownConcept},
 				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c1", "amount")}}, inputUnknownProperty},
+				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c2", "")}}, inputConceptNotMapped},
 				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{record("order", "c1", "order_no"),
 					record("order", "c1", "order_date")}}, inputDuplicateName},
 				{interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1",

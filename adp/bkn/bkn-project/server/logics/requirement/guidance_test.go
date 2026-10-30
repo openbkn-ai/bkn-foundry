@@ -101,7 +101,7 @@ func Test_BuildGuidance(t *testing.T) {
 			}
 			out.Tests[1].Text = "  "
 
-			tests, leftOut := buildTests(out, nil, nil)
+			tests, leftOut := buildTests(out, nil, nil, nil)
 
 			So(tests, ShouldHaveLength, maxTests)
 			// The blank one, and the one past the most kept.
@@ -121,7 +121,7 @@ func Test_BuildGuidance(t *testing.T) {
 				{ConceptID: "c2", Property: "customer_id", Value: "10001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme Ltd"},
 				{ConceptID: "c2", Property: "customer_id", Value: "  "},
-			}}}}, docs, nil)
+			}}}}, docs, nil, nil)
 
 			So(tests[0].Slots[0].Value, ShouldEqual, "10001")
 			So(tests[0].Slots[1].Value, ShouldEqual, "")
@@ -132,7 +132,7 @@ func Test_BuildGuidance(t *testing.T) {
 			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "Orders of 20001 and of Acme?", Slots: []agentSlot{
 				{ConceptID: "c2", Property: "customer_id", Value: "20001"},
 				{ConceptID: "c2", Property: "full_name", Value: "Acme"},
-			}}}}, nil, nil)
+			}}}}, nil, nil, nil)
 
 			So(tests[0].Text, ShouldEqual, "Orders of {{slot 1}} and of {{slot 2}}?")
 			So(tests[0].Slots[0].Value, ShouldEqual, "")
@@ -155,7 +155,7 @@ func Test_BuildGuidance(t *testing.T) {
 					at.Slots = append(at.Slots, agentSlot{ConceptID: "c2", Property: "customer_id", Value: v})
 				}
 
-				tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil, nil)
+				tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{at}}, nil, nil, nil)
 
 				So(tests[0].Text, ShouldEqual, c.want)
 			}
@@ -170,7 +170,7 @@ func Test_BuildGuidance(t *testing.T) {
 					{ConceptID: "c2", Property: "short_name", Value: "Acme"}}},
 				{Text: "Orders of a customer?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: ""}}},
 				{Text: "Orders of {{slot 1}}?", Slots: []agentSlot{{ConceptID: "c2", Property: "customer_id", Value: " "}}},
-			}}, nil, nil)
+			}}, nil, nil, nil)
 
 			So(tests, ShouldHaveLength, 1)
 			So(leftOut, ShouldEqual, 4)
@@ -194,28 +194,113 @@ func Test_BuildGuidance(t *testing.T) {
 					Slots: []agentSlot{slot("c1", "order_no", ""), slot("c1", "order_no", "")}},
 				{Text: "{{slot 1}} and {{slot 2}} are one order?", Expect: interfaces.TEST_EXPECT_SAME_RECORD,
 					Slots: []agentSlot{slot("c1", "order_no", ""), slot("c2", "customer_id", "")}},
+				// One other way to name the question's record is enough: the server's test names it too.
+				{Text: "The order of {{slot 1}}?", Expect: interfaces.TEST_EXPECT_SAME_RECORD, Slots: []agentSlot{slot("c1", "order_date", "")}},
+				{Text: "The order {{slot 1}}?", Expect: interfaces.TEST_EXPECT_SAME_RECORD, Slots: []agentSlot{slot("c1", "order_no", "")}},
 			}}
 			asked := &interfaces.RequirementQuestion{Inputs: &[]interfaces.RequirementInput{
 				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD},
 				{Name: "customer", ConceptID: "c2", Property: "customer_id", Role: interfaces.REQUIREMENT_INPUT_RECORD}}}
 
-			tests, leftOut := buildTests(out, nil, asked)
-			So(tests, ShouldHaveLength, 2)
-			So(tests[0].Text, ShouldEqual, "Lines of {{slot 1}}?")
-			So(tests[1].Slots[1].Property, ShouldEqual, "order_date")
-			So(leftOut, ShouldEqual, 4)
+			tests, leftOut := buildTests(out, nil, asked, nil)
+			// After the two the server writes from the template.
+			So(tests, ShouldHaveLength, 5)
+			So(tests[2].Text, ShouldEqual, "Lines of {{slot 1}}?")
+			So(tests[3].Slots[1].Property, ShouldEqual, "order_date")
+			So(tests[4].Text, ShouldEqual, "The order of {{slot 1}}?")
+			So(leftOut, ShouldEqual, 5)
 
-			tests, leftOut = buildTests(out, nil, &interfaces.RequirementQuestion{Inputs: &[]interfaces.RequirementInput{}})
+			tests, leftOut = buildTests(out, nil, &interfaces.RequirementQuestion{Inputs: &[]interfaces.RequirementInput{}}, nil)
 			So(tests, ShouldBeEmpty)
-			So(leftOut, ShouldEqual, 6)
+			So(leftOut, ShouldEqual, 8)
 
 			// Drafted before inputs: as before.
-			tests, _ = buildTests(out, nil, &interfaces.RequirementQuestion{})
-			So(tests, ShouldHaveLength, 6)
+			tests, _ = buildTests(out, nil, &interfaces.RequirementQuestion{}, nil)
+			So(tests, ShouldHaveLength, 8)
+		})
+
+		Convey("The server writes the template asked of a record that exists and of one that does not\n", func() {
+			asked := &interfaces.RequirementQuestion{Template: "Stock of {item} on {as_of} at {site}?",
+				Inputs: &[]interfaces.RequirementInput{
+					{Name: "as_of", ConceptID: "c1", Property: "stock_date", Role: interfaces.REQUIREMENT_INPUT_REFERENCE_TIME},
+					{Name: "item", ConceptID: "c1", Property: "item_no", Role: interfaces.REQUIREMENT_INPUT_RECORD},
+					{Name: "site", ConceptID: "c2", Property: "site_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}}}
+			out := &guidanceOutput{Tests: []agentTest{
+				{Text: "Is {{slot 1}} unknown?", Kind: interfaces.TEST_KIND_NOT_EXIST, Expect: interfaces.TEST_EXPECT_NOT_EXISTS,
+					Slots: []agentSlot{{ConceptID: "c1", Property: "item_no"}}},
+				{Text: "How much {{slot 1}} is there?", Kind: "paraphrase", Slots: []agentSlot{{ConceptID: "c1", Property: "item_no"}}},
+			}}
+
+			tests, leftOut := buildTests(out, nil, asked, nil)
+
+			So(leftOut, ShouldEqual, 1)
+			So(tests, ShouldHaveLength, 3)
+			template, absent := tests[0], tests[1]
+			So(template.ID, ShouldEqual, "t1")
+			So(template.Kind, ShouldEqual, interfaces.TEST_KIND_TEMPLATE)
+			So(template.Expect, ShouldEqual, interfaces.TEST_EXPECT_EXISTS)
+			So(template.Text, ShouldEqual, "Stock of {{slot 2}} on {{slot 1}} at {{slot 3}}?")
+			So(template.Slots, ShouldResemble, []interfaces.QuestionTestSlot{{ConceptID: "c1", Property: "stock_date"},
+				{ConceptID: "c1", Property: "item_no"}, {ConceptID: "c2", Property: "site_no"}})
+			So(template.ByServer, ShouldBeTrue)
+			So(template.Check.Reason, ShouldEqual, checkPending)
+			// The first record input names the record that does not exist.
+			So(absent.ID, ShouldEqual, "t2")
+			So(absent.Kind, ShouldEqual, interfaces.TEST_KIND_NOT_EXIST)
+			So(absent.Expect, ShouldEqual, interfaces.TEST_EXPECT_NOT_EXISTS)
+			So(absent.Text, ShouldEqual, "Stock of {{slot 1}} on {{slot 2}} at {{slot 3}}?")
+			So(absent.Slots[0].Property, ShouldEqual, "item_no")
+			So(absent.ByServer, ShouldBeTrue)
+			So(tests[2].ID, ShouldEqual, "t3")
+			So(tests[2].ByServer, ShouldBeFalse)
+
+			// Only a reference time: no record to make absent.
+			onlyTime := &interfaces.RequirementQuestion{Template: "Stock on {as_of}?", Inputs: &[]interfaces.RequirementInput{(*asked.Inputs)[0]}}
+			tests, _ = buildTests(&guidanceOutput{}, nil, onlyTime, nil)
+			So(tests, ShouldHaveLength, 1)
+			So(tests[0].Kind, ShouldEqual, interfaces.TEST_KIND_TEMPLATE)
+
+			// An input with no property: the server cannot tell its field, and the Agent's tests stand.
+			unnamed := &interfaces.RequirementQuestion{Template: "Stock of {item}?", Inputs: &[]interfaces.RequirementInput{
+				{Name: "item", ConceptID: "c1", Role: interfaces.REQUIREMENT_INPUT_RECORD}}}
+			tests, leftOut = buildTests(out, nil, unnamed, nil)
+			So(tests, ShouldHaveLength, 2)
+			So(tests[0].Kind, ShouldEqual, interfaces.TEST_KIND_NOT_EXIST)
+			So(leftOut, ShouldEqual, 0)
+		})
+
+		Convey("A question asked about a concept that maps to no object type has no test on it\n", func() {
+			asked := &interfaces.RequirementQuestion{Template: "Stock at {site}?", Inputs: &[]interfaces.RequirementInput{
+				{Name: "site", ConceptID: "c2", Property: "site_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}}}
+			out := &guidanceOutput{Tests: []agentTest{{Text: "Stock held at {{slot 1}}?", Kind: "paraphrase",
+				Slots: []agentSlot{{ConceptID: "c2", Property: "site_no"}}}}}
+			unmapped := readySpec().Spec
+
+			tests, leftOut := buildTests(out, nil, asked, &unmapped)
+			So(tests, ShouldBeEmpty)
+			So(leftOut, ShouldEqual, 1)
+
+			unmapped.Concepts[1].MapsTo = &customerRef
+			tests, leftOut = buildTests(out, nil, asked, &unmapped)
+			So(tests, ShouldHaveLength, 3)
+			So(leftOut, ShouldEqual, 0)
+		})
+
+		Convey("A test's kind decides what it expects\n", func() {
+			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{
+				{Text: "a", Kind: "paraphrase", Expect: interfaces.TEST_EXPECT_SAME_RECORD},
+				{Text: "b", Kind: "boundary", Expect: interfaces.TEST_EXPECT_NOT_EXISTS},
+				{Text: "c", Kind: "variant", Expect: interfaces.TEST_EXPECT_EXISTS},
+				{Text: "d", Kind: interfaces.TEST_KIND_NOT_EXIST, Expect: interfaces.TEST_EXPECT_EXISTS},
+				{Text: "e", Kind: "", Expect: interfaces.TEST_EXPECT_SAME_RECORD},
+			}}, nil, nil, nil)
+			So([]string{tests[0].Expect, tests[1].Expect, tests[2].Expect, tests[3].Expect, tests[4].Expect}, ShouldResemble,
+				[]string{interfaces.TEST_EXPECT_EXISTS, interfaces.TEST_EXPECT_EXISTS, interfaces.TEST_EXPECT_SAME_RECORD,
+					interfaces.TEST_EXPECT_NOT_EXISTS, interfaces.TEST_EXPECT_SAME_RECORD})
 		})
 
 		Convey("An expectation the server does not know reads as exists\n", func() {
-			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil, nil)
+			tests, _ := buildTests(&guidanceOutput{Tests: []agentTest{{Text: "x", Expect: "maybe"}, {Text: "y", Expect: interfaces.TEST_EXPECT_SAME_RECORD}}}, nil, nil, nil)
 
 			So(tests[0].Expect, ShouldEqual, interfaces.TEST_EXPECT_EXISTS)
 			So(tests[1].Expect, ShouldEqual, interfaces.TEST_EXPECT_SAME_RECORD)
@@ -317,6 +402,29 @@ func Test_GenerateGuidance(t *testing.T) {
 			So(finished.Tests, ShouldBeEmpty)
 			So(finished.LeftOutTests, ShouldEqual, 1)
 			So(finished.NoTestsReason, ShouldEqual, reason[:len("金")*maxNoTestsReason])
+		})
+
+		Convey("Generating holds the tests to the question's inputs, and to concepts that map to an object type\n", func() {
+			spec := readySpec()
+			// c2 maps to nothing in this specification.
+			spec.Spec.Questions[0].Template = "Orders of {customer}?"
+			spec.Spec.Questions[0].Inputs = &[]interfaces.RequirementInput{
+				{Name: "customer", ConceptID: "c2", Property: "customer_id", Role: interfaces.REQUIREMENT_INPUT_RECORD}}
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(guidanceDraft(), true, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(nil, nil)
+			ra.EXPECT().StartGenerating(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t9"}, nil)
+			ba.EXPECT().GetTask(gomock.Any(), caller, "t9").Return(&interfaces.BknAgentTask{TaskID: "t9",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+				Output: `{"tests":[{"text":"Orders of {{slot 1}}?","kind":"paraphrase","expect":"exists","slots":[{"concept_id":"c2","property":"customer_id","value":""}]}],"no_tests_reason":"","out_of_scope":[],"guidance":"g"}`}, nil)
+			expectFinish()
+
+			_, err := svc.GenerateGuidance(ctx, token, "p1", "q1", caller)
+
+			So(err, ShouldBeNil)
+			So(finished.Tests, ShouldBeEmpty)
+			So(finished.LeftOutTests, ShouldEqual, 1)
 		})
 
 		Convey("Checking stops in time to record the outcome within the run's lease\n", func() {

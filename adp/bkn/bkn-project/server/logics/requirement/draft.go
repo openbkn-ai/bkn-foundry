@@ -833,6 +833,13 @@ func (s *requirementService) GetRequirement(ctx context.Context, token string,
 			view.UndecidedChoices++
 		}
 	}
+	for _, q := range req.Spec.Questions {
+		q.Notes = nil
+		if b := q.Basis; q.Layer == interfaces.REQUIREMENT_LAYER_CAPABILITY &&
+			len(b.Metrics)+len(b.Functions)+len(b.Skills) == 0 {
+			q.Notes = []string{interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS}
+		}
+	}
 	if req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		docs, err := s.ra.ListDocuments(ctx, projectID)
 		if err != nil {

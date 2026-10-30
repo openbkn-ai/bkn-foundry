@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -144,6 +145,42 @@ func (s *requirementService) count(ctx context.Context, caller interfaces.Accoun
 // others keep values of records that do.
 func (s *requirementService) checkTest(ctx context.Context, caller interfaces.AccountInfo,
 	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, t *interfaces.QuestionTest) interfaces.QuestionTestCheck {
+	return s.checkAnchored(ctx, caller, spec, draft, q, t, nil)
+}
+
+// anchorOf is the test whose record a same_record test must name: the server's template test,
+// once the data bore it out.
+func anchorOf(tests []*interfaces.QuestionTest) *interfaces.QuestionTest {
+	for _, t := range tests {
+		if t.ByServer && t.Kind == interfaces.TEST_KIND_TEMPLATE && t.Check.Outcome == interfaces.TEST_CHECK_PASSED {
+			return t
+		}
+	}
+	return nil
+}
+
+// anchorConditions select the anchor's record among the rows of an object type: its slots of
+// that object type, as values. None without an anchor, or with no slot of it.
+func anchorConditions(spec *interfaces.RequirementSpec, draft *interfaces.Draft, anchor *interfaces.QuestionTest,
+	ot *interfaces.DraftObjectType) []string {
+	if anchor == nil {
+		return nil
+	}
+	conditions := []string{}
+	for _, slot := range anchor.Slots {
+		if f, reason := resolveSlot(spec, draft, slot); reason == "" && f.objectType == ot && f.value != "" {
+			conditions = append(conditions, quoteField(f.field)+" = "+quoteValue(f.value))
+		}
+	}
+	return conditions
+}
+
+// checkAnchored checks a test question; a same_record one names the record of anchor when it has
+// one of the same object type: then its slots together must name that one record, so a single
+// other way to name it, or several fields that name it together, are checked.
+func (s *requirementService) checkAnchored(ctx context.Context, caller interfaces.AccountInfo,
+	spec *interfaces.RequirementSpec, draft *interfaces.Draft, q *interfaces.RequirementQuestion, t *interfaces.QuestionTest,
+	anchor *interfaces.QuestionTest) interfaces.QuestionTestCheck {
 	if len(t.Slots) == 0 {
 		return notChecked(checkNoValues)
 	}
@@ -167,18 +204,23 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	if valueOutsideSlots(spec, q.Text, t, fields) {
 		return notChecked(checkValueOutsideSlot)
 	}
-	if reason := s.fill(ctx, caller, t, fields, func(f *slotField) *relationPath { return pathOf(draft, q, f) }); reason != "" {
-		return notChecked(reason)
-	}
-	var key string
+	var anchored []string
 	if t.Expect == interfaces.TEST_EXPECT_SAME_RECORD {
-		if len(fields) < 2 {
-			return notChecked(checkSameRecordNeedsTwo)
-		}
 		for _, f := range fields[1:] {
 			if f.objectType != fields[0].objectType {
 				return notChecked(checkSameRecordNeedsOneItem)
 			}
+		}
+		anchored = anchorConditions(spec, draft, anchor, fields[0].objectType)
+	}
+	if reason := s.fill(ctx, caller, t, fields, func(f *slotField) *relationPath { return pathOf(draft, q, f) },
+		anchored); reason != "" {
+		return notChecked(reason)
+	}
+	var key string
+	if t.Expect == interfaces.TEST_EXPECT_SAME_RECORD {
+		if len(fields) < 2 && len(anchored) == 0 {
+			return notChecked(checkSameRecordNeedsTwo)
 		}
 		ot := fields[0].objectType
 		if len(ot.PrimaryKeys) != 1 {
@@ -194,6 +236,9 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 		}
 	}
 
+	if len(anchored) > 0 {
+		return s.checkSameAsAnchor(ctx, caller, t, fields, key, anchored)
+	}
 	conditions := make([]string, 0, len(fields))
 	for i, f := range fields {
 		condition := quoteField(f.field) + " = " + quoteValue(f.value)
@@ -228,6 +273,39 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}
 }
 
+// checkSameAsAnchor checks that a same_record test's slots together name one record, by its
+// identity field key, and that it is the anchor's.
+func (s *requirementService) checkSameAsAnchor(ctx context.Context, caller interfaces.AccountInfo,
+	t *interfaces.QuestionTest, fields []*slotField, key string, anchored []string) interfaces.QuestionTestCheck {
+	named := make([]string, 0, len(fields))
+	for _, f := range fields {
+		named = append(named, quoteField(f.field)+" = "+quoteValue(f.value))
+	}
+	table := fields[0].objectType.Table.ResourceID
+	records, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(DISTINCT %s) AS n FROM {{%s}} WHERE %s",
+		quoteField(key), table, strings.Join(named, " AND ")))
+	if err != nil {
+		logger.Warnf("Count for test question %s failed: %v", t.ID, err)
+		return notChecked(checkQueryFailed)
+	}
+	switch {
+	case records == 0:
+		return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordNotFound}
+	case records > 1:
+		return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkDifferentRecords}
+	}
+	same, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s",
+		table, strings.Join(append(named, anchored...), " AND ")))
+	if err != nil {
+		logger.Warnf("Count for test question %s failed: %v", t.ID, err)
+		return notChecked(checkQueryFailed)
+	}
+	if same == 0 {
+		return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkDifferentRecords}
+	}
+	return interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED}
+}
+
 // valueOutsideSlots tells whether the test's text says a number, date, time or code that none of
 // its slots holds, the question asked does not say and no rule states: no one checks such a value.
 func valueOutsideSlots(spec *interfaces.RequirementSpec, asked string, t *interfaces.QuestionTest, fields []*slotField) bool {
@@ -241,17 +319,49 @@ func valueOutsideSlots(spec *interfaces.RequirementSpec, asked string, t *interf
 			text = strings.ReplaceAll(text, normalize([]rune(f.value)).text, " ")
 		}
 	}
-	// Compared as whole tokens: 3 is not stated by a question that says 30.
-	stated := valueTokens(normalize([]rune(asked)).text)
-	for _, r := range spec.Rules {
-		stated = append(stated, valueTokens(normalize([]rune(r.Statement)).text)...)
+	// Compared as whole tokens: 3 is not stated by a question that says 30. A number with a unit
+	// joined to it is its number: a 14-day window is stated by the next 14 days.
+	stated := []string{}
+	for _, s := range append([]string{asked}, rulesText(spec)...) {
+		for _, token := range valueTokens(normalize([]rune(s)).text) {
+			stated = append(stated, numberOf(token))
+		}
 	}
 	for _, token := range valueTokens(text) {
-		if !slices.Contains(stated, token) {
+		if !slices.Contains(stated, numberOf(token)) {
 			return true
 		}
 	}
 	return false
+}
+
+func rulesText(spec *interfaces.RequirementSpec) []string {
+	texts := []string{}
+	for _, r := range spec.Rules {
+		texts = append(texts, r.Statement)
+	}
+	return texts
+}
+
+// units are the unit words a number may have joined to it, as in 14-day, 30d or 3.5kg.
+var units = map[string]bool{
+	"s": true, "sec": true, "min": true, "mins": true, "minute": true, "minutes": true, "h": true, "hr": true,
+	"hrs": true, "hour": true, "hours": true, "d": true, "day": true, "days": true, "w": true, "wk": true,
+	"week": true, "weeks": true, "mo": true, "month": true, "months": true, "y": true, "yr": true, "year": true,
+	"years": true, "mg": true, "g": true, "kg": true, "t": true, "mm": true, "cm": true, "m": true, "km": true,
+	"ml": true, "l": true, "pc": true, "pcs": true, "x": true,
+}
+
+// unitNumber is a number with a word joined after it.
+var unitNumber = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)-?([A-Za-z]+)$`)
+
+// numberOf is a value token's number when it is one with a unit, else the token: a code such as
+// A14 or 999-A keeps its letters.
+func numberOf(token string) string {
+	if m := unitNumber.FindStringSubmatch(token); m != nil && units[strings.ToLower(m[2])] {
+		return m[1]
+	}
+	return token
 }
 
 // valueTokens lists the runs of a text that hold a digit, with the ASCII letters and the - / . : _
@@ -293,7 +403,7 @@ func (s *requirementService) checkTests(ctx context.Context, caller interfaces.A
 			t.Check = notChecked(checkTimeout)
 			continue
 		}
-		t.Check = s.checkTest(ctx, caller, spec, draft, q, t)
+		t.Check = s.checkAnchored(ctx, caller, spec, draft, q, t, anchorOf(tests))
 	}
 }
 
@@ -380,10 +490,20 @@ type relationPath struct {
 // vega-backend parses no subquery in WHERE, so the rows are joined with the reached values, as
 // drafting's join counts are. It holds no value, only names.
 func (p *relationPath) sample(table string, field string, order string) string {
-	return fmt.Sprintf("SELECT a.%s AS v FROM {{%s}} a JOIN (%s) b ON a.%s = b.%s "+
-		"WHERE a.%s IS NOT NULL ORDER BY a.%s LIMIT 1",
-		quoteField(field), table, p.reached, quoteField(p.own), quoteField(p.column),
-		quoteField(field), quoteField(order))
+	return p.sampleRow(table, []string{field}, []string{"v"}, order)
+}
+
+// sampleRow reads the first row's fields, each as its alias, among the rows of table the path
+// reaches where they are all set, ordered by order.
+func (p *relationPath) sampleRow(table string, fields []string, aliases []string, order string) string {
+	selects, set := []string{}, []string{}
+	for i, f := range fields {
+		selects = append(selects, "a."+quoteField(f)+" AS "+aliases[i])
+		set = append(set, "a."+quoteField(f)+" IS NOT NULL")
+	}
+	return fmt.Sprintf("SELECT %s FROM {{%s}} a JOIN (%s) b ON a.%s = b.%s WHERE %s ORDER BY a.%s LIMIT 1",
+		strings.Join(selects, ", "), table, p.reached, quoteField(p.own), quoteField(p.column),
+		strings.Join(set, " AND "), quoteField(order))
 }
 
 // pathOf finds where a slot's values are taken from, so that the question can follow them: the
@@ -502,8 +622,12 @@ func absentValues(value string) []string {
 // the field for a record that exists, of a record the question's path reaches when it has one, a
 // changed real value no row has for one that does not, and one row's values for two ways of naming
 // a record.
+//
+// A same_record test anchored on the question's record (anchor: conditions that select it) takes
+// its values from that record's row. Otherwise the slots of one object type take theirs from one
+// row, so the values of one record's slots belong to that record.
 func (s *requirementService) fill(ctx context.Context, caller interfaces.AccountInfo, t *interfaces.QuestionTest,
-	fields []*slotField, path func(*slotField) *relationPath) string {
+	fields []*slotField, path func(*slotField) *relationPath, anchor []string) string {
 	empty := map[int]bool{}
 	for i, f := range fields {
 		if f.value == "" {
@@ -525,7 +649,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 				return ""
 			}
 		}
-		wanted, conditions := map[int]string{}, []string{}
+		wanted, conditions := map[int]string{}, append([]string{}, anchor...)
 		for i, f := range fields {
 			if empty[i] {
 				wanted[i] = f.field
@@ -543,14 +667,58 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		}
 		return ""
 	}
+	// The record that does not exist is named by the first slot; the others are of ones that do.
+	if t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && empty[0] {
+		f := fields[0]
+		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
+			map[int]string{0: f.field}, nil)
+		if reason != "" {
+			return reason
+		}
+		value := ""
+		for _, form := range absentValues(values[0]) {
+			n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",
+				f.objectType.Table.ResourceID, quoteField(f.field), quoteValue(form)))
+			if err != nil {
+				return checkQueryFailed
+			}
+			if n == 0 {
+				value = form
+				break
+			}
+		}
+		if value == "" {
+			return checkNoAbsentValue
+		}
+		set(0, value)
+		delete(empty, 0)
+	}
+	var groups [][]int
 	for i, f := range fields {
 		if !empty[i] {
 			continue
 		}
-		absent := t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0
-		if p := path(f); p != nil && !absent {
+		g := slices.IndexFunc(groups, func(g []int) bool { return fields[g[0]].objectType == f.objectType })
+		if g < 0 {
+			groups = append(groups, []int{i})
+		} else {
+			groups[g] = append(groups[g], i)
+		}
+	}
+	for _, g := range groups {
+		f := fields[g[0]]
+		if p := path(f); p != nil {
 			// A record the question's path reaches, so asking about it can show something.
-			sql := p.sample(f.objectType.Table.ResourceID, f.field, orderField(f))
+			names, aliases := []string{}, []string{}
+			for _, i := range g {
+				names, aliases = append(names, fields[i].field), append(aliases, "v")
+			}
+			if len(g) > 1 {
+				for k, i := range g {
+					aliases[k] = fmt.Sprintf("v%d", i)
+				}
+			}
+			sql := p.sampleRow(f.objectType.Table.ResourceID, names, aliases, orderField(f))
 			rows, err := s.va.Query(ctx, caller, sql, checkQueryTimeout)
 			if err != nil {
 				logger.Warnf("Read a value along a relation for a test question failed: %v; statement: %s", err, sql)
@@ -559,38 +727,32 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 				}
 			}
 			if len(rows) > 0 {
-				if v, ok := valueText(rows[0]["v"]); ok {
-					set(i, v)
-					t.Slots[i].ValueFrom = p.objectType
+				values := map[int]string{}
+				for k, i := range g {
+					if v, ok := valueText(rows[0][aliases[k]]); ok {
+						values[i] = v
+					}
+				}
+				if len(values) == len(g) {
+					for i, v := range values {
+						set(i, v)
+						t.Slots[i].ValueFrom = p.objectType
+					}
 					continue
 				}
 			}
 		}
-		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f),
-			map[int]string{i: f.field}, nil)
+		wanted := map[int]string{}
+		for _, i := range g {
+			wanted[i] = fields[i].field
+		}
+		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, nil)
 		if reason != "" {
 			return reason
 		}
-		value := values[i]
-		// The record that does not exist is named by the first slot; the others are of ones that do.
-		if absent {
-			value = ""
-			for _, form := range absentValues(values[i]) {
-				n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}} WHERE %s = %s",
-					f.objectType.Table.ResourceID, quoteField(f.field), quoteValue(form)))
-				if err != nil {
-					return checkQueryFailed
-				}
-				if n == 0 {
-					value = form
-					break
-				}
-			}
-			if value == "" {
-				return checkNoAbsentValue
-			}
+		for i, v := range values {
+			set(i, v)
 		}
-		set(i, value)
 	}
 	return ""
 }
