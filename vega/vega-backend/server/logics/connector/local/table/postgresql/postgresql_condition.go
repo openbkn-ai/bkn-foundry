@@ -326,7 +326,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionEmpty(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.EmptyCond")
 	}
 
-	return &sb.Eq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Param{Value: ""}}, nil
+	return &sb.Eq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Literal{Value: ""}}, nil
 }
 
 // ConvertFilterConditionNotEmpty excludes empty strings.
@@ -336,7 +336,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotEmpty(condition interface
 		return nil, fmt.Errorf("condition is not *filter_condition.NotEmptyCond")
 	}
 
-	return &sb.NotEq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Param{Value: ""}}, nil
+	return &sb.NotEq{Left: sqlResourceColumn(cond.Lfield), Right: &sb.Literal{Value: ""}}, nil
 }
 
 // ConvertFilterConditionPrefix builds a prefix LIKE predicate with escaped input.
@@ -447,8 +447,8 @@ func (c *PostgresqlConnector) ConvertFilterConditionCurrent(condition interfaces
 	default:
 		return nil, interfaces.NewConditionBuildError("current condition has unsupported format")
 	}
-	left := &sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Param{Value: unit}, sqlResourceColumn(cond.Lfield)}}
-	right := &sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Param{Value: unit}, &sb.Function{Name: "TRANSACTION_TIMESTAMP"}}}
+	left := &sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Literal{Value: unit}, sqlResourceColumn(cond.Lfield)}}
+	right := &sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Literal{Value: unit}, &sb.Function{Name: "TRANSACTION_TIMESTAMP"}}}
 	return &sb.Eq{Left: left, Right: right}, nil
 }
 
@@ -568,9 +568,9 @@ func sqlCSVCondition(field *interfaces.Property, values []any, negated bool) sb.
 	nodes := make([]sb.SqlNode, 0, len(values))
 	for _, value := range values {
 		found := &sb.Function{Name: "FIND_IN_SET", Args: []sb.SqlNode{&sb.Param{Value: fmt.Sprint(value)}, sqlResourceColumn(field)}}
-		var node sb.SqlNode = &sb.Gt{Left: found, Right: &sb.Param{Value: 0}}
+		var node sb.SqlNode = &sb.Gt{Left: found, Right: &sb.Literal{Value: 0}}
 		if negated {
-			node = &sb.Eq{Left: found, Right: &sb.Param{Value: 0}}
+			node = &sb.Eq{Left: found, Right: &sb.Literal{Value: 0}}
 		}
 		nodes = append(nodes, node)
 	}
@@ -586,7 +586,7 @@ func sqlBooleanCondition(field *interfaces.Property, value bool) (sb.SqlNode, er
 	if field.Type != interfaces.DataType_Boolean {
 		return nil, interfaces.NewConditionBuildError("postgresql boolean condition requires BOOLEAN")
 	}
-	return &sb.Eq{Left: sqlResourceColumn(field), Right: &sb.Param{Value: value}}, nil
+	return &sb.Eq{Left: sqlResourceColumn(field), Right: &sb.Literal{Value: value}}, nil
 }
 
 // intervalUnit maps calendar units to PostgreSQL interval unit names.
@@ -671,7 +671,7 @@ func dateValueExpr(field *interfaces.Property, value any) sb.SqlNode {
 	case "time", "timetz", "time without time zone", "time with time zone":
 		return param
 	}
-	instant := &sb.Function{Name: "FROM_UNIXTIME", Args: []sb.SqlNode{&sb.Arithmetic{Left: param, Op: sb.Divide, Right: &sb.Param{Value: 1000}}}}
+	instant := &sb.Function{Name: "FROM_UNIXTIME", Args: []sb.SqlNode{&sb.Arithmetic{Left: param, Op: sb.Divide, Right: &sb.Literal{Value: 1000}}}}
 	if original == "timestamp" || original == "timestamp without time zone" {
 		return &sb.Cast{Expr: instant, Type: sb.CastDateTime}
 	}

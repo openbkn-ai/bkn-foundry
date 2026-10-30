@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,7 +52,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 					case "bit(17)":
 						nonzero, zero = []byte{1, 0xff, 0xff}, []byte{0, 0, 0}
 					}
-					projection := "?"
+					projection := "NULL"
 					rows := sqlmock.NewRows([]string{"bits", "flag"})
 					switch modeName {
 					case interfaces.BinaryModeContent:
@@ -64,9 +65,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 						rows.AddRow(nil, int64(127)).AddRow(nil, int64(0)).AddRow(nil, nil)
 					}
 					expected := mock.ExpectQuery("SELECT " + projection + " AS `bits`, `flag` AS `flag` FROM orders LIMIT 10")
-					if mode == nil {
-						expected.WithArgs(nil)
-					}
+					expected.WithoutArgs()
 					expected.WillReturnRows(rows)
 					result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{BinaryMode: mode, Paging: interfaces.PagingRequest{Limit: 10}})
 					require.NoError(t, err)
@@ -451,15 +450,15 @@ func TestSqlCalendarGroup(t *testing.T) {
 		require.NoError(t, err)
 		sql, args, err := render(node)
 		require.NoError(t, err)
-		assert.Equal(t, "DATE_FORMAT(`created_at`, ?)", sql)
-		assert.Equal(t, []any{format.format}, args)
+		assert.Equal(t, "DATE_FORMAT(`created_at`, '"+format.format+"')", sql)
+		assert.Equal(t, []any(nil), args)
 	}
 	node, err := sqlCalendarGroup(&sb.Column{Name: "created_at"}, interfaces.CALENDAR_UNIT_QUARTER)
 	require.NoError(t, err)
 	sql, args, err := render(node)
 	require.NoError(t, err)
-	assert.Equal(t, "CONCAT(YEAR(`created_at`), ?, QUARTER(`created_at`))", sql)
-	assert.Equal(t, []any{"-Q"}, args)
+	assert.Equal(t, "CONCAT(YEAR(`created_at`), '-Q', QUARTER(`created_at`))", sql)
+	assert.Equal(t, []any(nil), args)
 	_, err = sqlCalendarGroup(&sb.Column{Name: "created_at"}, "unknown")
 	require.Error(t, err)
 }
@@ -650,8 +649,8 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := ToSql(builder)
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT DATE_FORMAT(`created_at`, ?) AS `created` FROM `yanfeng_kb`.`fact` "+
-				"GROUP BY DATE_FORMAT(`created_at`, ?) LIMIT 20",
+			"SELECT DATE_FORMAT(`created_at`, '%Y-%m-%d') AS `created` FROM `yanfeng_kb`.`fact` "+
+				"GROUP BY DATE_FORMAT(`created_at`, '%Y-%m-%d') LIMIT 20",
 			sql)
 	})
 }
@@ -737,8 +736,8 @@ func TestMariaDBConnectorBuildTypedSelectBuilder(t *testing.T) {
 		require.NoError(t, err)
 		text, args, err := ToSql(query)
 		require.NoError(t, err)
-		assert.Equal(t, "SELECT DATE_FORMAT(`created`, ?) AS `created` FROM `orders` GROUP BY DATE_FORMAT(`created`, ?) ORDER BY DATE_FORMAT(`created`, ?) ASC LIMIT 2", text)
-		assert.Equal(t, []any{"%Y-%m", "%Y-%m", "%Y-%m"}, args)
+		assert.Equal(t, "SELECT DATE_FORMAT(`created`, '%Y-%m') AS `created` FROM `orders` GROUP BY DATE_FORMAT(`created`, '%Y-%m') ORDER BY DATE_FORMAT(`created`, '%Y-%m') ASC LIMIT 2", text)
+		assert.Equal(t, []any(nil), args)
 	})
 	t.Run("binary metadata does not fetch the value", func(t *testing.T) {
 		mode := interfaces.BinaryModeMetadata
@@ -752,6 +751,33 @@ func TestMariaDBConnectorBuildTypedSelectBuilder(t *testing.T) {
 }
 
 func TestToSql(t *testing.T) {
+	t.Run("SQL constants preserve repeated grouping expressions", func(t *testing.T) {
+		for _, expression := range []string{
+			"a = '1'", "a * 2", "COALESCE(a, 'none')",
+			"CASE WHEN a > 100 THEN 'late' ELSE 'early' END",
+			"CASE WHEN a LIKE '%a!_%' ESCAPE '!' THEN 1 ELSE 0 END",
+			"CASE WHEN a IN (50, 70) THEN 1 ELSE 0 END",
+		} {
+			t.Run(expression, func(t *testing.T) {
+				query, err := compiler.ParseSQL("SELECT " + expression + " AS k, COUNT(*) AS n FROM {{r}} GROUP BY " + expression + " HAVING (" + expression + ") IS NOT NULL ORDER BY " + expression)
+				require.NoError(t, err)
+				query.FromPart.(*sb.Table).SourceIdentifier = "`t`"
+				text, args, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Empty(t, args)
+				assert.NotContains(t, text, "?")
+				assert.NotContains(t, text, "GROUP BY 1")
+				assert.Equal(t, 1, strings.Count(text, "SELECT "))
+			})
+		}
+		query, err := compiler.ParseSQL("SELECT COUNT(*) AS n FROM {{r}} GROUP BY a = '1' HAVING a = '1'")
+		require.NoError(t, err)
+		query.FromPart.(*sb.Table).SourceIdentifier = "`t`"
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT COUNT(*) AS `n` FROM `t` GROUP BY (`a` = '1') HAVING (`a` = '1')", text)
+		assert.Empty(t, args)
+	})
 	t.Run("parenthesized join group preserves predicates and binding order", func(t *testing.T) {
 		query, err := compiler.ParseSQL("SELECT a.ID,b.ID AS matched FROM {{r}} a LEFT JOIN ({{r}} m JOIN {{r}} b ON m.ID=b.ID AND b.LABEL='inner') ON a.ID=m.ID AND a.LABEL='outer' WHERE b.ID IS NULL")
 		require.NoError(t, err)
@@ -761,12 +787,12 @@ func TestToSql(t *testing.T) {
 		}
 		text, args, err := ToSql(query)
 		require.NoError(t, err)
-		assert.Equal(t, "SELECT `a`.`ID`, `b`.`ID` AS `matched` FROM `T` AS `a` LEFT JOIN (`T` AS `m` INNER JOIN `T` AS `b` ON ((`m`.`ID` = `b`.`ID`) AND (`b`.`LABEL` = ?))) ON ((`a`.`ID` = `m`.`ID`) AND (`a`.`LABEL` = ?)) WHERE (`b`.`ID` IS NULL)", text)
-		assert.Equal(t, []any{"inner", "outer"}, args)
+		assert.Equal(t, "SELECT `a`.`ID`, `b`.`ID` AS `matched` FROM `T` AS `a` LEFT JOIN (`T` AS `m` INNER JOIN `T` AS `b` ON ((`m`.`ID` = `b`.`ID`) AND (`b`.`LABEL` = 'inner'))) ON ((`a`.`ID` = `m`.`ID`) AND (`a`.`LABEL` = 'outer')) WHERE (`b`.`ID` IS NULL)", text)
+		assert.Equal(t, []any(nil), args)
 	})
 
 	t.Run("grouping ordinal is emitted literally", func(t *testing.T) {
-		query := sb.Select(&sb.Star{}).From(&sb.Table{SourceIdentifier: "`orders`"}).GroupBy(&sb.Param{Value: json.Number("1")}, &sb.Param{Value: json.Number("2")})
+		query := sb.Select(&sb.Star{}).From(&sb.Table{SourceIdentifier: "`orders`"}).GroupBy(&sb.Literal{Value: json.Number("1")}, &sb.Literal{Value: json.Number("2")})
 		text, args, err := ToSql(query)
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM `orders` GROUP BY 1, 2", text)
@@ -799,8 +825,8 @@ func TestToSql(t *testing.T) {
 				&sb.Contains{Expr: &sb.Column{Name: "note"}, Value: &sb.Param{Value: "_50%"}})
 		text, args, err := ToSql(query)
 		require.NoError(t, err)
-		assert.Equal(t, "SELECT CAST(CASE `kind` WHEN ? THEN (? + ?) ELSE ? END AS DECIMAL(12,2)) AS `amount` FROM `orders` WHERE (`id` IN (?, ?)) AND (`cost` BETWEEN ? AND ?) AND (`name` LIKE ? ESCAPE ?) AND (`note` LIKE CONCAT('%', REPLACE(REPLACE(REPLACE(?, '!', '!!'), '%', '!%'), '_', '!_'), '%') ESCAPE '!')", text)
-		assert.Equal(t, []any{1, "1.20", "0.30", nil, 1, 2, 3, 4, "p%", "!", "_50%"}, args)
+		assert.Equal(t, "SELECT CAST(CASE `kind` WHEN ? THEN (? + ?) ELSE ? END AS DECIMAL(12,2)) AS `amount` FROM `orders` WHERE (`id` IN (?, ?)) AND (`cost` BETWEEN ? AND ?) AND (`name` LIKE ? ESCAPE '!') AND (`note` LIKE CONCAT('%', REPLACE(REPLACE(REPLACE(?, '!', '!!'), '%', '!%'), '_', '!_'), '%') ESCAPE '!')", text)
+		assert.Equal(t, []any{1, "1.20", "0.30", nil, 1, 2, 3, 4, "p%", "_50%"}, args)
 	})
 	t.Run("chain methods modify the same builder", func(t *testing.T) {
 		query := sb.Select(&sb.Column{Name: "id"})
@@ -1095,9 +1121,9 @@ func TestMariaDBConnectorExecuteSQLBuilder(t *testing.T) {
 		name, input, statement string
 		args                   []driver.Value
 	}{
-		{"single table", "SELECT id,name FROM {{orders}} WHERE id>10 ORDER BY id LIMIT 2", "SELECT `id`, `name` FROM `orders` WHERE (`id` > ?) ORDER BY `id` ASC LIMIT 2", []driver.Value{int64(10)}},
-		{"join", "SELECT a.id,b.name FROM {{orders}} a LEFT JOIN {{orders}} b ON a.id=b.id WHERE b.name='O''Reilly'", "SELECT `a`.`id`, `b`.`name` FROM `orders` AS `a` LEFT JOIN `orders` AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`b`.`name` = ?)", []driver.Value{"O'Reilly"}},
-		{"subquery limit", "SELECT q.id,q.name FROM (SELECT id,name FROM {{orders}} WHERE id>1 ORDER BY id LIMIT 2) q WHERE q.id<10", "SELECT `q`.`id`, `q`.`name` FROM (SELECT `id`, `name` FROM `orders` WHERE (`id` > ?) ORDER BY `id` ASC LIMIT 2) AS `q` WHERE (`q`.`id` < ?)", []driver.Value{int64(1), int64(10)}},
+		{"single table", "SELECT id,name FROM {{orders}} WHERE id>10 ORDER BY id LIMIT 2", "SELECT `id`, `name` FROM `orders` WHERE (`id` > 10) ORDER BY `id` ASC LIMIT 2", nil},
+		{"join", "SELECT a.id,b.name FROM {{orders}} a LEFT JOIN {{orders}} b ON a.id=b.id WHERE b.name='O''Reilly'", "SELECT `a`.`id`, `b`.`name` FROM `orders` AS `a` LEFT JOIN `orders` AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`b`.`name` = 'O''Reilly')", nil},
+		{"subquery limit", "SELECT q.id,q.name FROM (SELECT id,name FROM {{orders}} WHERE id>1 ORDER BY id LIMIT 2) q WHERE q.id<10", "SELECT `q`.`id`, `q`.`name` FROM (SELECT `id`, `name` FROM `orders` WHERE (`id` > 1) ORDER BY `id` ASC LIMIT 2) AS `q` WHERE (`q`.`id` < 10)", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -1122,7 +1148,7 @@ func TestMariaDBConnectorExecuteSQLBuilder(t *testing.T) {
 			}
 			before, err := json.Marshal(query)
 			require.NoError(t, err)
-			mock.ExpectQuery(tc.statement).WithArgs(tc.args...).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			mock.ExpectQuery(tc.statement).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
 				sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
 				sqlmock.NewColumn("name").OfType("VARCHAR", ""),
 			).AddRow(int64(11), []byte("alice")).AddRow(int64(12), nil)).RowsWillBeClosed()

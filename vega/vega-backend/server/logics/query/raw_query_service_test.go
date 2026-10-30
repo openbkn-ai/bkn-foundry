@@ -116,16 +116,16 @@ func TestRawQueryServiceExecute(t *testing.T) {
 					assert.Empty(t, rawQueryCursorSessions.sessions)
 				})
 			}
-			t.Run("single page binds exact values and counts the logical query", func(t *testing.T) {
+			t.Run("single page preserves exact literals and counts the logical query", func(t *testing.T) {
 				svc, rs, cs, cf := mysqlRawServices(t)
 				mysqlRawMetadata(rs, cs, builderTestResource(), true, connectorType)
 				mocks := nativeSQLConnectorMocks(t, cf, connectorType, 2)
-				base := "SELECT `o`.`id`, CAST(? AS DECIMAL(19,3)) AS `amount`, ? AS `optional` FROM `sales.eu`.`order.items` AS `o` WHERE (`o`.`id` > ?) ORDER BY `o`.`id` ASC"
-				mocks[0].ExpectQuery("SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+base+" LIMIT 5 OFFSET 2) AS `_raw_query_total`").
-					WithArgs("9007199254740993.125", nil, int64(1)).
+				base := "SELECT `o`.`id`, CAST(9007199254740993.125 AS DECIMAL(19,3)) AS `amount`, NULL AS `optional` FROM `sales.eu`.`order.items` AS `o` WHERE (`o`.`id` > 1) ORDER BY `o`.`id` ASC"
+				mocks[0].ExpectQuery("SELECT COUNT(*) AS `_raw_query_total_count` FROM (" + base + " LIMIT 5 OFFSET 2) AS `_raw_query_total`").
+					WithoutArgs().
 					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("BIGINT", int64(0))).AddRow(5)).RowsWillBeClosed()
 				mocks[0].ExpectClose()
-				mocks[1].ExpectQuery(base+" LIMIT 2 OFFSET 3").WithArgs("9007199254740993.125", nil, int64(1)).
+				mocks[1].ExpectQuery(base + " LIMIT 2 OFFSET 3").WithoutArgs().
 					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
 						sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
 						sqlmock.NewColumn("amount").OfType("DECIMAL", ""),
@@ -150,8 +150,8 @@ func TestRawQueryServiceExecute(t *testing.T) {
 				resource := builderTestResource()
 				mysqlRawMetadata(rs, cs, resource, true, connectorType)
 				mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
-				mocks[0].ExpectQuery("SELECT `id`, CAST(? AS DECIMAL(19,3)) AS `amount` FROM `sales.eu`.`order.items` WHERE (`id` > ?) ORDER BY `id` ASC LIMIT 3 OFFSET 2").
-					WithArgs("9007199254740993.125", int64(0)).
+				mocks[0].ExpectQuery("SELECT `id`, CAST(9007199254740993.125 AS DECIMAL(19,3)) AS `amount` FROM `sales.eu`.`order.items` WHERE (`id` > 0) ORDER BY `id` ASC LIMIT 3 OFFSET 2").
+					WithoutArgs().
 					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
 						sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
 						sqlmock.NewColumn("amount").OfType("DECIMAL", ""),
@@ -416,12 +416,11 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			require.NoError(t, err)
 			assert.Contains(t, text, "CONCAT_WS(")
 			assert.Contains(t, text, "COUNT(DISTINCT CASE WHEN")
-			require.Len(t, args, 2)
+			assert.Empty(t, args)
 			if connectorType == interfaces.ConnectorTypePostgreSQL {
-				assert.Equal(t, "31", args[1])
+				assert.Contains(t, text, "CAST(31 AS BIGINT)")
 			} else {
-				assert.Contains(t, text, "CHAR(")
-				assert.Equal(t, json.Number("31"), args[1])
+				assert.Contains(t, text, "CHAR(31)")
 			}
 		})
 	}
@@ -507,8 +506,8 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		require.NotNil(t, prepared.builder)
 		text, args, err := postgresql.ToSql(prepared.builder)
 		require.NoError(t, err)
-		assert.Equal(t, `SELECT $1 AS "label" FROM "public"."orders" AS "a" INNER JOIN "public"."orders" AS "b" ON ("a"."id" = "b"."id")`, text)
-		assert.Equal(t, []any{"{{ orders }}"}, args)
+		assert.Equal(t, `SELECT '{{ orders }}' AS "label" FROM "public"."orders" AS "a" INNER JOIN "public"."orders" AS "b" ON ("a"."id" = "b"."id")`, text)
+		assert.Empty(t, args)
 		assert.Equal(t, []string{"orders"}, prepared.resourceIDs)
 	})
 	t.Run("PG invalid input stops before resource lookup", func(t *testing.T) {
@@ -1455,12 +1454,12 @@ func mysqlRawCursorRows(t *testing.T, cf *vmock.MockConnectorFactory, statement 
 }
 
 func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
-	t.Run("single page and total preserve logical limit and parameters", func(t *testing.T) {
+	t.Run("single page and total preserve logical limit and constants", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		mysqlRawMetadata(rs, cs, builderTestResource(), true)
-		base := "SELECT `a`.`id` FROM `sales.eu`.`order.items` AS `a` WHERE (`a`.`id` > ?) ORDER BY `a`.`id` ASC LIMIT 5 OFFSET 2"
-		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+base+") AS `_raw_query_total`", []any{json.Number("1")}, []map[string]any{{rawQueryTotalCountColumn: int64(5)}}, nil)
-		mysqlRawRead(t, cf, "SELECT `a`.`id` FROM `sales.eu`.`order.items` AS `a` WHERE (`a`.`id` > ?) ORDER BY `a`.`id` ASC LIMIT 2 OFFSET 3", []any{json.Number("1")}, []map[string]any{{"id": 4}, {"id": 5}}, nil)
+		base := "SELECT `a`.`id` FROM `sales.eu`.`order.items` AS `a` WHERE (`a`.`id` > 1) ORDER BY `a`.`id` ASC LIMIT 5 OFFSET 2"
+		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+base+") AS `_raw_query_total`", nil, []map[string]any{{rawQueryTotalCountColumn: int64(5)}}, nil)
+		mysqlRawRead(t, cf, "SELECT `a`.`id` FROM `sales.eu`.`order.items` AS `a` WHERE (`a`.`id` > 1) ORDER BY `a`.`id` ASC LIMIT 2 OFFSET 3", nil, []map[string]any{{"id": 4}, {"id": 5}}, nil)
 		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT a.id FROM {{ orders }} a WHERE a.id>1 ORDER BY a.id LIMIT 5 OFFSET 2", NeedTotal: true, Paging: interfaces.PagingRequest{Limit: 2, Offset: 1}})
 		require.NoError(t, err)
 		require.NotNil(t, result.TotalCount)
@@ -1491,7 +1490,7 @@ func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
 	t.Run("strings and comments do not become resource bindings", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		mysqlRawMetadata(rs, cs, builderTestResource(), true)
-		mysqlRawRead(t, cf, "SELECT ? AS `label` FROM `sales.eu`.`order.items` WHERE (`id` = ?) LIMIT 2", []any{"{{hidden}}", json.Number("1")}, []map[string]any{{"label": "{{hidden}}"}}, nil)
+		mysqlRawRead(t, cf, "SELECT '{{hidden}}' AS `label` FROM `sales.eu`.`order.items` WHERE (`id` = 1) LIMIT 2", nil, []map[string]any{{"label": "{{hidden}}"}}, nil)
 		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT '{{hidden}}' AS label FROM {{orders}} WHERE id=1 /* {{ignored}} */", Paging: interfaces.PagingRequest{Limit: 2}})
 		require.NoError(t, err)
 		assert.Nil(t, result.TotalCount)
@@ -1879,16 +1878,16 @@ func TestRawQueryServiceMariaDBSQLBuilder(t *testing.T) {
 
 // TestRawQueryServicePostgreSQLSQLBuilder 覆盖生产 parser、PG 连接器、COUNT 及保留 Rows 的服务闭环。
 func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
-	t.Run("mysql input generates PG parameters and independent logical count", func(t *testing.T) {
+	t.Run("mysql input generates PG constants and independent logical count", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()
 		resource.SourceIdentifier = `"public"."orders"`
 		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
 		mocks := nativeSQLConnectorMocks(t, cf, interfaces.ConnectorTypePostgreSQL, 2)
-		base := `SELECT "id" FROM "public"."orders" WHERE ("id" > CAST($1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 5`
-		mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithArgs("1").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(5)).RowsWillBeClosed()
+		base := `SELECT "id" FROM "public"."orders" WHERE ("id" > CAST(1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 5`
+		mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(5)).RowsWillBeClosed()
 		mocks[0].ExpectClose()
-		mocks[1].ExpectQuery(`SELECT "id" FROM "public"."orders" WHERE ("id" > CAST($1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 2 OFFSET 1`).WithArgs("1").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0))).AddRow(3).AddRow(4)).RowsWillBeClosed()
+		mocks[1].ExpectQuery(`SELECT "id" FROM "public"."orders" WHERE ("id" > CAST(1 AS BIGINT)) ORDER BY "id" ASC NULLS FIRST LIMIT 2 OFFSET 1`).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0))).AddRow(3).AddRow(4)).RowsWillBeClosed()
 		mocks[1].ExpectClose()
 		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}} WHERE id>1 ORDER BY id LIMIT 5", NeedTotal: true, Paging: interfaces.PagingRequest{Offset: 1, Limit: 2}})
 		require.NoError(t, err)

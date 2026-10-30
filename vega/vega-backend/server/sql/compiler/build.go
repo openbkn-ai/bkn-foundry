@@ -62,7 +62,7 @@ func (b *treeBuilder) query(ctx g.ISelectQueryContext) *sb.SelectBuilder {
 	}
 	for _, order := range ctx.AllSortItem() {
 		item := sb.Order{Expr: b.expr(order.Expression()), Descending: order.DESC() != nil}
-		if param, ok := item.Expr.(*sb.Param); ok {
+		if param, ok := item.Expr.(*sb.Literal); ok {
 			if number, ok := param.Value.(json.Number); ok && !strings.ContainsAny(string(number), ".eE") {
 				position, err := strconv.ParseUint(string(number), 10, 64)
 				if err != nil || position == 0 {
@@ -282,7 +282,7 @@ func (b *treeBuilder) primary(ctx g.IPrimaryExpressionContext) sb.SqlNode {
 		case literal.FALSE() != nil:
 			value = false
 		}
-		return b.node(ctx, &sb.Param{Value: value})
+		return b.node(ctx, &sb.Literal{Value: value})
 	case ctx.CURRENT_TIMESTAMP() != nil:
 		return b.node(ctx, &sb.Function{Name: "CURRENT_TIMESTAMP"})
 	case ctx.FunctionCall() != nil:
@@ -470,11 +470,11 @@ func (b *treeBuilder) castType(ctx g.ITypeNameContext) sb.CastType {
 	}
 }
 
-// projectionName 在参数化前固定默认输出名，复用 Alias，保证子查询与 COUNT 包装后的列引用稳定。
+// projectionName 固定默认输出名，复用 Alias，保证子查询与 COUNT 包装后的列引用稳定。
 func (b *treeBuilder) projectionName(ctx g.IExpressionContext, expr sb.SqlNode) string {
 	start, stop := ctx.GetStart(), ctx.GetStop()
 	name := start.GetInputStream().GetText(start.GetStart(), stop.GetStop())
-	if param, ok := expr.(*sb.Param); ok {
+	if param, ok := expr.(*sb.Literal); ok {
 		if value, ok := param.Value.(string); ok {
 			name = strings.TrimLeftFunc(value, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
 		} else {
@@ -535,7 +535,7 @@ func validSQLFunctionArguments(name string, args []sb.SqlNode, distinct bool) bo
 	case "NOW", "CURRENT_TIMESTAMP":
 		minimum, maximum = 0, 1
 		if len(args) == 1 {
-			value, ok := args[0].(*sb.Param)
+			value, ok := args[0].(*sb.Literal)
 			if !ok {
 				return false
 			}

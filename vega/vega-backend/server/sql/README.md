@@ -4,6 +4,38 @@
 SQL 查询经过 `compiler.ParseSQL → SelectBuilder → 资源准备 → 连接器 ToSql/执行`。
 结构化查询直接构造同一套 Builder 节点，不重新解析 SQL 字符串。
 
+## 字面量与绑定参数
+
+所有 SQL 方言统一按节点语义决定序列化方式，不按子句位置猜测，也不使用“尽量内联”的启发式规则：
+
+| 来源 | Builder 节点 | 生成方式 |
+| --- | --- | --- |
+| SQL 输入中解析出的字符串、数字、布尔值和 NULL | `Literal` | 由目标方言安全序列化；通常内联，源端长度或编码安全限制要求时按下述规则回退 |
+| 结构化查询、filter condition 的业务输入值，包括比较值、IN 列表、LIKE 模式及时间值 | `Param` | 保留类型转换和精度校验，通过 args 绑定 |
+| 生成器固定常量，例如日期格式、LIKE 转义字符、单位换算常量和内部 NULL | `Literal` | 由目标方言安全序列化 |
+| 表名、字段名及别名 | 对应标识符节点 | 使用目标方言的标识符引用规则 |
+
+`ValueFrom_Const` 表示过滤条件与一个值比较，相对于与另一个字段比较；它不是 SQL 内联指令。结构化查询可以同时包含 `Literal` 与 `Param`。
+函数映射、日期格式翻译、时间值转换和 LIKE 模式转换必须保留原输入节点的绑定或字面量身份；内部固定语法值使用 `Literal`。
+
+```sql
+SELECT COALESCE(region, 'none') AS region, COUNT(*) AS n
+FROM source_table
+WHERE status = ?
+GROUP BY COALESCE(region, 'none');
+-- args: ["active"]
+```
+
+重复的字面量表达式在 SELECT、GROUP BY、HAVING 和 ORDER BY 中保持相同表达式。生成器不为此增加派生表、不新增隐藏投影，也不将分组表达式改成投影序号；用户原本输入的位置序号保留既有语义。
+`Literal` 只承载类型化值，不接受原始 SQL 片段。数字保留十进制精度，并执行各源端已有的范围与类型检查；字符串按目标方言处理引号、反斜杠、Unicode 和不可表示的字符，不把任意值通过格式化拼接为 SQL。
+MySQL/MariaDB 的含反斜杠或 NUL 的字符串使用普通字符串片段与 `CHAR(... USING ascii)` 的 `CONCAT` 常量表达式；即使字符串只含特殊字符，也保留普通空字符串片段。这样既不依赖 `NO_BACKSLASH_ESCAPES`，又保留连接的字符集、collation 和字面量的 collation 优先级，不用字符集引导符、显式 COLLATE 或字符 CAST 覆盖这些语义。PostgreSQL 反斜杠字符串使用 `E'...'`，SQL Server 使用 Unicode 字符串。Doris 的特殊字节字符串使用原生 `UNHEX` 常量表达式，不套用 MySQL 字符集引导语法。
+
+PostgreSQL 对 GROUP BY/ORDER BY 中独立的字符串、布尔值和 NULL 常量使用显式类型 CAST，避免按 SQL92 位置语法解析而报 `non-integer constant`；这不增加 args，也不删除常量分组，空数据集仍保留原本的分组语义。整数字面量位置引用继续保留。
+
+Oracle 仅内联不超过 STANDARD 4000 字节上限的 ASCII 字符串。非 ASCII 或超长字符串回退为原有字符串命名绑定：生成器不知道实际数据库字符集，而驱动在发送 SQL 前会再次编码，某些字符可能被转换成引号，因此不能只在 UTF-8 文本上转义后就内联。不额外查询或修改源端配置；LIKE 转义字符保留原先仅支持 ASCII 的边界。重复分组表达式（包括独立的回退字符串常量）复用同一绑定，避免重新引入 SELECT/GROUP BY/HAVING/ORDER BY 不匹配问题。该回退只改变源端表示，Builder 节点仍是 `Literal`，结构化业务值始终保持 `Param`。绑定值的源端类型、编码和长度限制仍适用。
+
+测试必须同时验证：可内联的解析常量不进入 args，长度或编码安全回退保留值及绑定复用，结构化业务值在格式翻译后仍按正确顺序绑定；覆盖重复分组、未投影分组键、HAVING/ORDER BY、嵌套查询、精确数值、字符串转义及驱动字符集编码。生成器测试不能替代目标数据库的实库验收。
+
 SQL 来源支持带括号的 JOIN 组，例如 `a LEFT JOIN (b JOIN c ON ...) ON ...`。
 Parser 使用 `JoinedTable` 保留括号与连接边界，资源准备递归绑定组内全部来源；不会展开成多个外连接而改变 NULL 扩展语义。
 
@@ -57,7 +89,7 @@ HANA 的 CESU-8 计数是现有边界，不作为后续新增函数默许语义�
 
 Oracle SQL 查询使用公共 MySQL 输入语法，经 Parser/Builder 后由 EE Oracle 连接器生成 SQL。
 使用 `:pN` 命名参数及驱动原生 NUMBER 绑定，独立于 `NLS_NUMERIC_CHARACTERS`；精确数值最多 38 位有效数字；当前驱动将极小 NUMBER 折叠为零，故绑定只接受十进制指数 -128..125。校验和驱动编码使用同一规范化数值表示，保证不同科学计数法写法不会改变值。
-相同分组表达式复用命名绑定，HAVING 投影别名在本 SELECT 内展开；SQL 标识符保留原始大小写。
+包含显式 `Param` 的相同分组表达式复用命名绑定；SQL 字面量使用上述 `Literal` 规则。HAVING 投影别名在本 SELECT 内展开；SQL 标识符保留原始大小写。
 分页使用原生 OFFSET/FETCH，offset-only 无需补 LIMIT。GROUP BY 数字交给源端，19c 不支持位置分组。
 
 - 常用聚合、数值、大小写、去空白、替换和空值函数使用显式映射。复合 `COUNT(DISTINCT a,b)` 返回能力错误。
@@ -84,7 +116,7 @@ Oracle SQL 生成按 1 MiB 预算限制（含参数占位符预留），嵌套�
 ## SQL Server
 
 SQL Server SQL 输入同样使用公共 MySQL SELECT 子集，经 Parser → Builder → EE SQL Server 生成器执行。
-使用 `@pN` 命名绑定、方括号标识符及 DECIMAL(38) 精度边界；分组表达式共享命名参数。资源准备阶段从 schema_definition 填充 Table.ColumnNames，保留源字段大小写；EE 生成器按不区分大小写比较源字段和投影别名。GROUP BY/HAVING 优先引用同名源字段，只在源字段名列表完整且无同名字段时展开当前 SELECT 的投影别名。
+使用 `@pN` 命名绑定、方括号标识符及 DECIMAL(38) 精度边界；包含显式 `Param` 的分组表达式共享命名参数；SQL 字面量使用上述 `Literal` 规则。资源准备阶段从 schema_definition 填充 Table.ColumnNames，保留源字段大小写；EE 生成器按不区分大小写比较源字段和投影别名。GROUP BY/HAVING 优先引用同名源字段，只在源字段名列表完整且无同名字段时展开当前 SELECT 的投影别名。
 子查询按输出列判断，SQL 中的星号不展开；字段信息未知时保留源端解析。
 单次执行最多 2098 个业务绑定，为驱动 sp_executesql 保留两个 RPC 参数槽；旧版 ROW_NUMBER 分页的两个绑定也计入此上限，因此分页前最多 2096 个绑定。
 LIMIT 0（包括非零 OFFSET）生成 TOP (0)，LIMIT-only 使用 TOP，其他分页使用 OFFSET/FETCH；offset-only 不补最大 LIMIT。
