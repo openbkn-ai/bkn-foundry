@@ -96,6 +96,23 @@ type draftedItems struct {
 
 func (d *draftedItems) has(ref interfaces.RequirementItemRef) bool { return d.refs[ref] }
 
+// exampleDocuments reads the project's documents for an edit that gives an input's example, which
+// must be a value they state.
+func (s *requirementService) exampleDocuments(ctx context.Context, projectID string, edit interfaces.RequirementItemEdit,
+	drafted *draftedItems) error {
+	if edit.Inputs == nil || !slices.ContainsFunc(*edit.Inputs, func(in interfaces.RequirementInput) bool {
+		return strings.TrimSpace(in.Example) != ""
+	}) {
+		return nil
+	}
+	docs, err := s.ra.GetDocuments(ctx, projectID)
+	if err != nil {
+		return internalError(ctx, "Get requirement documents failed", err)
+	}
+	drafted.docs = documentsByID(docs)
+	return nil
+}
+
 func (s *requirementService) draftedItems(ctx context.Context, projectID string) (*draftedItems, error) {
 	drafted := &draftedItems{refs: map[interfaces.RequirementItemRef]bool{}}
 	draft, ok, err := s.da.GetDraft(ctx, projectID)
@@ -433,14 +450,8 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 					return err
 				}
 				spec.Questions[i].Edited = true
-				if edit.Inputs != nil && slices.ContainsFunc(*edit.Inputs, func(in interfaces.RequirementInput) bool {
-					return strings.TrimSpace(in.Example) != ""
-				}) {
-					docs, err := s.ra.GetDocuments(ctx, projectID)
-					if err != nil {
-						return internalError(ctx, "Get requirement documents failed", err)
-					}
-					drafted.docs = documentsByID(docs)
+				if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
+					return err
 				}
 				return applyQuestion(ctx, spec.Questions[i], edit, spec, drafted)
 			case interfaces.REQUIREMENT_KIND_RULES:
@@ -509,6 +520,9 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 						Skills: []string{}},
 					Needs: []interfaces.RequirementItemRef{}, NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
 					Citations: empty, Edited: true}
+				if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
+					return err
+				}
 				if err := applyQuestion(ctx, q, edit, spec, drafted); err != nil {
 					return err
 				}

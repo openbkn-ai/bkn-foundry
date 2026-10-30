@@ -377,6 +377,23 @@ func Test_CheckTests(t *testing.T) {
 			So(tt.Text, ShouldEqual, "About C-9999 and Acme?")
 		})
 
+		Convey("An empty value of a record that exists is taken from the row of the values given beside it\n", func() {
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+				map[string]any{"v1": "Acme Ltd"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
+			tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"), slot("full_name", ""))
+
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+			So(tt.Text, ShouldEqual, "About 10001 and Acme Ltd?")
+
+			// The record that should not exist names no row: the others are taken from any.
+			sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1", map[string]any{"v1": "Acme"})
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = 'C-9999'", float64(0))
+			tt = test(interfaces.TEST_EXPECT_NOT_EXISTS, slot("customer_id", "C-9999"), slot("full_name", ""))
+			So(svc.checkTest(ctx, caller, &spec, draft, asked, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+		})
+
 		Convey("A value for a record that exists is taken from the records the question's relation reaches\n", func() {
 			pathDraft := guidanceDraft()
 			pathDraft.Items.ObjectTypes[1].Table = interfaces.DraftTable{ResourceID: "r-cust"}
@@ -400,6 +417,17 @@ func Test_CheckTests(t *testing.T) {
 				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
 				So(tt.Slots[0].Value, ShouldEqual, "10007")
 				So(tt.Slots[0].ValueFrom, ShouldEqual, "sales_order")
+			})
+
+			Convey("but beside a value given of the same record, from that record's row\n", func() {
+				sample("SELECT `name` AS v1 FROM {{r-cust}} WHERE `cust_id` = '10001' AND `name` IS NOT NULL ORDER BY `cust_id` LIMIT 1",
+					map[string]any{"v1": "Acme Ltd"})
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+				count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `name` = 'Acme Ltd'", float64(1))
+				tt := test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"), slot("full_name", ""))
+
+				So(svc.checkTest(ctx, caller, &spec, pathDraft, withPath, tt).Outcome, ShouldEqual, interfaces.TEST_CHECK_PASSED)
+				So(tt.Slots[1].Value, ShouldEqual, "Acme Ltd")
 			})
 
 			Convey("or, when it reaches none, from any record, saying nothing of a path\n", func() {

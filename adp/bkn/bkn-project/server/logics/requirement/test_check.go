@@ -750,6 +750,13 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		set(0, value)
 		delete(empty, 0)
 	}
+	// The values given of a record that exists, by object type: its empty slots are taken from their row.
+	given := map[*interfaces.DraftObjectType][]string{}
+	for i, f := range fields {
+		if !empty[i] && !(t.Expect == interfaces.TEST_EXPECT_NOT_EXISTS && i == 0) {
+			given[f.objectType] = append(given[f.objectType], quoteField(f.field)+" = "+quoteValue(f.value))
+		}
+	}
 	var groups [][]int
 	for i, f := range fields {
 		if !empty[i] {
@@ -764,7 +771,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 	}
 	for _, g := range groups {
 		f := fields[g[0]]
-		if p := path(f); p != nil {
+		if p := path(f); p != nil && len(given[f.objectType]) == 0 {
 			// A record the question's path reaches, so asking about it can show something.
 			names, aliases := []string{}, []string{}
 			for _, i := range g {
@@ -803,7 +810,7 @@ func (s *requirementService) fill(ctx context.Context, caller interfaces.Account
 		for _, i := range g {
 			wanted[i] = fields[i].field
 		}
-		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, nil)
+		values, reason := s.sampleRow(ctx, caller, f.objectType.Table.ResourceID, orderField(f), wanted, given[f.objectType])
 		if reason != "" {
 			return reason
 		}

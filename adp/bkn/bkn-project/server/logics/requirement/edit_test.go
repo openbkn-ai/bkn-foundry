@@ -539,6 +539,22 @@ func Test_QuestionInputEdits(t *testing.T) {
 			So((*saved.Spec.Questions[0].Inputs)[1].Example, ShouldEqual, "")
 		})
 
+		Convey("A question added with an example is checked against the documents too\n", func() {
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
+				doc("ex", interfaces.REQUIREMENT_DOC_PRD, "For example, order SO-1002.")}, nil)
+			expectRead()
+			expectSave()
+			in := record("order", "c1", "order_no")
+			in.Example = "SO-1002"
+			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS,
+				interfaces.RequirementItemEdit{UpdateTime: 7, Text: ptr("Lines of a given order?"), Template: ptr("Lines of {order}?"),
+					Inputs: &[]interfaces.RequirementInput{in}}, caller)
+			So(err, ShouldBeNil)
+			added := saved.Spec.Questions[len(saved.Spec.Questions)-1]
+			So((*added.Inputs)[0].Example, ShouldEqual, "SO-1002")
+			So(added.Citations, ShouldHaveLength, 1)
+		})
+
 		Convey("Inputs without an example need no documents\n", func() {
 			expectRead()
 			expectSave()
