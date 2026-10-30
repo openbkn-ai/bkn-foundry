@@ -512,7 +512,15 @@ type QuestionGuidanceView struct {
 	// was generated; it only says so, and regenerating brings it back. Null when unknown: guidance
 	// generated before it was signed, or no draft to compare.
 	OntologyChanged *bool `json:"ontology_changed"`
+	// TestsNote is a code for what the tests show as a whole, for the client to word: none_checkable
+	// when every test names a concept or property the question's items do not have. Computed when
+	// read, from the tests' checks; empty otherwise.
+	TestsNote string `json:"tests_note,omitempty"`
 }
+
+// TESTS_NOTE_NONE_CHECKABLE says no test of a question could be checked, each naming a concept or
+// property the question's items do not have: the Agent wrote them about something else.
+const TESTS_NOTE_NONE_CHECKABLE = "none_checkable"
 
 // QuestionTest is a scenario question asked with concrete values. Kind is paraphrase, boundary,
 // not_exist or variant; it says how the Agent meant it. Expect says what the data must show.
