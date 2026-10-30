@@ -26,6 +26,9 @@ const (
 	// REGRESSION_STATUS_NEEDS_VALUES: every question judged lacked a specific value to ask about,
 	// so the regression shows nothing of what the ontology can answer.
 	REGRESSION_STATUS_NEEDS_VALUES = "needs_values"
+	// REGRESSION_STATUS_DATA_SOURCE_MISSING: some question was not asked because a table it needs
+	// is gone; it ranks above every other state, for nothing else means much until the data is back.
+	REGRESSION_STATUS_DATA_SOURCE_MISSING = "data_source_missing"
 )
 
 // Outcomes of a question.
@@ -43,6 +46,9 @@ const (
 	REGRESSION_OUTCOME_NOT_ANSWERED = "not_answered"
 	// REGRESSION_OUTCOME_ERROR: the question could not be asked; ErrorCode says why.
 	REGRESSION_OUTCOME_ERROR = "error"
+	// REGRESSION_OUTCOME_DATA_SOURCE_MISSING: a table an item the question needs reads is gone in
+	// vega, so it was not asked; MissingTables names the items.
+	REGRESSION_OUTCOME_DATA_SOURCE_MISSING = "data_source_missing"
 )
 
 // What the answer judge said of an answer.
@@ -111,9 +117,11 @@ type RegressionResult struct {
 	Reason     string               `json:"reason,omitempty"`
 	UsedNeeds  []RequirementItemRef `json:"used_needs,omitempty"`
 	Missing    []ReleaseItem        `json:"missing,omitempty"`
-	Answer     string               `json:"answer,omitempty"`
-	ToolUses   []BknAgentToolUse    `json:"tool_uses,omitempty"`
-	ErrorCode  string               `json:"error_code,omitempty"`
+	// MissingTables are the items the question needs whose table is gone.
+	MissingTables []ReleaseItem     `json:"missing_tables,omitempty"`
+	Answer        string            `json:"answer,omitempty"`
+	ToolUses      []BknAgentToolUse `json:"tool_uses,omitempty"`
+	ErrorCode     string            `json:"error_code,omitempty"`
 	// Warning notes what is off in a judgement that still stands.
 	Warning string `json:"warning,omitempty"`
 }

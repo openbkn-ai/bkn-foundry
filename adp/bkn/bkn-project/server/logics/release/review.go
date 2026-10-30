@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
@@ -48,6 +49,8 @@ type projectReleaseService struct {
 	ca  interfaces.CheckAccess
 	gs  interfaces.GitStore
 	ra  interfaces.ReleaseAccess
+	// va tells which tables the types on the branch read are gone.
+	va interfaces.VegaAccess
 	// rs reads the scenario questions of the project's requirement specification; without it a
 	// review has none.
 	rs interfaces.RequirementService
@@ -68,6 +71,7 @@ func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectR
 			ca:  logics.CA,
 			gs:  logics.GS,
 			ra:  logics.RA,
+			va:  logics.VA,
 			rs:  requirement.NewRequirementService(),
 			rgs: NewRegressionService(),
 			rga: logics.RGA,
@@ -165,9 +169,18 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 			review.Refusals = append(review.Refusals, r)
 		}
 	}
+	bound := boundTables(branchFiles)
+	var missingTables []string
+	var tablesErr error
+	if len(bound) > 0 {
+		if missingTables, tablesErr = s.va.MissingTables(ctx, caller, tableIDs(bound)); tablesErr != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Read tables of project %s: %v", projectID, tablesErr))
+		}
+	}
 	review.Checks = []interfaces.ReleaseCheck{
 		confirmedCheck(confirmation, outdated),
 		mappedCheck(confirmation, branchFiles),
+		dataSourceCheck(bound, missingTables, tablesErr),
 		namesCheck(preview.Changes.Added, branchFiles),
 		driftCheck(drift),
 		checkCheck(confirmation, check),
@@ -246,6 +259,19 @@ func mappedCheck(confirmation *interfaces.DraftConfirmation, files map[string][]
 		return failed(interfaces.RELEASE_CHECK_MAPPED, interfaces.RELEASE_REASON_MAPPING_MISSING, "", missing)
 	}
 	return passed(interfaces.RELEASE_CHECK_MAPPED)
+}
+
+// dataSourceCheck tells whether the tables the types on the branch read are still in vega, missing
+// those that are gone, err when vega did not tell. Neither can be accepted: a release on tables
+// that are gone answers nothing from them, and reviewing again is cheap.
+func dataSourceCheck(bound []boundTable, missing []string, err error) interfaces.ReleaseCheck {
+	if err != nil {
+		return failed(interfaces.RELEASE_CHECK_DATA_SOURCE, interfaces.RELEASE_REASON_DATA_SOURCE_UNREADABLE, "", nil)
+	}
+	if gone := goneItems(bound, missing); len(gone) > 0 {
+		return failed(interfaces.RELEASE_CHECK_DATA_SOURCE, interfaces.RELEASE_REASON_TABLE_MISSING, "", gone)
+	}
+	return passed(interfaces.RELEASE_CHECK_DATA_SOURCE)
 }
 
 func mapped(ot *bkn.BknObjectType) bool {

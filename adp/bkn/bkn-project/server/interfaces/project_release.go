@@ -15,11 +15,13 @@ import "context"
 const (
 	RELEASE_CHECK_CONFIRMED = "confirmed"
 	RELEASE_CHECK_MAPPED    = "mapped"
-	RELEASE_CHECK_NAMES     = "names"
-	RELEASE_CHECK_DRIFT     = "drift"
-	RELEASE_CHECK_CHECK     = "check"
-	RELEASE_CHECK_INDEX     = "index"
-	RELEASE_CHECK_BASELINE  = "baseline"
+	// RELEASE_CHECK_DATA_SOURCE: every table a type on the branch reads is still in vega.
+	RELEASE_CHECK_DATA_SOURCE = "data_source"
+	RELEASE_CHECK_NAMES       = "names"
+	RELEASE_CHECK_DRIFT       = "drift"
+	RELEASE_CHECK_CHECK       = "check"
+	RELEASE_CHECK_INDEX       = "index"
+	RELEASE_CHECK_BASELINE    = "baseline"
 )
 
 // Why a release check did not pass.
@@ -38,6 +40,10 @@ const (
 	RELEASE_REASON_INDEX_NOT_READY       = "index_not_ready"
 	RELEASE_REASON_INDEX_UNREADABLE      = "index_unreadable"
 	RELEASE_REASON_BRANCH_BEHIND         = "branch_behind"
+	// RELEASE_REASON_TABLE_MISSING: tables some types read are gone; details name the types.
+	RELEASE_REASON_TABLE_MISSING = "table_missing"
+	// RELEASE_REASON_DATA_SOURCE_UNREADABLE: vega did not tell whether the tables are there.
+	RELEASE_REASON_DATA_SOURCE_UNREADABLE = "data_source_unreadable"
 )
 
 // What the owner may accept to publish though a check did not pass. Nothing else can be accepted.
