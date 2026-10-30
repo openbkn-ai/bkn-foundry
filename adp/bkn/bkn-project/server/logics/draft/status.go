@@ -286,6 +286,15 @@ func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, lates
 			switchAction.Reason = interfaces.ACTION_REASON_NOT_OWNER
 		}
 		actions = append(actions, switchAction)
+	} else {
+		rollback := interfaces.ProjectStatusNextAction{
+			Action: interfaces.ACTION_REVIEW_ROLLBACK, Method: http.MethodGet, Path: "/projects/" + project.ID + "/rollback-plan",
+			Allowed: caller.ID == project.Owner.ID,
+		}
+		if !rollback.Allowed {
+			rollback.Reason = interfaces.ACTION_REASON_NOT_OWNER
+		}
+		actions = append(actions, rollback)
 	}
 	for _, a := range s.NextActions {
 		if a.Action != interfaces.ACTION_REVIEW_RELEASE {

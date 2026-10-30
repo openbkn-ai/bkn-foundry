@@ -62,6 +62,9 @@ type GitStore interface {
 	MergeBase(ctx context.Context, lineageID string, refA string, refB string) (string, error)
 	// ResolveRef returns the hash of the commit ref resolves to.
 	ResolveRef(ctx context.Context, lineageID string, ref string) (string, error)
+	// RootCommit returns the commit the lineage started with: the first commit on main, holding the
+	// definitions of its base network as they were exported.
+	RootCommit(ctx context.Context, lineageID string) (string, error)
 	// FastForward moves branch to the commit to resolves to. It refuses when the
 	// current head of branch is not an ancestor of that commit.
 	FastForward(ctx context.Context, lineageID string, branch string, to string) (string, error)

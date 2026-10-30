@@ -592,6 +592,35 @@ func (gs *gitStore) ResolveRef(ctx context.Context, lineageID string, ref string
 	return hash.String(), nil
 }
 
+func (gs *gitStore) RootCommit(ctx context.Context, lineageID string) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "RootCommit")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.RLock()
+	defer l.RUnlock()
+
+	commit, err := branchHead(repo, plumbing.NewBranchReferenceName(interfaces.GIT_MAIN_BRANCH))
+	if err != nil {
+		span.SetStatus(codes.Error, "Read main failed")
+		return "", err
+	}
+	// InitLineage makes the only commit without parents; every other descends from it.
+	for len(commit.ParentHashes) > 0 {
+		if commit, err = repo.CommitObject(commit.ParentHashes[0]); err != nil {
+			span.SetStatus(codes.Error, "Read commit failed")
+			return "", err
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return commit.Hash.String(), nil
+}
+
 func (gs *gitStore) FastForward(ctx context.Context, lineageID string, branch string, to string) (string, error) {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "FastForward")
 	defer span.End()

@@ -116,6 +116,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id/releases", r.PublishProjectByEx)
 	apiV1.GET("/projects/:project_id/switch-plan", r.PlanProjectSwitchByEx)
 	apiV1.POST("/projects/:project_id/switches", r.SwitchProjectByEx)
+	// Rolling consumers back to the network before the one in use: the plan first, then the rollback
+	// with the plan's signature.
+	apiV1.GET("/projects/:project_id/rollback-plan", r.PlanRollbackByEx)
+	apiV1.POST("/projects/:project_id/rollbacks", r.RollbackByEx)
 	// What a release's scenario questions got on its network, and running that again:
 	// regression:run is a custom method on the release.
 	apiV1.GET("/projects/:project_id/releases/:network_id/regression", r.GetRegressionByEx)
