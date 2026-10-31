@@ -381,7 +381,7 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 			otellog.LogWarn(ctx, fmt.Sprintf("Ask AI failed: %s %s", data.Code, data.Detail))
 		}
 	})
-	answer := strings.TrimSpace(text.String())
+	answer := unwrapAnswer(strings.TrimSpace(text.String()))
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded), failure == interfaces.BKN_AGENT_CHAT_TIMEOUT:
 		otellog.LogWarn(ctx, "Ask AI did not finish in time")
@@ -394,6 +394,20 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
 	}
 	return answer, out, ""
+}
+
+// unwrapAnswer is the answer of a reply the Agent wrote as a JSON object with an answer, as the
+// prompt asks it not to; any other reply is itself.
+func unwrapAnswer(text string) string {
+	var wrapped struct {
+		Answer string `json:"answer"`
+	}
+	if strings.HasPrefix(text, "{") && json.Unmarshal([]byte(text), &wrapped) == nil {
+		if answer := strings.TrimSpace(wrapped.Answer); answer != "" {
+			return answer
+		}
+	}
+	return text
 }
 
 func truncateRunes(s string, max int) string {

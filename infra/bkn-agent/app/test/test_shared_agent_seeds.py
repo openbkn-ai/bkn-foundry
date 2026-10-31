@@ -2941,8 +2941,8 @@ def test_ontology_ask_seed_is_a_published_tool_free_chat_agent_with_a_bounded_ou
             assert field in prompt
         assert "history" in prompt and "relation_type" in prompt
         # The answer is streamed as text; revisions follow when the server asks for them.
-        assert "as plain text with no Markdown and no JSON" in prompt
-        assert "after your reply the server asks for the changes" in prompt
+        assert "no JSON, no braces, no field labels" in prompt
+        assert "After your reply the server asks, in a separate step, for revisions" in prompt
         assert "never guess facts about the data" in prompt
         assert "It carries no row data." in prompt
         locales = json.loads(localized)

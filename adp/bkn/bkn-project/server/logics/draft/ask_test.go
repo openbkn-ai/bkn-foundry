@@ -409,6 +409,23 @@ func Test_AskObjectType(t *testing.T) {
 			So(len(got.Revisions), ShouldEqual, 1)
 		})
 
+		Convey("An answer written as a JSON object keeps its answer; other text is kept as written\n", func() {
+			for text, want := range map[string]string{
+				`{"answer":" 它是归属关系。 ","revisions":[]}`: "它是归属关系。",
+				`{"answer":"未写完`:                        `{"answer":"未写完`,
+				`{"answer":""}`:                         `{"answer":""}`,
+				`{"note":"x"}`:                          `{"note":"x"}`,
+			} {
+				readDraft(staffDraft())
+				agentAnswers(answered(`{"revisions":[]}`, text))
+
+				got, err := ask("问")
+
+				So(err, ShouldBeNil)
+				So(got.Answer, ShouldEqual, want)
+			}
+		})
+
 		Convey("A long answer is cut to its bound in the result\n", func() {
 			readDraft(staffDraft())
 			agentAnswers(answered(`{"revisions":[]}`, strings.Repeat("长", askAnswerMaxLength), "多"))
