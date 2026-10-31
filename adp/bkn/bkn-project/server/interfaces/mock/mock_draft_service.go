@@ -116,6 +116,36 @@ func (mr *MockDraftServiceMockRecorder) ConfirmDraft(ctx, token, projectID, conf
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfirmDraft", reflect.TypeOf((*MockDraftService)(nil).ConfirmDraft), ctx, token, projectID, confirm, caller)
 }
 
+// CreateRelationType mocks base method.
+func (m *MockDraftService) CreateRelationType(ctx context.Context, token, projectID string, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateRelationType", ctx, token, projectID, save, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateRelationType indicates an expected call of CreateRelationType.
+func (mr *MockDraftServiceMockRecorder) CreateRelationType(ctx, token, projectID, save, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRelationType", reflect.TypeOf((*MockDraftService)(nil).CreateRelationType), ctx, token, projectID, save, caller)
+}
+
+// DeleteRelationType mocks base method.
+func (m *MockDraftService) DeleteRelationType(ctx context.Context, token, projectID, itemID string, updateTime int64, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRelationType", ctx, token, projectID, itemID, updateTime, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteRelationType indicates an expected call of DeleteRelationType.
+func (mr *MockDraftServiceMockRecorder) DeleteRelationType(ctx, token, projectID, itemID, updateTime, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRelationType", reflect.TypeOf((*MockDraftService)(nil).DeleteRelationType), ctx, token, projectID, itemID, updateTime, caller)
+}
+
 // DraftSourceChanges mocks base method.
 func (m *MockDraftService) DraftSourceChanges(ctx context.Context, token, projectID string, req interfaces.SourceChangesDraft, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -323,6 +353,21 @@ func (m *MockDraftService) SaveObjectType(ctx context.Context, token, projectID,
 func (mr *MockDraftServiceMockRecorder) SaveObjectType(ctx, token, projectID, itemID, save, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveObjectType", reflect.TypeOf((*MockDraftService)(nil).SaveObjectType), ctx, token, projectID, itemID, save, caller)
+}
+
+// SaveRelationType mocks base method.
+func (m *MockDraftService) SaveRelationType(ctx context.Context, token, projectID, itemID string, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveRelationType", ctx, token, projectID, itemID, save, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SaveRelationType indicates an expected call of SaveRelationType.
+func (mr *MockDraftServiceMockRecorder) SaveRelationType(ctx, token, projectID, itemID, save, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveRelationType", reflect.TypeOf((*MockDraftService)(nil).SaveRelationType), ctx, token, projectID, itemID, save, caller)
 }
 
 // Understand mocks base method.

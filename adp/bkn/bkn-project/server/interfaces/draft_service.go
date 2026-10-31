@@ -31,6 +31,17 @@ type DraftService interface {
 	// and records it as decisions.
 	SaveObjectType(ctx context.Context, token string, projectID string, itemID string, save DraftObjectTypeSave,
 		caller AccountInfo) (*Draft, error)
+	// CreateRelationType makes a relation type of a ready draft from a person's definition, its
+	// mappings checked against the ends' properties and, for an indirect one, the backing table read
+	// as the caller, and records it as a decision.
+	CreateRelationType(ctx context.Context, token string, projectID string, save DraftRelationTypeSave,
+		caller AccountInfo) (*Draft, error)
+	// SaveRelationType saves a relation type of a ready draft as a whole, as making one checks it.
+	SaveRelationType(ctx context.Context, token string, projectID string, itemID string, save DraftRelationTypeSave,
+		caller AccountInfo) (*Draft, error)
+	// DeleteRelationType deletes a relation type a person made; drafted ones are left out instead.
+	DeleteRelationType(ctx context.Context, token string, projectID string, itemID string, updateTime int64,
+		caller AccountInfo) (*Draft, error)
 	// ChooseIdentity sets the properties that identify an object type's records, counting a
 	// single-field key over the full table as the caller, and records it as a decision.
 	ChooseIdentity(ctx context.Context, token string, projectID string, itemID string,

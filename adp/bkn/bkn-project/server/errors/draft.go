@@ -20,6 +20,7 @@ const (
 	BknProject_Draft_NothingAdopted        = "BknProject.Draft.NothingAdopted"
 	BknProject_Draft_InvalidItem           = "BknProject.Draft.InvalidItem"
 	BknProject_Draft_InvalidProperty       = "BknProject.Draft.InvalidProperty"
+	BknProject_Draft_InvalidRelation       = "BknProject.Draft.InvalidRelation"
 	BknProject_Draft_InvalidQuestion       = "BknProject.Draft.InvalidQuestion"
 
 	// 403
@@ -118,6 +119,7 @@ var (
 		BknProject_Draft_NothingAdopted,
 		BknProject_Draft_InvalidItem,
 		BknProject_Draft_InvalidProperty,
+		BknProject_Draft_InvalidRelation,
 		BknProject_Draft_PropertyInUse,
 		BknProject_Draft_InvalidQuestion,
 		BknProject_Draft_AskUnavailable,

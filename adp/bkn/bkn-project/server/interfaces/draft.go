@@ -4,6 +4,8 @@
 
 package interfaces
 
+import "encoding/json"
+
 import "errors"
 
 // An ontology draft holds what drafting from the table structure of a project's data
@@ -26,6 +28,8 @@ const (
 	// supplier_number for erp_supplier's supplier_code.
 	DRAFT_ORIGIN_STEM_MATCH = "stem_match"
 	DRAFT_ORIGIN_LINK_TABLE = "link_table"
+	// DRAFT_ORIGIN_MANUAL is a relation type a person made; only those can be deleted.
+	DRAFT_ORIGIN_MANUAL = "manual"
 )
 
 // How an object type's key was found.
@@ -499,4 +503,63 @@ type DraftCatalogsAdded struct {
 	ValueTypes    []string `json:"value_types"`
 	// Error is why drafting the catalogs failed; the draft stayed as it was.
 	Error string `json:"error,omitempty"`
+}
+
+// Decisions on relation types a person makes and deletes; After, and Before, are their snapshots.
+const (
+	DRAFT_DECISION_CREATE = "create"
+	DRAFT_DECISION_DELETE = "delete"
+)
+
+// How a relation type maps its ends, as bkn-backend's relation type type.
+const (
+	DRAFT_RELATION_DIRECT   = "direct"
+	DRAFT_RELATION_INDIRECT = "indirect"
+)
+
+// DraftRelationTypeSave is a relation type of a ready draft made or saved as a whole, shaped as
+// bkn-backend's relation type: comment is the description; mapping_rules are the direct mappings, a
+// list of source and target properties, or the indirect one, a backing resource with the mappings
+// of each end to its fields. ID is taken when making one, else made from the ends. UpdateTime is the
+// update time of the draft the change was made on.
+type DraftRelationTypeSave struct {
+	UpdateTime         int64           `json:"update_time"`
+	ID                 string          `json:"id"`
+	Name               string          `json:"name"`
+	Comment            string          `json:"comment"`
+	SourceObjectTypeID string          `json:"source_object_type_id"`
+	TargetObjectTypeID string          `json:"target_object_type_id"`
+	Type               string          `json:"type"`
+	MappingRules       json.RawMessage `json:"mapping_rules"`
+}
+
+// DraftRelationMapping is a mapping as bkn-backend's: a property, or a backing resource's field, by
+// name at each side.
+type DraftRelationMapping struct {
+	SourceProperty DraftMappedField `json:"source_property"`
+	TargetProperty DraftMappedField `json:"target_property"`
+}
+
+// DraftIndirectMapping is an indirect mapping as bkn-backend's: the source's properties to the
+// backing resource's fields, and its fields to the target's properties.
+type DraftIndirectMapping struct {
+	BackingDataSource  *DraftBackingSource    `json:"backing_data_source"`
+	SourceMappingRules []DraftRelationMapping `json:"source_mapping_rules"`
+	TargetMappingRules []DraftRelationMapping `json:"target_mapping_rules"`
+}
+
+type DraftBackingSource struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+// DraftRelationTypeSnapshot is what making, saving and deleting a relation type records of it.
+type DraftRelationTypeSnapshot struct {
+	Name          string              `json:"name"`
+	Source        string              `json:"source"`
+	Target        string              `json:"target"`
+	Mapping       []DraftFieldMapping `json:"mapping,omitempty"`
+	LinkTable     string              `json:"link_table,omitempty"`
+	SourceMapping []DraftFieldMapping `json:"source_mapping,omitempty"`
+	TargetMapping []DraftFieldMapping `json:"target_mapping,omitempty"`
 }

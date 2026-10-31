@@ -6,6 +6,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -208,6 +209,24 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
 			So(w.Body.String(), ShouldContainSubstring, `"status":"drafting"`)
 			So(serveBody(handler, http.MethodPost, project+"/catalogs:add", []byte(`{`)).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Relation types are made (201), saved and deleted with the request sent\n", func() {
+			const base = "/api/bkn-project/v1/projects/p1/ontology/draft/relation_types"
+			body := `{"update_time":5,"name":"R","source_object_type_id":"a","target_object_type_id":"b","type":"direct","mapping_rules":[]}`
+			want := interfaces.DraftRelationTypeSave{UpdateTime: 5, Name: "R", SourceObjectTypeID: "a", TargetObjectTypeID: "b",
+				Type: "direct", MappingRules: json.RawMessage(`[]`)}
+			drs.EXPECT().CreateRelationType(gomock.Any(), "Bearer t", "p1", want, caller).Return(&interfaces.Draft{ProjectID: "p1"}, nil)
+			So(serveBody(handler, http.MethodPost, base, []byte(body)).Result().StatusCode, ShouldEqual, http.StatusCreated)
+
+			drs.EXPECT().SaveRelationType(gomock.Any(), "Bearer t", "p1", "a_to_b", want, caller).Return(&interfaces.Draft{ProjectID: "p1"}, nil)
+			So(serveBody(handler, http.MethodPut, base+"/a_to_b", []byte(body)).Result().StatusCode, ShouldEqual, http.StatusOK)
+
+			drs.EXPECT().DeleteRelationType(gomock.Any(), "Bearer t", "p1", "a_to_b", int64(5), caller).Return(&interfaces.Draft{ProjectID: "p1"}, nil)
+			So(serve(handler, http.MethodDelete, base+"/a_to_b?update_time=5").Result().StatusCode, ShouldEqual, http.StatusOK)
+
+			So(serve(handler, http.MethodDelete, base+"/a_to_b").Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+			So(serveBody(handler, http.MethodPost, base, []byte(`{`)).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("The understanding is read as the caller\n", func() {
