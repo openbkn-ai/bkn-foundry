@@ -462,41 +462,26 @@ components:
       properties:
         filter_condition:
           description: |
-            过滤条件，结构由 `FilterCondCfg` 决定。Override=DELETE 时必填且非空。
-            `knn_vector` 在索引维度已知时校验向量长度：调用方原始向量维度不匹配返回
-            HTTP 400 `VegaBackend.Resource.InvalidParameter`，`error_details` 包含实际及要求维度；
-            模型输出维度不匹配返回服务端错误。匹配维度的原始向量和文本检索仍受支持。
-            旧索引缺少维度元数据时维持原查询行为，下游维度错误仍返回 HTTP 500。
-            模型服务、索引或其他基础设施故障保持服务端错误分类。
-            比较、集合与范围条件的时间常量统一采用以下输入契约（timestamp 兼容类型沿用既有行为）：
-            - datetime 支持 RFC3339（如 `2026-10-19T00:00:00+08:00`）、
-              无时区完整时间 `YYYY-MM-DD HH:mm:ss[.fraction]`、整数毫秒时间戳。
-              毫秒时间戳同时接受 JSON 整数和十进制数字字符串，拒绝小数及 int64 溢出；
-              datetime 不接受仅日期字符串。字符串小数秒支持 1–9 位；超过 9 位返回 HTTP 400，不静默截断。
-            - date 只接受 `YYYY-MM-DD`，不接受 RFC3339、完整时间或时间戳；保留日历日期。
-            - time 只接受 `HH:mm:ss[.fraction]`，小时为 00–23，小数秒支持 1–9 位；超过 9 位返回 HTTP 400；
-              不接受日期、时区或时间戳，保留一天中的时间。
-            datetime 的无时区字符串按服务器 TZ 解释，TZ 未配置或为空白时使用 UTC；
-            带时区字符串及毫秒时间戳表示绝对时刻，无时区源列按服务时区的墙上时间比较。
-            时间字符串和服务内部游标均保留最多 9 位小数秒；数字时间戳始终按整数毫秒解释。
-            保留原始时间值，运行时使用解析后的条件副本；因此无时区字符串会按当前服务器 TZ 解释。
-            非法值返回 HTTP 400，服务器 TZ 配置错误返回 HTTP 500。
-            这些规则同样适用于派生视图固定条件；创建和更新拒绝非法定义，
-            已有非法固定条件返回 `VegaBackend.LogicalView.DefinitionInvalid`。
-            源连接器的字段能力和类型范围仍然生效，不支持的源类型不能仅凭格式合法而执行查询。
-            OpenSearch datetime 集合按绝对时刻去重后展开为精确范围，每个集合最多允许 1024 个不同时刻；
-            含 datetime 范围的整棵过滤条件最多允许 1024 个查询子句，超限返回 HTTP 400。
-            该限制同样适用于整毫秒值、in 和 not_in，与字段 mapping 的日期格式无关。
-            time 输入去掉小数秒尾部零后比较，等价的 `12:00:00.1` 与 `12:00:00.100` 查询结果一致。
-            上述格式要求适用于过滤输入，不作为源端数据写入的接受集。
-            本地索引构建按源值保留 DATE 的日历日期，不把服务时区零点当作 UTC 时刻存储；
-            CDC 的 DATE 天数及 TIME 毫秒/微秒/纳秒仅按消息 schema 的逻辑类型解码。
-            有符号或超 24 小时 TIME 时长及未知源表示保留原值，不因不符合日内时间输入格式中断构建；
-            这不扩展公开 time 过滤输入为时长。time 集合使用 keyword terms，
-            去重并展开等价尾零形式后最多允许 65536 项，超限返回 HTTP 400；仍受引擎自身配置限制。
-            过滤时间常量时兼容旧索引中的合法 `HH:mm:ss[.fraction]` 尾零形式；
-            旧索引若将原生 time 写成完整日期时间字符串，需重新构建以恢复日内时间语义；
-            原生 DATE 曾按带时区零点写入的旧索引也需重建以保证日历日期过滤一致。
+            过滤条件树。叶节点使用 field、operation、value 和 value_from（const/field）；
+            and/or 通过 sub_conditions 嵌套。Override=DELETE 时必填且非空。
+
+            时间常量：date 为 YYYY-MM-DD；time 为 HH:mm:ss[.fraction]；
+            datetime 支持 RFC3339、YYYY-MM-DD HH:mm:ss[.fraction] 或 int64 整数毫秒时间戳
+            （JSON 整数或数字字符串）。小数秒支持 1–9 位；无时区 datetime 按服务器 TZ 解释，默认 UTC。
+            date/datetime 的 before 使用 `[正整数间隔, 单位]`，单位为
+            year/month/week/day/hour/minute；索引查询的间隔上限为 2147483647。
+
+            可用操作取决于字段类型和查询通道。索引字段比较的日期族两侧均须为 date/datetime/timestamp。
+            索引 TEXT 的精确及模式匹配要求 keyword Feature。
+            contain 在源查询中匹配逗号分隔值的全部给定项，
+            在索引查询中匹配任一项；索引 not_contain 排除全部给定项。
+            knn_vector 在索引维度已知时要求输入向量维度匹配。
+
+            非法输入或超限返回 HTTP 400，服务端配置或执行故障返回相应 5xx。
+            已保存的派生视图固定条件非法时返回 VegaBackend.LogicalView.DefinitionInvalid。
+            索引 datetime 集合最多 1024 个不同时刻；含范围条件的过滤树最多 1024 个查询子句；
+            time 集合展开后最多 65536 项，并受引擎配置限制。
+            [能力与兼容说明](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/studio/data-resource-network/logic-view-workflow/design/issue-329-filter-capabilities.md)。
           type: object
           additionalProperties: true
         paging:

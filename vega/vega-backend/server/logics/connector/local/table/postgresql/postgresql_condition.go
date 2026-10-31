@@ -597,6 +597,8 @@ func intervalUnit(unit string) (string, error) {
 		return "year", nil
 	case "MONTH", "MONTHS":
 		return "month", nil
+	case "WEEK", "WEEKS":
+		return "week", nil
 	case "DAY", "DAYS":
 		return "day", nil
 	case "HOUR", "HOURS":

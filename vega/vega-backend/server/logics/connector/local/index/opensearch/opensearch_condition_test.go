@@ -7,6 +7,7 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -314,10 +315,13 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			filter_condition.OperationEqual, filter_condition.OperationNotEqual,
 			filter_condition.OperationIn, filter_condition.OperationNotIn,
 			filter_condition.OperationLike, filter_condition.OperationNotLike,
+			filter_condition.OperationPrefix, filter_condition.OperationNotPrefix, filter_condition.OperationRegex,
+			filter_condition.OperationContain, filter_condition.OperationNotContain,
 		} {
 			t.Run(operation, func(t *testing.T) {
 				var value any = "hello"
-				if operation == filter_condition.OperationIn || operation == filter_condition.OperationNotIn {
+				if operation == filter_condition.OperationIn || operation == filter_condition.OperationNotIn ||
+					operation == filter_condition.OperationContain || operation == filter_condition.OperationNotContain {
 					value = []any{"hello"}
 				}
 				cfg := &interfaces.FilterCondCfg{Name: alias.Name, Operation: operation,
@@ -334,10 +338,11 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		}
 		for _, field := range []string{target.Name, alias.Name} {
 			for _, operation := range []string{filter_condition.OperationEqual, filter_condition.OperationNotEqual,
-				filter_condition.OperationIn, filter_condition.OperationNotIn} {
+				filter_condition.OperationIn, filter_condition.OperationNotIn, filter_condition.OperationContain, filter_condition.OperationNotContain} {
 				t.Run(field+"/"+operation+" preserves the request field on keyword overflow", func(t *testing.T) {
 					var value any = "too-long-value"
-					if operation == filter_condition.OperationIn || operation == filter_condition.OperationNotIn {
+					if operation == filter_condition.OperationIn || operation == filter_condition.OperationNotIn ||
+						operation == filter_condition.OperationContain || operation == filter_condition.OperationNotContain {
 						value = []any{value}
 					}
 					cfg := &interfaces.FilterCondCfg{Name: field, Operation: operation,
@@ -361,10 +366,10 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			require.NoError(t, err)
 			dsl, err := conn.ConvertFilterCondition(condition, schema)
 			require.NoError(t, err)
-			assert.Equal(t, map[string]any{"script": map[string]any{
-				"source": "doc[params.left].value == doc[params.right].value",
+			assert.Equal(t, map[string]any{"script": map[string]any{"script": map[string]any{
+				"source": "doc.containsKey(params.left) && doc.containsKey(params.right) && doc[params.left].size() > 0 && doc[params.right].size() > 0 && doc[params.left].value == doc[params.right].value",
 				"params": map[string]any{"left": "physical.title.raw", "right": "physical.title.raw"},
-			}}, dsl)
+			}}}, dsl)
 		})
 		t.Run("missing keyword feature is still rejected", func(t *testing.T) {
 			target.Features = nil
@@ -661,13 +666,13 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 				operator = "!="
 			}
 			assert.Equal(t, map[string]any{
-				"script": map[string]any{
-					"source": "doc[params.left].value " + operator + " doc[params.right].value",
+				"script": map[string]any{"script": map[string]any{
+					"source": "doc.containsKey(params.left) && doc.containsKey(params.right) && doc[params.left].size() > 0 && doc[params.right].size() > 0 && doc[params.left].value " + operator + " doc[params.right].value",
 					"params": map[string]any{
 						"left":  "left.raw",
 						"right": "right.exact",
 					},
-				},
+				}},
 			}, got)
 		}
 	})
@@ -694,13 +699,13 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{
-			"script": map[string]any{
-				"source": "doc[params.left].value == doc[params.right].value",
+			"script": map[string]any{"script": map[string]any{
+				"source": "doc.containsKey(params.left) && doc.containsKey(params.right) && doc[params.left].size() > 0 && doc[params.right].size() > 0 && doc[params.left].value == doc[params.right].value",
 				"params": map[string]any{
 					"left":  "left.ra'w",
 					"right": "right.ex'act",
 				},
-			},
+			}},
 		}, got)
 	})
 
@@ -866,13 +871,13 @@ func TestOpenSearchConnectorConvertFilterConditionOrderedFieldComparison(t *test
 
 			require.NoError(t, err)
 			assert.Equal(t, map[string]any{
-				"script": map[string]any{
-					"source": "doc[params.left].value " + tt.operator + " doc[params.right].value",
+				"script": map[string]any{"script": map[string]any{
+					"source": "doc.containsKey(params.left) && doc.containsKey(params.right) && doc[params.left].size() > 0 && doc[params.right].size() > 0 && doc[params.left].value " + tt.operator + " doc[params.right].value",
 					"params": map[string]any{
 						"left":  "le'ft",
 						"right": "ri'ght",
 					},
-				},
+				}},
 			}, got)
 		})
 	}
@@ -1057,6 +1062,171 @@ func TestValidateKeywordValues(t *testing.T) {
 				var condition *interfaces.ConditionBuildError
 				require.ErrorAs(t, err, &condition)
 			})
+		}
+	}
+}
+
+func TestOpenSearchConnectorConvertFilterConditionUnsignedFieldComparison(t *testing.T) {
+	for _, types := range [][2]string{
+		{interfaces.DataType_UnsignedInteger, interfaces.DataType_UnsignedInteger},
+		{interfaces.DataType_UnsignedInteger, interfaces.DataType_Integer},
+		{interfaces.DataType_Integer, interfaces.DataType_UnsignedInteger},
+		{interfaces.DataType_UnsignedInteger, interfaces.DataType_Float},
+		{interfaces.DataType_Float, interfaces.DataType_UnsignedInteger},
+	} {
+		for _, operation := range []string{"==", "!=", ">", ">=", "<", "<="} {
+			t.Run(types[0]+"/"+operation+"/"+types[1], func(t *testing.T) {
+				schema := []*interfaces.Property{
+					{Name: "left", OriginalName: "physical.left", Type: types[0]},
+					{Name: "right", OriginalName: "physical.right", Type: types[1]},
+				}
+				cfg := &interfaces.FilterCondCfg{Name: "left", Operation: operation,
+					ValueFrom: interfaces.ValueFrom_Field, Value: "right"}
+				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg,
+					map[string]*interfaces.Property{"left": schema[0], "right": schema[1]})
+				require.NoError(t, err)
+				dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(condition, schema)
+				require.NoError(t, err)
+				script := dsl["script"].(map[string]any)["script"].(map[string]any)
+				assert.Equal(t, map[string]any{"left": "physical.left", "right": "physical.right"}, script["params"])
+				comparison := "new BigInteger(doc[params.left].value.toString()).compareTo(new BigInteger(doc[params.right].value.toString())) " + operation + " 0"
+				if types[0] == interfaces.DataType_Float || types[1] == interfaces.DataType_Float {
+					comparison = "doc[params.left].value " + operation + " doc[params.right].value"
+				}
+				assert.Equal(t,
+					"doc.containsKey(params.left) && doc.containsKey(params.right) && doc[params.left].size() > 0 && doc[params.right].size() > 0 && "+comparison,
+					script["source"])
+			})
+		}
+	}
+}
+
+func TestOpenSearchConnectorConvertFilterConditionTemporalFieldComparison(t *testing.T) {
+	for _, leftType := range []string{interfaces.DataType_Date, interfaces.DataType_Datetime, interfaces.DataType_Timestamp} {
+		for _, rightType := range []string{interfaces.DataType_Date, interfaces.DataType_Datetime, interfaces.DataType_Timestamp} {
+			schema := []*interfaces.Property{
+				{Name: "start", OriginalName: "physical.start", Type: leftType},
+				{Name: "end", OriginalName: "physical.end", Type: rightType},
+			}
+			fields := map[string]*interfaces.Property{"start": schema[0], "end": schema[1]}
+			for _, operation := range []string{"==", "!=", ">", ">=", "<", "<="} {
+				t.Run(leftType+"/"+operation+"/"+rightType, func(t *testing.T) {
+					cfg := &interfaces.FilterCondCfg{Name: "start", Operation: operation,
+						ValueFrom: interfaces.ValueFrom_Field, Value: "end"}
+					condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
+					require.NoError(t, err)
+					dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(condition, schema)
+					require.NoError(t, err)
+					script := dsl["script"].(map[string]any)["script"].(map[string]any)
+					assert.Equal(t, map[string]any{"left": "physical.start", "right": "physical.end"}, script["params"])
+					assert.Equal(t,
+						"doc.containsKey(params.left) && doc.containsKey(params.right) && doc[params.left].size() > 0 && doc[params.right].size() > 0 && "+
+							"doc[params.left].value.toInstant().compareTo(doc[params.right].value.toInstant()) "+operation+" 0",
+						script["source"])
+					assert.NotContains(t, script["source"], "toEpochMilli")
+				})
+			}
+		}
+	}
+}
+
+func TestIndexBeforeQuery(t *testing.T) {
+	now := time.Date(2024, 3, 31, 0, 30, 0, 123456789, time.UTC)
+	for _, zone := range []string{"UTC", "Asia/Shanghai", "America/New_York"} {
+		for _, typ := range []string{interfaces.DataType_Date, interfaces.DataType_Datetime} {
+			for _, unit := range []struct{ name, math string }{{"year", "y"}, {"month", "M"}, {"week", "w"}, {"day", "d"}, {"hour", "h"}, {"minute", "m"}} {
+				t.Run(zone+"/"+typ+"/"+unit.name, func(t *testing.T) {
+					t.Setenv("TZ", zone)
+					cfg := &interfaces.FilterCondCfg{Name: "at", Operation: "before", ValueFrom: interfaces.ValueFrom_Const, Value: []any{json.Number("3"), unit.name}}
+					condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"at": {Name: "at", OriginalName: "physical.at", Type: typ}})
+					require.NoError(t, err)
+					got, err := indexBeforeQuery(condition.(*filter_condition.BeforeCond), now)
+					require.NoError(t, err)
+					anchor, wantZone := "2024-03-31T00:30:00.123456789Z", zone
+					if typ == interfaces.DataType_Date {
+						anchor = map[string]string{"UTC": "2024-03-31T00:30:00.123456789Z", "Asia/Shanghai": "2024-03-31T08:30:00.123456789Z", "America/New_York": "2024-03-30T20:30:00.123456789Z"}[zone]
+						wantZone = "UTC"
+					}
+					assert.Equal(t, map[string]any{"range": map[string]any{"physical.at": map[string]any{
+						"lt":     anchor + "||-3" + unit.math,
+						"format": "strict_date_optional_time_nanos", "time_zone": wantZone,
+					}}}, got)
+				})
+			}
+		}
+	}
+	t.Run("legacy reference time retains its meaning", func(t *testing.T) {
+		cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", OriginalName: "physical.at", Type: interfaces.DataType_Datetime}, Value: []any{float64(3), "2026-10-30T00:00:00Z"}}
+		got, err := indexBeforeQuery(cond, now)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"range": map[string]any{"physical.at": map[string]any{"lt": "2026-10-29T21:00:00Z"}}}, got)
+	})
+	t.Run("invalid zone retains server configuration classification", func(t *testing.T) {
+		t.Setenv("TZ", "Invalid/Zone")
+		_, err := indexBeforeQuery(&filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", Type: interfaces.DataType_Datetime}, Value: []any{float64(3), "day"}}, now)
+		var zoneErr *interfaces.ServerTimeZoneError
+		require.ErrorAs(t, err, &zoneErr)
+	})
+	for _, values := range [][]any{{float64(0), "day"}, {float64(-1), "month"}, {float64(1.5), "day"}, {float64(2147483648), "day"}, {float64(3), "unknown"}} {
+		t.Run(fmt.Sprint(values), func(t *testing.T) {
+			_, err := indexBeforeQuery(&filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", Type: interfaces.DataType_Datetime}, Value: values}, now)
+			var buildErr *interfaces.ConditionBuildError
+			require.ErrorAs(t, err, &buildErr)
+		})
+	}
+}
+
+func TestOpenSearchConnectorTextKeywordOperations(t *testing.T) {
+	conn := &OpenSearchConnector{}
+	for _, op := range []string{"prefix", "not_prefix", "regex", "contain", "not_contain"} {
+		t.Run(op, func(t *testing.T) {
+			field := &interfaces.Property{Name: "body", OriginalName: "physical.body", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 8}}}}
+			var value any = "hello"
+			if op == "contain" || op == "not_contain" {
+				value = []any{"hello", "world"}
+			}
+			cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Name: "body", Operation: op, ValueFrom: interfaces.ValueFrom_Const, Value: value}, map[string]*interfaces.Property{"body": field})
+			require.NoError(t, err)
+			got, err := conn.ConvertFilterCondition(cond, []*interfaces.Property{field})
+			require.NoError(t, err)
+			switch op {
+			case "prefix":
+				assert.Equal(t, map[string]any{"prefix": map[string]any{"physical.body.raw": "hello"}}, got)
+			case "not_prefix":
+				assert.Equal(t, map[string]any{"bool": map[string]any{"must_not": map[string]any{"prefix": map[string]any{"physical.body.raw": "hello"}}}}, got)
+			case "regex":
+				assert.Equal(t, map[string]any{"regexp": map[string]any{"physical.body.raw": "hello"}}, got)
+			case "contain":
+				assert.Equal(t, map[string]any{"bool": map[string]any{"should": []map[string]any{{"term": map[string]any{"physical.body.raw": "hello"}}, {"term": map[string]any{"physical.body.raw": "world"}}}, "minimum_should_match": 1}}, got)
+			case "not_contain":
+				assert.Equal(t, map[string]any{"bool": map[string]any{"must_not": []map[string]any{{"term": map[string]any{"physical.body.raw": "hello"}}, {"term": map[string]any{"physical.body.raw": "world"}}}}}, got)
+			}
+			field.Features = nil
+			got, err = conn.ConvertFilterCondition(cond, []*interfaces.Property{field})
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.Contains(t, err.Error(), "no keyword feature")
+		})
+	}
+}
+
+func TestOpenSearchConnectorConvertFilterConditionMixedTemporalFields(t *testing.T) {
+	for _, temporal := range []string{interfaces.DataType_Date, interfaces.DataType_Datetime, interfaces.DataType_Timestamp} {
+		for _, other := range []string{interfaces.DataType_Integer, interfaces.DataType_String} {
+			for _, types := range [][2]string{{temporal, other}, {other, temporal}} {
+				for _, op := range []string{"==", "!=", ">", ">=", "<", "<="} {
+					t.Run(types[0]+"/"+op+"/"+types[1], func(t *testing.T) {
+						schema := []*interfaces.Property{{Name: "left", OriginalName: "physical.left", Type: types[0]}, {Name: "right", OriginalName: "physical.right", Type: types[1]}}
+						cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Name: "left", Operation: op, ValueFrom: interfaces.ValueFrom_Field, Value: "right"}, map[string]*interfaces.Property{"left": schema[0], "right": schema[1]})
+						require.NoError(t, err)
+						dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, schema)
+						var buildErr *interfaces.ConditionBuildError
+						require.ErrorAs(t, err, &buildErr)
+						assert.Nil(t, dsl)
+					})
+				}
+			}
 		}
 	}
 }
