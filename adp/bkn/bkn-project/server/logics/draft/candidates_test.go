@@ -366,17 +366,15 @@ func Test_CandidateService(t *testing.T) {
 			last := got.Items.Decisions[len(got.Items.Decisions)-1]
 			So(*last, ShouldResemble, interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "items_to_stores",
 				Action: interfaces.DRAFT_DECISION_ADOPT, Before: true, After: true, By: caller, Time: got.UpdateTime})
-			for _, x := range candidatesOf(got, nil, "").Candidates {
-				if x.ID == "items_to_stores" {
-					So(x.State, ShouldEqual, interfaces.CANDIDATE_STATE_ADOPTED)
-				}
-			}
+			So(candidateOf(candidatesOf(got, nil, ""), "items_to_stores").State, ShouldEqual, interfaces.CANDIDATE_STATE_ADOPTED)
 
-			// Stores were adopted by a person already: nothing to write, the update time stays.
-			again, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "stores",
+			// Confirmed now: adopting it again writes nothing, the update time stays.
+			confirmed := len(got.Items.Decisions)
+			again, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_RELATION_TYPES, "items_to_stores",
 				interfaces.DraftItemEdit{UpdateTime: got.UpdateTime, Adopted: &in}, caller)
 			So(err, ShouldBeNil)
 			So(again.UpdateTime, ShouldEqual, got.UpdateTime)
+			So(again.Items.Decisions, ShouldHaveLength, confirmed)
 		})
 
 		Convey("Adopting what accepting the suggestions confirmed writes nothing\n", func() {
@@ -424,4 +422,15 @@ func Test_CandidateService(t *testing.T) {
 			So(httpErr.ErrorDetails, ShouldResemble, map[string]any{"reason": "reason_too_long"})
 		})
 	})
+}
+
+// candidateOf is the candidate of id, failing the test when there is none.
+func candidateOf(c *interfaces.DraftCandidates, id string) interfaces.DraftCandidate {
+	for _, x := range c.Candidates {
+		if x.ID == id {
+			return x
+		}
+	}
+	So(id, ShouldBeIn, []string{})
+	return interfaces.DraftCandidate{}
 }
