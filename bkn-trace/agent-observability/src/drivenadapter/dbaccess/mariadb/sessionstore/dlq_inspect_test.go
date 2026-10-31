@@ -27,7 +27,7 @@ func TestProjectionDLQPreviewIsBoundedMetadataOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	now := time.Now().UTC()
 	rows := sqlmock.NewRows(dlqPreviewColumns).AddRow(7, "projection", "event", "retry_window_expired", "retry_window_expired", now, nil, 1, "dead", "receipt", "r", 3, "receipt.completed", 10)
 	mock.ExpectQuery("preview").WithArgs(uint64(7)).WillReturnRows(rows).RowsWillBeClosed()
@@ -46,7 +46,7 @@ func TestProjectionDLQPreviewDetectsAmbiguityAndReadFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			expected := mock.ExpectQuery("SELECT d.dlq_id")
 			failure := errors.New("read failed")
 			now := time.Now().UTC()

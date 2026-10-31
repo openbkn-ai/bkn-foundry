@@ -51,7 +51,7 @@ func TestProjectionRecoveryAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
+	defer func() { _ = admin.Close() }()
 	name := fmt.Sprintf("bkn_trace_2779_it_%d", time.Now().UnixNano())
 	if _, err := admin.Exec("CREATE DATABASE `" + name + "`"); err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestProjectionRecoveryAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	store := sessionstore.New(db)
@@ -93,7 +93,7 @@ func TestProjectionRecoveryAcceptance(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		if response.StatusCode != 200 {
 			t.Errorf("owned index cleanup status %d", response.StatusCode)
 		}
