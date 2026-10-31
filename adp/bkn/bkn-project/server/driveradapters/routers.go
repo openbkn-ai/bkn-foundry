@@ -149,6 +149,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/projects/:project_id/ontology/draft/relation_types/:item_id", r.SaveRelationTypeByEx)
 	apiV1.DELETE("/projects/:project_id/ontology/draft/relation_types/:item_id", r.DeleteRelationTypeByEx)
 	apiV1.POST("/projects/:project_id/ontology/draft/object_types/:item_id/ask", r.AskObjectTypeByEx)
+	apiV1.POST("/projects/:project_id/ontology/draft/relation_types/:item_id/ask", r.AskRelationTypeByEx)
 
 	// Requirement documents of a project.
 	apiV1.POST("/projects/:project_id/requirements/documents", r.UploadRequirementDocumentsByEx)

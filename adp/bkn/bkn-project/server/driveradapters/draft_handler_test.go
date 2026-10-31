@@ -113,6 +113,23 @@ func Test_DraftRestHandler(t *testing.T) {
 				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("A question about a relation type is handed to the service with the form and the turns before\n", func() {
+			drs.EXPECT().AskRelationType(gomock.Any(), "Bearer t", "p1", "shipments_from",
+				interfaces.DraftRelationAskRequest{Question: "对吗？",
+					Working: &interfaces.DraftRelationTypeSave{Name: "途经站"},
+					History: []interfaces.DraftAskTurn{{Question: "是什么？", Answer: "起运站。"}}}, caller).
+				Return(&interfaces.DraftAskAnswer{Answer: "对。", Revisions: []interfaces.DraftAskRevision{
+					{Field: interfaces.DRAFT_ASK_REVISION_NAME, Value: "起运站"}}, Dropped: []interfaces.DraftAskDropped{}}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/draft/relation_types/shipments_from/ask",
+				[]byte(`{"question":"对吗？","working":{"name":"途经站"},"history":[{"question":"是什么？","answer":"起运站。"}]}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"revisions":[{"field":"name","value":"起运站","reason":""}]`)
+			So(serveBody(handler, http.MethodPost, base+"/draft/relation_types/shipments_from/ask", []byte(`[`)).
+				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("draft:restore restores the excluded field the body names\n", func() {
 			drs.EXPECT().RestoreExcluded(gomock.Any(), "Bearer t", "p1",
 				interfaces.DraftRestore{UpdateTime: 7, ObjectType: "customers", Field: "Phone"}, caller).

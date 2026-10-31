@@ -86,6 +86,21 @@ func (mr *MockDraftServiceMockRecorder) AskObjectType(ctx, token, projectID, ite
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AskObjectType", reflect.TypeOf((*MockDraftService)(nil).AskObjectType), ctx, token, projectID, itemID, req, caller)
 }
 
+// AskRelationType mocks base method.
+func (m *MockDraftService) AskRelationType(ctx context.Context, token, projectID, itemID string, req interfaces.DraftRelationAskRequest, caller interfaces.AccountInfo) (*interfaces.DraftAskAnswer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AskRelationType", ctx, token, projectID, itemID, req, caller)
+	ret0, _ := ret[0].(*interfaces.DraftAskAnswer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AskRelationType indicates an expected call of AskRelationType.
+func (mr *MockDraftServiceMockRecorder) AskRelationType(ctx, token, projectID, itemID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AskRelationType", reflect.TypeOf((*MockDraftService)(nil).AskRelationType), ctx, token, projectID, itemID, req, caller)
+}
+
 // BuildIndex mocks base method.
 func (m *MockDraftService) BuildIndex(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
 	m.ctrl.T.Helper()
