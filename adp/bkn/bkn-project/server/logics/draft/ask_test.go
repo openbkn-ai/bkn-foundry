@@ -125,13 +125,44 @@ func visitDraft() *interfaces.Draft {
 	}
 }
 
-func answered(output string) *interfaces.BknAgentTask {
-	return &interfaces.BknAgentTask{TaskID: "k1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}
+// chatTurn is a turn of the chat Agent as bkn-agent streams it to Chat.
+type chatTurn = func(context.Context, interfaces.AccountInfo, *interfaces.BknAgentChatRequest,
+	func(interfaces.BknAgentChatEvent)) error
+
+func chatEvent(name string, data string) interfaces.BknAgentChatEvent {
+	return interfaces.BknAgentChatEvent{Name: name, Data: json.RawMessage(data)}
 }
 
-// revised is the Agent's output: an answer and the revisions given as JSON.
-func revised(revisions ...string) *interfaces.BknAgentTask {
-	return answered(`{"answer":"答复","revisions":[` + strings.Join(revisions, ",") + `]}`)
+func tokenEvent(text string) interfaces.BknAgentChatEvent {
+	data, _ := json.Marshal(map[string]string{"content": text})
+	return chatEvent(interfaces.BKN_AGENT_CHAT_TOKEN, string(data))
+}
+
+// streamed streams meta and then the events given.
+func streamed(events ...interfaces.BknAgentChatEvent) chatTurn {
+	return func(_ context.Context, _ interfaces.AccountInfo, _ *interfaces.BknAgentChatRequest,
+		on func(interfaces.BknAgentChatEvent)) error {
+		on(chatEvent("meta", `{"thread_id":"th1"}`))
+		for _, e := range events {
+			on(e)
+		}
+		return nil
+	}
+}
+
+// answered streams the text in pieces, then the result and done.
+func answered(result string, pieces ...string) chatTurn {
+	events := []interfaces.BknAgentChatEvent{}
+	for _, piece := range pieces {
+		events = append(events, tokenEvent(piece))
+	}
+	return streamed(append(events, chatEvent(interfaces.BKN_AGENT_CHAT_STRUCTURED, `{"content":`+result+`}`),
+		chatEvent(interfaces.BKN_AGENT_CHAT_DONE, `{}`))...)
+}
+
+// revised answers 答复 with the revisions given as JSON.
+func revised(revisions ...string) chatTurn {
+	return answered(`{"revisions":[`+strings.Join(revisions, ",")+`]}`, "答", "复")
 }
 
 func Test_AskObjectType(t *testing.T) {
@@ -143,9 +174,7 @@ func Test_AskObjectType(t *testing.T) {
 		da := pmock.NewMockDraftAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
-		clock := time.Unix(0, 0)
-		svc := &draftService{setting: testSetting, da: da, ps: ps, ba: ba,
-			now: func() time.Time { return clock }, sleep: func(d time.Duration) { clock = clock.Add(d) }}
+		svc := &draftService{setting: testSetting, da: da, ps: ps, ba: ba}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 		readDraft := func(d *interfaces.Draft) {
@@ -153,19 +182,20 @@ func Test_AskObjectType(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 		}
 		askAbout := func(item string, req interfaces.DraftAskRequest) (*interfaces.DraftAskAnswer, error) {
-			return svc.AskObjectType(ctx, token, "p1", item, req, caller)
+			return svc.AskObjectType(ctx, token, "p1", item, req, caller, nil)
 		}
 		ask := func(q string) (*interfaces.DraftAskAnswer, error) {
 			return askAbout("employees", interfaces.DraftAskRequest{Question: q})
 		}
-		agentAnswers := func(task *interfaces.BknAgentTask) {
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(task, nil)
+		agentAnswers := func(turn chatTurn) {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(turn)
 		}
 
 		Convey("It asks as the caller about the object type as the editor has it, with the last turns\n", func() {
 			readDraft(staffDraft())
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
-				DoAndReturn(func(_ context.Context, _ interfaces.AccountInfo, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
 					So(req.AgentID, ShouldEqual, askAgentID)
 					schema, _ := json.Marshal(req.ResponseFormat)
 					So(string(schema), ShouldContainSubstring, `"enum":["name","comment","primary_keys","display_key","data_property"]`)
@@ -187,7 +217,7 @@ func Test_AskObjectType(t *testing.T) {
 					So(len(in.History), ShouldEqual, 3)
 					So(in.History[0].Question, ShouldEqual, "q2")
 					So([]rune(in.History[2].Answer), ShouldHaveLength, askAnswerMaxLength)
-					return answered(`{"answer":"  可以，工号没有重复。 ","revisions":[]}`), nil
+					return answered(`{"revisions":[]}`, "  可以，", "工号没有重复。 ")(ctx, account, req, on)
 				})
 
 			got, err := askAbout("employees", interfaces.DraftAskRequest{Question: "  工号能做标识吗？ ",
@@ -342,66 +372,117 @@ func Test_AskObjectType(t *testing.T) {
 				Field: interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS, Value: []string{"visit_id"}, Reason: "每次就诊一个编号"}})
 		})
 
-		Convey("It waits for the task, reading it again until it finishes\n", func() {
+		Convey("A streamed answer starts once bkn-agent answers and hands on each piece in order\n", func() {
 			readDraft(staffDraft())
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
-				Return(&interfaces.BknAgentTask{TaskID: "k1", Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil)
-			gomock.InOrder(
-				ba.EXPECT().GetTask(gomock.Any(), caller, "k1").Return(nil, errors.New("blip")),
-				ba.EXPECT().GetTask(gomock.Any(), caller, "k1").Return(answered(`{"answer":"好","revisions":[]}`), nil),
-			)
+			agentAnswers(revised(`{"field":"name","value":"员工"}`))
+			var seen []string
+			stream := &interfaces.DraftAskStream{Start: func() { seen = append(seen, "start") },
+				Token: func(text string) { seen = append(seen, text) }}
+
+			got, err := svc.AskObjectType(ctx, token, "p1", "employees", interfaces.DraftAskRequest{Question: "问"}, caller, stream)
+
+			So(err, ShouldBeNil)
+			So(seen, ShouldResemble, []string{"start", "答", "复"})
+			So(got.Answer, ShouldEqual, "答复")
+			So(len(got.Revisions), ShouldEqual, 1)
+		})
+
+		Convey("A long answer is cut to its bound in the result\n", func() {
+			readDraft(staffDraft())
+			agentAnswers(answered(`{"revisions":[]}`, strings.Repeat("长", askAnswerMaxLength), "多"))
 
 			got, err := ask("问")
 
 			So(err, ShouldBeNil)
-			So(got.Answer, ShouldEqual, "好")
+			So([]rune(got.Answer), ShouldHaveLength, askAnswerMaxLength)
 		})
 
-		Convey("A task that does not finish in time is a timeout\n", func() {
+		Convey("An answer that does not end in time is a timeout, the text so far handed on\n", func() {
+			svc.askWait = 20 * time.Millisecond
 			readDraft(staffDraft())
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
-				Return(&interfaces.BknAgentTask{TaskID: "k1", Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil)
-			ba.EXPECT().GetTask(gomock.Any(), caller, "k1").
-				Return(&interfaces.BknAgentTask{TaskID: "k1", Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil).AnyTimes()
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _ interfaces.AccountInfo, _ *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
+					on(chatEvent("meta", `{}`))
+					on(tokenEvent("一半"))
+					<-ctx.Done()
+					return ctx.Err()
+				})
+			var text []string
+			stream := &interfaces.DraftAskStream{Start: func() {}, Token: func(t string) { text = append(text, t) }}
+
+			_, err := svc.AskObjectType(ctx, token, "p1", "employees", interfaces.DraftAskRequest{Question: "问"}, caller, stream)
+
+			shouldBeHTTPError(err, http.StatusGatewayTimeout, perrors.BknProject_Draft_AskTimeout)
+			So(text, ShouldResemble, []string{"一半"})
+		})
+
+		Convey("bkn-agent running out of time is a timeout too\n", func() {
+			readDraft(staffDraft())
+			agentAnswers(streamed(tokenEvent("一半"),
+				chatEvent(interfaces.BKN_AGENT_CHAT_ERROR, `{"code":"BknAgent.Chat.Timeout","detail":"40"}`)))
 
 			_, err := ask("问")
 
 			shouldBeHTTPError(err, http.StatusGatewayTimeout, perrors.BknProject_Draft_AskTimeout)
-			So(clock.Sub(time.Unix(0, 0)), ShouldBeLessThanOrEqualTo, askDeadline+askPoll)
 		})
 
-		Convey("A request cut while waiting stops waiting at once\n", func() {
+		Convey("A request cut while answering is unavailable, not a timeout\n", func() {
 			readDraft(staffDraft())
 			cut, cancel := context.WithCancel(ctx)
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
-				DoAndReturn(func(context.Context, interfaces.AccountInfo, *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _ interfaces.AccountInfo, _ *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
 					cancel()
-					return &interfaces.BknAgentTask{TaskID: "k1", Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil
+					return ctx.Err()
 				})
 
-			_, err := svc.AskObjectType(cut, token, "p1", "employees", interfaces.DraftAskRequest{Question: "问"}, caller)
+			_, err := svc.AskObjectType(cut, token, "p1", "employees", interfaces.DraftAskRequest{Question: "问"}, caller, nil)
 
 			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
-			// No poll was made: the task is never read, and no time passed.
-			So(clock, ShouldEqual, time.Unix(0, 0))
 		})
 
-		Convey("An Agent that cannot run, fails or answers outside its schema is unavailable\n", func() {
-			for _, run := range []func(){
-				func() { ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("down")) },
-				func() {
-					agentAnswers(&interfaces.BknAgentTask{TaskID: "k1", Status: interfaces.BKN_AGENT_TASK_FAILED})
+		Convey("An Agent that is refused, fails, is cut or answers outside its schema is unavailable\n", func() {
+			started := false
+			stream := &interfaces.DraftAskStream{Start: func() { started = true }, Token: func(string) {}}
+			for _, turn := range []chatTurn{
+				func(context.Context, interfaces.AccountInfo, *interfaces.BknAgentChatRequest, func(interfaces.BknAgentChatEvent)) error {
+					return &interfaces.BknAgentError{HTTPCode: http.StatusBadRequest, Code: "BknAgent.Chat.ModeMismatch"}
 				},
-				func() { agentAnswers(answered("not json")) },
-				func() { agentAnswers(answered(`{"answer":" "}`)) },
+				// Failing after its result, as when recording the turn fails.
+				streamed(tokenEvent("答"), chatEvent(interfaces.BKN_AGENT_CHAT_STRUCTURED, `{"content":{"revisions":[]}}`),
+					chatEvent(interfaces.BKN_AGENT_CHAT_ERROR, `{"code":"BknAgent.Chat.Failed"}`)),
+				func(_ context.Context, _ interfaces.AccountInfo, _ *interfaces.BknAgentChatRequest, on func(interfaces.BknAgentChatEvent)) error {
+					on(tokenEvent("答"))
+					return interfaces.ErrBknAgentAnswerCut
+				},
+				streamed(tokenEvent("答"), chatEvent(interfaces.BKN_AGENT_CHAT_DONE, `{}`)),
+				streamed(tokenEvent("答"), chatEvent(interfaces.BKN_AGENT_CHAT_STRUCTURED, `{"content":"not an object"}`),
+					chatEvent(interfaces.BKN_AGENT_CHAT_DONE, `{}`)),
+				answered(`{"revisions":[]}`, " "),
 			} {
 				readDraft(staffDraft())
-				run()
+				agentAnswers(turn)
 
-				_, err := ask("问")
+				_, err := svc.AskObjectType(ctx, token, "p1", "employees", interfaces.DraftAskRequest{Question: "问"}, caller, stream)
 
 				shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
 			}
+			So(started, ShouldBeTrue)
+		})
+
+		Convey("A refusal before answering does not start the stream\n", func() {
+			readDraft(staffDraft())
+			agentAnswers(func(context.Context, interfaces.AccountInfo, *interfaces.BknAgentChatRequest, func(interfaces.BknAgentChatEvent)) error {
+				return &interfaces.BknAgentError{HTTPCode: http.StatusNotFound, Code: "BknAgent.NotFound"}
+			})
+			started := false
+
+			_, err := svc.AskObjectType(ctx, token, "p1", "employees", interfaces.DraftAskRequest{Question: "问"}, caller,
+				&interfaces.DraftAskStream{Start: func() { started = true }, Token: func(string) {}})
+
+			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
+			So(started, ShouldBeFalse)
 		})
 
 		Convey("A blank or long question is refused before anything is read\n", func() {
@@ -442,10 +523,10 @@ func Test_AskRelationType(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 		}
 		askAbout := func(item string, req interfaces.DraftRelationAskRequest) (*interfaces.DraftAskAnswer, error) {
-			return svc.AskRelationType(ctx, token, "p1", item, req, caller)
+			return svc.AskRelationType(ctx, token, "p1", item, req, caller, nil)
 		}
-		agentAnswers := func(task *interfaces.BknAgentTask) {
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(task, nil)
+		agentAnswers := func(turn chatTurn) {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(turn)
 		}
 		ends := func(source string, target string, mapping ...string) interfaces.DraftAskEndsRevision {
 			e := interfaces.DraftAskEndsRevision{SourceObjectTypeID: source, TargetObjectTypeID: target,
@@ -460,8 +541,9 @@ func Test_AskRelationType(t *testing.T) {
 
 		Convey("It asks about the relation type and both its ends\n", func() {
 			readDraft(shipmentDraft())
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
-				DoAndReturn(func(_ context.Context, _ interfaces.AccountInfo, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
 					schema, _ := json.Marshal(req.ResponseFormat)
 					So(string(schema), ShouldContainSubstring, `"enum":["name","comment","ends"]`)
 					var in askInput
@@ -476,7 +558,7 @@ func Test_AskRelationType(t *testing.T) {
 					So(len(in.Ends), ShouldEqual, 2)
 					So(in.Ends[0].ID, ShouldEqual, "shipments")
 					So(in.Ends[1].Identity, ShouldResemble, []string{"station_id"})
-					return answered(`{"answer":"它按站点编号关联。","revisions":[]}`), nil
+					return answered(`{"revisions":[]}`, "它按站点编号关联。")(ctx, account, req, on)
 				})
 			rules, _ := json.Marshal(ends("shipments", "stations", "via_station", "station_id").MappingRules)
 
@@ -490,12 +572,13 @@ func Test_AskRelationType(t *testing.T) {
 
 		Convey("A form whose mapping the save would refuse leaves the draft's join to ask about\n", func() {
 			readDraft(shipmentDraft())
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).
-				DoAndReturn(func(_ context.Context, _ interfaces.AccountInfo, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
 					var in askInput
 					So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
 					So(in.RelationType.Mapping[0].SourceProperty, ShouldEqual, "origin_station")
-					return answered(`{"answer":"好","revisions":[]}`), nil
+					return answered(`{"revisions":[]}`, "好")(ctx, account, req, on)
 				})
 
 			_, err := askAbout("shipments_from", interfaces.DraftRelationAskRequest{Question: "问",
@@ -596,11 +679,11 @@ func Test_AskRevisionsSave(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").DoAndReturn(func(context.Context, string) (*interfaces.Draft, bool, error) {
 				return staffDraft(), true, nil
 			}).Times(2)
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(revised(
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(revised(
 				`{"field":"primary_keys","properties":["emp_no"]}`, `{"field":"name","value":"员工"}`,
 				`{"field":"comment","value":"在职员工"}`, `{"field":"display_key","value":"full_name"}`,
-				`{"field":"data_property","property":{"name":"salary","display_name":"月薪"}}`), nil)
-			got, err := svc.AskObjectType(ctx, token, "p1", "employees", interfaces.DraftAskRequest{Question: "怎么改？"}, caller)
+				`{"field":"data_property","property":{"name":"salary","display_name":"月薪"}}`))
+			got, err := svc.AskObjectType(ctx, token, "p1", "employees", interfaces.DraftAskRequest{Question: "怎么改？"}, caller, nil)
 			So(err, ShouldBeNil)
 			So(len(got.Revisions), ShouldEqual, 5)
 
@@ -641,9 +724,9 @@ func Test_AskRevisionsSave(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").DoAndReturn(func(context.Context, string) (*interfaces.Draft, bool, error) {
 				return shipmentDraft(), true, nil
 			}).Times(2)
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(revised(
-				`{"field":"ends","mapping":[{"source_property":"via_station","target_property":"station_id"}]}`), nil)
-			got, err := svc.AskRelationType(ctx, token, "p1", "shipments_from", interfaces.DraftRelationAskRequest{Question: "怎么改？"}, caller)
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(revised(
+				`{"field":"ends","mapping":[{"source_property":"via_station","target_property":"station_id"}]}`))
+			got, err := svc.AskRelationType(ctx, token, "p1", "shipments_from", interfaces.DraftRelationAskRequest{Question: "怎么改？"}, caller, nil)
 			So(err, ShouldBeNil)
 			So(len(got.Revisions), ShouldEqual, 1)
 

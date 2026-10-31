@@ -7,6 +7,7 @@ package draft
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -23,17 +24,16 @@ import (
 )
 
 // Ask AI: a question about one item of the draft, an object type or a relation type, answered by
-// a bkn-agent task Agent from the item as the draft holds it and as the editor's unsaved form has
+// a bkn-agent chat Agent from the item as the draft holds it and as the editor's unsaved form has
 // it. It reads the draft and never writes it: the revisions it proposes are checked by the rules
 // of the item's save, and a person saves them, which records the decision.
 
 const (
-	// askAgentID is the bkn-agent task Agent that answers questions about a draft item.
+	// askAgentID is the bkn-agent chat Agent that answers questions about a draft item.
 	askAgentID = "bkn-project-ontology-ask"
-	// askDeadline bounds the wait within the request: gateways commonly cut requests at 60 seconds.
-	askDeadline    = 45 * time.Second
-	askPoll        = time.Second
-	askReadTimeout = 10 * time.Second
+	// askDeadline bounds an answer: gateways commonly cut a request that is not streamed at 60
+	// seconds.
+	askDeadline = 45 * time.Second
 	// The answer's bounds, in characters; the reason is short.
 	askAnswerMaxLength = 600
 	askValueMaxLength  = 255
@@ -119,8 +119,8 @@ type askRelation struct {
 	HitRate       *float64                       `json:"hit_rate,omitempty"`
 }
 
+// askOutput is the structured result that follows the answer's text.
 type askOutput struct {
-	Answer    string              `json:"answer"`
 	Revisions []askRevisionOutput `json:"revisions"`
 }
 
@@ -137,8 +137,8 @@ type askRevisionOutput struct {
 	Reason     string                               `json:"reason"`
 }
 
-// askResponseFormat is the JSON Schema of an answer: short, with a few revisions of the fields
-// given.
+// askResponseFormat is the JSON Schema of the result that follows the answer: a few revisions of
+// the fields given.
 func askResponseFormat(fields []string) map[string]any {
 	str := func(max int) map[string]any { return map[string]any{"type": "string", "maxLength": max} }
 	object := func(properties map[string]any, required ...string) map[string]any {
@@ -161,14 +161,12 @@ func askResponseFormat(fields []string) map[string]any {
 		"reason": str(askReasonMaxLength),
 	}, "field", "reason")
 	return object(map[string]any{
-		"answer":    str(askAnswerMaxLength),
 		"revisions": map[string]any{"type": "array", "maxItems": askMaxRevisions, "items": revision},
-	}, "answer", "revisions")
+	}, "revisions")
 }
 
 // askTurn is a question ready to ask: the message the Agent reads, the fields it may revise, and
-// how its output becomes the answer. Asking waits for the task; a streamed ask would read the same
-// message and finish the same way.
+// how its result becomes the answer.
 type askTurn struct {
 	input  askInput
 	finish func(out *askOutput) *interfaces.DraftAskAnswer
@@ -200,13 +198,14 @@ func (s *draftService) readyToAsk(ctx context.Context, token string, projectID s
 	return draft, in, nil
 }
 
-// ask runs the turn's Agent and finishes its answer.
-func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, turn askTurn) (*interfaces.DraftAskAnswer, error) {
+// ask runs the turn's Agent, streaming its text when asked to, and finishes its answer.
+func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, turn askTurn,
+	stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
 	message, err := json.Marshal(turn.input)
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	out, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable))
+	text, out, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream)
 	if code != "" {
 		status := http.StatusBadGateway
 		if code == perrors.BknProject_Draft_AskTimeout {
@@ -215,12 +214,12 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 		return nil, httperrors.NewHTTPError(ctx, status, code)
 	}
 	answer := turn.finish(out)
-	answer.Answer = truncateRunes(strings.TrimSpace(out.Answer), askAnswerMaxLength)
+	answer.Answer = truncateRunes(text, askAnswerMaxLength)
 	return answer, nil
 }
 
 func (s *draftService) AskObjectType(ctx context.Context, token string, projectID string, itemID string,
-	req interfaces.DraftAskRequest, caller interfaces.AccountInfo) (*interfaces.DraftAskAnswer, error) {
+	req interfaces.DraftAskRequest, caller interfaces.AccountInfo, stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "AskObjectType")
 	defer span.End()
 
@@ -253,7 +252,7 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 		})
 		answer.Suggestion = suggestionOf(answer.Revisions)
 		return answer
-	}})
+	}}, stream)
 	if err != nil {
 		span.SetStatus(codes.Error, "Ask AI failed")
 		return nil, err
@@ -263,7 +262,7 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 }
 
 func (s *draftService) AskRelationType(ctx context.Context, token string, projectID string, itemID string,
-	req interfaces.DraftRelationAskRequest, caller interfaces.AccountInfo) (*interfaces.DraftAskAnswer, error) {
+	req interfaces.DraftRelationAskRequest, caller interfaces.AccountInfo, stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "AskRelationType")
 	defer span.End()
 
@@ -293,7 +292,7 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 		return checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
 			return s.relationTypeRevision(ctx, &draft.Items, base, r, caller)
 		})
-	}})
+	}}, stream)
 	if err != nil {
 		span.SetStatus(codes.Error, "Ask AI failed")
 		return nil, err
@@ -333,49 +332,68 @@ func askRelationOf(r *interfaces.DraftRelationType) askRelation {
 	return relation
 }
 
-// askAgent runs the Agent as the caller and waits for it until the deadline. It returns the
-// answer, or the code of why there is none.
+// askAgent runs the chat Agent as the caller until the deadline, handing the answer's text to
+// stream as it is written. It returns the text and the result that follows it, or the code of why
+// there is none.
 func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountInfo, message string,
-	format map[string]any) (*askOutput, string) {
+	format map[string]any, stream *interfaces.DraftAskStream) (string, *askOutput, string) {
 	if s.ba == nil {
-		return nil, perrors.BknProject_Draft_AskUnavailable
+		return "", nil, perrors.BknProject_Draft_AskUnavailable
 	}
-	deadline := s.clock().Add(askDeadline)
-	task, err := s.ba.RunTask(ctx, caller, &interfaces.BknAgentRunRequest{
-		AgentID: askAgentID, Message: message, ResponseFormat: format,
+	wait := s.askWait
+	if wait == 0 {
+		wait = askDeadline
+	}
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	var text strings.Builder
+	var out *askOutput
+	var failure string
+	started := false
+	err := s.ba.Chat(ctx, caller, &interfaces.BknAgentChatRequest{AgentID: askAgentID, Message: message,
+		ResponseFormat: format}, func(event interfaces.BknAgentChatEvent) {
+		if !started && stream != nil {
+			stream.Start()
+		}
+		started = true
+		var data struct {
+			Content json.RawMessage `json:"content"`
+			Code    string          `json:"code"`
+			Detail  string          `json:"detail"`
+		}
+		_ = json.Unmarshal(event.Data, &data)
+		switch event.Name {
+		case interfaces.BKN_AGENT_CHAT_TOKEN:
+			var token string
+			if json.Unmarshal(data.Content, &token) == nil && token != "" {
+				text.WriteString(token)
+				if stream != nil {
+					stream.Token(token)
+				}
+			}
+		case interfaces.BKN_AGENT_CHAT_STRUCTURED:
+			var result askOutput
+			if json.Unmarshal(data.Content, &result) == nil {
+				out = &result
+			}
+		case interfaces.BKN_AGENT_CHAT_ERROR:
+			failure = data.Code
+			otellog.LogWarn(ctx, fmt.Sprintf("Ask AI failed: %s %s", data.Code, data.Detail))
+		}
 	})
-	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Run Ask AI: %v", err))
-		return nil, perrors.BknProject_Draft_AskUnavailable
+	answer := strings.TrimSpace(text.String())
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded), failure == interfaces.BKN_AGENT_CHAT_TIMEOUT:
+		otellog.LogWarn(ctx, "Ask AI did not finish in time")
+		return answer, nil, perrors.BknProject_Draft_AskTimeout
+	case err != nil:
+		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI: %v", err))
+		return answer, nil, perrors.BknProject_Draft_AskUnavailable
+	case failure != "", out == nil, answer == "":
+		otellog.LogWarn(ctx, "Ask AI answered what its schema does not allow")
+		return answer, nil, perrors.BknProject_Draft_AskUnavailable
 	}
-	for !task.Terminal() {
-		// A request the client or the gateway cut has no one to answer: stop waiting.
-		if ctx.Err() != nil {
-			return nil, perrors.BknProject_Draft_AskUnavailable
-		}
-		if !s.clock().Before(deadline) {
-			otellog.LogWarn(ctx, fmt.Sprintf("Ask AI task %s did not finish", task.TaskID))
-			return nil, perrors.BknProject_Draft_AskTimeout
-		}
-		s.wait(askPoll)
-		// A failed read is tried again until the deadline: the task goes on in bkn-agent.
-		readCtx, cancel := context.WithTimeout(ctx, askReadTimeout)
-		read, err := s.ba.GetTask(readCtx, caller, task.TaskID)
-		cancel()
-		if err == nil {
-			task = read
-		}
-	}
-	if task.Status != interfaces.BKN_AGENT_TASK_SUCCEEDED {
-		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI task %s failed: %s", task.TaskID, task.FailureDetail))
-		return nil, perrors.BknProject_Draft_AskUnavailable
-	}
-	var out askOutput
-	if err := json.Unmarshal([]byte(task.Output), &out); err != nil || strings.TrimSpace(out.Answer) == "" {
-		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI task %s answered what its schema does not allow", task.TaskID))
-		return nil, perrors.BknProject_Draft_AskUnavailable
-	}
-	return &out, ""
+	return answer, out, ""
 }
 
 func truncateRunes(s string, max int) string {
@@ -383,19 +401,4 @@ func truncateRunes(s string, max int) string {
 		return s
 	}
 	return string([]rune(s)[:max])
-}
-
-func (s *draftService) clock() time.Time {
-	if s.now != nil {
-		return s.now()
-	}
-	return time.Now()
-}
-
-func (s *draftService) wait(d time.Duration) {
-	if s.sleep != nil {
-		s.sleep(d)
-		return
-	}
-	time.Sleep(d)
 }

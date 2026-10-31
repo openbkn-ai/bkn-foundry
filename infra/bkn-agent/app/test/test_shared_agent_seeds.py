@@ -2916,7 +2916,7 @@ def ontology_ask_prompt(db):
     ).fetchone()
 
 
-def test_ontology_ask_seed_is_a_published_tool_free_task_with_a_bounded_output():
+def test_ontology_ask_seed_is_a_published_tool_free_chat_agent_with_a_bounded_output():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         agent = db.execute(
@@ -2924,7 +2924,7 @@ def test_ontology_ask_seed_is_a_published_tool_free_task_with_a_bounded_output()
             " WHERE f_agent_id='bkn-project-ontology-ask'"
         ).fetchone()
         assert agent["f_name"] == "BKNProjectOntologyAsk"
-        assert agent["f_mode"] == "task"
+        assert agent["f_mode"] == "chat"
         assert agent["f_model"] == ""
         assert json.loads(agent["f_tools"]) == []
         assert json.loads(agent["f_skills"]) == []
@@ -2940,6 +2940,9 @@ def test_ontology_ask_seed_is_a_published_tool_free_task_with_a_bounded_output()
         for field in ("- name:", "- comment:", "- primary_keys,", "- display_key,", "- data_property,", "- ends,"):
             assert field in prompt
         assert "history" in prompt and "relation_type" in prompt
+        # The answer is streamed as text; revisions follow when the server asks for them.
+        assert "as plain text with no Markdown and no JSON" in prompt
+        assert "after your reply the server asks for the changes" in prompt
         assert "never guess facts about the data" in prompt
         assert "It carries no row data." in prompt
         locales = json.loads(localized)
@@ -3025,11 +3028,14 @@ def test_ontology_ask_v2_upgrade_preserves_operator_prompt_choices(customization
                 )
         before = snapshot(db)
         apply(db, ONTOLOGY_ASK_REVISIONS)
+        # Prompts and versions stay as the operator left them; only the mode follows bkn-project.
+        assert db.execute("SELECT f_mode FROM t_agent WHERE f_agent_id='bkn-project-ontology-ask'").fetchone()[0] == "chat"
+        db.execute("UPDATE t_agent SET f_mode='task' WHERE f_agent_id='bkn-project-ontology-ask'")
         assert snapshot(db) == before
 
 
 @pytest.mark.parametrize("customized", [False, True])
-@pytest.mark.parametrize("limit", range(1, 9))
+@pytest.mark.parametrize("limit", range(1, 10))
 def test_ontology_ask_v2_upgrade_resumes_between_statements(limit, customized):
     with database() as db, database() as expected:
         for connection in (db, expected):
@@ -3088,3 +3094,17 @@ def test_ontology_ask_v2_upgrade_does_not_switch_a_prompt_head_an_operator_saved
         apply(db, ONTOLOGY_ASK_REVISIONS)
         assert snapshot(db)[1] == head_before
         assert snapshot(db)[3] == agent_versions_before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+def test_ontology_ask_v2_upgrade_makes_it_a_chat_agent_whatever_its_prompt(customized):
+    with database() as db:
+        ask_v1_state(db)
+        if customized:
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt'"
+                " WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=1"
+            )
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        mode = db.execute("SELECT f_mode FROM t_agent WHERE f_agent_id='bkn-project-ontology-ask'").fetchone()[0]
+        assert mode == "chat"

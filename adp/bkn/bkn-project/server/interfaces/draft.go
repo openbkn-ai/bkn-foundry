@@ -427,6 +427,13 @@ type DraftRelationAskRequest struct {
 	History  []DraftAskTurn         `json:"history"`
 }
 
+// DraftAskStream receives an answer as it is written: Start once bkn-agent has begun answering,
+// then Token for each piece of the answer's text, in order.
+type DraftAskStream struct {
+	Start func()
+	Token func(text string)
+}
+
 // DraftAskTurn is an earlier question and its answer.
 type DraftAskTurn struct {
 	Question string `json:"question"`
