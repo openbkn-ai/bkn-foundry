@@ -35,7 +35,9 @@ const (
 
 	// RESOURCE_NAME_MAX_LENGTH is the maximum number of Unicode characters in a BKN resource name.
 	RESOURCE_NAME_MAX_LENGTH = 128
-	// OBJECT_NAME_MAX_LENGTH remains the limit for tags and property display names.
+	// PROPERTY_DISPLAY_NAME_MAX_LENGTH is the maximum number of Unicode characters in a property display name.
+	PROPERTY_DISPLAY_NAME_MAX_LENGTH = 128
+	// OBJECT_NAME_MAX_LENGTH remains the limit for tags.
 	OBJECT_NAME_MAX_LENGTH = 40
 	DEFAULT_NAME_PATTERN   = ""
 	DEFAULT_OFFEST         = "0"

@@ -297,8 +297,8 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
-		if utf8.RuneCountInString(prop.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
-			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDisplayNameTooLong", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH})
+		if utf8.RuneCountInString(prop.DisplayName) > interfaces.PROPERTY_DISPLAY_NAME_MAX_LENGTH {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDisplayNameTooLong", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "limit": interfaces.PROPERTY_DISPLAY_NAME_MAX_LENGTH})
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
@@ -494,8 +494,8 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
-	if utf8.RuneCountInString(dataProperty.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyDisplayNameTooLong", map[string]any{"property": dataProperty.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH})
+	if utf8.RuneCountInString(dataProperty.DisplayName) > interfaces.PROPERTY_DISPLAY_NAME_MAX_LENGTH {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyDisplayNameTooLong", map[string]any{"property": dataProperty.Name, "limit": interfaces.PROPERTY_DISPLAY_NAME_MAX_LENGTH})
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}

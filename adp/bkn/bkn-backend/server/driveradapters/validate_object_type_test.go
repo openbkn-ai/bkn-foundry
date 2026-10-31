@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -656,6 +657,74 @@ func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
 			}
 			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
 				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
+			}
+		})
+	}
+}
+
+func Test_PropertyDisplayNameBoundaries(t *testing.T) {
+	ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
+	testCases := []struct {
+		name        string
+		displayName string
+		wantError   bool
+	}{
+		{name: "ASCII 40", displayName: strings.Repeat("a", 40)},
+		{name: "ASCII 41", displayName: strings.Repeat("a", 41)},
+		{name: "Chinese 127", displayName: strings.Repeat("名", 127)},
+		{name: "mixed 128", displayName: strings.Repeat("a名", 63) + "😀b"},
+		{name: "emoji 128", displayName: strings.Repeat("😀", 128)},
+		{name: "emoji 129", displayName: strings.Repeat("😀", 129), wantError: true},
+		{name: "empty", displayName: "", wantError: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dataErr := ValidateDataProperty(ctx, &interfaces.DataProperty{
+				Name:        "data_property",
+				Type:        "string",
+				DisplayName: testCase.displayName,
+			}, true)
+
+			logicErr := validateObjectTypeLogicProperties(ctx, &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTName: "object type",
+					LogicProperties: []*interfaces.LogicProperty{
+						{
+							Name:        "logic_property",
+							Type:        interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							DisplayName: testCase.displayName,
+							DataSource: &interfaces.ResourceInfo{
+								Type:   interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+								BoxID:  "box-1",
+								ToolID: "tool-1",
+							},
+						},
+					},
+				},
+			}, true)
+
+			if testCase.wantError {
+				if dataErr == nil || logicErr == nil {
+					t.Fatalf("display name validation errors = (%v, %v), want both non-nil", dataErr, logicErr)
+				}
+				if testCase.displayName != "" {
+					for _, err := range []error{dataErr, logicErr} {
+						httpErr, ok := err.(*httperrors.HTTPError)
+						if !ok {
+							t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
+						}
+						details, ok := httpErr.ErrorDetails.(string)
+						if !ok || !strings.Contains(details, "128") {
+							t.Fatalf("error details = %#v, want 128-character limit", httpErr.ErrorDetails)
+						}
+					}
+				}
+				return
+			}
+
+			if dataErr != nil || logicErr != nil {
+				t.Fatalf("display name validation errors = (%v, %v), want nil", dataErr, logicErr)
 			}
 		})
 	}

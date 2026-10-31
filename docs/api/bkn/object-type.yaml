@@ -1673,7 +1673,8 @@ components:
           description: Property name. It may contain only lowercase English letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         display_name:
-          description: Property display name
+          description: Property display name. Required and limited to 128 Unicode characters.
+          maxLength: 128
           type: string
         type:
           description: Property data type. Supported values are the documented data field types.
@@ -1889,6 +1890,7 @@ components:
       description: Logical properties
       required:
         - name
+        - display_name
         - data_source
         - parameters
       type: object
@@ -1897,7 +1899,8 @@ components:
           description: Property name. It may contain only lowercase English letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         display_name:
-          description: Property display name
+          description: Property display name. Required and limited to 128 Unicode characters.
+          maxLength: 128
           type: string
         type:
           description: Logical property type. Only tool is supported; object metrics are independent instance-set resources.

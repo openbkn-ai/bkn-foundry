@@ -23,13 +23,16 @@ import (
 // come from a counter (stats.go).
 
 const (
-	maxIDLength         = 40
-	maxDisplayNameRunes = 40
-	tableKindEntity     = "entity"
-	tableKindCodeTable  = "code_table"
-	tableKindLinkTable  = "link_table"
-	excludedPrivacy     = "privacy"
-	excludedUnsupported = "unsupported_type"
+	maxIDLength                = 40
+	maxDisplayNameRunes        = 128
+	maxInferredNameRunes       = 40
+	maxAliasRunes              = 40
+	legacyRelationNameMaxRunes = 40
+	tableKindEntity            = "entity"
+	tableKindCodeTable         = "code_table"
+	tableKindLinkTable         = "link_table"
+	excludedPrivacy            = "privacy"
+	excludedUnsupported        = "unsupported_type"
 )
 
 // bknTypes maps vega's field types to BKN data types; types missing here are not mapped.
@@ -136,7 +139,7 @@ func displayName(comment string, name string) string {
 	if i := strings.IndexAny(clause, clauseEnds); i >= 0 {
 		clause = strings.TrimSpace(clause[:i])
 	}
-	if clause == "" || utf8.RuneCountInString(clause) > maxDisplayNameRunes {
+	if clause == "" || utf8.RuneCountInString(clause) > maxInferredNameRunes {
 		return name
 	}
 	return clause

@@ -405,7 +405,7 @@ Incremental Key: updated_at
 | 列 | 必需 | 说明 |
 |----|:----:|------|
 | `Name` | 是 | 属性名，规则见 §4.2；为空时整个文件解析失败 |
-| `Display Name` | 是 | 显示名，非空，最长 40 个字符 |
+| `Display Name` | 是 | 显示名，非空，最长 128 个 Unicode 字符 |
 | `Type` | 否 | 数据类型，见 §6.4 |
 | `Description` | 否 | 说明；属性级业务规则写在这里 |
 | `Mapped Field` | 否 | 映射到资源中的字段名 |
@@ -509,7 +509,7 @@ Incremental Key: updated_at
 
 `####` 后的文字就是属性名。粗体标签必须独占一行，写作 `**Meta**` 等。逻辑属性最多 1000 个。
 
-**Meta**：`Display Name` 必需，最长 40 个字符；`Type` 只支持 `tool`。对象指标是独立的实例集合资源，不作为对象类逻辑属性的数据源。
+**Meta**：`Display Name` 必需，最长 128 个 Unicode 字符；`Type` 只支持 `tool`。对象指标是独立的实例集合资源，不作为对象类逻辑属性的数据源。
 
 **Source**：
 

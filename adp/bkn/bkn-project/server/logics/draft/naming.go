@@ -52,7 +52,8 @@ func pickName(language string, physical string, candidates ...string) (string, [
 	}
 	var aliases []string
 	for _, c := range names {
-		if c != name && nameLanguage(c) != nameLanguage(name) && !strings.ContainsAny(c, ",\uff0c") {
+		if c != name && nameLanguage(c) != nameLanguage(name) &&
+			utf8.RuneCountInString(c) <= maxAliasRunes && !strings.ContainsAny(c, ",\uff0c") {
 			aliases = append(aliases, c)
 		}
 	}
@@ -113,13 +114,20 @@ func (d *drafter) relationName(source *interfaces.DraftObjectType, property stri
 
 // relationNameIn is relationName in a given naming language.
 func relationNameIn(language string, source *interfaces.DraftObjectType, property string, id string) string {
+	return relationNameInWithLimit(language, source, property, id, maxDisplayNameRunes)
+}
+
+// relationNameInWithLimit applies the display-name contract of a particular draft version. It lets
+// edits recognise relation names generated before the contract grew from 40 to 128 characters.
+func relationNameInWithLimit(language string, source *interfaces.DraftObjectType, property string, id string,
+	maxRunes int) string {
 	p := findProperty(source, property)
 	if p == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
 		return id
 	}
 	name, err := i18n.Render(i18n.Language(language), messageRelationName,
 		map[string]any{"object_type": source.Name, "field": p.DisplayName})
-	if err != nil || utf8.RuneCountInString(name) > maxDisplayNameRunes {
+	if err != nil || utf8.RuneCountInString(name) > maxRunes {
 		return p.DisplayName
 	}
 	return name
@@ -175,7 +183,9 @@ func renameRelations(items *interfaces.DraftItems, objectType *interfaces.DraftO
 			continue
 		}
 		property := r.Mapping[0].SourceProperty
-		if drafted := relationNameIn(language, objectType, property, r.ID); r.Name != drafted {
+		drafted := relationNameIn(language, objectType, property, r.ID)
+		legacyDrafted := relationNameInWithLimit(language, objectType, property, r.ID, legacyRelationNameMaxRunes)
+		if r.Name != drafted && r.Name != legacyDrafted {
 			continue
 		}
 		if again := relationNameIn(language, &renamed, property, r.ID); again != r.Name {

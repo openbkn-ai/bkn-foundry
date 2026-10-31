@@ -354,6 +354,31 @@ func Test_EditDraftItem(t *testing.T) {
 				"采购单的供应商编号", "采购订单的供应商编号"})
 		})
 
+		Convey("Renaming recognises a relation drafted under the former 40-character limit\n", func() {
+			orders := draft.Items.ObjectTypes[1]
+			orders.Name = strings.Repeat("旧", legacyRelationNameMaxRunes)
+			orders.Properties = []*interfaces.DraftProperty{
+				{Name: "supplier_no", DisplayName: "供应商编号", MappedField: "supplier_no"},
+			}
+			draft.Items.RelationTypes = []*interfaces.DraftRelationType{{
+				ID: "orders_to_customers", Name: "供应商编号", Source: "orders", Target: "customers",
+				Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "supplier_no", TargetProperty: "id"}},
+			}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			expectWrite()
+			e := edit()
+			e.Name = strPtr("采购订单")
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
+
+			So(err, ShouldBeNil)
+			So(got.Items.RelationTypes[0].Name, ShouldEqual, "采购订单的供应商编号")
+			last := written.Items.Decisions[len(written.Items.Decisions)-1]
+			So([]any{last.Kind, last.ItemID, last.Action, last.Before, last.After}, ShouldResemble, []any{
+				interfaces.DRAFT_KIND_RELATION_TYPES, "orders_to_customers", interfaces.DRAFT_DECISION_RENAME,
+				"供应商编号", "采购订单的供应商编号"})
+		})
+
 		Convey("An object type without an identity cannot be adopted\n", func() {
 			draft.Items.ObjectTypes[2].NeedsIdentity = true
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
