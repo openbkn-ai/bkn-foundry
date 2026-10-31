@@ -344,6 +344,37 @@ func Test_ConfigureIndexes(t *testing.T) {
 			So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_CREATED, "t9", ""})
 		})
 
+		Convey("without an update field the identity's fields stand in for one, and the index is built\n", func() {
+			orders.IncrementalKey = ""
+			reads(interfaces.VegaTableIndex{})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", interfaces.VegaIndexKeys{
+				PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}}).Return(true, nil)
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_orders").Return("t9", nil)
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_CREATED, "t9", ""})
+		})
+
+		Convey("an update field chosen after the identity stood in replaces it, and the index is built again\n", func() {
+			reads(interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"},
+				LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx_orders"})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", interfaces.VegaIndexKeys{
+				IncrementalFields: []string{"updated_at"}, ReplaceIncremental: []string{"id"}}).Return(true, nil)
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_orders").Return("t10", nil)
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_CREATED, "t10", ""})
+		})
+
+		Convey("a ready index refreshed by its update field already is left as it is\n", func() {
+			reads(interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"updated_at"},
+				LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx_orders"})
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+		})
+
 		Convey("only the keys the table lacks need to be known\n", func() {
 			// The table has a primary key already: an identity vega would not take does not matter.
 			orders.PrimaryKeys = []string{"note"}
@@ -364,7 +395,6 @@ func Test_ConfigureIndexes(t *testing.T) {
 				reason         string
 			}{
 				{[]string{"note"}, "changed_at", interfaces.INDEX_FIELD_PRIMARY_KEY},
-				{[]string{"order_id"}, "", interfaces.INDEX_FIELD_INCREMENTAL},
 				// Drafted as integer, but vega's large_integer refreshes no index.
 				{[]string{"order_id"}, "seq", interfaces.INDEX_FIELD_INCREMENTAL},
 				{[]string{"note"}, "", interfaces.INDEX_FIELD_PRIMARY_KEY + "," + interfaces.INDEX_FIELD_INCREMENTAL},

@@ -463,7 +463,10 @@ func (va *vegaAccess) UpdateIndexConfig(ctx context.Context, account interfaces.
 	changed := false
 	for key, fields := range map[string][]string{
 		indexPrimaryKeyFields: keys.PrimaryKeyFields, indexIncrementalFields: keys.IncrementalFields} {
-		if set, _ := config[key].([]any); len(set) == 0 && len(fields) > 0 {
+		set, _ := config[key].([]any)
+		replaces := key == indexIncrementalFields && len(keys.ReplaceIncremental) > 0 &&
+			sameFields(set, keys.ReplaceIncremental) && !sameFields(set, fields)
+		if (len(set) == 0 || replaces) && len(fields) > 0 {
 			config[key], changed = fields, true
 		}
 	}
@@ -720,4 +723,17 @@ func toTable(r *resource) *interfaces.VegaTable {
 		})
 	}
 	return table
+}
+
+// sameFields tells whether the fields read from a configuration are fields, in order.
+func sameFields(set []any, fields []string) bool {
+	if len(set) != len(fields) {
+		return false
+	}
+	for i, f := range set {
+		if name, _ := f.(string); name != fields[i] {
+			return false
+		}
+	}
+	return true
 }

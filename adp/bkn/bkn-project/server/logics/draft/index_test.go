@@ -87,6 +87,46 @@ func Test_IndexReadiness(t *testing.T) {
 	})
 }
 
+func Test_IndexUpdateField(t *testing.T) {
+	Convey("Test what an index item says of its object type's update field\n", t, func() {
+		ot := func(incremental string, props ...*interfaces.DraftProperty) *interfaces.DraftObjectType {
+			return &interfaces.DraftObjectType{ID: "materials", Name: "Materials", Adopted: true, IncrementalKey: incremental,
+				Table: interfaces.DraftTable{ResourceID: "r_mat", Name: "materials", CatalogID: "c1"}, PrimaryKeys: []string{"code"},
+				Properties: append([]*interfaces.DraftProperty{{Name: "code", Type: "string", MappedField: "code"}}, props...)}
+		}
+		read := func(o *interfaces.DraftObjectType, index interfaces.VegaTableIndex) interfaces.ProjectIndexItem {
+			items := &interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{o}}
+			return indexReadiness(items, map[string]*interfaces.VegaTable{"r_mat": {ID: "r_mat", Index: index}}, nil, true).ObjectTypes[0]
+		}
+		standIn := interfaces.VegaTableIndex{PrimaryKeyFields: []string{"code"}, IncrementalFields: []string{"code"},
+			LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx"}
+
+		Convey("No time property: the index is only ever rebuilt in full, and nothing is asked\n", func() {
+			item := read(ot(""), standIn)
+
+			So(item.State, ShouldEqual, interfaces.INDEX_STATE_READY)
+			So(item.FullRebuildOnly, ShouldBeTrue)
+			So(item.UpdateField, ShouldResemble, interfaces.ProjectIndexUpdateField{Candidates: []string{}})
+		})
+
+		Convey("A time property not chosen yet: the pending item asks for it\n", func() {
+			item := read(ot("", &interfaces.DraftProperty{Name: "changed", Type: "datetime", MappedField: "changed"}), standIn)
+
+			So(item.FullRebuildOnly, ShouldBeTrue)
+			So(item.UpdateField, ShouldResemble, interfaces.ProjectIndexUpdateField{Candidates: []string{"changed"}, Pending: true})
+		})
+
+		Convey("An update field chosen and configured refreshes by what changed\n", func() {
+			item := read(ot("changed", &interfaces.DraftProperty{Name: "changed", Type: "datetime", MappedField: "changed"}),
+				interfaces.VegaTableIndex{PrimaryKeyFields: []string{"code"}, IncrementalFields: []string{"changed"}})
+
+			So(item.FullRebuildOnly, ShouldBeFalse)
+			So(item.UpdateField.Property, ShouldEqual, "changed")
+			So(item.UpdateField.Pending, ShouldBeFalse)
+		})
+	})
+}
+
 func Test_GetIndex(t *testing.T) {
 	Convey("Test reading the readiness of a project's local indexes\n", t, func() {
 		ctrl := gomock.NewController(t)

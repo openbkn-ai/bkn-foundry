@@ -63,6 +63,9 @@ type VegaBuildTask struct {
 type VegaIndexKeys struct {
 	PrimaryKeyFields  []string
 	IncrementalFields []string
+	// ReplaceIncremental, when set, lets IncrementalFields replace incremental fields the table has
+	// only while they are exactly these: the identity's fields standing in for an update field.
+	ReplaceIncremental []string
 }
 
 // How a semantic understanding task writes its result to the table.
@@ -156,7 +159,8 @@ type VegaAccess interface {
 	// returns the task id. A refusal is a *VegaError.
 	CreateBuildTask(ctx context.Context, account VegaAccount, resourceID string) (string, error)
 	// UpdateIndexConfig gives the table's index configuration the keys it lacks, as the account,
-	// keeping every key it has; it tells whether it wrote anything. A refusal is a *VegaError.
+	// keeping every key it has but incremental fields keys.ReplaceIncremental names; it tells whether
+	// it wrote anything. A refusal is a *VegaError.
 	UpdateIndexConfig(ctx context.Context, account VegaAccount, resourceID string, keys VegaIndexKeys) (bool, error)
 	// CreateSemanticTask starts, as the account, a semantic understanding task of the table written
 	// in language (zh-CN or en-US) and applied by applyMode, one of the VEGA_SEMANTIC_APPLY_* modes;
