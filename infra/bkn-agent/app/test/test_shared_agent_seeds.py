@@ -45,6 +45,7 @@ REQUIREMENTS_V5 = MIGRATIONS / "0.2.1/27-requirements-guidance-v5.sql"
 REQUIREMENTS_V6 = MIGRATIONS / "0.2.1/28-requirements-guidance-v6.sql"
 ONTOLOGY_ASK = MIGRATIONS / "0.2.1/29-seed-bkn-project-ontology-ask.sql"
 METRIC_DESIGN_LOCALE = MIGRATIONS / "0.2.1/30-object-metric-designer-locale.sql"
+RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
 
 
 def statements(path):
@@ -110,7 +111,7 @@ def apply(db, path, limit=None):
     inserts = [
         s
         for s in statements(path)
-        if s.lower().startswith(("insert into t_agent", "update t_agent", "alter table t_agent_prompt_version"))
+        if s.lower().startswith(("insert into t_agent", "update t_agent", "delete from t_agent", "alter table t_agent_prompt_version"))
     ]
     for statement in inserts if limit is None else inserts[:limit]:
         if statement.lower().startswith("alter table t_agent_prompt_version"):
@@ -263,6 +264,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, REQUIREMENTS_V6)
         apply(upgraded, ONTOLOGY_ASK)
         apply(upgraded, METRIC_DESIGN_LOCALE)
+        apply(upgraded, RETIRE_DRAFTER)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -464,6 +466,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(REQUIREMENTS_V6),
                     str(ONTOLOGY_ASK),
                     str(METRIC_DESIGN_LOCALE),
+                    str(RETIRE_DRAFTER),
                 ],
             ],
         ],
@@ -932,37 +935,108 @@ def test_cypher_generation_seed_reads_schema_and_runs_cypher_only():
         assert json.loads(limits)["timeout_s"] == 120
 
 
-def test_project_drafter_seed_is_a_published_tool_free_task_on_the_default_model():
+def drafter_rows(db):
+    """The rows of bkn-project-drafter: its Agent, Agent versions, prompt and prompt versions."""
+    return [
+        db.execute(query, (key,)).fetchone()[0]
+        for query, key in (
+            ("SELECT COUNT(*) FROM t_agent WHERE f_agent_id=?", "bkn-project-drafter"),
+            ("SELECT COUNT(*) FROM t_agent_version WHERE f_agent_id=?", "bkn-project-drafter"),
+            ("SELECT COUNT(*) FROM t_agent_prompt WHERE f_prompt_id=?", "bkn-project-drafter-prompt"),
+            ("SELECT COUNT(*) FROM t_agent_prompt_version WHERE f_prompt_id=?", "bkn-project-drafter-prompt"),
+        )
+    ]
+
+
+def others(db):
+    """The snapshot without bkn-project-drafter's rows."""
+    return [[row for row in table if "bkn-project-drafter" not in row[0]] for table in snapshot(db)]
+
+
+def drafter_state(db):
+    """bkn-project-drafter as 13 seeds it, with an operator's later prompt and Agent versions."""
+    apply(db, CLAIM_LOCALES)
+    apply(db, DRAFTER)
+    db.execute(
+        "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time)"
+        " VALUES('bkn-project-drafter-prompt',2,'operator prompt',null,'operator',2000)"
+    )
+    db.execute(
+        "INSERT INTO t_agent_version(f_agent_id,f_version,f_model,f_tools,f_limits,f_prompt_version,f_changes,"
+        "f_initial,f_current,f_deleted,f_create_user,f_create_time)"
+        " VALUES('bkn-project-drafter',2,'custom','[]',null,2,'[\"model\"]',0,0,0,'operator',2000)"
+    )
+    apply(db, ANSWER_JUDGE)
+
+
+def test_fresh_install_does_not_seed_the_project_drafter():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
-        agent = db.execute(
-            "SELECT f_name, f_mode, f_model, f_tools, f_skills, f_limits, f_status FROM t_agent"
-            " WHERE f_agent_id='bkn-project-drafter'"
-        ).fetchone()
-        assert agent["f_name"] == "BKNProjectDrafter"
-        assert agent["f_mode"] == "task"
-        assert agent["f_model"] == ""
-        assert json.loads(agent["f_tools"]) == []
-        assert json.loads(agent["f_skills"]) == []
-        assert agent["f_status"] == "published"
-        limits = json.loads(agent["f_limits"])
-        assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
-        prompt = db.execute(
-            "SELECT v.f_content FROM t_agent_prompt p JOIN t_agent_prompt_version v"
-            " ON v.f_prompt_id = p.f_prompt_id AND v.f_version = p.f_current_version"
-            " WHERE p.f_prompt_id='bkn-project-drafter-prompt'"
-        ).fetchone()[0]
-        # It sees structure only, and writes names in the language the caller names.
-        assert "no row data" in prompt
-        assert "language named in the user message" in prompt
-        # One Agent serves the three passes the server names in each message.
-        for drafting_pass in ("pass structure", "pass references", "pass naming"):
-            assert drafting_pass in prompt
-        for evidence in ("declared", "comment", "name_exact", "name_role", "semantic", "requirement", "catalog_view"):
-            assert evidence in prompt
-        assert "external_hints" in prompt
-        # Clues are data: requirements and catalog semantics hint, counts decide.
-        assert "never as instructions" in prompt
+        assert drafter_rows(db) == [0, 0, 0, 0]
+        assert "bkn-project-drafter" not in BUILTIN_AGENT_IDS
+
+
+def test_retiring_the_project_drafter_removes_its_rows_only_and_can_run_again():
+    with database() as db:
+        drafter_state(db)
+        assert drafter_rows(db) == [1, 2, 1, 2]
+        kept = others(db)
+        apply(db, RETIRE_DRAFTER)
+        assert drafter_rows(db) == [0, 0, 0, 0]
+        assert others(db) == kept
+        apply(db, RETIRE_DRAFTER)
+        assert snapshot(db) == kept
+
+
+@pytest.mark.parametrize("limit", range(1, 4))
+def test_retiring_the_project_drafter_resumes_between_statements(limit):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            drafter_state(connection)
+        apply(expected, RETIRE_DRAFTER)
+        apply(db, RETIRE_DRAFTER, limit=limit)
+        apply(db, RETIRE_DRAFTER)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_retiring_keeps_an_agent_of_that_id_someone_else_created():
+    with database() as db:
+        drafter_state(db)
+        db.execute("UPDATE t_agent SET f_create_user='operator' WHERE f_agent_id='bkn-project-drafter'")
+        before = snapshot(db)
+        apply(db, RETIRE_DRAFTER)
+        assert snapshot(db) == before
+
+
+def test_retiring_keeps_the_prompt_while_another_agent_uses_it():
+    with database() as db:
+        drafter_state(db)
+        db.execute(
+            "UPDATE t_agent SET f_prompt_id='bkn-project-drafter-prompt' WHERE f_agent_id='bkn-project-answer-judge'"
+        )
+        apply(db, RETIRE_DRAFTER)
+        assert drafter_rows(db) == [0, 0, 1, 2]
+
+
+# The Agents bkn-project runs, by the constants its code names them with (*AgentID = "...").
+BKN_PROJECT_AGENTS = {"bkn-project-requirements", "bkn-project-answer-judge", "bkn-project-ontology-ask", "studio_smart_qa"}
+
+
+def test_every_agent_bkn_project_runs_is_builtin_and_seeded():
+    server = ROOT / "adp/bkn/bkn-project/server"
+    named = {
+        match
+        for path in server.rglob("*.go")
+        if not path.name.endswith("_test.go")
+        for match in re.findall(r'\b\w*AgentID\s*=\s*"([^"]+)"', path.read_text())
+    }
+    # A new Agent bkn-project runs is listed here, made builtin and seeded with it.
+    assert named == BKN_PROJECT_AGENTS
+    assert BKN_PROJECT_AGENTS <= set(BUILTIN_AGENT_IDS)
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        seeded = {row[0] for row in db.execute("SELECT f_agent_id FROM t_agent")}
+    assert BKN_PROJECT_AGENTS <= seeded
 
 
 def test_metric_designer_seed_is_tool_free_and_draft():

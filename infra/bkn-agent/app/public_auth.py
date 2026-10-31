@@ -152,7 +152,6 @@ BUILTIN_AGENT_IDS = (
     "business_provenance_optimizer",
     "catalog-semantic-understanding",
     "resource-semantic-understanding",
-    "bkn-project-drafter",
     "bkn-project-requirements",
     "bkn-project-answer-judge",
     "bkn-project-ontology-ask",
