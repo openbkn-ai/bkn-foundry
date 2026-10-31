@@ -13,6 +13,9 @@ import (
 	"unicode/utf8"
 )
 
+// MaxSummaryQueryLimit bounds public summary pages and selected-ID metadata reads.
+const MaxSummaryQueryLimit = 200
+
 type ActionSummary struct {
 	Recommended int    `json:"recommended"`
 	Approved    int    `json:"approved"`

@@ -2583,7 +2583,7 @@ const docTemplate = `{
         },
         "/traces": {
             "get": {
-                "description": "Returns stable trace summaries with reverse request links, generated from authorized trace evidence.",
+                "description": "Returns authorized technical Trace summaries. Ordinary pages batch-read missing projection IDs from canonical SQL metadata; unavailable Span counts are explicit. Content/root-filtered pages and dependency failures retain their existing behavior.",
                 "produces": [
                     "application/json"
                 ],
