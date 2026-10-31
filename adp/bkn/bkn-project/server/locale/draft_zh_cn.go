@@ -9,6 +9,8 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var draftZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknProject.Draft.InvalidProperty":       "属性无效 有属性映射了表中不存在的字段、已被其他属性映射的字段或与字段类型不符的类型，或者名称、显示名不合法，详见 error_details。",
+		"BknProject.Draft.PropertyInUse":         "属性正被使用 要移除的属性还被关系用于连接，请先处理这些关系，详见 error_details。",
 		"BknProject.Draft.NoCatalogs":            "项目没有数据目录 请先为项目选择结构化数据所在的数据目录，再起草本体。",
 		"BknProject.Draft.NotFound":              "草稿不存在 该项目还没有起草本体。",
 		"BknProject.Draft.Drafting":              "正在起草 该项目的本体正在起草，请等待完成后再重新起草。",

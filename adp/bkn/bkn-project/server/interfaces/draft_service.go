@@ -21,6 +21,11 @@ type DraftService interface {
 	// decisions and returns the draft.
 	EditDraftItem(ctx context.Context, token string, projectID string, kind string, itemID string,
 		edit DraftItemEdit, caller AccountInfo) (*Draft, error)
+	// SaveObjectType saves an object type of a ready draft as a whole: its name, description, data
+	// properties, identity, title and update field, reading its table from vega-backend as the caller,
+	// and records it as decisions.
+	SaveObjectType(ctx context.Context, token string, projectID string, itemID string, save DraftObjectTypeSave,
+		caller AccountInfo) (*Draft, error)
 	// ChooseIdentity sets the properties that identify an object type's records, counting a
 	// single-field key over the full table as the caller, and records it as a decision.
 	ChooseIdentity(ctx context.Context, token string, projectID string, itemID string,

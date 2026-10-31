@@ -38,6 +38,7 @@ func (r *restHandler) GetStatusByEx(c *gin.Context)      { r.withExVisitor(c, r.
 func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.GetPending) }
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
 func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
+func (r *restHandler) SaveObjectTypeByEx(c *gin.Context) { r.withExVisitor(c, r.SaveObjectType) }
 func (r *restHandler) AskObjectTypeByEx(c *gin.Context)  { r.withExVisitor(c, r.AskObjectType) }
 
 // generateDraftRequest is the optional body of draft:generate.
@@ -429,6 +430,29 @@ func (r *restHandler) DraftSourceChanges(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 	draft, err := r.drs.DraftSourceChanges(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+// SaveObjectType saves an object type of the draft as a whole and replies the draft.
+func (r *restHandler) SaveObjectType(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, itemID := c.Param("project_id"), c.Param("item_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("item_id").String(itemID))
+
+	var save interfaces.DraftObjectTypeSave
+	if err := c.ShouldBindJSON(&save); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	draft, err := r.drs.SaveObjectType(ctx, visitor.TokenID, id, itemID, save, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return
