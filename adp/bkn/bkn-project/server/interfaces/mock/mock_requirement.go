@@ -241,18 +241,18 @@ func (mr *MockRequirementAccessMockRecorder) SetDocumentType(ctx, projectID, doc
 }
 
 // StartDrafting mocks base method.
-func (m *MockRequirementAccess) StartDrafting(ctx context.Context, req *interfaces.Requirement, staleBefore int64, discardDecisions bool) (bool, error) {
+func (m *MockRequirementAccess) StartDrafting(ctx context.Context, req *interfaces.Requirement, staleBefore, readUpdateTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StartDrafting", ctx, req, staleBefore, discardDecisions)
+	ret := m.ctrl.Call(m, "StartDrafting", ctx, req, staleBefore, readUpdateTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // StartDrafting indicates an expected call of StartDrafting.
-func (mr *MockRequirementAccessMockRecorder) StartDrafting(ctx, req, staleBefore, discardDecisions any) *gomock.Call {
+func (mr *MockRequirementAccessMockRecorder) StartDrafting(ctx, req, staleBefore, readUpdateTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartDrafting", reflect.TypeOf((*MockRequirementAccess)(nil).StartDrafting), ctx, req, staleBefore, discardDecisions)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartDrafting", reflect.TypeOf((*MockRequirementAccess)(nil).StartDrafting), ctx, req, staleBefore, readUpdateTime)
 }
 
 // StartGenerating mocks base method.

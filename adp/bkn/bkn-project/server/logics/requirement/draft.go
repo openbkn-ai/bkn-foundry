@@ -938,9 +938,18 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	// A specification still drafting past the Agent's deadline, with a minute to record it, has
 	// ended without being recorded; it no longer holds the project.
 	staleBefore := now - draftDeadline.Milliseconds() - time.Minute.Milliseconds()
-	// The decisions made are kept with the rest, so none is discarded unasked.
-	started, err := s.ra.StartDrafting(ctx, req, staleBefore, true)
+	// The row holds what is kept while drafting runs, so a drafting cut short keeps it too, and is
+	// written only over the specification it was read from.
+	readUpdateTime := int64(0)
+	if kept != nil {
+		req.Spec = *startingSpec(kept)
+		readUpdateTime = previous.UpdateTime
+	}
+	started, err := s.ra.StartDrafting(ctx, req, staleBefore, readUpdateTime)
 	switch {
+	case errors.Is(err, interfaces.ErrRequirementChanged):
+		span.SetStatus(codes.Error, "Changed meanwhile")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_Stale)
 	case err != nil:
 		span.SetStatus(codes.Error, "Start drafting failed")
 		return nil, internalError(ctx, "Start drafting failed", err)
@@ -1017,9 +1026,12 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		}
 		tables = append(tables, listed...)
 	}
+	// Scenarios rest on the adopted ontology: drafting does not run without it, nor leaves its
+	// questions unsigned.
 	draft, ok, err := s.da.GetDraft(ctx, req.ProjectID)
 	if err != nil || !ok {
-		draft = nil
+		fail(failureInterrupted, fmt.Errorf("read draft: %v", err))
+		return
 	}
 	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft, kept)
 	if err != nil {

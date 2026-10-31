@@ -699,8 +699,8 @@ func Test_RequirementDrafting(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil)
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
 			// A run may wait for the Agent twice, the second time after an answer it could not use.
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-2*agentDeadline.Milliseconds()-time.Minute.Milliseconds(), true).
-				DoAndReturn(func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-2*agentDeadline.Milliseconds()-time.Minute.Milliseconds(), int64(0)).
+				DoAndReturn(func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
 					So(req.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_DRAFTING)
 					So(req.Version, ShouldEqual, 1)
 					So(req.RunID, ShouldEqual, "run1")
@@ -820,7 +820,7 @@ func Test_RequirementDrafting(t *testing.T) {
 			}
 			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return(many, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, nil)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil)
 			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
 				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{}`}, nil)
 			expectFinish()
@@ -830,6 +830,24 @@ func Test_RequirementDrafting(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 			So(finished.Spec.TablesOmitted, ShouldEqual, 3)
+		})
+
+		Convey("A draft that cannot be read once drafting runs fails it, the Agent not asked\n", func() {
+			for _, read := range []func(){
+				func() { da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil) },
+				func() { da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, errors.New("db down")) },
+			} {
+				expectStart()
+				va.EXPECT().ListTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil).Times(2)
+				read()
+				expectFinish()
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+				So(finished.Error, ShouldEqual, failureInterrupted)
+			}
 		})
 
 		Convey("Properties beyond what one drafting names of an object type are counted in the specification\n", func() {
@@ -1031,9 +1049,9 @@ func Test_RequirementDrafting(t *testing.T) {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil).Times(2)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil).Times(2)
 			// Decisions are kept with the rest, never discarded unasked: drafting again is never refused for them.
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(false, nil)
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), true).DoAndReturn(
-				func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(false, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).DoAndReturn(
+				func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
 					So(req.Version, ShouldEqual, 3)
 					return false, errors.New("db down")
 				})
@@ -1056,8 +1074,8 @@ func Test_RequirementDrafting(t *testing.T) {
 				draft.Items.Confirmation = &interfaces.DraftConfirmation{RequirementVersion: c.confirmed}
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 				want := c.want
-				ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), true).DoAndReturn(
-					func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
+				ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).DoAndReturn(
+					func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
 						So(req.Version, ShouldEqual, want)
 						return false, nil
 					})

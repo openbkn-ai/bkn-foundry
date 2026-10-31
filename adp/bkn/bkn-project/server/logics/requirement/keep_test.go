@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -227,7 +229,12 @@ func Test_RedraftKeeps(t *testing.T) {
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
 		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(staffOntology(), true, nil).Times(2)
 		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(staffSpec(), true, nil)
-		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(true, nil)
+		// The row holds what is kept from the start, written only over the specification as read.
+		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(7)).DoAndReturn(
+			func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
+				So(ids(req.Spec.Questions, questionID), ShouldResemble, []string{"q1", "q2"})
+				return true, nil
+			})
 		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, nil)
 		var finished *interfaces.Requirement
 		ra.EXPECT().FinishDrafting(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -274,6 +281,25 @@ func Test_RedraftKeeps(t *testing.T) {
 		})
 	})
 
+	Convey("A specification changed since it was read is not drafted over\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 1000 }, newID: func() string { return "run2" }}
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, CatalogIDs: []string{"c1"}}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(staffOntology(), true, nil)
+		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(staffSpec(), true, nil)
+		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(7)).Return(false, interfaces.ErrRequirementChanged)
+
+		_, err := svc.GenerateRequirement(context.Background(), token, "p1", caller, false)
+
+		shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Stale)
+	})
+
 	Convey("Starting over keeps nothing\n", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -290,7 +316,7 @@ func Test_RedraftKeeps(t *testing.T) {
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
 		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(staffOntology(), true, nil).Times(2)
 		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(staffSpec(), true, nil)
-		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(true, nil)
+		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(true, nil)
 		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, nil)
 		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {

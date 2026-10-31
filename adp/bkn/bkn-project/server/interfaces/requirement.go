@@ -65,9 +65,9 @@ const (
 	REQUIREMENT_ITEM_RELATION_TYPE = "relation_type"
 )
 
-// ErrRequirementHasDecisions is returned by StartDrafting when drafting again would discard the
-// conflict resolutions and modelling choices people made and the caller did not agree to that.
-var ErrRequirementHasDecisions = errors.New("requirement specification has decisions")
+// ErrRequirementChanged is returned by StartDrafting when the specification changed since it was
+// read: what drafting keeps of it would miss the change.
+var ErrRequirementChanged = errors.New("requirement specification changed since it was read")
 
 // RequirementDocument is one row of t_bkn_project_requirement_document. Lists leave out the
 // content and blocks.
@@ -377,21 +377,6 @@ type RequirementRejected struct {
 	Reason string `json:"reason"`
 }
 
-// HasDecisions tells whether people resolved, deferred or chose anything in the specification.
-func (s *RequirementSpec) HasDecisions() bool {
-	for _, c := range s.Conflicts {
-		if c.Resolution != nil || c.Deferred {
-			return true
-		}
-	}
-	for _, c := range s.Choices {
-		if c.Decision != nil {
-			return true
-		}
-	}
-	return false
-}
-
 // Kinds of specification items, as the routes name them.
 const (
 	REQUIREMENT_KIND_SCENARIOS = "scenarios"
@@ -686,11 +671,12 @@ type RequirementAccess interface {
 
 	// GetRequirement returns the project's specification, and false when it has none.
 	GetRequirement(ctx context.Context, projectID string) (*Requirement, bool, error)
-	// StartDrafting writes req, in the drafting state, as the project's specification unless the
-	// project is drafting already; it reports whether it did. A specification drafting since
-	// before staleBefore is taken over. One with decisions is replaced only when
-	// discardDecisions is set; otherwise it returns ErrRequirementHasDecisions.
-	StartDrafting(ctx context.Context, req *Requirement, staleBefore int64, discardDecisions bool) (bool, error)
+	// StartDrafting writes req, in the drafting state and holding what drafting keeps, as the
+	// project's specification unless the project is drafting already; it reports whether it did. A
+	// specification drafting since before staleBefore is taken over. When readUpdateTime is set,
+	// the specification is replaced only while its update time is still readUpdateTime, as read for
+	// what drafting keeps; otherwise it returns ErrRequirementChanged.
+	StartDrafting(ctx context.Context, req *Requirement, staleBefore int64, readUpdateTime int64) (bool, error)
 	// UpdateRequirement writes the spec and update time of a ready specification whose update
 	// time is still readUpdateTime; false means someone changed it meanwhile.
 	UpdateRequirement(ctx context.Context, req *Requirement, readUpdateTime int64) (bool, error)
