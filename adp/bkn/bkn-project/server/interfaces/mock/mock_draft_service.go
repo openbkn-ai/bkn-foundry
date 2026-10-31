@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// AddCatalogs mocks base method.
+func (m *MockDraftService) AddCatalogs(ctx context.Context, token, projectID string, req interfaces.DraftAddCatalogs, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddCatalogs", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddCatalogs indicates an expected call of AddCatalogs.
+func (mr *MockDraftServiceMockRecorder) AddCatalogs(ctx, token, projectID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddCatalogs", reflect.TypeOf((*MockDraftService)(nil).AddCatalogs), ctx, token, projectID, req, caller)
+}
+
 // AskObjectType mocks base method.
 func (m *MockDraftService) AskObjectType(ctx context.Context, token, projectID, itemID string, req interfaces.DraftAskRequest, caller interfaces.AccountInfo) (*interfaces.DraftAskAnswer, error) {
 	m.ctrl.T.Helper()

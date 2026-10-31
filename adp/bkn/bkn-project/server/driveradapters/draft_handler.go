@@ -28,6 +28,7 @@ const (
 	checkActionRun           = "check:run"
 	indexActionBuild         = "index:build"
 	catalogsActionUnderstand = "catalogs:understand"
+	catalogsActionAdd        = "catalogs:add"
 	sourceChangesActionDraft = "source-changes:draft"
 )
 
@@ -72,6 +73,8 @@ func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
 	switch c.Param("action") {
 	case catalogsActionUnderstand:
 		r.withExVisitor(c, r.Understand)
+	case catalogsActionAdd:
+		r.withExVisitor(c, r.AddCatalogs)
 	case projectActionSync:
 		r.withExVisitor(c, r.SyncProjectBranch)
 	case driftActionCommit:
@@ -459,4 +462,28 @@ func (r *restHandler) SaveObjectType(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+// AddCatalogs adds catalogs to the project and drafts their tables into the draft; it replies 202
+// with the draft, drafting.
+func (r *restHandler) AddCatalogs(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.DraftAddCatalogs
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	draft, err := r.drs.AddCatalogs(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, draft)
 }

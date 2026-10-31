@@ -198,6 +198,18 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(serveBody(handler, http.MethodPut, path, []byte(`{`)).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("catalogs:add adds the catalogs sent and replies 202 with the draft\n", func() {
+			const project = "/api/bkn-project/v1/projects/p1"
+			drs.EXPECT().AddCatalogs(gomock.Any(), "Bearer t", "p1", interfaces.DraftAddCatalogs{CatalogIDs: []string{"c2"}}, caller).
+				Return(&interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_DRAFTING}, nil)
+
+			w := serveBody(handler, http.MethodPost, project+"/catalogs:add", []byte(`{"catalog_ids":["c2"]}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
+			So(w.Body.String(), ShouldContainSubstring, `"status":"drafting"`)
+			So(serveBody(handler, http.MethodPost, project+"/catalogs:add", []byte(`{`)).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("The understanding is read as the caller\n", func() {
 			drs.EXPECT().GetUnderstanding(gomock.Any(), "Bearer t", "p1", caller).
 				Return(&interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{

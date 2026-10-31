@@ -209,13 +209,15 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	}
 }
 
-func (s *draftService) draftFromTables(ctx context.Context, projectID string, catalogIDs []string, language string,
-	caller interfaces.AccountInfo) (interfaces.DraftItems, error) {
+// readCatalogs reads the tables of the catalogs as the caller, with their structure: the tables
+// drafting can read, and those it cannot, with why.
+func (s *draftService) readCatalogs(ctx context.Context, catalogIDs []string,
+	caller interfaces.AccountInfo) ([]*interfaces.VegaTable, []*interfaces.DraftTable, error) {
 	listed := []*interfaces.VegaTable{}
 	for _, catalogID := range catalogIDs {
 		tables, err := s.va.ListTables(ctx, caller, catalogID)
 		if err != nil {
-			return interfaces.DraftItems{}, fmt.Errorf("list tables of catalog %s: %w", catalogID, err)
+			return nil, nil, fmt.Errorf("list tables of catalog %s: %w", catalogID, err)
 		}
 		listed = append(listed, tables...)
 	}
@@ -225,7 +227,7 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 	}
 	read, err := s.va.GetTables(ctx, caller, ids)
 	if err != nil {
-		return interfaces.DraftItems{}, fmt.Errorf("read tables: %w", err)
+		return nil, nil, fmt.Errorf("read tables: %w", err)
 	}
 	byID := map[string]*interfaces.VegaTable{}
 	for _, table := range read {
@@ -248,6 +250,15 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 		default:
 			tables = append(tables, full)
 		}
+	}
+	return tables, unreadable, nil
+}
+
+func (s *draftService) draftFromTables(ctx context.Context, projectID string, catalogIDs []string, language string,
+	caller interfaces.AccountInfo) (interfaces.DraftItems, error) {
+	tables, unreadable, err := s.readCatalogs(ctx, catalogIDs, caller)
+	if err != nil {
+		return interfaces.DraftItems{}, err
 	}
 	registered, err := s.ira.ListIDs(ctx, projectID)
 	if err != nil {

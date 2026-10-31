@@ -117,6 +117,9 @@ type DraftItems struct {
 	// its update time is the draft's: any change since moves the draft's on. Drafting again keeps
 	// it, unconfirmed, so what it wrote on the branch stays the draft's.
 	Confirmation *DraftConfirmation `json:"confirmation,omitempty"`
+	// Adding is the catalogs being added and drafted in the background; the draft stays ready and
+	// editable meanwhile, and their items join it when done. Absent when none are.
+	Adding *DraftAdding `json:"adding,omitempty"`
 }
 
 // DraftInputs is what drafting read and how it decided: the version of its rules and their
@@ -266,6 +269,8 @@ type DraftObjectType struct {
 	// IncrementalKey is the property whose value grows whenever a record changes, which the
 	// table's local index is refreshed by; empty when none is known.
 	IncrementalKey string `json:"incremental_key,omitempty"`
+	// AddedByCatalog is the catalog whose adding drafted the object type, absent for one the draft was made with.
+	AddedByCatalog string `json:"added_by_catalog,omitempty"`
 }
 
 type DraftProperty struct {
@@ -324,6 +329,8 @@ type DraftRelationType struct {
 	// a hit rate below the suggest or adopt rate, a field of too few values to tell a match from
 	// chance, or an object type at an end that is not adopted. Empty for a relation drafting adopted.
 	ProposedBecause string `json:"proposed_because,omitempty"`
+	// AddedByCatalog is the catalog whose adding drafted the relation type, absent for one the draft was made with.
+	AddedByCatalog string `json:"added_by_catalog,omitempty"`
 }
 
 type DraftFieldMapping struct {
@@ -357,6 +364,8 @@ type DraftValueType struct {
 	CodeTable   DraftTable         `json:"code_table"`
 	UsedBy      []DraftPropertyRef `json:"used_by"`
 	Adopted     bool               `json:"adopted"`
+	// AddedByCatalog is the catalog whose adding drafted the value type, absent for one the draft was made with.
+	AddedByCatalog string `json:"added_by_catalog,omitempty"`
 }
 
 type DraftEnumValue struct {
@@ -463,4 +472,31 @@ type DraftPropertyUse struct {
 	Relation ReleaseItem `json:"relation"`
 	Source   ReleaseItem `json:"source"`
 	Target   ReleaseItem `json:"target"`
+}
+
+// DRAFT_DECISION_ADD_CATALOGS records catalogs added to a draft: After lists the catalogs and the
+// items their tables drafted, or why drafting them failed.
+const DRAFT_DECISION_ADD_CATALOGS = "add_catalogs"
+
+// DraftAdding is catalogs being added to a draft, by whom and since when. One past the drafting
+// timeout has ended without being recorded, such as on a restart, and holds nothing.
+type DraftAdding struct {
+	CatalogIDs []string    `json:"catalog_ids"`
+	By         AccountInfo `json:"by"`
+	Since      int64       `json:"since"`
+}
+
+// DraftAddCatalogs is the body of adding catalogs to a project's draft.
+type DraftAddCatalogs struct {
+	CatalogIDs []string `json:"catalog_ids"`
+}
+
+// DraftCatalogsAdded is what adding catalogs drafted, as its decision records it.
+type DraftCatalogsAdded struct {
+	CatalogIDs    []string `json:"catalog_ids"`
+	ObjectTypes   []string `json:"object_types"`
+	RelationTypes []string `json:"relation_types"`
+	ValueTypes    []string `json:"value_types"`
+	// Error is why drafting the catalogs failed; the draft stayed as it was.
+	Error string `json:"error,omitempty"`
 }
