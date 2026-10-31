@@ -193,6 +193,13 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 			}
 		}
 	}
+	if edit.Adopted != nil && *edit.Adopted && wasAdopted && (kind == interfaces.DRAFT_KIND_OBJECT_TYPES ||
+		kind == interfaces.DRAFT_KIND_RELATION_TYPES) {
+		// Adopting what drafting adopted is a person confirming it, once: what a person reviewed stays.
+		if reviewed, _ := reviews(items); reviewed[itemKey(kind, id)] == nil {
+			decide(kind, id, interfaces.DRAFT_DECISION_ADOPT, true, true)
+		}
+	}
 	if edit.Adopted != nil && !*edit.Adopted && !wasAdopted && (kind == interfaces.DRAFT_KIND_OBJECT_TYPES ||
 		kind == interfaces.DRAFT_KIND_RELATION_TYPES) && newExclusion(items, kind, id, edit.Reason) {
 		// Leaving out what drafting left out is a person's decision too, with why.
