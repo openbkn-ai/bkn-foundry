@@ -6,6 +6,7 @@ package driveradapters
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -40,7 +41,14 @@ func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
 func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
 func (r *restHandler) SaveObjectTypeByEx(c *gin.Context) { r.withExVisitor(c, r.SaveObjectType) }
-func (r *restHandler) AskObjectTypeByEx(c *gin.Context)  { r.withExVisitor(c, r.AskObjectType) }
+func (r *restHandler) CreateRelationTypeByEx(c *gin.Context) {
+	r.withExVisitor(c, r.CreateRelationType)
+}
+func (r *restHandler) SaveRelationTypeByEx(c *gin.Context) { r.withExVisitor(c, r.SaveRelationType) }
+func (r *restHandler) DeleteRelationTypeByEx(c *gin.Context) {
+	r.withExVisitor(c, r.DeleteRelationType)
+}
+func (r *restHandler) AskObjectTypeByEx(c *gin.Context) { r.withExVisitor(c, r.AskObjectType) }
 
 // generateDraftRequest is the optional body of draft:generate.
 type generateDraftRequest struct {
@@ -486,4 +494,68 @@ func (r *restHandler) AddCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, draft)
+}
+
+// CreateRelationType makes a relation type of the draft and replies 201 with the draft.
+func (r *restHandler) CreateRelationType(c *gin.Context, visitor hydra.Visitor) {
+	r.saveRelationType(c, visitor, "")
+}
+
+// SaveRelationType saves a relation type of the draft as a whole and replies the draft.
+func (r *restHandler) SaveRelationType(c *gin.Context, visitor hydra.Visitor) {
+	r.saveRelationType(c, visitor, c.Param("item_id"))
+}
+
+// saveRelationType makes a relation type when itemID is empty, else saves that one.
+func (r *restHandler) saveRelationType(c *gin.Context, visitor hydra.Visitor, itemID string) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("item_id").String(itemID))
+
+	var save interfaces.DraftRelationTypeSave
+	if err := c.ShouldBindJSON(&save); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	var draft *interfaces.Draft
+	var err error
+	status := http.StatusOK
+	if itemID == "" {
+		draft, err = r.drs.CreateRelationType(ctx, visitor.TokenID, id, save, visitorAccount(visitor))
+		status = http.StatusCreated
+	} else {
+		draft, err = r.drs.SaveRelationType(ctx, visitor.TokenID, id, itemID, save, visitorAccount(visitor))
+	}
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, status)
+	rest.ReplyOK(c, status, draft)
+}
+
+// DeleteRelationType deletes a relation type a person made, the draft's update time in the query.
+func (r *restHandler) DeleteRelationType(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, itemID := c.Param("project_id"), c.Param("item_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("item_id").String(itemID))
+
+	updateTime, err := strconv.ParseInt(c.Query("update_time"), 10, 64)
+	if err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_MissingUpdateTime))
+		return
+	}
+	draft, err := r.drs.DeleteRelationType(ctx, visitor.TokenID, id, itemID, updateTime, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, draft)
 }
