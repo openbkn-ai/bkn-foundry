@@ -408,3 +408,59 @@ type DraftAskSuggestion struct {
 	Properties []string `json:"properties,omitempty"`
 	Reason     string   `json:"reason"`
 }
+
+// DRAFT_DECISION_SAVE records an object type saved as a whole; Before and After are its
+// properties and keys as they were and became.
+const DRAFT_DECISION_SAVE = "save"
+
+// DraftObjectTypeSave is an object type of a ready draft saved as a whole, shaped as bkn-backend's
+// object type: comment is the description, and each data property maps a field of the object
+// type's table. UpdateTime is the update time of the draft the change was made on.
+type DraftObjectTypeSave struct {
+	UpdateTime     int64                   `json:"update_time"`
+	Name           string                  `json:"name"`
+	Comment        string                  `json:"comment"`
+	DataProperties []DraftDataPropertySave `json:"data_properties"`
+	PrimaryKeys    []string                `json:"primary_keys"`
+	DisplayKey     string                  `json:"display_key"`
+	IncrementalKey string                  `json:"incremental_key"`
+}
+
+// DraftDataPropertySave is a data property as bkn-backend's: a property kept by its name, or a new
+// one, its name made as drafting makes it when left empty. Type, when given, must be the type the
+// field maps to.
+type DraftDataPropertySave struct {
+	Name        string            `json:"name"`
+	DisplayName string            `json:"display_name"`
+	Comment     string            `json:"comment"`
+	Type        string            `json:"type"`
+	MappedField *DraftMappedField `json:"mapped_field"`
+}
+
+// DraftMappedField is the field of the table a property maps, by its name.
+type DraftMappedField struct {
+	Name string `json:"name"`
+}
+
+// DraftObjectTypeSnapshot is what saving an object type records of it, before and after.
+type DraftObjectTypeSnapshot struct {
+	Properties  []DraftPropertySnapshot `json:"properties"`
+	PrimaryKeys []string                `json:"primary_keys"`
+	DisplayKey  string                  `json:"display_key"`
+}
+
+type DraftPropertySnapshot struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
+	MappedField string `json:"mapped_field"`
+}
+
+// DraftPropertyUse is a relation type a property to be removed joins by, named for people to read.
+type DraftPropertyUse struct {
+	Property string      `json:"property"`
+	Relation ReleaseItem `json:"relation"`
+	Source   ReleaseItem `json:"source"`
+	Target   ReleaseItem `json:"target"`
+}

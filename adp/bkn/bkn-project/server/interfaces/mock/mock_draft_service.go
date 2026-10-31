@@ -295,6 +295,21 @@ func (mr *MockDraftServiceMockRecorder) RunCheck(ctx, token, projectID, caller a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCheck", reflect.TypeOf((*MockDraftService)(nil).RunCheck), ctx, token, projectID, caller)
 }
 
+// SaveObjectType mocks base method.
+func (m *MockDraftService) SaveObjectType(ctx context.Context, token, projectID, itemID string, save interfaces.DraftObjectTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveObjectType", ctx, token, projectID, itemID, save, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SaveObjectType indicates an expected call of SaveObjectType.
+func (mr *MockDraftServiceMockRecorder) SaveObjectType(ctx, token, projectID, itemID, save, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveObjectType", reflect.TypeOf((*MockDraftService)(nil).SaveObjectType), ctx, token, projectID, itemID, save, caller)
+}
+
 // Understand mocks base method.
 func (m *MockDraftService) Understand(ctx context.Context, token, projectID string, request interfaces.ProjectUnderstand, caller interfaces.AccountInfo) (*interfaces.ProjectUnderstandSubmitted, error) {
 	m.ctrl.T.Helper()

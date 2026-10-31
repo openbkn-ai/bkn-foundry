@@ -184,6 +184,20 @@ func Test_DraftRestHandler(t *testing.T) {
 				ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("An object type is saved as a whole with the body sent\n", func() {
+			const path = "/api/bkn-project/v1/projects/p1/ontology/draft/object_types/accounts"
+			drs.EXPECT().SaveObjectType(gomock.Any(), "Bearer t", "p1", "accounts", interfaces.DraftObjectTypeSave{
+				UpdateTime: 5, Name: "Accounts", PrimaryKeys: []string{"id"},
+				DataProperties: []interfaces.DraftDataPropertySave{{Name: "id", MappedField: &interfaces.DraftMappedField{Name: "id"}}},
+			}, caller).Return(&interfaces.Draft{ProjectID: "p1"}, nil)
+
+			w := serveBody(handler, http.MethodPut, path,
+				[]byte(`{"update_time":5,"name":"Accounts","primary_keys":["id"],"data_properties":[{"name":"id","mapped_field":{"name":"id"}}]}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(serveBody(handler, http.MethodPut, path, []byte(`{`)).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("The understanding is read as the caller\n", func() {
 			drs.EXPECT().GetUnderstanding(gomock.Any(), "Bearer t", "p1", caller).
 				Return(&interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{

@@ -19,6 +19,7 @@ const (
 	BknProject_Draft_NeedsIdentity         = "BknProject.Draft.NeedsIdentity"
 	BknProject_Draft_NothingAdopted        = "BknProject.Draft.NothingAdopted"
 	BknProject_Draft_InvalidItem           = "BknProject.Draft.InvalidItem"
+	BknProject_Draft_InvalidProperty       = "BknProject.Draft.InvalidProperty"
 	BknProject_Draft_InvalidQuestion       = "BknProject.Draft.InvalidQuestion"
 
 	// 403
@@ -37,6 +38,7 @@ const (
 	BknProject_Draft_FieldNotFound         = "BknProject.Draft.FieldNotFound"
 	BknProject_Draft_CatalogMissing        = "BknProject.Draft.CatalogMissing"
 	BknProject_Draft_HasPending            = "BknProject.Draft.HasPending"
+	BknProject_Draft_PropertyInUse         = "BknProject.Draft.PropertyInUse"
 	BknProject_Draft_PartialNotAccepted    = "BknProject.Draft.PartialNotAccepted"
 	BknProject_Draft_UndecidedNotAccepted  = "BknProject.Draft.UndecidedNotAccepted"
 	BknProject_Draft_ConflictsNotAccepted  = "BknProject.Draft.ConflictsNotAccepted"
@@ -115,6 +117,8 @@ var (
 		BknProject_Draft_CatalogMissing,
 		BknProject_Draft_NothingAdopted,
 		BknProject_Draft_InvalidItem,
+		BknProject_Draft_InvalidProperty,
+		BknProject_Draft_PropertyInUse,
 		BknProject_Draft_InvalidQuestion,
 		BknProject_Draft_AskUnavailable,
 		BknProject_Draft_AskTimeout,
