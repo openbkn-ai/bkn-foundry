@@ -267,7 +267,7 @@ func Test_RedraftKeeps(t *testing.T) {
 		}
 
 		Convey("The kept items stay with their ids and draft times; new questions take this drafting's\n", func() {
-			answer(`{"scenarios":[],"concepts":[],"questions":[{"text":"Who joined this year?","scenario_ids":["kept-s1"],
+			answer(`{"scenarios":[],"concepts":[],"questions":[{"text":"Who joined after {as_of}?","template":"Who joined after {as_of}?","scenario_ids":["kept-s1"],
 				"layer":"knowledge","supplement_reason":"staffing"}],"rules":[],"conflicts":[],"choices":[],"doc_types":[]}`)
 
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
@@ -278,6 +278,9 @@ func Test_RedraftKeeps(t *testing.T) {
 			So(finished.Spec.Questions[0].DraftTime, ShouldEqual, 500)
 			So(finished.Spec.Questions[2].DraftTime, ShouldEqual, 1000)
 			So(finished.Spec.Questions[2].ScenarioIDs, ShouldResemble, []string{"s1"})
+			// People read the text in business words; the template keeps its slot.
+			So(finished.Spec.Questions[2].Text, ShouldEqual, "Who joined after a given date?")
+			So(finished.Spec.Questions[2].Template, ShouldEqual, "Who joined after {as_of}?")
 			// A kept question keeps the ontology it was accepted on; the new one is signed now, as
 			// is a kept one never signed.
 			So(finished.Spec.Questions[0].OntologySignature, ShouldEqual, "as accepted")

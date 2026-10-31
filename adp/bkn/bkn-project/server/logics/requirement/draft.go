@@ -1067,6 +1067,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	for _, q := range spec.Questions {
 		if q.DraftTime == 0 {
 			q.DraftTime = req.CreateTime
+			q.Text = plainText(q, spec, draft, project.NamingLanguage)
 		}
 	}
 	signQuestions(spec.Questions, draft)
