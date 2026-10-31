@@ -27,7 +27,7 @@ type WorkerOptions struct {
 	Now                         func() time.Time
 	BatchSize                   int
 	LockDuration                time.Duration
-	MaxAttempts                 uint32
+	MaxAttempts                 uint32 // Ordinary/unknown errors; recognized search dependency failures use MaxRetryAge.
 	MaxRetryAge                 time.Duration
 	FullJitter                  func(max time.Duration) time.Duration
 	Metrics                     icoremetrics.Recorder
@@ -178,10 +178,15 @@ func (w *Worker) runItem(ctx context.Context, item iprojectionoutbox.Item) (RunR
 		result.Delivered++
 		return result, nil
 	}
-	retryWindowExpired := !item.CreatedAt.IsZero() &&
-		!item.CreatedAt.Add(w.options.MaxRetryAge).After(w.options.Now().UTC())
+	w.options.Metrics.Increment(icoremetrics.ProjectionAttemptErrorsTotal)
+	retryUntil, recoverable, windowErr := w.recoveryDeadline(ctx, item, projectionErr)
+	if windowErr != nil {
+		logProjectionFailure(ctx, item, projectionErr, "recovery_window_unavailable")
+		return result, windowErr
+	}
+	retryWindowExpired := !retryUntil.IsZero() && !retryUntil.After(w.options.Now().UTC())
 	permanent := iprojectionoutbox.IsPermanent(projectionErr)
-	attemptsExhausted := item.Attempts+1 >= w.options.MaxAttempts
+	attemptsExhausted := !recoverable && uint64(item.Attempts)+1 >= uint64(w.options.MaxAttempts)
 	if permanent || attemptsExhausted || retryWindowExpired {
 		failureClass := "retry_attempts_exhausted"
 		if permanent {
@@ -189,6 +194,7 @@ func (w *Worker) runItem(ctx context.Context, item iprojectionoutbox.Item) (RunR
 		} else if retryWindowExpired {
 			failureClass = "retry_window_expired"
 		}
+		logProjectionFailure(ctx, item, projectionErr, failureClass)
 		if item.EventType == "artifact.persist_requested" && w.options.AnswerArtifactHandler != nil {
 			if err := w.options.AnswerArtifactHandler.MarkAnswerArtifactDead(ackCtx, item); err != nil {
 				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
@@ -199,22 +205,40 @@ func (w *Worker) runItem(ctx context.Context, item iprojectionoutbox.Item) (RunR
 				}
 			}
 		}
-		if err := w.store.MoveToDLQ(ackCtx, item, failureClass); err != nil {
+		var deadErr error
+		failureCode := projectionFailureCode(projectionErr)
+		if diagnostic, ok := w.store.(iprojectionoutbox.DiagnosticDLQStore); ok && failureCode != "projection_failed" {
+			deadErr = diagnostic.MoveToDLQWithDiagnostic(ackCtx, item, failureClass, failureCode)
+		} else {
+			deadErr = w.store.MoveToDLQ(ackCtx, item, failureClass)
+		}
+		if err := deadErr; err != nil {
 			if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
 				return result, nil
 			}
 			return result, err
 		}
+		w.options.Metrics.Increment(icoremetrics.ProjectionDeadTotal)
 		result.Dead++
 		return result, nil
 	}
 	delay := w.options.FullJitter(retryDelay(item.Attempts + 1))
-	if err := w.store.MarkRetry(ackCtx, item, "projection_failed", w.options.Now().UTC().Add(delay)); err != nil {
+	if recoverable && delay < time.Second {
+		delay = time.Second
+	}
+	retryAt := w.options.Now().UTC().Add(delay)
+	if recoverable && retryAt.After(retryUntil) {
+		retryAt = retryUntil
+	}
+	logProjectionFailure(ctx, item, projectionErr, "retry")
+	failureKind := projectionFailureCode(projectionErr)
+	if err := w.store.MarkRetry(ackCtx, item, failureKind, retryAt); err != nil {
 		if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
 			return result, nil
 		}
 		return result, err
 	}
+	w.options.Metrics.Increment(icoremetrics.ProjectionRetriesTotal)
 	result.Retried++
 	return result, nil
 }

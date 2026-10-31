@@ -22,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/boot"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/command/projectiondlq"
 )
 
 // @title Agent Observability API
@@ -45,6 +46,12 @@ func main() {
 		}
 		if err := runAuditMonthlyMigration(); err != nil {
 			log.Fatal(err)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "projection-dlq" {
+		if err := projectiondlq.Run(os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(projectiondlq.ErrorMessage(err))
 		}
 		return
 	}

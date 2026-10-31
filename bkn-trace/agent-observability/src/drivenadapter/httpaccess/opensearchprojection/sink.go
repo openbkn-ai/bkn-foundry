@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"sort"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
@@ -81,10 +83,30 @@ func (s *Sink) Project(ctx context.Context, item iprojectionoutbox.Item) error {
 	if errors.Is(err, opensearch.ErrVersionConflict) {
 		return nil
 	}
-	if opensearch.IsPermanentStatusError(err) {
-		return iprojectionoutbox.Permanent(err)
+	if err == nil {
+		return nil
 	}
-	return err
+	classified := &iprojectionoutbox.DependencyError{Cause: err, Kind: "opensearch_projection_error"}
+	var status *opensearch.StatusError
+	var network *net.OpError
+	var dns *net.DNSError
+	var timeout net.Error
+	switch {
+	case errors.As(err, &status):
+		classified.Kind = "opensearch_http_error"
+		classified.HTTPStatus = status.StatusCode
+		classified.Recoverable = status.StatusCode == 408 || status.StatusCode == 425 || status.StatusCode == 429 || status.StatusCode >= 500
+	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()):
+		classified.Kind = "opensearch_timeout"
+		classified.Recoverable = true
+	case errors.As(err, &network) || errors.As(err, &dns) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF):
+		classified.Kind = "opensearch_transport_error"
+		classified.Recoverable = true
+	}
+	if opensearch.IsPermanentStatusError(err) {
+		return iprojectionoutbox.Permanent(classified)
+	}
+	return classified
 }
 
 func (s *Sink) PrepareVersion(ctx context.Context, indexVersion string) error {

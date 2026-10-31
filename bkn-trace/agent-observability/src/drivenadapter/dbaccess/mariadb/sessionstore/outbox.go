@@ -253,6 +253,10 @@ func (s *Store) MarkRetry(ctx context.Context, item iprojectionoutbox.Item, erro
 }
 
 func (s *Store) MoveToDLQ(ctx context.Context, item iprojectionoutbox.Item, errorCode string) error {
+	return s.MoveToDLQWithDiagnostic(ctx, item, errorCode, errorCode)
+}
+
+func (s *Store) MoveToDLQWithDiagnostic(ctx context.Context, item iprojectionoutbox.Item, failureClass, errorCode string) error {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
@@ -285,7 +289,7 @@ func (s *Store) MoveToDLQ(ctx context.Context, item iprojectionoutbox.Item, erro
 			failed_at=VALUES(failed_at),
 			replayed_at=NULL,
 			replayed_by=NULL`,
-		errorCode, errorCode, item.ID,
+		failureClass, errorCode, item.ID,
 	); err != nil {
 		return err
 	}
@@ -383,4 +387,18 @@ func newOutboxLeaseToken() string {
 		panic("crypto/rand failed: " + err.Error())
 	}
 	return hex.EncodeToString(value[:])
+}
+
+// ProjectionReplayTime uses the existing unique DLQ source key, outside the
+// claim transaction and only when an old failed item needs its replay window.
+func (s *Store) ProjectionReplayTime(ctx context.Context, eventID string) (time.Time, error) {
+	var replayed sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT replayed_at FROM bkn_trace_dlq WHERE source_kind='projection' AND source_id=?`, eventID).Scan(&replayed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	return replayed.Time, nil
 }
