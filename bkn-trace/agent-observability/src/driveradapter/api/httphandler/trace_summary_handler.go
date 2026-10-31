@@ -25,7 +25,7 @@ import (
 // provenance is resolved by the mounted EE route, never by this Core handler.
 //
 // @Summary List technical trace executions
-// @Description Returns stable trace summaries with reverse request links, generated from authorized trace evidence.
+// @Description Returns authorized technical Trace summaries. Ordinary pages batch-read missing projection IDs from canonical SQL metadata; unavailable Span counts are explicit. Content/root-filtered pages and dependency failures retain their existing behavior.
 // @Tags traces
 // @Produce json
 // @Param limit query int false "Page size, 1..200"

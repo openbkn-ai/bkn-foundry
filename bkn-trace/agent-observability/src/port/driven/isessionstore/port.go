@@ -115,6 +115,13 @@ type SummaryPageStore interface {
 	ListConversationSummaryIdentities(context.Context, SummaryPageQuery) (SummaryIdentityPage, error)
 }
 
+// TraceSummaryFallbackStore supplies only metadata for the missing IDs of an
+// already-authorized ordinary identity page. It must not load all call payloads
+// or act as an alternative implementation of projection content filters.
+type TraceSummaryFallbackStore interface {
+	LoadTraceSummaryFallback(context.Context, []string, evidencevo.QueryScope) ([]evidencevo.TraceSummary, error)
+}
+
 // ProjectionLeaseGuard fences an asynchronous handler's SQL state transition.
 // External writes must be idempotent because an expired lease can be reclaimed.
 type ProjectionLeaseGuard interface {

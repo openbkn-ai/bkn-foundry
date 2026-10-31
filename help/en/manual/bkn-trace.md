@@ -53,6 +53,12 @@ are not part of the currently mounted enterprise read contract. See the
 [module README](../../../bkn-trace/agent-observability/README.md#community-与-ee-读取边界2517)
 for the complete boundary and diagnostic guidance.
 
+## Technical Trace page availability
+
+For ordinary `GET /traces` pages without content, root-service or root-tool filters, MariaDB continues to select authorized IDs, order, total and cursor. When OpenSearch returns successfully but omits a selected Trace, the service batch-reads only the missing page IDs from canonical receipt metadata (at most 200 IDs, with a three-second fallback deadline). Status, timing and canonical root/error metadata use the authorized Trace lifetime. Missing Span statistics use `span_count_status=unavailable`; their numeric placeholder must not be displayed as a measured zero.
+
+This does not change the page's completeness state merely because Span statistics are unavailable. Existing projection truncation remains explicit. Shared-network discovery, content/root filters and exact-ID detail reads retain their existing paths. OpenSearch request failures, SQL failures and missing canonical records still fail explicitly. Page reads do not write projections, replay dead letters or certify that historical projections have recovered.
+
 ## Managed Interaction completion limits
 
 With durable answer handoff enabled, Core commits the answer task and business

@@ -1895,6 +1895,9 @@ func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.
 	for _, trace := range traces {
 		byID[trace.TraceID] = trace
 	}
+	if err := s.fillMissingTracePage(ctx, options, ids, byID); err != nil {
+		return evidencevo.TraceSummaryPage{}, true, err
+	}
 	entries := make([]evidencevo.TraceSummary, 0, len(ids))
 	for _, identity := range identityPage.Entries {
 		trace, found := byID[identity.ID]
