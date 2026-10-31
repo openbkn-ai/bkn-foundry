@@ -26,6 +26,7 @@ const (
 	draftActionGenerate      = "draft:generate"
 	draftActionRestore       = "draft:restore"
 	draftActionConfirm       = "draft:confirm"
+	draftActionAccept        = "draft:accept_suggestions"
 	checkActionRun           = "check:run"
 	indexActionBuild         = "index:build"
 	catalogsActionUnderstand = "catalogs:understand"
@@ -41,6 +42,7 @@ func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
 func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
 func (r *restHandler) SaveObjectTypeByEx(c *gin.Context) { r.withExVisitor(c, r.SaveObjectType) }
+func (r *restHandler) GetCandidatesByEx(c *gin.Context)  { r.withExVisitor(c, r.GetCandidates) }
 func (r *restHandler) CreateRelationTypeByEx(c *gin.Context) {
 	r.withExVisitor(c, r.CreateRelationType)
 }
@@ -66,6 +68,8 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.RestoreExcluded)
 	case draftActionConfirm:
 		r.withExVisitor(c, r.ConfirmDraft)
+	case draftActionAccept:
+		r.withExVisitor(c, r.AcceptSuggestions)
 	case checkActionRun:
 		r.withExVisitor(c, r.RunCheck)
 	case indexActionBuild:
@@ -558,4 +562,45 @@ func (r *restHandler) DeleteRelationType(c *gin.Context, visitor hydra.Visitor) 
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+// GetCandidates replies the draft's items as candidates, of the catalog_id the query names, if any.
+func (r *restHandler) GetCandidates(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	candidates, err := r.drs.GetCandidates(ctx, visitor.TokenID, id, c.Query("catalog_id"))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, candidates)
+}
+
+// AcceptSuggestions accepts the suggestions of the candidates not reviewed yet.
+func (r *restHandler) AcceptSuggestions(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.DraftAcceptSuggestions
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	accepted, err := r.drs.AcceptSuggestions(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, accepted)
 }

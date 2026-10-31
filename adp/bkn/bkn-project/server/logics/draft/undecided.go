@@ -38,7 +38,9 @@ func undecidedItems(items *interfaces.DraftItems) []undecidedItem {
 			// Drafting the source changes left the relation out for a person to decide again,
 			// whatever was decided on it before.
 			delete(decided, d.Kind+"/"+d.ItemID)
-		case d.Kind == interfaces.DRAFT_KIND_DRAFT && d.Action == interfaces.DRAFT_DECISION_ACCEPT_UNDECIDED:
+		case d.Kind == interfaces.DRAFT_KIND_DRAFT && (d.Action == interfaces.DRAFT_DECISION_ACCEPT_UNDECIDED ||
+			d.Action == interfaces.DRAFT_DECISION_ACCEPT_SUGGESTIONS):
+			// Accepting the suggestions decides what it lists as drafting left it.
 			if refs, ok := d.After.([]string); ok {
 				for _, ref := range refs {
 					decided[ref] = true

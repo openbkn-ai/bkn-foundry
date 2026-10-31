@@ -133,6 +133,9 @@ type ProjectStatus struct {
 	// Undecided counts the items drafting left out and no one decided on: they do not block, but
 	// confirming leaves them out only when the confirmation accepts it.
 	Undecided int `json:"undecided"`
+	// Unreviewed counts the object types and relation types of a ready draft no person reviewed yet,
+	// as the candidates list them; they do not block.
+	Unreviewed int `json:"unreviewed"`
 	// UndecidedNeeded counts those of them a knowledge question of the ready requirement
 	// specification needs: confirming without them leaves the question without its answer.
 	UndecidedNeeded int `json:"undecided_needed"`

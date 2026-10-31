@@ -91,6 +91,9 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 		}
 		withRelease(status, entry.Project, newest, sw, caller)
 	}
+	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
+		status.Unreviewed = unreviewed(&draft.Items)
+	}
 	// Polled while drafting, which reads the catalogs itself.
 	// Before what is gone refuses the actions it stops, understanding among them.
 	if namingStages[status.Stage] {

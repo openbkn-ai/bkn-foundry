@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// AcceptSuggestions mocks base method.
+func (m *MockDraftService) AcceptSuggestions(ctx context.Context, token, projectID string, req interfaces.DraftAcceptSuggestions, caller interfaces.AccountInfo) (*interfaces.DraftSuggestionsAccepted, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcceptSuggestions", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.DraftSuggestionsAccepted)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AcceptSuggestions indicates an expected call of AcceptSuggestions.
+func (mr *MockDraftServiceMockRecorder) AcceptSuggestions(ctx, token, projectID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptSuggestions", reflect.TypeOf((*MockDraftService)(nil).AcceptSuggestions), ctx, token, projectID, req, caller)
+}
+
 // AddCatalogs mocks base method.
 func (m *MockDraftService) AddCatalogs(ctx context.Context, token, projectID string, req interfaces.DraftAddCatalogs, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -203,6 +218,21 @@ func (m *MockDraftService) GenerateDraft(ctx context.Context, token, projectID s
 func (mr *MockDraftServiceMockRecorder) GenerateDraft(ctx, token, projectID, caller, discardDecisions any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDraft", reflect.TypeOf((*MockDraftService)(nil).GenerateDraft), ctx, token, projectID, caller, discardDecisions)
+}
+
+// GetCandidates mocks base method.
+func (m *MockDraftService) GetCandidates(ctx context.Context, token, projectID, catalogID string) (*interfaces.DraftCandidates, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCandidates", ctx, token, projectID, catalogID)
+	ret0, _ := ret[0].(*interfaces.DraftCandidates)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCandidates indicates an expected call of GetCandidates.
+func (mr *MockDraftServiceMockRecorder) GetCandidates(ctx, token, projectID, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCandidates", reflect.TypeOf((*MockDraftService)(nil).GetCandidates), ctx, token, projectID, catalogID)
 }
 
 // GetCheck mocks base method.
