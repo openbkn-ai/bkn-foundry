@@ -985,11 +985,7 @@ func (en *Enforcer) RemoveRolePermissions(roleID string) error {
 // no orphaned grants linger. Idempotent.
 func (en *Enforcer) RemoveAccessor(accessorID string) error {
 	return en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
-		if _, err := tx.enforcer.e.RemoveFilteredGroupingPolicy(0, accessorID); err != nil {
-			return err
-		}
-		_, err := tx.enforcer.removePolicyGrants(PolicyFilter{AccessorID: accessorID})
-		return err
+		return tx.RemoveAccessor(accessorID)
 	})
 }
 

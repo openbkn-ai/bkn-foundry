@@ -9,14 +9,15 @@ set -euo pipefail
 chart_dir="${1:-charts}"
 rendered="$(helm template bkn-agent "${chart_dir}")"
 
-for required in \
-    'name: "bkn-agent-provenance-bootstrap"' \
-    'name: BKN_PROVENANCE_BOOTSTRAP_TOKEN' \
-    'key: "token"'; do
-    grep -q "${required}" <<<"${rendered}" || {
-        echo "bkn-agent bootstrap credential contract missing: ${required}" >&2
+legacy="$(helm template bkn-agent "${chart_dir}" \
+    --set provenanceBootstrap.auth.createSecret=true \
+    --set provenanceBootstrap.auth.existingSecret=obsolete-secret \
+    --set provenanceBootstrap.auth.secretKey=custom-key)"
+for manifest in "${rendered}" "${legacy}"; do
+    if grep -Eq 'provenance-bootstrap|BKN_PROVENANCE_BOOTSTRAP_TOKEN|obsolete-secret' <<<"${manifest}"; then
+        echo "retired provenance account credential must not render" >&2
         exit 1
-    }
+    fi
 done
 
-echo "bkn-agent provenance bootstrap credential contract: PASS"
+echo "bkn-agent without provenance account credential: PASS"

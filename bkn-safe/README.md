@@ -295,3 +295,15 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 - **角色 UUID 保号**（`internal/seed/data/roles.json`，9 个；DA/flow-automation 硬编码业务 3 个）。
 - introspect 的 user-type `ext` 5 字段必须齐全，否则旧 lib 解析 panic（无 nil 检查）——
   `ExtClaims` 保证这一点，`contract/` 用真实 lib 守护。
+
+## 业务溯源旧内置账户清理（#2823）
+
+业务溯源不再初始化 `openbkn-business-provenance` 应用账户。启动时仅清理
+固定 UUID、账户名、显示名、来源和类型均符合旧内置记录、且未设置密码或
+联系信息的账户；账号存在冲突、被定制或登记为托管代理时保留。该清理不依赖
+`SAFE_SEED_ON_START`。账户、API Key、目录成员关系和授权在同一事务内删除，
+失败则回滚。历史审计和 Agent/Prompt 创建者字段不改写。
+
+升级需同时使用撤掉业务溯源 bootstrap Job 的 Trace Chart 和不再注入专用
+bootstrap Secret 的 bkn-agent Chart/镜像；不要单独删库或回滚到会重新创建
+账户的旧版 Safe。旧 Helm keep Secret 可留存，不再被新版本引用。

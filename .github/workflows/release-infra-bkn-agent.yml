@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - name: Verify provenance bootstrap credential contract
+      - name: Verify retired provenance bootstrap is absent
         working-directory: infra/bkn-agent
         run: bash scripts/test_business_provenance_bootstrap_chart.sh charts
       - name: Verify Evidence publisher chart contract

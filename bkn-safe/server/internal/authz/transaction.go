@@ -487,3 +487,13 @@ func canonicalizeOrder(base, next casbinmodel.Model, inserted map[string][][]str
 	}
 	return true
 }
+
+// RemoveAccessor removes an identity's role bindings and direct grants in the
+// same transaction as its directory cleanup.
+func (tx *PolicyTransaction) RemoveAccessor(accessorID string) error {
+	if _, err := tx.enforcer.e.RemoveFilteredGroupingPolicy(0, accessorID); err != nil {
+		return err
+	}
+	_, err := tx.enforcer.removePolicyGrants(PolicyFilter{AccessorID: accessorID})
+	return err
+}

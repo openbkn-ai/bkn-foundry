@@ -110,6 +110,10 @@ func Boot(opts Options) (*App, error) {
 		return nil, fmt.Errorf("reconcile withdrawn normal user role: %w", err)
 	}
 
+	if err := seed.ReconcileRetiredBusinessProvenanceOwner(db, enforcer); err != nil {
+		return nil, fmt.Errorf("retire business provenance owner: %w", err)
+	}
+
 	if cfg.SeedOnStart {
 		if err := seed.ApplyWithAudit(db, enforcer, auditRuntime.Recorder); err != nil {
 			return nil, fmt.Errorf("seed: %w", err)

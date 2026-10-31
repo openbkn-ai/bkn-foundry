@@ -77,6 +77,15 @@ There is none. Published Agents used to be registered automatically in the Execu
 
 Built-in Agents use fixed IDs. Their configuration, shared Prompts, and Prompt history live in existing database tables. `core-data-migrator` installs all default data; there is no JSON config package, extra bootstrap table, or application startup Job, and the former `deploy/` directory has been removed. Administrators edit shared configuration through the existing management API. Initialization does not overwrite existing Agents.
 
+Business provenance uses these same shared configuration and administrator
+permissions. It does not create a directory account or use a bootstrap Job or
+bootstrap Secret. Existing `provenanceBootstrap` and
+`enterpriseBusinessProvenance.bootstrap` chart values are ignored by the new
+charts. An old Secret marked `helm.sh/resource-policy: keep` may remain unused;
+this change does not delete it. Historical SQL creator UUIDs are retained as
+initialization metadata and cannot authenticate as the retired account.
+
+
 Default translations are provided only for the Prompt version referenced by a built-in Agent's Initial configuration. Initial is resolved by its stored Prompt reference, not by assuming Prompt version 1. Other versions start without translations; administrators may add or edit them explicitly.
 
 Each Prompt version has an optional original language (`f_source_language`). Fresh-install defaults explicitly declare their Chinese or English original language. The schema migration does not identify or backfill legacy languages; administrators confirm an unmarked original’s language when editing it or adding a translation. New Studio publications explicitly select the original language and create a version without inherited translations.
