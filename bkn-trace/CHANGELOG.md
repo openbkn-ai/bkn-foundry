@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - Search projection retries recognized transient dependency failures within a finite recovery window, preserves safe failure/status diagnostics and confirmed retry/dead counters, and provides a read-only-by-default single-ID audited DLQ command. Explicit replay renews only the bounded search recovery window without rewriting immutable creation time or versions. No claim-query/schema changes or automatic historical replay. (#2779)
 
+- Ordinary Trace pages batch-read scoped MariaDB receipt metadata for page IDs missing from OpenSearch, retaining identity order/count/cursor and marking unavailable Span counts explicitly. Content/root-filtered queries and dependency errors retain their existing behavior; reads do not replay or rebuild projections. (#2779, page-read fix)
+
 - Trace `keyword` searches traverse the existing bounded authorized PIT scanner beyond the compatibility candidate window, preserving exact counts and cursor paging. Truncated compatibility keyword reads return an explicit resource-budget error. Omitted time bounds remain unrestricted. (#2676)
 
 - Screen global Trace error-keyword candidates using existing scoped first-failure metadata before receipt/Interaction/artifact expansion, preserving summary truncation and complete authorized results. Preserve PIT storage rejection status/type and return explicit retryable dependency errors with sanitized diagnostics. Owner/shared-network and legacy-store scans retain their complete authorization path. (#2675)

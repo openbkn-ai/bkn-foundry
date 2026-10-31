@@ -2700,6 +2700,15 @@ components:
             pattern: ^[0-9A-Za-z_.-]+$
           - type: 'null'
           title: Thread Id
+        model_id:
+          anyOf:
+          - type: string
+            maxLength: 100
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Model Id
+          description: Optional caller-visible chat model; fixed for the metric-design thread.
         scope:
           $ref: '#/components/schemas/MetricDesignScope'
         base_form_revision:

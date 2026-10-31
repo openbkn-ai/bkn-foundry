@@ -25,14 +25,15 @@ import (
 
 const (
 	DefaultSummaryQueryLimit = 50
-	MaxSummaryQueryLimit     = 200
+	MaxSummaryQueryLimit     = evidencevo.MaxSummaryQueryLimit
 	MaxSummaryScanEntries    = 2000
 	maxReceiptsPerSummary    = 20
 )
 
 var (
-	ErrSummaryCursorInvalid = errors.New("BKN_TRACE_SUMMARY_CURSOR_INVALID")
-	ErrSummaryProjectionLag = errors.New("BKN_TRACE_SUMMARY_PROJECTION_LAG")
+	ErrSummaryCursorInvalid       = errors.New("BKN_TRACE_SUMMARY_CURSOR_INVALID")
+	ErrSummaryProjectionLag       = errors.New("BKN_TRACE_SUMMARY_PROJECTION_LAG")
+	ErrSummaryFallbackUnavailable = errors.New("BKN_TRACE_SUMMARY_FALLBACK_UNAVAILABLE")
 )
 
 type summaryCursor struct {
@@ -1894,6 +1895,9 @@ func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.
 	byID := make(map[string]evidencevo.TraceSummary, len(traces))
 	for _, trace := range traces {
 		byID[trace.TraceID] = trace
+	}
+	if err := s.fillMissingTracePage(ctx, options, ids, byID); err != nil {
+		return evidencevo.TraceSummaryPage{}, true, err
 	}
 	entries := make([]evidencevo.TraceSummary, 0, len(ids))
 	for _, identity := range identityPage.Entries {
