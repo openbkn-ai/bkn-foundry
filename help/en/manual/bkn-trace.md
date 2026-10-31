@@ -413,3 +413,68 @@ curl -sk -X POST "https://<access-address>/api/agent-observability/v1/traces/sea
 curl -sk "https://<access-address>/api/agent-observability/v1/health" \
   -H "Authorization: Bearer $(openbkn token)"
 ```
+
+## Projection retry and audited dead-letter recovery
+
+Recognized search-projection connection/DNS failures, response truncation,
+timeouts and HTTP 408/425/429/5xx use the existing **24-hour recovery window**
+instead of stopping after ten attempts. Exponential backoff and jitter remain
+bounded at 256 seconds, with a one-second floor except at the final deadline.
+A failed attempt at the window boundary becomes dead. HTTP 409 still acknowledges
+an older version as superseded. Permanent errors remain immediately terminal;
+unknown errors and artifact/revision/enterprise handlers retain their existing
+attempt and age limits. Missing creation time retains the attempt bound.
+
+The window starts at original creation time. An explicit audited replay grants
+recognized search-dependency failures a new finite window from recorded replay
+time. It preserves creation time, payload, aggregate version, document ID and
+previous audit history. It does not repair invalid input or requeue historical
+dead tasks automatically. Adding OpenSearch resources alone does not requeue them.
+
+`failure_class` retains the terminal policy reason; `last_error_code` retains a
+safe dependency code such as `opensearch_http_503`. Historical codes are not
+rewritten. Failure logs include task/object/event IDs, attempt, safe kind, HTTP
+status and the intended decision. Retry logs occur on attempts 1, 2, 4, 8, ...;
+terminal decisions are always logged. Payloads, response bodies, credentials and
+lease tokens are omitted. A decision log does not prove SQL settlement committed.
+
+| Metric | Meaning |
+| --- | --- |
+| `bkn_trace_projection_attempt_errors_total` | Failed attempts, excluding parent cancellation and lost leases |
+| `bkn_trace_projection_retries_total` | Confirmed retry settlements |
+| `bkn_trace_projection_dead_total` | Confirmed dead settlements |
+
+The previous worker-level error metric retains its meaning. Replay-time metadata
+is read only after an old recoverable failure, through the existing unique DLQ
+source key with an I/O deadline. Healthy claiming and delivery add no lookup.
+
+### Preview and replay one explicit ID
+
+The command is included in the service binary and uses the existing Core MariaDB
+configuration/Secret. Replace `123` with a reviewed DLQ ID:
+
+```sh
+/app/agent-observability projection-dlq --id 123
+/app/agent-observability projection-dlq --id 123 --apply \
+  --operator "operator-name" --reason "dependency repaired" \
+  --repair-version "repair-version"
+```
+
+Default execution previews metadata as JSON without writing or exposing payloads.
+It accepts one ID, has a 30-second overall deadline and starts no server, worker,
+migration or rebuild. Apply requires all three audit fields. The operator is the
+accountable name supplied by the executor, not an OAuth-resolved identity;
+existing database/container execution permissions control access.
+
+Apply reuses `ReplayProjectionDLQ` row locking, dead-state revalidation and atomic
+audit/requeue. Missing, ambiguous, non-projection and already replayed entries are
+rejected. Artifact persistence, revision input and enterprise provenance handler
+tasks are excluded: their recovery has separate lifecycle and grant/token rules.
+A task that becomes dead again requires another explicit replay and audit entry.
+
+`action=replay_queued` confirms the transaction, not OpenSearch delivery;
+`observed` is the pre-action snapshot. Verify subsequent delivered/dead state and
+the authorized target query. Superseded versions must not replace newer documents.
+If output is interrupted, preview the same ID before retrying. Duplicate apply
+cannot silently add duplicate audits. Repair the dependency/input first; do not
+substitute direct status UPDATEs or a full index rebuild for audited replay.

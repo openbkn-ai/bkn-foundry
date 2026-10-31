@@ -340,3 +340,56 @@ curl -sk "https://<访问地址>/api/agent-observability/v1/spans/sp_003" \
 curl -sk "https://<访问地址>/api/agent-observability/v1/traces/conv_20250115_001/summary" \
   -H "Authorization: Bearer $(openbkn token)"
 ```
+
+## 投影重试与审计死信恢复
+
+搜索投影遇到可识别的连接／DNS 失败、响应截断、超时及 HTTP 408／425／429／5xx 时，
+沿用既有 **24 小时恢复窗口**，不再因十次上限提前进入死信。指数退避和抖动最高 256 秒，
+恢复型重试至少间隔一秒，最后一次调度不越过窗口边界；窗口耗尽仍失败则进入死信。
+外部版本控制下的 HTTP 409 继续按已被新版本取代的成功处理。永久错误仍立即进入死信；
+未知错误及答案投递、修订输入、企业专用 handler 保留既有次数和年龄限制。
+没有创建时间的任务仍受次数上限约束。
+
+窗口通常从任务原始创建时间计算。成功执行显式审计重放后，已识别的搜索依赖错误可从记录的
+重放时间获得新窗口。创建时间、payload、聚合版本、稳定文档 ID 和原有审计历史保留不变。
+重放不会修好无效输入，不会自动重放历史 dead 任务；单纯增加 OpenSearch 资源也不会重新入队。
+
+`failure_class` 保留最终策略原因，`last_error_code` 单独记录 `opensearch_http_503`
+等脱敏依赖分类，不改写历史错误码。失败日志包含任务／对象／事件 ID、次数、依赖分类、
+HTTP 状态及预期决策；重试只在第 1、2、4、8……次记录，最终决策始终记录。
+日志不含 payload、响应正文、凭据或租约令牌；日志中的决策不等于 SQL 结算已提交。
+
+| 指标 | 含义 |
+| --- | --- |
+| `bkn_trace_projection_attempt_errors_total` | 失败尝试数，排除父请求取消和租约丢失 |
+| `bkn_trace_projection_retries_total` | 已确认提交的重试结算数 |
+| `bkn_trace_projection_dead_total` | 已确认提交的死信结算数 |
+
+原有 worker 级错误指标保留原义。只有旧任务发生可恢复失败时，才通过现有死信来源唯一键，
+在 I/O 期限内读取重放时间。正常领取和交付不增加该查询。
+
+### 按明确 ID 预览与重放
+
+命令已包含在 Trace 服务二进制中，复用现有 Core MariaDB 配置／Secret。
+将 `123` 替换为已核对的死信 ID：
+
+```sh
+/app/agent-observability projection-dlq --id 123
+/app/agent-observability projection-dlq --id 123 --apply \
+  --operator "operator-name" --reason "dependency repaired" \
+  --repair-version "repair-version"
+```
+
+默认只读预览，以 JSON 输出资格检查和元数据，不输出 payload。每次只接受一个 ID，
+整条命令最长 30 秒，不启动服务、worker、迁移或重建。`--apply` 必须提供三个审计字段。
+操作人由执行者填写可追责身份，不是通过 OAuth 自动解析；准入由已有数据库及容器执行权限管理。
+
+写入复用 `ReplayProjectionDLQ`，由现有行锁重新核对 dead 状态，在同一事务提交重新入队与审计。
+已重放、缺失、来源不匹配或关联多个 outbox 的记录会被拒绝。命令还排除答案持久化、修订输入和
+企业溯源专用 handler，其恢复需遵循各自生命周期及 grant／令牌规则。
+显式重放后再次进入 dead，需再次显式重放并新增审计，不会自动循环。
+
+`action=replay_queued` 只确认事务已提交，不代表 OpenSearch 已交付；`observed` 为操作前快照。
+后续应核对 delivered/dead 和当前身份有权读取的目标查询。旧版本可能按已被取代处理，不能覆盖
+索引中的新版本。命令输出中断时，应先重新预览同一 ID；重复 apply 不会静默追加重复审计。
+先修复依赖或输入，不直接 UPDATE 状态或用全量重建替代审计重放。
