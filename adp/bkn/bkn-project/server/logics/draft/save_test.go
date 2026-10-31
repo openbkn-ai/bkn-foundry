@@ -156,6 +156,62 @@ func Test_SaveObjectType(t *testing.T) {
 			So(findProperty(got.Items.ObjectTypes[0], "region").MappedField, ShouldEqual, "区域")
 		})
 
+		Convey("Renaming a property moves its field to the new name, which is not taken out\n", func() {
+			expectWrite()
+			save := saveOf(draft)
+			save.DataProperties[1] = interfaces.DraftDataPropertySave{Name: "full_name", MappedField: field("name")}
+			save.DisplayKey = "full_name"
+
+			got, err := svc.SaveObjectType(ctx, token, "p1", "accounts", save, caller)
+
+			So(err, ShouldBeNil)
+			ot := got.Items.ObjectTypes[0]
+			So(findProperty(ot, "name"), ShouldBeNil)
+			So(findProperty(ot, "full_name").MappedField, ShouldEqual, "name")
+			for _, e := range got.Items.Excluded {
+				So(e.Field, ShouldNotEqual, "name")
+			}
+		})
+
+		Convey("A name given to one new property is not given to another named as drafting names it\n", func() {
+			expectWrite()
+			save := saveOf(draft)
+			save.DataProperties = append(save.DataProperties,
+				interfaces.DraftDataPropertySave{Name: "note", MappedField: field("opened_at")},
+				interfaces.DraftDataPropertySave{MappedField: field("note")})
+
+			got, err := svc.SaveObjectType(ctx, token, "p1", "accounts", save, caller)
+
+			So(err, ShouldBeNil)
+			ot := got.Items.ObjectTypes[0]
+			So(findProperty(ot, "note").MappedField, ShouldEqual, "opened_at")
+			So(findProperty(ot, "note_2").MappedField, ShouldEqual, "note")
+		})
+
+		Convey("No title sent keeps the title; a title removed gives way to the identity's first property\n", func() {
+			expectWrite()
+			save := saveOf(draft)
+			save.DisplayKey = ""
+			save.Comment = "Changed"
+
+			got, err := svc.SaveObjectType(ctx, token, "p1", "accounts", save, caller)
+
+			So(err, ShouldBeNil)
+			So(got.Items.ObjectTypes[0].DisplayKey, ShouldEqual, "name")
+		})
+
+		Convey("A title removed with its property gives way to the identity's first property\n", func() {
+			expectWrite()
+			save := saveOf(draft)
+			save.DisplayKey = ""
+			save.DataProperties = append(save.DataProperties[:1], save.DataProperties[2])
+
+			got, err := svc.SaveObjectType(ctx, token, "p1", "accounts", save, caller)
+
+			So(err, ShouldBeNil)
+			So(got.Items.ObjectTypes[0].DisplayKey, ShouldEqual, "id")
+		})
+
 		Convey("Saving what is there writes nothing\n", func() {
 			got, err := svc.SaveObjectType(ctx, token, "p1", "accounts", saveOf(draft), caller)
 

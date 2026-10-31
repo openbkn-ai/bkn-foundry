@@ -103,7 +103,16 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidProperty).
 			WithErrorDetails(map[string]any{"display_key": save.DisplayKey})
 	}
-	ot.DisplayKey = save.DisplayKey
+	switch {
+	case save.DisplayKey != "":
+		ot.DisplayKey = save.DisplayKey
+	case findProperty(ot, ot.DisplayKey) == nil:
+		// None sent keeps the title; a title removed gives way to the identity's first property.
+		ot.DisplayKey = ""
+		if len(ot.PrimaryKeys) > 0 {
+			ot.DisplayKey = ot.PrimaryKeys[0]
+		}
+	}
 
 	decisions, err := applyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_OBJECT_TYPES, itemID, edit)
 	if err != nil {
@@ -222,7 +231,7 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 			case apiName(name) != name || taken[name] || names[name]:
 				return invalid(map[string]any{"property": name, "reason": "invalid_name"})
 			}
-			names[name] = true
+			names[name], taken[name] = true, true
 			property = newProperty(c, name, language)
 			items.Excluded = slices.DeleteFunc(items.Excluded, func(e *interfaces.DraftExcludedField) bool {
 				return e.ObjectType == ot.ID && e.Field == c.Name
@@ -238,10 +247,13 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 		if kept[p.Name] {
 			continue
 		}
-		// A field taken out stays restorable by saving it again.
-		items.Excluded = append(items.Excluded, &interfaces.DraftExcludedField{
-			ObjectType: ot.ID, Field: p.MappedField, Reason: excludedByPerson,
-		})
+		// A field taken out stays restorable by saving it again; one a new property maps, as when a
+		// property is renamed, is not taken out.
+		if !fieldsUsed[p.MappedField] {
+			items.Excluded = append(items.Excluded, &interfaces.DraftExcludedField{
+				ObjectType: ot.ID, Field: p.MappedField, Reason: excludedByPerson,
+			})
+		}
 		for _, vt := range items.ValueTypes {
 			vt.UsedBy = slices.DeleteFunc(vt.UsedBy, func(ref interfaces.DraftPropertyRef) bool {
 				return ref.ObjectType == ot.ID && ref.Property == p.Name
