@@ -92,7 +92,51 @@ func Test_RequirementEdits(t *testing.T) {
 			So(s.Name, ShouldEqual, "Answer date requests")
 			So(s.Actor, ShouldEqual, "Sales")
 			So(s.Edited, ShouldBeTrue)
+			// A person changed it: it is theirs, kept when drafting again.
+			So(s.Accepted, ShouldBeTrue)
 			So(s.Citations, ShouldHaveLength, 1)
+		})
+
+		Convey("Review accepts and unaccepts scenarios and questions, and nothing else\n", func() {
+			spec := readySpec()
+			spec.Spec.Questions[1].Accepted = true
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+			expectSave()
+
+			_, err := svc.ReviewItems(ctx, token, "p1", interfaces.RequirementReview{UpdateTime: 7,
+				Accept: []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_SCENARIOS, ID: "s1"},
+					{Kind: interfaces.REQUIREMENT_KIND_QUESTIONS, ID: "q1"}},
+				Unaccept: []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_QUESTIONS, ID: "q2"}}}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.Scenarios[0].Accepted, ShouldBeTrue)
+			So(saved.Spec.Questions[0].Accepted, ShouldBeTrue)
+			So(saved.Spec.Questions[1].Accepted, ShouldBeFalse)
+			// Accepting changes no content: the item is not marked edited. It is accepted as the
+			// ontology is now; unaccepting keeps the signature it had.
+			So(saved.Spec.Questions[0].Edited, ShouldBeFalse)
+			So(saved.Spec.Questions[0].OntologySignature, ShouldEqual, ontologySignature(testDraft(), saved.Spec.Questions[0]))
+			So(saved.Spec.Questions[0].OntologySignature, ShouldNotBeEmpty)
+			So(saved.Spec.Questions[1].OntologySignature, ShouldBeEmpty)
+		})
+
+		Convey("A review of nothing, of an item twice, of another kind or of a missing item is refused\n", func() {
+			q1 := interfaces.RequirementReviewItem{Kind: interfaces.REQUIREMENT_KIND_QUESTIONS, ID: "q1"}
+			_, err := svc.ReviewItems(ctx, token, "p1", interfaces.RequirementReview{UpdateTime: 7}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+
+			for _, review := range []interfaces.RequirementReview{
+				{UpdateTime: 7, Accept: []interfaces.RequirementReviewItem{q1}, Unaccept: []interfaces.RequirementReviewItem{q1}},
+				{UpdateTime: 7, Accept: []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_RULES, ID: "r1"}}},
+			} {
+				expectRead()
+				_, err := svc.ReviewItems(ctx, token, "p1", review, caller)
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+			}
+			expectRead()
+			_, err = svc.ReviewItems(ctx, token, "p1", interfaces.RequirementReview{UpdateTime: 7,
+				Accept: []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_QUESTIONS, ID: "q9"}}}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
 		})
 
 		Convey("Setting a question's needs makes them the person's, checked against the draft\n", func() {
@@ -195,6 +239,9 @@ func Test_RequirementEdits(t *testing.T) {
 			So(q.Needs, ShouldResemble, []interfaces.RequirementItemRef{customerRef})
 			So(q.NeedsSource, ShouldEqual, interfaces.REQUIREMENT_NEEDS_FROM_PERSON)
 			So(q.Edited, ShouldBeTrue)
+			So(q.Accepted, ShouldBeTrue)
+			// Added as the ontology is now.
+			So(q.OntologySignature, ShouldEqual, ontologySignature(testDraft(), q))
 			So(q.Citations, ShouldResemble, []interfaces.RequirementCitation{})
 		})
 

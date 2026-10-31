@@ -71,6 +71,22 @@ func Test_RequirementSpecRestHandler(t *testing.T) {
 			So(w.Header().Get("Content-Disposition"), ShouldBeEmpty)
 		})
 
+		Convey("requirements:review accepts and unaccepts the items the body names\n", func() {
+			review := interfaces.RequirementReview{UpdateTime: 7,
+				Accept:   []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_QUESTIONS, ID: "q1"}},
+				Unaccept: []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_SCENARIOS, ID: "s2"}}}
+			rqs.EXPECT().ReviewItems(gomock.Any(), "Bearer t", "p1", review, caller).
+				Return(&interfaces.Requirement{ProjectID: "p1", UpdateTime: 8}, nil)
+
+			w := serveBody(handler, http.MethodPost, "/api/bkn-project/v1/projects/p1/requirements:review",
+				[]byte(`{"update_time":7,"accept":[{"kind":"questions","id":"q1"}],"unaccept":[{"kind":"scenarios","id":"s2"}]}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"update_time":8`)
+			So(serveBody(handler, http.MethodPost, "/api/bkn-project/v1/projects/p1/requirements:review", []byte(`[`)).
+				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("requirements:draft starts drafting and replies 202, discarding decisions only when asked\n", func() {
 			drafting := &interfaces.Requirement{ProjectID: "p1", Status: interfaces.REQUIREMENT_STATUS_DRAFTING}
 			rqs.EXPECT().GenerateRequirement(gomock.Any(), "Bearer t", "p1", caller, false).Return(drafting, nil)

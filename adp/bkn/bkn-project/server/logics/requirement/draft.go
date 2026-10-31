@@ -307,13 +307,14 @@ func draftResponseFormat() map[string]any {
 }
 
 // draftMessage is the user message of pass draft: the documents block by block, the tables of
-// the project's catalogs by name, and the items already drafted with their ids (an object type
-// with its properties and primary keys), as data.
+// the project's catalogs by name, the adopted items with their ids (an object type with its
+// properties and primary keys), and the items a person kept, as data.
 type draftMessage struct {
 	Documents     []messageDocument     `json:"documents"`
 	Tables        []messageTable        `json:"tables"`
 	ObjectTypes   []messageObjectType   `json:"object_types"`
 	RelationTypes []messageRelationType `json:"relation_types"`
+	Kept          *messageKept          `json:"kept,omitempty"`
 }
 
 type messageDocument struct {
@@ -337,6 +338,7 @@ type messageTable struct {
 type messageObjectType struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
 	Aliases     []string          `json:"aliases,omitempty"`
 	PrimaryKeys []string          `json:"primary_keys,omitempty"`
 	Properties  []messageProperty `json:"properties"`
@@ -345,10 +347,11 @@ type messageObjectType struct {
 }
 
 type messageRelationType struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Source string `json:"source"`
-	Target string `json:"target"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Source      string `json:"source"`
+	Target      string `json:"target"`
 }
 
 // questionNotes are what a person should see about a question, computed when it is read.
@@ -371,13 +374,15 @@ func questionNotes(q *interfaces.RequirementQuestion) []string {
 	return notes
 }
 
-// buildDraftMessage also returns how many tables, and how many properties of object types, it left out.
+// buildDraftMessage names the adopted items only: candidates no one adopted are not the ontology
+// scenarios rest on. It also returns how many tables, and how many properties of object types, it
+// left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
-	draft *interfaces.Draft) (string, int, int, error) {
+	draft *interfaces.Draft, kept *interfaces.RequirementSpec) (string, int, int, error) {
 	propertiesOmitted := 0
 	msg := draftMessage{
 		Documents: []messageDocument{}, Tables: []messageTable{},
-		ObjectTypes: []messageObjectType{}, RelationTypes: []messageRelationType{},
+		ObjectTypes: []messageObjectType{}, RelationTypes: []messageRelationType{}, Kept: messageKeptOf(kept),
 	}
 	for _, d := range docs {
 		content := []rune(d.Content)
@@ -395,8 +400,11 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 	}
 	if draft != nil {
 		for _, ot := range draft.Items.ObjectTypes {
-			mot := messageObjectType{ID: ot.ID, Name: ot.Name, Aliases: ot.Aliases, PrimaryKeys: ot.PrimaryKeys,
-				Properties: []messageProperty{}}
+			if !ot.Adopted {
+				continue
+			}
+			mot := messageObjectType{ID: ot.ID, Name: ot.Name, Description: ot.Description, Aliases: ot.Aliases,
+				PrimaryKeys: ot.PrimaryKeys, Properties: []messageProperty{}}
 			// Keys name a record and times a moment, as inputs do: they go first.
 			rank := func(p *interfaces.DraftProperty) int {
 				switch {
@@ -421,8 +429,11 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 			msg.ObjectTypes = append(msg.ObjectTypes, mot)
 		}
 		for _, rt := range draft.Items.RelationTypes {
+			if !rt.Adopted {
+				continue
+			}
 			msg.RelationTypes = append(msg.RelationTypes, messageRelationType{ID: rt.ID, Name: rt.Name,
-				Source: rt.Source, Target: rt.Target})
+				Description: rt.Description, Source: rt.Source, Target: rt.Target})
 		}
 	}
 	body, err := json.Marshal(msg)
@@ -547,37 +558,47 @@ func named(names []string) []string {
 // the server's ids; everything dropped is listed in rejected. It also returns the document types
 // the Agent suggests, for known documents and types only.
 func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument,
-	draft *interfaces.Draft) (*interfaces.RequirementSpec, map[string]string) {
-	spec := &interfaces.RequirementSpec{
-		Scenarios: []*interfaces.RequirementScenario{}, Concepts: []*interfaces.RequirementConcept{},
-		Questions: []*interfaces.RequirementQuestion{}, Rules: []*interfaces.RequirementRule{},
-		Conflicts: []*interfaces.RequirementConflict{}, Choices: []*interfaces.RequirementChoice{},
-		Rejected: []*interfaces.RequirementRejected{},
-	}
+	draft *interfaces.Draft, kept *interfaces.RequirementSpec) (*interfaces.RequirementSpec, map[string]string) {
+	// What is kept stays as it is; drafted items repeating it are merged into it, and new ones take
+	// ids no item had.
+	spec := startingSpec(kept)
+	keptSpec := *startingSpec(kept)
 	reject := func(kind, text, reason string) {
 		spec.Rejected = append(spec.Rejected, &interfaces.RequirementRejected{Kind: kind, Text: text, Reason: reason})
 	}
+	// A concept maps to an adopted item, the ones the Agent was given.
 	drafted := map[interfaces.RequirementItemRef]bool{}
 	if draft != nil {
 		for _, ot := range draft.Items.ObjectTypes {
-			drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}] = true
+			drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}] = ot.Adopted
 		}
 		for _, rt := range draft.Items.RelationTypes {
-			drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: rt.ID}] = true
+			drafted[interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: rt.ID}] = rt.Adopted
 		}
 	}
 
 	scenarioIDs := map[string]string{}
+	for _, s := range spec.Scenarios {
+		scenarioIDs[keptPrefix+s.ID] = s.ID
+	}
+	added := 0
 	for _, s := range out.Scenarios {
+		if same := keptScenario(&keptSpec, s.Name); same != nil {
+			if s.ID != "" {
+				scenarioIDs[s.ID] = same.ID
+			}
+			continue
+		}
 		citations, reason := basisOf(s.Citations, s.SupplementReason, docs, true)
-		if reason == "" && len(spec.Scenarios) == maxSpecScenarios {
+		if reason == "" && added == maxSpecScenarios {
 			reason = rejectedTooMany
 		}
 		if reason != "" {
 			reject(rejectedScenario, s.Name, reason)
 			continue
 		}
-		id := fmt.Sprintf("s%d", len(spec.Scenarios)+1)
+		added++
+		id := nextID(spec, "s", spec.Scenarios, scenarioID)
 		if s.ID != "" {
 			scenarioIDs[s.ID] = id
 		}
@@ -593,17 +614,28 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	}
 
 	concepts := map[string]*interfaces.RequirementConcept{}
+	for _, c := range spec.Concepts {
+		concepts[keptPrefix+c.ID] = c
+	}
+	added = 0
 	for _, c := range out.Concepts {
+		if i := slices.IndexFunc(keptSpec.Concepts, func(k *interfaces.RequirementConcept) bool { return sameText(k.Term, c.Term) }); i >= 0 {
+			if c.ID != "" {
+				concepts[c.ID] = keptSpec.Concepts[i]
+			}
+			continue
+		}
 		citations, reason := basisOf(c.Citations, c.SupplementReason, docs, true)
-		if reason == "" && len(spec.Concepts) == maxSpecConcepts {
+		if reason == "" && added == maxSpecConcepts {
 			reason = rejectedTooMany
 		}
 		if reason != "" {
 			reject(rejectedConcept, c.Term, reason)
 			continue
 		}
+		added++
 		concept := &interfaces.RequirementConcept{
-			ID: fmt.Sprintf("c%d", len(spec.Concepts)+1), Term: c.Term, Category: c.Category,
+			ID: nextID(spec, "c", spec.Concepts, conceptID), Term: c.Term, Category: c.Category,
 			Definition: c.Definition, NotOntologyReason: c.NotOntologyReason,
 			Citations: citations, SupplementReason: c.SupplementReason,
 		}
@@ -619,6 +651,9 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	}
 
 	for _, q := range out.Questions {
+		if slices.ContainsFunc(keptSpec.Questions, func(k *interfaces.RequirementQuestion) bool { return sameText(k.Text, q.Text) }) {
+			continue
+		}
 		citations, reason := basisOf(q.Citations, q.SupplementReason, docs, true)
 		if reason == "" && len(citations) > 0 && !numbersInQuotes(q.Text, citations) && !recordValuesInText(q, citations, docs) {
 			reason = rejectedNumberNotInQuote
@@ -657,7 +692,7 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			layer = interfaces.REQUIREMENT_LAYER_KNOWLEDGE
 		}
 		question := &interfaces.RequirementQuestion{
-			ID: fmt.Sprintf("q%d", len(spec.Questions)+1), Text: q.Text, ScenarioIDs: []string{},
+			ID: nextID(spec, "q", spec.Questions, questionID), Text: q.Text, ScenarioIDs: []string{},
 			Type: q.Type, Layer: layer, Template: q.Template, AnswerShape: q.AnswerShape,
 			Basis: interfaces.RequirementBasis{ConceptIDs: []string{}, Metrics: metrics,
 				Functions: functions, Skills: skills},
@@ -730,6 +765,9 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 	}
 
 	for _, r := range out.Rules {
+		if slices.ContainsFunc(keptSpec.Rules, func(k *interfaces.RequirementRule) bool { return sameText(k.Statement, r.Statement) }) {
+			continue
+		}
 		citations, reason := basisOf(r.Citations, "", docs, false)
 		if reason == "" && !numbersInQuotes(r.Statement, citations) {
 			reason = rejectedNumberNotInQuote
@@ -739,12 +777,15 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			continue
 		}
 		spec.Rules = append(spec.Rules, &interfaces.RequirementRule{
-			ID: fmt.Sprintf("r%d", len(spec.Rules)+1), Statement: r.Statement, CompilesTo: r.CompilesTo,
+			ID: nextID(spec, "r", spec.Rules, ruleID), Statement: r.Statement, CompilesTo: r.CompilesTo,
 			Citations: citations,
 		})
 	}
 
 	for _, k := range out.Conflicts {
+		if slices.ContainsFunc(keptSpec.Conflicts, func(c *interfaces.RequirementConflict) bool { return sameText(c.Topic, k.Topic) }) {
+			continue
+		}
 		sides := []interfaces.RequirementConflictSide{}
 		documents := map[string]bool{}
 		for _, side := range k.Sides {
@@ -763,12 +804,15 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			continue
 		}
 		spec.Conflicts = append(spec.Conflicts, &interfaces.RequirementConflict{
-			ID: fmt.Sprintf("k%d", len(spec.Conflicts)+1), Topic: k.Topic, Kind: k.Kind, Sides: sides,
+			ID: nextID(spec, "k", spec.Conflicts, conflictID), Topic: k.Topic, Kind: k.Kind, Sides: sides,
 			SuggestedDocumentID: suggestedDocument(k.Kind, sides, docs),
 		})
 	}
 
 	for _, f := range out.Choices {
+		if slices.ContainsFunc(keptSpec.Choices, func(c *interfaces.RequirementChoice) bool { return sameText(c.Question, f.Question) }) {
+			continue
+		}
 		citations, reason := basisOf(f.Citations, "", docs, false)
 		if reason == "" && len(f.Options) < 2 {
 			reason = rejectedTooFewOptions
@@ -778,7 +822,7 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			continue
 		}
 		choice := &interfaces.RequirementChoice{
-			ID: fmt.Sprintf("f%d", len(spec.Choices)+1), Question: f.Question, Options: []interfaces.RequirementOption{},
+			ID: nextID(spec, "f", spec.Choices, choiceID), Question: f.Question, Options: []interfaces.RequirementOption{},
 			Reason: f.Reason, Citations: citations,
 		}
 		for i, o := range f.Options {
@@ -843,10 +887,6 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 		span.SetStatus(codes.Error, "Get documents failed")
 		return nil, internalError(ctx, "Get documents failed", err)
 	}
-	if len(docs) == 0 {
-		span.SetStatus(codes.Error, "No documents")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_NoDocuments)
-	}
 	if len(entry.CatalogIDs) == 0 {
 		span.SetStatus(codes.Error, "No catalogs")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_NoCatalogs)
@@ -859,22 +899,33 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 		span.SetStatus(codes.Error, "Inputs too large")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_InputsTooLarge)
 	}
+	// Scenarios are drafted from the adopted ontology; documents only add to it.
+	draft, found, err := s.da.GetDraft(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get draft failed")
+		return nil, internalError(ctx, "Get draft failed", err)
+	}
+	if !found || draft.Status != interfaces.DRAFT_STATUS_READY ||
+		!slices.ContainsFunc(draft.Items.ObjectTypes, func(ot *interfaces.DraftObjectType) bool { return ot.Adopted }) {
+		span.SetStatus(codes.Error, "No adopted ontology")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_NoAdoptedOntology)
+	}
 	previous, ok, err := s.ra.GetRequirement(ctx, projectID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
+	}
+	// Drafting again keeps what people made theirs, unless they start over.
+	var kept *interfaces.RequirementSpec
+	if ok && !discardDecisions {
+		kept = keptOf(previous)
 	}
 	version := 1
 	if ok && previous.Version > 0 {
 		version = previous.Version
 		// A specification an ontology confirmation was made against is frozen: drafting again
 		// starts the next version.
-		draft, found, err := s.da.GetDraft(ctx, projectID)
-		if err != nil {
-			span.SetStatus(codes.Error, "Get draft failed")
-			return nil, internalError(ctx, "Get draft failed", err)
-		}
-		if found && draft.Items.Confirmation != nil && draft.Items.Confirmation.RequirementVersion == previous.Version {
+		if draft.Items.Confirmation != nil && draft.Items.Confirmation.RequirementVersion == previous.Version {
 			version++
 		}
 	}
@@ -887,11 +938,9 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	// A specification still drafting past the Agent's deadline, with a minute to record it, has
 	// ended without being recorded; it no longer holds the project.
 	staleBefore := now - draftDeadline.Milliseconds() - time.Minute.Milliseconds()
-	started, err := s.ra.StartDrafting(ctx, req, staleBefore, discardDecisions)
+	// The decisions made are kept with the rest, so none is discarded unasked.
+	started, err := s.ra.StartDrafting(ctx, req, staleBefore, true)
 	switch {
-	case errors.Is(err, interfaces.ErrRequirementHasDecisions):
-		span.SetStatus(codes.Error, "Has decisions")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_HasDecisions)
 	case err != nil:
 		span.SetStatus(codes.Error, "Start drafting failed")
 		return nil, internalError(ctx, "Start drafting failed", err)
@@ -901,7 +950,7 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	}
 	project := entry.Project
 	runCtx := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(runCtx, req, project, docs, caller) })
+	s.run(func() { s.draft(runCtx, req, project, docs, kept, caller) })
 	span.SetStatus(codes.Ok, "")
 	return req, nil
 }
@@ -942,8 +991,9 @@ func (s *requirementService) askDraft(ctx context.Context, req *interfaces.Requi
 }
 
 // draft runs the Agent and records the checked specification, or why drafting failed.
+// What is kept stays when drafting fails too.
 func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirement, project *interfaces.Project,
-	docs []*interfaces.RequirementDocument, caller interfaces.AccountInfo) {
+	docs []*interfaces.RequirementDocument, kept *interfaces.RequirementSpec, caller interfaces.AccountInfo) {
 	finish := func(status, failure string, spec *interfaces.RequirementSpec, inputs *interfaces.RequirementInputs) {
 		done := *req
 		done.Status, done.Error, done.Spec, done.Inputs, done.UpdateTime = status, failure, *spec, inputs, s.now()
@@ -953,7 +1003,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	}
 	fail := func(failure string, err error) {
 		logger.Errorf("Requirement drafting of project %s failed (%s): %v", req.ProjectID, failure, err)
-		finish(interfaces.REQUIREMENT_STATUS_FAILED, failure, &interfaces.RequirementSpec{}, nil)
+		finish(interfaces.REQUIREMENT_STATUS_FAILED, failure, startingSpec(kept), nil)
 	}
 
 	// Tables and drafted items are clues; drafting goes on without those it cannot read.
@@ -971,7 +1021,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	if err != nil || !ok {
 		draft = nil
 	}
-	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft)
+	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft, kept)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return
@@ -987,12 +1037,20 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	}
 	if failure != "" {
 		logger.Errorf("Requirement drafting of project %s failed (%s, asked again: %t): %v", req.ProjectID, failure, retried, err)
-		finish(interfaces.REQUIREMENT_STATUS_FAILED, failure, &interfaces.RequirementSpec{DraftRetried: retried}, nil)
+		failed := startingSpec(kept)
+		failed.DraftRetried = retried
+		finish(interfaces.REQUIREMENT_STATUS_FAILED, failure, failed, nil)
 		return
 	}
 
 	byID := documentsByID(docs)
-	spec, types := buildSpec(out, byID, draft)
+	spec, types := buildSpec(out, byID, draft, kept)
+	for _, q := range spec.Questions {
+		if q.DraftTime == 0 {
+			q.DraftTime = req.CreateTime
+		}
+	}
+	signQuestions(spec.Questions, draft)
 	spec.TablesOmitted, spec.PropertiesOmitted, spec.DraftRetried = omitted, propertiesOmitted, retried
 	if len(unlisted) > 0 {
 		spec.CatalogsUnlisted = unlisted
@@ -1054,6 +1112,13 @@ func (s *requirementService) GetRequirement(ctx context.Context, token string,
 	for _, q := range req.Spec.Questions {
 		q.Notes = questionNotes(q)
 	}
+	// The ontology the scenarios rest on goes on changing; a draft that cannot be read leaves
+	// nothing marked.
+	draft, found, err := s.da.GetDraft(ctx, projectID)
+	if err != nil || !found {
+		draft = nil
+	}
+	view.OntologyUncovered = markOntologyChanges(&req.Spec, draft)
 	if req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		docs, err := s.ra.ListDocuments(ctx, projectID)
 		if err != nil {

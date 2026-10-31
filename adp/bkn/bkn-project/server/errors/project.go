@@ -44,7 +44,7 @@ const (
 	BknProject_Requirement_InvalidItem         = "BknProject.Requirement.InvalidItem"
 	BknProject_Requirement_InvalidResolution   = "BknProject.Requirement.InvalidResolution"
 	BknProject_Requirement_InvalidOption       = "BknProject.Requirement.InvalidOption"
-	BknProject_Requirement_NoDocuments         = "BknProject.Requirement.NoDocuments"
+	BknProject_Requirement_NoAdoptedOntology   = "BknProject.Requirement.NoAdoptedOntology"
 	BknProject_Requirement_NoCatalogs          = "BknProject.Requirement.NoCatalogs"
 	BknProject_Requirement_InputsTooLarge      = "BknProject.Requirement.InputsTooLarge"
 	BknProject_Requirement_InvalidTest         = "BknProject.Requirement.InvalidTest"
@@ -93,7 +93,7 @@ var (
 		BknProject_Requirement_InvalidItem,
 		BknProject_Requirement_InvalidResolution,
 		BknProject_Requirement_InvalidOption,
-		BknProject_Requirement_NoDocuments,
+		BknProject_Requirement_NoAdoptedOntology,
 		BknProject_Requirement_NoCatalogs,
 		BknProject_Requirement_InputsTooLarge,
 		BknProject_Requirement_NotOwner,

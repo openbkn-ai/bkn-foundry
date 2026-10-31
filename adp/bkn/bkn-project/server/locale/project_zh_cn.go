@@ -30,7 +30,7 @@ var projectZhCN = i18n.I18nMessages{
 		"BknProject.Requirement.InvalidItem":         "条目不合法 条目缺少必填内容、内容过长，或引用了不存在的条目，见 error_details。",
 		"BknProject.Requirement.InvalidResolution":   "裁决不合法 裁决需要选择一方文档或写明结论，并给出理由。",
 		"BknProject.Requirement.InvalidOption":       "选项不存在 所选的取舍选项不在这个分叉的选项里。",
-		"BknProject.Requirement.NoDocuments":         "没有需求资料 请先上传至少一份需求资料再起草。",
+		"BknProject.Requirement.NoAdoptedOntology":   "还没有已采纳的对象类 请先在本体建模中采纳对象类，再生成业务场景。",
 		"BknProject.Requirement.NoCatalogs":          "没有数据目录 请先为项目选择数据目录再起草。",
 		"BknProject.Requirement.InputsTooLarge":      "需求资料过长 需求资料的总长度超过一次起草的上限，请精简或移除部分资料后再试。",
 		"BknProject.Requirement.NotOwner":            "不是项目负责人 只有项目负责人可以修改需求规格和需求资料。",
