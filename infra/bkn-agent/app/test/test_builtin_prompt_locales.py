@@ -21,7 +21,6 @@ from app.test import test_shared_agent_seeds as seeds
 
 ENGLISH_ORIGINALS = {
     "object_metric_designer",
-    "bkn-project-drafter",
     "bkn-project-requirements",
     "bkn-project-answer-judge",
     "bkn-project-ontology-ask",
