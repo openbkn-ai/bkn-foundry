@@ -47,12 +47,14 @@ const maxMessageTables = 500
 // inputs name those, and a wide table would make the message long for little.
 const maxMessageProperties = 50
 
-// maxSpecScenarios and maxSpecConcepts bound what a specification keeps, the first ones the Agent
-// gives: its answer is one JSON document, and the longer it is, the likelier a model writes it
-// wrong or runs out of time. The prompt states the same bounds.
+// maxSpecScenarios, maxSpecConcepts and maxSpecQuestions bound the new items a specification
+// keeps, the first ones the Agent gives: its answer is one JSON document, and the longer it is, the
+// likelier a model writes it wrong, runs out of time or out of output. The prompt states the same
+// bounds; kept items do not count.
 const (
 	maxSpecScenarios = 10
 	maxSpecConcepts  = 40
+	maxSpecQuestions = 30
 )
 
 // agentDeadline is how long drafting waits for the Agent: its own time limit, with a minute for
@@ -650,6 +652,7 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		spec.Concepts = append(spec.Concepts, concept)
 	}
 
+	added = 0
 	for _, q := range out.Questions {
 		if slices.ContainsFunc(keptSpec.Questions, func(k *interfaces.RequirementQuestion) bool { return sameText(k.Text, q.Text) }) {
 			continue
@@ -657,6 +660,9 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		citations, reason := basisOf(q.Citations, q.SupplementReason, docs, true)
 		if reason == "" && len(citations) > 0 && !numbersInQuotes(q.Text, citations) && !recordValuesInText(q, citations, docs) {
 			reason = rejectedNumberNotInQuote
+		}
+		if reason == "" && added == maxSpecQuestions {
+			reason = rejectedTooMany
 		}
 		if reason != "" {
 			reject(rejectedQuestion, q.Text, reason)
@@ -761,6 +767,7 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		if len(q.Inputs) == 0 || len(inputs) > 0 {
 			question.Inputs = &inputs
 		}
+		added++
 		spec.Questions = append(spec.Questions, question)
 	}
 

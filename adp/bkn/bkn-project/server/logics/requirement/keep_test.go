@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -178,6 +179,20 @@ func Test_BuildSpecKeeps(t *testing.T) {
 			So(ids(spec.Conflicts, conflictID), ShouldResemble, []string{"k1"})
 			So(ids(spec.Choices, choiceID), ShouldResemble, []string{"f1"})
 			So(spec.Rejected, ShouldBeEmpty)
+		})
+
+		Convey("At most maxSpecQuestions new questions are kept; kept ones do not count\n", func() {
+			out := &draftOutput{}
+			for i := range maxSpecQuestions + 1 {
+				out.Questions = append(out.Questions, agentQuestion{Text: fmt.Sprintf("Which employees joined in week %d?", i),
+					Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, SupplementReason: "staffing"})
+			}
+
+			spec, _ := buildSpec(out, noDocs, staffOntology(), kept)
+
+			So(spec.Questions, ShouldHaveLength, len(kept.Questions)+maxSpecQuestions)
+			So(spec.Rejected, ShouldHaveLength, 1)
+			So(spec.Rejected[0].Reason, ShouldEqual, rejectedTooMany)
 		})
 
 		Convey("A concept maps only to an adopted item\n", func() {
