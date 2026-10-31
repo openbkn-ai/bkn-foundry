@@ -136,6 +136,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects/:project_id/ontology/draft", r.GetDraftByEx)
 	apiV1.GET("/projects/:project_id/ontology/check", r.GetCheckByEx)
 	apiV1.GET("/projects/:project_id/ontology/index", r.GetIndexByEx)
+	// The draft's items as candidates a person reviews; accepting the suggestions is
+	// draft:accept_suggestions.
+	apiV1.GET("/projects/:project_id/ontology/candidates", r.GetCandidatesByEx)
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
 	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id/identity", r.ChooseIdentityByEx)

@@ -90,6 +90,12 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 		key := strings.TrimSpace(*edit.IncrementalKey)
 		edit.IncrementalKey = &key
 	}
+	// A reason says why an item is left out: it goes with not adopting it.
+	if edit.Reason = strings.TrimSpace(edit.Reason); edit.Reason != "" &&
+		(edit.Adopted == nil || *edit.Adopted || utf8.RuneCountInString(edit.Reason) > interfaces.DRAFT_REASON_MAX_LENGTH) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
+			WithErrorDetails(map[string]any{"reason": "reason_without_leaving_out"})
+	}
 	return nil
 }
 
@@ -171,6 +177,7 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 			action = interfaces.DRAFT_DECISION_UNADOPT
 		}
 		decide(kind, id, action, !*edit.Adopted, *edit.Adopted)
+		decisions[len(decisions)-1].Reason = edit.Reason
 		if !*edit.Adopted && kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
 			for _, r := range items.RelationTypes {
 				if r.Adopted && (r.Source == id || r.Target == id) {

@@ -221,6 +221,8 @@ type DraftDecision struct {
 	After  any         `json:"after"`
 	By     AccountInfo `json:"by"`
 	Time   int64       `json:"time"`
+	// Reason is why a person left an item out, when they said.
+	Reason string `json:"reason,omitempty"`
 }
 
 // DraftIdentity is a person's choice of the properties that identify an object type's records.
@@ -245,7 +247,12 @@ type DraftItemEdit struct {
 	Description *string `json:"description"`
 	// IncrementalKey sets an object type's update field; empty clears it.
 	IncrementalKey *string `json:"incremental_key"`
+	// Reason says why an item is left out, recorded with not adopting it.
+	Reason string `json:"reason,omitempty"`
 }
+
+// DRAFT_REASON_MAX_LENGTH bounds why an item is left out.
+const DRAFT_REASON_MAX_LENGTH = 200
 
 // DraftTable names a table of a data catalog.
 type DraftTable struct {
@@ -562,4 +569,80 @@ type DraftRelationTypeSnapshot struct {
 	LinkTable     string              `json:"link_table,omitempty"`
 	SourceMapping []DraftFieldMapping `json:"source_mapping,omitempty"`
 	TargetMapping []DraftFieldMapping `json:"target_mapping,omitempty"`
+}
+
+// DRAFT_DECISION_ACCEPT_SUGGESTIONS records the candidates a person accepted as drafting suggested
+// them; After lists them as kind/item_id.
+const DRAFT_DECISION_ACCEPT_SUGGESTIONS = "accept_suggestions"
+
+// States of a candidate: drafted and not reviewed yet, or reviewed and adopted, or left out.
+const (
+	CANDIDATE_STATE_PENDING  = "pending"
+	CANDIDATE_STATE_ADOPTED  = "adopted"
+	CANDIDATE_STATE_EXCLUDED = "excluded"
+)
+
+// DraftCandidates are the draft's object types and relation types as candidates a person reviews
+// one by one: those the requirement specification needs first, then those not reviewed yet.
+type DraftCandidates struct {
+	ProjectID       string           `json:"project_id"`
+	DraftUpdateTime int64            `json:"draft_update_time"`
+	Candidates      []DraftCandidate `json:"candidates"`
+	// Counts are the candidates in each state.
+	Counts map[string]int `json:"counts"`
+}
+
+// DraftCandidate is an object type or relation type of the draft as a candidate. Reviewed is the
+// last decision a person made on whether it is in: adopting it or not, choosing its identity, saving
+// it, making it, or accepting the suggestions; absent while none did.
+type DraftCandidate struct {
+	Kind           string             `json:"kind"`
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	Adopted        bool               `json:"adopted"`
+	State          string             `json:"state"`
+	Reviewed       *DraftReview       `json:"reviewed,omitempty"`
+	ExcludeReason  string             `json:"exclude_reason,omitempty"`
+	AddedByCatalog string             `json:"added_by_catalog,omitempty"`
+	Table          *DraftTable        `json:"table,omitempty"`
+	Rows           int64              `json:"rows,omitempty"`
+	NeedsIdentity  bool               `json:"needs_identity,omitempty"`
+	Key            *DraftKeyEvidence  `json:"key,omitempty"`
+	Evidence       *DraftJoinEvidence `json:"evidence,omitempty"`
+	// NeededByRequirements are the knowledge questions and concepts of the ready requirement
+	// specification that need the candidate; absent without one.
+	NeededByRequirements *DraftNeededBy `json:"needed_by_requirements,omitempty"`
+}
+
+type DraftReview struct {
+	By   AccountInfo `json:"by"`
+	Time int64       `json:"time"`
+}
+
+type DraftNeededBy struct {
+	Questions []DraftNeedingQuestion `json:"questions"`
+	Concepts  []DraftNeedingConcept  `json:"concepts"`
+}
+
+type DraftNeedingQuestion struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+type DraftNeedingConcept struct {
+	ID   string `json:"id"`
+	Term string `json:"term"`
+}
+
+// DraftAcceptSuggestions is the body of accepting the suggestions: the update time of the draft read.
+type DraftAcceptSuggestions struct {
+	UpdateTime int64 `json:"update_time"`
+}
+
+// DraftSuggestionsAccepted is the draft after accepting the suggestions, with the candidates
+// accepted and those left for a person, as kind/item_id.
+type DraftSuggestionsAccepted struct {
+	Draft    *Draft   `json:"draft"`
+	Accepted []string `json:"accepted"`
+	Skipped  []string `json:"skipped"`
 }

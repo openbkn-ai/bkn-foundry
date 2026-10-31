@@ -229,6 +229,21 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(serveBody(handler, http.MethodPost, base, []byte(`{`)).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("Candidates are read for the catalog the query names; accepting the suggestions replies what it did\n", func() {
+			const project = "/api/bkn-project/v1/projects/p1/ontology"
+			drs.EXPECT().GetCandidates(gomock.Any(), "Bearer t", "p1", "c2").
+				Return(&interfaces.DraftCandidates{ProjectID: "p1", Candidates: []interfaces.DraftCandidate{}}, nil)
+			So(serve(handler, http.MethodGet, project+"/candidates?catalog_id=c2").Result().StatusCode, ShouldEqual, http.StatusOK)
+
+			drs.EXPECT().AcceptSuggestions(gomock.Any(), "Bearer t", "p1", interfaces.DraftAcceptSuggestions{UpdateTime: 5}, caller).
+				Return(&interfaces.DraftSuggestionsAccepted{Accepted: []string{"object_types/a"}, Skipped: []string{}}, nil)
+			w := serveBody(handler, http.MethodPost, project+"/draft:accept_suggestions", []byte(`{"update_time":5}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"accepted":["object_types/a"]`)
+			So(serveBody(handler, http.MethodPost, project+"/draft:accept_suggestions", []byte(`{`)).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("The understanding is read as the caller\n", func() {
 			drs.EXPECT().GetUnderstanding(gomock.Any(), "Bearer t", "p1", caller).
 				Return(&interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{

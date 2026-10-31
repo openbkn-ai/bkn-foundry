@@ -42,6 +42,14 @@ type DraftService interface {
 	// DeleteRelationType deletes a relation type a person made; drafted ones are left out instead.
 	DeleteRelationType(ctx context.Context, token string, projectID string, itemID string, updateTime int64,
 		caller AccountInfo) (*Draft, error)
+	// GetCandidates lists the draft's object types and relation types as candidates, those the ready
+	// requirement specification needs first, optionally of the catalog that added them.
+	GetCandidates(ctx context.Context, token string, projectID string, catalogID string) (*DraftCandidates, error)
+	// AcceptSuggestions records every candidate not reviewed yet as reviewed, adopted or not as
+	// drafting suggested, but those that need a person: an object type without an identity, and a
+	// relation with an end not adopted. It records nothing when none is left.
+	AcceptSuggestions(ctx context.Context, token string, projectID string, req DraftAcceptSuggestions,
+		caller AccountInfo) (*DraftSuggestionsAccepted, error)
 	// ChooseIdentity sets the properties that identify an object type's records, counting a
 	// single-field key over the full table as the caller, and records it as a decision.
 	ChooseIdentity(ctx context.Context, token string, projectID string, itemID string,

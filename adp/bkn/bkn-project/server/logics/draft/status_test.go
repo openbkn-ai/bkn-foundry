@@ -873,6 +873,8 @@ func Test_GetStatus(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(s.Stale, ShouldNotContain, interfaces.STALE_SOURCE_CHANGED)
 			So(action(s, interfaces.ACTION_DRAFT_SOURCE_CHANGES), ShouldBeNil)
+			// No person reviewed the draft's object types and relation types yet; that blocks nothing.
+			So(s.Unreviewed, ShouldEqual, 4)
 		})
 
 		Convey("A draft that failed binds nothing, whatever items it kept\n", func() {
