@@ -637,6 +637,33 @@ func Test_Drafter(t *testing.T) {
 			})
 		})
 
+		Convey("A line number with duplicates is paired with the document it numbers, a reference included\n", func() {
+			// The columns of a bill of materials as vega discovered it: no declared key, the line number
+			// first, the material whose bill it is next.
+			bom := table("r_bom", "c1", "erp_material_bom", 0, nil,
+				col("seq_no", "integer", ""), col("bom_version", "datetime", ""), col("bom_material_code", "string", ""),
+				col("bom_level", "integer", ""), col("material_code", "string", ""), col("material_name", "text", ""),
+				col("usage_numerator", "decimal", ""), col("alt_group_no", "integer", ""),
+				col("parent_material_code", "string", ""))
+			material := table("r_mat", "c1", "erp_material", 0, []string{"material_code"},
+				col("material_code", "string", ""), col("material_name", "string", ""))
+			c := sampleCounter()
+			c.keys["r_bom.seq_no"] = [3]int64{31423, 5645, 0}
+			for _, pair := range []string{"seq_no+material_code", "seq_no+alt_group_no", "bom_material_code+material_code",
+				"bom_material_code+alt_group_no", "material_code+alt_group_no"} {
+				c.keys["r_bom."+pair] = [3]int64{31423, 13843, 0}
+			}
+			c.keys["r_bom.seq_no+bom_material_code"] = [3]int64{31423, 31423, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{bom, material}, nil)
+
+			So(err, ShouldBeNil)
+			ot := objectType(items, "erp_material_bom")
+			So(ot.NeedsIdentity, ShouldBeTrue)
+			So(ot.Key.Field, ShouldEqual, "seq_no")
+			So(ot.Key.Candidates, ShouldResemble, [][]string{{"seq_no", "bom_material_code"}})
+		})
+
 		Convey("A table no single field can identify is still offered a pair\n", func() {
 			movements := table("r_mv", "c1", "stock_movements", 0, nil,
 				col("doc_no", "string", ""), col("line_seq", "integer", ""), col("qty", "decimal", ""))
