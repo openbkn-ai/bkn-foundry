@@ -2941,7 +2941,12 @@ def test_ontology_ask_seed_is_a_published_tool_free_chat_agent_with_a_bounded_ou
             assert field in prompt
         assert "history" in prompt and "relation_type" in prompt
         # The answer is streamed as text; revisions follow when the server asks for them.
-        assert "no JSON, no braces, no field labels" in prompt
+        # Business sentences only: no field names, no revisions restated, the draft not the message.
+        assert "no field names of this message or of a revision" in prompt
+        assert "Do not restate or list revisions" in prompt
+        assert "Speak of the draft, never of the message." in prompt
+        # A display key a person recognises a record by, falling back to a unique property.
+        assert "a name, title or label, not an id or a code" in prompt
         assert "After your reply the server asks, in a separate step, for revisions" in prompt
         assert "never guess facts about the data" in prompt
         assert "It carries no row data." in prompt
