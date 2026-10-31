@@ -8,7 +8,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
@@ -209,7 +212,9 @@ func Test_AddCatalogs(t *testing.T) {
 		ps := pmock.NewMockProjectService(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ira := &fakeIDRegistry{}
-		svc := &draftService{setting: testSetting, da: da, ps: ps, va: va, ira: ira, run: func(fn func()) { fn() }}
+		setting := testSetting
+		setting.Timeout = time.Minute
+		svc := &draftService{setting: setting, da: da, ps: ps, va: va, ira: ira, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, CatalogIDs: []string{"c1"}}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
@@ -225,63 +230,208 @@ func Test_AddCatalogs(t *testing.T) {
 			return httpErr.HTTPCode, httpErr.BaseError.ErrorCode
 		}
 		add := func(ids ...string) interfaces.DraftAddCatalogs { return interfaces.DraftAddCatalogs{CatalogIDs: ids} }
-		var finished *interfaces.Draft
-		expectStart := func() {
+		// What the draft becomes after each write, newest last.
+		var writes []interfaces.Draft
+		write := func(result ...bool) {
+			for _, ok := range result {
+				da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+						copied := *d
+						copied.Items.Decisions = slices.Clone(d.Items.Decisions)
+						writes = append(writes, copied)
+						return ok, nil
+					})
+			}
+		}
+		expectAccepted := func() {
 			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c2"}).Return(nil, nil)
 			ps.EXPECT().SetProjectCatalogs(gomock.Any(), token, "p1", []string{"c1", "c2"}, caller).Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), true).
-				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64, _ bool) (bool, error) {
-					// The draft's items stay while the catalogs are drafted.
-					So(d.Status, ShouldEqual, interfaces.DRAFT_STATUS_DRAFTING)
-					So(d.Items.ObjectTypes, ShouldHaveLength, 1)
-					So(d.Items.Decisions, ShouldHaveLength, 1)
-					return true, nil
-				})
-			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, d *interfaces.Draft) error {
-				finished = d
-				return nil
-			})
 		}
-
-		Convey("The owner adds a catalog: its tables are drafted into the draft, which keeps its items and decisions\n", func() {
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			expectStart()
+		expectTables := func() {
 			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return([]*interfaces.VegaTable{{ID: "r_visits"}}, nil)
 			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_visits"}).Return([]*interfaces.VegaTable{visitsTable()}, nil)
 			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_members"}).Return([]*interfaces.VegaTable{membersTable()}, nil)
-			// Only the table added is counted: its key, and its relation to the draft's members.
+			// Only the table added is counted.
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), gomock.Any()).
-				Return([]map[string]any{{"rows": 10, "distinct_values": 10, "nulls": 0, "orphans": 0, "distinct_sources": 10}}, nil).AnyTimes()
+				Return([]map[string]any{{"rows": 10, "distinct_values": 10, "nulls": 0}}, nil).AnyTimes()
+		}
+
+		Convey("The owner adds a catalog: the draft says so and stays ready, then its tables' items join it\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			expectAccepted()
+			expectTables()
+			write(true, true)
 
 			got, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
 
 			So(err, ShouldBeNil)
-			So(got.Status, ShouldEqual, interfaces.DRAFT_STATUS_DRAFTING)
-			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
-			So(finished.UpdateTime, ShouldBeGreaterThan, readTime)
-			So(findObjectType(&finished.Items, "visits").AddedByCatalog, ShouldEqual, "c2")
-			So(finished.Items.ObjectTypes[0].ID, ShouldEqual, "members")
-			So(finished.Items.Inputs.CatalogIDs, ShouldResemble, []string{"c1", "c2"})
-			So(finished.Items.Inputs.Tables, ShouldHaveLength, 2)
-			decisions := finished.Items.Decisions
-			So(decisions, ShouldHaveLength, 2)
-			So(decisions[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADD_CATALOGS)
-			So(decisions[1].After.(interfaces.DraftCatalogsAdded).ObjectTypes, ShouldResemble, []string{"visits"})
+			So(got.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
+			So(writes, ShouldHaveLength, 2)
+			marked := writes[0]
+			So(marked.Items.Adding.CatalogIDs, ShouldResemble, []string{"c2"})
+			So(marked.UpdateTime, ShouldBeGreaterThan, readTime)
+			done := writes[1]
+			So(done.Items.Adding, ShouldBeNil)
+			So(findObjectType(&done.Items, "visits").AddedByCatalog, ShouldEqual, "c2")
+			So(done.Items.ObjectTypes[0].ID, ShouldEqual, "members")
+			So(done.Items.Inputs.CatalogIDs, ShouldResemble, []string{"c1", "c2"})
+			So(done.Items.Inputs.Tables, ShouldHaveLength, 2)
+			So(done.Items.Decisions, ShouldHaveLength, 2)
+			So(done.Items.Decisions[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADD_CATALOGS)
+			So(done.Items.Decisions[1].After.(interfaces.DraftCatalogsAdded).ObjectTypes, ShouldResemble, []string{"visits"})
 		})
 
-		Convey("Drafting that fails leaves the draft as it was, ready, recording why\n", func() {
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			expectStart()
-			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return(nil, errors.New("vega down"))
+		Convey("A new table drafting itself could not read is unreadable, and the draft partial\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			expectAccepted()
+			kinds := table("r_kinds", "c2", "visit_kinds", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
+			// A code table nothing refers to: only reading its values fails.
+			visits := visitsTable()
+			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return([]*interfaces.VegaTable{{ID: "r_visits"}, {ID: "r_kinds"}}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_visits", "r_kinds"}).Return([]*interfaces.VegaTable{visits, kinds}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_members"}).Return([]*interfaces.VegaTable{membersTable()}, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ interfaces.VegaAccount, sql string, _ int) ([]map[string]any, error) {
+					// Only the code table's values cannot be read.
+					if strings.Contains(sql, "code_value") && strings.Contains(sql, "{{r_kinds}}") {
+						return nil, errors.New("timeout")
+					}
+					return []map[string]any{{"rows": 10, "distinct_values": 10, "nulls": 0}}, nil
+				}).AnyTimes()
+			write(true, true)
 
 			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
 
 			So(err, ShouldBeNil)
-			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
-			So(finished.Items.ObjectTypes, ShouldHaveLength, 1)
-			So(finished.Items.Inputs.CatalogIDs, ShouldResemble, []string{"c1"})
-			last := finished.Items.Decisions[len(finished.Items.Decisions)-1]
+			done := writes[1]
+			ids := []string{}
+			for _, u := range done.Items.Unreadable {
+				ids = append(ids, u.ResourceID)
+			}
+			So(ids, ShouldContain, "r_kinds")
+			So(done.Items.Inputs.Partial, ShouldBeTrue)
+		})
+
+		Convey("An edit made while drafting is kept: the items join the draft as it is by then\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").DoAndReturn(func(context.Context, string) (*interfaces.Draft, bool, error) {
+				edited := *draft
+				edited.UpdateTime++
+				edited.Items.Decisions = append(slices.Clone(draft.Items.Decisions), &interfaces.DraftDecision{
+					Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: "members", Action: interfaces.DRAFT_DECISION_DESCRIBE})
+				return &edited, true, nil
+			}).Times(2)
+			expectAccepted()
+			expectTables()
+			// The first write of the items meets yet another edit, and is tried again.
+			write(true, false, true)
+
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldHaveLength, 3)
+			done := writes[2]
+			So(done.Items.Decisions, ShouldHaveLength, 3)
+			So(done.Items.Decisions[1].Action, ShouldEqual, interfaces.DRAFT_DECISION_DESCRIBE)
+			So(done.Items.Decisions[2].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADD_CATALOGS)
+		})
+
+		Convey("A draft drafted again meanwhile takes nothing of the catalogs added\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_DRAFTING}, true, nil)
+			expectAccepted()
+			expectTables()
+			write(true)
+
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldHaveLength, 1)
+		})
+
+		Convey("Another adding that took over meanwhile is left to record its own\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").DoAndReturn(func(context.Context, string) (*interfaces.Draft, bool, error) {
+				other := *draft
+				other.Items.Adding = &interfaces.DraftAdding{CatalogIDs: []string{"c9"}, Since: draft.Items.Adding.Since + 1}
+				return &other, true, nil
+			})
+			expectAccepted()
+			expectTables()
+			write(true)
+
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldHaveLength, 1)
+		})
+
+		Convey("A table of the draft drafting could not read is no table added\n", func() {
+			// The draft's tiers read as a code table now, whose values are not read again.
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, &interfaces.DraftObjectType{ID: "tiers", Name: "tiers",
+				Adopted: true, PrimaryKeys: []string{"code"}, Table: interfaces.DraftTable{ResourceID: "r_tiers", CatalogID: "c1"},
+				Properties: []*interfaces.DraftProperty{{Name: "code", Type: "string", MappedField: "code"}}})
+			tiers := table("r_tiers", "c1", "tiers", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			expectAccepted()
+			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return([]*interfaces.VegaTable{{ID: "r_visits"}}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_visits"}).Return([]*interfaces.VegaTable{visitsTable()}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_members", "r_tiers"}).
+				Return([]*interfaces.VegaTable{membersTable(), tiers}, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				Return([]map[string]any{{"rows": 10, "distinct_values": 10, "nulls": 0}}, nil).AnyTimes()
+			write(true, true)
+
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+
+			So(err, ShouldBeNil)
+			for _, u := range writes[1].Items.Unreadable {
+				So(u.ResourceID, ShouldNotEqual, "r_tiers")
+			}
+			So(writes[1].Items.Inputs.Partial, ShouldBeFalse)
+		})
+
+		Convey("Drafting that fails leaves the draft as it is, recording why\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			expectAccepted()
+			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return(nil, errors.New("vega down"))
+			write(true, true)
+
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+
+			So(err, ShouldBeNil)
+			done := writes[1]
+			So(done.Items.Adding, ShouldBeNil)
+			So(done.Items.ObjectTypes, ShouldHaveLength, 1)
+			So(done.Items.Inputs.CatalogIDs, ShouldResemble, []string{"c1"})
+			last := done.Items.Decisions[len(done.Items.Decisions)-1]
 			So(last.After.(interfaces.DraftCatalogsAdded).Error, ShouldContainSubstring, "vega down")
+		})
+
+		Convey("A draft changed since it was read is not marked, nothing is drafted\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			expectAccepted()
+			write(false)
+
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+
+			_, code := codeOf(err)
+			So(code, ShouldEqual, perrors.BknProject_Draft_Stale)
+		})
+
+		Convey("Catalogs being added refuse more until done; once past the drafting timeout they hold nothing\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			draft.Items.Adding = &interfaces.DraftAdding{CatalogIDs: []string{"c3"}, Since: time.Now().UnixMilli()}
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+			_, code := codeOf(err)
+			So(code, ShouldEqual, perrors.BknProject_Draft_Drafting)
+
+			draft.Items.Adding.Since = time.Now().Add(-(setting.Timeout + 2*time.Minute)).UnixMilli()
+			expectAccepted()
+			expectTables()
+			write(true, true)
+			_, err = svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Catalogs that are none, repeated, empty or drafted already are refused\n", func() {
@@ -305,7 +455,7 @@ func Test_AddCatalogs(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Draft_CatalogMissing)
 		})
 
-		Convey("Without a ready draft, or with drafting under way, nothing is added\n", func() {
+		Convey("Without a ready draft nothing is added\n", func() {
 			drafting := *draft
 			drafting.Status = interfaces.DRAFT_STATUS_DRAFTING
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&drafting, true, nil)
@@ -319,26 +469,12 @@ func Test_AddCatalogs(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Draft_NotReady)
 		})
 
-		Convey("Drafting that starts meanwhile wins\n", func() {
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c2"}).Return(nil, nil)
-			ps.EXPECT().SetProjectCatalogs(gomock.Any(), token, "p1", []string{"c1", "c2"}, caller).Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(false, nil)
-
-			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
-
-			_, code := codeOf(err)
-			So(code, ShouldEqual, perrors.BknProject_Draft_Drafting)
-		})
-
 		Convey("A catalog the project has but the draft was not drafted from is drafted, the project keeping it once\n", func() {
 			project.CatalogIDs = []string{"c1", "c2"}
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
 			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c2"}).Return(nil, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(true, nil)
-			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).Return(nil)
-			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return(nil, nil)
-			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil).AnyTimes()
+			expectTables()
+			write(true, true)
 
 			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
 

@@ -71,6 +71,14 @@ func (c *draftedCounter) keyTupleStats(ctx context.Context, table *interfaces.Ve
 	return c.counter.keyTupleStats(ctx, table, fields)
 }
 
+func (c *draftedCounter) codeValues(ctx context.Context, table *interfaces.VegaTable, code string, name string,
+	limit int64) ([]interfaces.DraftEnumValue, error) {
+	if _, drafted := c.keys[table.ID]; drafted {
+		return nil, errNotCounted
+	}
+	return c.counter.codeValues(ctx, table, code, name, limit)
+}
+
 func (c *draftedCounter) joinStats(ctx context.Context, source *interfaces.VegaTable, field string,
 	target *interfaces.VegaTable, key string) (int64, int64, int64, int64, error) {
 	if _, drafted := c.keys[source.ID]; drafted {
@@ -124,6 +132,11 @@ func (s *draftService) AddCatalogs(ctx context.Context, token string, projectID 
 		span.SetStatus(codes.Error, "Draft not ready")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_NotReady)
 	}
+	now := time.Now()
+	if a := draft.Items.Adding; a != nil && a.Since >= now.Add(-(s.setting.Timeout+time.Minute)).UnixMilli() {
+		span.SetStatus(codes.Error, "Adding")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Drafting)
+	}
 	added, err := checkAddCatalogs(ctx, req.CatalogIDs, draft.Items.Inputs.CatalogIDs)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid catalogs")
@@ -154,76 +167,114 @@ func (s *draftService) AddCatalogs(ctx context.Context, token string, projectID 
 		}
 	}
 
-	ready := *draft
-	drafting := *draft
-	drafting.Status, drafting.UpdateTime = interfaces.DRAFT_STATUS_DRAFTING, max(time.Now().UnixMilli(), draft.UpdateTime+1)
-	// The draft's items stay while the catalogs are drafted: nothing of them is discarded.
-	staleBefore := time.Now().Add(-(s.setting.Timeout + time.Minute)).UnixMilli()
-	started, err := s.da.StartDraft(ctx, &drafting, staleBefore, true)
+	// The draft stays ready while the catalogs are drafted; it only says they are being added, written
+	// on the draft as it was read, so that no edit made since is lost.
+	read := draft.UpdateTime
+	adding := &interfaces.DraftAdding{CatalogIDs: added, By: caller, Since: now.UnixMilli()}
+	draft.Items.Adding = adding
+	draft.UpdateTime = max(now.UnixMilli(), read+1)
+	written, err := s.da.UpdateDraft(ctx, draft, read)
 	if err != nil {
-		span.SetStatus(codes.Error, "Start draft failed")
-		return nil, internalError(ctx, "Start draft failed", err)
+		span.SetStatus(codes.Error, "Update draft failed")
+		return nil, internalError(ctx, "Update draft failed", err)
 	}
-	if !started {
-		span.SetStatus(codes.Error, "Drafting")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Drafting)
+	if !written {
+		span.SetStatus(codes.Error, "Draft stale")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Stale)
 	}
+	snapshot := *draft
 	background := context.WithoutCancel(ctx)
-	s.run(func() { s.draftAdded(background, &ready, added, caller) })
+	s.run(func() { s.draftAdded(background, &snapshot, adding, caller) })
 	span.SetStatus(codes.Ok, "")
-	return &drafting, nil
+	return draft, nil
 }
 
-// draftAdded drafts the tables of the catalogs added into the draft, and records the result: the
-// draft with the new items, or the draft as it was when drafting failed, with why.
-func (s *draftService) draftAdded(ctx context.Context, draft *interfaces.Draft, added []string,
+// maxAddAttempts bounds the writes of catalogs added that edits made meanwhile refuse.
+const maxAddAttempts = 3
+
+// draftAdded drafts the tables of the catalogs added, then adds what they drafted to the draft as it
+// is by then, edits made meanwhile included, and records it: a decision of what was added, or why
+// drafting failed, the draft being left as it is. It gives up when the draft was drafted again, or
+// another adding took over, meanwhile.
+func (s *draftService) draftAdded(ctx context.Context, snapshot *interfaces.Draft, adding *interfaces.DraftAdding,
 	caller interfaces.AccountInfo) {
-	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
+	timed, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DraftAddedCatalogs")
+	timed, span := oteltrace.StartNamedInternalSpan(timed, "DraftAddedCatalogs")
 	defer span.End()
+	projectID := snapshot.ProjectID
 
-	result := *draft
-	record := interfaces.DraftCatalogsAdded{CatalogIDs: added, ObjectTypes: []string{}, RelationTypes: []string{},
-		ValueTypes: []string{}}
-	items, err := s.mergeAdded(ctx, draft, added, caller, &record)
+	result, err := s.draftCatalogs(timed, snapshot, adding.CatalogIDs, caller)
+	if err == nil {
+		err = s.recordIDs(timed, result.recorded)
+	}
+	reason := ""
 	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Draft catalogs added to project %s failed: %v", draft.ProjectID, err))
+		otellog.LogWarn(ctx, fmt.Sprintf("Draft catalogs added to project %s failed: %v", projectID, err))
 		span.SetStatus(codes.Error, "Draft added catalogs failed")
-		record.Error = err.Error()
+		reason = err.Error()
 		if errors.Is(err, context.DeadlineExceeded) {
-			record.Error = FailureTimeout
+			reason = FailureTimeout
 		}
-	} else {
-		result.Items = items
 	}
-	result.Status = interfaces.DRAFT_STATUS_READY
-	result.UpdateTime = max(time.Now().UnixMilli(), draft.UpdateTime+1)
-	result.Items.Decisions = append(slices.Clone(result.Items.Decisions), &interfaces.DraftDecision{
-		Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ADD_CATALOGS, After: record,
-		By: caller, Time: result.UpdateTime,
-	})
 	// The outcome is recorded even when drafting ran out of time.
-	if err := s.da.FinishDraft(context.WithoutCancel(ctx), &result); err != nil {
-		otellog.LogError(ctx, fmt.Sprintf("Record draft of project %s failed", draft.ProjectID), err)
+	for range maxAddAttempts {
+		latest, exist, err := s.da.GetDraft(ctx, projectID)
+		if err != nil || !exist || latest.Status != interfaces.DRAFT_STATUS_READY || latest.Items.Adding == nil ||
+			latest.Items.Adding.Since != adding.Since {
+			otellog.LogWarn(ctx, fmt.Sprintf("Catalogs added to project %s not recorded: the draft changed (%v)", projectID, err))
+			return
+		}
+		record := interfaces.DraftCatalogsAdded{CatalogIDs: adding.CatalogIDs, ObjectTypes: []string{},
+			RelationTypes: []string{}, ValueTypes: []string{}, Error: reason}
+		items := latest.Items
+		if reason == "" {
+			items = s.applyAdded(items, result, adding.CatalogIDs, &record)
+		}
+		items.Adding = nil
+		read := latest.UpdateTime
+		latest.UpdateTime = max(time.Now().UnixMilli(), read+1)
+		items.Decisions = append(slices.Clone(items.Decisions), &interfaces.DraftDecision{
+			Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ADD_CATALOGS, After: record,
+			By: caller, Time: latest.UpdateTime,
+		})
+		latest.Items = items
+		written, err := s.da.UpdateDraft(ctx, latest, read)
+		if err != nil {
+			otellog.LogError(ctx, fmt.Sprintf("Record catalogs added to project %s failed", projectID), err)
+			return
+		}
+		if written {
+			return
+		}
 	}
+	otellog.LogWarn(ctx, fmt.Sprintf("Catalogs added to project %s not recorded: the draft kept changing", projectID))
 }
 
-// mergeAdded drafts the tables of the catalogs added with the tables of the draft's object types,
-// which the new tables may relate to, and returns the draft's items with what only the new tables
-// drafted: their object types and value types, and the relations with an end among them. Items the
-// draft has stay exactly as they are; a relation's end at one of them takes its id and property.
-func (s *draftService) mergeAdded(ctx context.Context, draft *interfaces.Draft, added []string,
-	caller interfaces.AccountInfo, record *interfaces.DraftCatalogsAdded) (interfaces.DraftItems, error) {
+// addedDraft is what drafting the tables of catalogs added gave: the items drafted with the draft's
+// own tables, the new tables, those of them drafting could not read, and the ids to register.
+type addedDraft struct {
+	drafted    interfaces.DraftItems
+	tables     []*interfaces.VegaTable
+	unreadable []*interfaces.DraftTable
+	recorded   []*interfaces.RegisteredID
+}
+
+// draftCatalogs drafts the tables of the catalogs added with the tables of the draft's object types,
+// which the new tables may relate to and which are not counted again.
+func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draft, added []string,
+	caller interfaces.AccountInfo) (*addedDraft, error) {
 	tables, unreadable, err := s.readCatalogs(ctx, added, caller)
 	if err != nil {
-		return interfaces.DraftItems{}, err
+		return nil, err
 	}
-	items := draft.Items
-	keys := draftedKeys(&items)
+	keys := draftedKeys(&draft.Items)
 	isNew := map[string]bool{}
 	for _, t := range tables {
 		isNew[t.ID] = true
+	}
+	for _, t := range unreadable {
+		isNew[t.ResourceID] = true
 	}
 	oldIDs := []string{}
 	for id := range keys {
@@ -236,47 +287,68 @@ func (s *draftService) mergeAdded(ctx context.Context, draft *interfaces.Draft, 
 	if len(oldIDs) > 0 {
 		old, err := s.va.GetTables(ctx, caller, oldIDs)
 		if err != nil {
-			return interfaces.DraftItems{}, fmt.Errorf("read tables drafted: %w", err)
+			return nil, fmt.Errorf("read tables drafted: %w", err)
 		}
 		all = append(all, old...)
 	}
 	registered, err := s.ira.ListIDs(ctx, draft.ProjectID)
 	if err != nil {
-		return interfaces.DraftItems{}, fmt.Errorf("read registered ids: %w", err)
+		return nil, fmt.Errorf("read registered ids: %w", err)
 	}
 	c := &draftedCounter{counter: &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}, keys: keys}
 	d := newDrafter(s.setting, c).withRegisteredIDs(draft.ProjectID, registered).withNamingLanguage(draftLanguage(draft))
 	drafted, err := d.draft(ctx, all, unreadable)
 	if err != nil {
-		return interfaces.DraftItems{}, err
+		return nil, err
 	}
-
-	merged := mergeDrafted(items, drafted, tables, unreadable, record)
+	result := &addedDraft{drafted: drafted, tables: tables}
+	// Tables drafting itself could not read, such as a code table whose values it could not query,
+	// are unreadable as those the catalogs listed but vega did not give.
+	for _, t := range drafted.Unreadable {
+		if isNew[t.ResourceID] {
+			result.unreadable = append(result.unreadable, t)
+		}
+	}
 	// Only the ids of what the new tables drafted are registered: those the draft has stand as given.
-	recorded := []*interfaces.RegisteredID{}
 	for _, id := range d.recorded {
 		for _, t := range tables {
 			if id.SourceKey == t.ID || strings.HasPrefix(id.SourceKey, t.ID+"/") {
-				recorded = append(recorded, id)
+				result.recorded = append(result.recorded, id)
 				break
 			}
 		}
 	}
+	return result, nil
+}
+
+// recordIDs registers ids drafted, as drafting does before its draft is recorded.
+func (s *draftService) recordIDs(ctx context.Context, ids []*interfaces.RegisteredID) error {
 	now := time.Now().UnixMilli()
-	for _, id := range recorded {
+	for _, id := range ids {
 		id.CreateTime, id.UpdateTime = now, now
 	}
-	if err := s.ira.RecordIDs(ctx, recorded); err != nil {
-		return interfaces.DraftItems{}, fmt.Errorf("record ids: %w", err)
+	if err := s.ira.RecordIDs(ctx, ids); err != nil {
+		return fmt.Errorf("record ids: %w", err)
 	}
-	inputs := *items.Inputs
-	addedInputs := draftInputsOf(s.setting, added, tables, unreadable)
-	inputs.CatalogIDs = append(slices.Clone(items.Inputs.CatalogIDs), added...)
-	inputs.Tables = append(slices.Clone(items.Inputs.Tables), addedInputs.Tables...)
+	return nil
+}
+
+// applyAdded adds what the catalogs added drafted to the draft's items as they are now, and their
+// tables to what the draft was made from.
+func (s *draftService) applyAdded(items interfaces.DraftItems, result *addedDraft, added []string,
+	record *interfaces.DraftCatalogsAdded) interfaces.DraftItems {
+	merged := mergeDrafted(items, result.drafted, result.tables, result.unreadable, record)
+	inputs := interfaces.DraftInputs{}
+	if items.Inputs != nil {
+		inputs = *items.Inputs
+	}
+	addedInputs := draftInputsOf(s.setting, added, result.tables, result.unreadable)
+	inputs.CatalogIDs = append(slices.Clone(inputs.CatalogIDs), added...)
+	inputs.Tables = append(slices.Clone(inputs.Tables), addedInputs.Tables...)
 	slices.SortFunc(inputs.Tables, func(a, b interfaces.DraftInputTable) int { return strings.Compare(a.ResourceID, b.ResourceID) })
 	inputs.Partial = inputs.Partial || addedInputs.Partial
 	merged.Inputs = &inputs
-	return merged, nil
+	return merged
 }
 
 // mergeDrafted adds to the draft's items what the new tables drafted: their object types and value

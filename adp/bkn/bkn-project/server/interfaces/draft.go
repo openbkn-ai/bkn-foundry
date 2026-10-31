@@ -117,6 +117,9 @@ type DraftItems struct {
 	// its update time is the draft's: any change since moves the draft's on. Drafting again keeps
 	// it, unconfirmed, so what it wrote on the branch stays the draft's.
 	Confirmation *DraftConfirmation `json:"confirmation,omitempty"`
+	// Adding is the catalogs being added and drafted in the background; the draft stays ready and
+	// editable meanwhile, and their items join it when done. Absent when none are.
+	Adding *DraftAdding `json:"adding,omitempty"`
 }
 
 // DraftInputs is what drafting read and how it decided: the version of its rules and their
@@ -418,6 +421,14 @@ type DraftAskSuggestion struct {
 // DRAFT_DECISION_ADD_CATALOGS records catalogs added to a draft: After lists the catalogs and the
 // items their tables drafted, or why drafting them failed.
 const DRAFT_DECISION_ADD_CATALOGS = "add_catalogs"
+
+// DraftAdding is catalogs being added to a draft, by whom and since when. One past the drafting
+// timeout has ended without being recorded, such as on a restart, and holds nothing.
+type DraftAdding struct {
+	CatalogIDs []string    `json:"catalog_ids"`
+	By         AccountInfo `json:"by"`
+	Since      int64       `json:"since"`
+}
 
 // DraftAddCatalogs is the body of adding catalogs to a project's draft.
 type DraftAddCatalogs struct {
