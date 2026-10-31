@@ -2703,7 +2703,7 @@ def test_requirements_v7_upgrade_matches_fresh_install_and_keeps_history(start):
         # pass draft drafts from the adopted ontology; documents are optional, kept items not repeated.
         for rule in ("from the ontology the owner has adopted", "the adopted object types and relation types",
                      "the project's requirement documents, if any", "without documents, draft from the ontology alone",
-                     "Never repeat a kept item", "named by its kept- id", "and every adopted object type",
+                     "Never repeat a kept item", "named by its kept- id", "Give at most 30 questions",
                      "for every concept of category object or relation that one of them is",
                      "Without documents, give no rules, conflicts or choices",
                      "naming the object types and relation types it rests on by their names, never by their ids"):
