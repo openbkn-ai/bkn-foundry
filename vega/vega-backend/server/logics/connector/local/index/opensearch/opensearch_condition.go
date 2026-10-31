@@ -283,7 +283,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 		if err != nil {
 			return nil, err
 		}
-		return fieldComparisonScript(exactField, "==", rightExactField, cond.Lfield.Type, cond.Rfield.Type), nil
+		return fieldComparisonScript(exactField, "==", rightExactField, cond.Lfield.Type, cond.Rfield.Type)
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -339,7 +339,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 		if err != nil {
 			return nil, err
 		}
-		return fieldComparisonScript(exactField, "!=", rightExactField, cond.Lfield.Type, cond.Rfield.Type), nil
+		return fieldComparisonScript(exactField, "!=", rightExactField, cond.Lfield.Type, cond.Rfield.Type)
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -360,7 +360,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGt(condition interfaces.Filt
 		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
-			propertyPhysicalFieldName(cond.Lfield), ">", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type), nil
+			propertyPhysicalFieldName(cond.Lfield), ">", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type)
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -381,7 +381,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionGte(condition interfaces.Fil
 		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
-			propertyPhysicalFieldName(cond.Lfield), ">=", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type), nil
+			propertyPhysicalFieldName(cond.Lfield), ">=", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type)
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -402,7 +402,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionLt(condition interfaces.Filt
 		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
-			propertyPhysicalFieldName(cond.Lfield), "<", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type), nil
+			propertyPhysicalFieldName(cond.Lfield), "<", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type)
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
@@ -423,13 +423,19 @@ func (c *OpenSearchConnector) ConvertFilterConditionLte(condition interfaces.Fil
 		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
-			propertyPhysicalFieldName(cond.Lfield), "<=", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type), nil
+			propertyPhysicalFieldName(cond.Lfield), "<=", propertyPhysicalFieldName(cond.Rfield), cond.Lfield.Type, cond.Rfield.Type)
 	default:
 		return nil, interfaces.NewConditionBuildError("value_from %s is not supported", cond.Cfg.ValueFrom)
 	}
 }
 
-func fieldComparisonScript(leftField string, operator string, rightField string, leftType string, rightType string) map[string]any {
+func fieldComparisonScript(leftField string, operator string, rightField string, leftType string, rightType string) (map[string]any, error) {
+	leftDate := interfaces.DataType_HasDatePart(leftType)
+	rightDate := interfaces.DataType_HasDatePart(rightType)
+	if leftDate != rightDate {
+		return nil, interfaces.NewConditionBuildError("cannot compare a date field with a non-date field")
+	}
+
 	// 缺失映射或空值不参与比较，与 SQL WHERE 中 NULL 比较不命中的语义一致。
 	guard := "doc.containsKey(params.left) && doc.containsKey(params.right) && " +
 		"doc[params.left].size() > 0 && doc[params.right].size() > 0 && "
@@ -440,7 +446,7 @@ func fieldComparisonScript(leftField string, operator string, rightField string,
 		// unsigned_long 的 doc value 是 BigInteger；通用运算符会窄化为 int/long。
 		// 两侧整数均转为 BigInteger，避免高位截断，并正确比较有符号和无符号边界。
 		comparison = fmt.Sprintf("new BigInteger(doc[params.left].value.toString()).compareTo(new BigInteger(doc[params.right].value.toString())) %s 0", operator)
-	} else if leftType == interfaces.DataType_Date || leftType == interfaces.DataType_Datetime {
+	} else if leftDate && rightDate {
 		// 日期 doc value 是 ZonedDateTime，按 Instant 比较以保留纳秒并按绝对时刻判等。
 		comparison = fmt.Sprintf("doc[params.left].value.toInstant().compareTo(doc[params.right].value.toInstant()) %s 0", operator)
 	}
@@ -454,7 +460,7 @@ func fieldComparisonScript(leftField string, operator string, rightField string,
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 // ConvertFilterConditionIn converts an InCond to OpenSearch DSL.

@@ -471,7 +471,8 @@ components:
             date/datetime 的 before 使用 `[正整数间隔, 单位]`，单位为
             year/month/week/day/hour/minute；索引查询的间隔上限为 2147483647。
 
-            可用操作取决于字段类型和查询通道。索引 TEXT 的精确及模式匹配要求 keyword Feature。
+            可用操作取决于字段类型和查询通道。索引字段比较的日期族两侧均须为 date/datetime/timestamp。
+            索引 TEXT 的精确及模式匹配要求 keyword Feature。
             contain 在源查询中匹配逗号分隔值的全部给定项，
             在索引查询中匹配任一项；索引 not_contain 排除全部给定项。
             knn_vector 在索引维度已知时要求输入向量维度匹配。

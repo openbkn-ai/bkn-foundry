@@ -89,3 +89,13 @@ func DataType_IsDate(t string) bool {
 	_, ok := DATE_TYPES[t]
 	return ok
 }
+
+// DataType_HasDatePart 判断类型是否包含日历日期部分，不包含仅表示日内时间的 time。
+func DataType_HasDatePart(t string) bool {
+	switch t {
+	case DataType_Date, DataType_Datetime, DataType_Timestamp:
+		return true
+	default:
+		return false
+	}
+}
