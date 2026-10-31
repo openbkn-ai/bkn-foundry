@@ -310,6 +310,50 @@ func Test_CandidateService(t *testing.T) {
 				ItemID: "visits", Because: interfaces.BLOCKER_NEEDS_IDENTITY})
 		})
 
+		Convey("Leaving out again what a person left out writes nothing, unless with another reason\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			out := false
+			// Notes were left out with why: again without one, or with the same, changes nothing.
+			for _, reason := range []string{"", "Free text, not a business object"} {
+				got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "notes",
+					interfaces.DraftItemEdit{UpdateTime: readTime, Adopted: &out, Reason: reason}, caller)
+				So(err, ShouldBeNil)
+				So(got.UpdateTime, ShouldEqual, readTime)
+			}
+
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "notes",
+				interfaces.DraftItemEdit{UpdateTime: readTime, Adopted: &out, Reason: "Kept in the wiki"}, caller)
+			So(err, ShouldBeNil)
+			for _, x := range candidatesOf(got, nil, "").Candidates {
+				if x.ID == "notes" {
+					So(x.ExcludeReason, ShouldEqual, "Kept in the wiki")
+				}
+			}
+		})
+
+		Convey("Leaving out what a person adopted and a sync left out records the person's decision\n", func() {
+			// Left out once with why, adopted since, then left out by a sync.
+			draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_RELATION_TYPES,
+				ItemID: "items_to_stores", Action: interfaces.DRAFT_DECISION_UNADOPT, By: reviewer, Time: 4, Reason: "Unclear"},
+				&interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_RELATION_TYPES,
+					ItemID: "items_to_stores", Action: interfaces.DRAFT_DECISION_ADOPT, By: reviewer, Time: 5},
+				&interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "items_to_stores",
+					Action: interfaces.DRAFT_DECISION_SYNC, Time: 6})
+			draft.Items.RelationTypes[0].Adopted = false
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			out := false
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_RELATION_TYPES, "items_to_stores",
+				interfaces.DraftItemEdit{UpdateTime: readTime, Adopted: &out}, caller)
+
+			So(err, ShouldBeNil)
+			last := got.Items.Decisions[len(got.Items.Decisions)-1]
+			So(last.Action, ShouldEqual, interfaces.DRAFT_DECISION_UNADOPT)
+			So(last.By, ShouldResemble, caller)
+		})
+
 		Convey("Accepting the suggestions decides what drafting left out\n", func() {
 			draft.Items.ObjectTypes[3].Adopted = false
 			draft.Items.Decisions = nil

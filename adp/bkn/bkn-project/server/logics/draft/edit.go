@@ -194,7 +194,7 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		}
 	}
 	if edit.Adopted != nil && !*edit.Adopted && !wasAdopted && (kind == interfaces.DRAFT_KIND_OBJECT_TYPES ||
-		kind == interfaces.DRAFT_KIND_RELATION_TYPES) {
+		kind == interfaces.DRAFT_KIND_RELATION_TYPES) && newExclusion(items, kind, id, edit.Reason) {
 		// Leaving out what drafting left out is a person's decision too, with why.
 		decide(kind, id, interfaces.DRAFT_DECISION_UNADOPT, false, false)
 		decisions[len(decisions)-1].Reason = edit.Reason
@@ -356,4 +356,22 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 	}
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
+}
+
+// newExclusion tells whether leaving out an item that is out says something new: no person left it
+// out yet, or the reason given is another than the last one.
+func newExclusion(items *interfaces.DraftItems, kind string, id string, reason string) bool {
+	for i := len(items.Decisions) - 1; i >= 0; i-- {
+		d := items.Decisions[i]
+		if d.Kind != kind || d.ItemID != id {
+			continue
+		}
+		switch d.Action {
+		case interfaces.DRAFT_DECISION_UNADOPT:
+			return reason != "" && reason != d.Reason
+		case interfaces.DRAFT_DECISION_ADOPT:
+			return true
+		}
+	}
+	return true
 }
