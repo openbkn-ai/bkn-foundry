@@ -7,6 +7,8 @@ package requirement
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
@@ -26,34 +28,55 @@ var (
 )
 
 // plainText is the question's text with each slot said in business words, in the language given.
+// The text is read once: what a slot is said in is never read as a slot again.
 func plainText(q *interfaces.RequirementQuestion, spec *interfaces.RequirementSpec, draft *interfaces.Draft,
 	language string) string {
 	zh := language == interfaces.NAMING_LANGUAGE_ZH_CN
-	text := q.Text
-	for {
-		at := textSlot.FindStringSubmatchIndex(text)
-		if at == nil {
-			return strings.TrimSpace(text)
-		}
-		label, moment := slotLabel(text[at[2]:at[3]], q, spec, draft)
-		before, after := text[:at[0]], text[at[1]:]
-		// A label the text says right before the slot is the one the slot gives: said once.
-		if label != "" && strings.HasSuffix(strings.ToLower(strings.TrimSpace(before)), strings.ToLower(label)) {
-			before = strings.TrimSpace(before)
-			before = before[:len(before)-len(label)]
+	var out strings.Builder
+	last := 0
+	for _, at := range textSlot.FindAllStringSubmatchIndex(q.Text, -1) {
+		label, moment := slotLabel(q.Text[at[2]:at[3]], q, spec, draft)
+		before := strings.TrimRight(out.String()+q.Text[last:at[0]], " ")
+		// A label the text says right before the slot, as a word of its own, is the one the slot
+		// gives: said once.
+		if label != "" && endsWithWord(before, label) {
+			before = strings.TrimRight(before[:len(before)-len(label)], " ")
 		}
 		phrase := givenPhrase(label, moment, language)
 		if !zh {
-			phrase = " " + phrase + " "
-			if strings.TrimSpace(before) == "" {
-				phrase = strings.ToUpper(phrase[1:2]) + phrase[2:]
+			if before == "" {
+				phrase = strings.ToUpper(phrase[:1]) + phrase[1:]
+			} else {
+				phrase = " " + phrase
 			}
+			phrase += " "
 		}
-		text = strings.TrimRight(before, " ") + phrase + strings.TrimLeft(after, " ")
-		if !zh {
-			text = spaceBeforeMark.ReplaceAllString(text, "$1")
-		}
+		out.Reset()
+		out.WriteString(before + phrase)
+		last = at[1]
 	}
+	if last == 0 {
+		return q.Text
+	}
+	text := out.String() + strings.TrimLeft(q.Text[last:], " ")
+	if !zh {
+		text = spaceBeforeMark.ReplaceAllString(text, "$1")
+	}
+	return strings.TrimSpace(text)
+}
+
+// endsWithWord tells whether text ends with word, ignoring case, as a word of its own: what comes
+// before it is the start, a space or punctuation.
+func endsWithWord(text string, word string) bool {
+	if !strings.HasSuffix(strings.ToLower(text), strings.ToLower(word)) {
+		return false
+	}
+	rest := text[:len(text)-len(word)]
+	if rest == "" {
+		return true
+	}
+	r, _ := utf8.DecodeLastRuneInString(rest)
+	return unicode.IsSpace(r) || unicode.IsPunct(r)
 }
 
 // slotLabel is what a slot names, and whether it is a moment: its input's concept term, or for a
