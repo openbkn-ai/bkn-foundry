@@ -187,6 +187,56 @@ func Test_PendingOf(t *testing.T) {
 			So(proposed.Options[0].Allowed, ShouldBeTrue)
 		})
 
+		Convey("An adopted object type with time properties and no update field asks for one, without blocking\n", func() {
+			d := confirmableDraft()
+			orders, customers := d.Items.ObjectTypes[0], d.Items.ObjectTypes[1]
+			orders.Properties = append(orders.Properties,
+				&interfaces.DraftProperty{Name: "ordered_at", Type: "datetime", MappedField: "ordered_at"},
+				&interfaces.DraftProperty{Name: "amount", Type: "decimal", MappedField: "amount"},
+				&interfaces.DraftProperty{Name: "ship_date", Type: "date", MappedField: "ship_date"})
+			// One that has its update field, one with no time property, one left out: none asks.
+			customers.Properties = append(customers.Properties,
+				&interfaces.DraftProperty{Name: "updated_at", Type: "timestamp", MappedField: "updated_at"})
+			customers.IncrementalKey = "updated_at"
+			d.Items.ObjectTypes[3].Properties = append(d.Items.ObjectTypes[3].Properties,
+				&interfaces.DraftProperty{Name: "logged_at", Type: "time", MappedField: "logged_at"})
+
+			p := pendingOf(project, d, nil)
+
+			So(p.Items, ShouldHaveLength, 1)
+			item := p.Items[0]
+			So([]any{item.Kind, item.ItemID, item.Name, item.Blocking, item.Reason}, ShouldResemble,
+				[]any{interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "Orders", false, interfaces.PENDING_REASON_NEEDS_UPDATE_FIELD})
+			So(item.Options, ShouldResemble, []interfaces.PendingOption{{
+				Action: interfaces.ACTION_SET_INCREMENTAL_KEY, Method: "PATCH",
+				Path:    "/projects/p1/ontology/draft/items/object_types/orders",
+				Body:    map[string]any{"update_time": "$draft_update_time", "incremental_key": "$value"},
+				Allowed: true, Values: []string{"ordered_at", "ship_date"},
+			}})
+			// A value put in place of $value is the string the PATCH takes.
+			body, err := json.Marshal(map[string]any{"update_time": 100, "incremental_key": item.Options[0].Values[0]})
+			So(err, ShouldBeNil)
+			var edit interfaces.DraftItemEdit
+			So(json.Unmarshal(body, &edit), ShouldBeNil)
+			So(*edit.IncrementalKey, ShouldEqual, "ordered_at")
+			// Each candidate is one the PATCH of incremental_key accepts.
+			for typ := range timeTypes {
+				So(incrementalTypes[typ], ShouldBeTrue)
+			}
+			// It is not undecided, nor counted by what confirming checks.
+			So(undecidedItems(&d.Items), ShouldBeEmpty)
+
+			archived := &interfaces.Project{ID: "p1", Archived: true}
+			option := pendingOf(archived, d, nil).Items[0].Options[0]
+			So([]any{option.Allowed, option.Reason}, ShouldResemble, []any{false, interfaces.ACTION_REASON_ARCHIVED})
+
+			// After what blocks and what is undecided.
+			d.Items.ObjectTypes[0].NeedsIdentity = true
+			p = pendingOf(project, d, nil)
+			So(p.Items[0].Reason, ShouldEqual, interfaces.BLOCKER_NEEDS_IDENTITY)
+			So(p.Items[len(p.Items)-1].Reason, ShouldEqual, interfaces.PENDING_REASON_NEEDS_UPDATE_FIELD)
+		})
+
 		Convey("A draft with nothing pending lists nothing, as an empty list\n", func() {
 			out, err := json.Marshal(pendingOf(project, confirmableDraft(), nil))
 

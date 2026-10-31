@@ -43,6 +43,14 @@ const (
 	BLOCKER_TABLE_MISSING   = "table_missing"
 )
 
+// Hints: what would help the project, blocking nothing.
+const (
+	// HINT_CATALOGS_UNNAMED: most tables of the project's catalogs have no description, so drafting
+	// names items from table and field names; understanding the catalogs first gives them business
+	// names.
+	HINT_CATALOGS_UNNAMED = "catalogs_unnamed"
+)
+
 // States of what a project depends on.
 const (
 	DATA_SOURCE_OK      = "ok"
@@ -70,16 +78,18 @@ const (
 
 // What can be done next.
 const (
-	ACTION_ARCHIVE        = "archive"
-	ACTION_UNARCHIVE      = "unarchive"
-	ACTION_SET_CATALOGS   = "set_catalogs"
-	ACTION_GENERATE_DRAFT = "generate_draft"
-	ACTION_ADOPT_ITEMS    = "adopt_items"
-	ACTION_CONFIRM_DRAFT  = "confirm_draft"
-	ACTION_RUN_CHECK      = "run_check"
-	ACTION_SYNC_BRANCH    = "sync_branch"
-	ACTION_COMMIT_DRIFT   = "commit_drift"
-	ACTION_WAIT           = "wait"
+	ACTION_ARCHIVE = "archive"
+	// ACTION_UNDERSTAND_CATALOGS runs semantic understanding of the project's catalogs.
+	ACTION_UNDERSTAND_CATALOGS = "understand_catalogs"
+	ACTION_UNARCHIVE           = "unarchive"
+	ACTION_SET_CATALOGS        = "set_catalogs"
+	ACTION_GENERATE_DRAFT      = "generate_draft"
+	ACTION_ADOPT_ITEMS         = "adopt_items"
+	ACTION_CONFIRM_DRAFT       = "confirm_draft"
+	ACTION_RUN_CHECK           = "run_check"
+	ACTION_SYNC_BRANCH         = "sync_branch"
+	ACTION_COMMIT_DRIFT        = "commit_drift"
+	ACTION_WAIT                = "wait"
 	// ACTION_REVIEW_RELEASE reads what publishing the confirmation would bring; publishing goes on
 	// from the review, which needs a version.
 	ACTION_REVIEW_RELEASE = "review_release"
@@ -118,6 +128,8 @@ type ProjectStatus struct {
 	// while drafting.
 	DataSources *ProjectStatusDataSources `json:"data_sources,omitempty"`
 	Blockers    []ProjectStatusBlocker    `json:"blockers"`
+	// Hints are what would help, blocking nothing.
+	Hints []ProjectStatusHint `json:"hints"`
 	// Undecided counts the items drafting left out and no one decided on: they do not block, but
 	// confirming leaves them out only when the confirmation accepts it.
 	Undecided int `json:"undecided"`
@@ -133,6 +145,13 @@ type ProjectStatus struct {
 	// Links are the reads that show the details: the draft, its pending items and the check.
 	Links      map[string]string `json:"links"`
 	ComputedAt int64             `json:"computed_at"`
+}
+
+// ProjectStatusHint is a hint with how many of how many it is about.
+type ProjectStatusHint struct {
+	Code  string `json:"code"`
+	Count int    `json:"count"`
+	Total int    `json:"total"`
 }
 
 // ProjectStatusDataSources is what a project depends on: its network in bkn-backend, its catalogs
@@ -236,14 +255,20 @@ const (
 // What a pending item can be settled by.
 const (
 	ACTION_CHOOSE_IDENTITY = "choose_identity"
-	ACTION_UNADOPT         = "unadopt"
-	ACTION_ADOPT_END       = "adopt_end"
-	ACTION_ADOPT           = "adopt"
+	// ACTION_SET_INCREMENTAL_KEY sets an object type's update field to one of its candidates.
+	ACTION_SET_INCREMENTAL_KEY = "set_incremental_key"
+	ACTION_UNADOPT             = "unadopt"
+	ACTION_ADOPT_END           = "adopt_end"
+	ACTION_ADOPT               = "adopt"
 )
 
 // PENDING_REASON_UNDECIDED is a pending item drafting left out and no one decided on; it does not
 // block confirming.
 const PENDING_REASON_UNDECIDED = "undecided"
+
+// PENDING_REASON_NEEDS_UPDATE_FIELD is an adopted object type with time properties and no update
+// field: its local index refreshes by one. It does not block, and is not undecided.
+const PENDING_REASON_NEEDS_UPDATE_FIELD = "needs_update_field"
 
 // PENDING_PLACEHOLDER_UPDATE_TIME stands in a body template for the draft's update time as the
 // sender last read it: each edit moves it on.
@@ -255,6 +280,9 @@ const PENDING_CANDIDATES_NO_UNIQUE = "no_unique_candidate"
 
 // PENDING_PLACEHOLDER_CANDIDATE stands for one of an option's candidates.
 const PENDING_PLACEHOLDER_CANDIDATE = "$candidate"
+
+// PENDING_PLACEHOLDER_VALUE stands for one of an option's values.
+const PENDING_PLACEHOLDER_VALUE = "$value"
 
 // ProjectPending lists what waits for a person before the draft can be confirmed, each with the
 // requests that settle it, in one order: by kind, then item ID.
@@ -303,6 +331,8 @@ type PendingOption struct {
 	Allowed    bool           `json:"allowed"`
 	Reason     string         `json:"reason,omitempty"`
 	Candidates [][]string     `json:"candidates,omitempty"`
+	// Values, for an option that sets one value, are those to send in place of $value.
+	Values []string `json:"values,omitempty"`
 	// CandidatesReason says why an option that takes candidates has none.
 	CandidatesReason string `json:"candidates_reason,omitempty"`
 }

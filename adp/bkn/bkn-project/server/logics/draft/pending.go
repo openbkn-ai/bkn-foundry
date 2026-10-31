@@ -202,11 +202,36 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 		item.Options = append(item.Options, adopt)
 		p.Items = append(p.Items, item)
 	}
+	// Last, an update field to choose: a local index refreshes by one, and a time property is the
+	// likely one. Nothing to choose from, nothing is asked.
+	for _, ot := range objectTypes {
+		if !ot.Adopted || ot.IncrementalKey != "" {
+			continue
+		}
+		set := option(interfaces.ACTION_SET_INCREMENTAL_KEY, http.MethodPatch,
+			base+"/items/"+interfaces.DRAFT_KIND_OBJECT_TYPES+"/"+ot.ID,
+			map[string]any{"incremental_key": interfaces.PENDING_PLACEHOLDER_VALUE})
+		for _, prop := range ot.Properties {
+			if timeTypes[prop.Type] {
+				set.Values = append(set.Values, prop.Name)
+			}
+		}
+		if len(set.Values) == 0 {
+			continue
+		}
+		p.Items = append(p.Items, interfaces.PendingItem{
+			Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: ot.ID, Name: ot.Name,
+			Reason: interfaces.PENDING_REASON_NEEDS_UPDATE_FIELD, Options: []interfaces.PendingOption{set},
+		})
+	}
 	for i := range p.Items {
 		p.Items[i].NeededBy = needed[p.Items[i].Kind+"/"+p.Items[i].ItemID]
 	}
 	return p
 }
+
+// timeTypes are the update field types that tell when a record changed, the candidates for one.
+var timeTypes = map[string]bool{"date": true, "time": true, "datetime": true, "timestamp": true}
 
 // identityChoices lists what may identify an object type's records as drafting counted it unique
 // and non-null: the pairs it found, or the field it counted. Properties it did not count are no
