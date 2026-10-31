@@ -26,7 +26,7 @@ func (s *Store) LoadTraceSummaryFallback(ctx context.Context, ids []string, scop
 		return result, nil
 	}
 	if len(ids) > normalizeSummaryPageLimit(len(ids)) {
-		return nil, fmt.Errorf("Trace fallback exceeds page limit")
+		return nil, fmt.Errorf("trace fallback exceeds page limit")
 	}
 	if scope.AccessProfile != nil && !scope.AccessProfile.AccountActive {
 		return result, nil
