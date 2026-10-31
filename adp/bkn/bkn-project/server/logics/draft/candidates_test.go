@@ -289,6 +289,42 @@ func Test_CandidateService(t *testing.T) {
 			So(unadopt.Reason, ShouldEqual, "Duplicate of stores")
 		})
 
+		Convey("Leaving out what drafting left out is a decision too: it is reviewed, with why\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			out := false
+
+			// Visits wait for an identity, so they cannot be adopted to be left out after.
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "visits",
+				interfaces.DraftItemEdit{UpdateTime: readTime, Adopted: &out, Reason: "Logged by another system"}, caller)
+
+			So(err, ShouldBeNil)
+			c := candidatesOf(got, nil, "")
+			for _, x := range c.Candidates {
+				if x.ID == "visits" {
+					So(x.State, ShouldEqual, interfaces.CANDIDATE_STATE_EXCLUDED)
+					So(x.ExcludeReason, ShouldEqual, "Logged by another system")
+				}
+			}
+			So(undecidedItems(&got.Items), ShouldNotContain, undecidedItem{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES,
+				ItemID: "visits", Because: interfaces.BLOCKER_NEEDS_IDENTITY})
+		})
+
+		Convey("Accepting the suggestions decides what drafting left out\n", func() {
+			draft.Items.ObjectTypes[3].Adopted = false
+			draft.Items.Decisions = nil
+			draft.Items.ObjectTypes = draft.Items.ObjectTypes[3:]
+			draft.Items.RelationTypes = nil
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			So(undecidedItems(&draft.Items), ShouldHaveLength, 1)
+
+			got, err := svc.AcceptSuggestions(ctx, token, "p1", interfaces.DraftAcceptSuggestions{UpdateTime: readTime}, caller)
+
+			So(err, ShouldBeNil)
+			So(undecidedItems(&got.Draft.Items), ShouldBeEmpty)
+		})
+
 		Convey("A reason too long is refused\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
 			out := false
@@ -300,8 +336,10 @@ func Test_CandidateService(t *testing.T) {
 			_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "items",
 				interfaces.DraftItemEdit{UpdateTime: readTime, Adopted: &out, Reason: string(long)}, caller)
 
-			status, _ := codeOf(err)
-			So(status, ShouldEqual, http.StatusBadRequest)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.ErrorDetails, ShouldResemble, map[string]any{"reason": "reason_too_long"})
 		})
 	})
 }

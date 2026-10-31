@@ -91,10 +91,15 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 		edit.IncrementalKey = &key
 	}
 	// A reason says why an item is left out: it goes with not adopting it.
-	if edit.Reason = strings.TrimSpace(edit.Reason); edit.Reason != "" &&
-		(edit.Adopted == nil || *edit.Adopted || utf8.RuneCountInString(edit.Reason) > interfaces.DRAFT_REASON_MAX_LENGTH) {
+	edit.Reason = strings.TrimSpace(edit.Reason)
+	switch {
+	case edit.Reason == "":
+	case edit.Adopted == nil || *edit.Adopted:
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
 			WithErrorDetails(map[string]any{"reason": "reason_without_leaving_out"})
+	case utf8.RuneCountInString(edit.Reason) > interfaces.DRAFT_REASON_MAX_LENGTH:
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
+			WithErrorDetails(map[string]any{"reason": "reason_too_long"})
 	}
 	return nil
 }
@@ -170,6 +175,7 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 			Kind: kind, ItemID: id, Action: action, Before: before, After: after,
 		})
 	}
+	wasAdopted := *item.adopted
 	if edit.Adopted != nil && *edit.Adopted != *item.adopted {
 		*item.adopted = *edit.Adopted
 		action := interfaces.DRAFT_DECISION_ADOPT
@@ -186,6 +192,12 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 				}
 			}
 		}
+	}
+	if edit.Adopted != nil && !*edit.Adopted && !wasAdopted && (kind == interfaces.DRAFT_KIND_OBJECT_TYPES ||
+		kind == interfaces.DRAFT_KIND_RELATION_TYPES) {
+		// Leaving out what drafting left out is a person's decision too, with why.
+		decide(kind, id, interfaces.DRAFT_DECISION_UNADOPT, false, false)
+		decisions[len(decisions)-1].Reason = edit.Reason
 	}
 	if edit.Name != nil && *edit.Name != *item.name {
 		decide(kind, id, interfaces.DRAFT_DECISION_RENAME, *item.name, *edit.Name)
