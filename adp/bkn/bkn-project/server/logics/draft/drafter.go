@@ -377,36 +377,20 @@ var pairTimeout = 30 * time.Second
 // pairWords are the last words of fields named as identifiers within a record, such as a line.
 var pairWords = map[string]bool{"id": true, "no": true, "code": true, "seq": true, "line": true}
 
-// lineWords name a field as the number of a line within a document, as seq_no or line_id.
-var lineWords = map[string]bool{"seq": true, "line": true}
-
-// numbersLines tells whether a field is named as the number of a line within a document. One named
-// as an id, such as order_line_id, identifies a record of its own.
-func numbersLines(field string) bool {
-	w := words(field)
-	if lastWord(w) == "id" {
-		return false
-	}
-	for _, w := range w {
-		if lineWords[w] {
-			return true
-		}
-	}
-	return false
-}
-
 // pairIdentity looks, for an object type that no single field identifies, for pairs of fields that
 // count unique and non-null. A table with an identifier of its own (base, a field that refers to no
-// other table) pairs it with another key-typed field named as an identifier that refers to no table
-// either: a line table is keyed by its document and line, and a field saying whose record it is
-// does not say which one. A table whose identifier refers to another table, such as a material;
-// whose identifier numbers lines, which repeat in every document and pair with the document
-// whatever it refers to, such as a bill of materials keyed by its material and line; or that has
-// none, pairs among its key-typed fields that are keys, foreign keys or named as identifiers: the
-// first maxPairFields, in column order. At most
-// maxPairCounts pairs are counted and maxPairCandidates offered, in column order; counts that take
-// longer than pairTimeout offer none. The pairs are offered as the identity's candidates; drafting
-// does not take one, a person decides. baseNulls says base has nulls: every pair with it has too.
+// other table) pairs it first with another key-typed field named as an identifier that refers to no
+// table either: a line table is keyed by its document and line, and a field saying whose record it
+// is does not say which one. When none of those is unique and the full-table counts show base
+// repeating heavily, at most half as many values as rows, base numbers the lines of something else,
+// as a line number repeats in every document; it is then paired with the key-typed identifiers that
+// refer to another table too, as a bill of materials is keyed by its material and line. A table
+// whose identifier refers to another table, or that has none, pairs among its key-typed fields that
+// are keys, foreign keys or named as identifiers: the first maxPairFields, in column order. At most
+// maxPairCounts pairs are counted in all and maxPairCandidates offered, each pair's fields in column
+// order; counts that take longer than pairTimeout offer none. The pairs are offered as the
+// identity's candidates; drafting does not take one, a person decides. baseNulls says base has
+// nulls: every pair with it has too.
 func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
 	objectType *interfaces.DraftObjectType, base string, baseNulls bool) error {
 	fields := d.fields[table.ID]
@@ -417,17 +401,24 @@ func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
 		}
 	}
 	referring := func(field string) bool { return refers[field] || d.namesAnotherTable(table, field) }
-	pairs := [][2]string{}
-	if _, ok := fields[base]; ok && !referring(base) && !numbersLines(base) {
+	// pairs are counted in order; then, when none of them is unique, more.
+	pairs, more := [][2]string{}, [][2]string{}
+	if _, ok := fields[base]; ok && !referring(base) {
 		if baseNulls {
 			return nil
 		}
+		key := objectType.Key
+		repeats := key.Computed && key.Rows > 0 && key.Distinct*2 <= key.Rows
 		for _, c := range table.Columns {
-			if _, ok := fields[c.Name]; !ok || c.Name == base || !keyTypes[bknTypes[c.Type]] ||
-				!pairWords[lastWord(words(c.Name))] || referring(c.Name) {
+			if _, ok := fields[c.Name]; !ok || c.Name == base || !keyTypes[bknTypes[c.Type]] {
 				continue
 			}
-			pairs = append(pairs, [2]string{base, c.Name})
+			switch {
+			case !referring(c.Name) && pairWords[lastWord(words(c.Name))]:
+				pairs = append(pairs, [2]string{base, c.Name})
+			case repeats && referring(c.Name) && (refers[c.Name] || pairWords[lastWord(words(c.Name))]):
+				more = append(more, [2]string{base, c.Name})
+			}
 		}
 	} else {
 		declared := map[string]bool{}
@@ -457,29 +448,45 @@ func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
 			}
 		}
 	}
-	if len(pairs) > maxPairCounts {
-		pairs = pairs[:maxPairCounts]
+	// A pair names its fields in the table's column order.
+	position := map[string]int{}
+	for i, c := range table.Columns {
+		position[c.Name] = i
+	}
+	for _, list := range [][][2]string{pairs, more} {
+		for i, pair := range list {
+			if position[pair[1]] < position[pair[0]] {
+				list[i] = [2]string{pair[1], pair[0]}
+			}
+		}
 	}
 
 	countCtx, cancel := context.WithTimeout(ctx, pairTimeout)
 	defer cancel()
 	found := [][]string{}
-	for _, pair := range pairs {
-		rows, distinct, nulls, err := d.counter.keyTupleStats(countCtx, table, pair[:])
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			if countCtx.Err() != nil {
-				// Out of time: what was found is left unoffered rather than offered in part.
-				return nil
-			}
-			continue
+	counted := 0
+	for _, list := range [][][2]string{pairs, more} {
+		if len(found) > 0 {
+			break
 		}
-		if rows > 0 && nulls == 0 && distinct == rows {
-			found = append(found, []string{fields[pair[0]], fields[pair[1]]})
-			if len(found) == maxPairCandidates {
+		for _, pair := range list {
+			if counted == maxPairCounts || len(found) == maxPairCandidates {
 				break
+			}
+			counted++
+			rows, distinct, nulls, err := d.counter.keyTupleStats(countCtx, table, pair[:])
+			if err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if countCtx.Err() != nil {
+					// Out of time: what was found is left unoffered rather than offered in part.
+					return nil
+				}
+				continue
+			}
+			if rows > 0 && nulls == 0 && distinct == rows {
+				found = append(found, []string{fields[pair[0]], fields[pair[1]]})
 			}
 		}
 	}

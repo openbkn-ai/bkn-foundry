@@ -503,7 +503,8 @@ func Test_Drafter(t *testing.T) {
 			suppliers := table("r_sup", "c1", "supplier", 0, nil,
 				col("id", "integer", ""), col("supplier_id", "integer", ""), col("name", "string", ""))
 			c := sampleCounter()
-			c.keys["r_rl.id"] = [3]int64{100, 40, 0}
+			// A few duplicates: id identifies receipts, and a reference beside it says only whose one.
+			c.keys["r_rl.id"] = [3]int64{100, 95, 0}
 			c.keys["r_rl.id+supplier_id"] = [3]int64{100, 100, 0}
 
 			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{receipts, suppliers}, nil)
@@ -637,31 +638,72 @@ func Test_Drafter(t *testing.T) {
 			})
 		})
 
-		Convey("A line number with duplicates is paired with the document it numbers, a reference included\n", func() {
-			// The columns of a bill of materials as vega discovered it: no declared key, the line number
-			// first, the material whose bill it is next.
-			bom := table("r_bom", "c1", "erp_material_bom", 0, nil,
-				col("seq_no", "integer", ""), col("bom_version", "datetime", ""), col("bom_material_code", "string", ""),
-				col("bom_level", "integer", ""), col("material_code", "string", ""), col("material_name", "text", ""),
-				col("usage_numerator", "decimal", ""), col("alt_group_no", "integer", ""),
-				col("parent_material_code", "string", ""))
-			material := table("r_mat", "c1", "erp_material", 0, []string{"material_code"},
-				col("material_code", "string", ""), col("material_name", "string", ""))
-			c := sampleCounter()
-			c.keys["r_bom.seq_no"] = [3]int64{31423, 5645, 0}
-			for _, pair := range []string{"seq_no+material_code", "seq_no+alt_group_no", "bom_material_code+material_code",
-				"bom_material_code+alt_group_no", "material_code+alt_group_no"} {
-				c.keys["r_bom."+pair] = [3]int64{31423, 13843, 0}
+		Convey("A field repeating in most rows, whatever its name, is paired with a reference when nothing else is unique\n", func() {
+			// A part list keyed by its assembly and position: the position declared the key, the assembly
+			// a reference to another table, and nothing named as a line.
+			assemblies := table("r_as", "c1", "assembly", 0, []string{"code"}, col("code", "string", ""), col("label", "string", ""))
+			draft := func(posCounts [3]int64) *interfaces.DraftObjectType {
+				t := table("r_pl", "c1", "part_lists", 0, []string{"pos"},
+					col("pos", "integer", ""), col("assembly_code", "string", ""), col("group_no", "integer", ""),
+					col("qty", "decimal", ""))
+				c := sampleCounter()
+				c.keys["r_pl"] = posCounts
+				c.keys["r_pl.pos+group_no"] = [3]int64{posCounts[0], posCounts[0] - 1, 0}
+				c.keys["r_pl.pos+assembly_code"] = [3]int64{posCounts[0], posCounts[0], 0}
+				items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{t, assemblies}, nil)
+				So(err, ShouldBeNil)
+				return objectType(items, "part_lists")
 			}
-			c.keys["r_bom.seq_no+bom_material_code"] = [3]int64{31423, 31423, 0}
 
-			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{bom, material}, nil)
+			Convey("repeating values number lines: the reference is paired\n", func() {
+				ot := draft([3]int64{900, 40, 0})
+
+				So(ot.NeedsIdentity, ShouldBeTrue)
+				So(ot.Key.Candidates, ShouldResemble, [][]string{{"pos", "assembly_code"}})
+			})
+
+			Convey("a few duplicates are not a line number: no reference is paired\n", func() {
+				So(draft([3]int64{900, 890, 0}).Key.Candidates, ShouldBeNil)
+			})
+		})
+
+		Convey("An inferred identifier repeating in most rows is paired with a reference too\n", func() {
+			// No declared key: item_no is inferred as the identifier; kit_code refers to the kit table.
+			slips := table("r_ks", "c1", "kit_slips", 0, nil,
+				col("item_no", "integer", ""), col("kit_code", "string", ""), col("bin_no", "integer", ""),
+				col("qty", "decimal", ""))
+			kits := table("r_kit", "c1", "kit", 0, []string{"code"}, col("code", "string", ""), col("label", "string", ""))
+			c := sampleCounter()
+			// Counts not listed below are of no unique pair.
+			c.keys["r_ks"] = [3]int64{300, 200, 0}
+			c.keys["r_ks.item_no"] = [3]int64{300, 20, 0}
+			c.keys["r_ks.item_no+kit_code"] = [3]int64{300, 300, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{slips, kits}, nil)
 
 			So(err, ShouldBeNil)
-			ot := objectType(items, "erp_material_bom")
-			So(ot.NeedsIdentity, ShouldBeTrue)
-			So(ot.Key.Field, ShouldEqual, "seq_no")
-			So(ot.Key.Candidates, ShouldResemble, [][]string{{"seq_no", "bom_material_code"}})
+			ot := objectType(items, "kit_slips")
+			So(ot.Key.Source, ShouldEqual, interfaces.DRAFT_KEY_NONE)
+			So(ot.Key.Field, ShouldEqual, "item_no")
+			So(ot.Key.Candidates, ShouldResemble, [][]string{{"item_no", "kit_code"}})
+			// The pair without a reference was counted first.
+			So(c.tuples[0], ShouldEqual, "r_ks.item_no+bin_no")
+		})
+
+		Convey("A unique pair without a reference is offered before any with one\n", func() {
+			t := table("r_ol", "c1", "order_lines", 0, []string{"n"},
+				col("n", "integer", ""), col("order_code", "string", ""), col("batch_no", "integer", ""))
+			orders := table("r_or", "c1", "order", 0, []string{"code"}, col("code", "string", ""))
+			c := sampleCounter()
+			c.keys["r_ol"] = [3]int64{500, 50, 0}
+			c.keys["r_ol.n+order_code"] = [3]int64{500, 500, 0}
+			c.keys["r_ol.n+batch_no"] = [3]int64{500, 500, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{t, orders}, nil)
+
+			So(err, ShouldBeNil)
+			So(objectType(items, "order_lines").Key.Candidates, ShouldResemble, [][]string{{"n", "batch_no"}})
+			So(c.tuples, ShouldNotContain, "r_ol.n+order_code")
 		})
 
 		Convey("A line number past the first maxPairFields identifiers is still paired\n", func() {
@@ -682,13 +724,6 @@ func Test_Drafter(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(objectType(items, "shipment_lines").Key.Candidates, ShouldResemble, [][]string{{"shipment_no", "line_seq"}})
-		})
-
-		Convey("A field named as an id is its record's own identifier, whatever else its name says\n", func() {
-			So(numbersLines("order_line_id"), ShouldBeFalse)
-			So(numbersLines("seq_no"), ShouldBeTrue)
-			So(numbersLines("line_no"), ShouldBeTrue)
-			So(numbersLines("material_code"), ShouldBeFalse)
 		})
 
 		Convey("A table no single field can identify is still offered a pair\n", func() {
