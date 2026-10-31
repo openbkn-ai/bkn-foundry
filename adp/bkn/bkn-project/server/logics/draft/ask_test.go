@@ -208,6 +208,8 @@ func Test_AskObjectType(t *testing.T) {
 					So(in.ObjectType.Name, ShouldEqual, "员工")
 					So(in.ObjectType.Identity, ShouldResemble, []string{"emp_no"})
 					So(in.ObjectType.NeedsIdentity, ShouldBeFalse)
+					// The form's identity has not been counted.
+					So(in.ObjectType.IdentityCount, ShouldResemble, interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN})
 					So(len(in.ObjectType.Properties), ShouldEqual, 3)
 					So(in.ObjectType.Properties[2].Description, ShouldEqual, "税前月薪")
 					// Only the relation types it is an end of, with their counts, never rows.
@@ -356,6 +358,26 @@ func Test_AskObjectType(t *testing.T) {
 				{Field: "data_property", Reason: askDroppedUnchanged},
 				{Field: "comment", Reason: askDroppedUnchanged},
 			})
+		})
+
+		Convey("A form that keeps the identity and the join keeps their counts\n", func() {
+			d := shipmentDraft()
+			d.Items.ObjectTypes[0].Key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_PRIMARY_KEY, Computed: true, Rows: 50, Distinct: 50}
+			readDraft(d)
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
+					var in askInput
+					So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
+					So(in.ObjectType.IdentityCount.Computed, ShouldBeTrue)
+					So(in.ObjectType.Name, ShouldEqual, "运单")
+					return answered(`{"revisions":[]}`, "好")(ctx, account, req, on)
+				})
+
+			_, err := askAbout("shipments", interfaces.DraftAskRequest{Question: "问",
+				Working: &interfaces.DraftObjectTypeSave{Name: "运单", PrimaryKeys: []string{"waybill"}}})
+
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Another domain: the identity of visits, which still need one confirmed\n", func() {
@@ -554,7 +576,8 @@ func Test_AskRelationType(t *testing.T) {
 					So(in.RelationType.Name, ShouldEqual, "途经站")
 					So(in.RelationType.Mapping, ShouldResemble, []interfaces.DraftFieldMapping{
 						{SourceProperty: "via_station", TargetProperty: "station_id"}})
-					So(*in.RelationType.HitRate, ShouldEqual, 1)
+					// The form's join has not been counted.
+					So(in.RelationType.HitRate, ShouldBeNil)
 					So(len(in.Ends), ShouldEqual, 2)
 					So(in.Ends[0].ID, ShouldEqual, "shipments")
 					So(in.Ends[1].Identity, ShouldResemble, []string{"station_id"})
@@ -570,6 +593,26 @@ func Test_AskRelationType(t *testing.T) {
 			So(got.Answer, ShouldEqual, "它按站点编号关联。")
 		})
 
+		Convey("A form that keeps the join keeps its count\n", func() {
+			readDraft(shipmentDraft())
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
+					var in askInput
+					So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
+					So(*in.RelationType.HitRate, ShouldEqual, 1)
+					So(in.RelationType.Name, ShouldEqual, "起运站")
+					return answered(`{"revisions":[]}`, "好")(ctx, account, req, on)
+				})
+			rules, _ := json.Marshal(ends("shipments", "stations", "origin_station", "station_id").MappingRules)
+
+			_, err := askAbout("shipments_from", interfaces.DraftRelationAskRequest{Question: "问",
+				Working: &interfaces.DraftRelationTypeSave{Name: "起运站", SourceObjectTypeID: "shipments",
+					TargetObjectTypeID: "stations", Type: interfaces.DRAFT_RELATION_DIRECT, MappingRules: rules}})
+
+			So(err, ShouldBeNil)
+		})
+
 		Convey("A form whose mapping the save would refuse leaves the draft's join to ask about\n", func() {
 			readDraft(shipmentDraft())
 			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).
@@ -578,6 +621,7 @@ func Test_AskRelationType(t *testing.T) {
 					var in askInput
 					So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
 					So(in.RelationType.Mapping[0].SourceProperty, ShouldEqual, "origin_station")
+					So(*in.RelationType.HitRate, ShouldEqual, 1)
 					return answered(`{"revisions":[]}`, "好")(ctx, account, req, on)
 				})
 

@@ -22,7 +22,8 @@ import (
 
 // workingObjectType is the object type as the editor's unsaved form has it: its name, comment,
 // identity and title where given, and its kept properties with their display names and comments.
-// A property the form adds is not yet one of the draft, so revisions cannot name it.
+// An identity the form changes has not been counted. A property the form adds is not yet one of the
+// draft, so revisions cannot name it.
 func workingObjectType(objectType *interfaces.DraftObjectType, working *interfaces.DraftObjectTypeSave) *interfaces.DraftObjectType {
 	base := *objectType
 	base.Properties = nil
@@ -39,9 +40,10 @@ func workingObjectType(objectType *interfaces.DraftObjectType, working *interfac
 	if comment := strings.TrimSpace(working.Comment); comment != "" {
 		base.Description = comment
 	}
-	if working.PrimaryKeys != nil {
+	if working.PrimaryKeys != nil && !slices.Equal(working.PrimaryKeys, objectType.PrimaryKeys) {
 		base.PrimaryKeys = append([]string{}, working.PrimaryKeys...)
 		base.NeedsIdentity = len(working.PrimaryKeys) == 0
+		base.Key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN}
 	}
 	if key := strings.TrimSpace(working.DisplayKey); key != "" {
 		base.DisplayKey = key
@@ -65,7 +67,8 @@ func workingObjectType(objectType *interfaces.DraftObjectType, working *interfac
 }
 
 // workingRelationType is the relation type as the editor's unsaved form has it: its name and
-// comment where given, and its ends and mapping when the save would take them.
+// comment where given, and its ends and mapping when the save would take them; a join the form
+// changes has not been counted.
 func (s *draftService) workingRelationType(ctx context.Context, items *interfaces.DraftItems,
 	relationType *interfaces.DraftRelationType, working *interfaces.DraftRelationTypeSave,
 	caller interfaces.AccountInfo) *interfaces.DraftRelationType {
@@ -81,8 +84,10 @@ func (s *draftService) workingRelationType(ctx context.Context, items *interface
 	}
 	if working.Type != "" {
 		defined := base
-		if s.defineRelation(ctx, items, &defined, *working, caller) == nil {
+		if s.defineRelation(ctx, items, &defined, *working, caller) == nil &&
+			!sameJoin(relationSnapshot(&base), relationSnapshot(&defined)) {
 			base = defined
+			base.Evidence = interfaces.DraftJoinEvidence{}
 		}
 	}
 	return &base
