@@ -11,9 +11,11 @@ import pytest
 from jsonschema import ValidationError as JsonSchemaValidationError, validate as validate_json
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import ValidationError
+from sqlalchemy import select
 
 from app import dao
 from app.core.structured import structured_extract_with_path
+from app.errors import err
 from app.metric_design import (
     MetricDesignRequest, MetricProposalError, model_message, proposal_instructions,
     proposal_schema, repair_proposal, validate_proposal,
@@ -1037,6 +1039,13 @@ def test_large_context_is_rejected_before_model_execution():
         request(form_snapshot={"description": "x" * 25000})
 
 
+def test_model_selection_is_optional_and_bounded():
+    assert request().model_id is None
+    assert request(model_id="chat-model-1").model_id == "chat-model-1"
+    with pytest.raises(ValidationError):
+        request(model_id="../unknown")
+
+
 def test_diagnostic_is_bounded_and_bound_to_the_current_form_revision():
     valid = request(diagnostic={
         "kind": "trial", "form_revision": "rev-1", "status": "partial",
@@ -1120,6 +1129,83 @@ def test_tool_enabled_metric_agent_cannot_run(monkeypatch):
             response = await client.post(URL, json=request().model_dump(mode="json"), headers=AUTH)
             assert response.status_code == 409
             assert not calls
+
+    asyncio.run(run())
+
+
+def test_selected_model_is_per_conversation_and_cannot_change_mid_thread(monkeypatch):
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, calls):
+            await install_agent(factory)
+            resolved = []
+
+            async def resolve(model_id):
+                resolved.append(model_id)
+                return "chat-model-name"
+
+            async def chat(
+                session,
+                agent,
+                req,
+                account_id,
+                account_type,
+                *,
+                public,
+                system_extension,
+            ):
+                calls.append(agent.model)
+                await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+                public.answer.append("Done")
+
+                async def events():
+                    yield "event: structured\ndata: " + json.dumps({"content": proposal()}) + "\n\n"
+                    yield "event: done\ndata: {}\n\n"
+
+                return events()
+
+            monkeypatch.setattr(executions, "_metric_model_name", resolve)
+            monkeypatch.setattr(executions, "stream_chat", chat)
+            body = request(model_id="chat-model-1").model_dump(mode="json")
+            first = await client.post(URL, json=body, headers=AUTH)
+            assert first.status_code == 200
+            thread_id = parse_sse(first.text)[0][1]["thread_id"]
+            assert calls == ["chat-model-name"]
+            assert resolved == ["chat-model-1"]
+            continuation = {**body, "thread_id": thread_id, "client_request_id": "request-2"}
+            assert (await client.post(URL, json=continuation, headers=AUTH)).status_code == 200
+            assert calls == ["chat-model-name", "chat-model-name"]
+            changed = {
+                **continuation,
+                "client_request_id": "request-3",
+                "model_id": "chat-model-2",
+            }
+            assert (await client.post(URL, json=changed, headers=AUTH)).status_code == 409
+            assert resolved == ["chat-model-1", "chat-model-1"]
+            async with factory() as session:
+                agent = await dao.get_agent(session, "object_metric_designer")
+                assert agent.model != "chat-model-name"
+
+    asyncio.run(run())
+
+
+def test_denied_model_does_not_reserve_or_run_execution(monkeypatch):
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, calls):
+            await install_agent(factory)
+
+            async def deny(_model_id):
+                raise err(403, "BknAgent.Execution.Forbidden")
+
+            monkeypatch.setattr(executions, "_metric_model_name", deny)
+            response = await client.post(
+                URL,
+                json=request(model_id="denied-model").model_dump(mode="json"),
+                headers=AUTH,
+            )
+            assert response.status_code == 403
+            assert not calls
+            async with factory() as session:
+                assert (await session.execute(select(TaskRow))).scalars().all() == []
 
     asyncio.run(run())
 

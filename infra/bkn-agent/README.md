@@ -6,6 +6,7 @@ Legacy management and service-call APIs remain internal. Version 0.2.1 adds user
 
 - Engine: LangGraph (Python)
 - Model: mf-model-api (OpenAI-compatible, cluster-internal `/api/private`; an empty model uses the platform default)
+- Metric design may specify a user-visible `model_id` per conversation. The Agent verifies the caller's model permission through the model manager's public API; the choice does not change the built-in Agent's default model and cannot change within a thread. Configure `MF_MODEL_MANAGER_PUBLIC_BASE` if the in-cluster model-manager address differs from the default.
 - Tools: the Execution Factory toolbox is the unified tool plane. Context Loader tools are available only when declared; execution goes through operator-integration with identity headers forwarded. External MCP endpoints require explicit `type: "mcp"` references.
 - Skills: Execution Factory internal-v1 (`/skill/content` injection and progressive `/skill/files/read` access)
 - Storage: shared `openbkn` database, `agent_`-prefixed tables; migrations in `migrations/bkn-agent/`

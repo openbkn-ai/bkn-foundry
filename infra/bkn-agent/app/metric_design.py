@@ -118,6 +118,13 @@ class MetricDesignRequest(BaseModel):
     model_config = {"extra": "forbid"}
     client_request_id: str = Field(min_length=1, max_length=100, pattern=r"^[0-9A-Za-z_.-]+$")
     thread_id: str | None = Field(default=None, min_length=1, max_length=50, pattern=r"^[0-9A-Za-z_.-]+$")
+    model_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[0-9A-Za-z_.-]+$",
+        description="Optional caller-visible chat model; fixed for the metric-design thread.",
+    )
     scope: MetricDesignScope
     base_form_revision: str = Field(min_length=1, max_length=100)
     form_snapshot: dict[str, Any]

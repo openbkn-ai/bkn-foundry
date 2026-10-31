@@ -10,6 +10,7 @@ import logging
 import json
 import uuid
 
+import aiohttp
 import anyio
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -17,7 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
-from app.auth import Account
+from app.auth import Account, caller_token
 from app.commons.i18n import build_error_content
 from app.config import config
 from app.core import builtin_tools
@@ -54,6 +55,41 @@ _PROTOCOL = "public-execution-v1"
 # Like the existing chat/thread guard, this is deliberately single-replica.
 _active: dict[str, asyncio.Task] = {}
 _thread_claims: set[str] = set()
+
+
+async def _metric_model_name(model_id: str) -> str:
+    """Resolve a caller-visible chat model; never trust a browser-supplied name."""
+    token = caller_token()
+    if not token:
+        raise err(401, "BknAgent.Auth.TokenRequired")
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as client:
+            async with client.get(
+                f"{config.MF_MODEL_MANAGER_PUBLIC_BASE}/llm/get",
+                params={"model_id": model_id},
+                headers={"Authorization": token},
+                allow_redirects=False,
+            ) as response:
+                if response.status in {400, 404}:
+                    raise err(400, "BknAgent.Execution.Unsupported")
+                if response.status == 401:
+                    raise err(401, "BknAgent.Auth.TokenRequired")
+                if response.status == 403:
+                    raise err(403, "BknAgent.Execution.Forbidden")
+                if response.status != 200:
+                    raise err(503, "BknAgent.Execution.Unavailable")
+                data = await response.json()
+    except (aiohttp.ClientError, TimeoutError, ValueError):
+        raise err(503, "BknAgent.Execution.Unavailable") from None
+    if (
+        not isinstance(data, dict)
+        or str(data.get("model_id")) != model_id
+        or data.get("model_type") != "llm"
+        or not isinstance(data.get("model_name"), str)
+        or not 0 < len(data["model_name"]) <= 200
+    ):
+        raise err(400, "BknAgent.Execution.Unsupported")
+    return data["model_name"]
 
 
 def _layer(row) -> AgentSetting | None:
@@ -262,6 +298,15 @@ async def _execute_impl(
             raise err(409, "BknAgent.Execution.Conflict")
         if metric_request and origin.get("metric_request", {}).get("scope") != metric_data["scope"]:
             raise err(409, "BknAgent.Execution.Conflict")
+        if (
+            metric_request
+            and origin.get("metric_request", {}).get("model_id") != metric_request.model_id
+        ):
+            raise err(409, "BknAgent.Execution.Conflict")
+    if metric_request and metric_request.model_id:
+        agent = agent.model_copy(
+            update={"model": await _metric_model_name(metric_request.model_id)}
+        )
     if thread_id in _thread_claims:
         raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
     _thread_claims.add(thread_id)
