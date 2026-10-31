@@ -667,6 +667,29 @@ func Test_Drafter(t *testing.T) {
 			})
 		})
 
+		Convey("An inferred identifier repeating in most rows is paired with a reference too\n", func() {
+			// No declared key: item_no is inferred as the identifier; kit_code refers to the kit table.
+			slips := table("r_ks", "c1", "kit_slips", 0, nil,
+				col("item_no", "integer", ""), col("kit_code", "string", ""), col("bin_no", "integer", ""),
+				col("qty", "decimal", ""))
+			kits := table("r_kit", "c1", "kit", 0, []string{"code"}, col("code", "string", ""), col("label", "string", ""))
+			c := sampleCounter()
+			// Counts not listed below are of no unique pair.
+			c.keys["r_ks"] = [3]int64{300, 200, 0}
+			c.keys["r_ks.item_no"] = [3]int64{300, 20, 0}
+			c.keys["r_ks.item_no+kit_code"] = [3]int64{300, 300, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{slips, kits}, nil)
+
+			So(err, ShouldBeNil)
+			ot := objectType(items, "kit_slips")
+			So(ot.Key.Source, ShouldEqual, interfaces.DRAFT_KEY_NONE)
+			So(ot.Key.Field, ShouldEqual, "item_no")
+			So(ot.Key.Candidates, ShouldResemble, [][]string{{"item_no", "kit_code"}})
+			// The pair without a reference was counted first.
+			So(c.tuples[0], ShouldEqual, "r_ks.item_no+bin_no")
+		})
+
 		Convey("A unique pair without a reference is offered before any with one\n", func() {
 			t := table("r_ol", "c1", "order_lines", 0, []string{"n"},
 				col("n", "integer", ""), col("order_code", "string", ""), col("batch_no", "integer", ""))
