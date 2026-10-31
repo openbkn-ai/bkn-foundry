@@ -27,7 +27,20 @@ func TestResourceIdentityBoundaries(t *testing.T) {
 		assert.Contains(t, validateResourceName(strings.Repeat("名", 129)), "exceeds 128")
 	})
 
-	t.Run("non-resource fields keep their existing limit", func(t *testing.T) {
+	t.Run("property display names count Unicode characters", func(t *testing.T) {
+		for _, name := range []string{
+			strings.Repeat("a", 40),
+			strings.Repeat("a", 41),
+			strings.Repeat("名", 127),
+			strings.Repeat("a名", 63) + "😀b",
+		} {
+			assert.Empty(t, validatePropertyDisplayName(name))
+		}
+		assert.Contains(t, validatePropertyDisplayName(strings.Repeat("😀", 129)), "exceeds 128")
+		assert.Contains(t, validatePropertyDisplayName(""), "must not be empty")
+	})
+
+	t.Run("short non-property fields keep their existing limit", func(t *testing.T) {
 		assert.Empty(t, validateFieldDisplayName(strings.Repeat("名", 40)))
 		assert.Contains(t, validateFieldDisplayName(strings.Repeat("名", 41)), "exceeds 40")
 		assert.NoError(t, validateTags([]string{strings.Repeat("名", 40)}))

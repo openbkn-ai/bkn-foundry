@@ -24,7 +24,8 @@ import (
 
 const (
 	maxIDLength         = 40
-	maxDisplayNameRunes = 40
+	maxDisplayNameRunes = 128
+	maxAliasRunes       = 40
 	tableKindEntity     = "entity"
 	tableKindCodeTable  = "code_table"
 	tableKindLinkTable  = "link_table"

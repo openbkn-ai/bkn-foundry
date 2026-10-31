@@ -63,6 +63,15 @@ func Test_PickName(t *testing.T) {
 			name, aliases := pickName(en, "cust", "", long, "Customer", "客户, 顾客", "客户，顾客", "客户", "客户")
 			So(name, ShouldEqual, "Customer")
 			So(aliases, ShouldResemble, []string{"客户"})
+
+			accepted := strings.Repeat("长", maxDisplayNameRunes)
+			name, aliases = pickName(zh, "cust", accepted)
+			So(name, ShouldEqual, accepted)
+			So(aliases, ShouldBeEmpty)
+
+			name, aliases = pickName(zh, "cust", "客户", strings.Repeat("a", maxAliasRunes+1))
+			So(name, ShouldEqual, "客户")
+			So(aliases, ShouldBeEmpty)
 		})
 
 		Convey("Same-language variants are not aliases: aliases carry the other language only\n", func() {
@@ -245,9 +254,8 @@ func Test_DraftRelationName(t *testing.T) {
 			So(names["parent_code"], ShouldEqual, "父项物料编码")
 		})
 
-		Convey("Too long a name keeps the referring field's name only, within BKN's 40-character display names\n", func() {
-			// 36 characters: a name BKN takes, too long once the field is joined.
-			long := "物料清单明细记录表包含父子项及用量与损耗率等全部信息字段以及其他扩展属性"
+		Convey("Too long a name keeps the referring field's name only, within BKN's 128-character display names\n", func() {
+			long := strings.Repeat("物", maxDisplayNameRunes)
 			names := relationNames(zh, schema(long, "BOM所属物料编码", "父项物料编码", "子项物料编码"))
 			So(names["parent_code"], ShouldEqual, "父项物料编码")
 			for _, name := range names {

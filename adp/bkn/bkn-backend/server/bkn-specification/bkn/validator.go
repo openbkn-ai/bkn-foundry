@@ -32,10 +32,11 @@ const nameInvalidChars = `/:?\"<>|：？''""！《》,#[]{}%&*$^!=.'`
 const tagInvalidChars = nameInvalidChars + "\u2018\u2019\u201c\u201d"
 
 const (
-	resourceNameMaxLength = 128
-	fieldNameMaxLength    = 40
-	tagsMaxNumber         = 5
-	maxPropertyNum        = 1000
+	resourceNameMaxLength        = 128
+	propertyDisplayNameMaxLength = 128
+	fieldNameMaxLength           = 40
+	tagsMaxNumber                = 5
+	maxPropertyNum               = 1000
 )
 
 var validDataSourceTypes = map[string]bool{
@@ -388,6 +389,16 @@ func validateFieldDisplayName(name string) string {
 	return ""
 }
 
+func validatePropertyDisplayName(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "name must not be empty"
+	}
+	if utf8.RuneCountInString(name) > propertyDisplayNameMaxLength {
+		return fmt.Sprintf("name length exceeds %d characters", propertyDisplayNameMaxLength)
+	}
+	return ""
+}
+
 func validateTags(tags []string) error {
 	if len(tags) > tagsMaxNumber {
 		return fmt.Errorf("at most %d tags allowed", tagsMaxNumber)
@@ -480,7 +491,7 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 		if err := validatePropertyName(lp.Name); err != nil {
 			appendError(result, table, "logic_properties", "invalid_property_name", err.Error())
 		}
-		if msg := validateFieldDisplayName(lp.DisplayName); msg != "" {
+		if msg := validatePropertyDisplayName(lp.DisplayName); msg != "" {
 			appendError(result, table, "logic_properties", "invalid_display_name", fmt.Sprintf("logic property %q: %s", lp.Name, msg))
 		}
 		if strings.TrimSpace(lp.Type) != "" {
@@ -549,7 +560,7 @@ func validateDataPropertyRows(result *ValidationResult, table string, props []*D
 		if err := validatePropertyName(dp.Name); err != nil {
 			appendError(result, table, "data_properties", "invalid_property_name", err.Error())
 		}
-		if msg := validateFieldDisplayName(dp.DisplayName); msg != "" {
+		if msg := validatePropertyDisplayName(dp.DisplayName); msg != "" {
 			appendError(result, table, "data_properties", "invalid_display_name", fmt.Sprintf("property %q: %s", dp.Name, msg))
 		}
 		if strings.TrimSpace(dp.Type) != "" {

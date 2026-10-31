@@ -871,7 +871,9 @@ func Test_Rules(t *testing.T) {
 		Convey("displayName takes a short first clause of the comment\n", func() {
 			So(displayName("客户编号，唯一", "customer_id"), ShouldEqual, "客户编号")
 			So(displayName("", "customer_id"), ShouldEqual, "customer_id")
-			So(displayName("This comment is far too long to serve as a display name of a field", "f"), ShouldEqual, "f")
+			accepted := strings.Repeat("名", maxDisplayNameRunes)
+			So(displayName(accepted, "f"), ShouldEqual, accepted)
+			So(displayName(accepted+"名", "f"), ShouldEqual, "f")
 		})
 
 		Convey("privacyKeyword matches names and comments, in either language\n", func() {
