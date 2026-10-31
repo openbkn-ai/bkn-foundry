@@ -409,21 +409,29 @@ func Test_AskObjectType(t *testing.T) {
 			So(len(got.Revisions), ShouldEqual, 1)
 		})
 
-		Convey("An answer written as a JSON object keeps its answer; other text is kept as written\n", func() {
-			for text, want := range map[string]string{
-				`{"answer":" 它是归属关系。 ","revisions":[]}`: "它是归属关系。",
-				`{"answer":"未写完`:                        `{"answer":"未写完`,
-				`{"answer":""}`:                         `{"answer":""}`,
-				`{"note":"x"}`:                          `{"note":"x"}`,
-			} {
-				readDraft(staffDraft())
-				agentAnswers(answered(`{"revisions":[]}`, text))
+		Convey("JSON the Agent writes is not streamed: an answer written as JSON is taken out, revisions after it cut\n", func() {
+			readDraft(staffDraft())
+			agentAnswers(answered(`{"revisions":[]}`, "它是归属关系。", " ``", "`json\n{\"revisions\":[]}\n```"))
+			var text []string
+			stream := &interfaces.DraftAskStream{Start: func() {}, Token: func(t string) { text = append(text, t) }}
 
-				got, err := ask("问")
+			got, err := svc.AskObjectType(ctx, token, "p1", "employees", interfaces.DraftAskRequest{Question: "问"}, caller, stream)
 
-				So(err, ShouldBeNil)
-				So(got.Answer, ShouldEqual, want)
-			}
+			So(err, ShouldBeNil)
+			So(strings.Join(text, ""), ShouldEqual, "它是归属关系。 ")
+			So(got.Answer, ShouldEqual, "它是归属关系。")
+
+			readDraft(staffDraft())
+			agentAnswers(answered(`{"revisions":[]}`, `{"answer":" 它是归属关系。 ","revisions":[]}`))
+			got, err = ask("问")
+			So(err, ShouldBeNil)
+			So(got.Answer, ShouldEqual, "它是归属关系。")
+
+			// JSON with no answer leaves none.
+			readDraft(staffDraft())
+			agentAnswers(answered(`{"revisions":[]}`, `{"answer":"未写完`))
+			_, err = ask("问")
+			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
 		})
 
 		Convey("A long answer is cut to its bound in the result\n", func() {

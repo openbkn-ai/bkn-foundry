@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -346,7 +347,7 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 	}
 	ctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
-	var text strings.Builder
+	reply := newAskReply(stream)
 	var out *askOutput
 	var failure string
 	started := false
@@ -366,10 +367,7 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 		case interfaces.BKN_AGENT_CHAT_TOKEN:
 			var token string
 			if json.Unmarshal(data.Content, &token) == nil && token != "" {
-				text.WriteString(token)
-				if stream != nil {
-					stream.Token(token)
-				}
+				reply.add(token)
 			}
 		case interfaces.BKN_AGENT_CHAT_STRUCTURED:
 			var result askOutput
@@ -381,7 +379,8 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 			otellog.LogWarn(ctx, fmt.Sprintf("Ask AI failed: %s %s", data.Code, data.Detail))
 		}
 	})
-	answer := unwrapAnswer(strings.TrimSpace(text.String()))
+	reply.finish()
+	answer := reply.answer()
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded), failure == interfaces.BKN_AGENT_CHAT_TIMEOUT:
 		otellog.LogWarn(ctx, "Ask AI did not finish in time")
@@ -396,18 +395,96 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 	return answer, out, ""
 }
 
-// unwrapAnswer is the answer of a reply the Agent wrote as a JSON object with an answer, as the
-// prompt asks it not to; any other reply is itself.
-func unwrapAnswer(text string) string {
+// askJSONMarkers start the JSON an Agent may write after its answer despite the prompt: a code
+// fence, or an object of revisions.
+var askJSONMarkers = []string{"```", `{"revisions"`}
+
+// askReply is the answer's text as it streams. It is forwarded up to the first JSON marker, a
+// tail that may begin one held until the next piece shows it does not; a reply that is JSON from
+// its start is not forwarded at all.
+type askReply struct {
+	text   string
+	sent   int
+	cut    int
+	stream *interfaces.DraftAskStream
+}
+
+func newAskReply(stream *interfaces.DraftAskStream) *askReply {
+	return &askReply{cut: -1, stream: stream}
+}
+
+func (r *askReply) add(piece string) {
+	r.text += piece
+	if r.cut >= 0 {
+		return
+	}
+	if start := len(r.text) - len(strings.TrimLeftFunc(r.text, unicode.IsSpace)); strings.HasPrefix(r.text[start:], "{") {
+		r.cut = start
+		return
+	}
+	for _, marker := range askJSONMarkers {
+		if i := strings.Index(r.text, marker); i >= 0 && (r.cut < 0 || i < r.cut) {
+			r.cut = i
+		}
+	}
+	if r.cut >= 0 {
+		r.forward(r.cut)
+		return
+	}
+	r.forward(len(r.text) - r.held())
+}
+
+// held is how much of the text's end may begin a marker; text of spaces alone is held whole.
+func (r *askReply) held() int {
+	if strings.TrimSpace(r.text) == "" {
+		return len(r.text)
+	}
+	longest := 0
+	for _, marker := range askJSONMarkers {
+		for k := len(marker) - 1; k > longest; k-- {
+			if strings.HasSuffix(r.text, marker[:k]) {
+				longest = k
+				break
+			}
+		}
+	}
+	return longest
+}
+
+// forward forwards the text up to to; what is held never begins a marker, so to is never behind.
+func (r *askReply) forward(to int) {
+	if to > r.sent && r.stream != nil {
+		r.stream.Token(r.text[r.sent:to])
+	}
+	r.sent = to
+}
+
+// finish forwards what was held, unless it is JSON or spaces.
+func (r *askReply) finish() {
+	if r.cut < 0 && strings.TrimSpace(r.text) != "" {
+		r.forward(len(r.text))
+	}
+}
+
+// answer is the text before the JSON, or the answer a reply written wholly as JSON holds.
+func (r *askReply) answer() string {
+	if r.cut < 0 {
+		return strings.TrimSpace(r.text)
+	}
+	if before := strings.TrimSpace(r.text[:r.cut]); before != "" {
+		return before
+	}
+	body := strings.TrimSpace(r.text)
+	if strings.HasPrefix(body, "```") {
+		body = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(body, "```"), "json"), "```")
+	}
 	var wrapped struct {
 		Answer string `json:"answer"`
 	}
-	if strings.HasPrefix(text, "{") && json.Unmarshal([]byte(text), &wrapped) == nil {
-		if answer := strings.TrimSpace(wrapped.Answer); answer != "" {
-			return answer
-		}
+	if json.Unmarshal([]byte(strings.TrimSpace(body)), &wrapped) != nil {
+		return ""
 	}
-	return text
+	return strings.TrimSpace(wrapped.Answer)
 }
 
 func truncateRunes(s string, max int) string {
