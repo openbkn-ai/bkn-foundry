@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -40,7 +42,7 @@ func plainText(q *interfaces.RequirementQuestion, spec *interfaces.RequirementSp
 			before = strings.TrimSpace(before)
 			before = before[:len(before)-len(label)]
 		}
-		phrase := givenPhrase(label, moment, zh)
+		phrase := givenPhrase(label, moment, language)
 		if !zh {
 			phrase = " " + phrase + " "
 			if strings.TrimSpace(before) == "" {
@@ -101,18 +103,24 @@ func propertyDisplayName(concept *interfaces.RequirementConcept, property string
 	return ""
 }
 
-func givenPhrase(label string, moment bool, zh bool) string {
+// Localized words a slot is said in: a given record of a concept, a given date, a given value.
+const (
+	messageGivenRecord = "BknProject.Requirement.GivenRecord"
+	messageGivenDate   = "BknProject.Requirement.GivenDate"
+	messageGivenValue  = "BknProject.Requirement.GivenValue"
+)
+
+func givenPhrase(label string, moment bool, language string) string {
+	key := messageGivenValue
 	switch {
-	case zh && label != "":
-		return "指定的" + label
-	case zh && moment:
-		return "指定日期"
-	case zh:
-		return "指定的值"
 	case label != "":
-		return "a given " + label
+		key = messageGivenRecord
 	case moment:
-		return "a given date"
+		key = messageGivenDate
 	}
-	return "a given value"
+	phrase, err := i18n.Render(i18n.Language(language), key, map[string]any{"label": label})
+	if err != nil {
+		return label
+	}
+	return phrase
 }
