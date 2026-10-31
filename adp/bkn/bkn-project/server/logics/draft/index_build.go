@@ -73,7 +73,9 @@ func (s *draftService) BuildIndex(ctx context.Context, token string, projectID s
 // buildIndexes starts, as the runner, a build of each adopted object type's local index that is
 // not built or went stale, and records under the confirmed commit what each start did. A table
 // lacking the keys a build needs is first given them from its object type: its identity's fields
-// and its update field's, when vega-backend takes their types. A table already being built is
+// and its update field's, or its identity's again without one, when vega-backend takes their types.
+// An update field chosen after the identity's fields stood in for it replaces them, and the index
+// is built again. A table already being built is
 // recorded with its task; ready and unreadable tables start nothing.
 func (s *draftService) buildIndexes(ctx context.Context, projectID string, commit string,
 	items *interfaces.DraftItems, runner interfaces.AccountInfo) error {
@@ -85,14 +87,35 @@ func (s *draftService) buildIndexes(ctx context.Context, projectID string, commi
 	for _, item := range index.ObjectTypes {
 		build := &interfaces.IndexBuild{ProjectID: projectID, Commit: commit, ResourceID: item.Table.ResourceID,
 			ObjectTypeID: item.ID, Runner: runner}
+		objectType, table := findObjectType(items, item.ID), tables[item.Table.ResourceID]
 		switch {
 		case item.State == interfaces.INDEX_STATE_BUILDING && item.Task != nil:
 			build.Outcome, build.TaskID = interfaces.INDEX_BUILD_EXISTING, item.Task.ID
+		case item.FullRebuildOnly && objectType.IncrementalKey != "" && item.State != interfaces.INDEX_STATE_UNREADABLE &&
+			item.State != interfaces.INDEX_STATE_BUILDING:
+			// An update field chosen since takes the place of the identity's fields standing in for it.
+			keys, unknown := indexKeys(objectType, table, []string{interfaces.INDEX_FIELD_INCREMENTAL})
+			if len(unknown) > 0 {
+				build.Outcome, build.Reason = interfaces.INDEX_BUILD_NOT_CONFIGURABLE, strings.Join(unknown, ",")
+				break
+			}
+			keys.ReplaceIncremental = table.Index.IncrementalFields
+			changed, err := s.va.UpdateIndexConfig(ctx, runner, item.Table.ResourceID, keys)
+			if err != nil {
+				build.Outcome, build.Reason = configOutcome(err)
+				break
+			}
+			// Someone changed the fields in vega since: the index is built only as its state asks.
+			if !changed && item.State != interfaces.INDEX_STATE_NOT_BUILT && item.State != interfaces.INDEX_STATE_STALE {
+				continue
+			}
+			build.TaskID, err = s.va.CreateBuildTask(ctx, runner, item.Table.ResourceID)
+			build.Outcome, build.Reason = buildOutcome(err)
 		case item.State == interfaces.INDEX_STATE_NOT_BUILT || item.State == interfaces.INDEX_STATE_STALE:
 			build.TaskID, err = s.va.CreateBuildTask(ctx, runner, item.Table.ResourceID)
 			build.Outcome, build.Reason = buildOutcome(err)
 		case item.State == interfaces.INDEX_STATE_NOT_CONFIGURED:
-			keys, unknown := indexKeys(findObjectType(items, item.ID), tables[item.Table.ResourceID], item.Missing)
+			keys, unknown := indexKeys(objectType, table, item.Missing)
 			if len(unknown) > 0 {
 				build.Outcome, build.Reason = interfaces.INDEX_BUILD_NOT_CONFIGURABLE, strings.Join(unknown, ",")
 				break
@@ -122,7 +145,8 @@ func (s *draftService) buildIndexes(ctx context.Context, projectID string, commi
 var primaryKeyTypes = map[string]bool{"integer": true, "unsigned integer": true, "string": true}
 
 // indexKeys gives, from the object type, the keys of missing its table lacks: its identity's
-// fields and its update field's, each of a vega type the index takes. It returns the keys it
+// fields and its update field's, or its identity's fields again when it has none, each of a vega
+// type the index takes. It returns the keys it
 // cannot give, as INDEX_FIELD_*.
 func indexKeys(objectType *interfaces.DraftObjectType, table *interfaces.VegaTable,
 	missing []string) (interfaces.VegaIndexKeys, []string) {
@@ -150,8 +174,18 @@ func indexKeys(objectType *interfaces.DraftObjectType, table *interfaces.VegaTab
 				unknown = append(unknown, key)
 			}
 		case interfaces.INDEX_FIELD_INCREMENTAL:
-			// No update field names no property, which gives no field.
-			if keys.IncrementalFields = fields([]string{objectType.IncrementalKey}, incrementalTypes); keys.IncrementalFields == nil {
+			// Without an update field the identity's fields stand in: a full build reads the table in
+			// their order, and only full builds can refresh the index.
+			switch {
+			case objectType.IncrementalKey != "":
+				keys.IncrementalFields = fields([]string{objectType.IncrementalKey}, incrementalTypes)
+			case len(table.Index.PrimaryKeyFields) > 0:
+				// The table's own primary key fields stand in, so that they read as standing in.
+				keys.IncrementalFields = table.Index.PrimaryKeyFields
+			default:
+				keys.IncrementalFields = fields(objectType.PrimaryKeys, incrementalTypes)
+			}
+			if keys.IncrementalFields == nil {
 				unknown = append(unknown, key)
 			}
 		}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -349,6 +350,27 @@ func Test_VegaAccess(t *testing.T) {
 						map[string]any{"name": "id", "type": "integer", "display_name": "No.", "features": []any{}},
 						map[string]any{"name": "updated_at", "type": "datetime"}},
 				})
+			})
+
+			Convey("Incremental fields replace those set only while they are the ones named to replace\n", func() {
+				replies[http.MethodGet] = reply{http.StatusOK, strings.Replace(read, `"primary_key_fields":["id"]`,
+					`"primary_key_fields":["id"],"incremental_fields":["id"]`, 1)}
+				update := interfaces.VegaIndexKeys{IncrementalFields: []string{"updated_at"}, ReplaceIncremental: []string{"id"}}
+
+				changed, err := each.UpdateIndexConfig(ctx, account, "r1", update)
+
+				So(err, ShouldBeNil)
+				So(changed, ShouldBeTrue)
+				So(sent[1].body["index_config"], ShouldResemble, map[string]any{"primary_key_fields": []any{"id"},
+					"incremental_fields": []any{"updated_at"}, "default_fulltext_analyzer": "ik"})
+
+				// Someone set other fields since: they stay.
+				sent = nil
+				update.ReplaceIncremental = []string{"code"}
+				changed, err = each.UpdateIndexConfig(ctx, account, "r1", update)
+				So(err, ShouldBeNil)
+				So(changed, ShouldBeFalse)
+				So(len(sent), ShouldEqual, 1)
 			})
 
 			Convey("Nothing to fill writes nothing\n", func() {

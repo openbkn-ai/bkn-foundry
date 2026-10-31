@@ -40,6 +40,11 @@ type ProjectIndexItem struct {
 	State string     `json:"state"`
 	// Missing names the configuration fields a build needs that the table lacks.
 	Missing []string `json:"missing,omitempty"`
+	// FullRebuildOnly is a table whose index refreshes by its identity's fields, the object type
+	// having no update field: refreshing it rebuilds all of it.
+	FullRebuildOnly bool `json:"full_rebuild_only,omitempty"`
+	// UpdateField is the object type's update field and how to choose one.
+	UpdateField ProjectIndexUpdateField `json:"update_field"`
 	// Task is the build task under way.
 	Task *ProjectIndexTask `json:"task,omitempty"`
 	// Build is what the last confirmation did to build the table's index.
@@ -58,4 +63,16 @@ type ProjectIndexBuild struct {
 type ProjectIndexTask struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
+}
+
+// ProjectIndexUpdateField is an object type's update field, the property whose value grows whenever a
+// record changes, which refreshes the table's index by what changed. Property is the one chosen,
+// empty when none. Candidates are the properties holding a date or a time: none means no field of
+// the table can be one, and the index is only ever rebuilt in full. Pending is set while the
+// project's pending items ask for one, as the item of kind object_types, this object type's ID and
+// reason needs_update_field; choosing one takes effect once the draft is confirmed again.
+type ProjectIndexUpdateField struct {
+	Property   string   `json:"property,omitempty"`
+	Candidates []string `json:"candidates"`
+	Pending    bool     `json:"pending"`
 }

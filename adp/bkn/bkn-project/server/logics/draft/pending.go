@@ -211,11 +211,7 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 		set := option(interfaces.ACTION_SET_INCREMENTAL_KEY, http.MethodPatch,
 			base+"/items/"+interfaces.DRAFT_KIND_OBJECT_TYPES+"/"+ot.ID,
 			map[string]any{"incremental_key": interfaces.PENDING_PLACEHOLDER_VALUE})
-		for _, prop := range ot.Properties {
-			if timeTypes[prop.Type] {
-				set.Values = append(set.Values, prop.Name)
-			}
-		}
+		set.Values = updateFieldCandidates(ot)
 		if len(set.Values) == 0 {
 			continue
 		}
@@ -232,6 +228,17 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 
 // timeTypes are the update field types that tell when a record changed, the candidates for one.
 var timeTypes = map[string]bool{"date": true, "time": true, "datetime": true, "timestamp": true}
+
+// updateFieldCandidates are the properties of an object type that may be its update field.
+func updateFieldCandidates(ot *interfaces.DraftObjectType) []string {
+	candidates := []string{}
+	for _, prop := range ot.Properties {
+		if timeTypes[prop.Type] {
+			candidates = append(candidates, prop.Name)
+		}
+	}
+	return candidates
+}
 
 // identityChoices lists what may identify an object type's records as drafting counted it unique
 // and non-null: the pairs it found, or the field it counted. Properties it did not count are no

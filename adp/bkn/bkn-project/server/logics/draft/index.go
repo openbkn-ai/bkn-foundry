@@ -126,8 +126,9 @@ func indexReadiness(items *interfaces.DraftItems, tables map[string]*interfaces.
 		if !ot.Adopted {
 			continue
 		}
-		item := interfaces.ProjectIndexItem{ID: ot.ID, Name: ot.Name, Table: ot.Table}
+		item := interfaces.ProjectIndexItem{ID: ot.ID, Name: ot.Name, Table: ot.Table, UpdateField: updateField(ot)}
 		item.State, item.Missing = indexState(tables[ot.Table.ResourceID])
+		item.FullRebuildOnly = fullRebuildOnly(ot, tables[ot.Table.ResourceID])
 		// A task under way builds the index; an index already ready stays in use until it is done.
 		if task, ok := tasks[ot.Table.ResourceID]; ok && item.State != interfaces.INDEX_STATE_UNREADABLE {
 			item.Task = &interfaces.ProjectIndexTask{ID: task.ID, Status: task.Status}
@@ -166,4 +167,26 @@ func indexState(table *interfaces.VegaTable) (string, []string) {
 		return interfaces.INDEX_STATE_STALE, nil
 	}
 	return interfaces.INDEX_STATE_NOT_BUILT, nil
+}
+
+// fullRebuildOnly tells whether a table's index refreshes by the identity's fields standing in for an
+// update field: its incremental fields are its primary key fields, and they are not the update field
+// the object type has, which may be its identity's own field.
+func fullRebuildOnly(ot *interfaces.DraftObjectType, table *interfaces.VegaTable) bool {
+	if table == nil || len(table.Index.IncrementalFields) == 0 ||
+		!slices.Equal(table.Index.IncrementalFields, table.Index.PrimaryKeyFields) {
+		return false
+	}
+	if property := findProperty(ot, ot.IncrementalKey); property != nil {
+		return !slices.Equal(table.Index.IncrementalFields, []string{property.MappedField})
+	}
+	return true
+}
+
+// updateField is the object type's update field and the properties that may be one, as the pending
+// item asking for one lists them.
+func updateField(ot *interfaces.DraftObjectType) interfaces.ProjectIndexUpdateField {
+	field := interfaces.ProjectIndexUpdateField{Property: ot.IncrementalKey, Candidates: updateFieldCandidates(ot)}
+	field.Pending = field.Property == "" && len(field.Candidates) > 0
+	return field
 }
