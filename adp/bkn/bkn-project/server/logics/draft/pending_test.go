@@ -115,6 +115,16 @@ func Test_PendingOf(t *testing.T) {
 			So(choose.CandidatesReason, ShouldEqual, "")
 		})
 
+		Convey("Every pair drafting counted unique is a candidate, in its order\n", func() {
+			d := draft()
+			d.Items.ObjectTypes[0].Key.Candidate = []string{"order_id", "status"}
+			d.Items.ObjectTypes[0].Key.Candidates = [][]string{{"order_id", "status"}, {"customer_id", "status"}}
+
+			choose := pendingOf(project, d, nil).Items[0].Options[0]
+
+			So(choose.Candidates, ShouldResemble, [][]string{{"order_id", "status"}, {"customer_id", "status"}})
+		})
+
 		Convey("A counted field that is unique and non-null is a candidate\n", func() {
 			d := draft()
 			d.Items.ObjectTypes[0].Key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_INFERRED, Field: "customer_id",

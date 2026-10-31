@@ -234,11 +234,14 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 var timeTypes = map[string]bool{"date": true, "time": true, "datetime": true, "timestamp": true}
 
 // identityChoices lists what may identify an object type's records as drafting counted it unique
-// and non-null: the pair it found, or the field it counted. Properties it did not count are no
+// and non-null: the pairs it found, or the field it counted. Properties it did not count are no
 // candidates: one could merge records, and choosing an identity does not refuse duplicates.
 func identityChoices(ot *interfaces.DraftObjectType) [][]string {
 	candidates := [][]string{}
-	if len(ot.Key.Candidate) > 0 {
+	switch {
+	case len(ot.Key.Candidates) > 0:
+		candidates = append(candidates, ot.Key.Candidates...)
+	case len(ot.Key.Candidate) > 0:
 		candidates = append(candidates, ot.Key.Candidate)
 	}
 	// Distinct values are of the rows without a null, so as many as the rows means none is null.
