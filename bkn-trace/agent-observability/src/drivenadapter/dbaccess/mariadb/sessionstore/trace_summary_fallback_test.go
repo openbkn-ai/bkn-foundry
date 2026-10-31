@@ -8,6 +8,7 @@ package sessionstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +91,14 @@ func TestTraceFallbackRejectsOversizedOrInvalidInputBeforeSQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	for _, ids := range [][]string{make([]string, 201), {""}, {"非ASCII"}} {
+	oversized := make([]string, evidencevo.MaxSummaryQueryLimit+1)
+	for i := range oversized {
+		oversized[i] = fmt.Sprintf("trace-%d", i)
+	}
+	if _, err := New(db).LoadTraceSummaryFallback(context.Background(), oversized, evidencevo.QueryScope{}); err == nil || !strings.Contains(err.Error(), "page limit") {
+		t.Fatalf("valid oversized IDs did not hit the page bound: %v", err)
+	}
+	for _, ids := range [][]string{{""}, {"非ASCII"}} {
 		if _, err := New(db).LoadTraceSummaryFallback(context.Background(), ids, evidencevo.QueryScope{}); err == nil {
 			t.Fatalf("invalid IDs accepted: %d", len(ids))
 		}

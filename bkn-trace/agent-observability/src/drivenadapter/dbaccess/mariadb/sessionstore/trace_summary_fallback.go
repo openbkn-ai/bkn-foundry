@@ -25,7 +25,7 @@ func (s *Store) LoadTraceSummaryFallback(ctx context.Context, ids []string, scop
 	if len(ids) == 0 {
 		return result, nil
 	}
-	if len(ids) > normalizeSummaryPageLimit(len(ids)) {
+	if len(ids) > evidencevo.MaxSummaryQueryLimit {
 		return nil, fmt.Errorf("trace fallback exceeds page limit")
 	}
 	if scope.AccessProfile != nil && !scope.AccessProfile.AccountActive {

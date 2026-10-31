@@ -139,6 +139,15 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 }
 
 func writeSummaryQueryError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, evidencesvc.ErrSummaryFallbackUnavailable) {
+		reason := "read_failed"
+		if errors.Is(err, context.DeadlineExceeded) {
+			reason = "timeout"
+		}
+		slog.WarnContext(r.Context(), "summary page metadata unavailable", "trace_id", ensureResponseTraceID(w, r), "dependency", "mariadb", "reason", reason)
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "SUMMARY_DEPENDENCY_UNAVAILABLE", Message: "trace storage is temporarily unavailable; retry the query later"})
+		return
+	}
 	var storageError *opensearch.StatusError
 	if errors.As(err, &storageError) && (storageError.StatusCode == http.StatusTooManyRequests || storageError.StatusCode >= http.StatusInternalServerError) {
 		slog.WarnContext(r.Context(), "summary query storage dependency unavailable", "trace_id", ensureResponseTraceID(w, r), "dependency", "opensearch", "status", storageError.StatusCode, "error_type", storageError.Type)

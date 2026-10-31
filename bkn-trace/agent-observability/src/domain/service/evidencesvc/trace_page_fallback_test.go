@@ -91,6 +91,9 @@ func TestTracePageFallbackFailsClosedAndDoesNotHideSourceErrors(t *testing.T) {
 			if !errors.Is(err, tc.want) || len(page.Entries) != 0 || page.NextCursor != nil {
 				t.Fatalf("page=%+v err=%v", page, err)
 			}
+			if tc.fallbackErr != nil && !errors.Is(err, ErrSummaryFallbackUnavailable) {
+				t.Fatal("missing fallback dependency classification")
+			}
 			if tc.sourceErr != nil && store.calls != 0 {
 				t.Fatal("source failure must not become an unreviewed full dependency fallback")
 			}

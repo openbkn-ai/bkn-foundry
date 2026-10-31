@@ -40,7 +40,7 @@ func (s *Service) fillMissingTracePage(ctx context.Context, options evidencevo.S
 	defer cancel()
 	rows, err := reader.LoadTraceSummaryFallback(ctx, missing, options.Scope)
 	if err != nil {
-		return fmt.Errorf("read missing Trace page summaries: %w", err)
+		return fmt.Errorf("%w: read missing Trace page summaries: %w", ErrSummaryFallbackUnavailable, err)
 	}
 	// Reuse the same canonical Agent/root/first-failure enrichment as projected
 	// summaries. It reads scoped metadata in batches, not operation payload lists.
@@ -53,10 +53,10 @@ func (s *Service) fillMissingTracePage(ctx context.Context, options evidencevo.S
 		}
 	}
 	if err := s.applyCanonicalTraceMetadata(ctx, selected, options.Scope, false); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrSummaryFallbackUnavailable, err)
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrSummaryFallbackUnavailable, err)
 	}
 	for _, row := range selected {
 		summaries[row.TraceID] = row

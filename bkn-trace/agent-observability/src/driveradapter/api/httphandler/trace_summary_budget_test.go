@@ -58,6 +58,8 @@ func TestSummaryBudgetErrorsDistinguishDeterministicRejectionFromTimeout(t *test
 		{"deterministic", fmt.Errorf("candidate or page limit: %w", iprojectionsource.ErrSummaryScanBudgetExceeded), http.StatusUnprocessableEntity, "SUMMARY_QUERY_BUDGET_EXCEEDED"},
 		{"deadline", errors.Join(iprojectionsource.ErrSummaryScanBudgetExceeded, context.DeadlineExceeded), http.StatusServiceUnavailable, "SUMMARY_QUERY_TIMEOUT"},
 		{"deadline-after-last-batch", context.DeadlineExceeded, http.StatusServiceUnavailable, "SUMMARY_QUERY_TIMEOUT"},
+		{"fallback-deadline", errors.Join(evidencesvc.ErrSummaryFallbackUnavailable, context.DeadlineExceeded), http.StatusServiceUnavailable, "SUMMARY_DEPENDENCY_UNAVAILABLE"},
+		{"fallback-database", errors.Join(evidencesvc.ErrSummaryFallbackUnavailable, errors.New("private DSN")), http.StatusServiceUnavailable, "SUMMARY_DEPENDENCY_UNAVAILABLE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -103,5 +105,21 @@ func TestTraceKeywordHandlerReportsIncompleteSearchAsResourceError(t *testing.T)
 				t.Fatalf("incomplete search returned a count or unclassified error: status=%d body=%s", response.Code, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestSummaryFallbackFailureIsRetryableWithoutLeakingCause(t *testing.T) {
+	var logs bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	for _, cause := range []error{errors.New("private DSN or payload"), context.DeadlineExceeded} {
+		logs.Reset()
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/traces", nil)
+		writeSummaryQueryError(response, request, errors.Join(evidencesvc.ErrSummaryFallbackUnavailable, cause))
+		if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "SUMMARY_DEPENDENCY_UNAVAILABLE") || strings.Contains(response.Body.String(), "narrow") || strings.Contains(response.Body.String(), "private") || strings.Contains(logs.String(), "private") || !strings.Contains(logs.String(), "dependency=mariadb") {
+			t.Fatalf("invalid fallback diagnostic: response=%s log=%s", response.Body.String(), logs.String())
+		}
 	}
 }

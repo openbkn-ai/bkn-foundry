@@ -25,14 +25,15 @@ import (
 
 const (
 	DefaultSummaryQueryLimit = 50
-	MaxSummaryQueryLimit     = 200
+	MaxSummaryQueryLimit     = evidencevo.MaxSummaryQueryLimit
 	MaxSummaryScanEntries    = 2000
 	maxReceiptsPerSummary    = 20
 )
 
 var (
-	ErrSummaryCursorInvalid = errors.New("BKN_TRACE_SUMMARY_CURSOR_INVALID")
-	ErrSummaryProjectionLag = errors.New("BKN_TRACE_SUMMARY_PROJECTION_LAG")
+	ErrSummaryCursorInvalid       = errors.New("BKN_TRACE_SUMMARY_CURSOR_INVALID")
+	ErrSummaryProjectionLag       = errors.New("BKN_TRACE_SUMMARY_PROJECTION_LAG")
+	ErrSummaryFallbackUnavailable = errors.New("BKN_TRACE_SUMMARY_FALLBACK_UNAVAILABLE")
 )
 
 type summaryCursor struct {
