@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Remove the redundant business-provenance bootstrap Job and account/Secret values; built-in Agent initialization remains owned by the existing SQL migration path (#2823).
+
 - Search projection retries recognized transient dependency failures within a finite recovery window, preserves safe failure/status diagnostics and confirmed retry/dead counters, and provides a read-only-by-default single-ID audited DLQ command. Explicit replay renews only the bounded search recovery window without rewriting immutable creation time or versions. No claim-query/schema changes or automatic historical replay. (#2779)
 
 - Ordinary Trace pages batch-read scoped MariaDB receipt metadata for page IDs missing from OpenSearch, retaining identity order/count/cursor and marking unavailable Span counts explicitly. Content/root-filtered queries and dependency errors retain their existing behavior; reads do not replay or rebuild projections. (#2779, page-read fix)

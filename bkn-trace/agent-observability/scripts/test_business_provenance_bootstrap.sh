@@ -26,29 +26,19 @@ enabled="$(render_chart agent-observability "${chart_dir}" \
     --set core.projection.historicalProvenance.enabled=true \
     --set core.projection.grant.existingSecret=trace-projection-grant)"
 
-for required in \
-    'name: agent-observability-business-provenance-bootstrap' \
-    '"helm.sh/hook": post-install,post-upgrade' \
-    'activeDeadlineSeconds: 420' \
-    'value: "bdd59f76-19c3-58b0-bf5f-082c4c3cbddb"' \
-    'value: "http://bkn-safe:3000/api/safe/v1"' \
-    'value: "http://bkn-agent:30800/api/bkn-agent/v1"' \
-    'name: "bkn-agent-provenance-bootstrap"' \
-    'app.bootstrap.business_provenance' \
-    'name: BKN_TRACE_PROJECTION_GRANT_ISSUER' \
-    'value: "trace-core-projection"' \
-    'name: BKN_TRACE_PROJECTION_GRANT_KEY_ID' \
-    'value: "trace-projection-key"' \
-    'name: BKN_TRACE_PROJECTION_GRANT_AUDIENCE' \
-    'value: "bkn-projection-read"' \
-    'name: BKN_TRACE_PROJECTION_GRANT_TTL' \
-    'value: "24h5m"' \
-    'name: "trace-projection-grant"' \
-    'key: "private-key"'; do
-    grep -q "${required}" <<<"${enabled}" || {
-        echo "rendered bootstrap Job missing: ${required}" >&2
+# Even old values supplied by an existing deployment must not resurrect the Job.
+legacy="$(render_chart agent-observability "${chart_dir}" \
+    --set enterpriseBusinessProvenance.enabled=true \
+    --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
+    --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
+    --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer \
+    --set enterpriseBusinessProvenance.bootstrap.enabled=true \
+    --set enterpriseBusinessProvenance.bootstrap.auth.existingSecret=obsolete-secret)"
+for rendered in "${enabled}" "${legacy}"; do
+    if grep -Eq 'business-provenance-bootstrap|BKN_PROVENANCE_OWNER_ID|BKN_PROVENANCE_BOOTSTRAP_TOKEN|obsolete-secret' <<<"${rendered}"; then
+        echo "retired provenance account bootstrap must not render" >&2
         exit 1
-    }
+    fi
 done
 
 historical_only="$(render_chart agent-observability "${chart_dir}" \
@@ -70,30 +60,4 @@ grep -A1 'name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED' <<<"${historical_only}"
     exit 1
 }
 
-private_registry="$(render_chart agent-observability "${chart_dir}" \
-    --set image.registry=registry.internal/openbkn \
-    --set image.tag=observability-hotfix \
-    --set enterpriseBusinessProvenance.enabled=true \
-    --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
-    --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
-    --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer \
-    --show-only templates/business-provenance-bootstrap-job.yaml)"
-grep -q 'image: "registry.internal/openbkn/bkn-agent:__VERSION__"' <<<"${private_registry}" || {
-    echo "bootstrap image must inherit the release registry but keep its own tag" >&2
-    exit 1
-}
-
-long_name="rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
-long_render="$(render_chart "${long_name}" "${chart_dir}" \
-    --set enterpriseBusinessProvenance.enabled=true \
-    --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
-    --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
-    --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer \
-    --show-only templates/business-provenance-bootstrap-job.yaml)"
-job_name="$(awk '$1 == "name:" { print $2; exit }' <<<"${long_render}")"
-if [[ -z "${job_name}" ]] || (( ${#job_name} > 63 )); then
-    echo "bootstrap Job name must fit the DNS label limit: ${job_name}" >&2
-    exit 1
-fi
-
-echo "business provenance bootstrap chart contract: PASS"
+echo "business provenance chart without application account: PASS"
