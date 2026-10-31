@@ -31,6 +31,32 @@ type BknAgentRunRequest struct {
 	ResponseFormat map[string]any `json:"response_format,omitempty"`
 }
 
+// BknAgentChatRequest is one turn of a chat Agent on a new thread. ResponseFormat is a JSON Schema
+// whose root is an object; when set, the turn ends with a structured event matching it.
+type BknAgentChatRequest struct {
+	AgentID        string         `json:"agent_id"`
+	Message        string         `json:"message"`
+	ResponseFormat map[string]any `json:"response_format,omitempty"`
+}
+
+// Events of a chat turn: token ({content}, the answer's text as it is written), structured
+// ({content}, the object matching the response format), done, and error ({code, detail}).
+const (
+	BKN_AGENT_CHAT_TOKEN      = "token"
+	BKN_AGENT_CHAT_STRUCTURED = "structured"
+	BKN_AGENT_CHAT_DONE       = "done"
+	BKN_AGENT_CHAT_ERROR      = "error"
+)
+
+// BKN_AGENT_CHAT_TIMEOUT is the code of an error event for a turn that ran out of time.
+const BKN_AGENT_CHAT_TIMEOUT = "BknAgent.Chat.Timeout"
+
+// BknAgentChatEvent is one server-sent event of a chat turn, its data as sent.
+type BknAgentChatEvent struct {
+	Name string
+	Data json.RawMessage
+}
+
 // BknAgentTask is a task as bkn-agent reports it. Output is set once it succeeded, FailureDetail
 // once it failed.
 type BknAgentTask struct {
@@ -118,4 +144,8 @@ type BknAgentAccess interface {
 	// AnswerOnNetwork has a chat Agent answer a question on a knowledge network, with token, and
 	// waits for the answer to end. A refusal before answering is a *BknAgentError.
 	AnswerOnNetwork(ctx context.Context, token string, req *BknAgentAnswerRequest) (*BknAgentAnswer, error)
+	// Chat runs one turn of a chat Agent as the account, handing each event to on as it arrives,
+	// until done or error. A refusal before the turn starts is a *BknAgentError; a stream that
+	// stops before done or error is ErrBknAgentAnswerCut.
+	Chat(ctx context.Context, account BknAgentAccount, req *BknAgentChatRequest, on func(BknAgentChatEvent)) error
 }

@@ -63,10 +63,9 @@ type draftService struct {
 	ra interfaces.ReleaseAccess
 	// gs reads the published definitions the source changes compare.
 	gs interfaces.GitStore
-	// ba answers Ask AI; now and sleep pace waiting for it, replaced by tests.
-	ba    interfaces.BknAgentAccess
-	now   func() time.Time
-	sleep func(time.Duration)
+	// ba answers Ask AI within askWait, askDeadline when unset; tests shorten it.
+	ba      interfaces.BknAgentAccess
+	askWait time.Duration
 	// run drafts in the background; tests replace it to run in line.
 	run func(fn func())
 	// checkRuns holds each project's running check, a *checkRun, so a later run can stop it.
@@ -88,8 +87,6 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			ra:      logics.RA,
 			gs:      logics.GS,
 			ba:      logics.BAA,
-			now:     time.Now,
-			sleep:   time.Sleep,
 			run:     func(fn func()) { go fn() },
 		}
 	})

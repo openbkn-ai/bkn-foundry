@@ -45,6 +45,7 @@ REQUIREMENTS_V5 = MIGRATIONS / "0.2.1/27-requirements-guidance-v5.sql"
 REQUIREMENTS_V6 = MIGRATIONS / "0.2.1/28-requirements-guidance-v6.sql"
 ONTOLOGY_ASK = MIGRATIONS / "0.2.1/29-seed-bkn-project-ontology-ask.sql"
 METRIC_DESIGN_LOCALE = MIGRATIONS / "0.2.1/30-object-metric-designer-locale.sql"
+ONTOLOGY_ASK_REVISIONS = MIGRATIONS / "0.2.1/31-bkn-project-ontology-ask-revisions.sql"
 RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
 
 
@@ -264,6 +265,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, REQUIREMENTS_V6)
         apply(upgraded, ONTOLOGY_ASK)
         apply(upgraded, METRIC_DESIGN_LOCALE)
+        apply(upgraded, ONTOLOGY_ASK_REVISIONS)
         apply(upgraded, RETIRE_DRAFTER)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
@@ -466,6 +468,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(REQUIREMENTS_V6),
                     str(ONTOLOGY_ASK),
                     str(METRIC_DESIGN_LOCALE),
+                    str(ONTOLOGY_ASK_REVISIONS),
                     str(RETIRE_DRAFTER),
                 ],
             ],
@@ -521,8 +524,8 @@ def answer_judge_locales_text():
 
 
 def ontology_ask_locales_text():
-    """The translation backfill at the end of 29, which the fresh snapshot ends with too."""
-    text = ONTOLOGY_ASK.read_text()
+    """The translation backfill of v2 at the end of 31, which the fresh snapshot ends with too."""
+    text = ONTOLOGY_ASK_REVISIONS.read_text()
     return text[text.index("-- Attach the zh-CN"):]
 
 
@@ -544,10 +547,13 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     assert init.index("select 'bkn-project-requirements-prompt', 6, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
     # The judge is seeded at its latest version, after the other seeds and before the locale column.
     assert seed < init.index("-- bkn-project-answer-judge:") < init.index(CLAIM_LOCALES.read_text())
-    # Ask AI is seeded after the judge and before the locale column, its source language marked.
+    # Ask AI is seeded after the judge and before the locale column, its source language marked; a
+    # fresh install starts at v2, so its prompt is the body 31 writes.
     ask = init.index("-- bkn-project-ontology-ask:")
     assert init.index("-- bkn-project-answer-judge:") < ask < init.index(CLAIM_LOCALES.read_text())
-    assert init.index("select 'bkn-project-ontology-ask-prompt', 1, 'en-US',", ask) < init.index(CLAIM_LOCALES.read_text())
+    v2 = [s for s in statements(ONTOLOGY_ASK_REVISIONS) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v2[v2.index("select v.f_prompt_id, 2,") + len("select v.f_prompt_id, 2,"):v2.index("v.f_vars_schema,")].strip()
+    assert init.index("select 'bkn-project-ontology-ask-prompt', 2, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1196,7 +1202,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V6) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
-                               | {s for s in statements(ONTOLOGY_ASK) if "f_localized_content" in s}
+                               | {s for s in statements(ONTOLOGY_ASK_REVISIONS) if "f_localized_content" in s}
                                | set(statements(METRIC_DESIGN_LOCALE)))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
@@ -2984,7 +2990,7 @@ def ontology_ask_prompt(db):
     ).fetchone()
 
 
-def test_ontology_ask_seed_is_a_published_tool_free_task_with_a_bounded_output():
+def test_ontology_ask_seed_is_a_published_tool_free_chat_agent_with_a_bounded_output():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         agent = db.execute(
@@ -2992,7 +2998,7 @@ def test_ontology_ask_seed_is_a_published_tool_free_task_with_a_bounded_output()
             " WHERE f_agent_id='bkn-project-ontology-ask'"
         ).fetchone()
         assert agent["f_name"] == "BKNProjectOntologyAsk"
-        assert agent["f_mode"] == "task"
+        assert agent["f_mode"] == "chat"
         assert agent["f_model"] == ""
         assert json.loads(agent["f_tools"]) == []
         assert json.loads(agent["f_skills"]) == []
@@ -3003,10 +3009,19 @@ def test_ontology_ask_seed_is_a_published_tool_free_task_with_a_bounded_output()
         assert limits["timeout_s"] < 45 and limits["max_output_tokens"] <= 1024
         prompt, localized = ontology_ask_prompt(db)
         assert prompt.isascii()
-        # It answers and suggests only; the fields it may suggest are the draft's own edits.
+        # It answers and proposes only; the fields it may revise are the save body's own.
         assert "you never change the draft" in prompt
-        for field in ("name:", "description:", "identity:", "field to none"):
+        for field in ("- name:", "- comment:", "- primary_keys,", "- display_key,", "- data_property,", "- ends,"):
             assert field in prompt
+        assert "history" in prompt and "relation_type" in prompt
+        # The answer is streamed as text; revisions follow when the server asks for them.
+        # Business sentences only: no field names, no revisions restated, the draft not the message.
+        assert "no field names of this message or of a revision" in prompt
+        assert "Do not restate or list revisions" in prompt
+        assert "Speak of the draft, never of the message." in prompt
+        # A display key a person recognises a record by, falling back to a unique property.
+        assert "a name, title or label, not an id or a code" in prompt
+        assert "After your reply the server asks, in a separate step, for revisions" in prompt
         assert "never guess facts about the data" in prompt
         assert "It carries no row data." in prompt
         locales = json.loads(localized)
@@ -3018,6 +3033,157 @@ def test_ontology_ask_seed_and_translation_are_idempotent_on_an_upgrade():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         before = snapshot(db)
-        apply(db, ONTOLOGY_ASK)
-        apply(db, ONTOLOGY_ASK)
+        for path in (ONTOLOGY_ASK, ONTOLOGY_ASK, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_REVISIONS):
+            apply(db, path)
         assert snapshot(db) == before
+
+
+def ask_v1_state(db):
+    """Ask AI as 29 seeds it: the official v1 with its translations."""
+    apply(db, CLAIM_LOCALES)
+    apply(db, ONTOLOGY_ASK)
+
+
+def ask_prompt_version(db, version):
+    return dict(db.execute(
+        "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=?",
+        (version,),
+    ).fetchone())
+
+
+def test_ontology_ask_v2_upgrade_matches_fresh_install_and_keeps_history():
+    with database() as db, database() as fresh:
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        ask_v1_state(db)
+        old = ask_prompt_version(db, 1)
+        history = snapshot(db)[3]
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        assert item_from_db(db, "bkn-project-ontology-ask") == item_from_db(fresh, "bkn-project-ontology-ask")
+        new = ask_prompt_version(db, 2)
+        assert new["f_content"] == ask_prompt_version(fresh, 2)["f_content"]
+        assert new["f_localized_content"] == ask_prompt_version(fresh, 2)["f_localized_content"]
+        assert json.loads(new["f_localized_content"])["en-US"] == new["f_content"]
+        assert ask_prompt_version(db, 1) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            "SELECT f_prompt_version,f_initial,f_current FROM t_agent_version"
+            " WHERE f_agent_id='bkn-project-ontology-ask' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(2, 1, 1)]
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
+def test_ontology_ask_v2_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        ask_v1_state(db)
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt'"
+                " WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=1"
+            )
+        elif customization in ("zh-CN", "en-US"):
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom')"
+                " WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=1",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time)"
+                " VALUES('bkn-project-ontology-ask-prompt',2,'custom newer prompt',null,'operator',9e15)"
+            )
+            if customization == "higher-version":
+                db.execute("UPDATE t_agent_prompt SET f_current_version=2 WHERE f_prompt_id='bkn-project-ontology-ask-prompt'")
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=9e15"
+                    " WHERE f_prompt_id='bkn-project-ontology-ask-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        # Prompts and versions stay as the operator left them; only the mode follows bkn-project.
+        assert db.execute("SELECT f_mode FROM t_agent WHERE f_agent_id='bkn-project-ontology-ask'").fetchone()[0] == "chat"
+        db.execute("UPDATE t_agent SET f_mode='task' WHERE f_agent_id='bkn-project-ontology-ask'")
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 10))
+def test_ontology_ask_v2_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            ask_v1_state(connection)
+            if customized:
+                connection.execute("UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='bkn-project-ontology-ask'")
+        apply(expected, ONTOLOGY_ASK_REVISIONS)
+        apply(db, ONTOLOGY_ASK_REVISIONS, limit=limit)
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_ontology_ask_v2_upgrade_does_not_reverse_an_operator_rollback():
+    with database() as db:
+        ask_v1_state(db)
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_current_version=1,f_update_user='operator',f_update_time=9e15"
+            " WHERE f_prompt_id='bkn-project-ontology-ask-prompt'"
+        )
+        db.execute("UPDATE t_agent_version SET f_current=0 WHERE f_agent_id='bkn-project-ontology-ask'")
+        db.execute("UPDATE t_agent_version SET f_current=1 WHERE f_agent_id='bkn-project-ontology-ask' AND f_prompt_version=1")
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        assert snapshot(db) == before
+
+
+def test_ontology_ask_v2_upgrade_keeps_custom_settings_and_official_baseline():
+    with database() as db:
+        ask_v1_state(db)
+        original = dict(db.execute(
+            "SELECT * FROM t_agent_version WHERE f_agent_id='bkn-project-ontology-ask' AND f_version=1").fetchone())
+        db.execute(
+            "UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='bkn-project-ontology-ask'",
+            ('{"max_turns":3}',),
+        )
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        baseline = dict(db.execute(
+            "SELECT * FROM t_agent_version WHERE f_agent_id='bkn-project-ontology-ask' AND f_initial=1").fetchone())
+        current = dict(db.execute(
+            "SELECT * FROM t_agent_version WHERE f_agent_id='bkn-project-ontology-ask' AND f_current=1").fetchone())
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (2, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (2, "custom-model", '{"max_turns":3}')
+
+
+def test_ontology_ask_v2_upgrade_does_not_switch_a_prompt_head_an_operator_saved():
+    with database() as db:
+        ask_v1_state(db)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=500"
+            " WHERE f_prompt_id='bkn-project-ontology-ask-prompt'"
+        )
+        head_before, agent_versions_before = snapshot(db)[1], snapshot(db)[3]
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        assert snapshot(db)[1] == head_before
+        assert snapshot(db)[3] == agent_versions_before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+def test_ontology_ask_v2_upgrade_makes_it_a_chat_agent_whatever_its_prompt(customized):
+    with database() as db:
+        ask_v1_state(db)
+        if customized:
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt'"
+                " WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=1"
+            )
+        apply(db, ONTOLOGY_ASK_REVISIONS)
+        mode = db.execute("SELECT f_mode FROM t_agent WHERE f_agent_id='bkn-project-ontology-ask'").fetchone()[0]
+        assert mode == "chat"
