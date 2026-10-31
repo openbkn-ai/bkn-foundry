@@ -380,9 +380,14 @@ var pairWords = map[string]bool{"id": true, "no": true, "code": true, "seq": tru
 // lineWords name a field as the number of a line within a document, as seq_no or line_id.
 var lineWords = map[string]bool{"seq": true, "line": true}
 
-// numbersLines tells whether a field is named as the number of a line within a document.
+// numbersLines tells whether a field is named as the number of a line within a document. One named
+// as an id, such as order_line_id, identifies a record of its own.
 func numbersLines(field string) bool {
-	for _, w := range words(field) {
+	w := words(field)
+	if lastWord(w) == "id" {
+		return false
+	}
+	for _, w := range w {
 		if lineWords[w] {
 			return true
 		}
@@ -435,10 +440,16 @@ func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
 				!(declared[c.Name] || refers[c.Name] || pairWords[lastWord(words(c.Name))]) {
 				continue
 			}
-			if len(pool) == maxPairFields {
-				break
-			}
 			pool = append(pool, c.Name)
+		}
+		if len(pool) > maxPairFields {
+			// The field counted alone is always paired: its counts are why no single field will do.
+			at := slices.Index(pool, base)
+			if at >= maxPairFields {
+				pool = append(pool[:maxPairFields-1:maxPairFields-1], base)
+			} else {
+				pool = pool[:maxPairFields]
+			}
 		}
 		for i := range pool {
 			for _, second := range pool[i+1:] {
