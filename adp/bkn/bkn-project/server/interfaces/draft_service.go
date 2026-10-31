@@ -15,6 +15,11 @@ type DraftService interface {
 	// people made decisions on is replaced only when discardDecisions is set.
 	GenerateDraft(ctx context.Context, token string, projectID string, caller AccountInfo,
 		discardDecisions bool) (*Draft, error)
+	// AddCatalogs adds catalogs to the project, for its owner, and drafts their tables in the
+	// background into the ready draft as new items, leaving every item and decision there as it is.
+	// It returns the draft, drafting.
+	AddCatalogs(ctx context.Context, token string, projectID string, req DraftAddCatalogs,
+		caller AccountInfo) (*Draft, error)
 	// GetDraft returns the project's current draft.
 	GetDraft(ctx context.Context, token string, projectID string) (*Draft, error)
 	// EditDraftItem applies a person's edit to one item of a ready draft, records it as
