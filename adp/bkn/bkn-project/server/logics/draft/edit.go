@@ -219,7 +219,8 @@ func regateRelations(setting common.DraftSetting, items *interfaces.DraftItems, 
 			continue
 		}
 		because := ""
-		if r.LinkTable == nil {
+		// A relation a person made is in once both its ends are, whatever its counts, as making it was.
+		if r.LinkTable == nil && r.Origin != interfaces.DRAFT_ORIGIN_MANUAL {
 			target := findObjectType(items, r.Target)
 			if len(r.Mapping) != 1 || !slices.Equal(target.PrimaryKeys, []string{r.Mapping[0].TargetProperty}) {
 				continue

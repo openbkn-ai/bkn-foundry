@@ -200,6 +200,24 @@ func Test_RelationTypeSave(t *testing.T) {
 			So(last(got).ProposedBecause, ShouldEqual, proposedEndNotAdopted)
 		})
 
+		Convey("A relation made before its end is adopted is adopted with the end, whatever its counts\n", func() {
+			expectWrite()
+			draft.Items.ObjectTypes[1].Adopted = false
+			// Not to the customers' identity: drafting's gate would refuse it uncounted.
+			got, err := svc.CreateRelationType(ctx, token, "p1", direct("orders", "customers", [2]string{"code", "name"}), caller)
+			So(err, ShouldBeNil)
+			made := last(got)
+			So(made.Adopted, ShouldBeFalse)
+
+			// Adopting the end regates the relations it was waiting for, as editing does.
+			draft.Items.ObjectTypes[1].Adopted = true
+			decisions := regateRelations(testSetting, &got.Items, "customers")
+
+			So(made.Adopted, ShouldBeTrue)
+			So(made.ProposedBecause, ShouldBeEmpty)
+			So(decisions, ShouldNotBeEmpty)
+		})
+
 		Convey("A join another relation has already is refused, naming it\n", func() {
 			_, err := svc.CreateRelationType(ctx, token, "p1", direct("orders", "customers", [2]string{"customer_id", "id"}), caller)
 
