@@ -21,14 +21,12 @@ from app.auth import Account
 from app.commons.i18n import build_error_content
 from app.config import config
 from app.core import builtin_tools
+from app.core.agent_settings import merge
 from app.core.graph import stream_chat
 from app.core.llm import build_chat_model
 from app.core.public_chat import PublicChat
 from app.db import SessionLocal, get_session
 from app.errors import err, not_found
-from app.models import ChatRequest, ExecutionOut, ExecutionRequest
-from app.core.agent_settings import merge
-from app.models import AgentSetting
 from app.metric_design import (
     AGENT_ID as METRIC_AGENT_ID,
     PROTOCOL as METRIC_PROTOCOL,
@@ -41,6 +39,8 @@ from app.metric_design import (
     repair_proposal,
     validate_proposal,
 )
+from app.model_manager import resolve_authorized_model
+from app.models import AgentSetting, ChatRequest, ExecutionOut, ExecutionRequest
 from app.public_auth import (
     PUBLIC_AGENT_IDS,
     authorize_execution,
@@ -262,6 +262,18 @@ async def _execute_impl(
             raise err(409, "BknAgent.Execution.Conflict")
         if metric_request and origin.get("metric_request", {}).get("scope") != metric_data["scope"]:
             raise err(409, "BknAgent.Execution.Conflict")
+        if (
+            metric_request
+            and origin.get("metric_request", {}).get("model_id") != metric_request.model_id
+        ):
+            raise err(409, "BknAgent.Execution.Conflict")
+    if metric_request and metric_request.model_id:
+        selected_model = await resolve_authorized_model(metric_request.model_id)
+        if selected_model.model_type != "llm":
+            raise err(400, "BknAgent.Execution.Unsupported")
+        agent = agent.model_copy(
+            update={"model": selected_model.model_name}
+        )
     if thread_id in _thread_claims:
         raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
     _thread_claims.add(thread_id)
