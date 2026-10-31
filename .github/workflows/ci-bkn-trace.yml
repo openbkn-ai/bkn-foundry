@@ -67,6 +67,12 @@ jobs:
         run: make check-swag
       - name: Race tests
         run: make test-race
+      - name: Ordinary Trace missing-projection SQL fallback acceptance
+        env:
+          BKN_TRACE_FALLBACK_TEST_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/bkn_trace_2779_test?parseTime=true&multiStatements=true
+        run: |
+          docker exec -e MYSQL_PWD=trace-ci-password "${{ job.services.mariadb.id }}" mariadb -uroot -e 'CREATE DATABASE bkn_trace_2779_test'
+          go test -race -tags=integration ./src/drivenadapter/dbaccess/mariadb/sessionstore -run '^TestTraceSummaryFallbackMariaDB$' -count=1 -v
       - name: Search projection transient failure and audited replay acceptance
         env:
           BKN_TRACE_RECOVERY_TEST_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/bkn_trace_2779_recovery?parseTime=true&multiStatements=true
