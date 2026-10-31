@@ -18,12 +18,6 @@ import (
 
 const emptySpec = `{"scenarios":null,"concepts":null,"questions":null,"rules":null,"conflicts":null,"choices":null,"rejected":null}`
 
-const resolvedSpec = `{"conflicts":[{"id":"k1","resolution":{"document_id":"d1","reason":"r","by":{"id":"u1","type":"user"},"time":1}}]}`
-
-const chosenSpec = `{"choices":[{"id":"f1","decision":{"option_id":"o1","basis":"b","by":{"id":"u1","type":"user"},"time":1}}]}`
-
-const deferredSpec = `{"conflicts":[{"id":"k1","deferred":true}]}`
-
 var docColumns = []string{"f_id", "f_project_id", "f_name", "f_doc_type", "f_format", "f_sha256", "f_size",
 	"f_uploader", "f_uploader_type", "f_create_time", "f_update_time"}
 
@@ -155,20 +149,20 @@ func Test_RequirementSpecification(t *testing.T) {
 			Drafter: interfaces.AccountInfo{ID: "u1", Type: "user"}, CreateTime: 5, UpdateTime: 5,
 		}
 		ensureRow := regexp.QuoteMeta("INSERT INTO t_bkn_project_requirement (f_project_id,f_spec,f_inputs) VALUES (?,?,?) ON DUPLICATE KEY UPDATE f_project_id = f_project_id")
-		lockRow := regexp.QuoteMeta("SELECT f_status, f_update_time, f_spec FROM t_bkn_project_requirement WHERE f_project_id = ? FOR UPDATE")
-		lockCols := []string{"f_status", "f_update_time", "f_spec"}
+		lockRow := regexp.QuoteMeta("SELECT f_status, f_update_time FROM t_bkn_project_requirement WHERE f_project_id = ? FOR UPDATE")
+		lockCols := []string{"f_status", "f_update_time"}
 		start := regexp.QuoteMeta("UPDATE t_bkn_project_requirement SET f_version = ?, f_status = ?, f_spec = ?, f_inputs = ?, f_error = ?, f_run_id = ?, f_agent_task_id = ?, f_drafter = ?, f_drafter_type = ?, f_create_time = ?, f_update_time = ? WHERE f_project_id = ?")
 
 		Convey("StartDrafting writes the first specification of a project into the row it makes sure of\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WithArgs("p1", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
-			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols).AddRow("", int64(0), ""))
+			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols).AddRow("", int64(0)))
 			smock.ExpectExec(start).
 				WithArgs(1, "drafting", emptySpec, "null", "", "run1", "", "u1", "user", int64(5), int64(5), "p1").
 				WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
-			started, err := ra.StartDrafting(ctx, drafting, 3, false)
+			started, err := ra.StartDrafting(ctx, drafting, 3, 0)
 
 			So(err, ShouldBeNil)
 			So(started, ShouldBeTrue)
@@ -178,41 +172,39 @@ func Test_RequirementSpecification(t *testing.T) {
 		Convey("StartDrafting leaves a project that is drafting alone, unless its drafting went stale\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(4), emptySpec))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(4)))
 			smock.ExpectRollback()
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(2), emptySpec))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(2)))
 			smock.ExpectExec(start).WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
-			started, err := ra.StartDrafting(ctx, drafting, 3, false)
+			started, err := ra.StartDrafting(ctx, drafting, 3, 0)
 			So(err, ShouldBeNil)
 			So(started, ShouldBeFalse)
-			started, err = ra.StartDrafting(ctx, drafting, 3, false)
+			started, err = ra.StartDrafting(ctx, drafting, 3, 0)
 			So(err, ShouldBeNil)
 			So(started, ShouldBeTrue)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
-		Convey("StartDrafting keeps a specification with decisions unless they are discarded\n", func() {
-			for _, spec := range []string{resolvedSpec, chosenSpec, deferredSpec} {
-				smock.ExpectBegin()
-				smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-				smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), spec))
-				smock.ExpectRollback()
-
-				started, err := ra.StartDrafting(ctx, drafting, 3, false)
-				So(errors.Is(err, interfaces.ErrRequirementHasDecisions), ShouldBeTrue)
-				So(started, ShouldBeFalse)
-			}
+		Convey("StartDrafting replaces a specification it read only while it is as read\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), resolvedSpec))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(9)))
+			smock.ExpectRollback()
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(7)))
 			smock.ExpectExec(start).WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
-			started, err := ra.StartDrafting(ctx, drafting, 3, true)
+			// Changed since it was read at 7: what drafting keeps would miss the change.
+			started, err := ra.StartDrafting(ctx, drafting, 3, 7)
+			So(errors.Is(err, interfaces.ErrRequirementChanged), ShouldBeTrue)
+			So(started, ShouldBeFalse)
+			started, err = ra.StartDrafting(ctx, drafting, 3, 7)
 			So(err, ShouldBeNil)
 			So(started, ShouldBeTrue)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
@@ -221,11 +213,11 @@ func Test_RequirementSpecification(t *testing.T) {
 		Convey("StartDrafting rolls back when the write fails\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), emptySpec))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2)))
 			smock.ExpectExec(start).WillReturnError(errors.New("boom"))
 			smock.ExpectRollback()
 
-			started, err := ra.StartDrafting(ctx, drafting, 3, false)
+			started, err := ra.StartDrafting(ctx, drafting, 3, 0)
 			So(err, ShouldNotBeNil)
 			So(started, ShouldBeFalse)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)

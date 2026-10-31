@@ -65,9 +65,9 @@ const (
 	REQUIREMENT_ITEM_RELATION_TYPE = "relation_type"
 )
 
-// ErrRequirementHasDecisions is returned by StartDrafting when drafting again would discard the
-// conflict resolutions and modelling choices people made and the caller did not agree to that.
-var ErrRequirementHasDecisions = errors.New("requirement specification has decisions")
+// ErrRequirementChanged is returned by StartDrafting when the specification changed since it was
+// read: what drafting keeps of it would miss the change.
+var ErrRequirementChanged = errors.New("requirement specification changed since it was read")
 
 // RequirementDocument is one row of t_bkn_project_requirement_document. Lists leave out the
 // content and blocks.
@@ -191,6 +191,11 @@ type RequirementScenario struct {
 	SupplementReason string `json:"supplement_reason,omitempty"`
 	// Edited is set once a person changed the item.
 	Edited bool `json:"edited"`
+	// Accepted is set once a person accepted the item, added it or changed it; drafting again keeps
+	// it.
+	Accepted bool `json:"accepted"`
+	// OntologyChanged, computed when read, says the items one of its questions rests on changed.
+	OntologyChanged bool `json:"ontology_changed,omitempty"`
 }
 
 type RequirementCapability struct {
@@ -256,6 +261,18 @@ type RequirementQuestion struct {
 	Citations        []RequirementCitation `json:"citations"`
 	SupplementReason string                `json:"supplement_reason,omitempty"`
 	Edited           bool                  `json:"edited"`
+	// Accepted is set once a person accepted the question, added it or changed it; drafting again
+	// keeps it.
+	Accepted bool `json:"accepted"`
+	// DraftTime is when the question was drafted, kept when drafting again keeps it: guidance
+	// generated since applies to it. Absent on a question drafted before it was recorded.
+	DraftTime int64 `json:"draft_time,omitempty"`
+	// OntologySignature signs the drafted items the question rests on as they were when it was
+	// drafted, or accepted or changed since.
+	OntologySignature string `json:"ontology_signature,omitempty"`
+	// OntologyChanged, computed when read, says those items changed since: the question may be out
+	// of date. Names and descriptions do not count.
+	OntologyChanged bool `json:"ontology_changed,omitempty"`
 }
 
 // RequirementInput is a value a scenario question is asked about: a record named by a property of
@@ -360,21 +377,6 @@ type RequirementRejected struct {
 	Reason string `json:"reason"`
 }
 
-// HasDecisions tells whether people resolved, deferred or chose anything in the specification.
-func (s *RequirementSpec) HasDecisions() bool {
-	for _, c := range s.Conflicts {
-		if c.Resolution != nil || c.Deferred {
-			return true
-		}
-	}
-	for _, c := range s.Choices {
-		if c.Decision != nil {
-			return true
-		}
-	}
-	return false
-}
-
 // Kinds of specification items, as the routes name them.
 const (
 	REQUIREMENT_KIND_SCENARIOS = "scenarios"
@@ -382,6 +384,20 @@ const (
 	REQUIREMENT_KIND_QUESTIONS = "questions"
 	REQUIREMENT_KIND_RULES     = "rules"
 )
+
+// RequirementReview accepts and unaccepts scenarios and questions, written over the specification
+// as read at UpdateTime.
+type RequirementReview struct {
+	UpdateTime int64                   `json:"update_time"`
+	Accept     []RequirementReviewItem `json:"accept"`
+	Unaccept   []RequirementReviewItem `json:"unaccept"`
+}
+
+// RequirementReviewItem is a scenario or a question by its kind, scenarios or questions, and id.
+type RequirementReviewItem struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
 
 // RequirementItemEdit changes the fields it sets of one item, for the item's kind: name, actor,
 // trigger, decision and knowledge of a scenario; term, category and definition of a concept; text,
@@ -445,6 +461,9 @@ type RequirementView struct {
 	UnresolvedConflicts int `json:"unresolved_conflicts"`
 	// UndecidedChoices counts the modelling choices no one made; their recommended options hold.
 	UndecidedChoices int `json:"undecided_choices"`
+	// OntologyUncovered are the adopted object types no question rests on, such as ones adopted
+	// since drafting: drafting again covers them.
+	OntologyUncovered []ReleaseItem `json:"ontology_uncovered"`
 }
 
 // ScenarioQuestions are a project's scenario questions as publishing and the regression after a
@@ -652,11 +671,12 @@ type RequirementAccess interface {
 
 	// GetRequirement returns the project's specification, and false when it has none.
 	GetRequirement(ctx context.Context, projectID string) (*Requirement, bool, error)
-	// StartDrafting writes req, in the drafting state, as the project's specification unless the
-	// project is drafting already; it reports whether it did. A specification drafting since
-	// before staleBefore is taken over. One with decisions is replaced only when
-	// discardDecisions is set; otherwise it returns ErrRequirementHasDecisions.
-	StartDrafting(ctx context.Context, req *Requirement, staleBefore int64, discardDecisions bool) (bool, error)
+	// StartDrafting writes req, in the drafting state and holding what drafting keeps, as the
+	// project's specification unless the project is drafting already; it reports whether it did. A
+	// specification drafting since before staleBefore is taken over. When readUpdateTime is set,
+	// the specification is replaced only while its update time is still readUpdateTime, as read for
+	// what drafting keeps; otherwise it returns ErrRequirementChanged.
+	StartDrafting(ctx context.Context, req *Requirement, staleBefore int64, readUpdateTime int64) (bool, error)
 	// UpdateRequirement writes the spec and update time of a ready specification whose update
 	// time is still readUpdateTime; false means someone changed it meanwhile.
 	UpdateRequirement(ctx context.Context, req *Requirement, readUpdateTime int64) (bool, error)
@@ -742,6 +762,9 @@ type RequirementService interface {
 	// DeleteItem removes one. kind is scenarios, concepts, questions or rules. Each returns the
 	// specification as it is after the change.
 	AddItem(ctx context.Context, token string, projectID string, kind string, edit RequirementItemEdit,
+		caller AccountInfo) (*Requirement, error)
+	// ReviewItems accepts and unaccepts scenarios and questions of the ready specification.
+	ReviewItems(ctx context.Context, token string, projectID string, review RequirementReview,
 		caller AccountInfo) (*Requirement, error)
 	EditItem(ctx context.Context, token string, projectID string, kind string, itemID string,
 		edit RequirementItemEdit, caller AccountInfo) (*Requirement, error)

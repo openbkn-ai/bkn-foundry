@@ -429,7 +429,7 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 				if err := onlyFields(ctx, edit, kind); err != nil {
 					return err
 				}
-				spec.Scenarios[i].Edited = true
+				spec.Scenarios[i].Edited, spec.Scenarios[i].Accepted = true, true
 				return applyScenario(ctx, spec.Scenarios[i], edit)
 			case interfaces.REQUIREMENT_KIND_CONCEPTS:
 				i, ok := find(spec.Concepts, itemID, conceptID)
@@ -449,11 +449,16 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 				if err := onlyFields(ctx, edit, kind); err != nil {
 					return err
 				}
-				spec.Questions[i].Edited = true
+				spec.Questions[i].Edited, spec.Questions[i].Accepted = true, true
 				if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
 					return err
 				}
-				return applyQuestion(ctx, spec.Questions[i], edit, spec, drafted)
+				if err := applyQuestion(ctx, spec.Questions[i], edit, spec, drafted); err != nil {
+					return err
+				}
+				// Changed as the ontology is now.
+				spec.Questions[i].OntologySignature = ontologySignature(drafted.draft, spec.Questions[i])
+				return nil
 			case interfaces.REQUIREMENT_KIND_RULES:
 				i, ok := find(spec.Rules, itemID, ruleID)
 				if !ok {
@@ -495,7 +500,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 					return invalidItem(ctx, "name is empty")
 				}
 				s := &interfaces.RequirementScenario{ID: nextID(spec, "s", spec.Scenarios, scenarioID), Knowledge: []string{},
-					Capabilities: []interfaces.RequirementCapability{}, Citations: empty, Edited: true}
+					Capabilities: []interfaces.RequirementCapability{}, Citations: empty, Edited: true, Accepted: true}
 				if err := applyScenario(ctx, s, edit); err != nil {
 					return err
 				}
@@ -519,13 +524,14 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 					Basis: interfaces.RequirementBasis{ConceptIDs: []string{}, Metrics: []string{}, Functions: []string{},
 						Skills: []string{}},
 					Needs: []interfaces.RequirementItemRef{}, NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
-					Citations: empty, Edited: true}
+					Citations: empty, Edited: true, Accepted: true}
 				if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
 					return err
 				}
 				if err := applyQuestion(ctx, q, edit, spec, drafted); err != nil {
 					return err
 				}
+				q.OntologySignature = ontologySignature(drafted.draft, q)
 				spec.Questions = append(spec.Questions, q)
 			case interfaces.REQUIREMENT_KIND_RULES:
 				if edit.Statement == nil {
@@ -705,6 +711,62 @@ func (s *requirementService) DecideChoice(ctx context.Context, token string, pro
 		})
 	if err != nil {
 		span.SetStatus(codes.Error, "Decide choice failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return req, nil
+}
+
+// ReviewItems accepts and unaccepts scenarios and questions: what a person accepted stays when
+// the specification is drafted again.
+func (s *requirementService) ReviewItems(ctx context.Context, token string, projectID string,
+	review interfaces.RequirementReview, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ReviewRequirementItems")
+	defer span.End()
+
+	if len(review.Accept)+len(review.Unaccept) == 0 {
+		span.SetStatus(codes.Error, "Nothing to review")
+		return nil, invalidItem(ctx, "nothing_to_review")
+	}
+	req, err := s.update(ctx, token, projectID, review.UpdateTime, caller,
+		func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
+			seen := map[interfaces.RequirementReviewItem]bool{}
+			for _, accepted := range []bool{true, false} {
+				items := review.Accept
+				if !accepted {
+					items = review.Unaccept
+				}
+				for _, item := range items {
+					if seen[item] {
+						return invalidItem(ctx, "reviewed_twice")
+					}
+					seen[item] = true
+					switch item.Kind {
+					case interfaces.REQUIREMENT_KIND_SCENARIOS:
+						i, ok := find(spec.Scenarios, item.ID, scenarioID)
+						if !ok {
+							return notFound(ctx)
+						}
+						spec.Scenarios[i].Accepted = accepted
+					case interfaces.REQUIREMENT_KIND_QUESTIONS:
+						i, ok := find(spec.Questions, item.ID, questionID)
+						if !ok {
+							return notFound(ctx)
+						}
+						spec.Questions[i].Accepted = accepted
+						// Accepted as the ontology is now.
+						if accepted {
+							spec.Questions[i].OntologySignature = ontologySignature(drafted.draft, spec.Questions[i])
+						}
+					default:
+						return invalidItem(ctx, "kind")
+					}
+				}
+			}
+			return nil
+		})
+	if err != nil {
+		span.SetStatus(codes.Error, "Review items failed")
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")

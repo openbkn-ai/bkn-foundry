@@ -27,7 +27,7 @@ func TestRequirementCodesAreRegisteredAndWorded(t *testing.T) {
 		perrors.BknProject_Requirement_InvalidItem,
 		perrors.BknProject_Requirement_InvalidResolution,
 		perrors.BknProject_Requirement_InvalidOption,
-		perrors.BknProject_Requirement_NoDocuments,
+		perrors.BknProject_Requirement_NoAdoptedOntology,
 		perrors.BknProject_Requirement_NoCatalogs,
 		perrors.BknProject_Requirement_InputsTooLarge,
 		perrors.BknProject_Requirement_NotOwner,

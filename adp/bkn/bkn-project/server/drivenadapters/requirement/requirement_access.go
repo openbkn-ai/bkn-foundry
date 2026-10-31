@@ -238,7 +238,7 @@ func (ra *requirementAccess) GetRequirement(ctx context.Context, projectID strin
 }
 
 func (ra *requirementAccess) StartDrafting(ctx context.Context, req *interfaces.Requirement,
-	staleBefore int64, discardDecisions bool) (started bool, err error) {
+	staleBefore int64, readUpdateTime int64) (started bool, err error) {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "StartRequirementDrafting")
 	defer span.End()
 
@@ -271,25 +271,25 @@ func (ra *requirementAccess) StartDrafting(ctx context.Context, req *interfaces.
 		span.SetStatus(codes.Error, "Write data failed")
 		return false, err
 	}
-	sqlStr, vals, err = sq.Select("f_status", "f_update_time", "f_spec").From(REQUIREMENT_TABLE_NAME).
+	sqlStr, vals, err = sq.Select("f_status", "f_update_time").From(REQUIREMENT_TABLE_NAME).
 		Where(sq.Eq{"f_project_id": req.ProjectID}).Suffix("FOR UPDATE").
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return false, err
 	}
-	var status, specRead string
+	var status string
 	var updateTime int64
-	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime, &specRead); {
+	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime); {
 	case err != nil:
 		span.SetStatus(codes.Error, "Query data failed")
 		return false, err
 	case status == interfaces.REQUIREMENT_STATUS_DRAFTING && updateTime >= staleBefore:
 		span.SetStatus(codes.Ok, "")
 		return false, nil
-	case !discardDecisions && hasDecisions(specRead):
+	case readUpdateTime != 0 && updateTime != readUpdateTime:
 		span.SetStatus(codes.Ok, "")
-		return false, interfaces.ErrRequirementHasDecisions
+		return false, interfaces.ErrRequirementChanged
 	}
 	sqlStr, vals, err = sq.Update(REQUIREMENT_TABLE_NAME).
 		Set("f_version", req.Version).Set("f_status", req.Status).Set("f_spec", specJSON).
@@ -466,14 +466,4 @@ func marshalRequirement(req *interfaces.Requirement) (string, string, error) {
 		return "", "", err
 	}
 	return string(specJSON), string(inputsJSON), nil
-}
-
-// hasDecisions reports whether a stored specification records decisions; one that does not parse
-// is treated as having none, as drafting replaces it anyway.
-func hasDecisions(specJSON string) bool {
-	var spec interfaces.RequirementSpec
-	if json.Unmarshal([]byte(specJSON), &spec) != nil {
-		return false
-	}
-	return spec.HasDecisions()
 }

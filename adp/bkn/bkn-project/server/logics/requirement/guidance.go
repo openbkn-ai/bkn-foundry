@@ -544,9 +544,14 @@ func (s *requirementService) generate(ctx context.Context, g *interfaces.Questio
 	finish(&done)
 }
 
-// guidanceCurrent tells whether guidance still applies to the question: generated for the same
-// version and question text of the specification as drafted last, since drafting again may reuse both.
+// guidanceCurrent tells whether guidance still applies to the question: generated for its text
+// since the question was drafted, which drafting again keeps for a question it keeps. A question
+// drafted before draft times were recorded takes the version and time of the specification as
+// drafted last, since drafting again may reuse both.
 func guidanceCurrent(req *interfaces.Requirement, q *interfaces.RequirementQuestion, g *interfaces.QuestionGuidance) bool {
+	if q.DraftTime > 0 {
+		return q.Text == g.Question && g.CreateTime >= q.DraftTime
+	}
 	return req.Version == g.SpecVersion && q.Text == g.Question && g.CreateTime >= req.CreateTime
 }
 

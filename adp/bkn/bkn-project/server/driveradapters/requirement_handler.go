@@ -194,7 +194,10 @@ func (r *restHandler) DeleteRequirementDocument(c *gin.Context, visitor hydra.Vi
 // The requirement specification of a project. It follows the project's visibility; only its
 // owner drafts and changes it.
 
-const requirementsActionDraft = "requirements:draft"
+const (
+	requirementsActionDraft  = "requirements:draft"
+	requirementsActionReview = "requirements:review"
+)
 
 func (r *restHandler) GetRequirementByEx(c *gin.Context) { r.withExVisitor(c, r.GetRequirement) }
 func (r *restHandler) ExportRequirementByEx(c *gin.Context) {
@@ -320,6 +323,14 @@ func replySpec[T any](c *gin.Context, status int,
 func (r *restHandler) AddRequirementItem(c *gin.Context, visitor hydra.Visitor) {
 	replySpec(c, http.StatusCreated, func(ctx context.Context, edit interfaces.RequirementItemEdit) (*interfaces.Requirement, error) {
 		return r.rqs.AddItem(ctx, visitor.TokenID, c.Param("project_id"), c.Param("kind"), edit, visitorAccount(visitor))
+	})
+}
+
+// ReviewRequirementItems serves POST /projects/{project_id}/requirements:review, accepting and
+// unaccepting scenarios and questions.
+func (r *restHandler) ReviewRequirementItems(c *gin.Context, visitor hydra.Visitor) {
+	replySpec(c, http.StatusOK, func(ctx context.Context, review interfaces.RequirementReview) (*interfaces.Requirement, error) {
+		return r.rqs.ReviewItems(ctx, visitor.TokenID, c.Param("project_id"), review, visitorAccount(visitor))
 	})
 }
 

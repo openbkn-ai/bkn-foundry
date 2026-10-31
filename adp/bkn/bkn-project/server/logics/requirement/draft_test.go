@@ -35,13 +35,13 @@ func testDocuments() []*interfaces.RequirementDocument {
 }
 
 func testDraft() *interfaces.Draft {
-	return &interfaces.Draft{Items: interfaces.DraftItems{
+	return &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
 		ObjectTypes: []*interfaces.DraftObjectType{
-			{ID: "sales_order", Name: "Sales order", Aliases: []string{"Order"}},
-			{ID: "customer", Name: "Customer"},
+			{ID: "sales_order", Name: "Sales order", Aliases: []string{"Order"}, Adopted: true},
+			{ID: "customer", Name: "Customer", Adopted: true},
 		},
 		RelationTypes: []*interfaces.DraftRelationType{{ID: "sales_order_customer", Name: "Order of customer",
-			Source: "sales_order", Target: "customer"}},
+			Source: "sales_order", Target: "customer", Adopted: true}},
 	}}
 }
 
@@ -66,7 +66,7 @@ func Test_BuildSpec(t *testing.T) {
 					Citations: []agentCitation{cite("prd", "show where the current date comes from")}}},
 			}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Scenarios[0].ID, ShouldEqual, "s1")
 			So(spec.Concepts[0].ID, ShouldEqual, "c1")
@@ -92,7 +92,7 @@ func Test_BuildSpec(t *testing.T) {
 				Questions: []agentQuestion{{Text: "t", ConceptIDs: []string{"a", "b"}, SupplementReason: "r"}},
 			}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Questions[0].Basis.ConceptIDs, ShouldResemble, []string{"c1", "c2"})
 			So(spec.Questions[0].Needs, ShouldResemble, []interfaces.RequirementItemRef{*ref})
@@ -106,7 +106,7 @@ func Test_BuildSpec(t *testing.T) {
 				{ID: "d", Term: "Belongs to", SupplementReason: "r", MapsTo: &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "sales_order_customer"}},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Concepts[0].MapsTo, ShouldResemble, &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"})
 			So(spec.Concepts[1].MapsTo, ShouldBeNil)
@@ -118,7 +118,7 @@ func Test_BuildSpec(t *testing.T) {
 			out := &draftOutput{Concepts: []agentConcept{{ID: "a", Term: "Customer", SupplementReason: "r",
 				MapsTo: &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}}}}
 
-			spec, _ := buildSpec(out, docs, nil)
+			spec, _ := buildSpec(out, docs, nil, nil)
 
 			So(spec.Concepts[0].MapsTo, ShouldBeNil)
 		})
@@ -134,7 +134,7 @@ func Test_BuildSpec(t *testing.T) {
 					SupplementReason: "a supplement does not save a quote not found"}},
 			}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Scenarios, ShouldBeEmpty)
 			So(spec.Questions, ShouldBeEmpty)
@@ -154,7 +154,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Statement: "Only signed changes count"},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Rules, ShouldHaveLength, 1)
 			So(spec.Rules[0].ID, ShouldEqual, "r1")
@@ -171,7 +171,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "Which requests wait over 5 days?", SupplementReason: "asked by the business"},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Questions, ShouldHaveLength, 1)
 			So(spec.Questions[0].SupplementReason, ShouldEqual, "asked by the business")
@@ -197,7 +197,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "When is order A due in 2 days?", Template: "When is order {order} due in 2 days?", Citations: quote},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Questions, ShouldHaveLength, 1)
 			So(spec.Questions[0].Text, ShouldEqual, "When is order 2 due?")
@@ -258,7 +258,7 @@ func Test_BuildSpec(t *testing.T) {
 				},
 			}
 
-			spec, _ := buildSpec(out, docs, withProps)
+			spec, _ := buildSpec(out, docs, withProps, nil)
 
 			byText := map[string]*interfaces.RequirementQuestion{}
 			for _, q := range spec.Questions {
@@ -299,7 +299,7 @@ func Test_BuildSpec(t *testing.T) {
 
 			// A key of several fields names no record alone: the property stays unknown.
 			withProps.Items.ObjectTypes[0].PrimaryKeys = []string{"order_no", "signed_on"}
-			spec, _ = buildSpec(out, docs, withProps)
+			spec, _ = buildSpec(out, docs, withProps, nil)
 			reasons = map[string]string{}
 			for _, r := range spec.Rejected {
 				reasons[r.Kind+" "+r.Text] = r.Reason
@@ -311,7 +311,7 @@ func Test_BuildSpec(t *testing.T) {
 
 			// Before the project has a draft, a concept maps to nothing yet: its property cannot be
 			// checked and stands, but a reference time with no property cannot be told a time.
-			spec, _ = buildSpec(out, docs, nil)
+			spec, _ = buildSpec(out, docs, nil, nil)
 			byText, reasons = map[string]*interfaces.RequirementQuestion{}, map[string]string{}
 			for _, q := range spec.Questions {
 				byText[q.Text] = q
@@ -362,7 +362,7 @@ func Test_BuildSpec(t *testing.T) {
 				},
 			}
 
-			spec, _ := buildSpec(out, exDocs, withProps)
+			spec, _ := buildSpec(out, exDocs, withProps, nil)
 
 			examples := []string{}
 			for _, q := range spec.Questions {
@@ -400,7 +400,7 @@ func Test_BuildSpec(t *testing.T) {
 						Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}}},
 			}
 
-			spec, _ := buildSpec(out, exDocs, withProps)
+			spec, _ := buildSpec(out, exDocs, withProps, nil)
 
 			So(spec.Questions[0].Citations, ShouldHaveLength, 1)
 			So(spec.Questions[0].Citations[0].Quote, ShouldEqual, "Staff ask which lines an order has. For example, order SO-1002.")
@@ -420,7 +420,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "g", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"", " "}, Functions: []string{" "}},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
 			So(spec.Questions[1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
@@ -448,7 +448,7 @@ func Test_BuildSpec(t *testing.T) {
 				},
 			}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
 			So(spec.Questions[0].Basis.Skills, ShouldResemble, []string{})
@@ -477,7 +477,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "d", Type: "judge", Layer: "capability", SupplementReason: "r", Functions: []string{"approval check"}},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
 			So(spec.Questions[0].Basis.Functions, ShouldResemble, []string{})
@@ -507,7 +507,7 @@ func Test_BuildSpec(t *testing.T) {
 			// Past the bound, one that would not stand anyway says why.
 			out.Concepts = append(out.Concepts, agentConcept{Term: "late unquoted"})
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Scenarios, ShouldHaveLength, maxSpecScenarios)
 			So(spec.Concepts, ShouldHaveLength, maxSpecConcepts)
@@ -538,7 +538,7 @@ func Test_BuildSpec(t *testing.T) {
 				}},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Conflicts, ShouldHaveLength, 1)
 			k := spec.Conflicts[0]
@@ -564,7 +564,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Question: "No quote?", Options: options},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft)
+			spec, _ := buildSpec(out, docs, draft, nil)
 
 			So(spec.Choices, ShouldHaveLength, 2)
 			So(spec.Choices[0].ID, ShouldEqual, "f1")
@@ -584,7 +584,7 @@ func Test_BuildSpec(t *testing.T) {
 				{DocumentID: "gone", DocType: interfaces.REQUIREMENT_DOC_POLICY},
 			}}
 
-			_, types := buildSpec(out, docs, draft)
+			_, types := buildSpec(out, docs, draft, nil)
 
 			So(types, ShouldResemble, map[string]string{"prd": interfaces.REQUIREMENT_DOC_PRD})
 		})
@@ -599,7 +599,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				tables[i] = &interfaces.VegaTable{Name: fmt.Sprintf("t%d", i)}
 			}
 
-			message, omitted, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil)
+			message, omitted, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil, nil)
 
 			So(err, ShouldBeNil)
 			So(omitted, ShouldEqual, 5)
@@ -611,11 +611,11 @@ func Test_BuildDraftMessage(t *testing.T) {
 
 		Convey("A drafted object type goes with its properties and primary keys, so an input can name one\n", func() {
 			draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{
-				ID: "ot1", Name: "Item", PrimaryKeys: []string{"code"},
+				ID: "ot1", Name: "Item", PrimaryKeys: []string{"code"}, Adopted: true,
 				Properties: []*interfaces.DraftProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}},
 			}}}}
 
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, nil)
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -626,6 +626,24 @@ func Test_BuildDraftMessage(t *testing.T) {
 				[]messageProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}})
 		})
 
+		Convey("Only adopted items go, with their descriptions: a candidate no one adopted is not the ontology\n", func() {
+			draft := testDraft()
+			draft.Items.ObjectTypes[0].Description = "What a customer orders"
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, &interfaces.DraftObjectType{ID: "candidate", Name: "Candidate"})
+			draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "maybe",
+				Source: "sales_order", Target: "candidate"})
+
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, nil)
+
+			So(err, ShouldBeNil)
+			var body draftMessage
+			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
+			So(body.ObjectTypes, ShouldHaveLength, 2)
+			So(body.ObjectTypes[0].Description, ShouldEqual, "What a customer orders")
+			So(body.RelationTypes, ShouldHaveLength, 1)
+			So(body.RelationTypes[0].ID, ShouldEqual, "sales_order_customer")
+		})
+
 		Convey("At most maxMessageProperties properties of an object type go, its keys and times first, and the rest are counted\n", func() {
 			props := []*interfaces.DraftProperty{}
 			for i := range maxMessageProperties + 3 {
@@ -633,9 +651,9 @@ func Test_BuildDraftMessage(t *testing.T) {
 			}
 			props = append(props, &interfaces.DraftProperty{Name: "made", Type: "datetime"}, &interfaces.DraftProperty{Name: "id", Type: "string"})
 			draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{
-				{ID: "ot1", Name: "Item", PrimaryKeys: []string{"id"}, Properties: props}}}}
+				{ID: "ot1", Name: "Item", PrimaryKeys: []string{"id"}, Properties: props, Adopted: true}}}}
 
-			message, _, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft)
+			message, _, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, nil)
 
 			So(err, ShouldBeNil)
 			So(omitted, ShouldEqual, 5)
@@ -678,10 +696,11 @@ func Test_RequirementDrafting(t *testing.T) {
 		expectStart := func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil)
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
 			// A run may wait for the Agent twice, the second time after an answer it could not use.
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-2*agentDeadline.Milliseconds()-time.Minute.Milliseconds(), false).
-				DoAndReturn(func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-2*agentDeadline.Milliseconds()-time.Minute.Milliseconds(), int64(0)).
+				DoAndReturn(func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
 					So(req.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_DRAFTING)
 					So(req.Version, ShouldEqual, 1)
 					So(req.RunID, ShouldEqual, "run1")
@@ -801,7 +820,7 @@ func Test_RequirementDrafting(t *testing.T) {
 			}
 			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return(many, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, nil)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil)
 			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
 				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{}`}, nil)
 			expectFinish()
@@ -811,6 +830,24 @@ func Test_RequirementDrafting(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 			So(finished.Spec.TablesOmitted, ShouldEqual, 3)
+		})
+
+		Convey("A draft that cannot be read once drafting runs fails it, the Agent not asked\n", func() {
+			for _, read := range []func(){
+				func() { da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil) },
+				func() { da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, errors.New("db down")) },
+			} {
+				expectStart()
+				va.EXPECT().ListTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil).Times(2)
+				read()
+				expectFinish()
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				So(err, ShouldBeNil)
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+				So(finished.Error, ShouldEqual, failureInterrupted)
+			}
 		})
 
 		Convey("Properties beyond what one drafting names of an object type are counted in the specification\n", func() {
@@ -973,10 +1010,8 @@ func Test_RequirementDrafting(t *testing.T) {
 			})
 		})
 
-		Convey("Drafting needs documents and catalogs, and documents a drafting can read\n", func() {
+		Convey("Drafting needs catalogs, and documents a drafting can read; documents are optional\n", func() {
 			noCatalogs := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
-			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(noCatalogs, nil)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
@@ -985,30 +1020,44 @@ func Test_RequirementDrafting(t *testing.T) {
 			}, nil)
 
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
-			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_NoDocuments)
-			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_NoCatalogs)
 			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InputsTooLarge)
 		})
 
-		Convey("A project drafting, or with decisions not discarded, is not drafted again\n", func() {
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).Times(3)
-			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil).Times(3)
-			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil).Times(3)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).Times(3)
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(false, nil)
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(false, interfaces.ErrRequirementHasDecisions)
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), true).DoAndReturn(
-				func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
+		Convey("Drafting needs an adopted object type in a ready draft, documents or none\n", func() {
+			notReady := testDraft()
+			notReady.Status = interfaces.DRAFT_STATUS_DRAFTING
+			noneAdopted := testDraft()
+			for _, ot := range noneAdopted.Items.ObjectTypes {
+				ot.Adopted = false
+			}
+			for _, d := range []*interfaces.Draft{nil, notReady, noneAdopted} {
+				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, d != nil, nil)
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_NoAdoptedOntology)
+			}
+		})
+
+		Convey("A project drafting is not drafted again, and a store that fails says so\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).Times(2)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil).Times(2)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil).Times(2)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil).Times(2)
+			// Decisions are kept with the rest, never discarded unasked: drafting again is never refused for them.
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(false, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).DoAndReturn(
+				func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
 					So(req.Version, ShouldEqual, 3)
 					return false, errors.New("db down")
 				})
 
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
-			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, false)
-			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_HasDecisions)
 			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, true)
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
 		})
@@ -1025,8 +1074,8 @@ func Test_RequirementDrafting(t *testing.T) {
 				draft.Items.Confirmation = &interfaces.DraftConfirmation{RequirementVersion: c.confirmed}
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 				want := c.want
-				ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), false).DoAndReturn(
-					func(_ context.Context, req *interfaces.Requirement, _ int64, _ bool) (bool, error) {
+				ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).DoAndReturn(
+					func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
 						So(req.Version, ShouldEqual, want)
 						return false, nil
 					})
@@ -1039,7 +1088,6 @@ func Test_RequirementDrafting(t *testing.T) {
 		Convey("A draft that cannot be read stops drafting\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
-			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, errors.New("db down"))
 
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
@@ -1069,7 +1117,10 @@ func Test_GetRequirement(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
-		svc := &requirementService{ps: ps, ra: ra}
+		da := pmock.NewMockDraftAccess(ctrl)
+		// The ontology is read to mark what changed; tests of it are in stale_test.go.
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
+		svc := &requirementService{ps: ps, ra: ra, da: da}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", CatalogIDs: []string{"c1"},
 			NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}
