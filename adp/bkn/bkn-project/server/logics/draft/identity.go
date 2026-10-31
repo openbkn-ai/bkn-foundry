@@ -89,35 +89,7 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		return draft, nil
 	}
 
-	// One bound for every count of the choice: the key's, then those of the relations it allows.
-	countCtx, cancel := context.WithTimeout(ctx, identityCountTimeout)
-	defer cancel()
-	timeout := min(s.setting.QueryTimeout, int(identityCountTimeout.Seconds()))
-	c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: timeout}
-	key := interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN, Reason: reasonCompositeKey}
-	if len(properties) == 1 {
-		// A person may keep a key with duplicates or nulls, e.g. to clean the data later; the
-		// counts stay as found and the check on confirming the draft reports them.
-		key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN, Field: properties[0].MappedField}
-		table := &interfaces.VegaTable{ID: objectType.Table.ResourceID}
-		rows, distinct, nulls, err := c.keyStats(countCtx, table, properties[0].MappedField)
-		if err != nil {
-			key.Reason = fmt.Sprintf("%s: %v", reasonQueryFailed, err)
-		} else {
-			key.Computed, key.Rows, key.Distinct, key.Nulls = true, rows, distinct, nulls
-		}
-	}
-
-	before := append([]string{}, objectType.PrimaryKeys...)
-	objectType.PrimaryKeys = append([]string{}, identity.Properties...)
-	objectType.Key = key
-	objectType.NeedsIdentity = false
-	if objectType.DisplayKey == "" {
-		objectType.DisplayKey = objectType.PrimaryKeys[0]
-	}
-	d := newDrafter(s.setting, c)
-	d.namingLanguage = draftLanguage(draft)
-	proposeRelations(countCtx, d, s.va, caller, &draft.Items, objectType)
+	before := s.setIdentity(ctx, draft, objectType, properties, caller)
 	decisions := []*interfaces.DraftDecision{{
 		Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: itemID, Action: interfaces.DRAFT_DECISION_IDENTITY,
 		Before: before, After: objectType.PrimaryKeys,
@@ -189,4 +161,45 @@ func (s *draftService) RestoreExcluded(ctx context.Context, token string, projec
 	}
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
+}
+
+// setIdentity makes properties the object type's identity, as a person chose them: a single field's
+// key is counted over the full table as the caller, and the relations the identity allows are
+// proposed. It returns the identity before.
+func (s *draftService) setIdentity(ctx context.Context, draft *interfaces.Draft, objectType *interfaces.DraftObjectType,
+	properties []*interfaces.DraftProperty, caller interfaces.AccountInfo) []string {
+	names := make([]string, 0, len(properties))
+	for _, p := range properties {
+		names = append(names, p.Name)
+	}
+	// One bound for every count of the choice: the key's, then those of the relations it allows.
+	countCtx, cancel := context.WithTimeout(ctx, identityCountTimeout)
+	defer cancel()
+	timeout := min(s.setting.QueryTimeout, int(identityCountTimeout.Seconds()))
+	c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: timeout}
+	key := interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN, Reason: reasonCompositeKey}
+	if len(properties) == 1 {
+		// A person may keep a key with duplicates or nulls, e.g. to clean the data later; the
+		// counts stay as found and the check on confirming the draft reports them.
+		key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN, Field: properties[0].MappedField}
+		table := &interfaces.VegaTable{ID: objectType.Table.ResourceID}
+		rows, distinct, nulls, err := c.keyStats(countCtx, table, properties[0].MappedField)
+		if err != nil {
+			key.Reason = fmt.Sprintf("%s: %v", reasonQueryFailed, err)
+		} else {
+			key.Computed, key.Rows, key.Distinct, key.Nulls = true, rows, distinct, nulls
+		}
+	}
+
+	before := append([]string{}, objectType.PrimaryKeys...)
+	objectType.PrimaryKeys = append([]string{}, names...)
+	objectType.Key = key
+	objectType.NeedsIdentity = false
+	if objectType.DisplayKey == "" {
+		objectType.DisplayKey = objectType.PrimaryKeys[0]
+	}
+	d := newDrafter(s.setting, c)
+	d.namingLanguage = draftLanguage(draft)
+	proposeRelations(countCtx, d, s.va, caller, &draft.Items, objectType)
+	return before
 }

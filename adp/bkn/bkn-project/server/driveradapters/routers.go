@@ -139,6 +139,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
 	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id/identity", r.ChooseIdentityByEx)
+	// An object type saved as a whole, shaped as bkn-backend's object type.
+	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id", r.SaveObjectTypeByEx)
 	apiV1.POST("/projects/:project_id/ontology/draft/object_types/:item_id/ask", r.AskObjectTypeByEx)
 
 	// Requirement documents of a project.

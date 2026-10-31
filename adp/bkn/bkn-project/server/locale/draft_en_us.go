@@ -9,6 +9,8 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var draftEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknProject.Draft.InvalidProperty":       "Invalid Property. A property maps a field its table does not have, a field another property maps already, or a type the field does not map to, or its name or display name is not valid, see error_details.",
+		"BknProject.Draft.PropertyInUse":         "Property in Use. Relations join by a property you are removing; settle those relations first, see error_details.",
 		"BknProject.Draft.NoCatalogs":            "No Data Catalogs. Select the data catalogs that hold the project's structured data before drafting the ontology.",
 		"BknProject.Draft.NotFound":              "Draft Not Found. The project has no ontology draft yet.",
 		"BknProject.Draft.Drafting":              "Drafting. The project's ontology is being drafted; wait for it to finish before drafting again.",
