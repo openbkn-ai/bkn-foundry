@@ -170,6 +170,12 @@ func Test_DraftTableName(t *testing.T) {
 			So(name, ShouldEqual, "销售订单")
 		})
 
+		Convey("A long description clause is not promoted to an object type name\n", func() {
+			name, aliases := nameIn(zh, orders("sales_order", strings.Repeat("说明", maxInferredNameRunes/2)+"长"))
+			So(name, ShouldEqual, "sales_order")
+			So(aliases, ShouldBeNil)
+		})
+
 		Convey("A name discovery gave, the physical name with its schema, is no name a person gave\n", func() {
 			// Tables discovered before vega 0.2.1 kept their source identifier as their name.
 			t := orders("erp.sales_order", "Sales orders. From ERP")
@@ -256,7 +262,9 @@ func Test_DraftRelationName(t *testing.T) {
 
 		Convey("Too long a name keeps the referring field's name only, within BKN's 128-character display names\n", func() {
 			long := strings.Repeat("物", maxDisplayNameRunes)
-			names := relationNames(zh, schema(long, "BOM所属物料编码", "父项物料编码", "子项物料编码"))
+			tables := schema("", "BOM所属物料编码", "父项物料编码", "子项物料编码")
+			tables[1].Name = long
+			names := relationNames(zh, tables)
 			So(names["parent_code"], ShouldEqual, "父项物料编码")
 			for _, name := range names {
 				So(utf8.RuneCountInString(name), ShouldBeLessThanOrEqualTo, maxDisplayNameRunes)
