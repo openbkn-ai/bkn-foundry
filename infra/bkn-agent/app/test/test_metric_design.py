@@ -20,6 +20,7 @@ from app.metric_design import (
     MetricDesignRequest, MetricProposalError, model_message, proposal_instructions,
     proposal_schema, repair_proposal, validate_proposal,
 )
+from app.model_manager import ResolvedModel
 from app.models import AgentRow, TaskRow
 from app.routers import executions
 from app.test.test_public_execution import AUTH, environment, parse_sse
@@ -1141,7 +1142,7 @@ def test_selected_model_is_per_conversation_and_cannot_change_mid_thread(monkeyp
 
             async def resolve(model_id):
                 resolved.append(model_id)
-                return "chat-model-name"
+                return ResolvedModel(model_id, "llm", "chat-model-name")
 
             async def chat(
                 session,
@@ -1163,7 +1164,7 @@ def test_selected_model_is_per_conversation_and_cannot_change_mid_thread(monkeyp
 
                 return events()
 
-            monkeypatch.setattr(executions, "_metric_model_name", resolve)
+            monkeypatch.setattr(executions, "resolve_authorized_model", resolve)
             monkeypatch.setattr(executions, "stream_chat", chat)
             body = request(model_id="chat-model-1").model_dump(mode="json")
             first = await client.post(URL, json=body, headers=AUTH)
@@ -1196,13 +1197,35 @@ def test_denied_model_does_not_reserve_or_run_execution(monkeypatch):
             async def deny(_model_id):
                 raise err(403, "BknAgent.Execution.Forbidden")
 
-            monkeypatch.setattr(executions, "_metric_model_name", deny)
+            monkeypatch.setattr(executions, "resolve_authorized_model", deny)
             response = await client.post(
                 URL,
                 json=request(model_id="denied-model").model_dump(mode="json"),
                 headers=AUTH,
             )
             assert response.status_code == 403
+            assert not calls
+            async with factory() as session:
+                assert (await session.execute(select(TaskRow))).scalars().all() == []
+
+    asyncio.run(run())
+
+
+def test_metric_design_rejects_a_model_type_it_does_not_support(monkeypatch):
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, calls):
+            await install_agent(factory)
+
+            async def resolve(model_id):
+                return ResolvedModel(model_id, "rlm", "reasoning-model")
+
+            monkeypatch.setattr(executions, "resolve_authorized_model", resolve)
+            response = await client.post(
+                URL,
+                json=request(model_id="reasoning-model").model_dump(mode="json"),
+                headers=AUTH,
+            )
+            assert response.status_code == 400
             assert not calls
             async with factory() as session:
                 assert (await session.execute(select(TaskRow))).scalars().all() == []

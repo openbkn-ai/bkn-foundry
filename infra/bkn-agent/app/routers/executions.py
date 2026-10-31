@@ -10,7 +10,6 @@ import logging
 import json
 import uuid
 
-import aiohttp
 import anyio
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -18,18 +17,16 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
-from app.auth import Account, caller_token
+from app.auth import Account
 from app.commons.i18n import build_error_content
 from app.config import config
 from app.core import builtin_tools
+from app.core.agent_settings import merge
 from app.core.graph import stream_chat
 from app.core.llm import build_chat_model
 from app.core.public_chat import PublicChat
 from app.db import SessionLocal, get_session
 from app.errors import err, not_found
-from app.models import ChatRequest, ExecutionOut, ExecutionRequest
-from app.core.agent_settings import merge
-from app.models import AgentSetting
 from app.metric_design import (
     AGENT_ID as METRIC_AGENT_ID,
     PROTOCOL as METRIC_PROTOCOL,
@@ -42,6 +39,8 @@ from app.metric_design import (
     repair_proposal,
     validate_proposal,
 )
+from app.model_manager import resolve_authorized_model
+from app.models import AgentSetting, ChatRequest, ExecutionOut, ExecutionRequest
 from app.public_auth import (
     PUBLIC_AGENT_IDS,
     authorize_execution,
@@ -55,41 +54,6 @@ _PROTOCOL = "public-execution-v1"
 # Like the existing chat/thread guard, this is deliberately single-replica.
 _active: dict[str, asyncio.Task] = {}
 _thread_claims: set[str] = set()
-
-
-async def _metric_model_name(model_id: str) -> str:
-    """Resolve a caller-visible chat model; never trust a browser-supplied name."""
-    token = caller_token()
-    if not token:
-        raise err(401, "BknAgent.Auth.TokenRequired")
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as client:
-            async with client.get(
-                f"{config.MF_MODEL_MANAGER_PUBLIC_BASE}/llm/get",
-                params={"model_id": model_id},
-                headers={"Authorization": token},
-                allow_redirects=False,
-            ) as response:
-                if response.status in {400, 404}:
-                    raise err(400, "BknAgent.Execution.Unsupported")
-                if response.status == 401:
-                    raise err(401, "BknAgent.Auth.TokenRequired")
-                if response.status == 403:
-                    raise err(403, "BknAgent.Execution.Forbidden")
-                if response.status != 200:
-                    raise err(503, "BknAgent.Execution.Unavailable")
-                data = await response.json()
-    except (aiohttp.ClientError, TimeoutError, ValueError):
-        raise err(503, "BknAgent.Execution.Unavailable") from None
-    if (
-        not isinstance(data, dict)
-        or str(data.get("model_id")) != model_id
-        or data.get("model_type") != "llm"
-        or not isinstance(data.get("model_name"), str)
-        or not 0 < len(data["model_name"]) <= 200
-    ):
-        raise err(400, "BknAgent.Execution.Unsupported")
-    return data["model_name"]
 
 
 def _layer(row) -> AgentSetting | None:
@@ -304,8 +268,11 @@ async def _execute_impl(
         ):
             raise err(409, "BknAgent.Execution.Conflict")
     if metric_request and metric_request.model_id:
+        selected_model = await resolve_authorized_model(metric_request.model_id)
+        if selected_model.model_type != "llm":
+            raise err(400, "BknAgent.Execution.Unsupported")
         agent = agent.model_copy(
-            update={"model": await _metric_model_name(metric_request.model_id)}
+            update={"model": selected_model.model_name}
         )
     if thread_id in _thread_claims:
         raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
