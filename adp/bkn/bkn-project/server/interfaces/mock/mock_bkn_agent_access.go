@@ -56,6 +56,20 @@ func (mr *MockBknAgentAccessMockRecorder) AnswerOnNetwork(ctx, token, req any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnswerOnNetwork", reflect.TypeOf((*MockBknAgentAccess)(nil).AnswerOnNetwork), ctx, token, req)
 }
 
+// Chat mocks base method.
+func (m *MockBknAgentAccess) Chat(ctx context.Context, account interfaces.BknAgentAccount, req *interfaces.BknAgentChatRequest, on func(interfaces.BknAgentChatEvent)) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Chat", ctx, account, req, on)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Chat indicates an expected call of Chat.
+func (mr *MockBknAgentAccessMockRecorder) Chat(ctx, account, req, on any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Chat", reflect.TypeOf((*MockBknAgentAccess)(nil).Chat), ctx, account, req, on)
+}
+
 // GetTask mocks base method.
 func (m *MockBknAgentAccess) GetTask(ctx context.Context, account interfaces.BknAgentAccount, taskID string) (*interfaces.BknAgentTask, error) {
 	m.ctrl.T.Helper()

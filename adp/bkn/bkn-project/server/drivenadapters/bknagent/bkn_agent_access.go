@@ -5,9 +5,12 @@
 package bknagent
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -34,12 +37,15 @@ var (
 
 type bknAgentAccess struct {
 	httpClient rest.HTTPClient
-	baseUrl    string
+	// streamClient reads a chat turn as it streams; the caller's context bounds it.
+	streamClient *http.Client
+	baseUrl      string
 }
 
 func NewBknAgentAccess(appSetting *common.AppSetting) interfaces.BknAgentAccess {
 	baOnce.Do(func() {
-		baAccess = &bknAgentAccess{httpClient: common.NewHTTPClient(), baseUrl: appSetting.BknAgentUrl}
+		baAccess = &bknAgentAccess{httpClient: common.NewHTTPClient(), streamClient: &http.Client{},
+			baseUrl: appSetting.BknAgentUrl}
 	})
 	return baAccess
 }
@@ -121,6 +127,79 @@ func (ba *bknAgentAccess) GetTask(ctx context.Context, account interfaces.BknAge
 }
 
 // readTask reads bkn-agent's TaskOut; output and failure_detail are null until they are set.
+// Chat calls POST /chat, a chat Agent's turn on a new thread, which streams server-sent events.
+// Refusals come before the stream: 404 BknAgent.NotFound for a missing Agent, 400
+// BknAgent.Chat.ModeMismatch for one that is not a chat Agent. Closing the request ends the turn.
+func (ba *bknAgentAccess) Chat(ctx context.Context, account interfaces.BknAgentAccount,
+	req *interfaces.BknAgentChatRequest, on func(interfaces.BknAgentChatEvent)) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ChatBknAgent")
+	defer span.End()
+	span.SetAttributes(attr.Key("agent_id").String(req.AgentID))
+
+	httpUrl := ba.baseUrl + "/chat"
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("encode chat request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, httpUrl, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("chat agent %s: %w", req.AgentID, err)
+	}
+	for k, v := range headers(account) {
+		httpReq.Header.Set(k, v)
+	}
+	httpReq.Header.Set("Accept", "text/event-stream")
+	resp, err := ba.streamClient.Do(httpReq)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Http chat failed")
+		return fmt.Errorf("chat agent %s: %w", req.AgentID, err)
+	}
+	defer resp.Body.Close()
+	logger.Debugf("ChatBknAgent started, agent_id is [%s], response code is [%d]", req.AgentID, resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, resp.StatusCode, "InternalError", "Http status is not 200")
+		respBody, _ := io.ReadAll(resp.Body)
+		return agentError(resp.StatusCode, respBody)
+	}
+	if err := readChat(resp.Body, on); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, resp.StatusCode, "InternalError", "Read chat failed")
+		// A caller giving up is its own doing.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
+	}
+	oteltrace.AddHttpAttrs4Ok(span, resp.StatusCode)
+	return nil
+}
+
+// readChat hands each event of the stream to on as it is read, up to done or error.
+func readChat(stream io.Reader, on func(interfaces.BknAgentChatEvent)) error {
+	reader := bufio.NewReader(stream)
+	var event interfaces.BknAgentChatEvent
+	for {
+		line, err := reader.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
+		switch {
+		case strings.HasPrefix(line, "event: "):
+			event.Name = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			event.Data = json.RawMessage(strings.TrimPrefix(line, "data: "))
+		case line == "" && event.Name != "":
+			on(event)
+			if event.Name == interfaces.BKN_AGENT_CHAT_DONE || event.Name == interfaces.BKN_AGENT_CHAT_ERROR {
+				return nil
+			}
+			event = interfaces.BknAgentChatEvent{}
+		}
+		if err != nil {
+			return fmt.Errorf("%w: read stream: %v", interfaces.ErrBknAgentAnswerCut, err)
+		}
+	}
+}
+
 func readTask(respBody []byte) (*interfaces.BknAgentTask, error) {
 	var out struct {
 		TaskID        string  `json:"task_id"`

@@ -7,6 +7,7 @@ package driveradapters
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -14,6 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -50,7 +52,8 @@ func (r *restHandler) SaveRelationTypeByEx(c *gin.Context) { r.withExVisitor(c, 
 func (r *restHandler) DeleteRelationTypeByEx(c *gin.Context) {
 	r.withExVisitor(c, r.DeleteRelationType)
 }
-func (r *restHandler) AskObjectTypeByEx(c *gin.Context) { r.withExVisitor(c, r.AskObjectType) }
+func (r *restHandler) AskObjectTypeByEx(c *gin.Context)   { r.withExVisitor(c, r.AskObjectType) }
+func (r *restHandler) AskRelationTypeByEx(c *gin.Context) { r.withExVisitor(c, r.AskRelationType) }
 
 // generateDraftRequest is the optional body of draft:generate.
 type generateDraftRequest struct {
@@ -379,13 +382,88 @@ func (r *restHandler) AskObjectType(c *gin.Context, visitor hydra.Visitor) {
 		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
 		return
 	}
-	answer, err := r.drs.AskObjectType(ctx, visitor.TokenID, id, itemID, req, visitorAccount(visitor))
-	if err != nil {
-		replyError(c, span, err)
+	replyAsk(c, span, func(stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+		return r.drs.AskObjectType(ctx, visitor.TokenID, id, itemID, req, visitorAccount(visitor), stream)
+	})
+}
+
+// AskRelationType serves POST /projects/{project_id}/ontology/draft/relation_types/{item_id}/ask:
+// Ask AI about one relation type. It reads the draft and never changes it.
+func (r *restHandler) AskRelationType(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, itemID := c.Param("project_id"), c.Param("item_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("item_id").String(itemID))
+
+	var req interfaces.DraftRelationAskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
 		return
 	}
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	rest.ReplyOK(c, http.StatusOK, answer)
+	replyAsk(c, span, func(stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+		return r.drs.AskRelationType(ctx, visitor.TokenID, id, itemID, req, visitorAccount(visitor), stream)
+	})
+}
+
+// Events of a streamed answer to Ask AI: token ({content}) for each piece of the answer's text,
+// then result (the answer as replied without streaming) or error ({error_code, description,
+// answer}: the text written so far).
+const (
+	askEventToken  = "token"
+	askEventResult = "result"
+	askEventError  = "error"
+)
+
+// replyAsk replies an answer of Ask AI: as server-sent events when the client accepts them, from
+// the moment bkn-agent begins answering, otherwise as one JSON body. A refusal before bkn-agent
+// answers is an error reply either way.
+func replyAsk(c *gin.Context, span trace.Span, ask func(stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error)) {
+	if !strings.Contains(c.GetHeader("Accept"), "text/event-stream") {
+		answer, err := ask(nil)
+		if err != nil {
+			replyError(c, span, err)
+			return
+		}
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+		rest.ReplyOK(c, http.StatusOK, answer)
+		return
+	}
+	started := false
+	var text strings.Builder
+	send := func(event string, data any) {
+		c.SSEvent(event, data)
+		c.Writer.Flush()
+	}
+	start := func() {
+		started = true
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+		c.Writer.Flush()
+	}
+	answer, err := ask(&interfaces.DraftAskStream{Start: start, Token: func(token string) {
+		text.WriteString(token)
+		send(askEventToken, gin.H{"content": token})
+	}})
+	switch {
+	case err != nil && !started:
+		replyError(c, span, err)
+	case err != nil:
+		httpErr := err.(*httperrors.HTTPError)
+		_ = httpErr.Render()
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		send(askEventError, gin.H{"error_code": httpErr.ErrorCode, "description": httpErr.Description,
+			"answer": strings.TrimSpace(text.String())})
+	default:
+		if !started {
+			start()
+		}
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+		send(askEventResult, answer)
+	}
 }
 
 func (r *restHandler) RestoreExcluded(c *gin.Context, visitor hydra.Visitor) {

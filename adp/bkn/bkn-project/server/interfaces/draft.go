@@ -408,16 +408,90 @@ const (
 // DRAFT_ASK_QUESTION_MAX_LENGTH bounds a question to Ask AI, in characters.
 const DRAFT_ASK_QUESTION_MAX_LENGTH = 500
 
-// DraftAskRequest is a question about one item of the draft.
+// DRAFT_ASK_HISTORY_MAX bounds the earlier turns a question carries; older ones are left out.
+const DRAFT_ASK_HISTORY_MAX = 4
+
+// DraftAskRequest is a question about one object type of the draft. Working is the editor's
+// unsaved form, its fields left empty keeping the draft's; it is read, never saved. History is the
+// conversation so far, kept by the client.
 type DraftAskRequest struct {
-	Question string `json:"question"`
+	Question string               `json:"question"`
+	Working  *DraftObjectTypeSave `json:"working"`
+	History  []DraftAskTurn       `json:"history"`
 }
 
-// DraftAskAnswer is Ask AI's answer about one item, and at most one change it suggests. Nothing is
-// changed until a person adopts the suggestion through the edit it names.
+// DraftRelationAskRequest is a question about one relation type of the draft, as DraftAskRequest.
+type DraftRelationAskRequest struct {
+	Question string                 `json:"question"`
+	Working  *DraftRelationTypeSave `json:"working"`
+	History  []DraftAskTurn         `json:"history"`
+}
+
+// DraftAskStream receives an answer as it is written: Start once bkn-agent has begun answering,
+// then Token for each piece of the answer's text, in order.
+type DraftAskStream struct {
+	Start func()
+	Token func(text string)
+}
+
+// DraftAskTurn is an earlier question and its answer.
+type DraftAskTurn struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+}
+
+// DraftAskAnswer is Ask AI's answer about one item and the revisions it proposes, each checked by
+// the rules of the item's save; Dropped are those the save would refuse, with why. Nothing is
+// changed until a person saves a revision. Suggestion is the first revision an edit of the object
+// type takes, for callers of the single suggestion.
 type DraftAskAnswer struct {
 	Answer     string              `json:"answer"`
 	Suggestion *DraftAskSuggestion `json:"suggestion"`
+	Revisions  []DraftAskRevision  `json:"revisions"`
+	Dropped    []DraftAskDropped   `json:"dropped"`
+}
+
+// Fields a revision changes, named as the save body names them: of an object type name, comment,
+// primary_keys, display_key and data_property, one property's display name and comment; of a
+// relation type name, comment and ends, its ends and direct mapping.
+const (
+	DRAFT_ASK_REVISION_NAME          = "name"
+	DRAFT_ASK_REVISION_COMMENT       = "comment"
+	DRAFT_ASK_REVISION_PRIMARY_KEYS  = "primary_keys"
+	DRAFT_ASK_REVISION_DISPLAY_KEY   = "display_key"
+	DRAFT_ASK_REVISION_DATA_PROPERTY = "data_property"
+	DRAFT_ASK_REVISION_ENDS          = "ends"
+)
+
+// DraftAskRevision is a change to one field of the save body. Value is a string for name, comment
+// and display_key, the property names for primary_keys, a DraftAskPropertyRevision for
+// data_property and a DraftAskEndsRevision for ends.
+type DraftAskRevision struct {
+	Field  string `json:"field"`
+	Value  any    `json:"value"`
+	Reason string `json:"reason"`
+}
+
+// DraftAskPropertyRevision is a property's display name and comment, the property by its name.
+type DraftAskPropertyRevision struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Comment     string `json:"comment"`
+}
+
+// DraftAskEndsRevision is a relation type's ends and its direct mapping, as the save body has them.
+type DraftAskEndsRevision struct {
+	SourceObjectTypeID string                 `json:"source_object_type_id"`
+	TargetObjectTypeID string                 `json:"target_object_type_id"`
+	Type               string                 `json:"type"`
+	MappingRules       []DraftRelationMapping `json:"mapping_rules"`
+}
+
+// DraftAskDropped is a revision left out, by its field, and why: unchanged, repeated, or the
+// reason the save would refuse it.
+type DraftAskDropped struct {
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
 }
 
 // DraftAskSuggestion is a change to one field: Value for the name or the description, Properties

@@ -8,8 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	. "github.com/smartystreets/goconvey/convey"
@@ -100,7 +103,7 @@ func Test_DraftRestHandler(t *testing.T) {
 
 		Convey("A question about an object type is handed to the service, and its answer replied\n", func() {
 			drs.EXPECT().AskObjectType(gomock.Any(), "Bearer t", "p1", "order_lines",
-				interfaces.DraftAskRequest{Question: "用什么做唯一标识？"}, caller).
+				interfaces.DraftAskRequest{Question: "用什么做唯一标识？"}, caller, gomock.Nil()).
 				Return(&interfaces.DraftAskAnswer{Answer: "用订单号和行号。", Suggestion: &interfaces.DraftAskSuggestion{
 					Field: interfaces.DRAFT_ASK_FIELD_IDENTITY, Properties: []string{"order_no", "line_no"}}}, nil)
 
@@ -111,6 +114,74 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"field":"identity"`)
 			So(serveBody(handler, http.MethodPost, base+"/draft/object_types/order_lines/ask", []byte(`[`)).
 				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("A question about a relation type is handed to the service with the form and the turns before\n", func() {
+			drs.EXPECT().AskRelationType(gomock.Any(), "Bearer t", "p1", "shipments_from",
+				interfaces.DraftRelationAskRequest{Question: "对吗？",
+					Working: &interfaces.DraftRelationTypeSave{Name: "途经站"},
+					History: []interfaces.DraftAskTurn{{Question: "是什么？", Answer: "起运站。"}}}, caller, gomock.Nil()).
+				Return(&interfaces.DraftAskAnswer{Answer: "对。", Revisions: []interfaces.DraftAskRevision{
+					{Field: interfaces.DRAFT_ASK_REVISION_NAME, Value: "起运站"}}, Dropped: []interfaces.DraftAskDropped{}}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/draft/relation_types/shipments_from/ask",
+				[]byte(`{"question":"对吗？","working":{"name":"途经站"},"history":[{"question":"是什么？","answer":"起运站。"}]}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"revisions":[{"field":"name","value":"起运站","reason":""}]`)
+			So(serveBody(handler, http.MethodPost, base+"/draft/relation_types/shipments_from/ask", []byte(`[`)).
+				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("A client that accepts events gets the answer as it is written, then the result\n", func() {
+			drs.EXPECT().AskObjectType(gomock.Any(), "Bearer t", "p1", "employees", gomock.Any(), caller, gomock.Not(gomock.Nil())).
+				DoAndReturn(func(_ context.Context, _, _, _ string, _ interfaces.DraftAskRequest, _ interfaces.AccountInfo,
+					stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+					stream.Start()
+					stream.Token("可以，")
+					stream.Token("工号唯一。")
+					return &interfaces.DraftAskAnswer{Answer: "可以，工号唯一。", Revisions: []interfaces.DraftAskRevision{},
+						Dropped: []interfaces.DraftAskDropped{}}, nil
+				})
+
+			w := serveStream(handler, base+"/draft/object_types/employees/ask", `{"question":"工号能做标识吗？"}`)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Header().Get("Content-Type"), ShouldStartWith, "text/event-stream")
+			So(w.Body.String(), ShouldEqual, "event:token\ndata:{\"content\":\"可以，\"}\n\n"+
+				"event:token\ndata:{\"content\":\"工号唯一。\"}\n\n"+
+				"event:result\ndata:{\"answer\":\"可以，工号唯一。\",\"suggestion\":null,\"revisions\":[],\"dropped\":[]}\n\n")
+		})
+
+		Convey("An answer that fails once begun ends with an error event keeping the text so far\n", func() {
+			drs.EXPECT().AskRelationType(gomock.Any(), "Bearer t", "p1", "shipments_from", gomock.Any(), caller, gomock.Not(gomock.Nil())).
+				DoAndReturn(func(ctx context.Context, _, _, _ string, _ interfaces.DraftRelationAskRequest, _ interfaces.AccountInfo,
+					stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+					stream.Start()
+					stream.Token(" 它按 ")
+					return nil, httperrors.NewHTTPError(ctx, http.StatusGatewayTimeout, perrors.BknProject_Draft_AskTimeout)
+				})
+
+			w := serveStream(handler, base+"/draft/relation_types/shipments_from/ask", `{"question":"对吗？"}`)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			body := w.Body.String()
+			So(body, ShouldStartWith, "event:token\n")
+			So(body, ShouldContainSubstring, "event:error\ndata:{\"answer\":\"它按\",\"description\":")
+			So(body, ShouldContainSubstring, `"error_code":"BknProject.Draft.AskTimeout"`)
+		})
+
+		Convey("A refusal before bkn-agent answers is an error reply, not a stream\n", func() {
+			drs.EXPECT().AskObjectType(gomock.Any(), "Bearer t", "p1", "employees", gomock.Any(), caller, gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _, _, _ string, _ interfaces.DraftAskRequest, _ interfaces.AccountInfo,
+					_ *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+					return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
+				})
+
+			w := serveStream(handler, base+"/draft/object_types/employees/ask", `{"question":"问"}`)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadGateway)
+			So(w.Body.String(), ShouldContainSubstring, `"error_code":"BknProject.Draft.AskUnavailable"`)
 		})
 
 		Convey("draft:restore restores the excluded field the body names\n", func() {
@@ -327,4 +398,16 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Draft_NotFound)
 		})
 	})
+}
+
+// serveStream posts the body as a client that accepts server-sent events.
+func serveStream(handler *restHandler, path string, body string) *httptest.ResponseRecorder {
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+	handler.RegisterPublic(engine)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Accept", "text/event-stream")
+	engine.ServeHTTP(w, req)
+	return w
 }
