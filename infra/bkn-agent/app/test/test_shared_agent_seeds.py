@@ -44,6 +44,7 @@ REQUIREMENTS_V4 = MIGRATIONS / "0.2.1/24-requirements-guidance-v4.sql"
 REQUIREMENTS_V5 = MIGRATIONS / "0.2.1/27-requirements-guidance-v5.sql"
 REQUIREMENTS_V6 = MIGRATIONS / "0.2.1/28-requirements-guidance-v6.sql"
 ONTOLOGY_ASK = MIGRATIONS / "0.2.1/29-seed-bkn-project-ontology-ask.sql"
+METRIC_DESIGN_LOCALE = MIGRATIONS / "0.2.1/30-object-metric-designer-locale.sql"
 
 
 def statements(path):
@@ -261,6 +262,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, REQUIREMENTS_V5)
         apply(upgraded, REQUIREMENTS_V6)
         apply(upgraded, ONTOLOGY_ASK)
+        apply(upgraded, METRIC_DESIGN_LOCALE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -461,6 +463,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(REQUIREMENTS_V5),
                     str(REQUIREMENTS_V6),
                     str(ONTOLOGY_ASK),
+                    str(METRIC_DESIGN_LOCALE),
                 ],
             ],
         ],
@@ -526,6 +529,7 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         "\n" + CLAIM_LOCALES.read_text() + "\n" + PROMPT_INDEX.read_text() + "\n" + BUILTIN_LOCALES.read_text()
         + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
         + "\n" + ontology_ask_locales_text()
+        + "\n" + METRIC_DESIGN_LOCALE.read_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
@@ -1118,7 +1122,8 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V6) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
-                               | {s for s in statements(ONTOLOGY_ASK) if "f_localized_content" in s})
+                               | {s for s in statements(ONTOLOGY_ASK) if "f_localized_content" in s}
+                               | set(statements(METRIC_DESIGN_LOCALE)))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)

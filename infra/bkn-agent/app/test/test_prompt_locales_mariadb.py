@@ -12,8 +12,26 @@ import pymysql
 import pytest
 
 from app.public_auth import BUILTIN_AGENT_IDS
-from app.test.test_builtin_prompt_locales import ENGLISH_ORIGINALS, LEGACY_SMART_QA
-from app.test.test_shared_agent_seeds import BUILTIN_LOCALES, CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, REQUIREMENTS, ANSWER_JUDGE, ANSWER_JUDGE_EXPECT, SOURCE_LANGUAGE, ANSWER_JUDGE_REASON, ONTOLOGY_ASK, statements, selected_migrations
+from app.test.test_builtin_prompt_locales import (
+    ENGLISH_ORIGINALS,
+    LEGACY_OBJECT_METRIC_DESIGNER,
+    LEGACY_SMART_QA,
+)
+from app.test.test_shared_agent_seeds import (
+    ANSWER_JUDGE,
+    ANSWER_JUDGE_EXPECT,
+    ANSWER_JUDGE_REASON,
+    BUILTIN_LOCALES,
+    CLAIM_LOCALES,
+    METRIC_DESIGN_LOCALE,
+    MIGRATIONS,
+    ONTOLOGY_ASK,
+    PROMPT_INDEX,
+    REQUIREMENTS,
+    SOURCE_LANGUAGE,
+    selected_migrations,
+    statements,
+)
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
@@ -154,6 +172,36 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         assert before_legacy[:3] == after_legacy[:3]
         apply(BUILTIN_LOCALES)
         assert saved_rows() == after_legacy
+        # The deployed 0.2.1 Object Metric Designer body is an exact guarded
+        # variant: merge en-US without replacing another stored language.
+        with db.cursor() as cursor:
+            cursor.execute(
+                "UPDATE t_agent_prompt_version SET f_content=%s,f_source_language=NULL,"
+                "f_localized_content=%s WHERE f_prompt_id='object_metric_designer_prompt' AND f_version=1",
+                (
+                    LEGACY_OBJECT_METRIC_DESIGNER,
+                    json.dumps({"fr-FR": "Traduction administrée"}),
+                ),
+            )
+        before_metric = saved_rows()
+        apply(METRIC_DESIGN_LOCALE)
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT f_content,f_source_language,f_localized_content FROM t_agent_prompt_version "
+                "WHERE f_prompt_id='object_metric_designer_prompt' AND f_version=1"
+            )
+            content, source_language, localized = cursor.fetchone()
+            assert content == LEGACY_OBJECT_METRIC_DESIGNER
+            assert source_language == "zh-CN"
+            variants = json.loads(localized)
+            assert variants["fr-FR"] == "Traduction administrée"
+            assert variants["en-US"].startswith(
+                "You are the Object Metric Design Assistant"
+            )
+        after_metric = saved_rows()
+        assert before_metric[:3] == after_metric[:3]
+        apply(METRIC_DESIGN_LOCALE)
+        assert saved_rows() == after_metric
     finally:
         with db.cursor() as cursor:
             cursor.execute(f"DROP DATABASE IF EXISTS `{name}`")

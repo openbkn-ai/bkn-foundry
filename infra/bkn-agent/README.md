@@ -86,17 +86,32 @@ The admin shared-Prompt read returns canonical `source_content`, `source_languag
 
 The migration `25-prompt-source-language.sql` adds the nullable language column; prepare and approve migrations before deploying the ORM. There is no automatic translation service.
 
-The locale backfill is `0.2.1/10-claim-prompt-locales.sql`; the normal migrator
-runs it with the other `0.2.1` deltas when upgrading from an earlier release. The
-fresh-install snapshot `0.2.1/init.sql` includes the complete locale snapshot and
-the binding index below. Do not rerun the previous version's initialization snapshot.
+The locale backfills include `0.2.1/10-claim-prompt-locales.sql`,
+`0.2.1/16-builtin-prompt-locales.sql`, and the exact historical Object Metric
+Designer repair in `0.2.1/30-object-metric-designer-locale.sql`; the normal
+migrator runs them with the other `0.2.1` deltas when upgrading from an earlier
+release. Migration 30 runs after the source-language schema migration and only
+adds a missing en-US translation to the official v1 Chinese body identified by
+its Prompt ID, version, owner, Initial reference, and canonical-content SHA-256.
+It records zh-CN only when the source language is still unmarked and no stored
+zh-CN variant would be reinterpreted, and preserves other translations and an
+existing en-US value. The fresh-install
+snapshot `0.2.1/init.sql` includes the complete locale snapshot and the binding
+index below. Do not rerun the previous version's initialization snapshot.
+
+The version-based migrator does not reselect a directory already recorded as
+installed. For an existing `0.2.1` deployment, include only migration 30 as an
+explicit, approved data-repair step before rolling out the Agent image, then
+verify the exact Prompt row and its resolved en-US content. Do not replay
+`init.sql` or reset migration progress to deliver this repair.
 
 Run the platform migration phase before starting the new Agent image: the ORM
-requires the nullable `f_localized_content` column. The backfill matches the
-official owner, exact Chinese content hash, absent variable schema (SQL NULL or
-JSON null), and absent translations. It never rewrites canonical bodies,
-current-version pointers, caller overrides, or existing translations. An older
-controlled preview migration is safe: the new delta is idempotent.
+requires the nullable `f_localized_content` column. The backfills match the
+official owner, exact canonical-content hash, absent variable schema (SQL NULL
+or JSON null), and the intended Initial Prompt reference. They never rewrite
+canonical bodies, current-version pointers, caller overrides, or an existing
+translation for the target language. An older controlled preview migration is
+safe: the deltas are idempotent.
 
 After the migrator succeeds, the deployment can perform this read-only schema
 preflight with its approved connection options; stop rollout if it fails:
