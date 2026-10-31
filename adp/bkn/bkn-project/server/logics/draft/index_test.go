@@ -119,6 +119,13 @@ func Test_IndexUpdateField(t *testing.T) {
 			So(item.UpdateField, ShouldResemble, interfaces.ProjectIndexUpdateField{Candidates: []string{"changed"}, Pending: true})
 		})
 
+		Convey("An update field that is the identity's own field is no stand-in\n", func() {
+			item := read(ot("record_key"), standIn)
+
+			So(item.FullRebuildOnly, ShouldBeFalse)
+			So(item.UpdateField.Property, ShouldEqual, "record_key")
+		})
+
 		Convey("An update field chosen and configured refreshes by what changed\n", func() {
 			item := read(ot("changed", &interfaces.DraftProperty{Name: "changed", Type: "datetime", MappedField: "changed"}),
 				interfaces.VegaTableIndex{PrimaryKeyFields: []string{"record_key"}, IncrementalFields: []string{"changed"}})

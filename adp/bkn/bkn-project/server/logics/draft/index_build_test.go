@@ -368,6 +368,34 @@ func Test_ConfigureIndexes(t *testing.T) {
 			So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_CREATED, "t10", ""})
 		})
 
+		Convey("an update field that is the identity's own field leaves a ready index as it is\n", func() {
+			orders.IncrementalKey = "order_id"
+			reads(interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"},
+				LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx_orders"})
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+		})
+
+		Convey("a replacement vega no longer takes, the fields having changed there, builds nothing more\n", func() {
+			reads(interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"},
+				LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx_orders"})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", gomock.Any()).Return(false, nil)
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+		})
+
+		Convey("a table keyed already has its own key fields stand in for an update field\n", func() {
+			orders.IncrementalKey = ""
+			reads(interfaces.VegaTableIndex{PrimaryKeyFields: []string{"seq"}})
+			va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", interfaces.VegaIndexKeys{
+				IncrementalFields: []string{"seq"}}).Return(true, nil)
+			va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_orders").Return("t11", nil)
+			records()
+
+			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+			So(outcome()[0], ShouldEqual, interfaces.INDEX_BUILD_CREATED)
+		})
+
 		Convey("a ready index refreshed by its update field already is left as it is\n", func() {
 			reads(interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"updated_at"},
 				LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx_orders"})

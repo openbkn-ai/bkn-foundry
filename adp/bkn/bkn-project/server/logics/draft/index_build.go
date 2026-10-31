@@ -100,9 +100,14 @@ func (s *draftService) buildIndexes(ctx context.Context, projectID string, commi
 				break
 			}
 			keys.ReplaceIncremental = table.Index.IncrementalFields
-			if _, err = s.va.UpdateIndexConfig(ctx, runner, item.Table.ResourceID, keys); err != nil {
+			changed, err := s.va.UpdateIndexConfig(ctx, runner, item.Table.ResourceID, keys)
+			if err != nil {
 				build.Outcome, build.Reason = configOutcome(err)
 				break
+			}
+			// Someone changed the fields in vega since: the index is built only as its state asks.
+			if !changed && item.State != interfaces.INDEX_STATE_NOT_BUILT && item.State != interfaces.INDEX_STATE_STALE {
+				continue
 			}
 			build.TaskID, err = s.va.CreateBuildTask(ctx, runner, item.Table.ResourceID)
 			build.Outcome, build.Reason = buildOutcome(err)
@@ -171,11 +176,16 @@ func indexKeys(objectType *interfaces.DraftObjectType, table *interfaces.VegaTab
 		case interfaces.INDEX_FIELD_INCREMENTAL:
 			// Without an update field the identity's fields stand in: a full build reads the table in
 			// their order, and only full builds can refresh the index.
-			incremental := []string{objectType.IncrementalKey}
-			if objectType.IncrementalKey == "" {
-				incremental = objectType.PrimaryKeys
+			switch {
+			case objectType.IncrementalKey != "":
+				keys.IncrementalFields = fields([]string{objectType.IncrementalKey}, incrementalTypes)
+			case len(table.Index.PrimaryKeyFields) > 0:
+				// The table's own primary key fields stand in, so that they read as standing in.
+				keys.IncrementalFields = table.Index.PrimaryKeyFields
+			default:
+				keys.IncrementalFields = fields(objectType.PrimaryKeys, incrementalTypes)
 			}
-			if keys.IncrementalFields = fields(incremental, incrementalTypes); keys.IncrementalFields == nil {
+			if keys.IncrementalFields == nil {
 				unknown = append(unknown, key)
 			}
 		}
