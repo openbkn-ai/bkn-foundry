@@ -406,6 +406,9 @@ func Test_EditDraftItem(t *testing.T) {
 		})
 
 		Convey("An edit that changes nothing writes nothing\n", func() {
+			// A person adopted orders already: adopting them again confirms nothing new.
+			draft.Items.Decisions = []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: "orders",
+				Action: interfaces.DRAFT_DECISION_ADOPT, Before: false, After: true}}
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 			e := edit()
 			e.Adopted = boolPtr(true)
@@ -415,7 +418,7 @@ func Test_EditDraftItem(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(got.UpdateTime, ShouldEqual, readTime)
-			So(got.Items.Decisions, ShouldBeEmpty)
+			So(got.Items.Decisions, ShouldHaveLength, 1)
 		})
 
 		Convey("Invalid edits are refused before the draft is read\n", func() {

@@ -354,6 +354,44 @@ func Test_CandidateService(t *testing.T) {
 			So(last.By, ShouldResemble, caller)
 		})
 
+		Convey("Adopting what drafting adopted confirms it once; again it writes nothing\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).AnyTimes()
+			in := true
+			adopt := interfaces.DraftItemEdit{UpdateTime: readTime, Adopted: &in}
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_RELATION_TYPES, "items_to_stores", adopt, caller)
+
+			So(err, ShouldBeNil)
+			last := got.Items.Decisions[len(got.Items.Decisions)-1]
+			So(*last, ShouldResemble, interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "items_to_stores",
+				Action: interfaces.DRAFT_DECISION_ADOPT, Before: true, After: true, By: caller, Time: got.UpdateTime})
+			for _, x := range candidatesOf(got, nil, "").Candidates {
+				if x.ID == "items_to_stores" {
+					So(x.State, ShouldEqual, interfaces.CANDIDATE_STATE_ADOPTED)
+				}
+			}
+
+			// Stores were adopted by a person already: nothing to write, the update time stays.
+			again, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "stores",
+				interfaces.DraftItemEdit{UpdateTime: got.UpdateTime, Adopted: &in}, caller)
+			So(err, ShouldBeNil)
+			So(again.UpdateTime, ShouldEqual, got.UpdateTime)
+		})
+
+		Convey("Adopting what accepting the suggestions confirmed writes nothing\n", func() {
+			draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_DRAFT,
+				Action: interfaces.DRAFT_DECISION_ACCEPT_SUGGESTIONS, After: []string{"object_types/items"}, By: reviewer, Time: 8})
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			in := true
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "items",
+				interfaces.DraftItemEdit{UpdateTime: readTime, Adopted: &in}, caller)
+
+			So(err, ShouldBeNil)
+			So(got.UpdateTime, ShouldEqual, readTime)
+		})
+
 		Convey("Accepting the suggestions decides what drafting left out\n", func() {
 			draft.Items.ObjectTypes[3].Adopted = false
 			draft.Items.Decisions = nil
