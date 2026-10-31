@@ -26,6 +26,24 @@ enabled="$(render_chart agent-observability "${chart_dir}" \
     --set core.projection.historicalProvenance.enabled=true \
     --set core.projection.grant.existingSecret=trace-projection-grant)"
 
+# Projection grants are independent of the retired account bootstrap.
+for required in \
+    'name: BKN_TRACE_PROJECTION_GRANT_ISSUER' \
+    'value: "trace-core-projection"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_KEY_ID' \
+    'value: "trace-projection-key"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_AUDIENCE' \
+    'value: "bkn-projection-read"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_TTL' \
+    'value: "24h5m"' \
+    'name: "trace-projection-grant"' \
+    'key: "private-key"'; do
+    grep -Fq "${required}" <<<"${enabled}" || {
+        echo "projection grant contract missing: ${required}" >&2
+        exit 1
+    }
+done
+
 # Even old values supplied by an existing deployment must not resurrect the Job.
 legacy="$(render_chart agent-observability "${chart_dir}" \
     --set enterpriseBusinessProvenance.enabled=true \
