@@ -377,13 +377,33 @@ var pairTimeout = 30 * time.Second
 // pairWords are the last words of fields named as identifiers within a record, such as a line.
 var pairWords = map[string]bool{"id": true, "no": true, "code": true, "seq": true, "line": true}
 
+// lineWords name a field as the number of a line within a document, as seq_no or line_id.
+var lineWords = map[string]bool{"seq": true, "line": true}
+
+// numbersLines tells whether a field is named as the number of a line within a document. One named
+// as an id, such as order_line_id, identifies a record of its own.
+func numbersLines(field string) bool {
+	w := words(field)
+	if lastWord(w) == "id" {
+		return false
+	}
+	for _, w := range w {
+		if lineWords[w] {
+			return true
+		}
+	}
+	return false
+}
+
 // pairIdentity looks, for an object type that no single field identifies, for pairs of fields that
 // count unique and non-null. A table with an identifier of its own (base, a field that refers to no
 // other table) pairs it with another key-typed field named as an identifier that refers to no table
 // either: a line table is keyed by its document and line, and a field saying whose record it is
-// does not say which one. A table whose identifier refers to another table, such as a bill of
-// materials keyed by a material, or that has none, pairs among its key-typed fields that are keys,
-// foreign keys or named as identifiers: the first maxPairFields, in column order. At most
+// does not say which one. A table whose identifier refers to another table, such as a material;
+// whose identifier numbers lines, which repeat in every document and pair with the document
+// whatever it refers to, such as a bill of materials keyed by its material and line; or that has
+// none, pairs among its key-typed fields that are keys, foreign keys or named as identifiers: the
+// first maxPairFields, in column order. At most
 // maxPairCounts pairs are counted and maxPairCandidates offered, in column order; counts that take
 // longer than pairTimeout offer none. The pairs are offered as the identity's candidates; drafting
 // does not take one, a person decides. baseNulls says base has nulls: every pair with it has too.
@@ -398,7 +418,7 @@ func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
 	}
 	referring := func(field string) bool { return refers[field] || d.namesAnotherTable(table, field) }
 	pairs := [][2]string{}
-	if _, ok := fields[base]; ok && !referring(base) {
+	if _, ok := fields[base]; ok && !referring(base) && !numbersLines(base) {
 		if baseNulls {
 			return nil
 		}
@@ -420,10 +440,16 @@ func (d *drafter) pairIdentity(ctx context.Context, table *interfaces.VegaTable,
 				!(declared[c.Name] || refers[c.Name] || pairWords[lastWord(words(c.Name))]) {
 				continue
 			}
-			if len(pool) == maxPairFields {
-				break
-			}
 			pool = append(pool, c.Name)
+		}
+		if len(pool) > maxPairFields {
+			// The field counted alone is always paired: its counts are why no single field will do.
+			at := slices.Index(pool, base)
+			if at >= maxPairFields {
+				pool = append(pool[:maxPairFields-1:maxPairFields-1], base)
+			} else {
+				pool = pool[:maxPairFields]
+			}
 		}
 		for i := range pool {
 			for _, second := range pool[i+1:] {
