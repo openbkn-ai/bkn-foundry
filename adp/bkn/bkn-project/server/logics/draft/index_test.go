@@ -90,18 +90,21 @@ func Test_IndexReadiness(t *testing.T) {
 func Test_IndexUpdateField(t *testing.T) {
 	Convey("Test what an index item says of its object type's update field\n", t, func() {
 		ot := func(incremental string, props ...*interfaces.DraftProperty) *interfaces.DraftObjectType {
-			return &interfaces.DraftObjectType{ID: "materials", Name: "Materials", Adopted: true, IncrementalKey: incremental,
-				Table: interfaces.DraftTable{ResourceID: "r_mat", Name: "materials", CatalogID: "c1"}, PrimaryKeys: []string{"code"},
-				Properties: append([]*interfaces.DraftProperty{{Name: "code", Type: "string", MappedField: "code"}}, props...)}
+			return &interfaces.DraftObjectType{ID: "records", Name: "Records", Adopted: true, IncrementalKey: incremental,
+				Table: interfaces.DraftTable{ResourceID: "r_rec", Name: "records", CatalogID: "c1"}, PrimaryKeys: []string{"record_key"},
+				Properties: append([]*interfaces.DraftProperty{
+					{Name: "record_key", Type: "string", MappedField: "record_key"},
+					{Name: "amount", Type: "integer", MappedField: "amount"},
+				}, props...)}
 		}
 		read := func(o *interfaces.DraftObjectType, index interfaces.VegaTableIndex) interfaces.ProjectIndexItem {
 			items := &interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{o}}
-			return indexReadiness(items, map[string]*interfaces.VegaTable{"r_mat": {ID: "r_mat", Index: index}}, nil, true).ObjectTypes[0]
+			return indexReadiness(items, map[string]*interfaces.VegaTable{"r_rec": {ID: "r_rec", Index: index}}, nil, true).ObjectTypes[0]
 		}
-		standIn := interfaces.VegaTableIndex{PrimaryKeyFields: []string{"code"}, IncrementalFields: []string{"code"},
+		standIn := interfaces.VegaTableIndex{PrimaryKeyFields: []string{"record_key"}, IncrementalFields: []string{"record_key"},
 			LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx"}
 
-		Convey("No time property: the index is only ever rebuilt in full, and nothing is asked\n", func() {
+		Convey("No date or time property, whatever else it has: the index is only ever rebuilt in full, and nothing is asked\n", func() {
 			item := read(ot(""), standIn)
 
 			So(item.State, ShouldEqual, interfaces.INDEX_STATE_READY)
@@ -110,7 +113,7 @@ func Test_IndexUpdateField(t *testing.T) {
 		})
 
 		Convey("A time property not chosen yet: the pending item asks for it\n", func() {
-			item := read(ot("", &interfaces.DraftProperty{Name: "changed", Type: "datetime", MappedField: "changed"}), standIn)
+			item := read(ot("", &interfaces.DraftProperty{Name: "changed", Type: "timestamp", MappedField: "changed"}), standIn)
 
 			So(item.FullRebuildOnly, ShouldBeTrue)
 			So(item.UpdateField, ShouldResemble, interfaces.ProjectIndexUpdateField{Candidates: []string{"changed"}, Pending: true})
@@ -118,7 +121,7 @@ func Test_IndexUpdateField(t *testing.T) {
 
 		Convey("An update field chosen and configured refreshes by what changed\n", func() {
 			item := read(ot("changed", &interfaces.DraftProperty{Name: "changed", Type: "datetime", MappedField: "changed"}),
-				interfaces.VegaTableIndex{PrimaryKeyFields: []string{"code"}, IncrementalFields: []string{"changed"}})
+				interfaces.VegaTableIndex{PrimaryKeyFields: []string{"record_key"}, IncrementalFields: []string{"changed"}})
 
 			So(item.FullRebuildOnly, ShouldBeFalse)
 			So(item.UpdateField.Property, ShouldEqual, "changed")

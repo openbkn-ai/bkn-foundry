@@ -375,6 +375,39 @@ func Test_ConfigureIndexes(t *testing.T) {
 			So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
 		})
 
+		Convey("identity and time field, each present or not, configure and build alike for any table\n", func() {
+			for _, c := range []struct {
+				name           string
+				primaryKeys    []string
+				incrementalKey string
+				keys           interfaces.VegaIndexKeys
+				reason         string
+			}{
+				{"identity and time field", []string{"order_id"}, "changed_at",
+					interfaces.VegaIndexKeys{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"updated_at"}}, ""},
+				{"identity, no time field", []string{"order_id"}, "",
+					interfaces.VegaIndexKeys{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}}, ""},
+				{"time field, no identity", nil, "changed_at", interfaces.VegaIndexKeys{}, interfaces.INDEX_FIELD_PRIMARY_KEY},
+				{"neither", nil, "", interfaces.VegaIndexKeys{},
+					interfaces.INDEX_FIELD_PRIMARY_KEY + "," + interfaces.INDEX_FIELD_INCREMENTAL},
+			} {
+				orders.PrimaryKeys, orders.IncrementalKey = c.primaryKeys, c.incrementalKey
+				reads(interfaces.VegaTableIndex{})
+				if c.reason == "" {
+					va.EXPECT().UpdateIndexConfig(gomock.Any(), caller, "r_orders", c.keys).Return(true, nil)
+					va.EXPECT().CreateBuildTask(gomock.Any(), caller, "r_orders").Return("t1", nil)
+				}
+				records()
+
+				So(svc.buildIndexes(ctx, "p1", "c0ffee", items, caller), ShouldBeNil)
+				if c.reason == "" {
+					So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_CREATED, "t1", ""})
+				} else {
+					So(outcome(), ShouldResemble, [3]string{interfaces.INDEX_BUILD_NOT_CONFIGURABLE, "", c.reason})
+				}
+			}
+		})
+
 		Convey("only the keys the table lacks need to be known\n", func() {
 			// The table has a primary key already: an identity vega would not take does not matter.
 			orders.PrimaryKeys = []string{"note"}
