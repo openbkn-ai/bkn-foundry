@@ -371,6 +371,22 @@ func TestConvertDateBetweenBindsNormalizedDatetime(t *testing.T) {
 }
 
 func TestPostgresqlConnectorConvertFilterConditionBefore(t *testing.T) {
+	for _, fieldType := range []string{interfaces.DataType_Date, interfaces.DataType_Datetime} {
+		for _, unit := range []string{"week", "weeks", " WEEKS "} {
+			t.Run(fieldType+"/"+unit, func(t *testing.T) {
+				field := &interfaces.Property{Name: "created", OriginalName: "created_at", Type: fieldType}
+				cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{
+					Name: "created", Operation: "before", ValueFrom: interfaces.ValueFrom_Const,
+					Value: []any{json.Number("3"), unit},
+				}, map[string]*interfaces.Property{"created": field})
+				require.NoError(t, err)
+				sql, args := toSQL(t, &PostgresqlConnector{}, cond)
+				assert.Equal(t, `("created_at" < (TRANSACTION_TIMESTAMP() - (CAST(CAST($1 AS BIGINT) AS DOUBLE PRECISION) * INTERVAL '1 week')))`, sql)
+				assert.Equal(t, []any{int64(3)}, args)
+			})
+		}
+	}
+
 	t.Run("converts before condition to interval expression", func(t *testing.T) {
 		c := &PostgresqlConnector{}
 		cond := &filter_condition.BeforeCond{
@@ -433,6 +449,9 @@ func TestPgIntervalUnit(t *testing.T) {
 			"HOUR":    "hour",
 			"MINUTES": "minute",
 			"seconds": "second",
+			"week":    "week",
+			"WEEKS":   "week",
+			" Week ":  "week",
 		}
 		for input, want := range tests {
 			got, err := intervalUnit(input)
@@ -442,7 +461,7 @@ func TestPgIntervalUnit(t *testing.T) {
 	})
 
 	t.Run("returns error for unsupported unit", func(t *testing.T) {
-		got, err := intervalUnit("week")
+		got, err := intervalUnit("fortnight")
 
 		require.Error(t, err)
 		assert.Empty(t, got)
