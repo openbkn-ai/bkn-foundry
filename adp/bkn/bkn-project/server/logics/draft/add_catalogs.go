@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -337,7 +338,8 @@ func (s *draftService) recordIDs(ctx context.Context, ids []*interfaces.Register
 // tables to what the draft was made from.
 func (s *draftService) applyAdded(items interfaces.DraftItems, result *addedDraft, added []string,
 	record *interfaces.DraftCatalogsAdded) interfaces.DraftItems {
-	merged := mergeDrafted(items, result.drafted, result.tables, result.unreadable, record)
+	// Merging rewrites what it takes, its ids and ends; a retry merges what drafting gave again.
+	merged := mergeDrafted(items, cloneItems(result.drafted), result.tables, result.unreadable, record)
 	inputs := interfaces.DraftInputs{}
 	if items.Inputs != nil {
 		inputs = *items.Inputs
@@ -495,4 +497,17 @@ relations:
 	}
 
 	return merged
+}
+
+// cloneItems copies draft items deeply, as they are stored.
+func cloneItems(items interfaces.DraftItems) interfaces.DraftItems {
+	data, err := json.Marshal(items)
+	if err != nil {
+		return items
+	}
+	var copied interfaces.DraftItems
+	if err := json.Unmarshal(data, &copied); err != nil {
+		return items
+	}
+	return copied
 }

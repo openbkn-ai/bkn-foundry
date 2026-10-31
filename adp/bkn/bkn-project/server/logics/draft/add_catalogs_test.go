@@ -336,6 +336,43 @@ func Test_AddCatalogs(t *testing.T) {
 			So(done.Items.Decisions[2].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADD_CATALOGS)
 		})
 
+		Convey("A write tried again merges what drafting gave afresh, a new id meeting the draft's included\n", func() {
+			// The draft as stored: a write that is refused leaves it as it was.
+			stored := cloneDraft(draft)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").DoAndReturn(func(context.Context, string) (*interfaces.Draft, bool, error) {
+				return cloneDraft(stored), true, nil
+			}).AnyTimes()
+			attempts := 0
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					attempts++
+					if attempts == 2 {
+						return false, nil
+					}
+					stored = cloneDraft(d)
+					return true, nil
+				}).Times(3)
+			expectAccepted()
+			// The draft's members table is not readable now, so the members added draft as members, with a phone.
+			added := table("r_members2", "c2", "members", 0, []string{"code"}, col("code", "string", ""), col("phone", "string", ""))
+			va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return([]*interfaces.VegaTable{{ID: "r_members2"}}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_members2"}).Return([]*interfaces.VegaTable{added}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_members"}).Return(nil, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), gomock.Any()).
+				Return([]map[string]any{{"rows": 10, "distinct_values": 10, "nulls": 0}}, nil).AnyTimes()
+
+			_, err := svc.AddCatalogs(ctx, token, "p1", add("c2"), caller)
+
+			So(err, ShouldBeNil)
+			So(stored.Items.Adding, ShouldBeNil)
+			So(findObjectType(&stored.Items, "members_2").Table.ResourceID, ShouldEqual, "r_members2")
+			excluded := []string{}
+			for _, e := range stored.Items.Excluded {
+				excluded = append(excluded, e.ObjectType+"."+e.Field)
+			}
+			So(excluded, ShouldContain, "members_2.phone")
+		})
+
 		Convey("A draft drafted again meanwhile takes nothing of the catalogs added\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_DRAFTING}, true, nil)
@@ -489,4 +526,11 @@ func Test_AddCatalogs(t *testing.T) {
 			So(status, ShouldEqual, http.StatusForbidden)
 		})
 	})
+}
+
+// cloneDraft copies a draft as a store keeps it.
+func cloneDraft(d *interfaces.Draft) *interfaces.Draft {
+	copied := *d
+	copied.Items = cloneItems(d.Items)
+	return &copied
 }
