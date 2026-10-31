@@ -593,6 +593,21 @@ func (mr *MockRequirementServiceMockRecorder) ResolveConflict(ctx, token, projec
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveConflict", reflect.TypeOf((*MockRequirementService)(nil).ResolveConflict), ctx, token, projectID, conflictID, resolve, caller)
 }
 
+// ReviewItems mocks base method.
+func (m *MockRequirementService) ReviewItems(ctx context.Context, token, projectID string, review interfaces.RequirementReview, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReviewItems", ctx, token, projectID, review, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReviewItems indicates an expected call of ReviewItems.
+func (mr *MockRequirementServiceMockRecorder) ReviewItems(ctx, token, projectID, review, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReviewItems", reflect.TypeOf((*MockRequirementService)(nil).ReviewItems), ctx, token, projectID, review, caller)
+}
+
 // ScenarioQuestions mocks base method.
 func (m *MockRequirementService) ScenarioQuestions(ctx context.Context, projectID string) (*interfaces.ScenarioQuestions, error) {
 	m.ctrl.T.Helper()

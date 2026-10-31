@@ -30,7 +30,7 @@ var projectEnUS = i18n.I18nMessages{
 		"BknProject.Requirement.InvalidItem":         "Invalid Item. The item misses required content, is too long, or refers to items that do not exist, see error_details.",
 		"BknProject.Requirement.InvalidResolution":   "Invalid Resolution. A resolution needs a chosen document or a written conclusion, and a reason.",
 		"BknProject.Requirement.InvalidOption":       "Option Not Found. The chosen option is not one of this choice's options.",
-		"BknProject.Requirement.NoDocuments":         "No Requirement Documents. Upload at least one requirement document before drafting.",
+		"BknProject.Requirement.NoAdoptedOntology":   "No Adopted Object Types. Adopt object types in ontology modelling before generating business scenarios.",
 		"BknProject.Requirement.NoCatalogs":          "No Data Catalogs. Choose data catalogs for the project before drafting.",
 		"BknProject.Requirement.InputsTooLarge":      "Documents Too Long. The documents together exceed what one drafting can read; trim or remove some and try again.",
 		"BknProject.Requirement.NotOwner":            "Not the Project Owner. Only the project owner can change the requirement specification and documents.",
