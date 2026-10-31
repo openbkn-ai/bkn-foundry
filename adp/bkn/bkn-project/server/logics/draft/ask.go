@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -389,15 +391,20 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI: %v", err))
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
 	case failure != "", out == nil, answer == "":
-		otellog.LogWarn(ctx, "Ask AI answered what its schema does not allow")
+		// The start of the reply says what came instead of an answer, such as JSON alone.
+		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI answered what its schema does not allow: result %t, reply %q",
+			out != nil, truncateRunes(reply.text, askReasonMaxLength)))
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
 	}
 	return answer, out, ""
 }
 
-// askJSONMarkers start the JSON an Agent may write after its answer despite the prompt: a code
-// fence, or an object of revisions.
-var askJSONMarkers = []string{"```", `{"revisions"`}
+// askJSONStart starts the JSON an Agent may write after its answer despite the prompt: a code
+// fence, or an object of revisions or of an answer, however it is spaced.
+var askJSONStart = regexp.MustCompile("```|\\{\\s*\"(?:revisions|answer)\"")
+
+// askJSONKeys are the keys that make an object the Agent's JSON.
+var askJSONKeys = []string{`"revisions"`, `"answer"`}
 
 // askReply is the answer's text as it streams. It is forwarded up to the first JSON marker, a
 // tail that may begin one held until the next piece shows it does not; a reply that is JSON from
@@ -422,30 +429,25 @@ func (r *askReply) add(piece string) {
 		r.cut = start
 		return
 	}
-	for _, marker := range askJSONMarkers {
-		if i := strings.Index(r.text, marker); i >= 0 && (r.cut < 0 || i < r.cut) {
-			r.cut = i
-		}
-	}
-	if r.cut >= 0 {
+	if at := askJSONStart.FindStringIndex(r.text); at != nil {
+		r.cut = at[0]
 		r.forward(r.cut)
 		return
 	}
 	r.forward(len(r.text) - r.held())
 }
 
-// held is how much of the text's end may begin a marker; text of spaces alone is held whole.
+// held is how much of the text's end may begin the JSON: backticks, or a brace followed by spaces
+// and the start of a key; text of spaces alone is held whole.
 func (r *askReply) held() int {
 	if strings.TrimSpace(r.text) == "" {
 		return len(r.text)
 	}
-	longest := 0
-	for _, marker := range askJSONMarkers {
-		for k := len(marker) - 1; k > longest; k-- {
-			if strings.HasSuffix(r.text, marker[:k]) {
-				longest = k
-				break
-			}
+	longest := len(r.text) - len(strings.TrimRight(r.text, "`"))
+	if i := strings.LastIndex(r.text, "{"); i >= 0 {
+		rest := strings.TrimLeftFunc(r.text[i+1:], unicode.IsSpace)
+		if slices.ContainsFunc(askJSONKeys, func(key string) bool { return strings.HasPrefix(key, rest) }) {
+			longest = len(r.text) - i
 		}
 	}
 	return longest

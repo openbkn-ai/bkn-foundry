@@ -48,6 +48,27 @@ func Test_AskReply(t *testing.T) {
 			So(answer, ShouldEqual, "Rename it.")
 		})
 
+		Convey("An object of revisions or an answer stops forwarding however it is spaced\n", func() {
+			for _, tokens := range [][]string{
+				{"Rename it. {", "\n  \"revisions\": []}"},
+				{"Rename it. { \"rev", "isions\": []}"},
+				{"Rename it. {\n\t\"answer\": \"x\"}"},
+				{"Rename it. ", "{", " ", "\"ans", "wer\":\"x\"}"},
+			} {
+				forwarded, answer := reply(tokens...)
+
+				So(strings.TrimSpace(strings.Join(forwarded, "")), ShouldEqual, "Rename it.")
+				So(answer, ShouldEqual, "Rename it.")
+			}
+		})
+
+		Convey("A brace that turns out to begin no object of revisions or answer is forwarded\n", func() {
+			forwarded, answer := reply("Set {", " \"a", "lias\"} too.")
+
+			So(strings.Join(forwarded, ""), ShouldEqual, "Set { \"alias\"} too.")
+			So(answer, ShouldEqual, "Set { \"alias\"} too.")
+		})
+
 		Convey("A reply that is JSON from its start is never forwarded; its answer is taken out\n", func() {
 			forwarded, answer := reply("  {\"ans", "wer\":\" 它是归属关系。 \",\"revisions\":[]}")
 
