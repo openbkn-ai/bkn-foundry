@@ -70,6 +70,16 @@ func Test_AskRelationSuggestions(t *testing.T) {
 			So(len(got.Candidates), ShouldEqual, 3)
 		})
 
+		Convey("JSON it writes after the answer is not part of the answer\n", func() {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(answered(
+				`{"candidates":[],"proposals":[]}`, "看不出可以建立的关系。\n\n{", `"candidates":[],"proposals":[]}`))
+
+			got, err := ask()
+
+			So(err, ShouldBeNil)
+			So(got.Answer, ShouldEqual, "看不出可以建立的关系。")
+		})
+
 		Convey("Its names and reasons go to the candidates they name; a name the save would refuse is not taken\n", func() {
 			long := strings.Repeat("名", interfaces.DRAFT_NAME_MAX_LENGTH+1)
 			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(answered(`{"candidates":[

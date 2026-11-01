@@ -403,11 +403,11 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 }
 
 // askJSONStart starts the JSON an Agent may write after its answer despite the prompt: a code
-// fence, or an object of revisions or of an answer, however it is spaced.
-var askJSONStart = regexp.MustCompile("```|\\{\\s*\"(?:revisions|answer)\"")
+// fence, or an object of a result's keys or of an answer, however it is spaced.
+var askJSONStart = regexp.MustCompile("```|\\{\\s*\"(?:revisions|candidates|proposals|answer)\"")
 
 // askJSONKeys are the keys that make an object the Agent's JSON.
-var askJSONKeys = []string{`"revisions"`, `"answer"`}
+var askJSONKeys = []string{`"revisions"`, `"candidates"`, `"proposals"`, `"answer"`}
 
 // askReply is the answer's text as it streams. It is forwarded up to the first JSON marker, a
 // tail that may begin one held until the next piece shows it does not; a reply that is JSON from
