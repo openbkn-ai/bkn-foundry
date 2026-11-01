@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
@@ -18,6 +19,32 @@ import (
 )
 
 func (r *restHandler) registerKBConcept(group *gin.RouterGroup) {
+	group.GET("/samples", func(c *gin.Context) {
+		r.withExVisitor(c, func(c *gin.Context, visitor hydra.Visitor) {
+			ctx := i18n.GetLanguageCtx(c)
+			if visitor.Type != hydra.VisitorType_User && visitor.Type != hydra.VisitorType_RealName {
+				replySourceError(c, ctx, &kb.SourceError{StatusCode: 403})
+				return
+			}
+			providers, enabled := kb.Lookup()
+			if !enabled {
+				replyNotFound(c)
+				return
+			}
+			revision, err := strconv.ParseInt(c.Query("selection_revision"), 10, 64)
+			if err != nil {
+				replySourceError(c, ctx, &kb.SourceError{StatusCode: 400})
+				return
+			}
+			result, err := kbconcept.NewService(r.ps, r.kbra, r.da, providers.Source, providers.Concepts).Samples(ctx, visitor.TokenID, c.Param("project_id"), visitorAccount(visitor), c.Query("selection_id"), revision)
+			if err != nil {
+				replyConceptError(c, ctx, err)
+				return
+			}
+			rest.ReplyOK(c, http.StatusOK, result)
+		})
+	})
+
 	group.POST("/concepts:extract", func(c *gin.Context) {
 		r.withExVisitor(c, func(c *gin.Context, visitor hydra.Visitor) {
 			ctx := i18n.GetLanguageCtx(c)

@@ -331,3 +331,24 @@ samples; source permission/version failures retain 403/410; invalid model or
 citation proposals fail without writing. Messages are localized. Until K3 supplies Dataset preparation, confirming adopted unbound document models returns the explicit localized 409 `Draft.DocumentDataNotReady` before compilation, branch writes or checks; candidate reviews remain saved. Table redrafting requires explicit discard for document candidates, even before item review. This slice does
 not create Datasets or instance rows, complete the document editor, run the
 held-out evaluation, deploy a service or apply a live migration.
+
+### K2 document editing
+
+The existing object/relation save endpoints also accept document models. Business
+properties carry `extraction: {instruction, examples}`; optional `document`
+settings select an event's `time_property` and `participant_relations`. Fixed
+provenance/evidence fields remain read-only. Event participant relations must be
+business relations and cannot be deleted while an event refers to them.
+
+Document relations accept `document_mapping` and `cardinality`, with validated
+`linking` or `same_document` rules. They do not query table row counts. Saves
+recheck current debug samples and source selection and atomically reject stale
+selection/draft changes. Editing fields or identity does not implicitly review
+an unadopted document candidate.
+
+`GET /projects/{project_id}/kb/samples?selection_id=...&selection_revision=...`
+returns bounded, located **debug** fragments for an explicit example picker.
+It requires the current owner and live source permission; it neither invokes an
+Agent nor saves original text. Acceptance files are excluded. Example edits are
+matched against current native text; forged quotes, offsets and protected fields
+are refused. Quote persistence still follows the directory original-text switch.

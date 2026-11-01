@@ -45,8 +45,9 @@ var (
 )
 
 type draftService struct {
-	setting common.DraftSetting
-	da      interfaces.DraftAccess
+	setting     common.DraftSetting
+	da          interfaces.DraftAccess
+	kbResources interfaces.KBResourceAccess
 	// ca records the check run after a draft is confirmed.
 	ca interfaces.CheckAccess
 	// ira keeps the ids of items drafted from names that are not ASCII, so drafts do not change them.
@@ -75,19 +76,20 @@ type draftService struct {
 func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 	dsOnce.Do(func() {
 		ds = &draftService{
-			setting: appSetting.DraftSetting,
-			da:      logics.DA,
-			ca:      logics.CA,
-			ira:     logics.IRA,
-			va:      logics.VA,
-			iba:     logics.IBA,
-			rqa:     logics.RQA,
-			ps:      project.NewProjectService(),
-			ls:      lineage.NewLineageService(),
-			ra:      logics.RA,
-			gs:      logics.GS,
-			ba:      logics.BAA,
-			run:     func(fn func()) { go fn() },
+			setting:     appSetting.DraftSetting,
+			da:          logics.DA,
+			kbResources: logics.KBRA,
+			ca:          logics.CA,
+			ira:         logics.IRA,
+			va:          logics.VA,
+			iba:         logics.IBA,
+			rqa:         logics.RQA,
+			ps:          project.NewProjectService(),
+			ls:          lineage.NewLineageService(),
+			ra:          logics.RA,
+			gs:          logics.GS,
+			ba:          logics.BAA,
+			run:         func(fn func()) { go fn() },
 		}
 	})
 	return ds

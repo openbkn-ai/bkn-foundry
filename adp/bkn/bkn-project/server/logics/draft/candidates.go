@@ -60,9 +60,25 @@ func reviews(items *interfaces.DraftItems) (map[string]*interfaces.DraftReview, 
 			for _, ref := range refsOf(d.After) {
 				reviewed[ref] = review
 			}
-		case (d.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES || d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES) &&
-			reviewActions[d.Action]:
+		case (d.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES || d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES) && reviewActions[d.Action]:
 			key := itemKey(d.Kind, d.ItemID)
+			// Editing extraction fields is not a decision to exclude an
+			// unreviewed document candidate. Adoption stays an explicit action.
+			if (d.Action == interfaces.DRAFT_DECISION_SAVE || d.Action == interfaces.DRAFT_DECISION_IDENTITY) && reviewed[key] == nil {
+				document, adopted := false, false
+				if d.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+					if item := findObjectType(items, d.ItemID); item != nil {
+						document, adopted = item.Document != nil, item.Adopted
+					}
+				} else {
+					if item := findRelationType(items, d.ItemID); item != nil {
+						document, adopted = item.Document != nil, item.Adopted
+					}
+				}
+				if document && !adopted {
+					continue
+				}
+			}
 			reviewed[key] = review
 			switch d.Action {
 			case interfaces.DRAFT_DECISION_UNADOPT:

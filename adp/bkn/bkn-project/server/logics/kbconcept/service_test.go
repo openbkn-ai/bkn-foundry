@@ -142,3 +142,20 @@ func TestConceptWorkflowPreservesDraftAndRejectsLateResults(t *testing.T) {
 		})
 	}
 }
+
+func TestSamplePreviewReadsOnlyDebugProofWithoutModelOrWrite(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	ps := pmock.NewMockProjectService(ctrl)
+	owner := interfaces.AccountInfo{ID: "u", Type: "user"}
+	ps.EXPECT().GetProject(gomock.Any(), "Bearer synthetic", "p").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p", Owner: owner, NamingLanguage: "en-US"}}, nil)
+	store := &workflowStore{selection: &interfaces.KBSelection{ID: "lock", State: "active", Revision: 7, Files: []interfaces.KBResourceFile{{KnowledgeBaseID: "1", FileID: "41", ContentVersionID: "8", SampleRole: "debug", ChunkCount: 1, Name: "Order.pdf"}, {KnowledgeBaseID: "1", FileID: "42", ContentVersionID: "9", SampleRole: "acceptance", ChunkCount: 1, Name: "Held-out.pdf"}}}}
+	source := &workflowSource{}
+	result, err := NewService(ps, store, nil, source, nil).Samples(context.Background(), "Bearer synthetic", "p", owner, "lock", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.written != nil || len(result.Fragments) != 1 || result.Fragments[0].Citation.FileID != "41" || result.Fragments[0].Citation.Quote != "" || result.Fragments[0].Text != "订单 O-1" || result.Fragments[0].FileName != "Order.pdf" {
+		t.Fatal("editor preview leaked held-out samples or persisted originals")
+	}
+}

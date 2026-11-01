@@ -314,6 +314,13 @@ func (s *draftService) commit(ctx context.Context, draft *interfaces.Draft,
 	if len(decisions) == 0 {
 		return nil
 	}
+	return s.commitUsing(ctx, draft, decisions, caller, s.da.UpdateDraft)
+}
+
+func (s *draftService) commitUsing(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, write func(context.Context, *interfaces.Draft, int64) (bool, error)) error {
+	if len(decisions) == 0 {
+		return nil
+	}
 	readUpdateTime := draft.UpdateTime
 	// The update time always moves on, so an edit made on the draft just read is refused.
 	draft.UpdateTime = max(time.Now().UnixMilli(), readUpdateTime+1)
@@ -321,7 +328,7 @@ func (s *draftService) commit(ctx context.Context, draft *interfaces.Draft,
 		decision.By, decision.Time = caller, draft.UpdateTime
 	}
 	draft.Items.Decisions = append(draft.Items.Decisions, decisions...)
-	written, err := s.da.UpdateDraft(ctx, draft, readUpdateTime)
+	written, err := write(ctx, draft, readUpdateTime)
 	if err != nil {
 		return internalError(ctx, "Update draft failed", err)
 	}
