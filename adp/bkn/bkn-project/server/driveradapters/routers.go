@@ -50,6 +50,7 @@ type restHandler struct {
 	ls         interfaces.LineageService
 	ps         interfaces.ProjectService
 	kbra       interfaces.KBResourceAccess
+	da         interfaces.DraftAccess
 	drs        interfaces.DraftService
 	prs        interfaces.ProjectReleaseService
 	rqs        interfaces.RequirementService
@@ -64,6 +65,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		ls:         lineage.NewLineageService(),
 		ps:         project.NewProjectService(),
 		kbra:       logics.KBRA,
+		da:         logics.DA,
 		drs:        draft.NewDraftService(appSetting),
 		prs:        release.NewProjectReleaseService(appSetting),
 		rqs:        requirement.NewRequirementService(),

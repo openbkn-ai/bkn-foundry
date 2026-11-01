@@ -246,6 +246,28 @@ func Test_CandidateService(t *testing.T) {
 			So(unreviewed(&got.Draft.Items), ShouldEqual, 2)
 		})
 
+		Convey("A human accepts document suggestions while unresolved identities still wait", func() {
+			document := &interfaces.DraftObjectType{ID: "order_doc", Name: "Order from text", Document: &interfaces.DraftDocumentModel{Role: "entity", Layer: "entity", Reason: "Explicit business identity"}}
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, document)
+			relation := &interfaces.DraftRelationType{ID: "doc_to_store", Source: "order_doc", Target: "stores", Document: &interfaces.DraftDocumentModel{Role: "relation"}}
+			draft.Items.RelationTypes = append(draft.Items.RelationTypes, relation)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			got, err := svc.AcceptSuggestions(ctx, token, "p1", interfaces.DraftAcceptSuggestions{UpdateTime: readTime}, caller)
+			So(err, ShouldBeNil)
+			So(document.Adopted, ShouldBeTrue)
+			So(relation.Adopted, ShouldBeTrue)
+			So(got.Skipped, ShouldContain, "object_types/visits")
+			So(got.Draft.Items.ObjectTypes[3].Adopted, ShouldBeFalse)
+			candidates := candidatesOf(draft, nil, "")
+			for _, candidate := range candidates.Candidates {
+				if candidate.ID == "order_doc" {
+					So(candidate.Source, ShouldEqual, "document")
+					So(candidate.Table, ShouldBeNil)
+					So(candidate.Document.Reason, ShouldEqual, "Explicit business identity")
+				}
+			}
+		})
 		Convey("With nothing left to accept nothing is written\n", func() {
 			draft.Items.ObjectTypes = draft.Items.ObjectTypes[2:3]
 			draft.Items.RelationTypes = nil

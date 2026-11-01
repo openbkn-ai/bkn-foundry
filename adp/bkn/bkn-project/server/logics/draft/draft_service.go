@@ -297,6 +297,10 @@ func (s *draftService) GetDraft(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Get draft failed")
 		return nil, internalError(ctx, "Get draft failed", err)
 	}
+	if err := checkDocumentReadAccess(ctx, token, draft); err != nil {
+		return nil, err
+	}
+
 	if !exist {
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)

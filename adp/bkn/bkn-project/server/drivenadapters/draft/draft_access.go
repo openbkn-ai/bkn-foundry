@@ -237,16 +237,34 @@ func (da *draftAccess) FailDrafting(ctx context.Context, reason string, updateTi
 	return result.RowsAffected()
 }
 
-// hasDecisions reports whether stored items record decisions; items that do not parse are
-// treated as having none, as drafting replaces them anyway.
+// hasDecisions protects human decisions and document candidates from implicit
+// replacement by table redrafting. Unparseable items retain the legacy behavior.
 func hasDecisions(itemsJSON string) bool {
 	var items struct {
 		Decisions []struct {
 			Kind string `json:"kind"`
 		} `json:"decisions"`
+		Objects []struct {
+			Document json.RawMessage `json:"document"`
+		} `json:"object_types"`
+		Relations []struct {
+			Document json.RawMessage `json:"document"`
+		} `json:"relation_types"`
 	}
 	if json.Unmarshal([]byte(itemsJSON), &items) != nil {
 		return false
+	}
+	// Selected document candidates are not table-drafter output. Replacing
+	// them needs explicit discard even before a human has reviewed each item.
+	for _, object := range items.Objects {
+		if len(object.Document) > 0 && string(object.Document) != "null" {
+			return true
+		}
+	}
+	for _, relation := range items.Relations {
+		if len(relation.Document) > 0 && string(relation.Document) != "null" {
+			return true
+		}
 	}
 	// A decision on the draft as a whole, such as accepting a partial draft, is about that draft
 	// only: drafting again decides it anew, so it is no edit to keep.

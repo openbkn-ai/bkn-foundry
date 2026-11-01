@@ -116,7 +116,7 @@ func appendManaged(object *interfaces.DraftObjectType, language string) {
 // candidate list. It returns a separate copy, so transient quotes remain usable
 // during this request while the returned data follows source retention policy.
 func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal kb.ConceptProposal) (*ValidatedModel, error) {
-	if input == nil || input.SelectionID == "" || input.SelectionRevision < 1 || len(proposal.ObjectTypes) == 0 || len(proposal.ObjectTypes) > 30 || len(proposal.RelationTypes) > 60 {
+	if input == nil || input.SelectionID == "" || input.SelectionRevision < 1 || len(proposal.ObjectTypes) > 30 || len(proposal.RelationTypes) > 60 {
 		return nil, ErrInvalidModel
 	}
 	raw, err := json.Marshal(proposal)

@@ -286,7 +286,7 @@ The optional `knowledgebase.SampleSource` reads native chunk batches from explic
 
 `kbconcept.LoadSamples` reads only the active selection's locked `debug` files; acceptance files never enter its request. One extraction is bounded to 20 files, 500 chunks, 1,000 located fragments and 120,000 Unicode code points. Oversized input fails explicitly rather than truncating. Every native page must complete; returned file/version identities and final per-file chunk counts must match the manifest. A dependency failure, repeated cursor, duplicate chunk or unlocated selected file fails the whole input.
 
-Disjoint native spans become independently located fragments. `ValidateCitations` requires the proposal's exact KB/file/version, block, code-point interval and quote to match one real fragment, and never joins across gaps. Its returned copy keeps a quote only for a file whose `include_original` decision permits it; otherwise the location remains with an empty quote. Live model input is transient and must not be persisted as a task, decision or draft.
+Disjoint native spans become independently located fragments. `ValidateCitations` requires the proposal's exact KB/file/version, block, code-point interval and quote to match one real fragment, and never joins across gaps. Its returned copy keeps a quote only for a file whose `include_original` decision permits it; otherwise the location remains with an empty quote. Raw model input is not copied to project process tables, decisions, draft metadata or logs. Builtin model calls use the existing bkn-agent execution records (including normal task input/output storage), rather than introducing a stateless execution API.
 
 The Agent, semantic model validation, candidate integration, templates and editor remain K2 follow-up work in #2839. This foundation does not change draft adoption, confirmation, Dataset creation or publication.
 
@@ -301,3 +301,33 @@ Core adds read-only evidence/identity/extraction-version columns; facts/events a
 This library slice does not register an extraction/edit API or an Agent, adopt a candidate, create a Dataset or change publication. Those callers and the Studio editor remain K2 follow-up work. Source selection identity/revision are carried with checked proposals for the later atomic draft commit.
 
 Canonical entities retain global/business identity across files. Fixed model-to-evidence references apply only to file, in-document, fact and event rows; entity current values may have different per-property sources. Common row-level pointers are not complete field provenance. K3–K5 must preserve file/fact claims and each current property's source; a per-file upsert must not overwrite a whole entity or erase earlier evidence. This library performs no instance writes.
+
+
+### K2 document candidates
+
+`POST /projects/{project_id}/kb/concepts:extract` accepts `selection_id`,
+`selection_revision` and `draft_update_time` (0 when no draft exists). It runs as
+the current project owner with live KB `query_data` permission. Only locked debug
+files are read; acceptance samples stay out of the model. Input caps are applied
+before the builtin concept Agent is invoked. A missing Agent is unavailable,
+not an empty successful result; genuinely empty proposals make no draft write.
+
+Verified business models and missing fixed evidence templates join the existing
+ready draft, unadopted. Candidate responses carry `source: document` and
+`document` metadata (layer, role, reason, source locations); they do not claim a
+table binding. Human edits and existing adoption/review decisions are preserved.
+The existing explicit “accept suggestions” action adopts eligible document
+proposals; unresolved identities still wait for a person.
+
+No database lock spans a source/model call. After AI returns, pinned versions and
+permission are rechecked; project ownership/archive, active selection revision
+and draft existence/update time are checked in the write transaction. Concurrent
+or stale results return 409. Saved document evidence is also checked against
+current KB permission before draft/candidate reads or edits. Tables-only drafts
+retain their existing behavior and dependencies.
+
+400 covers missing or unlocatable debug samples; 413 asks for fewer/smaller
+samples; source permission/version failures retain 403/410; invalid model or
+citation proposals fail without writing. Messages are localized. Until K3 supplies Dataset preparation, confirming adopted unbound document models returns the explicit localized 409 `Draft.DocumentDataNotReady` before compilation, branch writes or checks; candidate reviews remain saved. Table redrafting requires explicit discard for document candidates, even before item review. This slice does
+not create Datasets or instance rows, complete the document editor, run the
+held-out evaluation, deploy a service or apply a live migration.
