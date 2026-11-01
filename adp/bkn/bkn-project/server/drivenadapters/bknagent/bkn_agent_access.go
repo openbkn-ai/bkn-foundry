@@ -201,32 +201,14 @@ func readChat(stream io.Reader, on func(interfaces.BknAgentChatEvent)) error {
 }
 
 func readTask(respBody []byte) (*interfaces.BknAgentTask, error) {
-	var out struct {
-		TaskID        string  `json:"task_id"`
-		AgentID       string  `json:"agent_id"`
-		Status        string  `json:"status"`
-		Output        *string `json:"output"`
-		FailureDetail *string `json:"failure_detail"`
-		CreateTime    int64   `json:"create_time"`
-		UpdateTime    int64   `json:"update_time"`
-	}
-	if err := json.Unmarshal(respBody, &out); err != nil {
+	var task interfaces.BknAgentTask
+	if err := json.Unmarshal(respBody, &task); err != nil {
 		return nil, fmt.Errorf("unmarshal agent task: %w", err)
 	}
-	if out.TaskID == "" {
+	if task.TaskID == "" {
 		return nil, fmt.Errorf("agent task reply has no task_id")
 	}
-	task := &interfaces.BknAgentTask{
-		TaskID: out.TaskID, AgentID: out.AgentID, Status: out.Status,
-		CreateTime: out.CreateTime, UpdateTime: out.UpdateTime,
-	}
-	if out.Output != nil {
-		task.Output = *out.Output
-	}
-	if out.FailureDetail != nil {
-		task.FailureDetail = *out.FailureDetail
-	}
-	return task, nil
+	return &task, nil
 }
 
 // AnswerOnNetwork calls POST /executions, which streams the answer as server-sent events. bkn-agent
