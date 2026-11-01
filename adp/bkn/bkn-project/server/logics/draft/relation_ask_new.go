@@ -20,8 +20,8 @@ import (
 // Ask AI on a relation type not made yet: the form may have one end, both without a mapping, or
 // nothing. The Agent reads the relation as the form has it and the object types it may join: the
 // ends given, the other ends of the candidates the data suggests for the first end, then the other
-// adopted object types. Its revisions are checked as the relation's own ask checks them, on a copy;
-// nothing is written.
+// adopted object types, briefly. Its revisions are checked as the relation's own ask checks them, on
+// a copy, and given also when it writes no answer; nothing is written.
 
 // askEvidenceTimeout bounds reading the candidates before asking, so the answer stays within the
 // deadline a gateway gives a request that is not streamed.
@@ -53,29 +53,31 @@ func (s *draftService) AskNewRelationType(ctx context.Context, token string, pro
 	in.Kind = askKindRelationType
 	asked := askRelationOf(base)
 	in.RelationType, in.Ends = &asked, []askObjectType{}
-	offer := func(ot *interfaces.DraftObjectType) {
+	offer := func(ot *interfaces.DraftObjectType, brief bool) {
 		if ot != nil && !slices.ContainsFunc(in.Ends, func(e askObjectType) bool { return e.ID == ot.ID }) {
-			in.Ends = append(in.Ends, askObjectTypeOf(ot))
+			end := askObjectTypeOf(ot)
+			end.brief = brief
+			in.Ends = append(in.Ends, end)
 		}
 	}
 	given := []string{}
 	for _, id := range []string{base.Source, base.Target} {
 		if id != "" && !slices.Contains(given, id) {
 			given = append(given, id)
-			offer(findObjectType(items, id))
+			offer(findObjectType(items, id), false)
 		}
 	}
 	if len(given) > 0 {
 		in.Candidates = s.askCandidates(ctx, draft, given, caller)
 		for _, c := range in.Candidates {
-			offer(findObjectType(items, c.Source))
-			offer(findObjectType(items, c.Target))
+			offer(findObjectType(items, c.Source), false)
+			offer(findObjectType(items, c.Target), false)
 		}
 	}
 	if len(given) < 2 {
 		for _, ot := range items.ObjectTypes {
 			if ot.Adopted {
-				offer(ot)
+				offer(ot, true)
 			}
 		}
 	}
@@ -86,7 +88,7 @@ func (s *draftService) AskNewRelationType(ctx context.Context, token string, pro
 		return checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
 			return s.relationTypeRevision(ctx, items, base, r, caller)
 		})
-	}}, stream)
+	}, answerOptional: true}, stream)
 	if err != nil {
 		span.SetStatus(codes.Error, "Ask AI failed")
 		return nil, err

@@ -99,6 +99,26 @@ type askObjectType struct {
 	IdentityCount interfaces.DraftKeyEvidence `json:"identity_evidence"`
 	DisplayKey    string                      `json:"display_key"`
 	Properties    []askProperty               `json:"properties"`
+	// brief keeps only the id, name, identity and property names, for an object type offered among
+	// many.
+	brief bool
+}
+
+func (o askObjectType) MarshalJSON() ([]byte, error) {
+	type whole askObjectType
+	if !o.brief {
+		return json.Marshal(whole(o))
+	}
+	names := []string{}
+	for _, p := range o.Properties {
+		names = append(names, p.Name)
+	}
+	return json.Marshal(struct {
+		ID            string   `json:"id"`
+		Name          string   `json:"name"`
+		Identity      []string `json:"identity"`
+		PropertyNames []string `json:"property_names"`
+	}{o.ID, o.Name, o.Identity, names})
 }
 
 type askProperty struct {
@@ -175,6 +195,8 @@ func askResponseFormat(fields []string) map[string]any {
 type askTurn struct {
 	input  askInput
 	finish func(out *askOutput) *interfaces.DraftAskAnswer
+	// answerOptional gives the revisions when the Agent writes no answer.
+	answerOptional bool
 }
 
 // readyToAsk checks the question, reads a ready draft and keeps the last turns of the conversation.
@@ -210,7 +232,7 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, raw, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream, false)
+	text, raw, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream, turn.answerOptional)
 	var out askOutput
 	if code == "" && json.Unmarshal(raw, &out) != nil {
 		code = perrors.BknProject_Draft_AskUnavailable

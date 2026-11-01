@@ -41,13 +41,19 @@ func Test_AskNewRelationType(t *testing.T) {
 			DoAndReturn(joinCounts(map[string][3]int64{"r_deliveries": {80, 0, 2}, "r_shipments": {100, 10, 30}})).AnyTimes()
 		// read keeps the message the Agent reads and answers with the revisions given.
 		var in askInput
-		read := func(revisions string) {
+		var message string
+		read := func(revisions string, pieces ...string) {
+			if len(pieces) == 0 {
+				pieces = []string{"运单由配送运送。"}
+			}
 			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(
 				func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
 					on func(interfaces.BknAgentChatEvent)) error {
 					So(req.AgentID, ShouldEqual, askAgentID)
+					message = req.Message
+					in = askInput{}
 					So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
-					return answered(`{"revisions":[`+revisions+`]}`, "运单由配送运送。")(ctx, account, req, on)
+					return answered(`{"revisions":[`+revisions+`]}`, pieces...)(ctx, account, req, on)
 				})
 		}
 		ask := func(working *interfaces.DraftRelationTypeSave) (*interfaces.DraftAskAnswer, error) {
@@ -74,6 +80,9 @@ func Test_AskNewRelationType(t *testing.T) {
 			So(in.RelationType.Source, ShouldEqual, "shipments")
 			// The candidates' ends first, then the other adopted object types.
 			So(endsOf(), ShouldResemble, []string{"shipments", "stations", "deliveries", "carriers", "routes"})
+			// The ends given and the candidates' ends whole; the others brief.
+			So(message, ShouldContainSubstring, `{"id":"routes","name":"Routes","identity":["route_id"],"property_names":["route_id","from_station"]}`)
+			So(in.Ends[1].Table, ShouldEqual, "stations")
 			So(len(in.Candidates), ShouldEqual, 3)
 			So(*in.Candidates[1].HitRate, ShouldEqual, 78.0/80)
 			So(got.Answer, ShouldEqual, "运单由配送运送。")
@@ -125,6 +134,16 @@ func Test_AskNewRelationType(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(in.RelationType.Mapping, ShouldResemble, []interfaces.DraftFieldMapping{{SourceProperty: "waybill", TargetProperty: "waybill"}})
 			So(got.Dropped[0].Reason, ShouldEqual, askDroppedUnchanged)
+		})
+
+		Convey("Revisions given with no answer written are still given\n", func() {
+			read(`{"field":"name","value":"配送的运单","reason":"按业务含义命名"}`, "")
+
+			got, err := ask(&interfaces.DraftRelationTypeSave{SourceObjectTypeID: "shipments"})
+
+			So(err, ShouldBeNil)
+			So(got.Answer, ShouldBeEmpty)
+			So(got.Revisions[0].Value, ShouldEqual, "配送的运单")
 		})
 
 		Convey("An unknown end in the form is left out; a bad question is refused before asking\n", func() {
