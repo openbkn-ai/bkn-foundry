@@ -63,6 +63,13 @@ type DraftService interface {
 	// AskRelationType is AskObjectType for one relation type.
 	AskRelationType(ctx context.Context, token string, projectID string, itemID string, req DraftRelationAskRequest,
 		caller AccountInfo, stream *DraftAskStream) (*DraftAskAnswer, error)
+	// IsolatedObjectTypes lists the adopted object types of a ready draft no adopted relation type
+	// has as an end.
+	IsolatedObjectTypes(ctx context.Context, token string, projectID string) (*DraftIsolated, error)
+	// RelationSuggestions lists the relations an adopted object type could take, with full-table
+	// counts as the caller, reading vega-backend. It changes nothing.
+	RelationSuggestions(ctx context.Context, token string, projectID string, objectTypeID string,
+		caller AccountInfo) (*DraftRelationSuggestions, error)
 	// RestoreExcluded maps a field the privacy rules excluded back to a property, reading the
 	// field from vega-backend as the caller, and records it as a decision.
 	RestoreExcluded(ctx context.Context, token string, projectID string, restore DraftRestore,

@@ -184,6 +184,22 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"error_code":"BknProject.Draft.AskUnavailable"`)
 		})
 
+		Convey("relation-suggestions lists the isolated object types, or one object type's candidates\n", func() {
+			drs.EXPECT().IsolatedObjectTypes(gomock.Any(), "Bearer t", "p1").Return(&interfaces.DraftIsolated{
+				Isolated: []interfaces.ReleaseItem{{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: "shipments", Name: "Shipments"}}}, nil)
+			drs.EXPECT().RelationSuggestions(gomock.Any(), "Bearer t", "p1", "shipments", caller).Return(
+				&interfaces.DraftRelationSuggestions{ObjectType: interfaces.ReleaseItem{ID: "shipments"},
+					Candidates: []interfaces.DraftRelationCandidate{{SourceObjectTypeID: "deliveries", TargetObjectTypeID: "shipments",
+						Origin: interfaces.DRAFT_ORIGIN_NAME_MATCH}}}, nil)
+
+			w := serve(handler, http.MethodGet, base+"/draft/relation-suggestions")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"isolated":[{"kind":"object_type","id":"shipments","name":"Shipments"}]`)
+			w = serve(handler, http.MethodGet, base+"/draft/relation-suggestions?object_type=shipments")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"origin":"name_match"`)
+		})
+
 		Convey("draft:restore restores the excluded field the body names\n", func() {
 			drs.EXPECT().RestoreExcluded(gomock.Any(), "Bearer t", "p1",
 				interfaces.DraftRestore{UpdateTime: 7, ObjectType: "customers", Field: "Phone"}, caller).

@@ -54,6 +54,9 @@ func (r *restHandler) DeleteRelationTypeByEx(c *gin.Context) {
 }
 func (r *restHandler) AskObjectTypeByEx(c *gin.Context)   { r.withExVisitor(c, r.AskObjectType) }
 func (r *restHandler) AskRelationTypeByEx(c *gin.Context) { r.withExVisitor(c, r.AskRelationType) }
+func (r *restHandler) RelationSuggestionsByEx(c *gin.Context) {
+	r.withExVisitor(c, r.RelationSuggestions)
+}
 
 // generateDraftRequest is the optional body of draft:generate.
 type generateDraftRequest struct {
@@ -407,6 +410,32 @@ func (r *restHandler) AskRelationType(c *gin.Context, visitor hydra.Visitor) {
 	replyAsk(c, span, func(stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
 		return r.drs.AskRelationType(ctx, visitor.TokenID, id, itemID, req, visitorAccount(visitor), stream)
 	})
+}
+
+// RelationSuggestions serves GET /projects/{project_id}/ontology/draft/relation-suggestions: the
+// isolated object types, or with ?object_type= the relations that object type could take. It reads
+// the draft and never changes it.
+func (r *restHandler) RelationSuggestions(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, objectType := c.Param("project_id"), c.Query("object_type")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("object_type").String(objectType))
+
+	var reply any
+	var err error
+	if objectType == "" {
+		reply, err = r.drs.IsolatedObjectTypes(ctx, visitor.TokenID, id)
+	} else {
+		reply, err = r.drs.RelationSuggestions(ctx, visitor.TokenID, id, objectType, visitorAccount(visitor))
+	}
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, reply)
 }
 
 // Events of a streamed answer to Ask AI: token ({content}) for each piece of the answer's text,

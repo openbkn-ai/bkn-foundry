@@ -355,6 +355,36 @@ func (mr *MockDraftServiceMockRecorder) GetUnderstanding(ctx, token, projectID, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnderstanding", reflect.TypeOf((*MockDraftService)(nil).GetUnderstanding), ctx, token, projectID, caller)
 }
 
+// IsolatedObjectTypes mocks base method.
+func (m *MockDraftService) IsolatedObjectTypes(ctx context.Context, token, projectID string) (*interfaces.DraftIsolated, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsolatedObjectTypes", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.DraftIsolated)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsolatedObjectTypes indicates an expected call of IsolatedObjectTypes.
+func (mr *MockDraftServiceMockRecorder) IsolatedObjectTypes(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsolatedObjectTypes", reflect.TypeOf((*MockDraftService)(nil).IsolatedObjectTypes), ctx, token, projectID)
+}
+
+// RelationSuggestions mocks base method.
+func (m *MockDraftService) RelationSuggestions(ctx context.Context, token, projectID, objectTypeID string, caller interfaces.AccountInfo) (*interfaces.DraftRelationSuggestions, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RelationSuggestions", ctx, token, projectID, objectTypeID, caller)
+	ret0, _ := ret[0].(*interfaces.DraftRelationSuggestions)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RelationSuggestions indicates an expected call of RelationSuggestions.
+func (mr *MockDraftServiceMockRecorder) RelationSuggestions(ctx, token, projectID, objectTypeID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RelationSuggestions", reflect.TypeOf((*MockDraftService)(nil).RelationSuggestions), ctx, token, projectID, objectTypeID, caller)
+}
+
 // RestoreExcluded mocks base method.
 func (m *MockDraftService) RestoreExcluded(ctx context.Context, token, projectID string, restore interfaces.DraftRestore, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
