@@ -208,7 +208,11 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, out, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream)
+	text, raw, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream, false)
+	var out askOutput
+	if code == "" && json.Unmarshal(raw, &out) != nil {
+		code = perrors.BknProject_Draft_AskUnavailable
+	}
 	if code != "" {
 		status := http.StatusBadGateway
 		if code == perrors.BknProject_Draft_AskTimeout {
@@ -216,7 +220,7 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 		}
 		return nil, httperrors.NewHTTPError(ctx, status, code)
 	}
-	answer := turn.finish(out)
+	answer := turn.finish(&out)
 	answer.Answer = truncateRunes(text, askAnswerMaxLength)
 	return answer, nil
 }
@@ -336,10 +340,10 @@ func askRelationOf(r *interfaces.DraftRelationType) askRelation {
 }
 
 // askAgent runs the chat Agent as the caller until the deadline, handing the answer's text to
-// stream as it is written. It returns the text and the result that follows it, or the code of why
-// there is none.
+// stream as it is written. It returns the text and the result that follows it, as given, or the
+// code of why there is none. A result with no text written fails unless answerOptional.
 func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountInfo, message string,
-	format map[string]any, stream *interfaces.DraftAskStream) (string, *askOutput, string) {
+	format map[string]any, stream *interfaces.DraftAskStream, answerOptional bool) (string, json.RawMessage, string) {
 	if s.ba == nil {
 		return "", nil, perrors.BknProject_Draft_AskUnavailable
 	}
@@ -350,7 +354,7 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 	ctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	reply := newAskReply(stream)
-	var out *askOutput
+	var out json.RawMessage
 	var failure string
 	started := false
 	err := s.ba.Chat(ctx, caller, &interfaces.BknAgentChatRequest{AgentID: askAgentID, Message: message,
@@ -372,9 +376,8 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 				reply.add(token)
 			}
 		case interfaces.BKN_AGENT_CHAT_STRUCTURED:
-			var result askOutput
-			if json.Unmarshal(data.Content, &result) == nil {
-				out = &result
+			if trimmed := strings.TrimSpace(string(data.Content)); strings.HasPrefix(trimmed, "{") {
+				out = data.Content
 			}
 		case interfaces.BKN_AGENT_CHAT_ERROR:
 			failure = data.Code
@@ -390,21 +393,21 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 	case err != nil:
 		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI: %v", err))
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
-	case failure != "", out == nil, answer == "":
+	case failure != "", out == nil, answer == "" && !answerOptional:
 		// The start of the reply says what came instead of an answer, such as JSON alone.
-		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI answered what its schema does not allow: result %t, reply %q",
-			out != nil, truncateRunes(reply.text, askReasonMaxLength)))
+		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI answered what its schema does not allow: result %t, reply %q (%d characters)",
+			out != nil, truncateRunes(reply.text, askReasonMaxLength), utf8.RuneCountInString(reply.text)))
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
 	}
 	return answer, out, ""
 }
 
 // askJSONStart starts the JSON an Agent may write after its answer despite the prompt: a code
-// fence, or an object of revisions or of an answer, however it is spaced.
-var askJSONStart = regexp.MustCompile("```|\\{\\s*\"(?:revisions|answer)\"")
+// fence, or an object of a result's keys or of an answer, however it is spaced.
+var askJSONStart = regexp.MustCompile("```|\\{\\s*\"(?:revisions|candidates|proposals|answer)\"")
 
 // askJSONKeys are the keys that make an object the Agent's JSON.
-var askJSONKeys = []string{`"revisions"`, `"answer"`}
+var askJSONKeys = []string{`"revisions"`, `"candidates"`, `"proposals"`, `"answer"`}
 
 // askReply is the answer's text as it streams. It is forwarded up to the first JSON marker, a
 // tail that may begin one held until the next piece shows it does not; a reply that is JSON from
@@ -476,17 +479,45 @@ func (r *askReply) answer() string {
 	if before := strings.TrimSpace(r.text[:r.cut]); before != "" {
 		return before
 	}
-	body := strings.TrimSpace(r.text)
-	if strings.HasPrefix(body, "```") {
-		body = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(body, "```"), "json"), "```")
+	// The first object, past a fence and whatever follows it.
+	start := strings.Index(r.text, "{")
+	if start < 0 {
+		return ""
 	}
 	var wrapped struct {
 		Answer string `json:"answer"`
 	}
-	if json.Unmarshal([]byte(strings.TrimSpace(body)), &wrapped) != nil {
+	if json.NewDecoder(strings.NewReader(escapeLineBreaks(r.text[start:]))).Decode(&wrapped) != nil {
 		return ""
 	}
 	return strings.TrimSpace(wrapped.Answer)
+}
+
+// escapeLineBreaks escapes the line breaks and tabs an Agent writes as they are inside JSON strings.
+func escapeLineBreaks(text string) string {
+	var b strings.Builder
+	quoted, escaped := false, false
+	for _, c := range text {
+		switch {
+		case escaped:
+			escaped = false
+		case quoted && c == '\\':
+			escaped = true
+		case c == '"':
+			quoted = !quoted
+		case quoted && c == '\n':
+			b.WriteString(`\n`)
+			continue
+		case quoted && c == '\r':
+			b.WriteString(`\r`)
+			continue
+		case quoted && c == '\t':
+			b.WriteString(`\t`)
+			continue
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
 }
 
 func truncateRunes(s string, max int) string {

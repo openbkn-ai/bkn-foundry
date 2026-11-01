@@ -432,6 +432,12 @@ func Test_AskObjectType(t *testing.T) {
 			agentAnswers(answered(`{"revisions":[]}`, `{"answer":"未写完`))
 			_, err = ask("问")
 			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
+
+			// A result with no answer written at all is no answer either.
+			readDraft(staffDraft())
+			agentAnswers(answered(`{"revisions":[]}`))
+			_, err = ask("问")
+			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Draft_AskUnavailable)
 		})
 
 		Convey("A long answer is cut to its bound in the result\n", func() {

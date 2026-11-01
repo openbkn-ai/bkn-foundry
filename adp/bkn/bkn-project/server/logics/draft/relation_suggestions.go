@@ -83,27 +83,44 @@ func (s *draftService) RelationSuggestions(ctx context.Context, token string, pr
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "RelationSuggestions")
 	defer span.End()
 
-	draft, err := s.readyDraftToRead(ctx, token, projectID)
+	draft, ot, err := s.suggestingFor(ctx, token, projectID, objectTypeID)
 	if err != nil {
-		span.SetStatus(codes.Error, "Draft not readable")
+		span.SetStatus(codes.Error, "No object type to suggest for")
 		return nil, err
 	}
-	ot := findObjectType(&draft.Items, objectTypeID)
-	switch {
-	case ot == nil:
-		span.SetStatus(codes.Error, "Object type not found")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
-	case !ot.Adopted:
-		span.SetStatus(codes.Error, "Object type not adopted")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
-			WithErrorDetails(map[string]any{"reason": notAdopted})
-	}
-	candidates, err := s.relationCandidates(ctx, draft, ot, caller)
+	suggestions, err := s.suggestionsOf(ctx, draft, ot, caller)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read tables failed")
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
+	return suggestions, nil
+}
+
+// suggestingFor reads the ready draft and the adopted object type suggestions are for.
+func (s *draftService) suggestingFor(ctx context.Context, token string, projectID string,
+	objectTypeID string) (*interfaces.Draft, *interfaces.DraftObjectType, error) {
+	draft, err := s.readyDraftToRead(ctx, token, projectID)
+	if err != nil {
+		return nil, nil, err
+	}
+	ot := findObjectType(&draft.Items, objectTypeID)
+	switch {
+	case ot == nil:
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+	case !ot.Adopted:
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
+			WithErrorDetails(map[string]any{"reason": notAdopted})
+	}
+	return draft, ot, nil
+}
+
+func (s *draftService) suggestionsOf(ctx context.Context, draft *interfaces.Draft, ot *interfaces.DraftObjectType,
+	caller interfaces.AccountInfo) (*interfaces.DraftRelationSuggestions, error) {
+	candidates, err := s.relationCandidates(ctx, draft, ot, caller)
+	if err != nil {
+		return nil, err
+	}
 	return &interfaces.DraftRelationSuggestions{
 		ObjectType: interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: ot.ID, Name: ot.Name},
 		Candidates: candidates,

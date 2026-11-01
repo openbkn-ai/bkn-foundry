@@ -80,6 +80,20 @@ func Test_AskReply(t *testing.T) {
 			So(answer, ShouldEqual, "It belongs.")
 		})
 
+		Convey("The answer is taken out whatever follows the object, and with line breaks written as they are\n", func() {
+			for _, tokens := range [][]string{
+				{"{\"answer\":\"它是归属关系。\"}\n{\"candidates\":[],\"proposals\":[]}"},
+				{"{\"answer\":\"它是归属关系。\",\"candidates\":[]}\n以上。"},
+				{"{\"answer\":\"它是归属关系。\"}\n```"},
+			} {
+				_, answer := reply(tokens...)
+				So(answer, ShouldEqual, "它是归属关系。")
+			}
+
+			_, answer := reply("{\"answer\":\"第一段，\\\"引用\\\"。\n\t第二段。\",\"proposals\":[]}")
+			So(answer, ShouldEqual, "第一段，\"引用\"。\n\t第二段。")
+		})
+
 		Convey("A reply that is only JSON without an answer has none\n", func() {
 			for _, tokens := range [][]string{
 				{"{\"answer\":\"未写完"}, {"{\"answer\":\"\"}"}, {"{\"note\":\"x\"}"}, {"```json\n{\"revisions\":[]}\n```"}, {"  "},
