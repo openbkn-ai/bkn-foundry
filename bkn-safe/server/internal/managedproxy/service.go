@@ -129,7 +129,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Account, bool
 }
 
 func (s *Service) Get(ctx context.Context, proxyAccountID string) (*Account, error) {
-	return s.get(ctx, "proxy_account_id = ?", strings.TrimSpace(proxyAccountID))
+	return s.get(ctx, "proxy_account_id = ? AND managed_by = ? AND managed_resource_type = ?", strings.TrimSpace(proxyAccountID), ManagerBKN, ResourceKnowledgeNetwork)
 }
 
 // Restore reactivates an archived identity for an idempotent retry of the same
@@ -143,7 +143,7 @@ func (s *Service) Restore(ctx context.Context, proxyAccountID string) (*Account,
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var mapping model.ManagedProxyAccount
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&mapping,
-			"proxy_account_id = ?", proxyAccountID).Error; err != nil {
+			"proxy_account_id = ? AND managed_by = ? AND managed_resource_type = ?", proxyAccountID, ManagerBKN, ResourceKnowledgeNetwork).Error; err != nil {
 			return err
 		}
 		var user model.User
@@ -235,7 +235,7 @@ func (s *Service) transition(ctx context.Context, proxyAccountID, target string)
 	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var mapping model.ManagedProxyAccount
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&mapping, "proxy_account_id = ?", proxyAccountID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&mapping, "proxy_account_id = ? AND managed_by = ? AND managed_resource_type = ?", proxyAccountID, ManagerBKN, ResourceKnowledgeNetwork).Error; err != nil {
 			return err
 		}
 		var user model.User

@@ -1,0 +1,130 @@
+openapi: 3.0.3
+info:
+  title: Project build delegation (internal)
+  version: 0.1.0
+  description: >-
+    ClusterIP-only control-plane API. The project coordinator authenticates the
+    owner and fences project/job state before creating a scope. KB API checks
+    every requested version and the delegator's current query_data before reads.
+    No Bearer, AppKey or refresh token is accepted or persisted as a delegation.
+    These identities cannot log in or acquire credentials and carry no generic
+    resource grants. Existing knowledge-network proxy APIs are unchanged.
+paths:
+  /api/safe/in/v1/build-grants:
+    post:
+      summary: Establish or replay one immutable owner-delegated build scope
+      description: >-
+        Maximum request body 1 MiB and 1000 distinct files, one pinned version
+        per file. Persist the private grant id before calling so cancellation
+        can revoke it even when creation times out. Replays preserve identity;
+        mismatched or revoked scopes return 409. Larger builds use separately
+        confirmed bounded tasks; a request is never silently truncated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Create'
+      responses:
+        '201': {description: Created a protected service identity and exact manifest}
+        '200': {description: Idempotent replay of the same active scope}
+        '400': {description: Invalid or excessive request}
+        '403': {description: Delegator is disabled or lacks current query_data}
+        '409': {description: Immutable scope conflict or cancelled creation}
+        '503': {description: Authorization or storage dependency unavailable}
+  /api/safe/in/v1/build-grants/check:
+    post:
+      summary: Validate a job identity, exact manifest membership and live permission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Check'
+      responses:
+        '200': {description: All requested versions are permitted; returns allowed true}
+        '400': {description: Invalid action or excessive scope}
+        '403': {description: Wrong identity or scope, revoked grant, or current permission denial}
+        '503': {description: Dependency unavailable; never fall back to another identity}
+  /api/safe/in/v1/build-grants/{id}:
+    delete:
+      summary: Revoke reads and hold creation while preserving cleanup identity
+      description: >-
+        Idempotent. An unknown id receives a revoked tombstone, fencing late
+        creates. The coordinator persists cancellation/archive before accepting
+        late results and completes revocation for every journaled task.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, maxLength: 64}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Scope'}
+      responses:
+        '204': {description: Revoked or already terminal}
+        '400': {description: Invalid scope}
+        '409': {description: Project or build mismatch}
+        '503': {description: Dependency unavailable; caller keeps revocation pending}
+  /api/safe/in/v1/build-grants/{id}/cleanup:complete:
+    post:
+      summary: Retire a revoked identity after the coordinator finishes retention cleanup
+      description: >-
+        The coordinator must first verify its durable retention journal and
+        published references. Safe does not own KB hold identifiers or published
+        version references. The identity stays protected, historical and disabled.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, maxLength: 64}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Scope'}
+      responses:
+        '204': {description: Retired or already retired}
+        '400': {description: Invalid scope}
+        '409': {description: Active grant or project/build mismatch}
+        '503': {description: Storage unavailable; cleanup remains pending}
+components:
+  schemas:
+    Scope:
+      type: object
+      required: [project_id, build_id]
+      properties:
+        project_id: {type: string, maxLength: 128}
+        build_id: {type: string, maxLength: 128}
+    Version:
+      type: object
+      required: [kb_id, file_id, content_version_id]
+      properties:
+        kb_id: {type: string, maxLength: 128}
+        file_id: {type: string, maxLength: 128}
+        content_version_id: {type: string, maxLength: 128}
+    Create:
+      allOf:
+        - {$ref: '#/components/schemas/Scope'}
+        - type: object
+          required: [id, delegator_id, model_fingerprint, versions]
+          properties:
+            id: {type: string, maxLength: 64}
+            delegator_id: {type: string, maxLength: 64}
+            model_fingerprint: {type: string, pattern: '^[a-f0-9]{64}$'}
+            versions:
+              type: array
+              minItems: 1
+              maxItems: 1000
+              items: {$ref: '#/components/schemas/Version'}
+    Check:
+      allOf:
+        - {$ref: '#/components/schemas/Scope'}
+        - type: object
+          required: [grant_id, principal_id, revision, action]
+          properties:
+            grant_id: {type: string, maxLength: 64}
+            principal_id: {type: string, maxLength: 64}
+            revision: {type: integer, minimum: 1}
+            action: {type: string, enum: [read, create_hold, cleanup]}
+            versions:
+              description: 1–20 exact versions for reads or hold creation; absent for cleanup.
+              type: array
+              maxItems: 20
+              items: {$ref: '#/components/schemas/Version'}
