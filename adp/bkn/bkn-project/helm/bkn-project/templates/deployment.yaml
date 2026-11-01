@@ -91,6 +91,8 @@ spec:
             value: {{ .Values.env.timezone }}
           - name: LANG
             value: {{ .Values.env.language }}
+          - name: BKN_SAFE_URL
+            value: {{ (.Values.bknSafe | default dict).url | default "http://bkn-safe:3000" | quote }}
           - name: POD_IP
             valueFrom:
               fieldRef:
