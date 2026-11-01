@@ -88,7 +88,7 @@ func TestKnowledgeBaseResourceReads(t *testing.T) {
 			So(w.Body.String(), ShouldNotContainSubstring, "synthetic-operator")
 		})
 		Convey("Version loss and authorization failures remain distinct", func() {
-			for _, status := range []int{401, 403, 404, 409, 410, 503} {
+			for _, status := range []int{401, 403, 404, 409, 410, 502, 503} {
 				if status == 410 {
 					upstreamErr = kb.ErrVersionGone
 				} else {

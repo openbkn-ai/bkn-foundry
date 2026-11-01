@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -109,6 +110,16 @@ func replySourceError(c *gin.Context, ctx context.Context, err error) {
 		case 422:
 			status = 400
 		}
+	}
+	// Dependency failures have a diagnostic, not a business-read event or Trace.
+	// Log only the route template and numeric status; never context, headers,
+	// source URLs, query values, response bodies or error strings.
+	if status >= 500 {
+		upstreamStatus := 0
+		if upstream != nil {
+			upstreamStatus = upstream.StatusCode
+		}
+		logger.Warnf("Knowledge base source read unavailable: route=%q status=%d upstream_status=%d", c.FullPath(), status, upstreamStatus)
 	}
 	code := httperrors.PublicError_InternalServerError
 	switch status {
