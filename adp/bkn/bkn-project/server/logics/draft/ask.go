@@ -306,6 +306,7 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 	in.Kind = askKindObjectType
 	base, asked, err := s.documentAskObject(ctx, token, draft, objectType, base)
 	if err != nil {
+		span.SetStatus(codes.Error, "Document object not askable")
 		return nil, err
 	}
 	in.ObjectType, in.Relations = &asked, []askRelation{}
@@ -359,10 +360,12 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 	if base.Document != nil && base.Document.Role == "relation" {
 		documentInput, err = s.documentEditInput(ctx, token, draft, base.Document)
 		if err != nil {
+			span.SetStatus(codes.Error, "Document samples unavailable")
 			return nil, err
 		}
 		base, err = kbconcept.ValidateEditedRelation(documentInput, draft.Items, relationType, base)
 		if err != nil {
+			span.SetStatus(codes.Error, "Invalid document relation")
 			return nil, documentEditError(ctx)
 		}
 	}

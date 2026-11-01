@@ -51,7 +51,13 @@ func (s *draftService) AskNewRelationType(ctx context.Context, token string, pro
 		return nil, err
 	}
 	if req.Working != nil && req.Working.DocumentMapping != nil {
-		return s.askNewDocumentRelation(ctx, token, draft, in, req, caller, stream)
+		answer, err := s.askNewDocumentRelation(ctx, token, draft, in, req, caller, stream)
+		if err != nil {
+			span.SetStatus(codes.Error, "Document relation not askable")
+		} else {
+			span.SetStatus(codes.Ok, "")
+		}
+		return answer, err
 	}
 	items := &draft.Items
 	base := s.workingRelationType(ctx, items, &interfaces.DraftRelationType{}, req.Working, caller)
