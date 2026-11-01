@@ -47,6 +47,7 @@ const (
 // Relation cardinalities.
 const (
 	DRAFT_CARDINALITY_ONE_TO_ONE   = "one_to_one"
+	DRAFT_CARDINALITY_ONE_TO_MANY  = "one_to_many"
 	DRAFT_CARDINALITY_MANY_TO_ONE  = "many_to_one"
 	DRAFT_CARDINALITY_MANY_TO_MANY = "many_to_many"
 )
@@ -264,8 +265,9 @@ type DraftTable struct {
 }
 
 type DraftObjectType struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	Document *DraftDocumentModel `json:"document,omitempty"`
+	ID       string              `json:"id"`
+	Name     string              `json:"name"`
 	// Aliases are its names in the other naming language, from the catalog; absent when none.
 	Aliases     []string         `json:"aliases,omitempty"`
 	Description string           `json:"description"`
@@ -285,8 +287,10 @@ type DraftObjectType struct {
 }
 
 type DraftProperty struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
+	Extraction  *DraftExtractionField `json:"extraction,omitempty"`
+	ReadOnly    bool                  `json:"read_only,omitempty"`
+	Name        string                `json:"name"`
+	DisplayName string                `json:"display_name"`
 	// Aliases are its names in the other naming language, from the catalog; absent when none.
 	Aliases        []string `json:"aliases,omitempty"`
 	Type           string   `json:"type"`
@@ -318,8 +322,10 @@ type DraftKeyEvidence struct {
 }
 
 type DraftRelationType struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	Document        *DraftDocumentModel   `json:"document,omitempty"`
+	DocumentMapping *DraftDocumentMapping `json:"document_mapping,omitempty"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
 	// Aliases are its names in the other naming language, from the catalog; absent when none.
 	Aliases     []string            `json:"aliases,omitempty"`
 	Description string              `json:"description"`
