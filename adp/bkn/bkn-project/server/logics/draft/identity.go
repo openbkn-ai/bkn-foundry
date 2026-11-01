@@ -80,6 +80,15 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
 	if objectType.Document != nil {
+		invalid := httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIdentity)
+		if len(identity.Properties) > 5 {
+			return nil, invalid
+		}
+		for _, relation := range draft.Items.RelationTypes {
+			if relation != nil && relation.Target == objectType.ID && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "linking" && !slices.Equal(identity.Properties, []string{relation.DocumentMapping.IdentityProperty}) {
+				return nil, invalid
+			}
+		}
 		if objectType.Document.Role != "entity" && !slices.Equal(identity.Properties, objectType.PrimaryKeys) {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIdentity)
 		}

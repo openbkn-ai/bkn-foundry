@@ -276,3 +276,36 @@ func TestAddingStructuredCatalogPreservesDocumentOnlyDraft(t *testing.T) {
 		t.Fatal("source draft mutated while merging")
 	}
 }
+
+func TestDocumentChooseIdentityCannotInvalidateLinkingOrExceedKeyLimit(t *testing.T) {
+	for _, scenario := range []string{"link_target", "six_keys"} {
+		t.Run(scenario, func(t *testing.T) {
+			kb.ResetForTest()
+			entitlement.ResetForTest()
+			defer kb.ResetForTest()
+			defer entitlement.ResetForTest()
+			entitlement.SetGate(entitlement.GateFunc(func() entitlement.Snapshot { return entitlement.Snapshot{Edition: licverify.EditionProfessional} }))
+			kb.Register(kb.Providers{Source: &documentSaveSource{}, Concepts: kb.UnavailableConcepts{}})
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			da := pmock.NewMockDraftAccess(ctrl)
+			ps := pmock.NewMockProjectService(ctrl)
+			ps.EXPECT().GetProject(gomock.Any(), "Bearer synthetic", "p").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p"}}, nil)
+			draft := editableDocumentDraft(t)
+			names := []string{"other", "third", "fourth", "fifth", "sixth", "seventh"}
+			for _, name := range names {
+				draft.Items.ObjectTypes[0].Properties = append(draft.Items.ObjectTypes[0].Properties, &interfaces.DraftProperty{Name: name, Type: "string"})
+			}
+			if scenario == "link_target" {
+				draft.Items.RelationTypes = []*interfaces.DraftRelationType{{ID: "mention", Target: "order_doc", DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", IdentityProperty: "number"}}}
+				names = names[:1]
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p").Return(draft, true, nil)
+			service := &draftService{da: documentDraftMock{da}, ps: ps}
+			_, err := service.ChooseIdentity(context.Background(), "Bearer synthetic", "p", "order_doc", interfaces.DraftIdentity{UpdateTime: 10, Properties: names}, interfaces.AccountInfo{ID: "u", Type: "user"})
+			if err == nil || len(draft.Items.ObjectTypes[0].PrimaryKeys) != 1 || draft.Items.ObjectTypes[0].PrimaryKeys[0] != "number" {
+				t.Fatal("invalid identity changed a document model", err)
+			}
+		})
+	}
+}
