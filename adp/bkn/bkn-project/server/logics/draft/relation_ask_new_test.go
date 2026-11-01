@@ -136,6 +136,35 @@ func Test_AskNewRelationType(t *testing.T) {
 			So(got.Dropped[0].Reason, ShouldEqual, askDroppedUnchanged)
 		})
 
+		Convey("The ends chosen are told apart, and ends that leave one of them out are dropped\n", func() {
+			read(`{"field":"ends","source_object_type_id":"routes","target_object_type_id":"stations","mapping":[{"source_property":"from_station","target_property":"station_code"}],"reason":"x"}`)
+			got, err := ask(&interfaces.DraftRelationTypeSave{SourceObjectTypeID: "shipments"})
+			So(err, ShouldBeNil)
+			So(in.ChosenEnds, ShouldResemble, []askChosenEnd{{ID: "shipments", Name: "Shipments", Role: askChosenSource}})
+			So(got.Dropped, ShouldResemble, []interfaces.DraftAskDropped{{Field: interfaces.DRAFT_ASK_REVISION_ENDS, Reason: askDroppedNotFromGivenEnd}})
+
+			// The chosen end as the target is from it too.
+			read(`{"field":"ends","source_object_type_id":"deliveries","mapping":[{"source_property":"waybill","target_property":"waybill"}],"reason":"x"}`)
+			got, err = ask(&interfaces.DraftRelationTypeSave{TargetObjectTypeID: "shipments"})
+			So(err, ShouldBeNil)
+			So(in.ChosenEnds[0].Role, ShouldEqual, askChosenTarget)
+			So(len(got.Revisions), ShouldEqual, 1)
+
+			// With both chosen, both stay.
+			read(`{"field":"ends","source_object_type_id":"deliveries","target_object_type_id":"shipments","mapping":[{"source_property":"waybill","target_property":"waybill"}],"reason":"x"}`)
+			got, err = ask(&interfaces.DraftRelationTypeSave{SourceObjectTypeID: "shipments", TargetObjectTypeID: "stations"})
+			So(err, ShouldBeNil)
+			So(len(in.ChosenEnds), ShouldEqual, 2)
+			So(got.Dropped[0].Reason, ShouldEqual, askDroppedNotFromGivenEnd)
+
+			// With none chosen, there is nothing to keep.
+			read(`{"field":"ends","source_object_type_id":"deliveries","target_object_type_id":"shipments","mapping":[{"source_property":"waybill","target_property":"waybill"}],"reason":"x"}`)
+			got, err = ask(nil)
+			So(err, ShouldBeNil)
+			So(in.ChosenEnds, ShouldBeEmpty)
+			So(len(got.Revisions), ShouldEqual, 1)
+		})
+
 		Convey("Revisions given with no answer written are still given\n", func() {
 			read(`{"field":"name","value":"配送的运单","reason":"按业务含义命名"}`, "")
 

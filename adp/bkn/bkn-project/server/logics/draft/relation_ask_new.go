@@ -21,7 +21,20 @@ import (
 // nothing. The Agent reads the relation as the form has it and the object types it may join: the
 // ends given, the other ends of the candidates the data suggests for the first end, then the other
 // adopted object types, briefly. Its revisions are checked as the relation's own ask checks them, on
-// a copy, and given also when it writes no answer; nothing is written.
+// a copy, and given also when it writes no answer; ends that leave out an end the form has chosen are
+// dropped. Nothing is written.
+
+// askChosenEnd is an end the form of a relation type not made yet has chosen, by its role.
+type askChosenEnd struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+const (
+	askChosenSource = "source"
+	askChosenTarget = "target"
+)
 
 // askEvidenceTimeout bounds reading the candidates before asking, so the answer stays within the
 // deadline a gateway gives a request that is not streamed.
@@ -61,10 +74,15 @@ func (s *draftService) AskNewRelationType(ctx context.Context, token string, pro
 		}
 	}
 	given := []string{}
-	for _, id := range []string{base.Source, base.Target} {
-		if id != "" && !slices.Contains(given, id) {
-			given = append(given, id)
-			offer(findObjectType(items, id), false)
+	for _, end := range []struct{ id, role string }{{base.Source, askChosenSource}, {base.Target, askChosenTarget}} {
+		if end.id == "" {
+			continue
+		}
+		ot := findObjectType(items, end.id)
+		in.ChosenEnds = append(in.ChosenEnds, askChosenEnd{ID: ot.ID, Name: ot.Name, Role: end.role})
+		if !slices.Contains(given, end.id) {
+			given = append(given, end.id)
+			offer(ot, false)
 		}
 	}
 	if len(given) > 0 {
@@ -86,6 +104,9 @@ func (s *draftService) AskNewRelationType(ctx context.Context, token string, pro
 
 	answer, err := s.ask(ctx, caller, askTurn{input: in, finish: func(out *askOutput) *interfaces.DraftAskAnswer {
 		return checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
+			if r.Field == interfaces.DRAFT_ASK_REVISION_ENDS && !keepsChosenEnds(base, r) {
+				return nil, askDroppedNotFromGivenEnd
+			}
 			return s.relationTypeRevision(ctx, items, base, r, caller)
 		})
 	}, answerOptional: true}, stream)
@@ -95,6 +116,24 @@ func (s *draftService) AskNewRelationType(ctx context.Context, token string, pro
 	}
 	span.SetStatus(codes.Ok, "")
 	return answer, nil
+}
+
+// keepsChosenEnds tells whether ends keep every end the form has chosen, as their source or target;
+// an end left out is the chosen one, as the relation's ask reads it.
+func keepsChosenEnds(base *interfaces.DraftRelationType, r askRevisionOutput) bool {
+	source, target := r.Source, r.Target
+	if source == "" {
+		source = base.Source
+	}
+	if target == "" {
+		target = base.Target
+	}
+	for _, chosen := range []string{base.Source, base.Target} {
+		if chosen != "" && chosen != source && chosen != target {
+			return false
+		}
+	}
+	return true
 }
 
 // askCandidates are the candidates of the first end given, adopted, that join the ends given: with
