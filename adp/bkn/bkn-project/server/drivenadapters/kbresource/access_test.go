@@ -58,6 +58,13 @@ func TestSelectionPersistence(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(string(raw), ShouldNotContainSubstring, "private-hold-uuid")
 		})
+		Convey("Clearing an unarchived history does not requeue already released holds", func() {
+			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT f_archived FROM t_bkn_project_project").WithArgs("p").WillReturnRows(sqlmock.NewRows([]string{"f_archived"}).AddRow(false))
+			mock.ExpectExec("UPDATE t_bkn_project_kb_selection.*WHEN f_state='released' THEN 'released'").WithArgs(sqlmock.AnyArg(), "p").WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectCommit()
+			So(access.Clear(ctx, "p"), ShouldBeNil)
+		})
 		So(mock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }

@@ -224,7 +224,7 @@ func (a *access) Retire(ctx context.Context, project, id string) error {
 }
 func (a *access) Clear(ctx context.Context, project string) error {
 	return a.mutate(ctx, project, false, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "UPDATE "+Table+" SET f_current=0,f_state=CASE WHEN f_retained=1 THEN 'retained' ELSE 'release_pending' END,f_revision=f_revision+1,f_update_time=? WHERE f_project_id=? AND (f_current=1 OR f_state='pending')", time.Now().UnixMilli(), project)
+		_, err := tx.ExecContext(ctx, "UPDATE "+Table+" SET f_current=0,f_state=CASE WHEN f_retained=1 THEN 'retained' WHEN f_state='released' THEN 'released' ELSE 'release_pending' END,f_revision=f_revision+1,f_update_time=? WHERE f_project_id=? AND (f_current=1 OR f_state='pending')", time.Now().UnixMilli(), project)
 		return err
 	})
 }
