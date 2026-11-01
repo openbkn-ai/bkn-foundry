@@ -49,6 +49,7 @@ METRIC_DESIGN_LOCALE = MIGRATIONS / "0.2.1/30-object-metric-designer-locale.sql"
 ONTOLOGY_ASK_REVISIONS = MIGRATIONS / "0.2.1/31-bkn-project-ontology-ask-revisions.sql"
 ONTOLOGY_ASK_V3 = MIGRATIONS / "0.2.1/34-ontology-ask-relation-suggestions-v3.sql"
 ONTOLOGY_ASK_V4 = MIGRATIONS / "0.2.1/35-ontology-ask-chosen-ends-v4.sql"
+ONTOLOGY_ASK_V5 = MIGRATIONS / "0.2.1/37-ontology-ask-document-models-v5.sql"
 RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
 
 
@@ -274,6 +275,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, ONTOLOGY_ASK_V3)
         apply(upgraded, ONTOLOGY_ASK_V4)
         apply(upgraded, CONCEPT_SEED)
+        apply(upgraded, ONTOLOGY_ASK_V5)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -481,6 +483,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(ONTOLOGY_ASK_V3),
                     str(ONTOLOGY_ASK_V4),
                     str(CONCEPT_SEED),
+                    str(ONTOLOGY_ASK_V5),
                 ],
             ],
         ],
@@ -540,6 +543,11 @@ def ontology_ask_locales_text():
     return text[text.index("-- Attach the zh-CN"):]
 
 
+def ontology_ask_v5_locales_text():
+    text = ONTOLOGY_ASK_V5.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
@@ -548,6 +556,7 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + ontology_ask_locales_text()
         + "\n" + METRIC_DESIGN_LOCALE.read_text()
         + "\n" + CONCEPT_SEED.read_text()
+        + "\n" + ontology_ask_v5_locales_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
@@ -563,9 +572,9 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # fresh install starts at v4, so its prompt is the body 35 writes.
     ask = init.index("-- bkn-project-ontology-ask:")
     assert init.index("-- bkn-project-answer-judge:") < ask < init.index(CLAIM_LOCALES.read_text())
-    v4 = [s for s in statements(ONTOLOGY_ASK_V4) if s.startswith("insert into t_agent_prompt_version")][0]
-    body = v4[v4.index("select v.f_prompt_id, 4,") + len("select v.f_prompt_id, 4,"):v4.index("v.f_vars_schema,")].strip()
-    assert init.index("select 'bkn-project-ontology-ask-prompt', 4, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
+    v5 = [s for s in statements(ONTOLOGY_ASK_V5) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v5[v5.index("select v.f_prompt_id, 5, 'en-US',") + len("select v.f_prompt_id, 5, 'en-US',"):v5.index("v.f_vars_schema,")].strip()
+    assert init.index("select 'bkn-project-ontology-ask-prompt', 5, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1215,6 +1224,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(REQUIREMENTS_V7) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V4) if "f_localized_content" in s}
+                               | {s for s in statements(ONTOLOGY_ASK_V5) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | set(statements(METRIC_DESIGN_LOCALE)))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
@@ -3528,9 +3538,10 @@ def ask_v3_state(db, start):
 
 
 @pytest.mark.parametrize("start", ["upgraded", "installed"])
-def test_ontology_ask_v4_upgrade_matches_fresh_install_and_keeps_history(start):
+def test_ontology_ask_v4_upgrade_matches_its_historical_default_and_keeps_history(start):
     with database() as db, database() as fresh:
-        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        ask_v3_state(fresh, "installed")
+        apply(fresh, ONTOLOGY_ASK_V4)
         ask_v3_state(db, start)
         old = ask_prompt_version(db, 3)
         history = snapshot(db)[3]
@@ -3728,4 +3739,66 @@ def test_concept_seed_does_not_create_history_for_custom_agent():
         db.execute("DELETE FROM t_agent_version WHERE f_agent_id=?", (CONCEPT_AGENT,))
         before = snapshot(db)
         apply(db, CONCEPT_SEED)
+        assert snapshot(db) == before
+
+
+def ask_v4_state(db, start):
+    ask_v3_state(db, start)
+    apply(db, ONTOLOGY_ASK_V4)
+    apply(db, SOURCE_LANGUAGE)
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_ontology_ask_document_models_v5_matches_fresh_and_preserves_history(start):
+    with database() as db, database() as fresh:
+        ask_v4_state(db, start)
+        old = ask_prompt_version(db, 4)
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        apply(db, ONTOLOGY_ASK_V5)
+        assert item_from_db(db, "bkn-project-ontology-ask") == item_from_db(fresh, "bkn-project-ontology-ask")
+        new = ask_prompt_version(db, 5)
+        assert new["f_content"] == ask_prompt_version(fresh, 5)["f_content"]
+        assert new["f_localized_content"] == ask_prompt_version(fresh, 5)["f_localized_content"]
+        assert new["f_source_language"] == "en-US"
+        assert "extraction_instruction" in new["f_content"] and "document_mapping" in new["f_content"]
+        assert "read_only" in new["f_content"] and "acceptance files are not provided" in new["f_content"]
+        assert ask_prompt_version(db, 4) == old
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_V5)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 8))
+def test_ontology_ask_document_models_v5_resumes_interrupted_upgrades(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            ask_v4_state(connection, "upgraded")
+            if customized:
+                connection.execute("UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='bkn-project-ontology-ask'")
+        apply(expected, ONTOLOGY_ASK_V5)
+        apply(db, ONTOLOGY_ASK_V5, limit=limit)
+        apply(db, ONTOLOGY_ASK_V5)
+        assert snapshot(db) == snapshot(expected)
+
+
+@pytest.mark.parametrize("field", ["f_content", "f_localized_content"])
+def test_ontology_ask_document_models_v5_keeps_custom_prompts(field):
+    with database() as db:
+        ask_v4_state(db, "upgraded")
+        value = 'custom body' if field == "f_content" else '{"zh-CN":"custom body","en-US":"custom body"}'
+        db.execute(f"UPDATE t_agent_prompt_version SET {field}=? WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=4", (value,))
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_V5)
+        assert snapshot(db) == before
+
+
+def test_ontology_ask_document_models_v5_does_not_take_over_an_operator_version():
+    with database() as db, database() as fresh:
+        ask_v4_state(db, "upgraded")
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        official = ask_prompt_version(fresh, 5)
+        db.execute("INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time,f_source_language) VALUES (?,?,?,?,?,?,?)", ("bkn-project-ontology-ask-prompt",5,official["f_content"],None,"operator",1000,"en-US"))
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_V5)
         assert snapshot(db) == before

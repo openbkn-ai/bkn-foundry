@@ -352,3 +352,11 @@ It requires the current owner and live source permission; it neither invokes an
 Agent nor saves original text. Acceptance files are excluded. Example edits are
 matched against current native text; forged quotes, offsets and protected fields
 are refused. Quote persistence still follows the directory original-text switch.
+
+### Document-model assistant revisions
+
+Document objects and relations reuse the existing `ask` endpoints. Before calling the built-in ontology assistant, the server validates the working form and example locations against the current locked debug samples. Only verified examples enter the context (at most 4000 Unicode code points and 10 examples); acceptance files are excluded. Document context includes roles, layers, extraction instructions and protected fields, without invented table counts or join rates.
+
+A business `data_property` revision may include a nonempty `extraction_instruction` of at most 1000 characters for an existing writable extraction property. Fixed evidence permits only name/description proposals; system identities of non-entity objects are immutable. Document relation `ends` revisions use `document_mapping` and `cardinality`, preserve selected ends and never contain SQL mappings. All revisions are validated on copies; asking never saves a draft or conversation. A person applies a proposal and saves it.
+
+Fresh installations seed ontology assistant v5. Existing installations must back up and apply additive Agent migration 37 separately, preserving history, operator prompts and runtime settings. Do not apply unrelated historical migrations for this upgrade.

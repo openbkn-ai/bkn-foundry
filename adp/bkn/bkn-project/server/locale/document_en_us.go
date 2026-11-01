@@ -10,6 +10,7 @@ var documentEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknProject.Draft.EventParticipantInUse":            "This relation is still an event participant. Update the event participant settings before deleting it.",
+		"BknProject.Draft.DocumentRelation.NewName":         "Document relation",
 		"BknProject.Draft.DocumentRelation.ManualReason":    "Configured by the modeller; verify matches using the chosen fields during building.",
 		"BknProject.Draft.DocumentDataNotReady":             "Document data is not ready. Complete data preparation before confirming the draft; reviewed candidates are preserved.",
 		"BknProject.KnowledgeBase.NoDebugSamples":           "Select and save debug samples first.",

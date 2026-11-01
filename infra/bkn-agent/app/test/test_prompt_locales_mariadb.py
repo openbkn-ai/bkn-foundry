@@ -110,9 +110,9 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert len(rows) == len(BUILTIN_AGENT_IDS)
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
-                # The new seed explicitly initializes its source language on both
-                # fresh and upgrade paths; historical seeds preserve legacy NULL.
-                has_explicit_source = upgrade == "fresh" or agent_id == CONCEPT_AGENT
+                # New seeds and ontology v5 explicitly set their source language on
+                # both install paths; unchanged historical heads preserve NULL.
+                has_explicit_source = upgrade == "fresh" or agent_id in {CONCEPT_AGENT, "bkn-project-ontology-ask"}
                 assert source_language == (expected if has_explicit_source else None), agent_id
                 cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
                 initial = cursor.fetchone()

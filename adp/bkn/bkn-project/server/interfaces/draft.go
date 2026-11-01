@@ -480,13 +480,16 @@ type DraftAskRevision struct {
 
 // DraftAskPropertyRevision is a property's display name and comment, the property by its name.
 type DraftAskPropertyRevision struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Comment     string `json:"comment"`
+	ExtractionInstruction *string `json:"extraction_instruction,omitempty"`
+	Name                  string  `json:"name"`
+	DisplayName           string  `json:"display_name"`
+	Comment               string  `json:"comment"`
 }
 
 // DraftAskEndsRevision is a relation type's ends and its direct mapping, as the save body has them.
 type DraftAskEndsRevision struct {
+	DocumentMapping    *DraftDocumentMapping  `json:"document_mapping,omitempty"`
+	Cardinality        string                 `json:"cardinality,omitempty"`
 	SourceObjectTypeID string                 `json:"source_object_type_id"`
 	TargetObjectTypeID string                 `json:"target_object_type_id"`
 	Type               string                 `json:"type"`
