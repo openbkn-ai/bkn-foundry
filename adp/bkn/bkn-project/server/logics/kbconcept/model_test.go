@@ -121,3 +121,17 @@ func TestSameDocumentRelationsCanConnectObjectsOfTheSameType(t *testing.T) {
 		t.Fatal("trivial identity-to-itself mapping must not be proposed as a hierarchy")
 	}
 }
+
+func TestManagedFactFieldsDoNotReserveEntityBusinessProperties(t *testing.T) {
+	input := modelInput("条目 A 的业务状态为可用。")
+	object := proposedObject(input, "business_item", "entity")
+	object.Properties = append(object.Properties, &interfaces.DraftProperty{Name: "status", DisplayName: "业务状态", Type: "string", Extraction: &interfaces.DraftExtractionField{Instruction: "提取来源明确说明的业务状态", Examples: []interfaces.DraftSourceCitation{documentQuote(input)}}})
+	proposal := kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{object}}
+	if _, err := ValidateModel(input, interfaces.DraftItems{}, proposal); err != nil {
+		t.Fatal("fact-only status field must not reserve an entity property", err)
+	}
+	object.Document.Role = "fact"
+	if _, err := ValidateModel(input, interfaces.DraftItems{}, proposal); err == nil {
+		t.Fatal("fact lifecycle status must remain managed")
+	}
+}

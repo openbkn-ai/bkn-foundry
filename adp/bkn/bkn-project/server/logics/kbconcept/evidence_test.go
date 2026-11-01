@@ -77,7 +77,7 @@ func TestEvidenceLabelsAreBilingualAndTamperedTemplatesAreRefused(t *testing.T) 
 
 func TestDocumentModelsGetCheckedEvidenceLinks(t *testing.T) {
 	input := modelInput("合同 C-1 的条款。")
-	model, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "contract_doc", "entity")}})
+	model, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "contract_file", "file")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestDocumentModelsGetCheckedEvidenceLinks(t *testing.T) {
 		if r.Document.Role != "evidence_reference" {
 			continue
 		}
-		if r.Source != "contract_doc" || r.Cardinality != "many_to_one" || r.Adopted {
+		if r.Source != "contract_file" || r.Cardinality != "many_to_one" || r.Adopted {
 			t.Fatal("wrong evidence reference")
 		}
 	}
@@ -102,5 +102,25 @@ func TestDocumentModelsGetCheckedEvidenceLinks(t *testing.T) {
 	again, err := BuildEvidence(input, existing)
 	if err != nil || len(again.Model.RelationTypes) != 0 {
 		t.Fatal("evidence references duplicated", err)
+	}
+}
+
+func TestCanonicalEntitiesDoNotGetSingleDocumentEvidenceCardinality(t *testing.T) {
+	input := modelInput("同一业务编号可出现在多份文件。")
+	model, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "business_entity", "entity")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := BuildEvidence(input, interfaces.DraftItems{ObjectTypes: model.ObjectTypes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence.Model.RelationTypes) != 2 {
+		t.Fatal("entity provenance cannot be collapsed to one document/block reference")
+	}
+	for _, relation := range evidence.Model.RelationTypes {
+		if relation.Source == "business_entity" {
+			t.Fatal("a canonical entity may have property-level sources from different files")
+		}
 	}
 }

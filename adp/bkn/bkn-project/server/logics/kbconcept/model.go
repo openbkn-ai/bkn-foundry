@@ -83,8 +83,12 @@ var commonFields = []managedField{
 }
 var factFields = []managedField{{"effective_from", "datetime", "Effective from"}, {"effective_to", "datetime", "Effective to"}, {"status", "string", "Status"}, {"recorded_at", "datetime", "Recorded at"}}
 
-func managedName(name string) bool {
-	for _, list := range [][]managedField{commonFields, factFields} {
+func managedName(name, role string) bool {
+	lists := [][]managedField{commonFields}
+	if role == "fact" || role == "event" {
+		lists = append(lists, factFields)
+	}
+	for _, list := range lists {
 		for _, f := range list {
 			if f.Name == name {
 				return true
@@ -139,7 +143,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 		}
 		seen := map[string]bool{}
 		for _, p := range object.Properties {
-			if p == nil || !modelID.MatchString(p.Name) || managedName(p.Name) || seen[p.Name] || p.ReadOnly || !propertyTypes[p.Type] || p.MappedField != "" || p.ValueTypeID != "" || !boundedText(p.DisplayName, 1, 128) || !boundedText(p.Description, 0, 1000) || p.Extraction == nil || !boundedText(p.Extraction.Instruction, 1, 1000) || len(p.Extraction.Examples) > 3 || len(p.Aliases) > 0 {
+			if p == nil || !modelID.MatchString(p.Name) || managedName(p.Name, object.Document.Role) || seen[p.Name] || p.ReadOnly || !propertyTypes[p.Type] || p.MappedField != "" || p.ValueTypeID != "" || !boundedText(p.DisplayName, 1, 128) || !boundedText(p.Description, 0, 1000) || p.Extraction == nil || !boundedText(p.Extraction.Instruction, 1, 1000) || len(p.Extraction.Examples) > 3 || len(p.Aliases) > 0 {
 				return nil, ErrInvalidModel
 			}
 			examples, err := validatedQuotes(input, p.Extraction.Examples)

@@ -134,7 +134,7 @@ func BuildEvidence(input *SampleInput, existing interfaces.DraftItems) (*Evidenc
 
 func buildEvidenceReferences(input *SampleInput, existing interfaces.DraftItems, result *EvidenceSet, used map[string]bool) error {
 	for _, source := range existing.ObjectTypes {
-		if source == nil || source.Document == nil || strings.HasPrefix(source.Document.Role, "evidence_") {
+		if source == nil || source.Document == nil || source.Document.Role == "entity" || strings.HasPrefix(source.Document.Role, "evidence_") {
 			continue
 		}
 		if _, ok := roleLayers[source.Document.Role]; !ok || source.Document.Role == "relation" {
