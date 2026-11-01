@@ -10,6 +10,11 @@ env:
 bknSafe:
   url: "http://bkn-safe:3000"
 
+# Origin of the internal knowledge-base API, configured by the EE deployment.
+# Empty keeps the source provider unavailable; no identity fallback is used.
+knowledgeBase:
+  url: ""
+
 replicaCount: 1
 
 # Node selector.
