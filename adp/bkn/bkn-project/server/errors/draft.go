@@ -31,6 +31,7 @@ const (
 	BknProject_Draft_ItemNotFound = "BknProject.Draft.ItemNotFound"
 
 	// 409
+	BknProject_Draft_DocumentRelationScope = "BknProject.Draft.DocumentRelationScope"
 	BknProject_Draft_EventParticipantInUse = "BknProject.Draft.EventParticipantInUse"
 	BknProject_Draft_DocumentDataNotReady  = "BknProject.Draft.DocumentDataNotReady"
 	BknProject_Draft_Drafting              = "BknProject.Draft.Drafting"
@@ -97,6 +98,7 @@ const (
 
 var (
 	DraftErrCodeList = []string{
+		BknProject_Draft_DocumentRelationScope,
 		BknProject_Draft_EventParticipantInUse,
 		BknProject_Draft_DocumentDataNotReady,
 		BknProject_Draft_NoCatalogs,

@@ -43,6 +43,18 @@ func property(object *interfaces.DraftObjectType, name string) *interfaces.Draft
 	return nil
 }
 
+// RelationScopeError identifies a legacy join that a person must repair before
+// editing either endpoint. Its text carries no source content or internal id.
+type RelationScopeError struct {
+	ID   string
+	Name string
+}
+
+func (*RelationScopeError) Error() string {
+	return "same-document relation has a global entity endpoint"
+}
+func (*RelationScopeError) Unwrap() error { return ErrInvalidModel }
+
 // File-scoped claims have one document identity. A canonical entity can merge
 // properties from several files, so its document_id cannot define this join.
 func fileScopedObject(object *interfaces.DraftObjectType) bool {

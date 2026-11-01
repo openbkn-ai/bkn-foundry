@@ -129,7 +129,7 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 			return nil, ErrInvalidModel
 		}
 		if m := relation.DocumentMapping; m != nil && m.Mode == "same_document" && (!fileScopedObject(source) || !fileScopedObject(target)) {
-			return nil, ErrInvalidModel
+			return nil, &RelationScopeError{ID: relation.ID, Name: relation.Name}
 		}
 		for _, mapping := range relation.Mapping {
 			a, b := property(source, mapping.SourceProperty), property(target, mapping.TargetProperty)

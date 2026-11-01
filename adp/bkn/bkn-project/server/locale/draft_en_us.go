@@ -9,6 +9,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var draftEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknProject.Draft.DocumentRelationScope": "Before editing this object, change the relationship “{{.name}}” to connect by business identifier. A business object can have evidence in several documents.",
 		"BknProject.Draft.InvalidRelation":       "Invalid Relation. A relation's ends must be object types of the draft, mapped by properties they have and fields of the backing table, of types that join, and not the same as another relation's; only a relation a person made can be deleted, see error_details.",
 		"BknProject.Draft.InvalidProperty":       "Invalid Property. A property maps a field its table does not have, a field another property maps already, or a type the field does not map to, or its name or display name is not valid, see error_details.",
 		"BknProject.Draft.PropertyInUse":         "Property in Use. Relations join by a property you are removing; settle those relations first, see error_details.",

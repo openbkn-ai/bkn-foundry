@@ -5,6 +5,7 @@ package kbconcept
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
@@ -132,7 +133,9 @@ func TestObjectEditCannotPreserveGlobalEntitySameDocumentJoin(t *testing.T) {
 	}
 	candidate.Properties[0].Extraction.Instruction = "Read the explicit business identifier"
 	legacy := &interfaces.DraftRelationType{ID: "legacy_join", Source: "order_doc", Target: "order_file", DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}, Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: "number", TargetProperty: "number"}}}
-	if _, err := ValidateEditedObject(input, interfaces.DraftItems{ObjectTypes: result.ObjectTypes, RelationTypes: []*interfaces.DraftRelationType{legacy}}, original, &candidate); err == nil {
-		t.Fatal("object edit kept an invalid global-entity document constraint")
+	_, err = ValidateEditedObject(input, interfaces.DraftItems{ObjectTypes: result.ObjectTypes, RelationTypes: []*interfaces.DraftRelationType{legacy}}, original, &candidate)
+	var scope *RelationScopeError
+	if !errors.As(err, &scope) || scope.ID != "legacy_join" || !errors.Is(err, ErrInvalidModel) {
+		t.Fatal("missing actionable legacy relation refusal", err)
 	}
 }

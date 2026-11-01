@@ -6,6 +6,10 @@ package draft
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"strings"
 	"testing"
 
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
@@ -62,7 +66,7 @@ func editableDocumentDraft(t *testing.T) *interfaces.Draft {
 	return &interfaces.Draft{ProjectID: "p", Status: "ready", UpdateTime: 10, Items: interfaces.DraftItems{Inputs: &interfaces.DraftInputs{NamingLanguage: "en-US"}, ObjectTypes: validated.ObjectTypes}}
 }
 func TestSaveDocumentFieldsUsesNativeSamplesAndKeepsAdoptionExplicit(t *testing.T) {
-	for _, scenario := range []string{"save", "readonly", "stale_source", "unlicensed", "lose_identity"} {
+	for _, scenario := range []string{"save", "readonly", "stale_source", "unlicensed", "lose_identity", "legacy_relation"} {
 		t.Run(scenario, func(t *testing.T) {
 			kb.ResetForTest()
 			entitlement.ResetForTest()
@@ -83,6 +87,18 @@ func TestSaveDocumentFieldsUsesNativeSamplesAndKeepsAdoptionExplicit(t *testing.
 			ps.EXPECT().GetProject(gomock.Any(), "Bearer synthetic", "p").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p", Owner: caller, NamingLanguage: "en-US"}}, nil)
 			draft := editableDocumentDraft(t)
 			object := draft.Items.ObjectTypes[0]
+			if scenario == "legacy_relation" {
+				raw, _ := json.Marshal(object)
+				var target interfaces.DraftObjectType
+				if err := json.Unmarshal(raw, &target); err != nil {
+					t.Fatal(err)
+				}
+				target.ID = "source_file"
+				target.Document.Role, target.Document.Layer = "file", "fact"
+				target.PrimaryKeys = []string{"_id"}
+				draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, &target)
+				draft.Items.RelationTypes = []*interfaces.DraftRelationType{{ID: "legacy_join", Name: "Source agreement", Source: object.ID, Target: target.ID, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document"}, Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}}}}
+			}
 			if scenario == "lose_identity" {
 				object.Adopted = true
 			}
@@ -112,6 +128,21 @@ func TestSaveDocumentFieldsUsesNativeSamplesAndKeepsAdoptionExplicit(t *testing.
 			result, err := service.SaveObjectType(context.Background(), "Bearer synthetic", "p", "order_doc", save, caller)
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			if scenario == "legacy_relation" {
+				var problem *httperrors.HTTPError
+				if !errors.As(err, &problem) || problem.HTTPCode != 409 || problem.BaseError.ErrorCode != "BknProject.Draft.DocumentRelationScope" {
+					t.Fatal("missing repair refusal", err)
+				}
+				for _, lang := range []i18n.Language{i18n.AmericanEnglish, i18n.SimplifiedChinese} {
+					problem.Lang = lang
+					if err := problem.Render(); err != nil {
+						t.Fatal(err)
+					}
+					if !strings.Contains(problem.Description, "Source agreement") || strings.Contains(problem.Description, "legacy_join") {
+						t.Fatal("repair must name the business relation without its internal id", problem.Description)
+					}
+				}
 			}
 			if !success {
 				return

@@ -367,3 +367,5 @@ come from several documents and must connect to source claims by business
 identity through `linking`. Candidate, relation-edit and object-edit validation
 reject an entity endpoint in a same-document rule. Existing invalid rules are
 not silently rewritten; repair their mapping explicitly.
+
+An affected legacy object save or assistant preflight returns 409 `Draft.DocumentRelationScope`, naming the business relationship that must be repaired. The structured details retain its reference; the bilingual user message does not display an internal id.
