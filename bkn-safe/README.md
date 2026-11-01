@@ -307,3 +307,28 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 升级需同时使用撤掉业务溯源 bootstrap Job 的 Trace Chart 和不再注入专用
 bootstrap Secret 的 bkn-agent Chart/镜像；不要单独删库或回滚到会重新创建
 账户的旧版 Safe。旧 Helm keep Secret 可留存，不再被新版本引用。
+
+## Project build delegation (K4)
+
+The internal [build-grant API](../docs/api/bkn-safe/build-grants.yaml) provides
+non-credentialed project/job identities, an immutable file/version manifest and
+live delegator permission checks. It does not add general Casbin grants to these
+identities or admit them as knowledge-network proxies. The project coordinator
+must authenticate the owner, persist the private grant id before remote creation,
+fence cancellation/archive/model changes and reject late results. KB API checks
+the grant before every content read; this service slice alone does not implement
+that integration or complete K4.
+
+Revocation retains a protected identity solely for releasing private holds.
+Unknown ids are tombstoned so late creates cannot restore access. Retire an
+identity only after the coordinator verifies retention cleanup and published
+references. Neither read/check requests nor rejected requests emit business
+logs or Trace. Grant rows contain the delegator and scope, never user credentials.
+
+Before a rollout, back up bkn-safe and manually apply
+[`20261101-build-grants.sql`](server/migrations/20261101-build-grants.sql).
+The migration adds two tables and changes no existing account or grant. Reverting
+the service version leaves those tables for recovery; do not drop retained
+identities or journals while holds remain. This change has not been deployed to
+8081. Local MariaDB tests apply the script twice and verify concurrent creation,
+revocation, idempotency and absence of orphaned identities.
