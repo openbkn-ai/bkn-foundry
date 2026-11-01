@@ -24,7 +24,8 @@ import (
 // types and the candidates the data suggests, and says what each candidate means with a clearer
 // name, and which relations the business meaning suggests that no candidate covers. A relation it
 // proposes is defined as the save would, on a copy, and counted as a saved one is; one the save
-// would refuse is left out. Nothing is written.
+// would refuse is left out. A result the Agent gives without writing an answer is still given,
+// with no answer. Nothing is written.
 
 const (
 	askKindRelationSuggestions = "relation_suggestions"
@@ -130,7 +131,7 @@ func (s *draftService) AskRelationSuggestions(ctx context.Context, token string,
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, raw, code := s.askAgent(ctx, caller, string(message), relationSuggestionsFormat(), nil)
+	text, raw, code := s.askAgent(ctx, caller, string(message), relationSuggestionsFormat(), nil, true)
 	var out relationSuggestionsOutput
 	if code == "" && json.Unmarshal(raw, &out) != nil {
 		code = perrors.BknProject_Draft_AskUnavailable

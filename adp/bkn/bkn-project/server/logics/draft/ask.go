@@ -208,7 +208,7 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, raw, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream)
+	text, raw, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream, false)
 	var out askOutput
 	if code == "" && json.Unmarshal(raw, &out) != nil {
 		code = perrors.BknProject_Draft_AskUnavailable
@@ -341,9 +341,9 @@ func askRelationOf(r *interfaces.DraftRelationType) askRelation {
 
 // askAgent runs the chat Agent as the caller until the deadline, handing the answer's text to
 // stream as it is written. It returns the text and the result that follows it, as given, or the
-// code of why there is none.
+// code of why there is none. A result with no text written fails unless answerOptional.
 func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountInfo, message string,
-	format map[string]any, stream *interfaces.DraftAskStream) (string, json.RawMessage, string) {
+	format map[string]any, stream *interfaces.DraftAskStream, answerOptional bool) (string, json.RawMessage, string) {
 	if s.ba == nil {
 		return "", nil, perrors.BknProject_Draft_AskUnavailable
 	}
@@ -393,7 +393,7 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 	case err != nil:
 		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI: %v", err))
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
-	case failure != "", out == nil, answer == "":
+	case failure != "", out == nil, answer == "" && !answerOptional:
 		// The start of the reply says what came instead of an answer, such as JSON alone.
 		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI answered what its schema does not allow: result %t, reply %q (%d characters)",
 			out != nil, truncateRunes(reply.text, askReasonMaxLength), utf8.RuneCountInString(reply.text)))

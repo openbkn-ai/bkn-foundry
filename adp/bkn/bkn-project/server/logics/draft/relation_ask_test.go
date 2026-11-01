@@ -80,6 +80,17 @@ func Test_AskRelationSuggestions(t *testing.T) {
 			So(got.Answer, ShouldEqual, "看不出可以建立的关系。")
 		})
 
+		Convey("A result with no answer written is still given, with no answer\n", func() {
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(answered(
+				`{"candidates":[{"index":1,"reason":"每次配送运送一张运单"}],"proposals":[]}`))
+
+			got, err := ask()
+
+			So(err, ShouldBeNil)
+			So(got.Answer, ShouldBeEmpty)
+			So(got.Candidates[1].Reason, ShouldEqual, "每次配送运送一张运单")
+		})
+
 		Convey("Its names and reasons go to the candidates they name; a name the save would refuse is not taken\n", func() {
 			long := strings.Repeat("名", interfaces.DRAFT_NAME_MAX_LENGTH+1)
 			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(answered(`{"candidates":[
