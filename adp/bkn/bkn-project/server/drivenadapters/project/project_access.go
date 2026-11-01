@@ -225,8 +225,25 @@ func (pa *projectAccess) SetProjectArchived(ctx context.Context, id string, arch
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
-	if _, err = pa.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+	if !archived {
+		_, err = pa.db.ExecContext(ctx, sqlStr, vals...)
+		return err
+	}
+	tx, err := pa.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Serialize with source-selection mutations on the project row. The intent
+	// survives interrupted remote cleanup, without retaining operator credentials.
+	if _, err = tx.ExecContext(ctx, sqlStr, vals...); err != nil {
 		span.SetStatus(codes.Error, "Update data failed")
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE t_bkn_project_kb_selection SET f_state=CASE WHEN f_retained=1 THEN 'retained' ELSE 'release_pending' END, f_revision=f_revision+1, f_update_time=? WHERE f_project_id=? AND f_state IN ('pending','active')", updateTime, id); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
 		return err
 	}
 	span.SetStatus(codes.Ok, "")

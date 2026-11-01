@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -24,7 +25,7 @@ import (
 // RegisterKnowledgeBaseResources installs core-owned resource handlers during EE
 // assembly. The application's complete-router gate hides them in other editions.
 func RegisterKnowledgeBaseResources(engine *gin.Engine) {
-	r := &restHandler{as: auth.NewAuthService(), ps: project.NewProjectService()}
+	r := &restHandler{as: auth.NewAuthService(), ps: project.NewProjectService(), kbra: logics.KBRA}
 	r.registerKnowledgeBaseResources(engine)
 }
 
@@ -34,6 +35,7 @@ func (r *restHandler) registerKnowledgeBaseResources(engine *gin.Engine) {
 	for _, resource := range []string{"knowledge-bases", "catalogs", "files", "summary"} {
 		group.GET("/"+resource, func(c *gin.Context) { r.readKnowledgeBaseResource(c, resource) })
 	}
+	r.registerKBSelection(group)
 }
 
 func (r *restHandler) readKnowledgeBaseResource(c *gin.Context, resource string) {

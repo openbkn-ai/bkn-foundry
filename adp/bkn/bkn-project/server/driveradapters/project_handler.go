@@ -16,7 +16,9 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	kbservice "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbresource"
 )
 
 // Projects. A project is visible to callers who can see its network in
@@ -127,6 +129,13 @@ func (r *restHandler) SetProjectArchived(c *gin.Context, visitor hydra.Visitor, 
 	if err != nil {
 		replyError(c, span, err)
 		return
+	}
+	if archived && r.kbra != nil {
+		if providers, available := kb.Lookup(); available {
+			// The archive transaction already queued cleanup. A failed RPC remains
+			// retryable and must not turn a committed archive into a failed action.
+			_, _ = kbservice.NewService(r.ps, r.kbra, providers.Source).Cleanup(ctx, visitor.TokenID, id, visitorAccount(visitor))
+		}
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, entry)

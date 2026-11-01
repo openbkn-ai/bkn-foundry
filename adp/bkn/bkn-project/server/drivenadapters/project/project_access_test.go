@@ -203,9 +203,12 @@ func Test_ProjectAccess(t *testing.T) {
 		})
 
 		Convey("SetProjectArchived updates the flag and the update time\n", func() {
+			smock.ExpectBegin()
 			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_archived = ?, f_update_time = ? WHERE f_id = ?")).
 				WithArgs(true, int64(9), "p1").
 				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec("UPDATE t_bkn_project_kb_selection SET f_state=CASE WHEN f_retained=1 THEN 'retained' ELSE 'release_pending' END").WithArgs(int64(9), "p1").WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectCommit()
 
 			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeNil)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
@@ -231,9 +234,26 @@ func Test_ProjectAccess(t *testing.T) {
 		})
 
 		Convey("SetProjectArchived returns the update error\n", func() {
+			smock.ExpectBegin()
 			smock.ExpectExec("UPDATE t_bkn_project_project").WillReturnError(errors.New("lock wait timeout"))
+			smock.ExpectRollback()
 
 			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldNotBeNil)
+		})
+
+		Convey("Archiving rolls back if retention cleanup cannot be queued\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec("UPDATE t_bkn_project_project").WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec("UPDATE t_bkn_project_kb_selection").WillReturnError(errors.New("write failed"))
+			smock.ExpectRollback()
+			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeError, "write failed")
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("Unarchiving does not revive released source holds\n", func() {
+			smock.ExpectExec("UPDATE t_bkn_project_project").WithArgs(false, int64(9), "p1").WillReturnResult(sqlmock.NewResult(0, 1))
+			So(pa.SetProjectArchived(ctx, "p1", false, 9), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 	})
 }

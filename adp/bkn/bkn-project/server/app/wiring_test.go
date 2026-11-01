@@ -102,6 +102,7 @@ func TestServicesHaveEveryDependency(t *testing.T) {
 	logics.SetAuthAccess(pmock.NewMockAuthAccess(ctrl))
 	logics.SetReleaseAccess(pmock.NewMockReleaseAccess(ctrl))
 	logics.SetProjectAccess(pmock.NewMockProjectAccess(ctrl))
+	logics.SetKBResourceAccess(pmock.NewMockKBResourceAccess(ctrl))
 	logics.SetDraftAccess(pmock.NewMockDraftAccess(ctrl))
 	logics.SetCheckAccess(pmock.NewMockCheckAccess(ctrl))
 	logics.SetIDRegistryAccess(pmock.NewMockIDRegistryAccess(ctrl))
