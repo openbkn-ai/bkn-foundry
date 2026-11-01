@@ -99,6 +99,7 @@ type FilePage struct {
 // allowed when its source catalog enables original-text retrieval. The
 // source_quote column still exists when disabled, but its value is empty.
 type Citation struct {
+	KnowledgeBaseID string
 	VersionRef
 	BlockID string
 	Start   int
@@ -148,6 +149,38 @@ type Source interface {
 	ReadChunks(context.Context, SourceScope, VersionRef, PageQuery) (ChunkPage, error)
 	Hold(context.Context, SourceScope, HoldRequest) error
 	ReleaseHold(context.Context, SourceScope, string) error
+}
+
+// SampleVersion identifies one locked file/version and its knowledge base.
+// Batches bind continuation to the entire ordered list, never "latest".
+type SampleVersion struct {
+	KnowledgeBaseID string `json:"kb_id"`
+	VersionRef
+}
+
+type SampleChunk struct {
+	SampleVersion
+	ChunkID string `json:"chunk_id"`
+	Index   int    `json:"index"`
+	Text    string `json:"text"`
+	Spans   []Span `json:"spans"`
+	Located string `json:"located"`
+}
+
+type SamplePage struct {
+	Entries    []SampleChunk `json:"entries"`
+	NextCursor string        `json:"next_cursor"`
+}
+
+// SampleSource is the bounded K2 read extension, installed alongside Source.
+// Implementations authenticate once and authorize every KB once per request.
+// A cursor never carries credentials or cached authorization decisions.
+type SampleSource interface {
+	ReadSampleChunks(context.Context, []SampleVersion, PageQuery) (SamplePage, error)
+}
+
+func (UnavailableSource) ReadSampleChunks(context.Context, []SampleVersion, PageQuery) (SamplePage, error) {
+	return SamplePage{}, ErrUnavailable
 }
 
 type ConceptRequest struct {
