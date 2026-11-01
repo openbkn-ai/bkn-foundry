@@ -95,6 +95,48 @@ func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 	}
 }
 
+func TestQueryMetricLifecycleContextIsRemovedBeforeStrictBinding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(trustedLifecycleHTTPContext(), middlewareLifecycle(inProcessLifecycleClient(t)))
+	router.POST("/api/agent-retrieval/v1/kn/query_metric", func(c *gin.Context) {
+		decoder := json.NewDecoder(c.Request.Body)
+		decoder.DisallowUnknownFields()
+		var input interfaces.QueryMetricReq
+		if err := decoder.Decode(&input); err != nil {
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+		if input.KnID != "kn-1" || input.Branch != "release" ||
+			input.MetricID != "metric-1" || input.Version != 2 {
+			c.JSON(http.StatusBadRequest, gin.H{"input": input})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/agent-retrieval/v1/kn/query_metric",
+		bytes.NewBufferString(`{
+			"kn_id":"kn-1",
+			"branch":"release",
+			"metric_id":"metric-1",
+			"version":2,
+			"query":{},
+			"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route"}
+		}`),
+	)
+	setRouteLifecycleHeaders(request)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("strict query_metric binding failed after lifecycle stripping: status=%d body=%s",
+			response.Code, response.Body.String())
+	}
+}
+
 type disabledRESTCapturePublisher struct{}
 
 func (disabledRESTCapturePublisher) CaptureDisabled() bool { return true }

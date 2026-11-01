@@ -26,6 +26,28 @@ type listingBknBackend struct {
 	namedByIDs []string
 }
 
+type branchListingBknBackend struct {
+	*listingBknBackend
+	interfaces.BranchBknBackendAccess
+	gotBranch string
+}
+
+func (s *branchListingBknBackend) ListObjectTypesBranch(ctx context.Context, knID, branch string, offset, limit int) (*interfaces.ObjectTypePage, error) {
+	s.gotBranch = branch
+	return s.ListObjectTypes(ctx, knID, offset, limit)
+}
+
+func TestGetObjectTypesListingUsesRequestedBranch(t *testing.T) {
+	bkn := &branchListingBknBackend{listingBknBackend: &listingBknBackend{total: 1}}
+	handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), nil)
+	result, err := handler(context.Background(), mcpReq(map[string]any{
+		"kn_id": "kn-001", "branch": "release", "response_format": "json",
+	}))
+	if err != nil || result.IsError || bkn.gotBranch != "release" {
+		t.Fatalf("branch=%q err=%v result=%+v", bkn.gotBranch, err, result)
+	}
+}
+
 func (s *listingBknBackend) ListObjectTypes(_ context.Context, _ string, offset, limit int) (*interfaces.ObjectTypePage, error) {
 	s.listCalls++
 	s.gotOffset, s.gotLimit = offset, limit

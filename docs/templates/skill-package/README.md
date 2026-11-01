@@ -53,7 +53,7 @@ metadata:
 
 | 名称 | 类型 | 用途 | 调用方式 | 结果怎么读 | 需确认 |
 |------|------|------|----------|------------|--------|
-| 库存可用量 | 指标 | 可用库存总口径 | `query_metric`，`time.instant=true` | `datas[0].values[0]` | 否 |
+| 库存可用量 | 指标 | 可用库存总口径 | `query_metric`，传已发布 `metric_id`、`version` 和 `query.time={start,end}`（Unix 毫秒） | `entries[].value`，结合 `model` 和 `status` 解读 | 否 |
 | 要X套净需求与齐套 | 函数 | 齐套判断 | `execute_tool`，参数 `product`、`qty`、`substitute_enabled` | `kitting_ok`、`gaps[]` | 否 |
 | 模拟确认补货计划 | 行动 | 生成补货计划回执 | 先 `get_action_info`，再 `execute_action` | 回执 `simulation=true` | **是** |
 

@@ -233,12 +233,12 @@ func (m *mockOntologyQuery) ListActionExecutions(ctx context.Context, req *inter
 	return nil, nil
 }
 
-func (m *mockOntologyQuery) QueryMetricData(ctx context.Context, knID, metricID string, version int,
+func (m *mockOntologyQuery) QueryMetricData(ctx context.Context, knID, branch, metricID string, version int,
 	req *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
 	return &interfaces.MetricQueryDownstreamResp{}, nil
 }
 
-func (m *mockOntologyQuery) DrillThroughMetricData(ctx context.Context, knID, metricID string, version int,
+func (m *mockOntologyQuery) DrillThroughMetricData(ctx context.Context, knID, branch, metricID string, version int,
 	req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
 	return &interfaces.MetricDrillThroughResp{}, nil
 }

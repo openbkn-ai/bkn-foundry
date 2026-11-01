@@ -61,12 +61,12 @@ func (s *stubOntologyQuery) ListActionExecutions(_ context.Context, _ *interface
 	return nil, nil
 }
 
-func (s *stubOntologyQuery) QueryMetricData(_ context.Context, _, _ string, _ int,
+func (s *stubOntologyQuery) QueryMetricData(_ context.Context, _, _, _ string, _ int,
 	_ *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
 	return nil, nil
 }
 
-func (s *stubOntologyQuery) DrillThroughMetricData(_ context.Context, _, _ string, _ int,
+func (s *stubOntologyQuery) DrillThroughMetricData(_ context.Context, _, _, _ string, _ int,
 	_ *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
 	return nil, nil
 }

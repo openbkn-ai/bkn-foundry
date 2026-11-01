@@ -43,14 +43,14 @@ func TestQueryMetricData_EscapesIDsIntoPath(t *testing.T) {
 				return 200, jsonBytes(map[string]any{"entries": []any{}, "status": "no_data"}), nil
 			})
 
-		_, err := client.QueryMetricData(context.Background(), "kn1",
+		_, err := client.QueryMetricData(context.Background(), "kn1", "release",
 			"m1/data?branch=dev&x=", 3, &interfaces.ObjectMetricQuery{})
 		convey.So(err, convey.ShouldBeNil)
 
 		parsed, perr := url.Parse(got)
 		convey.So(perr, convey.ShouldBeNil)
-		// The injected branch failed to enter the query string; version is pinned.
-		convey.So(parsed.Query().Get("branch"), convey.ShouldBeEmpty)
+		// The caller's branch is explicit; the injected branch failed to replace it.
+		convey.So(parsed.Query().Get("branch"), convey.ShouldEqual, "release")
 		convey.So(parsed.Query().Get("version"), convey.ShouldEqual, "3")
 		// The entire injection string remains in the path segment, and the downstream will only treat it as a non-existent metric_id.
 		convey.So(parsed.EscapedPath(), convey.ShouldEqual,
@@ -71,7 +71,7 @@ func TestDrillThroughMetricData_ForwardsPinnedBucketAndCursor(t *testing.T) {
 	httpClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, target string, _ map[string]string, body any) (int, []byte, error) {
 			parsed, err := url.Parse(target)
-			if err != nil || parsed.Query().Get("version") != "2" || parsed.Query().Get("branch") != "" ||
+			if err != nil || parsed.Query().Get("version") != "2" || parsed.Query().Get("branch") != "release" ||
 				!strings.HasSuffix(parsed.EscapedPath(), "/object-metrics/metric-1/data/drill-through") {
 				t.Fatalf("unexpected drill-through URL: %s (%v)", target, err)
 			}
@@ -83,7 +83,7 @@ func TestDrillThroughMetricData_ForwardsPinnedBucketAndCursor(t *testing.T) {
 			}
 			return 200, []byte(`{"participants":[{"instance_identity":{"id":"row-1"},"role":"owner"}],"status":"ok","evaluated_at":123}`), nil
 		})
-	result, err := client.DrillThroughMetricData(context.Background(), "kn-1", "metric-1", 2,
+	result, err := client.DrillThroughMetricData(context.Background(), "kn-1", "release", "metric-1", 2,
 		&interfaces.MetricDrillThroughReq{BucketKey: "opaque", PageSize: 25, Cursor: "page-2"})
 	if err != nil || len(result.Participants) != 1 || result.Participants[0].InstanceIdentity["id"] != "row-1" {
 		t.Fatalf("drill-through response = %#v, %v", result, err)
@@ -96,7 +96,7 @@ func TestDrillThroughMetricData_PreservesUnavailableParticipantsAsUnprocessable(
 			`"description":"请求参数不合法",`+
 			`"error_details":"participant lookup is unavailable for this result"}`)
 
-	_, err := client.DrillThroughMetricData(context.Background(), "kn-1", "metric-1", 1,
+	_, err := client.DrillThroughMetricData(context.Background(), "kn-1", "main", "metric-1", 1,
 		&interfaces.MetricDrillThroughReq{BucketKey: "no-data-bucket"})
 
 	he := asHTTPError(t, err)
@@ -130,10 +130,10 @@ func TestQueryMetricData_ForwardsVersion(t *testing.T) {
 				return 200, jsonBytes(map[string]any{"entries": []any{}, "status": "no_data"}), nil
 			})
 
-		_, err := client.QueryMetricData(context.Background(), "kn1", "m1", 2, nil)
+		_, err := client.QueryMetricData(context.Background(), "kn1", "", "m1", 2, nil)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(got, convey.ShouldEndWith,
-			"/in/v1/knowledge-networks/kn1/object-metrics/m1/data?version=2")
+			"/in/v1/knowledge-networks/kn1/object-metrics/m1/data?branch=main&version=2")
 	})
 }
 
@@ -154,7 +154,7 @@ func TestQueryMetricData_ForwardsFinalResultOperationsAndPage(t *testing.T) {
 			}
 			return 200, []byte(`{"entries":[],"status":"no_data","empty_reason":"filtered_out","total_count":7,"next_cursor":"next"}`), nil
 		})
-	result, err := client.QueryMetricData(context.Background(), "kn-1", "metric-1", 2, &interfaces.ObjectMetricQuery{
+	result, err := client.QueryMetricData(context.Background(), "kn-1", "release", "metric-1", 2, &interfaces.ObjectMetricQuery{
 		GroupBy:  []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "order", PropertyName: "region"}},
 		Having:   &interfaces.ObjectMetricHaving{Operator: "gte", Value: 10},
 		OrderBy:  []interfaces.ObjectMetricOrderBy{{Field: "value", Direction: "desc"}},

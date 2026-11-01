@@ -32,6 +32,10 @@ type ObjectSchemaAccess interface {
 	GetObjectTypeSchema(ctx context.Context, knID, otID string) (*ObjectTypeSchemaResp, error)
 }
 
+type BranchObjectSchemaAccess interface {
+	GetObjectTypeSchemaBranch(ctx context.Context, knID, branch, otID string) (*ObjectTypeSchemaResp, error)
+}
+
 // KnConceptType Knowledge Network Concept Type
 type KnConceptType string
 
@@ -390,8 +394,8 @@ type DrivenOntologyQuery interface {
 	ExploreSubgraph(ctx context.Context, req *ExploreSubgraphReq) (resp *ExploreSubgraphResp, err error)
 	// QueryMetricData computes one object metric V1 by its own definition
 	// (POST .../object-metrics/{metric_id}/data).
-	QueryMetricData(ctx context.Context, knID, metricID string, version int,
+	QueryMetricData(ctx context.Context, knID, branch, metricID string, version int,
 		req *ObjectMetricQuery) (resp *MetricQueryDownstreamResp, err error)
-	DrillThroughMetricData(ctx context.Context, knID, metricID string, version int,
+	DrillThroughMetricData(ctx context.Context, knID, branch, metricID string, version int,
 		req *MetricDrillThroughReq) (resp *MetricDrillThroughResp, err error)
 }

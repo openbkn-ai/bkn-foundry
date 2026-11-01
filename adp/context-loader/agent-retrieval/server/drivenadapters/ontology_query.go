@@ -73,6 +73,13 @@ const (
 	drillThroughMetricDataURI = "/in/v1/knowledge-networks/%s/object-metrics/%s/data/drill-through"
 )
 
+func metricBranch(branch string) string {
+	if branch = strings.TrimSpace(branch); branch != "" {
+		return branch
+	}
+	return "main"
+}
+
 // NewOntologyQueryAccess creates an OntologyQueryAccess.
 func NewOntologyQueryAccess() interfaces.DrivenOntologyQuery {
 	ontologyQueryOnce.Do(func() {
@@ -110,9 +117,16 @@ func withVerifiedApplicationPrincipal(ctx context.Context, headers map[string]st
 // property permissions. Response bodies are never logged because even a
 // malformed downstream response may contain protected values.
 func (o *ontologyQueryClient) GetObjectTypeSchema(ctx context.Context, knID, otID string) (*interfaces.ObjectTypeSchemaResp, error) {
+	return o.GetObjectTypeSchemaBranch(ctx, knID, "main", otID)
+}
+
+func (o *ontologyQueryClient) GetObjectTypeSchemaBranch(ctx context.Context, knID, branch, otID string) (*interfaces.ObjectTypeSchemaResp, error) {
 	uri := fmt.Sprintf(queryObjectTypeSchemaURI, url.PathEscape(knID), url.PathEscape(otID))
 	target := o.baseURL + uri
-	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.schema", ontologyQueryIdentity(uri, nil))
+	if branch = metricBranch(branch); branch != "main" {
+		target += "?branch=" + url.QueryEscape(branch)
+	}
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.schema", ontologyQueryIdentity(strings.TrimPrefix(target, o.baseURL), nil))
 
 	_, respBody, err := o.httpClient.GetBytes(ctx, target, nil, header)
 	if err != nil {
@@ -719,13 +733,14 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 //
 // Take the ontology-query internal route, the same posture as QueryLogicProperties: account information comes with the header.
 // Pass through, authorization is determined downstream.
-func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricID string, version int,
+func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, branch, metricID string, version int,
 	req *interfaces.ObjectMetricQuery) (resp *interfaces.MetricQueryDownstreamResp, err error) {
 	if version < 1 {
 		return nil, fmt.Errorf("object metric version must be positive")
 	}
 	uri := fmt.Sprintf(queryMetricDataURI, url.PathEscape(knID), url.PathEscape(metricID))
 	query := url.Values{}
+	query.Set("branch", metricBranch(branch))
 	query.Set("version", strconv.Itoa(version))
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
@@ -750,13 +765,14 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 }
 
 // DrillThroughMetricData resolves a server-issued bucket to authorized source objects.
-func (o *ontologyQueryClient) DrillThroughMetricData(ctx context.Context, knID, metricID string, version int,
+func (o *ontologyQueryClient) DrillThroughMetricData(ctx context.Context, knID, branch, metricID string, version int,
 	req *interfaces.MetricDrillThroughReq) (resp *interfaces.MetricDrillThroughResp, err error) {
 	if version < 1 || req == nil {
 		return nil, fmt.Errorf("a published metric version and drill-through request are required")
 	}
 	uri := fmt.Sprintf(drillThroughMetricDataURI, url.PathEscape(knID), url.PathEscape(metricID))
 	query := url.Values{}
+	query.Set("branch", metricBranch(branch))
 	query.Set("version", strconv.Itoa(version))
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 	body := struct {

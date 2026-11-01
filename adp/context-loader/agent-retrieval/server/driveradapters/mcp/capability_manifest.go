@@ -21,7 +21,7 @@ import (
 
 const (
 	capabilityManifestID      = "openbkn.context-loader.mcp"
-	capabilityManifestVersion = "0.1.6"
+	capabilityManifestVersion = "0.1.7"
 
 	capabilityResolutionMatched       = "matched"
 	capabilityResolutionExecutionOnly = "execution_only"

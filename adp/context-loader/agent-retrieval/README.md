@@ -59,7 +59,12 @@ Object surfaces (`search_schema`, `get_kn_detail`, `get_object_types`, object in
 `query_metric` and `drill_through_metric` return published object metric data
 through the full and compact MCP profiles. Numeric entries include an exact
 `display_value` string for presentation while retaining the original `value`.
-Clients can render these results using their own capabilities.
+Both tools accept the knowledge-network `branch` and default it to `main`, so a
+published version is never silently read from a different branch. `get_kn_detail`
+and `get_object_types` use that same branch for metric discovery; on a large
+non-main branch, page through `get_object_types` without ids to find object
+types before requesting their definitions. Clients can render metric results
+using their own capabilities.
 
 ## Technical Architecture
 

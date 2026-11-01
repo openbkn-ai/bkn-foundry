@@ -19,7 +19,7 @@ info:
     返回的 `related_metrics`。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
-  version: 0.1.3
+  version: 0.1.4
 servers:
   - url: /api/agent-retrieval/v1
 security:
@@ -127,7 +127,8 @@ paths:
 
         `version` 必填，必须使用已发布、不可变的版本；`query` 只包含定义允许的
         运行时选择（过滤条件、分析维度、毫秒时间范围）。固定口径和统计
-        粒度由指标定义决定，不能通过本请求覆盖。
+        粒度由指标定义决定，不能通过本请求覆盖。`branch` 指定指标所在的知识网络
+        分支，省略时只读取 `main`，不会回退到其他分支。
 
         响应保留对象指标 V1 的 `model`、`entries`、`status` 和 `warnings`。
       parameters:
@@ -148,6 +149,7 @@ paths:
               按维度拆分:
                 value:
                   kn_id: kn_supplychain
+                  branch: release
                   metric_id: metric_product_total
                   version: 1
                   query:
@@ -257,9 +259,15 @@ components:
         - metric_id
         - version
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。也可用 `x-kn-id` 头传。
+        branch:
+          type: string
+          default: main
+          description: 指标所属知识网络分支；省略时使用 main。
         metric_id:
           type: string
           description: 指标 ID，取自 `get_object_types` 返回的 `related_metrics[].id`。

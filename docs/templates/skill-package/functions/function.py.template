@@ -43,9 +43,8 @@ def handler(event: dict) -> dict:
     return {"{{param}}": key, "row_count": len(rows), "total": total}
 
 
-# 也可以用指标口径取数，而不是自己聚合：
-#   kn.query_metric(kn_id, "{{metric_id}}", time={"instant": True},
-#                   condition={"field": "{{field}}", "operation": "==",
-#                              "value": key, "value_from": "const"})
+# 也可以用已发布的对象指标 V1 口径取数，而不是自己聚合：
+#   kn.query_metric(kn_id, "{{metric_id}}", {{published_version}},
+#                   query={"time": {"start": start_ms, "end": end_ms}})
 # 或对数据资源执行只读 SQL（表名写 {{<resource_id>}} 占位符）：
 #   kn.run_sql(kn_id, "SELECT COUNT(*) AS n FROM {{<resource_id>}}")

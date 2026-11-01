@@ -40,7 +40,7 @@ func TestGetObjectTypeSchemaForwardsIdentityAndPermissions(t *testing.T) {
 		baseURL: "http://ontology-query/api/ontology-query",
 		httpClient: &mockHTTPClient{bytesFunc: func(_ context.Context, method, target string,
 			header map[string]string, _ interface{}) (int, []byte, error) {
-			if method != "GET" || !strings.HasSuffix(target, "/in/v1/knowledge-networks/kn%2F1/object-types/customer%3F/schema") {
+			if method != "GET" || !strings.HasSuffix(target, "/in/v1/knowledge-networks/kn%2F1/object-types/customer%3F/schema?branch=release") {
 				t.Fatalf("unexpected request: %s %s", method, target)
 			}
 			if header["x-account-id"] != "account-1" || header["x-account-type"] != "user" {
@@ -53,7 +53,7 @@ func TestGetObjectTypeSchemaForwardsIdentityAndPermissions(t *testing.T) {
 		AccountID: "account-1", AccountType: interfaces.AccessorTypeUser,
 	})
 
-	resp, err := client.GetObjectTypeSchema(ctx, "kn/1", "customer?")
+	resp, err := client.GetObjectTypeSchemaBranch(ctx, "kn/1", "release", "customer?")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -62,6 +62,18 @@ func TestBindObjectMetricRequestRejectsRemovedInstanceIdentityFilter(t *testing.
 	}
 }
 
+func TestBindObjectMetricRequestRejectsLifecycleContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+		`{"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1"}}`))
+	var body interfaces.ObjectMetricQueryRequestV1
+	err := bindObjectMetricRequestV1(ctx, &body)
+	if err == nil || !strings.Contains(err.Error(), `unknown field "bkn_context"`) {
+		t.Fatalf("error = %v, want lifecycle unknown-field rejection", err)
+	}
+}
+
 func TestBindObjectMetricTrialAcceptsFullDefinition(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())

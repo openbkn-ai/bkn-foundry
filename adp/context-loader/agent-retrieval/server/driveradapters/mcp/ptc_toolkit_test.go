@@ -654,6 +654,23 @@ print(json.dumps(_calls[-1]["arguments"]["bkn_context"], sort_keys=True))
 	}
 }
 
+func TestPTCMetricBranchKeepsExistingPositionalArguments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{toolKeyQueryMetric, "def query_metric(kn_id: str, metric_id: str, version: int, query: dict = None, response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main') -> dict:"},
+		{toolKeyDrillThroughMetric, "def drill_through_metric(bucket_key: str, kn_id: str, metric_id: str, query: dict, version: int, cursor: str = None, page_size: int = 100, response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main') -> dict:"},
+	} {
+		input, _ := loadToolSchemas(tc.name)
+		tool := MCPToolInfo{Name: tc.name, InputSchema: input}
+		got := "def " + ptcStubSignature(tool) + " -> dict:"
+		if got != tc.want {
+			t.Fatalf("%s signature = %s, want %s", tc.name, got, tc.want)
+		}
+	}
+}
+
 // Streamable HTTP may keep an SSE response open after delivering one JSON-RPC
 // event. The sandbox client must return after that event instead of waiting for
 // the connection to close and consuming the whole run_code timeout.

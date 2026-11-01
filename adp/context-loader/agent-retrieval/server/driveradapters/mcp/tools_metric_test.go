@@ -81,18 +81,21 @@ type stubMetricOntologyQuery struct {
 	drillResp      *interfaces.MetricDrillThroughResp
 	drillErr       error
 	gotMetric      string
+	gotBranch      string
 	gotDrillMetric string
 	gotDrillReq    *interfaces.MetricDrillThroughReq
 }
 
-func (s *stubMetricOntologyQuery) QueryMetricData(_ context.Context, _, metricID string, _ int,
+func (s *stubMetricOntologyQuery) QueryMetricData(_ context.Context, _, branch, metricID string, _ int,
 	_ *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
+	s.gotBranch = branch
 	s.gotMetric = metricID
 	return s.resp, nil
 }
 
-func (s *stubMetricOntologyQuery) DrillThroughMetricData(_ context.Context, _, metricID string, _ int,
+func (s *stubMetricOntologyQuery) DrillThroughMetricData(_ context.Context, _, branch, metricID string, _ int,
 	req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+	s.gotBranch = branch
 	s.gotDrillMetric = metricID
 	s.gotDrillReq = req
 	return s.drillResp, s.drillErr
@@ -140,6 +143,7 @@ func TestHandleQueryMetric(t *testing.T) {
 
 		result, err := handler(context.Background(), mcpReq(map[string]any{
 			"kn_id":           "kn-001",
+			"branch":          "release",
 			"metric_id":       "m-001",
 			"version":         1,
 			"response_format": "json",
@@ -148,6 +152,7 @@ func TestHandleQueryMetric(t *testing.T) {
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(result.IsError, convey.ShouldBeFalse)
 		convey.So(oq.gotMetric, convey.ShouldEqual, "m-001")
+		convey.So(oq.gotBranch, convey.ShouldEqual, "release")
 
 		m := resultToMap(t, result)
 		convey.So(m["metric_id"], convey.ShouldEqual, "m-001")
@@ -173,14 +178,14 @@ func TestHandleDrillThroughMetric(t *testing.T) {
 	}}
 	handler := handleDrillThroughMetric(knmetrics.NewKnMetricsServiceWith(nil, nil, oq))
 	result, err := handler(context.Background(), mcpReq(map[string]any{
-		"kn_id": "kn-001", "metric_id": "m-001", "version": 2,
+		"kn_id": "kn-001", "branch": "release", "metric_id": "m-001", "version": 2,
 		"query":      map[string]any{"group_by": []any{map[string]any{"object_type_id": "order", "property_name": "status"}}},
 		"bucket_key": "opaque-key", "page_size": 25, "response_format": "json",
 	}))
 	if err != nil || result.IsError {
 		t.Fatalf("drill-through failed: %v, %#v", err, result)
 	}
-	if oq.gotDrillMetric != "m-001" || oq.gotDrillReq.BucketKey != "opaque-key" || oq.gotDrillReq.PageSize != 25 || len(oq.gotDrillReq.Query.GroupBy) != 1 {
+	if oq.gotBranch != "release" || oq.gotDrillMetric != "m-001" || oq.gotDrillReq.BucketKey != "opaque-key" || oq.gotDrillReq.PageSize != 25 || len(oq.gotDrillReq.Query.GroupBy) != 1 {
 		t.Fatalf("drill-through request lost its selection: %#v", oq.gotDrillReq)
 	}
 	got := resultToMap(t, result)

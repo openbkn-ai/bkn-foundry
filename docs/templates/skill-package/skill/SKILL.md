@@ -38,7 +38,7 @@ Agent 用 `search_capabilities` 按**名称**在本网络内找到函数与 MCP 
 
 | 名称 | 类型 | 用途 | 调用方式 | 结果怎么读 | 需确认 |
 |------|------|------|----------|------------|--------|
-| {{指标名称}} | 指标 | {{用途}} | `query_metric`，`time.instant=true`；需拆维度时加 `analysis_dimensions` | `datas[0].values[0]` | 否 |
+| {{指标名称}} | 指标 | {{用途}} | `query_metric`，传已发布 `metric_id`、`version` 和 `query.time={start,end}`（Unix 毫秒）；需拆维度时在 `query.group_by` 中传定义声明的属性引用 | `entries[].value`，结合 `model` 和 `status` 解读 | 否 |
 | {{函数名称}} | 函数 | {{用途}} | `execute_tool`，参数 {{参数名逐个列出，标明必填}} | {{关键返回字段与含义}} | 否 |
 | {{行动名称}} | 行动 | {{用途}} | 先 `get_action_info` 取参数 schema，再 `execute_action` | {{回执关键字段}} | **是** |
 

@@ -19,6 +19,7 @@
   "get_kn_detail": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.kn_id.description": "Knowledge network id.",
+    "input_schema.properties.branch.description": "Knowledge network branch. Defaults to main.",
     "output_schema.properties.id.description": "Knowledge network id.",
     "output_schema.properties.name.description": "Knowledge network name.",
     "output_schema.properties.comment.description": "Knowledge network description.",
@@ -360,6 +361,7 @@
   "get_object_types": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
+    "input_schema.properties.branch.description": "Knowledge network branch containing these object types and related metrics. Defaults to main.",
     "input_schema.properties.ids.description": "The object type ids to expand, from get_kn_detail's summary, from search_schema, or from this tool's listing mode. Several at once; each comes back in full. Leave ids out to list the network's object type **index** by offset/limit instead -- id, name, comment, tags and data source, without fields or metrics. A network past get_kn_detail's caps answers with its navigation shell, and this is the only way in to the ids from there; name them back here for the definitions. With ids, offset and limit are ignored.",
     "output_schema.properties.kn_id.description": "Knowledge network id",
     "output_schema.properties.object_types.items.properties.id.description": "Object type id. Note that the equivalent field in a search_schema response is called concept_id.",
@@ -438,6 +440,7 @@
     "input_schema.definitions.object_metric_condition.description": "Recursive condition AST with predicate and group nodes. Runtime properties must exactly match analysis_dimensions or time_dimensions declared by the published metric.",
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
+    "input_schema.properties.branch.description": "Knowledge-network branch containing the metric. Defaults to main.",
     "input_schema.properties.metric_id.description": "Object metric id from related_metrics[].id returned by get_object_types.",
     "input_schema.properties.version.description": "Required immutable published version from related_metrics[].version.",
     "input_schema.properties.query.description": "Runtime choices permitted by the published definition's query capabilities.",
@@ -470,6 +473,7 @@
     "output_schema.properties.evaluated_at.description": "Result evaluation time in Unix milliseconds."
   },
   "drill_through_metric": {
+    "input_schema.properties.branch.description": "Knowledge-network branch containing the metric. Defaults to main.",
     "input_schema.properties.query.description": "Complete query used by query_metric when the bucket_key was selected; the server revalidates it.",
     "input_schema.properties.bucket_key.description": "Opaque bucket_key returned by the corresponding query_metric result entry.",
     "input_schema.properties.cursor.description": "next_cursor returned by the previous page."

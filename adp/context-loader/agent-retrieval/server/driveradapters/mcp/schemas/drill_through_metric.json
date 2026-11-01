@@ -6,6 +6,7 @@
     "properties": {
       "response_format": {"type": "string", "enum": ["json", "toon"], "default": "toon"},
       "kn_id": {"type": "string"},
+      "branch": {"type": "string", "default": "main", "description": "指标所属知识网络分支；省略时使用 main。"},
       "metric_id": {"type": "string"},
       "version": {"type": "integer", "minimum": 1},
       "query": {"type": "object", "description": "选中 bucket_key 时 query_metric 使用的完整 query；服务端会重新校验。"},

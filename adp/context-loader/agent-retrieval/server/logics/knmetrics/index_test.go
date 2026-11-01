@@ -23,6 +23,17 @@ type stubBknBackend struct {
 	calls   int
 }
 
+type branchMetricBackend struct {
+	*stubBknBackend
+	interfaces.BranchBknBackendAccess
+	branch string
+}
+
+func (s *branchMetricBackend) ListMetricsByObjectTypesBranch(_ context.Context, _ string, branch string, _ []string) ([]*interfaces.RelatedMetric, error) {
+	s.branch = branch
+	return s.metrics, s.err
+}
+
 func (s *stubBknBackend) ListMetricsByObjectTypes(_ context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
 	s.calls++
 	s.gotKnID, s.gotIDs = knID, otIDs
@@ -38,6 +49,7 @@ type stubOntologyQuery struct {
 	drillResp  *interfaces.MetricDrillThroughResp
 	err        error
 	gotKnID    string
+	gotBranch  string
 	gotMetric  string
 	gotVersion int
 	gotReq     *interfaces.ObjectMetricQuery
@@ -45,14 +57,15 @@ type stubOntologyQuery struct {
 	drillCalls int
 }
 
-func (s *stubOntologyQuery) QueryMetricData(_ context.Context, knID, metricID string, version int, req *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
+func (s *stubOntologyQuery) QueryMetricData(_ context.Context, knID, branch, metricID string, version int, req *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
 	s.calls++
-	s.gotKnID, s.gotMetric, s.gotVersion, s.gotReq = knID, metricID, version, req
+	s.gotKnID, s.gotBranch, s.gotMetric, s.gotVersion, s.gotReq = knID, branch, metricID, version, req
 	return s.resp, s.err
 }
 
-func (s *stubOntologyQuery) DrillThroughMetricData(_ context.Context, _, _ string, _ int, _ *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+func (s *stubOntologyQuery) DrillThroughMetricData(_ context.Context, _, branch, _ string, _ int, _ *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
 	s.drillCalls++
+	s.gotBranch = branch
 	return s.drillResp, s.err
 }
 
@@ -73,6 +86,20 @@ func TestAttachRelatedMetrics(t *testing.T) {
 	}
 	if ots[0].RelatedMetricCount != 2 {
 		t.Fatalf("count=%d", ots[0].RelatedMetricCount)
+	}
+}
+
+func TestAttachRelatedMetricsUsesRequestedBranchAndRejectsUnsupportedReader(t *testing.T) {
+	backend := &branchMetricBackend{stubBknBackend: &stubBknBackend{metrics: []*interfaces.RelatedMetric{{ID: "release-only", OwnerObjectTypeID: "orders"}}}}
+	objects := []*interfaces.ObjectType{{ID: "orders"}}
+	if err := NewKnMetricsServiceWith(nil, backend, nil).AttachRelatedMetrics(context.Background(), "kn1", objects, "release"); err != nil {
+		t.Fatal(err)
+	}
+	if backend.branch != "release" || len(objects[0].RelatedMetrics) != 1 {
+		t.Fatalf("branch=%q metrics=%+v", backend.branch, objects[0].RelatedMetrics)
+	}
+	if err := NewKnMetricsServiceWith(nil, &stubBknBackend{}, nil).AttachRelatedMetrics(context.Background(), "kn1", objects, "release"); err == nil {
+		t.Fatal("non-main discovery fell back to a main-only reader")
 	}
 }
 
@@ -107,16 +134,32 @@ func TestQueryMetric_PinsVersionAndPreservesV1Status(t *testing.T) {
 		PageSize: 2,
 		Time:     &interfaces.ObjectMetricTimeRange{Start: 1000, End: 2000},
 	}
-	resp, err := NewKnMetricsServiceWith(nil, nil, oq).QueryMetric(context.Background(), &interfaces.QueryMetricReq{KnID: " kn1 ", MetricID: " m1 ", Version: 2, Query: query})
+	resp, err := NewKnMetricsServiceWith(nil, nil, oq).QueryMetric(context.Background(), &interfaces.QueryMetricReq{KnID: " kn1 ", Branch: " release ", MetricID: " m1 ", Version: 2, Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if oq.gotKnID != "kn1" || oq.gotMetric != "m1" || oq.gotVersion != 2 || oq.gotReq.Time.Start != 1000 ||
+	if oq.gotKnID != "kn1" || oq.gotBranch != "release" || oq.gotMetric != "m1" || oq.gotVersion != 2 || oq.gotReq.Time.Start != 1000 ||
 		len(oq.gotReq.GroupBy) != 1 || oq.gotReq.Having == nil || len(oq.gotReq.OrderBy) != 1 || oq.gotReq.PageSize != 2 {
 		t.Fatalf("downstream: %+v", oq)
 	}
 	if resp.Version != 2 || resp.Status != "partial" || len(resp.Entries) != 1 || len(resp.Warnings) != 1 || resp.OverallMs != 12 || resp.TotalCount != 7 || resp.NextCursor != "next-page" {
 		t.Fatalf("response: %+v", resp)
+	}
+}
+
+func TestQueryAndDrillThroughMetric_DefaultBranchToMain(t *testing.T) {
+	oq := &stubOntologyQuery{resp: &interfaces.MetricQueryDownstreamResp{Status: "ok"},
+		drillResp: &interfaces.MetricDrillThroughResp{Status: "ok"}}
+	service := NewKnMetricsServiceWith(nil, nil, oq)
+	if _, err := service.QueryMetric(context.Background(), &interfaces.QueryMetricReq{
+		KnID: "kn1", MetricID: "m1", Version: 1,
+	}); err != nil || oq.gotBranch != defaultBranch {
+		t.Fatalf("query branch=%q err=%v", oq.gotBranch, err)
+	}
+	if _, err := service.DrillThroughMetric(context.Background(), &interfaces.MetricDrillThroughReq{
+		KnID: "kn1", MetricID: "m1", Version: 1, BucketKey: "bucket",
+	}); err != nil || oq.gotBranch != defaultBranch {
+		t.Fatalf("drill-through branch=%q err=%v", oq.gotBranch, err)
 	}
 }
 

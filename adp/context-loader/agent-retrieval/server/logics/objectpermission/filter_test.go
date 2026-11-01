@@ -22,6 +22,28 @@ type schemaAccessStub struct {
 	err      error
 }
 
+type branchSchemaStub struct {
+	schemaAccessStub
+	branch string
+}
+
+func (s *branchSchemaStub) GetObjectTypeSchemaBranch(_ context.Context, _, branch, _ string) (*interfaces.ObjectTypeSchemaResp, error) {
+	s.branch = branch
+	return s.response, s.err
+}
+
+func TestFilterObjectTypesBranchUsesSameBranchForPermissions(t *testing.T) {
+	objects := []*interfaces.ObjectType{{ID: "orders", DataSource: &interfaces.ResourceInfo{Type: "resource", ID: "orders"}, DataProperties: []*interfaces.DataProperty{{Name: "amount"}}}}
+	reader := &branchSchemaStub{schemaAccessStub: schemaAccessStub{response: &interfaces.ObjectTypeSchemaResp{EffectivePermissions: map[string]interfaces.PropertyAccessLevel{"amount": interfaces.PropertyAccessFull}}}}
+	filtered, err := FilterObjectTypesBranch(context.Background(), reader, "kn1", "release", objects)
+	if err != nil || reader.branch != "release" || len(filtered) != 1 || len(filtered[0].DataProperties) != 1 {
+		t.Fatalf("branch=%q filtered=%+v err=%v", reader.branch, filtered, err)
+	}
+	if _, err := FilterObjectTypesBranch(context.Background(), reader.schemaAccessStub, "kn1", "release", objects); err == nil {
+		t.Fatal("non-main permission read fell back to main")
+	}
+}
+
 func (s schemaAccessStub) GetObjectTypeSchema(context.Context, string, string) (*interfaces.ObjectTypeSchemaResp, error) {
 	return s.response, s.err
 }

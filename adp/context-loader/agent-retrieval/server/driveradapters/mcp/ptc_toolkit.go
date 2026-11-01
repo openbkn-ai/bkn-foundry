@@ -276,19 +276,35 @@ func ptcToleratedParams(raw json.RawMessage) []string {
 // keeps telling the model not to pass bkn_context.
 func ptcStubSignature(tool MCPToolInfo) string {
 	signature := ptcSignature(tool)
+	// These tools gained branch after scripts had already used their optional
+	// arguments positionally. Keep every old positional slot stable in the
+	// executable stub; branch is available by name only.
+	branchKeywordOnly := tool.Name == toolKeyQueryMetric || tool.Name == toolKeyDrillThroughMetric
+	if branchKeywordOnly {
+		signature = strings.Replace(signature, ", branch: str = 'main'", "", 1)
+	}
 	tolerated := ptcToleratedParams(tool.InputSchema)
-	if len(tolerated) == 0 {
+	if len(tolerated) == 0 && !branchKeywordOnly {
 		return signature
 	}
 	parts := make([]string, 0, len(tolerated))
 	for _, name := range tolerated {
 		parts = append(parts, name+": dict = None")
 	}
-	separator := ", "
-	if strings.HasSuffix(signature, "()") {
-		separator = ""
+	signature = strings.TrimSuffix(signature, ")")
+	if len(parts) > 0 {
+		if !strings.HasSuffix(signature, "(") {
+			signature += ", "
+		}
+		signature += strings.Join(parts, ", ")
 	}
-	return strings.TrimSuffix(signature, ")") + separator + strings.Join(parts, ", ") + ")"
+	if branchKeywordOnly {
+		if !strings.HasSuffix(signature, "(") {
+			signature += ", "
+		}
+		signature += "*, branch: str = 'main'"
+	}
+	return signature + ")"
 }
 
 // ptcReturnKeys Render return value top-level keys. Key names are not uniform among tools (some list classes are called entries,
