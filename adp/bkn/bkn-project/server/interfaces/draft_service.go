@@ -63,6 +63,9 @@ type DraftService interface {
 	// AskRelationType is AskObjectType for one relation type.
 	AskRelationType(ctx context.Context, token string, projectID string, itemID string, req DraftRelationAskRequest,
 		caller AccountInfo, stream *DraftAskStream) (*DraftAskAnswer, error)
+	// AskNewRelationType is AskRelationType for a relation type not made yet, from the form alone.
+	AskNewRelationType(ctx context.Context, token string, projectID string, req DraftRelationAskRequest,
+		caller AccountInfo, stream *DraftAskStream) (*DraftAskAnswer, error)
 	// IsolatedObjectTypes lists the adopted object types of a ready draft no adopted relation type
 	// has as an end.
 	IsolatedObjectTypes(ctx context.Context, token string, projectID string) (*DraftIsolated, error)

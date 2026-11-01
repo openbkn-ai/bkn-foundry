@@ -54,6 +54,16 @@ func (r *restHandler) DeleteRelationTypeByEx(c *gin.Context) {
 }
 func (r *restHandler) AskObjectTypeByEx(c *gin.Context)   { r.withExVisitor(c, r.AskObjectType) }
 func (r *restHandler) AskRelationTypeByEx(c *gin.Context) { r.withExVisitor(c, r.AskRelationType) }
+
+// RelationTypesActionByEx serves POST …/relation_types:ask.
+func (r *restHandler) RelationTypesActionByEx(c *gin.Context) {
+	// The router keeps the colon in the parameter.
+	if c.Param("action") != ":ask" {
+		replyNotFound(c)
+		return
+	}
+	r.withExVisitor(c, r.AskNewRelationType)
+}
 func (r *restHandler) RelationSuggestionsByEx(c *gin.Context) {
 	r.withExVisitor(c, r.RelationSuggestions)
 }
@@ -447,6 +457,26 @@ func (r *restHandler) AskRelationType(c *gin.Context, visitor hydra.Visitor) {
 	}
 	replyAsk(c, span, func(stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
 		return r.drs.AskRelationType(ctx, visitor.TokenID, id, itemID, req, visitorAccount(visitor), stream)
+	})
+}
+
+// AskNewRelationType serves POST …/ontology/draft/relation_types:ask: AskRelationType for a
+// relation type not made yet, from the editor's form alone. It changes nothing.
+func (r *restHandler) AskNewRelationType(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.DraftRelationAskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	replyAsk(c, span, func(stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+		return r.drs.AskNewRelationType(ctx, visitor.TokenID, id, req, visitorAccount(visitor), stream)
 	})
 }
 
