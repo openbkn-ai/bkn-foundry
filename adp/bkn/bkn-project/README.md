@@ -213,3 +213,26 @@ restart fails drafts left drafting, as `interrupted`.
 
 Regenerate mocks with `make generate-mock` (needs `mockgen` from
 `go.uber.org/mock`).
+
+### Interactive knowledge-base resources (K1)
+
+The EE assembly installs four core-owned GET routes under
+`/projects/{project_id}/kb`: `/knowledge-bases`, `/catalogs`, `/files`,
+and `/summary`. Every request authenticates a user and checks project visibility
+before accessing a source. The selected source is `knowledge_base_id`; optional
+file filters are `catalog_id`, `include_subcatalogs`, repeated `mime_type`, and
+`updated_since`. Lists accept `limit` (1–200) and an opaque `cursor`. Catalogs are
+a flat, paginated tree carrying parent IDs. Summary uses the same file filters
+and returns `file_count`, `size`, `content_version_file_count`, and `chunk_count`.
+
+Core forwards the authenticated operator only in a redacted request context; no
+credential enters a DTO, task, decision or git. Source reads require that user's
+current `query_data` and never mount a network or borrow a proxy identity.
+Original-version loss is 410; authentication, permission, conflict and dependency
+failures remain distinct. No source response body is copied into errors.
+
+Configure `knowledgeBase.url` in Helm (the internal API origin) to inject
+`KB_API_URL`; empty leaves the source unavailable. The runtime `knowledge_base`
+gate still selects the complete community router when unlicensed. These reads
+do not yet implement saved selections, holds, samples or extraction-time
+calibration; the remaining K1 workflow stays on #2838.

@@ -93,6 +93,10 @@ spec:
             value: {{ .Values.env.language }}
           - name: BKN_SAFE_URL
             value: {{ (.Values.bknSafe | default dict).url | default "http://bkn-safe:3000" | quote }}
+          {{- with (.Values.knowledgeBase | default dict).url }}
+          - name: KB_API_URL
+            value: {{ . | quote }}
+          {{- end }}
           - name: POD_IP
             valueFrom:
               fieldRef:

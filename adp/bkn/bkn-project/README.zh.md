@@ -175,3 +175,20 @@ I18N_MODE_UT=true go test ./...
 服务进程内运行：重启时仍在起草中的草稿置为失败，原因为 `interrupted`。
 
 使用 `make generate-mock` 重新生成 mock（需要 `go.uber.org/mock` 的 `mockgen`）。
+
+### 交互式知识库来源读取（K1）
+
+专业版在 `/projects/{project_id}/kb` 下装配四个核心 GET 接口：
+`/knowledge-bases`、`/catalogs`、`/files`、`/summary`。先验证用户身份和项目可见性，
+再访问来源。知识库参数为 `knowledge_base_id`；文件筛选为 `catalog_id`、
+`include_subcatalogs`、可重复的 `mime_type` 和 `updated_since`；列表支持
+`limit`（1–200）和不透明 `cursor`。目录是带父编号的分页平面树。文件汇总与列表
+使用相同筛选，返回文件数、大小合计、具有当前内容版本的文件数及切片数。
+
+操作者凭据只在已脱敏的当前请求上下文中转发，不进入 DTO、任务、决定或 git。
+知识库逐次按该用户当前的 `query_data` 判权，不挂载网络、不借代理身份。
+原文版本不再保留为 410，认证、权限、冲突、依赖故障分别保留；错误不带下层应答正文。
+
+Helm 的 `knowledgeBase.url` 指定集群内知识库 API 的源站，注入 `KB_API_URL`；
+为空时来源不可用。未获专业版授权时仍由完整社区路由应答。这里尚不保存选择、
+登记保留、选择样本或校准抽取耗时；其余 K1 流程继续跟踪 #2838。

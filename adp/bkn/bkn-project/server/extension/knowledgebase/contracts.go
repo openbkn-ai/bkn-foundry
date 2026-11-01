@@ -19,9 +19,9 @@ var (
 	ErrVersionGone = errors.New("knowledge base content version gone")
 )
 
-// SourceScope identifies the network whose managed proxy reads the source.
-// The caller must authorize the project and the selected knowledge base first.
-// Credentials belong to the adapter, not to persisted project inputs.
+// SourceScope identifies a selected source. Interactive K1/K2 reads use only
+// the authenticated operator in the request context, never NetworkID as identity.
+// NetworkID is reserved for the separately authorized published proxy path.
 type SourceScope struct {
 	NetworkID       string
 	KnowledgeBaseID string
@@ -33,18 +33,17 @@ type PageQuery struct {
 }
 
 type KnowledgeBase struct {
-	ID   string
-	Name string
+	ID   string `json:"kb_id"`
+	Name string `json:"name"`
 }
 
 type KnowledgeBasePage struct {
-	Entries    []KnowledgeBase
-	NextCursor string
+	Entries    []KnowledgeBase `json:"entries"`
+	NextCursor string          `json:"next_cursor"`
 }
 
 type CatalogQuery struct {
 	PageQuery
-	ParentID string
 }
 
 type FileQuery struct {
@@ -56,33 +55,44 @@ type FileQuery struct {
 }
 
 type Catalog struct {
-	ID       string
-	Name     string
-	ParentID string
+	ID       string `json:"catalog_id"`
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id"`
 }
 
 type CatalogPage struct {
-	Entries    []Catalog
-	NextCursor string
+	Entries    []Catalog `json:"entries"`
+	NextCursor string    `json:"next_cursor"`
 }
 
 // VersionRef always names an explicit content version, not "latest".
 type VersionRef struct {
-	FileID           string
-	ContentVersionID string
+	FileID           string `json:"file_id"`
+	ContentVersionID string `json:"content_version_id"`
 }
 
 type File struct {
 	VersionRef
-	Name       string
-	CatalogID  string
-	MimeType   string
-	ChunkCount int64
+	Name        string `json:"name"`
+	CatalogID   string `json:"catalog_id"`
+	MimeType    string `json:"mime_type"`
+	ChunkCount  int64  `json:"chunk_count"`
+	Size        int64  `json:"size"`
+	ParseStatus string `json:"parse_status"`
+}
+
+// FileSummary uses precisely the same filters as ListFiles. Files without a
+// readable current content version are counted separately, never silently locked.
+type FileSummary struct {
+	FileCount          int64 `json:"file_count"`
+	Size               int64 `json:"size"`
+	VersionedFileCount int64 `json:"content_version_file_count"`
+	ChunkCount         int64 `json:"chunk_count"`
 }
 
 type FilePage struct {
-	Entries    []File
-	NextCursor string
+	Entries    []File `json:"entries"`
+	NextCursor string `json:"next_cursor"`
 }
 
 // Citation is evidence for a proposal. Persisting Quote in a network is only
@@ -96,10 +106,20 @@ type Citation struct {
 	Quote   string
 }
 
+// Span is a Unicode code-point interval in the immutable normalized text.
+type Span struct {
+	BlockID string `json:"block_id"`
+	Start   int    `json:"start"`
+	End     int    `json:"end"`
+}
+
 type Chunk struct {
 	ID       string
 	Text     string
 	Citation Citation
+	// A chunk can span several blocks. Never invent one contiguous citation.
+	Spans   []Span
+	Located string
 }
 
 type ChunkPage struct {
@@ -124,6 +144,7 @@ type Source interface {
 	ListKnowledgeBases(context.Context, SourceScope, PageQuery) (KnowledgeBasePage, error)
 	ListCatalogs(context.Context, SourceScope, CatalogQuery) (CatalogPage, error)
 	ListFiles(context.Context, SourceScope, FileQuery) (FilePage, error)
+	SummarizeFiles(context.Context, SourceScope, FileQuery) (FileSummary, error)
 	ReadChunks(context.Context, SourceScope, VersionRef, PageQuery) (ChunkPage, error)
 	Hold(context.Context, SourceScope, HoldRequest) error
 	ReleaseHold(context.Context, SourceScope, string) error
@@ -167,6 +188,10 @@ func (UnavailableSource) ListCatalogs(context.Context, SourceScope, CatalogQuery
 func (UnavailableSource) ListFiles(context.Context, SourceScope, FileQuery) (FilePage, error) {
 	return FilePage{}, ErrUnavailable
 }
+func (UnavailableSource) SummarizeFiles(context.Context, SourceScope, FileQuery) (FileSummary, error) {
+	return FileSummary{}, ErrUnavailable
+}
+
 func (UnavailableSource) ReadChunks(context.Context, SourceScope, VersionRef, PageQuery) (ChunkPage, error) {
 	return ChunkPage{}, ErrUnavailable
 }
