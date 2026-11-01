@@ -33,6 +33,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/indexbuild"
+	kbaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbresource"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
 	regressionaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/regression"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
@@ -82,6 +83,7 @@ func Boot() *Application {
 	// Initialize the database connection.
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
+	logics.SetKBResourceAccess(kbaccess.New(db))
 	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 	logics.SetReleaseAccess(release.NewReleaseAccess(appSetting))
 	logics.SetProjectAccess(project.NewProjectAccess(appSetting))

@@ -20,6 +20,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
@@ -48,6 +49,7 @@ type restHandler struct {
 	rs         interfaces.ReleaseService
 	ls         interfaces.LineageService
 	ps         interfaces.ProjectService
+	kbra       interfaces.KBResourceAccess
 	drs        interfaces.DraftService
 	prs        interfaces.ProjectReleaseService
 	rqs        interfaces.RequirementService
@@ -61,6 +63,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		rs:         release.NewReleaseService(),
 		ls:         lineage.NewLineageService(),
 		ps:         project.NewProjectService(),
+		kbra:       logics.KBRA,
 		drs:        draft.NewDraftService(appSetting),
 		prs:        release.NewProjectReleaseService(appSetting),
 		rqs:        requirement.NewRequirementService(),

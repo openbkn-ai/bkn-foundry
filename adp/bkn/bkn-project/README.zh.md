@@ -190,5 +190,38 @@ I18N_MODE_UT=true go test ./...
 原文版本不再保留为 410，认证、权限、冲突、依赖故障分别保留；错误不带下层应答正文。
 
 Helm 的 `knowledgeBase.url` 指定集群内知识库 API 的源站，注入 `KB_API_URL`；
-为空时来源不可用。未获专业版授权时仍由完整社区路由应答。这里尚不保存选择、
-登记保留、选择样本或校准抽取耗时；其余 K1 流程继续跟踪 #2838。
+为空时来源不可用。未获专业版授权时仍由完整社区路由应答。
+
+### 保存知识库来源和样本（K1）
+
+以下路径相对于 `/projects/{project_id}/kb`，使用相同的专业版门控。读取先校验项目
+可见性和知识库当前读权限；修改仅项目所有者可做。归档后不能锁定、继续锁定或改样本。
+即使来源读权限已撤销，仍可清理保留登记；清理接口只返回数量。
+
+| 方法 | 路径 | 决定和返回 |
+| --- | --- | --- |
+| GET | `/selection` | `current`、`pending`、`cleanup_pending`；不返回私有保留 UUID |
+| PUT | `/selection` | `operation_id`（UUID）、`expected_selection_id`（首次为空）、`ranges`：知识库/目录、子目录/类型/时间筛选和明确的 `include_original` |
+| POST | `/selection/operations/{operation_id}/resume` | 用已保存的文件版本清单和同一保留 UUID 继续；不重新扫描或换成最新版本 |
+| POST | `/selection/operations/{operation_id}/cancel` | 取消待完成选择并尝试清理登记 |
+| PUT | `/selection/samples` | `selection_id`、乐观并发 `revision`、`plan`；返回更新状态 |
+| GET | `/selection/changes` | 完整扫描后的 `added`、内容版本 `changed`、`no_longer_in_range`；不声称文件全局删除，不修改已锁定选择 |
+| POST | `/selection/clear` | 明确传 `{ "confirm_clear_all": true }`；清空当前及待完成选择，尝试清理登记 |
+| POST | `/selection/cleanup` | 以本次认证身份重试未完成的释放 |
+
+锁定先完整扫描选中范围，按知识库和文件去重，再保存操作意图，最后创建保留登记。
+扫描失败不产生新意图。每个知识库每批最多保留 1,000 个不可变内容版本。超时保留待完成
+状态，供原样继续；未知 UUID 先释放的标记使迟到创建无法恢复已取消登记（只读契约 v0.8）。
+替换时先事务激活新选择，再释放旧选择未被发布引用的登记。归档在同一事务记下待清理状态，
+取消归档不恢复已释放登记。释放未获确认就保持待清理，后续认证请求可重试；不保存凭据，
+不引入后台执行身份。
+
+样本 `plan.mode` 为 `specified` 时传 `debug_ids`、`acceptance_ids`（文件键为
+`knowledge_base_id/file_id`）；为 `random` 时明确传 `ratio`（0–1）、`minimum`。
+另抽验收样本需同时指定 `acceptance_ratio`、`acceptance_minimum`。真实目录估算前不设
+平台默认值。随机按知识库和目录分层、保持精确份数，调试与验收不重叠。没有锁定内容版本的
+文件不能作为样本。清单元数据可给出精确的文件、字节、切片合计；抽取耗时等待实测。
+
+新增 `13-kb-selection.sql` 只保存过程元数据；`init.sql` 带同表用于全新安装，已执行的
+编号升级不改写。不保存模型、实例或文档正文。保留保护标记防止释放已发布引用，发布链路
+接入该标记属于 K6。Studio 流程和真实接口验收继续跟踪 #2838。

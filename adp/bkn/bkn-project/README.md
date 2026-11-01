@@ -233,6 +233,49 @@ failures remain distinct. No source response body is copied into errors.
 
 Configure `knowledgeBase.url` in Helm (the internal API origin) to inject
 `KB_API_URL`; empty leaves the source unavailable. The runtime `knowledge_base`
-gate still selects the complete community router when unlicensed. These reads
-do not yet implement saved selections, holds, samples or extraction-time
-calibration; the remaining K1 workflow stays on #2838.
+gate still selects the complete community router when unlicensed.
+
+### Saved knowledge-base sources and samples (K1)
+
+All paths below are relative to `/projects/{project_id}/kb` and use the same
+Professional gate. Reads require project visibility and current source read
+permission; mutations require the project owner. Lock/resume/sample edits are
+refused for archived projects. Cleanup remains possible after source read access
+is revoked; it returns counts only.
+
+| Method | Path | Decision / result |
+| --- | --- | --- |
+| GET | `/selection` | `current`, `pending`, `cleanup_pending`; private hold UUIDs are never returned |
+| PUT | `/selection` | `operation_id` (UUID), `expected_selection_id` (empty initially), `ranges`: knowledge base/catalog, subtree/type/time filters and explicit `include_original` |
+| POST | `/selection/operations/{operation_id}/resume` | Retry the persisted file/version manifest and identical hold UUIDs; never rescan or substitute latest versions |
+| POST | `/selection/operations/{operation_id}/cancel` | Retire a pending operation and attempt durable hold cleanup |
+| PUT | `/selection/samples` | `selection_id`, optimistic `revision`, and `plan`; returns updated state |
+| GET | `/selection/changes` | Read-only complete scan: `added`, content-version `changed`, `no_longer_in_range`; never claims global deletion or changes the selection |
+| POST | `/selection/clear` | Explicit `{ "confirm_clear_all": true }`; retire current/pending sources and attempt cleanup |
+| POST | `/selection/cleanup` | Retry outstanding releases using this authenticated request |
+
+The lock first scans every selected range, deduplicating files by knowledge base
+and file ID, then persists an intent before any remote retention write. A scan
+error leaves no new intent. Immutable version IDs are retained in batches of at
+most 1,000 per knowledge base. Timeout leaves a resumable pending operation;
+unknown-UUID release tombstones prevent late creation from reviving a cancelled
+hold (read contract v0.8). Replacing sources atomically activates the new manifest
+before queuing the old unreferenced holds for release. Archive queues cleanup in
+the same database transaction; unarchive does not revive released holds. Failed
+release acknowledgements stay pending until a subsequent authenticated cleanup.
+No credential is persisted and no background identity is invented.
+
+A sample plan is `specified` with `debug_ids` and `acceptance_ids` (file keys
+`knowledge_base_id/file_id`), or `random` with explicit `ratio` (0–1) and
+`minimum`. Optional acceptance sampling requires both `acceptance_ratio` and
+`acceptance_minimum`. There are no platform defaults pending real-directory
+calibration. Random selection allocates proportionally by knowledge base/catalog,
+keeps exact requested totals, and never overlaps debug and acceptance samples.
+Files without a locked content version cannot be samples. Stored file metadata
+provides exact file/byte/chunk totals; extraction-time estimates await measurements.
+
+Migration `13-kb-selection.sql` adds process metadata only. `init.sql` includes the
+same table for fresh installations; applied numbered upgrades are unchanged. No
+models, instances or document text are stored here. The retention guard protects
+published references; connecting release lineage to that guard belongs to K6.
+The Studio workflow and real-service validation remain tracked in #2838.
