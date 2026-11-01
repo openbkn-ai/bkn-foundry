@@ -10,6 +10,7 @@ var documentZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknProject.Draft.EventParticipantInUse":            "该关系仍是事件参与方，请先修改事件的参与方设置再删除。",
+		"BknProject.Draft.DocumentRelation.NewName":         "文档关系",
 		"BknProject.Draft.DocumentRelation.ManualReason":    "由建模人配置，构建时按所选字段核对匹配。",
 		"BknProject.Draft.DocumentDataNotReady":             "文档对象的数据准备尚未完成，暂时无法确认草稿；已审核的候选会保留。",
 		"BknProject.KnowledgeBase.NoDebugSamples":           "请先选定并保存调试样本。",

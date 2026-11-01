@@ -50,6 +50,9 @@ func (s *draftService) AskNewRelationType(ctx context.Context, token string, pro
 		span.SetStatus(codes.Error, "Not askable")
 		return nil, err
 	}
+	if req.Working != nil && req.Working.DocumentMapping != nil {
+		return s.askNewDocumentRelation(ctx, token, draft, in, req, caller, stream)
+	}
 	items := &draft.Items
 	base := s.workingRelationType(ctx, items, &interfaces.DraftRelationType{}, req.Working, caller)
 	// Ends the form has with no join the save would take yet.

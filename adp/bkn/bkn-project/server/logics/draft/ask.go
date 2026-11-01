@@ -24,6 +24,7 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // Ask AI: a question about one item of the draft, an object type or a relation type, answered by
@@ -70,7 +71,8 @@ const (
 )
 
 // askInput is the message the Agent reads: the question, the language to answer in, the
-// conversation so far, and the item asked about with what it joins. It carries no row data.
+// conversation so far, and the item asked about with what it joins. Table rows are
+// excluded; document items may carry bounded, verified debug examples.
 type askInput struct {
 	Question string                    `json:"question"`
 	Language string                    `json:"language"`
@@ -91,6 +93,7 @@ type askInput struct {
 }
 
 type askObjectType struct {
+	Document      *askDocument                `json:"document,omitempty"`
 	ID            string                      `json:"id"`
 	Name          string                      `json:"name"`
 	Aliases       []string                    `json:"aliases,omitempty"`
@@ -110,41 +113,65 @@ type askObjectType struct {
 func (o askObjectType) MarshalJSON() ([]byte, error) {
 	type whole askObjectType
 	if !o.brief {
-		return json.Marshal(whole(o))
+		raw, err := json.Marshal(whole(o))
+		if err != nil || o.Document == nil {
+			return raw, err
+		}
+		var body map[string]any
+		if err = json.Unmarshal(raw, &body); err != nil {
+			return nil, err
+		}
+		delete(body, "table")
+		delete(body, "identity_evidence")
+		return json.Marshal(body)
 	}
 	names := []string{}
 	for _, p := range o.Properties {
 		names = append(names, p.Name)
 	}
 	return json.Marshal(struct {
-		ID            string   `json:"id"`
-		Name          string   `json:"name"`
-		Identity      []string `json:"identity"`
-		PropertyNames []string `json:"property_names"`
-	}{o.ID, o.Name, o.Identity, names})
+		ID            string       `json:"id"`
+		Name          string       `json:"name"`
+		Identity      []string     `json:"identity"`
+		PropertyNames []string     `json:"property_names"`
+		Document      *askDocument `json:"document,omitempty"`
+	}{o.ID, o.Name, o.Identity, names, o.Document})
+}
+
+type askDocument struct {
+	TimeProperty         string   `json:"time_property,omitempty"`
+	ParticipantRelations []string `json:"participant_relations,omitempty"`
+	Role                 string   `json:"role"`
+	Layer                string   `json:"layer"`
+	Reason               string   `json:"reason"`
 }
 
 type askProperty struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Type        string `json:"type"`
-	Field       string `json:"field"`
-	Description string `json:"description,omitempty"`
+	ExtractionInstruction string   `json:"extraction_instruction,omitempty"`
+	Examples              []string `json:"examples,omitempty"`
+	ReadOnly              bool     `json:"read_only,omitempty"`
+	Name                  string   `json:"name"`
+	DisplayName           string   `json:"display_name"`
+	Type                  string   `json:"type"`
+	Field                 string   `json:"field"`
+	Description           string   `json:"description,omitempty"`
 }
 
 type askRelation struct {
-	ID            string                         `json:"id"`
-	Name          string                         `json:"name"`
-	Description   string                         `json:"description,omitempty"`
-	Source        string                         `json:"source"`
-	Target        string                         `json:"target"`
-	Cardinality   string                         `json:"cardinality"`
-	Mapping       []interfaces.DraftFieldMapping `json:"mapping,omitempty"`
-	LinkTable     string                         `json:"link_table,omitempty"`
-	SourceMapping []interfaces.DraftFieldMapping `json:"source_mapping,omitempty"`
-	TargetMapping []interfaces.DraftFieldMapping `json:"target_mapping,omitempty"`
-	Adopted       bool                           `json:"adopted"`
-	HitRate       *float64                       `json:"hit_rate,omitempty"`
+	Document        *askDocument                     `json:"document,omitempty"`
+	DocumentMapping *interfaces.DraftDocumentMapping `json:"document_mapping,omitempty"`
+	ID              string                           `json:"id"`
+	Name            string                           `json:"name"`
+	Description     string                           `json:"description,omitempty"`
+	Source          string                           `json:"source"`
+	Target          string                           `json:"target"`
+	Cardinality     string                           `json:"cardinality"`
+	Mapping         []interfaces.DraftFieldMapping   `json:"mapping,omitempty"`
+	LinkTable       string                           `json:"link_table,omitempty"`
+	SourceMapping   []interfaces.DraftFieldMapping   `json:"source_mapping,omitempty"`
+	TargetMapping   []interfaces.DraftFieldMapping   `json:"target_mapping,omitempty"`
+	Adopted         bool                             `json:"adopted"`
+	HitRate         *float64                         `json:"hit_rate,omitempty"`
 }
 
 // askOutput is the structured result that follows the answer's text.
@@ -155,14 +182,16 @@ type askOutput struct {
 // askRevisionOutput is a revision as the Agent gives it: Value for a name, comment or display key,
 // Properties for an identity, Property for a property, Source, Target and Mapping for ends.
 type askRevisionOutput struct {
-	Field      string                               `json:"field"`
-	Value      string                               `json:"value"`
-	Properties []string                             `json:"properties"`
-	Property   *interfaces.DraftAskPropertyRevision `json:"property"`
-	Source     string                               `json:"source_object_type_id"`
-	Target     string                               `json:"target_object_type_id"`
-	Mapping    []interfaces.DraftFieldMapping       `json:"mapping"`
-	Reason     string                               `json:"reason"`
+	DocumentMapping *interfaces.DraftDocumentMapping     `json:"document_mapping"`
+	Cardinality     string                               `json:"cardinality"`
+	Field           string                               `json:"field"`
+	Value           string                               `json:"value"`
+	Properties      []string                             `json:"properties"`
+	Property        *interfaces.DraftAskPropertyRevision `json:"property"`
+	Source          string                               `json:"source_object_type_id"`
+	Target          string                               `json:"target_object_type_id"`
+	Mapping         []interfaces.DraftFieldMapping       `json:"mapping"`
+	Reason          string                               `json:"reason"`
 }
 
 // askResponseFormat is the JSON Schema of the result that follows the answer: a few revisions of
@@ -179,8 +208,14 @@ func askResponseFormat(fields []string) map[string]any {
 		"properties": map[string]any{"type": "array", "maxItems": askMaxIdentity, "items": map[string]any{"type": "string"}},
 		"property": object(map[string]any{
 			"name": map[string]any{"type": "string"}, "display_name": str(interfaces.DRAFT_NAME_MAX_LENGTH),
-			"comment": str(askValueMaxLength),
+			"comment":                str(askValueMaxLength),
+			"extraction_instruction": str(1000),
 		}, "name"),
+		"document_mapping": object(map[string]any{
+			"mode":             map[string]any{"type": "string", "enum": []string{"linking", "same_document"}},
+			"mention_property": str(40), "identity_property": str(40), "source_name_property": str(40), "target_name_property": str(40),
+		}, "mode"),
+		"cardinality":           map[string]any{"type": "string", "enum": []string{"one_to_one", "one_to_many", "many_to_one", "many_to_many"}},
 		"source_object_type_id": map[string]any{"type": "string"},
 		"target_object_type_id": map[string]any{"type": "string"},
 		"mapping": map[string]any{"type": "array", "items": object(map[string]any{
@@ -269,7 +304,10 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 	}
 	base := workingObjectType(objectType, req.Working)
 	in.Kind = askKindObjectType
-	asked := askObjectTypeOf(base)
+	base, asked, err := s.documentAskObject(ctx, token, draft, objectType, base)
+	if err != nil {
+		return nil, err
+	}
 	in.ObjectType, in.Relations = &asked, []askRelation{}
 	for _, r := range draft.Items.RelationTypes {
 		if r.Source == objectType.ID || r.Target == objectType.ID {
@@ -279,10 +317,16 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
 		interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY,
 		interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY}
+	if base.Document != nil && base.Document.Role != "entity" {
+		in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT}
+		if !strings.HasPrefix(base.Document.Role, "evidence_") {
+			in.Editable = append(in.Editable, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY, interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY)
+		}
+	}
 
 	answer, err := s.ask(ctx, caller, askTurn{input: in, finish: func(out *askOutput) *interfaces.DraftAskAnswer {
 		answer := checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
-			return objectTypeRevision(ctx, base, r)
+			return objectTypeRevision(ctx, base, r, draft.Items.RelationTypes...)
 		})
 		answer.Suggestion = suggestionOf(answer.Revisions)
 		return answer
@@ -311,6 +355,17 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
 	base := s.workingRelationType(ctx, &draft.Items, relationType, req.Working, caller)
+	var documentInput *kbconcept.SampleInput
+	if base.Document != nil && base.Document.Role == "relation" {
+		documentInput, err = s.documentEditInput(ctx, token, draft, base.Document)
+		if err != nil {
+			return nil, err
+		}
+		base, err = kbconcept.ValidateEditedRelation(documentInput, draft.Items, relationType, base)
+		if err != nil {
+			return nil, documentEditError(ctx)
+		}
+	}
 	in.Kind = askKindRelationType
 	asked := askRelationOf(base)
 	in.RelationType, in.Ends = &asked, []askObjectType{}
@@ -321,9 +376,15 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 	}
 	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
 		interfaces.DRAFT_ASK_REVISION_ENDS}
+	if base.Document != nil && base.Document.Role != "relation" {
+		in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT}
+	}
 
 	answer, err := s.ask(ctx, caller, askTurn{input: in, finish: func(out *askOutput) *interfaces.DraftAskAnswer {
 		return checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
+			if base.Document != nil {
+				return documentRelationRevision(ctx, documentInput, draft.Items, base, r)
+			}
 			return s.relationTypeRevision(ctx, &draft.Items, base, r, caller)
 		})
 	}}, stream)
@@ -343,11 +404,17 @@ func askObjectTypeOf(objectType *interfaces.DraftObjectType) askObjectType {
 		Identity: append([]string{}, objectType.PrimaryKeys...), IdentityCount: objectType.Key,
 		DisplayKey: objectType.DisplayKey, Properties: []askProperty{},
 	}
+	if objectType.Document != nil {
+		asked.Document = &askDocument{Role: objectType.Document.Role, Layer: objectType.Document.Layer, Reason: objectType.Document.Reason, TimeProperty: objectType.Document.TimeProperty, ParticipantRelations: append([]string(nil), objectType.Document.ParticipantRelations...)}
+	}
 	for _, p := range objectType.Properties {
 		asked.Properties = append(asked.Properties, askProperty{
 			Name: p.Name, DisplayName: p.DisplayName, Type: p.Type, Field: p.MappedField,
-			Description: truncateRunes(p.Description, askDescriptionMax),
+			Description: truncateRunes(p.Description, askDescriptionMax), ReadOnly: p.ReadOnly,
 		})
+		if objectType.Document != nil && p.Extraction != nil {
+			asked.Properties[len(asked.Properties)-1].ExtractionInstruction = truncateRunes(p.Extraction.Instruction, 1000)
+		}
 	}
 	return asked
 }
@@ -356,6 +423,10 @@ func askRelationOf(r *interfaces.DraftRelationType) askRelation {
 	relation := askRelation{ID: r.ID, Name: r.Name, Description: truncateRunes(r.Description, askDescriptionMax),
 		Source: r.Source, Target: r.Target, Cardinality: r.Cardinality, Mapping: r.Mapping,
 		SourceMapping: r.SourceMapping, TargetMapping: r.TargetMapping, Adopted: r.Adopted}
+	if r.Document != nil {
+		relation.Document = &askDocument{Role: r.Document.Role, Layer: r.Document.Layer, Reason: r.Document.Reason}
+		relation.DocumentMapping = r.DocumentMapping
+	}
 	if r.LinkTable != nil {
 		relation.LinkTable = r.LinkTable.Name
 	}
