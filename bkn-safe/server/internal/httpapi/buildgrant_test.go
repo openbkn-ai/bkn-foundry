@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/buildgrant"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -24,9 +25,21 @@ type buildPermission struct {
 	allowed bool
 }
 
-func (p *buildPermission) CheckContext(context.Context, string, string, string, string) (bool, error) {
-	return p.allowed, p.err
+func (p *buildPermission) CheckResourceOpsScoped(_ context.Context, _ string, checks []authz.ResourceOperationCheck, _ authz.EvaluationScope) ([]authz.FilteredResource, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
+	result := []authz.FilteredResource{}
+	for _, c := range checks {
+		operations := []string{}
+		if p.allowed {
+			operations = append(operations, "query_data")
+		}
+		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Operations: operations})
+	}
+	return result, nil
 }
+
 func TestBuildGrantHTTPDoesNotAcceptScopeEscapeOrRevokedOwner(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {

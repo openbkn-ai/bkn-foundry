@@ -16,6 +16,7 @@ import (
 
 	driver "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -66,7 +67,7 @@ func mariaDB(t *testing.T) *gorm.DB {
 	}
 	script := strings.Join(lines, "\n")
 	for run := 0; run < 2; run++ {
-		for _, statement := range strings.Split(strings.ReplaceAll(script, "USE openbkn;", "USE "+name+";"), ";") {
+		for _, statement := range strings.Split(strings.ReplaceAll(script, "USE safe;", "USE "+name+";"), ";") {
 			if strings.TrimSpace(statement) != "" {
 				if err = db.Exec(statement).Error; err != nil {
 					t.Fatal("apply manual build schema", err)
@@ -85,9 +86,14 @@ func mariaDB(t *testing.T) *gorm.DB {
 
 type alwaysAllow struct{}
 
-func (alwaysAllow) CheckContext(context.Context, string, string, string, string) (bool, error) {
-	return true, nil
+func (alwaysAllow) CheckResourceOpsScoped(_ context.Context, _ string, checks []authz.ResourceOperationCheck, _ authz.EvaluationScope) ([]authz.FilteredResource, error) {
+	result := []authz.FilteredResource{}
+	for _, c := range checks {
+		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Operations: []string{"query_data"}})
+	}
+	return result, nil
 }
+
 func TestMariaDBBuildGrantRaces(t *testing.T) {
 	db := mariaDB(t)
 	s := New(db, alwaysAllow{})
@@ -137,6 +143,13 @@ func TestMariaDBBuildGrantRaces(t *testing.T) {
 	a, b := <-results, <-results
 	if a.err != nil || b.err != nil || a.g.PrincipalID != b.g.PrincipalID || a.created == b.created {
 		t.Fatal("concurrent replay created multiple identities", a.err, b.err)
+	}
+	other := r
+	other.ID = "different-grant"
+	other.ProjectID = "other-project"
+	cross, _, err := s.Create(t.Context(), other)
+	if err != nil || cross.PrincipalID == a.g.PrincipalID {
+		t.Fatal("local build name collided across projects", err)
 	}
 	var orphaned int64
 	if err := db.Model(&model.User{}).Where("id <> ? AND NOT EXISTS (SELECT 1 FROM managed_proxy_accounts m WHERE m.proxy_account_id=users.id)", "owner").Count(&orphaned).Error; err != nil || orphaned != 0 {

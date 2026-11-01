@@ -312,7 +312,10 @@ bootstrap Secret 的 bkn-agent Chart/镜像；不要单独删库或回滚到会�
 
 The internal [build-grant API](../docs/api/bkn-safe/build-grants.yaml) provides
 non-credentialed project/job identities, an immutable file/version manifest and
-live delegator permission checks. It does not add general Casbin grants to these
+live delegator permission checks. Each check batches every distinct knowledge base
+in the immutable manifest through current effective permissions, without caching
+a prior authorization result. Protected identity mappings use the globally unique
+grant id so different projects can reuse local job names. It does not add general Casbin grants to these
 identities or admit them as knowledge-network proxies. The project coordinator
 must authenticate the owner, persist the private grant id before remote creation,
 fence cancellation/archive/model changes and reject late results. KB API checks
@@ -327,7 +330,9 @@ logs or Trace. Grant rows contain the delegator and scope, never user credential
 
 Before a rollout, back up bkn-safe and manually apply
 [`20261101-build-grants.sql`](server/migrations/20261101-build-grants.sql).
-The migration adds two tables and changes no existing account or grant. Reverting
+The script targets the Safe database (`safe` by default); use the configured Safe
+database if the installation overrides that name. The migration adds two tables
+and changes no existing account or grant. Reverting
 the service version leaves those tables for recovery; do not drop retained
 identities or journals while holds remain. This change has not been deployed to
 8081. Local MariaDB tests apply the script twice and verify concurrent creation,

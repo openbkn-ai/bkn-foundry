@@ -12,9 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"sort"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -71,7 +73,7 @@ type CheckRequest struct {
 	Versions    []Version `json:"versions,omitempty"`
 }
 type PermissionChecker interface {
-	CheckContext(context.Context, string, string, string, string) (bool, error)
+	CheckResourceOpsScoped(context.Context, string, []authz.ResourceOperationCheck, authz.EvaluationScope) ([]authz.FilteredResource, error)
 }
 type Service struct {
 	db      *gorm.DB
@@ -123,17 +125,28 @@ func (s *Service) permitted(ctx context.Context, delegator string, versions []Ve
 	if s.checker == nil {
 		return errors.New("authorization dependency unavailable")
 	}
-	seen := map[string]bool{}
+	checks := []authz.ResourceOperationCheck{}
+	expected := map[string]bool{}
 	for _, v := range versions {
-		if seen[v.KnowledgeBaseID] {
-			continue
+		if !expected[v.KnowledgeBaseID] {
+			expected[v.KnowledgeBaseID] = true
+			checks = append(checks, authz.ResourceOperationCheck{Resource: authz.ResourceRef{Type: "knowledge_base", ID: v.KnowledgeBaseID}, Operations: []string{"query_data"}})
 		}
-		seen[v.KnowledgeBaseID] = true
-		allowed, err := s.checker.CheckContext(ctx, delegator, "knowledge_base", v.KnowledgeBaseID, "query_data")
-		if err != nil {
-			return err
+	}
+	results, err := s.checker.CheckResourceOpsScoped(ctx, delegator, checks, authz.ScopeEffective)
+	if err != nil {
+		return err
+	}
+	if len(results) != len(checks) {
+		return errors.New("incomplete permission batch")
+	}
+	seen := map[string]bool{}
+	for _, result := range results {
+		if result.Type != "knowledge_base" || !expected[result.ID] || seen[result.ID] {
+			return errors.New("inconsistent permission batch")
 		}
-		if !allowed {
+		seen[result.ID] = true
+		if !slices.Contains(result.Operations, "query_data") {
 			return ErrForbidden
 		}
 	}
@@ -182,7 +195,7 @@ func (s *Service) Create(ctx context.Context, r CreateRequest) (*Grant, bool, er
 			return nil
 		}
 		user := model.User{ID: g.PrincipalID, Account: "bkn-build-" + g.PrincipalID, Name: "BKN build service", Enabled: true, Source: model.SourceLocal, AccountType: model.AccountTypeApp}
-		mapping := model.ManagedProxyAccount{ProxyAccountID: g.PrincipalID, ManagedBy: "bkn", ManagedResourceType: ManagedResourceType, ManagedResourceID: r.BuildID, LifecycleStatus: "active", Version: 1}
+		mapping := model.ManagedProxyAccount{ProxyAccountID: g.PrincipalID, ManagedBy: "bkn", ManagedResourceType: ManagedResourceType, ManagedResourceID: r.ID, LifecycleStatus: "active", Version: 1}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
@@ -234,7 +247,7 @@ func (s *Service) Check(ctx context.Context, r CheckRequest) error {
 		}
 		return err
 	}
-	if mapping.ManagedBy != "bkn" || mapping.ManagedResourceType != ManagedResourceType || mapping.ManagedResourceID != g.BuildID || mapping.LifecycleStatus != "active" || mapping.Version != 1 {
+	if mapping.ManagedBy != "bkn" || mapping.ManagedResourceType != ManagedResourceType || mapping.ManagedResourceID != g.ID || mapping.LifecycleStatus != "active" || mapping.Version != 1 {
 		return ErrForbidden
 	}
 	var user model.User

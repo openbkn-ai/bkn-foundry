@@ -11,6 +11,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -24,19 +25,28 @@ type permissions struct {
 	calls    int
 }
 
-func (p *permissions) CheckContext(_ context.Context, actor, kind, id, operation string) (bool, error) {
-	if actor != "owner" || kind != "knowledge_base" || operation != "query_data" {
-		return false, errors.New("wrong permission target")
-	}
-	if id == p.deniedKB {
-		return false, nil
-	}
+func (p *permissions) CheckResourceOpsScoped(_ context.Context, actor string, checks []authz.ResourceOperationCheck, scope authz.EvaluationScope) ([]authz.FilteredResource, error) {
 	p.calls++
-	if p.failed {
-		return false, errors.New("dependency unavailable")
+	if actor != "owner" || scope != authz.ScopeEffective {
+		return nil, errors.New("wrong permission target")
 	}
-	return p.allowed, nil
+	if p.failed {
+		return nil, errors.New("dependency unavailable")
+	}
+	result := []authz.FilteredResource{}
+	for _, c := range checks {
+		if c.Resource.Type != "knowledge_base" || len(c.Operations) != 1 || c.Operations[0] != "query_data" {
+			return nil, errors.New("wrong permission operation")
+		}
+		operations := []string{}
+		if p.allowed && c.Resource.ID != p.deniedKB {
+			operations = append(operations, "query_data")
+		}
+		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Operations: operations})
+	}
+	return result, nil
 }
+
 func fixture(t *testing.T) (*Service, *gorm.DB, *permissions, CreateRequest) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -194,5 +204,60 @@ func TestCleanupCannotRetireAnUnknownOrActiveGrant(t *testing.T) {
 	}
 	if err := s.CompleteCleanup(t.Context(), r.ID, r.ProjectID, r.BuildID); !errors.Is(err, ErrConflict) {
 		t.Fatal("active identity retired before revocation", err)
+	}
+}
+
+func TestProjectsMayReuseLocalBuildNames(t *testing.T) {
+	s, _, _, req := fixture(t)
+	first, _, err := s.Create(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.ID = "grant-2"
+	req.ProjectID = "project-2"
+	second, created, err := s.Create(t.Context(), req)
+	if err != nil || !created || second.PrincipalID == first.PrincipalID {
+		t.Fatal("different projects collided on a local build name", err)
+	}
+	if err = s.Check(t.Context(), checkFor(second, req)); err != nil {
+		t.Fatal("second project's scope rejected", err)
+	}
+}
+
+func TestPermissionChecksUseOneCurrentBatchPerRequest(t *testing.T) {
+	s, _, permissions, req := fixture(t)
+	first, _, err := s.Create(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := permissions.calls
+	if err = s.Check(t.Context(), checkFor(first, req)); err != nil {
+		t.Fatal(err)
+	}
+	if permissions.calls != before+1 {
+		t.Fatal("read did not use one current batched permission evaluation")
+	}
+	if err = s.Check(t.Context(), checkFor(first, req)); err != nil {
+		t.Fatal(err)
+	}
+	if permissions.calls != before+2 {
+		t.Fatal("permission decision cached across requests")
+	}
+}
+
+func TestNetworkProxyLifecycleCannotMutateABuildIdentity(t *testing.T) {
+	s, _, _, req := fixture(t)
+	grant, _, err := s.Create(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxies := managedproxy.New(s.db)
+	for _, operation := range []func(context.Context, string) (*managedproxy.Account, error){proxies.Get, proxies.Disable, proxies.Archive, proxies.Restore} {
+		if _, err = operation(t.Context(), grant.PrincipalID); !errors.Is(err, gorm.ErrRecordNotFound) {
+			t.Fatal("KN lifecycle accepted a build identity", err)
+		}
+		if err = s.Check(t.Context(), checkFor(grant, req)); err != nil {
+			t.Fatal("wrong lifecycle endpoint changed a build identity", err)
+		}
 	}
 }

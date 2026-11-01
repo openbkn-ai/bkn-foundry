@@ -3,7 +3,7 @@
 
 -- Back up bkn-safe before applying this additive schema. Apply manually before
 -- rolling out the build-delegation API; no existing identity or grant is changed.
-USE openbkn;
+USE safe;
 
 CREATE TABLE IF NOT EXISTS build_grants (
     id varchar(64) PRIMARY KEY,
