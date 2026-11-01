@@ -289,3 +289,5 @@ The optional `knowledgebase.SampleSource` reads native chunk batches from explic
 Disjoint native spans become independently located fragments. `ValidateCitations` requires the proposal's exact KB/file/version, block, code-point interval and quote to match one real fragment, and never joins across gaps. Its returned copy keeps a quote only for a file whose `include_original` decision permits it; otherwise the location remains with an empty quote. Live model input is transient and must not be persisted as a task, decision or draft.
 
 The Agent, semantic model validation, candidate integration, templates and editor remain K2 follow-up work in #2839. This foundation does not change draft adoption, confirmation, Dataset creation or publication.
+
+A selected debug file with zero chunks or no located text returns the distinct `ErrNoLocatedSamples`, so the UI can ask the owner to choose readable samples; malformed counts remain `ErrInvalidSample`. K1 sample allocation is not silently rewritten.

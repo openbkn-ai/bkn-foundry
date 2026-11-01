@@ -9,6 +9,7 @@ import (
 	"errors"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -59,7 +60,7 @@ func TestLoadOnlyDebugSamplesAndSplitDisjointUnicodeSpans(t *testing.T) {
 	}
 }
 func TestLoadFailsAsAWholeOnSourceErrorsAndUntrustedPages(t *testing.T) {
-	for _, reason := range []string{"acceptance", "version", "duplicate", "cursor", "span", "oversize", "no_source"} {
+	for _, reason := range []string{"acceptance", "version", "duplicate", "span", "oversize", "no_source"} {
 		t.Run(reason, func(t *testing.T) {
 			c := chunk()
 			page := kb.SamplePage{Entries: []kb.SampleChunk{c}}
@@ -72,8 +73,6 @@ func TestLoadFailsAsAWholeOnSourceErrorsAndUntrustedPages(t *testing.T) {
 				page.Entries[0].ContentVersionID = "9"
 			case "duplicate":
 				page.Entries = append(page.Entries, c)
-			case "cursor":
-				page.NextCursor = "again"
 			case "span":
 				page.Entries[0].Spans[0].End = 999
 			case "oversize":
@@ -106,10 +105,49 @@ func TestLoadBoundsAndReleasedSelections(t *testing.T) {
 		t.Fatal(err)
 	}
 	s = selected()
-	for i := 0; i < MaxSampleFiles; i++ {
-		s.Files = append(s.Files, s.Files[0])
+	s.Files = nil
+	for i := 0; i <= MaxSampleFiles; i++ {
+		s.Files = append(s.Files, interfaces.KBResourceFile{KnowledgeBaseID: "1", FileID: strconv.Itoa(100 + i), ContentVersionID: strconv.Itoa(200 + i), ChunkCount: 1, SampleRole: "debug"})
 	}
-	if _, err := LoadSamples(context.Background(), nil, s, "zh-CN"); err == nil {
-		t.Fatal("unbounded/duplicate samples")
+	if _, err := LoadSamples(context.Background(), nil, s, "zh-CN"); !errors.Is(err, ErrSampleLimit) {
+		t.Fatalf("file bound not checked: %v", err)
+	}
+	s = selected()
+	s.Files = append(s.Files, s.Files[0])
+	if _, err := LoadSamples(context.Background(), nil, s, "zh-CN"); !errors.Is(err, ErrInvalidSample) {
+		t.Fatalf("duplicate manifest not refused: %v", err)
+	}
+}
+
+func TestRepeatedCursorIsDetectedWithDifferentChunks(t *testing.T) {
+	first, second := chunk(), chunk()
+	second.ChunkID = "92"
+	second.Index = 1
+	r := &sampleReader{pages: []kb.SamplePage{{Entries: []kb.SampleChunk{first}, NextCursor: "again"}, {Entries: []kb.SampleChunk{second}, NextCursor: "again"}}}
+	s := selected()
+	s.Files[0].ChunkCount = 2
+	if _, err := LoadSamples(context.Background(), r, s, "zh-CN"); !errors.Is(err, ErrInvalidSample) || r.calls != 2 {
+		t.Fatalf("repeated cursor branch not checked: %v", err)
+	}
+}
+func TestZeroChunkDebugSampleHasAnActionableDistinctError(t *testing.T) {
+	s := selected()
+	s.Files[0].ChunkCount = 0
+	r := &sampleReader{}
+	if _, err := LoadSamples(context.Background(), r, s, "zh-CN"); !errors.Is(err, ErrNoLocatedSamples) || r.calls != 0 {
+		t.Fatalf("empty sample must be distinguished before reading: %v", err)
+	}
+}
+
+func TestPartialChunksKeepTheirLocatedFragmentsWithoutInventingGaps(t *testing.T) {
+	c := chunk()
+	c.Located = "partial"
+	r := &sampleReader{pages: []kb.SamplePage{{Entries: []kb.SampleChunk{c}}}}
+	input, err := LoadSamples(context.Background(), r, selected(), "zh-CN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(input.Request.Samples) != 2 || input.Request.Samples[0].Citation.Quote != "订单甲😀" || input.Request.Samples[1].Citation.Quote != "é乙" {
+		t.Fatal("partial spans were joined or silently dropped")
 	}
 }

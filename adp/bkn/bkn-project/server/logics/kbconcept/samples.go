@@ -25,9 +25,10 @@ const (
 )
 
 var (
-	ErrNoDebugSamples = errors.New("no locked debug samples")
-	ErrSampleLimit    = errors.New("sample input exceeds extraction limits")
-	ErrInvalidSample  = errors.New("invalid or incomplete sample input")
+	ErrNoDebugSamples   = errors.New("no locked debug samples")
+	ErrNoLocatedSamples = errors.New("selected debug samples have no located text; choose readable samples")
+	ErrSampleLimit      = errors.New("sample input exceeds extraction limits")
+	ErrInvalidSample    = errors.New("invalid or incomplete sample input")
 )
 
 // SampleInput contains live text for this request only. Callers must not persist
@@ -61,7 +62,10 @@ func LoadSamples(ctx context.Context, source kb.SampleSource, selection *interfa
 			return nil, ErrInvalidSample
 		}
 		expected[key] = true
-		if file.ChunkCount <= 0 {
+		if file.ChunkCount == 0 {
+			return nil, ErrNoLocatedSamples
+		}
+		if file.ChunkCount < 0 {
 			return nil, ErrInvalidSample
 		}
 		expectedChunks[key] = file.ChunkCount
@@ -152,8 +156,11 @@ func LoadSamples(ctx context.Context, source kb.SampleSource, selection *interfa
 		cursor = page.NextCursor
 	}
 	for key := range expected {
-		if !located[key] || readCounts[key] != expectedChunks[key] {
+		if readCounts[key] != expectedChunks[key] {
 			return nil, ErrInvalidSample
+		}
+		if !located[key] {
+			return nil, ErrNoLocatedSamples
 		}
 	}
 	return input, nil
