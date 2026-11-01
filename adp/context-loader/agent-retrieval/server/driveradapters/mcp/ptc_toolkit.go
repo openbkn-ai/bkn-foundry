@@ -279,7 +279,8 @@ func ptcStubSignature(tool MCPToolInfo) string {
 	// These tools gained branch after scripts had already used their optional
 	// arguments positionally. Keep every old positional slot stable in the
 	// executable stub; branch is available by name only.
-	branchKeywordOnly := tool.Name == toolKeyQueryMetric || tool.Name == toolKeyDrillThroughMetric
+	branchKeywordOnly := tool.Name == toolKeyQueryMetric || tool.Name == toolKeyDrillThroughMetric ||
+		tool.Name == toolKeyGetKnDetail || tool.Name == toolKeyGetObjectTypes
 	if branchKeywordOnly {
 		signature = strings.Replace(signature, ", branch: str = 'main'", "", 1)
 	}

@@ -654,13 +654,15 @@ print(json.dumps(_calls[-1]["arguments"]["bkn_context"], sort_keys=True))
 	}
 }
 
-func TestPTCMetricBranchKeepsExistingPositionalArguments(t *testing.T) {
+func TestPTCBranchKeepsExistingPositionalArguments(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		want string
 	}{
 		{toolKeyQueryMetric, "def query_metric(kn_id: str, metric_id: str, version: int, query: dict = None, response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main') -> dict:"},
 		{toolKeyDrillThroughMetric, "def drill_through_metric(bucket_key: str, kn_id: str, metric_id: str, query: dict, version: int, cursor: str = None, page_size: int = 100, response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main') -> dict:"},
+		{toolKeyGetKnDetail, "def get_kn_detail(kn_id: str, detail_level: str = 'summary', response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main') -> dict:"},
+		{toolKeyGetObjectTypes, "def get_object_types(kn_id: str, ids: list = None, limit: int = 50, offset: int = 0, response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main') -> dict:"},
 	} {
 		input, _ := loadToolSchemas(tc.name)
 		tool := MCPToolInfo{Name: tc.name, InputSchema: input}

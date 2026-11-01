@@ -219,7 +219,7 @@ def test_shipped_metric_tools_expose_the_branch_contract():
 
     from sandbox_sdk import _bkn_tools
 
-    for name in ("query_metric", "drill_through_metric"):
+    for name in ("query_metric", "drill_through_metric", "get_kn_detail", "get_object_types"):
         signature = inspect.signature(getattr(_bkn_tools, name))
         branch = signature.parameters["branch"]
         assert branch.default == "main", name
@@ -235,6 +235,10 @@ def test_shipped_metric_tools_expose_the_branch_contract():
     )
     assert drill_args.arguments["cursor"] == "cursor-1"
     assert drill_args.arguments["page_size"] == 50
+    detail_args = inspect.signature(_bkn_tools.get_kn_detail).bind("kn-1", "full")
+    assert detail_args.arguments["detail_level"] == "full"
+    object_args = inspect.signature(_bkn_tools.get_object_types).bind("kn-1", ["ot-1"])
+    assert object_args.arguments["ids"] == ["ot-1"]
 
 
 def test_action_execution_pagination_is_available_from_bkn(monkeypatch):
