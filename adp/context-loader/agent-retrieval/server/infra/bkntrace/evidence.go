@@ -547,7 +547,7 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 	truncated := resp != nil && (resp.NextCursor != "" || resp.Status == "partial")
 	payload := map[string]any{
 		"metric_ref": metricRef, "network_ref": "kn:" + strings.TrimSpace(req.KnID),
-		"version": req.Version, "group_by": req.Query.GroupBy, "conditions": req.Query.Filter,
+		"branch": req.Branch, "version": req.Version, "group_by": req.Query.GroupBy, "conditions": req.Query.Filter,
 		"having": req.Query.Having, "order_by": req.Query.OrderBy,
 		"page_size": req.Query.PageSize, "cursor": req.Query.Cursor,
 		"time": req.Query.Time, "status": status,

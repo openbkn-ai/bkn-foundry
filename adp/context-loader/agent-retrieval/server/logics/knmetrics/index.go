@@ -32,12 +32,62 @@ var (
 	ErrVersionRequired  = errors.New("version must be a positive published object metric version (from get_object_types related_metrics)")
 )
 
+const defaultBranch = "main"
+
+func discoveryBranch(branch string) string {
+	if branch = strings.TrimSpace(branch); branch != "" {
+		return branch
+	}
+	return defaultBranch
+}
+
+func branchReader(bkn interfaces.BknBackendAccess, branch string) (interfaces.BranchBknBackendAccess, error) {
+	branched, ok := bkn.(interfaces.BranchBknBackendAccess)
+	if !ok {
+		return nil, fmt.Errorf("branch-aware metric discovery is unavailable for %q", branch)
+	}
+	return branched, nil
+}
+
+func NetworkDetailForBranch(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string) (*interfaces.KnowledgeNetworkDetail, error) {
+	if branch = discoveryBranch(branch); branch == defaultBranch {
+		return bkn.GetKnowledgeNetworkDetail(ctx, knID)
+	}
+	reader, err := branchReader(bkn, branch)
+	if err != nil {
+		return nil, err
+	}
+	return reader.GetKnowledgeNetworkDetailBranch(ctx, knID, branch)
+}
+
+func ObjectTypesForBranch(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string, offset, limit int) (*interfaces.ObjectTypePage, error) {
+	if branch = discoveryBranch(branch); branch == defaultBranch {
+		return bkn.ListObjectTypes(ctx, knID, offset, limit)
+	}
+	reader, err := branchReader(bkn, branch)
+	if err != nil {
+		return nil, err
+	}
+	return reader.ListObjectTypesBranch(ctx, knID, branch, offset, limit)
+}
+
+func ObjectTypeDetailForBranch(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string, ids []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
+	if branch = discoveryBranch(branch); branch == defaultBranch {
+		return bkn.GetObjectTypeDetail(ctx, knID, ids, includeDetail)
+	}
+	reader, err := branchReader(bkn, branch)
+	if err != nil {
+		return nil, err
+	}
+	return reader.GetObjectTypeDetailBranch(ctx, knID, branch, ids, includeDetail)
+}
+
 // KnMetricsService metric visibility and metric access.
 type KnMetricsService interface {
 	// AttachRelatedMetrics attaches the metrics under its scope to the object type.
-	AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error
+	AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType, branch ...string) error
 	// AttachRelatedMetricCounts Attach only counts, used for progressive drill-down of get_kn_detail.
-	AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error
+	AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType, branch ...string) error
 	// QueryMetric takes the number based on the metric's own semantics.
 	QueryMetric(ctx context.Context, req *interfaces.QueryMetricReq) (*interfaces.QueryMetricResp, error)
 	DrillThroughMetric(ctx context.Context, req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error)
@@ -74,8 +124,8 @@ func NewKnMetricsServiceWith(logger interfaces.Logger, bkn interfaces.BknBackend
 }
 
 // AttachRelatedMetrics distributes published metrics by owner object type.
-func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error {
-	byScope, err := s.metricsByScope(ctx, knID, objectTypes)
+func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType, branch ...string) error {
+	byScope, err := s.metricsByScope(ctx, knID, objectTypes, branch...)
 	if err != nil {
 		return err
 	}
@@ -90,8 +140,8 @@ func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string
 }
 
 // AttachRelatedMetricCounts only writes counts, not details (used for get_kn_detail summary).
-func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error {
-	byScope, err := s.metricsByScope(ctx, knID, objectTypes)
+func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType, branch ...string) error {
+	byScope, err := s.metricsByScope(ctx, knID, objectTypes, branch...)
 	if err != nil {
 		return err
 	}
@@ -106,7 +156,7 @@ func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID s
 
 // metricsByScope groups visible metrics by owner object type.
 func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
-	objectTypes []*interfaces.ObjectType) (map[string][]*interfaces.RelatedMetric, error) {
+	objectTypes []*interfaces.ObjectType, branch ...string) (map[string][]*interfaces.RelatedMetric, error) {
 	ids := make([]string, 0, len(objectTypes))
 	for _, ot := range objectTypes {
 		if ot != nil && strings.TrimSpace(ot.ID) != "" {
@@ -117,7 +167,21 @@ func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 		return nil, nil
 	}
 
-	metrics, err := s.bknBackend.ListMetricsByObjectTypes(ctx, knID, ids)
+	selectedBranch := defaultBranch
+	if len(branch) > 0 && strings.TrimSpace(branch[0]) != "" {
+		selectedBranch = strings.TrimSpace(branch[0])
+	}
+	var metrics []*interfaces.RelatedMetric
+	var err error
+	if selectedBranch != defaultBranch {
+		branched, ok := s.bknBackend.(interfaces.BranchBknBackendAccess)
+		if !ok {
+			return nil, fmt.Errorf("branch-aware metric discovery is unavailable for %q", selectedBranch)
+		}
+		metrics, err = branched.ListMetricsByObjectTypesBranch(ctx, knID, selectedBranch, ids)
+	} else {
+		metrics, err = s.bknBackend.ListMetricsByObjectTypes(ctx, knID, ids)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +204,11 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 	}
 	knID := strings.TrimSpace(req.KnID)
 	metricID := strings.TrimSpace(req.MetricID)
+	branch := strings.TrimSpace(req.Branch)
+	if branch == "" {
+		branch = defaultBranch
+	}
+	req.Branch = branch
 	if knID == "" {
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, ErrKnIDRequired
@@ -160,7 +229,7 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, errors.New("query.time.start must be <= query.time.end")
 	}
-	resp, err := s.ontologyQuery.QueryMetricData(ctx, knID, metricID, req.Version, &req.Query)
+	resp, err := s.ontologyQuery.QueryMetricData(ctx, knID, branch, metricID, req.Version, &req.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +266,13 @@ func (s *knMetricsService) DrillThroughMetric(ctx context.Context, req *interfac
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, err
 	}
-	resp, err := s.ontologyQuery.DrillThroughMetricData(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.MetricID), req.Version, req)
+	branch := strings.TrimSpace(req.Branch)
+	if branch == "" {
+		branch = defaultBranch
+	}
+	req.Branch = branch
+	resp, err := s.ontologyQuery.DrillThroughMetricData(ctx, strings.TrimSpace(req.KnID), branch,
+		strings.TrimSpace(req.MetricID), req.Version, req)
 	if err != nil {
 		return nil, err
 	}

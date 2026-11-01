@@ -8,6 +8,7 @@ package interfaces
 // contains only runtime choices allowed by that version's query capabilities.
 type QueryMetricReq struct {
 	KnID     string            `json:"kn_id" form:"kn_id"`
+	Branch   string            `json:"branch,omitempty" form:"branch"`
 	MetricID string            `json:"metric_id" form:"metric_id"`
 	Version  int               `json:"version" form:"version"`
 	Query    ObjectMetricQuery `json:"query"`
@@ -121,6 +122,7 @@ type MetricQueryDownstreamResp struct {
 
 type MetricDrillThroughReq struct {
 	KnID      string            `json:"kn_id"`
+	Branch    string            `json:"branch,omitempty"`
 	MetricID  string            `json:"metric_id"`
 	Version   int               `json:"version"`
 	Query     ObjectMetricQuery `json:"query"`

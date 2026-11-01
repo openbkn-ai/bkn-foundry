@@ -15,6 +15,7 @@
         "type": "string",
         "description": "知识网络 ID，来自 list_knowledge_networks 或 get_kn_detail，不可凭名称猜测。"
       },
+      "branch": {"type": "string", "default": "main", "description": "知识网络分支；省略时使用 main。"},
       "detail_level": {
         "type": "string",
         "enum": [

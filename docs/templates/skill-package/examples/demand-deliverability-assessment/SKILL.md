@@ -47,7 +47,7 @@ Agent 用 `search_capabilities` 按**名称**在本网络内找到函数，用 `
 
 | 名称 | 类型 | 用途 | 调用方式 | 结果怎么读 | 需确认 |
 |------|------|------|----------|------------|--------|
-| 库存可用量 | 指标 | 可用库存总口径 | `query_metric`，`time.instant=true`；需按物料拆分时加 `analysis_dimensions=["material_code"]` | `datas[0].values[0]` 为合计可用量 | 否 |
+| 库存可用量 | 指标 | 可用库存总口径 | `query_metric`，传已发布版本及 `query.time={start,end}`（Unix 毫秒）；按物料拆分时在 `query.group_by` 中传定义声明的属性引用 | 从 `entries[].value` 读取并检查 `model`、`status` | 否 |
 | BOM清单 | 函数 | 展开产品一级主料 | `execute_tool`，参数 `product`（必填）、`depth=1` | `l1_lines[]` 为一级主料，`line_count` 为 BOM 行数 | 否 |
 | 要X套净需求与齐套 | 函数 | 齐套判断与缺料 | `execute_tool`，参数 `product`、`qty`、`substitute_enabled`（必须明确 true/false） | `kitting_ok` 为齐套结论；`gaps[]` 为缺料，取 `net_requirement` 与 `recommended_replenishment_qty` | 否 |
 | l1_kitting_check | 函数 | 一级主料快速齐套检查（不含在途与替代料） | `execute_tool`，参数 `kn_id`、`product`、`qty` | `kitting_ok`、`gap_count`、`gaps[]`（`net_requirement`） | 否 |
@@ -59,7 +59,7 @@ Agent 用 `search_capabilities` 按**名称**在本网络内找到函数，用 `
 
 1. **解析需求**：把用户给的产品解析为唯一编码。若给的是预测单号，用 `query_object_instance` 在「产品需求预测单」上按 `billno` 或 `material_number` 用 `match` 定位（这两个字段是全文索引字段，不要用 `==`），取出 `material_number` 与 `qty`。名称命中多个编码时先澄清。
 2. **确认替代料策略**：`substitute_enabled` 未给出时先问用户，不得默认。
-3. **读库存背景**：调用指标 **库存可用量**（instant），作为报告的库存基础数字。
+3. **读库存背景**：调用指标 **库存可用量**，传业务问题对应的 Unix 毫秒时间窗，作为报告的库存基础数字。
 4. **齐套判断**：调用函数 **要X套净需求与齐套**，传 `product`、`qty`、`substitute_enabled`。`kitting_ok=true` 直接给「可交付」结论并结束。
 5. **解释缺料**：`kitting_ok=false` 时，按 `gaps[]` 的 `net_requirement` 从大到小列出前 5 项缺料；需要说明缺料来自哪一级主料时再调 **BOM清单**（`depth=1`）。
 6. **询问是否补货**：向用户复述缺料清单与建议补货量，明确询问是否生成模拟补货计划。**未得到肯定答复不得执行行动。**

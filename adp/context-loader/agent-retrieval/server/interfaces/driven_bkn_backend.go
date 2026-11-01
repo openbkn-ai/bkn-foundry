@@ -962,6 +962,15 @@ type BknBackendAccess interface {
 	ListKNCapabilities(ctx context.Context, knID, branch, capabilityType string) ([]*CapabilityRef, error)
 }
 
+// BranchBknBackendAccess is required when metric discovery names a non-main
+// branch. Legacy readers continue to serve the default main branch only.
+type BranchBknBackendAccess interface {
+	GetKnowledgeNetworkDetailBranch(ctx context.Context, knID, branch string) (*KnowledgeNetworkDetail, error)
+	ListObjectTypesBranch(ctx context.Context, knID, branch string, offset, limit int) (*ObjectTypePage, error)
+	GetObjectTypeDetailBranch(ctx context.Context, knID, branch string, otIDs []string, includeDetail bool) ([]*ObjectType, error)
+	ListMetricsByObjectTypesBranch(ctx context.Context, knID, branch string, otIDs []string) ([]*RelatedMetric, error)
+}
+
 // KNProxyResolver is implemented by BKN clients used on managed execution
 // paths without widening the read-only backend interface.
 type KNProxyResolver interface {

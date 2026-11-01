@@ -93,6 +93,27 @@ func newMetricsTestClient(t *testing.T) (*bknBackendAccess, *mocks.MockHTTPClien
 	return &bknBackendAccess{logger: mockLogger, baseURL: "http://localhost:8080/api/bkn-backend", httpClient: mockHTTP}, mockHTTP, ctrl
 }
 
+func TestMetricDiscoveryReadsNetworkAndObjectTypesOnRequestedBranch(t *testing.T) {
+	client, mockHTTP, ctrl := newMetricsTestClient(t)
+	defer ctrl.Finish()
+	mockHTTP.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, src string, query url.Values, _ map[string]string) (int, []byte, error) {
+			if query.Get("branch") != "release" {
+				t.Fatalf("%s read used branch %q", src, query.Get("branch"))
+			}
+			return http.StatusOK, []byte(`{"entries":[],"total_count":0}`), nil
+		}).Times(7)
+	if _, err := client.GetKnowledgeNetworkDetailBranch(context.Background(), "kn1", "release"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ListObjectTypesBranch(context.Background(), "kn1", "release", 0, 20); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.GetObjectTypeDetailBranch(context.Background(), "kn1", "release", []string{"orders"}, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestListMetricsByObjectTypes_UsesPublishedV1Definitions(t *testing.T) {
 	client, mockHTTP, ctrl := newMetricsTestClient(t)
 	defer ctrl.Finish()
@@ -107,14 +128,14 @@ func TestListMetricsByObjectTypes_UsesPublishedV1Definitions(t *testing.T) {
               {"definition":{"id":"m3","version":1,"name":"Draft","owner_object_type_id":"ot1","lifecycle":{"status":"draft"}}}
             ],"total_count":3}`), nil
 		})
-	metrics, err := client.ListMetricsByObjectTypes(context.Background(), "kn1", []string{"ot1", " ot2 ", "ot1"})
+	metrics, err := client.ListMetricsByObjectTypesBranch(context.Background(), "kn1", "release", []string{"ot1", " ot2 ", "ot1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gotURL != "http://localhost:8080/api/bkn-backend/in/v1/knowledge-networks/kn1/object-metrics" {
 		t.Fatalf("URL = %s", gotURL)
 	}
-	if gotQuery.Get("status") != "published" || gotQuery.Get("limit") != "500" {
+	if gotQuery.Get("status") != "published" || gotQuery.Get("limit") != "500" || gotQuery.Get("branch") != "release" {
 		t.Fatalf("query = %v", gotQuery)
 	}
 	if len(metrics) != 2 {

@@ -214,6 +214,33 @@ def test_shipped_artifact_is_importable_and_versioned():
         assert not hasattr(_bkn_tools, name), name
 
 
+def test_shipped_metric_tools_expose_the_branch_contract():
+    import inspect
+
+    from sandbox_sdk import _bkn_tools
+
+    for name in ("query_metric", "drill_through_metric", "get_kn_detail", "get_object_types"):
+        signature = inspect.signature(getattr(_bkn_tools, name))
+        branch = signature.parameters["branch"]
+        assert branch.default == "main", name
+        assert branch.kind is inspect.Parameter.KEYWORD_ONLY, name
+
+    query_args = inspect.signature(_bkn_tools.query_metric).bind(
+        "kn-1", "metric-1", 2, {"group_by": []}, "json", {"request_id": "r-1"}
+    )
+    assert query_args.arguments["response_format"] == "json"
+    assert query_args.arguments["bkn_context"] == {"request_id": "r-1"}
+    drill_args = inspect.signature(_bkn_tools.drill_through_metric).bind(
+        "bucket-1", "kn-1", "metric-1", {}, 2, "cursor-1", 50, "json"
+    )
+    assert drill_args.arguments["cursor"] == "cursor-1"
+    assert drill_args.arguments["page_size"] == 50
+    detail_args = inspect.signature(_bkn_tools.get_kn_detail).bind("kn-1", "full")
+    assert detail_args.arguments["detail_level"] == "full"
+    object_args = inspect.signature(_bkn_tools.get_object_types).bind("kn-1", ["ot-1"])
+    assert object_args.arguments["ids"] == ["ot-1"]
+
+
 def test_action_execution_pagination_is_available_from_bkn(monkeypatch):
     """The shipped surface must accept and forward result pagination from user code."""
     from sandbox_sdk import _bkn_tools

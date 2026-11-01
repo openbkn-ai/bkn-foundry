@@ -42,7 +42,15 @@ const schemaFanOut = 8
 // same order rather than the first to arrive.
 func FilterObjectTypes(ctx context.Context, access interfaces.ObjectSchemaAccess, knID string,
 	objectTypes []*interfaces.ObjectType) ([]*interfaces.ObjectType, error) {
-	filtered, _, err := filterObjectTypes(ctx, access, knID, objectTypes, 0)
+	filtered, _, err := filterObjectTypes(ctx, access, knID, objectTypes, 0, "main")
+	return filtered, err
+}
+
+// FilterObjectTypesBranch applies the permission plan from the same branch as
+// the discovered object and metric definitions.
+func FilterObjectTypesBranch(ctx context.Context, access interfaces.ObjectSchemaAccess, knID, branch string,
+	objectTypes []*interfaces.ObjectType) ([]*interfaces.ObjectType, error) {
+	filtered, _, err := filterObjectTypes(ctx, access, knID, objectTypes, 0, branch)
 	return filtered, err
 }
 
@@ -59,13 +67,13 @@ func FilterObjectTypes(ctx context.Context, access interfaces.ObjectSchemaAccess
 func FilterObjectTypesDegrading(ctx context.Context, access interfaces.ObjectSchemaAccess, knID string,
 	objectTypes []*interfaces.ObjectType, readTimeout time.Duration,
 ) (filtered []*interfaces.ObjectType, degraded []string, err error) {
-	return filterObjectTypes(ctx, access, knID, objectTypes, readTimeout)
+	return filterObjectTypes(ctx, access, knID, objectTypes, readTimeout, "main")
 }
 
 // filterObjectTypes degrades transient read failures only when readTimeout is
 // positive; zero keeps every failure fatal.
 func filterObjectTypes(ctx context.Context, access interfaces.ObjectSchemaAccess, knID string,
-	objectTypes []*interfaces.ObjectType, readTimeout time.Duration,
+	objectTypes []*interfaces.ObjectType, readTimeout time.Duration, branch string,
 ) ([]*interfaces.ObjectType, []string, error) {
 	if access == nil {
 		return objectTypes, nil, nil
@@ -134,7 +142,18 @@ queue:
 			if readTimeout > 0 {
 				readCtx, cancelRead = context.WithTimeout(ctx, readTimeout)
 			}
-			schema, err := access.GetObjectTypeSchema(readCtx, knID, objectType.ID)
+			var schema *interfaces.ObjectTypeSchemaResp
+			var err error
+			if selected := strings.TrimSpace(branch); selected != "" && selected != "main" {
+				branched, ok := access.(interfaces.BranchObjectSchemaAccess)
+				if !ok {
+					err = fmt.Errorf("branch-aware object schema permissions are unavailable for %q", selected)
+				} else {
+					schema, err = branched.GetObjectTypeSchemaBranch(readCtx, knID, selected, objectType.ID)
+				}
+			} else {
+				schema, err = access.GetObjectTypeSchema(readCtx, knID, objectType.ID)
+			}
 			cancelRead()
 			switch {
 			case err != nil && readTimeout > 0 && ctx.Err() == nil && transientReadFailure(err):

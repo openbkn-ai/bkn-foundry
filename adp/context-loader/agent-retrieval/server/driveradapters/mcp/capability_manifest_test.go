@@ -21,7 +21,7 @@ func TestCapabilityManifestCoversTheAssembledRuntimeCatalog(t *testing.T) {
 	noExtensions(t)
 	manifest := mustLoadCapabilityManifest()
 
-	if manifest.ManifestID != "openbkn.context-loader.mcp" || manifest.Version != "0.1.6" {
+	if manifest.ManifestID != "openbkn.context-loader.mcp" || manifest.Version != "0.1.7" {
 		t.Fatalf("manifest identity = %q@%q", manifest.ManifestID, manifest.Version)
 	}
 	for _, tool := range assembledTools(t) {

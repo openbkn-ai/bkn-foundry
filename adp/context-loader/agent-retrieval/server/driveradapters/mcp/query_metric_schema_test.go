@@ -21,7 +21,7 @@ func TestQueryMetricConditionSchemaMatchesRuntimeContract(t *testing.T) {
 	}
 
 	valid := []string{
-		`{"kn_id":"kn","metric_id":"metric","version":1,"query":{"filter":{"node_type":"predicate","left":{"source":"property","property_ref":{"object_type_id":"order","property_name":"sku_id"}},"comparison_operator":"eq","right":[{"source":"literal","value_type":"int64","value":1}]}}}`,
+		`{"kn_id":"kn","branch":"release","metric_id":"metric","version":1,"query":{"filter":{"node_type":"predicate","left":{"source":"property","property_ref":{"object_type_id":"order","property_name":"sku_id"}},"comparison_operator":"eq","right":[{"source":"literal","value_type":"int64","value":1}]}}}`,
 		`{"kn_id":"kn","metric_id":"metric","version":1,"query":{"filter":{"node_type":"predicate","left":{"source":"property","property_ref":{"object_type_id":"order","property_name":"status"}},"comparison_operator":"in","right":[{"source":"literal","value_type":"string","value":"paid"},{"source":"literal","value_type":"string","value":"shipped"}]}}}`,
 		`{"kn_id":"kn","metric_id":"metric","version":1,"query":{"filter":{"node_type":"group","boolean_operator":"and","children":[{"node_type":"predicate","left":{"source":"property","property_ref":{"object_type_id":"order","property_name":"amount"}},"comparison_operator":"gte","right":[{"source":"literal","value_type":"decimal","value":100}]},{"node_type":"group","boolean_operator":"not","children":[{"node_type":"predicate","left":{"source":"property","property_ref":{"object_type_id":"order","property_name":"cancelled_at"}},"comparison_operator":"is_null"}]}]}}}`,
 	}

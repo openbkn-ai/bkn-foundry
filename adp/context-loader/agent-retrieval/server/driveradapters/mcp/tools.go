@@ -664,7 +664,8 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			return inputValidationToolError(ctx, "kn_id is required"), nil
 		}
 
-		resp, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
+		branch := getStringArg(req, "branch", "main")
+		resp, err := knmetrics.NetworkDetailForBranch(ctx, bkn, knID, branch)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -673,19 +674,23 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		// downstream call per object type of a list this answer will not carry (#1877).
 		if resp.NeedsNavigationShell() {
 			resp.ReduceToNavigationShell()
-			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+resp.NavigationShellNoticeKey(), map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
+			noticeKey := resp.NavigationShellNoticeKey()
+			if selected := strings.TrimSpace(branch); selected != "" && selected != "main" {
+				noticeKey = "KnDetailNavigationShellBranch"
+			}
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+noticeKey, map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
 			resp.Notice = localizedText
 		} else {
-			resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, resp.ObjectTypes)
+			resp.ObjectTypes, err = objectpermission.FilterObjectTypesBranch(ctx, schemaAccess, knID, branch, resp.ObjectTypes)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			// Counts only: which object types have metrics worth drilling into, without
 			// carrying the metric list itself at this level.
-			if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes); err != nil {
+			if err := metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes, branch); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 		}
@@ -703,7 +708,7 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		// means unknown either way, which is what it has to mean for an unreadable list too.
 		if err := knAuthz.AuthorizeRead(ctx, knID); err != nil {
 			log.Printf("WARN: get_kn_detail capability counts withheld for kn %s: %v", knID, err)
-		} else if refs, err := bkn.ListKNCapabilities(ctx, knID, "", ""); err == nil {
+		} else if refs, err := bkn.ListKNCapabilities(ctx, knID, branch, ""); err == nil {
 			resp.AttachMountedCapabilities(refs)
 		} else {
 			// Logged because an absent field and a silently dropped error look identical to
@@ -738,8 +743,9 @@ type knDrillArgs struct {
 // there rather than refused: naming ids is already the precise request.
 type knObjectTypesArgs struct {
 	knDrillArgs
-	Offset int `json:"offset"`
-	Limit  int `json:"limit"`
+	Branch string `json:"branch"`
+	Offset int    `json:"offset"`
+	Limit  int    `json:"limit"`
 }
 
 func (a *knDrillArgs) resolveKnID(req mcp.CallToolRequest) string {
@@ -785,7 +791,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 				clamped bool
 			)
 			offset, limit, clamped = interfaces.ResolveObjectTypePage(args.Offset, args.Limit)
-			page, err := bkn.ListObjectTypes(ctx, knID, offset, limit)
+			page, err := knmetrics.ObjectTypesForBranch(ctx, bkn, knID, args.Branch, offset, limit)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -804,7 +810,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 			//
 			// Omitted IDs are not reported as missing because an omission may be an
 			// authorization filter.
-			matched, err = bkn.GetObjectTypeDetail(ctx, knID, args.IDs, true)
+			matched, err = knmetrics.ObjectTypeDetailForBranch(ctx, bkn, knID, args.Branch, args.IDs, true)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -815,7 +821,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		// call per object type for a field the answer does not have -- which is what
 		// made a page of this cost a second an object type.
 		if len(args.IDs) > 0 {
-			matched, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, matched)
+			matched, err = objectpermission.FilterObjectTypesBranch(ctx, schemaAccess, knID, args.Branch, matched)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -825,7 +831,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 
 			// Step 2 of the OT-first metric path: a metric that is not bound to a logic
 			// property is unreachable from the object type without this.
-			if err := metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+			if err := metrics.AttachRelatedMetrics(ctx, knID, matched, args.Branch); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 		}

@@ -117,7 +117,7 @@ func TestQueryLogicPropertiesPreservesBigIntegers(t *testing.T) {
 
 func TestQueryMetricDataPreservesBigIntegers(t *testing.T) {
 	resp, err := rawBodyClient(t, `{"entries":[{"status":"ok","value":9223372036854775808}],"status":"ok"}`).QueryMetricData(
-		context.Background(), "kn-1", "m-1", 1, &interfaces.ObjectMetricQuery{})
+		context.Background(), "kn-1", "main", "m-1", 1, &interfaces.ObjectMetricQuery{})
 	if err != nil {
 		t.Fatalf("QueryMetricData() error = %v", err)
 	}

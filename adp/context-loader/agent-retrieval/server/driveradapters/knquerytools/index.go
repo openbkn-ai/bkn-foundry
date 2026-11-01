@@ -11,6 +11,7 @@ package knquerytools
 import (
 	stderrors "errors"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -152,6 +153,7 @@ func (h *knQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) {
 // getKnDetailReq get_kn_detail input parameter.
 type getKnDetailReq struct {
 	KnID        string `json:"kn_id" form:"kn_id"`
+	Branch      string `json:"branch" form:"branch"`
 	DetailLevel string `json:"detail_level" form:"detail_level"` // Summary (default)| full.
 }
 
@@ -170,7 +172,7 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, req.KnID)
+	resp, err := knmetrics.NetworkDetailForBranch(ctx, h.bknBackend, req.KnID, req.Branch)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] failed: %v", err)
 		rest.ReplyError(c, err)
@@ -181,20 +183,24 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	// downstream call per object type of a list this answer will not carry (#1877).
 	if resp.NeedsNavigationShell() {
 		resp.ReduceToNavigationShell()
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+resp.NavigationShellNoticeKey(), map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
+		noticeKey := resp.NavigationShellNoticeKey()
+		if branch := strings.TrimSpace(req.Branch); branch != "" && branch != "main" {
+			noticeKey = "KnDetailNavigationShellBranch"
+		}
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+noticeKey, map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
 		resp.Notice = localizedText
 	} else {
-		resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, req.KnID, resp.ObjectTypes)
+		resp.ObjectTypes, err = objectpermission.FilterObjectTypesBranch(ctx, h.schemaAccess, req.KnID, req.Branch, resp.ObjectTypes)
 		if err != nil {
 			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] object property authorization failed: %v", err)
 			rest.ReplyError(c, err)
 			return
 		}
 		// Only the count is attached but not the details: it is enough for the Agent to judge which object type is worthy of drill-down metrics.
-		if err := h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes); err != nil {
+		if err := h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes, req.Branch); err != nil {
 			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] metric authorization failed: %v", err)
 			rest.ReplyError(c, err)
 			return
@@ -207,7 +213,7 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	// absent means unknown, which is what it must also mean for a list this call could not read.
 	if err := h.knAuthz.AuthorizeRead(ctx, req.KnID); err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] capability counts withheld: %v", err)
-	} else if refs, err := h.bknBackend.ListKNCapabilities(ctx, req.KnID, "", ""); err == nil {
+	} else if refs, err := h.bknBackend.ListKNCapabilities(ctx, req.KnID, req.Branch, ""); err == nil {
 		resp.AttachMountedCapabilities(refs)
 	} else {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] capability bindings unreadable: %v", err)
@@ -279,6 +285,11 @@ type knDrillReq struct {
 	Limit  int `json:"limit" form:"limit"`
 }
 
+type getObjectTypesReq struct {
+	knDrillReq
+	Branch string `json:"branch" form:"branch"`
+}
+
 func (r *knDrillReq) resolveKnID(c *gin.Context) string {
 	if r.KnID != "" {
 		return r.KnID
@@ -289,7 +300,7 @@ func (r *knDrillReq) resolveKnID(c *gin.Context) string {
 // GetObjectTypes retrieves the complete definitions of object types in batches by ID (cooperated with get_kn_detail summary drill-down).
 func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 	ctx := c.Request.Context()
-	req := &knDrillReq{}
+	req := &getObjectTypesReq{}
 	_ = c.ShouldBindQuery(req)
 	_ = c.ShouldBindJSON(req)
 	knID := req.resolveKnID(c)
@@ -315,7 +326,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 			clamped bool
 		)
 		offset, limit, clamped = interfaces.ResolveObjectTypePage(req.Offset, req.Limit)
-		page, listErr := h.bknBackend.ListObjectTypes(ctx, knID, offset, limit)
+		page, listErr := knmetrics.ObjectTypesForBranch(ctx, h.bknBackend, knID, req.Branch, offset, limit)
 		if listErr != nil {
 			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] list failed: %v", listErr)
 			rest.ReplyError(c, listErr)
@@ -330,7 +341,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 			}
 			notice = localizedText
 		}
-	} else if matched, err = h.bknBackend.GetObjectTypeDetail(ctx, knID, req.IDs, true); err != nil {
+	} else if matched, err = knmetrics.ObjectTypeDetailForBranch(ctx, h.bknBackend, knID, req.Branch, req.IDs, true); err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] failed: %v", err)
 		rest.ReplyError(c, err)
 		return
@@ -340,7 +351,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 	// a caller drills for. Running either over it would be a downstream call per
 	// object type for a field the answer does not have.
 	if len(req.IDs) > 0 {
-		matched, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, knID, matched)
+		matched, err = objectpermission.FilterObjectTypesBranch(ctx, h.schemaAccess, knID, req.Branch, matched)
 		if err != nil {
 			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] object property authorization failed: %v", err)
 			rest.ReplyError(c, err)
@@ -348,7 +359,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		}
 		objectpermission.TrimObjectTypesToIndexBackedOps(matched)
 		// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
-		if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched); err != nil {
+		if err := h.metrics.AttachRelatedMetrics(ctx, knID, matched, req.Branch); err != nil {
 			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] metric authorization failed: %v", err)
 			rest.ReplyError(c, err)
 			return
@@ -417,5 +428,6 @@ func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
 		return
 	}
+	bkntrace.EmitQueryMetricEvents(ctx, h.logger, req, resp)
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

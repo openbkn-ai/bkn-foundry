@@ -128,10 +128,22 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 //
 // On error the returned detail carries only the id.
 func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*interfaces.KnowledgeNetworkDetail, error) {
+	return b.GetKnowledgeNetworkDetailBranch(ctx, knID, "main")
+}
+
+func setMetricDiscoveryBranch(query url.Values, branch string) {
+	if normalized := metricBranch(branch); normalized != "main" {
+		query.Set("branch", normalized)
+	}
+}
+
+func (b *bknBackendAccess) GetKnowledgeNetworkDetailBranch(ctx context.Context, knID, branch string) (*interfaces.KnowledgeNetworkDetail, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s", b.baseURL, url.PathEscape(knID))
 
 	network := &interfaces.KnowledgeNetworkDetail{ID: knID}
-	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.knowledge_network.get", url.Values{}, network); err != nil {
+	networkQuery := url.Values{}
+	setMetricDiscoveryBranch(networkQuery, branch)
+	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.knowledge_network.get", networkQuery, network); err != nil {
 		return &interfaces.KnowledgeNetworkDetail{ID: knID}, err
 	}
 
@@ -162,6 +174,7 @@ func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID s
 			// it is given.
 			query := url.Values{}
 			query.Set("limit", "-1")
+			setMetricDiscoveryBranch(query, branch)
 			query.Set("sort", "name")
 			query.Set("direction", "asc")
 			errs[i] = b.getKnowledgeNetworkJSON(ctx, src+"/"+path, operation, query, out)
@@ -383,8 +396,13 @@ type knPagedEnvelope[T any] struct {
 // and the offsets are over what this caller may see, not over what the network
 // holds.
 func (b *bknBackendAccess) ListObjectTypes(ctx context.Context, knID string, offset, limit int) (*interfaces.ObjectTypePage, error) {
+	return b.ListObjectTypesBranch(ctx, knID, "main", offset, limit)
+}
+
+func (b *bknBackendAccess) ListObjectTypesBranch(ctx context.Context, knID, branch string, offset, limit int) (*interfaces.ObjectTypePage, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types", b.baseURL, url.PathEscape(knID))
 	query := url.Values{}
+	setMetricDiscoveryBranch(query, branch)
 	query.Set("offset", strconv.Itoa(offset))
 	query.Set("limit", strconv.Itoa(limit))
 	query.Set("sort", "name")
@@ -416,11 +434,16 @@ func (b *bknBackendAccess) ListValueTypes(ctx context.Context, knID string) ([]*
 
 // GetObjectTypeDetail gets object type details.
 func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
+	return b.GetObjectTypeDetailBranch(ctx, knID, "main", otIds, includeDetail)
+}
+
+func (b *bknBackendAccess) GetObjectTypeDetailBranch(ctx context.Context, knID, branch string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types/%s", b.baseURL, url.PathEscape(knID), pathIDList(otIds))
 	header := common.GetHeaderForChildOperation(ctx, "bkn.object_type.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	queryValues := url.Values{}
+	setMetricDiscoveryBranch(queryValues, branch)
 	queryValues.Set("include_detail", strconv.FormatBool(includeDetail))
 
 	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
@@ -859,12 +882,15 @@ const (
 // Paging instead of truncation: The truncated answer is exactly the same as "This object type has no pointer" in the eyes of the caller.
 // And that is what pushes the Agent back to the run_sql state - the reason for this link's existence is to destroy it.
 func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, header map[string]string,
-	knID string) ([]metricsListEntry, error) {
+	knID string, branch ...string) ([]metricsListEntry, error) {
 	entries := make([]metricsListEntry, 0, metricsPageSize)
 	var total int64
 	for offset := 0; offset < maxScopedMetrics; offset += metricsPageSize {
 		queryValues := url.Values{}
 		queryValues.Set("status", "published")
+		if len(branch) > 0 {
+			setMetricDiscoveryBranch(queryValues, branch[0])
+		}
 		queryValues.Set("limit", strconv.Itoa(metricsPageSize))
 		queryValues.Set("offset", strconv.Itoa(offset))
 
@@ -921,6 +947,10 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 // ListMetricsByObjectTypes enumerates published V1 object metrics visible to the
 // caller and returns only definitions owned by the requested object types.
 func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
+	return b.ListMetricsByObjectTypesBranch(ctx, knID, "main", otIDs)
+}
+
+func (b *bknBackendAccess) ListMetricsByObjectTypesBranch(ctx context.Context, knID, branch string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
 	scopeRefs := make([]string, 0, len(otIDs))
 	seen := make(map[string]struct{}, len(otIDs))
 	for _, id := range otIDs {
@@ -942,7 +972,7 @@ func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID st
 	header := common.GetHeaderForChildOperation(ctx, "bkn.object_metric.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
-	entries, err := b.listMetricsPage(ctx, src, header, knID)
+	entries, err := b.listMetricsPage(ctx, src, header, knID, branch)
 	if err != nil {
 		return nil, err
 	}

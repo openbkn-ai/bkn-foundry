@@ -142,6 +142,11 @@
         "type": "string",
         "description": "知识网络 ID，来自 list_knowledge_networks 或 get_kn_detail。"
       },
+      "branch": {
+        "type": "string",
+        "default": "main",
+        "description": "指标所属知识网络分支；省略时使用 main。"
+      },
       "metric_id": {
         "type": "string",
         "description": "对象指标 ID，取自 get_object_types 返回的 related_metrics[].id。"
