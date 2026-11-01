@@ -9,7 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/google/uuid v1.6.0
-	github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server v0.0.0
+	github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server v0.0.0-20261101020530-384ba8ad9224
 	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/smartystreets/goconvey v1.8.1
