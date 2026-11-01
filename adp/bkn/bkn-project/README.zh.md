@@ -137,6 +137,25 @@ bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出
 | GET | `/projects/{project_id}/rollback-plan` | 回退会做什么，能读项目的人都可读取；不做任何改动。目标是当前在用网络之前的那个：在它之前发布的版本，第一个版本之前则是谱系的基础网络；所以再次回退会继续往前，不会回到刚离开的网络。`from`、`to`（`network_id`、`version`、`base`）；基础网络在用时没有 `to`。`schedules`：当前在用网络上启用的调度，回退会在那里停用、在目标网络启用，列法同 `GET /lineages/{lineage_id}/switch-plan`。`consumers`：需由各自负责人自行切回的使用方类型（`agents`、`mcp`、`workshop`、`eval`）。`questions`：项目的场景问题，按发布检查的方式归类，用目标网络的定义（版本的标签；基础网络用谱系的第一个提交）对照当前在用的定义：`unanswerable` 会缺少所需内容，列在 `missing`；`affected` 所依赖的内容会被回退改变；`answerable_new` 回退后才能回答。`refusals`：`Rollback.NoPrevious`（基础网络在用）、`Rollback.NotProjectRelease`（在用网络是其他项目发布的，只有该项目能回退）。`signature` 代表在用网络、目标、最近一次切换和调度。使用方用上本项目的版本后，状态会提供 `review_rollback`。404 同 `GET /projects/{project_id}` |
 | POST | `/projects/{project_id}/rollbacks` | 请求体 `{"signature"}`，取自回退预检。重新计算预检，仍然成立时按 `POST /lineages/{lineage_id}/switches` 的方式切回使用方，并要求在用网络仍是预检的 `from`，预检之后落地的切换会在谱系锁内被拒绝为 `Rollback.PlanOutdated`：201，返回切换记录。只做切换：迁移调度并记录切换；不导入，也不改写数据或定义。仅项目负责人：403 `Release.NotOwner`；409 `Release.ProjectArchived`。400 `Rollback.PrecheckRequired`（未带签名）、`Release.InvalidRequestBody`；409 `Rollback.PlanOutdated`（预检之后使用方又有切换或调度有变化），以及预检中的拒绝原因 |
 
+## 知识库扩展
+
+`server/extension/knowledgebase` 定义 K1/K2 的提供者接口：目录、文件、切片的分页读取，
+明确的内容版本、保留登记，以及样本文件到概念提议。社区版空实现返回 `ErrUnavailable`，
+不会假装成功并返回空列表。锁定的版本失效时返回 `ErrVersionGone`，调用方接口须返回
+410，不能改读最新版本。保留登记原子创建，以相同 UUID 和版本集合重试；释放幂等。
+来源权限错误和上游故障须保留为错误。
+
+专业版入口依次调用 `app.Boot()`、无条件注册 `knowledgebase.Providers`，按需通过
+`Application.RegisterKnowledgeBaseRoutes` 安装核心 API 适配器，然后调用 `Run()`。
+Run 冻结注册，并从 `BKN_SAFE_URL` 持续刷新签名授权。每次请求按现有 `knowledge_base`
+能力判断，Professional 及以上才能使用提供者和扩展路由；否则交给完整社区版路由处理，
+包括 404、方法判定与路径重定向。业务处理器仍须鉴权，并检查项目与来源权限。
+
+K0 不增加业务接口、Agent 种子、迁移或真实知识库调用。K1/K2 接入适配器和真实提供者；
+Dataset 写入与实例构建留到 K3/K4。概念提议复用现有草稿类型，由核心校验后进入人工
+确认流程，扩展不保存草稿。`source_quote` 跨层列始终存在，目录未开启原文检索时留空；
+原文块、图片行也只在开关开启时写入。
+
 ## 本地开发
 
 ```bash

@@ -165,6 +165,33 @@ they sync.
 | GET | `/projects/{project_id}/rollback-plan` | What rolling consumers back would do, read by anyone who can read the project; nothing is changed. The target is the network before the one in use: the release published just before it, or the lineage's base network before the first, so rolling back again goes further back, never to the network just left. `from` and `to` (`network_id`, `version`, `base`); `to` is absent when the base network is in use. `schedules`: the active schedules of the network in use, which the rollback turns off there and on on the target, as `GET /lineages/{lineage_id}/switch-plan` lists them. `consumers`: the kinds their owners switch back themselves (`agents`, `mcp`, `workshop`, `eval`). `questions`: the project's scenario questions placed as in a release review, with the target's definitions (the release's tag, or the lineage's first commit for the base network) against those in use: `unanswerable` lose something they need, named in `missing`; `affected` rest on something the rollback changes; `answerable_new` can be answered only after it. `refusals`: `Rollback.NoPrevious` (the base network is in use), `Rollback.NotProjectRelease` (another project published the network in use; only it may roll it back). `signature` stands for the network in use, the target, the latest switch and the schedules. Status offers `review_rollback` once consumers use the project's release. 404 as `GET /projects/{project_id}` |
 | POST | `/projects/{project_id}/rollbacks` | Body `{"signature"}` from the plan. Works the plan out again and, while it still stands, switches consumers back as `POST /lineages/{lineage_id}/switches` does, expecting the plan's `from` in use, so a switch landing after the plan is refused under the lineage's lock as `Rollback.PlanOutdated`: 201 with the switch. It only switches: schedules move and the switch is recorded; nothing is imported, and no data or definitions are rewritten. Only the owner: 403 `Release.NotOwner`; 409 `Release.ProjectArchived`. 400 `Rollback.PrecheckRequired` (no signature), `Release.InvalidRequestBody`; 409 `Rollback.PlanOutdated` (consumers switched or schedules changed since the plan), and the plan's refusal |
 
+## Knowledge-base Extension
+
+`server/extension/knowledgebase` defines the K1/K2 provider seam: paginated
+catalog/file/chunk reads, explicit content versions, retention holds and
+sample-to-concept proposals. Community defaults return `ErrUnavailable`, never
+an empty successful result. A missing locked version is `ErrVersionGone`; the
+calling API must return 410 rather than substituting the latest version.
+Hold creation is atomic and retryable with the same UUID and version set;
+release is idempotent. Source permissions and upstream failures remain errors.
+
+An edition entry point calls `app.Boot()`, unconditionally registers its
+`knowledgebase.Providers`, optionally installs the core API adapters with
+`Application.RegisterKnowledgeBaseRoutes`, and calls `Run()`. Run freezes
+registration and refreshes the signed license from `BKN_SAFE_URL`. Providers
+and extension routes are enabled per request from Professional upward using
+the existing `knowledge_base` capability. Otherwise the complete community
+router handles the request, including 404s, method handling and redirects.
+Handlers still authenticate callers and authorize projects and sources.
+
+K0 adds no business endpoints, Agent seeds, migrations or knowledge-base calls.
+K1/K2 supply the adapters and real providers; Dataset writes and instance builds
+are deferred to K3/K4. Proposals reuse the existing draft types and must be
+validated by core before entering the human review workflow. Extensions do not
+save drafts. `source_quote` remains a cross-layer column; it stays empty unless
+original-text retrieval is enabled for its source catalog. Block/image rows
+are likewise only written when that option is enabled.
+
 ## Local Development
 
 ```bash
