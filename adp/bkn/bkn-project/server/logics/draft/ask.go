@@ -66,6 +66,7 @@ const (
 	askDroppedUnknownProperty    = "unknown_property"
 	askDroppedTooLong            = "too_long"
 	askDroppedInvalid            = "invalid"
+	askDroppedNotFromGivenEnd    = "not_from_given_end"
 )
 
 // askInput is the message the Agent reads: the question, the language to answer in, the
@@ -81,7 +82,9 @@ type askInput struct {
 	// RelationType and Ends, its source and target, for a relation type.
 	RelationType *askRelation    `json:"relation_type,omitempty"`
 	Ends         []askObjectType `json:"ends,omitempty"`
-	// Candidates, for a relation type not made yet with an end, the relations the data suggests.
+	// ChosenEnds, for a relation type not made yet, the ends the form has chosen; Candidates, with
+	// an end, the relations the data suggests.
+	ChosenEnds []askChosenEnd     `json:"chosen_ends,omitempty"`
 	Candidates []askCandidateLine `json:"candidates,omitempty"`
 	// Editable are the fields a revision may change.
 	Editable []string `json:"editable"`
