@@ -99,12 +99,12 @@ type FilePage struct {
 // allowed when its source catalog enables original-text retrieval. The
 // source_quote column still exists when disabled, but its value is empty.
 type Citation struct {
-	KnowledgeBaseID string
+	KnowledgeBaseID string `json:"knowledge_base_id"`
 	VersionRef
-	BlockID string
-	Start   int
-	End     int
-	Quote   string
+	BlockID string `json:"block_id"`
+	Start   int    `json:"start"`
+	End     int    `json:"end"`
+	Quote   string `json:"quote,omitempty"`
 }
 
 // Span is a Unicode code-point interval in the immutable normalized text.
@@ -115,12 +115,12 @@ type Span struct {
 }
 
 type Chunk struct {
-	ID       string
-	Text     string
-	Citation Citation
+	ID       string   `json:"chunk_id"`
+	Text     string   `json:"text"`
+	Citation Citation `json:"citation"`
 	// A chunk can span several blocks. Never invent one contiguous citation.
-	Spans   []Span
-	Located string
+	Spans   []Span `json:"spans"`
+	Located string `json:"located"`
 }
 
 type ChunkPage struct {
@@ -184,17 +184,19 @@ func (UnavailableSource) ReadSampleChunks(context.Context, []SampleVersion, Page
 }
 
 type ConceptRequest struct {
-	NamingLanguage string
-	Samples        []Chunk
+	NamingLanguage  string                        `json:"naming_language"`
+	Samples         []Chunk                       `json:"samples"`
+	Caller          interfaces.AccountInfo        `json:"-"`
+	ExistingObjects []*interfaces.DraftObjectType `json:"-"`
 }
 
 // ConceptProposal reuses core draft types. It is untrusted input: core validates
 // it and adds it to its existing candidate workflow; an extractor cannot save a
 // draft or adopt a proposal. K2 will extend the document-model metadata here.
 type ConceptProposal struct {
-	ObjectTypes   []*interfaces.DraftObjectType
-	RelationTypes []*interfaces.DraftRelationType
-	Evidence      []ConceptEvidence
+	ObjectTypes   []*interfaces.DraftObjectType   `json:"object_types"`
+	RelationTypes []*interfaces.DraftRelationType `json:"relation_types"`
+	Evidence      []ConceptEvidence               `json:"evidence,omitempty"`
 }
 
 type ConceptEvidence struct {

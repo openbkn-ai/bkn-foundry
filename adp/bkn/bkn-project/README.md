@@ -291,3 +291,11 @@ Disjoint native spans become independently located fragments. `ValidateCitations
 The Agent, semantic model validation, candidate integration, templates and editor remain K2 follow-up work in #2839. This foundation does not change draft adoption, confirmation, Dataset creation or publication.
 
 A selected debug file with zero chunks or no located text returns the distinct `ErrNoLocatedSamples`, so the UI can ask the owner to choose readable samples; malformed counts remain `ErrInvalidSample`. K1 sample allocation is not silently rewritten.
+
+### Document model validation and fixed evidence templates (K2 library)
+
+Document object/property/relation metadata is additive and absent for existing table drafts. `kbconcept.ValidateModel` checks every proposed object, extraction instruction/example, source quote, identity and relation before candidate integration. Model output cannot bind a table, override managed columns or adopt itself. Events require a temporal field and checked participant relations. Linking requires a typed mention-to-target identity mapping; same-document relations use `document_id` plus the named properties. Unsupported roles, links and unverified examples reject the proposal.
+
+Core adds read-only evidence/identity/extraction-version columns; facts/events also get effective dates, status and recorded-at fields. `BuildEvidence` creates document, block and image types and their containment/referencing relations from a fixed bilingual template, not AI. Template identities are reused after schema validation, and user-ID collisions are avoided. Document containment explicitly carries `one_to_many`; model-to-evidence references use `many_to_one`. The original-text switch does not remove types or the quote column; it controls stored quotes and later block/image row writes.
+
+This library slice does not register an extraction/edit API or an Agent, adopt a candidate, create a Dataset or change publication. Those callers and the Studio editor remain K2 follow-up work. Source selection identity/revision are carried with checked proposals for the later atomic draft commit.
