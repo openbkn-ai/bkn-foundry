@@ -225,6 +225,14 @@ func TestCreateAndEditDocumentRelationsUseNativeProofWithoutTableJoins(t *testin
 			if err != nil || edited.Items.RelationTypes[0].Cardinality != "many_to_one" {
 				t.Fatal("document relation could not be edited", err)
 			}
+			if edited.Items.RelationTypes[0].Origin != interfaces.DRAFT_ORIGIN_MANUAL {
+				t.Fatal("editing lost manual origin")
+			}
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), edited.UpdateTime).Return(true, nil)
+			deleted, err := service.DeleteRelationType(context.Background(), "Bearer synthetic", "p", relation.ID, edited.UpdateTime, caller)
+			if err != nil || len(deleted.Items.RelationTypes) != 0 {
+				t.Fatal("edited manual relation could not be deleted", err)
+			}
 		})
 	}
 }
@@ -245,5 +253,26 @@ func TestDeleteEventParticipantRelationRequiresUpdatingEventFirst(t *testing.T) 
 	_, err := service.DeleteRelationType(context.Background(), "Bearer synthetic", "p", "carrier", 10, interfaces.AccountInfo{ID: "u", Type: "user"})
 	if err == nil || len(draft.Items.RelationTypes) != 1 || len(draft.Items.Decisions) != 0 {
 		t.Fatalf("participant deletion must fail without modifying draft: %v", err)
+	}
+}
+
+func TestAddingStructuredCatalogPreservesDocumentOnlyDraft(t *testing.T) {
+	original := editableDocumentDraft(t)
+	original.Items.ObjectTypes[0].Adopted = true
+	original.Items.Decisions = []*interfaces.DraftDecision{{Action: interfaces.DRAFT_DECISION_ADOPT, Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: "order_doc"}}
+	before, _ := json.Marshal(original.Items)
+	table := membersTable()
+	drafted, err := newDrafter(testSetting, sampleCounter()).draft(context.Background(), []*interfaces.VegaTable{table}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &draftService{setting: testSetting}
+	merged := service.applyAdded(original.Items, &addedDraft{drafted: drafted, tables: []*interfaces.VegaTable{table}}, []string{"c1"}, &interfaces.DraftCatalogsAdded{})
+	if len(merged.ObjectTypes) != 2 || merged.ObjectTypes[0].Document == nil || !merged.ObjectTypes[0].Adopted || merged.Inputs.NamingLanguage != "en-US" || len(merged.Inputs.Tables) != 1 || len(merged.Inputs.CatalogIDs) != 1 || len(merged.Decisions) != 1 {
+		t.Fatal("adding tables damaged document model or its decisions")
+	}
+	after, _ := json.Marshal(original.Items)
+	if string(before) != string(after) {
+		t.Fatal("source draft mutated while merging")
 	}
 }

@@ -181,6 +181,8 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 	}
 
 	result.Aliases = append([]string(nil), original.Aliases...)
+	result.Origin = original.Origin
+	result.ProposedBecause = original.ProposedBecause
 	result.Adopted = original.Adopted
 	result.Verification = "confirmed"
 	for _, object := range items.ObjectTypes {
