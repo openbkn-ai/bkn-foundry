@@ -200,6 +200,20 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"origin":"name_match"`)
 		})
 
+		Convey("relation-suggestions:ask asks AI about the object type the body names; another action is not found\n", func() {
+			drs.EXPECT().AskRelationSuggestions(gomock.Any(), "Bearer t", "p1", "shipments", caller).Return(
+				&interfaces.DraftRelationSuggestions{ObjectType: interfaces.ReleaseItem{ID: "shipments"}, Answer: "好",
+					Candidates: []interfaces.DraftRelationCandidate{{Origin: interfaces.DRAFT_RELATION_CANDIDATE_AI}}}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/draft/relation-suggestions:ask", []byte(`{"object_type":"shipments"}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"origin":"ai"`)
+			So(serveBody(handler, http.MethodPost, base+"/draft/relation-suggestions:ask", []byte(`{}`)).Result().StatusCode,
+				ShouldEqual, http.StatusBadRequest)
+			So(serveBody(handler, http.MethodPost, base+"/draft/relation-suggestions:other", []byte(`{"object_type":"shipments"}`)).
+				Result().StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
 		Convey("draft:restore restores the excluded field the body names\n", func() {
 			drs.EXPECT().RestoreExcluded(gomock.Any(), "Bearer t", "p1",
 				interfaces.DraftRestore{UpdateTime: 7, ObjectType: "customers", Field: "Phone"}, caller).

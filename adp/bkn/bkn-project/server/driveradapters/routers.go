@@ -151,6 +151,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/projects/:project_id/ontology/draft/object_types/:item_id/ask", r.AskObjectTypeByEx)
 	apiV1.POST("/projects/:project_id/ontology/draft/relation_types/:item_id/ask", r.AskRelationTypeByEx)
 	apiV1.GET("/projects/:project_id/ontology/draft/relation-suggestions", r.RelationSuggestionsByEx)
+	// relation-suggestions:ask; the router reads the colon as a parameter, the handler the action.
+	apiV1.POST("/projects/:project_id/ontology/draft/relation-suggestions:action", r.RelationSuggestionsActionByEx)
 
 	// Requirement documents of a project.
 	apiV1.POST("/projects/:project_id/requirements/documents", r.UploadRequirementDocumentsByEx)

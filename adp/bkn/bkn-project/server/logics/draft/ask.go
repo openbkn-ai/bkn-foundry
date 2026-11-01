@@ -208,7 +208,11 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, out, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream)
+	text, raw, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream)
+	var out askOutput
+	if code == "" && json.Unmarshal(raw, &out) != nil {
+		code = perrors.BknProject_Draft_AskUnavailable
+	}
 	if code != "" {
 		status := http.StatusBadGateway
 		if code == perrors.BknProject_Draft_AskTimeout {
@@ -216,7 +220,7 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 		}
 		return nil, httperrors.NewHTTPError(ctx, status, code)
 	}
-	answer := turn.finish(out)
+	answer := turn.finish(&out)
 	answer.Answer = truncateRunes(text, askAnswerMaxLength)
 	return answer, nil
 }
@@ -336,10 +340,10 @@ func askRelationOf(r *interfaces.DraftRelationType) askRelation {
 }
 
 // askAgent runs the chat Agent as the caller until the deadline, handing the answer's text to
-// stream as it is written. It returns the text and the result that follows it, or the code of why
-// there is none.
+// stream as it is written. It returns the text and the result that follows it, as given, or the
+// code of why there is none.
 func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountInfo, message string,
-	format map[string]any, stream *interfaces.DraftAskStream) (string, *askOutput, string) {
+	format map[string]any, stream *interfaces.DraftAskStream) (string, json.RawMessage, string) {
 	if s.ba == nil {
 		return "", nil, perrors.BknProject_Draft_AskUnavailable
 	}
@@ -350,7 +354,7 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 	ctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	reply := newAskReply(stream)
-	var out *askOutput
+	var out json.RawMessage
 	var failure string
 	started := false
 	err := s.ba.Chat(ctx, caller, &interfaces.BknAgentChatRequest{AgentID: askAgentID, Message: message,
@@ -372,9 +376,8 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 				reply.add(token)
 			}
 		case interfaces.BKN_AGENT_CHAT_STRUCTURED:
-			var result askOutput
-			if json.Unmarshal(data.Content, &result) == nil {
-				out = &result
+			if trimmed := strings.TrimSpace(string(data.Content)); strings.HasPrefix(trimmed, "{") {
+				out = data.Content
 			}
 		case interfaces.BKN_AGENT_CHAT_ERROR:
 			failure = data.Code

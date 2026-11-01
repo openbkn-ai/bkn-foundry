@@ -503,6 +503,8 @@ type DraftIsolated struct {
 type DraftRelationSuggestions struct {
 	ObjectType ReleaseItem              `json:"object_type"`
 	Candidates []DraftRelationCandidate `json:"candidates"`
+	// Answer is Ask AI's few sentences on how the object type connects, when it was asked.
+	Answer string `json:"answer,omitempty"`
 }
 
 // Where a relation candidate comes from, besides drafting's origins (foreign_key, name_match,

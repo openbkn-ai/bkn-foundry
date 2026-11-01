@@ -58,6 +58,44 @@ func (r *restHandler) RelationSuggestionsByEx(c *gin.Context) {
 	r.withExVisitor(c, r.RelationSuggestions)
 }
 
+// RelationSuggestionsActionByEx serves POST …/relation-suggestions:ask.
+func (r *restHandler) RelationSuggestionsActionByEx(c *gin.Context) {
+	// The router keeps the colon in the parameter.
+	if c.Param("action") != ":ask" {
+		replyNotFound(c)
+		return
+	}
+	r.withExVisitor(c, r.AskRelationSuggestions)
+}
+
+// relationSuggestionsAsk is the body of relation-suggestions:ask.
+type relationSuggestionsAsk struct {
+	ObjectType string `json:"object_type"`
+}
+
+// AskRelationSuggestions serves POST …/ontology/draft/relation-suggestions:ask: an object type's
+// candidates with Ask AI's reasons and names, and the relations it proposes. It changes nothing.
+func (r *restHandler) AskRelationSuggestions(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	var req relationSuggestionsAsk
+	if err := c.ShouldBindJSON(&req); err != nil || req.ObjectType == "" {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("object_type").String(req.ObjectType))
+	suggestions, err := r.drs.AskRelationSuggestions(ctx, visitor.TokenID, id, req.ObjectType, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, suggestions)
+}
+
 // generateDraftRequest is the optional body of draft:generate.
 type generateDraftRequest struct {
 	// DiscardDecisions agrees to discard the decisions people made on the current draft.

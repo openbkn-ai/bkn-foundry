@@ -57,7 +57,8 @@ func logisticsDraft() *interfaces.Draft {
 			logisticsObjectType("routes", "r_routes", "route_id", "route_id", "from_station"),
 			logisticsObjectType("deliveries", "r_deliveries", "delivery_id", "delivery_id", "waybill", "route_id"),
 			carriers,
-			{ID: "depots", Name: "Depots"},
+			{ID: "depots", Name: "Depots", PrimaryKeys: []string{"id"},
+				Properties: []*interfaces.DraftProperty{{Name: "id", MappedField: "id", Type: "string"}}},
 		},
 		RelationTypes: []*interfaces.DraftRelationType{
 			{ID: "routes_to_stations", Source: "routes", Target: "stations", Adopted: true,

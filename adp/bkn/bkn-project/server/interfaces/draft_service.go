@@ -70,6 +70,10 @@ type DraftService interface {
 	// counts as the caller, reading vega-backend. It changes nothing.
 	RelationSuggestions(ctx context.Context, token string, projectID string, objectTypeID string,
 		caller AccountInfo) (*DraftRelationSuggestions, error)
+	// AskRelationSuggestions is RelationSuggestions with Ask AI's reasons and names, and the
+	// relations it proposes beyond them, each checked and counted as the save would.
+	AskRelationSuggestions(ctx context.Context, token string, projectID string, objectTypeID string,
+		caller AccountInfo) (*DraftRelationSuggestions, error)
 	// RestoreExcluded maps a field the privacy rules excluded back to a property, reading the
 	// field from vega-backend as the caller, and records it as a decision.
 	RestoreExcluded(ctx context.Context, token string, projectID string, restore DraftRestore,
