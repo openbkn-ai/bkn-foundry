@@ -43,6 +43,20 @@ func property(object *interfaces.DraftObjectType, name string) *interfaces.Draft
 	return nil
 }
 
+// File-scoped claims have one document identity. A canonical entity can merge
+// properties from several files, so its document_id cannot define this join.
+func fileScopedObject(object *interfaces.DraftObjectType) bool {
+	if object == nil || object.Document == nil {
+		return false
+	}
+	switch object.Document.Role {
+	case "file", "in_document", "fact", "event":
+		return true
+	default:
+		return false
+	}
+}
+
 func validatedQuotes(input *SampleInput, quotes []interfaces.DraftSourceCitation) ([]interfaces.DraftSourceCitation, error) {
 	refs := make([]kb.Citation, 0, len(quotes))
 	for _, q := range quotes {
@@ -228,7 +242,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 			r.Mapping = []interfaces.DraftFieldMapping{{SourceProperty: m.MentionProperty, TargetProperty: m.IdentityProperty}}
 		case "same_document":
 			from, to := property(source, m.SourceNameProperty), property(target, m.TargetNameProperty)
-			if (r.Source == r.Target && m.SourceNameProperty == m.TargetNameProperty) || target.Document == nil || from == nil || to == nil || from.ReadOnly || to.ReadOnly || (from.Type != "string" && from.Type != "text") || from.Type != to.Type || m.MentionProperty != "" || m.IdentityProperty != "" {
+			if !fileScopedObject(source) || !fileScopedObject(target) || (r.Source == r.Target && m.SourceNameProperty == m.TargetNameProperty) || from == nil || to == nil || from.ReadOnly || to.ReadOnly || (from.Type != "string" && from.Type != "text") || from.Type != to.Type || m.MentionProperty != "" || m.IdentityProperty != "" {
 				return nil, ErrInvalidModel
 			}
 			r.Mapping = []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: m.SourceNameProperty, TargetProperty: m.TargetNameProperty}}

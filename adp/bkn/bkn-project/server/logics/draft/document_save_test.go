@@ -163,7 +163,7 @@ func TestDocumentIdentityDoesNotQueryATableOrImplicitlyExclude(t *testing.T) {
 }
 
 func TestCreateAndEditDocumentRelationsUseNativeProofWithoutTableJoins(t *testing.T) {
-	for _, scenario := range []string{"linking", "same_document", "unknown", "legacy_path"} {
+	for _, scenario := range []string{"linking", "same_document", "entity_same_document", "unknown", "legacy_path"} {
 		t.Run(scenario, func(t *testing.T) {
 			kb.ResetForTest()
 			entitlement.ResetForTest()
@@ -189,6 +189,12 @@ func TestCreateAndEditDocumentRelationsUseNativeProofWithoutTableJoins(t *testin
 			da.EXPECT().GetDraft(gomock.Any(), "p").AnyTimes().Return(draft, true, nil)
 			mapping := &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}
 			if scenario == "same_document" {
+				for _, object := range draft.Items.ObjectTypes {
+					object.Document.Role, object.Document.Layer = "file", "fact"
+					object.PrimaryKeys = []string{"_id"}
+				}
+			}
+			if scenario == "same_document" || scenario == "entity_same_document" {
 				mapping = &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}
 			}
 			if scenario == "unknown" {

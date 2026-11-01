@@ -360,3 +360,10 @@ Document objects and relations reuse the existing `ask` endpoints. Before callin
 A business `data_property` revision may include a nonempty `extraction_instruction` of at most 1000 characters for an existing writable extraction property. Fixed evidence permits only name/description proposals; system identities of non-entity objects are immutable. Document relation `ends` revisions use `document_mapping` and `cardinality`, preserve selected ends and never contain SQL mappings. All revisions are validated on copies; asking never saves a draft or conversation. A person applies a proposal and saves it.
 
 Fresh installations seed ontology assistant v5. Existing installations must back up and apply additive Agent migration 37 separately, preserving history, operator prompts and runtime settings. Do not apply unrelated historical migrations for this upgrade.
+
+K3 relation scope: `same_document` requires both endpoints to have a file-scoped
+role (`file`, `in_document`, `fact` or `event`). Canonical `entity` values may
+come from several documents and must connect to source claims by business
+identity through `linking`. Candidate, relation-edit and object-edit validation
+reject an entity endpoint in a same-document rule. Existing invalid rules are
+not silently rewritten; repair their mapping explicitly.

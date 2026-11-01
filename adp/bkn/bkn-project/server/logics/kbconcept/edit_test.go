@@ -95,15 +95,12 @@ func TestDocumentRelationEditsValidateBothModesAgainstCurrentSchema(t *testing.T
 				edited.Document.Citations[0].Quote = "not in source"
 			}
 			result, err := ValidateEditedRelation(input, existing, original, edited)
-			success := scenario == "linking" || scenario == "same_document"
+			success := scenario == "linking"
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}
 			if success && (!result.Adopted || result.Document.Citations[0].Quote != "" || result.Verification != "confirmed") {
 				t.Fatal("adoption/proof policy changed")
-			}
-			if scenario == "same_document" && len(result.Mapping) != 2 {
-				t.Fatal("document constraint lost")
 			}
 		})
 	}
@@ -118,5 +115,24 @@ func TestEvidenceEdgesDoNotSatisfyEventParticipants(t *testing.T) {
 	existing := interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "source_document", Document: &interfaces.DraftDocumentModel{Role: "evidence_document"}}}, RelationTypes: []*interfaces.DraftRelationType{{ID: "event_evidence", Source: "delivery", Target: "source_document", Document: &interfaces.DraftDocumentModel{Role: "evidence_reference"}}}}
 	if _, err := ValidateModel(input, existing, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{event}}); err == nil {
 		t.Fatal("technical evidence reference counted as an event participant")
+	}
+}
+
+func TestObjectEditCannotPreserveGlobalEntitySameDocumentJoin(t *testing.T) {
+	input := modelInput("Order O-1 appears in source file F-1")
+	result, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "order_doc", "entity"), proposedObject(input, "order_file", "file")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := result.ObjectTypes[0]
+	raw, _ := json.Marshal(original)
+	var candidate interfaces.DraftObjectType
+	if err := json.Unmarshal(raw, &candidate); err != nil {
+		t.Fatal(err)
+	}
+	candidate.Properties[0].Extraction.Instruction = "Read the explicit business identifier"
+	legacy := &interfaces.DraftRelationType{ID: "legacy_join", Source: "order_doc", Target: "order_file", DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}, Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: "number", TargetProperty: "number"}}}
+	if _, err := ValidateEditedObject(input, interfaces.DraftItems{ObjectTypes: result.ObjectTypes, RelationTypes: []*interfaces.DraftRelationType{legacy}}, original, &candidate); err == nil {
+		t.Fatal("object edit kept an invalid global-entity document constraint")
 	}
 }

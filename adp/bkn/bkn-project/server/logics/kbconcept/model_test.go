@@ -135,3 +135,37 @@ func TestManagedFactFieldsDoNotReserveEntityBusinessProperties(t *testing.T) {
 		t.Fatal("fact lifecycle status must remain managed")
 	}
 }
+
+func TestSameDocumentRelationRoles(t *testing.T) {
+	for _, text := range []string{"Contract C-1 contains clause A.", "Patent P-1 contains component B.", "Service report M-1 records event C."} {
+		for _, leftRole := range []string{"entity", "file", "in_document", "fact", "event"} {
+			for _, rightRole := range []string{"entity", "file", "in_document", "fact", "event"} {
+				t.Run(text+"/"+leftRole+"/"+rightRole, func(t *testing.T) {
+					input := modelInput(text)
+					left, right := proposedObject(input, "left_record", leftRole), proposedObject(input, "right_record", rightRole)
+					for _, object := range []*interfaces.DraftObjectType{left, right} {
+						if object.Document.Role == "event" {
+							object.Document.TimeProperty = "occurred_at"
+							object.Document.ParticipantRelations = []string{"joins"}
+							object.Properties = append(object.Properties, &interfaces.DraftProperty{Name: "occurred_at", DisplayName: "Event time", Type: "datetime", Extraction: &interfaces.DraftExtractionField{Instruction: "Read the stated event time", Examples: []interfaces.DraftSourceCitation{documentQuote(input)}}})
+						}
+					}
+					relation := &interfaces.DraftRelationType{ID: "joins", Name: "Related source claim", Source: left.ID, Target: right.ID, Cardinality: "many_to_one", Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: "The source explicitly associates the named records", Citations: []interfaces.DraftSourceCitation{documentQuote(input)}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}}
+					proposal := kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{left, right}, RelationTypes: []*interfaces.DraftRelationType{relation}}
+					result, err := ValidateModel(input, interfaces.DraftItems{}, proposal)
+					allowed := leftRole != "entity" && rightRole != "entity"
+					if allowed != (err == nil) {
+						t.Fatalf("allowed=%v result=%v err=%v", allowed, result, err)
+					}
+					if !allowed {
+						return
+					}
+					original := result.RelationTypes[0]
+					if _, err := ValidateEditedRelation(input, interfaces.DraftItems{ObjectTypes: result.ObjectTypes}, original, original); err != nil {
+						t.Fatal("valid file-scoped edit rejected", err)
+					}
+				})
+			}
+		}
+	}
+}
