@@ -395,8 +395,8 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
 	case failure != "", out == nil, answer == "":
 		// The start of the reply says what came instead of an answer, such as JSON alone.
-		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI answered what its schema does not allow: result %t, reply %q",
-			out != nil, truncateRunes(reply.text, askReasonMaxLength)))
+		otellog.LogWarn(ctx, fmt.Sprintf("Ask AI answered what its schema does not allow: result %t, reply %q (%d characters)",
+			out != nil, truncateRunes(reply.text, askReasonMaxLength), utf8.RuneCountInString(reply.text)))
 		return answer, nil, perrors.BknProject_Draft_AskUnavailable
 	}
 	return answer, out, ""
@@ -479,17 +479,45 @@ func (r *askReply) answer() string {
 	if before := strings.TrimSpace(r.text[:r.cut]); before != "" {
 		return before
 	}
-	body := strings.TrimSpace(r.text)
-	if strings.HasPrefix(body, "```") {
-		body = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(body, "```"), "json"), "```")
+	// The first object, past a fence and whatever follows it.
+	start := strings.Index(r.text, "{")
+	if start < 0 {
+		return ""
 	}
 	var wrapped struct {
 		Answer string `json:"answer"`
 	}
-	if json.Unmarshal([]byte(strings.TrimSpace(body)), &wrapped) != nil {
+	if json.NewDecoder(strings.NewReader(escapeLineBreaks(r.text[start:]))).Decode(&wrapped) != nil {
 		return ""
 	}
 	return strings.TrimSpace(wrapped.Answer)
+}
+
+// escapeLineBreaks escapes the line breaks and tabs an Agent writes as they are inside JSON strings.
+func escapeLineBreaks(text string) string {
+	var b strings.Builder
+	quoted, escaped := false, false
+	for _, c := range text {
+		switch {
+		case escaped:
+			escaped = false
+		case quoted && c == '\\':
+			escaped = true
+		case c == '"':
+			quoted = !quoted
+		case quoted && c == '\n':
+			b.WriteString(`\n`)
+			continue
+		case quoted && c == '\r':
+			b.WriteString(`\r`)
+			continue
+		case quoted && c == '\t':
+			b.WriteString(`\t`)
+			continue
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
 }
 
 func truncateRunes(s string, max int) string {
