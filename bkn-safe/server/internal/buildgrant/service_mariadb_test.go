@@ -89,7 +89,7 @@ type alwaysAllow struct{}
 func (alwaysAllow) CheckResourceOpsScoped(_ context.Context, _ string, checks []authz.ResourceOperationCheck, _ authz.EvaluationScope) ([]authz.FilteredResource, error) {
 	result := []authz.FilteredResource{}
 	for _, c := range checks {
-		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Operations: []string{"query_data"}})
+		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Decisions: []authz.OperationDecision{{Operation: "query_data", Decision: authz.DecisionAllow}}})
 	}
 	return result, nil
 }

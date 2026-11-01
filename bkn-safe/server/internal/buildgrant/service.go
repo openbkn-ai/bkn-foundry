@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
-	"slices"
 	"sort"
 
 	"github.com/google/uuid"
@@ -146,7 +145,10 @@ func (s *Service) permitted(ctx context.Context, delegator string, versions []Ve
 			return errors.New("inconsistent permission batch")
 		}
 		seen[result.ID] = true
-		if !slices.Contains(result.Operations, "query_data") {
+		if len(result.Decisions) != 1 || result.Decisions[0].Operation != "query_data" {
+			return errors.New("incomplete permission decision")
+		}
+		if result.Decisions[0].Decision != authz.DecisionAllow {
 			return ErrForbidden
 		}
 	}

@@ -38,11 +38,11 @@ func (p *permissions) CheckResourceOpsScoped(_ context.Context, actor string, ch
 		if c.Resource.Type != "knowledge_base" || len(c.Operations) != 1 || c.Operations[0] != "query_data" {
 			return nil, errors.New("wrong permission operation")
 		}
-		operations := []string{}
+		decision := authz.DecisionDeny
 		if p.allowed && c.Resource.ID != p.deniedKB {
-			operations = append(operations, "query_data")
+			decision = authz.DecisionAllow
 		}
-		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Operations: operations})
+		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Decisions: []authz.OperationDecision{{Operation: "query_data", Decision: decision}}})
 	}
 	return result, nil
 }
@@ -259,5 +259,30 @@ func TestNetworkProxyLifecycleCannotMutateABuildIdentity(t *testing.T) {
 		if err = s.Check(t.Context(), checkFor(grant, req)); err != nil {
 			t.Fatal("wrong lifecycle endpoint changed a build identity", err)
 		}
+	}
+}
+
+func TestDelegationUsesRealEnforcerDecisionsAndRechecksRevocation(t *testing.T) {
+	_, db, _, request := fixture(t)
+	enforcer, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = enforcer.GrantObjectPermission("owner", "knowledge_base", "1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	service := New(db, enforcer)
+	grant, _, err := service.Create(t.Context(), request)
+	if err != nil {
+		t.Fatal("real allowed query_data could not create delegation", err)
+	}
+	if err = service.Check(t.Context(), checkFor(grant, request)); err != nil {
+		t.Fatal("real permission denied", err)
+	}
+	if err = enforcer.DenyObjectPermission("owner", "knowledge_base", "1", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Check(t.Context(), checkFor(grant, request)); !errors.Is(err, ErrForbidden) {
+		t.Fatal("real permission revocation was ignored", err)
 	}
 }

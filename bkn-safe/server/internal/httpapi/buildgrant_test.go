@@ -31,11 +31,11 @@ func (p *buildPermission) CheckResourceOpsScoped(_ context.Context, _ string, ch
 	}
 	result := []authz.FilteredResource{}
 	for _, c := range checks {
-		operations := []string{}
+		decision := authz.DecisionDeny
 		if p.allowed {
-			operations = append(operations, "query_data")
+			decision = authz.DecisionAllow
 		}
-		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Operations: operations})
+		result = append(result, authz.FilteredResource{Type: c.Resource.Type, ID: c.Resource.ID, Decisions: []authz.OperationDecision{{Operation: "query_data", Decision: decision}}})
 	}
 	return result, nil
 }
