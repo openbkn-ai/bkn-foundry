@@ -151,3 +151,14 @@ func TestPartialChunksKeepTheirLocatedFragmentsWithoutInventingGaps(t *testing.T
 		t.Fatal("partial spans were joined or silently dropped")
 	}
 }
+
+func TestWhitespaceOnlyLocatedChunksHaveAnActionableError(t *testing.T) {
+	c := chunk()
+	c.Text = "  "
+	c.Spans = []kb.Span{{BlockID: "b1", Start: 0, End: 2}}
+	r := &sampleReader{pages: []kb.SamplePage{{Entries: []kb.SampleChunk{c}}}}
+	input, err := LoadSamples(context.Background(), r, selected(), "zh-CN")
+	if input != nil || !errors.Is(err, ErrNoLocatedSamples) || r.calls != 1 {
+		t.Fatalf("unlocated nonempty file was not distinguished: %v", err)
+	}
+}
