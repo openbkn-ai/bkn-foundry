@@ -6,6 +6,10 @@ env:
   timezone: Asia/Shanghai
   language: en_US.UTF-8
 
+# Certificate refresh for licensed extension points.
+bknSafe:
+  url: "http://bkn-safe:3000"
+
 replicaCount: 1
 
 # Node selector.
