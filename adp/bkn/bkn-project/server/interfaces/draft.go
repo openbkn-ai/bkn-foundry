@@ -494,6 +494,39 @@ type DraftAskDropped struct {
 	Reason string `json:"reason"`
 }
 
+// DraftIsolated are the adopted object types no adopted relation type has as an end.
+type DraftIsolated struct {
+	Isolated []ReleaseItem `json:"isolated"`
+}
+
+// DraftRelationSuggestions are the relations an object type could take, the likelier first.
+type DraftRelationSuggestions struct {
+	ObjectType ReleaseItem              `json:"object_type"`
+	Candidates []DraftRelationCandidate `json:"candidates"`
+}
+
+// Where a relation candidate comes from, besides drafting's origins (foreign_key, name_match,
+// stem_match): drafted, a relation type the draft has and no one adopted; ai, one Ask AI proposes.
+const (
+	DRAFT_RELATION_CANDIDATE_DRAFTED = "drafted"
+	DRAFT_RELATION_CANDIDATE_AI      = "ai"
+)
+
+// DraftRelationCandidate is a relation an object type could take, as the body that makes a relation
+// type has it, with how it was found and its counts. RelationTypeID names the relation type of a
+// drafted one, to adopt; Reason says in business words why it may hold, when Ask AI gave one.
+type DraftRelationCandidate struct {
+	SourceObjectTypeID string                 `json:"source_object_type_id"`
+	TargetObjectTypeID string                 `json:"target_object_type_id"`
+	Type               string                 `json:"type"`
+	MappingRules       []DraftRelationMapping `json:"mapping_rules"`
+	Name               string                 `json:"name"`
+	Origin             string                 `json:"origin"`
+	RelationTypeID     string                 `json:"relation_type_id,omitempty"`
+	Evidence           DraftJoinEvidence      `json:"evidence"`
+	Reason             string                 `json:"reason"`
+}
+
 // DraftAskSuggestion is a change to one field: Value for the name or the description, Properties
 // for the identity.
 type DraftAskSuggestion struct {
