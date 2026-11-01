@@ -102,3 +102,22 @@ func TestEventsRequireTimeAndCheckedParticipantRelations(t *testing.T) {
 		t.Fatal("unchecked linking accepted")
 	}
 }
+
+func TestSameDocumentRelationsCanConnectObjectsOfTheSameType(t *testing.T) {
+	input := modelInput("部件 A 包含子部件 B。")
+	object := proposedObject(input, "component", "in_document")
+	object.Properties = append(object.Properties, &interfaces.DraftProperty{Name: "parent_number", DisplayName: "上级部件编号", Type: "string", Extraction: &interfaces.DraftExtractionField{Instruction: "提取当前条目明确提到的上级编号", Examples: []interfaces.DraftSourceCitation{documentQuote(input)}}})
+	relation := &interfaces.DraftRelationType{ID: "component_parent", Name: "属于上级部件", Source: "component", Target: "component", Cardinality: "many_to_one", Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: "同一文档内条目通过上级编号关联", Citations: []interfaces.DraftSourceCitation{documentQuote(input)}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "parent_number", TargetNameProperty: "number"}}
+	proposal := kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{object}, RelationTypes: []*interfaces.DraftRelationType{relation}}
+	result, err := ValidateModel(input, interfaces.DraftItems{}, proposal)
+	if err != nil {
+		t.Fatal("same-type hierarchy is a valid document relationship", err)
+	}
+	if len(result.RelationTypes[0].Mapping) != 2 || result.RelationTypes[0].Mapping[0].SourceProperty != "document_id" {
+		t.Fatal("same-document constraint missing")
+	}
+	relation.DocumentMapping.SourceNameProperty = "number"
+	if _, err := ValidateModel(input, interfaces.DraftItems{}, proposal); err == nil {
+		t.Fatal("trivial identity-to-itself mapping must not be proposed as a hierarchy")
+	}
+}
