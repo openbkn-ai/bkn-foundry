@@ -711,19 +711,21 @@ type DraftCandidates struct {
 // last decision a person made on whether it is in: adopting it or not, choosing its identity, saving
 // it, making it, or accepting the suggestions; absent while none did.
 type DraftCandidate struct {
-	Kind           string             `json:"kind"`
-	ID             string             `json:"id"`
-	Name           string             `json:"name"`
-	Adopted        bool               `json:"adopted"`
-	State          string             `json:"state"`
-	Reviewed       *DraftReview       `json:"reviewed,omitempty"`
-	ExcludeReason  string             `json:"exclude_reason,omitempty"`
-	AddedByCatalog string             `json:"added_by_catalog,omitempty"`
-	Table          *DraftTable        `json:"table,omitempty"`
-	Rows           int64              `json:"rows,omitempty"`
-	NeedsIdentity  bool               `json:"needs_identity,omitempty"`
-	Key            *DraftKeyEvidence  `json:"key,omitempty"`
-	Evidence       *DraftJoinEvidence `json:"evidence,omitempty"`
+	Source         string              `json:"source,omitempty"`
+	Document       *DraftDocumentModel `json:"document,omitempty"`
+	Kind           string              `json:"kind"`
+	ID             string              `json:"id"`
+	Name           string              `json:"name"`
+	Adopted        bool                `json:"adopted"`
+	State          string              `json:"state"`
+	Reviewed       *DraftReview        `json:"reviewed,omitempty"`
+	ExcludeReason  string              `json:"exclude_reason,omitempty"`
+	AddedByCatalog string              `json:"added_by_catalog,omitempty"`
+	Table          *DraftTable         `json:"table,omitempty"`
+	Rows           int64               `json:"rows,omitempty"`
+	NeedsIdentity  bool                `json:"needs_identity,omitempty"`
+	Key            *DraftKeyEvidence   `json:"key,omitempty"`
+	Evidence       *DraftJoinEvidence  `json:"evidence,omitempty"`
 	// NeededByRequirements are the knowledge questions and concepts of the ready requirement
 	// specification that need the candidate; absent without one.
 	NeededByRequirements *DraftNeededBy `json:"needed_by_requirements,omitempty"`

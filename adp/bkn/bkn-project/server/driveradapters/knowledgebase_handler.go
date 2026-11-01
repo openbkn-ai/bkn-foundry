@@ -25,7 +25,7 @@ import (
 // RegisterKnowledgeBaseResources installs core-owned resource handlers during EE
 // assembly. The application's complete-router gate hides them in other editions.
 func RegisterKnowledgeBaseResources(engine *gin.Engine) {
-	r := &restHandler{as: auth.NewAuthService(), ps: project.NewProjectService(), kbra: logics.KBRA}
+	r := &restHandler{as: auth.NewAuthService(), ps: project.NewProjectService(), kbra: logics.KBRA, da: logics.DA}
 	r.registerKnowledgeBaseResources(engine)
 }
 
@@ -36,6 +36,7 @@ func (r *restHandler) registerKnowledgeBaseResources(engine *gin.Engine) {
 		group.GET("/"+resource, func(c *gin.Context) { r.readKnowledgeBaseResource(c, resource) })
 	}
 	r.registerKBSelection(group)
+	r.registerKBConcept(group)
 }
 
 func (r *restHandler) readKnowledgeBaseResource(c *gin.Context, resource string) {

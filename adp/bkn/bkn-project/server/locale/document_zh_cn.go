@@ -9,6 +9,12 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var documentZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknProject.KnowledgeBase.NoDebugSamples":           "请先选定并保存调试样本。",
+		"BknProject.KnowledgeBase.NoLocatedSamples":         "所选样本没有可定位的文本，请改选已完成解析的文件。",
+		"BknProject.KnowledgeBase.SampleLimit":              "所选样本过大，请减少调试文件数量或选择较小的文件。",
+		"BknProject.KnowledgeBase.InvalidProposal":          "这次建议未通过原文或模型规则校验，请调整样本后重试。",
+		"BknProject.KnowledgeBase.ModelUnavailable":         "概念抽取暂不可用，请检查内置助手配置后重试。",
+		"BknProject.KnowledgeBase.ExtractionTimeout":        "概念抽取超时，请减少样本后重试。",
 		"BknProject.Draft.DocumentField._id":                "记录标识",
 		"BknProject.Draft.DocumentField.entity_id":          "实体标识",
 		"BknProject.Draft.DocumentField.document_id":        "文档",

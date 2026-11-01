@@ -209,13 +209,23 @@ func candidatesOf(draft *interfaces.Draft, needed map[string]*interfaces.DraftNe
 	}
 	for _, ot := range items.ObjectTypes {
 		table, key := ot.Table, ot.Key
-		add(interfaces.DraftCandidate{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Adopted: ot.Adopted,
-			AddedByCatalog: ot.AddedByCatalog, Table: &table, Rows: rows[table.ResourceID], NeedsIdentity: ot.NeedsIdentity, Key: &key})
+		candidate := interfaces.DraftCandidate{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Adopted: ot.Adopted,
+			AddedByCatalog: ot.AddedByCatalog, Table: &table, Rows: rows[table.ResourceID], NeedsIdentity: ot.NeedsIdentity, Key: &key, Document: ot.Document}
+		if ot.Document != nil {
+			candidate.Source = "document"
+			candidate.Table = nil
+		}
+		add(candidate)
 	}
 	for _, rt := range items.RelationTypes {
 		evidence := rt.Evidence
-		add(interfaces.DraftCandidate{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Adopted: rt.Adopted,
-			AddedByCatalog: rt.AddedByCatalog, Table: rt.LinkTable, Evidence: &evidence})
+		candidate := interfaces.DraftCandidate{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Adopted: rt.Adopted,
+			AddedByCatalog: rt.AddedByCatalog, Table: rt.LinkTable, Evidence: &evidence, Document: rt.Document}
+		if rt.Document != nil {
+			candidate.Source = "document"
+			candidate.Evidence = nil
+		}
+		add(candidate)
 	}
 	rank := func(c interfaces.DraftCandidate) [2]bool {
 		return [2]bool{c.NeededByRequirements == nil, c.State != interfaces.CANDIDATE_STATE_PENDING}
@@ -252,6 +262,10 @@ func (s *draftService) GetCandidates(ctx context.Context, token string, projectI
 		span.SetStatus(codes.Error, "Get draft failed")
 		return nil, internalError(ctx, "Get draft failed", err)
 	}
+	if err := checkDocumentReadAccess(ctx, token, draft); err != nil {
+		return nil, err
+	}
+
 	if !exist {
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
@@ -286,6 +300,9 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 		case ot.NeedsIdentity:
 			result.Skipped = append(result.Skipped, key)
 		default:
+			if ot.Document != nil {
+				ot.Adopted = true
+			}
 			result.Accepted = append(result.Accepted, key)
 		}
 	}
@@ -296,6 +313,9 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 		case !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)):
 			result.Skipped = append(result.Skipped, key)
 		default:
+			if rt.Document != nil {
+				rt.Adopted = true
+			}
 			result.Accepted = append(result.Accepted, key)
 		}
 	}

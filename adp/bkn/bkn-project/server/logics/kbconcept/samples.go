@@ -32,7 +32,8 @@ var (
 )
 
 // SampleInput contains live text for this request only. Callers must not persist
-// it, its credentials, or held-out samples in a draft/task/decision or a log.
+// raw text, credentials or held-out samples in project drafts, decisions, process
+// tables or logs. Builtin Agent calls use the existing Agent execution records.
 type SampleInput struct {
 	Request           kb.ConceptRequest
 	SelectionID       string

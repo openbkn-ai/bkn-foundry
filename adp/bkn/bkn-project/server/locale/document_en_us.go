@@ -9,6 +9,12 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var documentEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknProject.KnowledgeBase.NoDebugSamples":           "Select and save debug samples first.",
+		"BknProject.KnowledgeBase.NoLocatedSamples":         "The selected samples have no locatable text. Choose parsed files with readable text.",
+		"BknProject.KnowledgeBase.SampleLimit":              "The selected samples are too large. Select fewer or smaller debug files.",
+		"BknProject.KnowledgeBase.InvalidProposal":          "The proposal failed source or model validation. Adjust the samples and retry.",
+		"BknProject.KnowledgeBase.ModelUnavailable":         "Concept extraction is unavailable. Check the builtin assistant configuration and retry.",
+		"BknProject.KnowledgeBase.ExtractionTimeout":        "Concept extraction timed out. Select fewer samples and retry.",
 		"BknProject.Draft.DocumentField._id":                "Record identifier",
 		"BknProject.Draft.DocumentField.entity_id":          "Entity identifier",
 		"BknProject.Draft.DocumentField.document_id":        "Document",
