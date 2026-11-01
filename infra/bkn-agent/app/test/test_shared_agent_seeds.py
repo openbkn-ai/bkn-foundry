@@ -273,6 +273,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, REQUIREMENTS_V7)
         apply(upgraded, ONTOLOGY_ASK_V3)
         apply(upgraded, ONTOLOGY_ASK_V4)
+        apply(upgraded, CONCEPT_SEED)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -479,6 +480,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(REQUIREMENTS_V7),
                     str(ONTOLOGY_ASK_V3),
                     str(ONTOLOGY_ASK_V4),
+                    str(CONCEPT_SEED),
                 ],
             ],
         ],
@@ -545,6 +547,7 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
         + "\n" + ontology_ask_locales_text()
         + "\n" + METRIC_DESIGN_LOCALE.read_text()
+        + "\n" + CONCEPT_SEED.read_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
@@ -1034,7 +1037,7 @@ def test_retiring_keeps_the_prompt_while_another_agent_uses_it():
 
 
 # The Agents bkn-project runs, by the constants its code names them with (*AgentID = "...").
-BKN_PROJECT_AGENTS = {"bkn-project-requirements", "bkn-project-answer-judge", "bkn-project-ontology-ask", "studio_smart_qa"}
+BKN_PROJECT_AGENTS = {"bkn-project-requirements", "bkn-project-answer-judge", "bkn-project-ontology-ask", "bkn-project-concept-extraction", "studio_smart_qa"}
 
 
 def test_every_agent_bkn_project_runs_is_builtin_and_seeded():
@@ -3652,3 +3655,77 @@ def test_ontology_ask_v4_upgrade_does_not_switch_a_prompt_head_an_operator_saved
         apply(db, ONTOLOGY_ASK_V4)
         assert snapshot(db)[1] == head_before
         assert snapshot(db)[3] == agent_versions_before
+
+
+CONCEPT_AGENT = "bkn-project-concept-extraction"
+CONCEPT_SEED = MIGRATIONS / "0.2.1/36-seed-bkn-project-concept-extraction.sql"
+
+
+def concept_seed_database():
+    db = database()
+    apply(db, MIGRATIONS / "0.2.1/init.sql")
+    for table, column in (("t_agent_version", "f_agent_id"), ("t_agent", "f_agent_id"), ("t_agent_prompt_version", "f_prompt_id"), ("t_agent_prompt", "f_prompt_id")):
+        db.execute(f"DELETE FROM {table} WHERE {column}=?", (CONCEPT_AGENT if column == "f_agent_id" else CONCEPT_AGENT + "-prompt",))
+    return db
+
+
+def test_concept_seed_is_builtin_tool_free_bilingual_and_idempotent():
+    with concept_seed_database() as db:
+        apply(db, CONCEPT_SEED)
+        item = item_from_db(db, CONCEPT_AGENT)
+        assert item["spec"]["mode"] == "task"
+        assert item["spec"]["status"] == "published"
+        assert item["spec"]["tools"] == item["spec"]["skills"] == []
+        assert item["spec"]["limits"] == {"max_turns": 1, "max_tool_calls": 0, "timeout_s": 120, "max_output_tokens": 16384}
+        assert CONCEPT_AGENT in BUILTIN_AGENT_IDS
+        row = db.execute("SELECT * FROM t_agent_prompt_version WHERE f_prompt_id=?", (CONCEPT_AGENT + "-prompt",)).fetchone()
+        assert row["f_source_language"] == "en-US"
+        locales = json.loads(row["f_localized_content"])
+        assert set(locales) == {"zh-CN", "en-US"}
+        assert locales["en-US"] == row["f_content"]
+        for rule in ("sample_id", "document_ref", "*_doc", "entity", "in_document", "fact", "event", "No instances", "exact", "human"):
+            assert rule in row["f_content"]
+        before = snapshot(db)
+        apply(db, CONCEPT_SEED)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("completed", [1, 2, 3])
+def test_concept_seed_partial_retry_keeps_identical_defaults(completed):
+    with concept_seed_database() as db, concept_seed_database() as expected:
+        apply(expected, CONCEPT_SEED)
+        apply(db, CONCEPT_SEED, limit=completed)
+        if completed < 3:
+            assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id=?", (CONCEPT_AGENT,)).fetchone()[0] == 0
+        apply(db, CONCEPT_SEED)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_concept_seed_preserves_customized_existing_agent_and_prompt():
+    with concept_seed_database() as db:
+        apply(db, CONCEPT_SEED)
+        db.execute("UPDATE t_agent SET f_name='Custom', f_update_user='operator' WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        db.execute("UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id=?", (CONCEPT_AGENT + '-prompt',))
+        before = snapshot(db)
+        apply(db, CONCEPT_SEED)
+        assert snapshot(db) == before
+
+
+def test_concept_seed_rejects_conflicting_prompt_content():
+    with concept_seed_database() as db:
+        apply(db, CONCEPT_SEED, limit=2)
+        db.execute("UPDATE t_agent_prompt_version SET f_content='conflicting prompt' WHERE f_prompt_id=?", (CONCEPT_AGENT + '-prompt',))
+        before = snapshot(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            apply(db, CONCEPT_SEED)
+        assert snapshot(db) == before
+
+
+def test_concept_seed_does_not_create_history_for_custom_agent():
+    with concept_seed_database() as db:
+        apply(db, CONCEPT_SEED)
+        db.execute("UPDATE t_agent SET f_name='Custom', f_create_user='operator' WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        db.execute("DELETE FROM t_agent_version WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        before = snapshot(db)
+        apply(db, CONCEPT_SEED)
+        assert snapshot(db) == before
