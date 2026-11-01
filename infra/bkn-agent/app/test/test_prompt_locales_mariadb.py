@@ -23,6 +23,8 @@ from app.test.test_shared_agent_seeds import (
     ANSWER_JUDGE_REASON,
     BUILTIN_LOCALES,
     CLAIM_LOCALES,
+    CONCEPT_AGENT,
+    CONCEPT_SEED,
     METRIC_DESIGN_LOCALE,
     MIGRATIONS,
     ONTOLOGY_ASK,
@@ -82,6 +84,8 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
         before_locales_rerun = saved_rows()
+        apply(CONCEPT_SEED)
+        apply(CONCEPT_SEED)
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)
         apply(REQUIREMENTS)
@@ -106,7 +110,10 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert len(rows) == len(BUILTIN_AGENT_IDS)
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
-                assert source_language == (expected if upgrade == "fresh" else None), agent_id
+                # The new seed explicitly initializes its source language on both
+                # fresh and upgrade paths; historical seeds preserve legacy NULL.
+                has_explicit_source = upgrade == "fresh" or agent_id == CONCEPT_AGENT
+                assert source_language == (expected if has_explicit_source else None), agent_id
                 cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
                 initial = cursor.fetchone()
                 if variants is not None:

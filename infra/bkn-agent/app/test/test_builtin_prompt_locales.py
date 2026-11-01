@@ -24,6 +24,7 @@ ENGLISH_ORIGINALS = {
     "bkn-project-requirements",
     "bkn-project-answer-judge",
     "bkn-project-ontology-ask",
+    "bkn-project-concept-extraction",
 }
 
 # Official historical template from commit ab9ae6d64 (VM Prompt v3/v4).
