@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
@@ -38,6 +39,7 @@ import (
 	requirementaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/requirement"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/vega"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 	releaselogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
@@ -46,15 +48,19 @@ import (
 
 // Application is a booted bkn-project process that has not started serving yet.
 type Application struct {
-	appSetting    *common.AppSetting
-	db            *sql.DB
-	otelProviders *otel.Providers
-	restHandler   driveradapters.RestHandler
+	appSetting          *common.AppSetting
+	db                  *sql.DB
+	otelProviders       *otel.Providers
+	restHandler         driveradapters.RestHandler
+	refreshLicense      func(stop <-chan struct{})
+	knowledgeBaseRoutes func(*gin.Engine)
 }
 
 // Boot initializes shared infrastructure without opening the HTTP listener.
 func Boot() *Application {
 	logger.Info("Server Initializing")
+	gate, refreshLicense := entitlement.GateWithRunner()
+	entitlement.SetGate(gate)
 
 	// Initialize service configuration.
 	appSetting := common.NewSetting()
@@ -105,30 +111,57 @@ func Boot() *Application {
 	}
 
 	return &Application{
-		appSetting:    appSetting,
-		db:            db,
-		otelProviders: otelProviders,
-		restHandler:   driveradapters.NewRestHandler(appSetting, db),
+		appSetting:     appSetting,
+		db:             db,
+		otelProviders:  otelProviders,
+		restHandler:    driveradapters.NewRestHandler(appSetting, db),
+		refreshLicense: refreshLicense,
 	}
+}
+
+// RegisterKnowledgeBaseRoutes installs the core K1/K2 API adapters in an edition
+// build. It does not replace any community route. Call once during assembly;
+// K0 has no business routes yet. Providers are registered separately.
+func (server *Application) RegisterKnowledgeBaseRoutes(install func(*gin.Engine)) {
+	entitlement.MustBeAssembling("bkn-project knowledge base routes")
+	if install == nil || server.knowledgeBaseRoutes != nil {
+		panic("bkn-project: knowledge base routes require one non-nil installer")
+	}
+	server.knowledgeBaseRoutes = install
+}
+
+func (server *Application) httpHandler() http.Handler {
+	community := gin.New()
+	server.restHandler.RegisterPublic(community)
+	if server.knowledgeBaseRoutes == nil {
+		return community
+	}
+	extended := gin.New()
+	server.restHandler.RegisterPublic(extended)
+	server.knowledgeBaseRoutes(extended)
+	return knowledgebase.Gate(extended, community)
 }
 
 // Run serves until shutdown.
 func (server *Application) Run() {
 	logger.Info("Server Starting")
+	entitlement.Freeze()
 
 	// Create the Gin engine and register APIs.
-	engine := gin.New()
-	server.restHandler.RegisterPublic(engine)
+	handler := server.httpHandler()
 	logger.Info("Server Register API Success")
 
 	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if server.refreshLicense != nil {
+		go server.refreshLicense(ctx.Done())
+	}
 
 	// Initialize the HTTP service.
 	s := &http.Server{
 		Addr:           ":" + strconv.Itoa(server.appSetting.ServerSetting.HttpPort),
-		Handler:        engine,
+		Handler:        handler,
 		ReadTimeout:    server.appSetting.ServerSetting.ReadTimeOut * time.Second,
 		WriteTimeout:   server.appSetting.ServerSetting.WriteTimeout * time.Second,
 		MaxHeaderBytes: 1 << 20,
