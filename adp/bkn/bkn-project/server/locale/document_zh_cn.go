@@ -9,6 +9,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var documentZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknProject.Draft.DocumentDataNotReady":             "文档对象的数据准备尚未完成，暂时无法确认草稿；已审核的候选会保留。",
 		"BknProject.KnowledgeBase.NoDebugSamples":           "请先选定并保存调试样本。",
 		"BknProject.KnowledgeBase.NoLocatedSamples":         "所选样本没有可定位的文本，请改选已完成解析的文件。",
 		"BknProject.KnowledgeBase.SampleLimit":              "所选样本过大，请减少调试文件数量或选择较小的文件。",

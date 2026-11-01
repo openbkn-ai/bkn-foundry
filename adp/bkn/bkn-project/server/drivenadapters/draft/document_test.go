@@ -98,3 +98,14 @@ func TestDocumentCommitGuardsEverySnapshotInOneTransaction(t *testing.T) {
 		})
 	}
 }
+
+func TestDocumentCandidatesCannotBeSilentlyDiscardedByTableRedrafting(t *testing.T) {
+	for _, kind := range []string{"object_types", "relation_types"} {
+		if !hasDecisions(`{"` + kind + `":[{"id":"model","document":{"role":"entity"}}],"decisions":[]}`) {
+			t.Fatal("document candidates were not protected by explicit discard confirmation")
+		}
+	}
+	if hasDecisions(`{"object_types":[{"id":"table","document":null}],"decisions":[]}`) {
+		t.Fatal("table-only reset behavior changed")
+	}
+}

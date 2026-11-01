@@ -60,6 +60,14 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Not the owner")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Draft_NotOwner)
 	}
+	// K3 prepares and binds the document Datasets during confirmation. Until
+	// that path exists, preserve reviewed candidates and refuse explicitly;
+	// never masquerade a document model as a table or write partial definitions.
+	for _, object := range draft.Items.ObjectTypes {
+		if object.Adopted && object.Document != nil && object.Table.ResourceID == "" {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentDataNotReady)
+		}
+	}
 	if pending := pendingItems(&draft.Items); len(pending) > 0 {
 		span.SetStatus(codes.Error, "Items pending")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_HasPending).

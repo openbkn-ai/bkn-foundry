@@ -328,6 +328,6 @@ retain their existing behavior and dependencies.
 
 400 covers missing or unlocatable debug samples; 413 asks for fewer/smaller
 samples; source permission/version failures retain 403/410; invalid model or
-citation proposals fail without writing. Messages are localized. This slice does
+citation proposals fail without writing. Messages are localized. Until K3 supplies Dataset preparation, confirming adopted unbound document models returns the explicit localized 409 `Draft.DocumentDataNotReady` before compilation, branch writes or checks; candidate reviews remain saved. Table redrafting requires explicit discard for document candidates, even before item review. This slice does
 not create Datasets or instance rows, complete the document editor, run the
 held-out evaluation, deploy a service or apply a live migration.
