@@ -70,6 +70,20 @@ type relationSuggestionsOutput struct {
 	} `json:"proposals"`
 }
 
+func askCandidateLineOf(index int, c interfaces.DraftRelationCandidate) askCandidateLine {
+	line := askCandidateLine{Index: index, Source: c.SourceObjectTypeID, Target: c.TargetObjectTypeID, Name: c.Name,
+		Origin: c.Origin, Counted: c.Evidence.Computed}
+	for _, m := range c.MappingRules {
+		line.Mapping = append(line.Mapping, interfaces.DraftFieldMapping{SourceProperty: m.SourceProperty.Name,
+			TargetProperty: m.TargetProperty.Name})
+	}
+	if c.Evidence.Computed {
+		rate := c.Evidence.HitRate
+		line.HitRate = &rate
+	}
+	return line
+}
+
 func relationSuggestionsFormat() map[string]any {
 	str := func(max int) map[string]any { return map[string]any{"type": "string", "maxLength": max} }
 	object := func(properties map[string]any, required ...string) map[string]any {
@@ -115,17 +129,7 @@ func (s *draftService) AskRelationSuggestions(ctx context.Context, token string,
 		}
 	}
 	for i, c := range suggestions.Candidates[:min(len(suggestions.Candidates), askMaxCandidates)] {
-		line := askCandidateLine{Index: i, Source: c.SourceObjectTypeID, Target: c.TargetObjectTypeID, Name: c.Name,
-			Origin: c.Origin, Counted: c.Evidence.Computed}
-		for _, m := range c.MappingRules {
-			line.Mapping = append(line.Mapping, interfaces.DraftFieldMapping{SourceProperty: m.SourceProperty.Name,
-				TargetProperty: m.TargetProperty.Name})
-		}
-		if c.Evidence.Computed {
-			rate := c.Evidence.HitRate
-			line.HitRate = &rate
-		}
-		in.Candidates = append(in.Candidates, line)
+		in.Candidates = append(in.Candidates, askCandidateLineOf(i, c))
 	}
 	message, err := json.Marshal(in)
 	if err != nil {

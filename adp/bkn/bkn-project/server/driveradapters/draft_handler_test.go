@@ -133,6 +133,33 @@ func Test_DraftRestHandler(t *testing.T) {
 				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("relation_types:ask asks about a relation type not made yet, from the form alone, also as events; another action is not found\n", func() {
+			drs.EXPECT().AskNewRelationType(gomock.Any(), "Bearer t", "p1",
+				interfaces.DraftRelationAskRequest{Question: "连哪个？",
+					Working: &interfaces.DraftRelationTypeSave{SourceObjectTypeID: "shipments"}}, caller, gomock.Nil()).
+				Return(&interfaces.DraftAskAnswer{Answer: "连配送。", Revisions: []interfaces.DraftAskRevision{},
+					Dropped: []interfaces.DraftAskDropped{}}, nil)
+			drs.EXPECT().AskNewRelationType(gomock.Any(), "Bearer t", "p1", gomock.Any(), caller, gomock.Not(gomock.Nil())).
+				DoAndReturn(func(_ context.Context, _, _ string, _ interfaces.DraftRelationAskRequest, _ interfaces.AccountInfo,
+					stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+					stream.Start()
+					stream.Token("连配送。")
+					return &interfaces.DraftAskAnswer{Answer: "连配送。", Revisions: []interfaces.DraftAskRevision{},
+						Dropped: []interfaces.DraftAskDropped{}}, nil
+				})
+
+			w := serveBody(handler, http.MethodPost, base+"/draft/relation_types:ask",
+				[]byte(`{"question":"连哪个？","working":{"source_object_type_id":"shipments"}}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"answer":"连配送。"`)
+			w = serveStream(handler, base+"/draft/relation_types:ask", `{"question":"连哪个？"}`)
+			So(w.Body.String(), ShouldStartWith, "event:token\ndata:{\"content\":\"连配送。\"}\n\n")
+			So(serveBody(handler, http.MethodPost, base+"/draft/relation_types:ask", []byte(`[`)).
+				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+			So(serveBody(handler, http.MethodPost, base+"/draft/relation_types:other", []byte(`{"question":"问"}`)).
+				Result().StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
 		Convey("A client that accepts events gets the answer as it is written, then the result\n", func() {
 			drs.EXPECT().AskObjectType(gomock.Any(), "Bearer t", "p1", "employees", gomock.Any(), caller, gomock.Not(gomock.Nil())).
 				DoAndReturn(func(_ context.Context, _, _, _ string, _ interfaces.DraftAskRequest, _ interfaces.AccountInfo,

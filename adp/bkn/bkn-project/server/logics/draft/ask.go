@@ -81,6 +81,8 @@ type askInput struct {
 	// RelationType and Ends, its source and target, for a relation type.
 	RelationType *askRelation    `json:"relation_type,omitempty"`
 	Ends         []askObjectType `json:"ends,omitempty"`
+	// Candidates, for a relation type not made yet with an end, the relations the data suggests.
+	Candidates []askCandidateLine `json:"candidates,omitempty"`
 	// Editable are the fields a revision may change.
 	Editable []string `json:"editable"`
 }

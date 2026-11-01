@@ -150,6 +150,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.DELETE("/projects/:project_id/ontology/draft/relation_types/:item_id", r.DeleteRelationTypeByEx)
 	apiV1.POST("/projects/:project_id/ontology/draft/object_types/:item_id/ask", r.AskObjectTypeByEx)
 	apiV1.POST("/projects/:project_id/ontology/draft/relation_types/:item_id/ask", r.AskRelationTypeByEx)
+	// relation_types:ask, Ask AI on a relation type not made yet; the router reads the colon as a parameter.
+	apiV1.POST("/projects/:project_id/ontology/draft/relation_types:action", r.RelationTypesActionByEx)
 	apiV1.GET("/projects/:project_id/ontology/draft/relation-suggestions", r.RelationSuggestionsByEx)
 	// relation-suggestions:ask; the router reads the colon as a parameter, the handler the action.
 	apiV1.POST("/projects/:project_id/ontology/draft/relation-suggestions:action", r.RelationSuggestionsActionByEx)
