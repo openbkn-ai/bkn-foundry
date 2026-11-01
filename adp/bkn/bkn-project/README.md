@@ -360,3 +360,14 @@ Document objects and relations reuse the existing `ask` endpoints. Before callin
 A business `data_property` revision may include a nonempty `extraction_instruction` of at most 1000 characters for an existing writable extraction property. Fixed evidence permits only name/description proposals; system identities of non-entity objects are immutable. Document relation `ends` revisions use `document_mapping` and `cardinality`, preserve selected ends and never contain SQL mappings. All revisions are validated on copies; asking never saves a draft or conversation. A person applies a proposal and saves it.
 
 Fresh installations seed ontology assistant v5. Existing installations must back up and apply additive Agent migration 37 separately, preserving history, operator prompts and runtime settings. Do not apply unrelated historical migrations for this upgrade.
+
+### Agent execution version metadata
+
+The project Agent adapter supports the existing bkn-agent #2792 contract: an
+optional `agent_version` on task requests, an optional `prompt_override`, and
+actual `agent_version`, `prompt_version`, `model` and `model_id` on run/poll
+responses. Omitted request fields preserve current callers. Missing or null
+response versions remain unknown, rather than version zero. These additions do
+not by themselves pin a construction task or authorize a Dataset write: K4's
+coordinator must compare the recorded execution with the accepted extraction
+version before committing results, and reject unknown/mismatched metadata.
