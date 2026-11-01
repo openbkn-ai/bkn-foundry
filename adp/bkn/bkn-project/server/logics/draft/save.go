@@ -7,6 +7,7 @@ package draft
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -31,9 +32,12 @@ func snapshot(ot *interfaces.DraftObjectType) interfaces.DraftObjectTypeSnapshot
 		PrimaryKeys: append([]string{}, ot.PrimaryKeys...),
 		DisplayKey:  ot.DisplayKey,
 	}
+	if ot.Document != nil {
+		s.Document = &interfaces.DraftDocumentSettings{TimeProperty: ot.Document.TimeProperty, ParticipantRelations: append([]string(nil), ot.Document.ParticipantRelations...)}
+	}
 	for _, p := range ot.Properties {
 		s.Properties = append(s.Properties, interfaces.DraftPropertySnapshot{
-			Name: p.Name, DisplayName: p.DisplayName, Description: p.Description, Type: p.Type, MappedField: p.MappedField,
+			Name: p.Name, DisplayName: p.DisplayName, Description: p.Description, Type: p.Type, MappedField: p.MappedField, Extraction: p.Extraction, ReadOnly: p.ReadOnly,
 		})
 	}
 	return s
@@ -66,6 +70,10 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if ot.Document != nil {
+		return s.saveDocumentObject(ctx, token, draft, ot, save, caller)
+	}
+
 	tables, err := s.va.GetTables(ctx, caller, []string{ot.Table.ResourceID})
 	if err != nil {
 		span.SetStatus(codes.Error, "Read table failed")
@@ -151,8 +159,7 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 }
 
 func snapshotsEqual(a interfaces.DraftObjectTypeSnapshot, b interfaces.DraftObjectTypeSnapshot) bool {
-	return slices.Equal(a.Properties, b.Properties) && slices.Equal(a.PrimaryKeys, b.PrimaryKeys) &&
-		a.DisplayKey == b.DisplayKey
+	return reflect.DeepEqual(a.Properties, b.Properties) && slices.Equal(a.PrimaryKeys, b.PrimaryKeys) && a.DisplayKey == b.DisplayKey && reflect.DeepEqual(a.Document, b.Document)
 }
 
 // saveProperties makes the object type's properties those saved, refusing a property that maps a

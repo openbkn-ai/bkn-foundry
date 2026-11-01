@@ -122,3 +122,74 @@ func TestConceptHTTPUsesExistingUserAndCapabilityBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestSamplePreviewHTTPBoundary(t *testing.T) {
+	for _, scenario := range []string{"success", "community", "app", "not_owner", "invalid_revision", "stale_revision"} {
+		t.Run(scenario, func(t *testing.T) {
+			reset := setGinMode()
+			defer reset()
+			kb.ResetForTest()
+			entitlement.ResetForTest()
+			defer kb.ResetForTest()
+			defer entitlement.ResetForTest()
+			edition := licverify.EditionProfessional
+			if scenario == "community" {
+				edition = licverify.EditionCommunity
+			}
+			entitlement.SetGate(entitlement.GateFunc(func() entitlement.Snapshot { return entitlement.Snapshot{Edition: edition} }))
+			kb.Register(kb.Providers{Source: conceptHTTPSource{}, Concepts: kb.UnavailableConcepts{}})
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			as := pmock.NewMockAuthService(ctrl)
+			ps := pmock.NewMockProjectService(ctrl)
+			visitor := hydra.Visitor{ID: "u", Type: hydra.VisitorType_User, TokenID: "Bearer synthetic"}
+			if scenario == "app" {
+				visitor.Type = hydra.VisitorType_App
+			}
+			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(visitor, nil)
+			if scenario == "success" || scenario == "not_owner" || scenario == "stale_revision" {
+				owner := interfaces.AccountInfo{ID: "u", Type: "user"}
+				if scenario == "not_owner" {
+					owner.ID = "other"
+				}
+				ps.EXPECT().GetProject(gomock.Any(), "Bearer synthetic", "p").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p", Owner: owner}}, nil)
+			}
+			store := &conceptHTTPStore{}
+			r := &restHandler{as: as, ps: ps, kbra: store, da: store}
+			engine := gin.New()
+			engine.Use(r.LanguageMiddleware())
+			r.registerKnowledgeBaseResources(engine)
+			revision := "7"
+			if scenario == "invalid_revision" {
+				revision = "invalid"
+			}
+			if scenario == "stale_revision" {
+				revision = "8"
+			}
+			req := httptest.NewRequest(http.MethodGet, "/api/bkn-project/v1/projects/p/kb/samples?selection_id=lock&selection_revision="+revision, nil)
+			req.Header.Set("Accept-Language", "en-US")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			expected := 200
+			switch scenario {
+			case "community":
+				expected = 404
+			case "app", "not_owner":
+				expected = 403
+			case "invalid_revision":
+				expected = 400
+			case "stale_revision":
+				expected = 409
+			}
+			if w.Code != expected {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+			if store.saved != nil {
+				t.Fatal("preview wrote a draft")
+			}
+			if scenario == "success" && !strings.Contains(w.Body.String(), "Order O-1") {
+				t.Fatal("missing native debug sample")
+			}
+		})
+	}
+}

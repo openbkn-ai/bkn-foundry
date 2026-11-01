@@ -42,3 +42,10 @@ type DraftDocumentMapping struct {
 	SourceNameProperty string `json:"source_name_property,omitempty"`
 	TargetNameProperty string `json:"target_name_property,omitempty"`
 }
+
+// DraftDocumentSettings contains the editable event fields; role, layer and
+// source evidence remain server-owned metadata.
+type DraftDocumentSettings struct {
+	TimeProperty         string   `json:"time_property"`
+	ParticipantRelations []string `json:"participant_relations"`
+}

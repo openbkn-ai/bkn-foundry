@@ -79,6 +79,27 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if objectType.Document != nil {
+		invalid := httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIdentity)
+		if len(identity.Properties) > 5 {
+			return nil, invalid
+		}
+		for _, relation := range draft.Items.RelationTypes {
+			if relation != nil && relation.Target == objectType.ID && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "linking" && !slices.Equal(identity.Properties, []string{relation.DocumentMapping.IdentityProperty}) {
+				return nil, invalid
+			}
+		}
+		if objectType.Document.Role != "entity" && !slices.Equal(identity.Properties, objectType.PrimaryKeys) {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIdentity)
+		}
+		if objectType.Document.Role == "entity" {
+			for _, name := range identity.Properties {
+				if p := findProperty(objectType, name); p != nil && p.ReadOnly {
+					return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIdentity)
+				}
+			}
+		}
+	}
 	properties, err := identityProperties(ctx, objectType, identity.Properties)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid identity")
@@ -94,7 +115,13 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: itemID, Action: interfaces.DRAFT_DECISION_IDENTITY,
 		Before: before, After: objectType.PrimaryKeys,
 	}}
-	if err := s.commit(ctx, draft, decisions, caller); err != nil {
+	write := s.commit
+	if objectType.Document != nil {
+		write = func(ctx context.Context, d *interfaces.Draft, decisions []*interfaces.DraftDecision, c interfaces.AccountInfo) error {
+			return s.commitDocumentEdit(ctx, d, decisions, c, objectType.Document)
+		}
+	}
+	if err := write(ctx, draft, decisions, caller); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
 	}
@@ -171,6 +198,16 @@ func (s *draftService) setIdentity(ctx context.Context, draft *interfaces.Draft,
 	names := make([]string, 0, len(properties))
 	for _, p := range properties {
 		names = append(names, p.Name)
+	}
+	if objectType.Document != nil {
+		before := append([]string(nil), objectType.PrimaryKeys...)
+		objectType.PrimaryKeys = names
+		objectType.Key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN}
+		objectType.NeedsIdentity = false
+		if objectType.DisplayKey == "" {
+			objectType.DisplayKey = names[0]
+		}
+		return before
 	}
 	// One bound for every count of the choice: the key's, then those of the relations it allows.
 	countCtx, cancel := context.WithTimeout(ctx, identityCountTimeout)

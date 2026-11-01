@@ -94,7 +94,7 @@ func (s *Service) Extract(ctx context.Context, token, project string, caller int
 			return nil, err
 		}
 	} else {
-		draft = &interfaces.Draft{ProjectID: project, Status: interfaces.DRAFT_STATUS_READY, Drafter: caller, CreateTime: time.Now().UnixMilli()}
+		draft = &interfaces.Draft{ProjectID: project, Status: interfaces.DRAFT_STATUS_READY, Drafter: caller, CreateTime: time.Now().UnixMilli(), Items: interfaces.DraftItems{Inputs: &interfaces.DraftInputs{NamingLanguage: entry.NamingLanguage}}}
 	}
 	ctx = kb.WithOperatorAuthorization(ctx, token)
 	if err = CheckDraftSources(ctx, s.source, draft.Items); err != nil {
@@ -162,4 +162,71 @@ func (s *Service) Extract(ctx context.Context, token, project string, caller int
 		return nil, conflict()
 	}
 	return &ExtractResult{Draft: draft, AddedObjects: addedObjects, AddedRelations: addedRelations}, nil
+}
+
+// SamplePreviewFragment is request-local editor evidence, never a stored sample
+// snapshot. Quote is carried once as Text; the native citation keeps locations.
+type SamplePreviewFragment struct {
+	Text     string                         `json:"text"`
+	FileName string                         `json:"file_name"`
+	Citation interfaces.DraftSourceCitation `json:"citation"`
+}
+type SamplePreview struct {
+	SelectionID       string                  `json:"selection_id"`
+	SelectionRevision int64                   `json:"selection_revision"`
+	Fragments         []SamplePreviewFragment `json:"fragments"`
+}
+
+func (s *Service) Samples(ctx context.Context, token, project string, caller interfaces.AccountInfo, selectionID string, revision int64) (*SamplePreview, error) {
+	if selectionID == "" || revision < 1 || caller.ID == "" || caller.Type != "user" {
+		return nil, &kb.SourceError{StatusCode: 400}
+	}
+	if s.projects == nil || s.selections == nil {
+		return nil, kb.ErrUnavailable
+	}
+	reader, ok := s.source.(kb.SampleSource)
+	if !ok {
+		return nil, kb.ErrUnavailable
+	}
+	entry, err := s.projects.GetProject(ctx, token, project)
+	if err != nil {
+		return nil, err
+	}
+	if entry == nil || entry.Project == nil {
+		return nil, &kb.SourceError{StatusCode: 404}
+	}
+	if entry.Owner != caller {
+		return nil, &kb.SourceError{StatusCode: 403}
+	}
+	if entry.Archived {
+		return nil, conflict()
+	}
+	state, err := s.selections.Read(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	if state == nil || state.Current == nil || state.Current.ID != selectionID || state.Current.Revision != revision {
+		return nil, conflict()
+	}
+	input, err := LoadSamples(kb.WithOperatorAuthorization(ctx, token), reader, state.Current, entry.NamingLanguage)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]string{}
+	for _, file := range input.Files {
+		names[versionKey(file.KnowledgeBaseID, file.FileID, file.ContentVersionID)] = file.Name
+	}
+	result := &SamplePreview{SelectionID: selectionID, SelectionRevision: revision, Fragments: []SamplePreviewFragment{}}
+	for _, fragment := range input.Request.Samples {
+		q := fragment.Citation
+		result.Fragments = append(result.Fragments, SamplePreviewFragment{Text: fragment.Text, FileName: names[versionKey(q.KnowledgeBaseID, q.FileID, q.ContentVersionID)], Citation: interfaces.DraftSourceCitation{KnowledgeBaseID: q.KnowledgeBaseID, FileID: q.FileID, ContentVersionID: q.ContentVersionID, BlockID: q.BlockID, Start: q.Start, End: q.End}})
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return nil, ErrInvalidSample
+	}
+	if len(raw) > 1<<20 {
+		return nil, ErrSampleLimit
+	}
+	return result, nil
 }

@@ -135,7 +135,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 	}
 	properties := 0
 	for _, object := range copied.ObjectTypes {
-		if object == nil || !modelID.MatchString(object.ID) || objects[object.ID] != nil || !boundedText(object.Name, 1, 128) || !boundedText(object.Description, 0, 1000) || object.Table.ResourceID != "" || object.Table.CatalogID != "" || len(object.Aliases) > 0 || len(object.Properties) == 0 || len(object.Properties) > 100 {
+		if object == nil || !modelID.MatchString(object.ID) || objects[object.ID] != nil || !boundedText(object.Name, 1, 128) || !boundedText(object.Description, 0, 1000) || object.Table.ResourceID != "" || object.Table.CatalogID != "" || len(object.Aliases) > 0 || len(object.Properties) == 0 || len(object.Properties) > 100 || len(object.PrimaryKeys) > 5 {
 			return nil, ErrInvalidModel
 		}
 		if err := validateDocument(input, object.Document, false); err != nil {
@@ -185,7 +185,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 		}
 		if object.Document.Role == "event" {
 			p := property(object, object.Document.TimeProperty)
-			if p == nil || !temporalTypes[p.Type] || len(object.Document.ParticipantRelations) == 0 {
+			if p == nil || !temporalTypes[p.Type] || len(object.Document.ParticipantRelations) == 0 || len(object.Document.ParticipantRelations) > 60 {
 				return nil, ErrInvalidModel
 			}
 		}
@@ -250,7 +250,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 		seen := map[string]bool{}
 		for _, id := range object.Document.ParticipantRelations {
 			r := relations[id]
-			if r == nil || seen[id] || (r.Source == object.ID && r.Target == object.ID) || (r.Source != object.ID && r.Target != object.ID) {
+			if r == nil || (r.Document != nil && r.Document.Role != "relation") || seen[id] || (r.Source == object.ID && r.Target == object.ID) || (r.Source != object.ID && r.Target != object.ID) {
 				return nil, ErrInvalidModel
 			}
 			seen[id] = true

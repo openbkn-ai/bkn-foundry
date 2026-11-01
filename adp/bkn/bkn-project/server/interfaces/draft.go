@@ -552,6 +552,7 @@ const DRAFT_DECISION_SAVE = "save"
 // object type: comment is the description, and each data property maps a field of the object
 // type's table. UpdateTime is the update time of the draft the change was made on.
 type DraftObjectTypeSave struct {
+	Document       *DraftDocumentSettings  `json:"document,omitempty"`
 	UpdateTime     int64                   `json:"update_time"`
 	Name           string                  `json:"name"`
 	Comment        string                  `json:"comment"`
@@ -565,11 +566,12 @@ type DraftObjectTypeSave struct {
 // one, its name made as drafting makes it when left empty. Type, when given, must be the type the
 // field maps to.
 type DraftDataPropertySave struct {
-	Name        string            `json:"name"`
-	DisplayName string            `json:"display_name"`
-	Comment     string            `json:"comment"`
-	Type        string            `json:"type"`
-	MappedField *DraftMappedField `json:"mapped_field"`
+	Extraction  *DraftExtractionField `json:"extraction,omitempty"`
+	Name        string                `json:"name"`
+	DisplayName string                `json:"display_name"`
+	Comment     string                `json:"comment"`
+	Type        string                `json:"type"`
+	MappedField *DraftMappedField     `json:"mapped_field"`
 }
 
 // DraftMappedField is the field of the table a property maps, by its name.
@@ -579,17 +581,20 @@ type DraftMappedField struct {
 
 // DraftObjectTypeSnapshot is what saving an object type records of it, before and after.
 type DraftObjectTypeSnapshot struct {
+	Document    *DraftDocumentSettings  `json:"document,omitempty"`
 	Properties  []DraftPropertySnapshot `json:"properties"`
 	PrimaryKeys []string                `json:"primary_keys"`
 	DisplayKey  string                  `json:"display_key"`
 }
 
 type DraftPropertySnapshot struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
-	MappedField string `json:"mapped_field"`
+	Extraction  *DraftExtractionField `json:"extraction,omitempty"`
+	ReadOnly    bool                  `json:"read_only,omitempty"`
+	Name        string                `json:"name"`
+	DisplayName string                `json:"display_name"`
+	Description string                `json:"description"`
+	Type        string                `json:"type"`
+	MappedField string                `json:"mapped_field"`
 }
 
 // DraftPropertyUse is a relation type a property to be removed joins by, named for people to read.
@@ -645,14 +650,16 @@ const (
 // of each end to its fields. ID is taken when making one, else made from the ends. UpdateTime is the
 // update time of the draft the change was made on.
 type DraftRelationTypeSave struct {
-	UpdateTime         int64           `json:"update_time"`
-	ID                 string          `json:"id"`
-	Name               string          `json:"name"`
-	Comment            string          `json:"comment"`
-	SourceObjectTypeID string          `json:"source_object_type_id"`
-	TargetObjectTypeID string          `json:"target_object_type_id"`
-	Type               string          `json:"type"`
-	MappingRules       json.RawMessage `json:"mapping_rules"`
+	DocumentMapping    *DraftDocumentMapping `json:"document_mapping,omitempty"`
+	Cardinality        string                `json:"cardinality,omitempty"`
+	UpdateTime         int64                 `json:"update_time"`
+	ID                 string                `json:"id"`
+	Name               string                `json:"name"`
+	Comment            string                `json:"comment"`
+	SourceObjectTypeID string                `json:"source_object_type_id"`
+	TargetObjectTypeID string                `json:"target_object_type_id"`
+	Type               string                `json:"type"`
+	MappingRules       json.RawMessage       `json:"mapping_rules"`
 }
 
 // DraftRelationMapping is a mapping as bkn-backend's: a property, or a backing resource's field, by
@@ -677,13 +684,15 @@ type DraftBackingSource struct {
 
 // DraftRelationTypeSnapshot is what making, saving and deleting a relation type records of it.
 type DraftRelationTypeSnapshot struct {
-	Name          string              `json:"name"`
-	Source        string              `json:"source"`
-	Target        string              `json:"target"`
-	Mapping       []DraftFieldMapping `json:"mapping,omitempty"`
-	LinkTable     string              `json:"link_table,omitempty"`
-	SourceMapping []DraftFieldMapping `json:"source_mapping,omitempty"`
-	TargetMapping []DraftFieldMapping `json:"target_mapping,omitempty"`
+	DocumentMapping     *DraftDocumentMapping `json:"document_mapping,omitempty"`
+	DocumentCardinality string                `json:"document_cardinality,omitempty"`
+	Name                string                `json:"name"`
+	Source              string                `json:"source"`
+	Target              string                `json:"target"`
+	Mapping             []DraftFieldMapping   `json:"mapping,omitempty"`
+	LinkTable           string                `json:"link_table,omitempty"`
+	SourceMapping       []DraftFieldMapping   `json:"source_mapping,omitempty"`
+	TargetMapping       []DraftFieldMapping   `json:"target_mapping,omitempty"`
 }
 
 // DRAFT_DECISION_ACCEPT_SUGGESTIONS records the candidates a person accepted as drafting suggested
