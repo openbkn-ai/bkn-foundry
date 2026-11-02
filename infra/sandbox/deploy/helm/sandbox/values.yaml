@@ -281,8 +281,8 @@ depServices:
     port: 3330
     hostRead: mariadb-mariadb-cluster.resource
     portRead: 3330
-    user: bkn
-    password: ""
+    user: anyshare
+    password: xxx
     database: adp
     maxConnections: 30
     maxReadConnections: 30

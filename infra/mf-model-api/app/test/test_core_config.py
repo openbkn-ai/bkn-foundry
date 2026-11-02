@@ -37,7 +37,7 @@ class TestBaseConfig:
         """Test test kafka defaults."""
         config = BaseConfig()
         assert config.KAFKAPORTDEFAULT == 9097
-        assert config.KAFKAUSERDEFAULT == "kafkauser"
+        assert config.KAFKAUSERDEFAULT == "anyrobot"
 
     def test_port_from_env(self):
         """Test test port from env."""
