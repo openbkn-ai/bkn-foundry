@@ -85,7 +85,7 @@ func validatedQuotes(input *SampleInput, quotes []interfaces.DraftSourceCitation
 	return result, nil
 }
 func validateDocument(input *SampleInput, model *interfaces.DraftDocumentModel, relation bool) error {
-	if model == nil || model.DualSource != nil || !boundedText(model.Reason, 1, 1000) {
+	if model == nil || model.DualSource != nil || model.FileIdentity != nil || model.SentenceIdentity != nil || !boundedText(model.Reason, 1, 1000) {
 		return ErrInvalidModel
 	}
 	layer, ok := roleLayers[model.Role]
@@ -105,7 +105,7 @@ type managedField struct{ Name, Type, Label string }
 var commonFields = []managedField{
 	{"_id", "string", "Record identifier"}, {"entity_id", "string", "Entity identifier"}, {"document_id", "string", "Document"},
 	{"block_id", "string", "Source block"}, {"content_version_id", "string", "Content version"}, {"source_quote", "text", "Source quote"},
-	{"source_start", "integer", "Quote start"}, {"source_end", "integer", "Quote end"}, {"extraction_version", "string", "Extraction version"},
+	{"source_start", "integer", "Quote start"}, {"source_end", "integer", "Quote end"}, {"extraction_version", "string", "Extraction version"}, {"model_fingerprint", "string", "Confirmed model version"},
 }
 var factFields = []managedField{{"effective_from", "datetime", "Effective from"}, {"effective_to", "datetime", "Effective to"}, {"status", "string", "Status"}, {"recorded_at", "datetime", "Recorded at"}}
 
@@ -211,7 +211,7 @@ func validateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 			keys := map[string]bool{}
 			for _, name := range object.PrimaryKeys {
 				p := property(object, name)
-				if p == nil || keys[name] || !(p.Type == "string" || p.Type == "text" || p.Type == "integer" || p.Type == "unsigned integer") {
+				if p == nil || keys[name] || (p.Type != "string" && p.Type != "text" && p.Type != "integer" && p.Type != "unsigned integer") {
 					return nil, ErrInvalidModel
 				}
 				keys[name] = true
@@ -265,7 +265,7 @@ func validateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 			if (r.Source == r.Target && m.MentionProperty == m.IdentityProperty) || from == nil || to == nil || from.ReadOnly || from.Type != to.Type || m.SourceNameProperty != "" || m.TargetNameProperty != "" {
 				return nil, ErrInvalidModel
 			}
-			if !(target.NeedsIdentity && len(target.PrimaryKeys) == 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty) && !businessIdentityShape(source, target, r, true) {
+			if (!target.NeedsIdentity || len(target.PrimaryKeys) != 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty) && !businessIdentityShape(source, target, r, true) {
 				if !review {
 					return nil, ErrInvalidModel
 				}

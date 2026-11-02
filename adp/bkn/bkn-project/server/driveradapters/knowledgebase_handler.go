@@ -37,6 +37,7 @@ func (r *restHandler) registerKnowledgeBaseResources(engine *gin.Engine) {
 	}
 	r.registerKBSelection(group)
 	r.registerKBConcept(group)
+	r.registerKBBuild(group)
 }
 
 func (r *restHandler) readKnowledgeBaseResource(c *gin.Context, resource string) {

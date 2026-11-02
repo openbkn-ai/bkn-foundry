@@ -502,3 +502,74 @@ Blocked grounded relationships remain available to the existing read-only AI
 assistant. Its base retains the repair marker and bounded existing alternatives;
 all returned relationship revisions still undergo strict save validation and
 never update the draft. Derived entity IDs must retain the `_doc` suffix.
+
+### File-by-file document builds and independent acceptance
+
+Professional builds expose these owner-only endpoints below `/projects/{id}/kb`:
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/build-settings` | Read the published, tool-free document Agent version; no inference. |
+| POST | `/builds` | Start one explicitly delegated, revision-pinned debug, acceptance or full operation. |
+| GET | `/builds` | Read process progress after current knowledge-base permission checks. |
+| GET | `/builds/{build}/results` | Page derived debug rows and source locations; heldout rows return 403. |
+| POST | `/builds/{build}/cancel` | Request cancellation, including after source access is revoked. |
+| POST | `/builds/cancel` | Stop outstanding work without disclosing inaccessible source metadata. |
+| GET | `/acceptance/references/status` | Read confirmation progress and full-build readiness. |
+| GET | `/acceptance/references?file={kb}/{file}` | Open the independent source annotation screen; never return predictions. |
+| POST | `/acceptance/references` | Explicitly confirm complete-file reference annotations with revision guards. |
+
+Build requests contain `operation_id` (UUID), `mode`, `selection_id`,
+`selection_revision`, `draft_update_time`, `agent_version` (zero selects the
+current published version), and `confirm_delegation: true`. Retry an uncertain
+start with the identical operation and body. A lost Agent submission
+acknowledgement is **never** automatically submitted again. Worker leases and
+row checkpoints resume known tasks and stable Dataset replacements; cancellation,
+model changes and licence expiry clean up scoped delegation and retention holds.
+No user credentials, source text, extracted values or Agent responses enter the
+process database.
+
+File objects retain `_id` and require a human-confirmed business-number field in
+`document.file_identity: {property, confirm: true}`. Confirmed dual-source plans
+reuse their verified business number. Identity edits invalidate usable proof.
+Every stored instance/evidence row has a model fingerprint and actual extraction
+version. Native image resources and occurrences are distinct; image-only inputs
+register original evidence when enabled and remain `needs_review`, without a
+fabricated model execution or claimed visual understanding.
+
+The independent annotation request contains the current source/draft revisions,
+`revision` from reference status, `file`, `confirm_complete: true`, and
+`extraction: {records, relations}`. Its record/citation shape matches the document
+extraction contract. Human references undergo the same type and exact-source
+validation. Numeric editor values may be decimal strings and JSON editor values
+may be encoded JSON text; the server normalizes them only at this human entry
+point. AI predictions retain strict types. Reference payloads are immutable text
+rows in a separate Vega Dataset, preserving exact large integers. The project
+journal stores only review decisions, hashes and Dataset references. When original
+text is disabled, even reference quotes are stored as native locators and
+reconstructed only after an authorized read of the retained version.
+
+Acceptance pins the reviewed-reference revision before inference. Precision and
+recall count distinct object, property and relation assertions; repeated citations
+do not inflate counts. Linking coverage counts verified alignments separately.
+Unknown denominators remain unmeasured. Full building requires the exact current
+model/source/generation/reference revision and published Agent version, complete
+per-file execution evidence, precision >= 0.90, recall >= 0.85 and linking coverage
+>= 0.95. A stored `passed` flag alone cannot open the gate. K5 supplies actual
+link-resolution counts; absent linking evidence deliberately leaves full building
+closed. This is not evidence of completed K5 fusion or K6 publishing/refresh.
+
+Fresh installations include the build/reference process tables. Upgrades need
+project migration **14** and builtin Agent migration **39**, after backup and an
+explicit rollout plan. Migration 30 is unrelated and must not be run as part of
+this feature. These migrations are not automatically applied at server startup.
+
+For `in_document`, `fact` and `event`, `document.sentence_identity` may explicitly
+confirm up to eight existing scalar fields: `{properties: [...], confirm: true}`.
+One record of a type per verified source sentence needs no extra setting. Multiple
+records require distinct, non-null confirmed key values within that sentence;
+missing/duplicate keys enter review instead of silently merging or sorting by
+mutable business values. The server derives the complete source sentence from
+verified text, independent of the extractor's quote length. Renaming/removing key
+fields or changing their types requires renewed confirmation. Changing the key
+invalidates model preparation and acceptance; refreshing audit timestamps does not.

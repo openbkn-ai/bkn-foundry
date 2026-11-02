@@ -8,15 +8,17 @@ package interfaces
 // Layer, selection identity and adoption are checked/set by core, never trusted
 // from an Agent. An absent Document retains the existing table workflow.
 type DraftDocumentModel struct {
-	DualSource           *DraftDualSourcePlan  `json:"dual_source,omitempty"`
-	Role                 string                `json:"role"`
-	Layer                string                `json:"layer"`
-	Reason               string                `json:"reason"`
-	Citations            []DraftSourceCitation `json:"citations"`
-	TimeProperty         string                `json:"time_property,omitempty"`
-	ParticipantRelations []string              `json:"participant_relations,omitempty"`
-	SelectionID          string                `json:"selection_id"`
-	SelectionRevision    int64                 `json:"selection_revision"`
+	SentenceIdentity     *SentenceBusinessIdentity `json:"sentence_identity,omitempty"`
+	FileIdentity         *FileBusinessIdentity     `json:"file_identity,omitempty"`
+	DualSource           *DraftDualSourcePlan      `json:"dual_source,omitempty"`
+	Role                 string                    `json:"role"`
+	Layer                string                    `json:"layer"`
+	Reason               string                    `json:"reason"`
+	Citations            []DraftSourceCitation     `json:"citations"`
+	TimeProperty         string                    `json:"time_property,omitempty"`
+	ParticipantRelations []string                  `json:"participant_relations,omitempty"`
+	SelectionID          string                    `json:"selection_id"`
+	SelectionRevision    int64                     `json:"selection_revision"`
 }
 
 type DraftSourceCitation struct {
@@ -48,10 +50,23 @@ type DraftDocumentMapping struct {
 // DraftDocumentSettings contains the editable event fields; role, layer and
 // source evidence remain server-owned metadata.
 type DraftDocumentSettings struct {
-	Derive               *DraftDocumentDerivation `json:"derive,omitempty"`
-	DualSource           *DualSourceDecision      `json:"dual_source,omitempty"`
-	TimeProperty         string                   `json:"time_property"`
-	ParticipantRelations []string                 `json:"participant_relations"`
+	SentenceIdentity     *SentenceIdentityDecision `json:"sentence_identity,omitempty"`
+	FileIdentity         *FileIdentityDecision     `json:"file_identity,omitempty"`
+	Derive               *DraftDocumentDerivation  `json:"derive,omitempty"`
+	DualSource           *DualSourceDecision       `json:"dual_source,omitempty"`
+	TimeProperty         string                    `json:"time_property"`
+	ParticipantRelations []string                  `json:"participant_relations"`
+}
+
+type FileBusinessIdentity struct {
+	Property    string      `json:"property"`
+	ConfirmedBy AccountInfo `json:"confirmed_by"`
+	ConfirmedAt int64       `json:"confirmed_at"`
+}
+type FileIdentityDecision struct {
+	Property string `json:"property"`
+	Confirm  bool   `json:"confirm"`
+	Clear    bool   `json:"clear,omitempty"`
 }
 
 // DraftBusinessIdentityEvidence is created only by a human-requested full-table
@@ -81,4 +96,17 @@ type DraftDocumentDerivation struct {
 	Fields   []string `json:"fields"`
 	Identity string   `json:"identity"`
 	Confirm  bool     `json:"confirm"`
+}
+
+// Sentence keys distinguish multiple records of one type in the same verified
+// source sentence. They are not a global-uniqueness assertion.
+type SentenceBusinessIdentity struct {
+	Properties  []string    `json:"properties"`
+	ConfirmedBy AccountInfo `json:"confirmed_by"`
+	ConfirmedAt int64       `json:"confirmed_at"`
+}
+type SentenceIdentityDecision struct {
+	Properties []string `json:"properties"`
+	Confirm    bool     `json:"confirm"`
+	Clear      bool     `json:"clear,omitempty"`
 }

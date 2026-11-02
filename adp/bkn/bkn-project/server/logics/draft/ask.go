@@ -139,6 +139,8 @@ func (o askObjectType) MarshalJSON() ([]byte, error) {
 }
 
 type askDocument struct {
+	BusinessNumber       string   `json:"business_number,omitempty"`
+	SentenceBusinessKey  []string `json:"sentence_business_key,omitempty"`
 	TimeProperty         string   `json:"time_property,omitempty"`
 	ParticipantRelations []string `json:"participant_relations,omitempty"`
 	Role                 string   `json:"role"`
@@ -431,6 +433,12 @@ func askObjectTypeOf(objectType *interfaces.DraftObjectType) askObjectType {
 	}
 	if objectType.Document != nil {
 		asked.Document = &askDocument{Role: objectType.Document.Role, Layer: objectType.Document.Layer, Reason: objectType.Document.Reason, TimeProperty: objectType.Document.TimeProperty, ParticipantRelations: append([]string(nil), objectType.Document.ParticipantRelations...)}
+		if objectType.Document.FileIdentity != nil {
+			asked.Document.BusinessNumber = objectType.Document.FileIdentity.Property
+		}
+		if objectType.Document.SentenceIdentity != nil {
+			asked.Document.SentenceBusinessKey = append([]string(nil), objectType.Document.SentenceIdentity.Properties...)
+		}
 	}
 	for _, p := range objectType.Properties {
 		asked.Properties = append(asked.Properties, askProperty{

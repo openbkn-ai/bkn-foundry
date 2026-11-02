@@ -41,6 +41,14 @@ func ModelFingerprint(draft *interfaces.Draft) (string, error) {
 			continue
 		}
 		if object.Document != nil {
+			if object.Document.SentenceIdentity != nil {
+				object.Document.SentenceIdentity.ConfirmedBy = interfaces.AccountInfo{}
+				object.Document.SentenceIdentity.ConfirmedAt = 0
+			}
+			if object.Document.FileIdentity != nil {
+				object.Document.FileIdentity.ConfirmedBy = interfaces.AccountInfo{}
+				object.Document.FileIdentity.ConfirmedAt = 0
+			}
 			if object.Document.DualSource != nil {
 				object.Document.DualSource.State = ""
 				object.Document.DualSource.ConfirmedBy = interfaces.AccountInfo{}
@@ -81,7 +89,7 @@ func ModelFingerprint(draft *interfaces.Draft) (string, error) {
 		ProjectID string                          `json:"project_id"`
 		Objects   []*interfaces.DraftObjectType   `json:"objects"`
 		Relations []*interfaces.DraftRelationType `json:"relations"`
-	}{1, draft.ProjectID, objects, relations})
+	}{StorageVersion, draft.ProjectID, objects, relations})
 	if err != nil {
 		return "", err
 	}

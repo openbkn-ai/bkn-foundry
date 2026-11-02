@@ -43,6 +43,12 @@ func snapshot(ot *interfaces.DraftObjectType) interfaces.DraftObjectTypeSnapshot
 			s.DualSource = &plan
 		}
 		s.Document = &interfaces.DraftDocumentSettings{TimeProperty: ot.Document.TimeProperty, ParticipantRelations: append([]string(nil), ot.Document.ParticipantRelations...)}
+		if proof := ot.Document.SentenceIdentity; proof != nil {
+			s.Document.SentenceIdentity = &interfaces.SentenceIdentityDecision{Properties: slices.Clone(proof.Properties), Confirm: proof.ConfirmedAt > 0 && proof.ConfirmedBy.ID != ""}
+		}
+		if proof := ot.Document.FileIdentity; proof != nil {
+			s.Document.FileIdentity = &interfaces.FileIdentityDecision{Property: proof.Property, Confirm: proof.ConfirmedAt > 0 && proof.ConfirmedBy.ID != ""}
+		}
 	}
 	for _, p := range ot.Properties {
 		s.Properties = append(s.Properties, interfaces.DraftPropertySnapshot{

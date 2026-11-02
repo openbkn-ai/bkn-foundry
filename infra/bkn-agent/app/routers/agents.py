@@ -6,7 +6,7 @@ from app import dao
 from app.auth import Account, get_account
 from app.db import get_session
 from app.errors import bad_request, err, forbidden, not_found
-from app.models import AgentDeleted, AgentList, AgentOut, AgentSpec
+from app.models import AgentDeleted, AgentList, AgentOut, AgentSpec, TaskVersionOut
 from app.public_auth import BUILTIN_AGENT_IDS
 
 router = APIRouter()
@@ -72,6 +72,34 @@ async def get_agent(
     if not agent:
         raise not_found("agent", agent_id)
     return agent
+
+
+@router.get("/agents/{agent_id}/task-version", response_model=TaskVersionOut)
+async def get_task_version(
+    agent_id: str,
+    account: Account = Depends(get_account),
+    session: AsyncSession = Depends(get_session),
+):
+    """Read a pinning receipt under the existing Agent-read boundary.
+
+    This performs no task creation, version publication, configuration change
+    or Prompt-body disclosure. Project owners do not need shared-admin access
+    merely to pin the published task configuration they are about to invoke.
+    """
+    agent = await dao.get_agent(session, agent_id)
+    if not agent:
+        raise not_found("agent", agent_id)
+    if agent.mode != "task" or agent.status != "published":
+        raise bad_request("BknAgent.Task.ModeMismatch", agent_id=agent_id, mode=agent.mode)
+    snapshot = await dao.current_version(session, agent_id)
+    if snapshot is None or snapshot.f_deleted:
+        raise err(409, "BknAgent.Task.ConfigurationUnavailable")
+    return TaskVersionOut(
+        agent_id=agent_id,
+        agent_version=snapshot.f_version,
+        prompt_version=snapshot.f_prompt_version,
+        tool_free=not snapshot.f_tools and not agent.skills,
+    )
 
 
 @router.put("/agents/{agent_id}", response_model=AgentOut)

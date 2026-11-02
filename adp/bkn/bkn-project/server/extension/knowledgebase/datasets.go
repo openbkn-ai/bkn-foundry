@@ -25,3 +25,22 @@ type Datasets interface {
 type DatasetRecords interface {
 	Replace(context.Context, interfaces.DraftDatasetSpec, map[string]any) error
 }
+
+// DatasetReferenceRecords reads one immutable reviewed-reference row under the
+// storage app's project catalog grant. It never accepts caller-supplied SQL.
+type DatasetReferenceRecords interface {
+	DatasetRecords
+	ReadRow(context.Context, interfaces.DraftDatasetSpec, string) (map[string]any, error)
+}
+
+type DatasetFileScope struct {
+	KnowledgeBaseID, FileID, ContentVersionID, DocumentID, ModelFingerprint string
+}
+
+// DatasetFileRecords removes obsolete rows only after the current file's whole
+// validated write set is acknowledged. Guard runs before every remote delete.
+// Entity current-value resources are excluded: fusion owns those in K5.
+type DatasetFileRecords interface {
+	DatasetRecords
+	Prune(context.Context, interfaces.DraftDatasetSpec, DatasetFileScope, []string, func(context.Context) error) error
+}

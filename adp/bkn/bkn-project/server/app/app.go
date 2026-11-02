@@ -33,6 +33,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/indexbuild"
+	buildaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbbuild"
 	kbaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbresource"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
 	regressionaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/regression"
@@ -43,6 +44,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
 	releaselogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
@@ -98,6 +100,8 @@ func Boot() *Application {
 	logics.SetBknAgentAccess(bknagent.NewBknAgentAccess(appSetting))
 	logics.SetRequirementAccess(requirementaccess.NewRequirementAccess(appSetting))
 	logics.SetRegressionAccess(regressionaccess.NewRegressionAccess(appSetting))
+	logics.KBBA = buildaccess.New(db)
+	logics.KBRefs = buildaccess.NewReferences(db)
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.
@@ -156,6 +160,11 @@ func (server *Application) Run() {
 	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	buildWorkerDone := make(chan struct{})
+	go func() {
+		defer close(buildWorkerDone)
+		kbinstance.RunBuildWorker(ctx, logics.KBBA, logics.DA, logics.KBRefs)
+	}()
 	if server.refreshLicense != nil {
 		go server.refreshLicense(ctx.Done())
 	}
@@ -188,6 +197,10 @@ func (server *Application) Run() {
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(shutdownCtx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
+	}
+	select {
+	case <-buildWorkerDone:
+	case <-shutdownCtx.Done():
 	}
 	if err := server.db.Close(); err != nil {
 		logger.Warnf("Database close failed: %v", err)

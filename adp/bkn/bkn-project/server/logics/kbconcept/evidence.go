@@ -43,11 +43,25 @@ func freeModelID(prefix string, used map[string]bool) string {
 	return id
 }
 func schemaMatches(object *interfaces.DraftObjectType, fields []managedField) bool {
-	if object.Document == nil || object.Document.Layer != "evidence" || len(object.PrimaryKeys) != 1 || object.PrimaryKeys[0] != "_id" || len(object.Properties) != len(fields) {
+	if object.Document == nil || object.Document.Layer != "evidence" || len(object.PrimaryKeys) != 1 || object.PrimaryKeys[0] != "_id" || len(object.Properties) > len(fields) {
 		return false
+	}
+	expected := map[string]bool{}
+	for _, field := range fields {
+		expected[field.Name] = true
+	}
+	seen := map[string]bool{}
+	for _, p := range object.Properties {
+		if p == nil || !expected[p.Name] || seen[p.Name] {
+			return false
+		}
+		seen[p.Name] = true
 	}
 	for _, field := range fields {
 		p := property(object, field.Name)
+		if p == nil && (field.Name == "model_fingerprint" || field.Name == "extraction_version") {
+			continue
+		}
 		if p == nil || p.Type != field.Type || !p.ReadOnly || p.Extraction != nil || p.SourceOfRecord != "document" {
 			return false
 		}
@@ -95,6 +109,7 @@ func BuildEvidence(input *SampleInput, existing interfaces.DraftItems) (*Evidenc
 	}
 	language := input.Request.NamingLanguage
 	for _, template := range templates {
+		template.fields = append(template.fields, managedField{"model_fingerprint", "string", "Confirmed model version"}, managedField{"extraction_version", "string", "Extraction version"})
 		for _, existing := range existing.ObjectTypes {
 			if existing == nil || existing.Document == nil || existing.Document.Role != template.role {
 				continue

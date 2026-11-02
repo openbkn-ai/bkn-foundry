@@ -156,6 +156,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/agents/{agent_id}/task-version:
+    get:
+      tags:
+      - BknAgent
+      summary: Get Task Version
+      description: 'Read a pinning receipt under the existing Agent-read boundary.
+
+
+        This performs no task creation, version publication, configuration change
+
+        or Prompt-body disclosure. Project owners do not need shared-admin access
+
+        merely to pin the published task configuration they are about to invoke.'
+      operationId: get_task_version_api_bkn_agent_v1_agents__agent_id__task_version_get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskVersionOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/bkn-agent/v1/chat:
     post:
       tags:
@@ -2708,7 +2744,8 @@ components:
             pattern: ^[0-9A-Za-z_.-]+$
           - type: 'null'
           title: Model Id
-          description: Optional caller-visible chat model; fixed for the metric-design thread.
+          description: Optional caller-visible chat model; fixed for the metric-design
+            thread.
         scope:
           $ref: '#/components/schemas/MetricDesignScope'
         base_form_revision:
@@ -3377,6 +3414,30 @@ components:
       - create_time
       - update_time
       title: TaskOut
+    TaskVersionOut:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        agent_version:
+          type: integer
+          minimum: 1.0
+          title: Agent Version
+        prompt_version:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Prompt Version
+        tool_free:
+          type: boolean
+          title: Tool Free
+      type: object
+      required:
+      - agent_id
+      - agent_version
+      - tool_free
+      title: TaskVersionOut
     ThreadMessage:
       properties:
         role:

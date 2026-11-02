@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 var ErrInvalidIdentity = errors.New("invalid document instance identity")
@@ -49,10 +47,10 @@ func DocumentID(knowledgeBaseID, fileID string) (string, error) {
 // The original located text is preserved separately; normalization changes no
 // native source offsets and never replaces the evidence text.
 func SentenceID(networkID, objectTypeID, documentID, sentence string, ordinal uint32) (string, error) {
-	if !utf8.ValidString(sentence) {
+	normalized, err := normalizedSentence(sentence)
+	if err != nil {
 		return "", ErrInvalidIdentity
 	}
-	normalized := norm.NFC.String(strings.Join(strings.Fields(sentence), " "))
 	return identityDigest("bkn-sentence-instance-v1", networkID, objectTypeID, documentID, normalized, strconv.FormatUint(uint64(ordinal), 10))
 }
 
