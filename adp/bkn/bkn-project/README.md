@@ -573,3 +573,44 @@ mutable business values. The server derives the complete source sentence from
 verified text, independent of the extractor's quote length. Renaming/removing key
 fields or changing their types requires renewed confirmation. Changing the key
 invalidates model preparation and acceptance; refreshing audit timestamps does not.
+
+### System links and reconciliation
+
+Once the selected files finish extraction and delegation cleanup, the project
+owner can review and save links to structured objects:
+
+- `GET /projects/{project_id}/kb/builds/{build_id}/system-links` returns a snapshot
+  signature, matching counts and distinct-identity reconciliation totals (`both`,
+  `system_only`, `text_only`) for each adopted structured-target relation. The
+  prefix is `/api/bkn-project/v1`. No extracted values or heldout predictions are
+  returned. `conflicts` counts differing shared fields only when their authority
+  and placement were explicitly confirmed; otherwise it is null.
+- `POST` at the same path accepts only `operation_id` (a UUID) and `signature`
+  from the review, returning a process receipt. Tables are read as the current
+  operator; the existing storage app writes only prepared relation Datasets.
+  No interactive token is retained for a worker.
+
+The confirmed business number is used for matching and human-facing evidence;
+the relation retains the original system primary key. Unmatched mentions create
+no edge. Complete target scans recheck uniqueness and live permissions. Partial
+pages never become successful empty results. Shared-field differences are
+reported without overwriting system values.
+
+Writes use the existing process journal and project/source/model-fenced lease.
+The complete write set is validated first. After all writes are acknowledged,
+source and target snapshots are checked again before obsolete links are pruned;
+completion repeats that check. Revocation, cancellation or scope changes stop
+processing. Live checks renew the bounded lease throughout long batches; expired
+operations cannot renew it. Cancelling linking preserves successful extraction
+and marks only the linking receipt cancelled, so it can be reviewed and resumed
+without repeating extraction. Uncertain responses are resumed explicitly with the same operation.
+Unchanged completed snapshots do no new writes, including for a fresh client
+intent. Process storage holds only receipts and counts.
+
+This is the structured-number linking operation, not all of K5. Match counts do
+not measure independent linking accuracy or bypass acceptance/full-build gates.
+Shared terms, canonical value fusion and publication/refresh remain separate
+work. Rows lacking the actual extraction-task receipt require an explicit fresh
+build; the service never invents a receipt. No SQL or Agent migration is added
+beyond the K4 prerequisites. Before rollback, finish or cancel active linking
+operations; older versions do not manage the new linking states.

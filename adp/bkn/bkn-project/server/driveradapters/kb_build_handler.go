@@ -23,7 +23,7 @@ import (
 )
 
 func (r *restHandler) registerKBBuild(group *gin.RouterGroup) {
-	for _, route := range []struct{ method, path string }{{"GET", "/acceptance/references/status"}, {"GET", "/acceptance/references"}, {"POST", "/acceptance/references"}, {"GET", "/build-settings"}, {"GET", "/builds"}, {"GET", "/builds/:build_id/results"}, {"POST", "/builds"}, {"POST", "/builds/cancel"}, {"POST", "/builds/:build_id/cancel"}} {
+	for _, route := range []struct{ method, path string }{{"GET", "/acceptance/references/status"}, {"GET", "/acceptance/references"}, {"POST", "/acceptance/references"}, {"GET", "/build-settings"}, {"GET", "/builds"}, {"GET", "/builds/:build_id/results"}, {"GET", "/builds/:build_id/system-links"}, {"POST", "/builds/:build_id/system-links"}, {"POST", "/builds"}, {"POST", "/builds/cancel"}, {"POST", "/builds/:build_id/cancel"}} {
 		method, path := route.method, route.path
 		group.Handle(method, path, func(c *gin.Context) {
 			r.withExVisitor(c, func(c *gin.Context, visitor hydra.Visitor) {
@@ -55,6 +55,30 @@ func (r *restHandler) registerKBBuild(group *gin.RouterGroup) {
 				var err error
 				status := http.StatusOK
 				switch {
+				case path == "/builds/:build_id/system-links":
+					datasets, available := providers.Datasets.(interface {
+						kb.DatasetFileSnapshot
+						kb.DatasetFileRecords
+					})
+					if !available {
+						err = kb.ErrUnavailable
+						break
+					}
+					links := &kbinstance.SystemLinkService{Builds: service, Datasets: datasets, Vega: logics.VA}
+					if method == http.MethodGet {
+						result, err = links.Preview(ctx, visitor.TokenID, c.Param("project_id"), c.Param("build_id"), visitorAccount(visitor))
+					} else {
+						c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+						decoder := json.NewDecoder(c.Request.Body)
+						decoder.DisallowUnknownFields()
+						var request kbinstance.SystemLinkRequest
+						var trailing any
+						if decoder.Decode(&request) != nil || decoder.Decode(&trailing) != io.EOF {
+							err = &kb.SourceError{StatusCode: 400}
+							break
+						}
+						result, err = links.Apply(ctx, visitor.TokenID, c.Param("project_id"), c.Param("build_id"), visitorAccount(visitor), request)
+					}
 				case path == "/acceptance/references/status":
 					if references == nil {
 						err = kb.ErrUnavailable
