@@ -17,6 +17,12 @@ const (
 	PublicError_InternalServerError = "Public.InternalServerError"
 	PublicError_NotImplemented      = "Public.NotImplemented"
 	PublicError_ServiceUnavailable  = "Public.ServiceUnavailable"
+
+	PublicError_RequestTimeout        = "Public.RequestTimeout"
+	PublicError_RequestEntityTooLarge = "Public.RequestEntityTooLarge"
+	PublicError_UnprocessableEntity   = "Public.UnprocessableEntity"
+	PublicError_BadGateway            = "Public.BadGateway"
+	PublicError_GatewayTimeout        = "Public.GatewayTimeout"
 )
 
 var publicErrorCodes = []string{
@@ -29,6 +35,11 @@ var publicErrorCodes = []string{
 	PublicError_InternalServerError,
 	PublicError_NotImplemented,
 	PublicError_ServiceUnavailable,
+	PublicError_RequestTimeout,
+	PublicError_RequestEntityTooLarge,
+	PublicError_UnprocessableEntity,
+	PublicError_BadGateway,
+	PublicError_GatewayTimeout,
 }
 
 func init() {
