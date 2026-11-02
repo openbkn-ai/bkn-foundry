@@ -191,3 +191,42 @@ func TestChangedReferenceStopsHeldoutWorkBeforeAnotherSubmission(t *testing.T) {
 		t.Fatal("changed references allowed heldout work")
 	}
 }
+
+func TestFullBuildPinsActualExecutionFromThePassingAcceptance(t *testing.T) {
+	s, _, _, build, _, request := referenceServiceFixture(t)
+	if _, err := s.Save(context.Background(), "Bearer operator-token", "project", build.Owner, request); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ready(context.Background(), build); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(build)
+	var candidate interfaces.KBBuild
+	if err := json.Unmarshal(raw, &candidate); err != nil {
+		t.Fatal(err)
+	}
+	prompt := 2
+	candidate.State = "succeeded"
+	candidate.PromptVersion, candidate.ModelID, candidate.Model = &prompt, "accepted-model", "accepted-provider-model"
+	file := &candidate.Files[0]
+	file.State, file.AgentTaskID = "succeeded", "accepted-task"
+	version := candidate.AgentVersion
+	file.AgentVersion, file.PromptVersion, file.ModelID = &version, &prompt, candidate.ModelID
+	file.InputDigest, file.RowsDigest = strings.Repeat("a", 64), strings.Repeat("b", 64)
+	file.Assessment = &interfaces.KBAcceptanceCounts{Expected: 10, Predicted: 10, Correct: 10, ExpectedLinks: 10, PredictedLinks: 10, CorrectLinks: 10}
+	s.Builds.Store.(*serviceQueue).record = &interfaces.KBBuildRecord{Build: &candidate}
+	build.Mode = "full"
+	if err := s.FullReady(context.Background(), build); err != nil {
+		t.Fatal(err)
+	}
+	if build.PromptVersion == nil || *build.PromptVersion != prompt || build.ModelID != candidate.ModelID || build.Model != candidate.Model {
+		t.Fatal("passing acceptance did not pin the actual full-build execution")
+	}
+	// A changed default model must be detected on the first receipt, before any
+	// output is validated or written, even when the Agent version is unchanged.
+	build.State, build.Files[0].State = "running", "submitting"
+	task := &interfaces.BknAgentTask{TaskID: "full-task", AgentID: kb.DocumentExtractionAgentID, AgentVersion: &version, PromptVersion: &prompt, ModelID: "changed-default", Status: "running"}
+	if _, err := AttachFileTask(build, 0, kb.DocumentExtractionAgentID, task, build.UpdateTime+1); err == nil {
+		t.Fatal("a changed default model reused acceptance from a different model")
+	}
+}

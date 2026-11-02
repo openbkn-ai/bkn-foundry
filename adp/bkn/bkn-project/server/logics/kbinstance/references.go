@@ -456,6 +456,12 @@ func (s *ReferenceService) FullReady(ctx context.Context, build *interfaces.KBBu
 		}
 		calculateAcceptance(total)
 		if total.Passed {
+			// Agent versions may retain mutable model defaults. Pin the actual
+			// passing execution so the first full-build receipt is checked by
+			// AttachFileTask before any extracted row can be written.
+			prompt := *candidate.PromptVersion
+			build.PromptVersion = &prompt
+			build.ModelID, build.Model = candidate.ModelID, candidate.Model
 			return nil
 		}
 	}
