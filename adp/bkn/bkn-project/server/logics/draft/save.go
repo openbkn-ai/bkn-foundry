@@ -79,6 +79,9 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if ot.Document == nil && save.Document != nil && save.Document.Derive != nil {
+		return nil, documentEditError(ctx)
+	}
 	if ot.Document != nil {
 		return s.saveDocumentObject(ctx, token, draft, ot, save, caller)
 	}

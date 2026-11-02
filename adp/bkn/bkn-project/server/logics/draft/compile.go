@@ -14,6 +14,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // The directories of a BKN package that confirming a draft writes; the rest of a branch is not
@@ -94,6 +95,9 @@ func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*comp
 		if !ot.Adopted {
 			continue
 		}
+		if kbconcept.EventParticipantsNeedRepair(*items, ot) {
+			return nil, fmt.Errorf("event %q has a participant relationship requiring repair", ot.ID)
+		}
 		if ot.Table.ResourceID == "" {
 			return nil, fmt.Errorf("object type %q has no table", ot.ID)
 		}
@@ -116,6 +120,9 @@ func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*comp
 		}, ot.Name)
 	}
 	for _, rt := range items.RelationTypes {
+		if rt.Adopted && rt.DocumentRepair != "" {
+			return nil, fmt.Errorf("relationship %q requires human repair", rt.ID)
+		}
 		// A relation adopted while an end is not is a pending item a person settles first; it
 		// would not be read as a relation of this network either.
 		if rt.Adopted && objectTypes[rt.Source] && objectTypes[rt.Target] {

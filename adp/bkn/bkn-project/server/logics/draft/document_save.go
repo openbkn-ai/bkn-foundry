@@ -79,6 +79,9 @@ func (s *draftService) documentEditInput(ctx context.Context, token string, draf
 	return input, nil
 }
 func (s *draftService) saveDocumentObject(ctx context.Context, token string, draft *interfaces.Draft, original *interfaces.DraftObjectType, save interfaces.DraftObjectTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	if save.Document != nil && save.Document.Derive != nil {
+		return s.deriveDocumentObject(ctx, token, draft, original, save, caller)
+	}
 	if save.IncrementalKey != "" {
 		return nil, documentEditError(ctx)
 	}

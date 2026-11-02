@@ -48,9 +48,10 @@ type DraftDocumentMapping struct {
 // DraftDocumentSettings contains the editable event fields; role, layer and
 // source evidence remain server-owned metadata.
 type DraftDocumentSettings struct {
-	DualSource           *DualSourceDecision `json:"dual_source,omitempty"`
-	TimeProperty         string              `json:"time_property"`
-	ParticipantRelations []string            `json:"participant_relations"`
+	Derive               *DraftDocumentDerivation `json:"derive,omitempty"`
+	DualSource           *DualSourceDecision      `json:"dual_source,omitempty"`
+	TimeProperty         string                   `json:"time_property"`
+	ParticipantRelations []string                 `json:"participant_relations"`
 }
 
 // DraftBusinessIdentityEvidence is created only by a human-requested full-table
@@ -69,4 +70,15 @@ type DraftBusinessIdentityEvidence struct {
 	Blanks             int64       `json:"blanks"`
 	ConfirmedBy        AccountInfo `json:"confirmed_by"`
 	CheckedAt          int64       `json:"checked_at"`
+}
+
+// DraftDocumentDerivation explicitly copies a reviewed subset of existing fields.
+// Evidence and extraction instructions are always copied from the source model.
+type DraftDocumentDerivation struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Role     string   `json:"role"`
+	Fields   []string `json:"fields"`
+	Identity string   `json:"identity"`
+	Confirm  bool     `json:"confirm"`
 }

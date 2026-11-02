@@ -18,9 +18,10 @@ type ExtractRequest struct {
 	DraftUpdateTime   int64  `json:"draft_update_time"`
 }
 type ExtractResult struct {
-	Draft          *interfaces.Draft `json:"draft"`
-	AddedObjects   int               `json:"added_objects"`
-	AddedRelations int               `json:"added_relations"`
+	RelationsNeedingRepair int               `json:"relations_needing_repair,omitempty"`
+	Draft                  *interfaces.Draft `json:"draft"`
+	AddedObjects           int               `json:"added_objects"`
+	AddedRelations         int               `json:"added_relations"`
 }
 type Service struct {
 	projects   interfaces.ProjectService
@@ -139,11 +140,17 @@ func (s *Service) Extract(ctx context.Context, token, project string, caller int
 	if err != nil {
 		return nil, err
 	}
-	model, err := ValidateModel(input, draft.Items, proposal)
+	model, err := ReviewModel(input, draft.Items, proposal)
 	if err != nil {
 		return nil, err
 	}
 	addedObjects, addedRelations := len(model.ObjectTypes), len(model.RelationTypes)
+	needingRepair := 0
+	for _, relation := range model.RelationTypes {
+		if relation.DocumentRepair != "" {
+			needingRepair++
+		}
+	}
 	draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, model.ObjectTypes...)
 	draft.Items.RelationTypes = append(draft.Items.RelationTypes, model.RelationTypes...)
 	evidence, err := BuildEvidence(input, draft.Items)
@@ -165,7 +172,7 @@ func (s *Service) Extract(ctx context.Context, token, project string, caller int
 	if !written {
 		return nil, conflict()
 	}
-	return &ExtractResult{Draft: draft, AddedObjects: addedObjects, AddedRelations: addedRelations}, nil
+	return &ExtractResult{Draft: draft, AddedObjects: addedObjects, AddedRelations: addedRelations, RelationsNeedingRepair: needingRepair}, nil
 }
 
 // SamplePreviewFragment is request-local editor evidence, never a stored sample

@@ -64,7 +64,7 @@ func (c *workflowConcepts) Extract(_ context.Context, r kb.ConceptRequest) (kb.C
 	return c.fn(r)
 }
 func TestConceptWorkflowPreservesDraftAndRejectsLateResults(t *testing.T) {
-	for _, scenario := range []string{"new", "existing", "stale_request", "selection_changed", "draft_changed", "denied", "invalid_quote", "empty", "not_owner", "archived", "unavailable"} {
+	for _, scenario := range []string{"new", "existing", "stale_request", "selection_changed", "draft_changed", "denied", "invalid_quote", "empty", "not_owner", "archived", "unavailable", "review", "review_denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -87,7 +87,7 @@ func TestConceptWorkflowPreservesDraftAndRejectsLateResults(t *testing.T) {
 			if scenario == "stale_request" {
 				req.SelectionRevision = 6
 			}
-			source := &workflowSource{denyOnRecheck: scenario == "denied"}
+			source := &workflowSource{denyOnRecheck: scenario == "denied" || scenario == "review_denied"}
 			concepts := &workflowConcepts{fn: func(r kb.ConceptRequest) (kb.ConceptProposal, error) {
 				if len(r.Samples) != 1 || r.Samples[0].Citation.FileID != "41" || r.Caller != owner {
 					t.Fatal("held-out content or wrong operator reached Agent")
@@ -105,6 +105,10 @@ func TestConceptWorkflowPreservesDraftAndRejectsLateResults(t *testing.T) {
 					return kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{}, RelationTypes: []*interfaces.DraftRelationType{}}, nil
 				}
 				input := &SampleInput{Request: r}
+				if scenario == "review" || scenario == "review_denied" {
+					_, proposal := reviewFixture(r.Samples[0].Text)
+					return proposal, nil
+				}
 				object := proposedObject(input, "order_doc", "entity")
 				if scenario == "invalid_quote" {
 					object.Document.Citations[0].Quote = "not present"
@@ -112,7 +116,7 @@ func TestConceptWorkflowPreservesDraftAndRejectsLateResults(t *testing.T) {
 				return kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{object}}, nil
 			}}
 			result, err := NewService(ps, store, store, source, concepts).Extract(context.Background(), "Bearer synthetic", "p", owner, req)
-			success := scenario == "new" || scenario == "existing" || scenario == "empty"
+			success := scenario == "new" || scenario == "existing" || scenario == "empty" || scenario == "review"
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}
@@ -128,7 +132,14 @@ func TestConceptWorkflowPreservesDraftAndRejectsLateResults(t *testing.T) {
 				}
 				return
 			}
-			if store.written == nil || result.AddedObjects != 5 {
+			expectedObjects := 5
+			if scenario == "review" {
+				expectedObjects = 7
+			}
+			if scenario == "review" && (concepts.calls != 1 || result.RelationsNeedingRepair != 1 || result.Draft.Items.RelationTypes[0].DocumentRepair == "") {
+				t.Fatal("partial review lost block or retried inference")
+			}
+			if store.written == nil || result.AddedObjects != expectedObjects {
 				t.Fatal("verified models and fixed evidence templates not saved")
 			}
 			for _, o := range store.written.Items.ObjectTypes {

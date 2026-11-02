@@ -268,6 +268,22 @@ func Test_CandidateService(t *testing.T) {
 				}
 			}
 		})
+
+		Convey("Bulk acceptance skips blocked relations and their dependent events", func() {
+			blocked := &interfaces.DraftRelationType{ID: "repair", Source: "items", Target: "stores", DocumentRepair: "target_identity", Document: &interfaces.DraftDocumentModel{Role: "relation"}}
+			event := &interfaces.DraftObjectType{ID: "event", Document: &interfaces.DraftDocumentModel{Role: "event", ParticipantRelations: []string{blocked.ID}}}
+			draft.Items.RelationTypes = append(draft.Items.RelationTypes, blocked)
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, event)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			got, err := svc.AcceptSuggestions(ctx, token, "p1", interfaces.DraftAcceptSuggestions{UpdateTime: readTime}, caller)
+			So(err, ShouldBeNil)
+			So(blocked.Adopted, ShouldBeFalse)
+			So(event.Adopted, ShouldBeFalse)
+			So(got.Skipped, ShouldContain, "relation_types/repair")
+			So(got.Skipped, ShouldContain, "object_types/event")
+			So(got.Accepted, ShouldContain, "object_types/items")
+		})
 		Convey("With nothing left to accept nothing is written\n", func() {
 			draft.Items.ObjectTypes = draft.Items.ObjectTypes[2:3]
 			draft.Items.RelationTypes = nil

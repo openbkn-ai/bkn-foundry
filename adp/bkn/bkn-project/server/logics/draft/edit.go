@@ -142,7 +142,17 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 	if !ok {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if edit.Adopted != nil && *edit.Adopted && kind == interfaces.DRAFT_KIND_RELATION_TYPES {
+		for _, relation := range items.RelationTypes {
+			if relation.ID == id && relation.DocumentRepair != "" {
+				return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentRelationNeedsRepair)
+			}
+		}
+	}
 	if edit.Adopted != nil && *edit.Adopted && !*item.adopted && kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		if kbconcept.EventParticipantsNeedRepair(*items, findObjectType(items, id)) {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentRelationNeedsRepair)
+		}
 		// BKN object types need a primary key: one without an identity cannot be compiled.
 		if findObjectType(items, id).NeedsIdentity {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
@@ -248,7 +258,7 @@ func regateRelations(setting common.DraftSetting, items *interfaces.DraftItems, 
 	}
 	decisions := []*interfaces.DraftDecision{}
 	for _, r := range items.RelationTypes {
-		if r.ProposedBecause != proposedEndNotAdopted || decided[r.ID] || (r.Source != id && r.Target != id) ||
+		if r.DocumentRepair != "" || r.ProposedBecause != proposedEndNotAdopted || decided[r.ID] || (r.Source != id && r.Target != id) ||
 			!objectTypeAdopted(items, r.Source) || !objectTypeAdopted(items, r.Target) {
 			continue
 		}

@@ -62,9 +62,17 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Not the owner")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Draft_NotOwner)
 	}
+	for _, object := range draft.Items.ObjectTypes {
+		if object != nil && object.Adopted && kbconcept.EventParticipantsNeedRepair(draft.Items, object) {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentRelationNeedsRepair)
+		}
+	}
 	for _, relation := range draft.Items.RelationTypes {
 		if relation == nil {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem)
+		}
+		if relation.Adopted && relation.DocumentRepair != "" {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentRelationNeedsRepair)
 		}
 		if relation.Adopted && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "same_document" && !kbconcept.SameDocumentScopeReady(draft.Items, relation) {
 			return nil, documentValidationError(ctx, &kbconcept.RelationScopeError{ID: relation.ID, Name: relation.Name})

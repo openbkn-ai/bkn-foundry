@@ -59,7 +59,7 @@ func joinable(a string, b string) bool {
 }
 
 func relationSnapshot(rt *interfaces.DraftRelationType) interfaces.DraftRelationTypeSnapshot {
-	s := interfaces.DraftRelationTypeSnapshot{Name: rt.Name, Source: rt.Source, Target: rt.Target, Mapping: rt.Mapping,
+	s := interfaces.DraftRelationTypeSnapshot{DocumentRepair: rt.DocumentRepair, Name: rt.Name, Source: rt.Source, Target: rt.Target, Mapping: rt.Mapping,
 		SourceMapping: rt.SourceMapping, TargetMapping: rt.TargetMapping}
 	if rt.Document != nil {
 		s.DocumentMapping = rt.DocumentMapping
@@ -72,7 +72,7 @@ func relationSnapshot(rt *interfaces.DraftRelationType) interfaces.DraftRelation
 }
 
 func sameJoin(a interfaces.DraftRelationTypeSnapshot, b interfaces.DraftRelationTypeSnapshot) bool {
-	return a.Source == b.Source && a.Target == b.Target && a.LinkTable == b.LinkTable &&
+	return a.DocumentRepair == b.DocumentRepair && a.Source == b.Source && a.Target == b.Target && a.LinkTable == b.LinkTable &&
 		slices.Equal(a.Mapping, b.Mapping) && slices.Equal(a.SourceMapping, b.SourceMapping) &&
 		slices.Equal(a.TargetMapping, b.TargetMapping) && a.DocumentCardinality == b.DocumentCardinality && reflect.DeepEqual(a.DocumentMapping, b.DocumentMapping)
 }

@@ -35,6 +35,7 @@ const (
 	// 409
 	BknProject_Draft_DualSourceNotConfirmed      = "BknProject.Draft.DualSourceNotConfirmed"
 	BknProject_Draft_DocumentRelationScope       = "BknProject.Draft.DocumentRelationScope"
+	BknProject_Draft_DocumentRelationNeedsRepair = "BknProject.Draft.DocumentRelationNeedsRepair"
 	BknProject_Draft_EventParticipantInUse       = "BknProject.Draft.EventParticipantInUse"
 	BknProject_Draft_BusinessIdentityNotVerified = "BknProject.Draft.BusinessIdentityNotVerified"
 	BknProject_Draft_BusinessIdentityNotUnique   = "BknProject.Draft.BusinessIdentityNotUnique"
@@ -110,6 +111,7 @@ var (
 		BknProject_Draft_BusinessIdentityNotUnique,
 		BknProject_Draft_BusinessIdentityUnavailable,
 		BknProject_Draft_DocumentRelationScope,
+		BknProject_Draft_DocumentRelationNeedsRepair,
 		BknProject_Draft_EventParticipantInUse,
 		BknProject_Draft_DocumentDataNotReady,
 		BknProject_Draft_NoCatalogs,

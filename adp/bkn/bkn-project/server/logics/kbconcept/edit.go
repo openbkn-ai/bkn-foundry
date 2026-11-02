@@ -153,6 +153,27 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		if source == nil || target == nil {
 			return nil, ErrInvalidModel
 		}
+		if relation.DocumentRepair != "" {
+			// A pending scope/identity repair does not freeze harmless object
+			// edits, but its referenced fields must remain grounded and typed.
+			m := relation.DocumentMapping
+			if m == nil {
+				return nil, ErrInvalidModel
+			}
+			var from, to *interfaces.DraftProperty
+			switch m.Mode {
+			case "linking":
+				from, to = property(source, m.MentionProperty), property(target, m.IdentityProperty)
+			case "same_document":
+				from, to = property(source, m.SourceNameProperty), property(target, m.TargetNameProperty)
+			default:
+				return nil, ErrInvalidModel
+			}
+			if from == nil || to == nil || from.ReadOnly || from.Type != to.Type {
+				return nil, ErrInvalidModel
+			}
+			continue
+		}
 		if m := relation.DocumentMapping; m != nil && m.Mode == "same_document" && (!fileScopedObject(source) || !fileScopedObject(target)) {
 			return nil, &RelationScopeError{ID: relation.ID, Name: relation.Name}
 		}
@@ -196,6 +217,9 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 	edited.SourceMapping = nil
 	edited.TargetMapping = nil
 	edited.Properties = nil
+	// The marker belongs to the stored proposal. Only this strict revalidation
+	// may clear it; clients cannot declare their own proposal repaired.
+	edited.DocumentRepair = ""
 	if edited.DocumentMapping != nil {
 		if edited.DocumentMapping.BusinessIdentity != nil && (original.DocumentMapping == nil || !reflect.DeepEqual(edited.DocumentMapping.BusinessIdentity, original.DocumentMapping.BusinessIdentity)) {
 			return nil, ErrInvalidModel

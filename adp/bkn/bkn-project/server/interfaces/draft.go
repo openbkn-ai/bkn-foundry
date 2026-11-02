@@ -327,6 +327,9 @@ type DraftKeyEvidence struct {
 }
 
 type DraftRelationType struct {
+	// DocumentRepair is a server-owned review block, never an accepted join.
+	// A human must save a valid mapping or explicitly leave this candidate out.
+	DocumentRepair string `json:"document_repair,omitempty"`
 	// Properties are the server-managed evidence attributes of an indirect document relation.
 	Properties      []*DraftProperty      `json:"properties,omitempty"`
 	Document        *DraftDocumentModel   `json:"document,omitempty"`
@@ -646,6 +649,7 @@ type DraftCatalogsAdded struct {
 // Decisions on relation types a person makes and deletes; After, and Before, are their snapshots.
 const (
 	DRAFT_DECISION_CREATE = "create"
+	DRAFT_DECISION_DERIVE = "derive"
 	DRAFT_DECISION_DELETE = "delete"
 )
 
@@ -696,6 +700,7 @@ type DraftBackingSource struct {
 
 // DraftRelationTypeSnapshot is what making, saving and deleting a relation type records of it.
 type DraftRelationTypeSnapshot struct {
+	DocumentRepair      string                `json:"document_repair,omitempty"`
 	DocumentMapping     *DraftDocumentMapping `json:"document_mapping,omitempty"`
 	DocumentCardinality string                `json:"document_cardinality,omitempty"`
 	Name                string                `json:"name"`
@@ -732,6 +737,7 @@ type DraftCandidates struct {
 // last decision a person made on whether it is in: adopting it or not, choosing its identity, saving
 // it, making it, or accepting the suggestions; absent while none did.
 type DraftCandidate struct {
+	DocumentRepair string              `json:"document_repair,omitempty"`
 	Source         string              `json:"source,omitempty"`
 	Document       *DraftDocumentModel `json:"document,omitempty"`
 	Kind           string              `json:"kind"`
