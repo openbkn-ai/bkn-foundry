@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Trace identity pages use summary-only projection reads and at most one receipt refill within the existing page budget, completing high-fanout summaries when they fit while preserving genuine receipt/artifact truncation and current authorization. Representative requests follow the first visible receipt; no cache, schema change or higher scan cap is introduced (#2882).
+
 - Avoid the non-covering Trace-root index scan on unbounded global-administrator Trace identity pages, reducing receipt table lookups while preserving live totals, ordering and cursor/offset semantics. Scoped, time-filtered and root-filtered queries retain their existing index choices; no cache or schema change is introduced (#2883).
 
 - Remove the redundant business-provenance bootstrap Job and account/Secret values; built-in Agent initialization remains owned by the existing SQL migration path (#2823).

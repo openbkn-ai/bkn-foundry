@@ -1886,7 +1886,7 @@ func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.
 	}
 	ids := summaryIdentityIDs(identityPage.Entries)
 	_, traces, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
-		Scope:    options.Scope,
+		Scope: options.Scope, SummaryOnly: true,
 		TraceIDs: ids, Limit: selectedSummaryCandidateLimit(len(ids)),
 	}, summaryLoadMetadata{}, options.Tool != "")
 	if err != nil {

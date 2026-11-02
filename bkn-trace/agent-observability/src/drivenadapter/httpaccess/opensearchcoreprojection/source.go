@@ -57,6 +57,22 @@ func (s *Source) LoadExecutionProjection(ctx context.Context, query iprojections
 	if err != nil {
 		return iprojectionsource.Result{}, err
 	}
+	if query.SummaryOnly {
+		// Use the first visible receipt for the summary's representative request,
+		// consistently with the canonical SQL summary and receipt event ordering.
+		sort.Slice(receipts, func(i, j int) bool {
+			left, leftErr := time.Parse(time.RFC3339Nano, receipts[i].IssuedAt)
+			right, rightErr := time.Parse(time.RFC3339Nano, receipts[j].IssuedAt)
+			if leftErr == nil && rightErr == nil {
+				if !left.Equal(right) {
+					return left.Before(right)
+				}
+			} else if receipts[i].IssuedAt != receipts[j].IssuedAt {
+				return receipts[i].IssuedAt < receipts[j].IssuedAt
+			}
+			return receipts[i].ReceiptID < receipts[j].ReceiptID
+		})
+	}
 	artifactResult := iprojectionsource.Result{}
 	if s.artifacts != nil {
 		artifactQuery := query
@@ -222,6 +238,40 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 }
 
 func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Query, applyScopeCandidates bool) ([]receiptDocument, bool, error) {
+	refill := query.SummaryOnly && len(query.TraceIDs) > 1 && query.Limit > 0
+	if refill && query.Limit < len(query.TraceIDs) {
+		return nil, false, iprojectionsource.ErrSummaryScanBudgetExceeded
+	}
+	receipts, truncated, err := s.searchReceiptPage(ctx, query, applyScopeCandidates, true, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	if query.SummaryOnly && query.Limit > 0 && len(receipts) > query.Limit {
+		receipts, truncated = receipts[:query.Limit], true
+	}
+	if !refill || !truncated || len(receipts) >= query.Limit {
+		return receipts, truncated, nil
+	}
+	// Reserve a fair initial share per selected Trace, then spend only the
+	// remaining page budget on unread receipts. One bounded follow-up avoids
+	// falsely truncating a 35-receipt Trace when the whole page still fits.
+	excluded := make([]string, 0, len(receipts))
+	for _, receipt := range receipts {
+		excluded = append(excluded, receipt.ReceiptID)
+	}
+	remaining := query.Limit - len(receipts)
+	query.Limit = remaining
+	extra, overflow, err := s.searchReceiptPage(ctx, query, applyScopeCandidates, false, excluded)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(extra) > remaining {
+		extra = extra[:remaining]
+	}
+	return append(receipts, extra...), overflow, nil
+}
+
+func (s *Source) searchReceiptPage(ctx context.Context, query iprojectionsource.Query, applyScopeCandidates, collapse bool, excluded []string) ([]receiptDocument, bool, error) {
 	size := maxProjectionDocuments
 	if query.Limit > 0 && query.Limit < size {
 		// Limit is the projection caller's candidate budget. Fetch one extra
@@ -265,19 +315,27 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		}
 		must = append(must, map[string]any{"range": map[string]any{"issued_at": bounds}})
 	}
+	filters := map[string]any{"must": must}
 	queryBody := map[string]any{
 		"size":  size,
-		"query": map[string]any{"bool": map[string]any{"must": must}},
+		"query": map[string]any{"bool": filters},
 		"sort":  []map[string]any{{"issued_at": map[string]any{"order": "desc"}}, {"_id": map[string]any{"order": "desc"}}},
 	}
+	if len(excluded) > 0 {
+		filters["must_not"] = []map[string]any{{"terms": map[string]any{"receipt_id.keyword": excluded}}}
+	}
 	innerHitName := ""
-	if field, identityCount := batchIdentityCollapse(query); identityCount > 1 {
+	if field, identityCount := batchIdentityCollapse(query); collapse && identityCount > 1 {
 		innerHitName = "selected_receipts"
+		perIdentity := maxReceiptsPerSelectedIdentity
+		if query.SummaryOnly && len(query.TraceIDs) > 1 && query.Limit > 0 {
+			perIdentity = min(perIdentity, query.Limit/identityCount)
+		}
 		queryBody["size"] = identityCount
 		queryBody["collapse"] = map[string]any{
 			"field": field,
 			"inner_hits": map[string]any{
-				"name": innerHitName, "size": maxReceiptsPerSelectedIdentity,
+				"name": innerHitName, "size": perIdentity,
 				"sort": []map[string]any{{"issued_at": map[string]any{"order": "desc"}}, {"_id": map[string]any{"order": "desc"}}},
 			},
 		}
