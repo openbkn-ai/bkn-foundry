@@ -656,6 +656,24 @@ func TestObjectPropertyAggregateAccuracy(t *testing.T) {
 			t.Fatalf("allowance was lost: %#v", vega.lastParams.Aggregation)
 		}
 	}
+	for _, tc := range []struct {
+		name  string
+		allow *bool
+	}{
+		{name: "old Vega accepts default approximation"},
+		{name: "old Vega accepts explicit approximation", allow: new(true)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"__value": int64(3)}}}}
+			service := resourcePagingService(t, vega, 1)
+			query := resourcePagingQuery(1)
+			query.AggregateAllowApproximate = tc.allow
+			result, err := service.AggregatePropertyByObjectTypeID(resourcePagingContext(), query, "id", "count_distinct")
+			if err != nil || !result.IsApproximate || len(result.Datas) != 1 || result.Datas[0]["__value"] != int64(3) {
+				t.Fatalf("old Vega approximate response was not preserved: result=%#v err=%v", result, err)
+			}
+		})
+	}
 	t.Run("old Vega cannot silently satisfy an exact request", func(t *testing.T) {
 		vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"__value": int64(3)}}}}
 		service := resourcePagingService(t, vega, 1)

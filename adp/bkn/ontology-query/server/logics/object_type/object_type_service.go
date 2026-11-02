@@ -955,8 +955,12 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			resps.IsApproximate = *resp.IsApproximate
 		}
 		if aggregate.operation == "count_distinct" && resp.IsApproximate == nil {
-			return httperrors.NewHTTPError(ctx, http.StatusBadGateway, oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
-				WithErrorDetails("resource distinct count response is missing accuracy metadata; upgrade Vega before using distinct aggregates")
+			if query.AggregateAllowApproximate != nil && !*query.AggregateAllowApproximate {
+				return httperrors.NewHTTPError(ctx, http.StatusBadGateway, oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+					WithErrorDetails("resource distinct count response is missing accuracy metadata; upgrade Vega before using exact distinct aggregates")
+			}
+			// Older Vega responses cannot prove exactness; preserve default approximate queries.
+			resps.IsApproximate = true
 		}
 		if aggregate.operation == "count_rows" && len(aggregate.groupBy) == 0 {
 			resps.Datas = []map[string]any{{"__value": json.Number(strconv.FormatInt(resp.TotalCount, 10))}}

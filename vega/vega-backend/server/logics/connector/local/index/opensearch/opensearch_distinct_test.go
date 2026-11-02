@@ -115,6 +115,66 @@ func TestExactDistinctRequestDoesNotExposeTransportDetails(t *testing.T) {
 	require.EqualError(t, err, "exact distinct request failed")
 }
 
+func TestExactDistinctPITCreationErrors(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusNotFound, http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			requests := 0
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					requests++
+					assert.Equal(t, http.MethodPost, request.Method)
+					assert.Equal(t, "/orders/_search/point_in_time", request.URL.Path)
+					return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}},
+						Body: io.NopCloser(strings.NewReader(`{"error":"private connection details"}`))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "orders",
+				&interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}},
+				&interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count_distinct", AllowApproximate: new(false)}})
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.Equal(t, 1, requests)
+			assert.Empty(t, exactDistinctSlots)
+			assert.NotContains(t, err.Error(), "private connection details")
+			var conditionErr *interfaces.ConditionBuildError
+			var forbiddenErr *interfaces.SourceReadForbiddenError
+			switch status {
+			case http.StatusBadRequest, http.StatusNotFound:
+				require.ErrorAs(t, err, &conditionErr)
+				assert.Contains(t, conditionErr.Error(), "allow_approximate=true")
+			case http.StatusUnauthorized, http.StatusForbidden:
+				require.ErrorAs(t, err, &forbiddenErr)
+			default:
+				assert.False(t, errors.As(err, &conditionErr))
+				assert.False(t, errors.As(err, &forbiddenErr))
+			}
+		})
+	}
+}
+
+func TestExactDistinctSearchErrorsRemainExecutionFailures(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusNotFound} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(*http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}},
+						Body: io.NopCloser(strings.NewReader(`{"error":"private connection details"}`))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			result, err := (&OpenSearchConnector{client: client}).distinctRequest(context.Background(), http.MethodPost, "/_search?allow_partial_search_results=false", nil)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			var conditionErr *interfaces.ConditionBuildError
+			assert.False(t, errors.As(err, &conditionErr))
+			assert.NotContains(t, err.Error(), "private connection details")
+		})
+	}
+}
+
 func TestOpenSearchConnectorExecuteExactDistinct(t *testing.T) {
 	const complete = `"timed_out":false,"_shards":{"total":2,"successful":2,"failed":0}`
 	for _, tc := range []struct {

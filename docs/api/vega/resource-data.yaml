@@ -579,6 +579,10 @@ components:
             false 要求精确；支持源库查询的 table（包括派生视图的底层 table）优先走源库，
             即使本地索引可用或 ignore_local_index=false，也执行源库 COUNT(DISTINCT ...)。
             源库失败不自动切回索引；仅有索引查询能力时使用 PIT + composite 完整枚举。
+            外部 index 创建 PIT 时，源端返回 400/404 将转换为 HTTP 400 参数错误，
+            提示无法保证精确去重，可设置 allow_approximate=true；
+            源端返回 401/403 将转换为 HTTP 403 VegaBackend.Resource.SourceReadForbidden。
+            搜索阶段错误和其他源端执行失败不作为不支持 PIT 处理，也不自动降级。
             若字段配置 ignore_above 等可能导致值被忽略或改写的策略，无法保证精确时，
             false 返回 HTTP 400 参数错误，不返回近似结果，
             也不额外扫描原文判断策略是否实际触发；允许近似时保持原查询方式。

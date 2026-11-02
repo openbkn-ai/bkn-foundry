@@ -384,7 +384,16 @@ func (c *OpenSearchConnector) distinctRequest(ctx context.Context,
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode >= 300 {
-		return nil, fmt.Errorf("exact distinct request returned HTTP %d", response.StatusCode)
+		err := fmt.Errorf("exact distinct request returned HTTP %d", response.StatusCode)
+		if method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/_search/point_in_time") {
+			switch response.StatusCode {
+			case http.StatusBadRequest, http.StatusNotFound:
+				return nil, interfaces.NewConditionBuildError("source cannot guarantee exact distinct counts; set allow_approximate=true to permit approximation")
+			case http.StatusUnauthorized, http.StatusForbidden:
+				return nil, interfaces.NewSourceReadForbiddenError(err)
+			}
+		}
+		return nil, err
 	}
 	encoded, err := io.ReadAll(io.LimitReader(response.Body, exactDistinctResponseBytes+1))
 	if err != nil {
