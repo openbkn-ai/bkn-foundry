@@ -19,7 +19,7 @@ const table = "t_bkn_project_kb_build"
 const projectLock = "SELECT f_archived,f_owner,f_owner_type FROM t_bkn_project_project WHERE f_id=? FOR UPDATE"
 const selectionLock = "SELECT f_state,f_revision FROM t_bkn_project_kb_selection WHERE f_project_id=? AND f_id=? AND f_current=1 FOR UPDATE"
 const draftLock = "SELECT f_status,f_update_time FROM t_bkn_project_draft WHERE f_project_id=? FOR UPDATE"
-const activeBuilds = "SELECT COUNT(*) FROM t_bkn_project_kb_build WHERE f_project_id=? AND f_state IN ('preparing','queued','running','attention','finishing','cancel_pending')"
+const activeBuilds = "SELECT COUNT(*) FROM t_bkn_project_kb_build WHERE f_project_id=? AND f_state IN ('preparing','queued','running','attention','finishing','cancel_pending','linking','linking_attention')"
 const columns = "f_id,f_project_id,f_state,f_revision,f_input_hash,f_data,f_identity,f_lease_id,f_lease_until,f_create_time,f_update_time"
 
 var safeID = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,128}$`)

@@ -210,14 +210,16 @@ func businessKey(object *interfaces.DraftObjectType, record InstanceRecord) (str
 }
 
 func extractionVersion(task *interfaces.BknAgentTask) (string, error) {
-	if task == nil || task.AgentID != kb.DocumentExtractionAgentID || task.Status != interfaces.BKN_AGENT_TASK_SUCCEEDED || task.AgentVersion == nil || *task.AgentVersion < 1 || task.PromptVersion == nil || *task.PromptVersion < 1 || task.ModelID == "" {
+	if task == nil || task.TaskID == "" || task.AgentID != kb.DocumentExtractionAgentID || task.Status != interfaces.BKN_AGENT_TASK_SUCCEEDED || task.AgentVersion == nil || *task.AgentVersion < 1 || task.PromptVersion == nil || *task.PromptVersion < 1 || task.ModelID == "" {
 		return "", ErrInvalidBuild
 	}
 	raw, err := json.Marshal(struct {
-		Agent     int    `json:"agent"`
-		Prompt    *int   `json:"prompt"`
-		Model     string `json:"model"`
-		ModelName string `json:"model_name"`
-	}{*task.AgentVersion, task.PromptVersion, task.ModelID, task.Model})
+		Agent      int    `json:"agent"`
+		Prompt     *int   `json:"prompt"`
+		Model      string `json:"model"`
+		ModelName  string `json:"model_name"`
+		TaskID     string `json:"task_id"`
+		RecordedAt int64  `json:"recorded_at"`
+	}{*task.AgentVersion, task.PromptVersion, task.ModelID, task.Model, task.TaskID, task.CreateTime})
 	return string(raw), err
 }

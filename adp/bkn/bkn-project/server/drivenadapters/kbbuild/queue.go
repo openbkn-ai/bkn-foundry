@@ -79,6 +79,11 @@ func (a *access) Cancel(ctx context.Context, projectID, id string, caller interf
 	if !terminal(r.Build.State) && r.Build.State != "cancel_pending" {
 		old := r.Build.Revision
 		r.Build.State = "cancel_pending"
+		// Linking reuses acknowledged rows after extraction delegation cleanup.
+		// It has no background identity left for the extraction worker to clean.
+		if r.Identity.Cleaned {
+			r.Build.State = "cancelled"
+		}
 		r.Build.Revision++
 		r.Build.UpdateTime = max(now, r.Build.UpdateTime+1)
 		payload, err := json.Marshal(r.Build)

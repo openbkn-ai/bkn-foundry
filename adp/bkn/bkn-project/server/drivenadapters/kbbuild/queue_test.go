@@ -13,7 +13,7 @@ import (
 )
 
 func TestCancellationFencesActiveWorkerWithoutRequiringAnUnarchivedSource(t *testing.T) {
-	for _, scenario := range []string{"active", "archived", "foreign_owner", "completed"} {
+	for _, scenario := range []string{"active", "archived", "foreign_owner", "completed", "linking_after_cleanup"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			if err != nil {
@@ -23,6 +23,10 @@ func TestCancellationFencesActiveWorkerWithoutRequiringAnUnarchivedSource(t *tes
 			record := processRecord()
 			record.LeaseID = "old-worker"
 			record.LeaseUntil = 999
+			if scenario == "linking_after_cleanup" {
+				record.Build.State = "linking"
+				record.Identity.Cleaned = true
+			}
 			mock.ExpectBegin()
 			owner := "owner"
 			if scenario == "foreign_owner" {
@@ -37,7 +41,11 @@ func TestCancellationFencesActiveWorkerWithoutRequiringAnUnarchivedSource(t *tes
 				}
 				mock.ExpectQuery("SELECT .* FROM "+table).WithArgs("project", "build").WillReturnRows(rowsFor(record))
 				if scenario != "completed" {
-					mock.ExpectExec("UPDATE "+table).WithArgs("cancel_pending", int64(2), sqlmock.AnyArg(), int64(20), "project", "build", int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+					state := "cancel_pending"
+					if scenario == "linking_after_cleanup" {
+						state = "cancelled"
+					}
+					mock.ExpectExec("UPDATE "+table).WithArgs(state, int64(2), sqlmock.AnyArg(), int64(20), "project", "build", int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
 				}
 				mock.ExpectCommit()
 			}

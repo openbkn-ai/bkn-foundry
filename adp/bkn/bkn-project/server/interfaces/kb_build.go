@@ -8,6 +8,7 @@ import "context"
 // KBBuild and KBFileBuild contain process metadata only. Extracted properties,
 // source text, Agent outputs and user credentials must never be stored here.
 type KBBuild struct {
+	Linking           *KBLinkingReceipt   `json:"linking,omitempty"`
 	ReferenceID       string              `json:"reference_id,omitempty"`
 	ReferenceRevision int64               `json:"reference_revision,omitempty"`
 	Assessment        *KBAcceptanceCounts `json:"assessment,omitempty"`
@@ -31,6 +32,27 @@ type KBBuild struct {
 	Files             []KBFileBuild       `json:"files"`
 	CreateTime        int64               `json:"create_time"`
 	UpdateTime        int64               `json:"update_time"`
+}
+
+// KBLinkingReceipt stores process evidence only. Claims, proposed matches,
+// conflicts and resulting current values remain in owned Vega Datasets.
+type KBLinkingReceipt struct {
+	OperationID string `json:"operation_id"`
+	Signature   string `json:"signature"`
+	State       string `json:"state"`
+	RowsWritten int64  `json:"rows_written"`
+	Eligible    int64  `json:"eligible"`
+	Linked      int64  `json:"linked"`
+	Pending     int64  `json:"pending"`
+}
+
+// KBLinkingAccess is an interactive continuation after background extraction.
+// The caller supplies current operator permissions; no user token is persisted
+// or borrowed by the knowledge-base-only background identity.
+type KBLinkingAccess interface {
+	ClaimLinking(context.Context, string, string, AccountInfo, string, string, int64, int64) (*KBBuildRecord, error)
+	CheckLinking(context.Context, string, string, string, int64, int64) (bool, error)
+	SaveLinking(context.Context, *KBBuildRecord, int64, int64) (bool, error)
 }
 
 type KBFileBuild struct {
