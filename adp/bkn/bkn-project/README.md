@@ -369,3 +369,14 @@ reject an entity endpoint in a same-document rule. Existing invalid rules are
 not silently rewritten; repair their mapping explicitly.
 
 An affected legacy object save or assistant preflight returns 409 `Draft.DocumentRelationScope`, naming the business relationship that must be repaired. The structured details retain its reference; the bilingual user message does not display an internal id.
+
+### Agent execution version metadata
+
+The project Agent adapter supports the existing bkn-agent #2792 contract: an
+optional `agent_version` on task requests, an optional `prompt_override`, and
+actual `agent_version`, `prompt_version`, `model` and `model_id` on run/poll
+responses. Omitted request fields preserve current callers. Missing or null
+response versions remain unknown, rather than version zero. These additions do
+not by themselves pin a construction task or authorize a Dataset write: K4's
+coordinator must compare the recorded execution with the accepted extraction
+version before committing results, and reject unknown/mismatched metadata.

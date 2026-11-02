@@ -115,15 +115,12 @@ func LoadSamples(ctx context.Context, source kb.SampleSource, selection *interfa
 			if chunks > MaxSampleChunks || characters > MaxSampleCharacters {
 				return nil, ErrSampleLimit
 			}
-			text := []rune(chunk.Text)
-			offset := 0
-			for _, span := range chunk.Spans {
-				size := span.End - span.Start
-				if span.BlockID == "" || span.Start < 0 || size <= 0 || size > len(text)-offset {
-					return nil, ErrInvalidSample
-				}
-				quote := string(text[offset : offset+size])
-				offset += size
+			fragments, err := kb.SplitSampleText(chunk)
+			if err != nil {
+				return nil, ErrInvalidSample
+			}
+			for _, fragment := range fragments {
+				span, quote := fragment.Span, fragment.Text
 				if strings.TrimSpace(quote) == "" {
 					continue
 				}
@@ -142,9 +139,6 @@ func LoadSamples(ctx context.Context, source kb.SampleSource, selection *interfa
 				// A multi-block chunk is split into separately located fragments. Never
 				// fabricate a contiguous quote across the gaps between native spans.
 				input.Request.Samples = append(input.Request.Samples, kb.Chunk{ID: chunk.ChunkID, Text: quote, Located: chunk.Located, Spans: []kb.Span{span}, Citation: kb.Citation{KnowledgeBaseID: chunk.KnowledgeBaseID, VersionRef: chunk.VersionRef, BlockID: span.BlockID, Start: span.Start, End: span.End, Quote: quote}})
-			}
-			if offset != len(text) {
-				return nil, ErrInvalidSample
 			}
 		}
 		if page.NextCursor == "" {

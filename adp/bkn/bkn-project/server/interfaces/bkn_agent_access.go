@@ -26,8 +26,11 @@ type BknAgentAccount = AccountInfo
 // BknAgentRunRequest starts a task Agent once. ResponseFormat is a JSON Schema whose root is an
 // object; when set, the task's output is JSON matching it.
 type BknAgentRunRequest struct {
-	AgentID        string         `json:"agent_id"`
+	AgentID string `json:"agent_id"`
+	// AgentVersion pins an existing snapshot; nil preserves current-version calls.
+	AgentVersion   *int           `json:"agent_version,omitempty"`
 	Message        string         `json:"message"`
+	PromptOverride string         `json:"prompt_override,omitempty"`
 	ResponseFormat map[string]any `json:"response_format,omitempty"`
 }
 
@@ -60,8 +63,14 @@ type BknAgentChatEvent struct {
 // BknAgentTask is a task as bkn-agent reports it. Output is set once it succeeded, FailureDetail
 // once it failed.
 type BknAgentTask struct {
-	TaskID        string `json:"task_id"`
-	AgentID       string `json:"agent_id"`
+	TaskID  string `json:"task_id"`
+	AgentID string `json:"agent_id"`
+	// Nil execution versions mean unknown (including legacy tasks), never v0.
+	// These are actual task results, not copies of the requested configuration.
+	AgentVersion  *int   `json:"agent_version,omitempty"`
+	PromptVersion *int   `json:"prompt_version,omitempty"`
+	Model         string `json:"model,omitempty"`
+	ModelID       string `json:"model_id,omitempty"`
 	Status        string `json:"status"`
 	Output        string `json:"output"`
 	FailureDetail string `json:"failure_detail"`
