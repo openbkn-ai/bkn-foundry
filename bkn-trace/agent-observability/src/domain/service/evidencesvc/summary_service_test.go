@@ -253,7 +253,7 @@ func TestListTraceExecutionsLoadsOnlySelectedPageIdentities(t *testing.T) {
 	if page.Total != 101 || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-page" || page.NextCursor == nil {
 		t.Fatalf("page=%+v", page)
 	}
-	if len(projection.queries) != 1 || len(projection.queries[0].TraceIDs) != 1 || projection.queries[0].TraceIDs[0] != "trace-page" {
+	if len(projection.queries) != 1 || !projection.queries[0].SummaryOnly || len(projection.queries[0].TraceIDs) != 1 || projection.queries[0].TraceIDs[0] != "trace-page" {
 		t.Fatalf("projection queries=%+v", projection.queries)
 	}
 	if !projection.queries[0].From.IsZero() || !projection.queries[0].To.IsZero() {
