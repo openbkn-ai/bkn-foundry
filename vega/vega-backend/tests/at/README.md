@@ -69,7 +69,7 @@ tests/
 ### 1. 启动VEGA Manager服务
 
 ```bash
-cd /mnt/c/aishu_code/vega-backend/server
+cd <repo>/vega/vega-backend/server
 go run main.go
 
 # 或使用配置文件
@@ -105,7 +105,7 @@ docker run -d --name test-mariadb \
 ### 3. 配置测试文件
 
 ```bash
-cd /mnt/c/aishu_code/vega-backend/server/tests/at/testdata
+cd <repo>/vega/vega-backend/server/tests/at/testdata
 
 # 复制配置模板
 cp test-config.yaml.example test-config.yaml
@@ -135,7 +135,7 @@ target_mariadb:
 ### 使用Makefile（推荐）
 
 ```bash
-cd /mnt/c/aishu_code/vega-backend
+cd <repo>/vega/vega-backend
 
 # 运行所有Catalog AT测试
 make test-at-catalog
@@ -153,7 +153,7 @@ make test-at-setup
 ### 直接使用go test
 
 ```bash
-cd /mnt/c/aishu_code/vega-backend/server
+cd <repo>/vega/vega-backend/server
 
 # 运行所有Catalog测试（包含MariaDB和OpenSearch）
 go test -v ./tests/at/catalog/...

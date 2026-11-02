@@ -74,7 +74,7 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	if tool.Name != req.ToolName {
 		err = s.checkToolNameExist(ctx, req.BoxID, req.ToolName)
 		if err != nil {
-			// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
+			// Interaction design requires returning specified error information.
 			httErr := &httperrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
 				err = oerrors.NewHTTPError(ctx, httErr.HTTPCode, oerrors.ErrExtCommonNameExists, httErr.ErrorDetails)

@@ -13,7 +13,7 @@ from app.utils.common import GetCallerInfo, IsInPod
 
 '''
 标准日志StandLog类
-原 AnyRobot(AR) SamplerLogger 已移除，统一走标准库 logging（控制台 + 文件）。
+The legacy SamplerLogger has been removed; standard logging is used for console and file output.
 '''
 
 SYSTEM_LOG = "SystemLog"

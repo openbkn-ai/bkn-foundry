@@ -173,7 +173,7 @@ class ModelConf(BaseModel):
 
 class AddLLM(BaseModel):
     model_name: StrictStr = Field(description="Model name")
-    model_series: StrictStr = Field(description="Protocol: AISHU or OpenAI")
+    model_series: StrictStr = Field(description="Model series, for example openai")
     model_conf: ModelConf = Field(description="Model configuration")
     model_type: StrictStr = Field(description="Model type")
     icon: StrictStr = Field(description="Model configuration")

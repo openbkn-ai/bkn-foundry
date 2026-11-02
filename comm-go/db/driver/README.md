@@ -10,8 +10,8 @@ username 用户名，password密码，protocol协议，host主机名，port 端�
 parameter is optional,others are necessary.protocol use tcp.
 参考https://github.com/go-sql-driver/mysql#parameters，连接的数据库不是mysql时,其他数据库不支持的参数会直接屏蔽掉
 dsn example:
-  without optional parameter: root:eisoo.com123@tcp(localhost:3320)/test
-  with optional parameter: root:eisoo.com123@tcp(localhost:3320)/test?timeout=10s
+  without optional parameter: root:<password>@tcp(localhost:3320)/test
+  with optional parameter: root:<password>@tcp(localhost:3320)/test?timeout=10s
 
 # Usage
 ```

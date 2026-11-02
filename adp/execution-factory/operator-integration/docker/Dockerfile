@@ -29,10 +29,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user.
-RUN useradd -m -r -s /bin/bash aishu \
-    && chown -R aishu:aishu /app/operator-integration
+RUN useradd -m -r -s /bin/bash openbkn \
+    && chown -R openbkn:openbkn /app/operator-integration
 
 # Switch to non-root user.
-USER aishu
+USER openbkn
 
 CMD ["./operator-integration"]

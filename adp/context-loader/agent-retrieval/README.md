@@ -225,5 +225,5 @@ See `VERSION` in the project root.
 
 ## Support
 
-- **Team**: AISHU ADP
+- **Team**: OpenBKN
 - **Docs**: See `docs/` (PRD, APIs, releases).

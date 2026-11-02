@@ -217,7 +217,7 @@ def get_model_restful_api_document(llm_id):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: AnyDATA account application ID used to identify service callers",
+                    "description": "appid: application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -457,7 +457,7 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: AnyDATA account application ID used to identify service callers",
+                    "description": "appid: application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -676,7 +676,7 @@ def get_embedding_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: AnyDATA account application ID used to identify service callers",
+                    "description": "appid: application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -890,7 +890,7 @@ def get_reranker_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: AnyDATA account application ID used to identify service callers",
+                    "description": "appid: application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -1131,7 +1131,7 @@ def get_spr_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: AnyDATA account application ID used to identify service callers",
+                    "description": "appid: application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -1381,7 +1381,7 @@ def get_info_extract_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: AnyDATA account application ID used to identify service callers",
+                    "description": "appid: application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -1597,7 +1597,7 @@ def get_audio_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: AnyDATA account application ID used to identify service callers",
+                    "description": "appid: application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },

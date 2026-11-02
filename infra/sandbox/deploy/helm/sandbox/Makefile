@@ -28,34 +28,34 @@ template:
 
 # Install the Helm chart
 install:
-	helm install sandbox . --namespace anyshare --create-namespace
+	helm install sandbox . --namespace openbkn --create-namespace
 
 # Install with custom values
 install-dev:
-	helm install sandbox . --namespace anyshare --create-namespace --set controlPlane.env.ENVIRONMENT=development
+	helm install sandbox . --namespace openbkn --create-namespace --set controlPlane.env.ENVIRONMENT=development
 
 # Install with local images
 install-local:
-	helm install sandbox . --namespace anyshare --create-namespace \
+	helm install sandbox . --namespace openbkn --create-namespace \
 		--set image.registry= \
 		--set image.controlPlane.repository=sandbox-control-plane \
 		--set image.controlPlane.tag=latest
 
 # Upgrade the Helm chart
 upgrade:
-	helm upgrade sandbox . --namespace anyshare
+	helm upgrade sandbox . --namespace openbkn
 
 # Upgrade with custom values
 upgrade-dev:
-	helm upgrade sandbox . --namespace anyshare --set controlPlane.env.ENVIRONMENT=development
+	helm upgrade sandbox . --namespace openbkn --set controlPlane.env.ENVIRONMENT=development
 
 # Uninstall the Helm chart
 uninstall:
-	helm uninstall sandbox --namespace anyshare
+	helm uninstall sandbox --namespace openbkn
 
 # Test the Helm chart with dry-run
 test:
-	helm install sandbox . --namespace anyshare --dry-run --debug
+	helm install sandbox . --namespace openbkn --dry-run --debug
 
 # Show values
 show-values:

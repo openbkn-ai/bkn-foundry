@@ -3,7 +3,7 @@
 """
 Observability logging module.
 
-The AnyRobot (AR) log exporter and tlogging.SamplerLogger have been removed in
+The legacy log exporter and tlogging.SamplerLogger have been removed in
 favor of the standard logging library. Public methods such as info, error, warn,
 debug, and fatal remain unchanged.
 """

@@ -1,5 +1,3 @@
---index-url http://repository.aishu.cn:8081/repository/pypi/simple
---trusted-host repository.aishu.cn
 allure-python-commons==2.16.1
 allure-pytest==2.16.1
 pytest==9.1.1

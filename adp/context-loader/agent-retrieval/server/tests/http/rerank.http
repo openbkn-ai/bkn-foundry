@@ -1,5 +1,5 @@
 ### 解析SSE-自定义local mcp server
-POST http://data-retrieval.anyshare:9100/tools/knowledge_rerank
+POST http://data-retrieval.openbkn:9100/tools/knowledge_rerank
 Content-Type: application/json
 
 {

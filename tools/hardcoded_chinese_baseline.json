@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2439,
+  "violation_count": 2431,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -1445,7 +1445,6 @@
       "1e46b1ae8285d71e846b",
       "a65e8dd4c3cca2c09e3f",
       "bd50e20debf315d408f1",
-      "bec35d4c842354cb1d1f",
       "e230fc065094f8f35f01",
       "e342bc06dec4a0628f70",
       "5f11ccb00b44a703058f",
@@ -1469,7 +1468,6 @@
       "59d874d21711b7963851",
       "16152697f6c61cf0df85",
       "1b5f8b0773eb3549527b",
-      "90ee30c26e68188fb811",
       "26d9751c5ea5c31d53f1",
       "c56c1e5a7a668a0bdaa5",
       "b66c96ed3c4a33cf2bc5",
@@ -1489,7 +1487,6 @@
       "b56fdc21848a4fe2fd1b",
       "8232534f9b34ca0607e3",
       "638c46ff6b10ce027455",
-      "75886d8aa9b3a6c5d11f",
       "65bbcd0017a47483f49a",
       "3a3b9c5b9ada300bef8b",
       "d3b992861a4559e272b8",
@@ -1513,7 +1510,6 @@
       "955683b622fc21c1f1c9",
       "715cb100e1f6d1d99bff",
       "68a8400bd675ffd51d26",
-      "5a1118d7f9bf45505414",
       "5ffe8aeabe13d2f77fa7",
       "c5f4e33e78330c10ef87",
       "0bdaf31037dbda6458e5",
@@ -1544,7 +1540,6 @@
       "57a9ed9750d6d88378ce",
       "f035c6c15a4194783169",
       "58dfa5f805a9eba7bca8",
-      "4f5e697dfc0d6a406e63",
       "91fa0fcb5f89f7a88489",
       "e327c0d80bd95a209957",
       "d2985e31cc889bd7c3c8",
@@ -1572,7 +1567,6 @@
       "3de36361a42c9cbbe931",
       "6078a7075af253df13ca",
       "c319538c60d5aa812d6f",
-      "b060a2d1f136e23cd8a2",
       "17a72b058e8fc577cd09",
       "80926bea196980cde3eb",
       "a8d5cc8f1f2c41f1c8bc",
@@ -1596,7 +1590,6 @@
       "b803a7a55dfeba9e50e4",
       "d185f1791aad5e6a41f5",
       "77463fc192a03c1a9509",
-      "aebe0d24c1abfedc8c74",
       "df4a95e1b63170abe346",
       "8c9305e72cbc322ee4ca",
       "30aa43d832cacf6f786d",
@@ -2181,7 +2174,6 @@
     ],
     "infra/mf-model-manager/app/logs/stand_log.py": [
       "ff86ed03d5effbc01c64",
-      "d391020f3375f0a24f4b",
       "009d7c32fd3d2b137de1",
       "f4d57cac060756179e8d"
     ],

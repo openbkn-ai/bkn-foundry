@@ -185,5 +185,5 @@ helm template agent-retrieval ./helm/agent-retrieval -n <命名空间> -f ./helm
 
 ## 支持与联系
 
-- **团队**：AISHU ADP
+- **团队**：OpenBKN
 - **文档**：见 `docs/`（PRD、API、发布说明等）。

@@ -211,7 +211,7 @@ func (s *ToolServiceImpl) batchUpdateOpenAPIToolMetadata(ctx context.Context, tx
 		}
 	}
 	if !changed {
-		// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
+		// Interaction design requires returning specified error information.
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolNotExistInFile,
 			"no matched method path found")
 		return

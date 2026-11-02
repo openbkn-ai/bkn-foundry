@@ -7,7 +7,7 @@ from typing import Optional, Callable, AsyncGenerator, Any, Awaitable
 from opentelemetry.trace import SpanKind, Tracer, Status, StatusCode
 from app.utils.common import func_judgment
 
-# The AnyRobot tracer was removed; use OTel's default no-op tracer when no provider exists.
+# The legacy tracer was removed; use OTel's default no-op tracer when no provider exists.
 tracer = trace.get_tracer(__name__)
 
 

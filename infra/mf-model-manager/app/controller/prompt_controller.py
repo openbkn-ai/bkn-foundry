@@ -880,10 +880,6 @@ async def decode_endpoint(params_json):
             encoding = tiktoken.get_encoding("cl100k_base")
             text = encoding.decode(token_ids)
             return JSONResponse(status_code=200, content={"res": {"text": text, "count": len(text)}})
-        elif model_info["f_model_series"].lower() == "aishu":
-            model_config = eval(model_info["f_model_config"])
-            res = llm_utils.decode(model_config["api_base"], model_config["api_model"], token_ids)
-            return JSONResponse(status_code=200, content={"res": res})
         else:
             StandLogger.error(DecodeError["description"])
             return JSONResponse(status_code=500, content=DecodeError)

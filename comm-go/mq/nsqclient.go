@@ -175,7 +175,6 @@ func (client *OpenBKNNSQClient) Sub(topic string, channel string, handler Messag
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	cfg.UserAgent = "openbknmsq-nsqwrapper"
 	cfg.MaxInFlight = maxInFlight
-	// https://devops.aishu.cn/AISHUDevOps/AnyShareFamily/_workitems/edit/594429
 	// too many poll interval will increase lookupd cpu usage
 	if pollIntervalMilliseconds < 3000 {
 		pollIntervalMilliseconds = 3000

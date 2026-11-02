@@ -3,21 +3,16 @@
     "info": {
         "title": "SAP数据资产管理平台_管理控制台",
         "version": "1.0.0",
-        "description": "数据建模",
-        "x-logo": {
-            "url": "anyshare",
-            "backgroundColor": "#FFFFFF",
-            "altText": "AnyShare logo"
-        }
+        "description": "数据建模"
     },
     "servers": [
         {
             "url": "https://{host}:{port}/api/",
-            "description": "host: AnyShare服务器IP, port: 默认端口443",
+            "description": "host: 服务器IP, port: 默认端口443",
             "variables": {
                 "host": {
                     "default": "host",
-                    "description": "AnyShare服务器IP"
+                    "description": "服务器IP"
                 },
                 "port": {
                     "default": "443",

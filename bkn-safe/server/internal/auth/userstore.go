@@ -6,7 +6,7 @@
 // (password verified with bcrypt) plus the hydra login/consent/device provider
 // that drives the OAuth2 flow and injects the introspect ext claims.
 //
-// Passwords are validated against bkn-safe's OWN store — NOT eacp/anyshare.
+// Passwords are validated against bkn-safe's OWN store, not an external user service.
 package auth
 
 import (

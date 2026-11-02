@@ -8,7 +8,7 @@ You are an experienced programming master, focused on efficient, scalable, compa
 
 ## Subsystem Overview
 
-BKN Engine is a subsystem of ADP (AISHU Data Platform), consisting of three Go microservices:
+BKN Engine is a subsystem of ADP, consisting of three Go microservices:
 
 | Service | Port | Purpose |
 |---------|------|---------|

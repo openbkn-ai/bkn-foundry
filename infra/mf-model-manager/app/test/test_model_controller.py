@@ -440,7 +440,7 @@ class TestTestModel(TestCase):
             "f_model_id": "111",
             "f_create_by": "111",
             "f_is_delete": 0,
-            "f_model_config": '{"api_key": "111", "api_model": "AIshuReader", "api_url": "http://127.0.0.1:1/v1"}',
+            "f_model_config": '{"api_key": "111", "api_model": "DemoReader", "api_url": "http://127.0.0.1:1/v1"}',
             "f_model_series": "others",
             "f_model_type": "llm",
         }])
@@ -479,7 +479,7 @@ class TestEditModel(TestCase):
                 "api_type": "openai",
                 "api_key": "111"
             },
-            "model_series": "aishu",
+            "model_series": "others",
             "model_type": "llm",
             "icon": "azure",
             "model_id": "111",
@@ -490,7 +490,7 @@ class TestEditModel(TestCase):
         llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
             "f_model_id": "111", "f_create_by": "111", "f_is_delete": 0,
             "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
-            "f_model_series": "aishu", "f_model_name": "111", "f_quota": False}])
+            "f_model_series": "others", "f_model_name": "111", "f_quota": False}])
         llm_model_dao.edit_model = mock.Mock(return_value=None)
         res = loop.run_until_complete(
             llm_controller.edit_model(request, "111", "zh"))
@@ -541,7 +541,7 @@ class TestEditModel(TestCase):
             "model_config": {
                 "api_model": "gpt-4-32k",
                 "api_url": "https://artificial-intelligence-01.openai.azure.com/",
-                "api_type": "aishu",
+                "api_type": "openai",
                 "api_key": "111"
             },
             "model_series": "openai",
@@ -566,7 +566,7 @@ class TestEditModel(TestCase):
                 "api_url": "https://artificial-intelligence-01.openai.azure.com/",
                 "api_key": "111"
             },
-            "model_series": "aishu-m",
+            "model_series": "unknown-series",
             "model_type": "llm",
             "icon": "azure",
             "model_id": "111",
@@ -592,20 +592,20 @@ class TestSourceModel(TestCase):
         return {
             "f_model_id": "111",
             "f_model_name": "111",
-            "f_model_series": "aishu",
-            "f_model": "AIshuReader",
+            "f_model_series": "others",
+            "f_model": "DemoReader",
             "f_model_api": "111",
             "f_create_by": "111",
             "f_update_by": "111",
             "f_create_time": datetime.today(),
             "f_update_time": datetime.today(),
-            "f_icon": "aishu",
+            "f_icon": "others",
             "f_quota": 0,
             "f_max_model_len": 32,
             "f_model_parameters": 72,
             "f_model_type": "llm",
             "f_default": 0,
-            "f_model_config": '{"api_key": "111", "api_model": "AIshuReader", "api_url": "http://x/v1"}'
+            "f_model_config": '{"api_key": "111", "api_model": "DemoReader", "api_url": "http://x/v1"}'
         }
 
     def test_source_model_success1(self):
@@ -614,9 +614,9 @@ class TestSourceModel(TestCase):
         llm_model_dao.get_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=[self._row()])
         llm_model_dao.count_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=1)
         res = loop.run_until_complete(
-            llm_controller.source_model("111", "zh", "1", "10", "", "desc", "all", "update_time", "AIshuReader", None, 0))
+            llm_controller.source_model("111", "zh", "1", "10", "", "desc", "all", "update_time", "DemoReader", None, 0))
         self.assertEqual(json.loads(res.body)["data"][0]["model_id"], "111")
-        llm_model_dao.count_data_from_model_list_by_name_fuzzy.assert_called_once_with("", "AIshuReader", None)
+        llm_model_dao.count_data_from_model_list_by_name_fuzzy.assert_called_once_with("", "DemoReader", None)
 
     def test_source_model_success2(self):
         loop = asyncio.new_event_loop()
@@ -624,7 +624,7 @@ class TestSourceModel(TestCase):
         llm_model_dao.get_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=[self._row()])
         llm_model_dao.count_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=1)
         res = loop.run_until_complete(
-            llm_controller.source_model("111", "zh", "1", "10", "", "desc", "aishu", "update_time", "AIshuReader", None, 0))
+            llm_controller.source_model("111", "zh", "1", "10", "", "desc", "others", "update_time", "DemoReader", None, 0))
         self.assertEqual(json.loads(res.body)["data"][0]["model_id"], "111")
 
 
@@ -644,10 +644,10 @@ class TestCheckModel(TestCase):
         llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
             "f_model_id": "111", "f_create_by": "111", "f_is_delete": 0,
             "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
-            "f_model_series": "aishu", "f_model_name": "111", "f_model_url": "1", "f_icon": "aishu",
+            "f_model_series": "others", "f_model_name": "111", "f_model_url": "1", "f_icon": "others",
             "f_quota": 0, "f_max_model_len": 32, "f_model_parameters": 72, "f_model_type": "llm"}])
         llm_model_dao.get_all_model_list = mock.Mock(return_value=[{
-            "f_model_id": "111", "f_model_name": "111", "f_model": "AIshuReader", "f_create_by": "111",
+            "f_model_id": "111", "f_model_name": "111", "f_model": "DemoReader", "f_create_by": "111",
             "f_max_model_len": 32, "f_model_parameters": 72}])
         res = loop.run_until_complete(
             llm_controller.check_model("111", "111", "zh"))
