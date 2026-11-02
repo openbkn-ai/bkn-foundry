@@ -104,12 +104,16 @@ func (a *access) CheckLinking(ctx context.Context, projectID, id, operation stri
 	}
 	// Renew only a still-live, fenced operation. Large batches may outlast the
 	// initial lease; expired or cancelled operations must never be resurrected.
-	result, err := tx.ExecContext(ctx, "UPDATE "+table+" SET f_lease_until=? WHERE f_project_id=? AND f_id=? AND f_revision=? AND f_lease_id=?", max(r.LeaseUntil, now+900000), projectID, id, revision, operation)
-	if err != nil {
-		return false, err
-	}
-	if count, err := result.RowsAffected(); err != nil || count != 1 {
-		return false, errCorrupt
+	// A no-op UPDATE reports zero changed rows with the default MySQL DSN.
+	// The row is already locked and fenced; keep an equal or later expiry.
+	if until := now + 900000; until > r.LeaseUntil {
+		result, err := tx.ExecContext(ctx, "UPDATE "+table+" SET f_lease_until=? WHERE f_project_id=? AND f_id=? AND f_revision=? AND f_lease_id=?", until, projectID, id, revision, operation)
+		if err != nil {
+			return false, err
+		}
+		if count, err := result.RowsAffected(); err != nil || count != 1 {
+			return false, errCorrupt
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err

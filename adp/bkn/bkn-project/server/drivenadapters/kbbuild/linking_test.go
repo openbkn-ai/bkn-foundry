@@ -146,7 +146,7 @@ func TestSaveLinkingCannotAlterExtractionOrOutliveItsLease(t *testing.T) {
 }
 
 func TestCheckLinkingRenewsOnlyLiveFencedOperations(t *testing.T) {
-	for _, scenario := range []string{"live", "expired", "cancelled", "replaced", "source_changed"} {
+	for _, scenario := range []string{"live", "same_millisecond", "clock_rollback", "expired", "cancelled", "replaced", "source_changed"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			if err != nil {
@@ -159,6 +159,10 @@ func TestCheckLinkingRenewsOnlyLiveFencedOperations(t *testing.T) {
 			r.LeaseID, r.LeaseUntil = "operation", 300
 			r.Build.Linking = &interfaces.KBLinkingReceipt{OperationID: "operation", Signature: strings.Repeat("c", 64), State: "running"}
 			switch scenario {
+			case "same_millisecond":
+				r.LeaseUntil = 900200
+			case "clock_rollback":
+				r.LeaseUntil = 900300
 			case "expired":
 				r.LeaseUntil = 200
 			case "cancelled":
@@ -169,24 +173,27 @@ func TestCheckLinkingRenewsOnlyLiveFencedOperations(t *testing.T) {
 			mock.ExpectBegin()
 			mock.ExpectQuery(regexp.QuoteMeta(projectLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"archived", "owner", "type"}).AddRow(false, "owner", "user"))
 			mock.ExpectQuery("SELECT "+columns+" FROM "+table).WithArgs("project", "build").WillReturnRows(rowsFor(r))
-			if scenario == "live" || scenario == "source_changed" {
+			success := scenario == "live" || scenario == "same_millisecond" || scenario == "clock_rollback"
+			if success || scenario == "source_changed" {
 				revision := 7
 				if scenario == "source_changed" {
 					revision = 8
 				}
 				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
-				if scenario == "live" {
+				if success {
 					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", 10))
 				}
 			}
 			if scenario == "live" {
 				mock.ExpectExec("UPDATE "+table+" SET f_lease_until").WithArgs(int64(900200), "project", "build", int64(2), "operation").WillReturnResult(sqlmock.NewResult(0, 1))
+			}
+			if success {
 				mock.ExpectCommit()
 			} else {
 				mock.ExpectRollback()
 			}
 			ok, err := New(db).(interfaces.KBLinkingAccess).CheckLinking(context.Background(), "project", "build", "operation", 2, 200)
-			if err != nil || ok != (scenario == "live") {
+			if err != nil || ok != success {
 				t.Fatal("incorrect lease renewal", scenario, ok, err)
 			}
 			if err := mock.ExpectationsWereMet(); err != nil {
