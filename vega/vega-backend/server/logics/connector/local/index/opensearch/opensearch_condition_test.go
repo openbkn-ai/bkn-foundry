@@ -206,7 +206,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			want  map[string]any
 		}{
 			{"==", first, firstQuery},
-			{"!=", first, map[string]any{"bool": map[string]any{"must_not": firstQuery}}},
+			{"!=", first, map[string]any{"bool": map[string]any{"filter": map[string]any{"exists": map[string]any{"field": "created"}}, "must_not": firstQuery}}},
 			{"in", []any{first, second}, union},
 			{"not_in", []any{first, second}, map[string]any{"bool": map[string]any{"must_not": union}}},
 		} {
@@ -408,10 +408,11 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"term": map[string]any{"body.user-defined-keyword-name": "hello"}},
 		},
 		{
-			name: "not equal wraps must_not",
+			name: "not equal excludes unindexed values",
 			cfg:  osConstCfg("name", filter_condition.OperationNotEqual, "alice"),
 			want: map[string]any{
 				"bool": map[string]any{
+					"filter": map[string]any{"exists": map[string]any{"field": "name"}},
 					"must_not": map[string]any{
 						"term": map[string]any{"name": "alice"},
 					},
@@ -469,6 +470,36 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			name: "not null builds exists",
 			cfg:  osConstCfg("name", filter_condition.OperationNotNull, nil),
 			want: map[string]any{"exists": map[string]any{"field": "name"}},
+		},
+		{
+			name: "boolean equal true keeps term semantics",
+			cfg:  osConstCfg("is_active", filter_condition.OperationEqual, true),
+			want: map[string]any{"term": map[string]any{"is_active": true}},
+		},
+		{
+			name: "boolean equal false keeps term semantics",
+			cfg:  osConstCfg("is_active", filter_condition.OperationEqual, false),
+			want: map[string]any{"term": map[string]any{"is_active": false}},
+		},
+		{
+			name: "boolean null keeps missing value semantics",
+			cfg:  osConstCfg("is_active", filter_condition.OperationNull, nil),
+			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"exists": map[string]any{"field": "is_active"}}}},
+		},
+		{
+			name: "boolean not null keeps exists semantics",
+			cfg:  osConstCfg("is_active", filter_condition.OperationNotNull, nil),
+			want: map[string]any{"exists": map[string]any{"field": "is_active"}},
+		},
+		{
+			name: "boolean exist keeps exists semantics",
+			cfg:  osConstCfg("is_active", filter_condition.OperationExist, nil),
+			want: map[string]any{"exists": map[string]any{"field": "is_active"}},
+		},
+		{
+			name: "boolean not exist keeps missing value semantics",
+			cfg:  osConstCfg("is_active", filter_condition.OperationNotExist, nil),
+			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"exists": map[string]any{"field": "is_active"}}}},
 		},
 		{
 			name: "true builds boolean term",
@@ -635,6 +666,75 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 				},
 			},
 		}, got)
+	})
+}
+
+func TestOpenSearchConnectorConvertFilterConditionNotEqual(t *testing.T) {
+	conn := &OpenSearchConnector{}
+	t.Run("constant comparisons exclude unindexed values", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			field      *interfaces.Property
+			value      any
+			exactField string
+			match      map[string]any
+		}{
+			{"boolean true", &interfaces.Property{Name: "flag", Type: interfaces.DataType_Boolean}, true, "flag", map[string]any{"term": map[string]any{"flag": true}}},
+			{"boolean false", &interfaces.Property{Name: "flag", Type: interfaces.DataType_Boolean}, false, "flag", map[string]any{"term": map[string]any{"flag": false}}},
+			{"physical boolean name", &interfaces.Property{Name: "flag", OriginalName: "physical_flag", Type: interfaces.DataType_Boolean}, true, "physical_flag", map[string]any{"term": map[string]any{"physical_flag": true}}},
+			{"integer", &interfaces.Property{Name: "age", Type: interfaces.DataType_Integer}, 18, "age", map[string]any{"term": map[string]any{"age": 18}}},
+			{"string", &interfaces.Property{Name: "name", Type: interfaces.DataType_String}, "alice", "name", map[string]any{"term": map[string]any{"name": "alice"}}},
+			{
+				name: "text keyword subfield",
+				field: &interfaces.Property{Name: "body", OriginalName: "physical_body", Type: interfaces.DataType_Text,
+					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw"}}},
+				value: "hello", exactField: "physical_body.raw", match: map[string]any{"term": map[string]any{"physical_body.raw": "hello"}},
+			},
+			{"datetime", &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}, "2026-10-19T00:00:00Z", "created",
+				map[string]any{"range": map[string]any{"created": map[string]any{"gte": "2026-10-19T00:00:00.000000000Z", "lte": "2026-10-19T00:00:00.000000000Z", "format": "strict_date_optional_time_nanos"}}}},
+			{"time", &interfaces.Property{Name: "clock", Type: interfaces.DataType_Time}, "12:00:00", "clock",
+				map[string]any{"terms": map[string]any{"clock": []any{"12:00:00", "12:00:00.0", "12:00:00.00", "12:00:00.000", "12:00:00.0000", "12:00:00.00000", "12:00:00.000000", "12:00:00.0000000", "12:00:00.00000000", "12:00:00.000000000"}}}},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, operation := range []string{"!=", "not_eq"} {
+					cfg := osConstCfg(tc.field.Name, operation, tc.value)
+					cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{tc.field.Name: tc.field})
+					require.NoError(t, err)
+					got, err := conn.ConvertFilterCondition(cond, []*interfaces.Property{tc.field})
+					require.NoError(t, err)
+					// NULL 和缺失字段都没有索引值，必须在同一个子条件内排除。
+					assert.Equal(t, map[string]any{"bool": map[string]any{
+						"filter":   map[string]any{"exists": map[string]any{"field": tc.exactField}},
+						"must_not": tc.match,
+					}}, got, operation)
+					assert.Equal(t, tc.value, cfg.Value)
+				}
+			})
+		}
+	})
+
+	t.Run("nested and or keep the existence guard on the inequality branch", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{
+			osConstCfg("age", ">=", 18),
+			{Operation: "or", SubConds: []*interfaces.FilterCondCfg{
+				osConstCfg("is_active", "!=", true),
+				osConstCfg("is_active", "null", nil),
+			}},
+		}}
+		cond := mustOSCondition(t, cfg)
+		got, err := conn.ConvertFilterCondition(cond, opensearchConditionSchema())
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"bool": map[string]any{"must": []map[string]any{
+			{"range": map[string]any{"age": map[string]any{"gte": 18}}},
+			{"bool": map[string]any{"minimum_should_match": 1, "should": []map[string]any{
+				{"bool": map[string]any{
+					"filter":   map[string]any{"exists": map[string]any{"field": "is_active"}},
+					"must_not": map[string]any{"term": map[string]any{"is_active": true}},
+				}},
+				{"bool": map[string]any{"must_not": map[string]any{"exists": map[string]any{"field": "is_active"}}}},
+			}}},
+		}}}, got)
 	})
 }
 
