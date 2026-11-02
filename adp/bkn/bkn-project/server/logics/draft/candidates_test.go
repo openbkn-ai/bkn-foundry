@@ -284,6 +284,23 @@ func Test_CandidateService(t *testing.T) {
 			So(got.Skipped, ShouldContain, "object_types/event")
 			So(got.Accepted, ShouldContain, "object_types/items")
 		})
+
+		Convey("Derived candidates remain pending individual adoption after a bulk action", func() {
+			object := &interfaces.DraftObjectType{ID: "derived_doc", Name: "Current record", Document: &interfaces.DraftDocumentModel{Role: "entity"}}
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, object)
+			draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: object.ID, Action: interfaces.DRAFT_DECISION_DERIVE, By: caller})
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			got, err := svc.AcceptSuggestions(ctx, token, "p1", interfaces.DraftAcceptSuggestions{UpdateTime: readTime}, caller)
+			So(err, ShouldBeNil)
+			So(object.Adopted, ShouldBeFalse)
+			So(got.Skipped, ShouldContain, "object_types/derived_doc")
+			for _, candidate := range candidatesOf(got.Draft, nil, "").Candidates {
+				if candidate.ID == object.ID {
+					So(candidate.State, ShouldEqual, interfaces.CANDIDATE_STATE_PENDING)
+				}
+			}
+		})
 		Convey("With nothing left to accept nothing is written\n", func() {
 			draft.Items.ObjectTypes = draft.Items.ObjectTypes[2:3]
 			draft.Items.RelationTypes = nil

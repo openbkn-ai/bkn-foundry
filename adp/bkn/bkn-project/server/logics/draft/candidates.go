@@ -308,13 +308,21 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 	}
 	items := &draft.Items
 	reviewed, _ := reviews(items)
+	// Derived definitions require individual adoption; the derivation itself
+	// confirms placement only and a bulk suggestion action cannot replace it.
+	derived := map[string]bool{}
+	for _, decision := range items.Decisions {
+		if decision.Action == interfaces.DRAFT_DECISION_DERIVE {
+			derived[itemKey(decision.Kind, decision.ItemID)] = true
+		}
+	}
 	result := &interfaces.DraftSuggestionsAccepted{Draft: draft, Accepted: []string{}, Skipped: []string{}}
 	// What drafting could not settle waits for a person: an identity to choose, an end to adopt.
 	for _, ot := range items.ObjectTypes {
 		key := itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)
 		switch {
 		case reviewed[key] != nil:
-		case ot.NeedsIdentity || kbconcept.EventParticipantsNeedRepair(*items, ot):
+		case derived[key] || ot.NeedsIdentity || kbconcept.EventParticipantsNeedRepair(*items, ot):
 			result.Skipped = append(result.Skipped, key)
 		default:
 			if ot.Document != nil {
@@ -327,7 +335,7 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 		key := itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)
 		switch {
 		case reviewed[key] != nil:
-		case rt.DocumentRepair != "" || !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)):
+		case derived[key] || rt.DocumentRepair != "" || !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)):
 			result.Skipped = append(result.Skipped, key)
 		default:
 			if rt.Document != nil {

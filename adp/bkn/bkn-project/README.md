@@ -495,3 +495,5 @@ A `derive` decision records the source item and resulting definition, without
 counting as adoption or exclusion. Each derived model still needs review;
 existing full-table business-key and source-field-authority checks remain required.
 No migration, storage creation or instance write is part of this operation.
+
+Derived definitions are skipped by bulk suggestion acceptance and require individual adoption.
