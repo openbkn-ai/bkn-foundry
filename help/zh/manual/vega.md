@@ -93,6 +93,14 @@ openbkn resource find --name "customer_orders" --catalog-id <catalog_id>
 openbkn resource delete <resource_id>
 ```
 
+### 本地索引精确筛选的边界
+
+资源数据接口 `POST /api/vega-backend/v1/resources/<resource_id>/data`（`X-HTTP-Method-Override: GET`）走本地索引时，常量 `!=`／`not_eq` 和 `not_in` 只比较具有精确索引值的记录，排除 NULL 和缺失字段。
+
+string/text 的精确比较使用 keyword 字段或子字段。平台新增此类 keyword 特征的 `ignore_above` 默认是 **256 个 UTF-16 码元**，实际限制以索引 mapping 为准。超过限制的原始值仍保留在文档中，但没有 keyword 索引值，因此也被上述否定条件排除。例如上限为 256 时，300 个 ASCII 字符的正文不会命中 `body != "hello"` 或 `body not_in ["hello"]`，尽管查询常量很短。本地索引与源端 SQL 在此场景下可能返回不同结果；显式空值条件也不保证与这些比较条件覆盖全部原始值。
+
+这与**查询常量本身超限**不同：后者返回 HTTP 400 `VegaBackend.Resource.QueryValueExceedsKeywordLimit`；`not_in` 任一候选值超限同样报错。正文检索可使用具有全文特征的 `match`／`match_phrase`。需要完整原始值比较时，支持源查询的 table resource 可在请求体设置 `ignore_local_index: true`；服务不会自动回源，dataset 没有原始表查询通道。详见[资源数据 API](../../../docs/api/vega/resource-data.yaml)。
+
 ### 索引构建与数据集文档
 
 **构建本地索引**（全文与/或向量）**只对 `table` 类资源有效**：`BuildTaskService.Create` 的第一道校验就是 category，非 table 直接返回 `400 Resource category must be table`。`dataset` 类资源的文档是写入即进索引，不经过构建任务。
