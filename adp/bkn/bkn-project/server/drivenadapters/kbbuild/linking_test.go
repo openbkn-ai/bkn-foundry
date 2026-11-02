@@ -144,3 +144,54 @@ func TestSaveLinkingCannotAlterExtractionOrOutliveItsLease(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckLinkingRenewsOnlyLiveFencedOperations(t *testing.T) {
+	for _, scenario := range []string{"live", "expired", "cancelled", "replaced", "source_changed"} {
+		t.Run(scenario, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			r := processRecord()
+			r.Build.State, r.Build.Revision = "linking", 2
+			r.Identity.Cleaned = true
+			r.LeaseID, r.LeaseUntil = "operation", 300
+			r.Build.Linking = &interfaces.KBLinkingReceipt{OperationID: "operation", Signature: strings.Repeat("c", 64), State: "running"}
+			switch scenario {
+			case "expired":
+				r.LeaseUntil = 200
+			case "cancelled":
+				r.Build.State, r.Build.Linking.State = "succeeded", "cancelled"
+			case "replaced":
+				r.LeaseID = "replacement"
+			}
+			mock.ExpectBegin()
+			mock.ExpectQuery(regexp.QuoteMeta(projectLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"archived", "owner", "type"}).AddRow(false, "owner", "user"))
+			mock.ExpectQuery("SELECT "+columns+" FROM "+table).WithArgs("project", "build").WillReturnRows(rowsFor(r))
+			if scenario == "live" || scenario == "source_changed" {
+				revision := 7
+				if scenario == "source_changed" {
+					revision = 8
+				}
+				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
+				if scenario == "live" {
+					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", 10))
+				}
+			}
+			if scenario == "live" {
+				mock.ExpectExec("UPDATE "+table+" SET f_lease_until").WithArgs(int64(900200), "project", "build", int64(2), "operation").WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			} else {
+				mock.ExpectRollback()
+			}
+			ok, err := New(db).(interfaces.KBLinkingAccess).CheckLinking(context.Background(), "project", "build", "operation", 2, 200)
+			if err != nil || ok != (scenario == "live") {
+				t.Fatal("incorrect lease renewal", scenario, ok, err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

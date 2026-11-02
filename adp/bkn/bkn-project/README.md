@@ -600,7 +600,10 @@ Writes use the existing process journal and project/source/model-fenced lease.
 The complete write set is validated first. After all writes are acknowledged,
 source and target snapshots are checked again before obsolete links are pruned;
 completion repeats that check. Revocation, cancellation or scope changes stop
-processing. Uncertain responses are resumed explicitly with the same operation.
+processing. Live checks renew the bounded lease throughout long batches; expired
+operations cannot renew it. Cancelling linking preserves successful extraction
+and marks only the linking receipt cancelled, so it can be reviewed and resumed
+without repeating extraction. Uncertain responses are resumed explicitly with the same operation.
 Unchanged completed snapshots do no new writes, including for a fresh client
 intent. Process storage holds only receipts and counts.
 

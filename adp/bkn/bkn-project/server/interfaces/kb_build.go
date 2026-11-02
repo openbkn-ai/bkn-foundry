@@ -51,6 +51,7 @@ type KBLinkingReceipt struct {
 // or borrowed by the knowledge-base-only background identity.
 type KBLinkingAccess interface {
 	ClaimLinking(context.Context, string, string, AccountInfo, string, string, int64, int64) (*KBBuildRecord, error)
+	// CheckLinking renews a still-live lease after checking its current scope.
 	CheckLinking(context.Context, string, string, string, int64, int64) (bool, error)
 	SaveLinking(context.Context, *KBBuildRecord, int64, int64) (bool, error)
 }

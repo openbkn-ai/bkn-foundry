@@ -13,7 +13,7 @@ import (
 )
 
 func TestCancellationFencesActiveWorkerWithoutRequiringAnUnarchivedSource(t *testing.T) {
-	for _, scenario := range []string{"active", "archived", "foreign_owner", "completed", "linking_after_cleanup"} {
+	for _, scenario := range []string{"active", "archived", "foreign_owner", "completed", "linking_after_cleanup", "linking_attention_after_cleanup"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			if err != nil {
@@ -23,9 +23,13 @@ func TestCancellationFencesActiveWorkerWithoutRequiringAnUnarchivedSource(t *tes
 			record := processRecord()
 			record.LeaseID = "old-worker"
 			record.LeaseUntil = 999
-			if scenario == "linking_after_cleanup" {
+			if scenario == "linking_after_cleanup" || scenario == "linking_attention_after_cleanup" {
 				record.Build.State = "linking"
 				record.Identity.Cleaned = true
+				record.Build.Linking = &interfaces.KBLinkingReceipt{OperationID: "operation", State: "running"}
+				if scenario == "linking_attention_after_cleanup" {
+					record.Build.State = "linking_attention"
+				}
 			}
 			mock.ExpectBegin()
 			owner := "owner"
@@ -42,8 +46,8 @@ func TestCancellationFencesActiveWorkerWithoutRequiringAnUnarchivedSource(t *tes
 				mock.ExpectQuery("SELECT .* FROM "+table).WithArgs("project", "build").WillReturnRows(rowsFor(record))
 				if scenario != "completed" {
 					state := "cancel_pending"
-					if scenario == "linking_after_cleanup" {
-						state = "cancelled"
+					if scenario == "linking_after_cleanup" || scenario == "linking_attention_after_cleanup" {
+						state = "succeeded"
 					}
 					mock.ExpectExec("UPDATE "+table).WithArgs(state, int64(2), sqlmock.AnyArg(), int64(20), "project", "build", int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
 				}
