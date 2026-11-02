@@ -253,7 +253,7 @@ func (a *access) Save(ctx context.Context, next *interfaces.KBBuildRecord, revis
 	if (old.Build.PromptVersion != nil && (next.Build.PromptVersion == nil || *old.Build.PromptVersion != *next.Build.PromptVersion)) || (old.Build.ModelID != "" && old.Build.ModelID != next.Build.ModelID) || (old.Build.Model != "" && old.Build.Model != next.Build.Model) {
 		return false, nil
 	}
-	stopping := next.Build.State == "cancel_pending" || next.Build.State == "cancelled" || next.Build.State == "attention" || next.Build.State == "needs_review" || next.Build.State == "failed"
+	stopping := next.Build.State == "cancel_pending" || next.Build.State == "cancelled" || next.Build.State == "needs_review"
 	if !stopping {
 		if archived || owner != next.Build.Owner {
 			return false, nil

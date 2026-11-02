@@ -33,7 +33,7 @@ func TestCreateBuildLocksAndRechecksOwnerSourceAndConfirmedDraft(t *testing.T) {
 			mock.ExpectQuery(regexp.QuoteMeta(projectLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"archived", "owner", "type"}).AddRow(scenario == "archived", owner, "user"))
 			if scenario != "archived" && scenario != "owner_changed" {
 				revision := 7
-				if scenario == "source_changed" {
+				if scenario == "source_changed" || scenario == "attention_source_changed" {
 					revision = 8
 				}
 				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
@@ -76,7 +76,7 @@ func rowsFor(record *interfaces.KBBuildRecord) *sqlmock.Rows {
 	return sqlmock.NewRows(strings.Split(columns, ",")).AddRow(b.ID, b.ProjectID, b.State, b.Revision, record.InputHash, string(payload), string(identity), record.LeaseID, record.LeaseUntil, b.CreateTime, b.UpdateTime)
 }
 func TestSaveCannotChangeScopeOrUseExpiredOrForeignWorkerLease(t *testing.T) {
-	for _, scenario := range []string{"save", "expired", "foreign_lease", "file_changed", "model_changed", "source_changed"} {
+	for _, scenario := range []string{"save", "expired", "foreign_lease", "file_changed", "model_changed", "source_changed", "attention_source_changed", "attention_archived", "attention_owner_changed"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			if err != nil {
@@ -108,12 +108,19 @@ func TestSaveCannotChangeScopeOrUseExpiredOrForeignWorkerLease(t *testing.T) {
 			case "model_changed":
 				next.Build.ModelFingerprint = strings.Repeat("c", 64)
 			}
+			if strings.HasPrefix(scenario, "attention_") {
+				next.Build.State = "attention"
+			}
+			owner := "owner"
+			if scenario == "attention_owner_changed" {
+				owner = "different"
+			}
 			mock.ExpectBegin()
-			mock.ExpectQuery(regexp.QuoteMeta(projectLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"archived", "owner", "type"}).AddRow(false, "owner", "user"))
+			mock.ExpectQuery(regexp.QuoteMeta(projectLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"archived", "owner", "type"}).AddRow(scenario == "attention_archived", owner, "user"))
 			mock.ExpectQuery(regexp.QuoteMeta("SELECT "+columns+" FROM "+table+" WHERE f_project_id=? AND f_id=? FOR UPDATE")).WithArgs("project", "build").WillReturnRows(rowsFor(old))
-			if scenario == "save" || scenario == "source_changed" {
+			if scenario == "save" || scenario == "source_changed" || scenario == "attention_source_changed" {
 				revision := 7
-				if scenario == "source_changed" {
+				if scenario == "source_changed" || scenario == "attention_source_changed" {
 					revision = 8
 				}
 				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
