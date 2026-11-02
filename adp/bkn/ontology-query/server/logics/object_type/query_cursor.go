@@ -6,18 +6,13 @@ package object_type
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/cursorcodec"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
@@ -27,8 +22,8 @@ const (
 )
 
 type queryCursorCodec struct {
-	aead cipher.AEAD
-	now  func() time.Time
+	opaque *cursorcodec.Codec
+	now    func() time.Time
 }
 
 type queryCursorPayload struct {
@@ -49,23 +44,11 @@ type queryCursorPayload struct {
 }
 
 func newQueryCursorCodec() *queryCursorCodec {
-	key := []byte(os.Getenv("BKN_QUERY_CURSOR_KEY"))
-	if len(key) == 0 {
-		key = make([]byte, 32)
-		if _, err := io.ReadFull(rand.Reader, key); err != nil {
-			panic("cannot initialize ontology-query cursor key")
-		}
-	}
-	derived := sha256.Sum256(key)
-	block, err := aes.NewCipher(derived[:])
+	opaque, err := cursorcodec.NewFromEnvironment("BKN_QUERY_CURSOR_KEY")
 	if err != nil {
 		panic("cannot initialize ontology-query cursor cipher")
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		panic("cannot initialize ontology-query cursor cipher")
-	}
-	return &queryCursorCodec{aead: aead, now: time.Now}
+	return &queryCursorCodec{opaque: opaque, now: time.Now}
 }
 
 func (codec *queryCursorCodec) encode(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
@@ -117,7 +100,7 @@ func (codec *queryCursorCodec) encodePayload(ctx context.Context, query *interfa
 	modelVersion string, searchAfter interfaces.SearchAfterArray, resourceCursor string, resourceOffset int,
 	expiresAtOverride *time.Time) (string, error) {
 	account, ok := queryCursorAccount(ctx)
-	if !ok || codec == nil || codec.aead == nil {
+	if !ok || codec == nil || codec.opaque == nil {
 		return "", fmt.Errorf("query cursor is unavailable")
 	}
 	digest, err := objectQueryDigest(query)
@@ -138,17 +121,7 @@ func (codec *queryCursorCodec) encodePayload(ctx context.Context, query *interfa
 		SearchAfter: searchAfter, ResourceCursor: resourceCursor, ResourceOffset: resourceOffset,
 		ExpiresAt: expiresAt,
 	}
-	plaintext, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("encode query cursor payload: %w", err)
-	}
-	nonce := make([]byte, codec.aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("create query cursor nonce: %w", err)
-	}
-	ciphertext := codec.aead.Seal(nil, nonce, plaintext, []byte(queryCursorVersion))
-	token := append(nonce, ciphertext...)
-	return base64.RawURLEncoding.EncodeToString(token), nil
+	return codec.opaque.Encode(queryCursorVersion, payload)
 }
 
 func (codec *queryCursorCodec) decode(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
@@ -174,20 +147,11 @@ func (codec *queryCursorCodec) decodeResource(ctx context.Context, query *interf
 func (codec *queryCursorCodec) decodePayload(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	modelVersion, token string) (*queryCursorPayload, error) {
 	account, ok := queryCursorAccount(ctx)
-	if !ok || codec == nil || codec.aead == nil {
+	if !ok || codec == nil || codec.opaque == nil {
 		return nil, fmt.Errorf("query cursor is unavailable")
 	}
-	tokenBytes, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || base64.RawURLEncoding.EncodeToString(tokenBytes) != token || len(tokenBytes) <= codec.aead.NonceSize() {
-		return nil, fmt.Errorf("query cursor is invalid")
-	}
-	nonce := tokenBytes[:codec.aead.NonceSize()]
-	plaintext, err := codec.aead.Open(nil, nonce, tokenBytes[codec.aead.NonceSize():], []byte(queryCursorVersion))
-	if err != nil {
-		return nil, fmt.Errorf("query cursor is invalid")
-	}
 	var payload queryCursorPayload
-	if err := json.Unmarshal(plaintext, &payload); err != nil {
+	if err := codec.opaque.Decode(queryCursorVersion, token, &payload); err != nil {
 		return nil, fmt.Errorf("query cursor is invalid")
 	}
 	digest, err := objectQueryDigest(query)

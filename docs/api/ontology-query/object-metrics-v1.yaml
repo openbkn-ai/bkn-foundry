@@ -8,6 +8,8 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /in/v1/object-metric-snapshots/metrics:
+    $ref: ../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/paths/~1in~1v1~1object-metric-snapshots~1metrics
   /v1/knowledge-networks/{kn_id}/object-metrics/trial:
     $ref: ../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1trial
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data:

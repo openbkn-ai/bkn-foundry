@@ -1,6 +1,3 @@
-{{- if and (gt (int .Values.replicaCount) 1) (empty .Values.cursorEncryption.existingSecret) }}
-{{- fail "cursorEncryption.existingSecret is required when replicaCount is greater than 1" }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -93,13 +90,23 @@ spec:
             value: {{ .Values.env.timezone }}
           - name: LANG
             value: {{ .Values.env.language }}
-          {{- if .Values.cursorEncryption.existingSecret }}
           - name: BKN_QUERY_CURSOR_KEY
             valueFrom:
               secretKeyRef:
-                name: {{ .Values.cursorEncryption.existingSecret | quote }}
+                name: {{ include "ontology-query.cursorSecretName" . | quote }}
                 key: {{ .Values.cursorEncryption.secretKey | quote }}
-          {{- end }}
+          - name: BKN_METRIC_SNAPSHOT_MAX_ROWS
+            value: {{ .Values.metricResultSnapshot.maxRows | quote }}
+          - name: BKN_METRIC_SNAPSHOT_MAX_ENTRY_BYTES
+            value: {{ .Values.metricResultSnapshot.maxEntryBytes | quote }}
+          - name: BKN_METRIC_SNAPSHOT_MAX_BYTES
+            value: {{ .Values.metricResultSnapshot.maxBytes | quote }}
+          - name: BKN_METRIC_SNAPSHOT_MAX_ENTRIES
+            value: {{ .Values.metricResultSnapshot.maxEntries | quote }}
+          - name: BKN_METRIC_SNAPSHOT_MAX_ACCOUNT_ENTRIES
+            value: {{ .Values.metricResultSnapshot.maxAccountEntries | quote }}
+          - name: BKN_METRIC_SNAPSHOT_TTL_SECONDS
+            value: {{ .Values.metricResultSnapshot.ttlSeconds | quote }}
           {{- if .Values.bknTrace.evidencePublisher.enabled }}
           - name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED
             value: "true"

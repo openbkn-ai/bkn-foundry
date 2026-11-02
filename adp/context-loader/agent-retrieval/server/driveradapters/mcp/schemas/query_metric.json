@@ -205,7 +205,7 @@
             "description": "对最终指标结果排序，空值排在最后。"
           },
           "page_size": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "可选的结果页大小；省略时返回全部结果。"},
-          "cursor": {"type": "string", "description": "上一页 next_cursor；数据变化时需从第一页重试。"},
+          "cursor": {"type": "string", "description": "同一账号、相同查询上一页返回的 next_cursor。服务每页重新鉴权；命中短期快照时继续读取首次计算结果。快照过期、淘汰或不可用时重算，结果变化返回409，需从第一页重试。"},
           "time": {
             "type": "object",
             "required": ["start", "end"],

@@ -24,21 +24,28 @@ import (
 )
 
 type queryAuthorizationService struct {
-	models      interfaces.OntologyManagerAccess
-	permissions interfaces.PermissionService
-	properties  interfaces.PropertyAccessService
+	models          interfaces.OntologyManagerAccess
+	permissions     interfaces.PermissionService
+	properties      interfaces.PropertyAccessService
+	rowFilters      interfaces.RowFilterService
+	proxy           interfaces.ProxyContextResolver
+	snapshotProxies interfaces.MetricSnapshotProxyAuthorizationService
 }
 
 var (
-	_ interfaces.QueryAuthorizationService                 = (*queryAuthorizationService)(nil)
-	_ interfaces.ObjectMetricExecutionAuthorizationService = (*queryAuthorizationService)(nil)
+	_ interfaces.QueryAuthorizationService                            = (*queryAuthorizationService)(nil)
+	_ interfaces.ObjectMetricExecutionAuthorizationService            = (*queryAuthorizationService)(nil)
+	_ interfaces.ObjectMetricExecutionAuthorizationFingerprintService = (*queryAuthorizationService)(nil)
 )
 
 func NewQueryAuthorizationService(appSetting *common.AppSetting) interfaces.QueryAuthorizationService {
 	return &queryAuthorizationService{
-		models:      logics.OMA,
-		permissions: permissionlogic.NewPermissionService(appSetting),
-		properties:  permissionlogic.NewPropertyAccessService(appSetting),
+		models:          logics.OMA,
+		permissions:     permissionlogic.NewPermissionService(appSetting),
+		properties:      permissionlogic.NewPropertyAccessService(appSetting),
+		rowFilters:      permissionlogic.NewRowFilterService(appSetting),
+		proxy:           logics.PCR,
+		snapshotProxies: permissionlogic.NewMetricSnapshotProxyAuthorizationService(appSetting),
 	}
 }
 

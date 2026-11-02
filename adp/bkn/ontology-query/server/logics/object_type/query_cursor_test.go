@@ -6,8 +6,6 @@ package object_type
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -15,20 +13,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/cursorcodec"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 func testQueryCursorCodec(t *testing.T, now time.Time) *queryCursorCodec {
 	t.Helper()
-	block, err := aes.NewCipher([]byte("0123456789abcdef0123456789abcdef"))
+	opaque, err := cursorcodec.New([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &queryCursorCodec{aead: aead, now: func() time.Time { return now }}
+	return &queryCursorCodec{opaque: opaque, now: func() time.Time { return now }}
 }
 
 func TestQueryCursorIsEncryptedAndBoundToRequest(t *testing.T) {

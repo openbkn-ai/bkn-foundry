@@ -8,6 +8,26 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /in/v1/object-metric-snapshots/metrics:
+    get:
+      operationId: getObjectMetricSnapshotMetrics
+      summary: Inspect process-local EE metric snapshot counters.
+      description: Internal service-network endpoint. Contains only aggregate counters, with no identities, queries or result payloads.
+      security: []
+      responses:
+        "200":
+          description: Current accounted cache capacity and cumulative events for this process.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, bytes, events]
+                properties:
+                  entries: { type: integer, minimum: 0 }
+                  bytes: { type: integer, format: int64, minimum: 0 }
+                  events:
+                    type: object
+                    additionalProperties: { type: integer, format: int64, minimum: 0 }
   /v1/knowledge-networks/{kn_id}/object-metrics/trial:
     post:
       operationId: trialObjectMetricData
@@ -315,8 +335,8 @@ components:
               field: { type: string, enum: [value, time, dimension] }
               dimension: { $ref: "#/components/schemas/PropertyRef" }
               direction: { type: string, enum: [asc, desc] }
-        page_size: { type: integer, minimum: 1, maximum: 1000, description: Optional. Omit to return all rows; pagination is stateless and re-evaluates the query. }
-        cursor: { type: string, description: Opaque next_cursor from a prior page of the identical query. Returns 409 if the recalculated result has changed. }
+        page_size: { type: integer, minimum: 1, maximum: 1000, description: "Optional. Omit to return all rows. Paginated published queries and trials reuse a bounded process-local snapshot of the final ordered result when available; single-page results are not retained. Default snapshot limits are 10000 rows, 16 MiB per entry, 256 MiB/128 entries per process and 8 entries per caller, with a fixed 15-minute lease." }
+        cursor: { type: string, description: "Authenticated opaque next_cursor from the identical query and caller. Every page rechecks current permissions and row filters. A snapshot hit returns the original calculation even if source data changed. On expiry, eviction, restart, another replica, or changed authorization fingerprint, the service recomputes and compares the complete result hash; a changed result returns 409 and requires restarting from the first page. Snapshot expiry ends reuse, not authenticated hash-checked fallback. A persistent BKN_QUERY_CURSOR_KEY is required across restarts and replicas; Helm supplies a shared release Secret by default. Tampered or mismatched cursors are rejected; revoked access returns 403." }
         time:
           type: object
           required: [start, end]
