@@ -80,6 +80,23 @@ type Objects struct {
 	Incomplete bool `json:"-"`
 }
 
+// ObjectAggregateQuery describes an internal aggregate over authorized object
+// rows. Property names stay in the object-type namespace; the object service
+// owns permission checks and physical-field mapping.
+type ObjectAggregateQuery struct {
+	MeasureProperty string
+	Operation       string
+	GroupBy         []string
+	Having          *ObjectAggregateHaving
+}
+
+// ObjectAggregateHaving filters grouped aggregate values by their internal
+// __value alias. Scalar result semantics remain the metric caller's concern.
+type ObjectAggregateHaving struct {
+	Operation string
+	Value     any
+}
+
 // ObjectPagingResponse is the public object-query pagination envelope.
 // NextCursor is an ontology-issued opaque token rather than a Vega cursor.
 type ObjectPagingResponse struct {
