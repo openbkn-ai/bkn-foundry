@@ -46,6 +46,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/oauthorigin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/sso"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
@@ -142,6 +143,23 @@ func Boot(opts Options) (*App, error) {
 		slog.Info("LDAP federation enabled", "url", cfg.LDAP.URL)
 	}
 	provider := auth.NewProvider(authenticator, hydraAdmin, userStore)
+	ssoService := sso.New(db, nil)
+	var ssoExchange *sso.Exchange
+	if os.Getenv("SAFE_SSO_ASSERTION_PRIVATE_KEY_PEM") != "" || os.Getenv("SAFE_SSO_HYDRA_CLIENT_ID") != "" {
+		ssoExchange, err = sso.NewExchange(ssoService, hydraAdmin, sso.ExchangeConfig{
+			TokenURL:      cfg.Hydra.PublicURL + "/oauth2/token",
+			Audience:      cfg.Hydra.BrowserPublicURL + "/oauth2/token",
+			Issuer:        os.Getenv("SAFE_SSO_ASSERTION_ISSUER"),
+			KeyID:         os.Getenv("SAFE_SSO_ASSERTION_KEY_ID"),
+			ClientID:      os.Getenv("SAFE_SSO_HYDRA_CLIENT_ID"),
+			ClientSecret:  os.Getenv("SAFE_SSO_HYDRA_CLIENT_SECRET"),
+			HookKey:       os.Getenv("SAFE_SSO_HOOK_KEY"),
+			PrivateKeyPEM: os.Getenv("SAFE_SSO_ASSERTION_PRIVATE_KEY_PEM"),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("init SSO exchange: %w", err)
+		}
+	}
 	dir := directory.New(db)
 	accessLogRecorder := accesslog.NewKafkaRecorder(
 		auditRuntime.Publisher(),
@@ -201,6 +219,8 @@ func Boot(opts Options) (*App, error) {
 			Enforcer:                      enforcer,
 			DB:                            db,
 			Provider:                      provider,
+			SSO:                           ssoService,
+			SSOExchange:                   ssoExchange,
 			Hydra:                         hydraAdmin,
 			HydraBrowserPublicURL:         cfg.Hydra.BrowserPublicURL,
 			Directory:                     dir,

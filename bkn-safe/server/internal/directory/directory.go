@@ -442,8 +442,10 @@ func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[st
 }
 
 // DeleteDepartment removes a department, but only if it is empty: no child
-// departments and no member users. Returns ErrDepartmentNotEmpty otherwise, or
-// gorm.ErrRecordNotFound if the id doesn't exist.
+// departments and no member users. Its SSO mappings are removed in the same
+// transaction so subsequent SSO logins can recreate the department.
+// Returns ErrDepartmentNotEmpty otherwise, or gorm.ErrRecordNotFound if the id
+// doesn't exist.
 func (s *Service) DeleteDepartment(ctx context.Context, id string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Coordinate deletion with creates/moves so a validated parent cannot
@@ -466,6 +468,9 @@ func (s *Service) DeleteDepartment(ctx context.Context, id string) error {
 		}
 		if members > 0 {
 			return ErrDepartmentNotEmpty
+		}
+		if err := tx.Where("dept_id = ?", id).Delete(&model.SSODepartment{}).Error; err != nil {
+			return err
 		}
 		return tx.Where("id = ?", id).Delete(&model.Department{}).Error
 	})

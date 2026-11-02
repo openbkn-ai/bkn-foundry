@@ -111,6 +111,17 @@ spec:
                   name: {{ .Release.Name }}-hydra-secrets
                   key: SECRETS_SYSTEM
             - { name: OAUTH2_EXPOSE_INTERNAL_ERRORS, value: "true" }
+            {{- if .Values.bundledDeps.ssoTokenHook.enabled }}
+            - { name: OAUTH2_TOKEN_HOOK_URL, value: "http://{{ .Release.Name }}:{{ .Values.service.ports.port }}/internal/sso/token-hook" }
+            - { name: OAUTH2_TOKEN_HOOK_AUTH_TYPE, value: "api_key" }
+            - { name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_IN, value: "header" }
+            - { name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_NAME, value: "X-SSO-Hook-Key" }
+            - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "bundledDeps.ssoTokenHook.secretName is required" .Values.bundledDeps.ssoTokenHook.secretName | quote }}
+                  key: {{ .Values.bundledDeps.ssoTokenHook.secretKey | quote }}
+            {{- end }}
             {{- /* serve all --dev issues cookies without Secure; a SameSite=None */}}
             {{- /* cookie without Secure is dropped by modern browsers, breaking the */}}
             {{- /* device-flow CSRF check ("No CSRF value available in the session */}}

@@ -21,6 +21,7 @@ type Source string
 const (
 	SourceLocal Source = "local"
 	SourceLDAP  Source = "ldap"
+	SourceSSO   Source = "sso"
 )
 
 // AccountType mirrors the introspect ext.account_type claim values.
@@ -605,6 +606,7 @@ func AllModels() []any {
 		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
 		&ProxyGrantAuditLog{}, &AuthorizationGrant{},
 		&OAuthAccessOrigin{}, &OAuthClientSyncState{},
+		&SSOProvider{}, &SSOIdentity{}, &SSODepartment{}, &SSOLoginState{},
 		&PermissionRequest{}, &PermissionRequestOperation{}, &PermissionRequestDecision{}, &PermissionRequestReviewer{},
 	}
 }

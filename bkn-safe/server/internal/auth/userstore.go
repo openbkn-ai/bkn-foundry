@@ -159,10 +159,10 @@ func (s *UserStore) UpdateUser(ctx context.Context, id string, fields map[string
 	return nil
 }
 
-// DeleteUser removes a user and its directory memberships (department links and
-// group memberships) in one transaction. Casbin role/permission cleanup is the
-// caller's job (it holds the enforcer). Returns gorm.ErrRecordNotFound when the
-// user doesn't exist.
+// DeleteUser removes a user, its directory memberships, and its SSO identity
+// mappings in one transaction. A later SSO login can then create a fresh user.
+// Casbin role/permission cleanup is the caller's job (it holds the enforcer).
+// Returns gorm.ErrRecordNotFound when the user doesn't exist.
 func (s *UserStore) DeleteUser(ctx context.Context, id string) error {
 	if err := rejectManagedMutation(ctx, s.db, id); err != nil {
 		return err
@@ -176,6 +176,9 @@ func (s *UserStore) DeleteUser(ctx context.Context, id string) error {
 			return gorm.ErrRecordNotFound
 		}
 		if err := tx.Where("user_id = ?", id).Delete(&model.UserDepartment{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", id).Delete(&model.SSOIdentity{}).Error; err != nil {
 			return err
 		}
 		return tx.Where("member_id = ?", id).Delete(&model.GroupMember{}).Error

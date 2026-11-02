@@ -30,15 +30,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/oauthorigin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/permissionrequest"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/proxygrant"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/sso"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/locale"
 )
 
 // Deps are the collaborators the HTTP layer needs.
 type Deps struct {
-	Enforcer *authz.Enforcer
-	DB       *gorm.DB
-	Provider *auth.Provider
-	Hydra    *auth.HydraAdmin
+	Enforcer    *authz.Enforcer
+	DB          *gorm.DB
+	Provider    *auth.Provider
+	SSO         *sso.Service
+	SSOExchange *sso.Exchange
+	Hydra       *auth.HydraAdmin
 	// SessionRevoker terminates all OAuth sessions on account disable/enable.
 	// Production defaults to Hydra; tests can inject a recorder.
 	SessionRevoker UserSessionRevoker
@@ -140,7 +143,10 @@ func New(deps Deps) *gin.Engine {
 
 	// hydra login/consent/device provider pages.
 	if deps.Provider != nil && deps.Hydra != nil {
-		registerAuth(r, deps.Provider, deps.Hydra, deps.AccessLog, deps.HydraBrowserPublicURL)
+		registerAuth(r, deps.Provider, deps.Hydra, deps.AccessLog, deps.HydraBrowserPublicURL, deps.SSO)
+	}
+	if deps.SSOExchange != nil {
+		registerSSOExchange(r, deps.SSOExchange)
 	}
 	// MCP sign-in: discovery documents and self-registration, unauthenticated
 	// by design — a client registers before anyone has signed in.

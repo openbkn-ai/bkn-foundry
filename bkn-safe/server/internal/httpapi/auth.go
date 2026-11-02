@@ -22,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/sso"
 )
 
 // registerAuth mounts the hydra login/consent/device provider pages. hydra is
@@ -31,10 +32,17 @@ import (
 // requested scopes with explicit Authorize/Decline.
 const ctxHydraBrowserPublicURL = "hydra_browser_public_url"
 
-func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessStore accesslog.Recorder, browserPublicURL string) {
+func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessStore accesslog.Recorder, browserPublicURL string, ssoService ...*sso.Service) {
+	var federation *sso.Service
+	if len(ssoService) > 0 {
+		federation = ssoService[0]
+	}
 	r.GET(openBKNLogoPath, serveOpenBKNLogo)
 	r.GET(loginBackgroundPath, serveLoginBackground)
-	r.GET("/login", func(c *gin.Context) { showLogin(c, h) })
+	r.GET("/login", func(c *gin.Context) { showLoginWithSSO(c, h, federation) })
+	if federation != nil {
+		registerSSO(r, federation, h, browserPublicURL)
+	}
 	r.POST("/login", func(c *gin.Context) {
 		c.Set(ctxHydraBrowserPublicURL, browserPublicURL)
 		doLogin(c, p, accessStore)
@@ -192,16 +200,22 @@ type authPageText struct {
 }
 
 type authPageData struct {
-	Challenge  string
-	Account    string
-	ClientName string
-	Scopes     []string
-	UserCode   string
-	Error      string
-	Language   string
-	ChineseURL string
-	EnglishURL string
-	Text       authPageText
+	Challenge    string
+	Account      string
+	ClientName   string
+	Scopes       []string
+	UserCode     string
+	Error        string
+	Language     string
+	ChineseURL   string
+	EnglishURL   string
+	Text         authPageText
+	SSOProviders []ssoLoginOption
+}
+
+type ssoLoginOption struct {
+	Name string
+	URL  string
 }
 
 func localizedAuthMessage(c *gin.Context, key string) string {
@@ -260,7 +274,9 @@ var loginPage = template.Must(template.New("login").Parse(`<!doctype html><html 
   <input name="password" type="password" placeholder="{{.Text.PasswordPlaceholder}}" autocomplete="current-password">
   {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
   <button class="primary" type="submit">{{.Text.LoginButton}}</button>
-</form></div></body></html>`))
+</form>
+{{range .SSOProviders}}<a class="sso-login" href="{{.URL}}">{{.Name}}</a>{{end}}
+</div></body></html>`))
 
 var changePasswordPage = template.Must(template.New("changepw").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
 <div class="card">` + localeSwitcher + brand("BKN Studio") + `<h3>{{.Text.ChangePasswordTitle}}</h3>
@@ -378,6 +394,9 @@ func showLogin(c *gin.Context, h *auth.HydraAdmin) {
 	}
 	applyAuthLocale(c, requestURL)
 	data := loginAuthPageData(c, challenge)
+	if options, ok := c.Get("sso_login_options"); ok {
+		data.SSOProviders, _ = options.([]ssoLoginOption)
+	}
 	renderHTML(c, loginPage, data)
 }
 

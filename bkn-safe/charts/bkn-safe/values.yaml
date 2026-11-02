@@ -51,6 +51,10 @@ ingress:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
   paths:
     - /login
+    # External OIDC authorization-code start and callback (only when configured
+    # in bkn-safe's sso_providers table).
+    - /sso/login
+    - /sso/callback
     - /consent
     - /device
     # Device-approval success page (hydra URLS_DEVICE_SUCCESS target).
@@ -62,6 +66,8 @@ ingress:
     # purpose: exposes only change-password, not /api/safe/v1/authz or the raw
     # internal /directory routes.
     - /api/safe/v1/auth/change-password
+    # Casdoor token → Hydra token; validates the external bearer before issue.
+    - /api/safe/v1/auth/token-exchange
     # Admin API (user/dept/role CRUD, role-bindings) for the openbkn admin CLI /
     # web console. Token-gated in-service by RequireAdmin (introspect + casbin
     # super-admin), so safe to expose; the raw internal /authz + /directory stay
@@ -274,3 +280,9 @@ bundledDeps:
   # builds login/consent/device page URLs from it so human browser flows work
   # off-cluster. Empty => in-cluster service hostnames (pure in-cluster dev only).
   publicBaseURL: ""
+  # Enable only after the same hook key and assertion signing key are mounted
+  # into bkn-safe, and the dedicated Hydra JWT grant client/trust are created.
+  ssoTokenHook:
+    enabled: false
+    secretName: ""
+    secretKey: "hookKey"
