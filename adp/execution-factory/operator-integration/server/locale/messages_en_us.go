@@ -10,7 +10,6 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
-		"Public.UnprocessableEntity":                                                     "Invalid execution input. Correct the input before retrying.",
 		"AgentOperatorIntegration.BadGateway.OSSGatewayFailed":                           "Object storage is unavailable. Check the OSS gateway configuration or re-upload the Skill package Contact administrator",
 		"AgentOperatorIntegration.BadRequest.CategoryNameEmpty":                          "Category name cannot be empty Contact administrator",
 		"AgentOperatorIntegration.BadRequest.CategoryNameExist":                          "Category name already exists Contact administrator",
@@ -172,10 +171,6 @@ var ErrorMessagesEnUS = i18n.I18nMessages{
 		"AgentOperatorIntegration.ServiceUnavailable.OSSGatewayFailed":                   "Object storage is unavailable. Check the OSS gateway configuration or re-upload the Skill package Contact administrator",
 		"AgentOperatorIntegration.ServiceUnavailable.ProxyForwardFailed":                 "Request forwarding failed Please check if the request is correct, or try again later",
 		"AgentOperatorIntegration.Unauthorized.OSSGatewayFailed":                         "Object storage is unavailable. Check the OSS gateway configuration or re-upload the Skill package Contact administrator",
-		"Public.RequestEntityTooLarge":                                                   "The request body is too large. Reduce its size and retry.",
-		"Public.BadGateway":                                                              "A downstream service request failed. Try again later.",
-		"Public.RequestTimeout":                                                          "The request timed out. Try again later.",
-		"Public.GatewayTimeout":                                                          "A downstream service request timed out. Try again later.",
 		"AgentOperatorIntegration.Detail.openapi_error_item":                             "Error {{.Arg1}}: {{.Arg2}}",
 	},
 }
