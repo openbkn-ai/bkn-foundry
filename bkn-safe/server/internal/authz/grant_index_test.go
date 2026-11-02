@@ -42,8 +42,8 @@ func finishesWhileShared(t *testing.T, e *Enforcer, read func() error) {
 		mustNoErr(t, err)
 	case <-time.After(2 * time.Second):
 		release()
-		<-done
-		t.Fatal("read waited for the exclusive enforcer lock while another read held the shared lock")
+		err := <-done
+		t.Fatalf("read waited for the exclusive enforcer lock while another read held the shared lock; read error: %v", err)
 	}
 }
 

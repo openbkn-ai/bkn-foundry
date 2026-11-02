@@ -32,8 +32,8 @@ func TestRunWaitsForShutdownToComplete(t *testing.T) {
 	cancel()
 
 	select {
-	case <-result:
-		t.Fatal("run returned before shutdown completed")
+	case err := <-result:
+		t.Fatalf("run returned before shutdown completed: %v", err)
 	default:
 	}
 	close(app.shutdownDone)

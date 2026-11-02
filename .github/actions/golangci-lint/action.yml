@@ -8,7 +8,7 @@ inputs:
   version:
     description: golangci-lint 版本
     required: false
-    default: v2.12.2
+    default: v2.15.0
 
 runs:
   using: composite
