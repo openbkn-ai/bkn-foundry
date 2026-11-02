@@ -96,17 +96,17 @@ spec:
                 name: {{ include "ontology-query.cursorSecretName" . | quote }}
                 key: {{ .Values.cursorEncryption.secretKey | quote }}
           - name: BKN_METRIC_SNAPSHOT_MAX_ROWS
-            value: {{ .Values.metricResultSnapshot.maxRows | quote }}
+            value: {{ .Values.metricResultSnapshot.maxRows | int64 | quote }}
           - name: BKN_METRIC_SNAPSHOT_MAX_ENTRY_BYTES
-            value: {{ .Values.metricResultSnapshot.maxEntryBytes | quote }}
+            value: {{ .Values.metricResultSnapshot.maxEntryBytes | int64 | quote }}
           - name: BKN_METRIC_SNAPSHOT_MAX_BYTES
-            value: {{ .Values.metricResultSnapshot.maxBytes | quote }}
+            value: {{ .Values.metricResultSnapshot.maxBytes | int64 | quote }}
           - name: BKN_METRIC_SNAPSHOT_MAX_ENTRIES
-            value: {{ .Values.metricResultSnapshot.maxEntries | quote }}
+            value: {{ .Values.metricResultSnapshot.maxEntries | int64 | quote }}
           - name: BKN_METRIC_SNAPSHOT_MAX_ACCOUNT_ENTRIES
-            value: {{ .Values.metricResultSnapshot.maxAccountEntries | quote }}
+            value: {{ .Values.metricResultSnapshot.maxAccountEntries | int64 | quote }}
           - name: BKN_METRIC_SNAPSHOT_TTL_SECONDS
-            value: {{ .Values.metricResultSnapshot.ttlSeconds | quote }}
+            value: {{ .Values.metricResultSnapshot.ttlSeconds | int64 | quote }}
           {{- if .Values.bknTrace.evidencePublisher.enabled }}
           - name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED
             value: "true"
