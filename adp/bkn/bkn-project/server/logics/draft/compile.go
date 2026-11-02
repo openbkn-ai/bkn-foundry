@@ -55,6 +55,11 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 // compileDraftBeside compiles the draft to go beside the object types of names the branch keeps:
 // an alias may not be one of them either.
 func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*compiledDraft, error) {
+	var err error
+	items, err = documentExportItems(items)
+	if err != nil {
+		return nil, err
+	}
 	network := &bkn.BknNetwork{
 		BknNetworkFrontmatter: bkn.BknNetworkFrontmatter{
 			Type:    "knowledge_network",
