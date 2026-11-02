@@ -15,7 +15,8 @@ import (
 func TestPublishedWireValues(t *testing.T) {
 	want := map[ID]string{
 		Authorize: "authorize", Create: "create", CreateSystemAgent: "create_system_agent",
-		DataWrite: "data_write", Delete: "delete", Display: "display", Edit: "edit",
+		DataWrite: "data_write", Delete: "delete", Display: "display",
+		DocumentManage: "document_manage", Edit: "edit",
 		Execute: "execute", FullBusinessAccess: "full_business_access", Grant: "grant",
 		Heartbeat: "heartbeat",
 		Manage:    "manage", Members: "members", ManageBuiltInAgent: "mgnt_built_in_agent",
