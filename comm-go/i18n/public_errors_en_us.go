@@ -16,5 +16,11 @@ var publicErrorsEnUS = I18nMessages{
 		"Public.InternalServerError": "An internal server error occurred. Try again later.",
 		"Public.NotImplemented":      "The server does not implement this request. Confirm the API capability and try again.",
 		"Public.ServiceUnavailable":  "The service is temporarily unavailable. Try again later.",
+
+		"Public.RequestTimeout":        "The request timed out. Try again later.",
+		"Public.RequestEntityTooLarge": "The request body is too large. Reduce its size and retry.",
+		"Public.UnprocessableEntity":   "Invalid execution input. Correct the input before retrying.",
+		"Public.BadGateway":            "A downstream service request failed. Try again later.",
+		"Public.GatewayTimeout":        "A downstream service request timed out. Try again later.",
 	},
 }

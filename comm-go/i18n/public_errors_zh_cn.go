@@ -16,5 +16,11 @@ var publicErrorsZhCN = I18nMessages{
 		"Public.InternalServerError": "服务内部错误。请稍后重试。",
 		"Public.NotImplemented":      "服务端未实现该请求。请确认接口能力后重试。",
 		"Public.ServiceUnavailable":  "服务暂时不可用。请稍后重试。",
+
+		"Public.RequestTimeout":        "请求超时。请稍后重试。",
+		"Public.RequestEntityTooLarge": "请求内容过大。请减小请求内容后重试。",
+		"Public.UnprocessableEntity":   "执行输入校验失败，请修正输入后重试。",
+		"Public.BadGateway":            "下游服务请求失败。请稍后重试。",
+		"Public.GatewayTimeout":        "下游服务请求超时。请稍后重试。",
 	},
 }

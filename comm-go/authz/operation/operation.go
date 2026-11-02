@@ -27,6 +27,7 @@ const (
 	DataWrite                  ID = "data_write"
 	Delete                     ID = "delete"
 	Display                    ID = "display"
+	DocumentManage             ID = "document_manage"
 	Edit                       ID = "edit"
 	Execute                    ID = "execute"
 	FullBusinessAccess         ID = "full_business_access"
@@ -63,7 +64,7 @@ const (
 )
 
 var all = []ID{
-	Authorize, Create, CreateSystemAgent, DataWrite, Delete, Display, Edit,
+	Authorize, Create, CreateSystemAgent, DataWrite, Delete, Display, DocumentManage, Edit,
 	Execute, FullBusinessAccess, Grant, Heartbeat, Manage, Members, ManageBuiltInAgent,
 	Modify, Permissions, PublicAccess, Publish, PublishToAPI, PublishToDataFlow,
 	PublishToSkill, PublishToWebSDK, QueryData, Read, Reconcile, ResetPassword, ResourceManage,

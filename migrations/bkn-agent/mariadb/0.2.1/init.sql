@@ -2065,7 +2065,7 @@ select 'bkn-project-concept-extraction',
           and v.f_version = 1 and v.f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
     ) then 'BKNProjectConceptExtraction' else null end,
     'task', 'bkn-project-concept-extraction-prompt', null, '', '[]', '[]',
-    '{"max_turns":1,"max_tool_calls":0,"timeout_s":120,"max_output_tokens":16384}',
+    '{"max_turns":1,"max_tool_calls":0,"timeout_s":300,"max_output_tokens":16384}',
     'published', '266c6a42-6131-4d62-8f39-853e7093701c', '266c6a42-6131-4d62-8f39-853e7093701c',
     unix_timestamp(now(3)) * 1000, unix_timestamp(now(3)) * 1000
 from dual

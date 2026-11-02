@@ -9,7 +9,6 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
-		"Public.UnprocessableEntity":                                                     "执行输入校验失败，请修正输入后重试。",
 		"AgentOperatorIntegration.BadGateway.OSSGatewayFailed":                           "对象存储服务不可用，请检查 OSS 网关配置或重新上传 Skill 包请联系管理员",
 		"AgentOperatorIntegration.BadRequest.CategoryNameEmpty":                          "分类名称不能为空请联系管理员",
 		"AgentOperatorIntegration.BadRequest.CategoryNameExist":                          "分类名称已存在请联系管理员",
@@ -171,10 +170,6 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"AgentOperatorIntegration.ServiceUnavailable.OSSGatewayFailed":                   "对象存储服务不可用，请检查 OSS 网关配置或重新上传 Skill 包请联系管理员",
 		"AgentOperatorIntegration.ServiceUnavailable.ProxyForwardFailed":                 "请求转发失败请检查请求是否正确，或稍后重试",
 		"AgentOperatorIntegration.Unauthorized.OSSGatewayFailed":                         "对象存储服务不可用，请检查 OSS 网关配置或重新上传 Skill 包请联系管理员",
-		"Public.RequestEntityTooLarge":                                                   "请求内容过大。请减小请求内容后重试。",
-		"Public.BadGateway":                                                              "下游服务请求失败。请稍后重试。",
-		"Public.RequestTimeout":                                                          "请求超时。请稍后重试。",
-		"Public.GatewayTimeout":                                                          "下游服务请求超时。请稍后重试。",
 		"AgentOperatorIntegration.Detail.openapi_error_item":                             "错误{{.Arg1}}：{{.Arg2}}",
 	},
 }

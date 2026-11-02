@@ -206,10 +206,28 @@ func TestMustBeAssemblingAndFreeze(t *testing.T) {
 		t.Fatalf("panic should say the window is closed, got %q", msg)
 	}
 	mustPanic(t, "MarkAssembled after Freeze", func() { MarkAssembled("late", licverify.EditionEnterprise) })
-	mustPanic(t, "second Freeze", func() { Freeze() })
 
 	if !Frozen() {
 		t.Fatal("Frozen() should report the closed registry")
+	}
+}
+
+// Several service apps may start in one process, and each freezes the registry
+// when it begins serving. The second Freeze is a no-op; the registry stays
+// closed, so a late registration still panics.
+func TestFreezeIsIdempotent(t *testing.T) {
+	reset()
+	MarkAssembled("first", licverify.EditionEnterprise)
+	Freeze()
+	Freeze()
+
+	if !Frozen() {
+		t.Fatal("Frozen() should still report the closed registry")
+	}
+	mustPanic(t, "register after a repeated Freeze", func() { MustBeAssembling("late") })
+	mustPanic(t, "MarkAssembled after a repeated Freeze", func() { MarkAssembled("late", licverify.EditionEnterprise) })
+	if got := Assembled(); len(got) != 1 || got[0].Name != "first" {
+		t.Fatalf("a repeated Freeze must not change what was assembled, got %+v", got)
 	}
 }
 

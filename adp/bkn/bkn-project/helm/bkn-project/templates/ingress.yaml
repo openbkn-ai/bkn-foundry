@@ -7,6 +7,9 @@ metadata:
   namespace: {{ .Values.namespace }}
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # Longer than the 300s concept Agent and 305s project adapter budgets.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "330"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "330"
 spec:
 {{- if index .Values.depServices "class-443" "ingressClass" }}
   ingressClassName: {{ index .Values.depServices "class-443" "ingressClass" }}

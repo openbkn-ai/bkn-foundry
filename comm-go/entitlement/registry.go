@@ -105,18 +105,18 @@ func MarkAssembled(name string, min licverify.Edition) {
 	assembled[name] = min
 }
 
-// Freeze closes the registry. The assembler calls it once, after extensions are
-// in place and before handlers are built.
+// Freeze closes the registry. Each service's assembler calls it after its
+// extensions are in place and before handlers are built.
 //
 // It lives here rather than in each socket package because it closes the whole
-// registry: a second socket calling its own Freeze would be the second call,
-// and the second call is a bug.
+// registry. Calling it again is a no-op: the invariant that matters — nothing
+// registers after the registry is closed — is enforced by MustBeAssembling and
+// MarkAssembled, which panic on a late registration whichever Freeze closed the
+// registry. Several service apps can therefore start in the same process, each
+// freezing as it begins serving.
 func Freeze() {
 	mu.Lock()
 	defer mu.Unlock()
-	if frozen {
-		panic("entitlement: Freeze called twice")
-	}
 	frozen = true
 }
 

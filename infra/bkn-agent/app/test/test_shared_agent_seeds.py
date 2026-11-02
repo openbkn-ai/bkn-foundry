@@ -93,6 +93,7 @@ def database():
         )
 
     db.create_function("json_contains", 2, json_contains)
+    db.create_function("json_length", 1, lambda value: len(json.loads(value)) if value is not None else None)
     db.executescript("""
         CREATE TABLE dual(dummy INTEGER); INSERT INTO dual VALUES(1);
         CREATE TABLE t_agent(f_agent_id TEXT PRIMARY KEY, f_name TEXT NOT NULL UNIQUE,
@@ -276,6 +277,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, ONTOLOGY_ASK_V4)
         apply(upgraded, CONCEPT_SEED)
         apply(upgraded, ONTOLOGY_ASK_V5)
+        apply(upgraded, CONCEPT_BUDGET)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -484,6 +486,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(ONTOLOGY_ASK_V4),
                     str(CONCEPT_SEED),
                     str(ONTOLOGY_ASK_V5),
+                    str(CONCEPT_BUDGET),
                 ],
             ],
         ],
@@ -555,7 +558,7 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
         + "\n" + ontology_ask_locales_text()
         + "\n" + METRIC_DESIGN_LOCALE.read_text()
-        + "\n" + CONCEPT_SEED.read_text()
+        + "\n" + CONCEPT_SEED.read_text().replace('"timeout_s":120', '"timeout_s":300')
         + "\n" + ontology_ask_v5_locales_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
@@ -3801,4 +3804,66 @@ def test_ontology_ask_document_models_v5_does_not_take_over_an_operator_version(
         db.execute("INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time,f_source_language) VALUES (?,?,?,?,?,?,?)", ("bkn-project-ontology-ask-prompt",5,official["f_content"],None,"operator",1000,"en-US"))
         before = snapshot(db)
         apply(db, ONTOLOGY_ASK_V5)
+        assert snapshot(db) == before
+
+
+CONCEPT_BUDGET = MIGRATIONS / "0.2.1/38-concept-extraction-execution-budget.sql"
+
+def test_concept_budget_upgrade_preserves_history_and_is_idempotent():
+    with concept_seed_database() as db:
+        apply(db, CONCEPT_SEED)
+        old = dict(db.execute("SELECT * FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (CONCEPT_AGENT,)).fetchone())
+        apply(db, CONCEPT_BUDGET)
+        assert item_from_db(db, CONCEPT_AGENT)["spec"]["limits"]["timeout_s"] == 300
+        versions = db.execute("SELECT * FROM t_agent_version WHERE f_agent_id=? ORDER BY f_version", (CONCEPT_AGENT,)).fetchall()
+        assert len(versions) == 2 and versions[1]["f_current"] and versions[1]["f_initial"]
+        assert json.loads(versions[1]["f_limits"])["timeout_s"] == 300
+        assert versions[1]["f_prompt_version"] == 1
+        assert all(versions[0][key] == value for key, value in old.items() if key not in {"f_current", "f_initial"})
+        before = snapshot(db)
+        apply(db, CONCEPT_BUDGET)
+        assert snapshot(db) == before
+
+@pytest.mark.parametrize("custom", ["limits", "model", "tools", "newer_version", "future_update_time"])
+def test_concept_budget_never_overwrites_operator_configuration(custom):
+    with concept_seed_database() as db:
+        apply(db, CONCEPT_SEED)
+        if custom == "limits":
+            db.execute("UPDATE t_agent SET f_limits=json_set(f_limits,'$.timeout_s',90) WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        elif custom == "model":
+            db.execute("UPDATE t_agent SET f_model='operator-model' WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        elif custom == "tools":
+            db.execute("UPDATE t_agent SET f_tools='[{\"type\":\"operator\"}]' WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        elif custom == "future_update_time":
+            db.execute("UPDATE t_agent SET f_update_time=5000 WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        else:
+            db.execute("INSERT INTO t_agent_version SELECT f_agent_id,3,f_model,f_tools,f_limits,f_prompt_version,f_changes,0,1,0,f_create_user,f_create_time FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (CONCEPT_AGENT,))
+        before = snapshot(db)
+        apply(db, CONCEPT_BUDGET)
+        assert snapshot(db) == before
+
+def test_concept_budget_fresh_install_matches_upgrade():
+    with database() as fresh, concept_seed_database() as upgraded:
+        apply(fresh, MIGRATIONS / "0.2.1/init.sql")
+        apply(upgraded, CONCEPT_SEED)
+        apply(upgraded, CONCEPT_BUDGET)
+        assert item_from_db(fresh, CONCEPT_AGENT)["spec"]["limits"] == item_from_db(upgraded, CONCEPT_AGENT)["spec"]["limits"]
+        assert item_from_db(fresh, CONCEPT_AGENT)["spec"]["limits"]["timeout_s"] == 300
+
+
+def test_concept_budget_preserves_explicit_operator_rollback():
+    with concept_seed_database() as db:
+        apply(db, CONCEPT_SEED)
+        apply(db, CONCEPT_BUDGET)
+        db.execute("UPDATE t_agent_version SET f_current=(f_version=1) WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        db.execute("UPDATE t_agent SET f_limits=json_set(f_limits,'$.timeout_s',120),f_update_time=5000 WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        before = snapshot(db)
+        apply(db, CONCEPT_BUDGET)
+        assert snapshot(db) == before
+
+def test_concept_budget_is_noop_on_current_fresh_defaults():
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        before = snapshot(db)
+        apply(db, CONCEPT_BUDGET)
         assert snapshot(db) == before
