@@ -135,3 +135,63 @@ func TestManagedFactFieldsDoNotReserveEntityBusinessProperties(t *testing.T) {
 		t.Fatal("fact lifecycle status must remain managed")
 	}
 }
+
+func TestSameDocumentRelationRoles(t *testing.T) {
+	for _, text := range []string{"Contract C-1 contains clause A.", "Patent P-1 contains component B.", "Service report M-1 records event C."} {
+		for _, leftRole := range []string{"entity", "file", "in_document", "fact", "event"} {
+			for _, rightRole := range []string{"entity", "file", "in_document", "fact", "event"} {
+				t.Run(text+"/"+leftRole+"/"+rightRole, func(t *testing.T) {
+					input := modelInput(text)
+					left, right := proposedObject(input, "left_record", leftRole), proposedObject(input, "right_record", rightRole)
+					for _, object := range []*interfaces.DraftObjectType{left, right} {
+						if object.Document.Role == "event" {
+							object.Document.TimeProperty = "occurred_at"
+							object.Document.ParticipantRelations = []string{"joins"}
+							object.Properties = append(object.Properties, &interfaces.DraftProperty{Name: "occurred_at", DisplayName: "Event time", Type: "datetime", Extraction: &interfaces.DraftExtractionField{Instruction: "Read the stated event time", Examples: []interfaces.DraftSourceCitation{documentQuote(input)}}})
+						}
+					}
+					relation := &interfaces.DraftRelationType{ID: "joins", Name: "Related source claim", Source: left.ID, Target: right.ID, Cardinality: "many_to_one", Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: "The source explicitly associates the named records", Citations: []interfaces.DraftSourceCitation{documentQuote(input)}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}}
+					proposal := kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{left, right}, RelationTypes: []*interfaces.DraftRelationType{relation}}
+					result, err := ValidateModel(input, interfaces.DraftItems{}, proposal)
+					allowed := leftRole != "entity" && rightRole != "entity"
+					if allowed != (err == nil) {
+						t.Fatalf("allowed=%v result=%v err=%v", allowed, result, err)
+					}
+					if !allowed {
+						return
+					}
+					original := result.RelationTypes[0]
+					if _, err := ValidateEditedRelation(input, interfaces.DraftItems{ObjectTypes: result.ObjectTypes}, original, original); err != nil {
+						t.Fatal("valid file-scoped edit rejected", err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestProposalsCanWaitForTargetIdentityWithoutLosingVerifiedObjects(t *testing.T) {
+	for _, text := range []string{"采购单引用供应方，来源未给出注册编号。", "维修工单引用客户，来源未给出客户编号。", "专利转让书引用机构，来源未给出统一编号。"} {
+		input := modelInput(text)
+		source := proposedObject(input, "source_record", "entity")
+		target := proposedObject(input, "named_party", "entity")
+		target.PrimaryKeys = nil
+		relation := &interfaces.DraftRelationType{ID: "references_party", Name: "涉及主体", Source: source.ID, Target: target.ID, Cardinality: "many_to_one", Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: "来源明确指出关联主体，唯一标识需要人确认", Citations: []interfaces.DraftSourceCitation{documentQuote(input)}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}}
+		checked, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{source, target}, RelationTypes: []*interfaces.DraftRelationType{relation}})
+		if err != nil {
+			t.Fatal("verified proposal was discarded before a person could choose identity", err)
+		}
+		if !checked.ObjectTypes[1].NeedsIdentity || checked.ObjectTypes[1].Adopted || checked.RelationTypes[0].Adopted {
+			t.Fatal("unconfirmed identity became adopted")
+		}
+		items := interfaces.DraftItems{ObjectTypes: checked.ObjectTypes, RelationTypes: checked.RelationTypes}
+		if LinkIdentityReady(items, checked.RelationTypes[0]) {
+			t.Fatal("pending identity is ready to publish")
+		}
+		checked.ObjectTypes[1].PrimaryKeys = []string{"number"}
+		checked.ObjectTypes[1].NeedsIdentity = false
+		if !LinkIdentityReady(items, checked.RelationTypes[0]) {
+			t.Fatal("human-confirmed matching identity did not unlock the relation")
+		}
+	}
+}

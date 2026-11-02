@@ -17,7 +17,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // pendingItems lists what waits for a person before a draft can be confirmed: adopted object
@@ -60,12 +62,26 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Not the owner")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Draft_NotOwner)
 	}
-	// K3 prepares and binds the document Datasets during confirmation. Until
-	// that path exists, preserve reviewed candidates and refuse explicitly;
-	// never masquerade a document model as a table or write partial definitions.
-	for _, object := range draft.Items.ObjectTypes {
-		if object.Adopted && object.Document != nil && object.Table.ResourceID == "" {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentDataNotReady)
+	for _, relation := range draft.Items.RelationTypes {
+		if relation == nil {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem)
+		}
+		if relation.Adopted && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "same_document" && !kbconcept.SameDocumentScopeReady(draft.Items, relation) {
+			return nil, documentValidationError(ctx, &kbconcept.RelationScopeError{ID: relation.ID, Name: relation.Name})
+		}
+		if relation.Adopted && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(draft.Items, relation) {
+			if kbconcept.BusinessIdentityTarget(draft.Items, relation) != nil {
+				return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_BusinessIdentityNotVerified)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
+		}
+	}
+	// Preserve the original explicit refusal when storage is unavailable. Once
+	// installed, complete Dataset preparation after all human decisions validate.
+	if adoptedDocuments(draft) {
+		providers, enabled := kb.Lookup()
+		if !enabled || providers.Datasets == nil {
+			return nil, datasetNotReady(ctx, http.StatusConflict)
 		}
 	}
 	if pending := pendingItems(&draft.Items); len(pending) > 0 {
@@ -106,6 +122,19 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Conflicts not accepted")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_ConflictsNotAccepted).
 			WithErrorDetails(unresolved)
+	}
+	if err = checkSourceFieldDecisions(ctx, draft); err != nil {
+		return nil, err
+	}
+	if err = s.checkBusinessIdentities(ctx, draft, caller); err != nil {
+		return nil, err
+	}
+	draft, err = s.prepareDocumentDatasets(ctx, token, entry, draft, caller)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.checkBusinessIdentities(ctx, draft, caller); err != nil {
+		return nil, err
 	}
 	compiled, err := compileDraft(&draft.Items)
 	if err != nil {

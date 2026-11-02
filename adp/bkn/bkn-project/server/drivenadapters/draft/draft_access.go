@@ -126,10 +126,18 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 		// remove; the new draft is not confirmed.
 		if carried := carriedConfirmation(itemsRead); carried != nil {
 			draft.Items.Confirmation = carried
-			if itemsJSON, err = json.Marshal(draft.Items); err != nil {
-				span.SetStatus(codes.Error, "Marshal items failed")
-				return false, err
-			}
+		}
+		// Remote resources may already exist after a partial preparation. Keep
+		// their journal even when the user explicitly discards model decisions.
+		var previous struct {
+			DatasetPlans []*interfaces.DraftDatasetPlan `json:"dataset_plans"`
+		}
+		if json.Unmarshal([]byte(itemsRead), &previous) == nil {
+			draft.Items.DatasetPlans = previous.DatasetPlans
+		}
+		if itemsJSON, err = json.Marshal(draft.Items); err != nil {
+			span.SetStatus(codes.Error, "Marshal items failed")
+			return false, err
 		}
 		sqlStr, vals, err = sq.Update(DRAFT_TABLE_NAME).
 			Set("f_status", draft.Status).Set("f_items", string(itemsJSON)).Set("f_error", draft.Error).

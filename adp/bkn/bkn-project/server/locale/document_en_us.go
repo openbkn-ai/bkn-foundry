@@ -9,6 +9,13 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var documentEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknProject.Draft.DualSourceNotConfirmed": "Confirm the dual-source field list and adopt its file/fact models before confirming the draft.",
+		"BknProject.Draft.InvalidSourceFields":    "The field list does not match the current system, text or fact models. Check field names, placement and authority, then confirm it again.",
+
+		"BknProject.Draft.BusinessIdentityNotVerified": "Verify and save the business identifier in the relationship settings before adopting it; the system primary key stays unchanged.",
+		"BknProject.Draft.BusinessIdentityNotUnique":   "The business identifier contains duplicate or empty values. Resolve them and verify again; the system primary key is unchanged.",
+		"BknProject.Draft.BusinessIdentityUnavailable": "The business identifier could not be verified against the full source table. Check source access and try again.",
+
 		"BknProject.Draft.EventParticipantInUse":            "This relation is still an event participant. Update the event participant settings before deleting it.",
 		"BknProject.Draft.DocumentRelation.NewName":         "Document relation",
 		"BknProject.Draft.DocumentRelation.ManualReason":    "Configured by the modeller; verify matches using the chosen fields during building.",
@@ -35,7 +42,14 @@ var documentEnUS = i18n.I18nMessages{
 		"BknProject.Draft.DocumentField.knowledge_base_id":  "Knowledge base",
 		"BknProject.Draft.DocumentField.file_id":            "File",
 		"BknProject.Draft.DocumentField.name":               "File name",
+		"BknProject.Draft.DocumentField.media_id":           "Image resource",
+		"BknProject.Draft.DocumentField.mime_type":          "Media type",
 		"BknProject.Draft.DocumentField.image_ref":          "Image reference",
+		"BknProject.Draft.Evidence.media":                   "Image resource",
+		"BknProject.Draft.Evidence.contains_media":          "Contains image resources",
+		"BknProject.Draft.Evidence.occurrences":             "Image occurrences",
+		"BknProject.Draft.Evidence.image_blocks":            "Image source blocks",
+		"BknProject.Draft.Evidence.reference_image":         "{{.name}} image occurrence",
 		"BknProject.Draft.Evidence.document":                "Source document",
 		"BknProject.Draft.Evidence.block":                   "Source block",
 		"BknProject.Draft.Evidence.image":                   "Source image",

@@ -296,11 +296,11 @@ A selected debug file with zero chunks or no located text returns the distinct `
 
 Document object/property/relation metadata is additive and absent for existing table drafts. `kbconcept.ValidateModel` checks every proposed object, extraction instruction/example, source quote, identity and relation before candidate integration. Model output cannot bind a table, override managed columns or adopt itself. Events require a temporal field and checked participant relations. Linking requires a typed mention-to-target identity mapping; same-document relations use `document_id` plus the named properties. Unsupported roles, links and unverified examples reject the proposal.
 
-Core adds read-only evidence/identity/extraction-version columns; facts/events also get effective dates, status and recorded-at fields. `BuildEvidence` creates document, block and image types and their containment/referencing relations from a fixed bilingual template, not AI. Template identities are reused after schema validation, and user-ID collisions are avoided. Document containment explicitly carries `one_to_many`; model-to-evidence references use `many_to_one`. The original-text switch does not remove types or the quote column; it controls stored quotes and later block/image row writes.
+Core adds read-only evidence/identity/extraction-version columns; facts/events also get effective dates, status and recorded-at fields. `BuildEvidence` creates document, block, image-resource and image-occurrence types and their containment/referencing relations from a fixed bilingual template, not AI. Template identities are reused after schema validation, and user-ID collisions are avoided. Document containment explicitly carries `one_to_many`; new model-to-evidence references use `many_to_many` with independent supporting claims. The original-text switch does not remove types or the quote column; it controls stored quotes and later block/image row writes.
 
 This library slice does not register an extraction/edit API or an Agent, adopt a candidate, create a Dataset or change publication. Those callers and the Studio editor remain K2 follow-up work. Source selection identity/revision are carried with checked proposals for the later atomic draft commit.
 
-Canonical entities retain global/business identity across files. Fixed model-to-evidence references apply only to file, in-document, fact and event rows; entity current values may have different per-property sources. Common row-level pointers are not complete field provenance. K3–K5 must preserve file/fact claims and each current property's source; a per-file upsert must not overwrite a whole entity or erase earlier evidence. This library performs no instance writes.
+Canonical entities retain global/business identity across files. Many-to-many model-to-evidence references include global entities, whose current values may have different per-property sources. Common row-level pointers are not complete field provenance. K3–K5 must preserve file/fact claims and each current property's source; a per-file upsert must not overwrite a whole entity or erase earlier evidence. This library performs no instance writes.
 
 
 ### K2 document candidates
@@ -361,6 +361,15 @@ A business `data_property` revision may include a nonempty `extraction_instructi
 
 Fresh installations seed ontology assistant v5. Existing installations must back up and apply additive Agent migration 37 separately, preserving history, operator prompts and runtime settings. Do not apply unrelated historical migrations for this upgrade.
 
+K3 relation scope: `same_document` requires both endpoints to have a file-scoped
+role (`file`, `in_document`, `fact` or `event`). Canonical `entity` values may
+come from several documents and must connect to source claims by business
+identity through `linking`. Candidate, relation-edit and object-edit validation
+reject an entity endpoint in a same-document rule. Existing invalid rules are
+not silently rewritten; repair their mapping explicitly.
+
+An affected legacy object save or assistant preflight returns 409 `Draft.DocumentRelationScope`, naming the business relationship that must be repaired. The structured details retain its reference; the bilingual user message does not display an internal id.
+
 ### Agent execution version metadata
 
 The project Agent adapter supports the existing bkn-agent #2792 contract: an
@@ -371,3 +380,66 @@ response versions remain unknown, rather than version zero. These additions do
 not by themselves pin a construction task or authorize a Dataset write: K4's
 coordinator must compare the recorded execution with the accepted extraction
 version before committing results, and reject unknown/mismatched metadata.
+
+
+### Document Dataset preparation and evidence graph
+
+When an enterprise `Datasets` provider is installed, confirming an adopted document
+model prepares its target generation before committing ontology definitions.
+Core persists resource identities and the complete expected layout before any
+remote create. Each resource is fully reverified on retry, including already-ready
+resources. A compare-and-write transaction guards the project owner, archive
+state, source selection/revision and current draft; source permission and model
+fingerprint are rechecked before each remote operation and final binding.
+Partial failures retain a journal and leave model bindings unexposed. Replacing a
+draft preserves that journal even when model decisions are explicitly discarded.
+Without a provider, the existing localized `Draft.DocumentDataNotReady` refusal
+remains. Table-only confirmation is unchanged.
+
+`GET .../ontology/draft` optionally returns `dataset_preparation` with business
+progress (`state`, `ready`, `total`) for the current model and source selection.
+Old preparations are marked stale; an abandoned synchronous preparation stops
+appearing active after the bounded request window. Confirm again after reloading
+to reuse the same generation and verify previously prepared resources.
+
+Document objects bind their own Dataset; grounded business relationships and
+many-to-many proof associations bind existing indirect-relation resources.
+Relation attributes preserve locations, property-level claims and independent
+supporting evidence. A regular collision-safe field mirrors stable `_id` for
+ontology key/filter bindings because Vega keeps `_id` as index metadata.
+
+The fixed evidence graph distinguishes an image resource from every native
+occurrence and supports all occurrence-to-block associations, including images
+without OCR. New business evidence references are many-to-many; valid legacy
+direct references retain their human decisions. The `source_quote` column always
+exists. Original blocks and images are materialized only when the source enables
+original-text retrieval. This preparation feature does not complete a background instance coordinator,
+reconciliation or publication.
+
+
+### Dual-source identity and field authority
+
+A one-to-one same-business relation may use a human-confirmed business number
+without changing the structured object's primary key. Saving with explicit
+`verify_business_identity: true` checks the physical field and performs a full-table
+count/distinct/null/blank scan under the current caller. Client or Agent proof is
+rejected. Pending mappings remain unadopted; confirmation repeats verification
+before Dataset preparation and compilation.
+
+The existing document object save accepts `document.dual_source`: the selected
+system relation, main file class and per-field placement. System-only and shared
+fields stay table-authoritative; text-only current fields stay on `_doc`; temporal
+fields belong to existing fact/event models. Fusion follows effective time,
+evidence strength, then recorded time. The server validates already-extracted
+models without inventing fields or moving definitions. Only explicit `confirm: true`
+records server-owned actor/time/signature. `clear: true` removes the decision but
+cannot bypass an adopted identity bridge. Participating schemas, table mappings,
+main-document scope and source revisions invalidate old confirmations. A field-plan
+change alone is persisted in the normal draft decision history.
+
+New unreviewed global document candidates receive `_doc` API names before entering
+the human candidate list, with all proposal references updated consistently.
+Naming collisions are refused; existing human draft identities are preserved.
+Field approval checks semantic role/mapping rather than blocking legacy ids on a
+new naming convention. Integral SQL DECIMAL counts are parsed exactly, without
+floating-point rounding; fractional/overflow values still fail verification.

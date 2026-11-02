@@ -33,6 +33,15 @@ func snapshot(ot *interfaces.DraftObjectType) interfaces.DraftObjectTypeSnapshot
 		DisplayKey:  ot.DisplayKey,
 	}
 	if ot.Document != nil {
+		if ot.Document.DualSource != nil {
+			plan := *ot.Document.DualSource
+			plan.State = ""
+			plan.Fields = slices.Clone(plan.Fields)
+			for index := range plan.Fields {
+				plan.Fields[index].EvidenceOrder = slices.Clone(plan.Fields[index].EvidenceOrder)
+			}
+			s.DualSource = &plan
+		}
 		s.Document = &interfaces.DraftDocumentSettings{TimeProperty: ot.Document.TimeProperty, ParticipantRelations: append([]string(nil), ot.Document.ParticipantRelations...)}
 	}
 	for _, p := range ot.Properties {
@@ -159,7 +168,7 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 }
 
 func snapshotsEqual(a interfaces.DraftObjectTypeSnapshot, b interfaces.DraftObjectTypeSnapshot) bool {
-	return reflect.DeepEqual(a.Properties, b.Properties) && slices.Equal(a.PrimaryKeys, b.PrimaryKeys) && a.DisplayKey == b.DisplayKey && reflect.DeepEqual(a.Document, b.Document)
+	return reflect.DeepEqual(a.Properties, b.Properties) && slices.Equal(a.PrimaryKeys, b.PrimaryKeys) && a.DisplayKey == b.DisplayKey && reflect.DeepEqual(a.Document, b.Document) && reflect.DeepEqual(a.DualSource, b.DualSource)
 }
 
 // saveProperties makes the object type's properties those saved, refusing a property that maps a

@@ -22,6 +22,15 @@ import (
 func documentEditError(ctx context.Context) error {
 	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidProperty)
 }
+func documentValidationError(ctx context.Context, err error) error {
+	var scope *kbconcept.RelationScopeError
+	if errors.As(err, &scope) {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentRelationScope).
+			WithMetadata(map[string]any{"name": scope.Name}).
+			WithErrorDetails(map[string]any{"relation_id": scope.ID, "relation_name": scope.Name})
+	}
+	return documentEditError(ctx)
+}
 func (s *draftService) documentEditInput(ctx context.Context, token string, draft *interfaces.Draft, model *interfaces.DraftDocumentModel) (*kbconcept.SampleInput, error) {
 	providers, enabled := kb.Lookup()
 	if !enabled || s.kbResources == nil {
@@ -137,9 +146,14 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 		}
 		checked, err := kbconcept.ValidateEditedObject(input, draft.Items, original, edited)
 		if err != nil {
-			return nil, documentEditError(ctx)
+			return nil, documentValidationError(ctx, err)
 		}
 		edited = checked
+	}
+	if save.Document != nil && save.Document.DualSource != nil {
+		if err := applySourceFieldDecision(ctx, draft, edited, save.Document.DualSource, caller); err != nil {
+			return nil, err
+		}
 	}
 	// No vega table scan or key counting applies to a document extraction schema.
 	name, description := edited.Name, edited.Description

@@ -5,6 +5,7 @@ package kbconcept
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T) {
-	for _, scenario := range []string{"instruction", "readonly", "quote", "missing_examples", "role", "type", "identity"} {
+	for _, scenario := range []string{"instruction", "readonly", "quote", "missing_examples", "role", "type", "identity", "prepared"} {
 		t.Run(scenario, func(t *testing.T) {
 			input := modelInput("订单 O-1")
 			validated, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "order_doc", "entity")}})
@@ -21,6 +22,15 @@ func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T
 			}
 			original := validated.ObjectTypes[0]
 			original.Adopted = true
+			if scenario == "prepared" {
+				original.Table = interfaces.DraftTable{ResourceID: "prepared", CatalogID: "private"}
+				for _, field := range original.Properties {
+					field.MappedField = field.Name
+					if field.Name == "_id" {
+						field.MappedField = "bkn_record_id"
+					}
+				}
+			}
 			raw, _ := json.Marshal(original)
 			edited := &interfaces.DraftObjectType{}
 			_ = json.Unmarshal(raw, edited)
@@ -41,7 +51,7 @@ func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T
 				edited.PrimaryKeys = nil
 			}
 			result, err := ValidateEditedObject(input, interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{original}}, original, edited)
-			success := scenario == "instruction" || scenario == "identity"
+			success := scenario == "instruction" || scenario == "identity" || scenario == "prepared"
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}
@@ -56,6 +66,9 @@ func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T
 			}
 			if scenario == "identity" && (!result.NeedsIdentity || result.Adopted) {
 				t.Fatal("missing identity stayed adopted")
+			}
+			if scenario == "prepared" && (result.Table.ResourceID != "" || result.Properties[0].MappedField != "") {
+				t.Fatal("an edited model kept a physical binding from the old generation")
 			}
 			if original.Properties[0].Extraction.Examples[0].Quote != "" {
 				t.Fatal("stored proof was hydrated in place")
@@ -81,11 +94,17 @@ func TestDocumentRelationEditsValidateBothModesAgainstCurrentSchema(t *testing.T
 	original := initial.RelationTypes[0]
 	original.Adopted = true
 	existing.RelationTypes = initial.RelationTypes
-	for _, scenario := range []string{"linking", "same_document", "unknown", "forged"} {
+	for _, scenario := range []string{"linking", "same_document", "unknown", "forged", "prepared"} {
 		t.Run(scenario, func(t *testing.T) {
 			raw, _ := json.Marshal(original)
 			edited := &interfaces.DraftRelationType{}
 			_ = json.Unmarshal(raw, edited)
+			if scenario == "prepared" {
+				edited.LinkTable = &interfaces.DraftTable{ResourceID: "backing", CatalogID: "private"}
+				edited.SourceMapping = []interfaces.DraftFieldMapping{{SourceProperty: "_id", TargetProperty: "source_record_id"}}
+				original.LinkTable = edited.LinkTable
+				original.SourceMapping = edited.SourceMapping
+			}
 			switch scenario {
 			case "same_document":
 				edited.DocumentMapping = &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}
@@ -95,15 +114,12 @@ func TestDocumentRelationEditsValidateBothModesAgainstCurrentSchema(t *testing.T
 				edited.Document.Citations[0].Quote = "not in source"
 			}
 			result, err := ValidateEditedRelation(input, existing, original, edited)
-			success := scenario == "linking" || scenario == "same_document"
+			success := scenario == "linking" || scenario == "prepared"
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}
 			if success && (!result.Adopted || result.Document.Citations[0].Quote != "" || result.Verification != "confirmed") {
 				t.Fatal("adoption/proof policy changed")
-			}
-			if scenario == "same_document" && len(result.Mapping) != 2 {
-				t.Fatal("document constraint lost")
 			}
 		})
 	}
@@ -118,5 +134,26 @@ func TestEvidenceEdgesDoNotSatisfyEventParticipants(t *testing.T) {
 	existing := interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "source_document", Document: &interfaces.DraftDocumentModel{Role: "evidence_document"}}}, RelationTypes: []*interfaces.DraftRelationType{{ID: "event_evidence", Source: "delivery", Target: "source_document", Document: &interfaces.DraftDocumentModel{Role: "evidence_reference"}}}}
 	if _, err := ValidateModel(input, existing, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{event}}); err == nil {
 		t.Fatal("technical evidence reference counted as an event participant")
+	}
+}
+
+func TestObjectEditCannotPreserveGlobalEntitySameDocumentJoin(t *testing.T) {
+	input := modelInput("Order O-1 appears in source file F-1")
+	result, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "order_doc", "entity"), proposedObject(input, "order_file", "file")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := result.ObjectTypes[0]
+	raw, _ := json.Marshal(original)
+	var candidate interfaces.DraftObjectType
+	if err := json.Unmarshal(raw, &candidate); err != nil {
+		t.Fatal(err)
+	}
+	candidate.Properties[0].Extraction.Instruction = "Read the explicit business identifier"
+	legacy := &interfaces.DraftRelationType{ID: "legacy_join", Source: "order_doc", Target: "order_file", DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}, Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: "number", TargetProperty: "number"}}}
+	_, err = ValidateEditedObject(input, interfaces.DraftItems{ObjectTypes: result.ObjectTypes, RelationTypes: []*interfaces.DraftRelationType{legacy}}, original, &candidate)
+	var scope *RelationScopeError
+	if !errors.As(err, &scope) || scope.ID != "legacy_join" || !errors.Is(err, ErrInvalidModel) {
+		t.Fatal("missing actionable legacy relation refusal", err)
 	}
 }

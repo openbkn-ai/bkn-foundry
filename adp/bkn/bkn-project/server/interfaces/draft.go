@@ -98,16 +98,21 @@ var ErrDraftHasDecisions = errors.New("draft has decisions")
 const SOURCE_OF_RECORD_TABLE = "table"
 
 type Draft struct {
-	ProjectID  string      `json:"project_id"`
-	Status     string      `json:"status"`
-	Items      DraftItems  `json:"items"`
-	Error      string      `json:"error"`
-	Drafter    AccountInfo `json:"drafter"`
-	CreateTime int64       `json:"create_time"`
-	UpdateTime int64       `json:"update_time"`
+	DatasetPreparation *DatasetPreparation `json:"dataset_preparation,omitempty"`
+	ProjectID          string              `json:"project_id"`
+	Status             string              `json:"status"`
+	Items              DraftItems          `json:"items"`
+	Error              string              `json:"error"`
+	Drafter            AccountInfo         `json:"drafter"`
+	CreateTime         int64               `json:"create_time"`
+	UpdateTime         int64               `json:"update_time"`
 }
 
 type DraftItems struct {
+	// DatasetPlans retains preparation attempts as process metadata. It contains
+	// no extracted rows, source text or credentials.
+	DatasetPlans []*DraftDatasetPlan `json:"dataset_plans,omitempty"`
+
 	ObjectTypes   []*DraftObjectType    `json:"object_types"`
 	RelationTypes []*DraftRelationType  `json:"relation_types"`
 	ValueTypes    []*DraftValueType     `json:"value_types"`
@@ -322,6 +327,8 @@ type DraftKeyEvidence struct {
 }
 
 type DraftRelationType struct {
+	// Properties are the server-managed evidence attributes of an indirect document relation.
+	Properties      []*DraftProperty      `json:"properties,omitempty"`
 	Document        *DraftDocumentModel   `json:"document,omitempty"`
 	DocumentMapping *DraftDocumentMapping `json:"document_mapping,omitempty"`
 	ID              string                `json:"id"`
@@ -584,6 +591,7 @@ type DraftMappedField struct {
 
 // DraftObjectTypeSnapshot is what saving an object type records of it, before and after.
 type DraftObjectTypeSnapshot struct {
+	DualSource  *DraftDualSourcePlan    `json:"dual_source,omitempty"`
 	Document    *DraftDocumentSettings  `json:"document,omitempty"`
 	Properties  []DraftPropertySnapshot `json:"properties"`
 	PrimaryKeys []string                `json:"primary_keys"`
@@ -653,16 +661,17 @@ const (
 // of each end to its fields. ID is taken when making one, else made from the ends. UpdateTime is the
 // update time of the draft the change was made on.
 type DraftRelationTypeSave struct {
-	DocumentMapping    *DraftDocumentMapping `json:"document_mapping,omitempty"`
-	Cardinality        string                `json:"cardinality,omitempty"`
-	UpdateTime         int64                 `json:"update_time"`
-	ID                 string                `json:"id"`
-	Name               string                `json:"name"`
-	Comment            string                `json:"comment"`
-	SourceObjectTypeID string                `json:"source_object_type_id"`
-	TargetObjectTypeID string                `json:"target_object_type_id"`
-	Type               string                `json:"type"`
-	MappingRules       json.RawMessage       `json:"mapping_rules"`
+	VerifyBusinessIdentity bool                  `json:"verify_business_identity,omitempty"`
+	DocumentMapping        *DraftDocumentMapping `json:"document_mapping,omitempty"`
+	Cardinality            string                `json:"cardinality,omitempty"`
+	UpdateTime             int64                 `json:"update_time"`
+	ID                     string                `json:"id"`
+	Name                   string                `json:"name"`
+	Comment                string                `json:"comment"`
+	SourceObjectTypeID     string                `json:"source_object_type_id"`
+	TargetObjectTypeID     string                `json:"target_object_type_id"`
+	Type                   string                `json:"type"`
+	MappingRules           json.RawMessage       `json:"mapping_rules"`
 }
 
 // DraftRelationMapping is a mapping as bkn-backend's: a property, or a backing resource's field, by

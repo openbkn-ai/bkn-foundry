@@ -26,7 +26,7 @@ func (s *draftService) documentAskObject(ctx context.Context, token string, draf
 	}
 	checked, err := kbconcept.ValidateEditedObject(input, draft.Items, original, working)
 	if err != nil {
-		return nil, askObjectType{}, documentEditError(ctx)
+		return nil, askObjectType{}, documentValidationError(ctx, err)
 	}
 	asked := askObjectTypeOf(checked)
 	remaining, examples := 4000, 0

@@ -135,6 +135,10 @@ func (s *Service) Extract(ctx context.Context, token, project string, caller int
 		}
 		return &ExtractResult{Draft: draft}, nil
 	}
+	proposal, err = PrepareProposalNames(draft.Items, proposal)
+	if err != nil {
+		return nil, err
+	}
 	model, err := ValidateModel(input, draft.Items, proposal)
 	if err != nil {
 		return nil, err

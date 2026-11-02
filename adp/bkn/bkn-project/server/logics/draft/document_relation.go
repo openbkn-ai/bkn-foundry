@@ -34,6 +34,9 @@ func documentRelationCandidate(original *interfaces.DraftRelationType, save inte
 	return candidate, nil
 }
 func (s *draftService) saveDocumentRelation(ctx context.Context, token string, draft *interfaces.Draft, original *interfaces.DraftRelationType, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	if save.DocumentMapping != nil && save.DocumentMapping.BusinessIdentity != nil {
+		return nil, invalidRelation(ctx, nil)
+	}
 	if (save.Type != "" && save.Type != "direct") || (len(save.MappingRules) > 0 && string(save.MappingRules) != "null") {
 		return nil, invalidRelation(ctx, map[string]any{"reason": relationNoMapping})
 	}
@@ -57,6 +60,13 @@ func (s *draftService) saveDocumentRelation(ctx context.Context, token string, d
 			return nil, invalidRelation(ctx, nil)
 		}
 	}
+	if save.VerifyBusinessIdentity {
+		proof, err := s.verifyBusinessIdentity(ctx, draft, candidate, caller)
+		if err != nil {
+			return nil, err
+		}
+		candidate.DocumentMapping.BusinessIdentity = proof
+	}
 	name, description := candidate.Name, candidate.Description
 	*original = *candidate
 	original.Name, original.Description, original.Adopted = beforeName, beforeDescription, beforeAdopted
@@ -65,6 +75,11 @@ func (s *draftService) saveDocumentRelation(ctx context.Context, token string, d
 		adopted := false
 		edit.Adopted = &adopted
 		original.ProposedBecause = proposedEndNotAdopted
+	}
+	if beforeAdopted && original.DocumentMapping != nil && original.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(draft.Items, original) {
+		adopted := false
+		edit.Adopted = &adopted
+		original.ProposedBecause = ""
 	}
 	decisions, err := applyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_RELATION_TYPES, original.ID, edit)
 	if err != nil {
@@ -80,6 +95,9 @@ func (s *draftService) saveDocumentRelation(ctx context.Context, token string, d
 	return draft, nil
 }
 func (s *draftService) createDocumentRelation(ctx context.Context, token string, draft *interfaces.Draft, relation *interfaces.DraftRelationType, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	if save.DocumentMapping != nil && save.DocumentMapping.BusinessIdentity != nil {
+		return nil, invalidRelation(ctx, nil)
+	}
 	source := findObjectType(&draft.Items, save.SourceObjectTypeID)
 	if source == nil || source.Document == nil || strings.HasPrefix(source.Document.Role, "evidence_") || save.DocumentMapping == nil {
 		return nil, invalidRelation(ctx, nil)
@@ -100,10 +118,21 @@ func (s *draftService) createDocumentRelation(ctx context.Context, token string,
 	if err != nil {
 		return nil, invalidRelation(ctx, nil)
 	}
+	if save.VerifyBusinessIdentity {
+		proof, err := s.verifyBusinessIdentity(ctx, draft, checked, caller)
+		if err != nil {
+			return nil, err
+		}
+		checked.DocumentMapping.BusinessIdentity = proof
+	}
 	checked.Origin = interfaces.DRAFT_ORIGIN_MANUAL
 	checked.Adopted = objectTypeAdopted(&draft.Items, checked.Source) && objectTypeAdopted(&draft.Items, checked.Target)
 	if !checked.Adopted {
 		checked.ProposedBecause = proposedEndNotAdopted
+	}
+	if checked.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(draft.Items, checked) {
+		checked.Adopted = false
+		checked.ProposedBecause = ""
 	}
 	draft.Items.RelationTypes = append(draft.Items.RelationTypes, checked)
 	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: checked.ID, Action: interfaces.DRAFT_DECISION_CREATE, After: relationSnapshot(checked)}}

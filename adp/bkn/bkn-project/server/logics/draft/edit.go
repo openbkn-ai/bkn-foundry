@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // People edit a ready draft item by item. Each change is recorded as a decision with what it
@@ -152,6 +153,13 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 			if r.ID == id && (!objectTypeAdopted(items, r.Source) || !objectTypeAdopted(items, r.Target)) {
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EndpointNotAdopted)
 			}
+			if r.ID == id && r.DocumentMapping != nil && r.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(*items, r) {
+				if kbconcept.BusinessIdentityTarget(*items, r) != nil {
+					return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_BusinessIdentityNotVerified)
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
+			}
+
 		}
 	}
 
@@ -368,7 +376,24 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 			}
 		}
 	}
-	if err := s.commit(ctx, draft, decisions, caller); err != nil {
+	var document *interfaces.DraftDocumentModel
+	if kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		if object := findObjectType(&draft.Items, itemID); object != nil {
+			document = object.Document
+		}
+	}
+	if kind == interfaces.DRAFT_KIND_RELATION_TYPES {
+		if relation := findRelationType(&draft.Items, itemID); relation != nil {
+			document = relation.Document
+		}
+	}
+	write := s.commit
+	if document != nil {
+		write = func(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo) error {
+			return s.commitDocumentEdit(ctx, draft, decisions, caller, document)
+		}
+	}
+	if err := write(ctx, draft, decisions, caller); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
 	}

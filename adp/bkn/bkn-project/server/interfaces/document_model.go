@@ -8,6 +8,7 @@ package interfaces
 // Layer, selection identity and adoption are checked/set by core, never trusted
 // from an Agent. An absent Document retains the existing table workflow.
 type DraftDocumentModel struct {
+	DualSource           *DraftDualSourcePlan  `json:"dual_source,omitempty"`
 	Role                 string                `json:"role"`
 	Layer                string                `json:"layer"`
 	Reason               string                `json:"reason"`
@@ -36,16 +37,36 @@ type DraftExtractionField struct {
 // DraftDocumentMapping has no table projection. Linking resolves a mention to a
 // target identity; same_document joins document_id plus the explicit name pair.
 type DraftDocumentMapping struct {
-	Mode               string `json:"mode"`
-	MentionProperty    string `json:"mention_property,omitempty"`
-	IdentityProperty   string `json:"identity_property,omitempty"`
-	SourceNameProperty string `json:"source_name_property,omitempty"`
-	TargetNameProperty string `json:"target_name_property,omitempty"`
+	BusinessIdentity   *DraftBusinessIdentityEvidence `json:"business_identity,omitempty"`
+	Mode               string                         `json:"mode"`
+	MentionProperty    string                         `json:"mention_property,omitempty"`
+	IdentityProperty   string                         `json:"identity_property,omitempty"`
+	SourceNameProperty string                         `json:"source_name_property,omitempty"`
+	TargetNameProperty string                         `json:"target_name_property,omitempty"`
 }
 
 // DraftDocumentSettings contains the editable event fields; role, layer and
 // source evidence remain server-owned metadata.
 type DraftDocumentSettings struct {
-	TimeProperty         string   `json:"time_property"`
-	ParticipantRelations []string `json:"participant_relations"`
+	DualSource           *DualSourceDecision `json:"dual_source,omitempty"`
+	TimeProperty         string              `json:"time_property"`
+	ParticipantRelations []string            `json:"participant_relations"`
+}
+
+// DraftBusinessIdentityEvidence is created only by a human-requested full-table
+// verification. It never changes the system object's original primary key.
+// Confirmation/builds must recheck current counts; this snapshot is not a lease
+// guaranteeing that an independently changing source table remains unique.
+type DraftBusinessIdentityEvidence struct {
+	TargetObjectTypeID string      `json:"target_object_type_id"`
+	ResourceID         string      `json:"resource_id"`
+	Property           string      `json:"property"`
+	MappedField        string      `json:"mapped_field"`
+	Type               string      `json:"type"`
+	Rows               int64       `json:"rows"`
+	Distinct           int64       `json:"distinct"`
+	Nulls              int64       `json:"nulls"`
+	Blanks             int64       `json:"blanks"`
+	ConfirmedBy        AccountInfo `json:"confirmed_by"`
+	CheckedAt          int64       `json:"checked_at"`
 }

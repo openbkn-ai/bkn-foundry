@@ -89,6 +89,7 @@ func Test_DraftService(t *testing.T) {
 					So(d.CreateTime-staleBefore, ShouldEqual, (2 * time.Minute).Milliseconds())
 					// The replaced draft had been confirmed: StartDraft hands on what it wrote.
 					d.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "c1", Files: []string{"object_types/old.bkn"}}
+					d.Items.DatasetPlans = []*interfaces.DraftDatasetPlan{{ID: "retained-generation", Datasets: []interfaces.DraftDatasetSpec{{ResourceID: "previously-created", Ready: true}}}}
 					return true, nil
 				})
 			levels := table("r_levels", "c1", "levels", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
@@ -121,6 +122,8 @@ func Test_DraftService(t *testing.T) {
 			So(finished.Items.ValueTypes[0].ID, ShouldEqual, "levels")
 			// The new draft keeps what the last confirmation wrote, to replace or remove it.
 			So(finished.Items.Confirmation.Files, ShouldResemble, []string{"object_types/old.bkn"})
+			So(finished.Items.DatasetPlans, ShouldHaveLength, 1)
+			So(finished.Items.DatasetPlans[0].Datasets[0].ResourceID, ShouldEqual, "previously-created")
 			So(finished.Items.Unreadable, ShouldResemble, []*interfaces.DraftTable{
 				{ResourceID: "r_hidden", Name: "hidden", CatalogID: "c1", Reason: unreadableNotVisible},
 				{ResourceID: "r_empty", Name: "empty", CatalogID: "c1", Reason: unreadableNoStructure},
@@ -227,7 +230,10 @@ func Test_DraftService(t *testing.T) {
 		Convey("A failure reading vega-backend fails the draft with its reason\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64, _ bool) (bool, error) {
+				d.Items.DatasetPlans = []*interfaces.DraftDatasetPlan{{ID: "retained-generation"}}
+				return true, nil
+			})
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, errors.New("connection refused"))
 			var finished *interfaces.Draft
 			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
@@ -237,6 +243,8 @@ func Test_DraftService(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_FAILED)
+			So(finished.Items.DatasetPlans, ShouldHaveLength, 1)
+			So(finished.Items.DatasetPlans[0].ID, ShouldEqual, "retained-generation")
 			So(finished.Error, ShouldContainSubstring, "connection refused")
 		})
 
@@ -340,4 +348,22 @@ func Test_DraftService(t *testing.T) {
 			So(svc.FailInterrupted(ctx), ShouldNotBeNil)
 		})
 	})
+}
+
+type unavailablePreparationState struct{ interfaces.KBResourceAccess }
+
+func (unavailablePreparationState) Read(context.Context, string) (*interfaces.KBResourceState, error) {
+	return nil, errors.New("unavailable progress storage")
+}
+func TestGetDraftKeepsAuthorizedDraftWhenProgressProjectionFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	access := pmock.NewMockDraftAccess(ctrl)
+	projects := pmock.NewMockProjectService(ctrl)
+	projects.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil)
+	access.EXPECT().GetDraft(gomock.Any(), "p1").Return(&interfaces.Draft{ProjectID: "p1", Status: "ready", Items: interfaces.DraftItems{DatasetPlans: []*interfaces.DraftDatasetPlan{{ID: "prior-generation"}}}}, true, nil)
+	service := &draftService{da: access, ps: projects, kbResources: unavailablePreparationState{}}
+	result, err := service.GetDraft(context.Background(), token, "p1")
+	if err != nil || result == nil || result.DatasetPreparation != nil || len(result.Items.DatasetPlans) != 1 {
+		t.Fatal("display-only failure hid the authorized draft", err)
+	}
 }

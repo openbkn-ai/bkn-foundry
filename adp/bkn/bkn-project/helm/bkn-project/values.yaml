@@ -145,3 +145,9 @@ resources:
   limits:
     cpu: 1
     memory: 1Gi
+
+# Professional document storage uses an existing app account with resource_manage
+# on a dedicated catalog. These are identifiers, not passwords or user tokens.
+datasetStorage:
+  accountID: ""
+  catalogID: ""

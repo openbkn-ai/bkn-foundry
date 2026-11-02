@@ -23,6 +23,7 @@ type EvidenceSet struct {
 	DocumentID string
 	BlockID    string
 	ImageID    string
+	MediaID    string
 }
 
 func evidenceLabel(language, key, fallback string) string {
@@ -47,8 +48,17 @@ func schemaMatches(object *interfaces.DraftObjectType, fields []managedField) bo
 	}
 	for _, field := range fields {
 		p := property(object, field.Name)
-		if p == nil || p.Type != field.Type || !p.ReadOnly || p.Extraction != nil || p.SourceOfRecord != "document" || p.MappedField != "" {
+		if p == nil || p.Type != field.Type || !p.ReadOnly || p.Extraction != nil || p.SourceOfRecord != "document" {
 			return false
+		}
+		if p.MappedField != "" {
+			expected := field.Name
+			if field.Name == "_id" {
+				expected = "bkn_record_id"
+			}
+			if object.Table.ResourceID == "" || p.MappedField != expected {
+				return false
+			}
 		}
 	}
 	return true
@@ -80,6 +90,7 @@ func BuildEvidence(input *SampleInput, existing interfaces.DraftItems) (*Evidenc
 	}{
 		{"evidence_document", "source_document", "document", "Source document", []managedField{{"_id", "string", "Record identifier"}, {"knowledge_base_id", "string", "Knowledge base"}, {"file_id", "string", "File"}, {"content_version_id", "string", "Content version"}, {"name", "string", "File name"}}, &result.DocumentID},
 		{"evidence_block", "source_block", "block", "Source block", []managedField{{"_id", "string", "Record identifier"}, {"document_id", "string", "Document"}, {"content_version_id", "string", "Content version"}, {"block_id", "string", "Source block"}, {"source_start", "integer", "Quote start"}, {"source_end", "integer", "Quote end"}, {"source_quote", "text", "Source quote"}}, &result.BlockID},
+		{"evidence_media", "source_media", "media", "Image resource", []managedField{{"_id", "string", "Record identifier"}, {"document_id", "string", "Document"}, {"content_version_id", "string", "Content version"}, {"media_id", "string", "Image resource"}, {"mime_type", "string", "Media type"}}, &result.MediaID},
 		{"evidence_image", "source_image", "image", "Source image", []managedField{{"_id", "string", "Record identifier"}, {"document_id", "string", "Document"}, {"content_version_id", "string", "Content version"}, {"block_id", "string", "Source block"}, {"image_ref", "string", "Image reference"}}, &result.ImageID},
 	}
 	language := input.Request.NamingLanguage
@@ -110,7 +121,7 @@ func BuildEvidence(input *SampleInput, existing interfaces.DraftItems) (*Evidenc
 		}
 		result.Model.ObjectTypes = append(result.Model.ObjectTypes, object)
 	}
-	for _, child := range []struct{ id, prefix, label, fallback string }{{result.BlockID, "source_document_has_blocks", "contains_blocks", "Contains source blocks"}, {result.ImageID, "source_document_has_images", "contains_images", "Contains source images"}} {
+	for _, child := range []struct{ id, prefix, label, fallback string }{{result.BlockID, "source_document_has_blocks", "contains_blocks", "Contains source blocks"}, {result.ImageID, "source_document_has_images", "contains_images", "Contains source images"}, {result.MediaID, "source_document_has_media", "contains_media", "Contains image resources"}} {
 		found := false
 		for _, r := range existing.RelationTypes {
 			if r == nil || r.Document == nil || r.Document.Role != "evidence_contains" || r.Source != result.DocumentID || r.Target != child.id {
@@ -134,36 +145,26 @@ func BuildEvidence(input *SampleInput, existing interfaces.DraftItems) (*Evidenc
 
 func buildEvidenceReferences(input *SampleInput, existing interfaces.DraftItems, result *EvidenceSet, used map[string]bool) error {
 	for _, source := range existing.ObjectTypes {
-		if source == nil || source.Document == nil || source.Document.Role == "entity" || strings.HasPrefix(source.Document.Role, "evidence_") {
+		if source == nil || source.Document == nil || strings.HasPrefix(source.Document.Role, "evidence_") {
 			continue
 		}
 		if _, ok := roleLayers[source.Document.Role]; !ok || source.Document.Role == "relation" {
 			return ErrInvalidModel
 		}
-		for _, target := range []struct {
-			id, label, fallback string
-			mapping             []interfaces.DraftFieldMapping
-		}{
-			{result.DocumentID, "reference_document", "Source document", []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "_id"}}},
-			{result.BlockID, "reference_block", "Source block", []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: "content_version_id", TargetProperty: "content_version_id"}, {SourceProperty: "block_id", TargetProperty: "block_id"}}},
+		for _, target := range []struct{ id, label, fallback string }{
+			{result.DocumentID, "reference_document", "Source document"},
+			{result.BlockID, "reference_block", "Source block"},
+			{result.ImageID, "reference_image", "Image occurrence"},
 		} {
-			for _, m := range target.mapping {
-				if property(source, m.SourceProperty) == nil {
-					return ErrInvalidModel
-				}
-			}
+			// Preserve previously confirmed direct references. New provenance edges
+			// are many-to-many so attributes can cite several documents/blocks.
 			found := false
 			for _, r := range existing.RelationTypes {
 				if r == nil || r.Document == nil || r.Document.Role != "evidence_reference" || r.Source != source.ID || r.Target != target.id {
 					continue
 				}
-				if found || r.Cardinality != interfaces.DRAFT_CARDINALITY_MANY_TO_ONE || len(r.Mapping) != len(target.mapping) || r.DocumentMapping == nil || r.DocumentMapping.Mode != "evidence" {
+				if found || r.DocumentMapping == nil || r.DocumentMapping.Mode != "evidence" || !validEvidenceReference(source, r, result) {
 					return ErrInvalidModel
-				}
-				for index, m := range r.Mapping {
-					if m != target.mapping[index] {
-						return ErrInvalidModel
-					}
 				}
 				found = true
 			}
@@ -183,8 +184,58 @@ func buildEvidenceReferences(input *SampleInput, existing interfaces.DraftItems,
 			if utf8.RuneCountInString(label) > 128 {
 				label = string([]rune(label)[:128])
 			}
-			result.Model.RelationTypes = append(result.Model.RelationTypes, &interfaces.DraftRelationType{ID: id, Name: label, Source: source.ID, Target: target.id, Cardinality: interfaces.DRAFT_CARDINALITY_MANY_TO_ONE, Origin: "document_template", Verification: "confirmed", Mapping: target.mapping, Document: &interfaces.DraftDocumentModel{Role: "evidence_reference", Layer: source.Document.Layer, Reason: evidenceLabel(input.Request.NamingLanguage, "reason", "Locate the original evidence"), SelectionID: input.SelectionID, SelectionRevision: input.SelectionRevision, Citations: []interfaces.DraftSourceCitation{}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "evidence"}})
+			result.Model.RelationTypes = append(result.Model.RelationTypes, evidenceRelation(input, id, label, source.ID, target.id, "evidence_reference", source.Document.Layer))
+		}
+	}
+	// A resource can occur repeatedly and one occurrence can span several blocks.
+	for _, edge := range []struct{ source, target, role, prefix, label, fallback string }{
+		{result.MediaID, result.ImageID, "evidence_occurrence", "source_media_occurrences", "occurrences", "Image occurrences"},
+		{result.ImageID, result.BlockID, "evidence_occurrence", "source_image_blocks", "image_blocks", "Image source blocks"},
+	} {
+		found := false
+		for _, r := range existing.RelationTypes {
+			if r == nil || r.Document == nil || r.Document.Role != edge.role || r.Source != edge.source || r.Target != edge.target {
+				continue
+			}
+			if found || r.Cardinality != interfaces.DRAFT_CARDINALITY_MANY_TO_MANY || len(r.Mapping) != 0 || r.DocumentMapping == nil || r.DocumentMapping.Mode != "evidence" {
+				return ErrInvalidModel
+			}
+			found = true
+		}
+		if !found {
+			result.Model.RelationTypes = append(result.Model.RelationTypes, evidenceRelation(input, freeModelID(edge.prefix, used), evidenceLabel(input.Request.NamingLanguage, edge.label, edge.fallback), edge.source, edge.target, edge.role, "evidence"))
 		}
 	}
 	return nil
+}
+
+func evidenceRelation(input *SampleInput, id, name, source, target, role, layer string) *interfaces.DraftRelationType {
+	return &interfaces.DraftRelationType{ID: id, Name: name, Source: source, Target: target, Cardinality: interfaces.DRAFT_CARDINALITY_MANY_TO_MANY, Origin: "document_template", Verification: "confirmed", Document: &interfaces.DraftDocumentModel{Role: role, Layer: layer, Reason: evidenceLabel(input.Request.NamingLanguage, "reason", "Locate the original evidence"), SelectionID: input.SelectionID, SelectionRevision: input.SelectionRevision, Citations: []interfaces.DraftSourceCitation{}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "evidence"}}
+}
+
+func validEvidenceReference(source *interfaces.DraftObjectType, r *interfaces.DraftRelationType, result *EvidenceSet) bool {
+	if r.Cardinality == interfaces.DRAFT_CARDINALITY_MANY_TO_MANY {
+		return len(r.Mapping) == 0
+	}
+	if source.Document.Role == "entity" || r.Cardinality != interfaces.DRAFT_CARDINALITY_MANY_TO_ONE {
+		return false
+	}
+	var expected []interfaces.DraftFieldMapping
+	switch r.Target {
+	case result.DocumentID:
+		expected = []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "_id"}}
+	case result.BlockID:
+		expected = []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: "content_version_id", TargetProperty: "content_version_id"}, {SourceProperty: "block_id", TargetProperty: "block_id"}}
+	default:
+		return false
+	}
+	if len(r.Mapping) != len(expected) {
+		return false
+	}
+	for i, mapping := range expected {
+		if r.Mapping[i] != mapping || property(source, mapping.SourceProperty) == nil {
+			return false
+		}
+	}
+	return true
 }

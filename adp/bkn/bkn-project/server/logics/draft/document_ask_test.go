@@ -108,12 +108,16 @@ func TestDocumentRelationAssistantChecksNativeMappingsWithoutTableCounts(t *test
 	json.Unmarshal(raw, target)
 	target.ID = "invoice_doc"
 	draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, target)
+	for _, object := range draft.Items.ObjectTypes {
+		object.Document.Role, object.Document.Layer = "file", "fact"
+		object.PrimaryKeys = []string{"_id"}
+	}
 	state, _ := documentSaveSelection{}.Read(context.Background(), "p")
 	input, err := kbconcept.LoadSamples(context.Background(), &documentSaveSource{}, state.Current, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := &interfaces.DraftRelationType{ID: "order_invoice", Name: "Related invoice", Source: "order_doc", Target: "invoice_doc", Origin: interfaces.DRAFT_ORIGIN_MANUAL, Cardinality: "many_to_one", Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "number", TargetProperty: "number"}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}, Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: "Explicit number", Citations: draft.Items.ObjectTypes[0].Document.Citations, SelectionID: "lock", SelectionRevision: 7}}
+	original := &interfaces.DraftRelationType{ID: "order_invoice", Name: "Related invoice", Source: "order_doc", Target: "invoice_doc", Origin: interfaces.DRAFT_ORIGIN_MANUAL, Cardinality: "many_to_one", Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "number", TargetProperty: "_id"}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "_id"}, Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: "Explicit number", Citations: draft.Items.ObjectTypes[0].Document.Citations, SelectionID: "lock", SelectionRevision: 7}}
 	draft.Items.RelationTypes = []*interfaces.DraftRelationType{original}
 	before, _ := json.Marshal(original)
 	out := askRevisionOutput{Field: interfaces.DRAFT_ASK_REVISION_ENDS, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}, Cardinality: "one_to_many"}
