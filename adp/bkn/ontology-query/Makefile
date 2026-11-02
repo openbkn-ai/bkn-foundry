@@ -1,9 +1,10 @@
 .DEFAULT_GOAL := help
-.PHONY: help generate-mock lint test test-cover test-race ci clean-test
+.PHONY: help generate-mock lint test test-helm test-cover test-race ci clean-test
 
 help:
 	@echo "ontology-query - 可用命令:"
 	@echo "  make test             - 运行单元测试"
+	@echo "  make test-helm        - Check rendered metric snapshot configuration"
 	@echo "  make test-cover       - 运行单元测试 + 覆盖率"
 	@echo "  make test-race        - 运行单元测试 + 竞态检测"
 	@echo "  make lint             - 静态检查"
@@ -20,6 +21,9 @@ UT_PACKAGES = $(shell cd server && go list ./... | grep -v /mock)
 
 test:
 	cd server && I18N_MODE_UT=true go test $(UT_PACKAGES) -gcflags=all=-l -v -count=1
+
+test-helm:
+	python3 -m unittest discover -s tests -p 'test_metric_snapshot_helm.py' -v
 
 test-cover:
 	@mkdir -p test-result

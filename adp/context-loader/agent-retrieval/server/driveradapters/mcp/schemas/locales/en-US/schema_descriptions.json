@@ -451,7 +451,7 @@
     "input_schema.properties.query.properties.having.properties.unit_code.description": "Optional result unit code; it must match the metric's unit.",
     "input_schema.properties.query.properties.order_by.description": "Sort final metric result rows; nulls are last.",
     "input_schema.properties.query.properties.page_size.description": "Optional result page size, at most 1000.",
-    "input_schema.properties.query.properties.cursor.description": "The preceding page's next_cursor. Restart if the live result changed.",
+    "input_schema.properties.query.properties.cursor.description": "The preceding page's next_cursor for the identical caller and query. Each page rechecks authorization. A short-lived snapshot hit returns the original calculation. If the snapshot expired, was evicted, or is unavailable, the service recomputes; restart from the first page on HTTP 409 if the result changed.",
     "input_schema.properties.query.properties.time.description": "Inclusive Unix-millisecond time range with start and end.",
     "input_schema.properties.query.properties.time.properties.start.description": "Inclusive start time, Unix milliseconds.",
     "input_schema.properties.query.properties.time.properties.end.description": "Inclusive end time, Unix milliseconds.",

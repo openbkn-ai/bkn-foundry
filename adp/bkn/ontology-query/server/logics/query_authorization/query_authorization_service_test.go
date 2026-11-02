@@ -148,6 +148,135 @@ func objectMetricExecutionContext(metricID, ownerObjectTypeID string,
 	}}
 }
 
+type fixedMetricRowFilters struct {
+	digest string
+}
+
+type fixedMetricProxy struct {
+	version int64
+}
+
+func (proxy fixedMetricProxy) Resolve(_ context.Context, binding interfaces.TrustedProxyBinding) (*interfaces.TrustedProxyContext, error) {
+	return &interfaces.TrustedProxyContext{Proxy: interfaces.AccountInfo{ID: "proxy", Type: "app"},
+		ProxyVersion: proxy.version, PublishedModelVersion: "model-v1", Binding: binding}, nil
+}
+
+func (filters fixedMetricRowFilters) ResolveRowFilters(_ context.Context,
+	refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+	entries := make([]interfaces.RowFilterDecisionEntry, 0, len(refs))
+	for _, ref := range refs {
+		entries = append(entries, interfaces.RowFilterDecisionEntry{
+			ObjectTypeRef:            ref,
+			Predicate:                interfaces.RowFilterPredicate{Kind: "true"},
+			EffectiveRowFilterDigest: filters.digest,
+		})
+	}
+	return entries, nil
+}
+
+func TestObjectMetricAuthorizationFingerprintChangesWithRowFilter(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").AnyTimes().Return(
+		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+		interfaces.AccountInfo{ID: "user-1", Type: "user"})
+	definition := &interfaces.ObjectMetricDefinitionV1{OwnerObjectTypeID: "orders"}
+	definition.Specification.Measure = &interfaces.ObjectMetricMeasureV1{Expression: &interfaces.ObjectMetricExpressionV1{
+		PropertyRef: &interfaces.ObjectMetricPropertyRefV1{ObjectTypeID: "orders", PropertyName: "amount"},
+	}}
+	input := []objectMetricAuthorizationInput{{definition: definition}}
+	first, err := (&queryAuthorizationService{models: models, snapshotProxies: allowMetricSnapshotProxies{}, proxy: fixedMetricProxy{version: 1}, rowFilters: fixedMetricRowFilters{digest: "sha256:a"}}).
+		objectMetricAuthorizationFingerprint(ctx, "kn-a", input)
+	if err != nil || first.Digest == "" {
+		t.Fatalf("first fingerprint = %#v, %v", first, err)
+	}
+	second, err := (&queryAuthorizationService{models: models, snapshotProxies: allowMetricSnapshotProxies{}, proxy: fixedMetricProxy{version: 1}, rowFilters: fixedMetricRowFilters{digest: "sha256:b"}}).
+		objectMetricAuthorizationFingerprint(ctx, "kn-a", input)
+	if err != nil || first.Digest == second.Digest {
+		t.Fatalf("row-filter change did not change fingerprint: first=%q second=%q error=%v",
+			first.Digest, second.Digest, err)
+	}
+	third, err := (&queryAuthorizationService{models: models, snapshotProxies: allowMetricSnapshotProxies{}, proxy: fixedMetricProxy{version: 2}, rowFilters: fixedMetricRowFilters{digest: "sha256:a"}}).
+		objectMetricAuthorizationFingerprint(ctx, "kn-a", input)
+	if err != nil || third.Digest == first.Digest {
+		t.Fatalf("proxy version was not bound: %#v %v", third, err)
+	}
+}
+
+type fixedMetricProperties struct {
+	level interfaces.PropertyAccessLevel
+}
+
+func (properties fixedMetricProperties) ResolvePropertyLevels(_ context.Context,
+	items []interfaces.PropertyLevelsRequestItem) ([]interfaces.PropertyLevelsDecisionEntry, error) {
+	entries := make([]interfaces.PropertyLevelsDecisionEntry, 0, len(items))
+	for _, item := range items {
+		entry := interfaces.PropertyLevelsDecisionEntry{ObjectTypeRef: item.ObjectTypeRef}
+		for _, name := range item.Properties {
+			entry.Properties = append(entry.Properties, interfaces.PropertyAccessDecision{Name: name, Level: properties.level})
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func TestMetricFingerprintBindsImplicitPropertiesModelAndCaller(t *testing.T) {
+	models := omock.NewMockOntologyManagerAccess(gomock.NewController(t))
+	model := publishedObjectType("kn-a", "orders", "resource")
+	model.DataProperties = []cond.DataProperty{{Name: "join_key", Type: "string", MappedField: cond.Field{Name: "join_key"}}}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").AnyTimes().DoAndReturn(
+		func(context.Context, string, string, string) (interfaces.ObjectType, bool, error) {
+			return model, true, nil
+		})
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "user-1", Type: "user"})
+	service := &queryAuthorizationService{models: models, snapshotProxies: allowMetricSnapshotProxies{}, proxy: fixedMetricProxy{version: 1},
+		properties: fixedMetricProperties{level: interfaces.PropertyAccessFull}, rowFilters: fixedMetricRowFilters{digest: "rows"}}
+	inputs := []objectMetricAuthorizationInput{{definition: &interfaces.ObjectMetricDefinitionV1{OwnerObjectTypeID: "orders"}}}
+	first, err := service.objectMetricAuthorizationFingerprint(ctx, "kn-a", inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.Status = &interfaces.ObjectTypeStatus{DocCount: 1000, IndexAvailable: true}
+	physicalChange, err := service.objectMetricAuthorizationFingerprint(ctx, "kn-a", inputs)
+	if err != nil || physicalChange.Digest != first.Digest {
+		t.Fatalf("physical index state changed authorization binding: %v", err)
+	}
+	service.properties = fixedMetricProperties{level: interfaces.PropertyAccessSchema}
+	changedProperty, err := service.objectMetricAuthorizationFingerprint(ctx, "kn-a", inputs)
+	if err != nil || changedProperty.Digest == first.Digest {
+		t.Fatalf("implicit property was not bound: %v", err)
+	}
+	service.properties = fixedMetricProperties{level: interfaces.PropertyAccessFull}
+	model.DataProperties[0].MappedField.Name = "other_column"
+	changedModel, err := service.objectMetricAuthorizationFingerprint(ctx, "kn-a", inputs)
+	if err != nil || changedModel.Digest == first.Digest {
+		t.Fatalf("model mapping was not bound: %v", err)
+	}
+	model.DataProperties[0].MappedField.Name = "join_key"
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "user-2", Type: "user"})
+	changedCaller, err := service.objectMetricAuthorizationFingerprint(ctx, "kn-a", inputs)
+	if err != nil || changedCaller.Digest == first.Digest {
+		t.Fatalf("caller was not bound: %v", err)
+	}
+}
+
+func TestMetricFingerprintRequiresAuthorizationBeforeReturningDigest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	permissions := omock.NewMockPermissionService(ctrl)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(publishedObjectType("kn-a", "orders", "resource"), true, nil)
+	denied := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+	permissions.EXPECT().RequireQueryData(gomock.Any(), gomock.Any()).Return(denied)
+	service := &queryAuthorizationService{models: models, permissions: permissions}
+	fingerprint, err := service.AuthorizeObjectMetricExecutionWithFingerprint(context.Background(), "kn-a", "main",
+		objectMetricExecutionContext("metric", "orders", nil), nil)
+	assertQueryAuthHTTPStatus(t, err, http.StatusForbidden)
+	if fingerprint.Digest != "" {
+		t.Fatal("denied execution received a fingerprint")
+	}
+}
+
 func TestAuthorizeObjectTypeSchemaRequiresViewDetail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
@@ -840,5 +969,23 @@ func assertQueryAuthHTTPStatus(t *testing.T, err error, expected int) {
 	}
 	if httpErr.HTTPCode != expected {
 		t.Fatalf("HTTP status = %d, want %d", httpErr.HTTPCode, expected)
+	}
+}
+
+type allowMetricSnapshotProxies struct{ err error }
+
+func (service allowMetricSnapshotProxies) AuthorizeMetricSnapshotProxies(context.Context, []*interfaces.TrustedProxyContext) error {
+	return service.err
+}
+
+func TestMetricFingerprintRejectsLiveProxyRevocation(t *testing.T) {
+	models := omock.NewMockOntologyManagerAccess(gomock.NewController(t))
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").AnyTimes().Return(publishedObjectType("kn-a", "orders", "resource"), true, nil)
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "user", Type: "user"})
+	service := &queryAuthorizationService{models: models, proxy: fixedMetricProxy{version: 1}, rowFilters: fixedMetricRowFilters{digest: "rows"}, snapshotProxies: allowMetricSnapshotProxies{err: httperrors.NewHTTPError(ctx, 403, httperrors.PublicError_Forbidden)}}
+	fingerprint, err := service.objectMetricAuthorizationFingerprint(ctx, "kn-a", []objectMetricAuthorizationInput{{definition: &interfaces.ObjectMetricDefinitionV1{OwnerObjectTypeID: "orders"}}})
+	assertQueryAuthHTTPStatus(t, err, 403)
+	if fingerprint.Digest != "" {
+		t.Fatal("revoked proxy received an authorization fingerprint")
 	}
 }

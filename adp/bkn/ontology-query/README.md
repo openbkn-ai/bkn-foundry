@@ -184,6 +184,68 @@ disabled accounts, BKN Safe failures, timeouts, invalid responses, or incomplete
 published dependencies prevent the data query from running; authorization
 infrastructure failures return HTTP 503.
 
+### EE metric result pagination
+
+Published metric queries and trials with `page_size` retain the final ordered
+result in a bounded per-process cache when it spans multiple pages. Every page
+loads the current definition and rechecks authorization. A cache hit also
+requires an unchanged fingerprint of row filters, property decisions, model
+mappings and managed proxy bindings. It returns the original calculation even
+if the source data has since changed. A miss recomputes the result and compares
+its complete hash with the authenticated cursor; a changed result returns 409.
+Expired snapshots, eviction, restarts and requests reaching another replica
+use this same fallback. Every paginated request also checks the managed proxy's
+current ownership, enabled/lifecycle state and effective grants on the actual
+backing resources through Safe's existing authorization API. Access revocation
+returns 403; unavailable authorization dependencies return 503.
+
+Drill selection details stay inside the bounded snapshot rather than the cursor.
+The cursor carries fixed-length query and result digests. A hit restores the
+selection and rechecks authorization; a miss re-evaluates the parent query and
+selection before computing the child result. A changed or missing selection
+returns 409.
+
+The `metricResultSnapshot` Helm values configure the EE cache (community
+ontology-query does not assemble the metric runtime):
+
+| Value | Environment variable | Default |
+| --- | --- | ---: |
+| `maxRows` | `BKN_METRIC_SNAPSHOT_MAX_ROWS` | 10000 |
+| `maxEntryBytes` | `BKN_METRIC_SNAPSHOT_MAX_ENTRY_BYTES` | 16777216 |
+| `maxBytes` | `BKN_METRIC_SNAPSHOT_MAX_BYTES` | 268435456 |
+| `maxEntries` | `BKN_METRIC_SNAPSHOT_MAX_ENTRIES` | 128 |
+| `maxAccountEntries` | `BKN_METRIC_SNAPSHOT_MAX_ACCOUNT_ENTRIES` | 8 |
+| `ttlSeconds` | `BKN_METRIC_SNAPSHOT_TTL_SECONDS` | 900 |
+
+Both row and byte limits apply; oversized results still paginate through
+hash-checked recomputation. Encoded rows, drill selection details and
+conservative indexing overhead count toward the byte budget. A size preflight
+rejects oversized rows and metadata before JSON encoding.
+Snapshot encoding is opportunistic: one encoder
+runs at a time, and concurrent requests skip insertion instead of waiting.
+Snapshots have a fixed lease, are deleted on the last page, and expired entries
+are reclaimed at least once per minute. Retries of a terminal page can still
+recompute through the authenticated cursor. The lease ends snapshot reuse,
+not the cursor's authenticated fallback. Fallback never extends the lease.
+
+The cache limit is a retained-data budget, not a bound on process RSS: query
+execution, encoding, in-flight page decoding and Go GC need additional memory.
+Each replica has its own cache, so maximum retained capacity is the configured
+per-process limit multiplied by the replica count. Measure heap/RSS under the
+deployment's query concurrency before setting the container memory limit.
+
+Helm creates and reuses a release Secret for `BKN_QUERY_CURSOR_KEY`, keeping
+cursors decryptable across restarts and replicas. For local runs, set this
+environment variable to a persistent deployment secret; without it, a random
+process key makes old cursors invalid after restart. For GitOps renderers that
+do not support Helm `lookup`, supply `cursorEncryption.existingSecret`.
+
+EE exposes operational counters at
+`GET /api/ontology-query/in/v1/object-metric-snapshots/metrics`: current entry
+count, accounted bytes, hits, misses by reason, skips, eviction, expiry and
+fallback recomputations. Keep this internal endpoint on the service network;
+it contains no caller IDs, query content or result data.
+
 ### Action-execution authorization
 
 When authentication is enabled, both submission and the real external invocation

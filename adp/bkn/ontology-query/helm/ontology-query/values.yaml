@@ -129,12 +129,22 @@ resources:
     cpu: 4
     memory: 32Gi
 
-# All replicas must use the same secret so encrypted query cursors survive
-# load balancing. A single replica may omit it and use a process-local random
-# key; Helm rejects replicaCount > 1 when existingSecret is empty.
+# All replicas share a release Secret so authenticated cursors survive restart
+# and load balancing. If omitted, Helm generates and reuses a release Secret.
+# Supply existingSecret for GitOps renderers that cannot perform Helm lookup.
 cursorEncryption:
   existingSecret: ""
   secretKey: "cursor-key"
+
+# EE metric result pagination: best-effort per-process snapshots. A miss uses
+# the authenticated cursor's full-result hash to safely recompute the page.
+metricResultSnapshot:
+  maxRows: 10000
+  maxEntryBytes: 16777216
+  maxBytes: 268435456
+  maxEntries: 128
+  maxAccountEntries: 8
+  ttlSeconds: 900
 
 bknTrace:
   evidencePublisher:

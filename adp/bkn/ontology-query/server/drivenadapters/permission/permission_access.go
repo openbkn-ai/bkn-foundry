@@ -27,6 +27,10 @@ type permissionAccess struct {
 }
 
 func NewPermissionAccess(appSetting *common.AppSetting) interfaces.PermissionAccess {
+	return newPermissionAccess(appSetting)
+}
+
+func newPermissionAccess(appSetting *common.AppSetting) *permissionAccess {
 	baseURL := ""
 	if appSetting != nil {
 		baseURL = strings.TrimRight(strings.TrimSpace(appSetting.BknSafeURL), "/")

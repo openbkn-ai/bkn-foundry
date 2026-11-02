@@ -59,6 +59,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: adp/bkn/ontology-query/server/go.mod
+      - uses: azure/setup-helm@v4
+      - name: Check rendered metric snapshot configuration
+        working-directory: adp/bkn/ontology-query
+        run: make test-helm
       - run: go build ./...
       - name: Run ontology query unit tests
         env:
