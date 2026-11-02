@@ -95,6 +95,14 @@ openbkn resource find --name "customer_orders" --catalog-id <catalog_id>
 openbkn resource delete <resource_id>
 ```
 
+### Limits of exact filtering through local indexes
+
+When the resource data endpoint `POST /api/vega-backend/v1/resources/<resource_id>/data` (`X-HTTP-Method-Override: GET`) uses a local index, constant `!=` / `not_eq` and `not_in` compare only records with an exact indexed value, excluding NULL and missing fields.
+
+Exact comparisons on string/text use a keyword field or subfield. Newly added keyword features for these types default to an `ignore_above` of **256 UTF-16 code units**; the actual index mapping determines the limit. Longer original values remain in the document but have no keyword index value, so these negated conditions exclude them too. For example, with a limit of 256, a body containing 300 ASCII characters matches neither `body != "hello"` nor `body not_in ["hello"]`, even though the query literal is short. Local-index results can therefore differ from source SQL results; explicit NULL conditions and these comparisons do not necessarily cover all original values.
+
+This differs from an **oversized query literal**, which returns HTTP 400 `VegaBackend.Resource.QueryValueExceedsKeywordLimit`; any oversized candidate in `not_in` produces the same error. Use `match` / `match_phrase` on fields with full-text features to search body text. For comparisons against complete original values, a table resource that supports source queries can set `ignore_local_index: true` in the request body. There is no automatic source fallback, and datasets have no source-table query channel. See the [resource data API](../../../docs/api/vega/resource-data.yaml).
+
 ### Index builds and dataset documents
 
 **Building a local index** (full text and/or vector) **only applies to `table` resources**: the first check in `BuildTaskService.Create` is the category, and anything else returns `400 Resource category must be table`. Documents in a `dataset` resource are indexed on write and never go through a build task.

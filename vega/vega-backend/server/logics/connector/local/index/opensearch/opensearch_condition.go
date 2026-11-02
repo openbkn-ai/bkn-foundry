@@ -328,7 +328,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 				},
 			}
 		}
-		// 与源端不等比较一致：NULL 和缺失字段不参与常量比较。
+		// 仅比较有精确索引值的记录；NULL、缺失及超过 keyword ignore_above 的值不参与比较。
 		return map[string]any{
 			"bool": map[string]any{
 				"filter": map[string]any{
@@ -528,17 +528,23 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	if err != nil {
 		return nil, err
 	}
-	if temporal {
-		return map[string]any{"bool": map[string]any{"must_not": query}}, nil
+	if !temporal {
+		query = map[string]any{
+			"terms": map[string]any{
+				exactField: indexConditionValue(cond.Value),
+			},
+		}
 	}
 
+	// 与 != 一致，仅比较有精确索引值的记录，保留相同的 keyword 长度限制。
 	return map[string]any{
 		"bool": map[string]any{
-			"must_not": map[string]any{
-				"terms": map[string]any{
-					exactField: indexConditionValue(cond.Value),
+			"filter": map[string]any{
+				"exists": map[string]any{
+					"field": exactField,
 				},
 			},
+			"must_not": query,
 		},
 	}, nil
 }

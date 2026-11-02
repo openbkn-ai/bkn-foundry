@@ -57,6 +57,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 				query, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
 				require.NoError(t, err)
 				if op != "in" {
+					assert.Equal(t, map[string]any{"exists": map[string]any{"field": "clock"}}, query["bool"].(map[string]any)["filter"])
 					query = query["bool"].(map[string]any)["must_not"].(map[string]any)
 				}
 				terms := query["terms"].(map[string]any)["clock"].([]any)
@@ -144,7 +145,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 	t.Run("date sets enforce budgets for every mapping and precision", func(t *testing.T) {
 		for _, format := range []string{"", "epoch_millis", "yyyy/MM/dd HH:mm:ss"} {
 			for _, op := range []string{"in", "not_in"} {
-				for _, size := range []int{1024, 1025, 5000} {
+				for _, size := range []int{1023, 1024, 1025, 5000} {
 					field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, Attributes: map[string]any{}}
 					if format != "" {
 						field.Attributes["format"] = format
@@ -156,9 +157,14 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 					cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("created", op, values), map[string]*interfaces.Property{"created": field})
 					require.NoError(t, err)
 					dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
-					if size <= 1024 {
+					clauses := size
+					if op == "not_in" {
+						clauses++ // 存在性约束也占用一条查询子句。
+					}
+					if clauses <= maxIndexTemporalRangeClauses {
 						require.NoError(t, err)
 						assert.Equal(t, size, countIndexRangeClauses(dsl))
+						assert.Equal(t, clauses, countIndexQueryClauses(dsl))
 					} else {
 						var conditionErr *interfaces.ConditionBuildError
 						require.ErrorAs(t, err, &conditionErr)
@@ -208,7 +214,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			{"==", first, firstQuery},
 			{"!=", first, map[string]any{"bool": map[string]any{"filter": map[string]any{"exists": map[string]any{"field": "created"}}, "must_not": firstQuery}}},
 			{"in", []any{first, second}, union},
-			{"not_in", []any{first, second}, map[string]any{"bool": map[string]any{"must_not": union}}},
+			{"not_in", []any{first, second}, map[string]any{"bool": map[string]any{"filter": map[string]any{"exists": map[string]any{"field": "created"}}, "must_not": union}}},
 		} {
 			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: tc.op, Value: tc.value}
 			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
@@ -683,11 +689,11 @@ func TestOpenSearchConnectorConvertFilterConditionNotEqual(t *testing.T) {
 			{"boolean false", &interfaces.Property{Name: "flag", Type: interfaces.DataType_Boolean}, false, "flag", map[string]any{"term": map[string]any{"flag": false}}},
 			{"physical boolean name", &interfaces.Property{Name: "flag", OriginalName: "physical_flag", Type: interfaces.DataType_Boolean}, true, "physical_flag", map[string]any{"term": map[string]any{"physical_flag": true}}},
 			{"integer", &interfaces.Property{Name: "age", Type: interfaces.DataType_Integer}, 18, "age", map[string]any{"term": map[string]any{"age": 18}}},
-			{"string", &interfaces.Property{Name: "name", Type: interfaces.DataType_String}, "alice", "name", map[string]any{"term": map[string]any{"name": "alice"}}},
+			{"string with keyword limit", &interfaces.Property{Name: "name", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 256}}}}, "alice", "name", map[string]any{"term": map[string]any{"name": "alice"}}},
 			{
-				name: "text keyword subfield",
+				name: "text keyword subfield with length limit",
 				field: &interfaces.Property{Name: "body", OriginalName: "physical_body", Type: interfaces.DataType_Text,
-					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw"}}},
+					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw", Config: map[string]any{"ignore_above": 256}}}},
 				value: "hello", exactField: "physical_body.raw", match: map[string]any{"term": map[string]any{"physical_body.raw": "hello"}},
 			},
 			{"datetime", &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}, "2026-10-19T00:00:00Z", "created",
@@ -733,6 +739,60 @@ func TestOpenSearchConnectorConvertFilterConditionNotEqual(t *testing.T) {
 					"must_not": map[string]any{"term": map[string]any{"is_active": true}},
 				}},
 				{"bool": map[string]any{"must_not": map[string]any{"exists": map[string]any{"field": "is_active"}}}},
+			}}},
+		}}}, got)
+	})
+}
+
+func TestOpenSearchConnectorConvertFilterConditionNotIn(t *testing.T) {
+	conn := &OpenSearchConnector{}
+	for _, tc := range []struct {
+		name       string
+		field      *interfaces.Property
+		values     []any
+		exactField string
+	}{
+		{"boolean true", &interfaces.Property{Name: "flag", Type: interfaces.DataType_Boolean}, []any{true}, "flag"},
+		{"boolean false", &interfaces.Property{Name: "flag", Type: interfaces.DataType_Boolean}, []any{false}, "flag"},
+		{"both boolean values", &interfaces.Property{Name: "flag", Type: interfaces.DataType_Boolean}, []any{true, false}, "flag"},
+		{"physical integer name", &interfaces.Property{Name: "age", OriginalName: "physical_age", Type: interfaces.DataType_Integer}, []any{18, 30}, "physical_age"},
+		{"string with keyword limit", &interfaces.Property{Name: "name", Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 256}}}}, []any{"alice", "bob"}, "name"},
+		{"text keyword subfield with length limit", &interfaces.Property{Name: "body", OriginalName: "physical_body", Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw", Config: map[string]any{"ignore_above": 256}}}}, []any{"hello", "world"}, "physical_body.raw"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := osConstCfg(tc.field.Name, "not_in", tc.values)
+			condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{tc.field.Name: tc.field})
+			require.NoError(t, err)
+			got, err := conn.ConvertFilterCondition(condition, []*interfaces.Property{tc.field})
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"bool": map[string]any{
+				"filter":   map[string]any{"exists": map[string]any{"field": tc.exactField}},
+				"must_not": map[string]any{"terms": map[string]any{tc.exactField: tc.values}},
+			}}, got)
+			assert.Equal(t, tc.values, cfg.Value)
+		})
+	}
+
+	t.Run("nested and or keep explicit null alternatives", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{
+			osConstCfg("age", ">=", 18),
+			{Operation: "or", SubConds: []*interfaces.FilterCondCfg{
+				osConstCfg("name", "not_in", []any{"alice", "bob"}),
+				osConstCfg("name", "null", nil),
+			}},
+		}}
+		got, err := conn.ConvertFilterCondition(mustOSCondition(t, cfg), opensearchConditionSchema())
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"bool": map[string]any{"must": []map[string]any{
+			{"range": map[string]any{"age": map[string]any{"gte": 18}}},
+			{"bool": map[string]any{"minimum_should_match": 1, "should": []map[string]any{
+				{"bool": map[string]any{
+					"filter":   map[string]any{"exists": map[string]any{"field": "name"}},
+					"must_not": map[string]any{"terms": map[string]any{"name": []any{"alice", "bob"}}},
+				}},
+				{"bool": map[string]any{"must_not": map[string]any{"exists": map[string]any{"field": "name"}}}},
 			}}},
 		}}}, got)
 	})

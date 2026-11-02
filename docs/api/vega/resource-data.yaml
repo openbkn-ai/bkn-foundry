@@ -473,6 +473,21 @@ components:
 
             可用操作取决于字段类型和查询通道。索引字段比较的日期族两侧均须为 date/datetime/timestamp。
             索引 TEXT 的精确及模式匹配要求 keyword Feature。
+            本地索引常量 !=/not_eq 和 not_in 仅比较具有精确索引值的记录，
+            NULL 或缺失字段不命中；约束位于各自的条件分支内，显式 OR null 仍按该分支求值。
+            对 string/text 使用 keyword 字段或子字段；原始字符串超过该字段 ignore_above 时，
+            原值仍保留在 _source，但不写入 keyword 索引和 doc_values，因此也不会命中上述否定条件，
+            即使查询常量本身未超限。平台新增 string/text keyword 特征的默认上限为 256，
+            长度单位为 UTF-16 code units，实际限制以索引 mapping 为准。
+            例如上限 256 时，300 个 ASCII 字符的 body 不会命中 body != "hello" 或
+            body not_in ["hello"]。这项限制可能使本地索引与源端 SQL 的结果不同；
+            显式 null/not_null/exist/not_exist 按各自字段的索引存在性求值，
+            不保证与上述比较条件覆盖全部原始值。
+            查询常量自身超限则返回 400 VegaBackend.Resource.QueryValueExceedsKeywordLimit，
+            not_in 任一候选值超限也按此处理，与已存储长值不参与比较的行为不同。
+            日期类 not_in 的存在性约束也计入既有的 1024 条查询子句上限。
+            需要完整原始值比较时，对支持源查询的 table resource 可设置 ignore_local_index=true；
+            不会自动回源，dataset 没有原始表查询通道。正文检索可使用已配置全文特征的 match/match_phrase。
             contain 在源查询中匹配逗号分隔值的全部给定项，
             在索引查询中匹配任一项；索引 not_contain 排除全部给定项。
             knn_vector 在索引维度已知时要求输入向量维度匹配。
