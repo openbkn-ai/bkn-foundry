@@ -653,6 +653,48 @@ func TestObjectPropertyAggregateRequiresPropertyAccess(t *testing.T) {
 	}
 }
 
+func TestObjectMetricAggregateMapsGroupedPlanAndHaving(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{{"phone": "east", "__value": "42.5"}},
+		Paging:  &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	query := resourcePagingQuery(1)
+	query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationEq, Value: "customer-1"}
+	result, err := service.AggregateObjectMetricByObjectTypeID(resourcePagingContext(), query,
+		interfaces.ObjectAggregateQuery{MeasureProperty: "id", Operation: "sum", GroupBy: []string{"mobile"},
+			Having: &interfaces.ObjectAggregateHaving{Operation: cond.OperationGt, Value: 10}})
+	if err != nil || len(result.Datas) != 1 || result.Datas[0]["mobile"] != "east" ||
+		result.Datas[0]["__value"] != "42.5" || result.TotalCount != 1 {
+		t.Fatalf("metric aggregate = %#v, error %v", result, err)
+	}
+	params := vega.lastParams
+	if params == nil || params.FilterCondition == nil || params.Paging.Limit != interfaces.MAX_LIMIT ||
+		params.Aggregation["property"] != "customer_id" || params.Aggregation["aggr"] != "sum" ||
+		len(params.GroupBy) != 1 || params.GroupBy[0]["property"] != "phone" ||
+		params.Having["field"] != "__value" || params.Having["operation"] != cond.OperationGt ||
+		params.Having["value"] != 10 {
+		t.Fatalf("metric aggregate request = %#v", params)
+	}
+}
+
+func TestObjectMetricGroupedAggregateRejectsIncompletePage(t *testing.T) {
+	entries := make([]map[string]any, interfaces.MAX_LIMIT)
+	for index := range entries {
+		entries[index] = map[string]any{"phone": fmt.Sprintf("region-%d", index), "__value": json.Number("1")}
+	}
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: entries, Paging: &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	_, err := service.AggregateObjectMetricByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1),
+		interfaces.ObjectAggregateQuery{MeasureProperty: "id", Operation: "count_distinct", GroupBy: []string{"mobile"}})
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest || len(vega.paramsHistory) != 1 {
+		t.Fatalf("incomplete metric aggregate error = %v, Vega requests = %d", err, len(vega.paramsHistory))
+	}
+}
+
 func TestResourceContinuationBeyondIndexWindowEndsWhenDataShrank(t *testing.T) {
 	const limit = 6000
 	fullPage := make([]map[string]any, limit)

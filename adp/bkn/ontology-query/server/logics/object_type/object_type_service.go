@@ -61,6 +61,7 @@ type objectAggregateSpec struct {
 	operation       string
 	groupBy         []string
 	propertyValue   bool
+	having          *interfaces.ObjectAggregateHaving
 }
 
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
@@ -306,6 +307,53 @@ func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context
 	queryCopy.Sort = nil
 	return ots.getObjectsByObjectTypeID(ctx, &queryCopy, false, &objectAggregateSpec{
 		measureProperty: measureProperty, operation: operation, groupBy: append([]string(nil), groupBy...),
+	}, nil)
+}
+
+// AggregateObjectMetricByObjectTypeID executes one authorized metric aggregate
+// through Vega's existing resource-query contract. It deliberately accepts
+// logical property names so authorization and physical mapping cannot be
+// bypassed by an internal caller.
+func (ots *objectTypeService) AggregateObjectMetricByObjectTypeID(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, aggregate interfaces.ObjectAggregateQuery) (interfaces.Objects, error) {
+	operations := map[string]bool{
+		"count_rows": true, "count": true, "count_distinct": true,
+		"sum": true, "avg": true, "min": true, "max": true,
+	}
+	countRows := aggregate.Operation == "count_rows"
+	if query == nil || !operations[aggregate.Operation] ||
+		(countRows && aggregate.MeasureProperty != "") || (!countRows && aggregate.MeasureProperty == "") {
+		return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported object metric aggregate")
+	}
+	if aggregate.Having != nil {
+		switch aggregate.Having.Operation {
+		case cond.OperationEq, cond.OperationNotEq, cond.OperationGt, cond.OperationGte,
+			cond.OperationLt, cond.OperationLte:
+		default:
+			return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+				oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported object metric having")
+		}
+	}
+	queryCopy := *query
+	queryCopy.Properties = append([]string(nil), aggregate.GroupBy...)
+	if !countRows {
+		queryCopy.Properties = append([]string{aggregate.MeasureProperty}, queryCopy.Properties...)
+	}
+	queryCopy.RequiredFullProperties = append([]string(nil), queryCopy.Properties...)
+	queryCopy.ObjectQueryInfo = nil
+	queryCopy.ExcludeSystemProperties = nil
+	queryCopy.Cursor = ""
+	queryCopy.ResourceCursor = ""
+	queryCopy.ResourceOffset = 0
+	queryCopy.Offset = 0
+	queryCopy.Sort = nil
+	return ots.getObjectsByObjectTypeID(ctx, &queryCopy, false, &objectAggregateSpec{
+		measureProperty: aggregate.MeasureProperty,
+		operation:       aggregate.Operation,
+		groupBy:         append([]string(nil), aggregate.GroupBy...),
+		propertyValue:   !countRows,
+		having:          aggregate.Having,
 	}, nil)
 }
 
@@ -856,7 +904,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 		params.Aggregation = map[string]any{"property": measureField,
 			"aggr": operation, "alias": "__value"}
-		if aggregate.operation == "count_present" || aggregate.propertyValue {
+		if len(aggregate.groupBy) == 0 && (aggregate.operation == "count_present" || aggregate.propertyValue) {
 			params.Having = map[string]any{"field": "count(*)", "operation": ">", "value": 0}
 		}
 		params.OutputFields = []string{"__value"}
@@ -868,8 +916,12 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			params.GroupBy = append(params.GroupBy, map[string]any{"property": property.MappedField.Name})
 			params.OutputFields = append(params.OutputFields, property.MappedField.Name)
 		}
+		if len(aggregate.groupBy) > 0 && aggregate.having != nil {
+			params.Having = map[string]any{"field": "__value", "operation": aggregate.having.Operation,
+				"value": aggregate.having.Value}
+		}
 		limit := query.Limit
-		if aggregate.operation == "count_rows" {
+		if len(aggregate.groupBy) > 0 {
 			// Public metric page_size is final-result pagination. Read one complete
 			// bounded aggregate page and fall back when Vega reports more groups.
 			limit = interfaces.MAX_LIMIT
@@ -899,17 +951,17 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			resps.TotalCount = resp.TotalCount
 			return nil
 		}
-		if aggregate.operation == "count_rows" {
+		if len(aggregate.groupBy) > 0 {
 			returned := int64(len(resp.Entries))
 			if returned > int64(params.Paging.Limit) {
 				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
-					WithErrorDetails("Vega grouped row count exceeded the requested page limit")
+					WithErrorDetails("Vega grouped aggregate exceeded the requested page limit")
 			}
 			if returned == int64(params.Paging.Limit) {
 				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails("complete grouped row count is unavailable in one Vega aggregate page")
+					WithErrorDetails("complete grouped aggregate is unavailable in one Vega page")
 			}
 		}
 		resps.Datas = make([]map[string]any, 0, len(resp.Entries))
@@ -921,7 +973,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			resps.Datas = append(resps.Datas, row)
 		}
 		resps.QuerySource = resp.QuerySource
-		if aggregate.operation == "count_rows" {
+		if len(aggregate.groupBy) > 0 {
 			// Resource connectors do not expose one uniform aggregate-total
 			// meaning: source tables report groups while local indexes report
 			// matched documents. A short single page is complete by the paging
