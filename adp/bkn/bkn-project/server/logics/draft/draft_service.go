@@ -23,6 +23,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 )
@@ -172,7 +173,8 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	background := context.WithoutCancel(ctx)
 	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
 	carried := draft.Items.Confirmation
-	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried) })
+	plans := draft.Items.DatasetPlans
+	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried, plans) })
 
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
@@ -180,7 +182,7 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 
 // draft reads the catalogs' tables as the caller, drafts and records the result.
 func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string, language string,
-	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation) {
+	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation, plans []*interfaces.DraftDatasetPlan) {
 	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DraftFromTables")
@@ -197,6 +199,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 		result.Items = items
 	}
 	result.Items.Confirmation = confirmation
+	result.Items.DatasetPlans = plans
 	if err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Draft of project %s failed: %v", projectID, err))
 		span.SetStatus(codes.Error, "Draft failed")
@@ -307,16 +310,33 @@ func (s *draftService) GetDraft(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
+	for _, object := range draft.Items.ObjectTypes {
+		if object == nil || object.Document == nil || object.Document.DualSource == nil {
+			continue
+		}
+		plan := object.Document.DualSource
+		plan.State = "proposed"
+		if plan.ConfirmedAt > 0 {
+			plan.State = "stale"
+			if kbconcept.SourcePlanReady(draft.Items, object, false) {
+				plan.State = "confirmed"
+			}
+		}
+	}
 	if len(draft.Items.DatasetPlans) > 0 && s.kbResources != nil {
 		state, readErr := s.kbResources.Read(ctx, projectID)
 		if readErr != nil {
-			return nil, internalError(ctx, "Read Dataset preparation source failed", readErr)
+			// This is only a progress projection. Source authorization was
+			// independently checked above; failures must not hide the draft.
+			otellog.LogWarn(ctx, "Read Dataset preparation progress failed")
+			draft.DatasetPreparation = nil
+		} else {
+			var selection *interfaces.KBSelection
+			if state != nil {
+				selection = state.Current
+			}
+			draft.DatasetPreparation = datasetPreparation(draft, selection)
 		}
-		var selection *interfaces.KBSelection
-		if state != nil {
-			selection = state.Current
-		}
-		draft.DatasetPreparation = datasetPreparation(draft, selection)
 	}
 	span.SetStatus(codes.Ok, "")
 	return draft, nil

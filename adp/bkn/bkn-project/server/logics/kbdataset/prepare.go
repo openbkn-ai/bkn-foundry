@@ -41,6 +41,11 @@ func ModelFingerprint(draft *interfaces.Draft) (string, error) {
 			continue
 		}
 		if object.Document != nil {
+			if object.Document.DualSource != nil {
+				object.Document.DualSource.State = ""
+				object.Document.DualSource.ConfirmedBy = interfaces.AccountInfo{}
+				object.Document.DualSource.ConfirmedAt = 0
+			}
 			object.Table = interfaces.DraftTable{}
 			for _, property := range object.Properties {
 				if property == nil {
@@ -57,6 +62,9 @@ func ModelFingerprint(draft *interfaces.Draft) (string, error) {
 			return "", ErrInvalidLayout
 		}
 		if relation.Document != nil {
+			if relation.DocumentMapping != nil {
+				relation.DocumentMapping.BusinessIdentity = nil
+			}
 			relation.LinkTable = nil
 			relation.SourceMapping = nil
 			relation.TargetMapping = nil

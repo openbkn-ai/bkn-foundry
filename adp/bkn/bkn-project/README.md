@@ -413,5 +413,26 @@ occurrence and supports all occurrence-to-block associations, including images
 without OCR. New business evidence references are many-to-many; valid legacy
 direct references retain their human decisions. The `source_quote` column always
 exists. Original blocks and images are materialized only when the source enables
-original-text retrieval. This preparation feature does not complete dual-source
-field rulings, a background instance coordinator, reconciliation or publication.
+original-text retrieval. This preparation feature does not complete a background instance coordinator,
+reconciliation or publication.
+
+
+### Dual-source identity and field authority
+
+A one-to-one same-business relation may use a human-confirmed business number
+without changing the structured object's primary key. Saving with explicit
+`verify_business_identity: true` checks the physical field and performs a full-table
+count/distinct/null/blank scan under the current caller. Client or Agent proof is
+rejected. Pending mappings remain unadopted; confirmation repeats verification
+before Dataset preparation and compilation.
+
+The existing document object save accepts `document.dual_source`: the selected
+system relation, main file class and per-field placement. System-only and shared
+fields stay table-authoritative; text-only current fields stay on `_doc`; temporal
+fields belong to existing fact/event models. Fusion follows effective time,
+evidence strength, then recorded time. The server validates already-extracted
+models without inventing fields or moving definitions. Only explicit `confirm: true`
+records server-owned actor/time/signature. `clear: true` removes the decision but
+cannot bypass an adopted identity bridge. Participating schemas, table mappings,
+main-document scope and source revisions invalidate old confirmations. A field-plan
+change alone is persisted in the normal draft decision history.

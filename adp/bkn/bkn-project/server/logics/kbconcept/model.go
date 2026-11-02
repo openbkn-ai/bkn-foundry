@@ -85,7 +85,7 @@ func validatedQuotes(input *SampleInput, quotes []interfaces.DraftSourceCitation
 	return result, nil
 }
 func validateDocument(input *SampleInput, model *interfaces.DraftDocumentModel, relation bool) error {
-	if model == nil || !boundedText(model.Reason, 1, 1000) {
+	if model == nil || model.DualSource != nil || !boundedText(model.Reason, 1, 1000) {
 		return ErrInvalidModel
 	}
 	layer, ok := roleLayers[model.Role]
@@ -228,7 +228,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 		}
 	}
 	for _, r := range copied.RelationTypes {
-		if r == nil || !modelID.MatchString(r.ID) || relations[r.ID] != nil || !boundedText(r.Name, 1, 128) || !boundedText(r.Description, 0, 1000) || len(r.Aliases) > 0 || r.LinkTable != nil || len(r.Properties) > 0 || len(r.SourceMapping) > 0 || len(r.TargetMapping) > 0 || r.DocumentMapping == nil {
+		if r == nil || !modelID.MatchString(r.ID) || relations[r.ID] != nil || !boundedText(r.Name, 1, 128) || !boundedText(r.Description, 0, 1000) || len(r.Aliases) > 0 || r.LinkTable != nil || len(r.Properties) > 0 || len(r.SourceMapping) > 0 || len(r.TargetMapping) > 0 || r.DocumentMapping == nil || r.DocumentMapping.BusinessIdentity != nil {
 			return nil, ErrInvalidModel
 		}
 		if r.Document != nil && (r.Document.TimeProperty != "" || len(r.Document.ParticipantRelations) > 0) {
@@ -248,7 +248,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 		switch m.Mode {
 		case "linking":
 			from, to := property(source, m.MentionProperty), property(target, m.IdentityProperty)
-			if (r.Source == r.Target && m.MentionProperty == m.IdentityProperty) || from == nil || to == nil || from.ReadOnly || (!(target.NeedsIdentity && len(target.PrimaryKeys) == 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty)) || from.Type != to.Type || m.SourceNameProperty != "" || m.TargetNameProperty != "" {
+			if (r.Source == r.Target && m.MentionProperty == m.IdentityProperty) || from == nil || to == nil || from.ReadOnly || (!(target.NeedsIdentity && len(target.PrimaryKeys) == 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty) && !businessIdentityShape(source, target, r, true)) || from.Type != to.Type || m.SourceNameProperty != "" || m.TargetNameProperty != "" {
 				return nil, ErrInvalidModel
 			}
 			r.Mapping = []interfaces.DraftFieldMapping{{SourceProperty: m.MentionProperty, TargetProperty: m.IdentityProperty}}

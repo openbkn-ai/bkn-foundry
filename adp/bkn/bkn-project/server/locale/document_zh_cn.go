@@ -9,6 +9,13 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var documentZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknProject.Draft.DualSourceNotConfirmed": "请先确认双来源字段清单，并采纳清单指定的文件、事实模型，再确认草稿。",
+		"BknProject.Draft.InvalidSourceFields":    "字段清单与当前系统、文本或事实模型不一致，请核对字段名称、落点及以谁为准，再重新确认。",
+
+		"BknProject.Draft.BusinessIdentityNotVerified": "请先在关系设置中勾选业务编号核验并保存，再采纳该关联；不需要修改系统对象原有主键。",
+		"BknProject.Draft.BusinessIdentityNotUnique":   "业务编号存在重复或空值，请处理后重新核验；系统原有主键保持不变。",
+		"BknProject.Draft.BusinessIdentityUnavailable": "暂时无法完成业务编号的全表核验，请检查来源访问权限后重试。",
+
 		"BknProject.Draft.EventParticipantInUse":            "该关系仍是事件参与方，请先修改事件的参与方设置再删除。",
 		"BknProject.Draft.DocumentRelation.NewName":         "文档关系",
 		"BknProject.Draft.DocumentRelation.ManualReason":    "由建模人配置，构建时按所选字段核对匹配。",

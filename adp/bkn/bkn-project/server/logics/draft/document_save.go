@@ -150,6 +150,11 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 		}
 		edited = checked
 	}
+	if save.Document != nil && save.Document.DualSource != nil {
+		if err := applySourceFieldDecision(ctx, draft, edited, save.Document.DualSource, caller); err != nil {
+			return nil, err
+		}
+	}
 	// No vega table scan or key counting applies to a document extraction schema.
 	name, description := edited.Name, edited.Description
 	*original = *edited

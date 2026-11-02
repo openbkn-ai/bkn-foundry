@@ -23,6 +23,8 @@ const (
 	BknProject_Draft_InvalidRelation       = "BknProject.Draft.InvalidRelation"
 	BknProject_Draft_InvalidQuestion       = "BknProject.Draft.InvalidQuestion"
 
+	BknProject_Draft_InvalidSourceFields = "BknProject.Draft.InvalidSourceFields"
+
 	// 403
 	BknProject_Draft_NotOwner = "BknProject.Draft.NotOwner"
 
@@ -31,26 +33,30 @@ const (
 	BknProject_Draft_ItemNotFound = "BknProject.Draft.ItemNotFound"
 
 	// 409
-	BknProject_Draft_DocumentRelationScope = "BknProject.Draft.DocumentRelationScope"
-	BknProject_Draft_EventParticipantInUse = "BknProject.Draft.EventParticipantInUse"
-	BknProject_Draft_DocumentDataNotReady  = "BknProject.Draft.DocumentDataNotReady"
-	BknProject_Draft_Drafting              = "BknProject.Draft.Drafting"
-	BknProject_Draft_ProjectArchived       = "BknProject.Draft.ProjectArchived"
-	BknProject_Draft_NotReady              = "BknProject.Draft.NotReady"
-	BknProject_Draft_Stale                 = "BknProject.Draft.Stale"
-	BknProject_Draft_HasDecisions          = "BknProject.Draft.HasDecisions"
-	BknProject_Draft_FieldNotFound         = "BknProject.Draft.FieldNotFound"
-	BknProject_Draft_CatalogMissing        = "BknProject.Draft.CatalogMissing"
-	BknProject_Draft_HasPending            = "BknProject.Draft.HasPending"
-	BknProject_Draft_PropertyInUse         = "BknProject.Draft.PropertyInUse"
-	BknProject_Draft_PartialNotAccepted    = "BknProject.Draft.PartialNotAccepted"
-	BknProject_Draft_UndecidedNotAccepted  = "BknProject.Draft.UndecidedNotAccepted"
-	BknProject_Draft_ConflictsNotAccepted  = "BknProject.Draft.ConflictsNotAccepted"
-	BknProject_Draft_SourceChangesOutdated = "BknProject.Draft.SourceChangesOutdated"
-	BknProject_Draft_NoSourceChanges       = "BknProject.Draft.NoSourceChanges"
+	BknProject_Draft_DualSourceNotConfirmed      = "BknProject.Draft.DualSourceNotConfirmed"
+	BknProject_Draft_DocumentRelationScope       = "BknProject.Draft.DocumentRelationScope"
+	BknProject_Draft_EventParticipantInUse       = "BknProject.Draft.EventParticipantInUse"
+	BknProject_Draft_BusinessIdentityNotVerified = "BknProject.Draft.BusinessIdentityNotVerified"
+	BknProject_Draft_BusinessIdentityNotUnique   = "BknProject.Draft.BusinessIdentityNotUnique"
+	BknProject_Draft_DocumentDataNotReady        = "BknProject.Draft.DocumentDataNotReady"
+	BknProject_Draft_Drafting                    = "BknProject.Draft.Drafting"
+	BknProject_Draft_ProjectArchived             = "BknProject.Draft.ProjectArchived"
+	BknProject_Draft_NotReady                    = "BknProject.Draft.NotReady"
+	BknProject_Draft_Stale                       = "BknProject.Draft.Stale"
+	BknProject_Draft_HasDecisions                = "BknProject.Draft.HasDecisions"
+	BknProject_Draft_FieldNotFound               = "BknProject.Draft.FieldNotFound"
+	BknProject_Draft_CatalogMissing              = "BknProject.Draft.CatalogMissing"
+	BknProject_Draft_HasPending                  = "BknProject.Draft.HasPending"
+	BknProject_Draft_PropertyInUse               = "BknProject.Draft.PropertyInUse"
+	BknProject_Draft_PartialNotAccepted          = "BknProject.Draft.PartialNotAccepted"
+	BknProject_Draft_UndecidedNotAccepted        = "BknProject.Draft.UndecidedNotAccepted"
+	BknProject_Draft_ConflictsNotAccepted        = "BknProject.Draft.ConflictsNotAccepted"
+	BknProject_Draft_SourceChangesOutdated       = "BknProject.Draft.SourceChangesOutdated"
+	BknProject_Draft_NoSourceChanges             = "BknProject.Draft.NoSourceChanges"
 
 	// 503
-	BknProject_Draft_SourceUnreachable = "BknProject.Draft.SourceUnreachable"
+	BknProject_Draft_BusinessIdentityUnavailable = "BknProject.Draft.BusinessIdentityUnavailable"
+	BknProject_Draft_SourceUnreachable           = "BknProject.Draft.SourceUnreachable"
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
@@ -98,6 +104,11 @@ const (
 
 var (
 	DraftErrCodeList = []string{
+		BknProject_Draft_DualSourceNotConfirmed,
+		BknProject_Draft_InvalidSourceFields,
+		BknProject_Draft_BusinessIdentityNotVerified,
+		BknProject_Draft_BusinessIdentityNotUnique,
+		BknProject_Draft_BusinessIdentityUnavailable,
 		BknProject_Draft_DocumentRelationScope,
 		BknProject_Draft_EventParticipantInUse,
 		BknProject_Draft_DocumentDataNotReady,

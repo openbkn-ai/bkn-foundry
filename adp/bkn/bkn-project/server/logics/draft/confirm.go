@@ -70,6 +70,9 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 			return nil, documentValidationError(ctx, &kbconcept.RelationScopeError{ID: relation.ID, Name: relation.Name})
 		}
 		if relation.Adopted && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(draft.Items, relation) {
+			if kbconcept.BusinessIdentityTarget(draft.Items, relation) != nil {
+				return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_BusinessIdentityNotVerified)
+			}
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
 		}
 	}
@@ -120,8 +123,17 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_ConflictsNotAccepted).
 			WithErrorDetails(unresolved)
 	}
+	if err = checkSourceFieldDecisions(ctx, draft); err != nil {
+		return nil, err
+	}
+	if err = s.checkBusinessIdentities(ctx, draft, caller); err != nil {
+		return nil, err
+	}
 	draft, err = s.prepareDocumentDatasets(ctx, token, entry, draft, caller)
 	if err != nil {
+		return nil, err
+	}
+	if err = s.checkBusinessIdentities(ctx, draft, caller); err != nil {
 		return nil, err
 	}
 	compiled, err := compileDraft(&draft.Items)

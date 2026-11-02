@@ -428,7 +428,11 @@ func askRelationOf(r *interfaces.DraftRelationType) askRelation {
 		SourceMapping: r.SourceMapping, TargetMapping: r.TargetMapping, Adopted: r.Adopted}
 	if r.Document != nil {
 		relation.Document = &askDocument{Role: r.Document.Role, Layer: r.Document.Layer, Reason: r.Document.Reason}
-		relation.DocumentMapping = r.DocumentMapping
+		if r.DocumentMapping != nil {
+			mapping := *r.DocumentMapping
+			mapping.BusinessIdentity = nil
+			relation.DocumentMapping = &mapping
+		}
 	}
 	if r.LinkTable != nil {
 		relation.LinkTable = r.LinkTable.Name

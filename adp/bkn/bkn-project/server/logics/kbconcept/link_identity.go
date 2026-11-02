@@ -24,8 +24,11 @@ func LinkIdentityReady(items interfaces.DraftItems, relation *interfaces.DraftRe
 			target = object
 		}
 	}
-	if source == nil || target == nil || source.Document == nil || target.NeedsIdentity || len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != relation.DocumentMapping.IdentityProperty {
+	if source == nil || target == nil || source.Document == nil || target.NeedsIdentity {
 		return false
+	}
+	if len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != relation.DocumentMapping.IdentityProperty {
+		return businessIdentityReady(items, relation)
 	}
 	from, to := property(source, relation.DocumentMapping.MentionProperty), property(target, relation.DocumentMapping.IdentityProperty)
 	return from != nil && to != nil && !from.ReadOnly && from.Type == to.Type && !(source.ID == target.ID && from.Name == to.Name)

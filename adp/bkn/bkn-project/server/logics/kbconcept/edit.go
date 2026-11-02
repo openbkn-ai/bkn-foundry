@@ -57,6 +57,10 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 	if json.Unmarshal(raw, edited) != nil {
 		return nil, ErrInvalidModel
 	}
+	if edited.Document.DualSource != nil && !reflect.DeepEqual(edited.Document.DualSource, original.Document.DualSource) {
+		return nil, ErrInvalidModel
+	}
+	edited.Document.DualSource = nil
 	if edited.Table.ResourceID != "" && !reflect.DeepEqual(edited.Table, original.Table) {
 		return nil, ErrInvalidModel
 	}
@@ -117,6 +121,11 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, err
 	}
 	result := checked.ObjectTypes[0]
+	if original.Document.DualSource != nil {
+		encoded, _ := json.Marshal(original.Document.DualSource)
+		result.Document.DualSource = &interfaces.DraftDualSourcePlan{}
+		_ = json.Unmarshal(encoded, result.Document.DualSource)
+	}
 	result.Aliases = append([]string(nil), original.Aliases...)
 	if slices.Equal(result.PrimaryKeys, original.PrimaryKeys) {
 		result.Key = original.Key
@@ -124,6 +133,9 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 	for _, p := range result.Properties {
 		if old := property(original, p.Name); old != nil {
 			p.Aliases = append([]string(nil), old.Aliases...)
+			if p.Type == old.Type && (old.SourceOfRecord == "document" || old.SourceOfRecord == "fusion") {
+				p.SourceOfRecord = old.SourceOfRecord
+			}
 		}
 	}
 	// Every existing join remains valid after removal, type and identity edits.
@@ -184,6 +196,12 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 	edited.SourceMapping = nil
 	edited.TargetMapping = nil
 	edited.Properties = nil
+	if edited.DocumentMapping != nil {
+		if edited.DocumentMapping.BusinessIdentity != nil && (original.DocumentMapping == nil || !reflect.DeepEqual(edited.DocumentMapping.BusinessIdentity, original.DocumentMapping.BusinessIdentity)) {
+			return nil, ErrInvalidModel
+		}
+		edited.DocumentMapping.BusinessIdentity = nil
+	}
 	edited.Aliases = nil
 	if err := hydrateQuotes(input, edited.Document.Citations); err != nil {
 		return nil, err
@@ -200,6 +218,13 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 		return nil, err
 	}
 	result := checked.RelationTypes[0]
+	if original.DocumentMapping != nil && original.DocumentMapping.BusinessIdentity != nil {
+		proof := *original.DocumentMapping.BusinessIdentity
+		result.DocumentMapping.BusinessIdentity = &proof
+		if !businessIdentityReady(items, result) {
+			result.DocumentMapping.BusinessIdentity = nil
+		}
+	}
 	for _, other := range existing.RelationTypes {
 		if other != nil && other.Source == result.Source && other.Target == result.Target && reflect.DeepEqual(other.Mapping, result.Mapping) {
 			return nil, ErrInvalidModel
