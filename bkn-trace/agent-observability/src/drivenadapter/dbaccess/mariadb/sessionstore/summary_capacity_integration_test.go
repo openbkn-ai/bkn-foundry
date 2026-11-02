@@ -245,6 +245,7 @@ func TestSummaryCapacityMariaDB(t *testing.T) {
 	}
 	report["cases"] = cases
 	report["legacy_boundary_parity"] = capacityCompareLegacyBoundaries(t, store, now)
+	report["global_trace_pages"] = capacityGlobalTracePages(t, store, now)
 	report["service_boundary"] = capacityServiceBoundary(t, store, now)
 	report["operation_summaries"] = capacityOperationSummaries(t, store, now)
 	report["http_operation_summaries"] = capacityHTTPSummaries(t, store)
