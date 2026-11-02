@@ -41,6 +41,7 @@ var resourceEnUS = i18n.I18nMessages{
 		"VegaBackend.Resource.InternalError.GetAccountNamesFailed": "Failed to get account names. Please contact the administrator",
 		"VegaBackend.Resource.UpdateConflict":                      "The resource was updated after it was read. Reload the resource and retry the update",
 		"VegaBackend.Resource.DeleteConflict":                      "The resource is no longer stale and missing. Reload the resource before deleting it",
+		"VegaBackend.Resource.QueryTimeOutOfRange":                 "The time interval{{if .field}} for field {{.field}}{{end}} exceeds the supported index field range. Use a shorter interval",
 		"VegaBackend.Resource.QueryValueExceedsKeywordLimit":       "The query value exceeds the maximum indexed keyword length. Use a shorter value or explicitly query the original data when available.",
 	},
 }

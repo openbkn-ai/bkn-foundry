@@ -52,6 +52,29 @@ type resourceDataService struct {
 	cl         rate.ConcurrencyLimiter
 }
 
+type resourceDataPageRunner struct {
+	service     *resourceDataService
+	resource    *interfaces.Resource
+	querySource string
+}
+
+// ExecutePage 使用实际页参数记录查询来源并映射执行错误，兼容游标恢复的执行选项。
+func (runner *resourceDataPageRunner) ExecutePage(ctx context.Context,
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	runner.querySource = resourceQuerySource(runner.resource, params)
+	page, err := runner.service.query(ctx, runner.resource, params)
+	if err != nil {
+		invalidCode := verrors.VegaBackend_Query_InvalidParameter
+		if runner.querySource == interfaces.ResourceQuerySourceLocalIndex || runner.resource.Category == interfaces.ResourceCategoryDataset {
+			invalidCode = verrors.VegaBackend_Resource_InvalidParameter
+		}
+		if httpErr := MapQueryError(ctx, err, invalidCode); httpErr != nil {
+			return nil, httpErr
+		}
+	}
+	return page, err
+}
+
 func connectorCreationError(ctx context.Context, err error) error {
 	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
@@ -95,7 +118,7 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 }
 
 // QuerySourcePage runs one physical resource page for an already authorized view.
-// The view service owns its permission check and cursor session.
+// The view service owns its permission check, cursor session, and HTTP mapping of execution errors.
 func (rds *resourceDataService) QuerySourcePage(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	return rds.query(ctx, resource, params)
@@ -221,8 +244,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	}
 
 	if err := rds.validateOutputFieldsParams(resource, params); err != nil {
-		httpErr, _ := outputFieldHTTPError(ctx, err)
-		return nil, httpErr
+		return nil, err
 	}
 
 	// Resolve the stored view condition first. It is part of server configuration,
@@ -280,12 +302,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		result, err := rds.ds.ListDocuments(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "List dataset documents failed", err)
-			var httpErr *httperrors.HTTPError
-			if errors.As(err, &httpErr) {
-				return nil, httpErr
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(err.Error())
+			return nil, err
 		}
 		return result, nil
 
@@ -297,26 +314,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			result, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
 				otellog.LogError(ctx, "Query table data from local index failed", err)
-				var stored *interfaces.StoredConditionBuildError
-				if errors.As(err, &stored) {
-					// 保留固定条件错误的来源，由视图查询层提供定义失效提示。
-					return nil, err
-				}
-				if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
-					return nil, httpErr
-				}
-				if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
-					return nil, httpErr
-				}
-				if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
-					return nil, httpErr
-				}
-				if reason, ok := interfaces.RequestSideQueryError(err); ok {
-					return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
-						WithErrorDetails(reason)
-				}
-				return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-					WithErrorDetails(err.Error())
+				return nil, err
 			}
 
 			span.SetStatus(codes.Ok, "")
@@ -330,18 +328,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		result, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query table data failed", err)
-			// QueryData throws the typed errors as they are. Unconditionally repackage it to 500 and it will be there
-			// The 400 (not supported by the operator) identified inside is smoothed out, and those mappings are equivalent to not being written.
-			var stored *interfaces.StoredConditionBuildError
-			if errors.As(err, &stored) {
-				return nil, err
-			}
-			var httpErr *httperrors.HTTPError
-			if errors.As(err, &httpErr) {
-				return nil, httpErr
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(err.Error())
+			return nil, err
 		}
 
 		normalized, normalizeErr := normalizeBinaryQueryValues(result.Entries, resource, params)
@@ -357,18 +344,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		result, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query index data failed", err)
-			// QueryData throws the typed errors as they are. Unconditionally repackage it to 500 and it will be there
-			// The 400 (not supported by the operator) identified inside is smoothed out, and those mappings are equivalent to not being written.
-			var stored *interfaces.StoredConditionBuildError
-			if errors.As(err, &stored) {
-				return nil, err
-			}
-			var httpErr *httperrors.HTTPError
-			if errors.As(err, &httpErr) {
-				return nil, httpErr
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(err.Error())
+			return nil, err
 		}
 
 		span.SetStatus(codes.Ok, "")
@@ -382,12 +358,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		result, err := resourcelogic.QueryLogicalViewWithPaging(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query logical view data failed", err)
-			var httpErr *httperrors.HTTPError
-			if errors.As(err, &httpErr) {
-				return nil, httpErr
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(err.Error())
+			return nil, err
 		}
 
 		span.SetStatus(codes.Ok, "")
@@ -508,6 +479,20 @@ func shouldIncludeOutputField(params *interfaces.ResourceDataQueryParams, field 
 // QueryWithPaging is the sole public resource-data query entrypoint.
 func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	result, err := rds.queryWithPaging(ctx, resource, params)
+	if err == nil {
+		return result, nil
+	}
+	if httpErr := MapQueryError(ctx, err, verrors.VegaBackend_Query_InvalidParameter); httpErr != nil {
+		return result, httpErr
+	}
+	return result, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		WithErrorDetails("query execution failed")
+}
+
+// queryWithPaging coordinates public paging and maps page errors using the actual execution options.
+func (rds *resourceDataService) queryWithPaging(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	// Proxy reads have already passed the dedicated proxy PEP. All other callers
 	// must be authorized here so every public query entrypoint has the same gate.
 	if !interfaces.IsTrustedProxyRead(ctx) {
@@ -524,8 +509,7 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		if err := rds.validateOutputFieldsParams(resource, params); err != nil {
-			httpErr, _ := outputFieldHTTPError(ctx, err)
-			return nil, httpErr
+			return nil, err
 		}
 		result, err := resourcelogic.QueryLogicalViewWithPaging(ctx, resource, params)
 		if err != nil {
@@ -541,19 +525,20 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return result, nil
 	}
 	paginationCategory := resourceDataPaginationCategory(resource, params)
+	runner := &resourceDataPageRunner{
+		service:     rds,
+		resource:    resource,
+		querySource: resourceQuerySource(resource, params),
+	}
+
 	if params.Paging.Cursor != "" {
 		if !resourceDataCursorSupported(resource.Category) {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails("cursor paging is not implemented for this resource category")
 		}
-		querySource := ""
-		result, err := querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
-			func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-				querySource = resourceQuerySource(resource, pageParams)
-				return rds.query(pageCtx, resource, pageParams)
-			})
+		result, err := querylogic.ExecuteResourceDataCursorContinuationWithRunner(ctx, accountIDFromContext(ctx), resource, nil, params.Paging.Cursor, runner)
 		if result != nil {
-			result.QuerySource = querySource
+			result.QuerySource = runner.querySource
 		}
 		return result, err
 	}
@@ -574,14 +559,9 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails("cursor paging does not support index aggregation queries")
 			}
-			querySource := ""
-			result, err := querylogic.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
-				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-					querySource = resourceQuerySource(resource, pageParams)
-					return rds.query(pageCtx, resource, pageParams)
-				})
+			result, err := querylogic.ExecuteInitialResourceDataCursorWithCategoryRunner(ctx, accountIDFromContext(ctx), resource, nil, paginationCategory, params, runner)
 			if result != nil {
-				result.QuerySource = querySource
+				result.QuerySource = runner.querySource
 			}
 			return result, err
 		}
@@ -589,7 +569,7 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 			WithErrorDetails("cursor paging is not implemented for this resource category")
 	}
 
-	page, err := rds.query(ctx, resource, params)
+	page, err := runner.ExecutePage(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -673,29 +653,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
-			var sourceReadForbidden *interfaces.SourceReadForbiddenError
-			if errors.As(err, &sourceReadForbidden) {
-				return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
-			}
-			var stored *interfaces.StoredConditionBuildError
-			if errors.As(err, &stored) {
-				return nil, err
-			}
-			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
-				return nil, httpErr
-			}
-			if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
-				return nil, httpErr
-			}
-			if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
-				return nil, httpErr
-			}
-			if reason, ok := interfaces.RequestSideQueryError(err); ok {
-				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(reason)
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
+			return nil, err
 		}
 
 		span.SetStatus(codes.Ok, "")
@@ -713,29 +671,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := indexConnector.ExecuteQuery(ctx, resource.SourceIdentifier, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
-			var sourceReadForbidden *interfaces.SourceReadForbiddenError
-			if errors.As(err, &sourceReadForbidden) {
-				return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
-			}
-			var stored *interfaces.StoredConditionBuildError
-			if errors.As(err, &stored) {
-				return nil, err
-			}
-			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
-				return nil, httpErr
-			}
-			if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
-				return nil, httpErr
-			}
-			if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
-				return nil, httpErr
-			}
-			if reason, ok := interfaces.RequestSideQueryError(err); ok {
-				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(reason)
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
+			return nil, err
 		}
 
 		span.SetStatus(codes.Ok, "")
@@ -754,27 +690,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := fc.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Fileset query failed", err)
-			var sourceReadForbidden *interfaces.SourceReadForbiddenError
-			if errors.As(err, &sourceReadForbidden) {
-				return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
-			}
-			// The same typing as the table/index branches: The unimplemented operators of anyshare are problems on the request side
-			// The caller can pass by simply changing the operator. If everything is uniformly packaged as 500, ontology-query will be judged as a dependency fault.
-			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
-				return nil, httpErr
-			}
-			if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
-				return nil, httpErr
-			}
-			if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
-				return nil, httpErr
-			}
-			if reason, ok := interfaces.RequestSideQueryError(err); ok {
-				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails(reason)
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(err.Error())
+			return nil, err
 		}
 
 		span.SetStatus(codes.Ok, "")
@@ -894,22 +810,44 @@ func projectAggregateOutputFields(entries []map[string]any, params *interfaces.R
 	return projected
 }
 
-// outputFieldHTTPError maps public projection failures without exposing internal causes.
-func outputFieldHTTPError(ctx context.Context, err error) (*httperrors.HTTPError, bool) {
+// MapQueryError 在对外查询入口将已识别的查询错误映射为 HTTP 错误。
+// 不能映射的错误返回 nil，由入口负责未知故障兜底；内部执行路径保留原始错误。
+func MapQueryError(ctx context.Context, err error, invalidParameterCode string) *httperrors.HTTPError {
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr
+	}
+	var sourceReadForbidden *interfaces.SourceReadForbiddenError
+	if errors.As(err, &sourceReadForbidden) {
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+	}
+	if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
+		return httpErr
+	}
+	if httpErr := query_error.TemporalRangeHTTPError(ctx, err); httpErr != nil {
+		return httpErr
+	}
 	var stored *interfaces.StoredConditionBuildError
 	if errors.As(err, &stored) {
-		return nil, false
+		return nil
 	}
 	var output *interfaces.OutputFieldError
-	if !errors.As(err, &output) {
-		return nil, false
+	if errors.As(err, &output) {
+		code := verrors.VegaBackend_Query_InvalidParameter_OutputField
+		switch output.Reason {
+		case interfaces.OutputFieldUnsupported:
+			code = verrors.VegaBackend_Query_UnsupportedOutputField
+		case interfaces.OutputFieldNoneQueryable:
+			code = verrors.VegaBackend_Query_NoQueryableFields
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, code).WithErrorDetails(output.Error())
 	}
-	code := verrors.VegaBackend_Query_InvalidParameter_OutputField
-	switch output.Reason {
-	case interfaces.OutputFieldUnsupported:
-		code = verrors.VegaBackend_Query_UnsupportedOutputField
-	case interfaces.OutputFieldNoneQueryable:
-		code = verrors.VegaBackend_Query_NoQueryableFields
+	if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
+		return httpErr
 	}
-	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, code).WithErrorDetails(output.Error()), true
+	if reason, ok := interfaces.RequestSideQueryError(err); ok {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, invalidParameterCode).
+			WithErrorDetails(reason)
+	}
+	return nil
 }

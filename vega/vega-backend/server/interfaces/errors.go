@@ -118,6 +118,28 @@ func NewConditionBuildError(format string, args ...any) *ConditionBuildError {
 func (e *ConditionBuildError) Error() string { return e.Reason }
 func (e *ConditionBuildError) Unwrap() error { return e.Cause }
 
+// TemporalRangeError 表示相对时间条件生成了当前索引字段无法表示的边界。
+type TemporalRangeError struct {
+	Field     string
+	FieldType string
+	Interval  int64
+	Unit      string
+	*ConditionBuildError
+}
+
+func NewTemporalRangeError(field, fieldType string, interval int64, unit string) *TemporalRangeError {
+	return &TemporalRangeError{
+		Field:               field,
+		FieldType:           fieldType,
+		Interval:            interval,
+		Unit:                unit,
+		ConditionBuildError: NewConditionBuildError("relative time interval for field %s exceeds the supported %s time range", field, fieldType)}
+}
+
+func (e *TemporalRangeError) Error() string { return e.ConditionBuildError.Error() }
+
+func (e *TemporalRangeError) Unwrap() error { return e.ConditionBuildError }
+
 // KeywordLimitError 表示精确查询值超过字段的 keyword 索引长度上限。
 // 字段与上限独立保存，调用方无需解析错误文案。
 type KeywordLimitError struct {
@@ -128,7 +150,8 @@ type KeywordLimitError struct {
 
 func NewKeywordLimitError(field string, limit int) *KeywordLimitError {
 	return &KeywordLimitError{
-		Field: field, Limit: limit,
+		Field:               field,
+		Limit:               limit,
 		ConditionBuildError: NewConditionBuildError("value for field %s exceeds keyword ignore_above %d and cannot be compared exactly", field, limit),
 	}
 }

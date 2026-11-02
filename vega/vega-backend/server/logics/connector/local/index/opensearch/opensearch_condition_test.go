@@ -1292,34 +1292,138 @@ func TestOpenSearchConnectorConvertFilterConditionTemporalFieldComparison(t *tes
 
 func TestIndexBeforeQuery(t *testing.T) {
 	now := time.Date(2024, 3, 31, 0, 30, 0, 123456789, time.UTC)
+	t.Run("range errors use normalized units", func(t *testing.T) {
+		t.Setenv("TZ", "UTC")
+		for _, tc := range []struct {
+			originalType, unit string
+			inputs             []string
+		}{
+			{originalType: "date_nanos", unit: "day", inputs: []string{"day", "DAY", " Day ", "\tDaY\n"}},
+			{originalType: "date", unit: "year", inputs: []string{"year", "YEAR", " Year ", "\tYeAr\n"}},
+		} {
+			for _, input := range tc.inputs {
+				t.Run(tc.originalType+"/"+input, func(t *testing.T) {
+					cond := &filter_condition.BeforeCond{
+						Lfield: &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime, OriginalType: tc.originalType},
+						Value:  []any{int64(2147483647), input},
+					}
+					dsl, err := indexBeforeQuery(cond, now)
+					var rangeErr *interfaces.TemporalRangeError
+					require.ErrorAs(t, err, &rangeErr)
+					assert.Nil(t, dsl)
+					assert.Equal(t, tc.unit, rangeErr.Unit)
+					assert.Equal(t, input, cond.Value[1])
+				})
+			}
+		}
+	})
+	t.Run("date nanos interval must produce a supported boundary", func(t *testing.T) {
+		t.Setenv("TZ", "UTC")
+		for _, unit := range []string{"year", "month", "week", "day", "hour", "minute", "second"} {
+			for _, originalType := range []string{"date", "date_nanos"} {
+				t.Run(originalType+"/"+unit, func(t *testing.T) {
+					// A large interval can be valid for date while exceeding date_nanos.
+					interval := int64(2147483647)
+					cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "created", OriginalName: "physical.created", Type: interfaces.DataType_Datetime, OriginalType: originalType}, Value: []any{interval, unit}}
+					dsl, err := indexBeforeQuery(cond, now)
+					if originalType == "date_nanos" || unit == "year" {
+						var buildErr *interfaces.ConditionBuildError
+						require.ErrorAs(t, err, &buildErr)
+						assert.Contains(t, err.Error(), "created")
+						assert.Nil(t, dsl)
+					} else {
+						require.NoError(t, err)
+						assert.Contains(t, dsl, "range")
+					}
+				})
+			}
+		}
+	})
+	cutoffs := map[string]string{
+		"year":   "2021-03-31T00:30:00.123456789Z",
+		"month":  "2023-12-31T00:30:00.123456789Z",
+		"week":   "2024-03-10T00:30:00.123456789Z",
+		"day":    "2024-03-28T00:30:00.123456789Z",
+		"hour":   "2024-03-30T21:30:00.123456789Z",
+		"minute": "2024-03-31T00:27:00.123456789Z",
+		"second": "2024-03-31T00:29:57.123456789Z",
+	}
 	for _, zone := range []string{"UTC", "Asia/Shanghai", "America/New_York"} {
 		for _, typ := range []string{interfaces.DataType_Date, interfaces.DataType_Datetime} {
-			for _, unit := range []struct{ name, math string }{{"year", "y"}, {"month", "M"}, {"week", "w"}, {"day", "d"}, {"hour", "h"}, {"minute", "m"}} {
-				t.Run(zone+"/"+typ+"/"+unit.name, func(t *testing.T) {
+			for _, unit := range []string{"year", "month", "week", "day", "hour", "minute", "second"} {
+				t.Run(zone+"/"+typ+"/"+unit, func(t *testing.T) {
 					t.Setenv("TZ", zone)
-					cfg := &interfaces.FilterCondCfg{Name: "at", Operation: "before", ValueFrom: interfaces.ValueFrom_Const, Value: []any{json.Number("3"), unit.name}}
+					cfg := &interfaces.FilterCondCfg{Name: "at", Operation: "before", ValueFrom: interfaces.ValueFrom_Const, Value: []any{json.Number("3"), unit}}
 					condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"at": {Name: "at", OriginalName: "physical.at", Type: typ}})
 					require.NoError(t, err)
 					got, err := indexBeforeQuery(condition.(*filter_condition.BeforeCond), now)
 					require.NoError(t, err)
-					anchor, wantZone := "2024-03-31T00:30:00.123456789Z", zone
+					want, err := time.Parse(time.RFC3339Nano, cutoffs[unit])
+					require.NoError(t, err)
 					if typ == interfaces.DataType_Date {
-						anchor = map[string]string{"UTC": "2024-03-31T00:30:00.123456789Z", "Asia/Shanghai": "2024-03-31T08:30:00.123456789Z", "America/New_York": "2024-03-30T20:30:00.123456789Z"}[zone]
-						wantZone = "UTC"
+						switch zone {
+						case "Asia/Shanghai":
+							want = want.Add(8 * time.Hour)
+						case "America/New_York":
+							want = want.Add(-4 * time.Hour)
+						}
+					} else if zone == "America/New_York" && (unit == "month" || unit == "week") {
+						want = want.Add(time.Hour)
 					}
 					assert.Equal(t, map[string]any{"range": map[string]any{"physical.at": map[string]any{
-						"lt":     anchor + "||-3" + unit.math,
-						"format": "strict_date_optional_time_nanos", "time_zone": wantZone,
+						"lt": want.Format(common.RFC3339FixedNanosLayout), "format": "strict_date_optional_time_nanos",
 					}}}, got)
 				})
 			}
 		}
 	}
+	t.Run("emitted boundary follows standard library calendar arithmetic", func(t *testing.T) {
+		t.Setenv("TZ", "America/New_York")
+		location, err := time.LoadLocation("America/New_York")
+		require.NoError(t, err)
+		for _, value := range []string{"2024-03-11T06:30:00.123456789Z", "2024-11-04T06:30:00.123456789Z"} {
+			t.Run(value, func(t *testing.T) {
+				anchor, err := time.Parse(time.RFC3339Nano, value)
+				require.NoError(t, err)
+				want := anchor.In(location).AddDate(0, 0, -1)
+				cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}, Value: []any{int64(1), "day"}}
+				dsl, err := indexBeforeQuery(cond, anchor)
+				require.NoError(t, err)
+				assert.Equal(t, map[string]any{"range": map[string]any{"at": map[string]any{
+					"lt": want.UTC().Format(common.RFC3339FixedNanosLayout), "format": "strict_date_optional_time_nanos",
+				}}}, dsl)
+			})
+		}
+	})
 	t.Run("legacy reference time retains its meaning", func(t *testing.T) {
 		cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", OriginalName: "physical.at", Type: interfaces.DataType_Datetime}, Value: []any{float64(3), "2026-10-30T00:00:00Z"}}
 		got, err := indexBeforeQuery(cond, now)
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{"range": map[string]any{"physical.at": map[string]any{"lt": "2026-10-29T21:00:00Z"}}}, got)
+	})
+	t.Run("legacy nanos validates the emitted second precision boundary", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, reference, want string
+			rejected              bool
+		}{
+			{name: "epoch second", reference: "1970-01-01T01:00:00.9Z", want: "1970-01-01T00:00:00Z"},
+			{name: "last supported second", reference: "2262-04-12T00:47:16.9Z", want: "2262-04-11T23:47:16Z"},
+			{name: "before epoch", reference: "1970-01-01T00:59:59.999999999Z", rejected: true},
+			{name: "after last supported second", reference: "2262-04-12T00:47:17Z", rejected: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", OriginalName: "physical.at", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}, Value: []any{float64(1), tc.reference}}
+				got, err := indexBeforeQuery(cond, now)
+				if tc.rejected {
+					var temporal *interfaces.TemporalRangeError
+					require.ErrorAs(t, err, &temporal)
+					assert.Nil(t, got)
+					return
+				}
+				require.NoError(t, err)
+				assert.Equal(t, map[string]any{"range": map[string]any{"physical.at": map[string]any{"lt": tc.want}}}, got)
+			})
+		}
 	})
 	t.Run("invalid zone retains server configuration classification", func(t *testing.T) {
 		t.Setenv("TZ", "Invalid/Zone")
@@ -1332,6 +1436,105 @@ func TestIndexBeforeQuery(t *testing.T) {
 			_, err := indexBeforeQuery(&filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", Type: interfaces.DataType_Datetime}, Value: values}, now)
 			var buildErr *interfaces.ConditionBuildError
 			require.ErrorAs(t, err, &buildErr)
+		})
+	}
+}
+
+func TestValidateBeforeConditions(t *testing.T) {
+	t.Setenv("TZ", "UTC")
+	now := time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC)
+	field := &interfaces.Property{Name: "nano_time", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}
+	bad := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2147483647), "day"}}
+	valid := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(1), "day"}}
+	for name, condition := range map[string]interfaces.FilterCondition{
+		"leaf":             bad,
+		"and":              &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{valid, bad}},
+		"or":               &filter_condition.OrCond{SubConds: []interfaces.FilterCondition{valid, bad}},
+		"vector subfilter": &filter_condition.KnnVectorCond{SubConds: []interfaces.FilterCondition{bad}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var rangeErr *interfaces.TemporalRangeError
+			require.ErrorAs(t, ValidateBeforeConditions(condition, now), &rangeErr)
+			assert.Equal(t, "nano_time", rangeErr.Field)
+			assert.Equal(t, "date_nanos", rangeErr.FieldType)
+			assert.Equal(t, int64(2147483647), rangeErr.Interval)
+			assert.Equal(t, "day", rangeErr.Unit)
+		})
+	}
+	require.NoError(t, ValidateBeforeConditions(nil, now))
+	require.NoError(t, ValidateBeforeConditions(valid, now))
+}
+
+func TestValidateIndexTimeBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name, value, typ string
+		bad              bool
+	}{
+		{name: "epoch", value: "1970-01-01T00:00:00Z", typ: "date_nanos"},
+		{name: "below epoch", value: "1969-12-31T23:59:59.999999999Z", typ: "date_nanos", bad: true},
+		{name: "same instant in offset", value: "1970-01-01T08:00:00+08:00", typ: "date_nanos"},
+		{name: "maximum nanos", value: "2262-04-11T23:47:16.854775807Z", typ: "date_nanos"},
+		{name: "above maximum nanos", value: "2262-04-11T23:47:16.854775808Z", typ: "date_nanos", bad: true},
+		{name: "ordinary date before epoch", value: "1900-01-01T00:00:00Z", typ: "date"},
+		{name: "ordinary date after nanos maximum", value: "3000-01-01T00:00:00Z", typ: "date"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cutoff, err := time.Parse(time.RFC3339Nano, tc.value)
+			require.NoError(t, err)
+			cfg := &interfaces.FilterCondCfg{Name: "at", Operation: "before", Value: []any{1, "day"}}
+			cond := &filter_condition.BeforeCond{Cfg: cfg, Lfield: &interfaces.Property{Name: "at", OriginalType: tc.typ}}
+			err = validateIndexTimeBoundary(cond, cutoff, 1, "day")
+			if tc.bad {
+				var rangeErr *interfaces.TemporalRangeError
+				require.ErrorAs(t, err, &rangeErr)
+				assert.Equal(t, tc.typ, rangeErr.FieldType)
+				assert.Equal(t, "at", rangeErr.Field)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+	t.Run("captures the actual field without retaining the condition", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{Name: "published_at"}
+		field := &interfaces.Property{Name: "source_at", OriginalType: "date_nanos"}
+		cond := &filter_condition.BeforeCond{Cfg: cfg, Lfield: field}
+		err := validateIndexTimeBoundary(cond, time.Unix(0, -1), 1, "day")
+		var temporal *interfaces.TemporalRangeError
+		require.ErrorAs(t, err, &temporal)
+		assert.Equal(t, "source_at", temporal.Field)
+		cfg.Name = "renamed_request"
+		field.Name = "renamed_source"
+		assert.Equal(t, "source_at", temporal.Field)
+	})
+}
+
+func TestIndexBeforeCutoff(t *testing.T) {
+	for _, tc := range []struct {
+		name, now, zone, unit, want string
+		interval                    int64
+	}{
+		{name: "month end clamps", now: "2024-03-31T12:30:00.123456789Z", zone: "UTC", unit: "month", interval: 1, want: "2024-02-29T12:30:00.123456789Z"},
+		{name: "leap year clamps", now: "2024-02-29T12:30:00Z", zone: "UTC", unit: "year", interval: 1, want: "2023-02-28T12:30:00Z"},
+		{name: "calendar week", now: "2024-03-31T12:30:00Z", zone: "UTC", unit: "week", interval: 1, want: "2024-03-24T12:30:00Z"},
+		{name: "day follows the location calendar", now: "2024-03-10T16:00:00Z", zone: "America/New_York", unit: "day", interval: 1, want: "2024-03-09T17:00:00Z"},
+		{name: "month uses the current local date", now: "2024-03-30T16:30:00.123456789Z", zone: "Asia/Shanghai", unit: "month", interval: 1, want: "2024-02-28T16:30:00.123456789Z"},
+		{name: "hours use elapsed time", now: "2024-03-10T07:30:00Z", zone: "America/New_York", unit: "hour", interval: 1, want: "2024-03-10T06:30:00Z"},
+		{name: "large hours avoid duration overflow", now: "2024-03-31T00:00:00Z", zone: "UTC", unit: "hour", interval: 2147483647},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			anchor, err := time.Parse(time.RFC3339Nano, tc.now)
+			require.NoError(t, err)
+			location, err := time.LoadLocation(tc.zone)
+			require.NoError(t, err)
+			got := indexBeforeCutoff(anchor, tc.interval, tc.unit, location)
+			assert.Equal(t, location, got.Location())
+			if tc.want != "" {
+				want, err := time.Parse(time.RFC3339Nano, tc.want)
+				require.NoError(t, err)
+				assert.True(t, got.Equal(want), "got %s, want %s", got, want)
+			} else {
+				assert.Equal(t, anchor.Unix()-tc.interval*3600, got.Unix())
+			}
 		})
 	}
 }

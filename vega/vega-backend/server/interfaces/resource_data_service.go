@@ -16,5 +16,6 @@ type ResourceDataService interface {
 	QueryWithPaging(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 	// QuerySourcePage executes one physical resource page after the enclosing view has been authorized.
 	// It does not check permissions or manage cursor sessions.
+	// Execution errors retain their original types and condition origins for view mapping at the public boundary.
 	QuerySourcePage(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 }

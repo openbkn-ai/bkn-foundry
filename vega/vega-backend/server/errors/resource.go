@@ -10,6 +10,7 @@ package errors
 // Resource error codes.
 const (
 	// 400 Bad Request
+	VegaBackend_Resource_QueryTimeOutOfRange                = "VegaBackend.Resource.QueryTimeOutOfRange"
 	VegaBackend_Resource_QueryValueExceedsKeywordLimit      = "VegaBackend.Resource.QueryValueExceedsKeywordLimit"
 	VegaBackend_Resource_InvalidParameter                   = "VegaBackend.Resource.InvalidParameter"
 	VegaBackend_Resource_InvalidParameter_Type              = "VegaBackend.Resource.InvalidParameter.Type"
@@ -60,6 +61,7 @@ const (
 
 var ResourceErrCodeList = []string{
 	// 400 Bad Request
+	VegaBackend_Resource_QueryTimeOutOfRange,
 	VegaBackend_Resource_QueryValueExceedsKeywordLimit,
 	VegaBackend_Resource_InvalidParameter,
 	VegaBackend_Resource_InvalidParameter_Type,
