@@ -364,10 +364,10 @@ func (mr *MockTableConnectorMockRecorder) DecodeTableMeta(metadata any) *gomock.
 }
 
 // ExecuteQuery mocks base method.
-func (m *MockTableConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+func (m *MockTableConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteQuery", ctx, resource, params)
-	ret0, _ := ret[0].(*interfaces.QueryResult)
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -936,10 +936,10 @@ func (mr *MockFilesetConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 }
 
 // ExecuteQuery mocks base method.
-func (m *MockFilesetConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+func (m *MockFilesetConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteQuery", ctx, resource, params)
-	ret0, _ := ret[0].(*interfaces.QueryResult)
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1784,10 +1784,10 @@ func (mr *MockIndexConnectorMockRecorder) DeleteIndex(ctx, indexName any) *gomoc
 }
 
 // ExecuteQuery mocks base method.
-func (m *MockIndexConnector) ExecuteQuery(ctx context.Context, indexName string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+func (m *MockIndexConnector) ExecuteQuery(ctx context.Context, indexName string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteQuery", ctx, indexName, resource, params)
-	ret0, _ := ret[0].(*interfaces.QueryResult)
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1799,10 +1799,10 @@ func (mr *MockIndexConnectorMockRecorder) ExecuteQuery(ctx, indexName, resource,
 }
 
 // ExecuteQueryWithDsl mocks base method.
-func (m *MockIndexConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName, dsl string) (*interfaces.QueryResult, error) {
+func (m *MockIndexConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName, dsl string) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteQueryWithDsl", ctx, resourceName, dsl)
-	ret0, _ := ret[0].(*interfaces.QueryResult)
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

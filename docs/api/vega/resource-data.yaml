@@ -570,6 +570,27 @@ components:
         aggr:
           type: string
           enum: [count, count_distinct, sum, max, min, avg]
+        allow_approximate:
+          type: boolean
+          default: true
+          description: |
+            仅用于 count_distinct。省略或 true 允许近似，也允许精确结果。
+            OpenSearch 使用 cardinality，precision_threshold=40000，所有此类结果均标记近似。
+            false 要求精确；支持源库查询的 table（包括派生视图的底层 table）优先走源库，
+            即使本地索引可用或 ignore_local_index=false，也执行源库 COUNT(DISTINCT ...)。
+            源库失败不自动切回索引；仅有索引查询能力时使用 PIT + composite 完整枚举。
+            若字段配置 ignore_above 等可能导致值被忽略或改写的策略，无法保证精确时，
+            false 返回 HTTP 400 参数错误，不返回近似结果，
+            也不额外扫描原文判断策略是否实际触发；允许近似时保持原查询方式。
+            外部 index 的 date_nanos 用于去重或未指定 calendar_interval 的分组时，
+            false 同样返回 HTTP 400，因为聚合仅保留毫秒精度；显式日历分组仍可使用该字段，
+            但去重字段本身仍须满足精确要求。
+            精确枚举默认每页 1000 桶、单页响应 8 MiB、分组状态计费预算 16 MiB、
+            整次执行 30 秒（包含等待）、每进程最多同时执行 4 次；更短的已有超时优先。
+            超出预算返回 HTTP 422 VegaBackend.Query.ExecutionBudgetExceeded，metadata.budget 指明预算类型。
+            超时、分片失败或枚举不完整不返回部分计数。
+            count_distinct 的日历分组仅返回存在文档的日期，不补齐日期缺口；
+            已有分组内计数字段全为空时仍返回 0，其他聚合的日期分组行为不变。
         alias:
           type: string
           description: |
@@ -610,6 +631,9 @@ components:
       required:
         - entries
       properties:
+        is_approximate:
+          type: boolean
+          description: 本次实际是否使用近似聚合；false 不代表源库与索引处于同一数据时点。
         query_source:
           description: 本次查询实际使用的数据路径。`local_index` 表示 table 的本地索引；`source` 表示未使用该本地索引。
           type: string

@@ -68,7 +68,7 @@ func convertValue(v any, colName string, origTypeMap map[string]string, preserve
 }
 
 // ExecuteQuery 为 PostgreSQL 使用公共 Builder，复用既有结果扫描和归一化。
-func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	query, err := c.buildSelectBuilder(resource, params)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		if err != nil {
 			return nil, err
 		}
-		if err := c.db.QueryRowContext(ctx, text, args...).Scan(&result.Total); err != nil {
+		if err := c.db.QueryRowContext(ctx, text, args...).Scan(&result.TotalCount); err != nil {
 			return nil, fmt.Errorf("failed to scan total: %w", postgresqlQueryError(err))
 		}
 	}
@@ -305,7 +305,7 @@ func sqlCalendarGroup(expr sb.SqlNode, unit string) (sb.SqlNode, error) {
 }
 
 // scanQueryRows 复用原始字段类型和聚合别名信息，保留带时区值与二进制内容。
-func (c *PostgresqlConnector) scanQueryRows(rows *sql.Rows, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+func (c *PostgresqlConnector) scanQueryRows(rows *sql.Rows, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	fieldMap := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
 	for _, field := range resource.SchemaDefinition {
 		fieldMap[field.Name] = field
@@ -341,7 +341,10 @@ func (c *PostgresqlConnector) scanQueryRows(rows *sql.Rows, resource *interfaces
 	if err != nil {
 		return nil, fmt.Errorf("failed to read result columns: %w", err)
 	}
-	result := &interfaces.QueryResult{Columns: columns, Entries: make([]map[string]any, 0)}
+	result := &interfaces.ResourceDataQueryResult{
+		Columns: columns,
+		Entries: make([]map[string]any, 0),
+	}
 	binaryColumns := table.QueryBinaryContentColumns(resource, params)
 	for rows.Next() {
 		values, destinations := make([]any, len(columns)), make([]any, len(columns))

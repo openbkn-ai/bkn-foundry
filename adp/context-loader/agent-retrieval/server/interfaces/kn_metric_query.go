@@ -76,6 +76,7 @@ type ObjectMetricTimeRange struct {
 
 // QueryMetricResp carries the V1 result status, entries, and model.
 type QueryMetricResp struct {
+	IsApproximate   bool                    `json:"is_approximate"`
 	KnID            string                  `json:"kn_id"`
 	MetricID        string                  `json:"metric_id"`
 	Version         int                     `json:"version"`
@@ -108,6 +109,7 @@ type ObjectMetricDimensionCell struct {
 
 // MetricQueryDownstreamResp mirrors ontology-query's ObjectMetricData V1.
 type MetricQueryDownstreamResp struct {
+	IsApproximate   bool                    `json:"is_approximate"`
 	Model           map[string]any          `json:"model"`
 	Entries         []ObjectMetricDataEntry `json:"entries"`
 	Status          string                  `json:"status"`

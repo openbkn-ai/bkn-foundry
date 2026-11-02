@@ -640,6 +640,35 @@ func TestObjectPropertyAggregateRetainsAuthorization(t *testing.T) {
 	}
 }
 
+func TestObjectPropertyAggregateAccuracy(t *testing.T) {
+	for _, allow := range []*bool{nil, new(true), new(false)} {
+		actual := allow == nil || *allow
+		vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"__value": int64(3)}}, IsApproximate: &actual}}
+		service := resourcePagingService(t, vega, 1)
+		query := resourcePagingQuery(1)
+		query.AggregateAllowApproximate = allow
+		result, err := service.AggregatePropertyByObjectTypeID(resourcePagingContext(), query, "id", "count_distinct")
+		if err != nil || result.IsApproximate != actual {
+			t.Fatalf("accuracy was lost: result=%#v err=%v", result, err)
+		}
+		forwarded, exists := vega.lastParams.Aggregation["allow_approximate"]
+		if allow == nil && exists || allow != nil && (!exists || forwarded != *allow) {
+			t.Fatalf("allowance was lost: %#v", vega.lastParams.Aggregation)
+		}
+	}
+	t.Run("old Vega cannot silently satisfy an exact request", func(t *testing.T) {
+		vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"__value": int64(3)}}}}
+		service := resourcePagingService(t, vega, 1)
+		query := resourcePagingQuery(1)
+		query.AggregateAllowApproximate = new(false)
+		_, err := service.AggregatePropertyByObjectTypeID(resourcePagingContext(), query, "id", "count_distinct")
+		var httpErr *httperrors.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadGateway {
+			t.Fatalf("missing accuracy evidence accepted: %v", err)
+		}
+	})
+}
+
 func TestObjectPropertyAggregateRequiresPropertyAccess(t *testing.T) {
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
 	service := resourcePagingService(t, vega, 1)
@@ -818,5 +847,17 @@ func TestObjectQueryLocalIndexContract(t *testing.T) {
 				t.Fatalf("unexpected Vega requests: %d", len(vega.paramsHistory))
 			}
 		})
+	}
+}
+
+func TestStreamObjectsByObjectTypeIDPreservesSourcePreference(t *testing.T) {
+	vega := &vegaCursorPageStub{}
+	service := resourcePagingService(t, vega, 1)
+	query := resourcePagingQuery(1)
+	query.IgnoreLocalIndex = true
+	batches := 0
+	err := service.StreamObjectsByObjectTypeID(resourcePagingContext(), query, func(interfaces.Objects) error { batches++; return nil })
+	if err != nil || batches != 2 || vega.params == nil || vega.params.IgnoreLocalIndex == nil || !*vega.params.IgnoreLocalIndex {
+		t.Fatalf("source preference lost: params=%#v batches=%d error=%v", vega.params, batches, err)
 	}
 }

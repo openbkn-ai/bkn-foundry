@@ -16,7 +16,7 @@ type DatasetService interface {
 	Update(ctx context.Context, res *Resource) error
 	Delete(ctx context.Context, res *Resource) error
 
-	ListDocuments(ctx context.Context, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
+	ListDocuments(ctx context.Context, res *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 	CountDocuments(ctx context.Context, res *Resource) (int64, error)
 	// GetDocuments retrieves documents by unique IDs supplied by the caller.
 	GetDocuments(ctx context.Context, res *Resource, docIDs []string, ignoreMissing bool) ([]map[string]any, error)

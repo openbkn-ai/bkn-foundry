@@ -42,13 +42,12 @@ func (m *MockResourceDataService) EXPECT() *MockResourceDataServiceMockRecorder 
 }
 
 // QuerySourcePage mocks base method.
-func (m *MockResourceDataService) QuerySourcePage(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+func (m *MockResourceDataService) QuerySourcePage(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "QuerySourcePage", ctx, resource, params)
-	ret0, _ := ret[0].([]map[string]any)
-	ret1, _ := ret[1].(int64)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // QuerySourcePage indicates an expected call of QuerySourcePage.

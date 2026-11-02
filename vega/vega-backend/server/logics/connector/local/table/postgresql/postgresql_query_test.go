@@ -282,7 +282,7 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 				if needTotal {
 					wantTotal = tc.total
 				}
-				assert.Equal(t, wantTotal, result.Total)
+				assert.Equal(t, wantTotal, result.TotalCount)
 				require.NoError(t, mock.ExpectationsWereMet())
 			})
 		}
@@ -365,7 +365,7 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 	result, err := connector.ExecuteQuery(context.Background(), resource, params)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"createdAt", "__value"}, result.Columns)
-	assert.Equal(t, int64(1), result.Total)
+	assert.Equal(t, int64(1), result.TotalCount)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

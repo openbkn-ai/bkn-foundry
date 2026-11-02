@@ -22,14 +22,14 @@ func convertValue(v any) any {
 	return v
 }
 
-// ScanRows scans SQL rows into QueryResult.
-func ScanRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
+// ScanRows scans SQL rows into ResourceDataQueryResult.
+func ScanRows(rows *sql.Rows) (*interfaces.ResourceDataQueryResult, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, err
 	}
 
-	result := &interfaces.QueryResult{
+	result := &interfaces.ResourceDataQueryResult{
 		Columns: columns,
 		Entries: make([]map[string]any, 0),
 	}
@@ -55,13 +55,13 @@ func ScanRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 		return nil, err
 	}
 
-	result.Total = int64(len(result.Entries))
+	result.TotalCount = int64(len(result.Entries))
 	return result, nil
 }
 
 // NormalizeQueryResult 归一化 JSON 空值，并标记内部查询未请求读取的 Binary。
-func NormalizeQueryResult(result *interfaces.QueryResult, resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams) {
+func NormalizeQueryResult(result *interfaces.ResourceDataQueryResult,
+	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) {
 	if result == nil || resource == nil || params == nil || params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
 		return
 	}

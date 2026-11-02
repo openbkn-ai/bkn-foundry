@@ -302,9 +302,9 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Equal(t, []string{"id"}, params.OutputFields)
-				return &interfaces.QueryResult{Total: 0}, nil
+				return &interfaces.ResourceDataQueryResult{TotalCount: 0}, nil
 			},
 		)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
@@ -365,10 +365,10 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		}
 		queryCount := 0
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(73).DoAndReturn(
-			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				queryCount++
 				if queryCount == 73 {
-					return &interfaces.QueryResult{}, nil
+					return &interfaces.ResourceDataQueryResult{}, nil
 				}
 				require.NotNil(t, params.FilterCondCfg)
 				assert.Equal(t, 1000, params.Paging.Limit)
@@ -381,9 +381,9 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 						"payload": payloads[(index+queryCount)%len(payloads)].source,
 					}
 				}
-				result := &interfaces.QueryResult{Entries: entries}
+				result := &interfaces.ResourceDataQueryResult{Entries: entries}
 				if queryCount == 1 {
-					result.Total = 72000
+					result.TotalCount = 72000
 				}
 				return result, nil
 			})
@@ -470,9 +470,9 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Nil(t, params.FilterCondCfg)
-				return &interfaces.QueryResult{Total: 1, Entries: []map[string]any{{"id": int64(1)}}}, nil
+				return &interfaces.ResourceDataQueryResult{TotalCount: 1, Entries: []map[string]any{{"id": int64(1)}}}, nil
 			})
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
@@ -527,9 +527,9 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				require.NotNil(t, params.FilterCondCfg)
-				return &interfaces.QueryResult{Total: 2, Entries: []map[string]any{{"id": int64(9)}, {"id": int64(10)}}}, nil
+				return &interfaces.ResourceDataQueryResult{TotalCount: 2, Entries: []map[string]any{{"id": int64(9)}, {"id": int64(10)}}}, nil
 			})
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
@@ -582,7 +582,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		lim.EXPECT().CheckIndexExist(gomock.Any(), "current-index").Return(true, nil)
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.QueryResult{}, nil)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{}, nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
 		bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil)
@@ -668,7 +668,7 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 	}
 	queryCount := 0
 	connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(2).DoAndReturn(
-		func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+		func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 			queryCount++
 			require.Len(t, params.Sort, 2)
 			assert.Equal(t, "ingested_at", params.Sort[0].Field)
@@ -694,9 +694,9 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 					}
 				}
 			}
-			result := &interfaces.QueryResult{Entries: entries}
+			result := &interfaces.ResourceDataQueryResult{Entries: entries}
 			if queryCount == 1 {
-				result.Total = int64(len(sourceRows))
+				result.TotalCount = int64(len(sourceRows))
 			}
 			return result, nil
 		})

@@ -149,7 +149,7 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, true, (<-queries)["track_total_hits"])
-	assert.Equal(t, int64(4), result.Total)
+	assert.Equal(t, int64(4), result.TotalCount)
 }
 
 func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
@@ -262,7 +262,7 @@ func TestExecuteQueryWithDslPreservesLargeIntegerSourceField(t *testing.T) {
 	require.Len(t, result.Entries, 1)
 	assert.Equal(t, json.Number("110101199001152345"), result.Entries[0]["identifier"])
 	assert.Equal(t, float64(1.5), result.Entries[0]["_score"])
-	assert.Equal(t, int64(1), result.Total)
+	assert.Equal(t, int64(1), result.TotalCount)
 }
 
 func TestValidateAnalyzerCallsOpenSearch(t *testing.T) {
@@ -979,5 +979,49 @@ func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
 				assert.Equal(t, 1, requests)
 			}
 		}
+	}
+}
+
+func TestOpenSearchConnectorExecuteQueryCalendarGroups(t *testing.T) {
+	for _, aggr := range []string{"count_distinct", "sum", ""} {
+		t.Run("aggregation="+aggr, func(t *testing.T) {
+			requests := 0
+			client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					requests++
+					var body map[string]any
+					require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+					groups := body["aggs"].(map[string]any)
+					for _, field := range []string{"month", "day"} {
+						bucket := groups["group_by_"+field].(map[string]any)
+						histogram := bucket["date_histogram"].(map[string]any)
+						if aggr == "count_distinct" {
+							assert.Equal(t, float64(1), histogram["min_doc_count"], "distinct date groups must contain documents")
+						} else {
+							assert.NotContains(t, histogram, "min_doc_count")
+						}
+						if field == "month" {
+							groups = bucket["aggs"].(map[string]any)
+						}
+					}
+					response := `{"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"aggregations":{"group_by_month":{"buckets":[{"key":1767225600000,"doc_count":2,"group_by_day":{"buckets":[{"key":1767398400000,"doc_count":2,"__value":{"value":0}}]}}]}}}`
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(response))}, nil
+				})})
+			require.NoError(t, err)
+			params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "month", CalendarInterval: "month"}, {Property: "day", CalendarInterval: "day"}}}
+			if aggr != "" {
+				params.Aggregation = &interfaces.Aggregation{Property: "id", Aggr: aggr}
+			}
+			result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "orders",
+				&interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "month", Type: interfaces.DataType_Datetime}, {Name: "day", Type: interfaces.DataType_Datetime}}}, params)
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 1)
+			assert.Equal(t, json.Number("1767398400000"), result.Entries[0]["day"])
+			if aggr != "" {
+				assert.Equal(t, json.Number("0"), result.Entries[0]["__value"], "existing groups retain zero-valued metrics")
+			}
+			assert.Equal(t, aggr == "count_distinct", result.IsApproximate)
+			assert.Equal(t, 1, requests)
+		})
 	}
 }

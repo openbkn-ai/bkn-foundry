@@ -11,6 +11,21 @@ import (
 	"fmt"
 )
 
+// QueryExecutionBudgetError 标识完整计算未能在执行预算内完成，不携带部分结果。
+type QueryExecutionBudgetError struct {
+	Budget string
+	Cause  error
+}
+
+func NewQueryExecutionBudgetError(budget string, cause error) *QueryExecutionBudgetError {
+	return &QueryExecutionBudgetError{Budget: budget, Cause: cause}
+}
+
+func (e *QueryExecutionBudgetError) Error() string {
+	return "query execution budget exceeded: " + e.Budget
+}
+func (e *QueryExecutionBudgetError) Unwrap() error { return e.Cause }
+
 // SourceReadForbiddenError reports that a source account cannot read a resource.
 // Connectors return this error so callers can choose the appropriate response.
 type SourceReadForbiddenError struct{ Cause error }

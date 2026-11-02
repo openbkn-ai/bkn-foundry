@@ -797,6 +797,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 				WithErrorDetails("object resource has no stable sort for a complete cursor scan")
 		}
 		page := *params
+		if query.IgnoreLocalIndex {
+			page.IgnoreLocalIndex = &query.IgnoreLocalIndex
+		}
 		page.Paging = interfaces.ResourceDataPagingRequest{
 			Mode: interfaces.ResourceDataPagingModeCursor, Limit: interfaces.MAX_LIMIT,
 			KeepAliveSec: int(continuousScanCursorTTL / time.Second),
@@ -904,6 +907,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 		params.Aggregation = map[string]any{"property": measureField,
 			"aggr": operation, "alias": "__value"}
+		if operation == "count_distinct" && query.AggregateAllowApproximate != nil {
+			params.Aggregation["allow_approximate"] = *query.AggregateAllowApproximate
+		}
 		if len(aggregate.groupBy) == 0 && (aggregate.operation == "count_present" || aggregate.propertyValue) {
 			params.Having = map[string]any{"field": "count(*)", "operation": ">", "value": 0}
 		}
@@ -945,6 +951,13 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails("vega resource query returned nil")
 	}
 	if aggregate != nil {
+		if resp.IsApproximate != nil {
+			resps.IsApproximate = *resp.IsApproximate
+		}
+		if aggregate.operation == "count_distinct" && resp.IsApproximate == nil {
+			return httperrors.NewHTTPError(ctx, http.StatusBadGateway, oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+				WithErrorDetails("resource distinct count response is missing accuracy metadata; upgrade Vega before using distinct aggregates")
+		}
 		if aggregate.operation == "count_rows" && len(aggregate.groupBy) == 0 {
 			resps.Datas = []map[string]any{{"__value": json.Number(strconv.FormatInt(resp.TotalCount, 10))}}
 			resps.QuerySource = resp.QuerySource
@@ -1199,7 +1212,7 @@ func appendResourceSortTieBreakers(sorts []*interfaces.SortParams, objectType in
 }
 
 // Vectorize the query statement.
-func (ots *objectTypeService) handlerVector(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
+func (ots *objectTypeService) handlerVector(_ context.Context, property *cond.DataProperty, _ string) ([]cond.VectorResp, error) {
 	return nil, fmt.Errorf("ontology-query no longer vectorizes property %q; Vega Resource resolves vector conditions", property.Name)
 }
 
@@ -1362,7 +1375,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 // processLogicProperty handles a single logical property and wraps the original processing logic.
 func (ots *objectTypeService) processLogicProperty(ctx context.Context,
-	knID, branch, otID string,
+	knID, _, otID string,
 	propName string,
 	propValue any,
 	logicProp *interfaces.LogicProperty,

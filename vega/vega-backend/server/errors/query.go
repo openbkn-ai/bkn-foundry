@@ -34,7 +34,8 @@ const (
 	VegaBackend_Query_CursorSessionLimitExceeded = "VegaBackend.Query.CursorSessionLimitExceeded"
 
 	// 500 Internal Server Error
-	VegaBackend_Query_ExecuteFailed = "VegaBackend.Query.ExecuteFailed"
+	VegaBackend_Query_ExecuteFailed           = "VegaBackend.Query.ExecuteFailed"
+	VegaBackend_Query_ExecutionBudgetExceeded = "VegaBackend.Query.ExecutionBudgetExceeded"
 
 	// 501 Not Implemented
 	VegaBackend_Query_MultiCatalogNotSupported = "VegaBackend.Query.MultiCatalogNotSupported"
@@ -67,6 +68,7 @@ var QueryErrCodeList = []string{
 
 	// 500 Internal Server Error
 	VegaBackend_Query_ExecuteFailed,
+	VegaBackend_Query_ExecutionBudgetExceeded,
 
 	// 501 Not Implemented
 	VegaBackend_Query_MultiCatalogNotSupported,

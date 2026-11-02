@@ -70,6 +70,9 @@ func (e *VegaDownstreamError) Message() string {
 // ClientMessage returns only structured fields that are safe to pass to the caller. It never
 // falls back to the raw response body, which may be an infrastructure error page.
 func (e *VegaDownstreamError) ClientMessage() string {
+	if e.ErrorCode == "VegaBackend.Query.ExecutionBudgetExceeded" {
+		return "The query could not complete within its execution budget. Narrow the filters or allow approximate distinct counts."
+	}
 	if e.ErrorCode == "VegaBackend.Resource.QueryValueExceedsKeywordLimit" {
 		if metadata := e.ClientMetadata(); metadata != nil {
 			return fmt.Sprintf("The query value for %s exceeds the maximum indexed keyword length (%.0f UTF-16 code units). Use a shorter value or explicitly query the original data when available.", metadata["field"], metadata["limit"])
@@ -83,8 +86,17 @@ func (e *VegaDownstreamError) ClientMessage() string {
 	return e.Description
 }
 
-// ClientMetadata exposes only validated keyword-limit parameters from an allowed response.
+// ClientMetadata exposes only validated query guidance from an allowed response.
 func (e *VegaDownstreamError) ClientMetadata() map[string]any {
+	if e.StatusCode == http.StatusUnprocessableEntity && e.ErrorCode == "VegaBackend.Query.ExecutionBudgetExceeded" {
+		budget, _ := e.Metadata["budget"].(string)
+		switch budget {
+		case "exact_distinct_time", "exact_distinct_group_memory", "exact_distinct_response_memory", "aggregation_time":
+			return map[string]any{"budget": budget}
+		default:
+			return nil
+		}
+	}
 	if e.StatusCode != http.StatusBadRequest || e.ErrorCode != "VegaBackend.Resource.QueryValueExceedsKeywordLimit" {
 		return nil
 	}
@@ -108,6 +120,8 @@ func (e *VegaDownstreamError) CanExposeQueryClientMessage() bool {
 	case http.StatusTooManyRequests:
 		// A fixed message that tells the caller to retry rather than change the query.
 		return e.ErrorCode == "VegaBackend.Query.CursorSessionLimitExceeded"
+	case http.StatusUnprocessableEntity:
+		return e.ErrorCode == "VegaBackend.Query.ExecutionBudgetExceeded"
 	default:
 		return false
 	}

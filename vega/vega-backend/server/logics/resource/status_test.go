@@ -34,6 +34,26 @@ func TestHasAvailableLocalIndex(t *testing.T) {
 	}))
 }
 
+func TestShouldIgnoreLocalIndex(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		category string
+		params   *interfaces.ResourceDataQueryParams
+		want     bool
+	}{
+		{name: "no query", category: interfaces.ResourceCategoryTable},
+		{name: "ordinary table query", category: interfaces.ResourceCategoryTable, params: &interfaces.ResourceDataQueryParams{}},
+		{name: "explicit bypass", category: interfaces.ResourceCategoryTable, params: &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: new(true)}, want: true},
+		{name: "exact table", category: interfaces.ResourceCategoryTable, params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Aggr: "count_distinct", AllowApproximate: new(false)}}, want: true},
+		{name: "index has no separate source", category: interfaces.ResourceCategoryIndex, params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Aggr: "count_distinct", AllowApproximate: new(false)}}},
+		{name: "dataset has no separate source", category: interfaces.ResourceCategoryDataset, params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Aggr: "count_distinct", AllowApproximate: new(false)}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, ShouldIgnoreLocalIndex(&interfaces.Resource{Category: tc.category}, tc.params))
+		})
+	}
+}
+
 func TestEnsureResourceQueryable(t *testing.T) {
 	ctx := context.Background()
 

@@ -178,8 +178,9 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 	}
 
 	resultData := map[string]any{
-		"query_source": result.QuerySource,
-		"entries":      result.Entries,
+		"query_source":   result.QuerySource,
+		"entries":        result.Entries,
+		"is_approximate": result.IsApproximate,
 	}
 	if params.NeedTotal || result.NeedTotal {
 		resultData["total_count"] = result.TotalCount

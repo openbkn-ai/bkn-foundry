@@ -240,6 +240,7 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 			out.Entries = resp.Entries
 		}
 		out.Model = resp.Model
+		out.IsApproximate = resp.IsApproximate
 		out.Status = resp.Status
 		out.EmptyReason = resp.EmptyReason
 		out.TotalCount = resp.TotalCount

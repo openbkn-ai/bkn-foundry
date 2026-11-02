@@ -44,12 +44,12 @@ func convertValue(v any, preserveBinary bool) any {
 }
 
 // scanQueryRows 保留所选 Binary 内容，其他字节值转为字符串；总数由调用方按接口契约设置。
-func (c *MariaDBConnector) scanQueryRows(rows *sql.Rows, binaryContentColumns map[string]bool) (*interfaces.QueryResult, error) {
+func (c *MariaDBConnector) scanQueryRows(rows *sql.Rows, binaryContentColumns map[string]bool) (*interfaces.ResourceDataQueryResult, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read result columns: %w", err)
 	}
-	result := &interfaces.QueryResult{
+	result := &interfaces.ResourceDataQueryResult{
 		Columns: columns,
 		Entries: make([]map[string]any, 0),
 	}
@@ -93,7 +93,7 @@ func mariadbQueryError(err error) error {
 }
 
 // ExecuteQuery 为 MariaDB/MySQL 使用公共 Builder，复用既有结果扫描和归一化。
-func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	query, err := c.buildSelectBuilder(resource, params)
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		if err != nil {
 			return nil, err
 		}
-		if err := c.db.QueryRowContext(ctx, text, args...).Scan(&result.Total); err != nil {
+		if err := c.db.QueryRowContext(ctx, text, args...).Scan(&result.TotalCount); err != nil {
 			return nil, fmt.Errorf("failed to scan total: %w", mariadbQueryError(err))
 		}
 	}

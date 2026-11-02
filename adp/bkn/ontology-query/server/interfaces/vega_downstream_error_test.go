@@ -63,6 +63,27 @@ func Test_VegaDownstreamError(t *testing.T) {
 		}
 	})
 
+	t.Run("execution budgets retain only safe guidance", func(t *testing.T) {
+		for _, budget := range []string{"exact_distinct_time", "exact_distinct_group_memory", "exact_distinct_response_memory", "aggregation_time"} {
+			err := NewVegaDownstreamError(http.StatusUnprocessableEntity,
+				`{"error_code":"VegaBackend.Query.ExecutionBudgetExceeded","error_details":"private diagnostic","metadata":{"budget":"`+budget+`","private":"secret"}}`)
+			if !err.CanExposeQueryClientMessage() || err.StatusCode != http.StatusUnprocessableEntity {
+				t.Fatal("execution budget guidance must survive the query proxy")
+			}
+			metadata := err.ClientMetadata()
+			if len(metadata) != 1 || metadata["budget"] != budget || strings.Contains(err.ClientMessage(), "private") || err.ClientMessage() == "" {
+				t.Fatalf("expected only safe budget guidance, got %v, %q", metadata, err.ClientMessage())
+			}
+		}
+		for _, status := range []int{http.StatusUnprocessableEntity, http.StatusForbidden, http.StatusInternalServerError} {
+			err := NewVegaDownstreamError(status,
+				`{"error_code":"VegaBackend.Query.ExecutionBudgetExceeded","metadata":{"budget":"private diagnostic"}}`)
+			if err.ClientMetadata() != nil || (status != http.StatusUnprocessableEntity && err.CanExposeQueryClientMessage()) {
+				t.Fatalf("unexpected budget metadata or status %d must remain redacted", status)
+			}
+		}
+	})
+
 	t.Run("5xx 仍然是依赖故障", func(t *testing.T) {
 		err := NewVegaDownstreamError(http.StatusInternalServerError, body)
 		if err.IsClientError() {

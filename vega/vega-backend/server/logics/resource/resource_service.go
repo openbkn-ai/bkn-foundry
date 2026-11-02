@@ -741,14 +741,14 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		// Existing documents were materialized against the current index contract.
 		// Do not allow a normal Resource update to leave them under a different
 		// mapping or embedding configuration; that requires an explicit rebuild.
-		documents, _, err := rs.ds.ListDocuments(ctx, resource,
+		result, err := rs.ds.ListDocuments(ctx, resource,
 			&interfaces.ResourceDataQueryParams{
 				Paging: interfaces.PagingRequest{Limit: 1},
 			})
 		if err != nil {
 			return err
 		}
-		if len(documents) > 0 {
+		if len(result.Entries) > 0 {
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails("dataset index structure cannot be changed while it contains documents; rebuild the dataset instead")
 		}

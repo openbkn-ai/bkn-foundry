@@ -34,8 +34,10 @@ const (
 
 // Object search request body.
 type ObjectQueryBaseOnObjectType struct {
-	Condition  map[string]any `json:"condition,omitempty"`
-	Properties []string       `json:"properties,omitempty"`
+	// AggregateAllowApproximate is set by the metric executor for property aggregates.
+	AggregateAllowApproximate *bool          `json:"-"`
+	Condition                 map[string]any `json:"condition,omitempty"`
+	Properties                []string       `json:"properties,omitempty"`
 	PageQuery
 
 	KNID            string        `json:"-"`
@@ -59,6 +61,7 @@ type ObjectQueryInfo struct {
 }
 
 type Objects struct {
+	IsApproximate        bool                           `json:"-"` // Actual property-aggregate accuracy for metric executors.
 	ObjectType           *ObjectType                    `json:"object_type,omitempty"`
 	Datas                []map[string]any               `json:"datas"`
 	TotalCount           int64                          `json:"total_count,omitempty"`

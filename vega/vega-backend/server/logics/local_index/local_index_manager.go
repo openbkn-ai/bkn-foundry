@@ -194,39 +194,22 @@ func cloneIndexCapabilities(capabilities interfaces.IndexCapabilities) *interfac
 	return &result
 }
 
-func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	if err := validateQueryFields(res, params); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	queryResult, err := lim.lic.ExecuteQuery(ctx, indexName, resourceForQuery(res), params)
+	queryResource, err := resourceForQuery(res)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	// 外部数据源查询使用完整 schema 转换 JSON 文本；Dataset 保留文档原有类型。
-	aggregate := params != nil && (params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil)
-	if res != nil && res.Category != interfaces.ResourceCategoryDataset && !aggregate {
-		for _, property := range res.SchemaDefinition {
-			if property == nil || property.Type != interfaces.DataType_Json {
-				continue
-			}
-			for _, entry := range queryResult.Entries {
-				value, exists := entry[property.Name]
-				if !exists {
-					continue
-				}
-				text, err := common.JSONQueryValueText(value)
-				if err != nil {
-					return nil, 0, fmt.Errorf("failed to serialize JSON field %q", property.Name)
-				}
-				entry[property.Name] = text
-			}
-		}
+	result, err := lim.lic.ExecuteQuery(ctx, indexName, queryResource, params)
+	if err != nil {
+		return nil, err
 	}
-	if params != nil {
-		params.SearchAfter = append([]any(nil), queryResult.SearchAfter...)
+	if err := normalizeQueryJSONValues(res, params, result); err != nil {
+		return nil, err
 	}
-
-	return queryResult.Entries, queryResult.Total, nil
+	return result, nil
 }
 
 func (lim *localIndexManager) GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error) {
@@ -284,16 +267,44 @@ func SchemaForQuery(schema []*interfaces.Property) []*interfaces.Property {
 	return result
 }
 
-func resourceForQuery(resource *interfaces.Resource) *interfaces.Resource {
+// resourceForQuery 准备托管索引的查询副本，保留源 schema 的属性和特征配置。
+func resourceForQuery(resource *interfaces.Resource) (*interfaces.Resource, error) {
 	if resource == nil {
-		return nil
+		return nil, interfaces.NewConditionBuildError("resource is required for local index queries")
 	}
 	cloned := *resource
 	cloned.SchemaDefinition = SchemaForQuery(resource.SchemaDefinition)
 	for _, prop := range GeneratedFields(resource.SchemaDefinition) {
 		cloned.SchemaDefinition = append(cloned.SchemaDefinition, prop)
 	}
-	return &cloned
+	return &cloned, nil
+}
+
+// normalizeQueryJSONValues 保持外部数据源的 JSON 文本输出合同；Dataset 和聚合结果保持原值。
+func normalizeQueryJSONValues(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, result *interfaces.ResourceDataQueryResult) error {
+	if resource == nil || resource.Category == interfaces.ResourceCategoryDataset {
+		return nil
+	}
+	if params != nil && (params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil) {
+		return nil
+	}
+	for _, property := range resource.SchemaDefinition {
+		if property == nil || property.Type != interfaces.DataType_Json {
+			continue
+		}
+		for _, entry := range result.Entries {
+			value, exists := entry[property.Name]
+			if !exists {
+				continue
+			}
+			text, err := common.JSONQueryValueText(value)
+			if err != nil {
+				return fmt.Errorf("failed to serialize JSON field %q", property.Name)
+			}
+			entry[property.Name] = text
+		}
+	}
+	return nil
 }
 
 // validateQueryFields 校验不经过条件构造器的排序和聚合字段，沿用字段不存在的错误口径。

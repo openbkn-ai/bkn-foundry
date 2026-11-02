@@ -184,7 +184,7 @@ func captureOperationAuditRequest(request *http.Request) map[string]any {
 	return value
 }
 
-func operationAuditTarget(c *gin.Context, targetType string, request map[string]any, requestID string) (string, string) {
+func operationAuditTarget(c *gin.Context, _ string, request map[string]any, _ string) (string, string) {
 	targetID := strings.TrimSpace(firstNonEmpty(c.Param("id"), c.Param("ids"), c.Param("type")))
 	if createdID, exists := c.Get(operationAuditTargetIDKey); exists {
 		if id, ok := createdID.(string); ok && strings.TrimSpace(id) != "" {

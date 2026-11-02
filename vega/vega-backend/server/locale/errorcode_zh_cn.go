@@ -57,6 +57,7 @@ var errorcodeZhCN = i18n.I18nMessages{
 		"VegaBackend.Query.ConcurrencyLimitExceeded":                                        "查询并发数超过限制。请稍后重试",
 		"VegaBackend.Query.CursorSessionLimitExceeded":                                      "Cursor session 数量超过限制。请稍后重试",
 		"VegaBackend.Query.CursorInUse":                                                     "Cursor 正在使用中。请稍后重试",
+		"VegaBackend.Query.ExecutionBudgetExceeded":                                         "查询未能在执行预算内完成，未返回部分计算结果。",
 		"VegaBackend.Query.ExecuteFailed":                                                   "执行查询失败。请联系管理员",
 		"VegaBackend.Connector.EntitlementDenied":                                           "当前许可证不包含此连接器。请升级到包含此连接器的许可证版本",
 		"VegaBackend.Connector.Disabled":                                                    "此连接器已被禁用。请启用连接器后重试",

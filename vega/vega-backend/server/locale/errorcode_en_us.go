@@ -57,6 +57,7 @@ var errorcodeEnUS = i18n.I18nMessages{
 		"VegaBackend.Query.ConcurrencyLimitExceeded":                                        "Query concurrency limit exceeded. Please try again later",
 		"VegaBackend.Query.CursorSessionLimitExceeded":                                      "Cursor session limit exceeded. Please try again later",
 		"VegaBackend.Query.CursorInUse":                                                     "Cursor is in use. Please try again later",
+		"VegaBackend.Query.ExecutionBudgetExceeded":                                         "The query could not complete within its execution budget. No partial result was returned.",
 		"VegaBackend.Query.ExecuteFailed":                                                   "Query execution failed. Please contact the administrator",
 		"VegaBackend.Connector.EntitlementDenied":                                           "The current license does not include this connector. Upgrade the license to an edition that includes this connector",
 		"VegaBackend.Connector.Disabled":                                                    "This connector is disabled. Enable the connector before retrying",
