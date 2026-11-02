@@ -22,6 +22,7 @@ from t_agent_version v join t_agent a on a.f_agent_id = v.f_agent_id
 join t_agent_prompt p on p.f_prompt_id = a.f_prompt_id
 where a.f_agent_id = 'bkn-project-concept-extraction'
  and a.f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c' and v.f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
+ and a.f_update_time <= UNIX_TIMESTAMP(NOW(3)) * 1000
  and a.f_mode = 'task' and a.f_status = 'published'
  and a.f_prompt_id = 'bkn-project-concept-extraction-prompt' and p.f_current_version = 1
  and a.f_model = '' and JSON_LENGTH(a.f_tools) = 0

@@ -3824,7 +3824,7 @@ def test_concept_budget_upgrade_preserves_history_and_is_idempotent():
         apply(db, CONCEPT_BUDGET)
         assert snapshot(db) == before
 
-@pytest.mark.parametrize("custom", ["limits", "model", "tools", "newer_version"])
+@pytest.mark.parametrize("custom", ["limits", "model", "tools", "newer_version", "future_update_time"])
 def test_concept_budget_never_overwrites_operator_configuration(custom):
     with concept_seed_database() as db:
         apply(db, CONCEPT_SEED)
@@ -3834,6 +3834,8 @@ def test_concept_budget_never_overwrites_operator_configuration(custom):
             db.execute("UPDATE t_agent SET f_model='operator-model' WHERE f_agent_id=?", (CONCEPT_AGENT,))
         elif custom == "tools":
             db.execute("UPDATE t_agent SET f_tools='[{\"type\":\"operator\"}]' WHERE f_agent_id=?", (CONCEPT_AGENT,))
+        elif custom == "future_update_time":
+            db.execute("UPDATE t_agent SET f_update_time=5000 WHERE f_agent_id=?", (CONCEPT_AGENT,))
         else:
             db.execute("INSERT INTO t_agent_version SELECT f_agent_id,3,f_model,f_tools,f_limits,f_prompt_version,f_changes,0,1,0,f_create_user,f_create_time FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (CONCEPT_AGENT,))
         before = snapshot(db)
