@@ -407,6 +407,9 @@ many-to-many proof associations bind existing indirect-relation resources.
 Relation attributes preserve locations, property-level claims and independent
 supporting evidence. A regular collision-safe field mirrors stable `_id` for
 ontology key/filter bindings because Vega keeps `_id` as index metadata.
+When compiling BKN definitions, the managed identity property and every key,
+display-key and relation-endpoint reference use that collision-safe mirror name.
+The editable model and extraction fingerprint retain the logical `_id` name.
 
 The fixed evidence graph distinguishes an image resource from every native
 occurrence and supports all occurrence-to-block associations, including images
