@@ -456,6 +456,69 @@ func TestObjectCountRowsUsesAuthorizedVegaTotal(t *testing.T) {
 	}
 }
 
+func TestObjectGroupedCountRowsUsesAuthorizedVegaAggregate(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries: []map[string]any{
+			{"phone": "north", "notes": "priority", "__value": json.Number("100001")},
+			{"phone": nil, "notes": "standard", "__value": json.Number("2")},
+		},
+		TotalCount: 2, QuerySource: "source", Paging: &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	query := resourcePagingQuery(1)
+	query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationEq,
+		Value: "customer-1"}
+	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "", "count_rows",
+		[]string{"mobile", "notes"})
+	if err != nil || len(result.Datas) != 2 || result.Datas[0]["mobile"] != "north" ||
+		result.Datas[0]["notes"] != "priority" || result.Datas[0]["__value"] != json.Number("100001") ||
+		result.Datas[1]["mobile"] != nil || result.Datas[1]["notes"] != "standard" ||
+		result.Datas[1]["__value"] != json.Number("2") || result.TotalCount != 2 || result.QuerySource != "source" {
+		t.Fatalf("authorized grouped row count = %#v, error %v", result, err)
+	}
+	params := vega.lastParams
+	if params == nil || params.FilterCondition == nil || params.Paging.Mode != interfaces.ResourceDataPagingModeSingle ||
+		params.Paging.Limit != interfaces.MAX_LIMIT || !params.NeedTotal ||
+		params.Aggregation["property"] != "*" || params.Aggregation["aggr"] != "count" ||
+		params.Aggregation["alias"] != "__value" || len(params.GroupBy) != 2 ||
+		params.GroupBy[0]["property"] != "phone" || params.GroupBy[1]["property"] != "notes" ||
+		params.IgnoreLocalIndex != nil {
+		t.Fatalf("grouped count request = %#v", params)
+	}
+}
+
+func TestObjectGroupedCountRowsRejectsIncompleteAggregate(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries:    []map[string]any{{"phone": "north", "__value": json.Number("100001")}},
+		TotalCount: 2, QuerySource: "source", Paging: &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1),
+		"", "count_rows", []string{"mobile"})
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest || len(result.Datas) != 0 ||
+		len(vega.paramsHistory) != 1 {
+		t.Fatalf("incomplete grouped count result = %#v, error = %v", result, err)
+	}
+}
+
+func TestObjectGroupedCountRowsRequiresFullDimensionAccess(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
+	service := resourcePagingService(t, vega, 1)
+	service.propertyAccess = propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+		"id":     interfaces.PropertyAccessFull,
+		"mobile": interfaces.PropertyAccessMasked,
+		"notes":  interfaces.PropertyAccessSchema,
+		"secret": interfaces.PropertyAccessNone,
+	}}
+	_, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1),
+		"", "count_rows", []string{"mobile"})
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest || len(vega.paramsHistory) != 0 {
+		t.Fatalf("masked grouped count error = %v, Vega requests = %d", err, len(vega.paramsHistory))
+	}
+}
+
 func TestObjectMetricReadsTreatDeniedRowsAsCompleteEmptyResult(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -465,6 +528,9 @@ func TestObjectMetricReadsTreatDeniedRowsAsCompleteEmptyResult(t *testing.T) {
 		{name: "row count", read: func(service *objectTypeService, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
 			return service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "", "count_rows", nil)
 		}, wantCountRow: true},
+		{name: "grouped row count", read: func(service *objectTypeService, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+			return service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "", "count_rows", []string{"mobile"})
+		}},
 		{name: "property count", read: func(service *objectTypeService, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
 			return service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "id", "count_present", nil)
 		}},

@@ -276,28 +276,28 @@ func (ots *objectTypeService) ScanObjectsByObjectTypeID(ctx context.Context,
 func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType, measureProperty, operation string,
 	groupBy []string) (interfaces.Objects, error) {
-	countRows := operation == "count_rows" && measureProperty == "" && len(groupBy) == 0
+	countRows := operation == "count_rows" && measureProperty == ""
 	countPresent := operation == "count_present" && measureProperty != "" && len(groupBy) == 0
 	if query == nil || !countRows && !countPresent && (measureProperty == "" || operation != "count" || len(groupBy) > 1) {
 		return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported object aggregate")
 	}
 	queryCopy := *query
-	if !countRows {
+	if countRows {
+		// Row count has no property operand. Grouping properties, when present,
+		// are still required in full so the aggregate follows the same property
+		// authorization and logical-to-physical mapping as object reads.
+		queryCopy.Properties = append([]string(nil), groupBy...)
+		queryCopy.RequiredFullProperties = append([]string(nil), groupBy...)
+		queryCopy.ObjectQueryInfo = nil
+		queryCopy.ExcludeSystemProperties = nil
+	} else {
 		queryCopy.Properties = append([]string{measureProperty}, groupBy...)
 		queryCopy.RequiredFullProperties = append([]string(nil), queryCopy.Properties...)
 		if countPresent {
 			queryCopy.ObjectQueryInfo = nil
 			queryCopy.ExcludeSystemProperties = nil
 		}
-	} else {
-		// Row count has no property operand. Do not inherit a caller projection:
-		// object-type and row-filter authorization still apply, while Vega owns
-		// the physical row-count implementation.
-		queryCopy.Properties = nil
-		queryCopy.RequiredFullProperties = nil
-		queryCopy.ObjectQueryInfo = nil
-		queryCopy.ExcludeSystemProperties = nil
 	}
 	queryCopy.Cursor = ""
 	queryCopy.ResourceCursor = ""
@@ -487,7 +487,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 	} else {
 		// A false authorized predicate is complete without reading a resource.
 		// No physical query path was chosen, so provenance remains empty.
-		if aggregate != nil && aggregate.operation == "count_rows" {
+		if aggregate != nil && aggregate.operation == "count_rows" && len(aggregate.groupBy) == 0 {
 			resps.Datas = []map[string]any{{"__value": json.Number("0")}}
 		}
 	}
@@ -827,7 +827,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		// execution deliberately leaves physical source selection to Vega.
 		params.IgnoreLocalIndex = &query.IgnoreLocalIndex
 		resp, nextOffset, err = ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable, continuousScan)
-	} else if aggregate.operation == "count_rows" {
+	} else if aggregate.operation == "count_rows" && len(aggregate.groupBy) == 0 {
 		// Vega's existing need_total contract counts the authorized filtered
 		// resource rows. Only one detail row is requested and never returned to
 		// the metric caller; the physical count and source remain Vega's choice.
@@ -838,15 +838,21 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 		resp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
 	} else {
-		measure, exists := plan.properties[aggregate.measureProperty]
-		if !exists || measure.MappedField.Name == "" {
-			return unavailableOperationPropertyError(ctx)
-		}
-		measureField := measure.MappedField.Name
+		measureField := "*"
 		params.Sort = nil
 		operation := aggregate.operation
-		if operation == "count_present" {
+		if operation == "count_rows" {
 			operation = "count"
+			params.NeedTotal = true
+		} else {
+			measure, exists := plan.properties[aggregate.measureProperty]
+			if !exists || measure.MappedField.Name == "" {
+				return unavailableOperationPropertyError(ctx)
+			}
+			measureField = measure.MappedField.Name
+			if operation == "count_present" {
+				operation = "count"
+			}
 		}
 		params.Aggregation = map[string]any{"property": measureField,
 			"aggr": operation, "alias": "__value"}
@@ -862,9 +868,13 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			params.GroupBy = append(params.GroupBy, map[string]any{"property": property.MappedField.Name})
 			params.OutputFields = append(params.OutputFields, property.MappedField.Name)
 		}
-		params.Paging = interfaces.ResourceDataPagingRequest{
-			Mode: interfaces.ResourceDataPagingModeSingle, Limit: query.Limit,
+		limit := query.Limit
+		if aggregate.operation == "count_rows" {
+			// Public metric page_size is final-result pagination. Read one complete
+			// bounded aggregate page and fall back when Vega reports more groups.
+			limit = interfaces.MAX_LIMIT
 		}
+		params.Paging = interfaces.ResourceDataPagingRequest{Mode: interfaces.ResourceDataPagingModeSingle, Limit: limit}
 		resp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
 	}
 	if err != nil {
@@ -883,11 +893,24 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails("vega resource query returned nil")
 	}
 	if aggregate != nil {
-		if aggregate.operation == "count_rows" {
+		if aggregate.operation == "count_rows" && len(aggregate.groupBy) == 0 {
 			resps.Datas = []map[string]any{{"__value": json.Number(strconv.FormatInt(resp.TotalCount, 10))}}
 			resps.QuerySource = resp.QuerySource
 			resps.TotalCount = resp.TotalCount
 			return nil
+		}
+		if aggregate.operation == "count_rows" {
+			returned := int64(len(resp.Entries))
+			if resp.TotalCount < returned {
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
+					WithErrorDetails("Vega grouped row count returned an invalid total")
+			}
+			if resp.TotalCount > returned {
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+					oerrors.OntologyQuery_ObjectType_InvalidParameter).
+					WithErrorDetails("complete grouped row count is unavailable in one Vega aggregate page")
+			}
 		}
 		resps.Datas = make([]map[string]any, 0, len(resp.Entries))
 		for _, entry := range resp.Entries {
