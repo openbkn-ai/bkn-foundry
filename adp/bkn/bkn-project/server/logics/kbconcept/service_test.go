@@ -128,7 +128,7 @@ func TestConceptWorkflowPreservesDraftAndRejectsLateResults(t *testing.T) {
 				}
 				return
 			}
-			if store.written == nil || result.AddedObjects != 4 {
+			if store.written == nil || result.AddedObjects != 5 {
 				t.Fatal("verified models and fixed evidence templates not saved")
 			}
 			for _, o := range store.written.Items.ObjectTypes {

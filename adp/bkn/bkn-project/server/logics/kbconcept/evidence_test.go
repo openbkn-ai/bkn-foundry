@@ -17,7 +17,7 @@ func TestEvidenceTemplatesAreFixedAndIndependentOfOriginalTextRetention(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Model.ObjectTypes) != 3 || len(first.Model.RelationTypes) != 2 || first.DocumentID == "source_document" {
+	if len(first.Model.ObjectTypes) != 4 || len(first.Model.RelationTypes) != 5 || first.DocumentID == "source_document" {
 		t.Fatal("fixed template count or ID collision")
 	}
 	for _, object := range first.Model.ObjectTypes {
@@ -31,7 +31,7 @@ func TestEvidenceTemplatesAreFixedAndIndependentOfOriginalTextRetention(t *testi
 		}
 	}
 	for _, relation := range first.Model.RelationTypes {
-		if relation.Cardinality != "one_to_many" || relation.Source != first.DocumentID {
+		if relation.Document.Role == "evidence_contains" && (relation.Cardinality != "one_to_many" || relation.Source != first.DocumentID) {
 			t.Fatal("document containment direction changed")
 		}
 	}
@@ -86,14 +86,14 @@ func TestDocumentModelsGetCheckedEvidenceLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(evidence.Model.RelationTypes) != 4 {
+	if len(evidence.Model.RelationTypes) != 8 {
 		t.Fatal("model-to-document and model-to-block references missing")
 	}
 	for _, r := range evidence.Model.RelationTypes {
 		if r.Document.Role != "evidence_reference" {
 			continue
 		}
-		if r.Source != "contract_file" || r.Cardinality != "many_to_one" || r.Adopted {
+		if r.Source != "contract_file" || r.Cardinality != "many_to_many" || r.Adopted {
 			t.Fatal("wrong evidence reference")
 		}
 	}
@@ -115,12 +115,45 @@ func TestCanonicalEntitiesDoNotGetSingleDocumentEvidenceCardinality(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(evidence.Model.RelationTypes) != 2 {
+	if len(evidence.Model.RelationTypes) != 8 {
 		t.Fatal("entity provenance cannot be collapsed to one document/block reference")
 	}
 	for _, relation := range evidence.Model.RelationTypes {
-		if relation.Source == "business_entity" {
+		if relation.Source == "business_entity" && relation.Cardinality != "many_to_many" {
 			t.Fatal("a canonical entity may have property-level sources from different files")
 		}
+	}
+}
+
+func TestEvidenceTemplatesRetainPreparedBindingsAndHumanDecisions(t *testing.T) {
+	input := modelInput("The original remains version bound.")
+	first, err := BuildEvidence(input, interfaces.DraftItems{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, object := range first.Model.ObjectTypes {
+		object.Adopted = true
+		object.Table.ResourceID = "prepared-resource"
+		for _, field := range object.Properties {
+			field.MappedField = field.Name
+			if field.Name == "_id" {
+				field.MappedField = "bkn_record_id"
+			}
+		}
+	}
+	for _, relation := range first.Model.RelationTypes {
+		relation.Adopted = true
+	}
+	existing := interfaces.DraftItems{ObjectTypes: first.Model.ObjectTypes, RelationTypes: first.Model.RelationTypes}
+	again, err := BuildEvidence(input, existing)
+	if err != nil || len(again.Model.ObjectTypes) != 0 || len(again.Model.RelationTypes) != 0 {
+		t.Fatal("prepared templates cannot be reused", err)
+	}
+	if !existing.ObjectTypes[0].Adopted || existing.ObjectTypes[0].Table.ResourceID != "prepared-resource" {
+		t.Fatal("human decisions replaced")
+	}
+	existing.ObjectTypes[0].Properties[0].MappedField = "foreign_field"
+	if _, err = BuildEvidence(input, existing); err == nil {
+		t.Fatal("corrupted prepared binding reused")
 	}
 }

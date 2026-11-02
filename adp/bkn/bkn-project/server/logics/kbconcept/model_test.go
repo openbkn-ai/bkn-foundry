@@ -169,3 +169,29 @@ func TestSameDocumentRelationRoles(t *testing.T) {
 		}
 	}
 }
+
+func TestProposalsCanWaitForTargetIdentityWithoutLosingVerifiedObjects(t *testing.T) {
+	for _, text := range []string{"采购单引用供应方，来源未给出注册编号。", "维修工单引用客户，来源未给出客户编号。", "专利转让书引用机构，来源未给出统一编号。"} {
+		input := modelInput(text)
+		source := proposedObject(input, "source_record", "entity")
+		target := proposedObject(input, "named_party", "entity")
+		target.PrimaryKeys = nil
+		relation := &interfaces.DraftRelationType{ID: "references_party", Name: "涉及主体", Source: source.ID, Target: target.ID, Cardinality: "many_to_one", Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: "来源明确指出关联主体，唯一标识需要人确认", Citations: []interfaces.DraftSourceCitation{documentQuote(input)}}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}}
+		checked, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{source, target}, RelationTypes: []*interfaces.DraftRelationType{relation}})
+		if err != nil {
+			t.Fatal("verified proposal was discarded before a person could choose identity", err)
+		}
+		if !checked.ObjectTypes[1].NeedsIdentity || checked.ObjectTypes[1].Adopted || checked.RelationTypes[0].Adopted {
+			t.Fatal("unconfirmed identity became adopted")
+		}
+		items := interfaces.DraftItems{ObjectTypes: checked.ObjectTypes, RelationTypes: checked.RelationTypes}
+		if LinkIdentityReady(items, checked.RelationTypes[0]) {
+			t.Fatal("pending identity is ready to publish")
+		}
+		checked.ObjectTypes[1].PrimaryKeys = []string{"number"}
+		checked.ObjectTypes[1].NeedsIdentity = false
+		if !LinkIdentityReady(items, checked.RelationTypes[0]) {
+			t.Fatal("human-confirmed matching identity did not unlock the relation")
+		}
+	}
+}

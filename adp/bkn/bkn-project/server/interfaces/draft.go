@@ -98,16 +98,21 @@ var ErrDraftHasDecisions = errors.New("draft has decisions")
 const SOURCE_OF_RECORD_TABLE = "table"
 
 type Draft struct {
-	ProjectID  string      `json:"project_id"`
-	Status     string      `json:"status"`
-	Items      DraftItems  `json:"items"`
-	Error      string      `json:"error"`
-	Drafter    AccountInfo `json:"drafter"`
-	CreateTime int64       `json:"create_time"`
-	UpdateTime int64       `json:"update_time"`
+	DatasetPreparation *DatasetPreparation `json:"dataset_preparation,omitempty"`
+	ProjectID          string              `json:"project_id"`
+	Status             string              `json:"status"`
+	Items              DraftItems          `json:"items"`
+	Error              string              `json:"error"`
+	Drafter            AccountInfo         `json:"drafter"`
+	CreateTime         int64               `json:"create_time"`
+	UpdateTime         int64               `json:"update_time"`
 }
 
 type DraftItems struct {
+	// DatasetPlans retains preparation attempts as process metadata. It contains
+	// no extracted rows, source text or credentials.
+	DatasetPlans []*DraftDatasetPlan `json:"dataset_plans,omitempty"`
+
 	ObjectTypes   []*DraftObjectType    `json:"object_types"`
 	RelationTypes []*DraftRelationType  `json:"relation_types"`
 	ValueTypes    []*DraftValueType     `json:"value_types"`
@@ -322,6 +327,8 @@ type DraftKeyEvidence struct {
 }
 
 type DraftRelationType struct {
+	// Properties are the server-managed evidence attributes of an indirect document relation.
+	Properties      []*DraftProperty      `json:"properties,omitempty"`
 	Document        *DraftDocumentModel   `json:"document,omitempty"`
 	DocumentMapping *DraftDocumentMapping `json:"document_mapping,omitempty"`
 	ID              string                `json:"id"`

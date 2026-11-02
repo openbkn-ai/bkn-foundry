@@ -307,6 +307,17 @@ func (s *draftService) GetDraft(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
+	if len(draft.Items.DatasetPlans) > 0 && s.kbResources != nil {
+		state, readErr := s.kbResources.Read(ctx, projectID)
+		if readErr != nil {
+			return nil, internalError(ctx, "Read Dataset preparation source failed", readErr)
+		}
+		var selection *interfaces.KBSelection
+		if state != nil {
+			selection = state.Current
+		}
+		draft.DatasetPreparation = datasetPreparation(draft, selection)
+	}
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
 }

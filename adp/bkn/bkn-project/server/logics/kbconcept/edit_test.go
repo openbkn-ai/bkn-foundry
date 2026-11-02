@@ -13,7 +13,7 @@ import (
 )
 
 func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T) {
-	for _, scenario := range []string{"instruction", "readonly", "quote", "missing_examples", "role", "type", "identity"} {
+	for _, scenario := range []string{"instruction", "readonly", "quote", "missing_examples", "role", "type", "identity", "prepared"} {
 		t.Run(scenario, func(t *testing.T) {
 			input := modelInput("订单 O-1")
 			validated, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "order_doc", "entity")}})
@@ -22,6 +22,15 @@ func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T
 			}
 			original := validated.ObjectTypes[0]
 			original.Adopted = true
+			if scenario == "prepared" {
+				original.Table = interfaces.DraftTable{ResourceID: "prepared", CatalogID: "private"}
+				for _, field := range original.Properties {
+					field.MappedField = field.Name
+					if field.Name == "_id" {
+						field.MappedField = "bkn_record_id"
+					}
+				}
+			}
 			raw, _ := json.Marshal(original)
 			edited := &interfaces.DraftObjectType{}
 			_ = json.Unmarshal(raw, edited)
@@ -42,7 +51,7 @@ func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T
 				edited.PrimaryKeys = nil
 			}
 			result, err := ValidateEditedObject(input, interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{original}}, original, edited)
-			success := scenario == "instruction" || scenario == "identity"
+			success := scenario == "instruction" || scenario == "identity" || scenario == "prepared"
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}
@@ -57,6 +66,9 @@ func TestDocumentObjectEditsPreserveManagedColumnsAndVerifyExamples(t *testing.T
 			}
 			if scenario == "identity" && (!result.NeedsIdentity || result.Adopted) {
 				t.Fatal("missing identity stayed adopted")
+			}
+			if scenario == "prepared" && (result.Table.ResourceID != "" || result.Properties[0].MappedField != "") {
+				t.Fatal("an edited model kept a physical binding from the old generation")
 			}
 			if original.Properties[0].Extraction.Examples[0].Quote != "" {
 				t.Fatal("stored proof was hydrated in place")
@@ -82,11 +94,17 @@ func TestDocumentRelationEditsValidateBothModesAgainstCurrentSchema(t *testing.T
 	original := initial.RelationTypes[0]
 	original.Adopted = true
 	existing.RelationTypes = initial.RelationTypes
-	for _, scenario := range []string{"linking", "same_document", "unknown", "forged"} {
+	for _, scenario := range []string{"linking", "same_document", "unknown", "forged", "prepared"} {
 		t.Run(scenario, func(t *testing.T) {
 			raw, _ := json.Marshal(original)
 			edited := &interfaces.DraftRelationType{}
 			_ = json.Unmarshal(raw, edited)
+			if scenario == "prepared" {
+				edited.LinkTable = &interfaces.DraftTable{ResourceID: "backing", CatalogID: "private"}
+				edited.SourceMapping = []interfaces.DraftFieldMapping{{SourceProperty: "_id", TargetProperty: "source_record_id"}}
+				original.LinkTable = edited.LinkTable
+				original.SourceMapping = edited.SourceMapping
+			}
 			switch scenario {
 			case "same_document":
 				edited.DocumentMapping = &interfaces.DraftDocumentMapping{Mode: "same_document", SourceNameProperty: "number", TargetNameProperty: "number"}
@@ -96,7 +114,7 @@ func TestDocumentRelationEditsValidateBothModesAgainstCurrentSchema(t *testing.T
 				edited.Document.Citations[0].Quote = "not in source"
 			}
 			result, err := ValidateEditedRelation(input, existing, original, edited)
-			success := scenario == "linking"
+			success := scenario == "linking" || scenario == "prepared"
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}

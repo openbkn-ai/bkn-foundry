@@ -91,6 +91,10 @@ spec:
             value: {{ .Values.env.timezone }}
           - name: LANG
             value: {{ .Values.env.language }}
+          - name: BKN_PROJECT_DATASET_ACCOUNT_ID
+            value: {{ (.Values.datasetStorage | default dict).accountID | default "" | quote }}
+          - name: BKN_PROJECT_DATASET_CATALOG_ID
+            value: {{ (.Values.datasetStorage | default dict).catalogID | default "" | quote }}
           - name: BKN_SAFE_URL
             value: {{ (.Values.bknSafe | default dict).url | default "http://bkn-safe:3000" | quote }}
           {{- with (.Values.knowledgeBase | default dict).url }}

@@ -226,6 +226,12 @@ func compileRelationType(rt *interfaces.DraftRelationType) (*bkn.BknRelationType
 		return nil, fmt.Errorf("relation type %q has no link table", rt.ID)
 	}
 	compiled.Endpoint.Type = "indirect"
+	for _, property := range rt.Properties {
+		if property == nil || property.Name == "" || property.MappedField == "" {
+			return nil, fmt.Errorf("relation type %q has invalid evidence property", rt.ID)
+		}
+		compiled.DataProperties = append(compiled.DataProperties, &bkn.DataProperty{Name: property.Name, DisplayName: property.DisplayName, Type: property.Type, Description: property.Description, MappedField: property.MappedField})
+	}
 	// The writer reads an indirect mapping only by pointer, as the parser writes it.
 	compiled.MappingRules = &bkn.InDirectMappingRule{
 		BackingDataSource: &bkn.ResourceInfo{

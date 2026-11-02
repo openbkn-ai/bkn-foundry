@@ -28,6 +28,10 @@ func checkDocumentReadAccess(ctx context.Context, token string, draft *interface
 	if err == nil {
 		return nil
 	}
+	return documentSourceError(ctx, err)
+}
+
+func documentSourceError(ctx context.Context, err error) error {
 	status, code, key := 503, httperrors.PublicError_ServiceUnavailable, "SourceUnavailable"
 	var upstream *kb.SourceError
 	if errors.As(err, &upstream) {

@@ -89,6 +89,26 @@ func Test_DraftAccess(t *testing.T) {
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
+		Convey("StartDraft preserves remote Dataset preparation intents when replacing a draft\n", func() {
+			previous := `{"dataset_plans":[{"id":"generation-1","state":"pending","datasets":[{"resource_id":"created-before-failure","ready":true}]}]}`
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), previous))
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?, f_items = ?, f_error = ?")).
+				WithArgs("drafting", sqlmock.AnyArg(), "", "u1", "user", int64(5), int64(5), "p1").WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+			fresh := *drafting
+			fresh.Items.DatasetPlans = nil
+			started, err := da.StartDraft(ctx, &fresh, 3, true)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeTrue)
+			So(len(fresh.Items.DatasetPlans), ShouldEqual, 1)
+			So(fresh.Items.DatasetPlans[0].ID, ShouldEqual, "generation-1")
+			So(fresh.Items.DatasetPlans[0].Datasets[0].ResourceID, ShouldEqual, "created-before-failure")
+			So(fresh.Items.DatasetPlans[0].Datasets[0].Ready, ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("StartDraft leaves a project that is drafting alone\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))

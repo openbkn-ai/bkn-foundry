@@ -17,6 +17,7 @@ import (
 const Capability = "knowledge_base"
 
 type Providers struct {
+	Datasets Datasets
 	Source   Source
 	Concepts Concepts
 }

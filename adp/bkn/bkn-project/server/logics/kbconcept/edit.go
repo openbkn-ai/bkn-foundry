@@ -57,6 +57,12 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 	if json.Unmarshal(raw, edited) != nil {
 		return nil, ErrInvalidModel
 	}
+	if edited.Table.ResourceID != "" && !reflect.DeepEqual(edited.Table, original.Table) {
+		return nil, ErrInvalidModel
+	}
+	// Storage is derived from the confirmed model. Revalidate the editable
+	// logical definition, then let the next confirmation prepare its generation.
+	edited.Table = interfaces.DraftTable{}
 	fixed := map[string]*interfaces.DraftProperty{}
 	for _, p := range original.Properties {
 		if p != nil && p.ReadOnly {
@@ -76,6 +82,13 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		}
 		if p.ReadOnly {
 			return nil, ErrInvalidModel
+		}
+		if p.MappedField != "" {
+			old := property(original, p.Name)
+			if old == nil || p.MappedField != old.MappedField {
+				return nil, ErrInvalidModel
+			}
+			p.MappedField = ""
 		}
 		if p.Extraction != nil {
 			if err := hydrateQuotes(input, p.Extraction.Examples); err != nil {
@@ -161,6 +174,16 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 	if json.Unmarshal(raw, edited) != nil {
 		return nil, ErrInvalidModel
 	}
+	if (edited.LinkTable != nil && !reflect.DeepEqual(edited.LinkTable, original.LinkTable)) ||
+		(len(edited.SourceMapping) > 0 && !reflect.DeepEqual(edited.SourceMapping, original.SourceMapping)) ||
+		(len(edited.TargetMapping) > 0 && !reflect.DeepEqual(edited.TargetMapping, original.TargetMapping)) ||
+		(len(edited.Properties) > 0 && !reflect.DeepEqual(edited.Properties, original.Properties)) {
+		return nil, ErrInvalidModel
+	}
+	edited.LinkTable = nil
+	edited.SourceMapping = nil
+	edited.TargetMapping = nil
+	edited.Properties = nil
 	edited.Aliases = nil
 	if err := hydrateQuotes(input, edited.Document.Citations); err != nil {
 		return nil, err
