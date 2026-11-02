@@ -71,14 +71,6 @@ type TableForeignKeyMeta struct {
 	OnUpdate   string   `json:"on_update,omitempty"`
 }
 
-// QueryResult represents query execution result.
-type QueryResult struct {
-	Columns     []string         `json:"columns"`
-	Entries     []map[string]any `json:"entries"`
-	Total       int64            `json:"total"`
-	SearchAfter []any            `json:"-"` // OpenSearch cursor continuation state
-}
-
 // FileMeta represents file metadata.
 type FileMeta struct {
 	Path         string `json:"path"`

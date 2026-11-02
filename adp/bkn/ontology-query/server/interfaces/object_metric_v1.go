@@ -66,6 +66,7 @@ type ObjectMetricQueryTimeRangeV1 struct {
 }
 
 type ObjectMetricDataV1 struct {
+	IsApproximate   bool                          `json:"is_approximate"`
 	Model           ObjectMetricResultModelV1     `json:"model"`
 	Entries         []ObjectMetricDataEntryV1     `json:"entries"`
 	Status          string                        `json:"status"`
@@ -198,8 +199,9 @@ type ObjectMetricConditionV1 struct {
 }
 
 type ObjectMetricMeasureV1 struct {
-	Expression  *ObjectMetricExpressionV1 `json:"expression,omitempty"`
-	Aggregation string                    `json:"aggregation"`
+	AllowApproximate *bool                     `json:"allow_approximate,omitempty"`
+	Expression       *ObjectMetricExpressionV1 `json:"expression,omitempty"`
+	Aggregation      string                    `json:"aggregation"`
 }
 
 type ObjectMetricBusinessQualifiersV1 struct {

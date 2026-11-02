@@ -385,6 +385,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ObjectMetricDataEntry'
+        is_approximate:
+          type: boolean
+          description: 本次查询执行是否包含近似计算或近似依赖；筛选和分页不改变该标识，与数据截断和 partial 状态独立。
         status:
           type: string
           enum: [ok, no_data, unavailable, partial]

@@ -24,6 +24,19 @@ func HasAvailableLocalIndex(resource *interfaces.Resource) bool {
 		resource.LocalIndexName != ""
 }
 
+// ShouldIgnoreLocalIndex 统一物理查询和逻辑视图的选路；表资源的精确去重优先使用源库。
+func ShouldIgnoreLocalIndex(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) bool {
+	if params == nil {
+		return false
+	}
+	if params.IgnoreLocalIndex != nil && *params.IgnoreLocalIndex {
+		return true
+	}
+	return resource != nil && resource.Category == interfaces.ResourceCategoryTable &&
+		params.Aggregation != nil && params.Aggregation.Aggr == "count_distinct" &&
+		params.Aggregation.AllowApproximate != nil && !*params.Aggregation.AllowApproximate
+}
+
 // EnsureResourceQueryable validates that a resource is in a queryable state and has usable metadata.
 //
 //	enabled=false        → return 409 HTTPError (VegaBackend.Resource.NotQueryable)

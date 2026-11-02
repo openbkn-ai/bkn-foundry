@@ -31,7 +31,7 @@ type LocalIndexManager interface {
 	ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error)
 	GetIndexCapabilities(ctx context.Context) (*IndexCapabilities, error)
 
-	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
+	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)
 	GetDocuments(ctx context.Context, indexName string, docIDs []string) ([]map[string]any, error)
 	CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error)

@@ -122,9 +122,10 @@ func TestAttachRelatedMetrics_PropagatesDependencyErrors(t *testing.T) {
 
 func TestQueryMetric_PinsVersionAndPreservesV1Status(t *testing.T) {
 	oq := &stubOntologyQuery{resp: &interfaces.MetricQueryDownstreamResp{
-		Model:   map[string]any{"metric_id": "m1", "version": 2},
-		Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Value: 431}},
-		Status:  "partial", Warnings: []string{"missing source"}, OverallMs: 12,
+		Model:         map[string]any{"metric_id": "m1", "version": 2},
+		IsApproximate: true,
+		Entries:       []interfaces.ObjectMetricDataEntry{{Status: "ok", Value: 431}},
+		Status:        "partial", Warnings: []string{"missing source"}, OverallMs: 12,
 		TotalCount: 7, NextCursor: "next-page",
 	}}
 	query := interfaces.ObjectMetricQuery{
@@ -144,6 +145,9 @@ func TestQueryMetric_PinsVersionAndPreservesV1Status(t *testing.T) {
 	}
 	if resp.Version != 2 || resp.Status != "partial" || len(resp.Entries) != 1 || len(resp.Warnings) != 1 || resp.OverallMs != 12 || resp.TotalCount != 7 || resp.NextCursor != "next-page" {
 		t.Fatalf("response: %+v", resp)
+	}
+	if !resp.IsApproximate {
+		t.Fatalf("approximation metadata was lost: %+v", resp)
 	}
 }
 

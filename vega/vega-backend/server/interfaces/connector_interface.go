@@ -87,7 +87,7 @@ type TableConnector interface {
 	// 所有表连接器的明细投影均尝试读取 other，直接返回源值，不按类型排除或包装；真实 NULL 保留。
 	// 内部调用的 BinaryMode=nil 表示不读取 Binary，返回 not_requested；HTTP 入口默认使用 metadata。
 	// other 类型本身不代表不可读取。
-	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
+	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 
 	// ExecuteSQLBuilder generates SQL and bound parameters, executes the query,
 	// and reads the complete result before closing its Rows. TotalCount is the
@@ -121,7 +121,7 @@ type FilesetConnector interface {
 	// ListFilesets lists files and directories within the discovery scope, returning fileset metadata.
 	ListFilesets(ctx context.Context) ([]*FilesetMeta, error)
 	// ExecuteQuery queries a fileset using the resource and query parameters and returns the query result.
-	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
+	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 }
 
 // TopicConnector defines the interface for message queue connectors.
@@ -152,9 +152,9 @@ type IndexConnector interface {
 	CountRows(ctx context.Context, index *IndexMeta) (int64, error)
 
 	// ExecuteQuery queries indexName using the resource field definitions and query parameters.
-	ExecuteQuery(ctx context.Context, indexName string, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
+	ExecuteQuery(ctx context.Context, indexName string, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 	// ExecuteQueryWithDsl executes source-native DSL against the index identified by resourceName and returns the query result.
-	ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*QueryResult, error)
+	ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*ResourceDataQueryResult, error)
 	// ExecuteRawQuery executes a native query against indexName, returning column information, data, and a count.
 	ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*RawQueryResponse, error)
 

@@ -60,7 +60,7 @@ func openSearchFloat64(value any) (float64, bool) {
 	}
 }
 
-func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*interfaces.QueryResult, error) {
+func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*interfaces.ResourceDataQueryResult, error) {
 	// Ensure the connector is enabled
 	if !c.enabled {
 		return nil, fmt.Errorf("OpenSearch connector is not enabled")
@@ -121,9 +121,9 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 
 	hitsArray, ok := hits["hits"].([]any)
 	if !ok {
-		return &interfaces.QueryResult{
-			Entries: []map[string]any{},
-			Total:   total,
+		return &interfaces.ResourceDataQueryResult{
+			Entries:    []map[string]any{},
+			TotalCount: total,
 		}, nil
 	}
 
@@ -160,9 +160,9 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 		documents = append(documents, source)
 	}
 
-	return &interfaces.QueryResult{
-		Entries: documents,
-		Total:   total,
+	return &interfaces.ResourceDataQueryResult{
+		Entries:    documents,
+		TotalCount: total,
 	}, nil
 }
 
@@ -375,10 +375,10 @@ func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexNa
 //	-params: Query parameters, including output fields, sorting, pagination, etc
 //
 // Return value:
-//   - *interfaces.QueryResult: Query result, including row data and total number
+//   - *interfaces.ResourceDataQueryResult: Query result, including row data and total number
 //     -error: Error message
 func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string, resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 
 	// Ensure we have a connection
 	if err := c.Connect(ctx); err != nil {
@@ -390,6 +390,10 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	}
 	if err := c.validateStoredFilterCondition(resource, params); err != nil {
 		return nil, err
+	}
+	if params.Aggregation != nil && params.Aggregation.Aggr == "count_distinct" &&
+		params.Aggregation.AllowApproximate != nil && !*params.Aggregation.AllowApproximate {
+		return c.executeExactDistinct(ctx, indexName, resource, params)
 	}
 
 	// Aggregation query: Executed when any of the parameters Aggregation, GroupBy, or Having exists
@@ -448,7 +452,8 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			case "count_distinct":
 				metricBody = map[string]any{
 					"cardinality": map[string]any{
-						"field": aggField,
+						"field":               aggField,
+						"precision_threshold": 40000,
 					},
 				}
 			case "sum":
@@ -511,12 +516,15 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 				name := "group_by_" + gb.Property
 				var bucket map[string]any
 				if gb.CalendarInterval != "" {
-					bucket = map[string]any{
-						"date_histogram": map[string]any{
-							"field":             gb.Property,
-							"calendar_interval": gb.CalendarInterval,
-						},
+					histogram := map[string]any{
+						"field":             gb.Property,
+						"calendar_interval": gb.CalendarInterval,
 					}
+					if params.Aggregation != nil && params.Aggregation.Aggr == "count_distinct" {
+						// 与 SQL 分组一致，只返回存在文档的日期分组。
+						histogram["min_doc_count"] = 1
+					}
+					bucket = map[string]any{"date_histogram": histogram}
 				} else {
 					groupField := gb.Property
 					resolvedField, err := c.exactMatchFieldName(groupField, resource.SchemaDefinition)
@@ -603,6 +611,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		if err := common.UnmarshalPreciseJSON(bodyBytes, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode aggregate search result: %w", err)
 		}
+		if err := validateCompleteAggregationResponse(result); err != nil {
+			return nil, err
+		}
 
 		// Extract the total number of documents
 		var totalCount int64
@@ -617,9 +628,12 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		// Extract the aggregation results
 		aggregations, ok := result["aggregations"].(map[string]any)
 		if !ok {
-			return &interfaces.QueryResult{
-				Entries: []map[string]any{},
-				Total:   totalCount,
+			if params.Aggregation != nil && params.Aggregation.Aggr == "count_distinct" {
+				return nil, fmt.Errorf("distinct count response is missing aggregations")
+			}
+			return &interfaces.ResourceDataQueryResult{
+				Entries:    []map[string]any{},
+				TotalCount: totalCount,
 			}, nil
 		}
 
@@ -657,9 +671,10 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 		}
 
-		return &interfaces.QueryResult{
-			Entries: rows,
-			Total:   totalCount,
+		return &interfaces.ResourceDataQueryResult{
+			Entries:       rows,
+			TotalCount:    totalCount,
+			IsApproximate: params.Aggregation != nil && params.Aggregation.Aggr == "count_distinct",
 		}, nil
 	}
 
@@ -789,9 +804,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 	hitsArray, ok := hits["hits"].([]any)
 	if !ok {
-		return &interfaces.QueryResult{
-			Entries: []map[string]any{},
-			Total:   int64(total),
+		return &interfaces.ResourceDataQueryResult{
+			Entries:    []map[string]any{},
+			TotalCount: int64(total),
 		}, nil
 	}
 
@@ -830,9 +845,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}
 	}
 
-	return &interfaces.QueryResult{
+	return &interfaces.ResourceDataQueryResult{
 		Entries:     documents,
-		Total:       int64(total),
+		TotalCount:  int64(total),
 		SearchAfter: searchAfter,
 	}, nil
 }

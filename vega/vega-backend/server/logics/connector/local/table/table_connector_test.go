@@ -38,7 +38,7 @@ func TestScanRows(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"id", "name"}, got.Columns)
-		assert.Equal(t, int64(2), got.Total)
+		assert.Equal(t, int64(2), got.TotalCount)
 		assert.Equal(t, []map[string]any{
 			{"id": int64(1), "name": "alice"},
 			{"id": int64(2), "name": "bob"},
@@ -82,7 +82,7 @@ func TestNormalizeQueryResult(t *testing.T) {
 	t.Run("JSON null normalizes without changing string content", func(t *testing.T) {
 		for _, binaryMode := range []*string{nil, new(interfaces.BinaryModeContent)} {
 			for _, outputFields := range [][]string{nil, {"payload", "label"}} {
-				result := &interfaces.QueryResult{Entries: []map[string]any{
+				result := &interfaces.ResourceDataQueryResult{Entries: []map[string]any{
 					{"payload": nil, "label": "null"},
 					{"payload": "null", "label": "null"},
 					{"payload": []byte(" \nnull\t"), "label": "null"},
@@ -120,7 +120,7 @@ func TestNormalizeQueryResult(t *testing.T) {
 		{name: "having", params: interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result := &interfaces.QueryResult{Columns: []string{"id", "blob", "other"}, Total: 3, Entries: []map[string]any{
+			result := &interfaces.ResourceDataQueryResult{Columns: []string{"id", "blob", "other"}, TotalCount: 3, Entries: []map[string]any{
 				{"id": 1, "blob": nil, "other": []any{1, 2}},
 				{"id": 2, "blob": nil, "other": []any{}},
 				{"id": 3, "blob": nil, "other": nil},
@@ -138,17 +138,17 @@ func TestNormalizeQueryResult(t *testing.T) {
 			assert.Equal(t, []any{}, result.Entries[1]["other"])
 			assert.Contains(t, result.Entries[2], "other")
 			assert.Nil(t, result.Entries[2]["other"])
-			assert.Equal(t, int64(3), result.Total)
+			assert.Equal(t, int64(3), result.TotalCount)
 		})
 	}
 	t.Run("missing Binary fields are not manufactured", func(t *testing.T) {
-		result := &interfaces.QueryResult{Entries: []map[string]any{{}}}
+		result := &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{}}}
 		NormalizeQueryResult(result, resource, &interfaces.ResourceDataQueryParams{})
 		assert.Empty(t, result.Entries[0])
 		assert.Empty(t, result.Columns)
 	})
 	t.Run("returned binary NULL remains NULL when requested", func(t *testing.T) {
-		result := &interfaces.QueryResult{Columns: []string{"blob"}, Entries: []map[string]any{{"blob": nil}}}
+		result := &interfaces.ResourceDataQueryResult{Columns: []string{"blob"}, Entries: []map[string]any{{"blob": nil}}}
 		NormalizeQueryResult(result, resource, &interfaces.ResourceDataQueryParams{BinaryMode: &metadata})
 		assert.Contains(t, result.Entries[0], "blob")
 		assert.Nil(t, result.Entries[0]["blob"])

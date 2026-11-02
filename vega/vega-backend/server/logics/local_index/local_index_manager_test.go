@@ -184,6 +184,52 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 }
 
 func TestLocalIndexManagerListDocuments(t *testing.T) {
+	t.Run("missing resource fails before invoking the connector", func(t *testing.T) {
+		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		result, err := (&localIndexManager{lic: connector}).ListDocuments(context.Background(), "index", nil, nil)
+		var conditionError *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &conditionError)
+		assert.Nil(t, result)
+	})
+	t.Run("exact distinct uses schema without rebuilding mapping", func(t *testing.T) {
+		for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
+			t.Run(category, func(t *testing.T) {
+				connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+				manager := &localIndexManager{lic: connector}
+				sourceAttributes := map[string]any{"source_precision": 20}
+				resource := &interfaces.Resource{Category: category, SchemaDefinition: []*interfaces.Property{
+					{Name: "id", OriginalName: "source_id", Type: interfaces.DataType_Integer, OriginalType: "BIGINT", Attributes: sourceAttributes},
+					{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "DECIMAL"},
+					{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw", Config: map[string]any{"ignore_above": 128}}}},
+				}}
+				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count_distinct", AllowApproximate: new(false)}}
+				expected := &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"__value": int64(2)}}}
+				connector.EXPECT().ExecuteQuery(gomock.Any(), "index", gomock.Any(), params).DoAndReturn(
+					func(_ context.Context, _ string, queryResource *interfaces.Resource, _ *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+						fields := map[string]*interfaces.Property{}
+						for _, prop := range queryResource.SchemaDefinition {
+							fields[prop.Name] = prop
+						}
+						assert.Equal(t, "id", fields["id"].OriginalName)
+						assert.Equal(t, "BIGINT", fields["id"].OriginalType)
+						assert.Equal(t, map[string]any{"source_precision": 20}, fields["id"].Attributes)
+						assert.Equal(t, "DECIMAL", fields["amount"].OriginalType)
+						assert.Nil(t, fields["amount"].Attributes)
+						assert.Empty(t, fields["body"].OriginalType)
+						assert.Nil(t, fields["body"].Attributes)
+						assert.Equal(t, map[string]any{"ignore_above": 128}, fields["body"].Features[0].Config)
+						return expected, nil
+					})
+				got, err := manager.ListDocuments(context.Background(), "index", resource, params)
+				require.NoError(t, err)
+				assert.Same(t, expected, got)
+				assert.Equal(t, "BIGINT", resource.SchemaDefinition[0].OriginalType)
+				assert.Equal(t, "source_id", resource.SchemaDefinition[0].OriginalName)
+				assert.Equal(t, map[string]any{"source_precision": 20}, resource.SchemaDefinition[0].Attributes)
+				assert.Empty(t, resource.SchemaDefinition[2].OriginalType)
+			})
+		}
+	})
 	t.Run("table JSON results are returned as text", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		connector := vmock.NewMockIndexConnector(ctrl)
@@ -191,8 +237,16 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}}}
 		params := &interfaces.ResourceDataQueryParams{}
 		stored := []map[string]any{{"payload": map[string]any{"z": "<>&", "a": json.Number("9007199254740993")}}, {"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}
-		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", resourceForQuery(resource), params).Return(&interfaces.QueryResult{Entries: stored, Total: 5, SearchAfter: []any{"next"}}, nil)
-		got, total, err := manager.ListDocuments(context.Background(), "index", resource, params)
+		queryResource, prepErr := resourceForQuery(resource)
+		require.NoError(t, prepErr)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: 5, SearchAfter: []any{"next"}}, nil)
+		gotResult, err := manager.ListDocuments(context.Background(), "index", resource, params)
+		var got []map[string]any
+		var total int64
+		if gotResult != nil {
+			got = gotResult.Entries
+			total = gotResult.TotalCount
+		}
 		require.NoError(t, err)
 		require.Len(t, got, 5)
 		require.IsType(t, "", got[0]["payload"])
@@ -203,7 +257,8 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		assert.Contains(t, text, "<>&")
 		assert.Equal(t, []map[string]any{{"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}, got[1:])
 		assert.Equal(t, int64(5), total)
-		assert.Equal(t, []any{"next"}, params.SearchAfter)
+		assert.Equal(t, []any{"next"}, gotResult.SearchAfter)
+		assert.Empty(t, params.SearchAfter)
 		assert.Len(t, SchemaForQuery(resource.SchemaDefinition), 1)
 	})
 	t.Run("dataset JSON values retain document types", func(t *testing.T) {
@@ -218,10 +273,18 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 			stored = append(stored, map[string]any{"payload": value})
 		}
 		stored = append(stored, map[string]any{})
-		connector.EXPECT().ExecuteQuery(gomock.Any(), "dataset-index", resourceForQuery(resource), params).
-			Return(&interfaces.QueryResult{Entries: stored, Total: int64(len(stored)), SearchAfter: []any{"next"}}, nil)
+		queryResource, prepErr := resourceForQuery(resource)
+		require.NoError(t, prepErr)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "dataset-index", queryResource, params).
+			Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: int64(len(stored)), SearchAfter: []any{"next"}}, nil)
 
-		got, total, err := manager.ListDocuments(context.Background(), "dataset-index", resource, params)
+		gotResult2, err := manager.ListDocuments(context.Background(), "dataset-index", resource, params)
+		var got []map[string]any
+		var total int64
+		if gotResult2 != nil {
+			got = gotResult2.Entries
+			total = gotResult2.TotalCount
+		}
 
 		require.NoError(t, err)
 		require.Len(t, got, len(values)+1)
@@ -230,7 +293,8 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		}
 		assert.Empty(t, got[len(values)])
 		assert.Equal(t, int64(len(values)+1), total)
-		assert.Equal(t, []any{"next"}, params.SearchAfter)
+		assert.Equal(t, []any{"next"}, gotResult2.SearchAfter)
+		assert.Empty(t, params.SearchAfter)
 	})
 	t.Run("aggregate alias matching a JSON field stays numeric", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -238,8 +302,14 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		manager := &localIndexManager{lic: connector}
 		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}}}
 		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "payload"}}
-		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", resourceForQuery(resource), params).Return(&interfaces.QueryResult{Entries: []map[string]any{{"payload": int64(5)}}, Total: 5}, nil)
-		got, _, err := manager.ListDocuments(context.Background(), "index", resource, params)
+		queryResource, prepErr := resourceForQuery(resource)
+		require.NoError(t, prepErr)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"payload": int64(5)}}, TotalCount: 5}, nil)
+		gotResult3, err := manager.ListDocuments(context.Background(), "index", resource, params)
+		var got []map[string]any
+		if gotResult3 != nil {
+			got = gotResult3.Entries
+		}
 		require.NoError(t, err)
 		assert.Equal(t, int64(5), got[0]["payload"])
 	})
@@ -253,18 +323,25 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		OutputFields: []string{"id", "_score"}, SearchAfter: []any{0.875, 1}}
 	rows := []map[string]any{{"id": 2, "_score": 0.875}}
 	connector.EXPECT().ExecuteQuery(gomock.Any(), "table-index", gomock.Any(), params).DoAndReturn(
-		func(_ context.Context, _ string, physical *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+		func(_ context.Context, _ string, physical *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 			assert.Equal(t, "id", physical.SchemaDefinition[0].OriginalName)
 			assert.Equal(t, "_score", actual.Sort[0].Field)
 			assert.Equal(t, []string{"id", "_score"}, actual.OutputFields)
 			assert.Equal(t, []any{0.875, 1}, actual.SearchAfter)
-			return &interfaces.QueryResult{Entries: rows, Total: 3, SearchAfter: []any{0.875, 2}}, nil
+			return &interfaces.ResourceDataQueryResult{Entries: rows, TotalCount: 3, SearchAfter: []any{0.875, 2}}, nil
 		})
-	entries, total, err := (&localIndexManager{lic: connector}).ListDocuments(context.Background(), "table-index", resource, params)
+	entriesResult, err := (&localIndexManager{lic: connector}).ListDocuments(context.Background(), "table-index", resource, params)
+	var entries []map[string]any
+	var total int64
+	if entriesResult != nil {
+		entries = entriesResult.Entries
+		total = entriesResult.TotalCount
+	}
 	require.NoError(t, err)
 	assert.Equal(t, rows, entries)
 	assert.Equal(t, int64(3), total)
-	assert.Equal(t, []any{0.875, 2}, params.SearchAfter)
+	assert.Equal(t, []any{0.875, 2}, entriesResult.SearchAfter)
+	assert.Equal(t, []any{0.875, 1}, params.SearchAfter)
 	assert.Equal(t, "SOURCE_ID", resource.SchemaDefinition[0].OriginalName)
 }
 
@@ -279,10 +356,11 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		resource := &interfaces.Resource{ID: "resource-1", SchemaDefinition: schema}
 		params := &interfaces.ResourceDataQueryParams{}
 		docs := []map[string]any{{"id": 1}}
-		queryResult := &interfaces.QueryResult{
-			Entries:     []map[string]any{{"id": 1}},
-			Total:       1,
-			SearchAfter: []any{"sort-1"},
+		queryResult := &interfaces.ResourceDataQueryResult{
+			IsApproximate: true,
+			Entries:       []map[string]any{{"id": 1}},
+			TotalCount:    1,
+			SearchAfter:   []any{"sort-1"},
 		}
 		document := map[string]any{"id": 1}
 		docIDs := []string{"doc-1"}
@@ -294,7 +372,9 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		connector.EXPECT().UpdateIndex(ctx, "idx", properties).Return(nil)
 		connector.EXPECT().DeleteIndex(ctx, "idx").Return(nil)
 		connector.EXPECT().CheckIndexExist(ctx, "idx").Return(true, nil)
-		connector.EXPECT().ExecuteQuery(ctx, "idx", resourceForQuery(resource), params).Return(queryResult, nil)
+		queryResource, prepErr := resourceForQuery(resource)
+		require.NoError(t, prepErr)
+		connector.EXPECT().ExecuteQuery(ctx, "idx", queryResource, params).Return(queryResult, nil)
 		connector.EXPECT().GetDocument(ctx, "idx", "doc-1").Return(document, nil)
 		connector.EXPECT().GetDocuments(ctx, "idx", []string{"doc-1", "missing"}).Return([]map[string]any{document, nil}, nil)
 		connector.EXPECT().CreateDocuments(ctx, "idx", docs).Return(docIDs, nil)
@@ -310,11 +390,20 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, exists)
 
-		rows, total, err := manager.ListDocuments(ctx, "idx", resource, params)
+		rowsResult, err := manager.ListDocuments(ctx, "idx", resource, params)
+		var rows []map[string]any
+		var total int64
+		if rowsResult != nil {
+			rows = rowsResult.Entries
+			total = rowsResult.TotalCount
+		}
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": 1}}, rows)
 		assert.Equal(t, int64(1), total)
-		assert.Equal(t, []any{"sort-1"}, params.SearchAfter)
+		assert.Same(t, queryResult, rowsResult)
+		assert.True(t, rowsResult.IsApproximate)
+		assert.Equal(t, []any{"sort-1"}, rowsResult.SearchAfter)
+		assert.Empty(t, params.SearchAfter)
 
 		doc, err := manager.GetDocument(ctx, "idx", "doc-1")
 		require.NoError(t, err)
@@ -418,7 +507,13 @@ func TestLocalIndexManagerRejectsUnavailableQueryFields(t *testing.T) {
 				connector := vmock.NewMockIndexConnector(gomock.NewController(t))
 				manager := &localIndexManager{lic: connector}
 				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: fieldType}}}
-				rows, total, err := manager.ListDocuments(context.Background(), "idx", resource, params)
+				rowsResult, err := manager.ListDocuments(context.Background(), "idx", resource, params)
+				var rows []map[string]any
+				var total int64
+				if rowsResult != nil {
+					rows = rowsResult.Entries
+					total = rowsResult.TotalCount
+				}
 				assert.Nil(t, rows)
 				assert.Zero(t, total)
 				var conditionError *interfaces.ConditionBuildError
@@ -460,7 +555,8 @@ func TestValidateQueryFieldsKnownSchema(t *testing.T) {
 
 func TestResourceForQueryIncludesGeneratedFields(t *testing.T) {
 	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "title", OriginalName: "source_title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
-	got := resourceForQuery(resource)
+	got, err := resourceForQuery(resource)
+	require.NoError(t, err)
 	fields := map[string]*interfaces.Property{}
 	for _, prop := range got.SchemaDefinition {
 		fields[prop.Name] = prop

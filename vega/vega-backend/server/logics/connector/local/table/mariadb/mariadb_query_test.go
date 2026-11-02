@@ -321,7 +321,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, []string{"payload", "name"}, result.Columns)
 			assert.Equal(t, []map[string]any{{"payload": payload, "name": "text"}, {"payload": nil, "name": nil}}, result.Entries)
-			assert.Zero(t, result.Total)
+			assert.Zero(t, result.TotalCount)
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
@@ -353,7 +353,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 			mock.ExpectQuery("SELECT COUNT(*) FROM (" + statement + ") AS `_resource_total`").WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(8))
 			result, err := connector.ExecuteQuery(context.Background(), resource, params)
 			require.NoError(t, err)
-			assert.EqualValues(t, 8, result.Total)
+			assert.EqualValues(t, 8, result.TotalCount)
 			if emptyPage {
 				assert.Empty(t, result.Entries)
 			} else {
@@ -714,7 +714,7 @@ func TestMariaDBConnectorExecuteSQLResourceQuery(t *testing.T) {
 	mock.ExpectQuery("SELECT COUNT(*) FROM (SELECT `id` AS `id`, `name` AS `name` FROM `orders` WHERE (`id` > ?)) AS `_resource_total`").WithArgs(int64(3)).WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(8))
 	result, err := connector.ExecuteQuery(context.Background(), resource, params)
 	require.NoError(t, err)
-	assert.Equal(t, int64(8), result.Total)
+	assert.Equal(t, int64(8), result.TotalCount)
 	assert.Equal(t, []map[string]any{{"id": int64(5), "name": "five"}}, result.Entries)
 }
 

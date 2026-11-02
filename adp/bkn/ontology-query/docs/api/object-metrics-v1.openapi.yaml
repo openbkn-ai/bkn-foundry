@@ -367,6 +367,7 @@ components:
       type: object
       required: [model, entries, status, total_count, overall_ms, evaluated_at]
       properties:
+        is_approximate: { type: boolean, description: Whether this query execution includes approximate calculations or dependencies. Preserved across filtering and paging. }
         model:
           type: object
           additionalProperties: true

@@ -41,7 +41,7 @@ var (
 )
 
 // ExecuteQuery executes a query on the fileset.
-func (c *AnyShareConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+func (c *AnyShareConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	// Extract docID from resource
 	docID := ""
 	if resource.SourceMetadata != nil {
@@ -97,7 +97,7 @@ func (c *AnyShareConnector) ExecuteQuery(ctx context.Context, resource *interfac
 
 	}
 
-	return &interfaces.QueryResult{
+	return &interfaces.ResourceDataQueryResult{
 		Entries: files,
 	}, nil
 }

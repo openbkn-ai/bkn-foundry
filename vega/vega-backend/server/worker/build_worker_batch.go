@@ -428,7 +428,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			return fmt.Errorf("execute query failed: %w", err)
 		}
 
-		totalRows := result.Total
+		totalRows := result.TotalCount
 		readRows := len(result.Entries)
 		if firstQuery {
 			firstQuery = false

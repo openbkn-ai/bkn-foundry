@@ -107,22 +107,33 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 	t.Run("list documents", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(docs, int64(1), nil)
+		page := &interfaces.ResourceDataQueryResult{Entries: docs, TotalCount: 1, IsApproximate: true, SearchAfter: []any{"next"}}
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(page, nil)
 
-		got, total, err := ds.ListDocuments(ctx, resource, params)
+		gotResult, err := ds.ListDocuments(ctx, resource, params)
+		var got []map[string]any
+		var total int64
+		if gotResult != nil {
+			got = gotResult.Entries
+			total = gotResult.TotalCount
+		}
 
 		require.NoError(t, err)
 		assert.Equal(t, docs, got)
 		assert.Equal(t, int64(1), total)
+		assert.Same(t, page, gotResult)
+		assert.True(t, gotResult.IsApproximate)
+		assert.Equal(t, []any{"next"}, gotResult.SearchAfter)
+		assert.Empty(t, params.SearchAfter)
 	})
 
 	t.Run("count documents requests an exact total", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.True(t, got.NeedTotal)
 				assert.Equal(t, 1, got.Paging.Limit)
-				return nil, 42, nil
+				return &interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: 42}, nil
 			})
 
 		total, err := ds.CountDocuments(ctx, resource)
@@ -133,8 +144,14 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 	t.Run("list documents preserves keyword limit code and metadata", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, int64(0), fmt.Errorf("build: %w", interfaces.NewKeywordLimitError("status", 256)))
-		rows, total, err := ds.ListDocuments(ctx, resource, params)
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, fmt.Errorf("build: %w", interfaces.NewKeywordLimitError("status", 256)))
+		rowsResult, err := ds.ListDocuments(ctx, resource, params)
+		var rows []map[string]any
+		var total int64
+		if rowsResult != nil {
+			rows = rowsResult.Entries
+			total = rowsResult.TotalCount
+		}
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
 		var httpErr *httperrors.HTTPError
@@ -148,9 +165,9 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		cause := fmt.Errorf("failed to build filter query: %w",
 			interfaces.NewConditionBuildError("text field body has no keyword feature; re-save the resource configuration and rebuild the local index, or use match"))
-		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, int64(0), cause)
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, cause)
 
-		_, _, err := ds.ListDocuments(ctx, resource, params)
+		_, err := ds.ListDocuments(ctx, resource, params)
 
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)

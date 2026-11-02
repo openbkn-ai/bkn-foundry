@@ -125,36 +125,42 @@ func (ds *datasetService) Delete(ctx context.Context, res *interfaces.Resource) 
 }
 
 // ListDocuments lists the documents in the dataset
-func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List dataset documents")
 	defer span.End()
 
 	// Call the local index store to list the documents
-	documents, total, err := ds.lim.ListDocuments(ctx, res.LocalIndexName, res, params)
+	result, err := ds.lim.ListDocuments(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List dataset documents failed")
+		if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
 		if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
-			return nil, 0, httpErr
+			return nil, httpErr
 		}
 		if reason, ok := interfaces.RequestSideQueryError(err); ok {
-			return nil, 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(reason)
 		}
-		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return documents, total, nil
+	return result, nil
 }
 
 // CountDocuments 返回 Dataset 当前本地索引中的文档总数。
 func (ds *datasetService) CountDocuments(ctx context.Context, res *interfaces.Resource) (int64, error) {
-	_, total, err := ds.ListDocuments(ctx, res, &interfaces.ResourceDataQueryParams{
+	result, err := ds.ListDocuments(ctx, res, &interfaces.ResourceDataQueryParams{
 		Paging:    interfaces.PagingRequest{Limit: 1},
 		NeedTotal: true,
 	})
-	return total, err
+	if err != nil {
+		return 0, err
+	}
+	return result.TotalCount, nil
 }
 
 // GetDocuments retrieves documents in input order. With ignoreMissing enabled,

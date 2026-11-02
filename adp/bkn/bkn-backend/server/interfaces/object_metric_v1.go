@@ -334,8 +334,9 @@ type ObjectMetricConditionV1 struct {
 }
 
 type ObjectMetricMeasureV1 struct {
-	Expression  *ObjectMetricExpressionV1 `json:"expression,omitempty"`
-	Aggregation string                    `json:"aggregation"`
+	AllowApproximate *bool                     `json:"allow_approximate,omitempty"`
+	Expression       *ObjectMetricExpressionV1 `json:"expression,omitempty"`
+	Aggregation      string                    `json:"aggregation"`
 }
 
 type ObjectMetricBusinessQualifiersV1 struct {

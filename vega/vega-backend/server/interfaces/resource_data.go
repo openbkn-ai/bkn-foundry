@@ -50,6 +50,8 @@ type Aggregation struct {
 	Property string `json:"property"` // The name of the aggregated resource field
 	Aggr     string `json:"aggr"`     // Aggregation functions: count, count_distinct, sum, max, min, avg
 	Alias    string `json:"alias,omitempty"`
+	// AllowApproximate defaults to true for count_distinct. False requires exact execution.
+	AllowApproximate *bool `json:"allow_approximate,omitempty"`
 }
 
 // GroupByItem represents a group by dimension.
@@ -100,15 +102,17 @@ type ResourceDataQueryParams struct {
 	Having      *HavingClause  `json:"having,omitempty"`      // Filter (HAVING) the aggregation results
 }
 
-// ResourceDataQueryResult is the common response model for resource-data and
-// logic-view queries. Paging follows the same single/cursor contract as raw
-// queries.
+// ResourceDataQueryResult 统一连接器、中间层和逻辑视图的资源数据查询结果。
+// 连接器返回执行结果，上层补充分页和查询来源；不通过请求对象回传结果元数据。
 type ResourceDataQueryResult struct {
-	Entries     []map[string]any
-	TotalCount  int64
-	Paging      *PagingResponse
-	NeedTotal   bool
-	QuerySource string
+	Columns       []string         `json:"columns,omitempty"`
+	Entries       []map[string]any `json:"entries"`
+	TotalCount    int64            `json:"total_count"`
+	Paging        *PagingResponse  `json:"paging,omitempty"`
+	NeedTotal     bool             `json:"-"`
+	QuerySource   string           `json:"query_source,omitempty"`
+	IsApproximate bool             `json:"is_approximate"`
+	SearchAfter   []any            `json:"-"` // OpenSearch 下一页的查询位置。
 }
 
 // ResourceValue is the JSON representation of a resource field that needs

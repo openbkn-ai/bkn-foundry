@@ -239,6 +239,7 @@
       "metric_id": {"type": "string", "description": "对象指标 ID。"},
       "version": {"type": "integer", "description": "已发布的指标版本。"},
       "model": {"type": "object", "additionalProperties": true, "description": "已发布指标的结果模型。"},
+      "is_approximate": {"type": "boolean", "description": "本次查询执行是否包含近似计算；筛选和分页不改变该标识，不表示数据被截断。"},
       "entries": {
         "type": "array",
         "description": "带状态的指标结果条目。",

@@ -253,6 +253,10 @@ components:
           required: [aggregation]
           properties:
             aggregation: { type: string, enum: [count_rows, count, count_distinct, sum, avg, min, max] }
+            allow_approximate:
+              type: boolean
+              default: true
+              description: Only valid for count_distinct. False requires exact computation; omitted or true allows estimates. Fixed with the metric version and inherited by derived metrics.
             expression: { $ref: "#/components/schemas/Expression" }
     DerivedSpecification:
       type: object
