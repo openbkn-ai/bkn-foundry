@@ -37,7 +37,7 @@ func sourceRelation(items interfaces.DraftItems, id string) *interfaces.DraftRel
 func SourcePlanSignature(items interfaces.DraftItems, documentID string, choice interfaces.DualSourceChoice, adopted bool) (string, error) {
 	document, system, file := sourceObject(items, documentID), sourceObject(items, choice.SystemObjectTypeID), sourceObject(items, choice.FileObjectTypeID)
 	relation := sourceRelation(items, choice.RelationTypeID)
-	if document == nil || document.Document == nil || document.Document.Role != "entity" || !strings.HasSuffix(document.ID, "_doc") || system == nil || system.Document != nil || file == nil || file.Document == nil || file.Document.Role != "file" || relation == nil || relation.Source != document.ID || relation.Target != system.ID || !businessIdentityShape(document, system, relation, false) || !LinkIdentityReady(items, relation) || len(choice.Fields) == 0 || len(choice.Fields) > 2000 {
+	if document == nil || document.Document == nil || document.Document.Role != "entity" || system == nil || system.Document != nil || file == nil || file.Document == nil || file.Document.Role != "file" || relation == nil || relation.Source != document.ID || relation.Target != system.ID || !businessIdentityShape(document, system, relation, false) || !LinkIdentityReady(items, relation) || len(choice.Fields) == 0 || len(choice.Fields) > 2000 {
 		return "", ErrInvalidSourcePlan
 	}
 	if file.Document.SelectionID != document.Document.SelectionID || file.Document.SelectionRevision != document.Document.SelectionRevision {

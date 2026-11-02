@@ -5,6 +5,7 @@ package draft
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"strings"
 	"testing"
@@ -48,5 +49,19 @@ func TestBusinessIdentityUsesFullTableCountsAndRejectsIncompleteMetrics(t *testi
 				t.Fatal("wrong unique/nonempty decision")
 			}
 		})
+	}
+}
+
+func TestExactCountsSupportIntegralSQLDecimalsWithoutRounding(t *testing.T) {
+	for _, value := range []any{"3.0", "3.000", json.Number("3.0"), int64(3)} {
+		count, err := exactCount(value)
+		if err != nil || count != 3 {
+			t.Fatal("integral SQL aggregate rejected", value, err)
+		}
+	}
+	for _, value := range []any{"3.1", "3.", "3.0.0", "9223372036854775808.0", json.Number("3.1"), "-1.0"} {
+		if _, err := exactCount(value); err == nil {
+			t.Fatal("inexact or invalid count accepted", value)
+		}
 	}
 }

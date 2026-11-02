@@ -436,3 +436,10 @@ records server-owned actor/time/signature. `clear: true` removes the decision bu
 cannot bypass an adopted identity bridge. Participating schemas, table mappings,
 main-document scope and source revisions invalidate old confirmations. A field-plan
 change alone is persisted in the normal draft decision history.
+
+New unreviewed global document candidates receive `_doc` API names before entering
+the human candidate list, with all proposal references updated consistently.
+Naming collisions are refused; existing human draft identities are preserved.
+Field approval checks semantic role/mapping rather than blocking legacy ids on a
+new naming convention. Integral SQL DECIMAL counts are parsed exactly, without
+floating-point rounding; fractional/overflow values still fail verification.

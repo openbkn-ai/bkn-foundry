@@ -10,7 +10,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"math"
 	"strconv"
+	"strings"
 )
+
+// SQL DECIMAL aggregates may be serialized as strings with a zero fraction.
+// Parse those without floating-point rounding or accepting fractional counts.
+func exactDecimalCount(value string) (int64, error) {
+	whole, fraction, decimal := strings.Cut(value, ".")
+	if decimal && (fraction == "" || strings.Trim(fraction, "0") != "") {
+		return 0, fmt.Errorf("invalid count")
+	}
+	return strconv.ParseInt(whole, 10, 64)
+}
 
 func exactCount(value any) (int64, error) {
 	var count int64
@@ -21,9 +32,9 @@ func exactCount(value any) (int64, error) {
 	case int64:
 		count = v
 	case json.Number:
-		count, err = v.Int64()
+		count, err = exactDecimalCount(v.String())
 	case string:
-		count, err = strconv.ParseInt(v, 10, 64)
+		count, err = exactDecimalCount(v)
 	case float64:
 		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 9007199254740991 || math.Trunc(v) != v {
 			return 0, fmt.Errorf("invalid count")
