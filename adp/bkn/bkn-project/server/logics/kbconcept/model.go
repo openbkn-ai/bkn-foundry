@@ -142,6 +142,18 @@ func appendManaged(object *interfaces.DraftObjectType, language string) {
 // candidate list. It returns a separate copy, so transient quotes remain usable
 // during this request while the returned data follows source retention policy.
 func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal kb.ConceptProposal) (*ValidatedModel, error) {
+	return validateModel(input, existing, proposal, false)
+}
+
+// ReviewModel retains bounded, grounded relation proposals whose identity or
+// document scope needs a human repair. It never changes the proposed mapping,
+// promotes a role or accepts malformed/unverified input. Save/compile/build
+// paths continue to use strict validation and must refuse the review block.
+func ReviewModel(input *SampleInput, existing interfaces.DraftItems, proposal kb.ConceptProposal) (*ValidatedModel, error) {
+	return validateModel(input, existing, proposal, true)
+}
+
+func validateModel(input *SampleInput, existing interfaces.DraftItems, proposal kb.ConceptProposal, review bool) (*ValidatedModel, error) {
 	if input == nil || input.SelectionID == "" || input.SelectionRevision < 1 || len(proposal.ObjectTypes) > 30 || len(proposal.RelationTypes) > 60 {
 		return nil, ErrInvalidModel
 	}
@@ -228,7 +240,7 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 		}
 	}
 	for _, r := range copied.RelationTypes {
-		if r == nil || !modelID.MatchString(r.ID) || relations[r.ID] != nil || !boundedText(r.Name, 1, 128) || !boundedText(r.Description, 0, 1000) || len(r.Aliases) > 0 || r.LinkTable != nil || len(r.Properties) > 0 || len(r.SourceMapping) > 0 || len(r.TargetMapping) > 0 || r.DocumentMapping == nil || r.DocumentMapping.BusinessIdentity != nil {
+		if r == nil || !modelID.MatchString(r.ID) || relations[r.ID] != nil || !boundedText(r.Name, 1, 128) || !boundedText(r.Description, 0, 1000) || len(r.Aliases) > 0 || r.LinkTable != nil || len(r.Properties) > 0 || len(r.SourceMapping) > 0 || len(r.TargetMapping) > 0 || r.DocumentMapping == nil || r.DocumentMapping.BusinessIdentity != nil || r.DocumentRepair != "" {
 			return nil, ErrInvalidModel
 		}
 		if r.Document != nil && (r.Document.TimeProperty != "" || len(r.Document.ParticipantRelations) > 0) {
@@ -245,19 +257,35 @@ func ValidateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 			return nil, ErrInvalidModel
 		}
 		m := r.DocumentMapping
+		// Only core derives executable mappings; blocked proposals retain none.
+		r.Mapping = nil
 		switch m.Mode {
 		case "linking":
 			from, to := property(source, m.MentionProperty), property(target, m.IdentityProperty)
-			if (r.Source == r.Target && m.MentionProperty == m.IdentityProperty) || from == nil || to == nil || from.ReadOnly || (!(target.NeedsIdentity && len(target.PrimaryKeys) == 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty) && !businessIdentityShape(source, target, r, true)) || from.Type != to.Type || m.SourceNameProperty != "" || m.TargetNameProperty != "" {
+			if (r.Source == r.Target && m.MentionProperty == m.IdentityProperty) || from == nil || to == nil || from.ReadOnly || from.Type != to.Type || m.SourceNameProperty != "" || m.TargetNameProperty != "" {
 				return nil, ErrInvalidModel
 			}
-			r.Mapping = []interfaces.DraftFieldMapping{{SourceProperty: m.MentionProperty, TargetProperty: m.IdentityProperty}}
+			if !(target.NeedsIdentity && len(target.PrimaryKeys) == 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty) && !businessIdentityShape(source, target, r, true) {
+				if !review {
+					return nil, ErrInvalidModel
+				}
+				r.DocumentRepair = "target_identity"
+			} else {
+				r.Mapping = []interfaces.DraftFieldMapping{{SourceProperty: m.MentionProperty, TargetProperty: m.IdentityProperty}}
+			}
 		case "same_document":
 			from, to := property(source, m.SourceNameProperty), property(target, m.TargetNameProperty)
-			if !fileScopedObject(source) || !fileScopedObject(target) || (r.Source == r.Target && m.SourceNameProperty == m.TargetNameProperty) || from == nil || to == nil || from.ReadOnly || to.ReadOnly || (from.Type != "string" && from.Type != "text") || from.Type != to.Type || m.MentionProperty != "" || m.IdentityProperty != "" {
+			if (r.Source == r.Target && m.SourceNameProperty == m.TargetNameProperty) || from == nil || to == nil || from.ReadOnly || to.ReadOnly || (from.Type != "string" && from.Type != "text") || from.Type != to.Type || m.MentionProperty != "" || m.IdentityProperty != "" {
 				return nil, ErrInvalidModel
 			}
-			r.Mapping = []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: m.SourceNameProperty, TargetProperty: m.TargetNameProperty}}
+			if !fileScopedObject(source) || !fileScopedObject(target) {
+				if !review {
+					return nil, ErrInvalidModel
+				}
+				r.DocumentRepair = "same_document_scope"
+			} else {
+				r.Mapping = []interfaces.DraftFieldMapping{{SourceProperty: "document_id", TargetProperty: "document_id"}, {SourceProperty: m.SourceNameProperty, TargetProperty: m.TargetNameProperty}}
+			}
 		default:
 			return nil, ErrInvalidModel
 		}

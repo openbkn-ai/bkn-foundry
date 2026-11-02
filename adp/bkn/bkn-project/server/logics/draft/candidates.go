@@ -16,6 +16,7 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // reviewActions are the decisions on an item that say a person reviewed whether it is in: adopting
@@ -236,7 +237,7 @@ func candidatesOf(draft *interfaces.Draft, needed map[string]*interfaces.DraftNe
 	for _, rt := range items.RelationTypes {
 		evidence := rt.Evidence
 		candidate := interfaces.DraftCandidate{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Adopted: rt.Adopted,
-			AddedByCatalog: rt.AddedByCatalog, Table: rt.LinkTable, Evidence: &evidence, Document: rt.Document}
+			DocumentRepair: rt.DocumentRepair, AddedByCatalog: rt.AddedByCatalog, Table: rt.LinkTable, Evidence: &evidence, Document: rt.Document}
 		if rt.Document != nil {
 			candidate.Source = "document"
 			candidate.Evidence = nil
@@ -307,13 +308,21 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 	}
 	items := &draft.Items
 	reviewed, _ := reviews(items)
+	// Derived definitions require individual adoption; the derivation itself
+	// confirms placement only and a bulk suggestion action cannot replace it.
+	derived := map[string]bool{}
+	for _, decision := range items.Decisions {
+		if decision.Action == interfaces.DRAFT_DECISION_DERIVE {
+			derived[itemKey(decision.Kind, decision.ItemID)] = true
+		}
+	}
 	result := &interfaces.DraftSuggestionsAccepted{Draft: draft, Accepted: []string{}, Skipped: []string{}}
 	// What drafting could not settle waits for a person: an identity to choose, an end to adopt.
 	for _, ot := range items.ObjectTypes {
 		key := itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)
 		switch {
 		case reviewed[key] != nil:
-		case ot.NeedsIdentity:
+		case derived[key] || ot.NeedsIdentity || kbconcept.EventParticipantsNeedRepair(*items, ot):
 			result.Skipped = append(result.Skipped, key)
 		default:
 			if ot.Document != nil {
@@ -326,7 +335,7 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 		key := itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)
 		switch {
 		case reviewed[key] != nil:
-		case !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)):
+		case derived[key] || rt.DocumentRepair != "" || !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)):
 			result.Skipped = append(result.Skipped, key)
 		default:
 			if rt.Document != nil {

@@ -186,3 +186,68 @@ func TestNewDocumentRelationAssistantDoesNotQueryTablesOrSave(t *testing.T) {
 		t.Fatal("assistant wrote draft")
 	}
 }
+
+func TestBlockedRelationshipAssistantProposesStrictRepairsWithoutWriting(t *testing.T) {
+	for _, valid := range []bool{true, false} {
+		t.Run(map[bool]string{true: "grounded repair", false: "invalid suggestion"}[valid], func(t *testing.T) {
+			kb.ResetForTest()
+			entitlement.ResetForTest()
+			defer kb.ResetForTest()
+			defer entitlement.ResetForTest()
+			entitlement.SetGate(entitlement.GateFunc(func() entitlement.Snapshot { return entitlement.Snapshot{Edition: licverify.EditionProfessional} }))
+			kb.Register(kb.Providers{Source: &documentSaveSource{}, Concepts: kb.UnavailableConcepts{}})
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ba := pmock.NewMockBknAgentAccess(ctrl)
+			ps := pmock.NewMockProjectService(ctrl)
+			da := pmock.NewMockDraftAccess(ctrl)
+			draft := editableDocumentDraft(t)
+			source := draft.Items.ObjectTypes[0]
+			copyObject := func(id string) *interfaces.DraftObjectType {
+				raw, _ := json.Marshal(source)
+				var object interfaces.DraftObjectType
+				_ = json.Unmarshal(raw, &object)
+				object.ID = id
+				return &object
+			}
+			local := copyObject("local_claim")
+			local.Document.Role = "in_document"
+			local.Document.Layer = "fact"
+			local.PrimaryKeys = []string{"_id"}
+			alternate := copyObject("current_doc")
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, local, alternate)
+			relation := &interfaces.DraftRelationType{ID: "reference", Name: "References", Source: source.ID, Target: local.ID, Cardinality: "many_to_one", DocumentRepair: "target_identity", DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}, Document: &interfaces.DraftDocumentModel{Role: "relation", Layer: "fact", Reason: "Explicit source number", Citations: source.Document.Citations, SelectionID: "lock", SelectionRevision: 7}}
+			draft.Items.RelationTypes = []*interfaces.DraftRelationType{relation}
+			before, _ := json.Marshal(draft)
+			ps.EXPECT().GetProject(gomock.Any(), "Bearer synthetic", "p").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p", Owner: caller}}, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p").Return(draft, true, nil)
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, account interfaces.AccountInfo, request *interfaces.BknAgentChatRequest, on func(interfaces.BknAgentChatEvent)) error {
+				var input askInput
+				if json.Unmarshal([]byte(request.Message), &input) != nil || input.RelationType.DocumentRepair != "target_identity" || len(input.Ends) != 3 {
+					t.Fatal("repair context missing grounded alternatives")
+				}
+				property := "number"
+				if !valid {
+					property = "unknown"
+				}
+				output := `{"revisions":[{"field":"ends","source_object_type_id":"order_doc","target_object_type_id":"current_doc","document_mapping":{"mode":"linking","mention_property":"number","identity_property":"` + property + `"},"cardinality":"many_to_one","reason":"Use the confirmed global business identity"}]}`
+				return answered(output, "Review this relationship.")(ctx, account, request, on)
+			})
+			service := &draftService{setting: testSetting, kbResources: documentSaveSelection{}, ba: ba, ps: ps, da: da}
+			got, err := service.AskRelationType(context.Background(), "Bearer synthetic", "p", relation.ID, interfaces.DraftRelationAskRequest{Question: "Help repair this relationship"}, caller, nil)
+			if err != nil || got == nil {
+				t.Fatal("blocked advice failed", err)
+			}
+			if valid && len(got.Revisions) != 1 {
+				t.Fatal("valid repair suggestion dropped")
+			}
+			if !valid && (len(got.Revisions) != 0 || len(got.Dropped) != 1) {
+				t.Fatal("invalid suggestion reached editor")
+			}
+			after, _ := json.Marshal(draft)
+			if string(before) != string(after) {
+				t.Fatal("assistant modified saved draft or cleared its repair block")
+			}
+		})
+	}
+}

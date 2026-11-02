@@ -446,3 +446,59 @@ Naming collisions are refused; existing human draft identities are preserved.
 Field approval checks semantic role/mapping rather than blocking legacy ids on a
 new naming convention. Integral SQL DECIMAL counts are parsed exactly, without
 floating-point rounding; fractional/overflow values still fail verification.
+
+
+### Grounded relationship review and explicit source-object derivation
+
+Concept extraction retains independently valid object candidates when a grounded
+relationship uses an incompatible global identity or same-document scope. The
+relationship carries server-owned `document_repair` (`target_identity` or
+`same_document_scope`), stays unadopted and has no executable field mapping.
+`relations_needing_repair` in the extraction response counts these items. Unknown
+references/properties, unsupported types/modes and invalid source quotes still
+reject the complete proposal, without partial writes or inference retries.
+Individual and bulk adoption skip/refuse blocked relations and events with
+blocked participant relations. Confirmation and compilation refuse forged adopted
+blocks. Saving a repaired relationship uses strict validation before clearing the
+marker; exclusion remains an explicit human decision.
+
+The existing `PUT /projects/{project_id}/ontology/draft/object_types/{id}` endpoint
+also accepts an explicit derivation operation on a saved document candidate:
+
+```json
+{
+  "update_time": 123,
+  "name": "Original saved name",
+  "comment": "Original saved description",
+  "document": {
+    "derive": {
+      "id": "agreement_current_doc",
+      "name": "Current agreements",
+      "role": "entity",
+      "fields": ["agreement_number", "terms"],
+      "identity": "agreement_number",
+      "confirm": true
+    }
+  }
+}
+```
+
+`role` is `entity` (one selected global business identity) or `file` (leave
+`identity` empty; core provides its scoped `_id`). Only existing ordinary fields
+are selectable; source models may be entity, file or in-document. Do not include
+ordinary property/key edits in this operation: save them first. Core copies the
+saved extraction instructions and currently verified debug citations; it invents
+no attributes, quotes, business links or field-authority decision and leaves the
+original proposal unchanged. It adds an unadopted candidate and missing fixed
+evidence relations atomically under the existing owner/selection/draft guard.
+A `derive` decision records the source item and resulting definition, without
+counting as adoption or exclusion. Each derived model still needs review;
+existing full-table business-key and source-field-authority checks remain required.
+No migration, storage creation or instance write is part of this operation.
+
+Derived definitions are skipped by bulk suggestion acceptance and require individual adoption.
+
+Blocked grounded relationships remain available to the existing read-only AI
+assistant. Its base retains the repair marker and bounded existing alternatives;
+all returned relationship revisions still undergo strict save validation and
+never update the draft. Derived entity IDs must retain the `_doc` suffix.

@@ -153,6 +153,27 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		if source == nil || target == nil {
 			return nil, ErrInvalidModel
 		}
+		if relation.DocumentRepair != "" {
+			// A pending scope/identity repair does not freeze harmless object
+			// edits, but its referenced fields must remain grounded and typed.
+			m := relation.DocumentMapping
+			if m == nil {
+				return nil, ErrInvalidModel
+			}
+			var from, to *interfaces.DraftProperty
+			switch m.Mode {
+			case "linking":
+				from, to = property(source, m.MentionProperty), property(target, m.IdentityProperty)
+			case "same_document":
+				from, to = property(source, m.SourceNameProperty), property(target, m.TargetNameProperty)
+			default:
+				return nil, ErrInvalidModel
+			}
+			if from == nil || to == nil || from.ReadOnly || from.Type != to.Type {
+				return nil, ErrInvalidModel
+			}
+			continue
+		}
 		if m := relation.DocumentMapping; m != nil && m.Mode == "same_document" && (!fileScopedObject(source) || !fileScopedObject(target)) {
 			return nil, &RelationScopeError{ID: relation.ID, Name: relation.Name}
 		}
@@ -175,6 +196,20 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 // ValidateEditedRelation keeps source proof server-owned and rechecks both
 // mapping modes without table reads or instance-link counts.
 func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, original, candidate *interfaces.DraftRelationType) (*interfaces.DraftRelationType, error) {
+	return validateEditedRelation(input, items, original, candidate, false)
+}
+
+// ReviewRelationForAdvice permits only a previously blocked, grounded base to
+// reach the read-only assistant. Suggestions and saves still validate strictly.
+func ReviewRelationForAdvice(input *SampleInput, items interfaces.DraftItems, original, candidate *interfaces.DraftRelationType) (*interfaces.DraftRelationType, error) {
+	if original == nil || original.DocumentRepair == "" {
+		return nil, ErrInvalidModel
+	}
+	return validateEditedRelation(input, items, original, candidate, true)
+}
+
+func validateEditedRelation(input *SampleInput, items interfaces.DraftItems, original, candidate *interfaces.DraftRelationType, review bool) (*interfaces.DraftRelationType, error) {
+
 	if input == nil || original == nil || candidate == nil || original.Document == nil || original.Document.Role != "relation" || candidate.Document == nil || candidate.ID != original.ID || candidate.Document.Role != original.Document.Role || candidate.Document.Reason != original.Document.Reason {
 		return nil, ErrInvalidModel
 	}
@@ -196,6 +231,9 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 	edited.SourceMapping = nil
 	edited.TargetMapping = nil
 	edited.Properties = nil
+	// The marker belongs to the stored proposal. Only this strict revalidation
+	// may clear it; clients cannot declare their own proposal repaired.
+	edited.DocumentRepair = ""
 	if edited.DocumentMapping != nil {
 		if edited.DocumentMapping.BusinessIdentity != nil && (original.DocumentMapping == nil || !reflect.DeepEqual(edited.DocumentMapping.BusinessIdentity, original.DocumentMapping.BusinessIdentity)) {
 			return nil, ErrInvalidModel
@@ -213,7 +251,7 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 			existing.RelationTypes = append(existing.RelationTypes, relation)
 		}
 	}
-	checked, err := ValidateModel(input, existing, kb.ConceptProposal{RelationTypes: []*interfaces.DraftRelationType{edited}})
+	checked, err := validateModel(input, existing, kb.ConceptProposal{RelationTypes: []*interfaces.DraftRelationType{edited}}, review)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +272,7 @@ func ValidateEditedRelation(input *SampleInput, items interfaces.DraftItems, ori
 	result.Aliases = append([]string(nil), original.Aliases...)
 	result.Origin = original.Origin
 	result.ProposedBecause = original.ProposedBecause
-	result.Adopted = original.Adopted
+	result.Adopted = original.Adopted && result.DocumentRepair == ""
 	result.Verification = "confirmed"
 	for _, object := range items.ObjectTypes {
 		if object == nil || object.Document == nil || object.Document.Role != "event" {

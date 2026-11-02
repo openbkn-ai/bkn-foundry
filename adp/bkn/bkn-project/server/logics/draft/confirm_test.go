@@ -99,6 +99,22 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(checked, ShouldBeEmpty)
 			So(draft.Items.ObjectTypes[len(draft.Items.ObjectTypes)-1].Adopted, ShouldBeTrue)
 		})
+
+		Convey("Confirmation refuses an adopted relationship repair before any branch or Dataset write", func() {
+			draft := confirmableDraft()
+			draft.Items.RelationTypes[0].DocumentRepair = "target_identity"
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+			status, code := func() (int, string) {
+				var problem *httperrors.HTTPError
+				So(errors.As(err, &problem), ShouldBeTrue)
+				return problem.HTTPCode, problem.BaseError.ErrorCode
+			}()
+			So(status, ShouldEqual, 409)
+			So(code, ShouldEqual, "BknProject.Draft.DocumentRelationNeedsRepair")
+			So(checked, ShouldBeEmpty)
+		})
 		Convey("The owner's confirmation commits the adopted items and records the commit\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)

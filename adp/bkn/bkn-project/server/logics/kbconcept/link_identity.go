@@ -5,11 +5,27 @@ package kbconcept
 
 import "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 
+// EventParticipantsNeedRepair prevents an event from bypassing a blocked
+// participant by leaving that relationship unadopted.
+func EventParticipantsNeedRepair(items interfaces.DraftItems, object *interfaces.DraftObjectType) bool {
+	if object == nil || object.Document == nil || object.Document.Role != "event" {
+		return false
+	}
+	for _, id := range object.Document.ParticipantRelations {
+		for _, relation := range items.RelationTypes {
+			if relation != nil && relation.ID == id && relation.DocumentRepair != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // LinkIdentityReady is deliberately stricter than accepting an unadopted
 // proposal: the target must have the exact identity a person confirmed before
 // the relation can be adopted, compiled, or used to write links.
 func LinkIdentityReady(items interfaces.DraftItems, relation *interfaces.DraftRelationType) bool {
-	if relation == nil || relation.DocumentMapping == nil || relation.DocumentMapping.Mode != "linking" {
+	if relation == nil || relation.DocumentRepair != "" || relation.DocumentMapping == nil || relation.DocumentMapping.Mode != "linking" {
 		return false
 	}
 	var source, target *interfaces.DraftObjectType
@@ -37,7 +53,7 @@ func LinkIdentityReady(items interfaces.DraftItems, relation *interfaces.DraftRe
 // SameDocumentScopeReady also checks stored drafts made before the scope rule.
 // Ignored proposals do not prevent confirming unrelated adopted definitions.
 func SameDocumentScopeReady(items interfaces.DraftItems, relation *interfaces.DraftRelationType) bool {
-	if relation == nil || relation.DocumentMapping == nil || relation.DocumentMapping.Mode != "same_document" {
+	if relation == nil || relation.DocumentRepair != "" || relation.DocumentMapping == nil || relation.DocumentMapping.Mode != "same_document" {
 		return false
 	}
 	var source, target *interfaces.DraftObjectType

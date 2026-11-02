@@ -346,3 +346,80 @@ func TestDocumentChooseIdentityCannotInvalidateLinkingOrExceedKeyLimit(t *testin
 		})
 	}
 }
+
+func TestDocumentDerivationIsExplicitAuditedAndVersionGuarded(t *testing.T) {
+	for _, scenario := range []string{"derive", "unconfirmed", "stale", "combined_edit", "conflict"} {
+		t.Run(scenario, func(t *testing.T) {
+			kb.ResetForTest()
+			entitlement.ResetForTest()
+			defer kb.ResetForTest()
+			defer entitlement.ResetForTest()
+			entitlement.SetGate(entitlement.GateFunc(func() entitlement.Snapshot { return entitlement.Snapshot{Edition: licverify.EditionProfessional} }))
+			source := &documentSaveSource{}
+			kb.Register(kb.Providers{Source: source, Concepts: kb.UnavailableConcepts{}})
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			da := pmock.NewMockDraftAccess(ctrl)
+			ps := pmock.NewMockProjectService(ctrl)
+			caller := interfaces.AccountInfo{ID: "u", Type: "user"}
+			ps.EXPECT().GetProject(gomock.Any(), "Bearer synthetic", "p").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p", Owner: caller, NamingLanguage: "en-US"}}, nil)
+			draft := editableDocumentDraft(t)
+			original := draft.Items.ObjectTypes[0]
+			before, _ := json.Marshal(original)
+			da.EXPECT().GetDraft(gomock.Any(), "p").Return(draft, true, nil)
+			save := interfaces.DraftObjectTypeSave{UpdateTime: 10, Name: original.Name, Comment: original.Description, Document: &interfaces.DraftDocumentSettings{Derive: &interfaces.DraftDocumentDerivation{ID: "order_claim", Name: "Order source claims", Role: "file", Fields: []string{"number"}, Confirm: true}}}
+			if scenario == "unconfirmed" {
+				save.Document.Derive.Confirm = false
+			}
+			if scenario == "combined_edit" {
+				save.Comment = "changed"
+			}
+			if scenario == "derive" || scenario == "conflict" {
+				da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), int64(10)).DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					if len(d.Items.Decisions) == 0 || d.Items.Decisions[0].ItemID != "order_claim" || d.Items.Decisions[0].By != caller {
+						t.Fatal("missing human derivation audit")
+					}
+					return scenario != "conflict", nil
+				})
+			}
+			service := &draftService{da: documentDraftMock{da}, ps: ps, kbResources: documentSaveSelection{changed: scenario == "stale"}}
+			got, err := service.SaveObjectType(context.Background(), "Bearer synthetic", "p", original.ID, save, caller)
+			if (scenario == "derive") != (err == nil) {
+				t.Fatalf("%s: %v", scenario, err)
+			}
+			after, _ := json.Marshal(original)
+			if string(before) != string(after) {
+				t.Fatal("source model changed")
+			}
+			if err != nil {
+				return
+			}
+			found := false
+			edges := 0
+			for _, o := range got.Items.ObjectTypes {
+				if o.ID == "order_claim" {
+					found = true
+					if o.Adopted || o.PrimaryKeys[0] != "_id" {
+						t.Fatal("derived model adopted")
+					}
+				}
+			}
+			for _, r := range got.Items.RelationTypes {
+				if r.Source == "order_claim" && r.Document.Role == "evidence_reference" {
+					edges++
+					if r.Adopted {
+						t.Fatal("evidence silently adopted")
+					}
+				}
+			}
+			for _, candidate := range candidatesOf(got, nil, "").Candidates {
+				if candidate.ID == "order_claim" && candidate.State != interfaces.CANDIDATE_STATE_PENDING {
+					t.Fatal("derivation counted as exclusion or adoption", candidate.State)
+				}
+			}
+			if !found || edges != 3 || source.reads != 1 {
+				t.Fatal("derived model or evidence missing", edges)
+			}
+		})
+	}
+}
