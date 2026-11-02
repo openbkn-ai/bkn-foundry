@@ -497,3 +497,8 @@ existing full-table business-key and source-field-authority checks remain requir
 No migration, storage creation or instance write is part of this operation.
 
 Derived definitions are skipped by bulk suggestion acceptance and require individual adoption.
+
+Blocked grounded relationships remain available to the existing read-only AI
+assistant. Its base retains the repair marker and bounded existing alternatives;
+all returned relationship revisions still undergo strict save validation and
+never update the draft. Derived entity IDs must retain the `_doc` suffix.

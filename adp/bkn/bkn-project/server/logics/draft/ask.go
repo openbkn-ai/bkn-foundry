@@ -158,6 +158,7 @@ type askProperty struct {
 }
 
 type askRelation struct {
+	DocumentRepair  string                           `json:"document_repair,omitempty"`
 	Document        *askDocument                     `json:"document,omitempty"`
 	DocumentMapping *interfaces.DraftDocumentMapping `json:"document_mapping,omitempty"`
 	ID              string                           `json:"id"`
@@ -363,7 +364,11 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 			span.SetStatus(codes.Error, "Document samples unavailable")
 			return nil, err
 		}
-		base, err = kbconcept.ValidateEditedRelation(documentInput, draft.Items, relationType, base)
+		validate := kbconcept.ValidateEditedRelation
+		if relationType.DocumentRepair != "" {
+			validate = kbconcept.ReviewRelationForAdvice
+		}
+		base, err = validate(documentInput, draft.Items, relationType, base)
 		if err != nil {
 			span.SetStatus(codes.Error, "Invalid document relation")
 			return nil, documentEditError(ctx)
@@ -372,9 +377,26 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 	in.Kind = askKindRelationType
 	asked := askRelationOf(base)
 	in.RelationType, in.Ends = &asked, []askObjectType{}
+	in.RelationType.DocumentRepair = base.DocumentRepair
 	for _, id := range []string{base.Source, base.Target} {
 		if ot := findObjectType(&draft.Items, id); ot != nil {
 			in.Ends = append(in.Ends, askObjectTypeOf(ot))
+		}
+	}
+
+	if base.DocumentRepair != "" {
+		offered := 0
+		for _, object := range draft.Items.ObjectTypes {
+			if object.ID == base.Source || object.ID == base.Target || (object.Document != nil && strings.HasPrefix(object.Document.Role, "evidence_")) {
+				continue
+			}
+			if offered >= 20 {
+				break
+			}
+			end := askObjectTypeOf(object)
+			end.brief = true
+			in.Ends = append(in.Ends, end)
+			offered++
 		}
 	}
 	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,

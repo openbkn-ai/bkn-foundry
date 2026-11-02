@@ -19,7 +19,7 @@ func DeriveObject(input *SampleInput, items interfaces.DraftItems, original *int
 		original.Document.SelectionID != input.SelectionID || original.Document.SelectionRevision != input.SelectionRevision ||
 		(original.Document.Role != "entity" && original.Document.Role != "file" && original.Document.Role != "in_document") ||
 		(request.Role != "entity" && request.Role != "file") || len(request.Fields) == 0 || len(request.Fields) > 100 ||
-		(request.Role == "entity" && request.Identity == "") || (request.Role == "file" && request.Identity != "") {
+		(request.Role == "entity" && (request.Identity == "" || !strings.HasSuffix(request.ID, "_doc"))) || (request.Role == "file" && request.Identity != "") {
 		return nil, ErrInvalidModel
 	}
 	raw, err := json.Marshal(original)

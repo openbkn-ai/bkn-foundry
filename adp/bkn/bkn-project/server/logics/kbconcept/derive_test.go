@@ -45,7 +45,7 @@ func TestExplicitDerivationCopiesOnlyExistingGroundedFields(t *testing.T) {
 	}
 }
 func TestDerivationFailsClosedOnUnconfirmedInventedOrStaleInputs(t *testing.T) {
-	for _, scenario := range []string{"unconfirmed", "unknown_field", "managed_field", "duplicate_field", "missing_identity", "identity_not_selected", "collision", "unsupported_role", "stale_selection", "stale_revision", "bad_quote", "system_source"} {
+	for _, scenario := range []string{"unconfirmed", "unknown_field", "managed_field", "duplicate_field", "missing_identity", "entity_suffix", "identity_not_selected", "collision", "unsupported_role", "stale_selection", "stale_revision", "bad_quote", "system_source"} {
 		t.Run(scenario, func(t *testing.T) {
 			input := modelInput("记录 R-1。")
 			checked, err := ValidateModel(input, interfaces.DraftItems{}, kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{proposedObject(input, "original_doc", "in_document")}})
@@ -63,6 +63,8 @@ func TestDerivationFailsClosedOnUnconfirmedInventedOrStaleInputs(t *testing.T) {
 				req.Fields = []string{"document_id"}
 			case "duplicate_field":
 				req.Fields = []string{"number", "number"}
+			case "entity_suffix":
+				req.ID = "current_record"
 			case "missing_identity":
 				req.Identity = ""
 			case "identity_not_selected":

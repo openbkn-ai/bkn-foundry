@@ -126,3 +126,22 @@ func TestPendingRepairAllowsObjectReviewButNotBrokenFieldReferences(t *testing.T
 		t.Fatal("object edit removed a pending relation's source field")
 	}
 }
+
+func TestAdviceCanInspectGroundedBlockedRelationWithoutClearingIt(t *testing.T) {
+	input, proposal := reviewFixture("业务 R-1 引用文档中的声明。")
+	checked, err := ReviewModel(input, interfaces.DraftItems{}, proposal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := interfaces.DraftItems{ObjectTypes: checked.ObjectTypes, RelationTypes: checked.RelationTypes}
+	original := items.RelationTypes[0]
+	got, err := ReviewRelationForAdvice(input, items, original, original)
+	if err != nil || got.DocumentRepair != "target_identity" || got.Adopted || len(got.Mapping) != 0 || original.DocumentRepair == "" {
+		t.Fatal("advice cannot inspect a pending repair", err)
+	}
+	bad := *original
+	bad.Target = "unknown"
+	if _, err := ReviewRelationForAdvice(input, items, original, &bad); err == nil {
+		t.Fatal("advice accepted unknown target")
+	}
+}
