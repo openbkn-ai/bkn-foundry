@@ -1292,6 +1292,31 @@ func TestOpenSearchConnectorConvertFilterConditionTemporalFieldComparison(t *tes
 
 func TestIndexBeforeQuery(t *testing.T) {
 	now := time.Date(2024, 3, 31, 0, 30, 0, 123456789, time.UTC)
+	t.Run("range errors use normalized units", func(t *testing.T) {
+		t.Setenv("TZ", "UTC")
+		for _, tc := range []struct {
+			originalType, unit string
+			inputs             []string
+		}{
+			{originalType: "date_nanos", unit: "day", inputs: []string{"day", "DAY", " Day ", "\tDaY\n"}},
+			{originalType: "date", unit: "year", inputs: []string{"year", "YEAR", " Year ", "\tYeAr\n"}},
+		} {
+			for _, input := range tc.inputs {
+				t.Run(tc.originalType+"/"+input, func(t *testing.T) {
+					cond := &filter_condition.BeforeCond{
+						Lfield: &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime, OriginalType: tc.originalType},
+						Value:  []any{int64(2147483647), input},
+					}
+					dsl, err := indexBeforeQuery(cond, now)
+					var rangeErr *interfaces.TemporalRangeError
+					require.ErrorAs(t, err, &rangeErr)
+					assert.Nil(t, dsl)
+					assert.Equal(t, tc.unit, rangeErr.Unit)
+					assert.Equal(t, input, cond.Value[1])
+				})
+			}
+		}
+	})
 	t.Run("date nanos interval must produce a supported boundary", func(t *testing.T) {
 		t.Setenv("TZ", "UTC")
 		for _, unit := range []string{"year", "month", "week", "day", "hour", "minute", "second"} {

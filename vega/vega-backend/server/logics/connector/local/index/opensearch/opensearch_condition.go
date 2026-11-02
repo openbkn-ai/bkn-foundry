@@ -1144,7 +1144,7 @@ func indexBeforeQuery(cond *filter_condition.BeforeCond, now time.Time) (map[str
 		location = time.UTC
 	}
 	cutoff := indexBeforeCutoff(anchor, interval, normalizedUnit, location)
-	if err := validateIndexTimeBoundary(cond, cutoff, interval, unit); err != nil {
+	if err := validateIndexTimeBoundary(cond, cutoff, interval, normalizedUnit); err != nil {
 		return nil, err
 	}
 	return map[string]any{
