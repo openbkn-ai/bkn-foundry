@@ -61,6 +61,14 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, ErrInvalidModel
 	}
 	edited.Document.DualSource = nil
+	if !reflect.DeepEqual(edited.Document.FileIdentity, original.Document.FileIdentity) {
+		return nil, ErrInvalidModel
+	}
+	edited.Document.FileIdentity = nil
+	if !reflect.DeepEqual(edited.Document.SentenceIdentity, original.Document.SentenceIdentity) {
+		return nil, ErrInvalidModel
+	}
+	edited.Document.SentenceIdentity = nil
 	if edited.Table.ResourceID != "" && !reflect.DeepEqual(edited.Table, original.Table) {
 		return nil, ErrInvalidModel
 	}
@@ -121,6 +129,27 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, err
 	}
 	result := checked.ObjectTypes[0]
+	if proof := original.Document.FileIdentity; proof != nil && fileKeyField(result, proof.Property) {
+		old, current := property(original, proof.Property), property(result, proof.Property)
+		if old != nil && current != nil && old.Type == current.Type {
+			copy := *proof
+			result.Document.FileIdentity = &copy
+		}
+	}
+	if proof := original.Document.SentenceIdentity; proof != nil {
+		valid := true
+		for _, name := range proof.Properties {
+			old, current := property(original, name), property(result, name)
+			if old == nil || current == nil || old.Type != current.Type || !sentenceKeyField(result, name) {
+				valid = false
+			}
+		}
+		if valid {
+			copy := *proof
+			copy.Properties = slices.Clone(proof.Properties)
+			result.Document.SentenceIdentity = &copy
+		}
+	}
 	if original.Document.DualSource != nil {
 		encoded, _ := json.Marshal(original.Document.DualSource)
 		result.Document.DualSource = &interfaces.DraftDualSourcePlan{}

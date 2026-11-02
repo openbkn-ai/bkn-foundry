@@ -197,3 +197,23 @@ func TestPreparationGivesGroundedBusinessRelationsTheirOwnDataset(t *testing.T) 
 		t.Fatal("derived relationship binding changed model fingerprint")
 	}
 }
+
+func TestSentenceKeyChangesInvalidateTheModelButAuditRefreshDoesNot(t *testing.T) {
+	object := preparationObject("fact")
+	draft := &interfaces.Draft{ProjectID: "p", Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{object}}}
+	original, err := ModelFingerprint(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	object.Document.SentenceIdentity = &interfaces.SentenceBusinessIdentity{Properties: []string{"name"}, ConfirmedBy: interfaces.AccountInfo{ID: "owner", Type: "user"}, ConfirmedAt: 10}
+	changed, err := ModelFingerprint(draft)
+	if err != nil || original == changed {
+		t.Fatal("sentence identity was excluded from the model signature", err)
+	}
+	object.Document.SentenceIdentity.ConfirmedAt = 20
+	object.Document.SentenceIdentity.ConfirmedBy.ID = "another-reviewer"
+	refreshed, err := ModelFingerprint(draft)
+	if err != nil || changed != refreshed {
+		t.Fatal("audit refresh invalidated the extraction model", err)
+	}
+}

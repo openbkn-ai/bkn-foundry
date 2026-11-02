@@ -55,11 +55,12 @@ func relationLayout(items interfaces.DraftItems, relation *interfaces.DraftRelat
 	}
 	fields := []struct{ name, typ, label string }{
 		{"_id", "string", "Record identifier"}, {"source_record_id", source.Type, "Source object"}, {"target_record_id", target.Type, "Target object"},
+		{"source_identity", "json", "Source business identity"}, {"target_identity", "json", "Target business identity"},
 		{"document_id", "string", "Source document"}, {"content_version_id", "string", "Content version"}, {"block_id", "string", "Source block"},
 		{"source_start", "integer", "Quote start"}, {"source_end", "integer", "Quote end"}, {"source_quote", "text", "Source quote"},
 		{"media_id", "string", "Image resource"}, {"media_occurrence_id", "string", "Image occurrence"},
 		{"property_name", "string", "Supported attribute"}, {"claim_value", "json", "Source claim"}, {"evidence", "json", "Supporting evidence"},
-		{"extraction_version", "string", "Extraction version"},
+		{"extraction_version", "string", "Extraction version"}, {"model_fingerprint", "string", "Confirmed model version"},
 	}
 	object := &interfaces.DraftObjectType{ID: relation.ID, Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "evidence_link"}, PrimaryKeys: []string{"_id"}}
 	for _, field := range fields {

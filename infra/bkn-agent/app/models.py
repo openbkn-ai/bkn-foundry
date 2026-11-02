@@ -475,6 +475,13 @@ class InvokeRequest(BaseModel):
     response_format: ResponseFormat = None
 
 
+class TaskVersionOut(BaseModel):
+    agent_id: str
+    agent_version: int = Field(ge=1)
+    prompt_version: Optional[int] = Field(default=None, ge=1)
+    tool_free: bool
+
+
 class RunRequest(BaseModel):
     agent_id: str
     agent_version: Optional[int] = Field(

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
@@ -156,6 +157,16 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 	if save.Document != nil && save.Document.DualSource != nil {
 		if err := applySourceFieldDecision(ctx, draft, edited, save.Document.DualSource, caller); err != nil {
 			return nil, err
+		}
+	}
+	if save.Document != nil && save.Document.FileIdentity != nil {
+		if err := kbconcept.ConfirmFileIdentity(edited, *save.Document.FileIdentity, caller, time.Now().UnixMilli()); err != nil {
+			return nil, documentEditError(ctx)
+		}
+	}
+	if save.Document != nil && save.Document.SentenceIdentity != nil {
+		if err := kbconcept.ConfirmSentenceIdentity(edited, *save.Document.SentenceIdentity, caller, time.Now().UnixMilli()); err != nil {
+			return nil, documentEditError(ctx)
 		}
 	}
 	// No vega table scan or key counting applies to a document extraction schema.

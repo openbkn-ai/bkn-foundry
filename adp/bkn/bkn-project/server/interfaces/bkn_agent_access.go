@@ -23,6 +23,12 @@ const (
 // a task may read it.
 type BknAgentAccount = AccountInfo
 
+// BknAgentVersionAccess reads a task pin without exposing shared administration
+// or Prompt bodies to an ordinary project owner. It never starts an inference.
+type BknAgentVersionAccess interface {
+	CurrentTaskVersion(context.Context, BknAgentAccount, string) (int, error)
+}
+
 // BknAgentRunRequest starts a task Agent once. ResponseFormat is a JSON Schema whose root is an
 // object; when set, the task's output is JSON matching it.
 type BknAgentRunRequest struct {

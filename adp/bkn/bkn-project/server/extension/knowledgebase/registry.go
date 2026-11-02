@@ -17,6 +17,7 @@ import (
 const Capability = "knowledge_base"
 
 type Providers struct {
+	Builds   BuildRuntime
 	Datasets Datasets
 	Source   Source
 	Concepts Concepts
@@ -39,6 +40,14 @@ func Lookup() (Providers, bool) {
 		return Providers{Source: UnavailableSource{}, Concepts: UnavailableConcepts{}}, false
 	}
 	return providers, true
+}
+
+// CleanupRuntime is available after a licence expires solely so the worker can
+// revoke existing delegations and release retention holds. Normal operations
+// must continue to use Lookup and its capability gate.
+func CleanupRuntime() BuildRuntime {
+	providers, _ := registry.Get(Capability)
+	return providers.Builds
 }
 
 // Gate selects between complete routers before route matching, including method

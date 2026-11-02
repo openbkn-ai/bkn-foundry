@@ -18,6 +18,10 @@ import (
 
 var ErrInvalidLayout = errors.New("document Dataset model is not ready for storage")
 
+// StorageVersion invalidates preparation plans when server-owned provenance
+// columns change, including for drafts confirmed by an earlier server version.
+const StorageVersion = 2
+
 // Field is a physical Vega field. Its name can differ from a model property;
 // binding keeps that explicit rather than exposing index metadata as a field.
 type Field = interfaces.DatasetField
@@ -62,6 +66,17 @@ func BuildLayout(object *interfaces.DraftObjectType) (*Layout, error) {
 	}
 	if properties["_id"] == nil {
 		return nil, ErrInvalidLayout
+	}
+	for _, meta := range []struct{ name, label string }{{"model_fingerprint", "Confirmed model version"}, {"extraction_version", "Extraction version"}} {
+		if p := properties[meta.name]; p != nil {
+			if !p.ReadOnly || p.Type != "string" || p.Extraction != nil {
+				return nil, ErrInvalidLayout
+			}
+		} else {
+			// Legacy logical models retain their human decisions. The Dataset
+			// still gets the provenance columns required by every new build.
+			properties[meta.name] = &interfaces.DraftProperty{Name: meta.name, DisplayName: meta.label, Type: "string", ReadOnly: true, SourceOfRecord: "document"}
+		}
 	}
 	// Vega consumes write _id as OpenSearch metadata and removes it from _source.
 	// A regular field mirrors that same stable id for schema/query/key mapping.
@@ -109,7 +124,7 @@ func BuildLayout(object *interfaces.DraftObjectType) (*Layout, error) {
 		Role    string   `json:"role"`
 		Fields  []Field  `json:"fields"`
 		Keys    []string `json:"keys"`
-	}{1, object.Document.Role, layout.Fields, layout.PrimaryKeys})
+	}{StorageVersion, object.Document.Role, layout.Fields, layout.PrimaryKeys})
 	if err != nil {
 		return nil, ErrInvalidLayout
 	}

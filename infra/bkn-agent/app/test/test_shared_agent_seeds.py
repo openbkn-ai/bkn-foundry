@@ -51,6 +51,7 @@ ONTOLOGY_ASK_V3 = MIGRATIONS / "0.2.1/34-ontology-ask-relation-suggestions-v3.sq
 ONTOLOGY_ASK_V4 = MIGRATIONS / "0.2.1/35-ontology-ask-chosen-ends-v4.sql"
 ONTOLOGY_ASK_V5 = MIGRATIONS / "0.2.1/37-ontology-ask-document-models-v5.sql"
 RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
+DOCUMENT_SEED = MIGRATIONS / "0.2.1/39-seed-bkn-project-document-extraction.sql"
 
 
 def statements(path):
@@ -278,6 +279,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, CONCEPT_SEED)
         apply(upgraded, ONTOLOGY_ASK_V5)
         apply(upgraded, CONCEPT_BUDGET)
+        apply(upgraded, DOCUMENT_SEED)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -487,6 +489,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(CONCEPT_SEED),
                     str(ONTOLOGY_ASK_V5),
                     str(CONCEPT_BUDGET),
+                    str(DOCUMENT_SEED),
                 ],
             ],
         ],
@@ -559,7 +562,7 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + ontology_ask_locales_text()
         + "\n" + METRIC_DESIGN_LOCALE.read_text()
         + "\n" + CONCEPT_SEED.read_text().replace('"timeout_s":120', '"timeout_s":300')
-        + "\n" + ontology_ask_v5_locales_text()
+        + "\n" + ontology_ask_v5_locales_text() + "\n\n" + DOCUMENT_SEED.read_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
@@ -1049,7 +1052,7 @@ def test_retiring_keeps_the_prompt_while_another_agent_uses_it():
 
 
 # The Agents bkn-project runs, by the constants its code names them with (*AgentID = "...").
-BKN_PROJECT_AGENTS = {"bkn-project-requirements", "bkn-project-answer-judge", "bkn-project-ontology-ask", "bkn-project-concept-extraction", "studio_smart_qa"}
+BKN_PROJECT_AGENTS = {"bkn-project-requirements", "bkn-project-answer-judge", "bkn-project-ontology-ask", "bkn-project-concept-extraction", "bkn-project-document-extraction", "studio_smart_qa"}
 
 
 def test_every_agent_bkn_project_runs_is_builtin_and_seeded():

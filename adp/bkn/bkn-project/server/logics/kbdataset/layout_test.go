@@ -34,7 +34,7 @@ func TestLayoutKeepsMetadataIDOutOfPhysicalSchema(t *testing.T) {
 					t.Fatal("OpenSearch metadata id declared as an ordinary field")
 				}
 			}
-			if layout.Mapping["source_quote"] != "source_quote" || len(layout.Fields) != len(object.Properties) {
+			if layout.Mapping["source_quote"] != "source_quote" || len(layout.Fields) != len(object.Properties)+2 || layout.Mapping["model_fingerprint"] == "" || layout.Mapping["extraction_version"] == "" {
 				t.Fatal("quote column or model field lost")
 			}
 			if object.Properties[0].MappedField != "" {
