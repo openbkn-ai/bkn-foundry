@@ -38,16 +38,17 @@ func sourceSentenceIndex(input *kb.FileInput) map[string]sourceSentenceBlock {
 		segment := 0
 		for i := 0; i < len(runes); i++ {
 			c := runes[i]
-			boundary := strings.ContainsRune("。！？!?", c)
+			// Unicode code points describe source syntax; these are not localized UI labels.
+			boundary := strings.ContainsRune("\u3002\uff01\uff1f!?", c)
 			if c == '.' {
 				decimal := i > 0 && i+1 < len(runes) && unicode.IsDigit(runes[i-1]) && unicode.IsDigit(runes[i+1])
-				boundary = !decimal && (i+1 == len(runes) || unicode.IsSpace(runes[i+1]) || strings.ContainsRune("\"'”’)]）", runes[i+1]))
+				boundary = !decimal && (i+1 == len(runes) || unicode.IsSpace(runes[i+1]) || strings.ContainsRune("\"'\u201d\u2019)]\uff09", runes[i+1]))
 			}
 			if !boundary {
 				continue
 			}
 			last := i + 1
-			for last < len(runes) && strings.ContainsRune("\"'”’)]）", runes[last]) {
+			for last < len(runes) && strings.ContainsRune("\"'\u201d\u2019)]\uff09", runes[last]) {
 				last++
 			}
 			appendPart(segment, last)
