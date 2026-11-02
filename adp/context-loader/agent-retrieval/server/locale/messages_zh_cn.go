@@ -9,7 +9,6 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
-		"Public.UnprocessableEntity":                                     "执行输入校验失败，请修正输入后重试。",
 		"agentRetrieval.SearchSchema.FallbackRule":                       "Source 实例沿本关系没有任何对端时（只看数据、不带查询条件；外键指向不存在的实例也算没有），它的对端改由 {{.Fallback}} 给出；有本关系对端的 Source 实例，{{.Fallback}} 中从它出发的边不用。两个方向查的都是这组边：从 Target 反查时，去掉 {{.Fallback}} 中已有本关系对端的 Source 实例。本关系查询失败、超时、分页未完成、结果截断、无权限或对端被行级权限过滤时不替代，并注明结果不完整。经 {{.Fallback}} 得到的结果按它的 verification 标注。",
 		"agentRetrieval.Detail.FunctionCodeTooLong":                      "代码实际为 {{.Actual}} 个 Unicode 字符，最多允许 {{.Max}} 个。请缩短代码后重试。",
 		"agentRetrieval.Detail.FunctionExecutionTimeout":                 "函数执行超过配置的 {{.Timeout}} 秒超时限制，请减少工作量或调整超时配置。",
@@ -63,10 +62,6 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"agentRetrieval.RequestTimeout.CommonExternalServerError":        "调用依赖服务异常，请检查依赖服务。",
 		"agentRetrieval.ServiceUnavailable.CommonExternalServerError":    "调用依赖服务异常，请检查依赖服务。",
 		"agentRetrieval.Unauthorized.CommonExternalServerError":          "调用依赖服务异常，请检查依赖服务。",
-		"Public.RequestEntityTooLarge":                                   "请求内容过大。请减小请求内容后重试。",
-		"Public.BadGateway":                                              "下游服务请求失败。请稍后重试。",
-		"Public.RequestTimeout":                                          "请求超时。请稍后重试。",
-		"Public.GatewayTimeout":                                          "下游服务请求超时。请稍后重试。",
 		"agentRetrieval.Detail.ToolDetailRequestFailed":                  "获取工具详情失败。",
 		"agentRetrieval.Detail.ToolDetailResponseInvalid":                "工具详情响应无效。",
 		"agentRetrieval.Detail.MCPToolListRequestFailed":                 "获取 MCP 工具列表失败。",
