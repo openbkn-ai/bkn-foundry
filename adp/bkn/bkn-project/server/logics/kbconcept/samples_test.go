@@ -40,7 +40,7 @@ func selected() *interfaces.KBSelection {
 	}}
 }
 func chunk() kb.SampleChunk {
-	return kb.SampleChunk{SampleVersion: kb.SampleVersion{KnowledgeBaseID: "1", VersionRef: kb.VersionRef{FileID: "41", ContentVersionID: "8"}}, ChunkID: "91", Index: 0, Text: "订单甲😀é乙", Located: "exact", Spans: []kb.Span{{BlockID: "p1b1", Start: 10, End: 14}, {BlockID: "p1b2", Start: 30, End: 33}}}
+	return kb.SampleChunk{SampleVersion: kb.SampleVersion{KnowledgeBaseID: "1", VersionRef: kb.VersionRef{FileID: "41", ContentVersionID: "8"}}, ChunkID: "91", Index: 0, Text: "订单甲😀\n\né乙", Located: "exact", Spans: []kb.Span{{BlockID: "p1b1", Start: 10, End: 14}, {BlockID: "p1b2", Start: 30, End: 33}}}
 }
 func TestLoadOnlyDebugSamplesAndSplitDisjointUnicodeSpans(t *testing.T) {
 	r := &sampleReader{pages: []kb.SamplePage{{Entries: []kb.SampleChunk{chunk()}, NextCursor: "next"}, {Entries: []kb.SampleChunk{}}}}
