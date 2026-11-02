@@ -494,7 +494,12 @@ func TestMaterializationSlowBatchDoesNotBlockCancelledCaller(t *testing.T) {
 	defer cancel()
 	first := make(chan error, 1)
 	go func() { _, err := service.PersistRecordIntegrityBatch(ctx, "", 10); first <- err }()
-	defer func() { close(blocking.release); <-first }()
+	defer func() {
+		close(blocking.release)
+		if err := <-first; err != nil {
+			t.Errorf("first batch failed: %v", err)
+		}
+	}()
 	select {
 	case <-blocking.started:
 	case <-time.After(time.Second):
