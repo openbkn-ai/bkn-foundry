@@ -901,12 +901,12 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		}
 		if aggregate.operation == "count_rows" {
 			returned := int64(len(resp.Entries))
-			if resp.TotalCount < returned {
+			if returned > int64(params.Paging.Limit) {
 				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
-					WithErrorDetails("Vega grouped row count returned an invalid total")
+					WithErrorDetails("Vega grouped row count exceeded the requested page limit")
 			}
-			if resp.TotalCount > returned {
+			if returned == int64(params.Paging.Limit) {
 				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_ObjectType_InvalidParameter).
 					WithErrorDetails("complete grouped row count is unavailable in one Vega aggregate page")
@@ -921,7 +921,15 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			resps.Datas = append(resps.Datas, row)
 		}
 		resps.QuerySource = resp.QuerySource
-		resps.TotalCount = resp.TotalCount
+		if aggregate.operation == "count_rows" {
+			// Resource connectors do not expose one uniform aggregate-total
+			// meaning: source tables report groups while local indexes report
+			// matched documents. A short single page is complete by the paging
+			// contract, and the aggregate boundary exposes its returned groups.
+			resps.TotalCount = int64(len(resps.Datas))
+		} else {
+			resps.TotalCount = resp.TotalCount
+		}
 		return nil
 	}
 

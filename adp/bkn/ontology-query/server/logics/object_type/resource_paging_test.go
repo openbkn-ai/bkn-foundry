@@ -462,7 +462,9 @@ func TestObjectGroupedCountRowsUsesAuthorizedVegaAggregate(t *testing.T) {
 			{"phone": "north", "notes": "priority", "__value": json.Number("100001")},
 			{"phone": nil, "notes": "standard", "__value": json.Number("2")},
 		},
-		TotalCount: 2, QuerySource: "source", Paging: &interfaces.ResourceDataPagingResponse{},
+		// Index-backed aggregates may report matched documents rather than
+		// result groups as total_count. The object aggregate normalizes this.
+		TotalCount: 100003, QuerySource: "local_index", Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
 	query := resourcePagingQuery(1)
@@ -473,7 +475,7 @@ func TestObjectGroupedCountRowsUsesAuthorizedVegaAggregate(t *testing.T) {
 	if err != nil || len(result.Datas) != 2 || result.Datas[0]["mobile"] != "north" ||
 		result.Datas[0]["notes"] != "priority" || result.Datas[0]["__value"] != json.Number("100001") ||
 		result.Datas[1]["mobile"] != nil || result.Datas[1]["notes"] != "standard" ||
-		result.Datas[1]["__value"] != json.Number("2") || result.TotalCount != 2 || result.QuerySource != "source" {
+		result.Datas[1]["__value"] != json.Number("2") || result.TotalCount != 2 || result.QuerySource != "local_index" {
 		t.Fatalf("authorized grouped row count = %#v, error %v", result, err)
 	}
 	params := vega.lastParams
@@ -488,9 +490,13 @@ func TestObjectGroupedCountRowsUsesAuthorizedVegaAggregate(t *testing.T) {
 }
 
 func TestObjectGroupedCountRowsRejectsIncompleteAggregate(t *testing.T) {
+	entries := make([]map[string]any, interfaces.MAX_LIMIT)
+	for index := range entries {
+		entries[index] = map[string]any{"phone": fmt.Sprintf("region-%d", index), "__value": json.Number("1")}
+	}
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries:    []map[string]any{{"phone": "north", "__value": json.Number("100001")}},
-		TotalCount: 2, QuerySource: "source", Paging: &interfaces.ResourceDataPagingResponse{},
+		Entries: entries, TotalCount: int64(len(entries)), QuerySource: "source",
+		Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
 	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1),
