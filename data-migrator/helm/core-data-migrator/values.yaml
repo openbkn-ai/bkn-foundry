@@ -44,7 +44,7 @@ depServices:
     host: mariadb-mariadb-master.resource.svc.cluster.local.
     port: 3306
     user: anyshare
-    password: eisoo.com123
+    password: ""
     hostRead: mariadb-mariadb-cluster.resource.svc.cluster.local.
     portRead: 3306
     admin_key: ""
