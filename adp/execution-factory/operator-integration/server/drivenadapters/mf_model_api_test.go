@@ -14,7 +14,7 @@ package drivenadapters
 
 // func TestChatCompletion(t *testing.T) {
 // 	um := &mfModelAPIClient{
-// 		baseURL:    "http://mf-model-api.anyshare:9898/api/private/mf-model-api",
+// 		baseURL:    "http://mf-model-api.openbkn:9898/api/private/mf-model-api",
 // 		logger:     logger.DefaultLogger(),
 // 		httpClient: rest.NewHTTPClient(),
 // 	}

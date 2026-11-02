@@ -1,6 +1,5 @@
 # -*- coding:utf-8 -*-
 # @Author: Cerfly.xie
-# @Email: Cerfly.xie@aishu.cn
 # @CreatDate: 2023/5/22 09:36
 
 import inspect

@@ -1,7 +1,7 @@
 auth:
   mechanism: PLAIN
-  password: eisoo.com123
-  username: anyrobot
+  password: ""
+  username: kafkauser
 connectorType: nsq
 deployTrait:
   aiid: 1

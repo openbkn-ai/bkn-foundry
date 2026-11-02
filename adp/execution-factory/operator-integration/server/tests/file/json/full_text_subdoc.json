@@ -7,7 +7,7 @@
     },
     "servers": [
         {
-            "url": "https://anyshare.aishu.cn:443",
+            "url": "https://open-doc.example.com:443",
             "description": "open-doc服务外部接口地址"
         }
     ],

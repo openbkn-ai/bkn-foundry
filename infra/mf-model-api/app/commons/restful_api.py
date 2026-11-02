@@ -217,7 +217,7 @@ def get_model_restful_api_document(llm_id):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: 调用方应用 ID，用于标识服务调用方",
                     "schema": {
                         "type": "string"
                     },
@@ -457,7 +457,7 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: 调用方应用 ID，用于标识服务调用方",
                     "schema": {
                         "type": "string"
                     },
@@ -676,7 +676,7 @@ def get_embedding_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: 调用方应用 ID，用于标识服务调用方",
                     "schema": {
                         "type": "string"
                     },
@@ -890,7 +890,7 @@ def get_reranker_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: 调用方应用 ID，用于标识服务调用方",
                     "schema": {
                         "type": "string"
                     },
@@ -1131,7 +1131,7 @@ def get_spr_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: 调用方应用 ID，用于标识服务调用方",
                     "schema": {
                         "type": "string"
                     },
@@ -1381,7 +1381,7 @@ def get_info_extract_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: 调用方应用 ID，用于标识服务调用方",
                     "schema": {
                         "type": "string"
                     },
@@ -1597,7 +1597,7 @@ def get_audio_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: 调用方应用 ID，用于标识服务调用方",
                     "schema": {
                         "type": "string"
                     },

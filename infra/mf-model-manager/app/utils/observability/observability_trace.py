@@ -3,7 +3,7 @@
 """
 Observability tracing module.
 
-The AnyRobot (AR) trace exporter has been removed. No custom TracerProvider is
+The legacy trace exporter has been removed. No custom TracerProvider is
 installed, so OpenTelemetry returns a no-op tracer by default: spans are not
 recorded and add negligible overhead. Instrumentation in trace_wrapper and
 trace_context remains available for a future OTLP exporter, such as bkn-trace.

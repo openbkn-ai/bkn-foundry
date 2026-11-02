@@ -28,8 +28,8 @@ class GetToken(object):
         """
         self.host = host
         self.hydra_public_port = 443
-        self.eacp_svc_ip = "eacp-private.anyshare.svc.cluster.local"
-        self.hydra_admin_svc_ip = "hydra-admin.anyshare.svc.cluster.local"
+        self.eacp_svc_ip = "eacp-private.openbkn.svc.cluster.local"
+        self.hydra_admin_svc_ip = "hydra-admin.openbkn.svc.cluster.local"
         self.hydra_admin_port = 4445
         self.public_url = 'https://%s:%s/'%(self.host, self.hydra_public_port)
         self.admin_url = 'http://%s:%s/'%(self.hydra_admin_svc_ip, self.hydra_admin_port)
@@ -236,33 +236,6 @@ OQE5VFOIXPVTaa25mQIDAQAB
         # print result
         return result
 
-    def modifyAdminPwd(self, newpwd, oldpwd):  
-        newpwd = self.auth_Pwd_RSABase64(self.key1, newpwd)
-        oldpwd = self.auth_Pwd_RSABase64(self.key1, oldpwd)
-        data = {
-            "account": "admin",
-            "newpwd": newpwd,
-            "oldpwd": oldpwd
-        }
-        suffixofsign = "eisoo.com"
-        signdata = json.dumps(data) + suffixofsign
-        sign = hashlib.md5(signdata.encode('utf-8')).hexdigest()
-
-        requrl = 'https://%s/api/eacp/v1/auth1/modifypassword??sign=%s' % (self.host, sign) 
-        
-        re = requests.request('POST', requrl, json=data, verify=False)
-        if re.status_code != 200:
-            content = json.loads(re.content)
-            for key in content.keys():
-                print("%s: %s" % (key, content[key]))
-            return [re.status_code, json.loads(re.content)]
-        else:
-            return [re.status_code, re.content]
-
-        # if r.status_code != 200:
-        #     raise Exception("status code: %s\nbody: %s" % (r.status_code, r.content))
-        # return json.loads(r.content)
-
     def ConsoleLogin(self, account, password):
         # import pdb;pdb.set_trace()
         password = self.auth_Pwd_RSABase64(self.key, password)
@@ -343,14 +316,13 @@ if __name__ == '__main__':
     if os.path.exists(configfile):
         file = GetContent(configfile)
         config = file.config()
-        host = config.get("server", "host", fallback="10.4.110.62")
+        host = config.get("server", "host", fallback="127.0.0.1")
         user_password = config.get("user", "default_password", fallback="111111")
     else:
-        host = "10.4.110.62"
+        host = "127.0.0.1"
         user_password = "111111"
         print("Warning: Configuration file does not exist, use default value")
     
     client = GetToken(host)
-    # mod = client.modifyAdminPwd("eisoo.com123", "eisoo.com")
     result = client.get_token(host, "A0", user_password)
     print(result)

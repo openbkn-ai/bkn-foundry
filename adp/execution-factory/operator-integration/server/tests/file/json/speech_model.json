@@ -3,10 +3,7 @@
     "info": {
         "title": "音频转文字 API",
         "version": "1.0.0",
-        "description": "音频转文字 API相关文档",
-        "contact": {
-            "email": "siyu.chen@aishu.cn"
-        }
+        "description": "音频转文字 API相关文档"
     },
     "tags": [
         {

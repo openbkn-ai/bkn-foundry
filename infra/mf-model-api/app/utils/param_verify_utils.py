@@ -1018,13 +1018,6 @@ async def prompt_run_verify(para):
     from app.utils.llm_utils import model_config, get_context_size
     if para["history_dia"]:
         from app.utils.llm_utils import get_context_size
-        if info2["f_model_series"].lower() == "aishu":
-            config = json.loads(info2["f_model_config"].replace("'", '"'))
-            try:
-                model_config.add_model_context_size(info2["f_model_id"], info2["f_model_name"], get_context_size(info2["f_model_series"], config["api_base"], config["api_model"]))
-            except Exception:
-                model_config.init_model_config()
-                model_config.add_model_context_size(info2["f_model_id"], info2["f_model_name"], get_context_size(info2["f_model_series"], config["api_base"], config["api_model"]))
         if info2["f_model_series"].lower() in ["others", "claude"]:
             try:
                 model_config.add_model_context_size(info2["f_model_id"], info2["f_model_name"], get_context_size("others", "", info2["f_model"]))

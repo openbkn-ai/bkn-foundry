@@ -1,8 +1,8 @@
 # Dependency list for model-factory-base.
-# Rebuilds the legacy acr.aishu.cn/ad/model-factory-base:v3 from public sources.
+# Rebuilds the legacy model-factory-base:v3 image from public sources.
 # This base is shared by mf-model-api and mf-model-manager.
 # Install in one pip invocation so the resolver sees all constraints at once, especially llmadapter pins.
-# Note: AnyRobot (AR) exporter/tlogging has been removed from service code, so the base no longer needs internal wheels.
+# Note: the legacy log/trace exporter (tlogging) has been removed from service code, so the base no longer needs internal wheels.
 
 # --- Internal SDKs, already published to PyPI. ---
 llmadapter==1.0.3          # Pulls sqlalchemy/redis/spacy/openai/pandas/pydantic<2/tiktoken<0.4/gptcache/langchainplus-sdk.

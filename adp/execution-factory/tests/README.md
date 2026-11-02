@@ -8,35 +8,19 @@ Canonical test location for Execution Factory, migrated from the legacy upstream
 |------|------|------|-----|
 | **L1** | bkn-studio vitest mocks | Every PR | `bkn-studio` `ci-execution-factory.yml` |
 | **L2** | `openbkn-smoke` pytest | Backend up locally / manual | `bkn-foundry` collect-only on PR; live via `workflow_dispatch` |
-| **L3** | Full Agent AT (`data-operator-hub`) | Legacy platform env (eisoo/Hydra) | Not in git; sync locally (below) |
 
 ```
 adp/execution-factory/
 |-- tests/                          # Agent AT (pytest) -- this directory
 |   |-- testcases/
-|   |   |-- data-operator-hub/      # L3 -- gitignored, synced locally
 |   |   `-- openbkn-smoke/          # L2 -- tracked in git
 |   |-- config/env.openbkn.example.ini
 |   |-- requirements/ci-smoke.txt   # minimal deps for CI collect
 |   `-- scripts/
-|       |-- run-openbkn-smoke.ps1
-|       `-- sync-agent-at.ps1
+|       `-- run-openbkn-smoke.ps1
 `-- operator-integration/
     `-- server/tests/               # HTTP files, Python CLI, Go smoke
 ```
-
-## Sync full Agent AT (L3, local only)
-
-Bulk payloads are **not** in git. Copy from a local clone of the legacy platform:
-
-```powershell
-cd bkn-foundry/bkn-foundry/adp/execution-factory/tests
-# optional: $env:LEGACY_PLATFORM_ROOT = "<path to the legacy platform clone>"
-.\scripts\sync-agent-at.ps1
-# dry run: .\scripts\sync-agent-at.ps1 -DryRun
-```
-
-Source: `<legacy platform clone>/adp/execution-factory/tests` (or `$LEGACY_PLATFORM_ROOT/adp/execution-factory/tests`).
 
 ## L2 -- OpenBKN backend smoke
 
@@ -81,17 +65,6 @@ py -m pytest testcases/openbkn-smoke --confcutdir=testcases/openbkn-smoke -q
 
 - REST Client: `operator-integration/server/tests/http/` (`env.http`, `toolbox.http`, ...)
 - Go tests: `cd operator-integration && ./project.sh -t`
-
-## L3 -- Full Agent AT
-
-After `sync-agent-at.ps1`, requires Hydra, `eisoo`, and MySQL `adp` schema:
-
-```powershell
-pip install -r requirements/requirements.txt
-py -m pytest testcases/data-operator-hub -q
-```
-
-Use `--confcutdir=testcases/openbkn-smoke` only for L2; full suite loads root `conftest.py`.
 
 ## L1 -- bkn-studio frontend
 

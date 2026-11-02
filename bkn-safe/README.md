@@ -15,7 +15,7 @@ bkn-safe 是 OpenBKN 的认证、鉴权和用户目录服务。它配合**上游
 ## 三职责
 
 1. **认证** —— hydra 的 login/consent/device 验证页；用**自有用户库 + bcrypt** 验密码
-   （不调 eacp/anyshare）；在 consent 时把 introspect 的 `ext` claims 注入 token session。
+   （不依赖外部用户服务）；在 consent 时把 introspect 的 `ext` claims 注入 token session。
 2. **鉴权** —— Casbin（RBAC + 资源实例，`keyMatch`，显式 deny 优先于普通 allow；
    `super_admin` 作为恢复角色不可被 deny），policy 存 GORM（gorm-adapter）。
 3. **用户管理** —— 自建目录（users/departments/groups/roles）+ 名称解析 + LDAP 连接器（轻）。

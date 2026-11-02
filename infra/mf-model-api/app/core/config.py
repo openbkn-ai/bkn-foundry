@@ -51,7 +51,7 @@ class BaseConfig(object):
     # Kafka defaults.
     KAFKAHOSTDEFAULT = DIPHOSTDEFAULT
     KAFKAPORTDEFAULT = 9097
-    KAFKAUSERDEFAULT = "anyrobot"
+    KAFKAUSERDEFAULT = "kafkauser"
     KAFKAPASSDEFAULT = "password"
     # Application settings.
     APP_PORT = int(os.getenv('PORT', PORTDEFAULT))

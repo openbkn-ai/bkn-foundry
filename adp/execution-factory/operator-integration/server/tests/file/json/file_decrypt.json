@@ -11,8 +11,8 @@
       "description": "open-doc服务外部接口地址",
       "variables": {
         "host": {
-          "default": "anyshare.aishu.cn",
-          "description": "open-doc服务地址或IP，地址默认为anyshare.aishu.cn 命名空间为 anyshare， 跨站点访问时，使用主分站点地址及外部端口"
+          "default": "open-doc.example.com",
+          "description": "open-doc服务地址或IP，跨站点访问时，使用主分站点地址及外部端口"
         },
         "port": {
           "default": "443",

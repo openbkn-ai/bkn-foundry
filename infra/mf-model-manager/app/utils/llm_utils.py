@@ -2353,17 +2353,6 @@ async def encode(model_series, text, api_model="", api_key="", secret_key=""):
     #     return [], len(text) // 4  # Use a more realistic approximation.
 
 
-async def decode(api_base, api_model, token_ids):
-    url = api_base + "/tokenizer/decode"
-    params = {
-        "token_ids": token_ids,
-        "model": api_model
-    }
-    async with aiohttp.ClientSession(timeout=base_config.aiohttp_timeout) as session:
-        async with session.post(url, data=json.dumps(params), ssl=False) as response:
-            return response.json()
-
-
 async def get_context_size(model_series, api_base, api_model):
     model_token_mapping = {
         "gpt-4": 8192,

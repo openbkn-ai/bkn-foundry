@@ -1,5 +1,5 @@
 ### 检索对象类（通过 bkn-backend）
-POST http://bkn-backend-svc.anyshare:13014/api/bkn-backend/in/v1/knowledge-networks/kn_chemical/object-types
+POST http://bkn-backend-svc.openbkn:13014/api/bkn-backend/in/v1/knowledge-networks/kn_chemical/object-types
 x-user: sdfsdfsd
 x-http-method-override: GET
 Content-Type: application/json

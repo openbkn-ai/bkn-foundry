@@ -27,14 +27,14 @@ This chart does not deploy `sandbox_web` or MariaDB.
 From the repository root:
 
 ```bash
-helm install sandbox deploy/helm/sandbox --namespace anyshare --create-namespace
+helm install sandbox deploy/helm/sandbox --namespace openbkn --create-namespace
 ```
 
 With an override file:
 
 ```bash
 helm install sandbox deploy/helm/sandbox \
-  --namespace anyshare \
+  --namespace openbkn \
   --create-namespace \
   -f custom-values.yaml
 ```
@@ -67,10 +67,10 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `namespace` | Kubernetes namespace | `anyshare` |
+| `namespace` | Kubernetes namespace | `openbkn` |
 | `imagePullPolicy` | Executor Pod image pull policy | `IfNotPresent` |
 | `imagePullSecrets` | Executor Pod image pull secret names | `[]` |
-| `image.registry` | Shared image registry prefix | `acr.aishu.cn` |
+| `image.registry` | Shared image registry prefix | `ghcr.io/openbkn-ai` |
 | `image.controlPlane.repository` | Control Plane image repository | `dip/sandbox-control-plane` |
 | `image.controlPlane.tag` | Control Plane image tag | `latest` |
 | `image.defaultTemplates.pythonBasic.repository` | Python template image repository | `dip/sandbox-template-python-basic` |

@@ -353,9 +353,9 @@ log:
 
 ## Support and contact
 
-- **Technical support**: AISHU ADP team
+- **Technical support**: OpenBKN team
 - **Documentation updates**: continuously updated
-- **Issue feedback**: submit through the internal system
+- **Issue feedback**: open a GitHub issue in this repository
 
 ---
 

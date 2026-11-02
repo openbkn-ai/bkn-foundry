@@ -177,7 +177,7 @@ paths:
                     sub_conditions:
                     - field: pod_namespace
                       operation: ==
-                      value: anyshare
+                      value: openbkn
                       value_from: const
                     - field: pod_status
                       operation: ==
@@ -193,7 +193,7 @@ paths:
                     sub_conditions:
                     - field: pod_namespace
                       operation: ==
-                      value: anyshare
+                      value: openbkn
                       value_from: const
                     - field: pod_status
                       operation: ==
@@ -587,7 +587,7 @@ paths:
                       id: 1471
                       pod_delete_time: ""
                       pod_name: aladdin-tika-deploy-6564c49fbb-2nb9k
-                      pod_namespace: anyshare
+                      pod_namespace: openbkn
                       pod_ip: 192.169.37.17
                       pod_status: Running
                       component: aladdin-tika-2.7.0
@@ -917,7 +917,7 @@ paths:
                       id: 1471
                       pod_delete_time: ""
                       pod_name: aladdin-tika-deploy-6564c49fbb-2nb9k
-                      pod_namespace: anyshare
+                      pod_namespace: openbkn
                       pod_ip: 192.169.37.17
                       pod_status: Running
                       component: aladdin-tika-2.7.0

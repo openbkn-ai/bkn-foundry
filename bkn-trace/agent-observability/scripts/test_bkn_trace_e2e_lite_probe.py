@@ -37,7 +37,7 @@ class BknTraceE2ELiteProbeTest(unittest.TestCase):
             {
                 "error": {
                     "type": "index_not_found_exception",
-                    "reason": "no such index [ss4o_traces-default-anyshare]",
+                    "reason": "no such index [ss4o_traces-default-openbkn]",
                 },
                 "status": 404,
             }

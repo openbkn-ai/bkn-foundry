@@ -108,26 +108,3 @@ if err != nil {
     log.Fatal("failed to create a openbkn mq client:", err)
 }
 ```
-
-## Integrated Development Enviroment
-go-msq is a private repository, so you needed to configure your development environment follow the steps below:
-1. Set go env
-```bash
-go env -w GO111MODULE=on
-go env -w GOPROXY=https://goproxy.cn
-go env -w GOPRIVATE=devops.aishu.cn
-go env -w CGO_ENABLED="1"
-```
-2. Save your access credential of `devops.aishu.cn` into `.netrc` file, you can get token from [devops-token]
-```bash
- echo "machine devops.aishu.cn login ${your_username} password ${your_access_token}" >> ~/.netrc
-```
-
-3. Use `ssh://` instead of `https://xxx`
-```bash
-git config --global url."ssh://devops.aishu.cn:22/AISHUDevOps/".insteadOf "https://devops.aishu.cn/AISHUDevOps/"
-```
-
-<!-- all links defines -->
-[pipline]: https://devops.aishu.cn/AISHUDevOps/ICT/_build?definitionId=1979
-[devops-token]: https://devops.aishu.cn/AISHUDevOps/_usersSettings/tokens

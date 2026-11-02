@@ -33,7 +33,7 @@ def _decrypt(private_key, b64):
 
 
 @pytest.mark.parametrize("bits", [1024, 2048])
-@pytest.mark.parametrize("message", ["111111", "eisoo.com123", "p@ss w\u00f6rd \u00e9"])
+@pytest.mark.parametrize("message", ["111111", "Secret#2026", "p@ss w\u00f6rd \u00e9"])
 def test_round_trip_pkcs1_v1_5(bits, message):
     private_key = RSA.generate(bits)
     pem = private_key.publickey().export_key(format="PEM").decode("ascii")

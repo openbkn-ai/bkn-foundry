@@ -23,10 +23,10 @@ WORKDIR /app/agent-retrieval
 COPY --from=builder /out/agent-retrieval ./agent-retrieval
 
 # Create a non-root user.
-RUN useradd -m -r -s /bin/bash aishu \
-    && chown -R aishu:aishu /app/agent-retrieval
+RUN useradd -m -r -s /bin/bash openbkn \
+    && chown -R openbkn:openbkn /app/agent-retrieval
 
 # Switch to the non-root user.
-USER aishu
+USER openbkn
 
 CMD ["./agent-retrieval"]

@@ -4,7 +4,7 @@ report/
 __pycache__/
 .venv/
 
-# Full Agent AT suite and payloads are synced locally from the legacy platform; not tracked here.
+# Leftovers from the retired legacy Agent AT suite; keep them out of git.
 testcases/data-operator-hub/
 /conftest.py
 data/
