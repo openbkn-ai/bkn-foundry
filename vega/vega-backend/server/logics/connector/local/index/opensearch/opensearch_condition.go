@@ -1060,6 +1060,29 @@ func (c *OpenSearchConnector) ConvertFilterConditionFalse(condition interfaces.F
 	}, nil
 }
 
+// ValidateBeforeConditions 供保存校验复用执行时的相对时间检查，不连接索引。
+// 遍历完整条件树，避免 AND/OR 短路或向量子过滤绕过检查。
+func ValidateBeforeConditions(condition interfaces.FilterCondition, now time.Time) error {
+	var children []interfaces.FilterCondition
+	switch cond := condition.(type) {
+	case *filter_condition.BeforeCond:
+		_, err := indexBeforeQuery(cond, now)
+		return err
+	case *filter_condition.AndCond:
+		children = cond.SubConds
+	case *filter_condition.OrCond:
+		children = cond.SubConds
+	case *filter_condition.KnnVectorCond:
+		children = cond.SubConds
+	}
+	for _, child := range children {
+		if err := ValidateBeforeConditions(child, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ConvertFilterConditionBefore converts a BeforeCond to OpenSearch DSL.
 func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.FilterCondition) (map[string]any, error) {
 
@@ -1087,30 +1110,21 @@ func indexBeforeQuery(cond *filter_condition.BeforeCond, now time.Time) (map[str
 		if !ok {
 			return nil, interfaces.NewConditionBuildError("before interval must be a number")
 		}
-		cutoff := reference.Add(-time.Duration(interval) * time.Hour)
+		// 旧格式仅发送秒级边界，校验使用相同精度，保持既有查询语义。
+		cutoff := reference.Add(-time.Duration(interval) * time.Hour).Truncate(time.Second)
+		if err := validateIndexTimeBoundary(cond, cutoff, int64(interval), "hour"); err != nil {
+			return nil, err
+		}
 		return map[string]any{"range": map[string]any{fieldName: map[string]any{"lt": cutoff.Format(time.RFC3339)}}}, nil
 	}
 	interval, ok := common.NumberAsInt64(cond.Value[0])
-	// OpenSearch 的 date math 数量按 Java int 解析。
+	// 保持既有索引 before 条件的间隔上限。
 	if !ok || interval <= 0 || interval > math.MaxInt32 {
 		return nil, interfaces.NewConditionBuildError("before interval must be a positive integer no greater than %d", math.MaxInt32)
 	}
-	mathUnit := ""
-	switch strings.ToLower(strings.TrimSpace(unit)) {
-	case "year":
-		mathUnit = "y"
-	case "month":
-		mathUnit = "M"
-	case "week":
-		mathUnit = "w"
-	case "day":
-		mathUnit = "d"
-	case "hour":
-		mathUnit = "h"
-	case "minute":
-		mathUnit = "m"
-	case "second":
-		mathUnit = "s"
+	normalizedUnit := strings.ToLower(strings.TrimSpace(unit))
+	switch normalizedUnit {
+	case "year", "month", "week", "day", "hour", "minute", "second":
 	default:
 		return nil, interfaces.NewConditionBuildError("unsupported before unit: %s", unit)
 	}
@@ -1127,19 +1141,69 @@ func indexBeforeQuery(cond *filter_condition.BeforeCond, now time.Time) (map[str
 		// date 按日历日期索引为 UTC 午夜；在相同墙钟坐标比较，避免服务时区换日偏移。
 		wall := now.In(location)
 		anchor = time.Date(wall.Year(), wall.Month(), wall.Day(), wall.Hour(), wall.Minute(), wall.Second(), wall.Nanosecond(), time.UTC)
-		zone = "UTC"
+		location = time.UTC
 	}
-	// 由引擎完成月末截断、闰年和夏令时的日历计算，锚点保留纳秒精度。
-	bound := fmt.Sprintf("%s||-%d%s", anchor.Format(common.RFC3339FixedNanosLayout), interval, mathUnit)
+	cutoff := indexBeforeCutoff(anchor, interval, normalizedUnit, location)
+	if err := validateIndexTimeBoundary(cond, cutoff, interval, unit); err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"range": map[string]any{
 			fieldName: map[string]any{
-				"lt":        bound,
-				"format":    indexDateQueryFormat,
-				"time_zone": zone,
+				"lt":     cutoff.UTC().Format(common.RFC3339FixedNanosLayout),
+				"format": indexDateQueryFormat,
 			},
 		},
 	}, nil
+}
+
+func validateIndexTimeBoundary(cond *filter_condition.BeforeCond, cutoff time.Time, interval int64, unit string) error {
+	fieldType := "date"
+	minTime, maxTime := time.UnixMilli(math.MinInt64), time.UnixMilli(math.MaxInt64)
+	if cond.Lfield.OriginalType == "date_nanos" {
+		fieldType = "date_nanos"
+		minTime, maxTime = time.Unix(0, 0), time.Unix(0, math.MaxInt64)
+	}
+	if cutoff.Before(minTime) || cutoff.After(maxTime) {
+		return interfaces.NewTemporalRangeError(cond.Lfield.Name, fieldType, interval, unit)
+	}
+	return nil
+}
+
+// indexBeforeCutoff 在服务时区计算截止时刻，供值域校验和查询共用。
+// 小时以下按经过时间计算，避免大间隔转换为 time.Duration 时溢出。
+// 年/月截断到目标月末；日/周使用标准库的日历运算。
+func indexBeforeCutoff(anchor time.Time, interval int64, unit string, location *time.Location) time.Time {
+	seconds := int64(0)
+	switch unit {
+	case "second":
+		seconds = interval
+	case "minute":
+		seconds = interval * 60
+	case "hour":
+		seconds = interval * 3600
+	}
+	if seconds != 0 {
+		return time.Unix(anchor.Unix()-seconds, int64(anchor.Nanosecond())).In(location)
+	}
+	local := anchor.In(location)
+	switch unit {
+	case "year", "month":
+		years, months := 0, 0
+		if unit == "year" {
+			years = -int(interval)
+		} else {
+			months = -int(interval)
+		}
+		month := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(years, months, 0)
+		day := min(local.Day(), month.AddDate(0, 1, -1).Day())
+		return time.Date(month.Year(), month.Month(), day, local.Hour(), local.Minute(), local.Second(), local.Nanosecond(), location)
+	case "week":
+		return local.AddDate(0, 0, -int(interval)*7)
+	case "day":
+		return local.AddDate(0, 0, -int(interval))
+	}
+	return local
 }
 
 // ConvertFilterConditionCurrent converts a CurrentCond to OpenSearch DSL.

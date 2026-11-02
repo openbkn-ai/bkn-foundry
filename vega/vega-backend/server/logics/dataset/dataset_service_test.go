@@ -104,6 +104,34 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 	resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1"}
 	params := &interfaces.ResourceDataQueryParams{}
 	docs := []map[string]any{{"id": 1}}
+	t.Run("temporal range errors preserve the actionable code", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		cause := interfaces.NewTemporalRangeError("created", "date", 2147483647, "year")
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, cause)
+		page, err := ds.ListDocuments(ctx, resource, params)
+		var rows []map[string]any
+		var total int64
+		if page != nil {
+			rows = page.Entries
+			total = page.TotalCount
+		}
+		assert.Nil(t, rows)
+		assert.Zero(t, total)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_QueryTimeOutOfRange, httpErr.ErrorCode)
+		assert.Equal(t, "created", httpErr.Metadata["field"])
+		dated := &interfaces.Resource{LocalIndexName: "dataset-1", SchemaDefinition: []*interfaces.Property{{Name: "created", Type: interfaces.DataType_Datetime}}}
+		query := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "created", Operation: "before", Value: []any{2147483647, "year"}}}
+		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", dated, query).Return(nil, cause)
+		result, err := ds.DeleteDocumentsByQuery(ctx, dated, query)
+		assert.Nil(t, result)
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_QueryTimeOutOfRange, httpErr.ErrorCode)
+		assert.Equal(t, "created", httpErr.Metadata["field"])
+	})
 
 	t.Run("list documents", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)

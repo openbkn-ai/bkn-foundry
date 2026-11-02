@@ -104,6 +104,23 @@ func TestConditionBuildErrorCause(t *testing.T) {
 	}
 }
 
+func TestTemporalRangeError(t *testing.T) {
+	if _, ok := any(TemporalRangeError{}).(error); ok {
+		t.Fatal("only *TemporalRangeError should implement error")
+	}
+	cause := NewTemporalRangeError("created", "date_nanos", 2147483647, "day")
+	err := fmt.Errorf("build query: %w", cause)
+	var temporal *TemporalRangeError
+	var condition *ConditionBuildError
+	if !errors.As(err, &temporal) || temporal != cause ||
+		!errors.As(err, &condition) || condition != cause.ConditionBuildError {
+		t.Fatalf("wrapped temporal range error lost its type or condition cause: %v", err)
+	}
+	if got := cause.Error(); got != cause.ConditionBuildError.Error() {
+		t.Fatalf("temporal range error lost its condition message: %q", got)
+	}
+}
+
 func TestKeywordLimitError(t *testing.T) {
 	if _, ok := any(KeywordLimitError{}).(error); ok {
 		t.Fatal("only *KeywordLimitError should implement error")

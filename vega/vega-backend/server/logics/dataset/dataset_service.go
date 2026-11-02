@@ -136,6 +136,9 @@ func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Res
 		if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
 			return nil, httpErr
 		}
+		if httpErr := query_error.TemporalRangeHTTPError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
 		if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
 			return nil, httpErr
 		}
@@ -363,6 +366,9 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	result, err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
+		if httpErr := query_error.TemporalRangeHTTPError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
 		var incomplete *interfaces.DeleteByQueryIncompleteError
 		if errors.As(err, &incomplete) {
 			return result, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Dataset_DeleteIncomplete).WithErrorDetails(incomplete.Result)

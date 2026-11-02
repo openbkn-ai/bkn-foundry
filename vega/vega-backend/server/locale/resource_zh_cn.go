@@ -41,6 +41,7 @@ var resourceZhCN = i18n.I18nMessages{
 		"VegaBackend.Resource.InternalError.GetAccountNamesFailed": "获取账户名称失败。请联系管理员",
 		"VegaBackend.Resource.UpdateConflict":                      "资源在读取后已被更新。请重新加载资源后再提交修改",
 		"VegaBackend.Resource.DeleteConflict":                      "资源已不再处于失效且探查缺失状态。请重新加载资源后再删除",
+		"VegaBackend.Resource.QueryTimeOutOfRange":                 "{{if .field}}字段 {{.field}} 的{{end}}时间间隔超出索引字段支持的范围。请缩短时间间隔",
 		"VegaBackend.Resource.QueryValueExceedsKeywordLimit":       "查询值超过关键词最大索引长度。请缩短筛选值，或在支持时主动选择查询原始数据。",
 	},
 }

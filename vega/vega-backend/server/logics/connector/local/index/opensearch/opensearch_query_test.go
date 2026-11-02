@@ -9,6 +9,8 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -17,7 +19,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/bytedance/sonic"
 	osclient "github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
@@ -93,6 +97,42 @@ func TestOpenSearchQueryScoreAndSearchAfter(t *testing.T) {
 }
 
 func TestValidateStoredFilterConditionPreservesErrorSource(t *testing.T) {
+	clock := gomonkey.ApplyFunc(time.Now, func() time.Time { return time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC) })
+	t.Cleanup(clock.Reset)
+	t.Run("temporal range rejected before search", func(t *testing.T) {
+		for _, stored := range []bool{false, true} {
+			for _, aggregate := range []bool{false, true} {
+				t.Run(fmt.Sprintf("stored=%v/aggregate=%v", stored, aggregate), func(t *testing.T) {
+					requests := 0
+					client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+						Transport: countRowsTransport(func(*http.Request) (*http.Response, error) {
+							requests++
+							return nil, errors.New("unexpected search")
+						})})
+					require.NoError(t, err)
+					field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}
+					actual := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2147483647), "day"}}
+					params := &interfaces.ResourceDataQueryParams{ActualFilterCond: actual}
+					if stored {
+						params.FixedActualFilterCond = actual
+					}
+					if aggregate {
+						params.Aggregation = &interfaces.Aggregation{Aggr: "count", Property: "created"}
+					}
+					result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(t.Context(), "index", &interfaces.Resource{SchemaDefinition: []*interfaces.Property{field}}, params)
+					var temporal *interfaces.TemporalRangeError
+					require.ErrorAs(t, err, &temporal)
+					assert.Equal(t, "created", temporal.Field)
+					assert.Nil(t, result)
+					assert.Zero(t, requests)
+					if stored {
+						var saved *interfaces.StoredConditionBuildError
+						require.ErrorAs(t, err, &saved)
+					}
+				})
+			}
+		}
+	})
 	field := &interfaces.Property{Name: "body", OriginalName: "BODY", Type: interfaces.DataType_Text}
 	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{field}}
 	cfg := &interfaces.FilterCondCfg{Name: "body", Operation: filter_condition.OperationEqual,

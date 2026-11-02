@@ -246,7 +246,8 @@ func (lim *localIndexManager) IndexDocuments(ctx context.Context, indexName stri
 	return lim.lic.IndexDocuments(ctx, indexName, documents)
 }
 
-// SchemaForQuery returns the searchable physical schema exposed by a managed local index.
+// SchemaForQuery projects a non-Index resource schema for queries on its managed local index.
+// Native Index resources already carry their physical schema and do not need this conversion.
 // JSON is stored only in _source; binary and other are unavailable for index queries.
 // Managed documents and mappings are keyed by Property.Name; OriginalName only
 // belongs to source connectors and must not leak into local-index DSL.

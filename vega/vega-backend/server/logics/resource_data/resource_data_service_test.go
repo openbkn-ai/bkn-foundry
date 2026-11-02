@@ -34,6 +34,60 @@ func registerMockLogicalViewService(t *testing.T, service interfaces.LogicalView
 	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
 }
 
+func TestMapQueryError(t *testing.T) {
+	for _, invalidCode := range []string{verrors.VegaBackend_Resource_InvalidParameter, verrors.VegaBackend_Query_InvalidParameter} {
+		t.Run(invalidCode, func(t *testing.T) {
+			for _, tc := range []struct {
+				name     string
+				cause    error
+				code     string
+				status   int
+				metadata map[string]any
+			}{
+				{name: "source read forbidden", cause: interfaces.NewSourceReadForbiddenError(errors.New("private driver diagnostic")), status: http.StatusForbidden, code: verrors.VegaBackend_Resource_SourceReadForbidden},
+				{name: "source permission precedes stored condition provenance", cause: interfaces.NewStoredConditionBuildError(interfaces.NewSourceReadForbiddenError(errors.New("private driver diagnostic"))), status: http.StatusForbidden, code: verrors.VegaBackend_Resource_SourceReadForbidden},
+				{name: "execution budget", cause: interfaces.NewQueryExecutionBudgetError("row_scan", errors.New("private driver diagnostic")), status: http.StatusUnprocessableEntity, code: verrors.VegaBackend_Query_ExecutionBudgetExceeded, metadata: map[string]any{"budget": "row_scan"}},
+				{name: "stored execution budget", cause: interfaces.NewStoredConditionBuildError(interfaces.NewQueryExecutionBudgetError("row_scan", errors.New("private driver diagnostic"))), status: http.StatusUnprocessableEntity, code: verrors.VegaBackend_Query_ExecutionBudgetExceeded, metadata: map[string]any{"budget": "row_scan"}},
+				{name: "time range becomes HTTP 400", cause: interfaces.NewTemporalRangeError("created", "date_nanos", 2147483647, "day"), code: verrors.VegaBackend_Resource_QueryTimeOutOfRange, metadata: map[string]any{"field": "created", "field_type": "date_nanos", "interval": int64(2147483647), "unit": "day"}},
+				{name: "stored time range becomes HTTP 400", cause: interfaces.NewStoredConditionBuildError(interfaces.NewTemporalRangeError("created", "date_nanos", 2147483647, "day")), code: verrors.VegaBackend_Resource_QueryTimeOutOfRange, metadata: map[string]any{"field": "created", "field_type": "date_nanos", "interval": int64(2147483647), "unit": "day"}},
+				{name: "keyword limit", cause: interfaces.NewKeywordLimitError("status", 256), code: verrors.VegaBackend_Resource_QueryValueExceedsKeywordLimit,
+					metadata: map[string]any{"field": "status", "limit": 256}},
+				{name: "unknown output", cause: interfaces.NewOutputFieldError(interfaces.OutputFieldUnknown, "missing"), code: verrors.VegaBackend_Query_InvalidParameter_OutputField},
+				{name: "unsupported output", cause: interfaces.NewOutputFieldError(interfaces.OutputFieldUnsupported, "blob"), code: verrors.VegaBackend_Query_UnsupportedOutputField},
+				{name: "no queryable output", cause: interfaces.NewOutputFieldError(interfaces.OutputFieldNoneQueryable, ""), code: verrors.VegaBackend_Query_NoQueryableFields},
+				{name: "generic condition", cause: interfaces.NewConditionBuildError("invalid condition"), code: invalidCode},
+				{name: "unsupported operation", cause: interfaces.NewUnsupportedOperationError("regex", errors.New("unsupported by this channel")), code: invalidCode},
+				{name: "source query input", cause: interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, errors.New("private driver diagnostic")), code: invalidCode},
+				{name: "stored generic condition", cause: interfaces.NewStoredConditionBuildError(interfaces.NewConditionBuildError("invalid saved condition"))},
+				{name: "stored keyword", cause: interfaces.NewStoredConditionBuildError(interfaces.NewKeywordLimitError("status", 256))},
+				{name: "stored output", cause: interfaces.NewStoredConditionBuildError(interfaces.NewOutputFieldError(interfaces.OutputFieldUnknown, "missing"))},
+				{name: "already mapped", cause: httperrors.NewHTTPError(t.Context(), http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled), status: http.StatusConflict, code: verrors.VegaBackend_Catalog_IsDisabled},
+				{name: "unknown failure", cause: errors.New("private driver diagnostic")},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					err := fmt.Errorf("query execution wrapper: %w", tc.cause)
+					mapped := MapQueryError(t.Context(), err, invalidCode)
+					if tc.code == "" {
+						assert.Nil(t, mapped)
+						return
+					}
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, mapped, &httpErr)
+					status := tc.status
+					if status == 0 {
+						status = http.StatusBadRequest
+					}
+					assert.Equal(t, status, httpErr.HTTPCode)
+					assert.Equal(t, tc.code, httpErr.ErrorCode)
+					assert.Equal(t, tc.metadata, httpErr.Metadata)
+					assert.NotContains(t, httpErr.Error(), "private driver diagnostic")
+					assert.NotContains(t, httpErr.Error(), "query execution wrapper")
+				})
+			}
+		})
+	}
+}
+
 func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 	for _, tc := range []struct {
 		name             string
@@ -234,17 +288,17 @@ func TestQuerySourcePageInvalidOutputFields(t *testing.T) {
 				rds := &resourceDataService{cs: catalogs}
 				resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: category, SchemaDefinition: []*interfaces.Property{{Name: "id"}}}
 				params := &interfaces.ResourceDataQueryParams{OutputFields: fields}
-				rowsResult, err := rds.QuerySourcePage(context.Background(), resource, params)
+				page, err := rds.QuerySourcePage(context.Background(), resource, params)
 				var rows []map[string]any
 				var total int64
-				if rowsResult != nil {
-					rows = rowsResult.Entries
-					total = rowsResult.TotalCount
+				if page != nil {
+					rows = page.Entries
+					total = page.TotalCount
 				}
-				var httpErr *httperrors.HTTPError
-				require.ErrorAs(t, err, &httpErr)
-				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-				assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter_OutputField, httpErr.ErrorCode)
+				var output *interfaces.OutputFieldError
+				require.ErrorAs(t, err, &output)
+				assert.Equal(t, interfaces.OutputFieldUnknown, output.Reason)
+				assert.Equal(t, "missing", output.Field)
 				assert.Nil(t, rows)
 				assert.Zero(t, total)
 				assert.Equal(t, fields, params.OutputFields)
@@ -269,7 +323,7 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
 			factory := mock_interfaces.NewMockConnectorFactory(ctrl)
 			connector := mock_interfaces.NewMockTableConnector(ctrl)
-			resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable}
+			resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "value", Type: interfaces.DataType_String}}}
 			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
 			factory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMariaDB, gomock.Any()).Return(connector, nil)
 			connector.EXPECT().Connect(gomock.Any()).Return(nil)
@@ -280,25 +334,27 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 			}
 			connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, fmt.Errorf("build query: %w", cause))
 			rds := &resourceDataService{cs: catalogs, cf: factory}
-			rowsResult, err := rds.QuerySourcePage(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-			var rows []map[string]any
-			var total int64
-			if rowsResult != nil {
-				rows = rowsResult.Entries
-				total = rowsResult.TotalCount
-			}
 			if tc.stored {
+				page, err := rds.QuerySourcePage(t.Context(), resource, &interfaces.ResourceDataQueryParams{})
+				var rows []map[string]any
+				var total int64
+				if page != nil {
+					rows = page.Entries
+					total = page.TotalCount
+				}
 				var stored *interfaces.StoredConditionBuildError
 				require.ErrorAs(t, err, &stored)
 				require.ErrorIs(t, err, cause)
+				assert.Nil(t, rows)
+				assert.Zero(t, total)
 			} else {
+				result, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 				assert.Equal(t, tc.code, httpErr.ErrorCode)
+				assert.Nil(t, result)
 			}
-			assert.Nil(t, rows)
-			assert.Zero(t, total)
 		})
 	}
 	t.Run("index source preserves wrapped stored condition failures", func(t *testing.T) {
@@ -780,7 +836,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
 			Return(nil, cause)
 
-		_, err := rds.query(context.Background(), resource, params)
+		_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, params)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -1285,6 +1341,114 @@ func (e *codedQueryError) Error() string { return "source database error" }
 func (e *codedQueryError) Code() int     { return e.code }
 
 func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
+	t.Run("temporal errors stay typed internally and become HTTP 400 publicly", func(t *testing.T) {
+		for _, category := range []string{interfaces.ResourceCategoryIndex, interfaces.ResourceCategoryTable} {
+			for _, mode := range []interfaces.PagingMode{"internal", interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
+				for _, stored := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/mode=%s/stored=%v", category, mode, stored), func(t *testing.T) {
+						ctrl := gomock.NewController(t)
+						catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+						resources := mock_interfaces.NewMockResourceService(ctrl)
+						resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: category, SourceIdentifier: "index",
+							SchemaDefinition: []*interfaces.Property{{Name: "created", Type: interfaces.DataType_Datetime}}}
+						catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: "index"}, nil)
+						temporal := interfaces.NewTemporalRangeError("created", "date_nanos", 2147483647, "day")
+						var cause error = temporal
+						if stored {
+							cause = interfaces.NewStoredConditionBuildError(cause)
+						}
+						wrapped := fmt.Errorf("private source: %w", cause)
+						service := &resourceDataService{cs: catalogs, rs: resources}
+						if category == interfaces.ResourceCategoryIndex {
+							connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+							index := mock_interfaces.NewMockIndexConnector(ctrl)
+							connectors.EXPECT().CreateConnectorInstance(gomock.Any(), "index", gomock.Any()).Return(index, nil)
+							index.EXPECT().Connect(gomock.Any()).Return(nil)
+							index.EXPECT().Close(gomock.Any()).Return(nil)
+							index.EXPECT().ExecuteQuery(gomock.Any(), "index", resource, gomock.Any()).Return(nil, wrapped)
+							service.cf = connectors
+						} else {
+							index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+							resource.LocalIndexName = "index"
+							resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+							index.EXPECT().ListDocuments(gomock.Any(), "index", resource, gomock.Any()).Return(nil, wrapped)
+							service.lim = index
+						}
+						params := &interfaces.ResourceDataQueryParams{}
+						if mode != "internal" {
+							params.Paging = interfaces.PagingRequest{Mode: mode, Limit: 1}
+							params.Sort = []*interfaces.SortField{{Field: "created", Direction: "asc"}}
+							resources.EXPECT().CheckResourcePermission(gomock.Any(), "resource", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+							result, err := service.QueryWithPaging(t.Context(), resource, params)
+							assert.Nil(t, result)
+							var httpErr *httperrors.HTTPError
+							require.ErrorAs(t, err, &httpErr)
+							assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+							assert.Equal(t, verrors.VegaBackend_Resource_QueryTimeOutOfRange, httpErr.ErrorCode)
+							assert.Equal(t, "created", httpErr.Metadata["field"])
+							assert.NotContains(t, httpErr.Error(), "private source")
+							return
+						}
+						page, err := service.QuerySourcePage(t.Context(), resource, params)
+						var rows []map[string]any
+						var total int64
+						if page != nil {
+							rows = page.Entries
+							total = page.TotalCount
+						}
+						assert.Nil(t, rows)
+						assert.Zero(t, total)
+						var got *interfaces.TemporalRangeError
+						require.ErrorAs(t, err, &got)
+						assert.Same(t, temporal, got)
+						var fixed *interfaces.StoredConditionBuildError
+						assert.Equal(t, stored, errors.As(err, &fixed))
+					})
+				}
+			}
+		}
+	})
+
+	t.Run("cursor continuation uses its cached source channel for error mapping", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := mock_interfaces.NewMockTableConnector(ctrl)
+		resource := &interfaces.Resource{ID: "mapper-cursor-table", CatalogID: "catalog", Enabled: true, Category: interfaces.ResourceCategoryTable,
+			LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil).Times(2)
+		connectors.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(connector, nil).Times(2)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil).Times(2)
+		connector.EXPECT().Close(gomock.Any()).Return(nil).Times(2)
+		gomock.InOrder(
+			connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 1}, {"id": 2}}}, nil),
+			connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+					require.NotNil(t, actual.IgnoreLocalIndex)
+					assert.True(t, *actual.IgnoreLocalIndex)
+					return nil, interfaces.NewConditionBuildError("invalid source query condition")
+				}),
+		)
+		service := &resourceDataService{cs: catalogs, cf: connectors}
+		ctx := interfaces.WithTrustedProxyRead(context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "mapper-cursor-owner"}))
+		ignore := true
+		first, err := service.QueryWithPaging(ctx, resource, &interfaces.ResourceDataQueryParams{
+			IgnoreLocalIndex: &ignore, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
+			Sort: []*interfaces.SortField{{Field: "id", Direction: "asc"}},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, first)
+		require.NotNil(t, first.Paging.NextCursor)
+		result, err := service.QueryWithPaging(ctx, resource, &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor},
+		})
+		assert.Nil(t, result)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+	})
 	newResource := func(category string) *interfaces.Resource {
 		return &interfaces.Resource{
 			ID: "resource-1", CatalogID: "catalog-1", Category: category, Enabled: true,
@@ -1310,15 +1474,8 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 			Return(nil, fmt.Errorf("execute source query: %w", interfaces.NewSourceQueryInvalidParameterError(
 				interfaces.SourceQueryInvalidParameterUnknownColumn, errors.New("private driver column details"))))
 
-		rowsResult, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var rows []map[string]any
-		var total int64
-		if rowsResult != nil {
-			rows = rowsResult.Entries
-			total = rowsResult.TotalCount
-		}
-		assert.Nil(t, rows)
-		assert.Zero(t, total)
+		result, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
+		assert.Nil(t, result)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -1342,15 +1499,8 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
 			Return(nil, fmt.Errorf("execute source query: %w", interfaces.NewSourceReadForbiddenError(errors.New("source database error"))))
 
-		rowsResult15, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var rows []map[string]any
-		var total int64
-		if rowsResult15 != nil {
-			rows = rowsResult15.Entries
-			total = rowsResult15.TotalCount
-		}
-		assert.Nil(t, rows)
-		assert.Zero(t, total)
+		result, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
+		assert.Nil(t, result)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
@@ -1374,7 +1524,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource.SourceIdentifier, resource, gomock.Any()).
 			Return(nil, interfaces.NewSourceReadForbiddenError(errors.New("source database error")))
 
-		_, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
@@ -1397,15 +1547,8 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource.SourceIdentifier, resource, gomock.Any()).Return(nil, cause)
 
-		rowsResult16, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var rows []map[string]any
-		var total int64
-		if rowsResult16 != nil {
-			rows = rowsResult16.Entries
-			total = rowsResult16.TotalCount
-		}
-		assert.Nil(t, rows)
-		assert.Zero(t, total)
+		result, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
+		assert.Nil(t, result)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -1429,7 +1572,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
 			Return(nil, interfaces.NewSourceReadForbiddenError(errors.New("source database error")))
 
-		_, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
@@ -1451,7 +1594,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, &codedQueryError{258})
 
-		_, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
@@ -1472,7 +1615,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, unsupported)
 
-		_, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
 		assertUnsupportedOperationHTTPError(t, err)
 	})
 
@@ -1492,7 +1635,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
 			Return(nil, interfaces.NewUnsupportedOperationError("regex", fmt.Errorf("the fileset query channel does not support this operation")))
 
-		_, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
 		assertUnsupportedOperationHTTPError(t, err)
 	})
 
@@ -1512,7 +1655,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
 			Return(nil, errors.New("connection reset by peer"))
 
-		_, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{})
 		var httpErr *httperrors.HTTPError
 		require.True(t, errors.As(err, &httpErr), "want an HTTPError, got %v", err)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
@@ -1775,7 +1918,7 @@ func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
 			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
 			models := mock_interfaces.NewMockModelFactoryService(ctrl)
-			resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": float64(1024)}}}}}}
+			resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": float64(1024)}}}}}}
 			field := "title_vector"
 			if _, text := tc.value.(string); text {
 				field = "title"
@@ -1789,25 +1932,19 @@ func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
 			if tc.name != "raw mismatch" {
 				index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"title": "example"}}, TotalCount: int64(1)}, tc.downstream)
 			}
-			rowsResult, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QuerySourcePage(context.Background(), resource, params)
-			var rows []map[string]any
-			var total int64
-			if rowsResult != nil {
-				rows = rowsResult.Entries
-				total = rowsResult.TotalCount
-			}
+			result, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, params)
 			if tc.status == 0 {
 				require.NoError(t, err)
-				assert.Equal(t, int64(1), total)
-				require.Len(t, rows, 1)
+				require.NotNil(t, result)
+				assert.Equal(t, int64(1), result.TotalCount)
+				require.Len(t, result.Entries, 1)
 				assert.Equal(t, "title_vector", cfg.Name)
 				return
 			}
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Nil(t, rows)
-			assert.Zero(t, total)
+			assert.Nil(t, result)
 			if tc.status == 400 {
 				assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
 				assert.Contains(t, httpErr.ErrorDetails, "3")
@@ -1831,7 +1968,7 @@ func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) 
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
 			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
 			models := mock_interfaces.NewMockModelFactoryService(ctrl)
-			resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
+			resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
 			cfg := &interfaces.FilterCondCfg{Name: "title_vector", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: make([]float32, 3)}
 			if tc.text {
 				cfg.Name = "title"
@@ -1847,26 +1984,21 @@ func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) 
 			if tc.backendFailure {
 				backendErr = errors.New("search failed: [400 Bad Request] Query vector has invalid dimension: 3. Dimension should be: 1024")
 			}
-			index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: expectedRows, TotalCount: int64(1)}, backendErr)
-			rowsResult, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QuerySourcePage(context.Background(), resource, params)
-			var rows []map[string]any
-			var total int64
-			if rowsResult != nil {
-				rows = rowsResult.Entries
-				total = rowsResult.TotalCount
-			}
+			index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: expectedRows, TotalCount: 1}, backendErr)
+			result, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, params)
 			if !tc.backendFailure {
 				require.NoError(t, err)
-				assert.Equal(t, expectedRows, rows)
-				assert.Equal(t, int64(1), total)
+				require.NotNil(t, result)
+				assert.Equal(t, expectedRows, result.Entries)
+				require.NotNil(t, result)
+				assert.Equal(t, int64(1), result.TotalCount)
 				return
 			}
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 			assert.Equal(t, verrors.VegaBackend_Resource_InternalError, httpErr.ErrorCode)
-			assert.Nil(t, rows)
-			assert.Zero(t, total)
+			assert.Nil(t, result)
 		})
 	}
 }
@@ -1943,26 +2075,29 @@ func TestResourceDataServiceQuerySourcePageKeywordLimit(t *testing.T) {
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
 			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
 			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
-			resource := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "status", Type: interfaces.DataType_String}}}
+			resource := &interfaces.Resource{Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "status", Type: interfaces.DataType_String}}}
 			params := &interfaces.ResourceDataQueryParams{}
 			var cause error = interfaces.NewKeywordLimitError("status", 256)
 			if stored {
 				cause = interfaces.NewStoredConditionBuildError(cause)
 			}
 			index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(nil, fmt.Errorf("build: %w", cause))
-			rowsResult, err := (&resourceDataService{cs: catalogs, lim: index}).QuerySourcePage(context.Background(), resource, params)
-			var rows []map[string]any
-			var total int64
-			if rowsResult != nil {
-				rows = rowsResult.Entries
-				total = rowsResult.TotalCount
-			}
-			assert.Nil(t, rows)
-			assert.Zero(t, total)
+			service := &resourceDataService{cs: catalogs, lim: index}
 			if stored {
+				page, err := service.QuerySourcePage(t.Context(), resource, params)
+				var rows []map[string]any
+				var total int64
+				if page != nil {
+					rows = page.Entries
+					total = page.TotalCount
+				}
+				assert.Nil(t, rows)
+				assert.Zero(t, total)
 				require.ErrorIs(t, err, cause)
 				return
 			}
+			result, err := service.QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, params)
+			assert.Nil(t, result)
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)

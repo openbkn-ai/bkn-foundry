@@ -460,6 +460,7 @@ components:
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Resource.InvalidParameter.*`：具体字段非法
+        - `VegaBackend.Resource.QueryTimeOutOfRange`：相对时间边界超出当前索引字段支持范围；metadata 包含 field、field_type、interval 和 unit
         - `VegaBackend.Resource.Duplicated.FieldFeatureType`：同一字段存在多个相同类型的特征
         - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`/`logical_view` 类资源
         - `VegaBackend.Dataset.*`：dataset 创建时 `schema_definition` 为空 / 字段名 / 长度 / 重复 / 类型 / 特征校验失败
@@ -971,6 +972,9 @@ components:
             引用 JSON、binary、other 等不支持索引过滤的字段时返回 400，不保存该定义。
             这些字段仍可作为视图输出字段；无索引源资源的固定条件仍按既有源端能力校验和执行。
             创建和更新均校验 datetime/date/time 常量，格式及时区规则见 resource-data.yaml 中 filter_condition。
+            Index 源或可用本地索引的 before 条件还须满足实际索引字段的时间值域；
+            超限时返回 400 VegaBackend.Resource.QueryTimeOutOfRange，metadata 包含
+            field、field_type、interval 和 unit，不保存不可执行的条件。源端查询不套用 date_nanos 的范围限制。
             datetime 不接受仅日期字符串，date/time 不接受时间戳；非法固定条件返回 HTTP 400
             `VegaBackend.LogicalView.InvalidParameter.LogicDefinition`，不保存该定义。
           type: object
