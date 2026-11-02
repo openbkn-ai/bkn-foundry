@@ -54,8 +54,17 @@ func (s *Store) ListTraceSummaryIdentities(ctx context.Context, query isessionst
 	}
 	limit := normalizeSummaryPageLimit(query.Limit)
 	pageArgs = append(pageArgs, limit+1, normalizeSummaryPageOffset(query.Offset))
+	receiptSource := "bkn_trace_receipts r"
+	if query.Scope.AccessProfile != nil && evidencevo.HasGlobalTraceAccess(*query.Scope.AccessProfile) &&
+		query.From.IsZero() && query.To.IsZero() {
+		// An unbounded global page visits nearly every receipt. The Trace-root
+		// index does not cover request_id, so a range scan causes a table lookup
+		// per receipt. Exclude only that index for this page read; keep COUNT's
+		// covering scan and the optimizer's choices for scoped/filtered queries.
+		receiptSource += " IGNORE INDEX (idx_bkn_trace_receipt_trace_root)"
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT r.trace_id, MIN(r.issued_at)
-		FROM bkn_trace_receipts r WHERE `+clause+`
+		FROM `+receiptSource+` WHERE `+clause+`
 		GROUP BY r.trace_id`+having+`
 		ORDER BY MIN(r.issued_at) DESC, r.trace_id ASC LIMIT ? OFFSET ?`, pageArgs...)
 	if err != nil {

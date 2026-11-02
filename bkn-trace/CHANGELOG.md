@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Avoid the non-covering Trace-root index scan on unbounded global-administrator Trace identity pages, reducing receipt table lookups while preserving live totals, ordering and cursor/offset semantics. Scoped, time-filtered and root-filtered queries retain their existing index choices; no cache or schema change is introduced (#2883).
+
 - Remove the redundant business-provenance bootstrap Job and account/Secret values; built-in Agent initialization remains owned by the existing SQL migration path (#2823).
 
 - Search projection retries recognized transient dependency failures within a finite recovery window, preserves safe failure/status diagnostics and confirmed retry/dead counters, and provides a read-only-by-default single-ID audited DLQ command. Explicit replay renews only the bounded search recovery window without rewriting immutable creation time or versions. No claim-query/schema changes or automatic historical replay. (#2779)
