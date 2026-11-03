@@ -41,6 +41,15 @@ func readSnapshot(ctx context.Context, storage kb.PublicationDatasets, record *i
 	return Restore([]byte(payload), record.RuntimeDigest, record.ModelFingerprint)
 }
 
+// LoadPublishedModel restores the acknowledged private model without consulting
+// the mutable project. Refresh keeps working when that project is archived.
+func LoadPublishedModel(ctx context.Context, storage kb.PublicationDatasets, record *interfaces.KBPublication) (*interfaces.Draft, error) {
+	if storage == nil || record == nil || record.State != "active" || record.RuntimeRowID == "" || record.RuntimeDigest == "" || record.ModelFingerprint == "" {
+		return nil, ErrInvalidSnapshot
+	}
+	return readSnapshot(ctx, storage, record)
+}
+
 // persistSnapshot permits a write only after a complete, explicit missing-row
 // result. A lost write acknowledgement is recovered by reading that same row;
 // an arbitrary read failure never becomes permission to replace it.

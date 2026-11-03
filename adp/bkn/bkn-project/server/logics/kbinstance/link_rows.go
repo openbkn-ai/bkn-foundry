@@ -26,14 +26,14 @@ type SystemLinkPlan struct {
 // must revalidate this snapshot digest and current model/source grants before
 // activating the set; a preview alone is never a permission to write.
 func PlanSystemLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, claims []SourceClaim, system *SystemSnapshot, terms []ConfirmedTermLink) (*SystemLinkPlan, error) {
-	return planIdentityLinks(build, draft, relation, claims, system, terms, false)
+	return planIdentityLinks(build, draft, relation, claims, system, terms, false, false)
 }
 
 func PlanNativeEntityLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, claims []SourceClaim, target *SystemSnapshot) (*SystemLinkPlan, error) {
-	return planIdentityLinks(build, draft, relation, claims, target, nil, true)
+	return planIdentityLinks(build, draft, relation, claims, target, nil, true, false)
 }
 
-func planIdentityLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, claims []SourceClaim, system *SystemSnapshot, terms []ConfirmedTermLink, native bool) (*SystemLinkPlan, error) {
+func planIdentityLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, claims []SourceClaim, system *SystemSnapshot, terms []ConfirmedTermLink, native, staged bool) (*SystemLinkPlan, error) {
 	if build == nil || draft == nil || relation == nil || !relation.Adopted || !kbconcept.LinkIdentityReady(draft.Items, relation) || system == nil || len(system.Digest) != 64 {
 		return nil, ErrInvalidBuild
 	}
@@ -52,7 +52,7 @@ func planIdentityLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relat
 	}
 	steps := map[string]int{}
 	for index, step := range build.Files {
-		if step.State != "succeeded" {
+		if !usableClaimStep(step, staged) {
 			return nil, ErrBuildChanged
 		}
 		document, err := DocumentID(step.File.KnowledgeBaseID, step.File.FileID)

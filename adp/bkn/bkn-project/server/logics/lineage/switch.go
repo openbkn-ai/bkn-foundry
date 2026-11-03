@@ -63,6 +63,17 @@ func (s *lineageService) SwitchConsumers(ctx context.Context, token string, line
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_InUseChanged).
 				WithErrorDetails(map[string]any{"network_id": from})
 		}
+		if s.refresh != nil {
+			refresh, err := s.refresh.Get(ctx, lineageID)
+			if err != nil {
+				return err
+			}
+			// A timed-out first write may already have succeeded. Preserve its
+			// target until the same durable application has finished recovering.
+			if refresh != nil && refresh.Pending != nil && refresh.Pending.ApplicationDigest != "" {
+				return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DataUpdateInProgress)
+			}
+		}
 		moved, err := s.moveSchedules(ctx, token, from, req.ToNetworkID, latest)
 		if err != nil {
 			return err

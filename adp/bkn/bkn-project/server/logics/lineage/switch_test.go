@@ -283,3 +283,27 @@ func Test_LineageService_Switch(t *testing.T) {
 		})
 	})
 }
+
+type switchRefreshJournal struct{ interfaces.KBRefreshAccess }
+
+func (*switchRefreshJournal) Get(context.Context, string) (*interfaces.KBRefreshRecord, error) {
+	return &interfaces.KBRefreshRecord{State: "attention", Pending: &interfaces.KBRefreshBatch{ApplicationDigest: "first-write-may-have-completed", ApplyIndex: 0}}, nil
+}
+func TestSwitchWaitsForUncertainRefreshApplication(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := pmock.NewMockBknBackendAccess(ctrl)
+	releases := pmock.NewMockReleaseAccess(ctrl)
+	id := newLineageID()
+	target := id + "_v1_0_0"
+	if _, err := realGS.InitLineage(context.Background(), id, definitions("A part.", "A supplier."), "init", author); err != nil {
+		t.Fatal(err)
+	}
+	releases.EXPECT().GetReleaseByNetworkID(gomock.Any(), target).Return(&interfaces.Release{LineageID: id, NetworkID: target}, true, nil)
+	releases.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(nil, false, nil)
+	service := &lineageService{gs: realGS, bba: backend, ra: releases, refresh: &switchRefreshJournal{}}
+	_, err := service.SwitchConsumers(context.Background(), token, id, interfaces.SwitchRequest{ToNetworkID: target}, interfaces.AccountInfo{ID: "owner", Type: "user"})
+	if err == nil {
+		t.Fatal("uncertain Dataset write lost its current target")
+	}
+	// No schedule moves or switch record are allowed before the batch recovers.
+}

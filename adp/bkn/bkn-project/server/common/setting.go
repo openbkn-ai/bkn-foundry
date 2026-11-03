@@ -66,14 +66,23 @@ type GitStoreSetting struct {
 	RootDir string `mapstructure:"rootDir"`
 }
 
+// RefreshSetting contains the confirmed soft gates for ordinary KB refresh.
+// Values are percentages and seconds; unavailable duration requires owner review.
+type RefreshSetting struct {
+	MaxChangedPercent  int   `mapstructure:"maxChangedPercent"`
+	MaxRemovedPercent  int   `mapstructure:"maxRemovedPercent"`
+	MaxDurationSeconds int64 `mapstructure:"maxDurationSeconds"`
+}
+
 // AppSetting contains application configuration.
 type AppSetting struct {
-	ServerSetting   ServerSetting             `mapstructure:"server"`
-	LogSetting      logger.LogSetting         `mapstructure:"log"`
-	OtelSetting     otel.OtelConfig           `mapstructure:"otel"`
-	GitStoreSetting GitStoreSetting           `mapstructure:"gitStore"`
-	DraftSetting    DraftSetting              `mapstructure:"draft"`
-	DepServices     map[string]map[string]any `mapstructure:"depServices"`
+	KBRefreshSetting RefreshSetting            `mapstructure:"kbRefresh"`
+	ServerSetting    ServerSetting             `mapstructure:"server"`
+	LogSetting       logger.LogSetting         `mapstructure:"log"`
+	OtelSetting      otel.OtelConfig           `mapstructure:"otel"`
+	GitStoreSetting  GitStoreSetting           `mapstructure:"gitStore"`
+	DraftSetting     DraftSetting              `mapstructure:"draft"`
+	DepServices      map[string]map[string]any `mapstructure:"depServices"`
 
 	DBSetting         libdb.DBSetting
 	HydraAdminSetting hydra.HydraAdminSetting
@@ -139,6 +148,9 @@ func NewSetting() *AppSetting {
 func initSetting(vp *viper.Viper) {
 	logger.Infof("Init Setting From File %s%s.%s", configPath, configName, configType)
 	vp.SetDefault("gitStore.rootDir", DefaultGitStoreRootDir)
+	vp.SetDefault("kbRefresh.maxChangedPercent", 20)
+	vp.SetDefault("kbRefresh.maxRemovedPercent", 10)
+	vp.SetDefault("kbRefresh.maxDurationSeconds", 600)
 	vp.SetDefault("draft.codeTableMaxRows", 500)
 	vp.SetDefault("draft.codeTableMaxColumns", 3)
 	vp.SetDefault("draft.adoptHitRate", 0.95)

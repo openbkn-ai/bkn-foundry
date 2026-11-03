@@ -356,7 +356,7 @@ func (s *Service) files(ctx context.Context, ranges []interfaces.KBSourceRange) 
 				cursor = page.NextCursor
 			}
 			if !found {
-				return nil, &kb.SourceError{StatusCode: 404}
+				return nil, &MissingCatalogError{KnowledgeBaseID: scope.KnowledgeBaseID, CatalogID: scope.CatalogID}
 			}
 		}
 		cursor := ""

@@ -27,6 +27,7 @@ import (
 func RegisterKnowledgeBaseResources(engine *gin.Engine) {
 	r := &restHandler{as: auth.NewAuthService(), ps: project.NewProjectService(), kbra: logics.KBRA, da: logics.DA}
 	r.registerKnowledgeBaseResources(engine)
+	r.registerKnowledgeBaseRefresh(engine)
 }
 
 func (r *restHandler) registerKnowledgeBaseResources(engine *gin.Engine) {

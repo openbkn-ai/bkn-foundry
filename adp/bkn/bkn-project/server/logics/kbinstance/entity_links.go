@@ -17,7 +17,7 @@ import (
 // prepareNativeLinks derives exact-number edges to the canonical entity rows
 // in this same verified plan. An omitted AI edge does not change the confirmed
 // identity rule; absent targets stay pending and no fuzzy match is invented.
-func prepareNativeLinks(ctx context.Context, reader kb.DatasetFileSnapshot, build *interfaces.KBBuild, draft *interfaces.Draft, claims []SourceClaim, fusion *EntityFusionPlan, result *preparedSystemLinks, guard func(context.Context) error) error {
+func prepareNativeLinks(ctx context.Context, reader kb.DatasetFileSnapshot, build *interfaces.KBBuild, draft *interfaces.Draft, claims []SourceClaim, fusion *EntityFusionPlan, result *preparedSystemLinks, guard func(context.Context) error, staged bool) error {
 	for _, relation := range draft.Items.RelationTypes {
 		if relation == nil || !relation.Adopted || relation.Document == nil || relation.DocumentMapping == nil || relation.DocumentMapping.Mode != "linking" {
 			continue
@@ -44,7 +44,7 @@ func prepareNativeLinks(ctx context.Context, reader kb.DatasetFileSnapshot, buil
 		}
 		digest := sha256.Sum256(raw)
 		snapshot.Digest = hex.EncodeToString(digest[:])
-		plan, err := PlanNativeEntityLinks(build, draft, relation, claims, snapshot)
+		plan, err := planIdentityLinks(build, draft, relation, claims, snapshot, nil, true, staged)
 		if err != nil {
 			return err
 		}

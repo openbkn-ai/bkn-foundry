@@ -96,6 +96,7 @@ type BknBackendAccess interface {
 
 // KnowledgeNetwork is what bkn-project reads of a bkn-backend network.
 type KnowledgeNetwork struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	Operations []string `json:"operations,omitempty"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
 }

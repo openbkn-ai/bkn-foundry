@@ -16,6 +16,7 @@ var (
 	KBBA           interfaces.KBBuildQueue
 	KBRefs         interfaces.KBReferenceAccess
 	KBPublications interfaces.KBPublicationAccess
+	KBRefreshes    interfaces.KBRefreshAccess
 	AA             interfaces.AuthAccess
 	RA             interfaces.ReleaseAccess
 	PA             interfaces.ProjectAccess
@@ -94,4 +95,8 @@ func SetBknAgentAccess(baa interfaces.BknAgentAccess) {
 
 func SetRegressionAccess(rga interfaces.RegressionAccess) {
 	RGA = rga
+}
+
+func SetKBRefreshAccess(access interfaces.KBRefreshAccess) {
+	KBRefreshes = access
 }

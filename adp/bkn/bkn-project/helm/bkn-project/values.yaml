@@ -98,6 +98,11 @@ config:
     maxSize: 100
   gitStore:
     rootDir: /data/git
+  # Ordinary published-source refresh soft gates. Unknown duration needs owner review.
+  kbRefresh:
+    maxChangedPercent: 20
+    maxRemovedPercent: 10
+    maxDurationSeconds: 600
   # Drafting an ontology from table structure. The keyword lists are business vocabulary.
   draft:
     codeTableMaxRows: 500

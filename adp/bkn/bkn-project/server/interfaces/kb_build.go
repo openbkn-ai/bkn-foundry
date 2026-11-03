@@ -63,14 +63,16 @@ type KBLinkingAccess interface {
 }
 
 type KBFileBuild struct {
-	Assessment    *KBAcceptanceCounts `json:"assessment,omitempty"`
-	File          KBResourceFile      `json:"file"`
-	State         string              `json:"state"`
-	AgentTaskID   string              `json:"agent_task_id,omitempty"`
-	AgentVersion  *int                `json:"agent_version,omitempty"`
-	PromptVersion *int                `json:"prompt_version,omitempty"`
-	ModelID       string              `json:"model_id,omitempty"`
-	RowsWritten   int64               `json:"rows_written"`
+	Model          string              `json:"model,omitempty"`
+	DurationMillis *int64              `json:"duration_millis,omitempty"`
+	Assessment     *KBAcceptanceCounts `json:"assessment,omitempty"`
+	File           KBResourceFile      `json:"file"`
+	State          string              `json:"state"`
+	AgentTaskID    string              `json:"agent_task_id,omitempty"`
+	AgentVersion   *int                `json:"agent_version,omitempty"`
+	PromptVersion  *int                `json:"prompt_version,omitempty"`
+	ModelID        string              `json:"model_id,omitempty"`
+	RowsWritten    int64               `json:"rows_written"`
 	// RowsDigest binds crash recovery to the complete, validated write set.
 	RowsDigest  string `json:"rows_digest,omitempty"`
 	InputDigest string `json:"input_digest,omitempty"`
