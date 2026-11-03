@@ -107,7 +107,7 @@ func (s *Service) scope(ctx context.Context, token string, target Target, draft 
 		}
 		seen[source.KnowledgeBaseID] = true
 		if _, err := s.Source.SummarizeFiles(kb.WithOperatorAuthorization(ctx, token), kb.SourceScope{KnowledgeBaseID: source.KnowledgeBaseID}, kb.FileQuery{}); err != nil {
-			return err
+			return providerError(err)
 		}
 	}
 	if len(seen) == 0 {
@@ -239,7 +239,7 @@ func (s *Service) Inspect(ctx context.Context, token string, target Target) (*Pl
 	}
 	verifier := &kbinstance.SystemLinkService{Datasets: datasets, Vega: s.Vega}
 	if _, err := verifier.VerifyCompleted(ctx, full, draft, guard); err != nil {
-		return nil, err
+		return nil, providerError(err)
 	}
 	var generation *interfaces.DraftDatasetPlan
 	for _, plan := range draft.Items.DatasetPlans {
@@ -296,11 +296,11 @@ func (s *Service) Prepare(ctx context.Context, token string, target Target) (*in
 	guard := func(check context.Context) error { return s.scope(check, token, target, plan.Draft, plan.Selection) }
 	owner, err := s.Storage.PublicationOwner(ctx)
 	if err != nil {
-		return nil, err
+		return nil, providerError(err)
 	}
 	catalog, err := s.Storage.Catalog(ctx, target.ProjectID)
 	if err != nil {
-		return nil, err
+		return nil, providerError(err)
 	}
 	spec, err := snapshotSpec(target.ProjectID, target.NetworkID, catalog, owner)
 	if err != nil {
@@ -355,11 +355,11 @@ func (s *Service) Prepare(ctx context.Context, token string, target Target) (*in
 			return nil, ErrInvalidSnapshot
 		}
 		if err := s.Source.Hold(kb.WithOperatorAuthorization(ctx, token), kb.SourceScope{KnowledgeBaseID: hold.KnowledgeBaseID}, kb.HoldRequest{ID: hold.ID, Versions: versions}); err != nil {
-			return nil, err
+			return nil, providerError(err)
 		}
 	}
 	if err := persistSnapshot(ctx, s.Storage, record, plan.Bundle, guard); err != nil {
-		return nil, err
+		return nil, providerError(err)
 	}
 	if err := guard(ctx); err != nil {
 		return nil, err
@@ -404,14 +404,14 @@ func (s *Service) Mount(ctx context.Context, token string, record *interfaces.KB
 	ids = slices.Compact(ids)
 	for _, id := range ids {
 		if _, err := s.Source.SummarizeFiles(kb.WithOperatorAuthorization(ctx, token), kb.SourceScope{KnowledgeBaseID: id}, kb.FileQuery{}); err != nil {
-			return err
+			return providerError(err)
 		}
 	}
 	if _, err := readSnapshot(ctx, s.Storage, record); err != nil {
-		return err
+		return providerError(err)
 	}
 	if err := s.Network.MountKnowledgeBases(ctx, token, record.NetworkID, ids); err != nil {
-		return err
+		return providerError(err)
 	}
 	ok, err := s.Store.MarkMounted(ctx, record.NetworkID, record.RuntimeDigest, time.Now().UnixMilli())
 	if err != nil {

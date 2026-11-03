@@ -39,3 +39,13 @@ func PublicError(ctx context.Context, err error) error {
 	// table-only releases. Preserve their existing outer error classification.
 	return err
 }
+
+// providerError marks the concrete KB/Vega/mount boundary. Unknown failures from
+// these providers must not expose private response bodies, while earlier Git or
+// draft-database failures keep the existing lineage error semantics.
+func providerError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.Join(kb.ErrUnavailable, err)
+}
