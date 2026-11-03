@@ -794,3 +794,19 @@ and retry the same checked plan after 30 seconds. They cannot release a batch,
 repeat inference or bypass a failed permission/model guard. Directory parsing,
 concurrent enumeration changes and transient source failures also retry after
 backoff without requiring an owner decision.
+
+
+### Recovering a disconnected concept proposal
+
+An owner may add optional `recover_task_id` (a canonical task UUID) to the existing
+`POST /projects/{id}/kb/concepts:extract` request after a client disconnect. The
+selection ID/revision and draft update time remain mandatory guards. The licensed
+provider reads that successful task as the current caller and requires the exact
+current sample input, existing model and response schema, known execution versions
+and no extra prompt/skill context. It never starts or retries inference. Missing
+provider support, unknown receipts, changed input or an unfinished task fail closed.
+
+Recovered proposals pass the unchanged evidence/model validation, current source
+permission checks and atomic candidate commit. They remain unadopted; original-text
+policy and human decisions are preserved. Private task input is request-local and
+excluded from business DTOs. No migration, Agent change or new queue is required.

@@ -210,6 +210,12 @@ type Concepts interface {
 	Extract(context.Context, ConceptRequest) (ConceptProposal, error)
 }
 
+// ConceptRecovery revalidates an already successful, caller-owned task against
+// the exact current input. Implementations must never start another inference.
+type ConceptRecovery interface {
+	Recover(context.Context, ConceptRequest, string) (ConceptProposal, error)
+}
+
 // UnavailableSource is the community default and the assembly skeleton until K1.
 type UnavailableSource struct{}
 

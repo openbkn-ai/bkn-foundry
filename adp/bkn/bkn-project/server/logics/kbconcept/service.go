@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/google/uuid"
+
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
 type ExtractRequest struct {
+	RecoverTaskID     string `json:"recover_task_id,omitempty"`
 	SelectionID       string `json:"selection_id"`
 	SelectionRevision int64  `json:"selection_revision"`
 	DraftUpdateTime   int64  `json:"draft_update_time"`
@@ -40,6 +43,12 @@ func conflict() error { return &kb.SourceError{StatusCode: 409} }
 // calls hold no database locks. Verified proposals join the existing draft by
 // an atomic snapshot guard; adoption and Dataset creation are later decisions.
 func (s *Service) Extract(ctx context.Context, token, project string, caller interfaces.AccountInfo, req ExtractRequest) (*ExtractResult, error) {
+	if req.RecoverTaskID != "" {
+		id, err := uuid.Parse(req.RecoverTaskID)
+		if err != nil || id.String() != req.RecoverTaskID {
+			return nil, &kb.SourceError{StatusCode: 400}
+		}
+	}
 	if req.SelectionID == "" || req.SelectionRevision < 1 || req.DraftUpdateTime < 0 || caller.ID == "" || caller.Type != "user" {
 		return nil, &kb.SourceError{StatusCode: 400}
 	}
@@ -114,7 +123,16 @@ func (s *Service) Extract(ctx context.Context, token, project string, caller int
 	if err = json.Unmarshal(raw, &input.Request.ExistingObjects); err != nil {
 		return nil, err
 	}
-	proposal, err := s.concepts.Extract(ctx, input.Request)
+	var proposal kb.ConceptProposal
+	if req.RecoverTaskID != "" {
+		recovery, supported := s.concepts.(kb.ConceptRecovery)
+		if !supported {
+			return nil, kb.ErrUnavailable
+		}
+		proposal, err = recovery.Recover(ctx, input.Request, req.RecoverTaskID)
+	} else {
+		proposal, err = s.concepts.Extract(ctx, input.Request)
+	}
 	if err != nil {
 		return nil, err
 	}

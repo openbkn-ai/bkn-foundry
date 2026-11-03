@@ -69,8 +69,10 @@ type BknAgentChatEvent struct {
 // BknAgentTask is a task as bkn-agent reports it. Output is set once it succeeded, FailureDetail
 // once it failed.
 type BknAgentTask struct {
-	TaskID  string `json:"task_id"`
-	AgentID string `json:"agent_id"`
+	// Input is private recovery evidence, never a business response or log field.
+	Input   json.RawMessage `json:"-"`
+	TaskID  string          `json:"task_id"`
+	AgentID string          `json:"agent_id"`
 	// Nil execution versions mean unknown (including legacy tasks), never v0.
 	// These are actual task results, not copies of the requested configuration.
 	AgentVersion  *int   `json:"agent_version,omitempty"`
