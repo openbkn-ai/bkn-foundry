@@ -11,24 +11,25 @@ import (
 )
 
 var (
-	DB     *sql.DB
-	KBRA   interfaces.KBResourceAccess
-	KBBA   interfaces.KBBuildQueue
-	KBRefs interfaces.KBReferenceAccess
-	AA     interfaces.AuthAccess
-	RA     interfaces.ReleaseAccess
-	PA     interfaces.ProjectAccess
-	DA     interfaces.DraftAccess
-	CA     interfaces.CheckAccess
-	IRA    interfaces.IDRegistryAccess
-	VA     interfaces.VegaAccess
-	IBA    interfaces.IndexBuildAccess
-	GS     interfaces.GitStore
-	BBA    interfaces.BknBackendAccess
-	EFA    interfaces.ExecutionFactoryAccess
-	RQA    interfaces.RequirementAccess
-	BAA    interfaces.BknAgentAccess
-	RGA    interfaces.RegressionAccess
+	DB             *sql.DB
+	KBRA           interfaces.KBResourceAccess
+	KBBA           interfaces.KBBuildQueue
+	KBRefs         interfaces.KBReferenceAccess
+	KBPublications interfaces.KBPublicationAccess
+	AA             interfaces.AuthAccess
+	RA             interfaces.ReleaseAccess
+	PA             interfaces.ProjectAccess
+	DA             interfaces.DraftAccess
+	CA             interfaces.CheckAccess
+	IRA            interfaces.IDRegistryAccess
+	VA             interfaces.VegaAccess
+	IBA            interfaces.IndexBuildAccess
+	GS             interfaces.GitStore
+	BBA            interfaces.BknBackendAccess
+	EFA            interfaces.ExecutionFactoryAccess
+	RQA            interfaces.RequirementAccess
+	BAA            interfaces.BknAgentAccess
+	RGA            interfaces.RegressionAccess
 )
 
 func SetDB(db *sql.DB) {

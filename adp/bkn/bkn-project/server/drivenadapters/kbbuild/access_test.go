@@ -18,7 +18,7 @@ func processRecord() *interfaces.KBBuildRecord {
 	return &interfaces.KBBuildRecord{InputHash: strings.Repeat("a", 64), Identity: interfaces.KBBuildIdentity{GrantID: "grant"}, Build: &interfaces.KBBuild{ID: "build", ProjectID: "project", NetworkID: "lineage", Owner: interfaces.AccountInfo{ID: "owner", Type: "user"}, Mode: "debug", State: "preparing", Revision: 1, SelectionID: "selection", SelectionRevision: 7, DraftUpdateTime: 10, DefinitionCommit: "commit", ModelFingerprint: strings.Repeat("b", 64), GenerationID: "generation", AgentVersion: 3, Files: []interfaces.KBFileBuild{{File: interfaces.KBResourceFile{KnowledgeBaseID: "1", FileID: "2", ContentVersionID: "3", SampleRole: "debug"}, State: "pending"}}, CreateTime: 11, UpdateTime: 11}}
 }
 func TestCreateBuildLocksAndRechecksOwnerSourceAndConfirmedDraft(t *testing.T) {
-	for _, scenario := range []string{"create", "busy", "archived", "owner_changed", "source_changed", "draft_changed"} {
+	for _, scenario := range []string{"create", "busy", "archived", "owner_changed", "source_changed", "draft_changed", "sealed"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			if err != nil {
@@ -43,6 +43,13 @@ func TestCreateBuildLocksAndRechecksOwnerSourceAndConfirmedDraft(t *testing.T) {
 						at = 12
 					}
 					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", at))
+					if at == 10 {
+						sealed := 0
+						if scenario == "sealed" {
+							sealed = 1
+						}
+						mock.ExpectQuery(regexp.QuoteMeta(sealedGenerations)).WithArgs("project", "generation").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(sealed))
+					}
 				}
 			}
 			if scenario == "create" || scenario == "busy" {
@@ -126,6 +133,7 @@ func TestSaveCannotChangeScopeOrUseExpiredOrForeignWorkerLease(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
 				if scenario == "save" {
 					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", 10))
+					mock.ExpectQuery(regexp.QuoteMeta(sealedGenerations)).WithArgs("project", "generation").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 					mock.ExpectExec("UPDATE "+table).WithArgs("running", int64(3), sqlmock.AnyArg(), sqlmock.AnyArg(), "worker", int64(100), int64(21), "project", "build", int64(2)).WillReturnResult(sqlmock.NewResult(0, 1))
 					mock.ExpectCommit()
 				} else {
@@ -183,6 +191,7 @@ func TestLeaseClaimCannotStealActiveWorkerAndTurnsStaleInputsIntoCleanupOnly(t *
 					mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
 					if scenario == "claim" {
 						mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", 10))
+						mock.ExpectQuery(regexp.QuoteMeta(sealedGenerations)).WithArgs("project", "generation").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 					}
 				}
 				state := "running"

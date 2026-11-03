@@ -42,16 +42,17 @@ var (
 )
 
 type lineageService struct {
-	gs  interfaces.GitStore
-	bba interfaces.BknBackendAccess
-	efa interfaces.ExecutionFactoryAccess
-	ds  interfaces.DriftService
-	ra  interfaces.ReleaseAccess
+	newKnowledgePublication func(interfaces.GitStore) knowledgePublication
+	gs                      interfaces.GitStore
+	bba                     interfaces.BknBackendAccess
+	efa                     interfaces.ExecutionFactoryAccess
+	ds                      interfaces.DriftService
+	ra                      interfaces.ReleaseAccess
 }
 
 func NewLineageService() interfaces.LineageService {
 	lsOnce.Do(func() {
-		ls = &lineageService{gs: logics.GS, bba: logics.BBA, efa: logics.EFA, ds: drift.NewDriftService(), ra: logics.RA}
+		ls = &lineageService{newKnowledgePublication: newKnowledgePublisher, gs: logics.GS, bba: logics.BBA, efa: logics.EFA, ds: drift.NewDriftService(), ra: logics.RA}
 	})
 	return ls
 }
@@ -172,6 +173,14 @@ func (s *lineageService) CommitDefinitions(ctx context.Context, lineageID string
 func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, branch string,
 	files map[string][]byte, owned []string, message string,
 	author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+	return s.addDefinitions(ctx, lineageID, branch, files, nil, owned, message, author)
+}
+
+func (s *lineageService) AddModelDefinitions(ctx context.Context, lineageID, branch string, files map[string][]byte, rules []byte, owned []string, message string, author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+	return s.addDefinitions(ctx, lineageID, branch, files, &rules, owned, message, author)
+}
+
+func (s *lineageService) addDefinitions(ctx context.Context, lineageID, branch string, files map[string][]byte, rules *[]byte, owned []string, message string, author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "AddDefinitions")
 	defer span.End()
 
@@ -256,7 +265,16 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 				WithErrorDetails(details)
 		}
-		if result.Commit, err = gs.CommitFiles(ctx, lineageID, branch, merged, message, author); err != nil {
+		if rules != nil {
+			modelStore, ok := gs.(interfaces.ModelGitStore)
+			if !ok {
+				return fmt.Errorf("git store does not support model rule confirmation")
+			}
+			result.Commit, err = modelStore.CommitModel(ctx, lineageID, branch, merged, *rules, message, author)
+		} else {
+			result.Commit, err = gs.CommitFiles(ctx, lineageID, branch, merged, message, author)
+		}
+		if err != nil {
 			return err
 		}
 		diff, err := gs.Diff(ctx, lineageID, before, result.Commit)

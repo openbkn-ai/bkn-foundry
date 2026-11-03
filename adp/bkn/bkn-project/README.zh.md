@@ -126,7 +126,7 @@ bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出
 | GET | `/projects/{project_id}/requirements/questions/{question_id}/dev` | 该问题的指导：`status`（`generating`、`ready`，或 `failed` 并带 `error`，取值与起草规格相同）、生成时对应的 `spec_version` 和 `question`、`tests`、`guidance`（Markdown）、`out_of_scope`（由本问题引出、需要更多内容才能回答的问题）、`no_tests_reason`（一条都没保留时，Agent 说明的原因）、`tests_note`（读取时按问题和测试问法的核对结果计算的代码：问题有输入、但没有一条测试问法覆盖每个输入的概念时为 `inputs_untested`；有测试问法、但每条都指向问题所依赖条目中没有的概念或属性时为 `none_checkable`，否则省略）、`left_out_tests`、`deleted_tests`、`ontology_signature`、`current` 和 `ontology_changed`。每条测试问法有 `id`、`text`（已填入取值）、`kind`（`template`、`paraphrase`、`boundary`、`not_exist`、`variant` 或空）、`by_server`（由服务端按模板写出）、`slots`（`concept_id`、`property`、`value`，以及 `value_from`：取值来自问题所需某条关系能到达的记录时，关系另一端的对象类）、`expect`（`exists`；`not_exists`，第一个槽位指不应存在的记录；或 `same_record`：有空槽位、且有已通过的服务端 `template` 测试问法时，槽位合起来须指该测试问法的那条记录，空槽位从该记录取值；取值全部来自文档、或没有该测试问法时，其中两个槽位须指同一条记录）、`edited` 和 `check`（`outcome` 为 `passed`、`failed` 或 `not_checked`，`reason` 见下）。规格重新起草或问题改写之后 `current` 为 false，回归不再问它的测试问法。问题所需的已起草条目在生成之后有变化时（ID、是否采用、所在的表、唯一标识、属性的名称、类型和字段、关系两端和映射；不含名称和描述），`ontology_changed` 为 true，没有变化为 false，无法判断时为 null；它只作提示，重新生成即恢复。该问题还没有指导时 404 `Requirement.TestNotFound` 核对原因：`pending`（尚未核对）、`record_not_found`、`record_exists`（应不存在的记录存在）、`different_records`（两种标识指向了两条记录）、`no_values`（没有槽位）、`unknown_concept`、`concept_not_mapped`（概念未对应对象类）、`item_not_drafted`、`unknown_property`、`property_not_mapped`（没有字段）、`same_record_needs_two_values`（此规则之前保留的测试；服务端没写 template 测试时，现在不保留只用一个取值指同一记录的测试）、`same_record_needs_one_object_type`、`composite_identity`（多字段标识上的 same_record）、`query_failed`、`query_forbidden`（调用者无权读取测试所问的数据）、`table_missing`（测试读取的表已在 vega 中不存在，包括槽位所属对象类的表和问题所依赖条目的表；vega 对已删除表的查询同样回 403；每次核对只在第一次被拒时询问 vega 一次，vega 没有答复时仍为 `query_forbidden`）、`excluded_field`（隐私规则排除的字段从不读取）、`no_value_in_data`、`no_absent_value`（真实取值改写后的形式都存在；只有带数字的取值才有改写形式，即把最后一段数字全换成 9、再全换成 0，名称没有）、`value_not_in_text`（文本没有写出文档给出的取值，或缺少空槽位的占位）、`value_outside_slot`（文本写了没有槽位承载、问题和规则也都没写的数字、日期、时间或编码；带单位的数字如 14-day 按其数字比较）、`check_timeout`。 |
 | PUT | `/projects/{project_id}/requirements/questions/{question_id}/tests/{test_id}` | 修改已就绪指导中的一条测试问法：请求体 `{"update_time","text","expect","slots"}`，后三项任选。该条标为 `edited`，并以调用者身份按当前规格重新核对数据。返回指导。仅负责人。400 `Requirement.MissingUpdateTime`、`Requirement.InvalidTest`（什么都没改、文本为空或超过 2000 个字符、未知的 `expect` 或概念）；403 `Requirement.NotOwner`；404 `Requirement.TestNotFound`，没有就绪规格时 `Requirement.NotFound`；409 `Requirement.Drafting`、`Requirement.Generating`、`Requirement.Stale`（`update_time` 之后已被修改）、`Requirement.ProjectArchived` |
 | DELETE | `/projects/{project_id}/requirements/questions/{question_id}/tests/{test_id}?update_time=` | 删除一条测试问法，计入 `deleted_tests`；不必等规格就绪。返回指导。仅负责人：403 `Requirement.NotOwner`；400 `Requirement.MissingUpdateTime`（无法解析时也是）；404 `Requirement.TestNotFound`；409 `Requirement.Generating`、`Requirement.Stale`、`Requirement.ProjectArchived` |
-| GET | `/projects/{project_id}/release-review?version=X.Y.Z` | 把项目分支发布为 `version` 会带来什么，以调用方身份读取，不做任何改动。`checks` 按顺序列出 8 项发布检查，每项有 `code`、`passed`，未通过时有 `reason`，负责人可以接受后仍发布时有 `accept`，以及 `details`：`confirmed`（`not_confirmed`、`confirmation_outdated`）；`mapped`，本次确认写入的每个对象类都绑定了表、有主键、每个属性都映射到字段（`mapping_missing`，列出对象类）；`data_source`，分支上每个对象类读取的表、每个经连接表关联的关系类的连接表在 vega 中都还在，按调用者读取（`table_missing`，列出所读的表已不存在的条目，即 vega 在 `GET /resources/{ids}?ignore_missing=true` 中省略的表；`data_source_unreadable` 表示 vega 没有答复；两者都不能接受；调用者无权查看的表按存在处理）；`names`，新增的对象类、关系类与分支上同类的名称不相同（忽略大小写、全半角和首尾空白，`duplicate_names`），也不近似（去掉分隔符后相同，或长度不少于 4 个字符时只差一个字符，`similar_names`，可接受；`details.same`、`details.similar` 把新增项与另一项成对列出）；`drift`（漂移报告）；`check`，本次确认的校验已通过（`check_not_run`、`check_running`、`check_issues`、`check_failed`，或 `check_partial`，可接受）；`index`，每个已采纳对象类的索引都是 `ready`（`index_not_ready` 带各状态计数，或 `index_unreadable`；都可接受，未就绪只影响全文和向量检索）；`baseline`，线上版本仍是分支开始时的版本（`branch_behind`：先同步分支）。`refusals` 是发布本身会被拒绝的原因（如 `Release.VersionExists`、`Release.NetworkExists`）。`accepts` 是负责人需要接受的项，已排序；有不可接受的检查未通过或有拒绝原因时 `blocked` 为真。`changes`（新增、改动、移除的对象类和关系类，`kind`、`id`、`name`；`other` 是其他定义的改动数）；`risks`（`existing`，被改动或移除的线上内容；`orphans`，部分记录找不到对应记录的关系类及数量；`copies`，要复制为新 id 的函数和 Skill 数；`only_additions`）；`release`（`tag`、`network_id`、`network_name`、`live_network_id`、`base_version` 和提交）；`capabilities`，每个函数和 Skill 是复用还是复制，以及原因 `reasons`；`questions`，知识类场景问题按所需内容分组——`answerable_new`（发布后才能回答）、`affected`（现在能回答，但发布会改动或删除其所需内容）、`unanswerable`（附 `missing`，发布缺少的内容，以及 `unconnected`：所需对象类中，草稿里没有任何不超过两条已采用关系的路径把它们连起来的对象类对，`from` 和 `to` 带名称）——每个问题带 `needs` 和 `path`，即草稿中把所需对象类连起来的关系类和中间对象类，生成审阅时推导，与所需内容一样判断（人设定的所需内容不推导）；`total`、`unjudged`（没有写出所需内容的问题数）、`spec_version`；`signature`。400 `Release.InvalidVersion`；404 同 `GET /projects/{project_id}` |
+| GET | `/projects/{project_id}/release-review?version=X.Y.Z` | 把项目分支发布为 `version` 会带来什么，以调用方身份读取，不做任何改动。`checks` 按顺序列出 8 项标准发布检查（文档模型另加下述不可跳过的 `knowledge_base` 检查），每项有 `code`、`passed`，未通过时有 `reason`，负责人可以接受后仍发布时有 `accept`，以及 `details`：`confirmed`（`not_confirmed`、`confirmation_outdated`）；`mapped`，本次确认写入的每个对象类都绑定了表、有主键、每个属性都映射到字段（`mapping_missing`，列出对象类）；`data_source`，分支上每个对象类读取的表、每个经连接表关联的关系类的连接表在 vega 中都还在，按调用者读取（`table_missing`，列出所读的表已不存在的条目，即 vega 在 `GET /resources/{ids}?ignore_missing=true` 中省略的表；`data_source_unreadable` 表示 vega 没有答复；两者都不能接受；调用者无权查看的表按存在处理）；`names`，新增的对象类、关系类与分支上同类的名称不相同（忽略大小写、全半角和首尾空白，`duplicate_names`），也不近似（去掉分隔符后相同，或长度不少于 4 个字符时只差一个字符，`similar_names`，可接受；`details.same`、`details.similar` 把新增项与另一项成对列出）；`drift`（漂移报告）；`check`，本次确认的校验已通过（`check_not_run`、`check_running`、`check_issues`、`check_failed`，或 `check_partial`，可接受）；`index`，每个已采纳对象类的索引都是 `ready`（`index_not_ready` 带各状态计数，或 `index_unreadable`；都可接受，未就绪只影响全文和向量检索）；`baseline`，线上版本仍是分支开始时的版本（`branch_behind`：先同步分支）。`refusals` 是发布本身会被拒绝的原因（如 `Release.VersionExists`、`Release.NetworkExists`）。`accepts` 是负责人需要接受的项，已排序；有不可接受的检查未通过或有拒绝原因时 `blocked` 为真。`changes`（新增、改动、移除的对象类和关系类，`kind`、`id`、`name`；`other` 是其他定义的改动数）；`risks`（`existing`，被改动或移除的线上内容；`orphans`，部分记录找不到对应记录的关系类及数量；`copies`，要复制为新 id 的函数和 Skill 数；`only_additions`）；`release`（`tag`、`network_id`、`network_name`、`live_network_id`、`base_version` 和提交）；`capabilities`，每个函数和 Skill 是复用还是复制，以及原因 `reasons`；`questions`，知识类场景问题按所需内容分组——`answerable_new`（发布后才能回答）、`affected`（现在能回答，但发布会改动或删除其所需内容）、`unanswerable`（附 `missing`，发布缺少的内容，以及 `unconnected`：所需对象类中，草稿里没有任何不超过两条已采用关系的路径把它们连起来的对象类对，`from` 和 `to` 带名称）——每个问题带 `needs` 和 `path`，即草稿中把所需对象类连起来的关系类和中间对象类，生成审阅时推导，与所需内容一样判断（人设定的所需内容不推导）；`total`、`unjudged`（没有写出所需内容的问题数）、`spec_version`；`signature`。400 `Release.InvalidVersion`；404 同 `GET /projects/{project_id}` |
 | POST | `/projects/{project_id}/releases` | 请求体 `{"version","notes","signature","accepts"}`。重新检查一遍，`signature` 与检查结果一致、且每项检查都已通过或在 `accepts` 中（只能是 `similar_names`、`check_partial`、`index_not_ready`）时，经谱系（`POST /lineages/{lineage_id}/releases`）发布项目分支。接受的项以代码形式写在发布说明的 `Accepted: ` 一行。返回 201，内容同谱系接口；随后以发布者身份在后台启动这次发布的回归（见 `regression`），回归不会让发布失败或被撤销。仅负责人：403 `Release.NotOwner`。400 `Release.InvalidRequestBody`、`Release.InvalidAccepts`；409 `Release.ProjectArchived`、`Release.ReviewOutdated`（发布确认之后分支、main 或草稿又变了，`error_details.signature` 是当前的签名：重新打开发布确认）、`Release.ChecksFailed`（`error_details`：未通过的 `checks`、`refusals`、`accepts`），以及谱系自身的拒绝 |
 | POST | `/projects/{project_id}/branch:sync` | 把线上版本（`main`）同步进项目分支，返回同 `POST /lineages/{lineage_id}/branches/{branch}/sync`；冲突返回 409 `Lineage.MergeConflict`。仅负责人：403 `Release.NotOwner`；409 `Release.ProjectArchived` |
 | POST | `/projects/{project_id}/drift:commit` | 把线上网络（最新发布，首次发布前为谱系起点网络）上的直接修改提交到 `main`，再同步项目分支：返回 `{"drift","sync"}`。仅负责人：403 `Release.NotOwner`；409 `Release.ProjectArchived`、`Lineage.MergeConflict` |
@@ -493,3 +493,45 @@ AI 不能选择知识融合，改名或改类型会使旧选择失效。
 
 共享术语、派生变更事件、独立外部关联验收指标和K6发布刷新仍须继续交付。本次未
 部署环境或完成真实PDF验收。
+
+
+### 知识库发布与固定模型
+
+复用现有发布审阅与发布接口。`GET /projects/{project_id}/release-review` 对文档模型
+新增不可接受后继续发布的 `knowledge_base` 检查；通过时 `details.original_documents`
+显示开启原文纳入网络检索的文件份数，其他文件仅保留证据定位。未通过时返回
+`knowledge_base_not_ready`、`knowledge_base_permission` 或
+`knowledge_base_unavailable`。签名绑定已确认完成的全量任务、Dataset 代际、独立
+验收版本及关联融合结果；进入谱系锁后再次检查分支提交。纯表来源沿用既有检查，
+不要求知识库提供者。
+
+项目发布与直接谱系发布都实时复核发布人的知识库 `query_data` 权限、已确认模型和
+来源版本、完整成功的全量文件、独立验收及已确认的关联融合结果。对象、关系及属性
+实际绑定的 Dataset 必须与准备代际一致，仅语义指纹一致还不够。检查未通过时不创建
+标签、不导入网络、不记录发布。
+
+确认模型时，BKN 定义与允许的逻辑规则 `project/knowledge-base.json` 原子提交。
+Git 不存原文引文、样本定位、审核人凭证或过程历史。发布把完整执行模型及原证据
+保存在专用私有 Vega `published_model` Dataset，仅由配置的存储应用拥有；过程表
+只存引用、决定及私有保留登记编号，不存模型／实例正文或用户令牌。这些记录是内部
+数据，不得序列化到业务接口。
+
+先持久化发布意图，再为内容版本创建独立保留登记和固定快照；读回完整快照核验后，
+事务封存代际，与后续构建、关联写入互斥。已有快照不可覆盖：写入响应丢失后通过
+读回恢复，读失败或内容损坏都不能当作不存在。失败意图及其登记保留给相同请求重试；
+本特性尚不提供废弃意图的清理。来源替换和项目归档不会释放发布专用登记。
+
+网络导入成功后，按发布人身份调用后端已有能力挂载接口；全部挂载确认后才记录发布。
+后端负责知识网络代理的知识库授权。新增业务错误：403 `Release.SourcePermission`、
+409 `Release.KnowledgeBaseNotReady`、503 `Release.KnowledgeBaseUnavailable`；
+界面翻译成业务提示，不显示存储编号。激活须匹配已保存的发布记录，并使用固定模型
+引用，不依赖项目后续编辑。
+
+**升级要求：** 先备份、执行迁移 `15-kb-publication.sql`，再部署新二进制；只使用构建
+的环境也需要该迁移。新安装的 `init.sql` 已含相同表，迁移可重放。本特性没有 Agent
+迁移或 Safe SQL。自动数据刷新、发布记录写入后激活失败的恢复、跨项目文档模型继承
+及剩余 K5 验收另行交付。本地测试不代表已部署 8081 或通过真实 PDF 验收。
+
+本特性之前已确认的文档项目须重新确认并完成全量构建，才能发布固定规则；不静默
+追认或迁移旧任务。普通发布记录提交后，激活确认失败只记运维警告，继续主线和项目
+分支同步；已挂载代际仍保持封存。激活标记的自动修复仍属后续工作。
