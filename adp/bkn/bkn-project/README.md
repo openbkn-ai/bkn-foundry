@@ -697,7 +697,9 @@ has not been deployed or accepted against real PDFs.
 
 The existing release review and publish endpoints also check document models.
 `GET /projects/{project_id}/release-review` adds a non-acceptable `knowledge_base`
-check with `knowledge_base_not_ready`, `knowledge_base_permission` or
+check. On success, `details.original_documents` counts the selected files whose originals
+will enter network search; other files retain evidence locators only. Failures use
+`knowledge_base_not_ready`, `knowledge_base_permission` or
 `knowledge_base_unavailable` when blocked. Its signature binds the acknowledged
 full build, Dataset generation, independent assessment revision and completed
 link/fusion recipe. A changed branch head is refused inside the lineage lock.

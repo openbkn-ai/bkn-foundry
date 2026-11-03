@@ -209,7 +209,17 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 				}
 			}
 		}
-		review.Checks = append(review.Checks, interfaces.ReleaseCheck{Code: "knowledge_base", Passed: inspectErr == nil && inspected != nil, Reason: reason})
+		check := interfaces.ReleaseCheck{Code: "knowledge_base", Passed: inspectErr == nil && inspected != nil, Reason: reason}
+		if check.Passed {
+			originals := 0
+			for _, file := range inspected.Selection.Files {
+				if file.IncludeOriginal {
+					originals++
+				}
+			}
+			check.Details = map[string]int{"original_documents": originals}
+		}
+		review.Checks = append(review.Checks, check)
 		knowledgePlan = inspected
 	}
 

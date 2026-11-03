@@ -498,7 +498,8 @@ AI 不能选择知识融合，改名或改类型会使旧选择失效。
 ### 知识库发布与固定模型
 
 复用现有发布审阅与发布接口。`GET /projects/{project_id}/release-review` 对文档模型
-新增不可接受后继续发布的 `knowledge_base` 检查；未通过时返回
+新增不可接受后继续发布的 `knowledge_base` 检查；通过时 `details.original_documents`
+显示开启原文纳入网络检索的文件份数，其他文件仅保留证据定位。未通过时返回
 `knowledge_base_not_ready`、`knowledge_base_permission` 或
 `knowledge_base_unavailable`。签名绑定已确认完成的全量任务、Dataset 代际、独立
 验收版本及关联融合结果；进入谱系锁后再次检查分支提交。纯表来源沿用既有检查，
