@@ -22,6 +22,9 @@ type IndexCapabilities struct {
 //
 //go:generate mockgen -source ../interfaces/local_index_manager.go -destination ../interfaces/mock/mock_local_index_manager.go
 type LocalIndexManager interface {
+	// ValidateFilterCondition 复用本地索引查询转换校验完整条件树，不连接索引。
+	ValidateFilterCondition(condition FilterCondition, properties []*Property) error
+
 	ListIndexes(ctx context.Context) ([]*IndexMeta, error)
 	GetIndexMeta(ctx context.Context, index *IndexMeta) error
 	CreateIndex(ctx context.Context, indexName string, schema []*Property, mappingMeta map[string]string) error

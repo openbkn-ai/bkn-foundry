@@ -1060,29 +1060,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionFalse(condition interfaces.F
 	}, nil
 }
 
-// ValidateBeforeConditions 供保存校验复用执行时的相对时间检查，不连接索引。
-// 遍历完整条件树，避免 AND/OR 短路或向量子过滤绕过检查。
-func ValidateBeforeConditions(condition interfaces.FilterCondition, now time.Time) error {
-	var children []interfaces.FilterCondition
-	switch cond := condition.(type) {
-	case *filter_condition.BeforeCond:
-		_, err := indexBeforeQuery(cond, now)
-		return err
-	case *filter_condition.AndCond:
-		children = cond.SubConds
-	case *filter_condition.OrCond:
-		children = cond.SubConds
-	case *filter_condition.KnnVectorCond:
-		children = cond.SubConds
-	}
-	for _, child := range children {
-		if err := ValidateBeforeConditions(child, now); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // ConvertFilterConditionBefore converts a BeforeCond to OpenSearch DSL.
 func (c *OpenSearchConnector) ConvertFilterConditionBefore(condition interfaces.FilterCondition) (map[string]any, error) {
 
@@ -1104,19 +1081,6 @@ func indexBeforeQuery(cond *filter_condition.BeforeCond, now time.Time) (map[str
 		return nil, interfaces.NewConditionBuildError("before unit must be a string")
 	}
 	fieldName := propertyPhysicalFieldName(cond.Lfield)
-	// 兼容既有索引定义的 [小时数, RFC3339 参考时刻]，保持其原有查询边界。
-	if reference, err := time.Parse(time.RFC3339, unit); err == nil {
-		interval, ok := common.NumberAsFloat64(cond.Value[0])
-		if !ok {
-			return nil, interfaces.NewConditionBuildError("before interval must be a number")
-		}
-		// 旧格式仅发送秒级边界，校验使用相同精度，保持既有查询语义。
-		cutoff := reference.Add(-time.Duration(interval) * time.Hour).Truncate(time.Second)
-		if err := validateIndexTimeBoundary(cond, cutoff, int64(interval), "hour"); err != nil {
-			return nil, err
-		}
-		return map[string]any{"range": map[string]any{fieldName: map[string]any{"lt": cutoff.Format(time.RFC3339)}}}, nil
-	}
 	interval, ok := common.NumberAsInt64(cond.Value[0])
 	// 保持既有索引 before 条件的间隔上限。
 	if !ok || interval <= 0 || interval > math.MaxInt32 {

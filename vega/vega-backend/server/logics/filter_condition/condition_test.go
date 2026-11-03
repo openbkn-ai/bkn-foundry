@@ -317,7 +317,7 @@ func TestNewFilterCondition(t *testing.T) {
 		}},
 		{name: "before normalizes json number interval", cfg: constCfg("created_at", OperationBefore, []any{json.Number("3"), CurrentDay}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
 			got := cond.(*BeforeCond)
-			assert.Equal(t, []any{float64(3), CurrentDay}, got.Value)
+			assert.Equal(t, []any{int64(3), CurrentDay}, got.Value)
 		}},
 		{name: "current accepts supported unit", cfg: constCfg("created_at", OperationCurrent, CurrentMonth), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
 			got := cond.(*CurrentCond)
@@ -395,7 +395,7 @@ func TestNewFilterCondition(t *testing.T) {
 		errContain string
 	}{
 		{name: "range rejects string field", cfg: constCfg("name", OperationRange, []any{1, 2}), errContain: "not a date/number field"},
-		{name: "before rejects nonnumeric interval", cfg: constCfg("created_at", OperationBefore, []any{"invalid", CurrentDay}), errContain: "interval value should be an number"},
+		{name: "before rejects nonnumeric interval", cfg: constCfg("created_at", OperationBefore, []any{"invalid", CurrentDay}), errContain: "positive integer"},
 		{name: "current rejects unsupported unit", cfg: constCfg("created_at", OperationCurrent, "quarter"), errContain: "right value should be"},
 		{name: "multi match requires fields array", cfg: constCfg("", OperationMultiMatch, "hello"), errContain: "'fields' value should be an array"},
 		{name: "multi match rejects unknown match type", cfg: &interfaces.FilterCondCfg{

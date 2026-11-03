@@ -333,6 +333,21 @@ func (mr *MockTableConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connect", reflect.TypeOf((*MockTableConnector)(nil).Connect), ctx)
 }
 
+// ConvertFilterCondition mocks base method.
+func (m *MockTableConnector) ConvertFilterCondition(filter interfaces.FilterCondition, properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) (sqlbuilder.SqlNode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConvertFilterCondition", filter, properties, columns)
+	ret0, _ := ret[0].(sqlbuilder.SqlNode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConvertFilterCondition indicates an expected call of ConvertFilterCondition.
+func (mr *MockTableConnectorMockRecorder) ConvertFilterCondition(filter, properties, columns any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConvertFilterCondition", reflect.TypeOf((*MockTableConnector)(nil).ConvertFilterCondition), filter, properties, columns)
+}
+
 // CountRows mocks base method.
 func (m *MockTableConnector) CountRows(ctx context.Context, sourceIdentifier string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -1680,6 +1695,21 @@ func (m *MockIndexConnector) Connect(ctx context.Context) error {
 func (mr *MockIndexConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connect", reflect.TypeOf((*MockIndexConnector)(nil).Connect), ctx)
+}
+
+// ConvertFilterCondition mocks base method.
+func (m *MockIndexConnector) ConvertFilterCondition(filter interfaces.FilterCondition, properties []*interfaces.Property) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConvertFilterCondition", filter, properties)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConvertFilterCondition indicates an expected call of ConvertFilterCondition.
+func (mr *MockIndexConnectorMockRecorder) ConvertFilterCondition(filter, properties any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConvertFilterCondition", reflect.TypeOf((*MockIndexConnector)(nil).ConvertFilterCondition), filter, properties)
 }
 
 // CountRows mocks base method.

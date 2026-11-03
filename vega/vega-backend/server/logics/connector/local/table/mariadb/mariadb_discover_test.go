@@ -33,8 +33,8 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		{"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}, {"zero retained", int64(0), nil},
 	} {
 		t.Run("valid properties "+tc.name, func(t *testing.T) {
-			c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-			defer cleanup()
+			c, mock := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanupMariaDBConnectorMock(t, c, mock)
 			c.connected = true
 			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", nil, "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
 			tables, err := c.ListTables(context.Background())
@@ -63,8 +63,8 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		assert.False(t, connected)
 	})
 	t.Run("rejects database outside configured scope before querying", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 
 		tables, err := connector.listTables(context.Background(), "audit", "")
@@ -75,8 +75,8 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 	})
 
 	t.Run("allows explicit database with unrestricted scope", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, nil)
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
 			WithArgs("audit").WillReturnRows(mariaDBTableRows())
@@ -89,8 +89,8 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 	})
 
 	t.Run("accepts null optional metadata", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
@@ -106,8 +106,8 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 	})
 
 	t.Run("maps view metadata type", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
 			WithArgs("app").WillReturnRows(
@@ -123,8 +123,8 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 	})
 
 	t.Run("rejects null required metadata without exposing scan conversion error", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
@@ -142,8 +142,8 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 
 func TestMariaDBConnectorFetchColumns(t *testing.T) {
 	t.Run("query failure preserves cause and context", func(t *testing.T) {
-		c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-		defer cleanup()
+		c, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, c, mock)
 		cause := errors.New("source unavailable")
 		mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").WithArgs("app", "orders").WillReturnError(cause)
 		table := &interfaces.TableMeta{Database: "app", Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "old"}}}
@@ -156,8 +156,8 @@ func TestMariaDBConnectorFetchColumns(t *testing.T) {
 	})
 
 	t.Run("empty column metadata fails without replacing existing columns", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
 		table := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "old"}}}
 		require.ErrorContains(t, connector.fetchColumns(context.Background(), table), "column metadata is empty")
@@ -165,8 +165,8 @@ func TestMariaDBConnectorFetchColumns(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-	defer cleanup()
+	connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+	defer cleanupMariaDBConnectorMock(t, connector, mock)
 	mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").
 		WithArgs("app", "orders").
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -190,8 +190,8 @@ func TestMariaDBConnectorFetchColumns(t *testing.T) {
 
 func TestMariaDBConnectorGetMetadata(t *testing.T) {
 	t.Run("returns scan error", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, nil)
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery("SHOW GLOBAL VARIABLES").
 			WillReturnRows(sqlmock.NewRows([]string{"Variable_name"}).AddRow("version"))
@@ -205,8 +205,8 @@ func TestMariaDBConnectorGetMetadata(t *testing.T) {
 	})
 
 	t.Run("rejects null required name", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, nil)
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery("SHOW GLOBAL VARIABLES").
 			WillReturnRows(sqlmock.NewRows([]string{"Variable_name", "Value"}).AddRow(nil, "11.4.5"))
@@ -222,8 +222,8 @@ func TestMariaDBConnectorGetMetadata(t *testing.T) {
 
 func TestMariaDBConnectorListSchemas(t *testing.T) {
 	t.Run("default scope includes only databases with discovered tables", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, nil)
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery("SELECT DISTINCT TABLE_SCHEMA FROM information_schema\\.TABLES WHERE TABLE_SCHEMA NOT IN.*ORDER BY TABLE_SCHEMA").
 			WithArgs("information_schema", "mariadb", "mysql", "performance_schema", "sys").
@@ -237,8 +237,8 @@ func TestMariaDBConnectorListSchemas(t *testing.T) {
 	})
 
 	t.Run("configured scope retains existing empty databases", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "empty"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app", "empty"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN.*ORDER BY SCHEMA_NAME").
 			WithArgs("app", "empty").
@@ -252,8 +252,8 @@ func TestMariaDBConnectorListSchemas(t *testing.T) {
 	})
 
 	t.Run("configured scope omits missing databases", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "missing"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app", "missing"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN.*ORDER BY SCHEMA_NAME").
 			WithArgs("app", "missing").
@@ -391,8 +391,8 @@ func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 		{"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}, {"zero retained", int64(0), nil},
 	} {
 		t.Run("valid properties "+tc.name, func(t *testing.T) {
-			c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-			defer cleanup()
+			c, mock := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanupMariaDBConnectorMock(t, c, mock)
 			mock.ExpectQuery("SELECT TABLE_TYPE, AUTO_INCREMENT, ENGINE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION", "TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH"}).AddRow("BASE TABLE", tc.statistic, "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
 			previous := map[string]any{"legacy": true}
 			table := &interfaces.TableMeta{Name: "orders", Database: "app", Schema: "app", Properties: previous}
@@ -418,8 +418,8 @@ func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 		{name: "query failure preserves previous values", populated: true, queryFailure: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-			defer cleanup()
+			connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanupMariaDBConnectorMock(t, connector, mock)
 			metadata := map[string]any{"name": "orders", "schema": "app", "database": "app", "description": "old comment"}
 			if tc.populated {
 				metadata["properties"] = map[string]any{"auto_increment": int64(12), "create_time": int64(10), "update_time": int64(11), "charset": "utf8", "custom": "kept"}
@@ -511,8 +511,8 @@ func TestMariaDBConnectorListSchemasFiltersOutsideScope(t *testing.T) {
 }
 
 func TestMariaDBConnectorFetchIndexes(t *testing.T) {
-	c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-	defer cleanup()
+	c, mock := newMariaDBConnectorMock(t, []string{"app"})
+	defer cleanupMariaDBConnectorMock(t, c, mock)
 	cause := errors.New("source unavailable")
 	mock.ExpectQuery("SELECT INDEX_NAME, COLUMN_NAME").WithArgs("app", "orders").WillReturnError(cause)
 	table := &interfaces.TableMeta{Database: "app", Name: "orders", Indices: []interfaces.TableIndexMeta{{Name: "old"}}}
@@ -525,8 +525,8 @@ func TestMariaDBConnectorFetchIndexes(t *testing.T) {
 }
 
 func TestMariaDBConnectorFetchForeignKeys(t *testing.T) {
-	c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-	defer cleanup()
+	c, mock := newMariaDBConnectorMock(t, []string{"app"})
+	defer cleanupMariaDBConnectorMock(t, c, mock)
 	cause := errors.New("source unavailable")
 	mock.ExpectQuery("SELECT CONSTRAINT_NAME, COLUMN_NAME").WithArgs("app", "orders").WillReturnError(cause)
 	table := &interfaces.TableMeta{Database: "app", Name: "orders", ForeignKeys: []interfaces.TableForeignKeyMeta{{Name: "old"}}}
@@ -553,8 +553,8 @@ func TestMariaDBConnectorListAndSingleTableStatusMatch(t *testing.T) {
 		{"maximum unsigned auto increment", "18446744073709551615", 18446744073709551615, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-			defer cleanup()
+			connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanupMariaDBConnectorMock(t, connector, mock)
 			connector.connected = true
 			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").
 				WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", tc.raw, nil, nil, nil, nil, nil, nil, nil, nil))

@@ -421,7 +421,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build %s condition: %v", test.operation, err)
 			}
-			expression, err := connector.ConvertFilterCondition(condition)
+			expression, err := connector.ConvertFilterCondition(condition, nil, nil)
 			if err != nil {
 				t.Fatalf("convert %s condition: %v", test.operation, err)
 			}
@@ -442,7 +442,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build %s condition: %v", operation, err)
 			}
-			_, err = (&MariaDBConnector{}).ConvertFilterCondition(condition)
+			_, err = (&MariaDBConnector{}).ConvertFilterCondition(condition, nil, nil)
 			if err == nil {
 				t.Fatalf("expected MariaDB to reject %s for INT", operation)
 			}
@@ -536,7 +536,7 @@ func testFieldsMap() map[string]*interfaces.Property {
 // toSQL compiles a condition and fails the test if conversion or SQL serialization fails.
 func toSQL(t *testing.T, connector *MariaDBConnector, cond interfaces.FilterCondition) (string, []interface{}) {
 	t.Helper()
-	sqlizer, err := connector.ConvertFilterCondition(cond)
+	sqlizer, err := connector.ConvertFilterCondition(cond, nil, nil)
 	if err != nil {
 		t.Fatalf("ConvertFilterCondition failed: %v", err)
 	}
@@ -575,7 +575,7 @@ func TestMariaDBConnectorConvertFilterConditionCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
+			expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -604,11 +604,8 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationBefore, ValueFrom: interfaces.ValueFrom_Const, Value: []any{tc.value, "day"}}
-			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
-			if err != nil {
-				t.Fatal(err)
-			}
-			expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
+			cond := &filter_condition.BeforeCond{Cfg: cfg, Lfield: field, Value: cfg.Value.([]any)}
+			expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond, nil, nil)
 			if !tc.valid {
 				if err == nil || expr != nil {
 					t.Fatalf("expected rejection, got expression %v error %v", expr, err)
@@ -637,7 +634,7 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 		} {
 			t.Run(tc.unit, func(t *testing.T) {
 				cond := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2), tc.unit}}
-				expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
+				expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond, nil, nil)
 				if !tc.valid {
 					if err == nil || expr != nil {
 						t.Fatalf("expected unit rejection, got expression %v error %v", expr, err)
@@ -686,7 +683,7 @@ func TestMariaDBConnectorTemporalInputContract(t *testing.T) {
 						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, Value: value}
 						cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 						require.NoError(t, err)
-						expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
+						expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond, nil, nil)
 						require.NoError(t, err)
 						sql, args, err := render(expr)
 						require.NoError(t, err)
@@ -742,7 +739,7 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 		{"tinyint true", &filter_condition.TrueCond{Lfield: &interfaces.Property{Name: "x", Type: interfaces.DataType_Integer, OriginalType: "TINYINT(1)"}}, "(`x` <> 0)", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			node, err := connector.ConvertFilterCondition(tc.condition)
+			node, err := connector.ConvertFilterCondition(tc.condition, nil, nil)
 			require.NoError(t, err)
 			sql, args, err := render(node)
 			require.NoError(t, err)
@@ -753,7 +750,7 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 	t.Run("parsed LIKE is literal and parameters never become SQL", func(t *testing.T) {
 		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "x", Operation: filter_condition.OperationLike, Value: `O'Reilly\%_!`}, map[string]*interfaces.Property{"x": field})
 		require.NoError(t, err)
-		node, err := connector.ConvertFilterCondition(condition)
+		node, err := connector.ConvertFilterCondition(condition, nil, nil)
 		require.NoError(t, err)
 		sql, args, err := render(node)
 		require.NoError(t, err)
@@ -766,7 +763,7 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 		field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
 		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationEqual, Value: "2026-10-27T12:30:00.123456Z"}, map[string]*interfaces.Property{"created": field})
 		require.NoError(t, err)
-		node, err := connector.ConvertFilterCondition(condition)
+		node, err := connector.ConvertFilterCondition(condition, nil, nil)
 		require.NoError(t, err)
 		sql, args, err := render(node)
 		require.NoError(t, err)
@@ -778,14 +775,14 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 	})
 	t.Run("unsupported fulltext and interval syntax are rejected", func(t *testing.T) {
 		for _, condition := range []interfaces.FilterCondition{&filter_condition.MatchCond{}, &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(1), "day); DROP TABLE t"}}} {
-			node, err := connector.ConvertFilterCondition(condition)
+			node, err := connector.ConvertFilterCondition(condition, nil, nil)
 			assert.Error(t, err)
 			assert.Nil(t, node)
 		}
 	})
 	t.Run("composite conditions retain null semantics", func(t *testing.T) {
 		condition := &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{&filter_condition.NullCond{Lfield: field}, &filter_condition.OrCond{SubConds: []interfaces.FilterCondition{&filter_condition.EmptyCond{Lfield: field}, &filter_condition.NotExistCond{Lfield: field}}}}}
-		node, err := connector.ConvertFilterCondition(condition)
+		node, err := connector.ConvertFilterCondition(condition, nil, nil)
 		require.NoError(t, err)
 		sql, args, err := render(node)
 		require.NoError(t, err)

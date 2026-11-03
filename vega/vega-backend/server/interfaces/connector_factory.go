@@ -71,4 +71,7 @@ type ConnectorFactory interface {
 
 	// ValidateBuildSchema delegates source-specific build validation to the registered connector without creating an instance or opening a source connection.
 	ValidateBuildSchema(tp string, resource *Resource) error
+
+	// ValidateFilterCondition 委托连接器转换完整过滤条件树，传入源 schema 和列元数据，不创建实例或连接源端。
+	ValidateFilterCondition(tp string, condition FilterCondition, properties []*Property, columns map[string]TableColumnMeta) error
 }

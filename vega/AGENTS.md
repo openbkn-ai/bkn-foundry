@@ -27,6 +27,8 @@
 - 原生 Index 的扫描 schema 直接用于保存和查询校验；`SchemaForQuery` 只用于非 Index 资源查询托管本地索引时的投影，不为缺少实际来源依据的 `date_nanos` 等原始类型追加转换特判。
 
 - 公共过滤输入契约变更须核对所有连接器及本地索引通道；回归测试应验证解析后的绑定值、时区语义和错误分类，不能仅凭复现来源的单一连接器测试通过宣称契约统一。
+- 连接器过滤校验接口按完整条件树设计，工厂直接委托连接器的 `ConvertFilterCondition`，校验期间使用读锁并通过 `defer RUnlock` 统一释放，允许并发读取，不重复遍历条件树；Table 与现用逻辑视图入口统一传递 filter、properties、columns，Index 只传递 filter、properties；转换能力分别声明在 TableConnector、IndexConnector 中，不靠匿名接口猜测签名，也不为单个算子新增专用工厂接口或保存流程。
+- 派生视图按实际查询通道校验：`category=index` 始终走 Connector；其他资源的可用本地索引走 LocalIndexManager，由 Manager 完成查询 schema 投影。不得直接调用 OpenSearch 包装函数或因原生 Index 携带本地索引元数据而改变通道。
 
 - 时间戳单位与时间字符串精度须分别约定；不得从毫秒时间戳推导出字符串仅支持三位小数，也不得为未经论证的限制增加内部绕过标记。
 - 时间 layout 优先使用 Go `time` 标准常量；自定义格式集中定义在 `common`，连接器复用，数据库专用精度须在常量名与注释中说明。

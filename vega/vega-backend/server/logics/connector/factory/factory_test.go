@@ -9,7 +9,9 @@ package factory
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -20,7 +22,23 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
+
+// metadataFilterConnector 验证 Oracle 转换签名接收到的源列元数据和原始条件。
+type metadataFilterConnector struct {
+	interfaces.TableConnector
+	properties    []*interfaces.Property
+	condition     interfaces.FilterCondition
+	columns       map[string]interfaces.TableColumnMeta
+	conversionErr error
+}
+
+func (c *metadataFilterConnector) ConvertFilterCondition(condition interfaces.FilterCondition, properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) (sqlbuilder.SqlNode, error) {
+	c.condition, c.properties, c.columns = condition, properties, columns
+	return nil, c.conversionErr
+}
 
 func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
 	t.Run("registers built-in local connectors directly with the factory", func(t *testing.T) {
@@ -502,6 +520,170 @@ func TestConnectorFactoryValidateBuildSchema(t *testing.T) {
 		connector.EXPECT().ValidateBuildSchema(resource).Return(nil)
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"custom": connector}}
 		require.NoError(t, cf.ValidateBuildSchema("custom", resource))
+	})
+}
+
+func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
+	t.Run("uses actual table converter without creating a connection", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+		cf.RegisterCoreLocalConnectors()
+		for _, tc := range []struct {
+			connector, unit string
+			valid           bool
+		}{
+			{interfaces.ConnectorTypeMariaDB, "day", true},
+			{interfaces.ConnectorTypeMySQL, "microsecond", true},
+			{interfaces.ConnectorTypeMariaDB, "quarter", true},
+			{interfaces.ConnectorTypeMariaDB, "days", false},
+			{interfaces.ConnectorTypePostgreSQL, "days", true},
+			{interfaces.ConnectorTypePostgreSQL, "weeks", true},
+			{interfaces.ConnectorTypePostgreSQL, "microsecond", false},
+			{interfaces.ConnectorTypePostgreSQL, "quarter", false},
+			{interfaces.ConnectorTypeAnyShare, "day", false},
+			{interfaces.ConnectorTypeOpenSearch, "day", true},
+			{interfaces.ConnectorTypeOpenSearch, "microsecond", false},
+		} {
+			t.Run(tc.connector+"/"+tc.unit, func(t *testing.T) {
+				cf.SetConnectorEnabled(tc.connector, true)
+				cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationBefore, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, tc.unit}}
+				cond, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"created": {Name: "created", Type: interfaces.DataType_Datetime}})
+				require.NoError(t, err)
+				for _, tree := range []interfaces.FilterCondition{
+					cond,
+					&filter_condition.AndCond{SubConds: []interfaces.FilterCondition{&filter_condition.OrCond{SubConds: []interfaces.FilterCondition{cond}}}},
+				} {
+					err = cf.ValidateFilterCondition(tc.connector, tree, nil, nil)
+					if tc.valid {
+						require.NoError(t, err)
+					} else {
+						require.Error(t, err)
+					}
+				}
+			})
+		}
+	})
+	t.Run("delegates non-before operators to the connector", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+		cf.RegisterCoreLocalConnectors()
+		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
+		cfg := &interfaces.FilterCondCfg{Name: "content", Operation: filter_condition.OperationMatch, ValueFrom: interfaces.ValueFrom_Const, Value: "search"}
+		condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"content": {Name: "content", Type: interfaces.DataType_Text}})
+		require.NoError(t, err)
+		err = cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, nil, nil)
+		var unsupported *interfaces.UnsupportedOperationError
+		require.ErrorAs(t, err, &unsupported)
+	})
+	t.Run("passes index schema to the full converter", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+		cf.RegisterCoreLocalConnectors()
+		cf.SetConnectorEnabled(interfaces.ConnectorTypeOpenSearch, true)
+		field := &interfaces.Property{Name: "content", OriginalName: "physical.content", Type: interfaces.DataType_Text,
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 4}}}}
+		source := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{field}}
+		for _, value := range []string{"okay", "longer"} {
+			cfg := &interfaces.FilterCondCfg{Name: field.Name, Operation: filter_condition.OperationEqual, ValueFrom: interfaces.ValueFrom_Const, Value: value}
+			cond, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{field.Name: field})
+			require.NoError(t, err)
+			err = cf.ValidateFilterCondition(interfaces.ConnectorTypeOpenSearch, cond, source.SchemaDefinition, nil)
+			if value == "okay" {
+				require.NoError(t, err)
+			} else {
+				var limitErr *interfaces.KeywordLimitError
+				require.ErrorAs(t, err, &limitErr)
+				assert.Equal(t, 4, limitErr.Limit)
+			}
+		}
+	})
+	t.Run("passes all table inputs and preserves the converter error", func(t *testing.T) {
+		builder := vmock.NewMockTableConnector(gomock.NewController(t))
+		builder.EXPECT().GetEnabled().Return(true)
+		want := errors.New("conversion failed")
+		connector := &metadataFilterConnector{TableConnector: builder, conversionErr: want}
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"oracle": connector}}
+		condition := &filter_condition.AndCond{}
+		properties := []*interfaces.Property{{Name: "flag", OriginalType: "NUMBER", Type: interfaces.DataType_Decimal}}
+		columns := map[string]interfaces.TableColumnMeta{"flag": {Name: "flag", Type: "NUMBER", NumPrecision: 1}}
+		err := cf.ValidateFilterCondition("oracle", condition, properties, columns)
+		assert.Same(t, want, err)
+		assert.Same(t, condition, connector.condition)
+		assert.Equal(t, properties, connector.properties)
+		assert.Equal(t, columns, connector.columns)
+	})
+	t.Run("concurrent registry updates", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		t.Cleanup(entitlement.ResetForTest)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+		cf.RegisterCoreLocalConnectors()
+		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
+		property := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
+		condition := &filter_condition.BeforeCond{Lfield: property, Value: []any{int64(1), "day"}}
+		remote := &interfaces.ConnectorType{Type: "review_remote", Mode: interfaces.ConnectorModeRemote, Category: interfaces.ConnectorCategoryAPI, Enabled: true}
+		start := make(chan struct{})
+		failures := make(chan error, 2)
+		var group sync.WaitGroup
+		group.Add(2)
+		go func() {
+			defer group.Done()
+			<-start
+			for i := range 2000 {
+				if err := cf.RegisterConnector(t.Context(), remote.Type, remote); err != nil {
+					failures <- err
+					return
+				}
+				cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, i%2 == 0)
+			}
+		}()
+		go func() {
+			defer group.Done()
+			<-start
+			for range 2000 {
+				err := cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, []*interfaces.Property{property}, nil)
+				if err != nil && !errors.Is(err, ErrConnectorDisabled) {
+					failures <- err
+					return
+				}
+			}
+		}()
+		done := make(chan struct{})
+		go func() { group.Wait(); close(done) }()
+		close(start)
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent validation and registry updates did not finish")
+		}
+		close(failures)
+		for err := range failures {
+			require.NoError(t, err)
+		}
+	})
+	t.Run("absent condition needs no connector", func(t *testing.T) {
+		require.NoError(t, (&connectorFactory{}).ValidateFilterCondition("", nil, nil, nil))
+	})
+	t.Run("preserves connector availability errors", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		t.Cleanup(entitlement.ResetForTest)
+		for _, tc := range []struct {
+			name string
+			want error
+		}{
+			{"missing", ErrConnectorUnavailable}, {"disabled", ErrConnectorDisabled}, {"private", ErrConnectorEntitlementDenied},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				connector := vmock.NewMockConnector(gomock.NewController(t))
+				cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+				if tc.name != "missing" {
+					cf.connectors[tc.name] = connector
+				}
+				if tc.name == "private" {
+					cf.connectorRequiredEditions[tc.name] = licverify.EditionProfessional
+				}
+				if tc.name == "disabled" {
+					connector.EXPECT().GetEnabled().Return(false)
+				}
+				assert.ErrorIs(t, cf.ValidateFilterCondition(tc.name, &filter_condition.BeforeCond{}, nil, nil), tc.want)
+			})
+		}
 	})
 }
 

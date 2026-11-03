@@ -99,6 +99,9 @@ type TableConnector interface {
 	// caller must close Rows and keep the connector open until reading finishes.
 	OpenSQLBuilder(context.Context, *sqlbuilder.SelectBuilder) (*sql.Rows, []ColumnInfo, error)
 
+	// ConvertFilterCondition 使用统一字段定义和源列元数据转换完整条件树，不连接源端。
+	ConvertFilterCondition(filter FilterCondition, properties []*Property, columns map[string]TableColumnMeta) (sqlbuilder.SqlNode, error)
+
 	// ScanSQLBuilderRow advances Rows.Next and reads one row using the metadata
 	// returned by OpenSQLBuilder. It normalizes driver values for Raw Query,
 	// preserves binary bytes, and classifies source errors. It returns (nil, nil)
@@ -157,6 +160,9 @@ type IndexConnector interface {
 	ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*ResourceDataQueryResult, error)
 	// ExecuteRawQuery executes a native query against indexName, returning column information, data, and a count.
 	ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*RawQueryResponse, error)
+
+	// ConvertFilterCondition 使用索引字段定义转换完整条件树，不连接源端。
+	ConvertFilterCondition(filter FilterCondition, properties []*Property) (map[string]any, error)
 
 	// CreateIndex creates indexName with field mappings from properties and mapping metadata from mappingMeta.
 	CreateIndex(ctx context.Context, indexName string, properties map[string]any, mappingMeta map[string]string) error

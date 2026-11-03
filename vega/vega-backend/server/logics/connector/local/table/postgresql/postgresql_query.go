@@ -200,7 +200,7 @@ func (c *PostgresqlConnector) buildSelectBuilder(resource *interfaces.Resource, 
 		return nil, interfaces.NewOutputFieldError(interfaces.OutputFieldNoneQueryable, "")
 	}
 	if params.ActualFilterCond != nil {
-		predicate, err := c.ConvertFilterCondition(params.ActualFilterCond)
+		predicate, err := c.ConvertFilterCondition(params.ActualFilterCond, resource.SchemaDefinition, resource.ColumnMetadata())
 		if err != nil {
 			return nil, err
 		}

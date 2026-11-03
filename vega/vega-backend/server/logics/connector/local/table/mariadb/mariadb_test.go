@@ -326,8 +326,8 @@ func TestMariaDBConnectorConnectionString(t *testing.T) {
 
 func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "audit"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app", "audit"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 
 		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
 			WithArgs("app", "audit").
@@ -338,8 +338,8 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 	})
 
 	t.Run("query error", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 
 		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
 			WithArgs("app").
@@ -353,8 +353,8 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 	})
 
 	t.Run("missing configured database", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"missing"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"missing"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 
 		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
 			WithArgs("missing").
@@ -368,8 +368,8 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 	})
 
 	t.Run("reports first missing database", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "first_missing", "second_missing"})
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, []string{"app", "first_missing", "second_missing"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 
 		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
 			WithArgs("app", "first_missing", "second_missing").
@@ -382,8 +382,8 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 	})
 
 	t.Run("empty database scope skips query", func(t *testing.T) {
-		connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
-		defer cleanup()
+		connector, mock := newMariaDBConnectorMock(t, nil)
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
 		require.NoError(t, connector.validateDatabases(context.Background()))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -429,8 +429,8 @@ func TestMariaDBConnectorPing(t *testing.T) {
 }
 
 func TestMariaDBConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
-	connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
-	defer cleanup()
+	connector, mock := newMariaDBConnectorMock(t, nil)
+	defer cleanupMariaDBConnectorMock(t, connector, mock)
 	connector.connected = true
 
 	mock.ExpectQuery("SELECT TABLE_TYPE").
@@ -454,18 +454,22 @@ func validMariaDBConfig(port int) interfaces.ConnectorConfig {
 	}
 }
 
-// newMariaDBConnectorMock returns a scoped connector with a mock pool and its cleanup function.
-func newMariaDBConnectorMock(t *testing.T, databases []string) (*MariaDBConnector, sqlmock.Sqlmock, func()) {
+// newMariaDBConnectorMock returns a scoped connector with a mock pool.
+func newMariaDBConnectorMock(t *testing.T, databases []string) (*MariaDBConnector, sqlmock.Sqlmock) {
 	t.Helper()
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 
 	return &MariaDBConnector{
-			config: &mariadbConfig{Databases: databases},
-			db:     db,
-		}, mock, func() {
-			mock.ExpectClose()
-			require.NoError(t, db.Close())
-		}
+		config: &mariadbConfig{Databases: databases},
+		db:     db,
+	}, mock
+}
+
+func cleanupMariaDBConnectorMock(t *testing.T, connector *MariaDBConnector, mock sqlmock.Sqlmock) {
+	t.Helper()
+
+	mock.ExpectClose()
+	require.NoError(t, connector.db.Close())
 }

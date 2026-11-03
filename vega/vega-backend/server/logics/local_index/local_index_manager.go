@@ -77,6 +77,15 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 	return managerInst
 }
 
+// ValidateFilterCondition 沿用本地索引的字段投影及连接器转换，不执行查询。
+func (lim *localIndexManager) ValidateFilterCondition(condition interfaces.FilterCondition, properties []*interfaces.Property) error {
+	if condition == nil {
+		return nil
+	}
+	_, err := lim.lic.ConvertFilterCondition(condition, SchemaForQuery(properties))
+	return err
+}
+
 func (lim *localIndexManager) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
 	return lim.lic.ListIndexes(ctx)
 }

@@ -289,3 +289,17 @@ func (mr *MockLocalIndexManagerMockRecorder) ValidateAnalyzer(ctx, analyzer any)
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateAnalyzer", reflect.TypeOf((*MockLocalIndexManager)(nil).ValidateAnalyzer), ctx, analyzer)
 }
+
+// ValidateFilterCondition mocks base method.
+func (m *MockLocalIndexManager) ValidateFilterCondition(condition interfaces.FilterCondition, properties []*interfaces.Property) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateFilterCondition", condition, properties)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateFilterCondition indicates an expected call of ValidateFilterCondition.
+func (mr *MockLocalIndexManagerMockRecorder) ValidateFilterCondition(condition, properties any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterCondition", reflect.TypeOf((*MockLocalIndexManager)(nil).ValidateFilterCondition), condition, properties)
+}
