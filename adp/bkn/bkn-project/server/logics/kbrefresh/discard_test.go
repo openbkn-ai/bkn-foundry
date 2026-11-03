@@ -87,3 +87,46 @@ func TestDiscardNeverAbandonsStartedApplication(t *testing.T) {
 		t.Fatal("application intent changed")
 	}
 }
+
+func TestDiscardRequiresAnExplicitDecisionBeforeAnotherInferenceBatch(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, _, previous, sources := refreshPreparationFixture(t)
+	duration := int64(100)
+	for i := range previous.Files {
+		previous.Files[i].File.ContentVersionID = "old-version"
+		previous.Files[i].File.ChunkCount = 1
+		previous.Files[i].DurationMillis = &duration
+	}
+	service.Limits = &Limits{MaxChangedPercent: 100, MaxRemovedPercent: 100, MaxDurationMillis: 600000}
+	service.Sources = &cleanupSources{preparedSources: sources}
+	journal := &memoryRefreshJournal{}
+	service.Journal = journal
+	tasks := &extractionTasks{journal: journal, t: t}
+	service.Tasks = tasks
+	initial, err := service.Begin(ctx, "base", "first-batch", "worker")
+	if err != nil || initial.State != "running" {
+		t.Fatal("fixture should pass ordinary automatic limits", err)
+	}
+	journal.value.State, journal.value.Reason = "attention", "submission_unknown"
+	if err := service.DiscardBatch(ctx, "base", "worker", journal.value.Revision, interfaces.AccountInfo{ID: "owner", Type: "user"}); err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 3 && journal.value.Pending != nil; n++ {
+		if err := service.DiscardStep(ctx, "base", "worker"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	next, err := service.Begin(ctx, "base", "next-batch", "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.State != "attention" || next.Reason != "batch_review_required" || len(next.Pending.Estimate.Reasons) != 1 || next.Pending.Estimate.Reasons[0] != "previous_batch_discarded" {
+		t.Fatal("discard silently authorized another extraction")
+	}
+	if err := service.runNetwork(ctx, "released-network", "worker"); err != nil {
+		t.Fatal(err)
+	}
+	if tasks.starts != 0 {
+		t.Fatal("model inference repeated without a new review decision")
+	}
+}

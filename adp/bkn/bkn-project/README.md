@@ -788,3 +788,9 @@ No Agent migration or Safe SQL is added by ordinary refresh. EE registration is
 required. Local constructed-data tests do not attest real-PDF quality or 8081
 acceptance. Image-only unsupported business extraction stops for review rather
 than inventing instances or silently retiring an unreadable source.
+
+After an application intent exists, failures retain the applying/finishing phase
+and retry the same checked plan after 30 seconds. They cannot release a batch,
+repeat inference or bypass a failed permission/model guard. Directory parsing,
+concurrent enumeration changes and transient source failures also retry after
+backoff without requiring an owner decision.

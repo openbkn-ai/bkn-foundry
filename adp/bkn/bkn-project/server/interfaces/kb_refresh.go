@@ -8,21 +8,22 @@ import "context"
 // A consumer switch cannot start a second writer against shared Datasets while
 // its predecessor still owns this lease. Extracted values remain outside SQL.
 type KBRefreshRecord struct {
-	HoldNetworkID string                       `json:"hold_network_id,omitempty"`
-	Generations   map[string]KBRefreshBaseline `json:"generations,omitempty"`
-	LineageID     string                       `json:"lineage_id"`
-	NetworkID     string                       `json:"network_id"`
-	Revision      int64                        `json:"revision"`
-	State         string                       `json:"state"`
-	Reason        string                       `json:"reason,omitempty"`
-	Previous      *KBBuild                     `json:"previous,omitempty"`
-	Pending       *KBRefreshBatch              `json:"pending,omitempty"`
-	Holds         []KBHoldGroup                `json:"holds,omitempty"`
-	Cursors       map[string]string            `json:"cursors,omitempty"`
-	NextCheck     int64                        `json:"next_check"`
-	UpdateTime    int64                        `json:"update_time"`
-	LeaseID       string                       `json:"-"`
-	LeaseUntil    int64                        `json:"-"`
+	ReviewNextBatch bool                         `json:"review_next_batch,omitempty"`
+	HoldNetworkID   string                       `json:"hold_network_id,omitempty"`
+	Generations     map[string]KBRefreshBaseline `json:"generations,omitempty"`
+	LineageID       string                       `json:"lineage_id"`
+	NetworkID       string                       `json:"network_id"`
+	Revision        int64                        `json:"revision"`
+	State           string                       `json:"state"`
+	Reason          string                       `json:"reason,omitempty"`
+	Previous        *KBBuild                     `json:"previous,omitempty"`
+	Pending         *KBRefreshBatch              `json:"pending,omitempty"`
+	Holds           []KBHoldGroup                `json:"holds,omitempty"`
+	Cursors         map[string]string            `json:"cursors,omitempty"`
+	NextCheck       int64                        `json:"next_check"`
+	UpdateTime      int64                        `json:"update_time"`
+	LeaseID         string                       `json:"-"`
+	LeaseUntil      int64                        `json:"-"`
 }
 
 // KBRefreshBaseline retains process receipts for an inactive Dataset generation.

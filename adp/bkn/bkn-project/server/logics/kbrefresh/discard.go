@@ -75,6 +75,7 @@ func (s *Service) DiscardStep(ctx context.Context, lineage, lease string) error 
 		return s.saveRecord(ctx, r)
 	}
 	r.Pending = nil
+	r.ReviewNextBatch = true
 	r.State, r.Reason, r.NextCheck = "idle", "", 0
 	return s.saveRecord(ctx, r)
 }

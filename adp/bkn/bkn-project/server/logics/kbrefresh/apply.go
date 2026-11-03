@@ -222,10 +222,7 @@ func (s *Service) ApplyStep(ctx context.Context, lineage, lease string) error {
 		if err != nil {
 			r.Pending.WriteFailures++
 			r.Reason = "dataset_write_unavailable"
-			r.NextCheck = time.Now().Add(30 * time.Second).UnixMilli()
-			if r.Pending.WriteFailures >= 3 {
-				r.State = "attention"
-			}
+			r.NextCheck = time.Now().Add(refreshRetry).UnixMilli()
 			if saveErr := s.saveRecord(ctx, r); saveErr != nil {
 				return saveErr
 			}

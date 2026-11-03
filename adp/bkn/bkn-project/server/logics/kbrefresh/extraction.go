@@ -29,6 +29,17 @@ func (s *Service) saveRecord(ctx context.Context, r *interfaces.KBRefreshRecord)
 	return nil
 }
 func (s *Service) attention(ctx context.Context, r *interfaces.KBRefreshRecord, reason string) error {
+	// Once application may have written data, preserve its exact phase and
+	// immutable intent. A failed guard never authorizes a write; the worker
+	// checks it again after backoff and resumes only the same validated plan.
+	if r.Pending != nil && r.Pending.ApplicationDigest != "" {
+		if r.State != "applying" && r.State != "finishing" {
+			return ErrInvalidManifest
+		}
+		r.Reason = reason
+		r.NextCheck = time.Now().Add(refreshRetry).UnixMilli()
+		return s.saveRecord(ctx, r)
+	}
 	r.State, r.Reason = "attention", reason
 	return s.saveRecord(ctx, r)
 }

@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"github.com/google/uuid"
+	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"net"
 	"slices"
 	"time"
 )
@@ -15,6 +17,19 @@ var ErrLostLease = errors.New("refresh process lease or revision changed")
 
 const refreshLease = 5 * time.Minute
 const refreshInterval = time.Minute
+const refreshRetry = 30 * time.Second
+
+func temporaryScanFailure(err error) bool {
+	if errors.Is(err, ErrSourceChanged) || errors.Is(err, ErrSourceNotReady) || errors.Is(err, kb.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var source *kb.SourceError
+	if errors.As(err, &source) {
+		return source.StatusCode >= 500 || source.StatusCode == 429
+	}
+	var transport net.Error
+	return errors.As(err, &transport) && transport.Timeout()
+}
 
 // Begin persists a complete batch intent and anonymous hold ids before any hold,
 // Agent submission or Dataset mutation. A restart returns the existing intent;
@@ -78,6 +93,14 @@ func (s *Service) Begin(ctx context.Context, lineage, id, lease string) (*interf
 		if err == ErrLostLease {
 			return nil, err
 		}
+		if temporaryScanFailure(err) {
+			record.State, record.Reason = "idle", "source_unavailable"
+			record.NextCheck = time.Now().Add(refreshRetry).UnixMilli()
+			if saveErr := s.saveRecord(ctx, record); saveErr != nil {
+				return nil, saveErr
+			}
+			return record, err
+		}
 		if saveErr := s.attention(ctx, record, "source_unavailable"); saveErr != nil {
 			return nil, saveErr
 		}
@@ -105,7 +128,7 @@ func (s *Service) Begin(ctx context.Context, lineage, id, lease string) (*interf
 		prepared.Plan.Build.CreateTime = prepared.Plan.Baseline.CreateTime
 		record.Previous = prepared.Plan.Build
 		record.Cursors = prepared.Cursors
-		record.State = "idle"
+		record.State, record.Reason = "idle", ""
 		record.NextCheck = time.Now().Add(refreshInterval).UnixMilli()
 	} else {
 		groups := map[string][]string{}
@@ -127,6 +150,10 @@ func (s *Service) Begin(ctx context.Context, lineage, id, lease string) (*interf
 		estimate, err := EvaluateLimits(s.limits(), prepared.Plan.Baseline, prepared.Plan)
 		if err != nil {
 			return nil, err
+		}
+		if record.ReviewNextBatch {
+			estimate.Reasons = append(estimate.Reasons, "previous_batch_discarded")
+			record.ReviewNextBatch = false
 		}
 		if record.Previous == nil {
 			record.Previous = prepared.Plan.Baseline
