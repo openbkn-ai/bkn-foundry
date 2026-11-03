@@ -657,8 +657,10 @@ are rechecked before writes, before pruning and before completion. Full builds
 prune obsolete canonical rows only after every write is acknowledged and visible;
 sample builds never prune them. Identical completed recipes write zero new rows.
 Native row size is bounded to fit the paired snapshot reader before any write.
-Canonical identity edges replace duplicate extracted edges while retaining the
-Agent relation's additional grounded evidence in the same stable row.
+Already grounded extracted relationships retain their original stable rows and
+all their evidence. Exact-number fallback edges are added only when such a pair
+is absent. Existing observations participate in the reviewed snapshot and prune
+keep-set without being needlessly rewritten or truncated.
 
 The EE provider must implement `DatasetEntityRecords` for full builds with entity
 models. This feature adds no SQL or Agent migration. Publication/refresh, shared

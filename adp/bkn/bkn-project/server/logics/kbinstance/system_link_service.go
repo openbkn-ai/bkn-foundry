@@ -64,6 +64,7 @@ type entityFusionScope struct {
 	Keep  []string
 }
 type preparedSystemLinks struct {
+	Preserved    []kb.DatasetWrite
 	Entities     []entityFusionScope
 	FusionWrites []kb.DatasetWrite
 	Preview      SystemLinkPreview
@@ -367,6 +368,10 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 	slices.SortFunc(result.Scopes, func(a, b systemLinkScope) int {
 		return strings.Compare(a.Spec.ResourceID+"/"+a.File.DocumentID, b.Spec.ResourceID+"/"+b.File.DocumentID)
 	})
+	expectedRows := append(slices.Clone(result.Writes), result.Preserved...)
+	if _, err := validateWrites(build, draft, expectedRows); err != nil {
+		return nil, err
+	}
 	raw, err := json.Marshal(struct {
 		Model        string
 		Claims       []SourceClaim
@@ -375,7 +380,7 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 		Scopes       []systemLinkScope
 		Entities     []entityFusionScope
 		FusionWrites []kb.DatasetWrite
-	}{build.ModelFingerprint, claims, digests, result.Writes, result.Scopes, result.Entities, result.FusionWrites})
+	}{build.ModelFingerprint, claims, digests, expectedRows, result.Scopes, result.Entities, result.FusionWrites})
 	if err != nil || len(raw) > 32<<20 {
 		return nil, ErrInvalidBuild
 	}

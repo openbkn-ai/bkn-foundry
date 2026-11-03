@@ -52,6 +52,7 @@ func prepareNativeLinks(ctx context.Context, reader kb.DatasetFileSnapshot, buil
 			return err
 		}
 		result.Writes = append(result.Writes, plan.Writes...)
+		result.Preserved = append(result.Preserved, plan.Preserved...)
 		text := map[string]ReconcileRecord{}
 		for _, claim := range claims {
 			if claim.ObjectTypeID != relation.Source || claim.Property != relation.DocumentMapping.MentionProperty {
@@ -86,7 +87,7 @@ func prepareNativeLinks(ctx context.Context, reader kb.DatasetFileSnapshot, buil
 				return ErrBuildChanged
 			}
 			scope := systemLinkScope{Spec: spec, File: kb.DatasetFileScope{KnowledgeBaseID: step.File.KnowledgeBaseID, FileID: step.File.FileID, ContentVersionID: step.File.ContentVersionID, DocumentID: rows.document, ModelFingerprint: build.ModelFingerprint}, Keep: []string{}}
-			for _, write := range plan.Writes {
+			for _, write := range append(slices.Clone(plan.Writes), plan.Preserved...) {
 				if write.Row["document_id"] == rows.document {
 					scope.Keep = append(scope.Keep, write.Row["_id"].(string))
 				}
@@ -98,8 +99,10 @@ func prepareNativeLinks(ctx context.Context, reader kb.DatasetFileSnapshot, buil
 	return nil
 }
 
-// Exact-number rows replace duplicate extracted edges, retaining their grounded
-// relation evidence. Re-reading our own merged row is stable before/after prune.
+// Grounded extracted observations already linking the exact confirmed pair are
+// retained at their stable IDs. A deterministic fallback is written only when
+// no such edge exists. Keeping observations separately preserves all evidence
+// without a growing union, silent truncation or needless identical rewrites.
 func preserveNativeRelationEvidence(ctx context.Context, reader kb.DatasetFileSnapshot, build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, plan *SystemLinkPlan, guard func(context.Context) error) error {
 	indexed := map[[4]string]map[string]any{}
 	for _, write := range plan.Writes {
@@ -115,7 +118,7 @@ func preserveNativeRelationEvidence(ctx context.Context, reader kb.DatasetFileSn
 		}
 		indexed[key] = write.Row
 	}
-
+	present := map[[4]string]bool{}
 	for index, step := range build.Files {
 		rows, err := newFileRows(build, index, draft, "")
 		if err != nil {
@@ -154,61 +157,45 @@ func preserveNativeRelationEvidence(ctx context.Context, reader kb.DatasetFileSn
 			if !step.File.IncludeOriginal && row["source_quote"] != "" {
 				return ErrBuildChanged
 			}
-
-			source, sourceOK := row["source_record_id"].(string)
-			target, targetOK := row["target_record_id"].(string)
-			if !sourceOK || !targetOK {
+			source, a := row["source_record_id"].(string)
+			target, b := row["target_record_id"].(string)
+			if !a || !b {
 				return ErrBuildChanged
 			}
-			if nativeRow := indexed[[4]string{spec.ResourceID, rows.document, source, target}]; nativeRow != nil {
-
-				for _, field := range []string{"source_identity", "target_identity"} {
-					left, err := canonicalBusinessValue(nativeRow[field])
-					if err != nil {
-						return err
-					}
-					right, err := canonicalBusinessValue(row[field])
-					if err != nil {
-						return err
-					}
-					if string(left) != string(right) {
-						return ErrBuildChanged
-					}
-				}
-				current, ok := nativeRow["evidence"].([]locatedEvidence)
-				if !ok {
-					return ErrBuildChanged
-				}
-				merged := map[string]locatedEvidence{}
-				for _, location := range append(slices.Clone(current), proof...) {
-					encoded, err := json.Marshal(location)
-					if err != nil {
-						return err
-					}
-					merged[string(encoded)] = location
-				}
-				// One grounded Agent relation plus the identifier's evidence is bounded;
-				// repeated reads cannot grow this union indefinitely.
-				if len(merged) > 40 {
-					return ErrBuildChanged
-				}
-				keys := make([]string, 0, len(merged))
-				for key := range merged {
-					keys = append(keys, key)
-				}
-				slices.Sort(keys)
-				combined := make([]locatedEvidence, 0, len(keys))
-				for _, key := range keys {
-					combined = append(combined, merged[key])
-				}
-				first := combined[0]
-				nativeRow["evidence"] = combined
-				nativeRow["block_id"] = first.BlockID
-				nativeRow["source_start"] = first.Start
-				nativeRow["source_end"] = first.End
-				nativeRow["source_quote"] = first.Quote
+			key := [4]string{spec.ResourceID, rows.document, source, target}
+			nativeRow := indexed[key]
+			if nativeRow == nil {
+				continue
 			}
+			for _, field := range []string{"source_identity", "target_identity"} {
+				left, err := canonicalBusinessValue(nativeRow[field])
+				if err != nil {
+					return err
+				}
+				right, err := canonicalBusinessValue(row[field])
+				if err != nil {
+					return err
+				}
+				if string(left) != string(right) {
+					return ErrBuildChanged
+				}
+			}
+			normalized := map[string]any{}
+			for field, value := range row {
+				normalized[field] = value
+			}
+			normalized["evidence"] = proof
+			plan.Preserved = append(plan.Preserved, kb.DatasetWrite{Spec: spec, Row: normalized})
+			present[key] = true
 		}
 	}
+	writes := []kb.DatasetWrite{}
+	for _, write := range plan.Writes {
+		key := [4]string{write.Spec.ResourceID, write.Row["document_id"].(string), write.Row["source_record_id"].(string), write.Row["target_record_id"].(string)}
+		if !present[key] {
+			writes = append(writes, write)
+		}
+	}
+	plan.Writes = writes
 	return nil
 }

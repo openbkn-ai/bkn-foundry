@@ -4,6 +4,7 @@
 package kbinstance
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -131,6 +132,7 @@ func (q *systemLinkQueue) SaveLinking(_ context.Context, next *interfaces.KBBuil
 }
 
 type systemLinkRows struct {
+	wire         bool
 	native       map[string][]map[string]any
 	nativePruned int
 	claimSnapshot
@@ -140,6 +142,23 @@ type systemLinkRows struct {
 	writeErr   error
 }
 
+func (s *systemLinkRows) ReadFileRows(ctx context.Context, spec interfaces.DraftDatasetSpec, scope kb.DatasetFileScope, guard func(context.Context) error) ([]map[string]any, error) {
+	rows, err := s.claimSnapshot.ReadFileRows(ctx, spec, scope, guard)
+	if err != nil || !s.wire {
+		return rows, err
+	}
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var decoded []map[string]any
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
 func (s *systemLinkRows) Replace(_ context.Context, spec interfaces.DraftDatasetSpec, row map[string]any) error {
 	s.written = append(s.written, kb.DatasetWrite{Spec: spec, Row: row})
 	if s.writeErr == nil {
@@ -416,16 +435,20 @@ func TestFullFusionResumesAnAlreadyAppliedButUnacknowledgedEntityWrite(t *testin
 }
 
 func TestFullFusionConnectsFileClaimsToTheirNativeEntityEvenWhenAgentOmittedTheEdge(t *testing.T) {
-	testFullNativeFusion(t, false)
+	testFullNativeFusion(t, 0)
 }
 func TestNativeFusionRetainsAdditionalGroundedAgentRelationEvidenceAfterPrune(t *testing.T) {
-	testFullNativeFusion(t, true)
+	testFullNativeFusion(t, 1)
 }
-func testFullNativeFusion(t *testing.T, relationEvidence bool) {
+func TestNativeFusionRetainsMoreThanFortyLocationsAcrossDistinctExtractedEdges(t *testing.T) {
+	testFullNativeFusion(t, 3)
+}
+func testFullNativeFusion(t *testing.T, relationEvidence int) {
 	t.Helper()
 	service, queue, data, _, _, draft := systemLinkServiceFixture(t)
 	build := queue.record.Build
 	build.Mode = "full"
+	data.wire = true
 	draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "file_contract", Name: "File mentions contract", Adopted: true, Source: "contract_file", Target: "contract_doc", Cardinality: interfaces.DRAFT_CARDINALITY_MANY_TO_ONE, Document: &interfaces.DraftDocumentModel{Role: "relation"}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}})
 	plan, err := kbdataset.NewPlan(draft, build.GenerationID, "catalog", build.Owner)
 	if err != nil {
@@ -444,12 +467,32 @@ func testFullNativeFusion(t *testing.T, relationEvidence bool) {
 	build.ModelFingerprint = plan.ModelFingerprint
 	_, _, input, task := extractionFixture(t, "contract", false)
 
-	if relationEvidence {
+	if relationEvidence > 0 {
 		var proposal FileExtraction
 		if err := json.Unmarshal([]byte(task.Output), &proposal); err != nil {
 			t.Fatal(err)
 		}
-		proposal.Relations = append(proposal.Relations, InstanceRelation{RelationTypeID: "file_contract", Source: "file", Target: "current", Evidence: []InstanceCitation{{BlockID: "native-1", Quote: "Reference ABC."}}})
+		if relationEvidence == 1 {
+			proposal.Relations = append(proposal.Relations, InstanceRelation{RelationTypeID: "file_contract", Source: "file", Target: "current", Evidence: []InstanceCitation{{BlockID: "native-1", Quote: "Reference ABC."}}})
+		} else {
+			text := input.Text["native-1"]
+			quotes := []InstanceCitation{}
+			for start := 0; start < len(text) && len(quotes) < 60; start++ {
+				for end := start + 4; end <= len(text) && len(quotes) < 60; end++ {
+					quote := text[start:end]
+					if strings.Count(text, quote) == 1 {
+						quotes = append(quotes, InstanceCitation{BlockID: "native-1", Quote: quote})
+					}
+				}
+			}
+			if len(quotes) < 60 {
+				t.Fatal("fixture needs sixty distinct grounded locations")
+			}
+			for index := 0; index < 3; index++ {
+				proposal.Relations = append(proposal.Relations, InstanceRelation{RelationTypeID: "file_contract", Source: "file", Target: "current", Evidence: quotes[index*20 : (index+1)*20]})
+			}
+		}
+
 		encoded, err := json.Marshal(proposal)
 		if err != nil {
 			t.Fatal(err)
@@ -469,8 +512,13 @@ func testFullNativeFusion(t *testing.T, relationEvidence bool) {
 		t.Fatal("native entity links absent", preview, err)
 	}
 	_, err = service.Apply(context.Background(), "Bearer operator-token", "project", "job", build.Owner, SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature})
-	if err != nil || len(data.written) != 3 || data.nativePruned != 1 {
-		t.Fatal("native relation did not share the fusion write boundary", len(data.written), err)
+
+	expectedWrites := 3
+	if relationEvidence > 0 {
+		expectedWrites = 2
+	}
+	if err != nil || len(data.written) != expectedWrites || data.nativePruned != 1 {
+		t.Fatal("native relation did not share the fusion boundary", len(data.written), err)
 	}
 	entityID := ""
 	targetID := ""
@@ -478,29 +526,45 @@ func testFullNativeFusion(t *testing.T, relationEvidence bool) {
 		if write.Spec.ObjectTypeID == "contract_doc" {
 			entityID = write.Row["_id"].(string)
 		}
-		if write.Spec.RelationTypeID == "file_contract" {
-			if relationEvidence {
-				proof := write.Row["evidence"].([]locatedEvidence)
-				if len(proof) != 2 || proof[0].Quote != "" || proof[1].Quote != "" {
-					t.Fatal("extra relation location lost or original text leaked", proof)
-				}
-				if len(data.rows[write.Spec.ResourceID]) != 1 {
-					t.Fatal("duplicate AI edge was not normalized")
-				}
-			}
-			targetID = write.Row["target_record_id"].(string)
-			identity := write.Row["target_identity"].(map[string]any)
+	}
+	locations := 0
+	for _, spec := range plan.Datasets {
+		if spec.RelationTypeID != "file_contract" {
+			continue
+		}
+		expectedRows := max(1, relationEvidence)
+		if len(data.rows[spec.ResourceID]) != expectedRows {
+			t.Fatal("lost extracted observations or added duplicate fallback", len(data.rows[spec.ResourceID]))
+		}
+		for _, row := range data.rows[spec.ResourceID] {
+			targetID = row["target_record_id"].(string)
+			identity := row["target_identity"].(map[string]any)
 			if identity["number"] != "ABC" {
-				t.Fatal("business identity was replaced with storage identity")
+				t.Fatal("business identity replaced with storage identity")
+			}
+			raw, _ := json.Marshal(row["evidence"])
+			var proof []locatedEvidence
+			if json.Unmarshal(raw, &proof) != nil {
+				t.Fatal("unreadable evidence")
+			}
+			locations += len(proof)
+			for _, location := range proof {
+				if location.Quote != "" {
+					t.Fatal("original-off evidence leaked text")
+				}
 			}
 		}
 	}
+	if relationEvidence == 3 && locations != 60 {
+		t.Fatal("grounded evidence was truncated", locations)
+	}
+
 	if entityID == "" || targetID != entityID {
 		t.Fatal("native edge target is not the materialized entity", entityID, targetID)
 	}
 	repeated, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", build.Owner)
 	if err != nil || repeated.Signature != preview.Signature {
-		t.Fatal("merged evidence was unstable after replacing duplicate edges", err)
+		t.Fatal("preserved evidence was unstable after native writes and pruning", err)
 	}
 
 }

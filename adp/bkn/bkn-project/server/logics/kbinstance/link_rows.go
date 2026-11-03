@@ -15,6 +15,7 @@ import (
 )
 
 type SystemLinkPlan struct {
+	Preserved    []kb.DatasetWrite
 	Writes       []kb.DatasetWrite
 	Resolution   LinkResolution
 	SystemDigest string
