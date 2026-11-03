@@ -35,6 +35,7 @@ type SystemLinkSummary struct {
 	Conflicts  *int   `json:"conflicts"`
 }
 type SystemLinkPreview struct {
+	Facts             []FactStateSummary    `json:"facts"`
 	Fusion            []EntityFusionSummary `json:"fusion"`
 	FusionPreviewOnly bool                  `json:"fusion_preview_only"`
 	Signature         string                `json:"signature"`
@@ -343,6 +344,16 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 	if err := prepareNativeLinks(ctx, s.Datasets, build, draft, claims, fusion, result, guard); err != nil {
 		return nil, err
 	}
+	factLinks := append(slices.Clone(result.Writes), result.Preserved...)
+	facts, err := planFactStates(ctx, s.Datasets, build, draft, claims, factLinks, s.now(), guard)
+	if err != nil {
+		return nil, err
+	}
+	result.Preview.Facts = facts.Summaries
+	result.Preserved = append(result.Preserved, facts.Preserved...)
+	if build.Mode == "full" {
+		result.Writes = append(result.Writes, facts.Writes...)
+	}
 	result.Preview.Fusion = fusion.Summaries
 	result.FusionWrites = fusion.Writes
 	if build.Mode == "full" {
@@ -465,6 +476,11 @@ func (s *SystemLinkService) Apply(ctx context.Context, token, project, id string
 		}
 		record.Build.Linking = &interfaces.KBLinkingReceipt{OperationID: req.OperationID, Signature: req.Signature, State: state, RowsWritten: written, Eligible: prepared.Preview.Eligible, Linked: prepared.Preview.Linked, Pending: prepared.Preview.Pending}
 		record.Build.Linking.FusionApplied = state == "succeeded" && !prepared.Preview.FusionPreviewOnly
+		for _, summary := range prepared.Preview.Facts {
+			record.Build.Linking.FactCurrent += summary.Current
+			record.Build.Linking.FactSuperseded += summary.Superseded
+			record.Build.Linking.FactPending += summary.Pending
+		}
 		for _, summary := range prepared.Preview.Fusion {
 			record.Build.Linking.FusionCurrent += summary.Current
 			record.Build.Linking.FusionPending += summary.Pending

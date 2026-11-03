@@ -666,3 +666,28 @@ The EE provider must implement `DatasetEntityRecords` for full builds with entit
 models. This feature adds no SQL or Agent migration. Publication/refresh, shared
 term decisions and single-property fact-state fusion remain subsequent work;
 this module does not certify the entire K5 acceptance or enable KB publication.
+
+### Single-attribute fact status
+
+The existing object-save endpoint accepts `document.fact_resolution` with
+`value_property`, `subject_relation_id`, `confirm` and optional `clear`. A human
+confirms one existing business value and an adopted exact-identifier relationship
+to an entity. Other independent business values must be modeled as separate
+facts. Unconfirmed choices may be saved as proposals; they grant no authority.
+Semantic changes invalidate the confirmation. Actor/time and view-only state do
+not change the execution fingerprint. AI proposals cannot supply this proof.
+
+The existing linking preview/save also reports aggregate fact counts. It reads
+complete current-task fact rows and independently evidenced values/dates, then
+resolves `current`, `superseded` or `pending_review` by subject and effective
+period. Unknown/ambiguous targets, missing dates and conflicting assertions stay
+pending. Invalid periods stay pending rather than becoming an invented current
+value. Only full builds save status changes; debug/acceptance stay preview-only.
+Unchanged fact rows are not rewritten. Instance IDs, business values, original-off
+locators and individual evidence are preserved. Process storage holds counts,
+not fact bodies. This reuses existing linking signatures, leases and explicit
+recovery; it adds no migration, service or Agent.
+
+Shared-term management, derived transition events, independent external-link
+acceptance metrics and K6 publication/refresh remain separate work. This change
+has not been deployed or accepted against real PDFs.

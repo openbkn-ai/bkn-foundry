@@ -61,6 +61,10 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, ErrInvalidModel
 	}
 	edited.Document.DualSource = nil
+	if !reflect.DeepEqual(edited.Document.FactResolution, original.Document.FactResolution) {
+		return nil, ErrInvalidModel
+	}
+	edited.Document.FactResolution = nil
 	if !reflect.DeepEqual(edited.Document.FilePeriod, original.Document.FilePeriod) {
 		return nil, ErrInvalidModel
 	}
@@ -133,6 +137,10 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, err
 	}
 	result := checked.ObjectTypes[0]
+	if proof := original.Document.FactResolution; ValidFactResolution(items, result, proof) {
+		copy := *proof
+		result.Document.FactResolution = &copy
+	}
 	if proof := original.Document.FilePeriod; ValidFilePeriod(original, proof) && ValidFilePeriod(result, proof) {
 		unchanged := true
 		for _, name := range []string{proof.From, proof.Until} {

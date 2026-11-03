@@ -46,6 +46,9 @@ func snapshot(ot *interfaces.DraftObjectType) interfaces.DraftObjectTypeSnapshot
 		if proof := ot.Document.SentenceIdentity; proof != nil {
 			s.Document.SentenceIdentity = &interfaces.SentenceIdentityDecision{Properties: slices.Clone(proof.Properties), Confirm: proof.ConfirmedAt > 0 && proof.ConfirmedBy.ID != ""}
 		}
+		if proof := ot.Document.FactResolution; proof != nil {
+			s.Document.FactResolution = &interfaces.FactResolutionDecision{ValueProperty: proof.ValueProperty, SubjectRelationID: proof.SubjectRelationID, Confirm: proof.ConfirmedBy.ID != "" && proof.ConfirmedAt > 0}
+		}
 		if proof := ot.Document.FilePeriod; proof != nil {
 			s.Document.FilePeriod = &interfaces.FilePeriodDecision{From: proof.From, Until: proof.Until, Confirm: proof.ConfirmedAt > 0 && proof.ConfirmedBy.ID != ""}
 		}
