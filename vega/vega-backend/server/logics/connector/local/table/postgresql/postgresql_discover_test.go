@@ -185,8 +185,8 @@ func TestPostgresqlConnectorGetMetadata(t *testing.T) {
 
 func TestPostgresqlConnectorListSchemas(t *testing.T) {
 	t.Run("default scope includes only schemas with discoverable tables", func(t *testing.T) {
-		connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
-		defer cleanup()
+		connector, mock := newPostgresqlConnectorMock(t, nil)
+		defer cleanupPostgresqlConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery(`(?s)SELECT DISTINCT n\.nspname FROM pg_catalog\.pg_class c JOIN pg_catalog\.pg_namespace n.*c\.relkind IN.*has_table_privilege.*has_schema_privilege.*NOT pg_is_other_temp_schema.*NOT EXISTS.*pg_catalog\.pg_inherits.*ORDER BY n\.nspname`).
 			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "USAGE", "information_schema", "pg_catalog", "pg_toast").
@@ -200,8 +200,8 @@ func TestPostgresqlConnectorListSchemas(t *testing.T) {
 	})
 
 	t.Run("configured scope retains existing empty schemas", func(t *testing.T) {
-		connector, mock, cleanup := newPostgresqlConnectorMock(t, []string{"public", "empty"})
-		defer cleanup()
+		connector, mock := newPostgresqlConnectorMock(t, []string{"public", "empty"})
+		defer cleanupPostgresqlConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery(`SELECT n\.nspname FROM pg_catalog\.pg_namespace n.*n\.nspname IN.*ORDER BY n\.nspname`).
 			WithArgs("information_schema", "pg_catalog", "pg_toast", "public", "empty").
@@ -215,8 +215,8 @@ func TestPostgresqlConnectorListSchemas(t *testing.T) {
 	})
 
 	t.Run("configured scope omits missing schemas", func(t *testing.T) {
-		connector, mock, cleanup := newPostgresqlConnectorMock(t, []string{"public", "missing"})
-		defer cleanup()
+		connector, mock := newPostgresqlConnectorMock(t, []string{"public", "missing"})
+		defer cleanupPostgresqlConnectorMock(t, connector, mock)
 		connector.connected = true
 		mock.ExpectQuery(`SELECT n\.nspname FROM pg_catalog\.pg_namespace n.*n\.nspname IN.*ORDER BY n\.nspname`).
 			WithArgs("information_schema", "pg_catalog", "pg_toast", "public", "missing").
@@ -611,8 +611,8 @@ func TestPostgresqlConnectorFetchTableStatus(t *testing.T) {
 		value driver.Value
 	}{{"NULL", nil}, {"negative", int64(-1)}, {"zero retained", int64(0)}} {
 		t.Run("valid properties "+tc.name, func(t *testing.T) {
-			c, mock, cleanup := newPostgresqlConnectorMock(t, nil)
-			defer cleanup()
+			c, mock := newPostgresqlConnectorMock(t, nil)
+			defer cleanupPostgresqlConnectorMock(t, c, mock)
 			mock.ExpectQuery("SELECT c.relkind::text").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"relkind", "description", "est_rows", "total_bytes", "index_bytes"}).AddRow("r", nil, tc.value, tc.value, tc.value))
 			previous := map[string]any{"legacy": true}
 			table := &interfaces.TableMeta{Name: "orders", Schema: "app", Properties: previous}

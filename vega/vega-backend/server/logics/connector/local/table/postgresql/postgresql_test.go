@@ -299,8 +299,8 @@ func TestPostgresqlConnectorConnectionStringSupportsIPv6(t *testing.T) {
 
 func TestPostgresqlConnectorValidateSchemas(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		connector, mock, cleanup := newPostgresqlConnectorMock(t, []string{"public", "audit"})
-		defer cleanup()
+		connector, mock := newPostgresqlConnectorMock(t, []string{"public", "audit"})
+		defer cleanupPostgresqlConnectorMock(t, connector, mock)
 
 		mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = \$1\)`).
 			WithArgs("public").
@@ -314,8 +314,8 @@ func TestPostgresqlConnectorValidateSchemas(t *testing.T) {
 	})
 
 	t.Run("query error", func(t *testing.T) {
-		connector, mock, cleanup := newPostgresqlConnectorMock(t, []string{"public"})
-		defer cleanup()
+		connector, mock := newPostgresqlConnectorMock(t, []string{"public"})
+		defer cleanupPostgresqlConnectorMock(t, connector, mock)
 
 		mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = \$1\)`).
 			WithArgs("public").
@@ -329,8 +329,8 @@ func TestPostgresqlConnectorValidateSchemas(t *testing.T) {
 	})
 
 	t.Run("schema not found", func(t *testing.T) {
-		connector, mock, cleanup := newPostgresqlConnectorMock(t, []string{"missing"})
-		defer cleanup()
+		connector, mock := newPostgresqlConnectorMock(t, []string{"missing"})
+		defer cleanupPostgresqlConnectorMock(t, connector, mock)
 
 		mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = \$1\)`).
 			WithArgs("missing").
@@ -391,8 +391,8 @@ func TestPostgresqlConnectorConnectDetectsCapabilities(t *testing.T) {
 }
 
 func TestPostgresqlConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
-	connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
-	defer cleanup()
+	connector, mock := newPostgresqlConnectorMock(t, nil)
+	defer cleanupPostgresqlConnectorMock(t, connector, mock)
 	connector.connected = true
 	connector.compatibility = postgresqlCompatibility{}
 
@@ -419,18 +419,22 @@ func validPostgresqlConfig(port int) interfaces.ConnectorConfig {
 }
 
 // newPostgresqlConnectorMock creates a connected SQL mock with the requested schema scope.
-func newPostgresqlConnectorMock(t *testing.T, schemas []string) (*PostgresqlConnector, sqlmock.Sqlmock, func()) {
+func newPostgresqlConnectorMock(t *testing.T, schemas []string) (*PostgresqlConnector, sqlmock.Sqlmock) {
 	t.Helper()
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 
 	return &PostgresqlConnector{
-			config:        &postgresqlConfig{Schemas: schemas},
-			db:            db,
-			compatibility: postgresqlCompatibility{lateral: true, withOrdinality: true},
-		}, mock, func() {
-			mock.ExpectClose()
-			require.NoError(t, db.Close())
-		}
+		config:        &postgresqlConfig{Schemas: schemas},
+		db:            db,
+		compatibility: postgresqlCompatibility{lateral: true, withOrdinality: true},
+	}, mock
+}
+
+func cleanupPostgresqlConnectorMock(t *testing.T, connector *PostgresqlConnector, mock sqlmock.Sqlmock) {
+	t.Helper()
+
+	mock.ExpectClose()
+	require.NoError(t, connector.db.Close())
 }
