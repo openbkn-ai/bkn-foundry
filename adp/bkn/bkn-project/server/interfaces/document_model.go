@@ -8,6 +8,7 @@ package interfaces
 // Layer, selection identity and adoption are checked/set by core, never trusted
 // from an Agent. An absent Document retains the existing table workflow.
 type DraftDocumentModel struct {
+	FactResolution       *FactResolutionRule       `json:"fact_resolution,omitempty"`
 	FilePeriod           *FileEffectivePeriod      `json:"file_period,omitempty"`
 	SentenceIdentity     *SentenceBusinessIdentity `json:"sentence_identity,omitempty"`
 	FileIdentity         *FileBusinessIdentity     `json:"file_identity,omitempty"`
@@ -57,6 +58,7 @@ type FieldSourceDecision struct {
 }
 
 type DraftDocumentSettings struct {
+	FactResolution       *FactResolutionDecision   `json:"fact_resolution,omitempty"`
 	FieldSources         []FieldSourceDecision     `json:"field_sources,omitempty"`
 	FilePeriod           *FilePeriodDecision       `json:"file_period,omitempty"`
 	SentenceIdentity     *SentenceIdentityDecision `json:"sentence_identity,omitempty"`
@@ -133,4 +135,21 @@ type SentenceIdentityDecision struct {
 	Properties []string `json:"properties"`
 	Confirm    bool     `json:"confirm"`
 	Clear      bool     `json:"clear,omitempty"`
+}
+
+// FactResolutionRule confirms the sole business value and an adopted entity
+// relationship. Validity dates remain independently extracted native claims.
+type FactResolutionRule struct {
+	ValueProperty     string      `json:"value_property"`
+	SubjectRelationID string      `json:"subject_relation_id"`
+	RuleSignature     string      `json:"rule_signature"`
+	State             string      `json:"state,omitempty"`
+	ConfirmedBy       AccountInfo `json:"confirmed_by"`
+	ConfirmedAt       int64       `json:"confirmed_at"`
+}
+type FactResolutionDecision struct {
+	ValueProperty     string `json:"value_property,omitempty"`
+	SubjectRelationID string `json:"subject_relation_id,omitempty"`
+	Confirm           bool   `json:"confirm"`
+	Clear             bool   `json:"clear,omitempty"`
 }

@@ -164,6 +164,11 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 			return nil, documentEditError(ctx)
 		}
 	}
+	if save.Document != nil && save.Document.FactResolution != nil {
+		if err := kbconcept.ConfirmFactResolution(draft.Items, edited, *save.Document.FactResolution, caller, time.Now().UnixMilli()); err != nil {
+			return nil, documentEditError(ctx)
+		}
+	}
 	if save.Document != nil && save.Document.FilePeriod != nil {
 		if err := kbconcept.ConfirmFilePeriod(edited, *save.Document.FilePeriod, caller, time.Now().UnixMilli()); err != nil {
 			return nil, documentEditError(ctx)
@@ -203,6 +208,7 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 }
 
 func (s *draftService) commitDocumentEdit(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, model *interfaces.DraftDocumentModel) error {
+	kbconcept.RefreshFactResolutionStates(draft.Items)
 	if len(decisions) == 0 {
 		return nil
 	}

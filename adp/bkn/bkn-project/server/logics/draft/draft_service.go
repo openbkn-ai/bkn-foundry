@@ -310,6 +310,7 @@ func (s *draftService) GetDraft(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
+	kbconcept.RefreshFactResolutionStates(draft.Items)
 	for _, object := range draft.Items.ObjectTypes {
 		if object == nil || object.Document == nil || object.Document.DualSource == nil {
 			continue

@@ -41,6 +41,14 @@ func ModelFingerprint(draft *interfaces.Draft) (string, error) {
 			continue
 		}
 		if object.Document != nil {
+			if proof := object.Document.FactResolution; proof != nil && (proof.ConfirmedAt <= 0 || proof.ConfirmedBy.ID == "") {
+				object.Document.FactResolution = nil
+			}
+			if proof := object.Document.FactResolution; proof != nil {
+				proof.State = ""
+				proof.ConfirmedBy = interfaces.AccountInfo{}
+				proof.ConfirmedAt = 0
+			}
 			if object.Document.FilePeriod != nil {
 				object.Document.FilePeriod.ConfirmedBy = interfaces.AccountInfo{}
 				object.Document.FilePeriod.ConfirmedAt = 0

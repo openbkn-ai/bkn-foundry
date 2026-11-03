@@ -156,7 +156,7 @@ func (a *access) SaveLinking(ctx context.Context, next *interfaces.KBBuildRecord
 	}
 	complete := next.Build.State == "succeeded" && receipt.State == "succeeded"
 	attention := next.Build.State == "linking_attention" && receipt.State == "attention"
-	if receipt.FusionCurrent < 0 || receipt.FusionPending < 0 || receipt.FusionApplied && (!complete || next.Build.Mode != "full") {
+	if receipt.FactCurrent < 0 || receipt.FactSuperseded < 0 || receipt.FactPending < 0 || receipt.FactCurrent+receipt.FactSuperseded+receipt.FactPending > 100000 || receipt.FusionCurrent < 0 || receipt.FusionPending < 0 || receipt.FusionApplied && (!complete || next.Build.Mode != "full") {
 		return false, nil
 	}
 	if !complete && !attention {
