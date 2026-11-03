@@ -151,6 +151,18 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
+	// Only an indirect relation has relation properties (SPECIFICATION.md §7.6). The mapping of any
+	// other type has no field for them and would drop them unseen, so a request carrying them is
+	// refused, as a BKN file declaring them is.
+	if relationType.Type != interfaces.RELATION_TYPE_INDIRECT && carriesRelationProperties(relationType.MappingRules) {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.PropertiesOnlyIndirect", map[string]any{"type": relationType.Type})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter_Declarations).
+			WithErrorDetails(localizedText)
+	}
+
 	rules, err := validateMappingRules(ctx, relationType.Type, relationType.MappingRules, strictMode)
 	if err != nil {
 		return err
@@ -158,6 +170,23 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 	relationType.MappingRules = rules
 
 	return nil
+}
+
+// carriesRelationProperties reports whether mapping_rules read from a request body carry relation
+// properties: a properties key that is neither null nor an empty list.
+func carriesRelationProperties(mappingRules any) bool {
+	rules, ok := mappingRules.(map[string]any)
+	if !ok {
+		return false
+	}
+	raw, ok := rules[interfaces.DECLARATION_PROPERTIES]
+	if !ok || raw == nil {
+		return false
+	}
+	if list, ok := raw.([]any); ok {
+		return len(list) > 0
+	}
+	return true
 }
 
 // validateMappingRules validates mapping_rules according to the relation type.

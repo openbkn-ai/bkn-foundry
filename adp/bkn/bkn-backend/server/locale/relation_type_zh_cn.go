@@ -53,6 +53,7 @@ var relationTypeZhCN = i18n.I18nMessages{
 		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingTargetPropertyRequired":       "target_mapping_rules[{{.index}}].target_property.name 不能为空。",
 		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRuleDuplicated":               "target_mapping_rules[{{.index}}] 的起点和终点映射规则不能重复。",
 		"BknBackend.RelationType.InvalidParameter.Detail.FilteredCrossJoinMappingRulesDecodeFailed": "分侧过滤全连接的 mapping_rules 解码失败：{{.error}}",
+		"BknBackend.RelationType.InvalidParameter.Detail.PropertiesOnlyIndirect":                    "只有 indirect 关系可以声明关系属性（mapping_rules.properties），当前类型为 {{.type}}。请去掉关系属性，或把类型改为 indirect。",
 		"BknBackend.RelationType.InvalidParameter.Detail.SourcePropertyNotFound":                    "起点关联属性 {{.property}} 在起点对象类 {{.objectType}} 中不存在。",
 		"BknBackend.RelationType.InvalidParameter.Detail.TargetPropertyNotFound":                    "终点关联属性 {{.property}} 在终点对象类 {{.objectType}} 中不存在。",
 		"BknBackend.RelationType.InvalidParameter.Detail.SourceConditionInvalid":                    "分侧过滤全连接起点条件无效。",

@@ -53,6 +53,7 @@ var relationTypeEnUS = i18n.I18nMessages{
 		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingTargetPropertyRequired":       "target_mapping_rules[{{.index}}].target_property.name is required.",
 		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRuleDuplicated":               "target_mapping_rules[{{.index}}] duplicates an existing source-target mapping pair.",
 		"BknBackend.RelationType.InvalidParameter.Detail.FilteredCrossJoinMappingRulesDecodeFailed": "Failed to decode filtered_cross_join mapping_rules: {{.error}}",
+		"BknBackend.RelationType.InvalidParameter.Detail.PropertiesOnlyIndirect":                    "Only indirect relations have relation properties (mapping_rules.properties), but type is {{.type}}. Remove the properties, or change the type to indirect.",
 		"BknBackend.RelationType.InvalidParameter.Detail.SourcePropertyNotFound":                    "Source relation property {{.property}} does not exist on source object type {{.objectType}}.",
 		"BknBackend.RelationType.InvalidParameter.Detail.TargetPropertyNotFound":                    "Target relation property {{.property}} does not exist on target object type {{.objectType}}.",
 		"BknBackend.RelationType.InvalidParameter.Detail.SourceConditionInvalid":                    "The filtered cross-join source condition is invalid.",
