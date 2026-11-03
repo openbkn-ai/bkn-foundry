@@ -4,6 +4,7 @@
 package kbinstance
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -131,6 +132,9 @@ func (q *systemLinkQueue) SaveLinking(_ context.Context, next *interfaces.KBBuil
 }
 
 type systemLinkRows struct {
+	wire         bool
+	native       map[string][]map[string]any
+	nativePruned int
 	claimSnapshot
 	written    []kb.DatasetWrite
 	pruned     int
@@ -138,18 +142,69 @@ type systemLinkRows struct {
 	writeErr   error
 }
 
+func (s *systemLinkRows) ReadFileRows(ctx context.Context, spec interfaces.DraftDatasetSpec, scope kb.DatasetFileScope, guard func(context.Context) error) ([]map[string]any, error) {
+	rows, err := s.claimSnapshot.ReadFileRows(ctx, spec, scope, guard)
+	if err != nil || !s.wire {
+		return rows, err
+	}
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var decoded []map[string]any
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
 func (s *systemLinkRows) Replace(_ context.Context, spec interfaces.DraftDatasetSpec, row map[string]any) error {
 	s.written = append(s.written, kb.DatasetWrite{Spec: spec, Row: row})
+	if s.writeErr == nil {
+		existing := s.rows[spec.ResourceID]
+		replaced := false
+		for i, old := range existing {
+			if old["_id"] == row["_id"] {
+				existing[i] = row
+				replaced = true
+			}
+		}
+		if !replaced {
+			existing = append(existing, row)
+		}
+		s.rows[spec.ResourceID] = existing
+	}
+	if spec.RelationTypeID == "" && s.writeErr == nil {
+		if s.native == nil {
+			s.native = map[string][]map[string]any{}
+		}
+		s.native[spec.ResourceID] = []map[string]any{row}
+	}
 	if s.afterWrite != nil {
 		s.afterWrite()
 	}
 	return s.writeErr
 }
-func (s *systemLinkRows) Prune(ctx context.Context, _ interfaces.DraftDatasetSpec, _ kb.DatasetFileScope, _ []string, guard func(context.Context) error) error {
+func (s *systemLinkRows) Prune(ctx context.Context, spec interfaces.DraftDatasetSpec, scope kb.DatasetFileScope, ids []string, guard func(context.Context) error) error {
 	if err := guard(ctx); err != nil {
 		return err
 	}
 	s.pruned++
+	kept := []map[string]any{}
+	for _, row := range s.rows[spec.ResourceID] {
+		id, _ := row["_id"].(string)
+		keep := false
+		for _, allowed := range ids {
+			if id == allowed {
+				keep = true
+			}
+		}
+		if row["document_id"] != scope.DocumentID || row["content_version_id"] != scope.ContentVersionID || row["model_fingerprint"] != scope.ModelFingerprint || keep {
+			kept = append(kept, row)
+		}
+	}
+	s.rows[spec.ResourceID] = kept
 	return nil
 }
 
@@ -287,5 +342,245 @@ func TestSystemLinkServiceRecoversAnUncertainWriteAtTheSameRowIdentity(t *testin
 	result, err := s.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
 	if err != nil || result.State != "succeeded" || len(data.written) != 2 || data.written[1].Row["_id"] != first || data.pruned != 1 {
 		t.Fatal("recovery changed identity or left partial links", result, err)
+	}
+}
+
+func (s *systemLinkRows) ReadEntityRows(ctx context.Context, spec interfaces.DraftDatasetSpec, _ string, guard func(context.Context) error) ([]map[string]any, error) {
+	if err := guard(ctx); err != nil {
+		return nil, err
+	}
+	return s.native[spec.ResourceID], nil
+}
+func (s *systemLinkRows) PruneEntities(ctx context.Context, _ interfaces.DraftDatasetSpec, _ string, _ []string, guard func(context.Context) error) error {
+	if err := guard(ctx); err != nil {
+		return err
+	}
+	s.nativePruned++
+	return nil
+}
+func TestFullBuildWritesCurrentValuesAndLinksUnderTheSameFencedOperation(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	queue.record.Build.Mode = "full"
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil || preview.FusionPreviewOnly || len(preview.Fusion) != 1 || preview.Fusion[0].Current != 2 {
+		t.Fatal("full fusion preview missing", preview, err)
+	}
+	request := SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature}
+	receipt, err := service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err != nil || !receipt.FusionApplied || receipt.FusionCurrent != 2 || receipt.FusionPending != 0 || len(data.written) != 2 || data.nativePruned != 1 {
+		t.Fatal("native fusion was not committed with its links", receipt, len(data.written), err)
+	}
+	again, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil || again.Signature != preview.Signature {
+		t.Fatal("own writes invalidated the reviewed recipe", again, err)
+	}
+	request.OperationID = "73d9aee2-96c5-444b-92d7-b26a27a30789"
+	_, err = service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err != nil || len(data.written) != 2 {
+		t.Fatal("unchanged full fusion wrote rows again", err)
+	}
+}
+func TestSampleBuildPreviewsCurrentValuesWithoutChangingCanonicalGeneration(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil || !preview.FusionPreviewOnly || len(preview.Fusion) != 1 {
+		t.Fatal("sample preview missing", preview, err)
+	}
+	receipt, err := service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature})
+	if err != nil || receipt.FusionApplied || len(data.native) != 0 || data.nativePruned != 0 {
+		t.Fatal("sample altered canonical full-generation rows", receipt, err)
+	}
+}
+
+type uncertainEntityRows struct {
+	*systemLinkRows
+	lost bool
+}
+
+func (s *uncertainEntityRows) Replace(ctx context.Context, spec interfaces.DraftDatasetSpec, row map[string]any) error {
+	if err := s.systemLinkRows.Replace(ctx, spec, row); err != nil {
+		return err
+	}
+	if spec.RelationTypeID == "" && !s.lost {
+		s.lost = true
+		return kb.ErrUnavailable
+	}
+	return nil
+}
+func TestFullFusionResumesAnAlreadyAppliedButUnacknowledgedEntityWrite(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	queue.record.Build.Mode = "full"
+	store := &uncertainEntityRows{systemLinkRows: data}
+	service.Datasets = store
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature}
+	_, err = service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err == nil || queue.record.Build.State != "linking_attention" || data.nativePruned != 0 {
+		t.Fatal("uncertain entity write was reported complete", err)
+	}
+	receipt, err := service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err != nil || !receipt.FusionApplied || queue.record.Build.State != "succeeded" {
+		t.Fatal("same intent did not safely resume", receipt, err)
+	}
+	identities := map[string]bool{}
+	for _, write := range data.written {
+		identities[write.Spec.ResourceID+"/"+write.Row["_id"].(string)] = true
+	}
+	if len(identities) != 2 {
+		t.Fatal("retry changed logical row identities", len(identities))
+	}
+}
+
+func TestFullFusionConnectsFileClaimsToTheirNativeEntityEvenWhenAgentOmittedTheEdge(t *testing.T) {
+	testFullNativeFusion(t, 0)
+}
+func TestNativeFusionRetainsAdditionalGroundedAgentRelationEvidenceAfterPrune(t *testing.T) {
+	testFullNativeFusion(t, 1)
+}
+func TestNativeFusionRetainsMoreThanFortyLocationsAcrossDistinctExtractedEdges(t *testing.T) {
+	testFullNativeFusion(t, 3)
+}
+func testFullNativeFusion(t *testing.T, relationEvidence int) {
+	t.Helper()
+	service, queue, data, _, _, draft := systemLinkServiceFixture(t)
+	build := queue.record.Build
+	build.Mode = "full"
+	data.wire = true
+	draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "file_contract", Name: "File mentions contract", Adopted: true, Source: "contract_file", Target: "contract_doc", Cardinality: interfaces.DRAFT_CARDINALITY_MANY_TO_ONE, Document: &interfaces.DraftDocumentModel{Role: "relation"}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}})
+	plan, err := kbdataset.NewPlan(draft, build.GenerationID, "catalog", build.Owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.State = "ready"
+	for i := range plan.Datasets {
+		plan.Datasets[i].Ready = true
+	}
+	draft.Items.DatasetPlans = []*interfaces.DraftDatasetPlan{plan}
+	bound, err := kbdataset.BindPreview(draft, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	*draft = *bound
+	build.ModelFingerprint = plan.ModelFingerprint
+	_, _, input, task := extractionFixture(t, "contract", false)
+
+	if relationEvidence > 0 {
+		var proposal FileExtraction
+		if err := json.Unmarshal([]byte(task.Output), &proposal); err != nil {
+			t.Fatal(err)
+		}
+		if relationEvidence == 1 {
+			proposal.Relations = append(proposal.Relations, InstanceRelation{RelationTypeID: "file_contract", Source: "file", Target: "current", Evidence: []InstanceCitation{{BlockID: "native-1", Quote: "Reference ABC."}}})
+		} else {
+			text := input.Text["native-1"]
+			quotes := []InstanceCitation{}
+			for start := 0; start < len(text) && len(quotes) < 60; start++ {
+				for end := start + 4; end <= len(text) && len(quotes) < 60; end++ {
+					quote := text[start:end]
+					if strings.Count(text, quote) == 1 {
+						quotes = append(quotes, InstanceCitation{BlockID: "native-1", Quote: quote})
+					}
+				}
+			}
+			if len(quotes) < 60 {
+				t.Fatal("fixture needs sixty distinct grounded locations")
+			}
+			for index := 0; index < 3; index++ {
+				proposal.Relations = append(proposal.Relations, InstanceRelation{RelationTypeID: "file_contract", Source: "file", Target: "current", Evidence: quotes[index*20 : (index+1)*20]})
+			}
+		}
+
+		encoded, err := json.Marshal(proposal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		task.Output = string(encoded)
+	}
+	extracted, err := MaterializeFile(build, 0, draft, input, task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.rows = map[string][]map[string]any{}
+	for _, write := range extracted {
+		data.rows[write.Spec.ResourceID] = append(data.rows[write.Spec.ResourceID], write.Row)
+	}
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", build.Owner)
+	if err != nil || len(preview.Relations) != 2 || preview.Linked != 2 {
+		t.Fatal("native entity links absent", preview, err)
+	}
+	_, err = service.Apply(context.Background(), "Bearer operator-token", "project", "job", build.Owner, SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature})
+
+	expectedWrites := 3
+	if relationEvidence > 0 {
+		expectedWrites = 2
+	}
+	if err != nil || len(data.written) != expectedWrites || data.nativePruned != 1 {
+		t.Fatal("native relation did not share the fusion boundary", len(data.written), err)
+	}
+	entityID := ""
+	targetID := ""
+	for _, write := range data.written {
+		if write.Spec.ObjectTypeID == "contract_doc" {
+			entityID = write.Row["_id"].(string)
+		}
+	}
+	locations := 0
+	for _, spec := range plan.Datasets {
+		if spec.RelationTypeID != "file_contract" {
+			continue
+		}
+		expectedRows := max(1, relationEvidence)
+		if len(data.rows[spec.ResourceID]) != expectedRows {
+			t.Fatal("lost extracted observations or added duplicate fallback", len(data.rows[spec.ResourceID]))
+		}
+		for _, row := range data.rows[spec.ResourceID] {
+			targetID = row["target_record_id"].(string)
+			identity := row["target_identity"].(map[string]any)
+			if identity["number"] != "ABC" {
+				t.Fatal("business identity replaced with storage identity")
+			}
+			raw, _ := json.Marshal(row["evidence"])
+			var proof []locatedEvidence
+			if json.Unmarshal(raw, &proof) != nil {
+				t.Fatal("unreadable evidence")
+			}
+			locations += len(proof)
+			for _, location := range proof {
+				if location.Quote != "" {
+					t.Fatal("original-off evidence leaked text")
+				}
+			}
+		}
+	}
+	if relationEvidence == 3 && locations != 60 {
+		t.Fatal("grounded evidence was truncated", locations)
+	}
+
+	if entityID == "" || targetID != entityID {
+		t.Fatal("native edge target is not the materialized entity", entityID, targetID)
+	}
+	repeated, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", build.Owner)
+	if err != nil || repeated.Signature != preview.Signature {
+		t.Fatal("preserved evidence was unstable after native writes and pruning", err)
+	}
+
+}
+
+func TestFullFusionCannotPruneFromAnIncompleteSelectionManifest(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	build := queue.record.Build
+	build.Mode = "full"
+	ctrl := gomock.NewController(t)
+	selections := pmock.NewMockKBResourceAccess(ctrl)
+	extra := build.Files[0].File
+	extra.FileID = "11"
+	selections.EXPECT().Read(gomock.Any(), "project").Return(&interfaces.KBResourceState{Current: &interfaces.KBSelection{ID: build.SelectionID, Revision: build.SelectionRevision, Owner: build.Owner, State: "active", Files: []interfaces.KBResourceFile{build.Files[0].File, extra}}}, nil).AnyTimes()
+	service.Builds.Selections = selections
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", build.Owner)
+	if err == nil || preview != nil || len(data.written) != 0 || data.nativePruned != 0 {
+		t.Fatal("partial manifest qualified as complete canonical input", preview, err)
 	}
 }

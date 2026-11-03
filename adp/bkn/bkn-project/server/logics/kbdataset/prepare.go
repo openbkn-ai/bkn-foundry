@@ -41,6 +41,10 @@ func ModelFingerprint(draft *interfaces.Draft) (string, error) {
 			continue
 		}
 		if object.Document != nil {
+			if object.Document.FilePeriod != nil {
+				object.Document.FilePeriod.ConfirmedBy = interfaces.AccountInfo{}
+				object.Document.FilePeriod.ConfirmedAt = 0
+			}
 			if object.Document.SentenceIdentity != nil {
 				object.Document.SentenceIdentity.ConfirmedBy = interfaces.AccountInfo{}
 				object.Document.SentenceIdentity.ConfirmedAt = 0

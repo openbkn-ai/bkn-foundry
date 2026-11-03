@@ -230,3 +230,24 @@ func TestFullBuildPinsActualExecutionFromThePassingAcceptance(t *testing.T) {
 		t.Fatal("a changed default model reused acceptance from a different model")
 	}
 }
+
+func TestReferenceEditorDecimalStringsSaveAsTypedValuesAndRoundTrip(t *testing.T) {
+	service, _, _, build, _, request := referenceServiceFixture(t)
+	for i := range request.Extraction.Records {
+		value := request.Extraction.Records[i].Values["amount"]
+		value.Value = "25.50"
+		request.Extraction.Records[i].Values["amount"] = value
+	}
+	if _, err := service.Save(context.Background(), "Bearer operator-token", "project", build.Owner, request); err != nil {
+		t.Fatal("decimal text from the annotation editor was rejected", err)
+	}
+	view, err := service.View(context.Background(), "Bearer operator-token", "project", request.FileKey, build.Owner)
+	if err != nil || view.Extraction == nil {
+		t.Fatal("stored reference could not be reopened", err)
+	}
+	for _, record := range view.Extraction.Records {
+		if record.Values["amount"].Value != "25.50" {
+			t.Fatal("decimal reference text lost precision on editor round-trip")
+		}
+	}
+}

@@ -17,3 +17,12 @@ import (
 type DatasetFileSnapshot interface {
 	ReadFileRows(context.Context, interfaces.DraftDatasetSpec, DatasetFileScope, func(context.Context) error) ([]map[string]any, error)
 }
+
+// DatasetEntityRecords reads and prunes only the prepared unpublished generation
+// and exact model. Full builds own canonical rows; sample builds only preview
+// their fusion plan and must never replace full-generation current values.
+type DatasetEntityRecords interface {
+	DatasetRecords
+	ReadEntityRows(context.Context, interfaces.DraftDatasetSpec, string, func(context.Context) error) ([]map[string]any, error)
+	PruneEntities(context.Context, interfaces.DraftDatasetSpec, string, []string, func(context.Context) error) error
+}

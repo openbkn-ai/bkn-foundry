@@ -15,6 +15,7 @@ import (
 )
 
 type SystemLinkPlan struct {
+	Preserved    []kb.DatasetWrite
 	Writes       []kb.DatasetWrite
 	Resolution   LinkResolution
 	SystemDigest string
@@ -25,6 +26,14 @@ type SystemLinkPlan struct {
 // must revalidate this snapshot digest and current model/source grants before
 // activating the set; a preview alone is never a permission to write.
 func PlanSystemLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, claims []SourceClaim, system *SystemSnapshot, terms []ConfirmedTermLink) (*SystemLinkPlan, error) {
+	return planIdentityLinks(build, draft, relation, claims, system, terms, false)
+}
+
+func PlanNativeEntityLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, claims []SourceClaim, target *SystemSnapshot) (*SystemLinkPlan, error) {
+	return planIdentityLinks(build, draft, relation, claims, target, nil, true)
+}
+
+func planIdentityLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, claims []SourceClaim, system *SystemSnapshot, terms []ConfirmedTermLink, native bool) (*SystemLinkPlan, error) {
 	if build == nil || draft == nil || relation == nil || !relation.Adopted || !kbconcept.LinkIdentityReady(draft.Items, relation) || system == nil || len(system.Digest) != 64 {
 		return nil, ErrInvalidBuild
 	}
@@ -38,7 +47,7 @@ func PlanSystemLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relatio
 			target = object
 		}
 	}
-	if target == nil || target.Document != nil || !target.Adopted || len(target.PrimaryKeys) != 1 {
+	if target == nil || !target.Adopted || len(target.PrimaryKeys) != 1 || (!native && target.Document != nil) || (native && (target.Document == nil || target.Document.Role != "entity")) {
 		return nil, ErrInvalidBuild
 	}
 	steps := map[string]int{}
@@ -108,7 +117,11 @@ func PlanSystemLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relatio
 		if err != nil {
 			return nil, err
 		}
-		id, err := identityDigest("bkn-system-link-v1", build.NetworkID, relation.ID, claim.RecordID, key, claim.DocumentID)
+		prefix := "bkn-system-link-v1"
+		if native {
+			prefix = "bkn-native-link-v1"
+		}
+		id, err := identityDigest(prefix, build.NetworkID, relation.ID, claim.RecordID, key, claim.DocumentID)
 		if err != nil {
 			return nil, err
 		}

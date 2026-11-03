@@ -9,6 +9,12 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var documentZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknProject.KnowledgeBase.RegistryPermission":  "你没有权限执行这项共享实体或术语决定。",
+		"BknProject.KnowledgeBase.RegistryChanged":     "共享实体或受影响的引用已变化，请刷新影响预览后重新确认。",
+		"BknProject.KnowledgeBase.RegistryAmbiguous":   "请先处理同名候选，再确认这个实体或术语。",
+		"BknProject.KnowledgeBase.RegistryInvalid":     "请检查所选实体、术语和变更后再继续。",
+		"BknProject.KnowledgeBase.RegistryUnavailable": "共享实体管理暂不可用，请稍后再试。",
+
 		"BknProject.KnowledgeBase.BuildFileIdentity": "请先在『{{.name}}』对象设置中确认业务编号，再启动构建。",
 		"BknProject.KnowledgeBase.BuildReviewFirst":  "请先完成验收样本核对和关联检查，再确认全量构建。",
 		"BknProject.KnowledgeBase.BuildChanged":      "已确认模型、来源或正在处理的构建已变化，请刷新并确认后继续。",

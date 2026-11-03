@@ -37,13 +37,16 @@ type KBBuild struct {
 // KBLinkingReceipt stores process evidence only. Claims, proposed matches,
 // conflicts and resulting current values remain in owned Vega Datasets.
 type KBLinkingReceipt struct {
-	OperationID string `json:"operation_id"`
-	Signature   string `json:"signature"`
-	State       string `json:"state"`
-	RowsWritten int64  `json:"rows_written"`
-	Eligible    int64  `json:"eligible"`
-	Linked      int64  `json:"linked"`
-	Pending     int64  `json:"pending"`
+	FusionApplied bool   `json:"fusion_applied,omitempty"`
+	FusionCurrent int    `json:"fusion_current,omitempty"`
+	FusionPending int    `json:"fusion_pending,omitempty"`
+	OperationID   string `json:"operation_id"`
+	Signature     string `json:"signature"`
+	State         string `json:"state"`
+	RowsWritten   int64  `json:"rows_written"`
+	Eligible      int64  `json:"eligible"`
+	Linked        int64  `json:"linked"`
+	Pending       int64  `json:"pending"`
 }
 
 // KBLinkingAccess is an interactive continuation after background extraction.
