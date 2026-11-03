@@ -217,7 +217,10 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		return nil, err
 	}
 	if err := publisherService.Activate(ctx, publication); err != nil {
-		return nil, kbpublication.PublicError(ctx, err)
+		// The ordinary release already committed. Its mounted generation remains
+		// sealed; a private activation acknowledgement must not stop main/branch
+		// synchronization or turn a successful release into a retry refusal.
+		otellog.LogWarn(ctx, fmt.Sprintf("Activate knowledge publication for released network %s failed: %v", networkID, err))
 	}
 
 	commit, err := gs.FastForward(ctx, lineageID, interfaces.GIT_MAIN_BRANCH, branchHead)

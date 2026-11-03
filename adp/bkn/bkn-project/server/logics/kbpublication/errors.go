@@ -32,5 +32,10 @@ func PublicError(ctx context.Context, err error) error {
 	if errors.Is(err, ErrInvalidSnapshot) || errors.Is(err, kb.ErrVersionGone) || errors.Is(err, kbinstance.ErrAcceptanceRequired) || errors.Is(err, kbinstance.ErrBuildChanged) || errors.Is(err, kbinstance.ErrInvalidBuild) {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_KnowledgeBaseNotReady)
 	}
-	return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, perrors.BknProject_Release_KnowledgeBaseUnavailable)
+	if source != nil || errors.Is(err, kb.ErrUnavailable) || errors.Is(err, kb.ErrPublishedModelMissing) {
+		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, perrors.BknProject_Release_KnowledgeBaseUnavailable)
+	}
+	// Git/database failures also occur before any KB operation, including in
+	// table-only releases. Preserve their existing outer error classification.
+	return err
 }

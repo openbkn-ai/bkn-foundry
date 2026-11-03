@@ -36,7 +36,7 @@ func (p *publicationProbe) Activate(_ context.Context, record *interfaces.KBPubl
 	return p.activate(record)
 }
 func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *testing.T) {
-	for _, scenario := range []string{"publish", "source_denied", "mount_uncertain", "review_outdated"} {
+	for _, scenario := range []string{"publish", "source_denied", "mount_uncertain", "review_outdated", "activation_uncertain"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -53,6 +53,12 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			if err := realGS.CreateBranch(ctx, id, branch, "main"); err != nil {
 				t.Fatal(err)
 			}
+			if scenario == "activation_uncertain" {
+				if _, err := realGS.CommitFiles(ctx, id, branch, definitions("Changed part.", "A supplier."), "edit model", author); err != nil {
+					t.Fatal(err)
+				}
+			}
+			successful := scenario == "publish" || scenario == "activation_uncertain"
 			events := []string{}
 			probe := &publicationProbe{
 				prepare: func(target kbpublication.Target) (*interfaces.KBPublication, error) {
@@ -82,20 +88,26 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 					}
 					return nil
 				},
-				activate: func(*interfaces.KBPublication) error { events = append(events, "activate"); return nil },
+				activate: func(*interfaces.KBPublication) error {
+					events = append(events, "activate")
+					if scenario == "activation_uncertain" {
+						return errors.New("activation acknowledgement lost")
+					}
+					return nil
+				},
 			}
 			svc := &lineageService{gs: realGS, bba: bba, ra: releases, newKnowledgePublication: func(interfaces.GitStore) knowledgePublication { return probe }}
 			releases.EXPECT().GetReleaseByNetworkID(gomock.Any(), network).Return(nil, false, nil)
 			releases.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
 			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
 			bba.EXPECT().ExportBKN(gomock.Any(), token, network).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			if scenario == "publish" || scenario == "mount_uncertain" {
+			if successful || scenario == "mount_uncertain" {
 				bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(func(context.Context, string, map[string][]byte) (*interfaces.BKNImportResult, error) {
 					events = append(events, "import")
 					return &interfaces.BKNImportResult{KNID: network}, nil
 				})
 			}
-			if scenario == "publish" {
+			if successful {
 				releases.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, release *interfaces.Release) error {
 					events = append(events, "record")
 					if release.ProjectID != "p1" {
@@ -112,7 +124,7 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 				request.ExpectedBranchCommit = "previous-reviewed-head"
 			}
 			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-			if (err == nil) != (scenario == "publish") {
+			if (err == nil) != successful {
 				t.Fatal("incorrect publication outcome", err)
 			}
 			if scenario == "source_denied" || scenario == "review_outdated" {
@@ -125,11 +137,21 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			if scenario == "review_outdated" {
 				expected = []string{}
 			}
-			if scenario == "publish" || scenario == "mount_uncertain" {
+			if successful || scenario == "mount_uncertain" {
 				expected = append(expected, "import", "mount")
 			}
-			if scenario == "publish" {
+			if successful {
 				expected = append(expected, "record", "activate")
+			}
+			if successful {
+				main, err := realGS.ResolveRef(ctx, id, "refs/heads/main")
+				if err != nil {
+					t.Fatal(err)
+				}
+				tag, err := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+				if err != nil || main != tag {
+					t.Fatal("recorded release did not advance main", err)
+				}
 			}
 			if !reflect.DeepEqual(events, expected) {
 				t.Fatal("unsafe release ordering", events)

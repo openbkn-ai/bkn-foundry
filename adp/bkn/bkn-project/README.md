@@ -743,3 +743,9 @@ This feature adds no Agent migration or Safe SQL. Automatic data refresh,
 activation recovery after a failed post-release acknowledgement, inherited
 cross-project document models and the remaining K5 acceptance work are separate
 work. No 8081 or real-PDF acceptance is claimed by local tests.
+
+Document projects confirmed before this feature must be reconfirmed and their
+full build rerun to publish the new fixed rules. No pre-upgrade build is silently
+attested or migrated. A failed activation acknowledgement after ordinary release
+recording is logged while main/branch synchronization continues; the mounted
+generation remains sealed. Automatic activation repair remains follow-up work.
