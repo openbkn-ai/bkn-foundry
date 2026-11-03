@@ -52,6 +52,7 @@ ONTOLOGY_ASK_V4 = MIGRATIONS / "0.2.1/35-ontology-ask-chosen-ends-v4.sql"
 ONTOLOGY_ASK_V5 = MIGRATIONS / "0.2.1/37-ontology-ask-document-models-v5.sql"
 RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
 DOCUMENT_SEED = MIGRATIONS / "0.2.1/39-seed-bkn-project-document-extraction.sql"
+CONCEPT_NATIVE = MIGRATIONS / "0.2.1/40-concept-native-evidence.sql"
 
 
 def statements(path):
@@ -280,6 +281,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, ONTOLOGY_ASK_V5)
         apply(upgraded, CONCEPT_BUDGET)
         apply(upgraded, DOCUMENT_SEED)
+        apply(upgraded, CONCEPT_NATIVE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -490,6 +492,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(ONTOLOGY_ASK_V5),
                     str(CONCEPT_BUDGET),
                     str(DOCUMENT_SEED),
+                    str(CONCEPT_NATIVE),
                 ],
             ],
         ],
@@ -554,6 +557,11 @@ def ontology_ask_v5_locales_text():
     return text[text.index("-- Attach the zh-CN"):]
 
 
+def native_concept_seed_text():
+    text = CONCEPT_NATIVE.read_text()
+    return text[text.index("-- Fresh native concept defaults."):text.index("-- Upgrade existing official concept defaults.")].rstrip()+"\n"
+
+
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
@@ -561,8 +569,8 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + naming_locales_text() + "\n" + requirements_locales_text() + "\n" + answer_judge_locales_text()
         + "\n" + ontology_ask_locales_text()
         + "\n" + METRIC_DESIGN_LOCALE.read_text()
-        + "\n" + CONCEPT_SEED.read_text().replace('"timeout_s":120', '"timeout_s":300')
         + "\n" + ontology_ask_v5_locales_text() + "\n\n" + DOCUMENT_SEED.read_text()
+        + "\n" + native_concept_seed_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
@@ -869,7 +877,7 @@ def test_every_agent_starts_with_one_current_version():
         assert db.execute(
             "SELECT count(*) FROM t_agent_version WHERE f_current=1"
         ).fetchone()[0] == len(agents)
-        assert all(row["f_version"] == 1 for row in rows.values())
+        assert all(row["f_version"] == (3 if agent == CONCEPT_AGENT else 1) for agent, row in rows.items())
         assert all(row["f_current"] == 1 for row in rows.values())
         # A fresh installation restores to its initialized current defaults.
         initial = db.execute(

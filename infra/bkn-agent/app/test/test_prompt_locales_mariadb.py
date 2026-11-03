@@ -24,6 +24,7 @@ from app.test.test_shared_agent_seeds import (
     BUILTIN_LOCALES,
     CLAIM_LOCALES,
     CONCEPT_AGENT,
+    CONCEPT_NATIVE,
     CONCEPT_SEED,
     METRIC_DESIGN_LOCALE,
     MIGRATIONS,
@@ -83,7 +84,12 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert cursor.fetchall() == ()
         with db.cursor() as cursor:
             cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
+        with db.cursor() as cursor:
+            cursor.execute("SELECT f_version,f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_current=1", (CONCEPT_AGENT,))
+            assert cursor.fetchone() == (3, 2)
         before_locales_rerun = saved_rows()
+        apply(CONCEPT_NATIVE)
+        apply(CONCEPT_NATIVE)
         apply(CONCEPT_SEED)
         apply(CONCEPT_SEED)
         apply(BUILTIN_LOCALES)

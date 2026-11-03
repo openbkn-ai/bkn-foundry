@@ -220,3 +220,24 @@ SSE events are `meta/token/tool_started/tool_finished/usage/result/terminal`, wi
 The full Context Loader MCP remains registered through the existing full/compact endpoint. Network scope is checked during execution. Tools without a trustworthy network constraint, such as arbitrary code execution, cross-Agent calls, or other unsupported types, are unavailable rather than silently allowed. This delivery does not imply that graph-exploration tools, canvas results, or frontend migration are complete.
 
 The same account type, account ID, and `client_request_id` never execute twice. Reusing an ID with different input or while a run is active returns 409; retrying after a terminal state returns the stored result. Cancellation returns the actual committed state, so a later GET may be needed to await completion. Disconnects stop execution, and process interruption follows the old task recovery path to mark failure. SSE replay, background continuation after disconnect, and multi-replica coordination are not promised. The chart remains single-replica. No database tables or columns are added.
+
+## BKN-project native concept evidence
+
+Migration `40-concept-native-evidence.sql` publishes the existing built-in
+`bkn-project-concept-extraction` as Agent v3 with bilingual Prompt v2. It changes
+citations and property examples to `{sample_id}` references to server-verified
+native fragments. The project provider expands references to original text and
+locations; the model never copies a quote or chooses an ambiguous occurrence.
+It does not change business modeling, adoption, source permissions or heldout
+selection, and adds no new Agent ID, table or service.
+
+The upgrade locks Agent then Prompt, preserves historical versions and only
+advances verified official defaults. Customized/newer prompts, models, tools,
+skills, limits and explicit rollbacks are preserved; an administrator must review
+and publish compatible custom configuration separately. Fresh installations seed
+the current native protocol directly. Existing installations must back up and
+explicitly apply migration 40 before rolling out its paired project provider;
+no live migration is performed by this change. Do not replay unrelated deltas.
+When rolling back an existing installation, coordinate the previous project
+binary with its preserved prior Agent snapshot; a Prompt-head change alone does
+not select a task's pinned version.
