@@ -159,6 +159,11 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 			return nil, err
 		}
 	}
+	if save.Document != nil && save.Document.FilePeriod != nil {
+		if err := kbconcept.ConfirmFilePeriod(edited, *save.Document.FilePeriod, caller, time.Now().UnixMilli()); err != nil {
+			return nil, documentEditError(ctx)
+		}
+	}
 	if save.Document != nil && save.Document.FileIdentity != nil {
 		if err := kbconcept.ConfirmFileIdentity(edited, *save.Document.FileIdentity, caller, time.Now().UnixMilli()); err != nil {
 			return nil, documentEditError(ctx)

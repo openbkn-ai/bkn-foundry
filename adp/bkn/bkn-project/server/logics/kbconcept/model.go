@@ -85,7 +85,7 @@ func validatedQuotes(input *SampleInput, quotes []interfaces.DraftSourceCitation
 	return result, nil
 }
 func validateDocument(input *SampleInput, model *interfaces.DraftDocumentModel, relation bool) error {
-	if model == nil || model.DualSource != nil || model.FileIdentity != nil || model.SentenceIdentity != nil || !boundedText(model.Reason, 1, 1000) {
+	if model == nil || model.DualSource != nil || model.FilePeriod != nil || model.FileIdentity != nil || model.SentenceIdentity != nil || !boundedText(model.Reason, 1, 1000) {
 		return ErrInvalidModel
 	}
 	layer, ok := roleLayers[model.Role]

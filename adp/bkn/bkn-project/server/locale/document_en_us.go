@@ -9,6 +9,12 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var documentEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknProject.KnowledgeBase.RegistryPermission":  "You do not have permission to make this shared entity or term decision.",
+		"BknProject.KnowledgeBase.RegistryChanged":     "The shared entities or affected references changed. Refresh the impact preview and confirm again.",
+		"BknProject.KnowledgeBase.RegistryAmbiguous":   "Resolve the same-name candidates before confirming this entity or term.",
+		"BknProject.KnowledgeBase.RegistryInvalid":     "Check the selected entities, term and change before continuing.",
+		"BknProject.KnowledgeBase.RegistryUnavailable": "Shared entity management is temporarily unavailable. Try again later.",
+
 		"BknProject.KnowledgeBase.BuildFileIdentity": "Confirm the business number in the {{.name}} object settings before starting a build.",
 		"BknProject.KnowledgeBase.BuildReviewFirst":  "Complete acceptance-sample review and link checks before confirming a full build.",
 		"BknProject.KnowledgeBase.BuildChanged":      "The confirmed model, sources or active build changed. Refresh and confirm them before continuing.",

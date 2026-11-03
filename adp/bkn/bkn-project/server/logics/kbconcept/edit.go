@@ -61,6 +61,10 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, ErrInvalidModel
 	}
 	edited.Document.DualSource = nil
+	if !reflect.DeepEqual(edited.Document.FilePeriod, original.Document.FilePeriod) {
+		return nil, ErrInvalidModel
+	}
+	edited.Document.FilePeriod = nil
 	if !reflect.DeepEqual(edited.Document.FileIdentity, original.Document.FileIdentity) {
 		return nil, ErrInvalidModel
 	}
@@ -129,6 +133,18 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, err
 	}
 	result := checked.ObjectTypes[0]
+	if proof := original.Document.FilePeriod; ValidFilePeriod(original, proof) && ValidFilePeriod(result, proof) {
+		unchanged := true
+		for _, name := range []string{proof.From, proof.Until} {
+			if name != "" && property(original, name).Type != property(result, name).Type {
+				unchanged = false
+			}
+		}
+		if unchanged {
+			copy := *proof
+			result.Document.FilePeriod = &copy
+		}
+	}
 	if proof := original.Document.FileIdentity; proof != nil && fileKeyField(result, proof.Property) {
 		old, current := property(original, proof.Property), property(result, proof.Property)
 		if old != nil && current != nil && old.Type == current.Type {

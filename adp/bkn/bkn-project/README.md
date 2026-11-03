@@ -614,3 +614,44 @@ work. Rows lacking the actual extraction-task receipt require an explicit fresh
 build; the service never invents a receipt. No SQL or Agent migration is added
 beyond the K4 prerequisites. Before rollback, finish or cancel active linking
 operations; older versions do not manage the new linking states.
+
+### Native entity current values
+
+The existing system-links operation now also previews native entity fusion and
+resolves adopted exact-number links to those entities. Preview returns a `fusion`
+summary (entity and current/pending property counts) and `fusion_preview_only`.
+It never returns property predictions or source bodies, including for heldout
+samples. Debug/acceptance operations preview current values; only a succeeded
+full build can write or prune canonical entity rows in its prepared generation.
+
+File objects can optionally map existing date/datetime/timestamp fields through
+`document.file_period`: an explicit `from`/`until` choice and human confirmation.
+Changing or removing those fields invalidates the choice. AI cannot set it.
+The semantic mapping participates in the model fingerprint; audit time/actor do
+not. Dates reach an entity assertion only through an adopted identity link or
+confirmed dual-source plan, and only for the same file and content version.
+
+Date priority applies only to a field explicitly owned by fusion (including a
+confirmed dual-source authority rule). Document-owned fields can combine agreeing
+active sources, but conflicting values remain pending until authority is resolved.
+
+Current values use the existing native entity Dataset and stable entity identity.
+The global row has no single document locator. Its `extraction_version` recipe
+contains the input digest, per-property selected claim IDs and pending reasons;
+those IDs reference the existing located evidence edges. No instance values or
+source text enter process tables. Contradictory undated/equal-priority sources
+remain pending. A prior current value survives only while all cited sources still
+exist, remain effective and assert that exact value. Missing/removed evidence
+cannot keep a stale value alive. System table values are never overwritten.
+
+Canonical writes and native links share the existing reviewed signature, lease,
+source/model guards and explicit uncertain-response recovery. Complete snapshots
+are rechecked before writes, before pruning and before completion. Full builds
+prune obsolete canonical rows only after every write is acknowledged and visible;
+sample builds never prune them. Identical completed recipes write zero new rows.
+Native row size is bounded to fit the paired snapshot reader before any write.
+
+The EE provider must implement `DatasetEntityRecords` for full builds with entity
+models. This feature adds no SQL or Agent migration. Publication/refresh, shared
+term decisions and single-property fact-state fusion remain subsequent work;
+this module does not certify the entire K5 acceptance or enable KB publication.

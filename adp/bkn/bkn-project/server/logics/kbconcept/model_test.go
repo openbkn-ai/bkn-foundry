@@ -45,13 +45,15 @@ func TestValidatedDocumentModelsUseGenericRulesAndSystemColumns(t *testing.T) {
 	}
 }
 func TestInvalidDocumentModelsDoNotReachCandidates(t *testing.T) {
-	for _, name := range []string{"quote", "instruction", "property_quote", "readonly", "type", "table", "role", "layer", "event", "duplicate", "shadow"} {
+	for _, name := range []string{"quote", "instruction", "property_quote", "readonly", "type", "table", "role", "layer", "event", "duplicate", "shadow", "file_period"} {
 		t.Run(name, func(t *testing.T) {
 			input := modelInput("订单 O-1 于今日交付。")
 			object := proposedObject(input, "order_doc", "entity")
 			existing := interfaces.DraftItems{}
 			proposal := kb.ConceptProposal{ObjectTypes: []*interfaces.DraftObjectType{object}}
 			switch name {
+			case "file_period":
+				object.Document.FilePeriod = &interfaces.FileEffectivePeriod{From: "number", ConfirmedBy: interfaces.AccountInfo{ID: "forged", Type: "user"}, ConfirmedAt: 1}
 			case "quote":
 				object.Document.Citations[0].Quote = "来源没有这句"
 			case "instruction":

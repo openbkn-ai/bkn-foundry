@@ -8,6 +8,7 @@ package interfaces
 // Layer, selection identity and adoption are checked/set by core, never trusted
 // from an Agent. An absent Document retains the existing table workflow.
 type DraftDocumentModel struct {
+	FilePeriod           *FileEffectivePeriod      `json:"file_period,omitempty"`
 	SentenceIdentity     *SentenceBusinessIdentity `json:"sentence_identity,omitempty"`
 	FileIdentity         *FileBusinessIdentity     `json:"file_identity,omitempty"`
 	DualSource           *DraftDualSourcePlan      `json:"dual_source,omitempty"`
@@ -50,12 +51,28 @@ type DraftDocumentMapping struct {
 // DraftDocumentSettings contains the editable event fields; role, layer and
 // source evidence remain server-owned metadata.
 type DraftDocumentSettings struct {
+	FilePeriod           *FilePeriodDecision       `json:"file_period,omitempty"`
 	SentenceIdentity     *SentenceIdentityDecision `json:"sentence_identity,omitempty"`
 	FileIdentity         *FileIdentityDecision     `json:"file_identity,omitempty"`
 	Derive               *DraftDocumentDerivation  `json:"derive,omitempty"`
 	DualSource           *DualSourceDecision       `json:"dual_source,omitempty"`
 	TimeProperty         string                    `json:"time_property"`
 	ParticipantRelations []string                  `json:"participant_relations"`
+}
+
+// FileEffectivePeriod maps existing extracted fields only. The service records
+// a human confirmation; an Agent cannot choose or forge this authority.
+type FileEffectivePeriod struct {
+	From        string      `json:"from,omitempty"`
+	Until       string      `json:"until,omitempty"`
+	ConfirmedBy AccountInfo `json:"confirmed_by"`
+	ConfirmedAt int64       `json:"confirmed_at"`
+}
+type FilePeriodDecision struct {
+	From    string `json:"from,omitempty"`
+	Until   string `json:"until,omitempty"`
+	Confirm bool   `json:"confirm"`
+	Clear   bool   `json:"clear,omitempty"`
 }
 
 type FileBusinessIdentity struct {

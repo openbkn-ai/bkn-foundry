@@ -131,6 +131,8 @@ func (q *systemLinkQueue) SaveLinking(_ context.Context, next *interfaces.KBBuil
 }
 
 type systemLinkRows struct {
+	native       map[string][]map[string]any
+	nativePruned int
 	claimSnapshot
 	written    []kb.DatasetWrite
 	pruned     int
@@ -140,6 +142,12 @@ type systemLinkRows struct {
 
 func (s *systemLinkRows) Replace(_ context.Context, spec interfaces.DraftDatasetSpec, row map[string]any) error {
 	s.written = append(s.written, kb.DatasetWrite{Spec: spec, Row: row})
+	if spec.RelationTypeID == "" && s.writeErr == nil {
+		if s.native == nil {
+			s.native = map[string][]map[string]any{}
+		}
+		s.native[spec.ResourceID] = []map[string]any{row}
+	}
 	if s.afterWrite != nil {
 		s.afterWrite()
 	}
@@ -287,5 +295,166 @@ func TestSystemLinkServiceRecoversAnUncertainWriteAtTheSameRowIdentity(t *testin
 	result, err := s.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
 	if err != nil || result.State != "succeeded" || len(data.written) != 2 || data.written[1].Row["_id"] != first || data.pruned != 1 {
 		t.Fatal("recovery changed identity or left partial links", result, err)
+	}
+}
+
+func (s *systemLinkRows) ReadEntityRows(ctx context.Context, spec interfaces.DraftDatasetSpec, _ string, guard func(context.Context) error) ([]map[string]any, error) {
+	if err := guard(ctx); err != nil {
+		return nil, err
+	}
+	return s.native[spec.ResourceID], nil
+}
+func (s *systemLinkRows) PruneEntities(ctx context.Context, _ interfaces.DraftDatasetSpec, _ string, _ []string, guard func(context.Context) error) error {
+	if err := guard(ctx); err != nil {
+		return err
+	}
+	s.nativePruned++
+	return nil
+}
+func TestFullBuildWritesCurrentValuesAndLinksUnderTheSameFencedOperation(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	queue.record.Build.Mode = "full"
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil || preview.FusionPreviewOnly || len(preview.Fusion) != 1 || preview.Fusion[0].Current != 2 {
+		t.Fatal("full fusion preview missing", preview, err)
+	}
+	request := SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature}
+	receipt, err := service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err != nil || !receipt.FusionApplied || receipt.FusionCurrent != 2 || receipt.FusionPending != 0 || len(data.written) != 2 || data.nativePruned != 1 {
+		t.Fatal("native fusion was not committed with its links", receipt, len(data.written), err)
+	}
+	again, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil || again.Signature != preview.Signature {
+		t.Fatal("own writes invalidated the reviewed recipe", again, err)
+	}
+	request.OperationID = "73d9aee2-96c5-444b-92d7-b26a27a30789"
+	_, err = service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err != nil || len(data.written) != 2 {
+		t.Fatal("unchanged full fusion wrote rows again", err)
+	}
+}
+func TestSampleBuildPreviewsCurrentValuesWithoutChangingCanonicalGeneration(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil || !preview.FusionPreviewOnly || len(preview.Fusion) != 1 {
+		t.Fatal("sample preview missing", preview, err)
+	}
+	receipt, err := service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature})
+	if err != nil || receipt.FusionApplied || len(data.native) != 0 || data.nativePruned != 0 {
+		t.Fatal("sample altered canonical full-generation rows", receipt, err)
+	}
+}
+
+type uncertainEntityRows struct {
+	*systemLinkRows
+	lost bool
+}
+
+func (s *uncertainEntityRows) Replace(ctx context.Context, spec interfaces.DraftDatasetSpec, row map[string]any) error {
+	if err := s.systemLinkRows.Replace(ctx, spec, row); err != nil {
+		return err
+	}
+	if spec.RelationTypeID == "" && !s.lost {
+		s.lost = true
+		return kb.ErrUnavailable
+	}
+	return nil
+}
+func TestFullFusionResumesAnAlreadyAppliedButUnacknowledgedEntityWrite(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	queue.record.Build.Mode = "full"
+	store := &uncertainEntityRows{systemLinkRows: data}
+	service.Datasets = store
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature}
+	_, err = service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err == nil || queue.record.Build.State != "linking_attention" || data.nativePruned != 0 {
+		t.Fatal("uncertain entity write was reported complete", err)
+	}
+	receipt, err := service.Apply(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner, request)
+	if err != nil || !receipt.FusionApplied || queue.record.Build.State != "succeeded" {
+		t.Fatal("same intent did not safely resume", receipt, err)
+	}
+	identities := map[string]bool{}
+	for _, write := range data.written {
+		identities[write.Spec.ResourceID+"/"+write.Row["_id"].(string)] = true
+	}
+	if len(identities) != 2 {
+		t.Fatal("retry changed logical row identities", len(identities))
+	}
+}
+
+func TestFullFusionConnectsFileClaimsToTheirNativeEntityEvenWhenAgentOmittedTheEdge(t *testing.T) {
+	service, queue, data, _, _, draft := systemLinkServiceFixture(t)
+	build := queue.record.Build
+	build.Mode = "full"
+	draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "file_contract", Name: "File mentions contract", Adopted: true, Source: "contract_file", Target: "contract_doc", Cardinality: interfaces.DRAFT_CARDINALITY_MANY_TO_ONE, Document: &interfaces.DraftDocumentModel{Role: "relation"}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}})
+	plan, err := kbdataset.NewPlan(draft, build.GenerationID, "catalog", build.Owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.State = "ready"
+	for i := range plan.Datasets {
+		plan.Datasets[i].Ready = true
+	}
+	draft.Items.DatasetPlans = []*interfaces.DraftDatasetPlan{plan}
+	bound, err := kbdataset.BindPreview(draft, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	*draft = *bound
+	build.ModelFingerprint = plan.ModelFingerprint
+	_, _, input, task := extractionFixture(t, "contract", false)
+	extracted, err := MaterializeFile(build, 0, draft, input, task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.rows = map[string][]map[string]any{}
+	for _, write := range extracted {
+		data.rows[write.Spec.ResourceID] = append(data.rows[write.Spec.ResourceID], write.Row)
+	}
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", build.Owner)
+	if err != nil || len(preview.Relations) != 2 || preview.Linked != 2 {
+		t.Fatal("native entity links absent", preview, err)
+	}
+	_, err = service.Apply(context.Background(), "Bearer operator-token", "project", "job", build.Owner, SystemLinkRequest{OperationID: "a93810f5-7e60-433d-9fa8-d178089aa029", Signature: preview.Signature})
+	if err != nil || len(data.written) != 3 || data.nativePruned != 1 {
+		t.Fatal("native relation did not share the fusion write boundary", len(data.written), err)
+	}
+	entityID := ""
+	targetID := ""
+	for _, write := range data.written {
+		if write.Spec.ObjectTypeID == "contract_doc" {
+			entityID = write.Row["_id"].(string)
+		}
+		if write.Spec.RelationTypeID == "file_contract" {
+			targetID = write.Row["target_record_id"].(string)
+			identity := write.Row["target_identity"].(map[string]any)
+			if identity["number"] != "ABC" {
+				t.Fatal("business identity was replaced with storage identity")
+			}
+		}
+	}
+	if entityID == "" || targetID != entityID {
+		t.Fatal("native edge target is not the materialized entity", entityID, targetID)
+	}
+}
+
+func TestFullFusionCannotPruneFromAnIncompleteSelectionManifest(t *testing.T) {
+	service, queue, data, _, _, _ := systemLinkServiceFixture(t)
+	build := queue.record.Build
+	build.Mode = "full"
+	ctrl := gomock.NewController(t)
+	selections := pmock.NewMockKBResourceAccess(ctrl)
+	extra := build.Files[0].File
+	extra.FileID = "11"
+	selections.EXPECT().Read(gomock.Any(), "project").Return(&interfaces.KBResourceState{Current: &interfaces.KBSelection{ID: build.SelectionID, Revision: build.SelectionRevision, Owner: build.Owner, State: "active", Files: []interfaces.KBResourceFile{build.Files[0].File, extra}}}, nil).AnyTimes()
+	service.Builds.Selections = selections
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", build.Owner)
+	if err == nil || preview != nil || len(data.written) != 0 || data.nativePruned != 0 {
+		t.Fatal("partial manifest qualified as complete canonical input", preview, err)
 	}
 }

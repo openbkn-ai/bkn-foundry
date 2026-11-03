@@ -35,11 +35,13 @@ type SystemLinkSummary struct {
 	Conflicts  *int   `json:"conflicts"`
 }
 type SystemLinkPreview struct {
-	Signature string              `json:"signature"`
-	Eligible  int64               `json:"eligible"`
-	Linked    int64               `json:"linked"`
-	Pending   int64               `json:"pending"`
-	Relations []SystemLinkSummary `json:"relations"`
+	Fusion            []EntityFusionSummary `json:"fusion"`
+	FusionPreviewOnly bool                  `json:"fusion_preview_only"`
+	Signature         string                `json:"signature"`
+	Eligible          int64                 `json:"eligible"`
+	Linked            int64                 `json:"linked"`
+	Pending           int64                 `json:"pending"`
+	Relations         []SystemLinkSummary   `json:"relations"`
 }
 type systemLinkDatasets interface {
 	kb.DatasetFileSnapshot
@@ -56,10 +58,17 @@ type systemLinkScope struct {
 	File kb.DatasetFileScope
 	Keep []string
 }
+type entityFusionScope struct {
+	Spec  interfaces.DraftDatasetSpec
+	Model string
+	Keep  []string
+}
 type preparedSystemLinks struct {
-	Preview SystemLinkPreview
-	Writes  []kb.DatasetWrite
-	Scopes  []systemLinkScope
+	Entities     []entityFusionScope
+	FusionWrites []kb.DatasetWrite
+	Preview      SystemLinkPreview
+	Writes       []kb.DatasetWrite
+	Scopes       []systemLinkScope
 }
 
 // Compare only a reviewed shared-field plan. Similar names alone never grant
@@ -178,11 +187,16 @@ func (s *SystemLinkService) current(ctx context.Context, token, project, id stri
 		selected[file.Key()] = file
 	}
 	files := []interfaces.KBResourceFile{}
+	seenFiles := map[string]bool{}
 	for _, step := range build.Files {
-		if step.State != "succeeded" || selected[step.File.Key()] != step.File {
+		if step.State != "succeeded" || seenFiles[step.File.Key()] || selected[step.File.Key()] != step.File {
 			return nil, nil, ErrBuildChanged
 		}
+		seenFiles[step.File.Key()] = true
 		files = append(files, step.File)
+	}
+	if build.Mode == "full" && len(files) != len(selected) {
+		return nil, nil, ErrBuildChanged
 	}
 	draft, found, err := s.Builds.Drafts.GetDraft(ctx, project)
 	if err != nil {
@@ -219,9 +233,8 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 				target = object
 			}
 		}
-		// This operation is specifically the structured-source continuation.
-		// Document-to-document linking and shared-term decisions have their own
-		// inputs; completing these table links cannot certify those other steps.
+		// Structured targets use the live operator snapshot. Native entity targets
+		// are resolved after preparing their canonical rows below.
 		if target == nil || target.Document != nil {
 			continue
 		}
@@ -289,6 +302,64 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 			result.Scopes = append(result.Scopes, scope)
 		}
 	}
+
+	result.Preview.Fusion = []EntityFusionSummary{}
+	result.Preview.FusionPreviewOnly = build.Mode != "full"
+	result.Entities = []entityFusionScope{}
+	result.FusionWrites = []kb.DatasetWrite{}
+	var entityStore kb.DatasetEntityRecords
+	previous := map[string][]map[string]any{}
+	for _, object := range draft.Items.ObjectTypes {
+		if object == nil || !object.Adopted || object.Document == nil || object.Document.Role != "entity" {
+			continue
+		}
+		if build.Mode == "full" {
+			if entityStore == nil {
+				var ok bool
+				entityStore, ok = s.Datasets.(kb.DatasetEntityRecords)
+				if !ok {
+					return nil, kb.ErrUnavailable
+				}
+			}
+			rowPlan, err := newFileRows(build, 0, draft, "")
+			if err != nil {
+				return nil, err
+			}
+			spec, exists := rowPlan.objects[object.ID]
+			if !exists {
+				return nil, ErrBuildChanged
+			}
+			previous[spec.ResourceID], err = entityStore.ReadEntityRows(ctx, spec, build.ModelFingerprint, guard)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	fusion, err := PlanEntityFusion(build, draft, claims, previous, s.now())
+	if err != nil {
+		return nil, err
+	}
+	if err := prepareNativeLinks(build, draft, claims, fusion, result); err != nil {
+		return nil, err
+	}
+	result.Preview.Fusion = fusion.Summaries
+	result.FusionWrites = fusion.Writes
+	if build.Mode == "full" {
+		result.Writes = append(result.Writes, fusion.Writes...)
+		rowPlan, err := newFileRows(build, 0, draft, "")
+		if err != nil {
+			return nil, err
+		}
+		for _, object := range draft.Items.ObjectTypes {
+			if object == nil || !object.Adopted || object.Document == nil || object.Document.Role != "entity" {
+				continue
+			}
+			spec := rowPlan.objects[object.ID]
+			result.Entities = append(result.Entities, entityFusionScope{Spec: spec, Model: build.ModelFingerprint, Keep: fusion.Keep[spec.ResourceID]})
+		}
+		slices.SortFunc(result.Entities, func(a, b entityFusionScope) int { return strings.Compare(a.Spec.ResourceID, b.Spec.ResourceID) })
+	}
+
 	if _, err := validateWrites(build, draft, result.Writes); err != nil {
 		return nil, err
 	}
@@ -297,12 +368,14 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 		return strings.Compare(a.Spec.ResourceID+"/"+a.File.DocumentID, b.Spec.ResourceID+"/"+b.File.DocumentID)
 	})
 	raw, err := json.Marshal(struct {
-		Model   string
-		Claims  []SourceClaim
-		Targets map[string]string
-		Writes  []kb.DatasetWrite
-		Scopes  []systemLinkScope
-	}{build.ModelFingerprint, claims, digests, result.Writes, result.Scopes})
+		Model        string
+		Claims       []SourceClaim
+		Targets      map[string]string
+		Writes       []kb.DatasetWrite
+		Scopes       []systemLinkScope
+		Entities     []entityFusionScope
+		FusionWrites []kb.DatasetWrite
+	}{build.ModelFingerprint, claims, digests, result.Writes, result.Scopes, result.Entities, result.FusionWrites})
 	if err != nil || len(raw) > 32<<20 {
 		return nil, ErrInvalidBuild
 	}
@@ -386,6 +459,11 @@ func (s *SystemLinkService) Apply(ctx context.Context, token, project, id string
 			record.Build.State = "linking_attention"
 		}
 		record.Build.Linking = &interfaces.KBLinkingReceipt{OperationID: req.OperationID, Signature: req.Signature, State: state, RowsWritten: written, Eligible: prepared.Preview.Eligible, Linked: prepared.Preview.Linked, Pending: prepared.Preview.Pending}
+		record.Build.Linking.FusionApplied = state == "succeeded" && !prepared.Preview.FusionPreviewOnly
+		for _, summary := range prepared.Preview.Fusion {
+			record.Build.Linking.FusionCurrent += summary.Current
+			record.Build.Linking.FusionPending += summary.Pending
+		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		ok, err := store.SaveLinking(cleanup, record, previous, s.now())
@@ -431,6 +509,21 @@ func (s *SystemLinkService) Apply(ctx context.Context, token, project, id string
 			return fail(err)
 		}
 		if err := s.Datasets.Prune(ctx, scope.Spec, scope.File, scope.Keep, guard); err != nil {
+			return fail(err)
+		}
+	}
+	if err := verify(); err != nil {
+		return fail(err)
+	}
+	for _, scope := range prepared.Entities {
+		if err := guard(ctx); err != nil {
+			return fail(err)
+		}
+		store, ok := s.Datasets.(kb.DatasetEntityRecords)
+		if !ok {
+			return fail(kb.ErrUnavailable)
+		}
+		if err := store.PruneEntities(ctx, scope.Spec, scope.Model, scope.Keep, guard); err != nil {
 			return fail(err)
 		}
 	}
