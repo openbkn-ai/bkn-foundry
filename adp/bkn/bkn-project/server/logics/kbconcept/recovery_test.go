@@ -71,6 +71,16 @@ func TestRecoverConceptsNeverReexecutesAndPreservesAllDraftGuards(t *testing.T) 
 			if provider.calls != 0 {
 				t.Fatal("recovery fell back to a new model call")
 			}
+			switch scenario {
+			case "unsupported", "invalid_id", "not_owner", "stale_selection":
+				if provider.recoverCalls != 0 {
+					t.Fatal("rejected request read a task before its authorization and snapshot guards")
+				}
+			default:
+				if provider.recoverCalls != 1 {
+					t.Fatal("authorized recovery did not exercise the provider before its later guard")
+				}
+			}
 			if scenario != "success" {
 				if err == nil || store.written != nil {
 					t.Fatal("recovery bypassed an existing guard")
