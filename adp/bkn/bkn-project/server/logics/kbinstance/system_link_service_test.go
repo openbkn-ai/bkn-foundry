@@ -142,6 +142,20 @@ type systemLinkRows struct {
 
 func (s *systemLinkRows) Replace(_ context.Context, spec interfaces.DraftDatasetSpec, row map[string]any) error {
 	s.written = append(s.written, kb.DatasetWrite{Spec: spec, Row: row})
+	if s.writeErr == nil {
+		existing := s.rows[spec.ResourceID]
+		replaced := false
+		for i, old := range existing {
+			if old["_id"] == row["_id"] {
+				existing[i] = row
+				replaced = true
+			}
+		}
+		if !replaced {
+			existing = append(existing, row)
+		}
+		s.rows[spec.ResourceID] = existing
+	}
 	if spec.RelationTypeID == "" && s.writeErr == nil {
 		if s.native == nil {
 			s.native = map[string][]map[string]any{}
@@ -153,11 +167,25 @@ func (s *systemLinkRows) Replace(_ context.Context, spec interfaces.DraftDataset
 	}
 	return s.writeErr
 }
-func (s *systemLinkRows) Prune(ctx context.Context, _ interfaces.DraftDatasetSpec, _ kb.DatasetFileScope, _ []string, guard func(context.Context) error) error {
+func (s *systemLinkRows) Prune(ctx context.Context, spec interfaces.DraftDatasetSpec, scope kb.DatasetFileScope, ids []string, guard func(context.Context) error) error {
 	if err := guard(ctx); err != nil {
 		return err
 	}
 	s.pruned++
+	kept := []map[string]any{}
+	for _, row := range s.rows[spec.ResourceID] {
+		id, _ := row["_id"].(string)
+		keep := false
+		for _, allowed := range ids {
+			if id == allowed {
+				keep = true
+			}
+		}
+		if row["document_id"] != scope.DocumentID || row["content_version_id"] != scope.ContentVersionID || row["model_fingerprint"] != scope.ModelFingerprint || keep {
+			kept = append(kept, row)
+		}
+	}
+	s.rows[spec.ResourceID] = kept
 	return nil
 }
 
@@ -388,6 +416,13 @@ func TestFullFusionResumesAnAlreadyAppliedButUnacknowledgedEntityWrite(t *testin
 }
 
 func TestFullFusionConnectsFileClaimsToTheirNativeEntityEvenWhenAgentOmittedTheEdge(t *testing.T) {
+	testFullNativeFusion(t, false)
+}
+func TestNativeFusionRetainsAdditionalGroundedAgentRelationEvidenceAfterPrune(t *testing.T) {
+	testFullNativeFusion(t, true)
+}
+func testFullNativeFusion(t *testing.T, relationEvidence bool) {
+	t.Helper()
 	service, queue, data, _, _, draft := systemLinkServiceFixture(t)
 	build := queue.record.Build
 	build.Mode = "full"
@@ -408,6 +443,19 @@ func TestFullFusionConnectsFileClaimsToTheirNativeEntityEvenWhenAgentOmittedTheE
 	*draft = *bound
 	build.ModelFingerprint = plan.ModelFingerprint
 	_, _, input, task := extractionFixture(t, "contract", false)
+
+	if relationEvidence {
+		var proposal FileExtraction
+		if err := json.Unmarshal([]byte(task.Output), &proposal); err != nil {
+			t.Fatal(err)
+		}
+		proposal.Relations = append(proposal.Relations, InstanceRelation{RelationTypeID: "file_contract", Source: "file", Target: "current", Evidence: []InstanceCitation{{BlockID: "native-1", Quote: "Reference ABC."}}})
+		encoded, err := json.Marshal(proposal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		task.Output = string(encoded)
+	}
 	extracted, err := MaterializeFile(build, 0, draft, input, task)
 	if err != nil {
 		t.Fatal(err)
@@ -431,6 +479,15 @@ func TestFullFusionConnectsFileClaimsToTheirNativeEntityEvenWhenAgentOmittedTheE
 			entityID = write.Row["_id"].(string)
 		}
 		if write.Spec.RelationTypeID == "file_contract" {
+			if relationEvidence {
+				proof := write.Row["evidence"].([]locatedEvidence)
+				if len(proof) != 2 || proof[0].Quote != "" || proof[1].Quote != "" {
+					t.Fatal("extra relation location lost or original text leaked", proof)
+				}
+				if len(data.rows[write.Spec.ResourceID]) != 1 {
+					t.Fatal("duplicate AI edge was not normalized")
+				}
+			}
 			targetID = write.Row["target_record_id"].(string)
 			identity := write.Row["target_identity"].(map[string]any)
 			if identity["number"] != "ABC" {
@@ -441,6 +498,11 @@ func TestFullFusionConnectsFileClaimsToTheirNativeEntityEvenWhenAgentOmittedTheE
 	if entityID == "" || targetID != entityID {
 		t.Fatal("native edge target is not the materialized entity", entityID, targetID)
 	}
+	repeated, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", build.Owner)
+	if err != nil || repeated.Signature != preview.Signature {
+		t.Fatal("merged evidence was unstable after replacing duplicate edges", err)
+	}
+
 }
 
 func TestFullFusionCannotPruneFromAnIncompleteSelectionManifest(t *testing.T) {

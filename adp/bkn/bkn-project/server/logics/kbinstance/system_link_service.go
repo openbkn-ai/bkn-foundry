@@ -339,7 +339,7 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 	if err != nil {
 		return nil, err
 	}
-	if err := prepareNativeLinks(build, draft, claims, fusion, result); err != nil {
+	if err := prepareNativeLinks(ctx, s.Datasets, build, draft, claims, fusion, result, guard); err != nil {
 		return nil, err
 	}
 	result.Preview.Fusion = fusion.Summaries

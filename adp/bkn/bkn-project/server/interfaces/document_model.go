@@ -48,9 +48,16 @@ type DraftDocumentMapping struct {
 	TargetNameProperty string                         `json:"target_name_property,omitempty"`
 }
 
-// DraftDocumentSettings contains the editable event fields; role, layer and
-// source evidence remain server-owned metadata.
+// DraftDocumentSettings contains explicit human modeling choices; role, layer
+// and source evidence remain server-owned metadata.
+type FieldSourceDecision struct {
+	Property       string `json:"property"`
+	SourceOfRecord string `json:"source_of_record"`
+	Confirm        bool   `json:"confirm"`
+}
+
 type DraftDocumentSettings struct {
+	FieldSources         []FieldSourceDecision     `json:"field_sources,omitempty"`
 	FilePeriod           *FilePeriodDecision       `json:"file_period,omitempty"`
 	SentenceIdentity     *SentenceIdentityDecision `json:"sentence_identity,omitempty"`
 	FileIdentity         *FileIdentityDecision     `json:"file_identity,omitempty"`

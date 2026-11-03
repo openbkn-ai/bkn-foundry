@@ -124,7 +124,7 @@ func TestEntityFusionRejectsForgedGlobalIdentityAndForeignPriorRows(t *testing.T
 }
 
 func TestEntityFusionUsesOnlyAnAdoptedIdentityLinkForFilePeriods(t *testing.T) {
-	for _, scenario := range []string{"confirmed", "document_authority", "unadopted_link", "other_version_date"} {
+	for _, scenario := range []string{"confirmed", "future_only", "document_authority", "unadopted_link", "other_version_date"} {
 		t.Run(scenario, func(t *testing.T) {
 			build, draft, claims := entityFusionFixture(t, "contract")
 			entity := instanceObject(draft.Items, "contract_doc")
@@ -170,7 +170,11 @@ func TestEntityFusionUsesOnlyAnAdoptedIdentityLinkForFilePeriods(t *testing.T) {
 					}
 				}
 			}
-			fused, err := PlanEntityFusion(build, draft, claims, nil, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).UnixMilli())
+			year := 2026
+			if scenario == "future_only" {
+				year = 2025
+			}
+			fused, err := PlanEntityFusion(build, draft, claims, nil, time.Date(year, 3, 1, 0, 0, 0, 0, time.UTC).UnixMilli())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -182,5 +186,32 @@ func TestEntityFusionUsesOnlyAnAdoptedIdentityLinkForFilePeriods(t *testing.T) {
 				t.Fatal("unconfirmed or foreign dates selected a current value", scenario, fused)
 			}
 		})
+	}
+}
+
+func TestMentioningAnotherEntityDoesNotMakeTheFilesPeriodItsAuthority(t *testing.T) {
+	for _, dated := range []bool{false, true} {
+		build, draft, claims := entityFusionFixture(t, "supplier")
+		file := instanceObject(draft.Items, "supplier_file")
+		file.Properties = append(file.Properties, &interfaces.DraftProperty{Name: "invoice_no", Type: "string"}, &interfaces.DraftProperty{Name: "starts", Type: "date"})
+		file.Document.FileIdentity = &interfaces.FileBusinessIdentity{Property: "invoice_no", ConfirmedBy: build.Owner, ConfirmedAt: 10}
+		if dated {
+			file.Document.FilePeriod = &interfaces.FileEffectivePeriod{From: "starts", ConfirmedBy: build.Owner, ConfirmedAt: 10}
+		}
+		draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "invoice_supplier", Name: "Invoice supplier", Adopted: true, Source: file.ID, Target: "supplier_doc", Cardinality: interfaces.DRAFT_CARDINALITY_MANY_TO_ONE, Document: &interfaces.DraftDocumentModel{Role: "relation"}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}})
+		plan, err := kbdataset.NewPlan(draft, build.GenerationID, "catalog", build.Owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan.State = "ready"
+		for i := range plan.Datasets {
+			plan.Datasets[i].Ready = true
+		}
+		draft.Items.DatasetPlans = []*interfaces.DraftDatasetPlan{plan}
+		build.ModelFingerprint = plan.ModelFingerprint
+		result, err := PlanEntityFusion(build, draft, claims, nil, 2000)
+		if err != nil || len(result.Writes) != 1 || result.Writes[0].Row["amount"] != json.Number("25.50") {
+			t.Fatal("ordinary mention was mistaken for file-period authority", dated, result, err)
+		}
 	}
 }

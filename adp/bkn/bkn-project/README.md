@@ -631,6 +631,13 @@ The semantic mapping participates in the model fingerprint; audit time/actor do
 not. Dates reach an entity assertion only through an adopted identity link or
 confirmed dual-source plan, and only for the same file and content version.
 
+Pure-document entities expose an explicit human choice in the existing property
+editor through `document.field_sources` (`property`, `source_of_record`, `confirm`).
+Only document/fusion are accepted; identities, managed fields, duplicate choices
+and non-user callers are refused. Dual-source entities retain their existing
+authority plan. Authority-only changes enter the existing decision audit. AI
+proposals cannot choose fusion; name/type edits invalidate a previous choice.
+
 Date priority applies only to a field explicitly owned by fusion (including a
 confirmed dual-source authority rule). Document-owned fields can combine agreeing
 active sources, but conflicting values remain pending until authority is resolved.
@@ -650,6 +657,8 @@ are rechecked before writes, before pruning and before completion. Full builds
 prune obsolete canonical rows only after every write is acknowledged and visible;
 sample builds never prune them. Identical completed recipes write zero new rows.
 Native row size is bounded to fit the paired snapshot reader before any write.
+Canonical identity edges replace duplicate extracted edges while retaining the
+Agent relation's additional grounded evidence in the same stable row.
 
 The EE provider must implement `DatasetEntityRecords` for full builds with entity
 models. This feature adds no SQL or Agent migration. Publication/refresh, shared

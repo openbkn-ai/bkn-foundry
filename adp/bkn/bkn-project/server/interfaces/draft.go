@@ -602,13 +602,14 @@ type DraftObjectTypeSnapshot struct {
 }
 
 type DraftPropertySnapshot struct {
-	Extraction  *DraftExtractionField `json:"extraction,omitempty"`
-	ReadOnly    bool                  `json:"read_only,omitempty"`
-	Name        string                `json:"name"`
-	DisplayName string                `json:"display_name"`
-	Description string                `json:"description"`
-	Type        string                `json:"type"`
-	MappedField string                `json:"mapped_field"`
+	SourceOfRecord string                `json:"source_of_record,omitempty"`
+	Extraction     *DraftExtractionField `json:"extraction,omitempty"`
+	ReadOnly       bool                  `json:"read_only,omitempty"`
+	Name           string                `json:"name"`
+	DisplayName    string                `json:"display_name"`
+	Description    string                `json:"description"`
+	Type           string                `json:"type"`
+	MappedField    string                `json:"mapped_field"`
 }
 
 // DraftPropertyUse is a relation type a property to be removed joins by, named for people to read.

@@ -55,7 +55,7 @@ func snapshot(ot *interfaces.DraftObjectType) interfaces.DraftObjectTypeSnapshot
 	}
 	for _, p := range ot.Properties {
 		s.Properties = append(s.Properties, interfaces.DraftPropertySnapshot{
-			Name: p.Name, DisplayName: p.DisplayName, Description: p.Description, Type: p.Type, MappedField: p.MappedField, Extraction: p.Extraction, ReadOnly: p.ReadOnly,
+			Name: p.Name, DisplayName: p.DisplayName, Description: p.Description, Type: p.Type, MappedField: p.MappedField, Extraction: p.Extraction, ReadOnly: p.ReadOnly, SourceOfRecord: p.SourceOfRecord,
 		})
 	}
 	return s

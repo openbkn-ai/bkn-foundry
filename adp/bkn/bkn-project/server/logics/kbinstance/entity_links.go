@@ -4,6 +4,7 @@
 package kbinstance
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,7 +17,7 @@ import (
 // prepareNativeLinks derives exact-number edges to the canonical entity rows
 // in this same verified plan. An omitted AI edge does not change the confirmed
 // identity rule; absent targets stay pending and no fuzzy match is invented.
-func prepareNativeLinks(build *interfaces.KBBuild, draft *interfaces.Draft, claims []SourceClaim, fusion *EntityFusionPlan, result *preparedSystemLinks) error {
+func prepareNativeLinks(ctx context.Context, reader kb.DatasetFileSnapshot, build *interfaces.KBBuild, draft *interfaces.Draft, claims []SourceClaim, fusion *EntityFusionPlan, result *preparedSystemLinks, guard func(context.Context) error) error {
 	for _, relation := range draft.Items.RelationTypes {
 		if relation == nil || !relation.Adopted || relation.Document == nil || relation.DocumentMapping == nil || relation.DocumentMapping.Mode != "linking" {
 			continue
@@ -45,6 +46,9 @@ func prepareNativeLinks(build *interfaces.KBBuild, draft *interfaces.Draft, clai
 		snapshot.Digest = hex.EncodeToString(digest[:])
 		plan, err := PlanNativeEntityLinks(build, draft, relation, claims, snapshot)
 		if err != nil {
+			return err
+		}
+		if err := preserveNativeRelationEvidence(ctx, reader, build, draft, relation, plan, guard); err != nil {
 			return err
 		}
 		result.Writes = append(result.Writes, plan.Writes...)
@@ -89,6 +93,121 @@ func prepareNativeLinks(build *interfaces.KBBuild, draft *interfaces.Draft, clai
 			}
 			slices.Sort(scope.Keep)
 			result.Scopes = append(result.Scopes, scope)
+		}
+	}
+	return nil
+}
+
+// Exact-number rows replace duplicate extracted edges, retaining their grounded
+// relation evidence. Re-reading our own merged row is stable before/after prune.
+func preserveNativeRelationEvidence(ctx context.Context, reader kb.DatasetFileSnapshot, build *interfaces.KBBuild, draft *interfaces.Draft, relation *interfaces.DraftRelationType, plan *SystemLinkPlan, guard func(context.Context) error) error {
+	indexed := map[[4]string]map[string]any{}
+	for _, write := range plan.Writes {
+		document, a := write.Row["document_id"].(string)
+		source, b := write.Row["source_record_id"].(string)
+		target, c := write.Row["target_record_id"].(string)
+		if !a || !b || !c {
+			return ErrBuildChanged
+		}
+		key := [4]string{write.Spec.ResourceID, document, source, target}
+		if indexed[key] != nil {
+			return ErrBuildChanged
+		}
+		indexed[key] = write.Row
+	}
+
+	for index, step := range build.Files {
+		rows, err := newFileRows(build, index, draft, "")
+		if err != nil {
+			return err
+		}
+		spec, exists := rows.relations[relation.ID]
+		if !exists {
+			return ErrBuildChanged
+		}
+		scope := kb.DatasetFileScope{KnowledgeBaseID: step.File.KnowledgeBaseID, FileID: step.File.FileID, ContentVersionID: step.File.ContentVersionID, DocumentID: rows.document, ModelFingerprint: build.ModelFingerprint}
+		existing, err := reader.ReadFileRows(ctx, spec, scope, guard)
+		if err != nil {
+			return err
+		}
+		for _, row := range existing {
+			version, ok := row["extraction_version"].(string)
+			if !ok || row["model_fingerprint"] != scope.ModelFingerprint || row["document_id"] != scope.DocumentID || row["content_version_id"] != scope.ContentVersionID || row["property_name"] != "" || row["claim_value"] != nil {
+				return ErrBuildChanged
+			}
+			if _, err := verifiedSourceExecution(build, index, version); err != nil {
+				return err
+			}
+			raw, err := json.Marshal(row["evidence"])
+			if err != nil {
+				return err
+			}
+			var proof []locatedEvidence
+			if json.Unmarshal(raw, &proof) != nil || len(proof) == 0 || len(proof) > 40 {
+				return ErrBuildChanged
+			}
+			for _, location := range proof {
+				if location.BlockID == "" || location.Start < 0 || location.End <= location.Start || !step.File.IncludeOriginal && location.Quote != "" {
+					return ErrBuildChanged
+				}
+			}
+			if !step.File.IncludeOriginal && row["source_quote"] != "" {
+				return ErrBuildChanged
+			}
+
+			source, sourceOK := row["source_record_id"].(string)
+			target, targetOK := row["target_record_id"].(string)
+			if !sourceOK || !targetOK {
+				return ErrBuildChanged
+			}
+			if nativeRow := indexed[[4]string{spec.ResourceID, rows.document, source, target}]; nativeRow != nil {
+
+				for _, field := range []string{"source_identity", "target_identity"} {
+					left, err := canonicalBusinessValue(nativeRow[field])
+					if err != nil {
+						return err
+					}
+					right, err := canonicalBusinessValue(row[field])
+					if err != nil {
+						return err
+					}
+					if string(left) != string(right) {
+						return ErrBuildChanged
+					}
+				}
+				current, ok := nativeRow["evidence"].([]locatedEvidence)
+				if !ok {
+					return ErrBuildChanged
+				}
+				merged := map[string]locatedEvidence{}
+				for _, location := range append(slices.Clone(current), proof...) {
+					encoded, err := json.Marshal(location)
+					if err != nil {
+						return err
+					}
+					merged[string(encoded)] = location
+				}
+				// One grounded Agent relation plus the identifier's evidence is bounded;
+				// repeated reads cannot grow this union indefinitely.
+				if len(merged) > 40 {
+					return ErrBuildChanged
+				}
+				keys := make([]string, 0, len(merged))
+				for key := range merged {
+					keys = append(keys, key)
+				}
+				slices.Sort(keys)
+				combined := make([]locatedEvidence, 0, len(keys))
+				for _, key := range keys {
+					combined = append(combined, merged[key])
+				}
+				first := combined[0]
+				nativeRow["evidence"] = combined
+				nativeRow["block_id"] = first.BlockID
+				nativeRow["source_start"] = first.Start
+				nativeRow["source_end"] = first.End
+				nativeRow["source_quote"] = first.Quote
+			}
 		}
 	}
 	return nil

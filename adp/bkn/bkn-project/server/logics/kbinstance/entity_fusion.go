@@ -127,6 +127,16 @@ func PlanEntityFusion(build *interfaces.KBBuild, draft *interfaces.Draft, claims
 			if field.SourceOfRecord == "table" && !slices.Contains(object.PrimaryKeys, field.Name) {
 				return nil, ErrBuildChanged
 			}
+			if slices.Contains(object.PrimaryKeys, field.Name) {
+				actual, err := canonicalBusinessValue(claim.Value)
+				if err != nil {
+					return nil, err
+				}
+				expected, err := canonicalBusinessValue(claim.Identity[field.Name])
+				if err != nil || string(actual) != string(expected) {
+					return nil, ErrBuildChanged
+				}
+			}
 			periodKey := entityPeriodKey{claim.DocumentID, claim.ContentVersionID, id}
 			period, found := periodCache[periodKey]
 			if !found {
@@ -137,11 +147,21 @@ func PlanEntityFusion(build *interfaces.KBBuild, draft *interfaces.Draft, claims
 				period = entityPeriod{from, until}
 				periodCache[periodKey] = period
 			}
+			// Business identity is permanent; a source document's term period
+			// does not make the entity identifier itself expire.
+			if slices.Contains(object.PrimaryKeys, field.Name) {
+				period = entityPeriod{}
+			}
 			grouped[id][field.Name] = append(grouped[id][field.Name], FusionClaim{ID: claim.ID, EntityID: id, Property: field.Name, Value: claim.Value, EffectiveFrom: period.from, EffectiveTo: period.until, RecordedAt: claim.RecordedAt})
 		}
 		summary := EntityFusionSummary{ObjectTypeID: object.ID, Name: object.Name, Entities: len(grouped)}
 		result.Keep[spec.ResourceID] = []string{}
 		for id, properties := range grouped {
+			for _, key := range object.PrimaryKeys {
+				if len(properties[key]) == 0 {
+					return nil, ErrBuildChanged
+				}
+			}
 			values := map[string]any{"_id": id, "entity_id": id, "document_id": "", "content_version_id": "", "block_id": "", "source_start": 0, "source_end": 0, "source_quote": ""}
 			for name, value := range identities[id] {
 				values[name] = value
@@ -246,12 +266,17 @@ func entityClaimPeriod(items interfaces.DraftItems, entity *interfaces.DraftObje
 			continue
 		}
 		source := instanceObject(items, relation.Source)
-		if source == nil || source.Document == nil || source.Document.Role != "file" {
+		if source == nil || source.Document == nil || source.Document.Role != "file" || source.Document.FilePeriod == nil {
 			continue
 		}
 		identity, err := kbconcept.FileIdentityProperty(items, source)
-		if err != nil || identity != relation.DocumentMapping.MentionProperty {
+		if err != nil {
 			return nil, nil, ErrBuildChanged
+		}
+		// A file may mention another entity (for example its supplier) without
+		// making the file's own effective period authoritative for that entity.
+		if identity != relation.DocumentMapping.MentionProperty {
+			continue
 		}
 		files[source.ID] = entity.PrimaryKeys[0]
 	}
