@@ -46,7 +46,7 @@ func planFactStates(ctx context.Context, reader kb.DatasetFileSnapshot, build *i
 	if err := guard(ctx); err != nil {
 		return nil, err
 	}
-	result := &factStatePlan{Writes: []kb.DatasetWrite{}, Preserved: []kb.DatasetWrite{}, Summaries: []FactStateSummary{}}
+	result := &factStatePlan{Unconfirmed: []string{}, Writes: []kb.DatasetWrite{}, Preserved: []kb.DatasetWrite{}, Summaries: []FactStateSummary{}}
 	factTypes := map[string]bool{}
 	for _, object := range draft.Items.ObjectTypes {
 		if object != nil && object.Adopted && object.Document != nil && object.Document.Role == "fact" {
