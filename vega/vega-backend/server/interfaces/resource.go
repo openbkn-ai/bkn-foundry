@@ -6,6 +6,8 @@
 
 package interfaces
 
+import "github.com/bytedance/sonic"
+
 const (
 	ResourceCategoryTable       string = "table"
 	ResourceCategoryFile        string = "file"
@@ -237,4 +239,27 @@ type ResourceRequest struct {
 	LogicDefinition any    `json:"logic_definition,omitempty"` // Definition shape depends on logic_type
 
 	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
+}
+
+// ColumnMetadata 读取探查结果或持久化 JSON 中的源列元数据，供保存校验和查询共用。
+func (r *Resource) ColumnMetadata() map[string]TableColumnMeta {
+	if r == nil || r.SourceMetadata == nil {
+		return nil
+	}
+	raw, ok := r.SourceMetadata["columns"]
+	if !ok {
+		return nil
+	}
+	columns, ok := raw.([]TableColumnMeta)
+	if !ok {
+		encoded, err := sonic.Marshal(raw)
+		if err != nil || sonic.Unmarshal(encoded, &columns) != nil {
+			return nil
+		}
+	}
+	result := make(map[string]TableColumnMeta, len(columns))
+	for _, column := range columns {
+		result[column.Name] = column
+	}
+	return result
 }

@@ -470,7 +470,10 @@ components:
             datetime 支持 RFC3339、YYYY-MM-DD HH:mm:ss[.fraction] 或 int64 整数毫秒时间戳
             （JSON 整数或数字字符串）。小数秒支持 1–9 位；无时区 datetime 按服务器 TZ 解释，默认 UTC。
             date/datetime 的 before 使用 `[正整数间隔, 单位]`，单位为
-            year/month/week/day/hour/minute；索引查询的间隔数量上限为 2147483647，
+            year/quarter/month/week/day/hour/minute/second/microsecond 中实际连接器支持的子集，
+            PostgreSQL 还接受其已有的复数单位别名。间隔必须是 int64 范围内的正整数，
+            日期字符串、未知或空单位均返回 400，不再接受索引旧 `[小时数, RFC3339 参考时刻]` 格式。
+            索引支持 year/month/week/day/hour/minute/second，间隔数量上限为 2147483647，
             还须满足实际索引字段的时间值域。date_nanos 的边界须位于
             1970-01-01T00:00:00Z 至 2262-04-11T23:47:16.854775807Z；
             普通 date 使用毫秒值域，不共用 date_nanos 的间隔限制。

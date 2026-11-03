@@ -21,26 +21,28 @@ import (
 )
 
 // ConvertFilterCondition 将已验证的条件转换为类型化节点；MariaDB/MySQL 共用此入口。
-func (c *MariaDBConnector) ConvertFilterCondition(condition interfaces.FilterCondition) (sb.SqlNode, error) {
+func (c *MariaDBConnector) ConvertFilterCondition(condition interfaces.FilterCondition,
+	properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) (sb.SqlNode, error) {
 	switch condition.GetOperation() {
 	case filter_condition.OperationAnd:
-		return c.ConvertFilterConditionAnd(condition)
+		return c.ConvertFilterConditionAnd(condition, properties, columns)
 	case filter_condition.OperationOr:
-		return c.ConvertFilterConditionOr(condition)
+		return c.ConvertFilterConditionOr(condition, properties, columns)
 	default:
 		return c.ConvertFilterConditionWithOpr(condition)
 	}
 }
 
 // ConvertFilterConditionAnd combines converted child conditions with AND.
-func (c *MariaDBConnector) ConvertFilterConditionAnd(condition interfaces.FilterCondition) (sb.SqlNode, error) {
+func (c *MariaDBConnector) ConvertFilterConditionAnd(condition interfaces.FilterCondition,
+	properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.AndCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.AndCond")
 	}
 	convertedConds := sb.And{}
 	for _, subCond := range cond.SubConds {
-		convertedCond, err := c.ConvertFilterCondition(subCond)
+		convertedCond, err := c.ConvertFilterCondition(subCond, properties, columns)
 		if err != nil {
 			return nil, err
 		}
@@ -50,14 +52,15 @@ func (c *MariaDBConnector) ConvertFilterConditionAnd(condition interfaces.Filter
 }
 
 // ConvertFilterConditionOr combines converted child conditions with OR.
-func (c *MariaDBConnector) ConvertFilterConditionOr(condition interfaces.FilterCondition) (sb.SqlNode, error) {
+func (c *MariaDBConnector) ConvertFilterConditionOr(condition interfaces.FilterCondition,
+	properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.OrCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.OrCond")
 	}
 	convertedConds := sb.Or{}
 	for _, subCond := range cond.SubConds {
-		convertedCond, err := c.ConvertFilterCondition(subCond)
+		convertedCond, err := c.ConvertFilterCondition(subCond, properties, columns)
 		if err != nil {
 			return nil, err
 		}

@@ -88,7 +88,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 		require.NoError(t, ValidateResourceDataQueryParams(ctx, &params))
 		require.NotNil(t, params.FilterCondCfg)
-		assert.Equal(t, float64(30), params.FilterCondCfg.Value.([]any)[0])
+		assert.Equal(t, int64(30), params.FilterCondCfg.Value.([]any)[0])
 	})
 
 	t.Run("accepts initial cursor paging and a cursor-only continuation", func(t *testing.T) {

@@ -1133,25 +1133,34 @@ func TestJSONNumbersEqual(t *testing.T) {
 func TestResourceServiceCreate(t *testing.T) {
 	// Prepare owns definition validation; this test checks propagation and prevents persistence.
 	t.Run("propagates prepare temporal validation error before persistence", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		viewService := vmock.NewMockLogicalViewService(ctrl)
-		previous := GetLogicalViewService()
-		SetLogicalViewService(viewService)
-		t.Cleanup(func() { SetLogicalViewService(previous) })
-		req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
-			LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
-				"source_resource_id": "source", "filter_condition": map[string]any{
-					"field": "created", "operation": ">=", "value": "2026-10-19",
-				},
-			}}
-		invalid := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest,
-			verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
-			WithErrorDetails("field created: invalid datetime value 2026-10-19")
-		viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
-		rs, _, _, _, _, _, _ := newTestService(t)
-		created, err := rs.Create(context.Background(), req)
-		assert.Same(t, invalid, err)
-		assert.Nil(t, created)
+		for _, tc := range []struct {
+			name      string
+			condition map[string]any
+			details   string
+		}{
+			{"datetime", map[string]any{"field": "created", "operation": ">=", "value": "2026-10-19"}, "field created: invalid datetime value 2026-10-19"},
+			{"before", map[string]any{"operation": "and", "sub_conditions": []any{map[string]any{"field": "created", "operation": "before", "value": []any{1, "2026-10-03T02:00:00Z"}}}}, "condition [before]'s unit is unsupported"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				viewService := vmock.NewMockLogicalViewService(ctrl)
+				previous := GetLogicalViewService()
+				SetLogicalViewService(viewService)
+				t.Cleanup(func() { SetLogicalViewService(previous) })
+				req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
+					LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
+						"source_resource_id": "source", "filter_condition": tc.condition,
+					}}
+				invalid := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest,
+					verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
+					WithErrorDetails(tc.details)
+				viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
+				rs, _, _, _, _, _, _ := newTestService(t)
+				created, err := rs.Create(context.Background(), req)
+				assert.Same(t, invalid, err)
+				assert.Nil(t, created)
+			})
+		}
 	})
 
 	t.Run("create dataset category", func(t *testing.T) {
@@ -2075,29 +2084,38 @@ func TestResourceServiceUpdate(t *testing.T) {
 
 	// Prepare owns definition validation; this test checks propagation and prevents persistence.
 	t.Run("propagates prepare temporal validation error before persistence", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		viewService := vmock.NewMockLogicalViewService(ctrl)
-		previous := GetLogicalViewService()
-		SetLogicalViewService(viewService)
-		t.Cleanup(func() { SetLogicalViewService(previous) })
-		req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
-			LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
-				"source_resource_id": "source", "filter_condition": map[string]any{
-					"field": "created", "operation": ">=", "value": "2026-10-19",
-				},
-			}}
-		invalid := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest,
-			verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
-			WithErrorDetails("field created: invalid datetime value 2026-10-19")
-		viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
-		rs, _, permissions, _, _, _, _ := newTestService(t)
-		permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		stored := &interfaces.Resource{ID: "view", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicalView,
-			LogicType: interfaces.LogicType_Derived, Name: "original"}
-		err := updateResourceForTest(t, rs, stored, req)
-		assert.Same(t, invalid, err)
-		assert.Equal(t, "original", stored.Name)
-		assert.Nil(t, stored.LogicDefinition)
+		for _, tc := range []struct {
+			name      string
+			condition map[string]any
+			details   string
+		}{
+			{"datetime", map[string]any{"field": "created", "operation": ">=", "value": "2026-10-19"}, "field created: invalid datetime value 2026-10-19"},
+			{"before", map[string]any{"operation": "and", "sub_conditions": []any{map[string]any{"field": "created", "operation": "before", "value": []any{1, "2026-10-03T02:00:00Z"}}}}, "condition [before]'s unit is unsupported"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				viewService := vmock.NewMockLogicalViewService(ctrl)
+				previous := GetLogicalViewService()
+				SetLogicalViewService(viewService)
+				t.Cleanup(func() { SetLogicalViewService(previous) })
+				req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
+					LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
+						"source_resource_id": "source", "filter_condition": tc.condition,
+					}}
+				invalid := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest,
+					verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
+					WithErrorDetails(tc.details)
+				viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
+				rs, _, permissions, _, _, _, _ := newTestService(t)
+				permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				stored := &interfaces.Resource{ID: "view", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicalView,
+					LogicType: interfaces.LogicType_Derived, Name: "original"}
+				err := updateResourceForTest(t, rs, stored, req)
+				assert.Same(t, invalid, err)
+				assert.Equal(t, "original", stored.Name)
+				assert.Nil(t, stored.LogicDefinition)
+			})
+		}
 	})
 
 	t.Run("rejects existing dataset analyzer changes before side effects", func(t *testing.T) {

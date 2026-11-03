@@ -229,7 +229,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource, par
 		return nil, interfaces.NewOutputFieldError(interfaces.OutputFieldNoneQueryable, "")
 	}
 	if params.ActualFilterCond != nil {
-		predicate, err := c.ConvertFilterCondition(params.ActualFilterCond)
+		predicate, err := c.ConvertFilterCondition(params.ActualFilterCond, resource.SchemaDefinition, resource.ColumnMetadata())
 		if err != nil {
 			return nil, err
 		}

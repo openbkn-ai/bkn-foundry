@@ -147,3 +147,21 @@ func TestIsPhysicalResourceCategory(t *testing.T) {
 		})
 	}
 }
+
+func TestResourceColumnMetadata(t *testing.T) {
+	column := TableColumnMeta{Name: "FLAG", Type: "NUMBER", NumPrecision: 1, NumScale: 0}
+	for _, raw := range []any{
+		[]TableColumnMeta{column},
+		[]any{map[string]any{"name": "FLAG", "type": "NUMBER", "num_precision": json.Number("1"), "num_scale": json.Number("0")}},
+	} {
+		resource := &Resource{SourceMetadata: map[string]any{"columns": raw}}
+		if got := resource.ColumnMetadata(); !reflect.DeepEqual(got, map[string]TableColumnMeta{"FLAG": column}) {
+			t.Fatalf("column metadata = %#v", got)
+		}
+	}
+	for _, resource := range []*Resource{nil, {}, {SourceMetadata: map[string]any{}}, {SourceMetadata: map[string]any{"columns": "invalid"}}} {
+		if got := resource.ColumnMetadata(); got != nil {
+			t.Fatalf("expected absent column metadata, got %#v", got)
+		}
+	}
+}

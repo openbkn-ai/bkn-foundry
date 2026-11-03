@@ -24,6 +24,27 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
+func TestLocalIndexManagerValidateFilterCondition(t *testing.T) {
+	condition := &filter_condition.BeforeCond{Value: []any{1, "day"}}
+	properties := []*interfaces.Property{{Name: "created", OriginalName: "SOURCE_CREATED", Type: interfaces.DataType_Datetime}}
+	want := errors.New("conversion failed")
+	for _, failure := range []error{nil, want} {
+		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		connector.EXPECT().ConvertFilterCondition(condition, gomock.Any()).DoAndReturn(
+			func(got interfaces.FilterCondition, schema []*interfaces.Property) (map[string]any, error) {
+				assert.Same(t, condition, got)
+				require.Len(t, schema, 1)
+				assert.Equal(t, "created", schema[0].OriginalName)
+				assert.NotSame(t, properties[0], schema[0])
+				return nil, failure
+			})
+		err := (&localIndexManager{lic: connector}).ValidateFilterCondition(condition, properties)
+		assert.ErrorIs(t, err, failure)
+		assert.Equal(t, "SOURCE_CREATED", properties[0].OriginalName)
+	}
+	require.NoError(t, (&localIndexManager{}).ValidateFilterCondition(nil, nil))
+}
+
 func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 	for _, tc := range []struct {
 		name            string

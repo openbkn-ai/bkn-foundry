@@ -35,7 +35,7 @@ func TestBooleanConditionRejectsNumericField(t *testing.T) {
 	for _, operation := range []string{"true", "false"} {
 		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "age", Operation: operation}, fields)
 		require.NoError(t, err)
-		_, err = (&PostgresqlConnector{}).ConvertFilterCondition(condition)
+		_, err = (&PostgresqlConnector{}).ConvertFilterCondition(condition, nil, nil)
 		require.ErrorContains(t, err, "requires BOOLEAN")
 	}
 }
@@ -63,7 +63,7 @@ func renderFilterSQL(node sb.SqlNode) (string, []any, error) {
 // toSQL renders a converted filter and returns its bound arguments.
 func toSQL(t *testing.T, connector *PostgresqlConnector, cond interfaces.FilterCondition) (string, []interface{}) {
 	t.Helper()
-	sqlizer, err := connector.ConvertFilterCondition(cond)
+	sqlizer, err := connector.ConvertFilterCondition(cond, nil, nil)
 	require.NoError(t, err)
 	sql, args, err := renderFilterSQL(sqlizer)
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 
 	t.Run("conditions compose directly into the shared Builder", func(t *testing.T) {
 		cond := mustNewCond(t, "age", ">=", 18)
-		predicate, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond)
+		predicate, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond, nil, nil)
 		require.NoError(t, err)
 		query := sb.Select(&sb.Column{Name: "age"}).
 			From(&sb.Table{SourceIdentifier: `"public"."people"`}).
@@ -404,9 +404,9 @@ func TestPostgresqlConnectorConvertFilterConditionBefore(t *testing.T) {
 
 	t.Run("returns error for unsupported interval unit", func(t *testing.T) {
 		c := &PostgresqlConnector{}
-		cond := mustNewCond(t, "created_at", "before", []any{float64(2), "fortnight"})
+		cond := &filter_condition.BeforeCond{Lfield: testFieldsMap()["created_at"], Value: []any{float64(2), "fortnight"}}
 
-		got, err := c.ConvertFilterCondition(cond)
+		got, err := c.ConvertFilterCondition(cond, nil, nil)
 
 		require.Error(t, err)
 		assert.Nil(t, got)
@@ -432,7 +432,7 @@ func TestPostgresqlConnectorConvertFilterConditionCurrent(t *testing.T) {
 			Value:  "quarter",
 		}
 
-		got, err := c.ConvertFilterCondition(cond)
+		got, err := c.ConvertFilterCondition(cond, nil, nil)
 
 		require.Error(t, err)
 		assert.Nil(t, got)
@@ -476,7 +476,7 @@ func TestPostgresqlConnectorTemporalInputContract(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{Name: "value", Operation: "==", Value: "2026-10-19 00:00:00"}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 		require.NoError(t, err)
-		expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond)
+		expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond, nil, nil)
 		require.NoError(t, err)
 		_, args, err := renderFilterSQL(expr)
 		require.NoError(t, err)
@@ -509,7 +509,7 @@ func TestPostgresqlConnectorTemporalInputContract(t *testing.T) {
 						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, Value: value}
 						cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 						require.NoError(t, err)
-						expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond)
+						expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond, nil, nil)
 						require.NoError(t, err)
 						sql, args, err := renderFilterSQL(expr)
 						require.NoError(t, err)

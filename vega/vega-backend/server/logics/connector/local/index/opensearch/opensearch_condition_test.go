@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,35 @@ import (
 )
 
 func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
+	t.Run("relative boundaries are checked throughout the tree", func(t *testing.T) {
+		t.Setenv("TZ", "UTC")
+		now := time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC)
+		clock := gomonkey.ApplyFunc(time.Now, func() time.Time { return now })
+		t.Cleanup(clock.Reset)
+		field := &interfaces.Property{Name: "nano_time", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}
+		bad := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2147483647), "day"}}
+		valid := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(1), "day"}}
+		for name, condition := range map[string]interfaces.FilterCondition{
+			"leaf":             bad,
+			"and":              &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{valid, bad}},
+			"or":               &filter_condition.OrCond{SubConds: []interfaces.FilterCondition{valid, bad}},
+			"vector subfilter": &filter_condition.KnnVectorCond{Cfg: &interfaces.FilterCondCfg{Value: []any{0.1}}, SubConds: []interfaces.FilterCondition{bad}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				var rangeErr *interfaces.TemporalRangeError
+				query, err := (&OpenSearchConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field})
+				require.ErrorAs(t, err, &rangeErr)
+				assert.Nil(t, query)
+				assert.Equal(t, "nano_time", rangeErr.Field)
+				assert.Equal(t, "date_nanos", rangeErr.FieldType)
+				assert.Equal(t, int64(2147483647), rangeErr.Interval)
+				assert.Equal(t, "day", rangeErr.Unit)
+			})
+		}
+		query, err := (&OpenSearchConnector{}).ConvertFilterCondition(valid, []*interfaces.Property{field})
+		require.NoError(t, err)
+		assert.Contains(t, query, "range")
+	})
 	t.Run("time bounds include all legacy zero padding without adjacent instants", func(t *testing.T) {
 		t.Run("large time sets retain keyword terms and enforce the expanded limit", func(t *testing.T) {
 			field := &interfaces.Property{Name: "clock", OriginalName: "clock", Type: interfaces.DataType_Time}
@@ -1395,34 +1425,14 @@ func TestIndexBeforeQuery(t *testing.T) {
 			})
 		}
 	})
-	t.Run("legacy reference time retains its meaning", func(t *testing.T) {
-		cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", OriginalName: "physical.at", Type: interfaces.DataType_Datetime}, Value: []any{float64(3), "2026-10-30T00:00:00Z"}}
-		got, err := indexBeforeQuery(cond, now)
-		require.NoError(t, err)
-		assert.Equal(t, map[string]any{"range": map[string]any{"physical.at": map[string]any{"lt": "2026-10-29T21:00:00Z"}}}, got)
-	})
-	t.Run("legacy nanos validates the emitted second precision boundary", func(t *testing.T) {
-		for _, tc := range []struct {
-			name, reference, want string
-			rejected              bool
-		}{
-			{name: "epoch second", reference: "1970-01-01T01:00:00.9Z", want: "1970-01-01T00:00:00Z"},
-			{name: "last supported second", reference: "2262-04-12T00:47:16.9Z", want: "2262-04-11T23:47:16Z"},
-			{name: "before epoch", reference: "1970-01-01T00:59:59.999999999Z", rejected: true},
-			{name: "after last supported second", reference: "2262-04-12T00:47:17Z", rejected: true},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", OriginalName: "physical.at", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}, Value: []any{float64(1), tc.reference}}
-				got, err := indexBeforeQuery(cond, now)
-				if tc.rejected {
-					var temporal *interfaces.TemporalRangeError
-					require.ErrorAs(t, err, &temporal)
-					assert.Nil(t, got)
-					return
-				}
-				require.NoError(t, err)
-				assert.Equal(t, map[string]any{"range": map[string]any{"physical.at": map[string]any{"lt": tc.want}}}, got)
-			})
+	t.Run("rejects reference timestamps as units", func(t *testing.T) {
+		for _, reference := range []string{"2026-10-30T00:00:00Z", "1970-01-01T01:00:00.9Z"} {
+			cond := &filter_condition.BeforeCond{Lfield: &interfaces.Property{Name: "at", Type: interfaces.DataType_Datetime}, Value: []any{float64(3), reference}}
+			got, err := indexBeforeQuery(cond, now)
+			var buildErr *interfaces.ConditionBuildError
+			require.ErrorAs(t, err, &buildErr)
+			assert.Contains(t, err.Error(), "unit")
+			assert.Nil(t, got)
 		}
 	})
 	t.Run("invalid zone retains server configuration classification", func(t *testing.T) {
@@ -1438,31 +1448,6 @@ func TestIndexBeforeQuery(t *testing.T) {
 			require.ErrorAs(t, err, &buildErr)
 		})
 	}
-}
-
-func TestValidateBeforeConditions(t *testing.T) {
-	t.Setenv("TZ", "UTC")
-	now := time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC)
-	field := &interfaces.Property{Name: "nano_time", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}
-	bad := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2147483647), "day"}}
-	valid := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(1), "day"}}
-	for name, condition := range map[string]interfaces.FilterCondition{
-		"leaf":             bad,
-		"and":              &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{valid, bad}},
-		"or":               &filter_condition.OrCond{SubConds: []interfaces.FilterCondition{valid, bad}},
-		"vector subfilter": &filter_condition.KnnVectorCond{SubConds: []interfaces.FilterCondition{bad}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			var rangeErr *interfaces.TemporalRangeError
-			require.ErrorAs(t, ValidateBeforeConditions(condition, now), &rangeErr)
-			assert.Equal(t, "nano_time", rangeErr.Field)
-			assert.Equal(t, "date_nanos", rangeErr.FieldType)
-			assert.Equal(t, int64(2147483647), rangeErr.Interval)
-			assert.Equal(t, "day", rangeErr.Unit)
-		})
-	}
-	require.NoError(t, ValidateBeforeConditions(nil, now))
-	require.NoError(t, ValidateBeforeConditions(valid, now))
 }
 
 func TestValidateIndexTimeBoundary(t *testing.T) {

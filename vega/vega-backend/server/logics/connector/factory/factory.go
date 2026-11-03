@@ -256,6 +256,36 @@ func (cf *connectorFactory) ValidateBuildSchema(tp string, resource *interfaces.
 	return connector.ValidateBuildSchema(resource)
 }
 
+// ValidateFilterCondition 直接复用连接器的完整条件转换，不访问源端。
+func (cf *connectorFactory) ValidateFilterCondition(tp string, condition interfaces.FilterCondition, properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) error {
+	if condition == nil {
+		return nil
+	}
+	cf.mu.RLock()
+	defer cf.mu.RUnlock()
+
+	connector, ok := cf.connectors[tp]
+	if !ok {
+		return fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
+	}
+	if minimumEdition, exists := cf.connectorRequiredEditions[tp]; exists && !entitlement.AtLeast(minimumEdition) {
+		return fmt.Errorf("connector %s requires edition %s: %w", tp, minimumEdition, ErrConnectorEntitlementDenied)
+	}
+	if !connector.GetEnabled() {
+		return fmt.Errorf("connector %s is disabled: %w", tp, ErrConnectorDisabled)
+	}
+	switch converter := connector.(type) {
+	case interfaces.TableConnector:
+		_, err := converter.ConvertFilterCondition(condition, properties, columns)
+		return err
+	case interfaces.IndexConnector:
+		_, err := converter.ConvertFilterCondition(condition, properties)
+		return err
+	default:
+		return interfaces.NewConditionBuildError("connector %s does not support filter condition conversion", tp)
+	}
+}
+
 // GetSensitiveFields returns a list of sensitive fields based on the connector type
 func (cf *connectorFactory) GetSensitiveFields(tp string) []string {
 	cf.mu.RLock()

@@ -201,3 +201,17 @@ func (mr *MockConnectorFactoryMockRecorder) ValidateConnectorTypeRegistration(ct
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateConnectorTypeRegistration", reflect.TypeOf((*MockConnectorFactory)(nil).ValidateConnectorTypeRegistration), ct)
 }
+
+// ValidateFilterCondition mocks base method.
+func (m *MockConnectorFactory) ValidateFilterCondition(tp string, condition interfaces.FilterCondition, properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateFilterCondition", tp, condition, properties, columns)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateFilterCondition indicates an expected call of ValidateFilterCondition.
+func (mr *MockConnectorFactoryMockRecorder) ValidateFilterCondition(tp, condition, properties, columns any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterCondition", reflect.TypeOf((*MockConnectorFactory)(nil).ValidateFilterCondition), tp, condition, properties, columns)
+}
