@@ -518,6 +518,9 @@ components:
             中发布；索引通道按真实相关性分数排序，source 表查询忽略该项并保留其余排序项。
             聚合查询中，`__value` 代表实际聚合结果列，即使 aggregation.alias 使用自定义名称。
             省略 aggregation 且使用 HAVING count(*) 时，隐式计数输出同样为 `__value`，可用于排序。
+            索引分组仅支持按 group_by 字段、实际聚合结果别名或其 `__value` 引用排序。
+            对 Schema 中存在但不属于这些输出的普通字段排序，返回 HTTP 400 参数错误，
+            不再像旧 terms 分组路径一样静默忽略；即使该字段是聚合输入，也不能据此排序。
             分组查询保留用户指定的排序优先级和方向，再按 group_by 顺序追加尚未排序的分组键升序，
             以保证并列结果在 offset/limit 分页时具有确定顺序；未指定排序时按全部分组键升序。
             分组查询的显式排序统一为升序 NULL 在前、降序 NULL 在后；PostgreSQL 源库
@@ -564,6 +567,13 @@ components:
           description: |
             索引分组使用同一 PIT 的 composite 分页，保留 NULL/缺失键及多维 NULL 组合，
             输出真正的 JSON null；空字符串、0、-1 和字符串 "NULL" 保持独立。
+            所有索引分组都要求源端支持 OpenSearch PIT 创建、搜索及关闭 API，
+            包括省略 aggregation，以及 count_distinct 默认或显式允许近似的查询。
+            PIT API 从 OpenSearch 2.4 引入，因此低于 2.4 的版本不支持此分组路径；
+            版本达到 2.4 仍须满足所用 API、参数和读取权限要求，不代表各版本均已验收。
+            当前不适配 Elasticsearch 的 /_pit API，不能因其支持 PIT 就视为兼容索引分组。
+            创建 PIT 时源端返回 400/404，转换为 HTTP 400 参数错误；401/403 转换为
+            源端读取权限错误。不回退到 terms 或自动切换查询通道。
             日历分组仅返回存在文档的日期，不补齐缺口。COUNT/COUNT_DISTINCT 忽略空值，
             已有分组内度量全为空时计数为 0，SUM/AVG/MIN/MAX 为 null。
             SUM/MIN/MAX 的 Decimal 结果先按字段有效 scale 做 HALF_UP 归一化；
@@ -574,6 +584,8 @@ components:
             每页 1000 桶，单页响应最多 8 MiB，保留分组状态计费预算 16 MiB，
             整次执行最多 30 秒（更短请求超时优先），与精确去重共享每进程 4 个扫描槽位。
             超预算返回 HTTP 422 VegaBackend.Query.ExecutionBudgetExceeded；
+            用户 limit 只截取完整计算后的结果，较小 limit 不减少扫描范围，也不绕过预算。
+            旧 terms 曾返回 top-N 的高基数查询，现在可能因完整扫描超预算而返回 422。
             超时、分片失败或扫描不完整不返回部分结果。内部 composite 续页不开放公开聚合 cursor。
           type: array
           items:

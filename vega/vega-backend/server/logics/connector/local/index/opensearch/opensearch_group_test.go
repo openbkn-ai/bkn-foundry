@@ -339,6 +339,85 @@ func TestOpenSearchConnectorExecuteGroupedQuery(t *testing.T) {
 
 // 失败场景独立组织，避免与成功矩阵混在同一个过长的测试函数中。
 func TestOpenSearchConnectorExecuteGroupedQueryFailures(t *testing.T) {
+	t.Run("schema fields outside grouped output are rejected before source access", func(t *testing.T) {
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+			{Name: "key", Type: interfaces.DataType_Integer},
+			{Name: "amount", Type: interfaces.DataType_Integer},
+		}}
+		for _, mode := range []string{"groups only", "explicit aggregation", "implicit count"} {
+			for _, direction := range []string{interfaces.ASC_DIRECTION, interfaces.DESC_DIRECTION} {
+				t.Run(mode+"/"+direction, func(t *testing.T) {
+					requests := 0
+					client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+						Transport: countRowsTransport(func(*http.Request) (*http.Response, error) {
+							requests++
+							return nil, errors.New("unexpected source request")
+						})})
+					require.NoError(t, err)
+					params := &interfaces.ResourceDataQueryParams{
+						GroupBy: []*interfaces.GroupByItem{{Property: "key"}},
+						Sort:    []*interfaces.SortField{{Field: "key", Direction: "asc"}, {Field: "amount", Direction: direction}},
+					}
+					switch mode {
+					case "explicit aggregation":
+						params.Aggregation = &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: "total"}
+						params.Sort = append(params.Sort, &interfaces.SortField{Field: "__value", Direction: "desc"})
+					case "implicit count":
+						params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}
+						params.Sort = append(params.Sort, &interfaces.SortField{Field: "__value", Direction: "desc"})
+					}
+					before, err := json.Marshal(params)
+					require.NoError(t, err)
+					result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(t.Context(), "orders", resource, params)
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.Nil(t, result)
+					assert.Zero(t, requests, "invalid sort must not create a PIT or run a search")
+					assert.Empty(t, aggregationSlots)
+					after, err := json.Marshal(params)
+					require.NoError(t, err)
+					assert.JSONEq(t, string(before), string(after), "invalid sort must not be silently removed")
+				})
+			}
+		}
+	})
+
+	t.Run("PIT is required even when approximation is allowed", func(t *testing.T) {
+		allowApproximate := true
+		for _, tc := range []struct {
+			name        string
+			aggregation *interfaces.Aggregation
+		}{
+			{name: "groups only"},
+			{name: "sum", aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"}},
+			{name: "default distinct", aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "count_distinct"}},
+			{name: "approximate distinct", aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "count_distinct", AllowApproximate: &allowApproximate}},
+		} {
+			for _, status := range []int{http.StatusBadRequest, http.StatusNotFound} {
+				t.Run(fmt.Sprintf("%s/%d", tc.name, status), func(t *testing.T) {
+					requests := 0
+					client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+						Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+							requests++
+							assert.Equal(t, http.MethodPost, request.Method)
+							assert.Equal(t, "/orders/_search/point_in_time", request.URL.Path)
+							return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"reason":"private backend detail"}}`))}, nil
+						})})
+					require.NoError(t, err)
+					result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(t.Context(), "orders",
+						&interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Integer}}},
+						&interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Aggregation: tc.aggregation, Paging: interfaces.PagingRequest{Limit: 1}})
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.Nil(t, result)
+					assert.NotContains(t, err.Error(), "private backend detail")
+					assert.Equal(t, 1, requests, "PIT failure must not fall back to an incomplete terms search")
+					assert.Empty(t, aggregationSlots)
+				})
+			}
+		}
+	})
+
 	t.Run("implicit count alias cannot overwrite a group key", func(t *testing.T) {
 		conn, _, _ := groupedQueryConnector(t, []string{groupedPage(`[{"key":{"0":"value"},"doc_count":3}]`, `{"0":"value"}`), groupedPage(`[]`, "")}, nil)
 		result, err := conn.ExecuteQuery(t.Context(), "orders", &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "__value", Type: interfaces.DataType_String}}}, &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "__value"}}, Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}})
@@ -460,7 +539,6 @@ func TestOpenSearchConnectorExecuteGroupedQueryFailures(t *testing.T) {
 		for _, params := range []*interfaces.ResourceDataQueryParams{
 			{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "count", Alias: "key"}},
 			{GroupBy: []*interfaces.GroupByItem{{Property: "key"}, {Property: "key"}}},
-			{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Sort: []*interfaces.SortField{{Field: "amount", Direction: "asc"}}},
 			{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"}, Having: &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{1}}},
 		} {
 			client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, Transport: countRowsTransport(func(*http.Request) (*http.Response, error) {
