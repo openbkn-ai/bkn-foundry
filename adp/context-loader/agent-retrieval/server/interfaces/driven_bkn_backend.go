@@ -1084,11 +1084,12 @@ func OmitPropertyDeclarations(objectTypes []*ObjectType) {
 	}
 }
 
-// OmitRelationDeclarations clears the BKN spec 3.0 relation declarations from the given relation
-// types, keeping the ones a caller needs to use a relation listed or looked up by id safely:
-// lifecycle says what replaces a deprecated relation, and importance with fallback_for marks a
-// fallback path, which these answers list beside its primary. Without them a caller could add up
-// the results of both (SPECIFICATION.md §7.6). search_schema surfaces the rest.
+// OmitRelationDeclarations clears the BKN spec 3.0 relation declarations, and those of the relation
+// properties, from the given relation types, keeping the ones a caller needs to use a relation
+// listed or looked up by id safely: lifecycle says what replaces a deprecated relation, and
+// importance with fallback_for marks a fallback path, which these answers list beside its primary.
+// Without them a caller could add up the results of both (SPECIFICATION.md §7.6). search_schema
+// surfaces the rest.
 func OmitRelationDeclarations(relationTypes []*RelationType) {
 	for _, r := range relationTypes {
 		if r == nil {
@@ -1099,5 +1100,34 @@ func OmitRelationDeclarations(relationTypes []*RelationType) {
 		r.Cardinality = ""
 		r.Constraints = nil
 		r.Verification = ""
+		omitRelationPropertyDeclarations(r.MappingRules)
+	}
+}
+
+// relationPropertyDeclarations are the keys OmitPropertyDeclarations clears from an object type
+// property; a relation property carries the same ones.
+var relationPropertyDeclarations = []string{"aliases", "semantic", "required", "constraints"}
+
+// omitRelationPropertyDeclarations clears the declarations of the relation properties an indirect
+// relation carries in mapping_rules.properties, the way OmitPropertyDeclarations does for object
+// type properties: the name, display name, type, comment and mapped field stay. mapping_rules is
+// read from bkn-backend for each answer, so editing it in place touches nothing shared.
+func omitRelationPropertyDeclarations(mappingRules any) {
+	rules, ok := mappingRules.(map[string]any)
+	if !ok {
+		return
+	}
+	properties, ok := rules["properties"].([]any)
+	if !ok {
+		return
+	}
+	for _, p := range properties {
+		property, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, key := range relationPropertyDeclarations {
+			delete(property, key)
+		}
 	}
 }

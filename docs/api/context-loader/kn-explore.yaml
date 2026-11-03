@@ -97,6 +97,13 @@ paths:
         两种级别都会**去掉 `concept_groups` 里嵌套的对象类 / 关系类 / 行动类副本**：
         这些是顶层数组的重复拷贝，概念组只保留 `object_type_ids` 作为分组边界。
 
+        两种级别都**不带 BKN 3.0 声明**，这些只由 `search_schema` 给出：对象类、关系类、
+        行动类的 `aliases`；对象类属性和间接关系 `mapping_rules.properties` 中关系属性的
+        `aliases` / `semantic` / `required` / `constraints`；关系类的 `reverse_name` /
+        `cardinality` / `constraints` / `verification`。关系类的 `lifecycle`、`importance`、
+        `fallback_for` 保留：它们说明弃用的关系由谁替代、哪条是替代路径，缺了调用方可能把
+        主关系和替代路径的结果相加。
+
         被剥掉的细节按需用 `get_object_types` / `get_relation_types` 取回。
         对象类条目带 `related_metric_count`（该对象类下已建模指标数），`>0` 才值得
         为取指标下钻。
@@ -179,7 +186,8 @@ paths:
       description: |
         取 `get_kn_detail` 在 summary 级别剥掉的对象类细节：属性的 `mapped_field`
         （写 `run_sql` 要的物理列名）、`condition_operations`（该属性可用的查询算子）、
-        逻辑属性的 `data_source` 与 `parameters`。
+        逻辑属性的 `data_source` 与 `parameters`。与 `get_kn_detail` 相同，不带对象类与属性的
+        BKN 3.0 声明（`aliases` / `semantic` / `required` / `constraints`），用 `search_schema` 取。
 
         同时返回 `related_metrics`——挂在该对象类下的已发布实例集合指标。这是 Agent
         选指标的权威清单，选定后统一走 `query_metric`。`logic_properties` 只包含工具型
@@ -265,6 +273,12 @@ paths:
       description: |
         `get_object_types` 的关系类版本：取回 summary 级别剥掉的 `mapping_rules`
         与起终点对象类详情。同样支持按名称兜底匹配，未命中的 ID 落 `missing`。
+
+        与 `get_kn_detail` 相同，不带 BKN 3.0 声明：关系类的 `aliases` / `reverse_name` /
+        `cardinality` / `constraints` / `verification`，以及间接关系 `mapping_rules.properties`
+        中关系属性的 `aliases` / `semantic` / `required` / `constraints`，用 `search_schema` 取。
+        关系属性的 `name` / `display_name` / `type` / `comment` / `mapped_field` 照常返回；
+        `lifecycle`、`importance`、`fallback_for` 保留。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - $ref: '#/components/parameters/XKnID'
