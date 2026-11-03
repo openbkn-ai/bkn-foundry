@@ -687,6 +687,63 @@ func TestOpenSearchBuildHavingBucketSelector(t *testing.T) {
 			assert.Equal(t, map[string]any{"source": tc.source, "params": tc.parameters}, selector["script"])
 		}
 	})
+	t.Run("decimal HAVING uses the output scale and exact thresholds", func(t *testing.T) {
+		field := &interfaces.Property{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"scale": 2}}
+		for _, operation := range []string{"==", "!=", ">", ">=", "<", "<=", "in", "not_in", "range", "out_range"} {
+			t.Run(operation, func(t *testing.T) {
+				value := any(json.Number("0.300000000000000001"))
+				if operation == "in" || operation == "not_in" || operation == "range" || operation == "out_range" {
+					value = []any{json.Number("0.30"), json.Number("0.300000000000000001")}
+				}
+				got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Field: "total", Operation: operation, Value: value}, "total", field)
+				require.NoError(t, err)
+				script := got["bucket_selector"].(map[string]any)["script"].(map[string]any)
+				assert.Contains(t, script["source"], "setScale(params.scale, RoundingMode.HALF_UP)")
+				assert.Contains(t, script["source"], "compareTo(")
+				parameters := script["params"].(map[string]any)
+				assert.EqualValues(t, 2, parameters["scale"])
+				switch operation {
+				case "in", "not_in":
+					assert.Equal(t, []any{"0.3", "0.300000000000000001"}, parameters["values"])
+				case "range", "out_range":
+					assert.Equal(t, "0.3", parameters["lower"])
+					assert.Equal(t, "0.300000000000000001", parameters["upper"])
+				default:
+					assert.Equal(t, "0.300000000000000001", parameters["value"])
+				}
+			})
+		}
+	})
+	t.Run("invalid decimal declarations and values retain condition errors", func(t *testing.T) {
+		for _, scale := range []any{nil, -1, 309, "2"} {
+			got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: ">", Value: 0}, "total", &interfaces.Property{Type: interfaces.DataType_Decimal, Attributes: map[string]any{"scale": scale}})
+			var failure *interfaces.ConditionBuildError
+			require.ErrorAs(t, err, &failure)
+			assert.Nil(t, got)
+		}
+		for _, value := range []any{"NaN", true, "1e1000000", "return true", strings.Repeat("1", 1025)} {
+			got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: ">", Value: value}, "total", &interfaces.Property{Type: interfaces.DataType_Decimal, Attributes: map[string]any{"scale": 2}})
+			var failure *interfaces.ConditionBuildError
+			require.ErrorAs(t, err, &failure)
+			assert.Nil(t, got)
+		}
+	})
+	t.Run("decimal script source stays constant across scales and thresholds", func(t *testing.T) {
+		var source any
+		for _, tc := range []struct {
+			scale int
+			value json.Number
+		}{{0, "0.30"}, {2, "0.300000000000000001"}, {18, "-0.30"}, {308, "1e300"}} {
+			got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: "==", Value: tc.value}, "total", &interfaces.Property{Type: interfaces.DataType_Decimal, Attributes: map[string]any{"scale": tc.scale}})
+			require.NoError(t, err)
+			script := got["bucket_selector"].(map[string]any)["script"].(map[string]any)
+			if source == nil {
+				source = script["source"]
+			}
+			assert.Equal(t, source, script["source"])
+			assert.EqualValues(t, tc.scale, script["params"].(map[string]any)["scale"])
+		}
+	})
 	t.Run("count remains numeric", func(t *testing.T) {
 		got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}, "min_date", field)
 		require.NoError(t, err)
@@ -949,6 +1006,45 @@ func TestOpenSearchConnectorExecuteQueryTemporalHaving(t *testing.T) {
 }
 
 func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
+	t.Run("decimal aggregation selects scaled HAVING without changing count or AVG", func(t *testing.T) {
+		for _, operation := range []string{"sum", "min", "max", "avg", "count", "count_distinct"} {
+			for _, countOnly := range []bool{false, true} {
+				client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+					Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+						var query map[string]any
+						require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
+						parent := query["aggs"].(map[string]any)[singleHavingGroup].(map[string]any)
+						selector := parent["aggs"].(map[string]any)["having_filter"].(map[string]any)["bucket_selector"].(map[string]any)
+						script := selector["script"].(map[string]any)
+						if !countOnly && (operation == "sum" || operation == "min" || operation == "max") {
+							assert.Contains(t, script["source"], "setScale(params.scale, RoundingMode.HALF_UP)")
+							assert.Equal(t, float64(2), script["params"].(map[string]any)["scale"])
+							assert.Equal(t, "0.3", script["params"].(map[string]any)["value"])
+						} else {
+							assert.Equal(t, "params.metric > params.value", script["source"])
+							assert.Equal(t, map[string]any{"value": float64(0.3)}, script["params"])
+						}
+						if !countOnly && operation == "sum" {
+							assert.Equal(t, map[string]any{"sum": map[string]any{"field": "amount"}}, parent["aggs"].(map[string]any)["total"])
+							assert.Equal(t, "insert_zeros", selector["gap_policy"])
+						} else {
+							assert.NotContains(t, selector, "gap_policy")
+						}
+						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"aggregations":{"__vega_single_group":{"buckets":{}}}}`))}, nil
+					}),
+				})
+				require.NoError(t, err)
+				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"scale": 2}}}}
+				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: operation, Alias: "total"}, Having: &interfaces.HavingClause{Field: "total", Operation: ">", Value: json.Number("0.30")}}
+				if countOnly {
+					params.Having.Field = "count(*)"
+				}
+				result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "events", resource, params)
+				require.NoError(t, err)
+				assert.Empty(t, result.Entries)
+			}
+		}
+	})
 	for _, grouped := range []bool{false, true} {
 		for _, countOnly := range []bool{false, true} {
 			for _, retained := range []bool{false, true} {

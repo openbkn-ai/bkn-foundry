@@ -7,6 +7,7 @@ package local_index
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -55,8 +56,17 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 		}
 
 		fieldProps := map[string]any{"type": fieldType}
+		var decimalConfig *interfaces.DecimalIndexConfig
 		if prop.Type == interfaces.DataType_Decimal {
-			fieldProps["scaling_factor"] = 1000000000000000000.0
+			config, err := DecimalIndexConfig(prop, interfaces.TableColumnMeta{})
+			if err != nil {
+				return nil, err
+			}
+			if err := ValidateDecimalIndexConfig(prop.Name, config); err != nil {
+				return nil, err
+			}
+			decimalConfig = config
+			fieldProps["scaling_factor"] = math.Pow10(config.Scale)
 		}
 
 		if prop.Type == interfaces.DataType_Json {
@@ -91,6 +101,13 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 
 		if prop.Type == interfaces.DataType_Vector {
 			fieldProps["method"] = defaultVectorMethod()
+		}
+		if decimalConfig != nil {
+			// Feature 配置不能覆盖数值编码或跳过非法数值，否则会重新引入静默损坏。
+			if fieldProps["type"] != "scaled_float" || fieldProps["scaling_factor"] != math.Pow10(decimalConfig.Scale) ||
+				fieldProps["ignore_malformed"] == true || fieldProps["null_value"] != nil {
+				return nil, interfaces.NewDecimalIndexError(prop.Name, "unsafe_mapping_override")
+			}
 		}
 		properties[prop.Name] = fieldProps
 	}

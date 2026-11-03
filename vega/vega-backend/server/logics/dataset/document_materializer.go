@@ -18,6 +18,7 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/query_error"
 )
 
 type pendingEmbedding struct {
@@ -44,6 +45,9 @@ func prepareDocument(ctx context.Context, res *interfaces.Resource, document map
 	// A nil map cannot be materialized or sent to the local index.
 	if document == nil {
 		return nil, nil, invalidDocumentError(ctx, "document is required")
+	}
+	if err := local_index.ValidateDecimalDocument(res, document); err != nil {
+		return nil, nil, query_error.DecimalIndexHTTPError(ctx, err)
 	}
 	result := make(map[string]any, len(document))
 	for key, value := range document {
@@ -105,6 +109,9 @@ func prepareDocument(ctx context.Context, res *interfaces.Resource, document map
 func (ds *datasetService) materializeDocuments(ctx context.Context,
 	res *interfaces.Resource, documents []map[string]any) ([]interfaces.DocumentWrite, error) {
 	results := make([]interfaces.DocumentWrite, len(documents))
+	if len(documents) == 0 {
+		return results, nil
+	}
 	type embeddingTarget struct {
 		document int
 		pendingEmbedding

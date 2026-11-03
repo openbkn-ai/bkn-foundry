@@ -63,6 +63,10 @@ func NewDatasetService(appSetting *common.AppSetting) interfaces.DatasetService 
 func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset")
 	defer span.End()
+	schema, err := local_index.DecimalIndexSchema(res.SchemaDefinition, res.ColumnMetadata())
+	if err != nil {
+		return query_error.DecimalIndexHTTPError(ctx, err)
+	}
 
 	indexID, err := uuid.NewV7()
 	if err != nil {
@@ -71,8 +75,11 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 	}
 	indexName := fmt.Sprintf("%s-%s", interfaces.DatasetIndexPrefix, indexID)
 	resourcelogic.InitializeJSONIndexAttributes(res.SchemaDefinition)
-	err = ds.lim.CreateIndex(ctx, indexName, res.SchemaDefinition, map[string]string{"resource_id": res.ID})
+	err = ds.lim.CreateIndex(ctx, indexName, schema, map[string]string{"resource_id": res.ID})
 	if err != nil {
+		if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+			return httpErr
+		}
 		otellog.LogError(ctx, "Create dataset index failed", err)
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails(err.Error())
@@ -88,8 +95,15 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 func (ds *datasetService) Update(ctx context.Context, res *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update dataset")
 	defer span.End()
+	schema, err := local_index.DecimalIndexSchema(res.SchemaDefinition, res.ColumnMetadata())
+	if err != nil {
+		return query_error.DecimalIndexHTTPError(ctx, err)
+	}
 
-	if err := ds.lim.UpdateIndex(ctx, res.LocalIndexName, res.SchemaDefinition); err != nil {
+	if err := ds.lim.UpdateIndex(ctx, res.LocalIndexName, schema); err != nil {
+		if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+			return httpErr
+		}
 		span.SetStatus(codes.Error, "Update dataset failed")
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
@@ -133,6 +147,9 @@ func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Res
 	result, err := ds.lim.ListDocuments(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List dataset documents failed")
+		if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
 		if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
 			return nil, httpErr
 		}
@@ -366,6 +383,9 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	result, err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
+		if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
 		if httpErr := query_error.TemporalRangeHTTPError(ctx, err); httpErr != nil {
 			return nil, httpErr
 		}

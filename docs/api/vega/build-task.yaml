@@ -527,6 +527,15 @@ components:
         original_name: { type: string }
         original_type: { type: string }
         type: { type: string }
+        decimal:
+          description: |
+            decimal 字段的有效小数定义。precision/scale 纳入任务快照和
+            指纹；历史缺少该定义的 DECIMAL 任务不能直接作为新编码的增量或恢复基线。
+          type: object
+          required: [precision, scale]
+          properties:
+            precision: { type: integer, minimum: 1 }
+            scale: { type: integer, minimum: 0, maximum: 308 }
         features:
           type: array
           items:

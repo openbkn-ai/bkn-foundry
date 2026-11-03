@@ -19,11 +19,13 @@ import (
 	"github.com/bytedance/sonic"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 )
 
 // BuildIndexConfigContract normalizes the Resource's effective index
 // configuration without reading Catalog, connector, Model Factory, or other
-// external state. SourceMetadata and display-only metadata are excluded.
+// external state. Only decimal precision/scale are read from SourceMetadata;
+// other source metadata and display-only metadata are excluded.
 func BuildIndexConfigContract(resource *interfaces.Resource) (interfaces.IndexConfigContract, error) {
 	if resource == nil {
 		return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract: resource is required")
@@ -43,6 +45,7 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (interfaces.IndexCo
 		defaultFulltextAnalyzer = strings.TrimSpace(resource.IndexConfig.DefaultFulltextAnalyzer)
 	}
 
+	columns := resource.ColumnMetadata()
 	seenFields := make(map[string]struct{}, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
 		if property == nil || property.Name == "" {
@@ -59,6 +62,13 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (interfaces.IndexCo
 			OriginalType: property.OriginalType,
 			Type:         property.Type,
 			Features:     make([]interfaces.IndexConfigFeatureContract, 0, len(property.Features)),
+		}
+		if property.Type == interfaces.DataType_Decimal {
+			var err error
+			field.Decimal, err = local_index.DecimalIndexConfig(property, columns[property.OriginalName])
+			if err != nil {
+				return interfaces.IndexConfigContract{}, err
+			}
 		}
 		seenFeatureTypes := make(map[string]struct{}, len(property.Features))
 		for _, feature := range property.Features {
@@ -192,6 +202,13 @@ func SnapshotBuildTaskIndexConfigFields(resource *interfaces.Resource) ([]interf
 	if err != nil {
 		return nil, err
 	}
+	for _, field := range contract.Fields {
+		if field.Decimal != nil {
+			if err := local_index.ValidateDecimalIndexConfig(field.Name, field.Decimal); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	return cloneIndexConfigContract(contract).Fields, nil
 }
@@ -209,6 +226,10 @@ func cloneIndexConfigContract(contract interfaces.IndexConfigContract) interface
 			OriginalType: field.OriginalType,
 			Type:         field.Type,
 			Features:     make([]interfaces.IndexConfigFeatureContract, 0, len(field.Features)),
+		}
+		if field.Decimal != nil {
+			decimalConfig := *field.Decimal
+			clonedField.Decimal = &decimalConfig
 		}
 		for _, feature := range field.Features {
 			clonedField.Features = append(clonedField.Features, interfaces.IndexConfigFeatureContract{

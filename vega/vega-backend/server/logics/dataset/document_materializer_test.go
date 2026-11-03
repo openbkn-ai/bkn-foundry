@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,10 +18,36 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
+
+func TestPrepareDocument(t *testing.T) {
+	res := &interfaces.Resource{LocalIndexName: "index", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"precision": 12, "scale": 2}}}}
+	for _, tc := range []struct {
+		value string
+		valid bool
+	}{{"13052.52", true}, {"-123456.78", true}, {"10.00", true}, {"10000000000.00", false}, {"1.234", false}} {
+		t.Run(tc.value, func(t *testing.T) {
+			original := map[string]any{"amount": tc.value}
+			document, pending, err := prepareDocument(context.Background(), res, original)
+			if tc.valid {
+				require.NoError(t, err)
+				assert.Equal(t, original, document)
+				assert.Empty(t, pending)
+			} else {
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Nil(t, document)
+				assert.Empty(t, pending)
+			}
+			assert.Equal(t, tc.value, original["amount"])
+		})
+	}
+}
 
 func TestMaterializeDocument(t *testing.T) {
 	resource := &interfaces.Resource{
@@ -124,6 +151,14 @@ func TestMaterializeDocument(t *testing.T) {
 }
 
 func TestMaterializeDocuments(t *testing.T) {
+	t.Run("invalid decimal batch fails before any downstream request", func(t *testing.T) {
+		manager := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+		service := &datasetService{lim: manager}
+		resource := &interfaces.Resource{LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"precision": 12, "scale": 2}}}}
+		result, err := service.materializeDocuments(context.Background(), resource, []map[string]any{{"amount": "13052.52"}, {"amount": "1.234"}})
+		require.Error(t, err)
+		assert.Nil(t, result)
+	})
 
 	for i, id := range []any{nil, 123, "", " \t", strings.Repeat("a", 513), strings.Repeat("界", 171), string([]byte{0xff})} {
 		t.Run(fmt.Sprintf("invalid ID %d", i), func(t *testing.T) {

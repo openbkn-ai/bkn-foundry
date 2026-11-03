@@ -19,6 +19,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
@@ -252,7 +253,7 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 	if err := validateTaskEmbeddingFeatures(schema, buildTask); err != nil {
 		return nil, err
 	}
-	return buildIndexableSchema(schema), nil
+	return local_index.DecimalIndexSchema(buildIndexableSchema(schema), resource.ColumnMetadata())
 }
 
 func buildIndexableSchema(schema []*interfaces.Property) []*interfaces.Property {
