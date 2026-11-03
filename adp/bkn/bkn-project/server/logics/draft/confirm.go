@@ -228,8 +228,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 
 	message := fmt.Sprintf("confirm ontology draft of project %s: %d object types, %d definitions",
 		projectID, adopted, len(paths))
-	result, err := s.ls.AddDefinitions(ctx, entry.KNID, entry.Branch, compiled.Files, owned, message,
-		interfaces.GitAuthor{Name: caller.ID})
+	result, err := s.commitModelDefinitions(ctx, entry, draft, compiled.Files, owned, message, interfaces.GitAuthor{Name: caller.ID})
 	if err != nil {
 		unlock()
 		restore()

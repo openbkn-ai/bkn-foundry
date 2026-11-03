@@ -89,6 +89,8 @@ type DriftResult struct {
 }
 
 type PublishReleaseRequest struct {
+	// ExpectedBranchCommit is the project review fence; direct HTTP requests cannot set it.
+	ExpectedBranchCommit string `json:"-"`
 	// Branch is the project branch to publish.
 	Branch string `json:"branch"`
 	// Version is X.Y.Z; the release is tagged v<version>.

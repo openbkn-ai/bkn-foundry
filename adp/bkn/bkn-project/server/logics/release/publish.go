@@ -83,7 +83,7 @@ func (s *projectReleaseService) PublishRelease(ctx context.Context, token string
 		notes += interfaces.RELEASE_NOTES_ACCEPTED + strings.Join(review.Accepts, ", ")
 	}
 	result, err := s.ls.PublishRelease(ctx, token, entry.KNID, interfaces.PublishReleaseRequest{
-		Branch: entry.Branch, Version: req.Version, ProjectID: projectID, Notes: notes,
+		ExpectedBranchCommit: review.Release.BranchCommit, Branch: entry.Branch, Version: req.Version, ProjectID: projectID, Notes: notes,
 	}, caller, author)
 	if err != nil {
 		span.SetStatus(codes.Error, "Publish release failed")

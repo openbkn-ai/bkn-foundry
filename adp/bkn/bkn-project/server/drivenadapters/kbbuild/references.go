@@ -70,7 +70,7 @@ func (a *references) Put(ctx context.Context, next *interfaces.KBReference, expe
 	if archived || owner != next.Owner {
 		return false, nil
 	}
-	active, err := current(ctx, tx, &interfaces.KBBuild{ProjectID: next.ProjectID, SelectionID: next.SelectionID, SelectionRevision: next.SelectionRevision, DraftUpdateTime: next.DraftUpdateTime})
+	active, err := currentModel(ctx, tx, &interfaces.KBBuild{ProjectID: next.ProjectID, SelectionID: next.SelectionID, SelectionRevision: next.SelectionRevision, DraftUpdateTime: next.DraftUpdateTime})
 	if err != nil || !active {
 		return false, err
 	}

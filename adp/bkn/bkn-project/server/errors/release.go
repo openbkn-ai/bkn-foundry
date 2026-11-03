@@ -17,18 +17,20 @@ const (
 	BknProject_Rollback_PrecheckRequired = "BknProject.Rollback.PrecheckRequired"
 
 	// 403
-	BknProject_Release_NotOwner = "BknProject.Release.NotOwner"
+	BknProject_Release_SourcePermission = "BknProject.Release.SourcePermission"
+	BknProject_Release_NotOwner         = "BknProject.Release.NotOwner"
 
 	// 404
 	BknProject_Release_NotFound           = "BknProject.Release.NotFound"
 	BknProject_Release_RegressionNotFound = "BknProject.Release.RegressionNotFound"
 
 	// 409
-	BknProject_Release_VersionExists       = "BknProject.Release.VersionExists"
-	BknProject_Release_BranchBehind        = "BknProject.Release.BranchBehind"
-	BknProject_Release_Drift               = "BknProject.Release.Drift"
-	BknProject_Release_CapabilitiesSkipped = "BknProject.Release.CapabilitiesSkipped"
-	BknProject_Release_NetworkExists       = "BknProject.Release.NetworkExists"
+	BknProject_Release_KnowledgeBaseNotReady = "BknProject.Release.KnowledgeBaseNotReady"
+	BknProject_Release_VersionExists         = "BknProject.Release.VersionExists"
+	BknProject_Release_BranchBehind          = "BknProject.Release.BranchBehind"
+	BknProject_Release_Drift                 = "BknProject.Release.Drift"
+	BknProject_Release_CapabilitiesSkipped   = "BknProject.Release.CapabilitiesSkipped"
+	BknProject_Release_NetworkExists         = "BknProject.Release.NetworkExists"
 	// An earlier attempt of the version left its tag at another branch head.
 	BknProject_Release_UnfinishedAttempt = "BknProject.Release.UnfinishedAttempt"
 	// A project's release.
@@ -42,12 +44,18 @@ const (
 	BknProject_Rollback_NoPrevious        = "BknProject.Rollback.NoPrevious"
 	BknProject_Rollback_NotProjectRelease = "BknProject.Rollback.NotProjectRelease"
 
+	// 503
+	BknProject_Release_KnowledgeBaseUnavailable = "BknProject.Release.KnowledgeBaseUnavailable"
+
 	// 500
 	BknProject_Release_InternalError = "BknProject.Release.InternalError"
 )
 
 var (
 	ReleaseErrCodeList = []string{
+		BknProject_Release_SourcePermission,
+		BknProject_Release_KnowledgeBaseNotReady,
+		BknProject_Release_KnowledgeBaseUnavailable,
 		BknProject_Release_InvalidVersion,
 		BknProject_Release_InvalidProjectID,
 		BknProject_Release_InvalidNotes,

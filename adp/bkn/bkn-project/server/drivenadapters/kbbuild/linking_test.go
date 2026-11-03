@@ -50,6 +50,7 @@ func TestClaimLinkingKeepsCompletedExtractionAndLocksTheCurrentProjectScope(t *t
 				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
 				if scenario != "source_changed" {
 					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", 10))
+					mock.ExpectQuery(regexp.QuoteMeta(sealedGenerations)).WithArgs("project", "generation").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 					count := 0
 					if scenario == "another_build" {
 						count = 1
@@ -126,6 +127,7 @@ func TestSaveLinkingCannotAlterExtractionOrOutliveItsLease(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
 				if scenario != "source_changed" {
 					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", 10))
+					mock.ExpectQuery(regexp.QuoteMeta(sealedGenerations)).WithArgs("project", "generation").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 				}
 			}
 			if scenario == "complete" {
@@ -182,6 +184,7 @@ func TestCheckLinkingRenewsOnlyLiveFencedOperations(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WithArgs("project", "selection").WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", revision))
 				if success {
 					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"status", "time"}).AddRow("ready", 10))
+					mock.ExpectQuery(regexp.QuoteMeta(sealedGenerations)).WithArgs("project", "generation").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 				}
 			}
 			if scenario == "live" {

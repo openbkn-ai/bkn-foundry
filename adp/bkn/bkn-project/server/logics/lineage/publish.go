@@ -29,6 +29,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/drift"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbpublication"
 )
 
 const (
@@ -151,8 +152,24 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		return nil, checked.refusals[0]
 	}
 	preview := checked.preview
+	if req.ExpectedBranchCommit != "" && req.ExpectedBranchCommit != preview.BranchCommit {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_ReviewOutdated)
+	}
 	networkID, tag, branchHead := preview.NetworkID, preview.Tag, preview.BranchCommit
 	liveID, baseVersion, previous := preview.LiveNetworkID, preview.BaseVersion, checked.previous
+
+	publisherService := s.knowledgePublisher(gs)
+	projectID := strings.TrimPrefix(req.Branch, "project/")
+	publication, err := publisherService.Prepare(ctx, token, kbpublication.Target{DeclaredProjectID: req.ProjectID, ProjectID: projectID, LineageID: lineageID, Branch: req.Branch, BranchCommit: branchHead, NetworkID: networkID, Publisher: publisher})
+	if err != nil {
+		return nil, kbpublication.PublicError(ctx, err)
+	}
+	if publication != nil {
+		if req.ProjectID != "" && req.ProjectID != publication.ProjectID {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidProjectID)
+		}
+		req.ProjectID = publication.ProjectID
+	}
 
 	if !checked.retry {
 		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
@@ -171,6 +188,10 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	if imported.Capabilities != nil && len(imported.Capabilities.Skipped) > 0 {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_CapabilitiesSkipped).
 			WithErrorDetails(map[string]any{"network_id": networkID, "tag": tag, "skipped": imported.Capabilities.Skipped})
+	}
+
+	if err := publisherService.Mount(ctx, token, publication); err != nil {
+		return nil, kbpublication.PublicError(ctx, err)
 	}
 
 	id, err := uuid.NewV7()
@@ -194,6 +215,9 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	}
 	if err := s.ra.CreateRelease(ctx, release); err != nil {
 		return nil, err
+	}
+	if err := publisherService.Activate(ctx, publication); err != nil {
+		return nil, kbpublication.PublicError(ctx, err)
 	}
 
 	commit, err := gs.FastForward(ctx, lineageID, interfaces.GIT_MAIN_BRANCH, branchHead)

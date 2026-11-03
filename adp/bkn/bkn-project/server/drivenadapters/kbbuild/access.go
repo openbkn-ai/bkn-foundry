@@ -60,7 +60,25 @@ func project(ctx context.Context, tx *sql.Tx, id string) (interfaces.AccountInfo
 	err := tx.QueryRowContext(ctx, projectLock, id).Scan(&archived, &owner.ID, &owner.Type)
 	return owner, archived, err
 }
+
+const sealedGenerations = "SELECT COUNT(*) FROM t_bkn_project_kb_publication WHERE f_project_id=? AND f_generation_id=? AND f_state IN ('sealed','mounted','active','archived')"
+
 func current(ctx context.Context, tx *sql.Tx, build *interfaces.KBBuild) (bool, error) {
+	active, err := currentModel(ctx, tx, build)
+	if err != nil || !active {
+		return false, err
+	}
+	if build.GenerationID == "" {
+		return false, nil
+	}
+	var sealed int64
+	if err := tx.QueryRowContext(ctx, sealedGenerations, build.ProjectID, build.GenerationID).Scan(&sealed); err != nil {
+		return false, err
+	}
+	return sealed == 0, nil
+}
+
+func currentModel(ctx context.Context, tx *sql.Tx, build *interfaces.KBBuild) (bool, error) {
 	var state string
 	var revision int64
 	err := tx.QueryRowContext(ctx, selectionLock, build.ProjectID, build.SelectionID).Scan(&state, &revision)

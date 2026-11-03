@@ -25,9 +25,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbpublication"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 // Directories of the definitions a review names.
@@ -187,6 +189,30 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 		indexCheck(confirmation, index, indexErr),
 		baselineCheck(behind, preview),
 	}
+	var knowledgePlan *kbpublication.Plan
+	if hasDraft && kbpublication.HasDocuments(draft) {
+		inspector := kbpublication.NewService(s.gs)
+		inspector.Drafts = s.da
+		inspected, inspectErr := inspector.Inspect(ctx, token, kbpublication.Target{ProjectID: projectID, LineageID: entry.KNID, Branch: entry.Branch, BranchCommit: preview.BranchCommit, NetworkID: preview.NetworkID, Publisher: caller})
+		reason := ""
+		if inspected == nil && inspectErr == nil {
+			inspectErr = kbpublication.ErrInvalidSnapshot
+		}
+		if inspectErr != nil {
+			reason = "knowledge_base_unavailable"
+			if public, ok := kbpublication.PublicError(ctx, inspectErr).(*httperrors.HTTPError); ok {
+				switch public.ErrorCode {
+				case perrors.BknProject_Release_SourcePermission:
+					reason = "knowledge_base_permission"
+				case perrors.BknProject_Release_KnowledgeBaseNotReady:
+					reason = "knowledge_base_not_ready"
+				}
+			}
+		}
+		review.Checks = append(review.Checks, interfaces.ReleaseCheck{Code: "knowledge_base", Passed: inspectErr == nil && inspected != nil, Reason: reason})
+		knowledgePlan = inspected
+	}
+
 	review.Risks = releaseRisks(review.Changes, preview.Changes, check, branchFiles, preview.Capabilities)
 
 	for _, c := range review.Checks {
@@ -208,7 +234,7 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 	if questions != nil {
 		questionsTime = questions.UpdateTime
 	}
-	review.Signature = signature(preview.BranchCommit, preview.MainCommit, updateTime, questionsTime)
+	review.Signature = kbpublication.ReviewSignature(signature(preview.BranchCommit, preview.MainCommit, updateTime, questionsTime), knowledgePlan)
 	span.SetStatus(codes.Ok, "")
 	return review, nil
 }

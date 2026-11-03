@@ -53,18 +53,14 @@ func PlanFileBuild(id, network, mode string, agentVersion int, draft *interfaces
 			return nil, ErrInvalidBuild
 		}
 	}
-	bound, err := kbdataset.BindPreview(draft, generation)
-	if err != nil {
+	if err := kbdataset.VerifyBindings(draft, generation); err != nil {
 		return nil, ErrInvalidBuild
 	}
-	for i, object := range draft.Items.ObjectTypes {
+	for _, object := range draft.Items.ObjectTypes {
 		if object.Adopted && object.Document != nil && object.Document.Role == "file" {
 			if _, err := kbconcept.FileIdentityProperty(draft.Items, object); err != nil {
 				return nil, &FileIdentityError{Name: object.Name}
 			}
-		}
-		if object.Adopted && object.Document != nil && object.Table != bound.Items.ObjectTypes[i].Table {
-			return nil, ErrInvalidBuild
 		}
 	}
 	files := []interfaces.KBFileBuild{}

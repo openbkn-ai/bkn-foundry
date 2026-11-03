@@ -102,6 +102,7 @@ func Boot() *Application {
 	logics.SetRegressionAccess(regressionaccess.NewRegressionAccess(appSetting))
 	logics.KBBA = buildaccess.New(db)
 	logics.KBRefs = buildaccess.NewReferences(db)
+	logics.KBPublications = buildaccess.NewPublications(db)
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.
