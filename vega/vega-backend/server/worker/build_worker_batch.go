@@ -473,7 +473,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 					return fmt.Errorf("build document ID: duplicate primary key values %q", docID)
 				}
 				if err := local_index.ValidateDecimalDocument(validationResource, doc); err != nil {
-					return err
+					return fmt.Errorf("build document %q: %w", docID, err)
 				}
 				if err := normalizeBuildDocumentFields(doc, resource.SchemaDefinition, nil); err != nil {
 					return fmt.Errorf("normalize document for local index: %w", err)
