@@ -26,14 +26,14 @@ import (
 )
 
 const (
-	exactDistinctPageSize      = 1000
-	exactDistinctResponseBytes = 8 << 20
-	exactDistinctGroupBytes    = 16 << 20
-	exactDistinctTimeout       = 30 * time.Second
+	exactDistinctPageSize    = 1000
+	aggregationResponseBytes = 8 << 20
+	exactDistinctGroupBytes  = 16 << 20
+	exactDistinctTimeout     = 30 * time.Second
 )
 
-// 每个进程最多同时持有四个精确枚举；等待也计入整次查询的时间预算。
-var exactDistinctSlots = make(chan struct{}, 4)
+// 每个进程最多同时持有四个分组或精确去重扫描；等待也计入整次查询的时间预算。
+var aggregationSlots = make(chan struct{}, 4)
 
 type exactDistinctGroup struct {
 	row       map[string]any
@@ -52,8 +52,8 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 	defer cancel()
 
 	select {
-	case exactDistinctSlots <- struct{}{}:
-		defer func() { <-exactDistinctSlots }()
+	case aggregationSlots <- struct{}{}:
+		defer func() { <-aggregationSlots }()
 	case <-ctx.Done():
 		return nil, interfaces.NewQueryExecutionBudgetError("exact_distinct_time", ctx.Err())
 	}
@@ -290,7 +290,7 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 					if _, exists := next[name]; !exists {
 						return nil, fmt.Errorf("exact distinct continuation is missing a key")
 					}
-					comparison = compareDistinctValues(after[name], next[name])
+					comparison = compareAggregationValues(after[name], next[name])
 					if comparison != 0 {
 						break
 					}
@@ -312,7 +312,7 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 					value = total
 				}
 			}
-			if !exactDistinctHaving(value, params.Having.Operation, havingParams) {
+			if !matchesAggregationHaving(value, params.Having.Operation, havingParams) {
 				continue
 			}
 		}
@@ -325,7 +325,7 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 			if name == "__value" {
 				name = alias
 			}
-			comparison := compareDistinctValues(rows[i][name], rows[j][name])
+			comparison := compareAggregationValues(rows[i][name], rows[j][name])
 			if comparison != 0 {
 				if strings.EqualFold(field.Direction, "desc") {
 					return comparison > 0
@@ -334,7 +334,7 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 			}
 		}
 		for _, group := range params.GroupBy {
-			if comparison := compareDistinctValues(rows[i][group.Property], rows[j][group.Property]); comparison != 0 {
+			if comparison := compareAggregationValues(rows[i][group.Property], rows[j][group.Property]); comparison != 0 {
 				return comparison < 0
 			}
 		}
@@ -357,6 +357,12 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 // distinctRequest 限制每页响应体，并保留 JSON 整数，避免续页键超过 2^53 后失真。
 func (c *OpenSearchConnector) distinctRequest(ctx context.Context,
 	method, path string, body map[string]any) (map[string]any, error) {
+	return c.aggregationRequest(ctx, method, path, body, "exact_distinct")
+}
+
+// aggregationRequest 供分组与精确去重共用，限制响应体并保留数值续页键的精度。
+func (c *OpenSearchConnector) aggregationRequest(ctx context.Context,
+	method, path string, body map[string]any, budget string) (map[string]any, error) {
 	var reader io.Reader
 	if body != nil {
 		encoded, err := sonic.Marshal(body)
@@ -374,43 +380,46 @@ func (c *OpenSearchConnector) distinctRequest(ctx context.Context,
 	response, err := c.client.Perform(request)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, interfaces.NewQueryExecutionBudgetError("exact_distinct_time", ctx.Err())
+			return nil, interfaces.NewQueryExecutionBudgetError(budget+"_time", ctx.Err())
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("exact distinct request failed")
+		return nil, fmt.Errorf("aggregation request failed")
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode >= 300 {
-		err := fmt.Errorf("exact distinct request returned HTTP %d", response.StatusCode)
+		err := fmt.Errorf("aggregation request returned HTTP %d", response.StatusCode)
 		if method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/_search/point_in_time") {
 			switch response.StatusCode {
 			case http.StatusBadRequest, http.StatusNotFound:
-				return nil, interfaces.NewConditionBuildError("source cannot guarantee exact distinct counts; set allow_approximate=true to permit approximation")
+				if budget == "exact_distinct" {
+					return nil, interfaces.NewConditionBuildError("source cannot guarantee exact distinct counts; set allow_approximate=true to permit approximation")
+				}
+				return nil, interfaces.NewConditionBuildError("source does not support snapshot group aggregation")
 			case http.StatusUnauthorized, http.StatusForbidden:
 				return nil, interfaces.NewSourceReadForbiddenError(err)
 			}
 		}
 		return nil, err
 	}
-	encoded, err := io.ReadAll(io.LimitReader(response.Body, exactDistinctResponseBytes+1))
+	encoded, err := io.ReadAll(io.LimitReader(response.Body, aggregationResponseBytes+1))
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, interfaces.NewQueryExecutionBudgetError("exact_distinct_time", ctx.Err())
+			return nil, interfaces.NewQueryExecutionBudgetError(budget+"_time", ctx.Err())
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("read exact distinct response failed")
+		return nil, fmt.Errorf("read aggregation response failed")
 	}
-	if len(encoded) > exactDistinctResponseBytes {
-		return nil, interfaces.NewQueryExecutionBudgetError("exact_distinct_response_memory", nil)
+	if len(encoded) > aggregationResponseBytes {
+		return nil, interfaces.NewQueryExecutionBudgetError(budget+"_response_memory", nil)
 	}
 	var result map[string]any
 	if err := common.UnmarshalPreciseJSON(encoded, &result); err != nil {
-		return nil, fmt.Errorf("decode exact distinct response failed")
+		return nil, fmt.Errorf("decode aggregation response failed")
 	}
 	return result, nil
 }
@@ -436,7 +445,7 @@ func validateCompleteAggregationResponse(response map[string]any) error {
 	return nil
 }
 
-func compareDistinctValues(left, right any) int {
+func compareAggregationValues(left, right any) int {
 	if left == nil {
 		if right == nil {
 			return 0
@@ -456,8 +465,11 @@ func compareDistinctValues(left, right any) int {
 	return strings.Compare(fmt.Sprint(left), fmt.Sprint(right))
 }
 
-func exactDistinctHaving(value int64, operation string, params map[string]any) bool {
-	compare := func(other any) int { return compareDistinctValues(value, other) }
+func matchesAggregationHaving(value any, operation string, params map[string]any) bool {
+	if value == nil {
+		return false
+	}
+	compare := func(other any) int { return compareAggregationValues(value, other) }
 	switch operation {
 	case "==":
 		return compare(params["value"]) == 0

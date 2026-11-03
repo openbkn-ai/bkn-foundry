@@ -248,7 +248,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource, par
 		}
 		query.Having(predicate)
 	}
-	for _, sort := range params.Sort {
+	for _, sort := range table.QuerySortFields(params, metricAlias) {
 		expr := sourceColumn(sort.Field)
 		if sort.Field == metricAlias && metricAlias != "" {
 			expr = sqlColumnName(metricAlias)

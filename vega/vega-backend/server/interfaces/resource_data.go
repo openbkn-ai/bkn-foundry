@@ -124,3 +124,17 @@ type ResourceValue struct {
 	ByteLength *int64 `json:"byte_length,omitempty"`
 	Data       any    `json:"data,omitempty"`
 }
+
+// AggregateOutputAlias 解析实际输出的聚合列，包含 HAVING count(*) 生成的隐式计数列。
+func (params *ResourceDataQueryParams) AggregateOutputAlias() string {
+	if params.Aggregation != nil {
+		if params.Aggregation.Alias != "" {
+			return params.Aggregation.Alias
+		}
+		return "__value"
+	}
+	if params.Having != nil && params.Having.Field == "count(*)" {
+		return "__value"
+	}
+	return ""
+}

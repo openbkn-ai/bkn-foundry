@@ -11,6 +11,20 @@ import (
 	"fmt"
 )
 
+// DecimalIndexError 表示托管索引无法按字段的小数定义安全编码，不包含原始业务值。
+type DecimalIndexError struct {
+	Field  string
+	Reason string
+}
+
+func NewDecimalIndexError(field, reason string) *DecimalIndexError {
+	return &DecimalIndexError{Field: field, Reason: reason}
+}
+
+func (e *DecimalIndexError) Error() string {
+	return fmt.Sprintf("decimal index field %q: %s", e.Field, e.Reason)
+}
+
 // QueryExecutionBudgetError 标识完整计算未能在执行预算内完成，不携带部分结果。
 type QueryExecutionBudgetError struct {
 	Budget string

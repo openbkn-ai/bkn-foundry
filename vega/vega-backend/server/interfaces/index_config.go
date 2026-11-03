@@ -52,6 +52,13 @@ type IndexConfigFieldContract struct {
 	OriginalType string                       `json:"original_type"`
 	Type         string                       `json:"type"`
 	Features     []IndexConfigFeatureContract `json:"features"`
+	Decimal      *DecimalIndexConfig          `json:"decimal,omitempty"`
+}
+
+// DecimalIndexConfig 固化托管索引使用的小数定义，避免源精度变更后复用旧索引。
+type DecimalIndexConfig struct {
+	Precision int `json:"precision"`
+	Scale     int `json:"scale"`
 }
 
 type IndexConfigFeatureContract struct {

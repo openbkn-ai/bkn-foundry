@@ -133,6 +133,25 @@ func (m *analyzerValidatingIndexManager) ValidateAnalyzer(_ context.Context, ana
 }
 
 func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
+	t.Run("rejects invalid decimal declarations before creating a task", func(t *testing.T) {
+		for _, original := range []string{"numeric", "decimal(12,13)", "decimal(1000,309)"} {
+			service := &buildTaskService{}
+			task := &interfaces.BuildTask{}
+			err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: original}}}, task)
+			_ = requireHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+			assert.Nil(t, task.IndexConfig)
+		}
+	})
+	t.Run("snapshots wide decimal declarations without rejecting their unused value range", func(t *testing.T) {
+		for _, original := range []string{"decimal(18,2)", "decimal(38,18)"} {
+			service := &buildTaskService{}
+			task := &interfaces.BuildTask{}
+			err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: original}}}, task)
+			require.NoError(t, err)
+			require.Len(t, task.IndexConfig.Fields, 1)
+			assert.NotNil(t, task.IndexConfig.Fields[0].Decimal)
+		}
+	})
 	t.Run("rejects missing embedding model", func(t *testing.T) {
 		service := &buildTaskService{}
 		buildTask := &interfaces.BuildTask{}

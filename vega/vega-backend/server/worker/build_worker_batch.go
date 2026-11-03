@@ -294,6 +294,11 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	if err != nil {
 		return fmt.Errorf("prepare local index failed: %w", err)
 	}
+	decimalSchema, err := local_index.DecimalIndexSchema(resource.SchemaDefinition, resource.ColumnMetadata())
+	if err != nil {
+		return err
+	}
+	validationResource := &interfaces.Resource{SchemaDefinition: decimalSchema}
 
 	lastSyncedMark := buildTaskInfo.SyncedMark
 	if restartFromBeginning {
@@ -466,6 +471,9 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				}
 				if _, exists := indexDocuments[docID]; exists {
 					return fmt.Errorf("build document ID: duplicate primary key values %q", docID)
+				}
+				if err := local_index.ValidateDecimalDocument(validationResource, doc); err != nil {
+					return fmt.Errorf("build document %q: %w", docID, err)
 				}
 				if err := normalizeBuildDocumentFields(doc, resource.SchemaDefinition, nil); err != nil {
 					return fmt.Errorf("normalize document for local index: %w", err)

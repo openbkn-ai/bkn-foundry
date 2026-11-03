@@ -717,12 +717,9 @@ func (rds *resourceDataService) prepareSortParams(resource *interfaces.Resource,
 		fieldMap[prop.Name] = true
 	}
 
-	// Add aggregation alias to field map if aggregation is present
-	if params.Aggregation != nil && params.Aggregation.Alias != "" {
-		fieldMap[params.Aggregation.Alias] = true
-	}
-	// Add __value to field map for aggregation queries
-	if params.Aggregation != nil {
+	// 显式聚合及 HAVING count(*) 的隐式输出都可以作为排序字段。
+	if alias := params.AggregateOutputAlias(); alias != "" {
+		fieldMap[alias] = true
 		fieldMap["__value"] = true
 	}
 	// Add GROUP BY fields to field map for aggregation queries
@@ -820,6 +817,9 @@ func MapQueryError(ctx context.Context, err error, invalidParameterCode string) 
 	var sourceReadForbidden *interfaces.SourceReadForbiddenError
 	if errors.As(err, &sourceReadForbidden) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+	}
+	if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+		return httpErr
 	}
 	if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
 		return httpErr

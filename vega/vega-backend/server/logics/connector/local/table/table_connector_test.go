@@ -242,3 +242,27 @@ func TestScanSQLRow(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+func TestQuerySortFields(t *testing.T) {
+	t.Run("resolves aggregate placeholder without mutating input", func(t *testing.T) {
+		original := &interfaces.SortField{Field: "__value", Direction: interfaces.DESC_DIRECTION}
+		params := &interfaces.ResourceDataQueryParams{Sort: []*interfaces.SortField{original}, GroupBy: []*interfaces.GroupByItem{{Property: "key"}, {Property: "secondary"}}}
+		fields := QuerySortFields(params, "total")
+		assert.Equal(t, []*interfaces.SortField{{Field: "total", Direction: interfaces.DESC_DIRECTION}, {Field: "key", Direction: interfaces.ASC_DIRECTION}, {Field: "secondary", Direction: interfaces.ASC_DIRECTION}}, fields)
+		assert.Equal(t, "__value", original.Field)
+		require.Len(t, params.Sort, 1)
+		assert.NotSame(t, original, fields[0])
+	})
+	t.Run("retains explicit group ordering and appends only remaining keys", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{Sort: []*interfaces.SortField{{Field: "secondary", Direction: interfaces.DESC_DIRECTION}}, GroupBy: []*interfaces.GroupByItem{{Property: "key"}, {Property: "secondary"}}}
+		assert.Equal(t, []*interfaces.SortField{{Field: "secondary", Direction: interfaces.DESC_DIRECTION}, {Field: "key", Direction: interfaces.ASC_DIRECTION}}, QuerySortFields(params, ""))
+	})
+	t.Run("detail field named value stays a source field", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{Sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.ASC_DIRECTION}}}
+		assert.Equal(t, params.Sort, QuerySortFields(params, ""))
+	})
+	t.Run("group-only queries default to declared group order", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}, {Property: "secondary"}}}
+		assert.Equal(t, []*interfaces.SortField{{Field: "key", Direction: interfaces.ASC_DIRECTION}, {Field: "secondary", Direction: interfaces.ASC_DIRECTION}}, QuerySortFields(params, ""))
+	})
+}
