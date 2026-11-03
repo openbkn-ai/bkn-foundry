@@ -8,6 +8,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +24,102 @@ import (
 )
 
 func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
+	t.Run("aggregate sort aliases and group tie breaks precede pagination", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			sort     []*interfaces.SortField
+			groups   []*interfaces.GroupByItem
+			alias    string
+			implicit bool
+			expected string
+		}{
+			{name: "custom alias through value placeholder", sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}, alias: "total", expected: "ORDER BY \"total\" DESC NULLS LAST, \"key\" ASC NULLS FIRST"},
+			{name: "custom alias directly", sort: []*interfaces.SortField{{Field: "total", Direction: interfaces.DESC_DIRECTION}}, alias: "total", expected: "ORDER BY \"total\" DESC NULLS LAST, \"key\" ASC NULLS FIRST"},
+			{name: "default aggregate alias", sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}, expected: "ORDER BY \"__value\" DESC NULLS LAST, \"key\" ASC NULLS FIRST"},
+			{name: "implicit count output", implicit: true, sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}, expected: "ORDER BY \"__value\" DESC NULLS LAST, \"key\" ASC NULLS FIRST"},
+			{name: "no explicit sorting", alias: "total", expected: "ORDER BY \"key\" ASC NULLS FIRST"},
+			{name: "explicit group direction is retained", sort: []*interfaces.SortField{{Field: "key", Direction: interfaces.DESC_DIRECTION}}, alias: "total", expected: "ORDER BY \"key\" DESC NULLS LAST"},
+			{name: "multi dimension completes only missing keys", sort: []*interfaces.SortField{{Field: "secondary", Direction: interfaces.DESC_DIRECTION}, {Field: "total", Direction: interfaces.ASC_DIRECTION}}, groups: []*interfaces.GroupByItem{{Property: "key"}, {Property: "secondary"}}, alias: "total", expected: "ORDER BY \"secondary\" DESC NULLS LAST, \"total\" ASC NULLS FIRST, \"key\" ASC NULLS FIRST"},
+			{name: "calendar tie break uses grouped output", sort: []*interfaces.SortField{{Field: "total", Direction: interfaces.DESC_DIRECTION}}, groups: []*interfaces.GroupByItem{{Property: "created", CalendarInterval: "month"}}, alias: "total", expected: "ORDER BY \"total\" DESC NULLS LAST, \"created\" ASC NULLS FIRST"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				connector := &PostgresqlConnector{}
+				groups := tc.groups
+				if groups == nil {
+					groups = []*interfaces.GroupByItem{{Property: "key"}}
+				}
+				params := &interfaces.ResourceDataQueryParams{GroupBy: groups, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: tc.alias}, Sort: tc.sort, Paging: interfaces.PagingRequest{Offset: 1, Limit: 1}}
+				if tc.implicit {
+					params.Aggregation = nil
+					params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}
+				}
+				before, err := json.Marshal(params)
+				require.NoError(t, err)
+				resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{{Name: "key", OriginalName: "SOURCE_KEY", Type: interfaces.DataType_Integer}, {Name: "secondary", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Integer}, {Name: "created", Type: interfaces.DataType_Datetime}}}
+				query, err := connector.buildSelectBuilder(resource, params)
+				require.NoError(t, err)
+				statement, _, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Contains(t, statement, tc.expected+" LIMIT 1 OFFSET 1")
+				after, err := json.Marshal(params)
+				require.NoError(t, err)
+				assert.Equal(t, string(before), string(after), "building SQL must not modify query sort fields")
+			})
+		}
+	})
+
+	t.Run("group NULL ordering matches index pagination without changing detail queries", func(t *testing.T) {
+		for _, grouped := range []bool{false, true} {
+			for _, direction := range []string{interfaces.ASC_DIRECTION, interfaces.DESC_DIRECTION} {
+				for _, metric := range []bool{false, true} {
+					if metric && !grouped {
+						continue
+					}
+					t.Run(fmt.Sprintf("grouped=%v/direction=%s/metric=%v", grouped, direction, metric), func(t *testing.T) {
+						db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+						require.NoError(t, err)
+						t.Cleanup(func() {
+							mock.ExpectClose()
+							require.NoError(t, db.Close())
+							require.NoError(t, mock.ExpectationsWereMet())
+						})
+						connector := &PostgresqlConnector{db: db, connected: true}
+						resource := &interfaces.Resource{SourceIdentifier: `"public"."orders"`, SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}}}
+						params := &interfaces.ResourceDataQueryParams{Sort: []*interfaces.SortField{{Field: "key", Direction: direction}}, Paging: interfaces.PagingRequest{Limit: 1, Offset: 1}}
+						statement := `SELECT "key" AS "key" FROM "public"."orders"`
+						columns := []string{"key"}
+						values := []driver.Value{int64(1)}
+						if grouped {
+							params.GroupBy = []*interfaces.GroupByItem{{Property: "key"}}
+							statement += ` GROUP BY "key"`
+						}
+						if metric {
+							params.Aggregation = &interfaces.Aggregation{Property: "key", Aggr: "sum", Alias: "total"}
+							params.Sort[0].Field = "total"
+							statement = `SELECT "key" AS "key", SUM("key") AS "total" FROM "public"."orders" GROUP BY "key"`
+							columns = append(columns, "total")
+							values = append(values, int64(1))
+						}
+						nulls := "LAST"
+						if grouped && direction == interfaces.ASC_DIRECTION || !grouped && direction == interfaces.DESC_DIRECTION {
+							nulls = "FIRST"
+						}
+						statement += fmt.Sprintf(` ORDER BY "%s" %s NULLS %s`, params.Sort[0].Field, strings.ToUpper(direction), nulls)
+						if grouped && metric {
+							statement += `, "key" ASC NULLS FIRST`
+						}
+						statement += " LIMIT 1 OFFSET 1"
+						mock.ExpectQuery(statement).WithoutArgs().WillReturnRows(sqlmock.NewRows(columns).AddRow(values...)).RowsWillBeClosed()
+						result, err := connector.ExecuteQuery(t.Context(), resource, params)
+						require.NoError(t, err)
+						require.Len(t, result.Entries, 1)
+						assert.Equal(t, int64(1), result.Entries[0]["key"])
+					})
+				}
+			}
+		}
+	})
+
 	t.Run("aggregate timezone follows its input rather than same-name source field", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -271,7 +369,11 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 				resource := &interfaces.Resource{SourceIdentifier: `"public"."orders"`, SchemaDefinition: []*interfaces.Property{{Name: "label", Type: interfaces.DataType_String}, {Name: "id", Type: interfaces.DataType_Integer}, {Name: "created", OriginalName: "created_at", Type: interfaces.DataType_Datetime, OriginalType: "timestamp without time zone"}, {Name: "day", Type: interfaces.DataType_Date, OriginalType: "date"}, {Name: "zoned", Type: interfaces.DataType_Datetime, OriginalType: "timestamptz"}}}
 				params := &interfaces.ResourceDataQueryParams{GroupBy: tc.groups, Aggregation: tc.aggregation, Having: tc.having, NeedTotal: needTotal, Paging: interfaces.PagingRequest{Offset: 10, Limit: 1}}
 				// An empty page must still return the full aggregate total when requested.
-				mock.ExpectQuery(tc.statement + " LIMIT 1 OFFSET 10").WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"value"})).RowsWillBeClosed()
+				pageStatement := tc.statement
+				if len(tc.groups) > 0 {
+					pageStatement += ` ORDER BY "label" ASC NULLS FIRST`
+				}
+				mock.ExpectQuery(pageStatement + " LIMIT 1 OFFSET 10").WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"value"})).RowsWillBeClosed()
 				if needTotal {
 					mock.ExpectQuery(`SELECT COUNT(*) FROM (` + tc.statement + `) AS "_resource_total"`).WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.total))
 				}
@@ -357,7 +459,7 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 		Paging:      interfaces.PagingRequest{Limit: 20},
 		NeedTotal:   true,
 	}
-	expectedQuery := `SELECT TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') ORDER BY "createdAt" ASC NULLS LAST LIMIT 20`
+	expectedQuery := `SELECT TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') AS "createdAt", COUNT("id") AS "__value" FROM "public"."events" GROUP BY TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') ORDER BY "createdAt" ASC NULLS FIRST LIMIT 20`
 	mock.ExpectQuery(expectedQuery).WithoutArgs().
 		WillReturnRows(sqlmock.NewRows([]string{"createdAt", "__value"}).AddRow("2024-01-01", 1))
 
@@ -388,7 +490,7 @@ func TestPostgresqlConnectorExecuteQueryAliasesGroupByFields(t *testing.T) {
 		Paging:      interfaces.PagingRequest{Limit: 20},
 	}
 	expectedQuery := "SELECT \"group_key\" AS \"groupKey\", COUNT(\"id\") AS \"__value\" " +
-		"FROM \"public\".\"events\" GROUP BY \"group_key\" LIMIT 20"
+		"FROM \"public\".\"events\" GROUP BY \"group_key\" ORDER BY \"groupKey\" ASC NULLS FIRST LIMIT 20"
 	mock.ExpectQuery(expectedQuery).
 		WillReturnRows(sqlmock.NewRows([]string{"groupKey", "__value"}).AddRow("priority", 1))
 

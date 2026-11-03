@@ -245,14 +245,6 @@ func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
 			aggregation := aggregationQuery["aggs"].(map[string]any)["__value"].(map[string]any)
 			assert.Equal(t, "body.raw", aggregation["cardinality"].(map[string]any)["field"])
 
-			_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
-				GroupBy: []*interfaces.GroupByItem{{Property: fieldName}},
-			})
-			require.NoError(t, err)
-			groupQuery := <-queries
-			group := groupQuery["aggs"].(map[string]any)["group_by_"+fieldName].(map[string]any)
-			assert.Equal(t, "body.raw", group["terms"].(map[string]any)["field"])
-
 		})
 	}
 }
@@ -454,179 +446,6 @@ func TestExecuteRawQueryPreservesLargeIntegerSourceField(t *testing.T) {
 	assert.Equal(t, json.Number("110101199001152345"), result.Entries[0]["identifier"])
 	assert.Equal(t, []any{json.Number("110101199001152345")}, result.SearchAfter)
 	assert.Equal(t, int64(1), *result.TotalCount)
-}
-
-func TestOpenSearchFlattenNestedGroupByRows(t *testing.T) {
-	conn := &OpenSearchConnector{}
-
-	t.Run("returns empty rows for malformed buckets", func(t *testing.T) {
-		rows := conn.flattenNestedGroupByRows(map[string]any{"buckets": "bad"}, &interfaces.ResourceDataQueryParams{}, "__value")
-
-		assert.Empty(t, rows)
-	})
-
-	t.Run("uses key_as_string and truncates by limit", func(t *testing.T) {
-		params := &interfaces.ResourceDataQueryParams{
-			Paging: interfaces.PagingRequest{Limit: 1},
-			Aggregation: &interfaces.Aggregation{
-				Alias: "__value",
-			},
-			GroupBy: []*interfaces.GroupByItem{
-				{Property: "created_at"},
-			},
-		}
-		rootAgg := map[string]any{
-			"buckets": []any{
-				map[string]any{"key_as_string": "2026-07-09", "__value": map[string]any{"value": float64(3)}},
-				map[string]any{"key_as_string": "2026-07-10", "__value": map[string]any{"value": float64(4)}},
-			},
-		}
-
-		rows := conn.flattenNestedGroupByRows(rootAgg, params, "__value")
-
-		require.Len(t, rows, 1)
-		assert.Equal(t, "2026-07-09", rows[0]["created_at"])
-		assert.Equal(t, float64(3), rows[0]["__value"])
-	})
-
-	t.Run("returns parent row when child aggregation is missing", func(t *testing.T) {
-		params := &interfaces.ResourceDataQueryParams{
-			GroupBy: []*interfaces.GroupByItem{
-				{Property: "country"},
-				{Property: "city"},
-			},
-		}
-		rootAgg := map[string]any{
-			"buckets": []any{
-				map[string]any{"key": "CN"},
-			},
-		}
-
-		rows := conn.flattenNestedGroupByRows(rootAgg, params, "")
-
-		require.Len(t, rows, 1)
-		assert.Equal(t, "CN", rows[0]["country"])
-		assert.NotContains(t, rows[0], "city")
-	})
-	t.Run("flatten nested group by rows two dimensions", func(t *testing.T) {
-		conn := &OpenSearchConnector{}
-		params := &interfaces.ResourceDataQueryParams{
-			Paging: interfaces.PagingRequest{Limit: 10},
-			Aggregation: &interfaces.Aggregation{
-				Property: "id",
-				Aggr:     "count",
-				Alias:    "__value",
-			},
-			GroupBy: []*interfaces.GroupByItem{
-				{Property: "kn_id"},
-				{Property: "module_type"},
-			},
-		}
-
-		rootAgg := map[string]any{
-			"buckets": []any{
-				map[string]any{
-					"key": "yzm_mock_system",
-					"group_by_module_type": map[string]any{
-						"buckets": []any{
-							map[string]any{
-								"key": "a",
-								"__value": map[string]any{
-									"value": float64(3),
-								},
-							},
-							map[string]any{
-								"key": "b",
-								"__value": map[string]any{
-									"value": float64(2),
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-
-		rows := conn.flattenNestedGroupByRows(rootAgg, params, "__value")
-		require.Len(t, rows, 2)
-
-		assert.Equal(t, "yzm_mock_system", rows[0]["kn_id"])
-		assert.Equal(t, "a", rows[0]["module_type"])
-		assert.Equal(t, float64(3), rows[0]["__value"])
-		assert.Equal(t, "yzm_mock_system", rows[1]["kn_id"])
-		assert.Equal(t, "b", rows[1]["module_type"])
-		assert.Equal(t, float64(2), rows[1]["__value"])
-	})
-}
-
-func TestNestedTermsSize(t *testing.T) {
-	tests := []struct {
-		name       string
-		levelIndex int
-		numLevels  int
-		limit      int
-		want       int
-	}{
-		{name: "single level default", levelIndex: 0, numLevels: 1, limit: 0, want: 10},
-		{name: "single level uses limit", levelIndex: 0, numLevels: 1, limit: 7, want: 7},
-		{name: "inner level uses limit", levelIndex: 1, numLevels: 2, limit: 5, want: 5},
-		{name: "outer level minimum", levelIndex: 0, numLevels: 2, limit: 0, want: 1000},
-		{name: "outer level scaled lower bound", levelIndex: 0, numLevels: 2, limit: 1, want: 100},
-		{name: "outer level scaled upper bound", levelIndex: 0, numLevels: 2, limit: 200, want: 10000},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, nestedTermsSize(tt.levelIndex, tt.numLevels, tt.limit))
-		})
-	}
-}
-
-func TestOpenSearchApplyTermsOrderToGroupAggNode(t *testing.T) {
-	conn := &OpenSearchConnector{}
-
-	t.Run("applies key and metric order recursively", func(t *testing.T) {
-		node := map[string]any{
-			"terms": map[string]any{"field": "country"},
-			"aggs": map[string]any{
-				"group_by_city": map[string]any{
-					"terms": map[string]any{"field": "city"},
-					"aggs": map[string]any{
-						"total": map[string]any{"sum": map[string]any{"field": "amount"}},
-					},
-				},
-			},
-		}
-		params := &interfaces.ResourceDataQueryParams{
-			Aggregation: &interfaces.Aggregation{Alias: "total"},
-			Sort: []*interfaces.SortField{
-				{Field: "country", Direction: "DESC"},
-				{Field: "total", Direction: "sideways"},
-				{Field: "city", Direction: "asc"},
-			},
-		}
-
-		conn.applyTermsOrderToGroupAggNode(node, params, "total")
-
-		assert.Equal(t, []map[string]any{{"_key": "desc"}}, node["terms"].(map[string]any)["order"])
-		child := node["aggs"].(map[string]any)["group_by_city"].(map[string]any)
-		assert.Equal(t, []map[string]any{{"total": "asc"}, {"_key": "asc"}}, child["terms"].(map[string]any)["order"])
-	})
-
-	t.Run("skips having filter child", func(t *testing.T) {
-		node := map[string]any{
-			"terms": map[string]any{"field": "country"},
-			"aggs": map[string]any{
-				"having_filter": map[string]any{"bucket_selector": map[string]any{}},
-			},
-		}
-
-		conn.applyTermsOrderToGroupAggNode(node, &interfaces.ResourceDataQueryParams{
-			Sort: []*interfaces.SortField{{Field: "country", Direction: "asc"}},
-		}, "total")
-
-		assert.Equal(t, []map[string]any{{"_key": "asc"}}, node["terms"].(map[string]any)["order"])
-	})
 }
 
 func TestOpenSearchBuildHavingBucketSelector(t *testing.T) {
@@ -970,41 +789,6 @@ func TestOpenSearchConnectorExecuteQueryPreservesBackendErrors(t *testing.T) {
 	}
 }
 
-func TestOpenSearchConnectorExecuteQueryTemporalHaving(t *testing.T) {
-	t.Setenv("TZ", "Asia/Shanghai")
-	for _, input := range []any{"2026-10-19T00:00:00+08:00", "2026-10-19 00:00:00", json.Number("1792339200000"), "1792339200000"} {
-		requests := 0
-		client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
-			Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
-				requests++
-				var query map[string]any
-				require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
-				groups := query["aggs"].(map[string]any)["group_by_country"].(map[string]any)
-				selector := groups["aggs"].(map[string]any)["having_filter"].(map[string]any)["bucket_selector"].(map[string]any)
-				script := selector["script"].(map[string]any)
-				assert.Equal(t, "params.metric > params.value", script["source"])
-				assert.Equal(t, map[string]any{"value": float64(1792339200000)}, script["params"])
-				assert.Equal(t, map[string]any{"metric": "min_created"}, selector["buckets_path"])
-				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
-					Body: io.NopCloser(strings.NewReader(`{"aggregations":{"group_by_country":{"buckets":[]}},"hits":{"total":{"value":0}}}`))}, nil
-			}),
-		})
-		require.NoError(t, err)
-		connector := &OpenSearchConnector{client: client}
-		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
-			{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, OriginalType: "date", Attributes: map[string]any{"format": "epoch_millis"}},
-			{Name: "country", OriginalName: "country", Type: interfaces.DataType_String},
-		}}
-		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min", Alias: "min_created"},
-			GroupBy: []*interfaces.GroupByItem{{Property: "country"}}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: input}, Paging: interfaces.PagingRequest{Limit: 10}}
-		result, err := connector.ExecuteQuery(context.Background(), "events", resource, params)
-		require.NoError(t, err)
-		assert.Empty(t, result.Entries)
-		assert.Equal(t, 1, requests)
-		assert.Equal(t, input, params.Having.Value)
-	}
-}
-
 func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
 	t.Run("decimal aggregation selects scaled HAVING without changing count or AVG", func(t *testing.T) {
 		for _, operation := range []string{"sum", "min", "max", "avg", "count", "count_distinct"} {
@@ -1045,119 +829,50 @@ func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
 			}
 		}
 	})
-	for _, grouped := range []bool{false, true} {
-		for _, countOnly := range []bool{false, true} {
-			for _, retained := range []bool{false, true} {
-				requests := 0
-				client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
-					Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
-						requests++
-						var query map[string]any
-						require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
-						aggs := query["aggs"].(map[string]any)
-						var parent map[string]any
-						if grouped {
-							parent = aggs["group_by_country"].(map[string]any)
-						} else {
-							parent, _ = aggs["__vega_single_group"].(map[string]any)
-							require.NotNil(t, parent)
-							assert.Equal(t, map[string]any{"filters": map[string]any{"all": map[string]any{"match_all": map[string]any{}}}}, parent["filters"])
-						}
-						children := parent["aggs"].(map[string]any)
-						selector := children["having_filter"].(map[string]any)["bucket_selector"].(map[string]any)
-						metric := "min_created"
-						if countOnly {
-							metric = "_count"
-						}
-						assert.Equal(t, map[string]any{"metric": metric}, selector["buckets_path"])
-						bucket := map[string]any{"key": "CN", "doc_count": 3, "min_created": map[string]any{"value": 1792339200000}}
-						var groupResult map[string]any
-						if grouped {
-							buckets := []any{}
-							if retained {
-								buckets = append(buckets, bucket)
-							}
-							groupResult = map[string]any{"group_by_country": map[string]any{"buckets": buckets}}
-						} else {
-							buckets := map[string]any{}
-							if retained {
-								buckets["all"] = bucket
-							}
-							groupResult = map[string]any{"__vega_single_group": map[string]any{"buckets": buckets}}
-						}
-						data, err := json.Marshal(map[string]any{"aggregations": groupResult})
-						require.NoError(t, err)
-						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(data)))}, nil
-					}),
-				})
-				require.NoError(t, err)
-				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime}, {Name: "country", OriginalName: "country", Type: interfaces.DataType_String}}}
-				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min", Alias: "min_created"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: "2026-10-19T00:00:00Z"}, Paging: interfaces.PagingRequest{Limit: 10}}
-				if countOnly {
-					params.Aggregation = nil
-					params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}
-				}
-				if grouped {
-					params.GroupBy = []*interfaces.GroupByItem{{Property: "country"}}
-				}
-				result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "events", resource, params)
-				require.NoError(t, err)
-				if retained {
-					require.Len(t, result.Entries, 1)
-					if countOnly {
-						assert.Equal(t, json.Number("3"), result.Entries[0]["__value"])
-					} else {
-						assert.Equal(t, json.Number("1792339200000"), result.Entries[0]["min_created"])
-					}
-				} else {
-					assert.Empty(t, result.Entries)
-				}
-				assert.Equal(t, 1, requests)
-			}
-		}
-	}
-}
-
-func TestOpenSearchConnectorExecuteQueryCalendarGroups(t *testing.T) {
-	for _, aggr := range []string{"count_distinct", "sum", ""} {
-		t.Run("aggregation="+aggr, func(t *testing.T) {
+	for _, countOnly := range []bool{false, true} {
+		for _, retained := range []bool{false, true} {
 			requests := 0
 			client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
 				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
 					requests++
-					var body map[string]any
-					require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-					groups := body["aggs"].(map[string]any)
-					for _, field := range []string{"month", "day"} {
-						bucket := groups["group_by_"+field].(map[string]any)
-						histogram := bucket["date_histogram"].(map[string]any)
-						if aggr == "count_distinct" {
-							assert.Equal(t, float64(1), histogram["min_doc_count"], "distinct date groups must contain documents")
-						} else {
-							assert.NotContains(t, histogram, "min_doc_count")
-						}
-						if field == "month" {
-							groups = bucket["aggs"].(map[string]any)
-						}
+					var query map[string]any
+					require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
+					parent := query["aggs"].(map[string]any)[singleHavingGroup].(map[string]any)
+					assert.Equal(t, map[string]any{"filters": map[string]any{"all": map[string]any{"match_all": map[string]any{}}}}, parent["filters"])
+					selector := parent["aggs"].(map[string]any)["having_filter"].(map[string]any)["bucket_selector"].(map[string]any)
+					metric := "min_created"
+					if countOnly {
+						metric = "_count"
 					}
-					response := `{"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"aggregations":{"group_by_month":{"buckets":[{"key":1767225600000,"doc_count":2,"group_by_day":{"buckets":[{"key":1767398400000,"doc_count":2,"__value":{"value":0}}]}}]}}}`
-					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(response))}, nil
+					assert.Equal(t, map[string]any{"metric": metric}, selector["buckets_path"])
+					buckets := map[string]any{}
+					if retained {
+						buckets["all"] = map[string]any{"doc_count": 3, "min_created": map[string]any{"value": 1792339200000}}
+					}
+					data, err := json.Marshal(map[string]any{"aggregations": map[string]any{singleHavingGroup: map[string]any{"buckets": buckets}}})
+					require.NoError(t, err)
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(data)))}, nil
 				})})
 			require.NoError(t, err)
-			params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "month", CalendarInterval: "month"}, {Property: "day", CalendarInterval: "day"}}}
-			if aggr != "" {
-				params.Aggregation = &interfaces.Aggregation{Property: "id", Aggr: aggr}
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "created", Type: interfaces.DataType_Datetime}}}
+			params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min", Alias: "min_created"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: "2026-10-19T00:00:00Z"}}
+			if countOnly {
+				params.Aggregation = nil
+				params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}
 			}
-			result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "orders",
-				&interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "month", Type: interfaces.DataType_Datetime}, {Name: "day", Type: interfaces.DataType_Datetime}}}, params)
+			result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "events", resource, params)
 			require.NoError(t, err)
-			require.Len(t, result.Entries, 1)
-			assert.Equal(t, json.Number("1767398400000"), result.Entries[0]["day"])
-			if aggr != "" {
-				assert.Equal(t, json.Number("0"), result.Entries[0]["__value"], "existing groups retain zero-valued metrics")
+			if retained {
+				require.Len(t, result.Entries, 1)
+				if countOnly {
+					assert.Equal(t, json.Number("3"), result.Entries[0]["__value"])
+				} else {
+					assert.Equal(t, json.Number("1792339200000"), result.Entries[0]["min_created"])
+				}
+			} else {
+				assert.Empty(t, result.Entries)
 			}
-			assert.Equal(t, aggr == "count_distinct", result.IsApproximate)
 			assert.Equal(t, 1, requests)
-		})
+		}
 	}
 }

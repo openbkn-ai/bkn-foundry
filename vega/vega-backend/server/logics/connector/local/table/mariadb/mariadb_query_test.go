@@ -28,6 +28,50 @@ import (
 type unknownNode struct{ *sb.Column }
 
 func TestMariaDBConnectorExecuteQuery(t *testing.T) {
+	t.Run("aggregate sort aliases and group tie breaks precede pagination", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			sort     []*interfaces.SortField
+			groups   []*interfaces.GroupByItem
+			alias    string
+			implicit bool
+			expected string
+		}{
+			{name: "custom alias through value placeholder", sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}, alias: "total", expected: "ORDER BY `total` DESC, `SOURCE_KEY` ASC"},
+			{name: "custom alias directly", sort: []*interfaces.SortField{{Field: "total", Direction: interfaces.DESC_DIRECTION}}, alias: "total", expected: "ORDER BY `total` DESC, `SOURCE_KEY` ASC"},
+			{name: "default aggregate alias", sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}, expected: "ORDER BY `__value` DESC, `SOURCE_KEY` ASC"},
+			{name: "implicit count output", implicit: true, sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}, expected: "ORDER BY `__value` DESC, `SOURCE_KEY` ASC"},
+			{name: "no explicit sorting", alias: "total", expected: "ORDER BY `SOURCE_KEY` ASC"},
+			{name: "explicit group direction is retained", sort: []*interfaces.SortField{{Field: "key", Direction: interfaces.DESC_DIRECTION}}, alias: "total", expected: "ORDER BY `SOURCE_KEY` DESC"},
+			{name: "multi dimension completes only missing keys", sort: []*interfaces.SortField{{Field: "secondary", Direction: interfaces.DESC_DIRECTION}, {Field: "total", Direction: interfaces.ASC_DIRECTION}}, groups: []*interfaces.GroupByItem{{Property: "key"}, {Property: "secondary"}}, alias: "total", expected: "ORDER BY `secondary` DESC, `total` ASC, `SOURCE_KEY` ASC"},
+			{name: "calendar tie break uses grouped output", sort: []*interfaces.SortField{{Field: "total", Direction: interfaces.DESC_DIRECTION}}, groups: []*interfaces.GroupByItem{{Property: "created", CalendarInterval: "month"}}, alias: "total", expected: "ORDER BY `total` DESC, DATE_FORMAT(`created`, '%Y-%m') ASC"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				connector := &MariaDBConnector{}
+				groups := tc.groups
+				if groups == nil {
+					groups = []*interfaces.GroupByItem{{Property: "key"}}
+				}
+				params := &interfaces.ResourceDataQueryParams{GroupBy: groups, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: tc.alias}, Sort: tc.sort, Paging: interfaces.PagingRequest{Offset: 1, Limit: 1}}
+				if tc.implicit {
+					params.Aggregation = nil
+					params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}
+				}
+				before, err := json.Marshal(params)
+				require.NoError(t, err)
+				resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{{Name: "key", OriginalName: "SOURCE_KEY", Type: interfaces.DataType_Integer}, {Name: "secondary", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Integer}, {Name: "created", Type: interfaces.DataType_Datetime}}}
+				query, err := connector.buildSelectBuilder(resource, params)
+				require.NoError(t, err)
+				statement, _, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Contains(t, statement, tc.expected+" LIMIT 1 OFFSET 1")
+				after, err := json.Marshal(params)
+				require.NoError(t, err)
+				assert.Equal(t, string(before), string(after), "building SQL must not modify query sort fields")
+			})
+		}
+	})
+
 	t.Run("discovered BIT uses existing binary modes and retains integer values", func(t *testing.T) {
 		metadata, content := interfaces.BinaryModeMetadata, interfaces.BinaryModeContent
 		for _, native := range []string{"bit(1)", "bit(8)", "bit(17)"} {
@@ -349,7 +393,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 			if !emptyPage {
 				rows.AddRow(3, 4)
 			}
-			mock.ExpectQuery(statement + " LIMIT 1 OFFSET 10").WithArgs(2).WillReturnRows(rows).RowsWillBeClosed()
+			mock.ExpectQuery(statement + " ORDER BY `id` ASC LIMIT 1 OFFSET 10").WithArgs(2).WillReturnRows(rows).RowsWillBeClosed()
 			mock.ExpectQuery("SELECT COUNT(*) FROM (" + statement + ") AS `_resource_total`").WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(8))
 			result, err := connector.ExecuteQuery(context.Background(), resource, params)
 			require.NoError(t, err)
@@ -572,7 +616,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := ToSql(builder)
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `key` AS `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20",
+			"SELECT `key` AS `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` ORDER BY `key` ASC LIMIT 20",
 			sql)
 	})
 
@@ -590,7 +634,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t,
 			"SELECT `key` AS `key`, COUNT(`id`) AS `created` FROM `yanfeng_kb`.`fact` GROUP BY `key` "+
-				"ORDER BY `created` DESC LIMIT 20",
+				"ORDER BY `created` DESC, `key` ASC LIMIT 20",
 			sql)
 	})
 
@@ -606,7 +650,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		sql, _, err := ToSql(builder)
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT `key` AS `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20",
+			"SELECT `key` AS `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` ORDER BY `key` ASC LIMIT 20",
 			sql)
 	})
 
@@ -650,7 +694,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t,
 			"SELECT DATE_FORMAT(`created_at`, '%Y-%m-%d') AS `created` FROM `yanfeng_kb`.`fact` "+
-				"GROUP BY DATE_FORMAT(`created_at`, '%Y-%m-%d') LIMIT 20",
+				"GROUP BY DATE_FORMAT(`created_at`, '%Y-%m-%d') ORDER BY DATE_FORMAT(`created_at`, '%Y-%m-%d') ASC LIMIT 20",
 			sql)
 	})
 }
@@ -727,7 +771,7 @@ func TestMariaDBConnectorBuildTypedSelectBuilder(t *testing.T) {
 		require.NoError(t, err)
 		text, args, err := ToSql(query)
 		require.NoError(t, err)
-		assert.Equal(t, "SELECT `id` AS `id`, COUNT(*) AS `n` FROM `orders` GROUP BY `id` HAVING (`n` > ?) ORDER BY `n` DESC LIMIT 3", text)
+		assert.Equal(t, "SELECT `id` AS `id`, COUNT(*) AS `n` FROM `orders` GROUP BY `id` HAVING (`n` > ?) ORDER BY `n` DESC, `id` ASC LIMIT 3", text)
 		assert.Equal(t, []any{2}, args)
 	})
 	t.Run("calendar projection and sorting use the same expression", func(t *testing.T) {

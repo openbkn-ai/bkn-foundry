@@ -215,12 +215,12 @@ func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName strin
 	if err != nil {
 		return nil, err
 	}
-	if decimalConfig.Precision > 0 && params.Having != nil && params.Having.Field != "count(*)" {
+	if decimalConfig.Precision > 0 && (len(params.GroupBy) > 0 || params.Having != nil && params.Having.Field != "count(*)") {
 		for _, property := range queryResource.SchemaDefinition {
 			if property.Name != params.Aggregation.Property {
 				continue
 			}
-			// 查询字段已是副本；补齐有效小数定义供 HAVING 使用，不修改资源属性。
+			// 查询字段已是副本；补齐有效小数定义，供分组输出、HAVING 和排序使用，不修改资源属性。
 			attributes := make(map[string]any, len(property.Attributes)+2)
 			for key, value := range property.Attributes {
 				attributes[key] = value
@@ -345,6 +345,7 @@ func validateQueryFields(resource *interfaces.Resource, params *interfaces.Resou
 	if resource == nil || params == nil {
 		return nil
 	}
+	alias := params.AggregateOutputAlias()
 	fields := make([]string, 0, len(params.Sort)+len(params.GroupBy)+1)
 	for _, sort := range params.Sort {
 		if sort != nil {
@@ -352,7 +353,7 @@ func validateQueryFields(resource *interfaces.Resource, params *interfaces.Resou
 				continue
 			}
 			// 聚合结果别名不是源字段，不能按源字段类型拒绝排序。
-			if params.Aggregation != nil && (sort.Field == params.Aggregation.Alias || sort.Field == "__value") {
+			if alias != "" && (sort.Field == alias || sort.Field == "__value") {
 				continue
 			}
 			fields = append(fields, sort.Field)
