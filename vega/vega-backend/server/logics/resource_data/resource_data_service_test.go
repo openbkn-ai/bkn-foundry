@@ -1274,6 +1274,17 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 }
 
 func TestResourceDataServicePrepareSortParams(t *testing.T) {
+	t.Run("preserves implicit count ordering", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}, Sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}}
+		before, err := json.Marshal(params)
+		require.NoError(t, err)
+		got := (&resourceDataService{}).prepareSortParams(&interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}}}, params)
+		assert.Equal(t, []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}, got.Sort)
+		after, err := json.Marshal(params)
+		require.NoError(t, err)
+		assert.Equal(t, string(before), string(after))
+	})
+
 	t.Run("keeps schema aggregation and group fields", func(t *testing.T) {
 		rds := &resourceDataService{}
 		resource := &interfaces.Resource{

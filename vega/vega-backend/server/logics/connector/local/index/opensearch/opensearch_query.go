@@ -484,6 +484,10 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 		}
 
+		if len(params.GroupBy) > 0 {
+			return c.executeGroupedQuery(ctx, indexName, resource, params, query, metricBody)
+		}
+
 		var havingSelector map[string]any
 		if params.Having != nil {
 			if aggAlias == "" {
@@ -511,61 +515,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			havingSelector = selector
 		}
 
-		// HAVING 作用于分组末级；无 GROUP BY 时使用单桶 filters，仍在引擎内执行过滤。
-		if len(params.GroupBy) > 0 {
-			leafAggs := make(map[string]any)
-			if metricBody != nil {
-				leafAggs[aggAlias] = metricBody
-			}
-			if havingSelector != nil {
-				leafAggs["having_filter"] = havingSelector
-			}
-
-			innerNode := leafAggs
-			n := len(params.GroupBy)
-			for i := n - 1; i >= 0; i-- {
-				gb := params.GroupBy[i]
-				name := "group_by_" + gb.Property
-				var bucket map[string]any
-				if gb.CalendarInterval != "" {
-					histogram := map[string]any{
-						"field":             gb.Property,
-						"calendar_interval": gb.CalendarInterval,
-					}
-					if params.Aggregation != nil && params.Aggregation.Aggr == "count_distinct" {
-						// 与 SQL 分组一致，只返回存在文档的日期分组。
-						histogram["min_doc_count"] = 1
-					}
-					bucket = map[string]any{"date_histogram": histogram}
-				} else {
-					groupField := gb.Property
-					resolvedField, err := c.exactMatchFieldName(groupField, resource.SchemaDefinition)
-					if err != nil {
-						return nil, fmt.Errorf("resolve group_by field %q: %w", groupField, err)
-					}
-					groupField = resolvedField
-					bucket = map[string]any{
-						"terms": map[string]any{
-							"field": groupField,
-							"size":  nestedTermsSize(i, n, params.Paging.Limit),
-						},
-					}
-				}
-				if len(innerNode) > 0 {
-					bucket["aggs"] = innerNode
-				}
-				innerNode = map[string]any{name: bucket}
-			}
-			for k, v := range innerNode {
-				aggs[k] = v
-			}
-			// Apply the order mapped to sort to each layer of terms (the second-dimensional sort is written on the inner layer terms)
-			for _, v := range aggs {
-				if node, ok := v.(map[string]any); ok {
-					c.applyTermsOrderToGroupAggNode(node, params, aggAlias)
-				}
-			}
-		} else if havingSelector != nil {
+		if havingSelector != nil {
 			children := map[string]any{"having_filter": havingSelector}
 			if metricBody != nil {
 				children[aggAlias] = metricBody
@@ -649,14 +599,8 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}, nil
 		}
 
-		// Handle group aggregation results (support multi-level group_by nested bucket flattening)
 		var rows []map[string]any
-		if len(params.GroupBy) > 0 {
-			groupByAggName := "group_by_" + params.GroupBy[0].Property
-			if groupByAgg, ok := aggregations[groupByAggName].(map[string]any); ok {
-				rows = c.flattenNestedGroupByRows(groupByAgg, params, aggAlias)
-			}
-		} else if params.Having != nil {
+		if params.Having != nil {
 			if group, ok := aggregations[singleHavingGroup].(map[string]any); ok {
 				if buckets, ok := group["buckets"].(map[string]any); ok {
 					if bucket, retained := buckets["all"].(map[string]any); retained {
@@ -877,72 +821,6 @@ func (c *OpenSearchConnector) validateStoredFilterCondition(resource *interfaces
 	return nil
 }
 
-// nestedTermsSize sets the size for each layer of terms in the nested group_by: the innermost layer uses limit to control the number of rows "under each parent bucket", and the outer layer uses a larger upper limit to expand the combination.
-func nestedTermsSize(levelIndex, numLevels, limit int) int {
-	if numLevels <= 1 {
-		if limit > 0 {
-			return limit
-		}
-		return 10
-	}
-	if levelIndex == numLevels-1 {
-		if limit > 0 {
-			return limit
-		}
-		return 10
-	}
-	outer := 1000
-	if limit > 0 {
-		if x := limit * 100; x > 10000 {
-			outer = 10000
-		} else if x < 100 {
-			outer = 100
-		} else {
-			outer = x
-		}
-	}
-	return outer
-}
-
-// ApplyTermsOrderToGroupAggNode recursive terms for each subtree of barrel written order (dimensional layer 2 d sort to fall, when the terms).
-// Sorting by metric only takes effect when the direct sub-aggs of that term contain the metric name, avoiding the illegal DSL caused by the outer terms referring to deeply nested sub-aggregations.
-func (c *OpenSearchConnector) applyTermsOrderToGroupAggNode(node map[string]any, params *interfaces.ResourceDataQueryParams, aggAlias string) {
-	if terms, ok := node["terms"].(map[string]any); ok {
-		field, _ := terms["field"].(string)
-		sub, _ := node["aggs"].(map[string]any)
-		metricDirectChild := aggAlias != "" && sub != nil && sub[aggAlias] != nil
-
-		var orderList []map[string]any
-		for _, sortItem := range params.Sort {
-			dir := strings.ToLower(sortItem.Direction)
-			if dir != "asc" && dir != "desc" {
-				dir = "asc"
-			}
-			if params.Aggregation != nil && metricDirectChild && (sortItem.Field == aggAlias || sortItem.Field == "__value") {
-				orderList = append(orderList, map[string]any{aggAlias: dir})
-			}
-			if sortItem.Field == field {
-				orderList = append(orderList, map[string]any{"_key": dir})
-			}
-		}
-		if len(orderList) > 0 {
-			terms["order"] = orderList
-		}
-	}
-	sub, ok := node["aggs"].(map[string]any)
-	if !ok {
-		return
-	}
-	for name, child := range sub {
-		if name == "having_filter" {
-			continue
-		}
-		if childMap, ok := child.(map[string]any); ok {
-			c.applyTermsOrderToGroupAggNode(childMap, params, aggAlias)
-		}
-	}
-}
-
 func (c *OpenSearchConnector) mergeMetricIntoRowFromBucket(bucket map[string]any, row map[string]any, aggAlias string) {
 	if aggAlias == "" {
 		return
@@ -956,72 +834,6 @@ func (c *OpenSearchConnector) mergeMetricIntoRowFromBucket(bucket map[string]any
 			row[aggAlias] = value
 		}
 	}
-}
-
-// CollectGroupByRowsFromBucket since the outer barrel recursive on multiple lines (each row contains the dimension key and optional metrics).
-func (c *OpenSearchConnector) collectGroupByRowsFromBucket(bucket map[string]any, level int, params *interfaces.ResourceDataQueryParams, aggAlias string, rowSoFar map[string]any) []map[string]any {
-	if level < 0 || level >= len(params.GroupBy) {
-		return nil
-	}
-	gb := params.GroupBy[level]
-	row := make(map[string]any, len(rowSoFar)+2)
-	for k, v := range rowSoFar {
-		row[k] = v
-	}
-	if key, ok := bucket["key"]; ok {
-		row[gb.Property] = key
-	} else if keyStr, ok := bucket["key_as_string"]; ok {
-		row[gb.Property] = keyStr
-	}
-
-	if level == len(params.GroupBy)-1 {
-		if params.Aggregation != nil {
-			c.mergeMetricIntoRowFromBucket(bucket, row, aggAlias)
-		} else if params.Having != nil && params.Having.Field == "count(*)" {
-			row["__value"] = bucket["doc_count"]
-		}
-		return []map[string]any{row}
-	}
-
-	nextName := "group_by_" + params.GroupBy[level+1].Property
-	// The sub-aggregation results of OpenSearch Buckets are directly tiled under the buckets instead of being hung in bucket["aggs"].
-	childAgg, ok := bucket[nextName].(map[string]any)
-	if !ok {
-		return []map[string]any{row}
-	}
-	nextBuckets, ok := childAgg["buckets"].([]any)
-	if !ok {
-		return []map[string]any{row}
-	}
-	var out []map[string]any
-	for _, nb := range nextBuckets {
-		nbm, ok := nb.(map[string]any)
-		if !ok {
-			continue
-		}
-		out = append(out, c.collectGroupByRowsFromBucket(nbm, level+1, params, aggAlias, row)...)
-	}
-	return out
-}
-
-// read the outermost group_by aggregation and flatten it into result rows, and then truncate it by limit.
-func (c *OpenSearchConnector) flattenNestedGroupByRows(rootAgg map[string]any, params *interfaces.ResourceDataQueryParams, aggAlias string) []map[string]any {
-	buckets, ok := rootAgg["buckets"].([]any)
-	if !ok {
-		return []map[string]any{}
-	}
-	var rows []map[string]any
-	for _, b := range buckets {
-		bm, ok := b.(map[string]any)
-		if !ok {
-			continue
-		}
-		rows = append(rows, c.collectGroupByRowsFromBucket(bm, 0, params, aggAlias, nil)...)
-	}
-	if params.Paging.Limit > 0 && len(rows) > params.Paging.Limit {
-		rows = rows[:params.Paging.Limit]
-	}
-	return rows
 }
 
 // buildHavingBucketSelector 使用数值参数比较聚合结果，不把输入值或别名拼入脚本。

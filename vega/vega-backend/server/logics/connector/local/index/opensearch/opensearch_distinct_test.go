@@ -112,7 +112,7 @@ func TestExactDistinctRequestDoesNotExposeTransportDetails(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, err = (&OpenSearchConnector{client: client}).distinctRequest(context.Background(), http.MethodPost, "/_search", nil)
-	require.EqualError(t, err, "exact distinct request failed")
+	require.EqualError(t, err, "aggregation request failed")
 }
 
 func TestExactDistinctPITCreationErrors(t *testing.T) {
@@ -136,7 +136,7 @@ func TestExactDistinctPITCreationErrors(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, result)
 			assert.Equal(t, 1, requests)
-			assert.Empty(t, exactDistinctSlots)
+			assert.Empty(t, aggregationSlots)
 			assert.NotContains(t, err.Error(), "private connection details")
 			var conditionErr *interfaces.ConditionBuildError
 			var forbiddenErr *interfaces.SourceReadForbiddenError
@@ -189,6 +189,10 @@ func TestOpenSearchConnectorExecuteExactDistinct(t *testing.T) {
 	}{
 		{name: "empty set", pages: []string{`{` + complete + `,"aggregations":{"__distinct":{"buckets":[]}}}`}, want: []map[string]any{{"__value": int64(0)}}},
 		{name: "all null", pages: []string{`{` + complete + `,"aggregations":{"__distinct":{"buckets":[{"key":{"value":null},"doc_count":7}],"after_key":{"value":null}}}}`, `{` + complete + `,"aggregations":{"__distinct":{"buckets":[]}}}`}, want: []map[string]any{{"__value": int64(0)}}},
+		{name: "NULL group key retains null-only and distinct values", groups: []*interfaces.GroupByItem{{Property: "status"}}, pages: []string{
+			`{` + complete + `,"aggregations":{"__distinct":{"buckets":[{"key":{"0":null,"value":null},"doc_count":1},{"key":{"0":null,"value":"a"},"doc_count":2}],"after_key":{"0":null,"value":"a"}}}}`,
+			`{` + complete + `,"aggregations":{"__distinct":{"buckets":[]}}}`}, want: []map[string]any{{"status": nil, "__value": int64(1)}}},
+
 		{name: "groups include all-null group", groups: []*interfaces.GroupByItem{{Property: "status"}}, pages: []string{
 			`{` + complete + `,"aggregations":{"__distinct":{"buckets":[{"key":{"0":"empty","value":null},"doc_count":2},{"key":{"0":"ready","value":"a"},"doc_count":3}],"after_key":{"0":"ready","value":"a"}}}}`,
 			`{` + complete + `,"aggregations":{"__distinct":{"buckets":[{"key":{"0":"ready","value":"b"},"doc_count":5}],"after_key":{"0":"ready","value":"b"}}}}`,
@@ -261,7 +265,7 @@ func TestOpenSearchConnectorExecuteExactDistinct(t *testing.T) {
 				assert.False(t, result.IsApproximate)
 			}
 			assert.Equal(t, 1, closes)
-			assert.Empty(t, exactDistinctSlots)
+			assert.Empty(t, aggregationSlots)
 		})
 	}
 }
@@ -289,7 +293,7 @@ func TestOpenSearchConnectorExactDistinctBudgets(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Nil(t, result)
 		assert.Equal(t, 1, closes)
-		assert.Empty(t, exactDistinctSlots)
+		assert.Empty(t, aggregationSlots)
 	})
 	for _, tc := range []struct{ name, budget string }{{"oversized response", "exact_distinct_response_memory"}, {"group memory", "exact_distinct_group_memory"}} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -302,7 +306,7 @@ func TestOpenSearchConnectorExactDistinctBudgets(t *testing.T) {
 				} else if request.URL.Path == "/_search" {
 					searches++
 					if tc.budget == "exact_distinct_response_memory" {
-						response = strings.Repeat(" ", exactDistinctResponseBytes+1)
+						response = strings.Repeat(" ", aggregationResponseBytes+1)
 					} else {
 						key := map[string]any{"0": strconv.Itoa(searches) + strings.Repeat("x", 2<<20), "value": 1}
 						encoded, err := json.Marshal(map[string]any{"timed_out": false, "_shards": map[string]any{"total": 1, "successful": 1, "failed": 0}, "aggregations": map[string]any{"__distinct": map[string]any{"buckets": []any{map[string]any{"key": key, "doc_count": 1}}, "after_key": key}}})
@@ -323,16 +327,16 @@ func TestOpenSearchConnectorExactDistinctBudgets(t *testing.T) {
 			assert.Equal(t, tc.budget, budget.Budget)
 			assert.Nil(t, result)
 			assert.Equal(t, 1, closes)
-			assert.Empty(t, exactDistinctSlots)
+			assert.Empty(t, aggregationSlots)
 		})
 	}
 	t.Run("cancel while all slots are occupied", func(t *testing.T) {
-		for i := 0; i < cap(exactDistinctSlots); i++ {
-			exactDistinctSlots <- struct{}{}
+		for i := 0; i < cap(aggregationSlots); i++ {
+			aggregationSlots <- struct{}{}
 		}
 		defer func() {
-			for i := 0; i < cap(exactDistinctSlots); i++ {
-				<-exactDistinctSlots
+			for i := 0; i < cap(aggregationSlots); i++ {
+				<-aggregationSlots
 			}
 		}()
 		ctx, cancel := context.WithCancel(context.Background())

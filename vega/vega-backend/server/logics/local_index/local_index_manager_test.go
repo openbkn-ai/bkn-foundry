@@ -205,6 +205,28 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 }
 
 func TestLocalIndexManagerListDocuments(t *testing.T) {
+	t.Run("grouped decimal metadata reaches the connector before result ordering", func(t *testing.T) {
+		for _, countHaving := range []bool{false, true} {
+			connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+			original := map[string]any{"precision": 20, "scale": 4}
+			resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}, {Name: "amount", OriginalName: "source_amount", Type: interfaces.DataType_Decimal, Attributes: original}}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "source_amount", NumPrecision: 12, NumScale: 2}}}}
+			params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: "total"}, Sort: []*interfaces.SortField{{Field: "total", Direction: "desc"}}, Paging: interfaces.PagingRequest{Limit: 1}}
+			if countHaving {
+				params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}
+			}
+			connector.EXPECT().ExecuteQuery(gomock.Any(), "index", gomock.Any(), params).DoAndReturn(func(_ context.Context, _ string, queryResource *interfaces.Resource, _ *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				assert.Equal(t, 12, queryResource.SchemaDefinition[1].Attributes["precision"])
+				assert.Equal(t, 2, queryResource.SchemaDefinition[1].Attributes["scale"])
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"key": 1, "total": json.Number("0.3")}}}, nil
+			})
+			result, err := (&localIndexManager{lic: connector}).ListDocuments(t.Context(), "index", resource, params)
+			require.NoError(t, err)
+			assert.Equal(t, []map[string]any{{"key": 1, "total": json.Number("0.3")}}, result.Entries)
+			assert.Equal(t, map[string]any{"precision": 20, "scale": 4}, original)
+			assert.Equal(t, original, resource.SchemaDefinition[1].Attributes)
+		}
+	})
+
 	t.Run("decimal queries use the target index without fetching metadata", func(t *testing.T) {
 		for _, tc := range []struct {
 			name   string
@@ -593,6 +615,14 @@ func TestLocalIndexManagerRejectsUnavailableQueryFields(t *testing.T) {
 }
 
 func TestValidateQueryFieldsAggregationAliases(t *testing.T) {
+	t.Run("implicit count value is an output rather than a source field", func(t *testing.T) {
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}}}
+		params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}, Sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}}
+		require.NoError(t, validateQueryFields(resource, params))
+		params.Having = nil
+		require.ErrorContains(t, validateQueryFields(resource, params), "not found")
+	})
+
 	for _, alias := range []string{"payload", "__value"} {
 		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: alias, Type: interfaces.DataType_Json}, {Name: "amount", Type: interfaces.DataType_Integer}}}
 		for _, declared := range []string{alias, ""} {

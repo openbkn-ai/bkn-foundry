@@ -219,7 +219,7 @@ func (c *PostgresqlConnector) buildSelectBuilder(resource *interfaces.Resource, 
 		}
 		query.Having(predicate)
 	}
-	for _, sort := range params.Sort {
+	for _, sort := range table.QuerySortFields(params, metricAlias) {
 		expr := sourceColumn(sort.Field)
 		if sort.Field == metricAlias && metricAlias != "" {
 			expr = sqlColumnName(metricAlias)
@@ -228,7 +228,12 @@ func (c *PostgresqlConnector) buildSelectBuilder(resource *interfaces.Resource, 
 			expr = sqlColumnName(sort.Field)
 		}
 		nulls := sb.NullsLast
-		if sort.Direction == interfaces.DESC_DIRECTION {
+		if len(params.GroupBy) > 0 {
+			// 分组查询与索引及 MySQL 保持一致；明细查询保留既有 NULL 排序。
+			if sort.Direction != interfaces.DESC_DIRECTION {
+				nulls = sb.NullsFirst
+			}
+		} else if sort.Direction == interfaces.DESC_DIRECTION {
 			nulls = sb.NullsFirst
 		}
 		query.OrderBy(sb.Order{Expr: expr, Descending: sort.Direction == interfaces.DESC_DIRECTION, Nulls: nulls})

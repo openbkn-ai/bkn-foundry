@@ -109,6 +109,27 @@ func ValidateAggregateAlias(alias string, groups []*interfaces.GroupByItem) erro
 	return nil
 }
 
+// QuerySortFields 解析聚合值引用，并按分组顺序补齐并列排序；不修改调用方的排序参数。
+func QuerySortFields(params *interfaces.ResourceDataQueryParams, aggregateAlias string) []*interfaces.SortField {
+	fields := make([]*interfaces.SortField, 0, len(params.Sort)+len(params.GroupBy))
+	covered := make(map[string]bool, len(params.Sort)+len(params.GroupBy))
+	for _, field := range params.Sort {
+		resolved := *field
+		if aggregateAlias != "" && resolved.Field == "__value" {
+			resolved.Field = aggregateAlias
+		}
+		fields = append(fields, &resolved)
+		covered[resolved.Field] = true
+	}
+	for _, group := range params.GroupBy {
+		if !covered[group.Property] {
+			fields = append(fields, &interfaces.SortField{Field: group.Property, Direction: interfaces.ASC_DIRECTION})
+			covered[group.Property] = true
+		}
+	}
+	return fields
+}
+
 // QueryBinaryContentColumns 按实际投影确定需要保留二进制内容的结果列。
 func QueryBinaryContentColumns(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) map[string]bool {
 	columns := make(map[string]bool)

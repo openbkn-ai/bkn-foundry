@@ -717,12 +717,9 @@ func (rds *resourceDataService) prepareSortParams(resource *interfaces.Resource,
 		fieldMap[prop.Name] = true
 	}
 
-	// Add aggregation alias to field map if aggregation is present
-	if params.Aggregation != nil && params.Aggregation.Alias != "" {
-		fieldMap[params.Aggregation.Alias] = true
-	}
-	// Add __value to field map for aggregation queries
-	if params.Aggregation != nil {
+	// 显式聚合及 HAVING count(*) 的隐式输出都可以作为排序字段。
+	if alias := params.AggregateOutputAlias(); alias != "" {
+		fieldMap[alias] = true
 		fieldMap["__value"] = true
 	}
 	// Add GROUP BY fields to field map for aggregation queries
