@@ -22,6 +22,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
+	"github.com/shopspring/decimal"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -492,9 +493,20 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			for _, field := range resource.SchemaDefinition {
 				fields[field.Name] = field
 			}
-			selector, err := c.buildHavingBucketSelector(params.Having, aggAlias, filter_condition.HavingTemporalField(params, fields))
+			havingField := filter_condition.HavingTemporalField(params, fields)
+			if agg := params.Aggregation; agg != nil && (agg.Aggr == "sum" || agg.Aggr == "min" || agg.Aggr == "max") {
+				if field := fields[agg.Property]; field != nil && field.Type == interfaces.DataType_Decimal {
+					havingField = field
+				}
+			}
+			selector, err := c.buildHavingBucketSelector(params.Having, aggAlias, havingField)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build HAVING condition: %w", err)
+			}
+			if params.Aggregation != nil && params.Aggregation.Aggr == "sum" &&
+				params.Having.Field != "count(*)" && havingField != nil && havingField.Type == interfaces.DataType_Decimal {
+				// 空集合的原生 SUM 为 0；pipeline 的空桶不能将它转换为 NaN。
+				selector["bucket_selector"].(map[string]any)["gap_policy"] = "insert_zeros"
 			}
 			havingSelector = selector
 		}
@@ -1013,21 +1025,35 @@ func (c *OpenSearchConnector) flattenNestedGroupByRows(rootAgg map[string]any, p
 }
 
 // buildHavingBucketSelector 使用数值参数比较聚合结果，不把输入值或别名拼入脚本。
-func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.HavingClause, aggAlias string, temporalField *interfaces.Property) (map[string]any, error) {
+func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.HavingClause, aggAlias string, metricField *interfaces.Property) (map[string]any, error) {
 	source := ""
 	scriptParams := map[string]any{}
 	metricPath := aggAlias
 	if having.Field == "count(*)" {
 		metricPath = "_count"
-		temporalField = nil
+		metricField = nil
+	}
+	decimalMetric := metricField != nil && metricField.Type == interfaces.DataType_Decimal
+	prefix := ""
+	if decimalMetric {
+		scale, ok := common.NumberAsInt64(metricField.Attributes["scale"])
+		if !ok || scale < 0 || scale > 308 {
+			return nil, interfaces.NewConditionBuildError("Decimal HAVING requires a valid field scale")
+		}
+		scriptParams["scale"] = scale
+		prefix = "if (params.metric == null || Double.isNaN(params.metric)) return false; " +
+			"BigDecimal metric = BigDecimal.valueOf(params.metric).setScale(params.scale, RoundingMode.HALF_UP); "
 	}
 	switch having.Operation {
 	case "==", "!=", ">", ">=", "<", "<=":
-		value, err := indexHavingValue(temporalField, having.Value)
+		value, err := indexHavingValue(metricField, having.Value)
 		if err != nil {
 			return nil, err
 		}
 		source = "params.metric " + having.Operation + " params.value"
+		if decimalMetric {
+			source = "return metric.compareTo(new BigDecimal(params.value)) " + having.Operation + " 0;"
+		}
 		scriptParams["value"] = value
 	case "in", "not_in", "range", "out_range":
 		var values []any
@@ -1048,7 +1074,7 @@ func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.Havin
 		}
 		numeric := make([]any, len(values))
 		for i, value := range values {
-			parsed, err := indexHavingValue(temporalField, value)
+			parsed, err := indexHavingValue(metricField, value)
 			if err != nil {
 				return nil, err
 			}
@@ -1061,11 +1087,23 @@ func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.Havin
 			if having.Operation == "not_in" {
 				source = "for (def value : params.values) { if (params.metric == value) return false; } return true;"
 			}
+			if decimalMetric {
+				source = "for (def value : params.values) { if (metric.compareTo(new BigDecimal(value)) == 0) return true; } return false;"
+				if having.Operation == "not_in" {
+					source = "for (def value : params.values) { if (metric.compareTo(new BigDecimal(value)) == 0) return false; } return true;"
+				}
+			}
 		case "range", "out_range":
 			scriptParams["lower"], scriptParams["upper"] = numeric[0], numeric[1]
 			source = "params.metric >= params.lower && params.metric <= params.upper"
 			if having.Operation == "out_range" {
 				source = "params.metric < params.lower || params.metric > params.upper"
+			}
+			if decimalMetric {
+				source = "return metric.compareTo(new BigDecimal(params.lower)) >= 0 && metric.compareTo(new BigDecimal(params.upper)) <= 0;"
+				if having.Operation == "out_range" {
+					source = "return metric.compareTo(new BigDecimal(params.lower)) < 0 || metric.compareTo(new BigDecimal(params.upper)) > 0;"
+				}
 			}
 		}
 	default:
@@ -1074,14 +1112,25 @@ func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.Havin
 	return map[string]any{
 		"bucket_selector": map[string]any{
 			"buckets_path": map[string]any{"metric": metricPath},
-			"script":       map[string]any{"source": source, "params": scriptParams},
+			"script":       map[string]any{"source": prefix + source, "params": scriptParams},
 		},
 	}, nil
 }
 
-// 日期聚合的数值接口使用 epoch milliseconds，包括 date_nanos 的聚合值。
+// indexHavingValue 保留 Decimal 阈值的十进制文本；日期聚合使用 epoch milliseconds，包括 date_nanos。
 // 保留输入的亚毫秒部分；最终比较精度受 OpenSearch double 聚合值限制。
 func indexHavingValue(field *interfaces.Property, value any) (any, error) {
+	if field != nil && field.Type == interfaces.DataType_Decimal {
+		text := fmt.Sprint(value)
+		if len(text) > 1024 {
+			return nil, interfaces.NewConditionBuildError("Decimal HAVING value is too large")
+		}
+		number, err := decimal.NewFromString(text)
+		if err != nil || number.Exponent() < -1024 || number.Exponent() > 1024 {
+			return nil, interfaces.NewConditionBuildError("Decimal HAVING value must be a finite decimal")
+		}
+		return number.String(), nil
+	}
 	if field != nil {
 		parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
 		if err != nil {

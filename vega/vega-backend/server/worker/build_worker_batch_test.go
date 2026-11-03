@@ -233,6 +233,40 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 }
 
 func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
+	t.Run("invalid decimal values cannot write or advance incremental checkpoints", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		resource := &interfaces.Resource{LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
+		mark := `{"mode":"batch","cursor":[{"key":"id","value":8000}]}`
+		task := &interfaces.BuildTask{ID: "task", IndexName: "index", ExecuteType: interfaces.BuildTaskExecuteTypeIncremental, SyncedMark: mark, SyncedCount: 8000,
+			IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}}}}
+		lim.EXPECT().CheckIndexExist(gomock.Any(), "index").Return(true, nil)
+		connector := vmock.NewMockTableConnector(ctrl)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{TotalCount: 1, Entries: []map[string]any{{"id": int64(8001), "amount": "1.234"}}}, nil)
+		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
+		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+			assert.Nil(t, progress.SyncedMark)
+			assert.Nil(t, progress.SyncedCount)
+			return true, nil
+		})
+		worker := &batchBuildWorker{lim: lim, bts: bts, cf: cf}
+		err := worker.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)
+		var failure *interfaces.DecimalIndexError
+		require.ErrorAs(t, err, &failure)
+		assert.Equal(t, "amount", failure.Field)
+		assert.Equal(t, "value_out_of_range", failure.Reason)
+		docID, idErr := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: int64(8001)}})
+		require.NoError(t, idErr)
+		assert.ErrorContains(t, err, fmt.Sprintf("build document %q:", docID))
+		assert.NotContains(t, err.Error(), "1.234")
+		assert.Equal(t, mark, task.SyncedMark)
+		assert.EqualValues(t, 8000, task.SyncedCount)
+	})
 	t.Run("does not invoke model when index creation fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)

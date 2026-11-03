@@ -587,7 +587,19 @@ components:
           items:
             $ref: "#/components/schemas/PropertyFeature"
         attributes:
-          description: connector-specific 扩展属性，opaque
+          description: |
+            connector-specific 扩展属性。Dataset 的 decimal 字段必须通过 precision 和 scale
+            声明小数定义，或提供完整的 original_type（如 decimal(12,2)）。
+            托管本地索引保留 scaled_float，scaling_factor=10^scale；要求 precision >= 1、
+            0 <= scale <= precision，且因子为有限正 double（scale <= 308）。
+            不因声明 precision 较大禁止建索引；源表优先采用探查结果中的 num_precision/num_scale。
+            缺失或非法定义在建索引前拒绝；写入时检查实际值是否满足声明、缩放后是否在
+            signed long 范围内，以及编码/解码后按声明 scale 恢复是否无损。
+            超范围、超小数位或发生精度损失的值被拒绝，不静默舍入金额。
+            原始值保持不变；SUM/MIN/MAX 输出按字段 scale 归一化，AVG 保留原生额外精度。
+            SUM/MIN/MAX 的 HAVING 通过桶级 script 按相同 scale 和 HALF_UP 比较，阈值保持十进制精度。
+            SUM/AVG 仍使用 OpenSearch 浮点聚合，不保证任意数据规模下的十进制精确累计。
+            本修复面向按新规则创建的索引，不读取实际 mapping/settings 检查历史索引兼容性。
           type: object
           additionalProperties: true
     PropertyFeature:

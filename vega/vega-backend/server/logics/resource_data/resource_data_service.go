@@ -821,6 +821,9 @@ func MapQueryError(ctx context.Context, err error, invalidParameterCode string) 
 	if errors.As(err, &sourceReadForbidden) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 	}
+	if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+		return httpErr
+	}
 	if httpErr := query_error.ExecutionBudgetHTTPError(ctx, err); httpErr != nil {
 		return httpErr
 	}
