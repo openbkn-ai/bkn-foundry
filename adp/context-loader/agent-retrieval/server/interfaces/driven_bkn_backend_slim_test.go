@@ -223,3 +223,97 @@ func TestConceptGroupDecode_KeepsSemantics(t *testing.T) {
 		convey.So(g.Comment, convey.ShouldEqual, "库存、仓库、可用量、理论可产")
 	})
 }
+
+// indirectRelationJSON is an indirect relation as bkn-backend returns it: its relation properties
+// ride in mapping_rules.properties with their declarations, beside the relation declarations.
+const indirectRelationJSON = `{"id":"supplier_record","name":"合作记录","type":"indirect",
+	"source_object_type_id":"supplier","target_object_type_id":"supplier",
+	"aliases":["合作记录"],"cardinality":"one_to_one","reverse_name":"被记录",
+	"importance":"secondary","fallback_for":"supplier_identity",
+	"lifecycle":{"status":"deprecated","reason":"merged","replaced_by":"supplier_link"},
+	"mapping_rules":{
+		"backing_data_source":{"type":"resource","id":"res_suppliers"},
+		"source_mapping_rules":[{"source_property":{"name":"supplier_id"},"target_property":{"name":"supplier_id"}}],
+		"target_mapping_rules":[{"source_property":{"name":"supplier_id"},"target_property":{"name":"supplier_id"}}],
+		"properties":[{"name":"cooperation_status","display_name":"记录合作状态","type":"string","comment":"状态",
+			"mapped_field":{"name":"cooperation_status"},"aliases":["合作记录状态"],"semantic":"status",
+			"required":true,"constraints":{"length":{"max":20}}}]}}`
+
+// assertRelationPropertyDeclarationsOmitted checks that the relation properties of an indirect
+// relation answer as object type properties do: without aliases, semantic, required and constraints,
+// with the definition and mapping kept.
+func assertRelationPropertyDeclarationsOmitted(rel *RelationType) {
+	out, err := sonic.Marshal(rel)
+	convey.So(err, convey.ShouldBeNil)
+	var got struct {
+		MappingRules struct {
+			BackingDataSource  map[string]any   `json:"backing_data_source"`
+			SourceMappingRules []map[string]any `json:"source_mapping_rules"`
+			Properties         []map[string]any `json:"properties"`
+		} `json:"mapping_rules"`
+	}
+	convey.So(sonic.Unmarshal(out, &got), convey.ShouldBeNil)
+	convey.So(got.MappingRules.BackingDataSource["id"], convey.ShouldEqual, "res_suppliers")
+	convey.So(got.MappingRules.SourceMappingRules, convey.ShouldHaveLength, 1)
+	convey.So(got.MappingRules.Properties, convey.ShouldHaveLength, 1)
+	prop := got.MappingRules.Properties[0]
+	for _, key := range []string{"aliases", "semantic", "required", "constraints"} {
+		convey.So(prop, convey.ShouldNotContainKey, key)
+	}
+	convey.So(prop["name"], convey.ShouldEqual, "cooperation_status")
+	convey.So(prop["display_name"], convey.ShouldEqual, "记录合作状态")
+	convey.So(prop["type"], convey.ShouldEqual, "string")
+	convey.So(prop["comment"], convey.ShouldEqual, "状态")
+	convey.So(prop["mapped_field"], convey.ShouldResemble, map[string]any{"name": "cooperation_status"})
+}
+
+// get_relation_types leaves out the declarations of relation properties, as get_object_types does for
+// object type properties; lifecycle and the fallback marking stay (#2893).
+func TestOmitRelationDeclarations_RelationProperties(t *testing.T) {
+	convey.Convey("relation property declarations are omitted, the relation's kept exceptions stay", t, func() {
+		var rel RelationType
+		convey.So(sonic.UnmarshalString(indirectRelationJSON, &rel), convey.ShouldBeNil)
+		OmitRelationDeclarations([]*RelationType{&rel})
+
+		assertRelationPropertyDeclarationsOmitted(&rel)
+		convey.So(rel.Aliases, convey.ShouldBeNil)
+		convey.So(rel.Cardinality, convey.ShouldEqual, "")
+		convey.So(rel.ReverseName, convey.ShouldEqual, "")
+		convey.So(rel.Importance, convey.ShouldEqual, "secondary")
+		convey.So(rel.FallbackFor, convey.ShouldEqual, "supplier_identity")
+		convey.So(rel.Lifecycle.ReplacedBy, convey.ShouldEqual, "supplier_link")
+	})
+
+	convey.Convey("a direct relation's mapping is left as it is", t, func() {
+		const direct = `{"id":"supplier_identity","type":"direct","mapping_rules":[
+			{"source_property":{"name":"supplier_id"},"target_property":{"name":"supplier_id"}}]}`
+		var rel, want RelationType
+		convey.So(sonic.UnmarshalString(direct, &rel), convey.ShouldBeNil)
+		convey.So(sonic.UnmarshalString(direct, &want), convey.ShouldBeNil)
+		convey.So(func() { OmitRelationDeclarations([]*RelationType{&rel}) }, convey.ShouldNotPanic)
+		convey.So(rel.MappingRules, convey.ShouldResemble, want.MappingRules)
+	})
+
+	convey.Convey("malformed relation properties are skipped without panic", t, func() {
+		for _, rules := range []any{
+			map[string]any{"properties": nil},
+			map[string]any{"properties": "x"},
+			map[string]any{"properties": []any{nil, "x", map[string]any{"name": "p", "semantic": "status"}}},
+		} {
+			rel := &RelationType{Type: "indirect", MappingRules: rules}
+			convey.So(func() { OmitRelationDeclarations([]*RelationType{rel, nil}) }, convey.ShouldNotPanic)
+		}
+	})
+}
+
+// get_kn_detail at the full level carries mapping_rules, so its relation properties go without their
+// declarations too (#2893).
+func TestSlim_Full_OmitsRelationPropertyDeclarations(t *testing.T) {
+	convey.Convey("full level omits relation property declarations", t, func() {
+		var rel RelationType
+		convey.So(sonic.UnmarshalString(indirectRelationJSON, &rel), convey.ShouldBeNil)
+		d := &KnowledgeNetworkDetail{ID: "kn-1", RelationTypes: []*RelationType{&rel}}
+		d.Slim(DetailLevelFull)
+		assertRelationPropertyDeclarationsOmitted(d.RelationTypes[0])
+	})
+}
