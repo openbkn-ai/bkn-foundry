@@ -25,6 +25,7 @@ type FactStateSummary struct {
 	Pending      int    `json:"pending"`
 }
 type factStatePlan struct {
+	Unconfirmed       []string
 	Writes, Preserved []kb.DatasetWrite
 	Summaries         []FactStateSummary
 }
@@ -49,9 +50,14 @@ func planFactStates(ctx context.Context, reader kb.DatasetFileSnapshot, build *i
 	factTypes := map[string]bool{}
 	for _, object := range draft.Items.ObjectTypes {
 		if object != nil && object.Adopted && object.Document != nil && object.Document.Role == "fact" {
-			factTypes[object.ID] = true
+			if kbconcept.ValidFactResolution(draft.Items, object, object.Document.FactResolution) {
+				factTypes[object.ID] = true
+			} else {
+				result.Unconfirmed = append(result.Unconfirmed, object.Name)
+			}
 		}
 	}
+	slices.Sort(result.Unconfirmed)
 	if len(factTypes) == 0 {
 		return result, nil
 	}
@@ -103,7 +109,7 @@ func planFactStates(ctx context.Context, reader kb.DatasetFileSnapshot, build *i
 	payloadBytes := 0
 	seen := map[string]bool{}
 	for _, object := range draft.Items.ObjectTypes {
-		if object == nil || !object.Adopted || object.Document == nil || object.Document.Role != "fact" {
+		if object == nil || !object.Adopted || object.Document == nil || object.Document.Role != "fact" || !factTypes[object.ID] {
 			continue
 		}
 		valid := kbconcept.ValidFactResolution(draft.Items, object, object.Document.FactResolution)
@@ -196,7 +202,7 @@ func planFactStates(ctx context.Context, reader kb.DatasetFileSnapshot, build *i
 	}
 	for _, claim := range claims {
 		object := instanceObject(draft.Items, claim.ObjectTypeID)
-		if object != nil && object.Document != nil && object.Document.Role == "fact" && !seen[claim.ObjectTypeID+"/"+claim.RecordID] {
+		if object != nil && object.Document != nil && object.Document.Role == "fact" && factTypes[object.ID] && !seen[claim.ObjectTypeID+"/"+claim.RecordID] {
 			return nil, ErrBuildChanged
 		}
 	}

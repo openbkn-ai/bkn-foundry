@@ -18,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbdataset"
 )
 
-func factServiceFixture(t *testing.T, mode string) (*SystemLinkService, *systemLinkQueue, *systemLinkRows, *interfaces.Draft, string) {
+func factServiceFixture(t *testing.T, mode string, confirmed ...bool) (*SystemLinkService, *systemLinkQueue, *systemLinkRows, *interfaces.Draft, string) {
 	t.Helper()
 	service, queue, data, _, _, draft := systemLinkServiceFixture(t)
 	build := queue.record.Build
@@ -32,7 +32,7 @@ func factServiceFixture(t *testing.T, mode string) (*SystemLinkService, *systemL
 	}
 	relation := &interfaces.DraftRelationType{ID: "fact_for_contract", Name: "Applies to contract", Source: fact.ID, Target: "contract_doc", Adopted: true, Cardinality: "many_to_one", Document: &interfaces.DraftDocumentModel{Role: "relation"}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number"}}
 	draft.Items.RelationTypes = append(draft.Items.RelationTypes, relation)
-	if err := kbconcept.ConfirmFactResolution(draft.Items, fact, interfaces.FactResolutionDecision{ValueProperty: "amount", SubjectRelationID: relation.ID, Confirm: true}, build.Owner, 10); err != nil {
+	if err := kbconcept.ConfirmFactResolution(draft.Items, fact, interfaces.FactResolutionDecision{ValueProperty: "amount", SubjectRelationID: relation.ID, Confirm: len(confirmed) == 0 || confirmed[0]}, build.Owner, 10); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := kbdataset.NewPlan(draft, "generation", "catalog", build.Owner)
@@ -214,6 +214,30 @@ func TestFactStateArbitrationIsTemporalScopedAndIndependentOfOrder(t *testing.T)
 					}
 				}
 			})
+		}
+	}
+}
+
+type unconfirmedFactReadGuard struct{ *systemLinkRows }
+
+func (data unconfirmedFactReadGuard) ReadFileRows(ctx context.Context, spec interfaces.DraftDatasetSpec, scope kb.DatasetFileScope, guard func(context.Context) error) ([]map[string]any, error) {
+	if spec.ObjectTypeID == "contract_file" {
+		return nil, errors.New("unconfirmed facts must not consume fact-read/write budgets")
+	}
+	return data.systemLinkRows.ReadFileRows(ctx, spec, scope, guard)
+}
+func TestUnconfirmedFactsStayPendingWithoutBeingReadOrAssignedFakeCounts(t *testing.T) {
+	service, queue, data, _, id := factServiceFixture(t, "full", false)
+	service.Datasets = unconfirmedFactReadGuard{data}
+	preview, err := service.Preview(context.Background(), "Bearer operator-token", "project", "job", queue.record.Build.Owner)
+	if err != nil || len(preview.Facts) != 0 || len(preview.FactRulesPending) != 1 {
+		t.Fatal("unconfirmed facts consumed the operation or invented counts", preview, err)
+	}
+	for _, rows := range data.rows {
+		for _, row := range rows {
+			if row["_id"] == id && row["status"] != "pending_review" {
+				t.Fatal("unconfirmed fact gained current authority")
+			}
 		}
 	}
 }

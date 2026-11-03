@@ -35,6 +35,7 @@ type SystemLinkSummary struct {
 	Conflicts  *int   `json:"conflicts"`
 }
 type SystemLinkPreview struct {
+	FactRulesPending  []string              `json:"fact_rules_pending"`
 	Facts             []FactStateSummary    `json:"facts"`
 	Fusion            []EntityFusionSummary `json:"fusion"`
 	FusionPreviewOnly bool                  `json:"fusion_preview_only"`
@@ -350,6 +351,7 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 		return nil, err
 	}
 	result.Preview.Facts = facts.Summaries
+	result.Preview.FactRulesPending = facts.Unconfirmed
 	result.Preserved = append(result.Preserved, facts.Preserved...)
 	if build.Mode == "full" {
 		result.Writes = append(result.Writes, facts.Writes...)
@@ -384,14 +386,15 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 		return nil, err
 	}
 	raw, err := json.Marshal(struct {
-		Model        string
-		Claims       []SourceClaim
-		Targets      map[string]string
-		Writes       []kb.DatasetWrite
-		Scopes       []systemLinkScope
-		Entities     []entityFusionScope
-		FusionWrites []kb.DatasetWrite
-	}{build.ModelFingerprint, claims, digests, expectedRows, result.Scopes, result.Entities, result.FusionWrites})
+		Model            string
+		Claims           []SourceClaim
+		Targets          map[string]string
+		Writes           []kb.DatasetWrite
+		Scopes           []systemLinkScope
+		Entities         []entityFusionScope
+		FusionWrites     []kb.DatasetWrite
+		FactRulesPending []string
+	}{build.ModelFingerprint, claims, digests, expectedRows, result.Scopes, result.Entities, result.FusionWrites, result.Preview.FactRulesPending})
 	if err != nil || len(raw) > 32<<20 {
 		return nil, ErrInvalidBuild
 	}

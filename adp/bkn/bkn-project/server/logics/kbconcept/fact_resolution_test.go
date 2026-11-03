@@ -101,11 +101,16 @@ func TestFactRuleEditPreservesOnlyCurrentHumanAuthorityAndRejectsAIProof(t *test
 	if err := ConfirmFactResolution(items, fact, interfaces.FactResolutionDecision{ValueProperty: "value", SubjectRelationID: relation.ID, Confirm: true}, interfaces.AccountInfo{ID: "reviewer", Type: "user"}, 100); err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"instruction", "value_type", "forged"} {
+	for _, scenario := range []string{"instruction", "value_type", "proposal", "forged"} {
 		raw, _ := json.Marshal(fact)
 		var edited interfaces.DraftObjectType
 		_ = json.Unmarshal(raw, &edited)
 		switch scenario {
+		case "proposal":
+			fact.Document.FactResolution.ConfirmedBy = interfaces.AccountInfo{}
+			fact.Document.FactResolution.ConfirmedAt = 0
+			edited.Document.FactResolution.ConfirmedBy = interfaces.AccountInfo{}
+			edited.Document.FactResolution.ConfirmedAt = 0
 		case "instruction":
 			property(&edited, "value").Extraction.Instruction = "Read only an explicit source value"
 		case "value_type":
@@ -123,7 +128,10 @@ func TestFactRuleEditPreservesOnlyCurrentHumanAuthorityAndRejectsAIProof(t *test
 		if err != nil {
 			t.Fatal(err)
 		}
-		if (checked.Document.FactResolution != nil) != (scenario == "instruction") {
+		if checked.Document.FactResolution == nil || checked.Document.FactResolution.ValueProperty != "value" {
+			t.Fatal("human choice lost", scenario)
+		}
+		if ValidFactResolution(items, checked, checked.Document.FactResolution) != (scenario == "instruction") {
 			t.Fatal("wrong confirmation preservation", scenario)
 		}
 	}

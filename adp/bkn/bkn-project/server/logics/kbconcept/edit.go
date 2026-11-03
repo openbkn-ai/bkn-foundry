@@ -137,8 +137,29 @@ func ValidateEditedObject(input *SampleInput, items interfaces.DraftItems, origi
 		return nil, err
 	}
 	result := checked.ObjectTypes[0]
-	if proof := original.Document.FactResolution; ValidFactResolution(items, result, proof) {
+	if proof := original.Document.FactResolution; proof != nil {
 		copy := *proof
+		if !ValidFactResolution(items, result, proof) {
+			copy.RuleSignature = ""
+			copy.ConfirmedBy = interfaces.AccountInfo{}
+			field := property(result, copy.ValueProperty)
+			if field == nil || field.ReadOnly {
+				copy.ValueProperty = ""
+			}
+			found := false
+			for _, relation := range items.RelationTypes {
+				if relation != nil && relation.ID == copy.SubjectRelationID && relation.Source == result.ID && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "linking" {
+					found = true
+				}
+			}
+			if !found {
+				copy.SubjectRelationID = ""
+			}
+			copy.State = "proposed"
+			if copy.ConfirmedAt > 0 {
+				copy.State = "stale"
+			}
+		}
 		result.Document.FactResolution = &copy
 	}
 	if proof := original.Document.FilePeriod; ValidFilePeriod(original, proof) && ValidFilePeriod(result, proof) {
