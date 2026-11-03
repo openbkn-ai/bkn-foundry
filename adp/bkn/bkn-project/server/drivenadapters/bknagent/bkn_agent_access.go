@@ -92,6 +92,9 @@ func (ba *bknAgentAccess) RunTask(ctx context.Context, account interfaces.BknAge
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal task failed")
 		return nil, err
 	}
+	// Submission callers need only the receipt. Private recovery evidence is read
+	// by the ownership-checked GetTask path, never retained from a new submission.
+	task.Input = nil
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return task, nil
 }
@@ -208,6 +211,13 @@ func readTask(respBody []byte) (*interfaces.BknAgentTask, error) {
 	if task.TaskID == "" {
 		return nil, fmt.Errorf("agent task reply has no task_id")
 	}
+	var evidence struct {
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(respBody, &evidence); err != nil {
+		return nil, fmt.Errorf("unmarshal agent task evidence: %w", err)
+	}
+	task.Input = evidence.Input
 	return &task, nil
 }
 
