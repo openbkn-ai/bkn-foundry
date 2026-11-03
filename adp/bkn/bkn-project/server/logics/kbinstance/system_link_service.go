@@ -50,6 +50,7 @@ type systemLinkDatasets interface {
 	kb.DatasetFileRecords
 }
 type SystemLinkService struct {
+	staged   bool
 	Builds   *BuildService
 	Datasets systemLinkDatasets
 	Vega     interfaces.VegaAccess
@@ -220,7 +221,7 @@ func (s *SystemLinkService) current(ctx context.Context, token, project, id stri
 
 func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBuildRecord, draft *interfaces.Draft, guard func(context.Context) error) (*preparedSystemLinks, error) {
 	build := record.Build
-	claims, err := ReadSourceClaims(ctx, s.Datasets, build, draft, guard)
+	claims, err := readSourceClaims(ctx, s.Datasets, build, draft, guard, s.staged)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +250,7 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 		if err != nil {
 			return nil, err
 		}
-		plan, err := PlanSystemLinks(build, draft, relation, claims, snapshot, nil)
+		plan, err := planIdentityLinks(build, draft, relation, claims, snapshot, nil, false, s.staged)
 		if err != nil {
 			return nil, err
 		}
@@ -342,7 +343,7 @@ func (s *SystemLinkService) prepare(ctx context.Context, record *interfaces.KBBu
 	if err != nil {
 		return nil, err
 	}
-	if err := prepareNativeLinks(ctx, s.Datasets, build, draft, claims, fusion, result, guard); err != nil {
+	if err := prepareNativeLinks(ctx, s.Datasets, build, draft, claims, fusion, result, guard, s.staged); err != nil {
 		return nil, err
 	}
 	factLinks := append(slices.Clone(result.Writes), result.Preserved...)

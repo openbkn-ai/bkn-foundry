@@ -45,6 +45,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbrefresh"
 	releaselogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
@@ -103,6 +104,9 @@ func Boot() *Application {
 	logics.KBBA = buildaccess.New(db)
 	logics.KBRefs = buildaccess.NewReferences(db)
 	logics.KBPublications = buildaccess.NewPublications(db)
+	logics.SetKBRefreshAccess(buildaccess.NewRefreshes(db))
+	refreshSettings := appSetting.KBRefreshSetting
+	kbrefresh.ConfigureLimits(&kbrefresh.Limits{MaxChangedPercent: refreshSettings.MaxChangedPercent, MaxRemovedPercent: refreshSettings.MaxRemovedPercent, MaxDurationMillis: refreshSettings.MaxDurationSeconds * 1000})
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.
@@ -166,6 +170,12 @@ func (server *Application) Run() {
 		defer close(buildWorkerDone)
 		kbinstance.RunBuildWorker(ctx, logics.KBBA, logics.DA, logics.KBRefs)
 	}()
+	refreshWorkerDone := make(chan struct{})
+	go func() {
+		defer close(refreshWorkerDone)
+		settings := server.appSetting.KBRefreshSetting
+		kbrefresh.RunWorker(ctx, &kbrefresh.Limits{MaxChangedPercent: settings.MaxChangedPercent, MaxRemovedPercent: settings.MaxRemovedPercent, MaxDurationMillis: settings.MaxDurationSeconds * 1000})
+	}()
 	if server.refreshLicense != nil {
 		go server.refreshLicense(ctx.Done())
 	}
@@ -201,6 +211,10 @@ func (server *Application) Run() {
 	}
 	select {
 	case <-buildWorkerDone:
+	case <-shutdownCtx.Done():
+	}
+	select {
+	case <-refreshWorkerDone:
 	case <-shutdownCtx.Done():
 	}
 	if err := server.db.Close(); err != nil {

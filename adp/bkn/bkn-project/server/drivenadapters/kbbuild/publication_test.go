@@ -141,3 +141,20 @@ func TestPublicationActivationUsesRecordedReleaseWithoutReadingMutableProject(t 
 		t.Fatal(err)
 	}
 }
+
+func TestRefreshDiscoveryPagesOnlyTheNetworkActuallyInUse(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery("SELECT p.f_network_id FROM "+publicationTable+" p JOIN t_bkn_project_release r .*s.f_to_network_id.*ORDER BY s.f_create_time DESC,s.f_id DESC LIMIT 1.*ORDER BY p.f_network_id LIMIT").WithArgs("after", 16).WillReturnRows(sqlmock.NewRows([]string{"network"}).AddRow("in-use"))
+	discovery := NewPublications(db).(interfaces.KBPublicationDiscovery)
+	networks, err := discovery.ActiveNetworks(context.Background(), "after", 16)
+	if err != nil || len(networks) != 1 || networks[0] != "in-use" {
+		t.Fatal("wrong discovery scope", networks, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

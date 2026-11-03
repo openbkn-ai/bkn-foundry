@@ -749,3 +749,42 @@ full build rerun to publish the new fixed rules. No pre-upgrade build is silentl
 attested or migrated. A failed activation acknowledgement after ordinary release
 recording is logged while main/branch synchronization continues; the mounted
 generation remains sealed. Automatic activation repair remains follow-up work.
+
+## Ordinary updates of a published knowledge base
+
+Professional registration supplies the existing mounted-network proxy and the
+fixed document Agent; the community build exposes no refresh capability. Updates
+follow the lineage's version **in use**, including an explicit rollback. They use
+the private published model and recorded publisher's current `query_data` rights,
+not an archived project's editable draft or a stored user token.
+
+A complete authorized directory scan distinguishes removals from read failures.
+Unchanged files keep their actual task/model/evidence receipts. Changed files are
+validated and reconciled with the existing linking/fusion engine before live
+Dataset writes. Durable per-lineage intents resume known tasks and idempotent
+writes; unknown inference submissions never automatically repeat. Inactive Dataset
+generations retain their own manifests and source holds. New extraction defaults
+apply to changed files; inherited files retain their actual execution metadata.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/bkn-project/v1/lineages/{lineage_id}/kb-refresh` | Read sanitized status; never start work. Requires visibility of the version in use. |
+| `POST` to the same endpoint | Requires network `modify`; body contains `action`, observed `network_id`, and `revision`. `check` checks changes; `release` approves only soft limits for the exact batch; `discard` releases an unapplied batch's retained versions. |
+
+Responses omit task/hold IDs, source locators, model fingerprints and raw content.
+Revision/version races return 409; invalid evidence and permission failures cannot
+be overridden by a soft-limit approval. Once an application intent is recorded,
+it must finish recovery before consumers switch versions or the batch is discarded.
+
+The existing release page shows counts, progress and decisions. Configurable
+`kbRefresh` defaults require review above 20% added/updated files, 10% removals,
+or 600 seconds estimated extraction; an unknown estimate also requires review.
+Estimates use observed task durations. Ordinary removal remains subject to these
+limits; a separate compliance-takedown exception is not implemented.
+
+**Upgrade:** back up and apply `16-kb-refresh.sql` after the publication prerequisite
+15 before starting the new service. `init.sql` includes the same process table.
+No Agent migration or Safe SQL is added by ordinary refresh. EE registration is
+required. Local constructed-data tests do not attest real-PDF quality or 8081
+acceptance. Image-only unsupported business extraction stops for review rather
+than inventing instances or silently retiring an unreadable source.

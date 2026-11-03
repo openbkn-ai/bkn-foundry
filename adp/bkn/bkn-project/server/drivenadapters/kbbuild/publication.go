@@ -267,3 +267,28 @@ func (a *publicationAccess) advance(ctx context.Context, network, runtimeDigest,
 	}
 	return true, nil
 }
+
+func (a *publicationAccess) ActiveNetworks(ctx context.Context, after string, limit int) ([]string, error) {
+	if limit < 1 || limit > 128 {
+		limit = 16
+	}
+	rows, err := a.db.QueryContext(ctx, "SELECT p.f_network_id FROM "+publicationTable+" p JOIN t_bkn_project_release r ON r.f_network_id=p.f_network_id WHERE p.f_state='active' AND p.f_network_id>? AND p.f_network_id=COALESCE((SELECT s.f_to_network_id FROM t_bkn_project_switch s WHERE s.f_lineage_id=r.f_lineage_id ORDER BY s.f_create_time DESC,s.f_id DESC LIMIT 1),r.f_lineage_id) ORDER BY p.f_network_id LIMIT ?", after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	networks := []string{}
+	for rows.Next() {
+		var network string
+		if err := rows.Scan(&network); err != nil {
+			return nil, err
+		}
+		networks = append(networks, network)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return networks, nil
+}
+
+var _ interfaces.KBPublicationDiscovery = (*publicationAccess)(nil)

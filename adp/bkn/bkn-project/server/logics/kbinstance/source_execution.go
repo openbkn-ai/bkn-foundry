@@ -26,8 +26,12 @@ func verifiedSourceExecution(build *interfaces.KBBuild, index int, raw string) (
 		return nil, ErrInvalidBuild
 	}
 	file := build.Files[index]
+	modelName := file.Model
+	if modelName == "" {
+		modelName = build.Model
+	}
 	var execution sourceExecution
-	if json.Unmarshal([]byte(raw), &execution) != nil || execution.TaskID == "" || execution.TaskID != file.AgentTaskID || execution.Agent != build.AgentVersion || file.AgentVersion == nil || execution.Agent != *file.AgentVersion || file.PromptVersion == nil || execution.Prompt != *file.PromptVersion || execution.Model == "" || execution.Model != file.ModelID || execution.Model != build.ModelID || execution.ModelName != build.Model || execution.RecordedAt < 0 {
+	if json.Unmarshal([]byte(raw), &execution) != nil || execution.TaskID == "" || execution.Agent < 1 || execution.Prompt < 1 || execution.TaskID != file.AgentTaskID || file.AgentVersion == nil || execution.Agent != *file.AgentVersion || file.PromptVersion == nil || execution.Prompt != *file.PromptVersion || execution.Model == "" || execution.Model != file.ModelID || execution.ModelName != modelName || execution.RecordedAt < 0 {
 		return nil, ErrBuildChanged
 	}
 	return &execution, nil

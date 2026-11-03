@@ -29,6 +29,12 @@ type SourceClaim struct {
 // changed model, failed page or revoked source. Block/media copies are not used
 // as additional assertions; document-reference edges are the canonical claims.
 func ReadSourceClaims(ctx context.Context, reader kb.DatasetFileSnapshot, build *interfaces.KBBuild, draft *interfaces.Draft, guard func(context.Context) error) ([]SourceClaim, error) {
+	return readSourceClaims(ctx, reader, build, draft, guard, false)
+}
+
+// Staged claims are explicitly preview-only; construction's public reader keeps
+// requiring live acknowledgements. Refresh validates task outputs separately.
+func readSourceClaims(ctx context.Context, reader kb.DatasetFileSnapshot, build *interfaces.KBBuild, draft *interfaces.Draft, guard func(context.Context) error, staged bool) ([]SourceClaim, error) {
 	if reader == nil || guard == nil || build == nil || draft == nil || len(build.Files) == 0 {
 		return nil, ErrInvalidBuild
 	}
@@ -42,7 +48,7 @@ func ReadSourceClaims(ctx context.Context, reader kb.DatasetFileSnapshot, build 
 	result := []SourceClaim{}
 	seen := map[string]bool{}
 	for index, step := range build.Files {
-		if step.State != "succeeded" {
+		if !usableClaimStep(step, staged) {
 			return nil, ErrBuildChanged
 		}
 		rows, err := newFileRows(build, index, draft, "")
@@ -142,4 +148,8 @@ func sourceClaim(build *interfaces.KBBuild, index int, draft *interfaces.Draft, 
 		return nil, ErrBuildChanged
 	}
 	return &SourceClaim{ID: id, ObjectTypeID: object.ID, RecordID: record, Property: property, DocumentID: scope.DocumentID, ContentVersionID: scope.ContentVersionID, ExtractionVersion: version, Identity: identity, Value: row["claim_value"], Evidence: evidence, RecordedAt: receipt.RecordedAt}, nil
+}
+
+func usableClaimStep(step interfaces.KBFileBuild, staged bool) bool {
+	return step.State == "succeeded" || (staged && step.State == "validated" && len(step.RowsDigest) == 64 && len(step.InputDigest) == 64)
 }

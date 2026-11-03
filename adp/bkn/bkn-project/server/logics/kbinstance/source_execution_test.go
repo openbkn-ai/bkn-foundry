@@ -43,3 +43,26 @@ func TestSourceExecutionKeepsAnActualTaskReceiptAndRejectsReplacedRows(t *testin
 		})
 	}
 }
+
+func TestInheritedSourceExecutionUsesActualFileReceipt(t *testing.T) {
+	build, _, _, task := extractionFixture(t, "invoice", false)
+	task.Model = "actual-model-name"
+	build.ModelID, build.Model = task.ModelID, task.Model
+	build.Files[0].AgentVersion, build.Files[0].PromptVersion, build.Files[0].ModelID = task.AgentVersion, task.PromptVersion, task.ModelID
+	build.Files[0].Model = task.Model
+	raw, err := extractionVersion(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// New extraction defaults do not rewrite acknowledged unchanged file receipts.
+	build.AgentVersion++
+	build.ModelID = "new-default-model"
+	build.Model = "new-default-name"
+	if _, err := verifiedSourceExecution(build, 0, raw); err != nil {
+		t.Fatal("actual inherited receipt rejected", err)
+	}
+	build.Files[0].Model = "unverified-name"
+	if _, err := verifiedSourceExecution(build, 0, raw); err == nil {
+		t.Fatal("mismatched file model name accepted")
+	}
+}

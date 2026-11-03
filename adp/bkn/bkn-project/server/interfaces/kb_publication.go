@@ -41,3 +41,9 @@ type KBPublicationAccess interface {
 	MarkMounted(context.Context, string, string, int64) (bool, error)
 	Activate(context.Context, string, string, int64) (bool, error)
 }
+
+// KBPublicationDiscovery pages private publication keys for the licensed worker.
+// It does not make a ready release the current consumer target.
+type KBPublicationDiscovery interface {
+	ActiveNetworks(context.Context, string, int) ([]string, error)
+}

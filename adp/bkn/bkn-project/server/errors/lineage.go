@@ -35,9 +35,10 @@ const (
 	// then syncing the branch moves it too.
 	BknProject_Lineage_LineageNotV3 = "BknProject.Lineage.LineageNotV3"
 	// Definitions to add are already on the branch.
-	BknProject_Lineage_DefinitionsExist = "BknProject.Lineage.DefinitionsExist"
-	BknProject_Lineage_AlreadyInUse     = "BknProject.Lineage.AlreadyInUse"
-	BknProject_Lineage_InUseChanged     = "BknProject.Lineage.InUseChanged"
+	BknProject_Lineage_DefinitionsExist     = "BknProject.Lineage.DefinitionsExist"
+	BknProject_Lineage_AlreadyInUse         = "BknProject.Lineage.AlreadyInUse"
+	BknProject_Lineage_DataUpdateInProgress = "BknProject.Lineage.DataUpdateInProgress"
+	BknProject_Lineage_InUseChanged         = "BknProject.Lineage.InUseChanged"
 
 	// The status bkn-backend replied with.
 	BknProject_Lineage_BknBackendRequestFailed = "BknProject.Lineage.BknBackendRequestFailed"
@@ -69,6 +70,7 @@ var (
 		BknProject_Lineage_DefinitionsExist,
 		BknProject_Lineage_AlreadyInUse,
 		BknProject_Lineage_InUseChanged,
+		BknProject_Lineage_DataUpdateInProgress,
 		BknProject_Lineage_BknBackendRequestFailed,
 		BknProject_Lineage_CapabilityRequestFailed,
 		BknProject_Lineage_InternalError,

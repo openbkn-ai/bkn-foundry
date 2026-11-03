@@ -11,6 +11,14 @@ import (
 )
 
 var ErrPublishedModelMissing = errors.New("published model row not found")
+var ErrPublishedBindingsChanged = errors.New("published network bindings changed")
+
+// PublishedModelCheck verifies the actual network schema still consumes the
+// fixed model's resources and fields. Publication metadata alone is not proof
+// that another editor has left that live network's bindings unchanged.
+type PublishedModelCheck interface {
+	CheckPublishedBindings(context.Context, *interfaces.KBPublication, *interfaces.Draft) error
+}
 
 // PublicationDatasets keeps fixed execution models private to the configured
 // storage application. It never grants raw model evidence to a project owner.

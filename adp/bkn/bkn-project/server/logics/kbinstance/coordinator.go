@@ -582,3 +582,13 @@ func (c *Coordinator) writeNative(ctx context.Context, r *interfaces.KBBuildReco
 	r.Build.State = "attention"
 	return c.save(ctx, r)
 }
+
+// ValidateWriteSet applies the construction write-set checks to a staged
+// published refresh before any live Dataset mutation. The returned digest
+// fences recovery to exactly the same complete, validated materialization.
+func ValidateWriteSet(build *interfaces.KBBuild, draft *interfaces.Draft, writes []kb.DatasetWrite) (string, error) {
+	if build == nil || draft == nil {
+		return "", ErrInvalidBuild
+	}
+	return validateWrites(build, draft, writes)
+}

@@ -17,11 +17,13 @@ import (
 const Capability = "knowledge_base"
 
 type Providers struct {
-	Publication NetworkPublication
-	Builds      BuildRuntime
-	Datasets    Datasets
-	Source      Source
-	Concepts    Concepts
+	RefreshSources RefreshSources
+	RefreshTasks   RefreshTasks
+	Publication    NetworkPublication
+	Builds         BuildRuntime
+	Datasets       Datasets
+	Source         Source
+	Concepts       Concepts
 }
 
 var registry = socket.New[Providers]("bkn-project knowledge base")

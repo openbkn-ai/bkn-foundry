@@ -116,7 +116,14 @@ func AttachFileTask(build *interfaces.KBBuild, index int, agent string, task *in
 	if task.ModelID != "" {
 		file.ModelID = task.ModelID
 	}
+	if task.Model != "" {
+		file.Model = task.Model
+	}
 	file.Reason = ""
+	if (task.Status == interfaces.BKN_AGENT_TASK_SUCCEEDED || task.Status == interfaces.BKN_AGENT_TASK_FAILED) && task.CreateTime > 0 && task.UpdateTime >= task.CreateTime {
+		duration := task.UpdateTime - task.CreateTime
+		file.DurationMillis = &duration
+	}
 	switch task.Status {
 	case interfaces.BKN_AGENT_TASK_PENDING, interfaces.BKN_AGENT_TASK_RUNNING:
 		file.State = "waiting"

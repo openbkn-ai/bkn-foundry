@@ -42,6 +42,7 @@ var (
 )
 
 type lineageService struct {
+	refresh                 interfaces.KBRefreshAccess
 	newKnowledgePublication func(interfaces.GitStore) knowledgePublication
 	gs                      interfaces.GitStore
 	bba                     interfaces.BknBackendAccess
@@ -52,7 +53,7 @@ type lineageService struct {
 
 func NewLineageService() interfaces.LineageService {
 	lsOnce.Do(func() {
-		ls = &lineageService{newKnowledgePublication: newKnowledgePublisher, gs: logics.GS, bba: logics.BBA, efa: logics.EFA, ds: drift.NewDriftService(), ra: logics.RA}
+		ls = &lineageService{refresh: logics.KBRefreshes, newKnowledgePublication: newKnowledgePublisher, gs: logics.GS, bba: logics.BBA, efa: logics.EFA, ds: drift.NewDriftService(), ra: logics.RA}
 	})
 	return ls
 }
