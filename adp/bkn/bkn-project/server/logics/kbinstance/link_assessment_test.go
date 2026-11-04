@@ -108,16 +108,19 @@ func TestLinkQualityMeasuresConfirmedInDocumentAssociations(t *testing.T) {
 }
 
 func TestLinkAssessmentUsesTheLinkersTypedBusinessIdentity(t *testing.T) {
-	for _, pair := range [][2]any{{"001", json.Number("1")}, {json.Number("1.0"), json.Number("1")}, {"001", "001"}} {
+	for _, pair := range []struct {
+		source, target any
+		want           int
+	}{{"001", json.Number("1"), 0}, {json.Number("1.0"), json.Number("1"), 1}, {"001", "001", 1}} {
 		draft, gold, row := linkAssessmentFixture()
-		gold[0].Row["claim_value"] = pair[0]
-		row.Row["target_identity"] = map[string]any{"number": pair[1]}
-		resolution, err := ResolveLinks("network", []LinkSource{{ID: "source-a", Identity: pair[0]}}, []LinkTarget{{Identity: pair[1], RecordID: "verified-target-a"}}, nil)
+		gold[0].Row["claim_value"] = pair.source
+		row.Row["target_identity"] = map[string]any{"number": pair.target}
+		resolution, err := ResolveLinks("network", []LinkSource{{ID: "source-a", Identity: pair.source}}, []LinkTarget{{Identity: pair.target, RecordID: "verified-target-a"}}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		score, err := assessLinkWrites(draft, gold, []kb.DatasetWrite{row}, &AcceptanceCounts{Issues: map[string]int{}})
-		if err != nil || score.CorrectLinks != len(resolution.Linked) {
+		if err != nil || score.CorrectLinks != pair.want || len(resolution.Linked) != pair.want {
 			t.Fatal("assessment and linker disagree on identity type/normalization", pair, resolution, score, err)
 		}
 	}
