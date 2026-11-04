@@ -829,8 +829,14 @@ def _results(*results):
 
 
 def _whole(sent):
-    """Which results reached the model untruncated, in message order."""
-    return [m.content == m.content[0] * len(m.content) and "omitted" not in m.content for m in sent[2:]]
+    """Which results reached the model untruncated, in message order (None for
+    a model message between them)."""
+    from langchain_core.messages import ToolMessage
+
+    return [
+        m.content == m.content[0] * len(m.content) if isinstance(m, ToolMessage) else None
+        for m in sent[2:]
+    ]
 
 
 def test_default_result_caps_keep_large_listings_and_schemas_whole():
@@ -862,7 +868,7 @@ def test_question_results_stay_within_the_total_cap():
     sent = budget_messages(_results(*[("get_kn_detail", 100000)] * 3), *caps)
     assert _whole(sent) == [False, False, True]
     assert all("Tool result not shown" in m.content for m in sent[2:4])
-    kept = sum(len(m.content) for m in sent[2:] if "omitted" not in m.content)
+    kept = sum(len(m.content) for m, whole in zip(sent[2:], _whole(sent)) if whole)
     assert kept <= QUESTION_RESULT_CHARS
     # The latest result is kept even when an administrator's cap exceeds the total.
     wide = budget_messages(_results(("get_kn_detail", 150000)), 60000, 200000, 3)
@@ -895,10 +901,29 @@ def test_parallel_results_over_the_total_say_they_were_never_shown():
     assert "not shown" in dropped and "get_kn_detail" in dropped
     assert "fewer columns" in dropped
 
-    # A result the model already saw in an earlier step keeps the reuse wording.
-    later = [*sent[:2], ToolMessage(content="0" * 100000, tool_call_id="c0", name="get_kn_detail"),
-             ToolMessage(content="1" * 40000, tool_call_id="c1", name="run_cypher"),
-             AIMessage(content="", tool_calls=[{"id": "c2", "name": "run_cypher", "args": {}}]),
-             ToolMessage(content="2" * 100000, tool_call_id="c2", name="run_cypher")]
-    seen = budget_messages(later, 60000, 120000, 3)
-    assert "Use what you already drew" in seen[2].content
+    # After the model's next call the dropped result is still one it never saw.
+    narrower = [
+        *_results(("get_kn_detail", 100000), ("run_cypher", 40000)),
+        AIMessage(content="", tool_calls=[{"id": "c2", "name": "run_cypher", "args": {}}]),
+        ToolMessage(content="2" * 10000, tool_call_id="c2", name="run_cypher"),
+    ]
+    sent = budget_messages(narrower, *caps)
+    assert _whole(sent) == [False, True, None, True]
+    assert "Tool result not shown" in sent[2].content
+    assert "Use what you already drew" not in sent[2].content
+
+
+def test_a_result_shown_in_an_earlier_step_keeps_the_reuse_wording():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from app.core.context_budget import budget_messages
+
+    # The schema arrived alone and was shown; a later result pushes it out.
+    later = [
+        *_results(("get_kn_detail", 100000)),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "run_cypher", "args": {}}]),
+        ToolMessage(content="1" * 50000, tool_call_id="c1", name="run_cypher"),
+    ]
+    sent = budget_messages(later, 60000, 120000, 3)
+    assert _whole(sent) == [False, None, True]
+    assert "Use what you already drew" in sent[2].content

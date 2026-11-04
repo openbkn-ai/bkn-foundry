@@ -138,6 +138,32 @@ def unseen_placeholder(call: dict | None, size: int) -> str:
     )
 
 
+def _kept_results(
+    messages: list, current: int, data_chars: int, schema_chars: int, keep: int
+) -> set[int]:
+    """Indexes of the current question's results the model receives.
+
+    The most recent results are kept while their capped size fits in
+    keep x data_chars, and always at least keep of them, but beyond the latest
+    one no result is kept past QUESTION_RESULT_CHARS in total.
+    """
+    budget = keep * data_chars
+    kept: set[int] = set()
+    used = 0
+    for i in range(len(messages) - 1, current, -1):
+        m = messages[i]
+        if not isinstance(m, ToolMessage):
+            continue
+        capped = min(len(_text_of(m.content)), _limit_of(m, data_chars, schema_chars))
+        fits = used + capped <= QUESTION_RESULT_CHARS and (
+            len(kept) < keep or used + capped <= budget
+        )
+        if not kept or fits:
+            kept.add(i)
+            used += capped
+    return kept
+
+
 def budget_messages(
     messages: list, data_chars: int, schema_chars: int, keep: int
 ) -> list:
@@ -147,9 +173,10 @@ def budget_messages(
     fits in keep x data_chars, and always at least keep of them, so one large
     result and several small ones stay visible together, but beyond the latest
     one no result is kept past QUESTION_RESULT_CHARS in total, so fewer than keep
-    may remain. A dropped result the model has not seen yet says so. Earlier questions keep
-    their answers; their raw tool results would only grow every later turn's
-    input, so they become placeholders.
+    may remain. A dropped result says whether the model ever saw it: it did only
+    if the result was kept in the first request after it arrived. Earlier
+    questions keep their answers; their raw tool results would only grow every
+    later turn's input, so they become placeholders.
     """
     current = max(
         (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
@@ -161,33 +188,31 @@ def budget_messages(
         if isinstance(m, AIMessage)
         for call in m.tool_calls
     }
-    # Results after the last model message have not been shown to the model yet.
-    last_model = max(
-        (i for i, m in enumerate(messages) if isinstance(m, AIMessage)),
-        default=-1,
-    )
-    budget = keep * data_chars
-    kept = used = 0
+    model_turns = [i for i, m in enumerate(messages) if isinstance(m, AIMessage)]
+    shown: dict[int, set[int]] = {}
+
+    def seen(i: int) -> bool:
+        # The first model message after a result answered the request that
+        # carried it; that request applied the same rule to the messages before.
+        nxt = next((j for j in model_turns if j > i), None)
+        if nxt is None:
+            return False
+        if nxt not in shown:
+            shown[nxt] = _kept_results(messages[:nxt], current, data_chars, schema_chars, keep)
+        return i in shown[nxt]
+
+    kept = _kept_results(messages, current, data_chars, schema_chars, keep)
     messages = list(messages)
-    for i in range(len(messages) - 1, -1, -1):
-        m = messages[i]
+    for i, m in enumerate(messages):
         if not isinstance(m, ToolMessage):
             continue
         if i < current:
             messages[i] = m.model_copy(update={"content": _EARLIER_TURN})
-            continue
-        size = len(_text_of(m.content))
-        capped = min(size, _limit_of(m, data_chars, schema_chars))
-        fits = used + capped <= QUESTION_RESULT_CHARS and (
-            kept < keep or used + capped <= budget
-        )
-        if kept == 0 or fits:
-            kept += 1
-            used += capped
+        elif i in kept:
             messages[i] = cap_tool_message(m, data_chars, schema_chars)
         else:
-            describe = unseen_placeholder if i > last_model else cleared_placeholder
-            placeholder = describe(calls.get(m.tool_call_id), size)
+            describe = cleared_placeholder if seen(i) else unseen_placeholder
+            placeholder = describe(calls.get(m.tool_call_id), len(_text_of(m.content)))
             messages[i] = m.model_copy(update={"content": placeholder, "artifact": None})
     return messages
 
