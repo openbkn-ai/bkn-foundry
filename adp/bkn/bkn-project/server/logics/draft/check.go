@@ -24,6 +24,7 @@ const (
 
 // Why a check item was not counted, stored as codes for the client to word.
 const (
+	checkReasonKnowledgeBase = "knowledge_base_build"
 	checkReasonCrossCatalog  = "cross_catalog"
 	checkReasonSeveralFields = "several_fields"
 	checkReasonUnmapped      = "unmapped"
@@ -40,10 +41,11 @@ type checkInput struct {
 }
 
 type checkObjectType struct {
-	ID         string                `json:"id"`
-	Table      interfaces.DraftTable `json:"table"`
-	KeyFields  []string              `json:"key_fields"`
-	Properties []checkProperty       `json:"properties"`
+	KnowledgeBaseBuild bool                  `json:"knowledge_base_build,omitempty"`
+	ID                 string                `json:"id"`
+	Table              interfaces.DraftTable `json:"table"`
+	KeyFields          []string              `json:"key_fields"`
+	Properties         []checkProperty       `json:"properties"`
 	// Excluded are the fields the privacy rules left out of the object type.
 	Excluded []string `json:"excluded"`
 }
@@ -134,7 +136,8 @@ func checkInputOf(items *interfaces.DraftItems) *checkInput {
 		objectTypes[ot.ID] = ot
 		checked := checkObjectType{
 			ID: ot.ID, Table: ot.Table, KeyFields: []string{}, Properties: []checkProperty{},
-			Excluded: append([]string{}, excluded[ot.ID]...),
+			KnowledgeBaseBuild: ot.Document != nil && preparedCheckDataset(items, ot.Table, ot.ID, ""),
+			Excluded:           append([]string{}, excluded[ot.ID]...),
 		}
 		for _, key := range ot.PrimaryKeys {
 			if field := mappedField(ot, key); field != "" {
@@ -161,9 +164,34 @@ func checkInputOf(items *interfaces.DraftItems) *checkInput {
 				join(*rt.LinkTable, nil, rt.TargetMapping, true, target),
 			}
 		}
+		if rt.Document != nil && rt.LinkTable != nil && preparedCheckDataset(items, *rt.LinkTable, "", rt.ID) {
+			for i := range checked.Joins {
+				checked.Joins[i].Reason = checkReasonKnowledgeBase
+			}
+		}
 		input.RelationTypes = append(input.RelationTypes, checked)
 	}
 	return input
+}
+
+// Only server-prepared, ready Dataset bindings delegate their SQL counts to the
+// existing knowledge-base build checks. Merely attaching document metadata must
+// never exempt an arbitrary physical or foreign resource from validation.
+func preparedCheckDataset(items *interfaces.DraftItems, table interfaces.DraftTable, objectID, relationID string) bool {
+	if table.ResourceID == "" || table.CatalogID == "" {
+		return false
+	}
+	for _, plan := range items.DatasetPlans {
+		if plan == nil || plan.State != "ready" {
+			continue
+		}
+		for _, spec := range plan.Datasets {
+			if spec.Ready && spec.ResourceID == table.ResourceID && spec.CatalogID == table.CatalogID && spec.ObjectTypeID == objectID && spec.RelationTypeID == relationID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // join is a join of from to the end's key by a mapping of one field; fromOwner, when set, names
@@ -249,6 +277,10 @@ func runCheck(ctx context.Context, c counter, input *checkInput, previous *check
 }
 
 func countKey(ctx context.Context, c counter, ot checkObjectType, result *checkKeyResult) {
+	if ot.KnowledgeBaseBuild {
+		result.State, result.Reason = checkNotCounted, checkReasonKnowledgeBase
+		return
+	}
 	if len(ot.KeyFields) == 0 {
 		result.State, result.Reason = checkNotCounted, checkReasonNoKey
 		return

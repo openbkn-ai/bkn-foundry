@@ -816,3 +816,14 @@ Recovered proposals pass the unchanged evidence/model validation, current source
 permission checks and atomic candidate commit. They remain unadopted; original-text
 policy and human decisions are preserved. Private task input is request-local and
 excluded from business DTOs. No migration, Agent change or new queue is required.
+
+### Checks for prepared document Datasets
+
+The physical-table SQL check does not query owned, ready document Dataset
+bindings. Their key/join items explicitly report `not_counted` with reason
+`knowledge_base_build`, without fabricated counts. Unprepared or mismatched
+bindings are not exempt; structured table checks and excluded-field checks stay
+active. The existing partial-check acceptance remains explicit. Knowledge-base
+publication still requires the separate full-build, reviewed acceptance and
+linking gates. Retrying checks on the unchanged confirmed draft rebuilds this
+input without creating new Datasets or rerunning inference.
