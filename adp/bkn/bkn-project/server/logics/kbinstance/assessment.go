@@ -121,7 +121,7 @@ func measuredRatio(correct, total int) *float64 {
 	return &ratio
 }
 func calculateAcceptance(a *AcceptanceCounts) {
-	if a.Expected < 0 || a.Predicted < 0 || a.Correct < 0 || a.Correct > a.Expected || a.Correct > a.Predicted || a.ExpectedLinks < 0 || a.PredictedLinks < 0 || a.CorrectLinks < 0 || a.PredictedLinks > a.ExpectedLinks || a.CorrectLinks > a.PredictedLinks || a.CorrectLinks > a.ExpectedLinks {
+	if a.Expected < 0 || a.Predicted < 0 || a.Correct < 0 || a.Correct > a.Expected || a.Correct > a.Predicted || a.ExpectedLinks < 0 || a.PredictedLinks < 0 || a.CorrectLinks < 0 || a.CorrectLinks > a.PredictedLinks || a.CorrectLinks > a.ExpectedLinks {
 		a.Precision, a.Recall, a.Linking = nil, nil, nil
 		a.Passed = false
 		return

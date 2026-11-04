@@ -49,12 +49,16 @@ type systemLinkDatasets interface {
 	kb.DatasetFileSnapshot
 	kb.DatasetFileRecords
 }
+type linkingAssessor interface {
+	MeasureLinks(context.Context, string, *interfaces.KBBuild, *interfaces.Draft, []kb.DatasetWrite, func(context.Context) error) ([]*AcceptanceCounts, error)
+}
 type SystemLinkService struct {
-	staged   bool
-	Builds   *BuildService
-	Datasets systemLinkDatasets
-	Vega     interfaces.VegaAccess
-	Now      func() time.Time
+	staged     bool
+	Builds     *BuildService
+	Datasets   systemLinkDatasets
+	Vega       interfaces.VegaAccess
+	Now        func() time.Time
+	References linkingAssessor
 }
 type systemLinkScope struct {
 	Spec interfaces.DraftDatasetSpec
@@ -448,6 +452,20 @@ func (s *SystemLinkService) Apply(ctx context.Context, token, project, id string
 	if prepared.Preview.Signature != req.Signature {
 		return nil, ErrBuildChanged
 	}
+	var assessments []*AcceptanceCounts
+	if record.Build.Mode == "acceptance" {
+		if s.References == nil {
+			return nil, ErrAcceptanceRequired
+		}
+		rows := append(slices.Clone(prepared.Writes), prepared.Preserved...)
+		assessments, err = s.References.MeasureLinks(ctx, token, record.Build, draft, rows, readGuard)
+		if err != nil {
+			return nil, err
+		}
+		if len(assessments) != len(record.Build.Files) {
+			return nil, ErrAcceptanceRequired
+		}
+	}
 	now := s.now()
 	record, err = store.ClaimLinking(ctx, project, id, caller, req.OperationID, req.Signature, now, now+900000)
 	if err != nil {
@@ -480,6 +498,12 @@ func (s *SystemLinkService) Apply(ctx context.Context, token, project, id string
 		}
 		record.Build.Linking = &interfaces.KBLinkingReceipt{OperationID: req.OperationID, Signature: req.Signature, State: state, RowsWritten: written, Eligible: prepared.Preview.Eligible, Linked: prepared.Preview.Linked, Pending: prepared.Preview.Pending}
 		record.Build.Linking.FusionApplied = state == "succeeded" && !prepared.Preview.FusionPreviewOnly
+		if state == "succeeded" && assessments != nil {
+			for i, score := range assessments {
+				record.Build.Files[i].Assessment = score
+			}
+			record.Build.Assessment = aggregateAcceptance(record.Build.Files)
+		}
 		for _, summary := range prepared.Preview.Facts {
 			record.Build.Linking.FactCurrent += summary.Current
 			record.Build.Linking.FactSuperseded += summary.Superseded

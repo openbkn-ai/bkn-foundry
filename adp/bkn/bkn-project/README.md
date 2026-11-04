@@ -836,3 +836,17 @@ For confirmed in-document business keys, record identity uses the unique native
 sentence shared by those fields’ verified evidence, rather than the model’s
 incidental anchor. Missing or ambiguous key evidence requires review; original
 anchors, properties and citations remain unchanged.
+
+### Independent link assessment
+
+Saving acceptance-build links measures confirmed `linking` and `same_document`
+associations against the pinned, human-reviewed reference Dataset. Reference
+source mentions define expected associations; matching coverage alone is not a
+quality score. Only verified target rows acknowledged by Dataset writes count
+as predictions. Evidence-location edges are excluded. Extraction precision and
+recall counts are preserved. Link counts are committed with the successful
+linking receipt after writes and final guards pass; missing references or failed
+writes do not commit candidate scores. Reassessment replaces previous link issue
+counts rather than accumulating them. An empty link denominator remains
+unmeasured and cannot pass the existing full-build gate. Thresholds, annotations
+and public request formats are unchanged.

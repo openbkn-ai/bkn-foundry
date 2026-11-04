@@ -64,7 +64,7 @@ func (r *restHandler) registerKBBuild(group *gin.RouterGroup) {
 						err = kb.ErrUnavailable
 						break
 					}
-					links := &kbinstance.SystemLinkService{Builds: service, Datasets: datasets, Vega: logics.VA}
+					links := &kbinstance.SystemLinkService{Builds: service, Datasets: datasets, Vega: logics.VA, References: references}
 					if method == http.MethodGet {
 						result, err = links.Preview(ctx, visitor.TokenID, c.Param("project_id"), c.Param("build_id"), visitorAccount(visitor))
 					} else {
