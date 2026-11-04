@@ -64,10 +64,10 @@ Public execution (`/executions`) applies the merged Agent `limits` to what each 
 | --- | --- | --- |
 | `data_result_chars` | 60000 (previously 12000) | Maximum characters in one data-tool result; truncate excess and tell the model to request fewer columns instead of paginating |
 | `schema_result_chars` | 120000 (previously 24000) | Maximum characters in one schema/discovery-tool result |
-| `keep_tool_results` | 3 | Keep at least the latest three tool results for the current question; retain older results while within the `keep_tool_results × data_result_chars` budget (previously only the latest three were kept) |
+| `keep_tool_results` | 3 | Keep at least the latest three tool results for the current question while their total stays under 120000 characters (the latest result is always kept); retain older results while within the `keep_tool_results × data_result_chars` budget (previously only the latest three were kept) |
 | `summarize_after_tokens` | 60000 | Summarize earlier questions after the conversation exceeds this token count; do not summarize the current question |
 
-Whatever these caps add up to, the current question's kept results stay under 120000 characters in total (`QUESTION_RESULT_CHARS` in `app/core/context_budget.py`), about 86k tokens even for Chinese text, because the current question is never summarized. The latest result is always kept.
+Whatever these caps add up to, the current question's kept results stay under 120000 characters in total (`QUESTION_RESULT_CHARS` in `app/core/context_budget.py`), about 86k tokens even for Chinese text, because the current question is never summarized. The latest result is always kept. A result dropped before the model has seen it (parallel calls that pass the total together) gets a placeholder asking for a smaller query instead of telling the model to reuse it.
 
 Removed results become placeholders that identify the original call and size. Repeated read-only calls within the same question, such as `run_cypher` and `query_object_instance`, reuse an earlier successful result instead of calling the backend again.
 

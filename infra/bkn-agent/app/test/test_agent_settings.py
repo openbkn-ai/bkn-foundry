@@ -861,7 +861,7 @@ def test_question_results_stay_within_the_total_cap():
     # beyond a 128k-token window); now only the latest fits the total.
     sent = budget_messages(_results(*[("get_kn_detail", 100000)] * 3), *caps)
     assert _whole(sent) == [False, False, True]
-    assert all("omitted to save context" in m.content for m in sent[2:4])
+    assert all("Tool result not shown" in m.content for m in sent[2:4])
     kept = sum(len(m.content) for m in sent[2:] if "omitted" not in m.content)
     assert kept <= QUESTION_RESULT_CHARS
     # The latest result is kept even when an administrator's cap exceeds the total.
@@ -877,3 +877,28 @@ def test_former_default_caps_keep_their_behaviour():
     assert _whole(sent) == [True, True, True]
     sent = budget_messages(_results(*[("run_cypher", 12000)] * 4), 12000, 24000, 3)
     assert _whole(sent) == [False, True, True, True]
+
+
+def test_parallel_results_over_the_total_say_they_were_never_shown():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from app.core.context_budget import budget_messages
+
+    caps = (60000, 120000, 3)
+    # One model turn calls both tools; together they pass the 120000 total.
+    sent = budget_messages(_results(("get_kn_detail", 100000), ("run_cypher", 40000)), *caps)
+    assert _whole(sent) == [False, True]
+    dropped = sent[2].content
+    # The model never saw this result, so it must not be told to reuse it;
+    # repeating the identical call would just swap the two results again.
+    assert "Use what you already drew" not in dropped
+    assert "not shown" in dropped and "get_kn_detail" in dropped
+    assert "fewer columns" in dropped
+
+    # A result the model already saw in an earlier step keeps the reuse wording.
+    later = [*sent[:2], ToolMessage(content="0" * 100000, tool_call_id="c0", name="get_kn_detail"),
+             ToolMessage(content="1" * 40000, tool_call_id="c1", name="run_cypher"),
+             AIMessage(content="", tool_calls=[{"id": "c2", "name": "run_cypher", "args": {}}]),
+             ToolMessage(content="2" * 100000, tool_call_id="c2", name="run_cypher")]
+    seen = budget_messages(later, 60000, 120000, 3)
+    assert "Use what you already drew" in seen[2].content
