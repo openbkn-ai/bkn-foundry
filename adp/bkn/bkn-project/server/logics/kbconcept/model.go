@@ -265,7 +265,7 @@ func validateModel(input *SampleInput, existing interfaces.DraftItems, proposal 
 			if (r.Source == r.Target && m.MentionProperty == m.IdentityProperty) || from == nil || to == nil || from.ReadOnly || from.Type != to.Type || m.SourceNameProperty != "" || m.TargetNameProperty != "" {
 				return nil, ErrInvalidModel
 			}
-			if (!target.NeedsIdentity || len(target.PrimaryKeys) != 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty) && !businessIdentityShape(source, target, r, true) {
+			if (!target.NeedsIdentity || len(target.PrimaryKeys) != 0) && (len(target.PrimaryKeys) != 1 || target.PrimaryKeys[0] != m.IdentityProperty) && !verifiedReferenceShape(source, target, r, true) {
 				if !review {
 					return nil, ErrInvalidModel
 				}

@@ -429,6 +429,12 @@ count/distinct/null/blank scan under the current caller. Client or Agent proof i
 rejected. Pending mappings remain unadopted; confirmation repeats verification
 before Dataset preparation and compilation.
 
+Ordinary references (for example, invoice → contract) may also use this checked
+business key with many-to-one or one-to-one cardinality. The source foreign key
+is not the entity's own primary key. These references do not equate the objects
+or require a dual-source field plan. File, document-internal, fact and event
+references use the same verification; links retain the target's original key.
+
 The existing document object save accepts `document.dual_source`: the selected
 system relation, main file class and per-field placement. System-only and shared
 fields stay table-authoritative; text-only current fields stay on `_doc`; temporal

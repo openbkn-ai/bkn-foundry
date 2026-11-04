@@ -20,7 +20,7 @@ func (s *draftService) verifyBusinessIdentity(ctx context.Context, draft *interf
 	unavailable := func() error {
 		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, perrors.BknProject_Draft_BusinessIdentityUnavailable)
 	}
-	target := kbconcept.BusinessIdentityTarget(draft.Items, relation)
+	target := kbconcept.VerifiedReferenceTarget(draft.Items, relation)
 	if target == nil || s.va == nil {
 		return nil, invalid()
 	}

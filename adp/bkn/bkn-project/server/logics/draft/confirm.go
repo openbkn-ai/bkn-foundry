@@ -78,7 +78,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 			return nil, documentValidationError(ctx, &kbconcept.RelationScopeError{ID: relation.ID, Name: relation.Name})
 		}
 		if relation.Adopted && relation.DocumentMapping != nil && relation.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(draft.Items, relation) {
-			if kbconcept.BusinessIdentityTarget(draft.Items, relation) != nil {
+			if kbconcept.VerifiedReferenceTarget(draft.Items, relation) != nil {
 				return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_BusinessIdentityNotVerified)
 			}
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)

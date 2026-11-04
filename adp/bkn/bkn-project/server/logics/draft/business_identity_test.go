@@ -75,3 +75,36 @@ func TestBusinessKeyVerificationUsesCurrentSchemaAndCountsWithoutReplacingPrimar
 		})
 	}
 }
+
+func TestForeignReferenceBusinessKeyUsesCurrentOperatorAndRechecksCounts(t *testing.T) {
+	for _, role := range []string{"entity", "in_document"} {
+		t.Run(role, func(t *testing.T) {
+			draft, relation, backend := businessIdentityFixture()
+			source := draft.Items.ObjectTypes[0]
+			source.Document.Role = role
+			source.PrimaryKeys = []string{"invoice_number"}
+			source.Properties = append(source.Properties, &interfaces.DraftProperty{Name: "invoice_number", Type: "string"})
+			relation.Cardinality = "many_to_one"
+			caller := interfaces.AccountInfo{ID: "operator", Type: "user"}
+			service := &draftService{va: backend}
+			proof, err := service.verifyBusinessIdentity(context.Background(), draft, relation, caller)
+			if err != nil || proof == nil || backend.as != caller {
+				t.Fatal("reference did not verify as the current operator", err)
+			}
+			relation.DocumentMapping.BusinessIdentity = proof
+			if err = checkSourceFieldDecisions(context.Background(), draft); err != nil {
+				t.Fatal("ordinary reference required same-business field authority", err)
+			}
+			if err = service.checkBusinessIdentities(context.Background(), draft, caller); err != nil {
+				t.Fatal(err)
+			}
+			backend.rows[0]["distinct_values"] = 9
+			if err = service.checkBusinessIdentities(context.Background(), draft, caller); err == nil {
+				t.Fatal("reference bypassed fresh uniqueness check")
+			}
+			if draft.Items.ObjectTypes[1].PrimaryKeys[0] != "internal_id" {
+				t.Fatal("system primary key replaced")
+			}
+		})
+	}
+}

@@ -28,13 +28,63 @@ func businessIdentityShape(source, target *interfaces.DraftObjectType, relation 
 	}
 }
 
+// verifiedReferenceShape also permits foreign-key references to a checked table
+// business key. These references do not identify the source as the same entity.
+func verifiedReferenceShape(source, target *interfaces.DraftObjectType, relation *interfaces.DraftRelationType, pending bool) bool {
+	if businessIdentityShape(source, target, relation, pending) {
+		return true
+	}
+	if source == nil || target == nil || relation == nil || relation.Document == nil || relation.Document.Role != "relation" || relation.DocumentMapping == nil || relation.DocumentMapping.Mode != "linking" || source.Document == nil || target.Document != nil || target.Table.ResourceID == "" || target.NeedsIdentity || len(target.PrimaryKeys) != 1 {
+		return false
+	}
+	if relation.Cardinality != interfaces.DRAFT_CARDINALITY_ONE_TO_ONE && relation.Cardinality != interfaces.DRAFT_CARDINALITY_MANY_TO_ONE {
+		return false
+	}
+	switch source.Document.Role {
+	case "entity", "file", "in_document", "fact", "event":
+	default:
+		return false
+	}
+	mapping := relation.DocumentMapping
+	// An entity's own identity is still governed by the same-business rule.
+	if source.Document.Role == "entity" && (source.NeedsIdentity || (len(source.PrimaryKeys) == 1 && source.PrimaryKeys[0] == mapping.MentionProperty)) {
+		return false
+	}
+	from, to := property(source, mapping.MentionProperty), property(target, mapping.IdentityProperty)
+	if from == nil || to == nil || from.ReadOnly || to.MappedField == "" || from.Type != to.Type {
+		return false
+	}
+	switch to.Type {
+	case "string", "text", "integer", "unsigned integer":
+		return true
+	default:
+		return false
+	}
+}
+
+// VerifiedReferenceTarget returns the target of a reference eligible for live
+// uniqueness verification. It does not grant same-business field authority.
+func VerifiedReferenceTarget(items interfaces.DraftItems, relation *interfaces.DraftRelationType) *interfaces.DraftObjectType {
+	source, target := identityEndpoints(items, relation)
+	if !verifiedReferenceShape(source, target, relation, false) {
+		return nil
+	}
+	return target
+}
+
 // BusinessIdentityTarget returns only an eligible same-business pair. It does
 // not attest uniqueness; only the coordinator can create that checked proof.
 func BusinessIdentityTarget(items interfaces.DraftItems, relation *interfaces.DraftRelationType) *interfaces.DraftObjectType {
-	if relation == nil {
+	source, target := identityEndpoints(items, relation)
+	if !businessIdentityShape(source, target, relation, false) {
 		return nil
 	}
-	var source, target *interfaces.DraftObjectType
+	return target
+}
+func identityEndpoints(items interfaces.DraftItems, relation *interfaces.DraftRelationType) (source, target *interfaces.DraftObjectType) {
+	if relation == nil {
+		return nil, nil
+	}
 	for _, object := range items.ObjectTypes {
 		if object == nil {
 			continue
@@ -46,13 +96,11 @@ func BusinessIdentityTarget(items interfaces.DraftItems, relation *interfaces.Dr
 			target = object
 		}
 	}
-	if !businessIdentityShape(source, target, relation, false) {
-		return nil
-	}
-	return target
+	return source, target
 }
+
 func businessIdentityReady(items interfaces.DraftItems, relation *interfaces.DraftRelationType) bool {
-	target := BusinessIdentityTarget(items, relation)
+	target := VerifiedReferenceTarget(items, relation)
 	if target == nil || relation.DocumentMapping.BusinessIdentity == nil {
 		return false
 	}
