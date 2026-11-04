@@ -1,6 +1,6 @@
 auth:
   mechanism: PLAIN
-  password: eisoo.com123
+  password: ""
   username: anyrobot
 connectorType: nsq
 deployTrait:

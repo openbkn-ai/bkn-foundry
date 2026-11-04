@@ -60,7 +60,7 @@ depServices:
     port: 9200
     protocol: http
     user: admin
-    password: eisoo.com123
+    password: ""
   bkn-backend:
     host: bkn-backend-svc
     port: 13014
