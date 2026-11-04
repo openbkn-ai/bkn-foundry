@@ -136,7 +136,7 @@ func (s *Service) Prepare(ctx context.Context, lineage, id string, previous *int
 	}
 	original := stored.Build
 	valid := func(build *interfaces.KBBuild) bool {
-		return build.ProjectID == record.ProjectID && build.NetworkID == record.LineageID && build.GenerationID == record.GenerationID && build.ModelFingerprint == record.ModelFingerprint && build.AgentVersion > 0 && build.PromptVersion != nil && build.ModelID != "" && build.Model != ""
+		return build.ProjectID == record.ProjectID && build.NetworkID == record.LineageID && build.GenerationID == record.GenerationID && build.ModelFingerprint == record.ModelFingerprint && build.AgentVersion > 0 && build.PromptVersion != nil && build.ModelID != ""
 	}
 	if !valid(original) {
 		return nil, ErrInvalidManifest

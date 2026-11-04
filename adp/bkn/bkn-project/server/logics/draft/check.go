@@ -157,6 +157,10 @@ func checkInputOf(items *interfaces.DraftItems) *checkInput {
 		checked := checkRelationType{ID: rt.ID}
 		if rt.LinkTable == nil {
 			checked.Joins = []checkJoin{join(source.Table, source, rt.Mapping, true, target)}
+			if rt.Document != nil && (source.Document != nil && preparedCheckDataset(items, source.Table, source.ID, "") ||
+				target.Document != nil && preparedCheckDataset(items, target.Table, target.ID, "")) {
+				checked.Joins[0].Reason = checkReasonKnowledgeBase
+			}
 		} else {
 			// The link table's columns are fields already; each mapping's other side is an end's property.
 			checked.Joins = []checkJoin{

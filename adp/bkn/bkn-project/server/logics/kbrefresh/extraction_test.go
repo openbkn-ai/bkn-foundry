@@ -162,6 +162,106 @@ func TestRefreshStagesEveryChangedFileBeforeAnyLiveWriteAndRevalidatesRecovery(t
 	}
 }
 
+type optionalNameTasks struct {
+	*extractionTasks
+	scenario    string
+	pollsByTask map[string]int
+}
+
+func (a *optionalNameTasks) Start(ctx context.Context, caller interfaces.AccountInfo, build *interfaces.KBBuild, index int, model *interfaces.Draft, input *kb.FileInput) (*interfaces.BknAgentTask, error) {
+	task, err := a.extractionTasks.Start(ctx, caller, build, index, model, input)
+	if task != nil {
+		named := a.scenario == "completed_name_absent" || a.scenario == "later_missing" || a.scenario == "conflicting_named" || (a.scenario == "mixed_files" && index == 0)
+		if !named {
+			task.Model = ""
+		}
+	}
+	return task, err
+}
+
+func (a *optionalNameTasks) Poll(ctx context.Context, caller interfaces.AccountInfo, id string) (*interfaces.BknAgentTask, error) {
+	task, err := a.extractionTasks.Poll(ctx, caller, id)
+	if task != nil {
+		task.Model = ""
+		if a.pollsByTask == nil {
+			a.pollsByTask = map[string]int{}
+		}
+		a.pollsByTask[id]++
+		if (a.scenario == "mixed_files" && id == "known-task") || ((a.scenario == "later_missing" || a.scenario == "conflicting_named") && a.pollsByTask[id] == 1) || (a.scenario == "later_named" && a.pollsByTask[id] > 1) {
+			task.Model = "fixed-model"
+		}
+		if a.scenario == "conflicting_named" && a.pollsByTask[id] > 1 {
+			task.Model = "different-model"
+		}
+		if a.scenario == "missing_model_id" {
+			task.ModelID = ""
+		}
+		if a.scenario == "missing_prompt" {
+			task.PromptVersion = nil
+		}
+	}
+	return task, err
+}
+
+func TestRefreshChangedTasksAllowOptionalNameButRequireExecutionProof(t *testing.T) {
+	for _, scenario := range []string{"optional_name", "completed_name_absent", "mixed_files", "later_missing", "later_named", "conflicting_named", "missing_model_id", "missing_prompt"} {
+		t.Run(scenario, func(t *testing.T) {
+			service, _, _, _, previous, _ := refreshPreparationFixture(t)
+			if scenario == "optional_name" || scenario == "missing_model_id" || scenario == "missing_prompt" {
+				previous.Model = ""
+			}
+			for i := range previous.Files {
+				previous.Files[i].File.ContentVersionID = "old-version"
+			}
+			service.Sources = &preparedSources{source: &extractionSource{preparedSource: &preparedSource{snapshotSource: &snapshotSource{}}}}
+			journal := &memoryRefreshJournal{}
+			service.Journal = journal
+			tasks := &optionalNameTasks{extractionTasks: &extractionTasks{journal: journal, t: t, succeeded: true}, scenario: scenario}
+			service.Tasks = tasks
+			beginReviewed(t, service, context.Background(), "base", "refresh", "worker")
+			for step := 0; step < 10 && journal.value.State != "ready" && journal.value.State != "attention"; step++ {
+				if err := service.ExtractStep(context.Background(), "base", "worker"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "conflicting_named" {
+				if journal.value.State != "attention" || journal.value.Reason != "write_set_changed" {
+					t.Fatal("conflicting known model name was accepted", journal.value.State, journal.value.Reason)
+				}
+				return
+			}
+			if scenario == "missing_model_id" || scenario == "missing_prompt" {
+				if journal.value.State != "attention" || journal.value.Reason != "execution_unknown" || tasks.starts != 1 {
+					t.Fatal("missing execution proof escaped", journal.value.State, journal.value.Reason)
+				}
+				return
+			}
+			if journal.value.State != "ready" || tasks.starts != len(previous.Files) {
+				t.Fatal("valid nameless task did not stage exactly once", journal.value.State, journal.value.Reason)
+			}
+			for index, file := range journal.value.Pending.Build.Files {
+				expectedName := ""
+				if scenario == "later_missing" || (scenario == "mixed_files" && index == 0) {
+					expectedName = "fixed-model"
+				}
+				if file.State != "validated" || file.Model != expectedName || file.ModelID != previous.ModelID || file.RowsWritten != 0 {
+					t.Fatal("receipt fabricated a model name or claimed a live write")
+				}
+			}
+			// Repeated polling may change optional-field presence without changing
+			// the captured write digest, and provenance must support mixed files.
+			staged, err := service.Stage(context.Background(), journal.value)
+			if err != nil || staged.Digest != journal.value.Pending.RowsDigest {
+				t.Fatal("optional name presence changed the staged write set", err)
+			}
+			service.Storage = &previewStorage{fixedModelStorage: service.Storage.(*fixedModelStorage)}
+			if _, _, err := service.StageFusion(context.Background(), journal.value); err != nil {
+				t.Fatal("optional file names broke source execution proof", err)
+			}
+		})
+	}
+}
+
 type previewStorage struct {
 	*fixedModelStorage
 	writes, prunes int

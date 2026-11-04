@@ -47,7 +47,8 @@ func (s *Service) Stage(ctx context.Context, r *interfaces.KBRefreshRecord) (*St
 		if err != nil {
 			return nil, err
 		}
-		if task == nil || task.Status != interfaces.BKN_AGENT_TASK_SUCCEEDED || task.TaskID != file.AgentTaskID || task.AgentID != kb.DocumentExtractionAgentID || task.AgentVersion == nil || *task.AgentVersion != *file.AgentVersion || task.PromptVersion == nil || *task.PromptVersion != *file.PromptVersion || task.ModelID != file.ModelID || task.ModelID != build.ModelID || task.Model != build.Model {
+		nameChanged := task != nil && task.Model != "" && ((file.Model != "" && task.Model != file.Model) || (build.Model != "" && task.Model != build.Model))
+		if task == nil || task.Status != interfaces.BKN_AGENT_TASK_SUCCEEDED || task.TaskID != file.AgentTaskID || task.AgentID != kb.DocumentExtractionAgentID || task.AgentVersion == nil || *task.AgentVersion != *file.AgentVersion || task.PromptVersion == nil || *task.PromptVersion != *file.PromptVersion || task.ModelID != file.ModelID || task.ModelID != build.ModelID || nameChanged {
 			return nil, ErrInvalidManifest
 		}
 		ref := kb.SampleVersion{KnowledgeBaseID: file.File.KnowledgeBaseID, VersionRef: kb.VersionRef{FileID: file.File.FileID, ContentVersionID: file.File.ContentVersionID}}
@@ -55,7 +56,11 @@ func (s *Service) Stage(ctx context.Context, r *interfaces.KBRefreshRecord) (*St
 		if err != nil {
 			return nil, err
 		}
-		writes, err := kbinstance.MaterializeFile(build, index, prepared.Model, input, task)
+		// A later poll may omit or enrich an optional name. Reconstruct the
+		// acknowledged write set with this file's captured completion receipt.
+		captured := *task
+		captured.Model = file.Model
+		writes, err := kbinstance.MaterializeFile(build, index, prepared.Model, input, &captured)
 		if err != nil {
 			return nil, err
 		}

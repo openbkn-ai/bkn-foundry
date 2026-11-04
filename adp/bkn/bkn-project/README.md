@@ -772,6 +772,13 @@ writes; unknown inference submissions never automatically repeat. Inactive Datas
 generations retain their own manifests and source holds. New extraction defaults
 apply to changed files; inherited files retain their actual execution metadata.
 
+Execution receipts require a model ID and version proofs. The optional `model`
+name is preserved when present; its absence does not prevent refresh preparation
+or completed-task validation. No display name is invented from the model ID.
+Each file retains its captured completion label; another file's label is never
+inherited. Later polling may omit or add that optional label without changing the
+captured write digest. Contradictory known labels and execution IDs still fail.
+
 | Endpoint | Behavior |
 | --- | --- |
 | `GET /api/bkn-project/v1/lineages/{lineage_id}/kb-refresh` | Read sanitized status; never start work. Requires visibility of the version in use. |
@@ -827,3 +834,38 @@ active. The existing partial-check acceptance remains explicit. Knowledge-base
 publication still requires the separate full-build, reviewed acceptance and
 linking gates. Retrying checks on the unchanged confirmed draft rebuilds this
 input without creating new Datasets or rerunning inference.
+
+Document-result previews also use the existing guarded native Dataset snapshots,
+with stable pagination and heldout/original-text controls. Generated direct
+evidence relations delegate to the same build checks as Dataset link tables.
+
+For confirmed in-document business keys, record identity uses the unique native
+sentence shared by those fields’ verified evidence, rather than the model’s
+incidental anchor. Missing or ambiguous key evidence requires review; original
+anchors, properties and citations remain unchanged.
+
+### Independent link assessment
+
+Saving acceptance-build links measures confirmed `linking` and `same_document`
+associations against the pinned, human-reviewed reference Dataset. Reference
+source mentions define expected associations; matching coverage alone is not a
+quality score. Only verified target rows acknowledged by Dataset writes count
+as predictions. Evidence-location edges are excluded. Extraction precision and
+recall counts are preserved. Link counts are committed with the successful
+linking receipt after writes and final guards pass; missing references or failed
+writes do not commit candidate scores. Reassessment replaces previous link issue
+counts rather than accumulating them. An empty link denominator remains
+unmeasured and cannot pass the existing full-build gate. Thresholds, annotations
+and public request formats are unchanged.
+
+The process-store completion transaction permits these acceptance-only link
+metrics while preserving extraction counts, task receipts and pinned scope.
+Per-file counts must agree with the aggregate; low scores are saved for review,
+and never bypass the existing quality gate.
+
+Published binding verification uses the same non-mutating Dataset identity
+projection as BKN compilation. Prepared `_id` mirrors and direct/indirect edge
+endpoints are compared under their exported names, including collision-safe
+mirrors. Logical extraction models, fingerprints and storage identities stay
+unchanged; unprepared mirrors and real resource/key/type/mapping changes still
+stop refresh before extraction or application.

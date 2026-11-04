@@ -23,6 +23,10 @@ func factServiceFixture(t *testing.T, mode string, confirmed ...bool) (*SystemLi
 	service, queue, data, _, _, draft := systemLinkServiceFixture(t)
 	build := queue.record.Build
 	build.Mode = mode
+	if mode == "acceptance" {
+		build.Files[0].Assessment = &AcceptanceCounts{Expected: 10, Predicted: 10, Correct: 10, Issues: map[string]int{}}
+		service.References = &linkAssessorStub{}
+	}
 	_, _, input, task := extractionFixture(t, "contract", false)
 	fact := instanceObject(draft.Items, "contract_file")
 	fact.Document.Role = "fact"
