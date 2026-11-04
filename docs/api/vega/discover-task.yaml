@@ -97,11 +97,13 @@ paths:
             minimum: 0
             default: 0
         - name: limit
-          description: Page size. Defaults to 20
+          description: Page size from 1 to 1000. Use -1 to disable pagination. Defaults to 20.
           in: query
           schema:
             type: integer
             format: int64
+            minimum: -1
+            maximum: 1000
             default: 20
         - name: sort
           description: Sort field. Results default to descending creation time. A zero timestamp is sorted as a normal database value, first in ascending order and last in descending order.
