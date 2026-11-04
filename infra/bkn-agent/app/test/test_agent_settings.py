@@ -811,3 +811,94 @@ def test_repeated_prompt_rebinding_returns_conflict_without_writes(monkeypatch):
             assert (await client.get(f"{ADMIN}/versions", headers=AUTH)).json() == versions
 
     asyncio.run(run())
+
+
+def _results(*results):
+    """One question whose tool results arrive in order: (tool name, size)."""
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    calls = [{"id": f"c{i}", "name": name, "args": {}} for i, (name, _) in enumerate(results)]
+    return [
+        HumanMessage(content="q"),
+        AIMessage(content="", tool_calls=calls),
+        *(
+            ToolMessage(content=str(i) * size, tool_call_id=f"c{i}", name=name)
+            for i, (name, size) in enumerate(results)
+        ),
+    ]
+
+
+def _whole(sent):
+    """Which results reached the model untruncated, in message order."""
+    return [m.content == m.content[0] * len(m.content) and "omitted" not in m.content for m in sent[2:]]
+
+
+def test_default_result_caps_keep_large_listings_and_schemas_whole():
+    from app.core.agent_settings import shared_limits
+    from app.core.context_budget import budget_messages
+
+    limits = shared_limits(agent())
+    assert (limits.data_result_chars, limits.schema_result_chars) == (60000, 120000)
+    assert limits.summarize_after_tokens == 60000
+    caps = (limits.data_result_chars, limits.schema_result_chars, limits.keep_tool_results)
+
+    # Results that the former 12000 / 24000 caps truncated now arrive whole.
+    sent = budget_messages(_results(("get_kn_detail", 60000), ("run_cypher", 50000)), *caps)
+    assert _whole(sent) == [True, True]
+    assert _whole(budget_messages(_results(("get_kn_detail", 100000)), *caps)) == [True]
+    # Beyond the cap the result is still truncated.
+    over = budget_messages(_results(("run_cypher", 70000)), *caps)
+    assert len(over[2].content) > 60000 and "[Result truncated" in over[2].content
+
+
+def test_question_results_stay_within_the_total_cap():
+    from app.core.agent_settings import shared_limits
+    from app.core.context_budget import QUESTION_RESULT_CHARS, budget_messages
+
+    limits = shared_limits(agent())
+    caps = (limits.data_result_chars, limits.schema_result_chars, limits.keep_tool_results)
+    # Three 100k schema results used to be kept together (300k characters,
+    # beyond a 128k-token window); now only the latest fits the total.
+    sent = budget_messages(_results(*[("get_kn_detail", 100000)] * 3), *caps)
+    assert _whole(sent) == [False, False, True]
+    assert all("Tool result not shown" in m.content for m in sent[2:4])
+    kept = sum(len(m.content) for m in sent[2:] if "omitted" not in m.content)
+    assert kept <= QUESTION_RESULT_CHARS
+    # The latest result is kept even when an administrator's cap exceeds the total.
+    wide = budget_messages(_results(("get_kn_detail", 150000)), 60000, 200000, 3)
+    assert _whole(wide) == [True]
+
+
+def test_former_default_caps_keep_their_behaviour():
+    from app.core.context_budget import budget_messages
+
+    # 3 x 24000 schema results stayed together under the former defaults.
+    sent = budget_messages(_results(*[("get_kn_detail", 24000)] * 3), 12000, 24000, 3)
+    assert _whole(sent) == [True, True, True]
+    sent = budget_messages(_results(*[("run_cypher", 12000)] * 4), 12000, 24000, 3)
+    assert _whole(sent) == [False, True, True, True]
+
+
+def test_parallel_results_over_the_total_say_they_were_never_shown():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from app.core.context_budget import budget_messages
+
+    caps = (60000, 120000, 3)
+    # One model turn calls both tools; together they pass the 120000 total.
+    sent = budget_messages(_results(("get_kn_detail", 100000), ("run_cypher", 40000)), *caps)
+    assert _whole(sent) == [False, True]
+    dropped = sent[2].content
+    # The model never saw this result, so it must not be told to reuse it;
+    # repeating the identical call would just swap the two results again.
+    assert "Use what you already drew" not in dropped
+    assert "not shown" in dropped and "get_kn_detail" in dropped
+    assert "fewer columns" in dropped
+
+    # A result the model already saw in an earlier step keeps the reuse wording.
+    later = [*sent[:2], ToolMessage(content="0" * 100000, tool_call_id="c0", name="get_kn_detail"),
+             ToolMessage(content="1" * 40000, tool_call_id="c1", name="run_cypher"),
+             AIMessage(content="", tool_calls=[{"id": "c2", "name": "run_cypher", "args": {}}]),
+             ToolMessage(content="2" * 100000, tool_call_id="c2", name="run_cypher")]
+    seen = budget_messages(later, 60000, 120000, 3)
+    assert "Use what you already drew" in seen[2].content

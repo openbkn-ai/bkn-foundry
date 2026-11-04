@@ -118,6 +118,26 @@ def cleared_placeholder(call: dict | None, size: int) -> str:
     )
 
 
+# The current question is never summarized, so its kept results together stay
+# under this many characters whatever the per-result caps add up to: about 86k
+# tokens even for Chinese text (~1.4 characters per token), which leaves room in
+# a 128k-token context window. The latest result is always kept.
+QUESTION_RESULT_CHARS = 120000
+
+
+def unseen_placeholder(call: dict | None, size: int) -> str:
+    # Parallel results can pass the total before the model reads any of them.
+    # Telling it to reuse one would be false, and repeating the identical call
+    # would only swap the results again, so ask for a smaller query instead.
+    return (
+        f"[Tool result not shown: {_call_label(call)}, about {size} characters. It did "
+        "not fit this question's context budget together with the newer results, so "
+        "you have not seen it. Repeating the identical call returns the same data; "
+        "query again with fewer columns or a narrower filter, or make the calls one "
+        "at a time.]"
+    )
+
+
 def budget_messages(
     messages: list, data_chars: int, schema_chars: int, keep: int
 ) -> list:
@@ -125,7 +145,9 @@ def budget_messages(
 
     The current question keeps its most recent results while their capped size
     fits in keep x data_chars, and always at least keep of them, so one large
-    result and several small ones stay visible together. Earlier questions keep
+    result and several small ones stay visible together, but beyond the latest
+    one no result is kept past QUESTION_RESULT_CHARS in total, so fewer than keep
+    may remain. A dropped result the model has not seen yet says so. Earlier questions keep
     their answers; their raw tool results would only grow every later turn's
     input, so they become placeholders.
     """
@@ -139,6 +161,11 @@ def budget_messages(
         if isinstance(m, AIMessage)
         for call in m.tool_calls
     }
+    # Results after the last model message have not been shown to the model yet.
+    last_model = max(
+        (i for i, m in enumerate(messages) if isinstance(m, AIMessage)),
+        default=-1,
+    )
     budget = keep * data_chars
     kept = used = 0
     messages = list(messages)
@@ -151,12 +178,16 @@ def budget_messages(
             continue
         size = len(_text_of(m.content))
         capped = min(size, _limit_of(m, data_chars, schema_chars))
-        if kept < keep or used + capped <= budget:
+        fits = used + capped <= QUESTION_RESULT_CHARS and (
+            kept < keep or used + capped <= budget
+        )
+        if kept == 0 or fits:
             kept += 1
             used += capped
             messages[i] = cap_tool_message(m, data_chars, schema_chars)
         else:
-            placeholder = cleared_placeholder(calls.get(m.tool_call_id), size)
+            describe = unseen_placeholder if i > last_model else cleared_placeholder
+            placeholder = describe(calls.get(m.tool_call_id), size)
             messages[i] = m.model_copy(update={"content": placeholder, "artifact": None})
     return messages
 
