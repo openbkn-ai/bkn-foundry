@@ -118,6 +118,13 @@ def cleared_placeholder(call: dict | None, size: int) -> str:
     )
 
 
+# The current question is never summarized, so its kept results together stay
+# under this many characters whatever the per-result caps add up to: about 86k
+# tokens even for Chinese text (~1.4 characters per token), which leaves room in
+# a 128k-token context window. The latest result is always kept.
+QUESTION_RESULT_CHARS = 120000
+
+
 def budget_messages(
     messages: list, data_chars: int, schema_chars: int, keep: int
 ) -> list:
@@ -125,7 +132,8 @@ def budget_messages(
 
     The current question keeps its most recent results while their capped size
     fits in keep x data_chars, and always at least keep of them, so one large
-    result and several small ones stay visible together. Earlier questions keep
+    result and several small ones stay visible together. Beyond the latest one,
+    no result is kept past QUESTION_RESULT_CHARS in total. Earlier questions keep
     their answers; their raw tool results would only grow every later turn's
     input, so they become placeholders.
     """
@@ -151,7 +159,10 @@ def budget_messages(
             continue
         size = len(_text_of(m.content))
         capped = min(size, _limit_of(m, data_chars, schema_chars))
-        if kept < keep or used + capped <= budget:
+        fits = used + capped <= QUESTION_RESULT_CHARS and (
+            kept < keep or used + capped <= budget
+        )
+        if kept == 0 or fits:
             kept += 1
             used += capped
             messages[i] = cap_tool_message(m, data_chars, schema_chars)

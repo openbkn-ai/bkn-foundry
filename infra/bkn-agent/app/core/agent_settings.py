@@ -31,8 +31,9 @@ _LIMIT_FIELDS = (
 # Context budget defaults. A question keeps at least keep_tool_results results
 # and as many more as fit in keep_tool_results x data_result_chars. Users still
 # hit truncated listings and schemas at 12000 data / 24000 schema characters, so
-# both caps are five times that. The summarization threshold stays, which keeps
-# earlier questions from growing the context past common model windows.
+# both caps are five times that. Summarization only shortens earlier
+# questions; the current question's results are bounded by
+# context_budget.QUESTION_RESULT_CHARS instead.
 DEFAULT_KEEP_TOOL_RESULTS = 3
 DEFAULT_DATA_RESULT_CHARS = 60000
 DEFAULT_SCHEMA_RESULT_CHARS = 120000
