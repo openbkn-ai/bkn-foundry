@@ -162,6 +162,70 @@ func TestRefreshStagesEveryChangedFileBeforeAnyLiveWriteAndRevalidatesRecovery(t
 	}
 }
 
+type optionalNameTasks struct {
+	*extractionTasks
+	scenario string
+}
+
+func (a *optionalNameTasks) Start(ctx context.Context, caller interfaces.AccountInfo, build *interfaces.KBBuild, index int, model *interfaces.Draft, input *kb.FileInput) (*interfaces.BknAgentTask, error) {
+	task, err := a.extractionTasks.Start(ctx, caller, build, index, model, input)
+	if task != nil {
+		task.Model = ""
+	}
+	return task, err
+}
+
+func (a *optionalNameTasks) Poll(ctx context.Context, caller interfaces.AccountInfo, id string) (*interfaces.BknAgentTask, error) {
+	task, err := a.extractionTasks.Poll(ctx, caller, id)
+	if task != nil {
+		task.Model = ""
+		if a.scenario == "missing_model_id" {
+			task.ModelID = ""
+		}
+		if a.scenario == "missing_prompt" {
+			task.PromptVersion = nil
+		}
+	}
+	return task, err
+}
+
+func TestRefreshChangedTasksAllowOptionalNameButRequireExecutionProof(t *testing.T) {
+	for _, scenario := range []string{"optional_name", "missing_model_id", "missing_prompt"} {
+		t.Run(scenario, func(t *testing.T) {
+			service, _, _, _, previous, _ := refreshPreparationFixture(t)
+			previous.Model = ""
+			for i := range previous.Files {
+				previous.Files[i].File.ContentVersionID = "old-version"
+			}
+			service.Sources = &preparedSources{source: &extractionSource{preparedSource: &preparedSource{snapshotSource: &snapshotSource{}}}}
+			journal := &memoryRefreshJournal{}
+			service.Journal = journal
+			tasks := &optionalNameTasks{extractionTasks: &extractionTasks{journal: journal, t: t, succeeded: true}, scenario: scenario}
+			service.Tasks = tasks
+			beginReviewed(t, service, context.Background(), "base", "refresh", "worker")
+			for step := 0; step < 10 && journal.value.State != "ready" && journal.value.State != "attention"; step++ {
+				if err := service.ExtractStep(context.Background(), "base", "worker"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario != "optional_name" {
+				if journal.value.State != "attention" || journal.value.Reason != "execution_unknown" || tasks.starts != 1 {
+					t.Fatal("missing execution proof escaped", journal.value.State, journal.value.Reason)
+				}
+				return
+			}
+			if journal.value.State != "ready" || tasks.starts != len(previous.Files) {
+				t.Fatal("valid nameless task did not stage exactly once", journal.value.State, journal.value.Reason)
+			}
+			for _, file := range journal.value.Pending.Build.Files {
+				if file.State != "validated" || file.Model != "" || file.ModelID != previous.ModelID || file.RowsWritten != 0 {
+					t.Fatal("receipt fabricated a model name or claimed a live write")
+				}
+			}
+		})
+	}
+}
+
 type previewStorage struct {
 	*fixedModelStorage
 	writes, prunes int

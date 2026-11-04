@@ -772,6 +772,10 @@ writes; unknown inference submissions never automatically repeat. Inactive Datas
 generations retain their own manifests and source holds. New extraction defaults
 apply to changed files; inherited files retain their actual execution metadata.
 
+Execution receipts require a model ID and version proofs. The optional `model`
+name is preserved when present; its absence does not prevent refresh preparation
+or completed-task validation. No display name is invented from the model ID.
+
 | Endpoint | Behavior |
 | --- | --- |
 | `GET /api/bkn-project/v1/lineages/{lineage_id}/kb-refresh` | Read sanitized status; never start work. Requires visibility of the version in use. |
