@@ -26,12 +26,10 @@ func verifiedSourceExecution(build *interfaces.KBBuild, index int, raw string) (
 		return nil, ErrInvalidBuild
 	}
 	file := build.Files[index]
-	modelName := file.Model
-	if modelName == "" {
-		modelName = build.Model
-	}
+	// Optional names belong to this file's receipt, never another file's label
+	// or newer batch defaults. Conflicting known names remain invalid.
 	var execution sourceExecution
-	if json.Unmarshal([]byte(raw), &execution) != nil || execution.TaskID == "" || execution.Agent < 1 || execution.Prompt < 1 || execution.TaskID != file.AgentTaskID || file.AgentVersion == nil || execution.Agent != *file.AgentVersion || file.PromptVersion == nil || execution.Prompt != *file.PromptVersion || execution.Model == "" || execution.Model != file.ModelID || execution.ModelName != modelName || execution.RecordedAt < 0 {
+	if json.Unmarshal([]byte(raw), &execution) != nil || execution.TaskID == "" || execution.Agent < 1 || execution.Prompt < 1 || execution.TaskID != file.AgentTaskID || file.AgentVersion == nil || execution.Agent != *file.AgentVersion || file.PromptVersion == nil || execution.Prompt != *file.PromptVersion || execution.Model == "" || execution.Model != file.ModelID || (execution.ModelName != "" && file.Model != "" && execution.ModelName != file.Model) || execution.RecordedAt < 0 {
 		return nil, ErrBuildChanged
 	}
 	return &execution, nil

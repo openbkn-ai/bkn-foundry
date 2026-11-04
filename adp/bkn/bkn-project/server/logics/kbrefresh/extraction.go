@@ -243,6 +243,8 @@ func (s *Service) ExtractStep(ctx context.Context, lineage, lease string) error 
 			if task.PromptVersion == nil || *task.PromptVersion < 1 || task.ModelID == "" {
 				return s.attention(ctx, r, "execution_unknown")
 			}
+			// Keep the completed task's actual optional name, including absence.
+			attached.Files[index].Model = task.Model
 			ref := kb.SampleVersion{KnowledgeBaseID: file.File.KnowledgeBaseID, VersionRef: kb.VersionRef{FileID: file.File.FileID, ContentVersionID: file.File.ContentVersionID}}
 			input, err := kbinstance.ReadFileInput(ctx, prepared.Source, ref)
 			if err != nil {
