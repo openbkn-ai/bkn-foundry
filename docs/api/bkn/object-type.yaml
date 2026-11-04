@@ -81,17 +81,6 @@ paths:
             type: string
             default: main
           in: query
-        - name: need_total
-          description: Whether to return total_count. Defaults to true.
-          schema:
-            type: boolean
-            default: true
-          in: query
-        - name: search_after
-          description: Deep-pagination cursor, separated by commas. When provided, offset is ignored.
-          schema:
-            type: string
-          in: query
       responses:
         "200":
           content:
@@ -145,132 +134,113 @@ paths:
                         comment: Primary key
                         mapped_field:
                           name: id
-                        index: true
                       - name: node_id
                         display_name: node_id
                         type: VARCHAR
                         comment: Node ID
                         mapped_field:
                           name: node_id
-                        index: true
                       - name: pod_cluster_id
                         display_name: pod_cluster_id
                         type: VARCHAR
                         comment: Pod cluster ID
                         mapped_field:
                           name: pod_cluster_id
-                        index: true
                       - name: pod_ip
                         display_name: pod_ip
                         type: VARCHAR
                         comment: Pod IP
                         mapped_field:
                           name: pod_ip
-                        index: true
                       - name: pod_name
                         display_name: pod_name
                         type: VARCHAR
                         comment: Pod name
                         mapped_field:
                           name: pod_name
-                        index: true
                       - name: pod_namespace
                         display_name: pod_namespace
                         type: VARCHAR
                         comment: Pod namespace
                         mapped_field:
                           name: pod_namespace
-                        index: true
                       - name: pod_node_name
                         display_name: pod_node_name
                         type: int
                         comment: Pod node name
                         mapped_field:
                           name: pod_node_name
-                        index: true
                       - name: pod_port
                         display_name: pod_port
                         type: VARCHAR
                         comment: Pod port
                         mapped_field:
                           name: pod_port
-                        index: true
                       - name: pod_status
                         display_name: pod_status
                         type: VARCHAR
                         comment: Pod status
                         mapped_field:
                           name: pod_status
-                        index: true
                       - name: service_ip
                         display_name: service_ip
                         type: VARCHAR
                         comment: Service IP
                         mapped_field:
                           name: service_ip
-                        index: true
                       - name: service_name
                         display_name: service_name
                         type: VARCHAR
                         comment: Service name
                         mapped_field:
                           name: service_name
-                        index: true
                       - name: component
                         display_name: component
                         type: VARCHAR
                         comment: Component
                         mapped_field:
                           name: component
-                        index: true
                       - name: pod_create_time
                         display_name: pod_create_time
                         type: VARCHAR
                         comment: Pod creation time
                         mapped_field:
                           name: pod_create_time
-                        index: true
                       - name: pod_delete_time
                         display_name: pod_delete_time
                         type: VARCHAR
                         comment: Pod deletion time
                         mapped_field:
                           name: pod_delete_time
-                        index: true
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
                         comment: System creation time
                         mapped_field:
                           name: s_create_time
-                        index: true
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
                         comment: System update time
                         mapped_field:
                           name: s_update_time
-                        index: true
                       - name: _timestamp
                         display_name: _timestamp
                         type: timestamp
                         comment: Time
                         mapped_field:
                           name: _timestamp
-                        index: true
                       - name: _action
                         display_name: _action
                         type: VARCHAR
                         comment: Action
                         mapped_field:
                           name: _action
-                        index: true
                     logic_properties:
                       - name: tool_test
                         display_name: tool_test
                         type: tool
                         comment: Pod tools
-                        index: true
                         data_source:
                           type: tool
                           box_id: pod_toolbox
@@ -308,126 +278,108 @@ paths:
                         comment: Primary key
                         mapped_field:
                           name: id
-                        index: true
                       - name: node_id
                         display_name: node_id
                         type: VARCHAR
                         comment: Node ID
                         mapped_field:
                           name: node_id
-                        index: true
                       - name: pod_cluster_id
                         display_name: pod_cluster_id
                         type: VARCHAR
                         comment: Pod cluster ID
                         mapped_field:
                           name: pod_cluster_id
-                        index: true
                       - name: pod_ip
                         display_name: pod_ip
                         type: VARCHAR
                         comment: Pod IP
                         mapped_field:
                           name: pod_ip
-                        index: true
                       - name: pod_name
                         display_name: pod_name
                         type: VARCHAR
                         comment: Pod name
                         mapped_field:
                           name: pod_name
-                        index: true
                       - name: pod_namespace
                         display_name: pod_namespace
                         type: VARCHAR
                         comment: Pod namespace
                         mapped_field:
                           name: pod_namespace
-                        index: true
                       - name: pod_node_name
                         display_name: pod_node_name
                         type: int
                         comment: Pod node name
                         mapped_field:
                           name: pod_node_name
-                        index: true
                       - name: pod_port
                         display_name: pod_port
                         type: VARCHAR
                         comment: Pod port
                         mapped_field:
                           name: pod_port
-                        index: true
                       - name: pod_status
                         display_name: pod_status
                         type: VARCHAR
                         comment: Pod status
                         mapped_field:
                           name: pod_status
-                        index: true
                       - name: service_ip
                         display_name: service_ip
                         type: VARCHAR
                         comment: Service IP
                         mapped_field:
                           name: service_ip
-                        index: true
                       - name: service_name
                         display_name: service_name
                         type: VARCHAR
                         comment: Service name
                         mapped_field:
                           name: service_name
-                        index: true
                       - name: component
                         display_name: component
                         type: VARCHAR
                         comment: Component
                         mapped_field:
                           name: component
-                        index: true
                       - name: pod_create_time
                         display_name: pod_create_time
                         type: VARCHAR
                         comment: Pod creation time
                         mapped_field:
                           name: pod_create_time
-                        index: true
                       - name: pod_delete_time
                         display_name: pod_delete_time
                         type: VARCHAR
                         comment: Pod deletion time
                         mapped_field:
                           name: pod_delete_time
-                        index: true
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
                         comment: System creation time
                         mapped_field:
                           name: s_create_time
-                        index: true
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
                         comment: System update time
                         mapped_field:
                           name: s_update_time
-                        index: true
                       - name: _timestamp
                         display_name: _timestamp
                         type: timestamp
                         comment: Time
                         mapped_field:
                           name: _timestamp
-                        index: true
                       - name: _action
                         display_name: _action
                         type: VARCHAR
                         comment: Action
                         mapped_field:
                           name: _action
-                        index: true
                     primary_keys:
                       - id
                     display_key: pod_name
@@ -451,126 +403,108 @@ paths:
                         comment: Primary key
                         mapped_field:
                           name: id
-                        index: true
                       - name: node_name
                         display_name: node_name
                         type: VARCHAR
                         comment: Node name
                         mapped_field:
                           name: node_name
-                        index: true
                       - name: node_namespace
                         display_name: node_namespace
                         type: VARCHAR
                         comment: Node namespace
                         mapped_field:
                           name: node_namespace
-                        index: true
                       - name: node_ip
                         display_name: node_ip
                         type: VARCHAR
                         comment: Node IP
                         mapped_field:
                           name: node_ip
-                        index: true
                       - name: node_mac
                         display_name: node_mac
                         type: VARCHAR
                         comment: MAC address
                         mapped_field:
                           name: node_mac
-                        index: true
                       - name: node_status
                         display_name: node_status
                         type: VARCHAR
                         comment: Node status
                         mapped_field:
                           name: node_status
-                        index: true
                       - name: node_memory_capacity
                         display_name: node_memory_capacity
                         type: int
                         comment: Node status
                         mapped_field:
                           name: node_memory_capacity
-                        index: true
                       - name: node_monitor
                         display_name: node_monitor
                         type: VARCHAR
                         comment: Node monitor
                         mapped_field:
                           name: node_monitor
-                        index: true
                       - name: node_disk_capacity
                         display_name: node_disk_capacity
                         type: VARCHAR
                         comment: Node disk capacity
                         mapped_field:
                           name: node_disk_capacity
-                        index: true
                       - name: node_cpu_capacity
                         display_name: node_cpu_capacity
                         type: VARCHAR
                         comment: Node CPU capacity
                         mapped_field:
                           name: node_cpu_capacity
-                        index: true
                       - name: node_core_version
                         display_name: node_core_version
                         type: VARCHAR
                         comment: Node kernel version
                         mapped_field:
                           name: node_core_version
-                        index: true
                       - name: node_create_time
                         display_name: node_create_time
                         type: VARCHAR
                         comment: Node creation time
                         mapped_field:
                           name: node_create_time
-                        index: true
                       - name: node_delete_time
                         display_name: node_delete_time
                         type: VARCHAR
                         comment: Node deletion time
                         mapped_field:
                           name: node_delete_time
-                        index: true
                       - name: node_memory_capacity
                         display_name: node_memory_capacity
                         type: VARCHAR
                         comment: Node memory capacity
                         mapped_field:
                           name: node_memory_capacity
-                        index: true
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
                         comment: System creation time
                         mapped_field:
                           name: s_create_time
-                        index: true
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
                         comment: System update time
                         mapped_field:
                           name: s_update_time
-                        index: true
                       - name: timestamp
                         display_name: timestamp
                         type: timestamp
                         comment: Time
                         mapped_field:
                           name: timestamp
-                        index: true
                       - name: _action
                         display_name: _action
                         type: VARCHAR
                         comment: Action
                         mapped_field:
                           name: _action
-                        index: true
                     primary_keys:
                       - id
                     display_key: node_name
@@ -920,7 +854,6 @@ paths:
                             display_name: tool_test
                             type: tool
                             comment: Pod tools
-                            index: true
                             data_source:
                               type: tool
                               box_id: pod_toolbox
@@ -972,13 +905,6 @@ paths:
                             comment: Primary key
                             mapped_field:
                               name: id
-                            index: true
-                            fulltext_config:
-                              analyzer: ""
-                              field_keyword: false
-                            vector_config:
-                              analyzer: ""
-                              field_keyword: false
                           - name: node_id
                             display_name: node_id
                             type: VARCHAR
@@ -1205,7 +1131,6 @@ paths:
                             display_name: tool_test
                             type: tool
                             comment: Pod tools
-                            index: true
                             data_source:
                               type: tool
                               box_id: pod_toolbox
@@ -1719,6 +1644,65 @@ components:
           type: array
           items:
             type: string
+        index_features:
+          description: |
+            Index features configured on the mapped Vega resource field, projected from the resource schema
+            while responding. Read-only: it is not accepted in requests or stored with the definition. Returned
+            by the detail and search endpoints; omitted when the property has no mapped field or no keyword,
+            fulltext or vector feature is configured.
+          type: array
+          readOnly: true
+          items:
+            $ref: "#/components/schemas/ObjectTypeIndexFeature"
+    ObjectTypeIndexStatus:
+      description: |
+        Whether the object type's bound Vega resource index can currently be used. It is projected from the
+        resource's Vega local_status while responding and is never stored. Returned by the list, detail and
+        search endpoints; omitted from other responses.
+      type: object
+      readOnly: true
+      required:
+        - state
+      properties:
+        state:
+          description: |
+            available: the resource's local index is available. unavailable: the local index is unavailable or
+            stale. unknown: the resource could not be read, or reports another local_status. resource_missing:
+            the bound resource no longer exists. not_applicable: the data source is not a Vega resource.
+          type: string
+          enum:
+            - available
+            - unavailable
+            - unknown
+            - resource_missing
+            - not_applicable
+        source_status:
+          description: The Vega resource's raw local_status. Omitted when the resource was not read.
+          type: string
+    ObjectTypeIndexFeature:
+      description: An index feature configured for one object type data property.
+      type: object
+      readOnly: true
+      required:
+        - type
+        - configured
+        - available
+      properties:
+        type:
+          type: string
+          enum:
+            - keyword
+            - fulltext
+            - vector
+        configured:
+          description: Always true; only configured features are listed.
+          type: boolean
+        available:
+          description: |
+            Whether the feature is usable now: true when index_status.state is available, false when it is
+            unavailable. Null for any other state, so an unknown answer is not read as unavailable.
+          type: boolean
+          nullable: true
     PropertyConstraints:
       description: |
         BKN spec 3.0 property constraints (SPECIFICATION.md §6.8). They describe the data for understanding
@@ -1855,37 +1839,6 @@ components:
       type: string
       minLength: 1
       maxLength: 8
-    FulltextConfig:
-      description: Full-text index configuration
-      required:
-        - analyzer
-        - enabled
-      type: object
-      properties:
-        analyzer:
-          description: Analyzer ID. Available values come from fulltext_analyzers returned by GET /api/vega-backend/v1/index-capabilities and depend on the cluster capabilities.
-          type: string
-        enabled:
-          description: Whether enabled
-          type: boolean
-      example:
-        analyzer: standard
-        enabled: true
-    VectorConfig:
-      description: Vector index configuration
-      required:
-        - enabled
-      type: object
-      properties:
-        enabled:
-          description: Whether enabled
-          type: boolean
-        model_id:
-          description: Vector model ID
-          type: string
-      example:
-        enabled: true
-        model_id: some text
     LogicProperty:
       description: Logical properties
       required:
@@ -1909,9 +1862,6 @@ components:
         comment:
           description: Property description
           type: string
-        index:
-          description: Whether to enable indexing. Defaults to true.
-          type: boolean
         data_source:
           $ref: "#/components/schemas/LogicSource"
           description: Logical source
@@ -2007,7 +1957,6 @@ components:
       description: Object type creation information
       required:
         - branch
-        - base_version
         - name
         - primary_keys
         - display_key
@@ -2095,7 +2044,6 @@ components:
         - display_key
         - data_properties
         - branch
-        - base_version
       type: object
       properties:
         name:
@@ -2293,6 +2241,8 @@ components:
           type: integer
           format: int64
           readOnly: true
+        index_status:
+          $ref: "#/components/schemas/ObjectTypeIndexStatus"
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
@@ -2449,6 +2399,8 @@ components:
           type: integer
           format: int64
           readOnly: true
+        index_status:
+          $ref: "#/components/schemas/ObjectTypeIndexStatus"
         data_source_metadata_unavailable:
           description: |
             Present and true only when the bound resource could not be read while this response
@@ -2477,9 +2429,6 @@ components:
             index:
               description: Associated index name
               type: string
-            index_available:
-              description: Whether the index is available
-              type: boolean
             doc_count:
               description: Number of documents in the index
               type: integer

@@ -110,11 +110,13 @@ paths:
             minimum: 0
             default: 0
         - name: limit
-          description: 每页数量，默认 20
+          description: 每页数量，1-1000，-1 表示不分页，默认 20
           in: query
           schema:
             type: integer
             format: int64
+            minimum: -1
+            maximum: 1000
             default: 20
         - name: sort
           description: 排序字段
@@ -556,6 +558,14 @@ components:
             date / datetime / time / boolean / binary / json / vector
             large_integer 表示大整数，JSON 值以十进制字符串无损传输；具体范围由源类型决定。
           type: string
+        api_name:
+          description: |
+            只读。字段的英文短名（snake_case，`^[a-z][a-z0-9_]{0,39}$`），可作机器标识；
+            由语义理解任务生成，只写一次，已有值之后不再覆盖。创建、更新、discover 刷新
+            都不会采纳请求里传入的值：新建字段一律为空，已存字段沿用已存值（省略或改写
+            均无效）。尚未生成时不返回该字段。
+          type: string
+          readOnly: true
         display_name:
           description: |
             显示名。Dataset 创建或更新时去除首尾空白后校验并保存；省略或去空白后为空时
@@ -725,6 +735,13 @@ components:
         catalog_id:
           description: 所属 catalog ID
           type: string
+        api_name:
+          description: |
+            只读。资源的英文短名（snake_case，`^[a-z][a-z0-9_]{0,39}$`），可作机器标识；
+            由语义理解任务生成，只写一次：库里已有值时更新不会覆盖，请求里传入的值
+            不会被采纳。尚未生成时不返回该字段。
+          type: string
+          readOnly: true
         name:
           description: 资源名称，必填，最大长度 255
           type: string

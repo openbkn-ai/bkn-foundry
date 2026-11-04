@@ -221,7 +221,9 @@ paths:
             application/json:
               schema: {}
         '400':
-          description: Invalid request (Model Factory validation/error envelope).
+          description: Invalid request (Model Factory validation/error envelope). Once the caller
+            passes the display permission check, an unknown `model_id` returns 400 with code
+            `ModelFactory.ExternalSmallModel.GetInfo.IdNotExist`, not 404.
           content:
             application/json:
               schema:

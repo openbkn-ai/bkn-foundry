@@ -713,37 +713,6 @@ components:
         id:
           description: id
           type: string
-    Branch:
-      description: Branch information
-      required:
-        - base_version
-        - comment
-        - id
-        - kn_id
-        - name
-        - tags
-      type: object
-      properties:
-        id:
-          description: Branch ID
-          type: string
-        name:
-          description: Branch name
-          type: string
-        tags:
-          description: Tags
-          type: array
-          items:
-            type: string
-        comment:
-          description: Comment
-          type: string
-        base_version:
-          description: Source version
-          type: string
-        kn_id:
-          description: Business knowledge network ID
-          type: string
     ListActionTypes:
       description: Action type list
       required:
@@ -1041,7 +1010,6 @@ components:
         - object_type
         - concept_type
         - branch
-        - base_version
         - object_type_id
       type: object
       properties:
@@ -1152,7 +1120,6 @@ components:
         - object_type
         - concept_type
         - branch
-        - base_version
         - object_type_id
       type: object
       properties:
