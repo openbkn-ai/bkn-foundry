@@ -164,7 +164,7 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EndpointNotAdopted)
 			}
 			if r.ID == id && r.DocumentMapping != nil && r.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(*items, r) {
-				if kbconcept.BusinessIdentityTarget(*items, r) != nil {
+				if kbconcept.VerifiedReferenceTarget(*items, r) != nil {
 					return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_BusinessIdentityNotVerified)
 				}
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
