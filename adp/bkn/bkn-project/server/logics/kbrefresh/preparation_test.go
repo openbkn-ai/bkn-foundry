@@ -145,6 +145,43 @@ func TestRefreshPreparationUsesPrivatePublishedModelAndActualUnchangedReceipts(t
 	}
 }
 
+func TestRefreshPreparationUsesModelIDWithoutOptionalName(t *testing.T) {
+	for _, scenario := range []string{"optional_name", "missing_model_id", "missing_prompt"} {
+		t.Run(scenario, func(t *testing.T) {
+			service, _, _, _, previous, _ := refreshPreparationFixture(t)
+			previous.Model = ""
+			if scenario == "missing_model_id" {
+				previous.ModelID = ""
+			}
+			if scenario == "missing_prompt" {
+				previous.PromptVersion = nil
+			}
+			before, _ := json.Marshal(previous)
+			prepared, err := service.Prepare(context.Background(), "base", "refresh", nil)
+			if scenario != "optional_name" {
+				if !errors.Is(err, ErrInvalidManifest) {
+					t.Fatal("unknown execution was accepted", err)
+				}
+				return
+			}
+			if err != nil || prepared.Plan.Reused != len(previous.Files) || len(prepared.Plan.Changed) != 0 || prepared.Plan.Build.Model != "" || prepared.Plan.Build.ModelID != previous.ModelID {
+				t.Fatal("valid ID-only execution receipt was rejected or changed", err)
+			}
+			journal := &memoryRefreshJournal{}
+			service.Journal = journal
+			result, err := service.Begin(context.Background(), "base", "refresh", "worker")
+			if err != nil || result.State != "idle" || result.Pending != nil || result.Previous.Model != "" {
+				// No Tasks implementation is installed: an inference attempt fails this test.
+				t.Fatal("unchanged receipt was not reused", err)
+			}
+			after, _ := json.Marshal(previous)
+			if string(before) != string(after) {
+				t.Fatal("original execution metadata changed")
+			}
+		})
+	}
+}
+
 type memoryRefreshJournal struct {
 	interfaces.KBRefreshAccess
 	value               *interfaces.KBRefreshRecord

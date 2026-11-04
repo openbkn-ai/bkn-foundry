@@ -23,7 +23,7 @@ func TestRefreshPlanReusesActualUnchangedReceiptsAcrossDomains(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(plan.Changed) != 0 || len(plan.Removed) != 0 || plan.Reused != 1 || len(plan.Build.Files) != 1 || plan.Build.Files[0].AgentTaskID != "acknowledged-task" || plan.Build.Files[0].RowsDigest != "rows-proof" {
+			if len(plan.Changed) != 0 || len(plan.Removed) != 0 || plan.Reused != 1 || len(plan.Build.Files) != 1 || plan.Build.Files[0].AgentTaskID != "acknowledged-task" || plan.Build.Files[0].RowsDigest != "rows-proof" || plan.Build.Files[0].Model != previous.Files[0].Model {
 				t.Fatal("unchanged content was scheduled again or lost its actual execution proof")
 			}
 			after, _ := json.Marshal(previous)

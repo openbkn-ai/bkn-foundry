@@ -61,9 +61,6 @@ func Plan(id string, previous *interfaces.KBBuild, current []interfaces.KBResour
 	}
 	copied := map[string]interfaces.KBFileBuild{}
 	for _, step := range build.Files {
-		if step.Model == "" {
-			step.Model = previous.Model
-		}
 		copied[step.File.Key()] = step
 	}
 	now := time.Now().UnixMilli()
