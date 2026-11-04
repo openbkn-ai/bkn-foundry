@@ -862,3 +862,10 @@ The process-store completion transaction permits these acceptance-only link
 metrics while preserving extraction counts, task receipts and pinned scope.
 Per-file counts must agree with the aggregate; low scores are saved for review,
 and never bypass the existing quality gate.
+
+Published binding verification uses the same non-mutating Dataset identity
+projection as BKN compilation. Prepared `_id` mirrors and direct/indirect edge
+endpoints are compared under their exported names, including collision-safe
+mirrors. Logical extraction models, fingerprints and storage identities stay
+unchanged; unprepared mirrors and real resource/key/type/mapping changes still
+stop refresh before extraction or application.

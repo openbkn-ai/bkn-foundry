@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbdataset"
 	"golang.org/x/sync/errgroup"
 	"net/http"
 	"net/url"
@@ -87,6 +88,15 @@ func (bba *bknBackendAccess) CheckPublishedBindings(ctx context.Context, record 
 	if record == nil || draft == nil || record.NetworkID == "" || record.Publisher.ID == "" || (record.Publisher.Type != "user" && record.Publisher.Type != "app") {
 		return kb.ErrPublishedBindingsChanged
 	}
+	// The published BKN uses the same prepared identity mirrors as the compiler.
+	// Compare that projection without changing the logical execution model.
+	items, err := kbdataset.ExportItems(&draft.Items)
+	if err != nil {
+		return kb.ErrPublishedBindingsChanged
+	}
+	projected := *draft
+	projected.Items = *items
+	draft = &projected
 	group, ctx := errgroup.WithContext(ctx)
 	group.SetLimit(4)
 	for _, object := range draft.Items.ObjectTypes {
