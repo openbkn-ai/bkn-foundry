@@ -81,3 +81,62 @@ func TestOwnedDocumentDatasetsDelegateSQLCountsWithoutInventingStatistics(t *tes
 		})
 	}
 }
+
+func TestDirectDocumentRelationsDelegateOnlyPreparedDatasetEnds(t *testing.T) {
+	for _, side := range []string{"source", "target", "both"} {
+		for _, scenario := range []string{"ready", "unprepared", "foreign_resource", "foreign_catalog", "wrong_object", "unready_dataset", "structured_relation"} {
+			t.Run(side+"/"+scenario, func(t *testing.T) {
+				items := checkFixture()
+				relation := items.RelationTypes[0]
+				items.RelationTypes = []*interfaces.DraftRelationType{relation}
+				relation.Document = &interfaces.DraftDocumentModel{Role: "evidence_contains"}
+				plan := &interfaces.DraftDatasetPlan{State: "ready"}
+				items.DatasetPlans = []*interfaces.DraftDatasetPlan{plan}
+				for i, object := range items.ObjectTypes[:2] {
+					if side == "source" && i == 1 || side == "target" && i == 0 {
+						continue
+					}
+					object.Document = &interfaces.DraftDocumentModel{Role: "evidence_document"}
+					plan.Datasets = append(plan.Datasets, interfaces.DraftDatasetSpec{ObjectTypeID: object.ID, ResourceID: object.Table.ResourceID, CatalogID: object.Table.CatalogID, Ready: true})
+				}
+				switch scenario {
+				case "unprepared":
+					plan.State = "preparing"
+				case "structured_relation":
+					relation.Document = nil
+				}
+				for i := range plan.Datasets {
+					spec := &plan.Datasets[i]
+					switch scenario {
+					case "foreign_resource":
+						spec.ResourceID = "foreign"
+					case "foreign_catalog":
+						spec.CatalogID = "foreign"
+					case "wrong_object":
+						spec.ObjectTypeID = "foreign"
+					case "unready_dataset":
+						spec.Ready = false
+					}
+				}
+				input := checkInputOf(items)
+				join := input.RelationTypes[0].Joins[0]
+				counter := &fakeCounter{failed: map[string]bool{join.From.ResourceID + "." + join.Field: true}}
+				results := runCheck(context.Background(), counter, input, nil)
+				result := results.Relations[0].Joins[0]
+				if scenario == "ready" {
+					if result.State != checkNotCounted || result.Reason != checkReasonKnowledgeBase || result.Rows != 0 || result.Orphans != 0 || result.HitRate != 0 {
+						t.Fatal("direct Dataset relation used SQL or fabricated statistics", result)
+					}
+					if checkStatus(results) != interfaces.CHECK_STATUS_PARTIAL {
+						t.Fatal("unmeasured relation was presented as a full SQL pass")
+					}
+				} else if result.State != checkFailed || result.Reason == checkReasonKnowledgeBase {
+					t.Fatal("unprepared, foreign or structured relation bypassed SQL", result)
+				}
+				if results.Keys[2].State != checkCounted {
+					t.Fatal("physical table lost its SQL validation")
+				}
+			})
+		}
+	}
+}

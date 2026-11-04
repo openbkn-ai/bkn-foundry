@@ -19,15 +19,16 @@ func TestPreviewScopeExcludesHeldoutFilesAndRequiresExactStoredModel(t *testing.
 	heldout.File.SampleRole = "acceptance"
 	build.Files = append(build.Files, heldout)
 	spec := draft.Items.DatasetPlans[0].Datasets[0]
-	where, scope, err := previewScope(spec, build, "")
-	if err != nil || len(scope) != 1 || !strings.Contains(where, build.ModelFingerprint) || strings.Contains(where, "'200'") {
+	scope, err := previewScope(spec, build, "")
+	document, _ := DocumentID(build.Files[0].File.KnowledgeBaseID, build.Files[0].File.FileID)
+	if err != nil || len(scope) != 1 || scope[document] != build.Files[0].File {
 		t.Fatal("heldout scope leaked", err)
 	}
-	if _, _, err = previewScope(spec, build, heldout.File.Key()); !errors.Is(err, ErrAcceptanceHidden) {
+	if _, err = previewScope(spec, build, heldout.File.Key()); !errors.Is(err, ErrAcceptanceHidden) {
 		t.Fatal("explicit heldout selection was permitted", err)
 	}
 	spec.Layout.Mapping["document_id"] = "unsafe`field"
-	if _, _, err = previewScope(spec, build, ""); !errors.Is(err, ErrInvalidBuild) {
+	if _, err = previewScope(spec, build, ""); !errors.Is(err, ErrInvalidBuild) {
 		t.Fatal("untrusted physical field accepted", err)
 	}
 }
@@ -50,8 +51,8 @@ func TestPreviewScopeDoesNotExposeIncompleteOrNativeOnlyBusinessRows(t *testing.
 	build, draft, _, _ := extractionFixture(t, "patent", true)
 	for _, state := range []string{"waiting", "writing", "failed", "evidence_only"} {
 		build.Files[0].State = state
-		where, scope, err := previewScope(draft.Items.DatasetPlans[0].Datasets[0], build, "")
-		if err != nil || where != "" || len(scope) != 0 {
+		scope, err := previewScope(draft.Items.DatasetPlans[0].Datasets[0], build, "")
+		if err != nil || len(scope) != 0 {
 			t.Fatal("partial file became visible", state, err)
 		}
 	}
