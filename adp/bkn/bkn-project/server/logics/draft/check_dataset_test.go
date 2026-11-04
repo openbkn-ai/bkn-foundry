@@ -43,7 +43,11 @@ func TestOwnedDocumentDatasetsDelegateSQLCountsWithoutInventingStatistics(t *tes
 				items.Excluded = []*interfaces.DraftExcludedField{{ObjectType: object.ID, Field: object.Properties[0].MappedField}}
 			}
 			counter := &fakeCounter{failed: map[string]bool{object.Table.ResourceID: true, relation.LinkTable.ResourceID: true}}
-			results := runCheck(context.Background(), counter, checkInputOf(items), nil)
+			input := checkInputOf(items)
+			for _, join := range input.RelationTypes[0].Joins {
+				counter.failed[join.From.ResourceID+"."+join.Field] = true
+			}
+			results := runCheck(context.Background(), counter, input, nil)
 			delegated := scenario == "ready" || scenario == "excluded"
 			key := results.Keys[0]
 			if delegated {
@@ -64,8 +68,15 @@ func TestOwnedDocumentDatasetsDelegateSQLCountsWithoutInventingStatistics(t *tes
 				if scenario == "excluded" && len(results.ExcludedMapped) == 0 {
 					t.Fatal("delegation bypassed excluded-field review")
 				}
-			} else if key.State != checkFailed {
-				t.Fatal("unprepared, foreign or structured resource bypassed SQL validation", key)
+			} else {
+				if key.State != checkFailed {
+					t.Fatal("unprepared, foreign or structured resource bypassed SQL validation", key)
+				}
+				for _, join := range results.Relations[0].Joins {
+					if join.State != checkFailed || join.Reason == checkReasonKnowledgeBase {
+						t.Fatal("unprepared, foreign or structured join bypassed SQL validation", join)
+					}
+				}
 			}
 		})
 	}
