@@ -118,7 +118,7 @@ sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-se
 
    > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `openbkn` auth token to `$HOME/.bkn`. Running it without `sudo` falls back to the in-repo template `conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash dev/mac.sh onboard`) does **not** need `sudo`.
 
-   Re-runs are safe: existing models / BKN defaults are detected and skipped. For the full sequence, the Mermaid flow, and the `openbkn` authentication notes (full ISF), see [help/en/install.md — Post-install: `onboard.sh`](help/en/install.md#post-install-onboardsh).
+   Re-runs are safe: existing models / BKN defaults are detected and skipped. For the full sequence, the Mermaid flow, and the `openbkn` authentication notes (full identity deployment), see [help/en/install.md — Post-install: `onboard.sh`](help/en/install.md#post-install-onboardsh).
 
 6. **Verify API access**
 

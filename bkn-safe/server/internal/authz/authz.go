@@ -5,7 +5,7 @@
 // Package authz is bkn-safe's authorization engine: a Casbin RBAC model with
 // resource instances, backed by a GORM adapter (policies live in the shared DB).
 //
-// This is a clean redesign, NOT the ISF authorization contract. Casbin stores
+// This is a clean redesign, NOT the legacy authorization contract. Casbin stores
 // policies and resolves transitive roles; the shared grant index performs the
 // actual local/hierarchical/effective decision so logical bundles and wildcard
 // fallback cannot drift across endpoints. A deny wins within one resource,
@@ -42,7 +42,7 @@ import (
 //	p = sub, obj, act, eft, policy_source, authority_source
 //	g = _, _            user/app -> role (UUID-preserved)
 //
-// The matcher also accepts policies whose subject is PublicAccessorID: ISF's
+// The matcher also accepts policies whose subject is PublicAccessorID: the legacy service's
 // "grant to the root department = everyone" convention. bkn-safe keeps no
 // user→department g rules (membership lives in relational tables only), so a
 // root-department grant would otherwise never match any requester; instead the
@@ -65,7 +65,7 @@ m = (g(r.sub, p.sub) || p.sub == "` + PublicAccessorID + `") && keyMatch(r.obj, 
 `
 
 // PublicAccessorID is the root-department accessor: a policy granted to this
-// subject applies to every requester (see modelConf). The UUID is the ISF root
+// subject applies to every requester (see modelConf). The UUID is the legacy root
 // department id, written by e.g. execution-factory's CreateIntCompPolicyForAllUsers
 // (interfaces.AccessorRootDepartmentID) for built-in toolbox public access.
 const PublicAccessorID = permobject.PublicAccessorID
@@ -429,7 +429,7 @@ func (en *Enforcer) RemoveRoleContext(ctx context.Context, accessorID, roleID st
 }
 
 // RolesForAccessor lists the role ids directly bound to an accessor (the
-// grouping g-lines with sub=accessor). Mirrors ISF accessor_roles.
+// grouping g-lines with sub=accessor). Mirrors legacy accessor_roles.
 func (en *Enforcer) RolesForAccessor(accessorID string) ([]string, error) {
 	return en.e.GetRolesForUser(accessorID)
 }
@@ -499,7 +499,7 @@ func rowFilterImplicitRoles(reader groupingPolicyReader, accessorID string) ([]s
 }
 
 // RoleMembers lists the accessor ids bound to a role (the grouping g-lines with
-// role=roleID). Mirrors ISF role-members.
+// role=roleID). Mirrors legacy role-members.
 func (en *Enforcer) RoleMembers(roleID string) ([]string, error) {
 	return en.e.GetUsersForRole(roleID)
 }
@@ -1019,7 +1019,7 @@ func (en *Enforcer) RemoveResourcePolicies(ctx context.Context, resourceType, re
 // type-wide case separately (an "is-admin" short-circuit).
 //
 // IDs are returned verbatim (bkn-safe is opaque to any caller-side id encoding,
-// e.g. "dagID:subtype"), de-duplicated, in first-appearance order. Mirrors ISF
+// e.g. "dagID:subtype"), de-duplicated, in first-appearance order. Mirrors the legacy
 // resource-list for one (accessor, type, op).
 //
 // Instances reached only through an ancestor are included too (#800). Without
@@ -1256,7 +1256,7 @@ type ResourcePolicy struct {
 // ResourcePolicies lists the per-accessor grants on a concrete resource
 // instance, grouping the raw (sub, obj, act) rows by accessor. Order of
 // accessors follows first appearance; ops within an accessor follow row order.
-// Mirrors ISF list-policy for one resource (bkn-safe has no expiry/condition).
+// Mirrors the legacy list-policy for one resource (bkn-safe has no expiry/condition).
 // Allows retain the legacy Operations field; deny exceptions are additive.
 func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]ResourcePolicy, error) {
 	rows, err := en.e.GetFilteredPolicy(1, obj(resourceType, resourceID))

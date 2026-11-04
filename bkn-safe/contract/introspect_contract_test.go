@@ -2,7 +2,7 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package contract holds executable freeze tests for the ISF replacement.
+// Package contract holds executable freeze tests for the replacement identity service.
 //
 // introspect_contract_test.go proves that the frozen hydra introspect golden
 // responses (testdata/introspect/*.json) parse through the REAL bkn-comm-go
@@ -97,7 +97,7 @@ func TestIntrospectGoldenParses(t *testing.T) {
 				ClientID:   "openbkn-sdk",
 				VisitorTyp: hydra.VisitorType_User, // "realname" maps to User in the lib
 				LoginIP:    "10.0.0.5",
-				Udid:       "", // real ISF user tokens carry udid="" (captured 2026-06-03)
+				Udid:       "", // real legacy identity tokens carry udid="" (captured 2026-06-03)
 				AccountTyp: hydra.AccountType_Other,
 				ClientTyp:  hydra.ClientType_Web,
 			},

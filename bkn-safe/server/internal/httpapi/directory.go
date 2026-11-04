@@ -40,7 +40,7 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 	})
 
 	// POST /names — resolve ids to names by type. Clean replacement for the
-	// ISF v1/v2 names endpoints (no method:"GET"-in-body, no strict flag).
+	// Legacy v1/v2 names endpoints (no method:"GET"-in-body, no strict flag).
 	g.POST("/names", func(c *gin.Context) {
 		var req struct {
 			UserIDs       []string `json:"user_ids"`

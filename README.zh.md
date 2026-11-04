@@ -105,7 +105,7 @@ sudo bash ./onboard.sh --help # 所有参数（--config=models.yaml、--enable-b
 
    > **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `openbkn` 认证 token 写到 `$HOME/.bkn`。不加 `sudo` 会回退到仓库内模板 `conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash dev/mac.sh onboard`）**不需要** `sudo`。
 
-   可重复运行：脚本会先探测平台已有的模型与 ConfigMap 状态，已注册 / 已配置的会自动跳过。完整流程图、ISF 全量下 `openbkn` 的鉴权说明见 [help/zh/install.md — Post-install：`onboard.sh`](help/zh/install.md#post-installonboardsh安装后引导)。
+   可重复运行：脚本会先探测平台已有的模型与 ConfigMap 状态，已注册 / 已配置的会自动跳过。完整流程图、完整身份认证部署下 `openbkn` 的鉴权说明见 [help/zh/install.md — Post-install：`onboard.sh`](help/zh/install.md#post-installonboardsh安装后引导)。
 
 6. **验证 API 访问**
 

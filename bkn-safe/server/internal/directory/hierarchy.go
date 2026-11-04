@@ -22,7 +22,7 @@ import (
 // memberships and groups inherited via the user's departments (incl ancestors).
 
 // DeptRef is a department reference in a parent chain. Type is always
-// "department" (mirrors ISF ParentDepInfo).
+// "department" (mirrors the legacy ParentDepInfo contract).
 type DeptRef struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`

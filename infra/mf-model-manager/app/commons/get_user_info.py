@@ -74,7 +74,7 @@ async def get_username_by_ids(user_ids):
     if not user_ids:
         return {}
     # bkn-safe directory cutover (revertible): DIRECTORY_PROVIDER=bkn-safe +
-    # BKN_SAFE_URL resolves names via bkn-safe instead of ISF. Unset to revert.
+    # BKN_SAFE_URL resolves names via bkn-safe instead of the legacy identity service. Unset to revert.
     provider, bkn_safe_url = directory_settings()
     if provider == "bkn-safe" and bkn_safe_url:
         return await _resolve_names_bkn_safe(bkn_safe_url, user_ids)

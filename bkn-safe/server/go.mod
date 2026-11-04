@@ -1,4 +1,4 @@
-// bkn-safe — the ISF replacement auth service (code name: safe).
+// bkn-safe — the replacement identity service (code name: safe).
 // Three responsibilities: authentication (hydra login/consent/device provider),
 // authorization (Casbin), user management (directory + LDAP). hydra issues the
 // tokens; bkn-safe is NOT a token engine. DB via openbkn-rds driver (xinchuang

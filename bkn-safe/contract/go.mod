@@ -1,4 +1,4 @@
-// Contract tests for bkn-safe (code: safe) — the ISF replacement auth service.
+// Contract tests for bkn-safe (code: safe) — the replacement identity service.
 //
 // These tests pin the hardest external contract: the token-introspect response
 // must parse through the real bkn-comm-go hydra client without panicking.

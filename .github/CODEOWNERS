@@ -15,7 +15,7 @@
 # ── Global fallback ──────────────────────────────────────────
 *                                          @xforce-io @sh00tg0a1
 
-# ── ISF replacement ─────────────────────────────────────────
+# ── Identity service replacement ─────────────────────────────
 bkn-safe/**                                @sh00tg0a1
 
 # ── ADP (Application Delivery Platform) ─────────────────────

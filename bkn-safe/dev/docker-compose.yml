@@ -1,4 +1,4 @@
-# Dev stack for the ISF replacement — mirrors the production DB topology:
+# Dev stack for the identity service replacement — mirrors the production DB topology:
 #   - hydra (upstream v26.2.0, UNMODIFIED) on PostgreSQL
 #   - bkn-safe on MariaDB (via the openbkn-rds driver, like the rest of the stack)
 #
@@ -88,7 +88,7 @@ services:
     command: serve all --dev
     restart: on-failure
 
-  # bkn-safe: the ISF replacement auth service, wired as hydra's login/consent/
+  # bkn-safe: the replacement identity service, wired as hydra's login/consent/
   # device provider. Built from the cross-compiled binary (see Dockerfile).
   # Reaches hydra admin over the compose network (hydra:4445); the browser is
   # redirected to 127.0.0.1:3000 (published), shared by host curl and provider.

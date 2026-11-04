@@ -306,7 +306,7 @@ RDS 配置中的 `source_type` 字段控制 deploy 管控库的初始化行为�
 
 - Python >= 3.10
 - 主要依赖：PyYAML, requests, tenacity, sqlparse, GitPython, dbutils
-- 内部依赖：proton-rds-sdk-py
+- 内部依赖：RDS Python SDK
 
 ## License
 

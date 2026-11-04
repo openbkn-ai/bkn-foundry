@@ -11,6 +11,6 @@
 | `anonymous.json` | 匿名 | `ext.visitor_type`="anonymous" |
 | `inactive.json` | 失效 token | `active`=false 直接返回 |
 
-> 来源：ISF dip-poc 真实抓取。契约冻结的完整 spec 与设计文档见
+> 来源：旧身份认证服务隔离环境真实抓取。契约冻结的完整 spec 与设计文档见
 > [bkn-docs `docs/foundry/`](https://github.com/openbkn-ai/bkn-docs/tree/main/docs/foundry)。
 > 这些文件是 `go test` 的输入数据，不要删除或手改。

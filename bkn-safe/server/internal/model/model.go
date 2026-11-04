@@ -3,7 +3,7 @@
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 // Package model holds bkn-safe's GORM domain model. This is a CLEAN redesign
-// (not the ISF schema): users/credentials/departments/groups/roles/memberships
+// (not the legacy schema): users/credentials/departments/groups/roles/memberships
 // plus the resource-type + operation catalog. Casbin's matcher projection lives
 // in the adapter-owned casbin_rule table; AuthorizationGrant is the durable
 // identity and provenance of each independently managed grant.
@@ -29,7 +29,7 @@ type AccountType string
 const (
 	AccountTypeOther  AccountType = "other"
 	AccountTypeIDCard AccountType = "id_card"
-	// AccountTypeApp / AccountTypeContactor: ISF application accounts and contacts are stored
+	// AccountTypeApp / AccountTypeContactor: legacy application accounts and contacts are stored
 	// as User rows distinguished by account_type (no separate tables). Directory
 	// name resolution looks them up in the users table by id like any other user.
 	AccountTypeApp       AccountType = "app"
@@ -287,7 +287,7 @@ const (
 	RoleSourceCustom   = "custom"
 )
 
-// Role — preserves the ISF role UUIDs (seeded from role.json). Source is
+// Role — preserves the legacy role UUIDs (seeded from role.json). Source is
 // system|business for built-ins, custom for API-created roles.
 type Role struct {
 	ID   string `gorm:"primaryKey;size:64"`
