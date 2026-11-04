@@ -1769,7 +1769,7 @@ components:
             minimum: 500.0
           - type: 'null'
           title: Data Result Chars
-          description: Character cap for one data tool result. Default 12000.
+          description: Character cap for one data tool result. Default 60000.
         schema_result_chars:
           anyOf:
           - type: integer
@@ -1778,7 +1778,7 @@ components:
           - type: 'null'
           title: Schema Result Chars
           description: Character cap for one schema or discovery tool result. Default
-            24000.
+            120000.
         summarize_after_tokens:
           anyOf:
           - type: integer
