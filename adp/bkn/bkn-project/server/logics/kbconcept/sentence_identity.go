@@ -43,8 +43,9 @@ func ConfirmSentenceIdentity(object *interfaces.DraftObjectType, decision interf
 	return nil
 }
 
-// An absent key is valid for a single record. The instance builder requires a
-// usable key only when one type produces multiple records in the same sentence.
+// Without a confirmed key, a single record needs no extra configuration.
+// Once confirmed, its key fields require one shared native evidence sentence,
+// even for one record; multiple records also need distinct key values there.
 func SentenceIdentityProperties(object *interfaces.DraftObjectType) ([]string, error) {
 	if !sentenceIdentityRole(object) {
 		return nil, ErrInvalidModel

@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -20,7 +19,7 @@ import (
 )
 
 var ErrAcceptanceHidden = errors.New("acceptance samples expose scores only")
-var sqlField = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
+var previewField = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
 
 type ResultField struct {
 	Name  string `json:"name"`
@@ -94,28 +93,12 @@ func previewGroups(ctx context.Context, draft *interfaces.Draft, plan *interface
 	})
 	return groups
 }
-func sqlString(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
-func quotedField(name string) (string, error) {
-	if !sqlField.MatchString(name) {
-		return "", ErrInvalidBuild
+func previewScope(spec interfaces.DraftDatasetSpec, build *interfaces.KBBuild, fileKey string) (map[string]interfaces.KBResourceFile, error) {
+	for _, logical := range []string{"model_fingerprint", "document_id", "content_version_id"} {
+		if !previewField.MatchString(spec.Layout.Mapping[logical]) {
+			return nil, ErrInvalidBuild
+		}
 	}
-	return "`" + name + "`", nil
-}
-
-func previewScope(spec interfaces.DraftDatasetSpec, build *interfaces.KBBuild, fileKey string) (string, map[string]interfaces.KBResourceFile, error) {
-	fp, err := quotedField(spec.Layout.Mapping["model_fingerprint"])
-	if err != nil {
-		return "", nil, err
-	}
-	doc, err := quotedField(spec.Layout.Mapping["document_id"])
-	if err != nil {
-		return "", nil, err
-	}
-	version, err := quotedField(spec.Layout.Mapping["content_version_id"])
-	if err != nil {
-		return "", nil, err
-	}
-	clauses := []string{}
 	files := map[string]interfaces.KBResourceFile{}
 	for _, step := range build.Files {
 		file := step.File
@@ -124,7 +107,7 @@ func previewScope(spec interfaces.DraftDatasetSpec, build *interfaces.KBBuild, f
 		}
 		if file.SampleRole == "acceptance" {
 			if fileKey != "" {
-				return "", nil, ErrAcceptanceHidden
+				return nil, ErrAcceptanceHidden
 			}
 			continue
 		}
@@ -133,27 +116,23 @@ func previewScope(spec interfaces.DraftDatasetSpec, build *interfaces.KBBuild, f
 		}
 		id, err := DocumentID(file.KnowledgeBaseID, file.FileID)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 		files[id] = file
-		clauses = append(clauses, "("+doc+"="+sqlString(id)+" AND "+version+"="+sqlString(file.ContentVersionID)+")")
 	}
-	if len(clauses) > 200 {
-		return "", nil, &kb.SourceError{StatusCode: 413}
+	if len(files) > 200 {
+		return nil, &kb.SourceError{StatusCode: 413}
 	}
-	if len(clauses) == 0 {
-		return "", files, nil
-	}
-	return fp + "=" + sqlString(build.ModelFingerprint) + " AND (" + strings.Join(clauses, " OR ") + ")", files, nil
+	return files, nil
 }
 
-// Results reads only derived Dataset rows under the current owner's existing
-// Vega query permission. Heldout contents are never exposed by this endpoint.
-func (s *BuildService) Results(ctx context.Context, token, project, id, groupID, fileKey string, offset int, caller interfaces.AccountInfo, vega interfaces.VegaAccess) (*ResultPage, error) {
+// Results reads verified owned Datasets under project ownership and current
+// source permissions. Heldout contents are never exposed by this endpoint.
+func (s *BuildService) Results(ctx context.Context, token, project, id, groupID, fileKey string, offset int, caller interfaces.AccountInfo, _ interfaces.VegaAccess) (*ResultPage, error) {
 	if _, err := s.owner(ctx, token, project, caller); err != nil {
 		return nil, err
 	}
-	if vega == nil || s.Drafts == nil || offset < 0 || offset > 9900 {
+	if s.Drafts == nil || offset < 0 || offset > 9900 {
 		return nil, &kb.SourceError{StatusCode: 400}
 	}
 	r, err := s.Store.Get(ctx, project, id)
@@ -222,35 +201,20 @@ func (s *BuildService) Results(ctx context.Context, token, project, id, groupID,
 	if _, err = hex.DecodeString(spec.ResourceID); err != nil {
 		return nil, ErrInvalidBuild
 	}
-	where, scope, err := previewScope(spec, r.Build, fileKey)
+	scope, err := previewScope(spec, r.Build, fileKey)
 	if err != nil {
 		return nil, err
 	}
-	if where == "" {
+	if len(scope) == 0 {
 		return page, nil
 	}
-	columns := []string{}
-	for _, field := range spec.Layout.Fields {
-		if spec.Layout.Mapping[field.OriginalName] != field.Name {
-			return nil, ErrInvalidBuild
-		}
-		name, err := quotedField(field.Name)
-		if err != nil {
-			return nil, err
-		}
-		columns = append(columns, name)
+	providers, enabled := kb.Lookup()
+	reader, supported := providers.Datasets.(kb.DatasetFileSnapshot)
+	if !enabled || !supported {
+		return nil, kb.ErrUnavailable
 	}
-	query := func(sql string) ([]map[string]any, error) {
-		if err := s.sourcePermission(ctx, token, files); err != nil {
-			return nil, err
-		}
-		return vega.Query(ctx, caller, sql, 20)
-	}
-	statement := fmt.Sprintf("SELECT %s FROM {{%s}} WHERE %s ORDER BY `%s` LIMIT 51 OFFSET %d", strings.Join(columns, ","), spec.ResourceID, where, spec.Layout.Mapping["_id"], offset)
-	if _, err = quotedField(spec.Layout.Mapping["_id"]); err != nil {
-		return nil, err
-	}
-	rows, err := query(statement)
+	guard := func(ctx context.Context) error { return s.sourcePermission(ctx, token, files) }
+	rows, err := previewDatasetRows(ctx, reader, spec, r.Build, scope, offset, guard)
 	if err != nil {
 		return nil, err
 	}
@@ -261,11 +225,7 @@ func (s *BuildService) Results(ctx context.Context, token, project, id, groupID,
 	if len(rows) > 50 {
 		rows = rows[:50]
 	}
-	for _, physical := range rows {
-		row := map[string]any{}
-		for _, field := range spec.Layout.Fields {
-			row[field.OriginalName] = physical[field.Name]
-		}
+	for _, row := range rows {
 		document, ok := row["document_id"].(string)
 		file, exists := scope[document]
 		if !ok || !exists || row["content_version_id"] != file.ContentVersionID || row["model_fingerprint"] != fingerprint {
@@ -295,6 +255,49 @@ func (s *BuildService) Results(ctx context.Context, token, project, id, groupID,
 		}
 	}
 	return page, nil
+}
+
+// Reuse complete native snapshots, in journaled file order and stable row order.
+// Stop once one display page is available; a failed read never becomes a partial
+// successful page. The provider rechecks ownership and the guard on every cursor.
+func previewDatasetRows(ctx context.Context, reader kb.DatasetFileSnapshot, spec interfaces.DraftDatasetSpec, build *interfaces.KBBuild, scope map[string]interfaces.KBResourceFile, offset int, guard func(context.Context) error) ([]map[string]any, error) {
+	result := []map[string]any{}
+	for _, step := range build.Files {
+		document, err := DocumentID(step.File.KnowledgeBaseID, step.File.FileID)
+		if err != nil {
+			return nil, err
+		}
+		file, selected := scope[document]
+		if !selected || file != step.File || file.SampleRole == "acceptance" || step.State != "succeeded" {
+			continue
+		}
+		rows, err := reader.ReadFileRows(ctx, spec, kb.DatasetFileScope{KnowledgeBaseID: file.KnowledgeBaseID, FileID: file.FileID, ContentVersionID: file.ContentVersionID, DocumentID: document, ModelFingerprint: build.ModelFingerprint}, guard)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if id, ok := row["_id"].(string); !ok || id == "" {
+				return nil, ErrInvalidBuild
+			}
+		}
+		slices.SortFunc(rows, func(a, b map[string]any) int { return strings.Compare(a["_id"].(string), b["_id"].(string)) })
+		if offset >= len(rows) {
+			offset -= len(rows)
+			continue
+		}
+		for _, original := range rows[offset:] {
+			row := map[string]any{}
+			for key, value := range original {
+				row[key] = value
+			}
+			result = append(result, row)
+			if len(result) == 51 {
+				return result, nil
+			}
+		}
+		offset = 0
+	}
+	return result, nil
 }
 
 func displayIdentity(ctx context.Context, value any, object *interfaces.DraftObjectType) map[string]any {

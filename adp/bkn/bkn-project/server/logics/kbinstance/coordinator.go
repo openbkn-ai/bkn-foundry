@@ -296,28 +296,7 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 		}
 	}
 	if r.Build.Mode == "acceptance" {
-		total := &AcceptanceCounts{Issues: map[string]int{}}
-		complete := true
-		for _, file := range r.Build.Files {
-			if file.State != "succeeded" || file.Assessment == nil {
-				complete = false
-				break
-			}
-			score := file.Assessment
-			total.Expected += score.Expected
-			total.Predicted += score.Predicted
-			total.Correct += score.Correct
-			total.ExpectedLinks += score.ExpectedLinks
-			total.PredictedLinks += score.PredictedLinks
-			total.CorrectLinks += score.CorrectLinks
-			for issue, count := range score.Issues {
-				total.Issues[issue] += count
-			}
-		}
-		if complete {
-			calculateAcceptance(total)
-			r.Build.Assessment = total
-		}
+		r.Build.Assessment = aggregateAcceptance(r.Build.Files)
 	}
 	r.Identity.Outcome, r.Build.State = outcome, "finishing"
 	return c.save(ctx, r)

@@ -66,3 +66,38 @@ func TestInheritedSourceExecutionUsesActualFileReceipt(t *testing.T) {
 		t.Fatal("mismatched file model name accepted")
 	}
 }
+
+func TestSourceExecutionOptionalNamesDoNotInheritAnotherFilesLabel(t *testing.T) {
+	for _, scenario := range []string{"both_absent", "row_name_only", "file_name_only", "both_matching", "known_conflict"} {
+		t.Run(scenario, func(t *testing.T) {
+			build, _, _, task := extractionFixture(t, "asset", false)
+			build.ModelID, build.Model = task.ModelID, "another-file-label"
+			file := &build.Files[0]
+			file.AgentVersion, file.PromptVersion, file.ModelID = task.AgentVersion, task.PromptVersion, task.ModelID
+			task.Model, file.Model = "", ""
+			if scenario == "row_name_only" || scenario == "both_matching" || scenario == "known_conflict" {
+				task.Model = "actual-label"
+			}
+			if scenario == "file_name_only" || scenario == "both_matching" {
+				file.Model = "actual-label"
+			}
+			if scenario == "known_conflict" {
+				file.Model = "different-label"
+			}
+			raw, err := extractionVersion(task)
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := verifiedSourceExecution(build, 0, raw)
+			if scenario == "known_conflict" {
+				if err == nil {
+					t.Fatal("contradictory known name was accepted")
+				}
+				return
+			}
+			if err != nil || receipt.ModelName != task.Model {
+				t.Fatal("optional model name was rejected or invented", err)
+			}
+		})
+	}
+}
