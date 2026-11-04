@@ -244,20 +244,21 @@ class AgentLimits(BaseModel):
         description=(
             "Tool results of the current question kept for the model: at least "
             "this many, and more while their capped size fits in "
-            "keep_tool_results x data_result_chars. Default 3."
+            "keep_tool_results x data_result_chars, as long as their total stays "
+            "under 120000 characters; the latest result is always kept. Default 3."
         ),
     )
     data_result_chars: Optional[int] = Field(
         default=None,
         ge=500,
         le=200000,
-        description="Character cap for one data tool result. Default 12000.",
+        description="Character cap for one data tool result. Default 60000.",
     )
     schema_result_chars: Optional[int] = Field(
         default=None,
         ge=500,
         le=500000,
-        description="Character cap for one schema or discovery tool result. Default 24000.",
+        description="Character cap for one schema or discovery tool result. Default 120000.",
     )
     summarize_after_tokens: Optional[int] = Field(
         default=None,

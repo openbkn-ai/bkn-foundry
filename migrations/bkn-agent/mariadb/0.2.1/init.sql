@@ -388,7 +388,7 @@ select 'studio_smart_qa',
 - 全程使用用户当前的语言。'
     ) then 'Studio智能问答' else null end,
     'chat', 'studio_smart_qa_prompt', null, '',
-    '[{"type":"context_loader"}]', '[]', '{"max_turns":40,"max_tool_calls":100,"timeout_s":300,"max_output_tokens":16384}', 'draft',
+    '[{"type":"context_loader"}]', '[]', '{"max_turns":40,"max_tool_calls":100,"timeout_s":300,"max_output_tokens":16384}', 'published',
     '266c6a42-6131-4d62-8f39-853e7093701c', '266c6a42-6131-4d62-8f39-853e7093701c', unix_timestamp(now(3)) * 1000, unix_timestamp(now(3)) * 1000
 from dual
 where not exists (select 1 from t_agent where f_agent_id = 'studio_smart_qa');
@@ -717,7 +717,7 @@ select 'cypher_generation',
     ) then 'Cypher生成' else null end,
     'chat', 'cypher_generation_prompt', null, '',
     '[{"type":"context_loader","profile":"full","allowed_tools":["get_kn_detail","search_schema","get_object_types","get_relation_types","search_instance","run_cypher"]}]',
-    '[]', '{"max_turns":20,"max_tool_calls":30,"timeout_s":120,"max_output_tokens":16384}', 'draft',
+    '[]', '{"max_turns":20,"max_tool_calls":30,"timeout_s":120,"max_output_tokens":16384}', 'published',
     '266c6a42-6131-4d62-8f39-853e7093701c', '266c6a42-6131-4d62-8f39-853e7093701c', unix_timestamp(now(3)) * 1000, unix_timestamp(now(3)) * 1000
 from dual
 where not exists (select 1 from t_agent where f_agent_id = 'cypher_generation');
@@ -788,7 +788,7 @@ select 'object_metric_designer',
     ) then 'ObjectMetricDesigner' else null end,
     'chat', 'object_metric_designer_prompt', null, '', '[]', '[]',
     '{"max_turns":6,"max_tool_calls":0,"timeout_s":120,"max_output_tokens":8192}',
-    'draft', '266c6a42-6131-4d62-8f39-853e7093701c',
+    'published', '266c6a42-6131-4d62-8f39-853e7093701c',
     '266c6a42-6131-4d62-8f39-853e7093701c',
     unix_timestamp(now(3)) * 1000, unix_timestamp(now(3)) * 1000
 from dual
@@ -884,7 +884,7 @@ select 'graph_explorer',
     ) then '图探索' else null end,
     'chat', 'graph_explorer_prompt', null, '',
     '[{"type":"context_loader","profile":"full","allowed_tools":[]},{"type":"builtin","provider":"graph_explorer"}]',
-    '[]', '{"max_turns":20,"max_tool_calls":30,"timeout_s":240,"max_output_tokens":16384}', 'draft',
+    '[]', '{"max_turns":20,"max_tool_calls":30,"timeout_s":240,"max_output_tokens":16384}', 'published',
     '266c6a42-6131-4d62-8f39-853e7093701c', '266c6a42-6131-4d62-8f39-853e7093701c', unix_timestamp(now(3)) * 1000, unix_timestamp(now(3)) * 1000
 from dual
 where not exists (select 1 from t_agent where f_agent_id = 'graph_explorer');
