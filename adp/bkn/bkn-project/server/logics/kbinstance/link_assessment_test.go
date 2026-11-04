@@ -6,6 +6,7 @@ package kbinstance
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -74,6 +75,22 @@ func TestLinkAssessmentRejectsMissingTruthAndUnverifiedTargets(t *testing.T) {
 	}
 }
 
+func TestExtraPredictedLinksPreserveMeasuredExtractionAndAggregateScores(t *testing.T) {
+	draft, gold, row := linkAssessmentFixture()
+	extra := kb.DatasetWrite{Spec: row.Spec, Row: map[string]any{"document_id": "doc", "source_record_id": "source-b", "target_record_id": "verified-target-b", "target_identity": map[string]any{"number": "B"}}}
+	previous := &AcceptanceCounts{Expected: 20, Predicted: 21, Correct: 20, Issues: map[string]int{"unexpected_or_incorrect": 1}}
+	score, err := assessLinkWrites(draft, gold, []kb.DatasetWrite{row, extra}, previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := aggregateAcceptance([]interfaces.KBFileBuild{{State: "succeeded", Assessment: score}})
+	for _, measured := range []*AcceptanceCounts{score, total} {
+		if measured.Precision == nil || *measured.Precision != 20.0/21 || measured.Recall == nil || *measured.Recall != 1 || measured.Linking == nil || *measured.Linking != 1 || !measured.Passed || measured.ExpectedLinks != 1 || measured.PredictedLinks != 2 || measured.CorrectLinks != 1 || measured.Issues["unexpected_or_incorrect"] != 2 {
+			t.Fatal("extra links erased measured metrics or escaped issue accounting", measured)
+		}
+	}
+}
+
 func TestLinkQualityMeasuresConfirmedInDocumentAssociations(t *testing.T) {
 	for _, target := range []string{"line-a", "line-b"} {
 		draft := &interfaces.Draft{Items: interfaces.DraftItems{RelationTypes: []*interfaces.DraftRelationType{
@@ -86,6 +103,22 @@ func TestLinkQualityMeasuresConfirmedInDocumentAssociations(t *testing.T) {
 		score, err := assessLinkWrites(draft, expected, actual, &AcceptanceCounts{Issues: map[string]int{}})
 		if err != nil || score.ExpectedLinks != 1 || score.PredictedLinks != 1 || (score.CorrectLinks == 1) != (target == "line-a") {
 			t.Fatal("in-document associations or evidence boundary scored incorrectly", score, err)
+		}
+	}
+}
+
+func TestLinkAssessmentUsesTheLinkersTypedBusinessIdentity(t *testing.T) {
+	for _, pair := range [][2]any{{"001", json.Number("1")}, {json.Number("1.0"), json.Number("1")}, {"001", "001"}} {
+		draft, gold, row := linkAssessmentFixture()
+		gold[0].Row["claim_value"] = pair[0]
+		row.Row["target_identity"] = map[string]any{"number": pair[1]}
+		resolution, err := ResolveLinks("network", []LinkSource{{ID: "source-a", Identity: pair[0]}}, []LinkTarget{{Identity: pair[1], RecordID: "verified-target-a"}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		score, err := assessLinkWrites(draft, gold, []kb.DatasetWrite{row}, &AcceptanceCounts{Issues: map[string]int{}})
+		if err != nil || score.CorrectLinks != len(resolution.Linked) {
+			t.Fatal("assessment and linker disagree on identity type/normalization", pair, resolution, score, err)
 		}
 	}
 }
