@@ -54,8 +54,9 @@ paths:
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
         - name: limit
+          description: Page size from 1 to 1000. Use -1 to disable pagination. Defaults to 20.
           in: query
-          schema: { type: integer, default: 20 }
+          schema: { type: integer, minimum: -1, maximum: 1000, default: 20 }
         - name: sort
           description: Sort field. Tasks with `start_time` or `finish_time` equal to `0` are sorted as ordinary numeric values.
           in: query
@@ -223,7 +224,10 @@ components:
           description: >-
             JSON-encoded Agent result. Resource results may include
             warning_details entries with stable code and params fields in
-            addition to legacy free-text warnings.
+            addition to legacy free-text warnings. Resource and field results may
+            carry an optional api_name (snake_case, ^[a-z][a-z0-9_]{0,39}$); it is
+            written back only when the resource or field has none yet and the value
+            is valid and unique among the fields, otherwise it is skipped.
         confidence_threshold: { type: number, format: double }
         confidence: { type: number, format: double }
         confidence_detail_json:

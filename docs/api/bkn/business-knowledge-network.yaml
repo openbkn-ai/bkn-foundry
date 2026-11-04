@@ -361,13 +361,35 @@ paths:
       description: |
         Internal, tokenless resource catalog for authorization configuration.
         It intentionally bypasses user-resource visibility filtering and returns
-        only knowledge-network IDs and names from the main branch. It must not
-        be exposed through an external ingress; cluster network reachability is
-        the access boundary.
+        only IDs and names from the main branch: knowledge networks by default, or
+        the child resources of one knowledge network when resource_type names a
+        child type. It must not be exposed through an external ingress; cluster
+        network reachability is the access boundary.
       security: []
       parameters:
+        - name: resource_type
+          description: |
+            Resource type to list. Empty or knowledge_network lists knowledge networks. The child types
+            object_type, relation_type, action_type, concept_group and metric list the children of the
+            knowledge network given by parent_id; any other value is rejected with 400. Child entry ids
+            have the form "{parent_id}/{child_id}".
+          schema:
+            type: string
+            enum: [knowledge_network, object_type, relation_type, action_type, concept_group, metric]
+          in: query
+        - name: parent_type
+          description: Required for child resource types and must be knowledge_network. Ignored when listing knowledge networks.
+          schema:
+            type: string
+            enum: [knowledge_network]
+          in: query
+        - name: parent_id
+          description: Required for child resource types. ID of the parent knowledge network. Ignored when listing knowledge networks.
+          schema:
+            type: string
+          in: query
         - name: name
-          description: Optional fuzzy match against the knowledge-network name.
+          description: Optional fuzzy match against the name of the listed resources.
           schema:
             type: string
           in: query
@@ -407,6 +429,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthorizationResourceList"
+        "400":
+          description: resource_type is invalid, or parent_type is not knowledge_network or parent_id is missing for a child resource type.
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/overview-graph:
     get:
       summary: Get a bounded ontology overview graph
@@ -622,8 +646,8 @@ components:
           type: string
         color:
           type: string
-        indexed:
-          type: boolean
+        index_status:
+          $ref: ./object-type.yaml#/components/schemas/ObjectTypeIndexStatus
         degree:
           type: integer
           minimum: 0
@@ -854,9 +878,6 @@ components:
         - type
         - comment
         - mapped_field
-        - index
-        - fulltext_config
-        - vector_config
       type: object
       properties:
         name:
@@ -866,7 +887,7 @@ components:
           description: Property display name
           type: string
         type:
-          description: Property data type. In addition to view field types, supports metric, objective, event, trace, log, and operator.
+          description: Property data type, matching the type of the mapped view field.
           type: string
         comment:
           description: Property description
@@ -874,37 +895,6 @@ components:
         mapped_field:
           description: Field name mapped to the data source
           type: string
-        index:
-          description: Whether indexing is enabled. Defaults to true.
-          type: boolean
-        fulltext_config:
-          $ref: "#/components/schemas/FulltextConfig"
-          description: Full-text index configuration
-        vector_config:
-          $ref: "#/components/schemas/VectorConfig"
-          description: Vector index configuration
-    FulltextConfig:
-      description: Full-text index configuration
-      required:
-        - analyzer
-        - field_keyword
-      type: object
-      properties:
-        analyzer:
-          description: Analyzer ID. Available values come from fulltext_analyzers returned by GET /api/vega-backend/v1/index-capabilities and depend on the cluster capabilities.
-          type: string
-        field_keyword:
-          description: Whether to retain the original string for exact matching. Defaults to false.
-          type: boolean
-    VectorConfig:
-      description: Vector index configuration
-      required:
-        - dimension
-      type: object
-      properties:
-        dimension:
-          description: Vector dimension
-          type: integer
     LogicProperty:
       description: Logic properties
       required:
@@ -920,14 +910,11 @@ components:
           description: Property display name
           type: string
         type:
-          description: Property data type. In addition to view field types, supports metric, objective, event, trace, log, and operator.
+          description: Logic property type. Only tool is supported.
           type: string
         comment:
           description: Property description
           type: string
-        index:
-          description: Whether indexing is enabled. Defaults to true.
-          type: boolean
         data_source:
           $ref: "#/components/schemas/DataSource"
           description: Logic source
@@ -1102,10 +1089,10 @@ components:
           description: "Maximum path length, not greater than 5."
           type: integer
         direction:
-          description: "Direction: forward, reverse, or bidirectional"
+          description: "Direction: forward, backward, or bidirectional"
           enum:
             - forward
-            - reverse
+            - backward
             - bidirectional
           type: string
         path_select_policy:
@@ -1120,79 +1107,11 @@ components:
         id:
           description: id
           type: string
-    ReqBranch:
-      description: Branch creation information
-      required:
-        - name
-        - base_version
-      type: object
-      properties:
-        id:
-          description: Branch ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
-          type: string
-        name:
-          description: Branch name. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
-          type: string
-        tags:
-          description: Tags used for business identification
-          type: array
-          items:
-            type: string
-        comment:
-          description: Comment
-          type: string
-        base_version:
-          description: Source version
-          type: string
-    UpdateBranch:
-      description: Branch update information. Only tags and comment can be modified.
-      type: object
-      properties:
-        tags:
-          description: Tags used for business identification
-          type: array
-          items:
-            type: string
-        comment:
-          description: Comment
-          type: string
-    Branch:
-      description: Branch information
-      required:
-        - base_version
-        - comment
-        - id
-        - kn_id
-        - name
-        - tags
-      type: object
-      properties:
-        id:
-          description: Branch ID
-          type: string
-        name:
-          description: Branch name
-          type: string
-        tags:
-          description: Tags
-          type: array
-          items:
-            type: string
-        comment:
-          description: Comment
-          type: string
-        base_version:
-          description: Source version
-          type: string
-        kn_id:
-          description: Business knowledge network ID
-          type: string
     ReqConceptGroup:
       description: Concept group creation information
       required:
         - name
         - branch
-        - base_version
       type: object
       properties:
         id:
@@ -1215,9 +1134,6 @@ components:
         branch:
           description: Branch ID
           type: string
-        base_version:
-          description: Source version
-          type: string
         object_type_ids:
           description: Object type list included in the concept group
           type: array
@@ -1236,7 +1152,6 @@ components:
     UpdateConceptGroup:
       description: Concept group update information
       required:
-        - base_version
         - branch
       type: object
       properties:
@@ -1255,9 +1170,6 @@ components:
         branch:
           description: Branch ID
           type: string
-        base_version:
-          description: Source version
-          type: string
         object_type_ids:
           description: Object type list included in the concept group
           type: array
@@ -1273,21 +1185,6 @@ components:
           type: array
           items:
             type: string
-    ListBranches:
-      description: Branch list
-      required:
-        - entries
-        - total_count
-      type: object
-      properties:
-        entries:
-          description: Entry list
-          type: array
-          items:
-            $ref: "#/components/schemas/Branch"
-        total_count:
-          description: Total count
-          type: integer
     ListObjectTypes:
       description: Object type list
       required:
@@ -1381,7 +1278,6 @@ components:
       description: Object type creation information
       required:
         - branch
-        - base_version
         - name
         - primary_keys
         - display_key
@@ -1509,7 +1405,6 @@ components:
         - display_key
         - data_properties
         - branch
-        - base_version
       type: object
       properties:
         name:
@@ -1564,7 +1459,6 @@ components:
       required:
         - name
         - branch
-        - base_version
         - type
       type: object
       properties:
@@ -1628,7 +1522,6 @@ components:
       required:
         - name
         - branch
-        - base_version
         - source_object_type
         - target_object_type
       type: object
@@ -1692,7 +1585,6 @@ components:
         - object_type
         - concept_type
         - branch
-        - base_version
         - object_type_id
       type: object
       properties:
@@ -1781,7 +1673,6 @@ components:
         - object_type
         - concept_type
         - branch
-        - base_version
         - object_type_id
       type: object
       properties:

@@ -498,6 +498,14 @@ paths:
         - name: kn_id
           in: path
           required: true
+        - name: x-http-method-override
+          description: Must be GET. The request is sent as POST so the query can be carried in the body.
+          schema:
+            enum:
+              - GET
+            type: string
+          in: header
+          required: true
         - name: branch
           description: Branch. Defaults to main.
           schema:
@@ -1311,9 +1319,6 @@ components:
         - type
         - comment
         - mapped_field
-        - index
-        - fulltext_config
-        - vector_config
       type: object
       properties:
         name:
@@ -1323,7 +1328,7 @@ components:
           description: Property display name
           type: string
         type:
-          description: Property data type. In addition to view field types, metric, objective, event, trace, log, and operator are supported.
+          description: Property data type, matching the type of the mapped view field.
           type: string
         comment:
           description: Property description
@@ -1331,28 +1336,6 @@ components:
         mapped_field:
           $ref: "#/components/schemas/ViewField"
           description: Field name mapped to the data source
-        index:
-          description: Whether to enable indexing. Defaults to true.
-          type: boolean
-        fulltext_config:
-          $ref: "#/components/schemas/FulltextConfig"
-          description: Full-text index configuration
-        vector_config:
-          $ref: "#/components/schemas/VectorConfig"
-          description: Vector index configuration
-    FulltextConfig:
-      description: Full-text index configuration
-      required:
-        - analyzer
-        - field_keyword
-      type: object
-      properties:
-        analyzer:
-          description: Analyzer ID. Available values come from fulltext_analyzers returned by GET /api/vega-backend/v1/index-capabilities and depend on the cluster capabilities.
-          type: string
-        field_keyword:
-          description: Whether to retain the original string for exact matching. Defaults to false.
-          type: boolean
     ViewField:
       description: View field information
       required:
@@ -1368,15 +1351,6 @@ components:
         type:
           description: View field type. Returned when retrieving details.
           type: string
-    VectorConfig:
-      description: Vector index configuration
-      required:
-        - dimension
-      type: object
-      properties:
-        dimension:
-          description: Vector dimension
-          type: integer
     LogicProperty:
       description: Logical properties
       required:
@@ -1392,14 +1366,11 @@ components:
           description: Property display name
           type: string
         type:
-          description: Property data type. In addition to view field types, metric, objective, event, trace, log, and operator are supported.
+          description: Logic property type. Only tool is supported.
           type: string
         comment:
           description: Property description
           type: string
-        index:
-          description: Whether to enable indexing. Defaults to true.
-          type: boolean
         data_source:
           $ref: "#/components/schemas/LogicSource"
           description: Logical source
@@ -1412,17 +1383,25 @@ components:
       description: Data source
       required:
         - type
-        - id
+        - box_id
+        - tool_id
       type: object
       properties:
         type:
           description: Data source type
-          enum:
-            - metric
-            - operator
+          enum: [tool]
           type: string
         id:
-          description: Data sourceID
+          description: Optional external source ID.
+          type: string
+        box_id:
+          description: Toolbox ID. Required when type is tool.
+          type: string
+        tool_id:
+          description: Tool ID. Required when type is tool.
+          type: string
+        result_path:
+          description: Optional JSONPath for the tool response. Configurable when type is tool; the full response is returned when omitted.
           type: string
         name:
           description: Name. Returned when retrieving details.
@@ -1490,7 +1469,6 @@ components:
       required:
         - name
         - branch
-        - base_version
       type: object
       properties:
         id:
@@ -1578,7 +1556,6 @@ components:
       required:
         - name
         - branch
-        - base_version
         - source_object_type
         - target_object_type
       type: object
@@ -2057,7 +2034,7 @@ components:
           description: "Direction of the current edge relative to the relation type: forward, backward, or bidirectional."
           enum:
             - forward
-            - reverse
+            - backward
             - bidirectional
           type: string
     RelationTypeDetails:
@@ -2182,7 +2159,7 @@ components:
           description: "Direction: forward, backward, or bidirectional."
           enum:
             - forward
-            - reverse
+            - backward
             - bidirectional
           type: string
     condition_or:

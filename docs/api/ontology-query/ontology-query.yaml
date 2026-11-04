@@ -287,11 +287,6 @@ paths:
                           name: component
                           type: varchar
                           display_name: component
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: id
                         display_name: id
                         type: int
@@ -300,11 +295,6 @@ paths:
                           name: id
                           type: int
                           display_name: id
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: node_id
                         display_name: node_id
                         type: varchar
@@ -313,11 +303,6 @@ paths:
                           name: node_id
                           type: varchar
                           display_name: node_id
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_cluster_id
                         display_name: pod_cluster_id
                         type: varchar
@@ -326,11 +311,6 @@ paths:
                           name: pod_cluster_id
                           type: varchar
                           display_name: pod_cluster_id
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_create_time
                         display_name: pod_create_time
                         type: varchar
@@ -339,11 +319,6 @@ paths:
                           name: pod_create_time
                           type: varchar
                           display_name: pod_create_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_delete_time
                         display_name: pod_delete_time
                         type: varchar
@@ -352,11 +327,6 @@ paths:
                           name: pod_delete_time
                           type: varchar
                           display_name: pod_delete_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_ip
                         display_name: pod_ip
                         type: varchar
@@ -365,11 +335,6 @@ paths:
                           name: pod_ip
                           type: varchar
                           display_name: pod_ip
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_name
                         display_name: pod_name
                         type: varchar
@@ -378,11 +343,6 @@ paths:
                           name: pod_name
                           type: varchar
                           display_name: pod_name
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_namespace
                         display_name: pod_namespace
                         type: varchar
@@ -391,11 +351,6 @@ paths:
                           name: pod_namespace
                           type: varchar
                           display_name: pod_namespace
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_node_name
                         display_name: pod_node_name
                         type: varchar
@@ -404,11 +359,6 @@ paths:
                           name: pod_node_name
                           type: varchar
                           display_name: pod_node_name
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_port
                         display_name: pod_port
                         type: varchar
@@ -417,11 +367,6 @@ paths:
                           name: pod_port
                           type: varchar
                           display_name: pod_port
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_status
                         display_name: pod_status
                         type: varchar
@@ -430,11 +375,6 @@ paths:
                           name: pod_status
                           type: varchar
                           display_name: pod_status
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
@@ -443,11 +383,6 @@ paths:
                           name: s_create_time
                           type: timestamp
                           display_name: s_create_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
@@ -456,11 +391,6 @@ paths:
                           name: s_update_time
                           type: timestamp
                           display_name: s_update_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: service_ip
                         display_name: service_ip
                         type: varchar
@@ -469,11 +399,6 @@ paths:
                           name: service_ip
                           type: varchar
                           display_name: service_ip
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: service_name
                         display_name: service_name
                         type: varchar
@@ -482,11 +407,6 @@ paths:
                           name: service_name
                           type: varchar
                           display_name: service_name
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: timestamp
                         display_name: timestamp
                         type: timestamp
@@ -495,17 +415,11 @@ paths:
                           name: timestamp
                           type: timestamp
                           display_name: timestamp
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       logic_properties:
                       - name: tool_test
                         display_name: tool_test
                         type: tool
                         comment: pod的工具
-                        index: false
                         data_source:
                           type: tool
                           id: 657a114e-2061-4314-8853-f84afecc5113
@@ -515,34 +429,10 @@ paths:
                         - name: string
                           value_from: property
                           value: pod_ip
-                      - name: metric_test
-                        display_name: metric_test
-                        type: metric
-                        comment: pod的指标
-                        index: false
-                        data_source:
-                          type: metric
-                          id: pod_metric
-                        parameters:
-                        - name: pod_ip
-                          value_from: property
-                          value: pod_ip
-                        - name: pod_name
-                          value_from: property
-                          value: pod_name
-                        - name: instant
-                          value_from: input
-                        - name: start
-                          value_from: input
-                        - name: end
-                          value_from: input
-                        - name: step
-                          value_from: input
                       - name: a_action
                         display_name: _action
                         type: varchar
                         comment: ""
-                        index: false
                         data_source:
                           type: ""
                           id: ""
@@ -570,19 +460,6 @@ paths:
                         has_any_unfilled_params: false
                         parameters:
                           string: 192.169.37.17
-                        dynamic_params: {}
-                      metric_test:
-                        property_type: metric
-                        mapping_source_id: pod_metric
-                        has_any_unfilled_params: false
-                        parameters:
-                          filters:
-                          - name: pod_ip
-                            operation: ""
-                            value: 192.169.37.17
-                          - name: pod_name
-                            operation: ""
-                            value: aladdin-tika-deploy-6564c49fbb-2nb9k
                         dynamic_params: {}
                       id: 1471
                       pod_delete_time: ""
@@ -617,11 +494,6 @@ paths:
                           name: component
                           type: varchar
                           display_name: component
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: id
                         display_name: id
                         type: int
@@ -630,11 +502,6 @@ paths:
                           name: id
                           type: int
                           display_name: id
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: node_id
                         display_name: node_id
                         type: varchar
@@ -643,11 +510,6 @@ paths:
                           name: node_id
                           type: varchar
                           display_name: node_id
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_cluster_id
                         display_name: pod_cluster_id
                         type: varchar
@@ -656,11 +518,6 @@ paths:
                           name: pod_cluster_id
                           type: varchar
                           display_name: pod_cluster_id
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_create_time
                         display_name: pod_create_time
                         type: varchar
@@ -669,11 +526,6 @@ paths:
                           name: pod_create_time
                           type: varchar
                           display_name: pod_create_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_delete_time
                         display_name: pod_delete_time
                         type: varchar
@@ -682,11 +534,6 @@ paths:
                           name: pod_delete_time
                           type: varchar
                           display_name: pod_delete_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_ip
                         display_name: pod_ip
                         type: varchar
@@ -695,11 +542,6 @@ paths:
                           name: pod_ip
                           type: varchar
                           display_name: pod_ip
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_name
                         display_name: pod_name
                         type: varchar
@@ -708,11 +550,6 @@ paths:
                           name: pod_name
                           type: varchar
                           display_name: pod_name
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_namespace
                         display_name: pod_namespace
                         type: varchar
@@ -721,11 +558,6 @@ paths:
                           name: pod_namespace
                           type: varchar
                           display_name: pod_namespace
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_node_name
                         display_name: pod_node_name
                         type: varchar
@@ -734,11 +566,6 @@ paths:
                           name: pod_node_name
                           type: varchar
                           display_name: pod_node_name
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_port
                         display_name: pod_port
                         type: varchar
@@ -747,11 +574,6 @@ paths:
                           name: pod_port
                           type: varchar
                           display_name: pod_port
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: pod_status
                         display_name: pod_status
                         type: varchar
@@ -760,11 +582,6 @@ paths:
                           name: pod_status
                           type: varchar
                           display_name: pod_status
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: s_create_time
                         display_name: s_create_time
                         type: timestamp
@@ -773,11 +590,6 @@ paths:
                           name: s_create_time
                           type: timestamp
                           display_name: s_create_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: s_update_time
                         display_name: s_update_time
                         type: timestamp
@@ -786,11 +598,6 @@ paths:
                           name: s_update_time
                           type: timestamp
                           display_name: s_update_time
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: service_ip
                         display_name: service_ip
                         type: varchar
@@ -799,11 +606,6 @@ paths:
                           name: service_ip
                           type: varchar
                           display_name: service_ip
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: service_name
                         display_name: service_name
                         type: varchar
@@ -812,11 +614,6 @@ paths:
                           name: service_name
                           type: varchar
                           display_name: service_name
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       - name: timestamp
                         display_name: timestamp
                         type: timestamp
@@ -825,17 +622,11 @@ paths:
                           name: timestamp
                           type: timestamp
                           display_name: timestamp
-                        fulltext_config:
-                          analyzer: ""
-                          field_keyword: false
-                        vector_config:
-                          dimension: 0
                       logic_properties:
                       - name: tool_test
                         display_name: tool_test
                         type: tool
                         comment: pod的工具
-                        index: false
                         data_source:
                           type: tool
                           id: 657a114e-2061-4314-8853-f84afecc5113
@@ -845,34 +636,10 @@ paths:
                         - name: string
                           value_from: property
                           value: pod_ip
-                      - name: metric_test
-                        display_name: metric_test
-                        type: metric
-                        comment: pod的指标
-                        index: false
-                        data_source:
-                          type: metric
-                          id: pod_metric
-                        parameters:
-                        - name: pod_ip
-                          value_from: property
-                          value: pod_ip
-                        - name: pod_name
-                          value_from: property
-                          value: pod_name
-                        - name: instant
-                          value_from: input
-                        - name: start
-                          value_from: input
-                        - name: end
-                          value_from: input
-                        - name: step
-                          value_from: input
                       - name: a_action
                         display_name: _action
                         type: varchar
                         comment: ""
-                        index: false
                         data_source:
                           type: ""
                           id: ""
@@ -900,19 +667,6 @@ paths:
                         has_any_unfilled_params: false
                         parameters:
                           string: 192.169.37.17
-                        dynamic_params: {}
-                      metric_test:
-                        property_type: metric
-                        mapping_source_id: pod_metric
-                        has_any_unfilled_params: false
-                        parameters:
-                          filters:
-                          - name: pod_ip
-                            operation: ""
-                            value: 192.169.37.17
-                          - name: pod_name
-                            operation: ""
-                            value: aladdin-tika-deploy-6564c49fbb-2nb9k
                         dynamic_params: {}
                       id: 1471
                       pod_delete_time: ""
@@ -2404,32 +2158,8 @@ paths:
                   properties:
                   - pod_name
                   - pod_status
-                  - metric_test
                   - a_action
                   dynamic_params:
-                    metric_test:
-                      start: 1731460342241
-                      end: 1762996342241
-                      instant: false
-                      step: month
-                      analysis_dimensions:
-                      - pod_name
-                      - pod_node_name
-                      order_by_fields:
-                      - name: __value
-                        type: number
-                        direction: desc
-                      having_condition:
-                        field: __value
-                        operation: '>'
-                        value: 100
-                      metrics:
-                        type: sameperiod
-                        sameperiod_config:
-                          method:
-                            - growth_rate
-                          offset: 1
-                          time_granularity: day
                     a_action:
                       Authorization: aasssdffgg
         required: true
@@ -2484,127 +2214,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/ObjectPropertiesValuesResponse'
               examples:
-                请求指标属性和工具属性:
+                请求工具属性:
                   value:
                     datas:
                     - id: 1479
                       pod_status: Succeeded
                       pod_name: communication-config-679xd
                       pod_ip: 192.169.37.60
-                      metric_test:
-                        model:
-                          unit_type: numUnit
-                          unit: none
-                        datas:
-                        - labels:
-                            pod_name: ar-k8s-event-executor-6ffcc7884c-9wgsb
-                            pod_node_name: node-111-175
-                            pod_ip: 192.169.37.60
-                          times:
-                          - 1730390400000
-                          - 1732982400000
-                          - 1735660800000
-                          - 1738339200000
-                          - 1740758400000
-                          - 1743436800000
-                          - 1746028800000
-                          - 1748707200000
-                          - 1751299200000
-                          - 1753977600000
-                          - 1756656000000
-                          - 1759248000000
-                          - 1761926400000
-                          values:
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - 1
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                        - labels:
-                            pod_name: communication-config-679xd
-                            pod_node_name: node-111-175
-                            pod_ip: 192.169.37.60
-                          times:
-                          - 1730390400000
-                          - 1732982400000
-                          - 1735660800000
-                          - 1738339200000
-                          - 1740758400000
-                          - 1743436800000
-                          - 1746028800000
-                          - 1748707200000
-                          - 1751299200000
-                          - 1753977600000
-                          - 1756656000000
-                          - 1759248000000
-                          - 1761926400000
-                          values:
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - 1
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                        step: month
-                        is_variable: false
-                        is_calendar: false
                       a_action: {}
                     - id: 1480
-                      metric_test:
-                        model:
-                          unit_type: numUnit
-                          unit: none
-                        datas:
-                        - labels:
-                            pod_ip: 192.169.37.72
-                            pod_name: content-data-lake-dm-pre-verify-gr2gj
-                            pod_node_name: node-111-175
-                          times:
-                          - 1730390400000
-                          - 1732982400000
-                          - 1735660800000
-                          - 1738339200000
-                          - 1740758400000
-                          - 1743436800000
-                          - 1746028800000
-                          - 1748707200000
-                          - 1751299200000
-                          - 1753977600000
-                          - 1756656000000
-                          - 1759248000000
-                          - 1761926400000
-                          values:
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                          - 1
-                          - null
-                          - null
-                          - null
-                          - null
-                          - null
-                        step: month
-                        is_variable: false
-                        is_calendar: false
                       pod_name: content-data-lake-dm-pre-verify-gr2gj
                       pod_ip: 192.169.37.72
                       pod_status: Succeeded
@@ -3181,19 +2799,6 @@ components:
           type: array
           items:
             type: string
-    FulltextConfig:
-      description: 全文索引的配置
-      required:
-      - analyzer
-      - field_keyword
-      type: object
-      properties:
-        analyzer:
-          description: 分词器 ID。可用值由 GET /api/vega-backend/v1/index-capabilities 的 fulltext_analyzers 返回，取决于集群实际支持的分词器。
-          type: string
-        field_keyword:
-          description: 是否保留原始字符串，保留原始字符串可用于精确匹配。默认是false
-          type: boolean
     DataSource:
       description: 数据来源
       required:
@@ -3212,8 +2817,10 @@ components:
         name:
           description: 名称。查看详情时返回。
           type: string
-    MetricProperty:
-      description: 指标属性
+    ToolProperty:
+      description: |
+        工具型逻辑属性在实例数据中的取值：不是计算结果，而是调用该工具所需的参数。
+        实际取值需通过属性查询接口（/objects/properties）传入 dynamic_params 计算。
       required:
       - property_type
       - mapping_source_id
@@ -3223,217 +2830,25 @@ components:
       type: object
       properties:
         property_type:
-          description: 属性类型
+          description: 逻辑属性类型，当前只支持 tool。
           enum:
-          - metric
+          - tool
           type: string
         mapping_source_id:
-          description: 映射的指标模型id
+          description: 预留字段，当前恒为空字符串。
           type: string
         has_any_unfilled_params:
-          description: 是否有未填充的参数，默认是false
+          description: 预留字段，当前恒为 false；是否需要动态参数以 dynamic_params 是否为空为准。
           type: boolean
         parameters:
-          $ref: '#/components/schemas/MetricFilters'
-          description: 实例化了的参数
+          description: |
+            已由对象属性值或常量填好的参数。参数名含 `.` 时展开为嵌套对象（`a.b` → `{"a": {"b": ...}}`）。
+          type: object
+          additionalProperties: true
         dynamic_params:
-          $ref: '#/components/schemas/MetricRequiredParams'
-          description: 动态参数
-    MetricFilters:
-      description: 指标模型属性的计算参数
-      required:
-      - Filters
-      type: object
-      properties:
-        Filters:
-          description: 指标模型过滤条件
-          type: array
-          items:
-            $ref: '#/components/schemas/Filter'
-    Filter:
-      description: 过滤条件
-      required:
-      - name
-      - value
-      - operation
-      type: object
-      properties:
-        name:
-          description: 过滤字段名称
-          type: string
-        value:
-          description: "过滤的值。当 operation 是 in 时，value 为任意基本类型的数组，且长度大于等于1；当 operation\
-            \ 是 = 或 != 时，value 为任意基本类型的值；当 operation 是 range 时，value 是个由范围的下边界和上边界\
-            组成的长度为 2 的数值型数组。当 operation 是 out_range 时, value 是一个长度为 2 的数组，对应过滤条件时是\
-            \ 字段 < value[0] || 字段 >= value[1]"
-          type: array
-          items: {}
-        operation:
-          description: 操作符。
-          enum:
-          - in
-          - '='
-          - '!='
-          - range
-          - out_range
-          - like
-          - not_like
-          - '>'
-          - '>='
-          - '<'
-          - '<='
-          type: string
-    MetricRequiredParams:
-      description: 指标模型查询的动态参数
-      required:
-      - instant
-      - start
-      - end
-      type: object
-      properties:
-        instant:
-          description: 是否即时查询。默认为false，非即时查询，即为趋势查询
-          type: boolean
-        start:
-          description: 开始时间戳
-          type: integer
-        end:
-          description: 结束时间戳
-          type: integer
-    MetricPropertyDynamicParams:
-      description: |
-        指标属性的 dynamic_params 结构。当属性是指标属性时，dynamic_params 应遵循此 schema。
-        包含时间参数、分析参数以及指标属性配置中定义的其他动态参数。
-      type: object
-      properties:
-        start:
-          description: "指标查询的开始时间。start=< unix_timestamp >，单位到毫秒。例如: 1646360670123"
-          format: int64
-          type: integer
-        end:
-          description: "指标查询的结束时间。end=< unix_timestamp >，单位到毫秒。例如: 1646471470123"
-          format: int64
-          type: integer
-        instant:
-          description: |
-            是否是即时查询。可选，默认为 false。当 instant = true 时，表示即时查询；当 instant = false 时，表示范围查询。
-          type: boolean
-        step:
-          description: |
-            范围查询的步长。当 instant 为 false 时，建议提供。step=< time_durations >，用一个数字，后面跟时间单位来定义。
-            若不填单位，则默认按秒计算。时间单位可以是如下之一：ms - 毫秒；s - 秒；m - 分钟；h - 小时；d - 天；w - 周；y - 年；
-          type: string
-        analysis_dimensions:
-          description: 分析维度。即在指标查询时可指定的下钻维度集合
-          type: array
-          items:
-            type: string
-        order_by_fields:
-          description: 排序字段。即在指标查询时可指定的排序字段集合
-          type: array
-          items:
-            $ref: '#/components/schemas/OrderField'
-        having_condition:
-          $ref: '#/components/schemas/HavingCondition'
-          description: having值过滤。即在指标查询时可指定的值过滤的过滤条件
-        metrics:
-          $ref: '#/components/schemas/Metrics'
-          description: 同环比、占比分析
-      additionalProperties:
-            oneOf:
-            - type: string
-            - type: number
-            - type: boolean
-            - type: integer
-    OrderField:
-      description: 排序字段
-      required:
-      - name
-      - direction
-      type: object
-      properties:
-        name:
-          description: 字段名
-          type: string
-        direction:
-          description: 排序方向
-          enum:
-          - asc
-          - desc
-          type: string
-    HavingCondition:
-      description: having值数据过滤
-      required:
-      - operation
-      - value
-      - field
-      type: object
-      properties:
-        field:
-          description: 字段名称。只有 __value
-          enum:
-          - __value
-          type: string
-        operation:
-          description: 操作符
-          enum:
-          - ==
-          - '!='
-          - '>'
-          - '>='
-          - <
-          - <=
-          - in
-          - not_in
-          - range
-          - out_range
-          type: string
-        value:
-          description: 字段值
-    Metrics:
-      description: 同环比、占比分析
-      required:
-      - type
-      type: object
-      properties:
-        type:
-          description: 同环比占比类型。同环比：sameperiod；占比：proportion
-          enum:
-          - sameperiod
-          - proportion
-          type: string
-        sameperiod_config:
-          $ref: '#/components/schemas/SameperiodConfig'
-          description: 同环比配置
-    SameperiodConfig:
-      description: 同环比配置
-      required:
-      - offset
-      - time_granularity
-      type: object
-      properties:
-        method:
-          description: 计算方法，增长值或增长率
-          type: array
-          default:
-            - growth_value
-            - growth_rate
-          items:
-            type: string
-            enum:
-              - growth_value
-              - growth_rate
-        offset:
-          description: 偏移量
-          type: integer
-        time_granularity:
-          description: 时间粒度
-          enum:
-          - day
-          - month
-          - quarter
-          - year
-          type: string
+          description: 需调用方在属性查询时通过 dynamic_params 传入的参数，value 为参数定义；参数名含 `.` 时同样展开为嵌套对象。
+          type: object
+          additionalProperties: true
     ObjectTypeDetail:
       description: 节点（对象类）信息
       required:
@@ -3550,9 +2965,6 @@ components:
       - type
       - comment
       - mapped_field
-      - index
-      - fulltext_config
-      - vector_config
       type: object
       properties:
         name:
@@ -3562,7 +2974,7 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool
+          description: 属性数据类型，与所映射视图字段的类型一致
           type: string
         comment:
           description: 属性描述
@@ -3570,15 +2982,6 @@ components:
         mapped_field:
           $ref: '#/components/schemas/ViewField'
           description: 属性映射到数据来源中的字段名
-        index:
-          description: 是否开启索引，默认是true
-          type: boolean
-        fulltext_config:
-          $ref: '#/components/schemas/FulltextConfig'
-          description: 全文索引的配置
-        vector_config:
-          $ref: '#/components/schemas/VectorConfig'
-          description: 向量索引的配置
     ViewField:
       description: 视图字段信息
       required:
@@ -3594,15 +2997,6 @@ components:
         type:
           description: 视图字段类型，查看时有此字段
           type: string
-    VectorConfig:
-      description: 向量索引的配置
-      required:
-      - dimension
-      type: object
-      properties:
-        dimension:
-          description: 向量维度
-          type: integer
     LogicProperty:
       description: 逻辑属性
       required:
@@ -3618,13 +3012,13 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool
+          description: 逻辑属性类型，当前只支持 tool。
           type: string
         comment:
           description: 属性描述
           type: string
         index:
-          description: 是否开启索引，默认是true
+          description: 已废弃。bkn-backend 不再下发该字段，此处恒为 false，请勿依赖。
           type: boolean
         data_source:
           $ref: '#/components/schemas/LogicSource'
@@ -3644,7 +3038,6 @@ components:
         type:
           description: 数据来源类型
           enum:
-          - metric
           - tool
           type: string
         id:
@@ -3656,8 +3049,7 @@ components:
     Parameter:
       oneOf:
       - $ref: '#/components/schemas/Parameter4Operator'
-      - $ref: '#/components/schemas/Parameter4Metric'
-      description: 逻辑/指标参数
+      description: 逻辑参数
       type: object
     Parameter4Operator:
       description: 逻辑参数
@@ -3680,41 +3072,10 @@ components:
           enum:
           - property
           - input
+          - const
           type: string
         value:
-          description: 参数值。value_from=property时，填入的是对象类的数据属性名称；value_from=input时，不设置此字段
-          type: string
-    Parameter4Metric:
-      description: 逻辑参数
-      required:
-      - name
-      - value_from
-      - operation
-      type: object
-      properties:
-        name:
-          description: 参数名称
-          type: string
-        value_from:
-          description: 值来源
-          enum:
-          - property
-          - input
-          type: string
-        value:
-          description: 参数值。value_from=property时，填入的是对象类的数据属性名称；value_from=input时，不设置此字段
-          type: string
-        operation:
-          description: 操作符。映射指标模型的属性时，此字段必须
-          enum:
-          - in
-          - '='
-          - '!='
-          - '>'
-          - '>='
-          - '<'
-          - '<='
-          type: string
+          description: 参数值。value_from=property 时为对象类的数据属性名称；value_from=const 时为常量值（任意 JSON 类型）；value_from=input 时不设置此字段
     PageTurnQueryWithCursor:
       description: 使用上一页返回的不透明游标继续分页查询
       required:
@@ -3858,7 +3219,7 @@ components:
       type: object
       properties:
         objects:
-          description: 子图中参与关系的对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、MetricProperty
+          description: 子图中参与关系的对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、ToolProperty（工具型逻辑属性的调用参数）
           type: object
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
@@ -3868,7 +3229,7 @@ components:
           items:
             $ref: '#/components/schemas/RelationPath'
         isolated_objects:
-          description: 子图中未建立关系的孤立对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、MetricProperty
+          description: 子图中未建立关系的孤立对象map，key是对象id，value是对象信息。动态数据字段，其值可以是基本类型、ToolProperty（工具型逻辑属性的调用参数）
           type: object
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
@@ -4013,99 +3374,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RelationTypePath'
-    MetricUnitType:
-      description: 旧逻辑属性响应使用的指标单位类型；对象指标 V1 的单位结构见 object-metrics-v1.yaml。
-      type: string
-      enum:
-      - numUnit
-      - storeUnit
-      - percent
-      - transmissionRate
-      - timeUnit
-      - currencyUnit
-      - percentageUnit
-      - countUnit
-      - weightUnit
-      - ordinalRankUnit
-    MetricUnit:
-      description: 旧逻辑属性响应使用的指标度量单位；对象指标 V1 的单位结构见 object-metrics-v1.yaml。
-      type: string
-      enum:
-      - none
-      - K
-      - Mil
-      - Bil
-      - Tri
-      - bit
-      - Byte
-      - KB
-      - MB
-      - GB
-      - TB
-      - PB
-      - bps
-      - Kbps
-      - Mbps
-      - μs
-      - ms
-      - s
-      - m
-      - h
-      - day
-      - week
-      - month
-      - year
-      - quarter
-      - Fen
-      - Jiao
-      - CNY
-      - 10K_CNY
-      - 1M_CNY
-      - 100M_CNY
-      - US_Cent
-      - USD
-      - EUR_Cent
-      - '%'
-      - ‰
-      - household
-      - transaction
-      - piece
-      - item
-      - times
-      - man_day
-      - family
-      - hand
-      - sheet
-      - packet
-      - ton
-      - kg
-      - rank
-    MetricPropertyValue:
-      description: 指标属性值
-      required:
-      - model
-      - datas
-      type: object
-      properties:
-        model:
-          $ref: '#/components/schemas/MetricModel'
-          description: 指标模型的信息
-        datas:
-          description: 指标数据
-          type: array
-          items:
-            $ref: '#/components/schemas/MetricData'
-    MetricModel:
-      description: 指标模型信息
-      required:
-      - unit_type
-      - unit
-      type: object
-      properties:
-        unit_type:
-          $ref: '#/components/schemas/MetricUnitType'
-        unit:
-          $ref: '#/components/schemas/MetricUnit'
     ObjectDataResponse:
       description: 节点（对象类）信息
       required:
@@ -4122,7 +3390,7 @@ components:
           $ref: '#/components/schemas/ObjectTypeDetail'
           description: 对象类信息
         datas:
-          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty
+          description: 对象实例数据。动态数据字段，其值可以是基本类型、ToolProperty（工具型逻辑属性的调用参数）
           type: array
           items:
             $ref: '#/components/schemas/ObjectInfo'
@@ -4164,7 +3432,7 @@ components:
       type: object
       properties:
         datas:
-          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty
+          description: 对象实例数据。数据属性为原值；逻辑属性为工具执行结果（配置了 data_source.result_path 时为按该 JSONPath 提取后的值，可为任意 JSON），提取失败时为 null
           type: array
           items:
             $ref: '#/components/schemas/ObjectPropertyValue'
@@ -4224,7 +3492,7 @@ components:
         - type: number
         - type: boolean
         - type: integer
-        - $ref: '#/components/schemas/MetricProperty'
+        - $ref: '#/components/schemas/ToolProperty'
     ObjectInfoInSubgraph:
       description: 子图中的对象信息
       required:
@@ -4248,7 +3516,7 @@ components:
             - type: number
             - type: boolean
             - type: integer
-            - $ref: '#/components/schemas/MetricProperty'
+            - $ref: '#/components/schemas/ToolProperty'
         _instance_id:
           description: 对象实例id：对象类id-根据联合主键生成的对象id。默认返回，当 exclude_system_properties 排除时，不返回。
           type: string
@@ -4276,13 +3544,7 @@ components:
         _display:
           description: 对象实例的显示属性值。显示属性只选一个，所以这里直接展示值即可。默认返回，当 exclude_system_properties 排除时，不返回。
       additionalProperties:
-        oneOf:
-        - type: string
-        - type: number
-        - type: boolean
-        - type: integer
-        - $ref: '#/components/schemas/MetricPropertyValue'
-        - type: object
+        description: 属性值。数据属性为原值；逻辑属性为工具执行结果，可为任意 JSON（含数组），提取失败时为 null。
     PropertyQueryBody:
       description: 属性查询请求体
       required:
@@ -4302,17 +3564,13 @@ components:
             type: string
         dynamic_params:
           description: |
-            各逻辑属性所需的动态参数：外层 key 为**逻辑属性名**，内层为参数名到取值的 map。
-            当属性是指标属性时，内层结构可遵循 MetricPropertyDynamicParams（时间、分析维度等）；
-            工具属性则为参数名到标量或嵌套对象的映射。未传或某属性无动态需求时可省略该 key。
+            各逻辑属性所需的动态参数：外层 key 为**逻辑属性名**，内层为参数名到取值的 map，取值可为任意 JSON。
+            参数名含 `.` 时按嵌套对象读取，例如参数 `a.b` 需传 `{"a": {"b": <值>}}`，扁平 key `"a.b"` 不会被识别。
+            未传或某属性无动态需求时可省略该 key；属性定义了 value_from=input 的参数却未传对应 key 时返回 400。
           type: object
           additionalProperties:
-            oneOf:
-            - type: string
-            - type: number
-            - type: boolean
-            - type: integer
-            - $ref: '#/components/schemas/MetricPropertyDynamicParams'
+            type: object
+            additionalProperties: true
     SubGraphQueryBaseOnSource:
       description: 基于起点、方向和路径长度获取对象子图
       required:
@@ -5687,57 +4945,3 @@ components:
         completed_count:
           description: 取消时已成功的调用数（按最近一次进度更新计算）
           type: integer
-
-    MetricData:
-      description: 与 uniquery GetMetricDataByID 返回一致
-      type: object
-      required:
-        - datas
-        - step
-        - is_variable
-        - is_calendar
-      properties:
-        model:
-          type: object
-          properties:
-            unit_type:
-              $ref: '#/components/schemas/MetricUnitType'
-            unit:
-              $ref: '#/components/schemas/MetricUnit'
-        datas:
-          type: array
-          items:
-            $ref: "#/components/schemas/MetricDataRow"
-        step:
-          type: string
-        is_variable:
-          type: boolean
-        is_calendar:
-          type: boolean
-
-    MetricDataRow:
-      type: object
-      required:
-        - labels
-        - times
-        - values
-      properties:
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        times:
-          type: array
-          items: {}
-        values:
-          type: array
-          items: {}
-        growth_values:
-          type: array
-          items: {}
-        growth_rates:
-          type: array
-          items: {}
-        proportions:
-          type: array
-          items: {}

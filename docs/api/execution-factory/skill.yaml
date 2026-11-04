@@ -764,9 +764,24 @@ paths:
         - Skill
       summary: 读取技能内的单个文件（管理态）
       operationId: readSkillManagementFile
-      description: '`/files/read` 的管理态版本：读草稿里的文件。'
+      description: |
+        `/files/read` 的管理态版本：读草稿里的文件。默认返回下载地址；
+        `response_mode=content` 时直接返回文件文本内容。
       parameters:
         - $ref: '#/components/parameters/SkillID'
+        - name: response_mode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - url
+              - content
+            default: url
+          description: |
+            `url`（默认）返回文件下载地址 `url`，不带 `content`；`content` 把文件
+            内容放进 `content` 字段（`url` 为空串）。`content` 模式下文件按文本读取
+            下载，二进制文件不适用。
       requestBody:
         required: true
         content:
@@ -785,7 +800,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SkillFileRef'
+                $ref: '#/components/schemas/ManagementSkillFileRef'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1553,6 +1568,21 @@ components:
           type: string
         file_type:
           type: string
+
+    ManagementSkillFileRef:
+      description: |
+        管理态单个文件的引用，在 `SkillFileRef` 之上多了 `size` 与 `content`。
+      allOf:
+        - $ref: '#/components/schemas/SkillFileRef'
+        - type: object
+          properties:
+            size:
+              type: integer
+              format: int64
+              description: 文件字节数，始终返回。
+            content:
+              type: string
+              description: 文件文本内容。仅 `response_mode=content` 时返回，默认的 `url` 模式不带该字段。
 
     DownloadSkillResponse:
       type: object
