@@ -813,38 +813,67 @@ def test_repeated_prompt_rebinding_returns_conflict_without_writes(monkeypatch):
     asyncio.run(run())
 
 
-def test_default_result_caps_keep_large_listings_and_schemas_whole():
+def _results(*results):
+    """One question whose tool results arrive in order: (tool name, size)."""
     from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+    calls = [{"id": f"c{i}", "name": name, "args": {}} for i, (name, _) in enumerate(results)]
+    return [
+        HumanMessage(content="q"),
+        AIMessage(content="", tool_calls=calls),
+        *(
+            ToolMessage(content=str(i) * size, tool_call_id=f"c{i}", name=name)
+            for i, (name, size) in enumerate(results)
+        ),
+    ]
+
+
+def _whole(sent):
+    """Which results reached the model untruncated, in message order."""
+    return [m.content == m.content[0] * len(m.content) and "omitted" not in m.content for m in sent[2:]]
+
+
+def test_default_result_caps_keep_large_listings_and_schemas_whole():
     from app.core.agent_settings import shared_limits
     from app.core.context_budget import budget_messages
 
     limits = shared_limits(agent())
     assert (limits.data_result_chars, limits.schema_result_chars) == (60000, 120000)
     assert limits.summarize_after_tokens == 60000
+    caps = (limits.data_result_chars, limits.schema_result_chars, limits.keep_tool_results)
 
     # Results that the former 12000 / 24000 caps truncated now arrive whole.
-    listing, schema = "r" * 50000, "s" * 100000
-    calls = [
-        {"id": "c1", "name": "get_kn_detail", "args": {}},
-        {"id": "c2", "name": "run_cypher", "args": {}},
-    ]
-    sent = budget_messages(
-        [
-            HumanMessage(content="q"),
-            AIMessage(content="", tool_calls=calls),
-            ToolMessage(content=schema, tool_call_id="c1", name="get_kn_detail"),
-            ToolMessage(content=listing, tool_call_id="c2", name="run_cypher"),
-        ],
-        limits.data_result_chars,
-        limits.schema_result_chars,
-        limits.keep_tool_results,
-    )
-    assert sent[2].content == schema
-    assert sent[3].content == listing
+    sent = budget_messages(_results(("get_kn_detail", 60000), ("run_cypher", 50000)), *caps)
+    assert _whole(sent) == [True, True]
+    assert _whole(budget_messages(_results(("get_kn_detail", 100000)), *caps)) == [True]
     # Beyond the cap the result is still truncated.
-    over = budget_messages(
-        [HumanMessage(content="q"), ToolMessage(content="r" * 70000, tool_call_id="c2", name="run_cypher")],
-        limits.data_result_chars, limits.schema_result_chars, limits.keep_tool_results,
-    )
-    assert over[1].content.startswith("r" * 60000) and "[Result truncated" in over[1].content
+    over = budget_messages(_results(("run_cypher", 70000)), *caps)
+    assert len(over[2].content) > 60000 and "[Result truncated" in over[2].content
+
+
+def test_question_results_stay_within_the_total_cap():
+    from app.core.agent_settings import shared_limits
+    from app.core.context_budget import QUESTION_RESULT_CHARS, budget_messages
+
+    limits = shared_limits(agent())
+    caps = (limits.data_result_chars, limits.schema_result_chars, limits.keep_tool_results)
+    # Three 100k schema results used to be kept together (300k characters,
+    # beyond a 128k-token window); now only the latest fits the total.
+    sent = budget_messages(_results(*[("get_kn_detail", 100000)] * 3), *caps)
+    assert _whole(sent) == [False, False, True]
+    assert all("omitted to save context" in m.content for m in sent[2:4])
+    kept = sum(len(m.content) for m in sent[2:] if "omitted" not in m.content)
+    assert kept <= QUESTION_RESULT_CHARS
+    # The latest result is kept even when an administrator's cap exceeds the total.
+    wide = budget_messages(_results(("get_kn_detail", 150000)), 60000, 200000, 3)
+    assert _whole(wide) == [True]
+
+
+def test_former_default_caps_keep_their_behaviour():
+    from app.core.context_budget import budget_messages
+
+    # 3 x 24000 schema results stayed together under the former defaults.
+    sent = budget_messages(_results(*[("get_kn_detail", 24000)] * 3), 12000, 24000, 3)
+    assert _whole(sent) == [True, True, True]
+    sent = budget_messages(_results(*[("run_cypher", 12000)] * 4), 12000, 24000, 3)
+    assert _whole(sent) == [False, True, True, True]

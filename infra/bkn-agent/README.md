@@ -67,6 +67,8 @@ Public execution (`/executions`) applies the merged Agent `limits` to what each 
 | `keep_tool_results` | 3 | Keep at least the latest three tool results for the current question; retain older results while within the `keep_tool_results × data_result_chars` budget (previously only the latest three were kept) |
 | `summarize_after_tokens` | 60000 | Summarize earlier questions after the conversation exceeds this token count; do not summarize the current question |
 
+Whatever these caps add up to, the current question's kept results stay under 120000 characters in total (`QUESTION_RESULT_CHARS` in `app/core/context_budget.py`), about 86k tokens even for Chinese text, because the current question is never summarized. The latest result is always kept.
+
 Removed results become placeholders that identify the original call and size. Repeated read-only calls within the same question, such as `run_cypher` and `query_object_instance`, reuse an earlier successful result instead of calling the backend again.
 
 ## Execution Factory registration
