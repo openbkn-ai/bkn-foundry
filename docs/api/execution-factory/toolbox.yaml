@@ -1193,8 +1193,15 @@ components:
           default: custom
           description: 来源。
         data:
-          type: string
-          description: OpenAPI 原文，建箱同时导入工具时用。
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: string
+          description: |
+            OpenAPI 文档，建箱同时导入工具时用。
+            JSON 请求体里传 OpenAPI 文档**对象**（不是转义后的字符串，传字符串会解析失败）；
+            `application/x-www-form-urlencoded` 与 `multipart/form-data` 里是 OpenAPI
+            JSON/YAML 原文文本，multipart 时也可作为名为 `data` 的文件上传。
 
     UpdateToolBoxRequest:
       type: object
@@ -1216,8 +1223,15 @@ components:
         metadata_type:
           $ref: '#/components/schemas/MetadataType'
         data:
-          type: string
-          description: OpenAPI 原文。
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: string
+          description: |
+            OpenAPI 文档。
+            JSON 请求体里传 OpenAPI 文档**对象**（不是转义后的字符串，传字符串会解析失败）；
+            `application/x-www-form-urlencoded` 与 `multipart/form-data` 里是 OpenAPI
+            JSON/YAML 原文文本，multipart 时也可作为名为 `data` 的文件上传。
 
     UpdateToolBoxResponse:
       type: object
@@ -1462,10 +1476,14 @@ components:
             `dependencies`、`dependencies_url`。代码约定与 [function.yaml](function.yaml)
             一致：入口函数必须叫 `handler`。
         data:
-          type: string
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: string
           description: |
-            OpenAPI 原文。**`metadata_type=openapi` 时必填**。文档里有几个操作就建
-            几个工具。
+            OpenAPI 文档。**`metadata_type=openapi` 时必填**。文档里有几个操作就建
+            几个工具。JSON 请求体里传文档**对象**（传字符串会解析失败）；表单与
+            multipart 里是 JSON/YAML 原文文本，multipart 也可作为名为 `data` 的文件上传。
         extend_info:
           type: object
           additionalProperties: true
@@ -1524,8 +1542,13 @@ components:
           additionalProperties: true
           description: 函数定义（编辑形态，无 name / description）。
         data:
-          type: string
-          description: OpenAPI 原文。
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: string
+          description: |
+            OpenAPI 文档。JSON 请求体里传文档**对象**（传字符串会解析失败）；表单与
+            multipart 里是 JSON/YAML 原文文本，multipart 也可作为名为 `data` 的文件上传。
         extend_info:
           type: object
           additionalProperties: true

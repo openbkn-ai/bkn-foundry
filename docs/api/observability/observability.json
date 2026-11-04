@@ -4,7 +4,7 @@
   "info": {
     "title": "OpenBKN Log Query API",
     "version": "0.1.3-r6.2",
-    "description": "Machine contract implemented in OpenBKN 0.1.3 for unified log lists, details, sampled facets, source health, and read-only policies. Log export, high-risk governance writes, per-record quarantine access, and compliance_grade are not yet part of this contract."
+    "description": "Machine contract implemented in OpenBKN 0.1.3 for operation-audit log lists, details, source health, the source inventory, and read-only policies. Log export, high-risk governance writes, per-record quarantine access, and compliance_grade are not yet part of this contract."
   },
   "security": [
     {
@@ -56,6 +56,7 @@
     "/api/observability/v1/logs": {
       "get": {
         "operationId": "listObservabilityLogs",
+        "description": "Lists operation-audit records. The legacy technical-log parameters module, severity_min, services, environments, event_names, resource_type, resource_id, span_id and failed_only are rejected with 400 invalid_log_filter. The time window may not exceed 30 days.",
         "parameters": [
           {
             "$ref": "#/components/parameters/TimeFrom"
@@ -66,101 +67,100 @@
           {
             "name": "q",
             "in": "query",
-            "description": "Searches only safe_summary and registered low-sensitivity fields.",
+            "description": "Free-text query (at most 512 characters).",
             "schema": {
               "type": "string",
               "maxLength": 512
             }
           },
           {
-            "name": "source_id",
+            "name": "business_module",
             "in": "query",
-            "description": "Filters records by their registered source identifier across all selected sources.",
+            "description": "Registered business module. Unregistered values return 400 invalid_log_filter.",
             "schema": {
               "type": "string",
-              "maxLength": 64
+              "enum": [
+                "domain_knowledge_network",
+                "observability",
+                "execution_factory",
+                "data_resource_knowledge_network",
+                "model_management",
+                "system_management"
+              ]
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "query",
+            "description": "Filters records by registered source identifier.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Filters by operation action (facts.action).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_type",
+            "in": "query",
+            "description": "Filters by operation target type (facts.target_type).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "query",
+            "description": "Filters by operation target identifier (facts.target_id).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcomes",
+            "in": "query",
+            "description": "Outcome filter. Accepts repeated parameters and/or comma-separated values.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Outcome"
+              }
             }
           },
           {
             "name": "categories",
             "in": "query",
+            "description": "Log category filter. Accepts repeated parameters and/or comma-separated values.",
             "schema": {
               "type": "array",
               "items": {
                 "$ref": "#/components/schemas/LogCategory"
               }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "severity_min",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 24
             }
-          },
-          {
-            "name": "services",
-            "in": "query",
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "environments",
-            "in": "query",
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "event_names",
-            "in": "query",
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "style": "form",
-            "explode": true
           },
           {
             "name": "actor_id",
             "in": "query",
+            "description": "Filters by actor identifier.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Actor name query.",
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "application_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "resource_type",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "resource_id",
             "in": "query",
             "schema": {
               "type": "string"
@@ -182,20 +182,17 @@
             "$ref": "#/components/parameters/TraceId"
           },
           {
-            "$ref": "#/components/parameters/SpanId"
-          },
-          {
-            "name": "failed_only",
+            "name": "cursor",
             "in": "query",
+            "description": "Opaque continuation token from next_cursor. Takes precedence over page.",
             "schema": {
-              "type": "boolean",
-              "default": false
+              "type": "string"
             }
           },
           {
             "name": "page",
             "in": "query",
-            "description": "One-based page number. A single audit-ledger source supports direct page jumps. Cursor-only or mixed sources retain pages 1–100 within one shared source timeout; deeper jumps return pagination_not_supported. A supplied cursor takes precedence over page.",
+            "description": "One-based page number. A single audit-ledger source supports direct page jumps. Cursor-only or mixed sources retain pages 1–100; deeper jumps return 400 pagination_not_supported. A supplied cursor takes precedence over page.",
             "schema": {
               "type": "integer",
               "default": 1,
@@ -238,27 +235,34 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "409": {
-            "$ref": "#/components/responses/CursorStale"
-          },
-          "503": {
-            "$ref": "#/components/responses/SourcesUnavailable"
-          },
           "401": {
             "$ref": "#/components/responses/AuthenticationRequired"
           },
           "403": {
             "$ref": "#/components/responses/AccessDenied"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "409": {
+            "$ref": "#/components/responses/CursorStale"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/SourcesUnavailable"
           }
         }
       }
     },
-    "/api/observability/v1/logs/{log_id}": {
+    "/api/observability/v1/logs/{event_id}": {
       "get": {
         "operationId": "getObservabilityLog",
+        "description": "Returns one operation-audit record by event_id. client_ip is returned only for audit.security records when the caller holds the log_sensitive_fields capability; otherwise it is withheld, and listed in field_projection.redacted_fields only when the record actually carried a client_ip.",
         "parameters": [
           {
-            "name": "log_id",
+            "name": "event_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -277,199 +281,33 @@
               }
             }
           },
-          "404": {
-            "$ref": "#/components/responses/NotDisclosed"
-          },
-          "401": {
-            "$ref": "#/components/responses/AuthenticationRequired"
-          }
-        }
-      }
-    },
-    "/api/observability/v1/log-facets": {
-      "get": {
-        "operationId": "getObservabilityLogFacets",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/TimeFrom"
-          },
-          {
-            "$ref": "#/components/parameters/TimeTo"
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "description": "Like the log list, searches only safe_summary and registered low-sensitivity fields.",
-            "schema": {
-              "type": "string",
-              "maxLength": 512
-            }
-          },
-          {
-            "name": "categories",
-            "in": "query",
-            "schema": {
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/LogCategory"
-              }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "severity_min",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 24
-            }
-          },
-          {
-            "name": "services",
-            "in": "query",
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "environments",
-            "in": "query",
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "event_names",
-            "in": "query",
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "actor_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "application_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "resource_type",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "resource_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/ConversationId"
-          },
-          {
-            "$ref": "#/components/parameters/InteractionId"
-          },
-          {
-            "$ref": "#/components/parameters/OperationId"
-          },
-          {
-            "$ref": "#/components/parameters/RequestId"
-          },
-          {
-            "$ref": "#/components/parameters/TraceId"
-          },
-          {
-            "$ref": "#/components/parameters/SpanId"
-          },
-          {
-            "name": "failed_only",
-            "in": "query",
-            "schema": {
-              "type": "boolean",
-              "default": false
-            }
-          },
-          {
-            "name": "facet",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "log_category",
-                "severity_text",
-                "service_name",
-                "deployment_environment",
-                "event_name"
-              ]
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 50,
-              "minimum": 1,
-              "maximum": 200
-            }
-          },
-          {
-            "$ref": "#/components/parameters/Cursor"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Computes sampled facets for at most 200 records on the current page using the same filters and authorization projection as the log list. sampled_records reports the actual sample size; partial=true means the result must not be interpreted as a full distribution.",
+          "400": {
+            "description": "invalid_event_id: event_id is empty or contains a slash.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FacetEnvelope"
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "409": {
-            "$ref": "#/components/responses/CursorStale"
-          },
-          "503": {
-            "$ref": "#/components/responses/SourcesUnavailable"
           },
           "401": {
             "$ref": "#/components/responses/AuthenticationRequired"
           },
           "403": {
             "$ref": "#/components/responses/AccessDenied"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotDisclosed"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/SourcesUnavailable"
           }
         }
       }
@@ -479,7 +317,7 @@
         "operationId": "listObservabilityLogSources",
         "responses": {
           "200": {
-            "description": "Returns only sources visible to the current subject.",
+            "description": "Returns only sources visible to the current subject. Requires the global_log_search capability.",
             "content": {
               "application/json": {
                 "schema": {
@@ -504,6 +342,112 @@
           },
           "403": {
             "$ref": "#/components/responses/AccessDenied"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/SourcesUnavailable"
+          }
+        }
+      }
+    },
+    "/api/observability/v1/log-source-inventory": {
+      "get": {
+        "operationId": "listObservabilityLogSourceInventory",
+        "description": "Returns the pinned source registry roster. A caller without the global_log_search capability still receives 200 with every entry marked query_unavailable; 403 here comes only from the access-profile layer.",
+        "responses": {
+          "200": {
+            "description": "Returns the pinned source registry roster with each source's current query status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "registry_version",
+                    "data"
+                  ],
+                  "properties": {
+                    "registry_version": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "source_id",
+                          "owner",
+                          "modules",
+                          "declared_collection_method",
+                          "declared_reliability",
+                          "query_status",
+                          "coverage_status"
+                        ],
+                        "properties": {
+                          "source_id": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "modules": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "declared_collection_method": {
+                            "type": "string"
+                          },
+                          "declared_reliability": {
+                            "type": "string"
+                          },
+                          "query_status": {
+                            "type": "string",
+                            "description": "Current query status of the matching visible source (a SourceStatus.status value), not_listed when no visible source matches, or query_unavailable when the source query failed or the caller lacks the global_log_search capability (this route still answers 200 in that case)."
+                          },
+                          "query_reason": {
+                            "type": "string"
+                          },
+                          "coverage_status": {
+                            "type": "string",
+                            "description": "Always unverified: a declared method is never reported as end-to-end coverage."
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/AccessDenied"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "source_registry_unavailable (the embedded registry cannot be read) or sources_unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -513,7 +457,7 @@
         "operationId": "listObservabilityLogPolicies",
         "responses": {
           "200": {
-            "description": "Returns the authorized projection of ordinary-log and audit policies.",
+            "description": "Returns the authorized projection of ordinary-log and audit policies. Requires the log_policy_read capability.",
             "content": {
               "application/json": {
                 "schema": {
@@ -538,6 +482,15 @@
           },
           "403": {
             "$ref": "#/components/responses/AccessDenied"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/SourcesUnavailable"
           }
         }
       }
@@ -554,7 +507,7 @@
       "TimeFrom": {
         "name": "time_from",
         "in": "query",
-        "description": "Inclusive boundary. Ordinary searches default to the last 24 hours; correlation drill-downs with a Conversation, Interaction, Operation, Request, Trace, or Span identifier default to the last seven days.",
+        "description": "RFC3339 timestamp, inclusive boundary. When omitted, the window defaults to the 30 days before time_to (or now); correlation drill-downs by conversation_id, interaction_id, operation_id, request_id or trace_id default to 7 days. time_to must not precede time_from and the window may not exceed 30 days.",
         "schema": {
           "type": "string",
           "format": "date-time"
@@ -563,28 +516,10 @@
       "TimeTo": {
         "name": "time_to",
         "in": "query",
-        "description": "Exclusive boundary.",
+        "description": "RFC3339 timestamp, exclusive boundary. Defaults to now.",
         "schema": {
           "type": "string",
           "format": "date-time"
-        }
-      },
-      "Cursor": {
-        "name": "cursor",
-        "in": "query",
-        "description": "Opaque signed cursor bound to filters, effective_subject_id, access_scope_fingerprint, query_watermark, visible sources, and each source keyset. access_scope_fingerprint is normalized from the account, current built-in roles, application ownership, and managed knowledge-network scope.",
-        "x-openbkn-cursor-binding": [
-          "normalized_filter_hash",
-          "effective_subject_id",
-          "access_scope_fingerprint",
-          "query_watermark",
-          "visible_source_ids",
-          "per_source_cursor",
-          "sort_version",
-          "expires_at"
-        ],
-        "schema": {
-          "type": "string"
         }
       },
       "ConversationId": {
@@ -622,14 +557,6 @@
           "type": "string",
           "pattern": "^[0-9a-f]{32}$"
         }
-      },
-      "SpanId": {
-        "name": "span_id",
-        "in": "query",
-        "schema": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{16}$"
-        }
       }
     },
     "schemas": {
@@ -658,11 +585,6 @@
           "runtime.model"
         ]
       },
-      "ResourceScope": {
-        "type": "string",
-        "description": "Strict resource scope. Source and field authorization use independent typed scopes.",
-        "pattern": "^(platform:[^:]+|environment:[^:]+:[^:]+|source:[^:]+:[^:]+|field:[^:]+:[^:]+:[a-z][a-z0-9_]{0,63})$"
-      },
       "Outcome": {
         "type": "string",
         "enum": [
@@ -686,39 +608,37 @@
           "healthy",
           "delayed",
           "partial",
+          "degraded",
           "unavailable",
           "not_integrated"
         ]
       },
-      "LogRecord": {
+      "OperationAuditRecord": {
         "type": "object",
+        "description": "Public operation-audit record.",
         "required": [
           "schema_version",
-          "log_id",
-          "source_id",
-          "source_log_id",
+          "event_id",
           "log_category",
           "event_name",
-          "event_timestamp",
-          "observed_timestamp",
-          "severity_number",
-          "severity_text",
+          "event_time",
+          "recorded_at",
+          "actor_id",
+          "actor_name_snapshot",
+          "auth_method",
+          "source_channel",
+          "source_id",
+          "business_module",
           "outcome",
-          "safe_summary",
-          "service_name",
-          "deployment_environment"
+          "facts",
+          "correlation",
+          "attributes"
         ],
         "properties": {
           "schema_version": {
             "type": "string"
           },
-          "log_id": {
-            "type": "string"
-          },
-          "source_id": {
-            "type": "string"
-          },
-          "source_log_id": {
+          "event_id": {
             "type": "string"
           },
           "log_category": {
@@ -727,54 +647,122 @@
           "event_name": {
             "type": "string"
           },
-          "event_timestamp": {
+          "event_time": {
             "type": "string",
             "format": "date-time"
           },
-          "observed_timestamp": {
+          "recorded_at": {
             "type": "string",
             "format": "date-time"
           },
-          "severity_number": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 24
+          "actor_id": {
+            "type": "string"
           },
-          "severity_text": {
+          "actor_name_snapshot": {
+            "type": "string"
+          },
+          "actor_type": {
+            "type": "string"
+          },
+          "auth_method": {
+            "type": "string"
+          },
+          "credential_id": {
+            "type": "string"
+          },
+          "credential_name": {
+            "type": "string"
+          },
+          "source_channel": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "business_module": {
             "type": "string"
           },
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
           },
-          "safe_summary": {
+          "failure_code": {
+            "type": "string"
+          },
+          "failure_message": {
+            "type": "string"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/OperationAuditFacts"
+          },
+          "correlation": {
+            "$ref": "#/components/schemas/OperationAuditCorrelation"
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Source-specific extension attributes not promoted to facts.",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OperationAuditFacts": {
+        "type": "object",
+        "required": [
+          "action",
+          "target_type",
+          "target_id",
+          "target_name_snapshot"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "status_code": {
+            "type": "integer"
+          },
+          "client_ip": {
             "type": "string",
-            "maxLength": 2048
+            "description": "Omitted from list responses; in detail responses only for audit.security records when the caller holds log_sensitive_fields."
           },
-          "service_name": {
+          "target_type": {
             "type": "string"
           },
-          "deployment_environment": {
+          "target_id": {
             "type": "string"
           },
-          "actor_id": {
+          "target_name_snapshot": {
             "type": "string"
           },
-          "effective_subject_id": {
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "operation_type": {
             "type": "string"
           },
-          "application_id": {
+          "operation_status": {
             "type": "string"
           },
+          "business_context": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OperationAuditCorrelation": {
+        "type": "object",
+        "properties": {
           "request_id": {
             "type": "string"
           },
           "trace_id": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{32}$"
+            "type": "string"
           },
           "span_id": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{16}$"
+            "type": "string"
           },
           "conversation_id": {
             "type": "string"
@@ -785,632 +773,10 @@
           "operation_id": {
             "type": "string"
           },
-          "resource_ref": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "resource_type",
-              "resource_id"
-            ],
-            "properties": {
-              "resource_type": {
-                "type": "string"
-              },
-              "resource_id": {
-                "type": "string"
-              },
-              "version": {
-                "type": "string"
-              }
-            }
-          },
-          "artifact_ref": {
+          "task_id": {
             "type": "string"
-          },
-          "attributes": {
-            "type": "object",
-            "description": "Contains only fields registered in the 0.1.3 allowlist. Full content and secrets must use an Artifact or be rejected at the ingestion boundary.",
-            "properties": {
-              "action": {
-                "type": "string"
-              },
-              "result": {
-                "type": "string"
-              },
-              "decision": {
-                "type": "string"
-              },
-              "policy_revision": {
-                "type": "string"
-              },
-              "resource_scope": {
-                "$ref": "#/components/schemas/ResourceScope"
-              },
-              "client_ip": {
-                "type": "string"
-              },
-              "device_id": {
-                "type": "string"
-              },
-              "delegation_chain": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "maxItems": 16
-              },
-              "detection_reason": {
-                "type": "string"
-              },
-              "dropped_count": {
-                "type": "integer",
-                "minimum": 1
-              },
-              "drop_reason": {
-                "type": "string"
-              },
-              "error_code": {
-                "type": "string"
-              },
-              "dependency_name": {
-                "type": "string"
-              },
-              "url": {
-                "type": "string"
-              },
-              "exception_type": {
-                "type": "string"
-              },
-              "exception_message": {
-                "type": "string",
-                "maxLength": 2048
-              },
-              "operation_type": {
-                "type": "string"
-              },
-              "operation_status": {
-                "type": "string"
-              },
-              "query_fingerprint": {
-                "type": "string"
-              },
-              "object_type_ref": {
-                "type": "string"
-              },
-              "property_ref": {
-                "type": "string"
-              },
-              "relation_type_ref": {
-                "type": "string"
-              },
-              "action_type_ref": {
-                "type": "string"
-              },
-              "model_ref": {
-                "type": "string"
-              },
-              "model_version": {
-                "type": "string"
-              },
-              "provider": {
-                "type": "string"
-              },
-              "input_tokens": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "output_tokens": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "latency_ms": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "rate_limit_status": {
-                "type": "string"
-              },
-              "cost_amount": {
-                "type": "number",
-                "minimum": 0
-              },
-              "cost_currency": {
-                "type": "string"
-              },
-              "task_id": {
-                "type": "string"
-              },
-              "causation_request_id": {
-                "type": "string"
-              },
-              "linked_trace_id": {
-                "type": "string",
-                "pattern": "^[0-9a-f]{32}$"
-              },
-              "linked_span_id": {
-                "type": "string",
-                "pattern": "^[0-9a-f]{16}$"
-              },
-              "business_context": {
-                "type": "string",
-                "enum": [
-                  "managed",
-                  "detached"
-                ]
-              },
-              "agent_ref": {
-                "type": "string"
-              },
-              "tool_ref": {
-                "type": "string"
-              },
-              "skill_ref": {
-                "type": "string"
-              },
-              "toolbox_ref": {
-                "type": "string"
-              },
-              "mcp_ref": {
-                "type": "string"
-              },
-              "sandbox_action": {
-                "type": "string"
-              },
-              "detection_rule_id": {
-                "type": "string"
-              },
-              "detected_field_name": {
-                "type": "string"
-              },
-              "content_hash": {
-                "type": "string",
-                "pattern": "^[0-9a-f]{64}$"
-              }
-            },
-            "additionalProperties": false
-          },
-          "replayed_from_quarantine_id": {
-            "type": "string",
-            "description": "Used when a quarantined fact first enters the ordinary zone through a later governed process. Version 0.1.3 provides no replay write API."
           }
         },
-        "allOf": [
-          {
-            "if": {
-              "properties": {
-                "log_category": {
-                  "const": "runtime.business"
-                }
-              },
-              "required": [
-                "log_category"
-              ]
-            },
-            "then": {
-              "required": [
-                "request_id",
-                "attributes"
-              ],
-              "properties": {
-                "attributes": {
-                  "required": [
-                    "operation_type",
-                    "operation_status",
-                    "business_context"
-                  ],
-                  "propertyNames": {
-                    "enum": [
-                      "operation_type",
-                      "operation_status",
-                      "business_context",
-                      "query_fingerprint",
-                      "object_type_ref",
-                      "property_ref",
-                      "relation_type_ref",
-                      "action_type_ref",
-                      "task_id",
-                      "causation_request_id",
-                      "linked_trace_id",
-                      "linked_span_id",
-                      "agent_ref",
-                      "tool_ref",
-                      "skill_ref",
-                      "toolbox_ref",
-                      "mcp_ref"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "log_category": {
-                  "const": "runtime.model"
-                }
-              },
-              "required": [
-                "log_category"
-              ]
-            },
-            "then": {
-              "required": [
-                "request_id",
-                "attributes"
-              ],
-              "properties": {
-                "attributes": {
-                  "required": [
-                    "model_ref"
-                  ],
-                  "propertyNames": {
-                    "enum": [
-                      "model_ref",
-                      "model_version",
-                      "provider",
-                      "input_tokens",
-                      "output_tokens",
-                      "latency_ms",
-                      "rate_limit_status",
-                      "cost_amount",
-                      "cost_currency",
-                      "error_code",
-                      "task_id",
-                      "causation_request_id",
-                      "linked_trace_id",
-                      "linked_span_id"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "log_category": {
-                  "const": "audit.admin"
-                }
-              },
-              "required": [
-                "log_category"
-              ]
-            },
-            "then": {
-              "required": [
-                "actor_id",
-                "effective_subject_id",
-                "resource_ref",
-                "attributes"
-              ],
-              "properties": {
-                "attributes": {
-                  "required": [
-                    "action",
-                    "result",
-                    "decision"
-                  ],
-                  "propertyNames": {
-                    "enum": [
-                      "action",
-                      "result",
-                      "decision"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "log_category": {
-                  "const": "audit.security"
-                }
-              },
-              "required": [
-                "log_category"
-              ]
-            },
-            "then": {
-              "required": [
-                "effective_subject_id",
-                "attributes"
-              ],
-              "anyOf": [
-                {
-                  "required": [
-                    "actor_id"
-                  ]
-                },
-                {
-                  "required": [
-                    "application_id"
-                  ]
-                }
-              ],
-              "properties": {
-                "attributes": {
-                  "required": [
-                    "decision",
-                    "resource_scope",
-                    "policy_revision"
-                  ],
-                  "propertyNames": {
-                    "enum": [
-                      "decision",
-                      "policy_revision",
-                      "resource_scope",
-                      "action",
-                      "result",
-                      "client_ip",
-                      "device_id",
-                      "delegation_chain",
-                      "detection_reason",
-                      "detection_rule_id",
-                      "detected_field_name",
-                      "content_hash"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "log_category": {
-                  "const": "access.user"
-                }
-              },
-              "required": [
-                "log_category"
-              ]
-            },
-            "then": {
-              "required": [
-                "attributes"
-              ],
-              "properties": {
-                "attributes": {
-                  "required": [
-                    "action",
-                    "result"
-                  ],
-                  "propertyNames": {
-                    "enum": [
-                      "action",
-                      "result",
-                      "client_ip",
-                      "device_id"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "required": [
-                "span_id"
-              ]
-            },
-            "then": {
-              "required": [
-                "trace_id"
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "attributes": {
-                  "properties": {
-                    "business_context": {
-                      "const": "managed"
-                    }
-                  },
-                  "required": [
-                    "business_context"
-                  ]
-                }
-              },
-              "required": [
-                "attributes"
-              ]
-            },
-            "then": {
-              "required": [
-                "conversation_id"
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "event_name": {
-                  "enum": [
-                    "conversation.created",
-                    "conversation.closed",
-                    "conversation.expired",
-                    "interaction.started",
-                    "interaction.completed",
-                    "interaction.failed",
-                    "interaction.canceled",
-                    "interaction.handed_off",
-                    "interaction.abandoned",
-                    "operation.started",
-                    "operation.completed",
-                    "operation.failed"
-                  ]
-                }
-              },
-              "required": [
-                "event_name"
-              ]
-            },
-            "then": {
-              "properties": {
-                "attributes": {
-                  "properties": {
-                    "business_context": {
-                      "const": "managed"
-                    }
-                  },
-                  "required": [
-                    "business_context"
-                  ]
-                }
-              },
-              "required": [
-                "attributes",
-                "conversation_id"
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "event_name": {
-                  "enum": [
-                    "interaction.started",
-                    "interaction.completed",
-                    "interaction.failed",
-                    "interaction.canceled",
-                    "interaction.handed_off",
-                    "interaction.abandoned",
-                    "operation.started",
-                    "operation.completed",
-                    "operation.failed"
-                  ]
-                }
-              },
-              "required": [
-                "event_name"
-              ]
-            },
-            "then": {
-              "required": [
-                "interaction_id"
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "event_name": {
-                  "enum": [
-                    "operation.started",
-                    "operation.completed",
-                    "operation.failed"
-                  ]
-                }
-              },
-              "required": [
-                "event_name"
-              ]
-            },
-            "then": {
-              "required": [
-                "operation_id"
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "event_name": {
-                  "enum": [
-                    "knowledge.read.completed",
-                    "logic.execution.completed",
-                    "action.executed"
-                  ]
-                },
-                "attributes": {
-                  "properties": {
-                    "business_context": {
-                      "const": "managed"
-                    }
-                  },
-                  "required": [
-                    "business_context"
-                  ]
-                }
-              },
-              "required": [
-                "event_name",
-                "attributes"
-              ]
-            },
-            "then": {
-              "required": [
-                "interaction_id",
-                "operation_id"
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "attributes": {
-                  "properties": {
-                    "business_context": {
-                      "const": "detached"
-                    }
-                  },
-                  "required": [
-                    "business_context"
-                  ]
-                }
-              },
-              "required": [
-                "attributes"
-              ]
-            },
-            "then": {
-              "not": {
-                "anyOf": [
-                  {
-                    "required": [
-                      "conversation_id"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "interaction_id"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "operation_id"
-                    ]
-                  }
-                ]
-              },
-              "properties": {
-                "attributes": {
-                  "required": [
-                    "task_id"
-                  ],
-                  "anyOf": [
-                    {
-                      "required": [
-                        "causation_request_id"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "linked_trace_id",
-                        "linked_span_id"
-                      ]
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        ],
         "additionalProperties": false
       },
       "SourceStatus": {
@@ -1418,9 +784,19 @@
         "required": [
           "source_id",
           "status",
-          "reliability"
+          "reliability",
+          "last_received_at",
+          "watermark",
+          "latency_ms"
         ],
         "properties": {
+          "status_scope": {
+            "type": "string",
+            "description": "Scope the status describes; query for the audit ledger."
+          },
+          "collection_status": {
+            "$ref": "#/components/schemas/AuditCollectionStatus"
+          },
           "source_id": {
             "type": "string"
           },
@@ -1464,6 +840,7 @@
               "container_stdout",
               "source_adapter",
               "kafka_audit",
+              "projection_outbox",
               "not_integrated"
             ]
           },
@@ -1567,9 +944,86 @@
         ],
         "additionalProperties": false
       },
+      "AuditCollectionStatus": {
+        "type": "object",
+        "description": "Observed publisher metadata for one configured Safe instance; not proof of complete collection. Null values mean unknown.",
+        "required": [
+          "scope",
+          "status",
+          "reason",
+          "observed_at",
+          "last_delivered_at",
+          "last_failure_at",
+          "dropped_records",
+          "historical_gap",
+          "historical_gap_since"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "instance_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "healthy",
+              "degraded"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_delivered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_failure_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "dropped_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "historical_gap": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "historical_gap_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "Count": {
         "type": "object",
         "required": [
+          "value",
           "accuracy"
         ],
         "properties": {
@@ -1584,8 +1038,7 @@
             "type": "string",
             "enum": [
               "exact",
-              "partial",
-              "unavailable"
+              "partial"
             ]
           }
         },
@@ -1595,6 +1048,7 @@
         "type": "object",
         "required": [
           "data",
+          "next_cursor",
           "partial",
           "count",
           "pagination",
@@ -1605,7 +1059,7 @@
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LogRecord"
+              "$ref": "#/components/schemas/OperationAuditRecord"
             }
           },
           "next_cursor": {
@@ -1650,7 +1104,7 @@
         ],
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/LogRecord"
+            "$ref": "#/components/schemas/OperationAuditRecord"
           },
           "field_projection": {
             "type": "object",
@@ -1677,59 +1131,6 @@
         },
         "additionalProperties": false
       },
-      "FacetEnvelope": {
-        "type": "object",
-        "required": [
-          "data",
-          "partial",
-          "sampled_records",
-          "source_status",
-          "next_cursor"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "value",
-                "count"
-              ],
-              "properties": {
-                "value": {
-                  "type": "string"
-                },
-                "count": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "partial": {
-            "type": "boolean"
-          },
-          "sampled_records": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 200
-          },
-          "source_status": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SourceStatus"
-            }
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
       "LogPolicy": {
         "type": "object",
         "required": [
@@ -1737,11 +1138,16 @@
           "policy_revision",
           "category",
           "retention_days",
-          "policy_kind"
+          "policy_kind",
+          "legal_hold"
         ],
         "properties": {
           "scope": {
-            "$ref": "#/components/schemas/ResourceScope"
+            "type": "object",
+            "description": "Policy scope selector. Currently always an empty object (platform-wide default policy).",
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "policy_revision": {
             "type": "string"
@@ -1876,7 +1282,7 @@
     },
     "responses": {
       "BadRequest": {
-        "description": "invalid_log_filter, cursor_invalid, or pagination_not_supported (numbered jumps beyond page 100 for cursor-only or mixed sources).",
+        "description": "invalid_log_filter (malformed or unsupported parameter, legacy technical-log parameter, or time window longer than 30 days), cursor_invalid, or pagination_not_supported (numbered jumps beyond page 100 for cursor-only or mixed sources).",
         "content": {
           "application/json": {
             "schema": {
@@ -1905,18 +1311,8 @@
           }
         }
       },
-      "PermissionDenied": {
-        "description": "The subject may know that the resource exists but lacks explicit operation permission.",
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/ErrorEnvelope"
-            }
-          }
-        }
-      },
       "SourcesUnavailable": {
-        "description": "All authorized sources failed: code=sources_unavailable, retryable=true. If the only authorized source is an unconfigured audit-ledger: code=audit_consumer_not_configured, retryable=false, with required_action describing Helm configuration. Mixed queries retain available records, report the audit configuration gap in source_status, and mark results partial.",
+        "description": "code=sources_unavailable (all authorized sources failed, or the log query service is not configured), retryable=true. If the only authorized source is an unconfigured audit-ledger: code=audit_consumer_not_configured, retryable=false, with required_action describing the Helm configuration. Mixed queries retain available records, report the audit configuration gap in source_status, and mark results partial. Authentication infrastructure failures return query_oauth_unavailable or query_auth_not_configured.",
         "content": {
           "application/json": {
             "schema": {
@@ -1926,7 +1322,27 @@
         }
       },
       "AuthenticationRequired": {
-        "description": "Authentication is missing or invalid; code=authentication_required.",
+        "description": "Authentication is missing or invalid; code is query_oauth_required, query_identity_required, query_identity_mismatch, or query_access_denied (the account and record scope could not be authorized).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "MethodNotAllowed": {
+        "description": "Only GET is supported; code=method_not_allowed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "code=log_query_failed, retryable=true.",
         "content": {
           "application/json": {
             "schema": {
@@ -1936,7 +1352,7 @@
         }
       },
       "AccessDenied": {
-        "description": "The authenticated subject lacks baseline read permission for the requested category; code=observability_access_denied.",
+        "description": "The access profile lacks the capability or category access required by this operation; code=observability_access_denied.",
         "content": {
           "application/json": {
             "schema": {

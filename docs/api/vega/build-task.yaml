@@ -87,11 +87,13 @@ paths:
             minimum: 0
             default: 0
         - name: limit
-          description: 每页数量，默认 20
+          description: 每页数量，1-1000，-1 表示不分页，默认 20
           in: query
           schema:
             type: integer
             format: int64
+            minimum: -1
+            maximum: 1000
             default: 20
         - name: sort
           description: 排序字段，默认按创建时间排序
