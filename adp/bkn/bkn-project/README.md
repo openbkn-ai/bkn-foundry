@@ -827,3 +827,12 @@ active. The existing partial-check acceptance remains explicit. Knowledge-base
 publication still requires the separate full-build, reviewed acceptance and
 linking gates. Retrying checks on the unchanged confirmed draft rebuilds this
 input without creating new Datasets or rerunning inference.
+
+Document-result previews also use the existing guarded native Dataset snapshots,
+with stable pagination and heldout/original-text controls. Generated direct
+evidence relations delegate to the same build checks as Dataset link tables.
+
+For confirmed in-document business keys, record identity uses the unique native
+sentence shared by those fields’ verified evidence, rather than the model’s
+incidental anchor. Missing or ambiguous key evidence requires review; original
+anchors, properties and citations remain unchanged.

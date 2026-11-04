@@ -62,10 +62,10 @@ func sourceSentenceIndex(input *kb.FileInput) map[string]sourceSentenceBlock {
 	}
 	return result
 }
-func (index sourceSentenceBlock) sentence(anchor locatedEvidence) (string, error) {
+func (index sourceSentenceBlock) part(anchor locatedEvidence) (sourceSentencePart, error) {
 	start, end := anchor.Start-index.base, anchor.End-index.base
 	if start < 0 || end > len(index.runes) || start >= end {
-		return "", ErrInvalidBuild
+		return sourceSentencePart{}, ErrInvalidBuild
 	}
 	for start < end && unicode.IsSpace(index.runes[start]) {
 		start++
@@ -75,10 +75,14 @@ func (index sourceSentenceBlock) sentence(anchor locatedEvidence) (string, error
 	}
 	for _, part := range index.parts {
 		if start >= part.start && end <= part.end {
-			return part.text, nil
+			return part, nil
 		}
 	}
-	return "", ErrInvalidBuild
+	return sourceSentencePart{}, ErrInvalidBuild
+}
+func (index sourceSentenceBlock) sentence(anchor locatedEvidence) (string, error) {
+	part, err := index.part(anchor)
+	return part.text, err
 }
 
 // Derive anchors from verified text once per file. Normalized sentence strings
@@ -91,7 +95,16 @@ func recordSentenceAnchors(input *kb.FileInput, records []*materializedRecord) (
 	index := sourceSentenceIndex(input)
 	counts := map[[2]string]int{}
 	for i, record := range records {
-		sentence, err := index[record.Anchor.BlockID].sentence(record.Anchor)
+		fields, err := kbconcept.SentenceIdentityProperties(record.Object)
+		if err != nil {
+			return nil, ErrSentenceIdentity
+		}
+		var sentence string
+		if len(fields) != 0 {
+			sentence, err = confirmedKeySentence(input, index, record, fields)
+		} else {
+			sentence, err = index[record.Anchor.BlockID].sentence(record.Anchor)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -131,4 +144,53 @@ func recordSentenceAnchors(input *kb.FileInput, records []*materializedRecord) (
 		seen[scope] = true
 	}
 	return anchors, nil
+}
+
+// Identity uses the unique native sentence shared by the confirmed key fields'
+// existing evidence. Keep the model's original anchor and property citations;
+// neither incidental quote selection nor identical text at another location
+// may silently choose a different record identity.
+func confirmedKeySentence(input *kb.FileInput, index map[string]sourceSentenceBlock, record *materializedRecord, fields []string) (string, error) {
+	type location struct {
+		block      string
+		start, end int
+	}
+	var shared map[location]string
+	for _, name := range fields {
+		value, exists := record.Input.Values[name]
+		if !exists || value.Value == nil || len(value.Evidence) == 0 {
+			return "", ErrSentenceIdentity
+		}
+		if text, ok := value.Value.(string); ok && strings.TrimSpace(text) == "" {
+			return "", ErrSentenceIdentity
+		}
+		candidates := map[location]string{}
+		for _, citation := range value.Evidence {
+			anchor, err := locateInstance(input, citation, false)
+			if err != nil {
+				return "", ErrSentenceIdentity
+			}
+			part, err := index[anchor.BlockID].part(anchor)
+			if err != nil {
+				return "", ErrSentenceIdentity
+			}
+			candidates[location{anchor.BlockID, part.start, part.end}] = part.text
+		}
+		if shared == nil {
+			shared = candidates
+		} else {
+			for key := range shared {
+				if _, exists := candidates[key]; !exists {
+					delete(shared, key)
+				}
+			}
+		}
+	}
+	if len(shared) != 1 {
+		return "", ErrSentenceIdentity
+	}
+	for _, sentence := range shared {
+		return sentence, nil
+	}
+	return "", ErrSentenceIdentity
 }
