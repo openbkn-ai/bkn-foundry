@@ -14,11 +14,15 @@ import (
 )
 
 func TestPlanSystemLinksKeepsTheVerifiedBusinessNumberAndOriginalPrimaryKey(t *testing.T) {
-	for _, scenario := range []string{"valid", "missing_target", "unconfirmed", "changed_model", "different_execution"} {
+	for _, scenario := range []string{"valid", "foreign_reference", "missing_target", "unconfirmed", "changed_model", "different_execution"} {
 		t.Run(scenario, func(t *testing.T) {
 			build, draft, input, task := extractionFixture(t, "contract", false)
 			target := &interfaces.DraftObjectType{ID: "system_contract", Adopted: true, Table: interfaces.DraftTable{ResourceID: "system-table"}, PrimaryKeys: []string{"id"}, Properties: []*interfaces.DraftProperty{{Name: "id", Type: "unsigned integer", MappedField: "id"}, {Name: "number", Type: "string", MappedField: "number"}}}
 			relation := &interfaces.DraftRelationType{ID: "same_contract", Source: "contract_doc", Target: target.ID, Adopted: true, Cardinality: interfaces.DRAFT_CARDINALITY_ONE_TO_ONE, Document: &interfaces.DraftDocumentModel{Role: "relation"}, DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "number", IdentityProperty: "number", BusinessIdentity: &interfaces.DraftBusinessIdentityEvidence{TargetObjectTypeID: target.ID, ResourceID: target.Table.ResourceID, Property: "number", MappedField: "number", Type: "string", Rows: 1, Distinct: 1, ConfirmedBy: build.Owner, CheckedAt: 1}}}
+			if scenario == "foreign_reference" {
+				relation.Source = "contract_file"
+				relation.Cardinality = interfaces.DRAFT_CARDINALITY_MANY_TO_ONE
+			}
 			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, target)
 			draft.Items.RelationTypes = append(draft.Items.RelationTypes, relation)
 			plan, err := kbdataset.NewPlan(draft, build.GenerationID, "catalog", build.Owner)
@@ -63,7 +67,7 @@ func TestPlanSystemLinksKeepsTheVerifiedBusinessNumberAndOriginalPrimaryKey(t *t
 				}
 			}
 			result, err := PlanSystemLinks(build, draft, relation, claims, system, nil)
-			if scenario != "valid" && scenario != "missing_target" {
+			if scenario != "valid" && scenario != "foreign_reference" && scenario != "missing_target" {
 				if err == nil || result != nil {
 					t.Fatal("invalid linking input returned writes", scenario, err)
 				}
