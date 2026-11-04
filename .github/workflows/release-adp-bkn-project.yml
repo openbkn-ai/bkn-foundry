@@ -1,0 +1,71 @@
+name: release-adp-bkn-project
+
+on:
+  # A new release branch has no service-path diff; build the complete release set.
+  create:
+  push:
+    tags:
+      - 'v*'
+    branches: ['**']
+    paths:
+      - 'adp/bkn/bkn-project/**'
+      # The project Dockerfile builds against this local Go module.
+      - 'adp/bkn/bkn-backend/server/**'
+      - '.github/workflows/release-adp-bkn-project.yml'
+      - '.github/workflows/reusable-*.yml'
+      # 版本冻结提交（release/<x.y.z> 分支）触发全量重建
+      - 'VERSION'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  version:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
+    uses: ./.github/workflows/reusable-version.yml
+
+  verify:
+    needs: version
+    uses: ./.github/workflows/reusable-release-verify.yml
+    with:
+      service-path: adp/bkn/bkn-project
+      stack: chart-only
+
+  no-dev-gate:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
+    uses: ./.github/workflows/reusable-no-dev-gate.yml
+    with:
+      service-path: adp/bkn/bkn-project
+      image-name: bkn-project
+      binary-path: /opt/bkn-project/bkn-project-server
+
+  build:
+    needs: [version, verify, no-dev-gate]
+    uses: ./.github/workflows/reusable-container-image.yml
+    secrets: inherit
+    with:
+      service-path: adp/bkn/bkn-project
+      dockerfile: docker/Dockerfile
+      # Root context matches the Dockerfile's repository-relative COPY paths.
+      context: '../../..'
+      image-name: bkn-project
+      version: ${{ needs.version.outputs.version }}
+      build-args: |
+        SERVER_VERSION=${{ needs.version.outputs.version }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart:
+    needs: [version, verify, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: adp/bkn/bkn-project
+      chart-path: helm/bkn-project
+      chart-name: bkn-project
+      version: ${{ needs.version.outputs.version }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
