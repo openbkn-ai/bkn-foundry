@@ -53,6 +53,7 @@ ONTOLOGY_ASK_V5 = MIGRATIONS / "0.2.1/37-ontology-ask-document-models-v5.sql"
 RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
 DOCUMENT_SEED = MIGRATIONS / "0.2.1/39-seed-bkn-project-document-extraction.sql"
 CONCEPT_NATIVE = MIGRATIONS / "0.2.1/40-concept-native-evidence.sql"
+PUBLISH_BUILTINS = MIGRATIONS / "0.2.1/41-publish-builtin-agents.sql"
 
 
 def statements(path):
@@ -282,6 +283,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, CONCEPT_BUDGET)
         apply(upgraded, DOCUMENT_SEED)
         apply(upgraded, CONCEPT_NATIVE)
+        apply(upgraded, PUBLISH_BUILTINS)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -493,6 +495,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(CONCEPT_BUDGET),
                     str(DOCUMENT_SEED),
                     str(CONCEPT_NATIVE),
+                    str(PUBLISH_BUILTINS),
                 ],
             ],
         ],
@@ -1093,6 +1096,39 @@ def test_metric_designer_seed_is_tool_free_and_draft():
         assert "save, publish, delete, or upgrade metrics" in item["prompt"]["content"]
         apply(db, METRIC_DESIGN)
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0] == 1
+
+
+FORMERLY_DRAFT = ("studio_smart_qa", "cypher_generation", "graph_explorer", "object_metric_designer")
+
+
+def test_fresh_install_publishes_every_builtin_agent():
+    # Platform features call built-in Agents directly; a draft answers as missing.
+    with database() as db:
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
+        statuses = dict(db.execute("SELECT f_agent_id, f_status FROM t_agent"))
+        assert statuses == {agent_id: "published" for agent_id in BUILTIN_AGENT_IDS}
+
+
+def test_upgrade_publishes_draft_builtin_seeds_and_nothing_else():
+    with database() as db:
+        for path in (STUDIO, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER):
+            apply(db, path)
+        db.execute(
+            "INSERT INTO t_agent(f_agent_id,f_name,f_status) VALUES('customer','Customer','draft')"
+        )
+        db.execute("UPDATE t_agent SET f_model='custom' WHERE f_agent_id='graph_explorer'")
+        before = snapshot(db)
+        apply(db, PUBLISH_BUILTINS)
+        statuses = dict(db.execute("SELECT f_agent_id, f_status FROM t_agent"))
+        assert statuses == {**{agent_id: "published" for agent_id in FORMERLY_DRAFT}, "customer": "draft"}
+        # Only the status column changes; the administrator's model stays.
+        after = snapshot(db)
+        status = [row[1] for row in db.execute("PRAGMA table_info(t_agent)")].index("f_status")
+        strip = lambda rows: [row[:status] + row[status + 1:] for row in rows]
+        assert strip(after[0]) == strip(before[0])
+        assert after[1:] == before[1:]
+        apply(db, PUBLISH_BUILTINS)
+        assert snapshot(db) == after
 
 
 def test_metric_designer_budget_upgrade_only_changes_untouched_default():

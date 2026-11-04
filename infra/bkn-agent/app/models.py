@@ -251,13 +251,13 @@ class AgentLimits(BaseModel):
         default=None,
         ge=500,
         le=200000,
-        description="Character cap for one data tool result. Default 12000.",
+        description="Character cap for one data tool result. Default 60000.",
     )
     schema_result_chars: Optional[int] = Field(
         default=None,
         ge=500,
         le=500000,
-        description="Character cap for one schema or discovery tool result. Default 24000.",
+        description="Character cap for one schema or discovery tool result. Default 120000.",
     )
     summarize_after_tokens: Optional[int] = Field(
         default=None,

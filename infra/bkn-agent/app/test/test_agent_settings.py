@@ -811,3 +811,40 @@ def test_repeated_prompt_rebinding_returns_conflict_without_writes(monkeypatch):
             assert (await client.get(f"{ADMIN}/versions", headers=AUTH)).json() == versions
 
     asyncio.run(run())
+
+
+def test_default_result_caps_keep_large_listings_and_schemas_whole():
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    from app.core.agent_settings import shared_limits
+    from app.core.context_budget import budget_messages
+
+    limits = shared_limits(agent())
+    assert (limits.data_result_chars, limits.schema_result_chars) == (60000, 120000)
+    assert limits.summarize_after_tokens == 60000
+
+    # Results that the former 12000 / 24000 caps truncated now arrive whole.
+    listing, schema = "r" * 50000, "s" * 100000
+    calls = [
+        {"id": "c1", "name": "get_kn_detail", "args": {}},
+        {"id": "c2", "name": "run_cypher", "args": {}},
+    ]
+    sent = budget_messages(
+        [
+            HumanMessage(content="q"),
+            AIMessage(content="", tool_calls=calls),
+            ToolMessage(content=schema, tool_call_id="c1", name="get_kn_detail"),
+            ToolMessage(content=listing, tool_call_id="c2", name="run_cypher"),
+        ],
+        limits.data_result_chars,
+        limits.schema_result_chars,
+        limits.keep_tool_results,
+    )
+    assert sent[2].content == schema
+    assert sent[3].content == listing
+    # Beyond the cap the result is still truncated.
+    over = budget_messages(
+        [HumanMessage(content="q"), ToolMessage(content="r" * 70000, tool_call_id="c2", name="run_cypher")],
+        limits.data_result_chars, limits.schema_result_chars, limits.keep_tool_results,
+    )
+    assert over[1].content.startswith("r" * 60000) and "[Result truncated" in over[1].content
