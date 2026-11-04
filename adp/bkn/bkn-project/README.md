@@ -850,3 +850,8 @@ writes do not commit candidate scores. Reassessment replaces previous link issue
 counts rather than accumulating them. An empty link denominator remains
 unmeasured and cannot pass the existing full-build gate. Thresholds, annotations
 and public request formats are unchanged.
+
+The process-store completion transaction permits these acceptance-only link
+metrics while preserving extraction counts, task receipts and pinned scope.
+Per-file counts must agree with the aggregate; low scores are saved for review,
+and never bypass the existing quality gate.

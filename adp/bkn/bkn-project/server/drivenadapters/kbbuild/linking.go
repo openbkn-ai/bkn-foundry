@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"reflect"
+	"slices"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
@@ -175,6 +176,27 @@ func (a *access) SaveLinking(ctx context.Context, next *interfaces.KBBuildRecord
 		return false, nil
 	}
 	left, right := *old.Build, *next.Build
+	if !reflect.DeepEqual(left.Assessment, right.Assessment) || !sameFileAssessments(left.Files, right.Files) {
+		if !complete || left.Mode != "acceptance" || left.ReferenceID == "" || left.ReferenceRevision < 1 || len(left.Files) != len(right.Files) || !linkMetricsOnly(left.Assessment, right.Assessment) {
+			return false, nil
+		}
+		left.Files, right.Files = slices.Clone(left.Files), slices.Clone(right.Files)
+		var expected, predicted, correct int
+		for i := range left.Files {
+			if !linkMetricsOnly(left.Files[i].Assessment, right.Files[i].Assessment) {
+				return false, nil
+			}
+			score := right.Files[i].Assessment
+			expected += score.ExpectedLinks
+			predicted += score.PredictedLinks
+			correct += score.CorrectLinks
+			left.Files[i].Assessment, right.Files[i].Assessment = nil, nil
+		}
+		if right.Assessment.ExpectedLinks != expected || right.Assessment.PredictedLinks != predicted || right.Assessment.CorrectLinks != correct {
+			return false, nil
+		}
+		left.Assessment, right.Assessment = nil, nil
+	}
 	left.State, right.State = "", ""
 	left.Linking, right.Linking = nil, nil
 	left.Revision, right.Revision, left.UpdateTime, right.UpdateTime = 0, 0, 0, 0
@@ -199,3 +221,61 @@ func (a *access) SaveLinking(ctx context.Context, next *interfaces.KBBuildRecord
 }
 
 var _ interfaces.KBLinkingAccess = (*access)(nil)
+
+func sameFileAssessments(left, right []interfaces.KBFileBuild) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if !reflect.DeepEqual(left[i].Assessment, right[i].Assessment) {
+			return false
+		}
+	}
+	return true
+}
+
+// Linking may replace independently measured link counts, never extraction
+// results. Quality thresholds remain in the assessment service.
+func linkMetricsOnly(old, next *interfaces.KBAcceptanceCounts) bool {
+	if old == nil || next == nil || old.Expected != next.Expected || old.Predicted != next.Predicted || old.Correct != next.Correct {
+		return false
+	}
+	if !assessmentRatios(next) {
+		return false
+	}
+	strip := func(score *interfaces.KBAcceptanceCounts) (map[string]int, bool) {
+		if score.ExpectedLinks < 0 || score.PredictedLinks < 0 || score.CorrectLinks < 0 || score.CorrectLinks > score.ExpectedLinks || score.CorrectLinks > score.PredictedLinks {
+			return nil, false
+		}
+		issues := map[string]int{}
+		for key, value := range score.Issues {
+			if value < 0 {
+				return nil, false
+			}
+			issues[key] = value
+		}
+		for key, count := range map[string]int{"missing": score.ExpectedLinks - score.CorrectLinks, "unexpected_or_incorrect": score.PredictedLinks - score.CorrectLinks} {
+			issues[key] -= count
+			if issues[key] < 0 {
+				return nil, false
+			}
+			if issues[key] == 0 {
+				delete(issues, key)
+			}
+		}
+		return issues, true
+	}
+	before, validOld := strip(old)
+	after, validNext := strip(next)
+	return validOld && validNext && reflect.DeepEqual(before, after)
+}
+
+func assessmentRatios(score *interfaces.KBAcceptanceCounts) bool {
+	ratio := func(value *float64, numerator, denominator int) bool {
+		if denominator == 0 {
+			return value == nil
+		}
+		return value != nil && *value == float64(numerator)/float64(denominator)
+	}
+	return score.Expected >= 0 && score.Predicted >= 0 && score.Correct >= 0 && score.Correct <= score.Expected && score.Correct <= score.Predicted && ratio(score.Precision, score.Correct, score.Predicted) && ratio(score.Recall, score.Correct, score.Expected) && ratio(score.Linking, score.CorrectLinks, score.ExpectedLinks)
+}
