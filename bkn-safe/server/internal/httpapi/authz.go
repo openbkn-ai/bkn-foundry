@@ -35,7 +35,7 @@ type resourceRef struct {
 }
 
 // registerAuthz mounts bkn-safe's clean authorization API under /api/safe/v1/authz.
-// This is a redesign — it deliberately drops ISF's quirks (GET-in-body,
+// This is a redesign — it deliberately drops the legacy service's quirks (GET-in-body,
 // array-vs-map responses, policy-delete double form, public/private split).
 func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory.Service) {
 	g := r.Group("/api/safe/v1/authz")
@@ -686,7 +686,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	})
 
 	// GET /role-bindings?accessor_id= — list the role ids bound to an accessor.
-	// -> { role_ids:[...] }. Mirrors ISF accessor_roles (roles-of-user read).
+	// -> { role_ids:[...] }. Mirrors legacy accessor_roles (roles-of-user read).
 	g.GET("/role-bindings", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
 		accessorID := c.Query("accessor_id")
 		if accessorID == "" {

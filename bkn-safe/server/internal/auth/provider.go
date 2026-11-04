@@ -16,8 +16,8 @@ const (
 )
 
 // VisitorType values for the introspect ext.visitor_type claim. The lib maps
-// "realname" -> user; ISF emits "realname" for human users (verified from live
-// ISF introspect), so bkn-safe does the same.
+// "realname" -> user; the legacy identity service emits "realname" for human
+// users (verified from live introspection), so bkn-safe does the same.
 const (
 	VisitorTypeRealname  = "realname"
 	VisitorTypeAnonymous = "anonymous"
@@ -38,7 +38,7 @@ func ExtClaims(u *model.User, loginIP, clientType string) map[string]any {
 	return map[string]any{
 		"visitor_type": VisitorTypeRealname,
 		"login_ip":     loginIP,
-		"udid":         "", // ISF user tokens carry an empty udid (captured)
+		"udid":         "", // Legacy identity tokens carry an empty udid (captured)
 		"account_type": accountType,
 		"client_type":  clientType,
 	}

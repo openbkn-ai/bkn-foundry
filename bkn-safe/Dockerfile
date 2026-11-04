@@ -1,7 +1,7 @@
 # Copyright openbkn.ai
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 #
-# Production image for bkn-safe (ISF replacement auth service). The dev image
+# Production image for bkn-safe (replacement identity service). The dev image
 # (dev/Dockerfile) wraps a host-cross-compiled binary; this one builds in-image.
 
 ########################### Stage 0 — build ########################

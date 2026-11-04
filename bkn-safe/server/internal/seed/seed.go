@@ -5,7 +5,7 @@
 // Package seed centrally initialises authorization data at bkn-safe startup:
 // roles, the resource-type/operation catalog, and role->permission grants.
 //
-// This replaces ISF's scattered initialisation (authorization service startup
+// This replaces the legacy service's scattered initialisation (authorization service startup
 // seed + each module's HTTP resource_type registration + DA InitPermission) with
 // one idempotent seed in one service — no cross-service registration, no boot
 // ordering. Role UUIDs are preserved (see data/roles.json).
@@ -560,7 +560,7 @@ func seedGrants(enforcer *authz.Enforcer) error {
 // seedRoleBindings binds accessors (users/apps) to roles via Casbin's grouping
 // policy. Notably binds the admin UUID — backend services' tokenless S2S
 // fallback identity to the super administrator, so internal /in/v1 calls pass FilterResources
-// (replicates ISF's super-admin grant). AssignRole is idempotent.
+// (replicates the legacy service's super-admin grant). AssignRole is idempotent.
 func seedRoleBindings(enforcer *authz.Enforcer) error {
 	var rb roleBindingsFile
 	if err := json.Unmarshal(roleBindingsJSON, &rb); err != nil {

@@ -1,7 +1,7 @@
 name: release-adp-bkn-safe
 
 # One image (bkn-safe) and two charts (bkn-safe + the paired upstream hydra).
-# The ISF replacement: bkn-safe (authn/authz/directory) + ORY Hydra (token engine).
+# The identity service replacement: bkn-safe (authn/authz/directory) + ORY Hydra (token engine).
 
 on:
   # A new release branch has no service-path diff; build the complete release set.

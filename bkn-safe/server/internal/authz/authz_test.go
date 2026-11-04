@@ -420,7 +420,7 @@ func TestLegacyPolicyWithoutEffectIsNormalizedToAllow(t *testing.T) {
 
 // TestPublicAccessorGrant covers the root-department-as-everyone convention:
 // a policy whose subject is PublicAccessorID matches ANY requesting subject,
-// scoped strictly to the granted object and op (ISF "grant to root department
+// scoped strictly to the granted object and op (legacy "grant to root department
 // = public" semantics; bkn-safe has no user→department g rules, so this is
 // resolved in the matcher instead).
 func TestPublicAccessorGrant(t *testing.T) {
@@ -451,7 +451,7 @@ func TestPublicAccessorGrant(t *testing.T) {
 	}
 }
 
-// TestAllowedOps mirrors ISF resource-operation: returns the allowed subset.
+// TestAllowedOps mirrors the legacy resource-operation: returns the allowed subset.
 func TestAllowedOps(t *testing.T) {
 	e := newTestEnforcer(t)
 	const appAdmin, user = "role-app", "u-1"

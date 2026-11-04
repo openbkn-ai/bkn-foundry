@@ -91,7 +91,7 @@ ingress:
     - /.well-known/oauth-protected-resource
   # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
   # paired hydra public service (port 4444): token, device authorization,
-  # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.
+  # discovery, jwks, userinfo. Replaces the retired identity service ingress's /oauth2/* rules.
   hydraPublicPaths:
     - /oauth2
     - /.well-known/openid-configuration

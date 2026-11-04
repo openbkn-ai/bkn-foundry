@@ -4,7 +4,7 @@
 
 // Package directory is bkn-safe's user/organization directory: users,
 // departments, groups, and name resolution. This is a CLEAN redesign of the
-// ISF user-management surface (no GET-in-body, no array-vs-map quirks) — the
+// legacy user-management surface (no GET-in-body, no array-vs-map quirks) — the
 // consuming services are migrated to call it.
 package directory
 
@@ -487,7 +487,7 @@ func (s *Service) GroupMembers(ctx context.Context, groupID string) ([]string, e
 
 // SearchOrg returns, from the given user ids, those that belong to any
 // department in scope (membership check against the org subtree). Mirrors the
-// ISF search-org intent with a clean signature.
+// legacy search-org intent with a clean signature.
 func (s *Service) SearchOrg(ctx context.Context, userIDs, scopeDeptIDs []string) ([]string, error) {
 	if len(userIDs) == 0 || len(scopeDeptIDs) == 0 {
 		return []string{}, nil
