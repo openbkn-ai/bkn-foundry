@@ -14,6 +14,10 @@ const DocumentExtractionAgentID = "bkn-project-document-extraction"
 
 var ErrInputNotExtractable = errors.New("file has no supported extractable content")
 
+// ErrNotSubmitted lets a runtime say Start definitely created no task, so core may
+// try again. Any other Start error is an unknown outcome and is never resubmitted.
+var ErrNotSubmitted = errors.New("extraction task was not submitted")
+
 // DatasetWrite exists only in memory. Process storage retains its digest and
 // completed count, never rows, source text, Agent output or credentials.
 type DatasetWrite struct {

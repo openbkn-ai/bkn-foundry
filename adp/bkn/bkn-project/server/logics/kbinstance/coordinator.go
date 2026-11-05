@@ -133,9 +133,26 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 		r.Build.State = "queued"
 		return c.save(ctx, r)
 	}
+	waiting := false
 	for index := range r.Build.Files {
 		file := &r.Build.Files[index]
 		switch file.State {
+		case "failed":
+			if !retryableReason(file.Reason) || file.Attempts >= maxFileAttempts-1 {
+				continue
+			}
+			if file.NextAttempt == 0 {
+				file.NextAttempt = c.now() + fileBackoff(file.Attempts)
+				return c.save(ctx, r)
+			}
+			if c.now() < file.NextAttempt {
+				waiting = true
+				continue
+			}
+			attempts := file.Attempts + 1
+			resetFileExecution(file)
+			file.Attempts = attempts
+			return c.save(ctx, r)
 		case "submitting":
 			// This was persisted by a previous process before submitting. Its
 			// acknowledgement was not saved; it cannot be inferred or replayed.
@@ -149,18 +166,22 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 			if submissionUncertain(r.Build) {
 				continue
 			}
+			if c.now() < file.NextAttempt || c.now() < r.Build.SubmitHoldUntil {
+				waiting = true
+				continue
+			}
 			if err = c.save(ctx, r); err != nil {
 				return err
 			}
 			if err = c.Runtime.Check(ctx, r.Build, r.Identity, file.File); err != nil {
-				return c.accessFailure(ctx, r, err)
+				return c.fileAccessFailure(ctx, r, index, err)
 			}
 			input, err := c.Runtime.ReadFile(ctx, r.Build, r.Identity, index)
 			if err != nil {
 				if errors.Is(err, kb.ErrInputNotExtractable) || errors.Is(err, ErrInvalidBuild) {
 					return c.fail(ctx, r, index, "source_requires_review")
 				}
-				return c.accessFailure(ctx, r, err)
+				return c.readFailure(ctx, r, index, err)
 			}
 			digest, err := FileInputDigest(fileRef(file.File), input)
 			if err != nil || (file.InputDigest != "" && file.InputDigest != digest) {
@@ -187,10 +208,15 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 			}
 			task, startErr := c.Runtime.Start(ctx, r.Build, r.Identity, index, draft, input)
 			if startErr != nil {
+				holdSubmissions(r.Build, c.now())
+				if submissionRefused(startErr) {
+					return c.submissionRefused(ctx, r, index)
+				}
 				next, _ = InterruptFileSubmission(r.Build, index, c.now())
 				r.Build.Files, r.Build.State = next.Files, next.State
 				return c.save(ctx, r)
 			}
+			r.Build.SubmitFailures, r.Build.SubmitHoldUntil = 0, 0
 			return c.attach(ctx, r, index, task)
 
 		case "native_writing":
@@ -198,11 +224,11 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 				return err
 			}
 			if err = c.Runtime.Check(ctx, r.Build, r.Identity, file.File); err != nil {
-				return c.accessFailure(ctx, r, err)
+				return c.fileAccessFailure(ctx, r, index, err)
 			}
 			input, err := c.Runtime.ReadFile(ctx, r.Build, r.Identity, index)
 			if err != nil {
-				return c.accessFailure(ctx, r, err)
+				return c.fileAccessFailure(ctx, r, index, err)
 			}
 			return c.writeNative(ctx, r, index, draft, input)
 		case "waiting", "validating", "writing":
@@ -210,13 +236,11 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 				return err
 			}
 			if err = c.Runtime.Check(ctx, r.Build, r.Identity, file.File); err != nil {
-				return c.accessFailure(ctx, r, err)
+				return c.fileAccessFailure(ctx, r, index, err)
 			}
 			task, err := c.Runtime.Poll(ctx, r.Identity, file.AgentTaskID)
-			if file.State == "waiting" {
-				if TaskOverdue(file, task, err, c.now()) {
-					return c.fail(ctx, r, index, ReasonExtractionTimedOut)
-				}
+			if TaskOverdue(file, task, err, c.now()) {
+				return c.fail(ctx, r, index, ReasonExtractionTimedOut)
 			}
 			if err != nil {
 				return err
@@ -234,7 +258,7 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 				if errors.Is(err, kb.ErrInputNotExtractable) || errors.Is(err, ErrInvalidBuild) {
 					return c.fail(ctx, r, index, "source_requires_review")
 				}
-				return c.accessFailure(ctx, r, err)
+				return c.fileAccessFailure(ctx, r, index, err)
 			}
 			inputDigest, err := FileInputDigest(fileRef(file.File), input)
 			if err != nil || inputDigest != file.InputDigest {
@@ -293,13 +317,31 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 			return c.save(ctx, r)
 		}
 	}
-	// Failed/uncertain files remain visible and are never resubmitted. Other
-	// acknowledged files finish first, then grant cleanup becomes mandatory.
+	if waiting {
+		return nil
+	}
+	if settleReusedExecution(r.Build) {
+		return c.save(ctx, r)
+	}
+	// Files that ended without a result stay visible, one by one, and keep no rows
+	// from any attempt. Uncertain submissions are never resubmitted. Other files
+	// finish first, then grant cleanup becomes mandatory.
 	outcome := "succeeded"
-	for _, file := range r.Build.Files {
-		if file.State != "succeeded" {
+	for index := range r.Build.Files {
+		file := &r.Build.Files[index]
+		if outstandingFile(file) {
+			outcome = "attention"
+			if !file.Cleared {
+				return c.clearFile(ctx, r, index, draft)
+			}
+		}
+		// An acceptance sample must be scored, and evidence alone cannot be.
+		if r.Build.Mode == "acceptance" && file.State == "evidence_only" {
 			outcome = "attention"
 		}
+	}
+	if len(r.Build.Skipped) > 0 {
+		outcome = "attention"
 	}
 	if r.Build.Mode == "acceptance" {
 		r.Build.Assessment = aggregateAcceptance(r.Build.Files)
@@ -339,6 +381,9 @@ func (c *Coordinator) prune(ctx context.Context, r *interfaces.KBBuildRecord, in
 	guard := func(ctx context.Context) error {
 		if err := c.save(ctx, r); err != nil {
 			return err
+		}
+		if r.Build.Files[index].State != "writing" && r.Build.Files[index].State != "native_writing" {
+			return nil // Removing a failed file's own rows reads nothing from its source.
 		}
 		return c.Runtime.Check(ctx, r.Build, r.Identity, file)
 	}
@@ -382,6 +427,58 @@ func (c *Coordinator) prune(ctx context.Context, r *interfaces.KBBuildRecord, in
 	return nil
 }
 
+// clearFile removes what any attempt wrote for a file that ended without a result,
+// so that leaving it out cannot publish a partial or older version of it.
+func (c *Coordinator) clearFile(ctx context.Context, r *interfaces.KBBuildRecord, index int, draft *interfaces.Draft) error {
+	if err := c.prune(ctx, r, index, draft, nil, false); err != nil {
+		return err
+	}
+	r.Build.Files[index].Cleared = true
+	return c.save(ctx, r)
+}
+
+// fileAccessFailure keeps a file that is gone from ending the whole build.
+func (c *Coordinator) fileAccessFailure(ctx context.Context, r *interfaces.KBBuildRecord, index int, err error) error {
+	if sourceFileGone(err) {
+		return c.fail(ctx, r, index, reasonSourceVersionGone)
+	}
+	return c.accessFailure(ctx, r, err)
+}
+
+// readFailure retries one file's transient read a bounded number of times, so a
+// file that always errors cannot hold up the files after it.
+func (c *Coordinator) readFailure(ctx context.Context, r *interfaces.KBBuildRecord, index int, err error) error {
+	var source *kb.SourceError
+	if sourceFileGone(err) || (errors.As(err, &source) && (source.StatusCode == 401 || source.StatusCode == 403)) {
+		return c.fileAccessFailure(ctx, r, index, err)
+	}
+	file := &r.Build.Files[index]
+	file.Transient++
+	if file.Transient >= maxFileAttempts {
+		if failErr := c.fail(ctx, r, index, reasonSourceUnavailable); failErr != nil {
+			return failErr
+		}
+		return err
+	}
+	file.NextAttempt = c.now() + fileBackoff(file.Transient-1)
+	if saveErr := c.save(ctx, r); saveErr != nil {
+		return saveErr
+	}
+	return err
+}
+
+// submissionRefused puts a file back when no task can exist, up to a limit.
+func (c *Coordinator) submissionRefused(ctx context.Context, r *interfaces.KBBuildRecord, index int) error {
+	file := &r.Build.Files[index]
+	file.Transient++
+	if file.Transient >= maxFileAttempts {
+		return c.fail(ctx, r, index, reasonSubmissionRefused)
+	}
+	file.State, file.Reason, file.SubmittedAt = "pending", "", 0
+	file.NextAttempt = c.now() + fileBackoff(file.Transient-1)
+	return c.save(ctx, r)
+}
+
 func fileRef(file interfaces.KBResourceFile) kb.SampleVersion {
 	return kb.SampleVersion{KnowledgeBaseID: file.KnowledgeBaseID, VersionRef: kb.VersionRef{FileID: file.FileID, ContentVersionID: file.ContentVersionID}}
 }
@@ -412,6 +509,7 @@ func (c *Coordinator) attach(ctx context.Context, r *interfaces.KBBuildRecord, i
 }
 func (c *Coordinator) fail(ctx context.Context, r *interfaces.KBBuildRecord, index int, reason string) error {
 	r.Build.Files[index].State, r.Build.Files[index].Reason = "failed", reason
+	r.Build.Files[index].NextAttempt = 0 // Whatever waited before, this failure gets its own backoff.
 	r.Build.State = "attention"
 	return c.save(ctx, r)
 }
@@ -518,9 +616,12 @@ func hasFileText(input *kb.FileInput) bool {
 	}
 	return false
 }
+
+// submissionUncertain stops new submissions when the execution itself is in doubt.
+// One lost acknowledgement says nothing about the other files, so it does not.
 func submissionUncertain(build *interfaces.KBBuild) bool {
 	for _, file := range build.Files {
-		if file.State == "submission_unknown" || file.State == "submitting" || file.Reason == "execution_changed" || file.Reason == "execution_version_unknown" {
+		if file.Reason == "execution_changed" || file.Reason == "execution_version_unknown" {
 			return true
 		}
 	}
@@ -564,7 +665,6 @@ func (c *Coordinator) writeNative(ctx context.Context, r *interfaces.KBBuildReco
 		return err
 	}
 	file.State, file.Reason = "evidence_only", "no_supported_text"
-	r.Build.State = "attention"
 	return c.save(ctx, r)
 }
 

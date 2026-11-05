@@ -100,3 +100,18 @@ func TestPlanSystemLinksKeepsTheVerifiedBusinessNumberAndOriginalPrimaryKey(t *t
 		})
 	}
 }
+
+func TestLinkingSkipsFilesWithoutClaimsButStillRefusesUnfinishedOnes(t *testing.T) {
+	for state, has := range map[string]bool{"succeeded": true, "failed": true, "pending": true, "evidence_only": false, interfaces.KBFileExcluded: false} {
+		file := interfaces.KBFileBuild{State: state}
+		if file.HasClaims() != has {
+			t.Fatalf("%s: HasClaims %v", state, file.HasClaims())
+		}
+	}
+	for state, completed := range map[string]bool{"succeeded": true, "evidence_only": true, interfaces.KBFileExcluded: true, "failed": false, "pending": false, "submission_unknown": false, "validated": false} {
+		file := interfaces.KBFileBuild{State: state}
+		if file.Completed() != completed {
+			t.Fatalf("%s: Completed %v", state, file.Completed())
+		}
+	}
+}

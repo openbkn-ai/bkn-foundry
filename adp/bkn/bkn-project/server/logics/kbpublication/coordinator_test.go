@@ -52,6 +52,8 @@ type coordinatorSource struct {
 	journal *coordinatorJournal
 	holds   map[string]bool
 	denied  bool
+	// versions is how many versions a hold must carry; zero means every fixture file.
+	versions int
 }
 
 func (s *coordinatorSource) SummarizeFiles(ctx context.Context, scope kb.SourceScope, _ kb.FileQuery) (kb.FileSummary, error) {
@@ -70,7 +72,7 @@ func (s *coordinatorSource) Hold(ctx context.Context, scope kb.SourceScope, requ
 	if _, err := s.SummarizeFiles(ctx, scope, kb.FileQuery{}); err != nil {
 		return err
 	}
-	if len(request.Versions) != 2 {
+	if want := map[bool]int{true: 2, false: s.versions}[s.versions == 0]; len(request.Versions) != want {
 		return errors.New("incomplete version holds")
 	}
 	s.holds[request.ID] = true

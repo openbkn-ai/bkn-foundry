@@ -206,14 +206,18 @@ func (s *Service) Inspect(ctx context.Context, token string, target Target) (*Pl
 	for _, file := range selection.Files {
 		files[file.Key()] = file
 	}
-	if len(files) != len(selection.Files) || len(full.Build.Files) != len(files) {
+	if len(files) != len(selection.Files) || len(full.Build.Files)+len(full.Build.Skipped) != len(files) {
 		return nil, ErrInvalidSnapshot
 	}
 	for _, step := range full.Build.Files {
-		if step.State != "succeeded" || files[step.File.Key()] != step.File {
+		if !step.Completed() || files[step.File.Key()] != step.File {
 			return nil, ErrInvalidSnapshot
 		}
 		delete(files, step.File.Key())
+	}
+	// A file left out without a person's recorded decision cannot be released.
+	if err := verifyFileAcceptance(full.Build); err != nil {
+		return nil, err
 	}
 	raw, err := json.Marshal(full.Build)
 	if err != nil {
@@ -259,6 +263,45 @@ func (s *Service) Inspect(ctx context.Context, token string, target Target) (*Pl
 		return nil, err
 	}
 	return &Plan{Draft: draft, Selection: selection, Full: full, Bundle: bundle}, nil
+}
+
+// verifyFileAcceptance ties every file left out to the recorded decision.
+func verifyFileAcceptance(build *interfaces.KBBuild) error {
+	listed := map[string]bool{}
+	if build.Acceptance != nil {
+		for _, file := range build.Acceptance.Files {
+			listed[file.File.Key()] = true
+		}
+	}
+	count := len(build.Skipped)
+	for _, step := range build.Skipped {
+		if !listed[step.File.Key()] {
+			return ErrInvalidSnapshot
+		}
+	}
+	for i := range build.Files {
+		if build.Files[i].State == interfaces.KBFileExcluded {
+			count++
+			if !listed[build.Files[i].File.Key()] {
+				return ErrInvalidSnapshot
+			}
+		}
+	}
+	if count != len(listed) {
+		return ErrInvalidSnapshot
+	}
+	return nil
+}
+
+// releasedFiles are the versions a release must keep: not the ones left out.
+func releasedFiles(build *interfaces.KBBuild) []interfaces.KBResourceFile {
+	files := []interfaces.KBResourceFile{}
+	for i := range build.Files {
+		if build.Files[i].State != interfaces.KBFileExcluded {
+			files = append(files, build.Files[i].File)
+		}
+	}
+	return files
 }
 
 func publicationHolds(files []interfaces.KBResourceFile) []interfaces.KBHoldGroup {
@@ -307,7 +350,7 @@ func (s *Service) Prepare(ctx context.Context, token string, target Target) (*in
 		return nil, err
 	}
 	now := time.Now().UnixMilli()
-	record := &interfaces.KBPublication{NetworkID: target.NetworkID, ProjectID: target.ProjectID, LineageID: target.LineageID, DefinitionCommit: plan.Full.Build.DefinitionCommit, ModelFingerprint: plan.Bundle.ModelFingerprint, GenerationID: plan.Full.Build.GenerationID, FullBuildID: plan.Full.Build.ID, Publisher: target.Publisher, Snapshot: spec, RuntimeRowID: plan.Bundle.RuntimeDigest, RuntimeDigest: plan.Bundle.RuntimeDigest, DefinitionDigest: digest(plan.Bundle.Definition), Ranges: plan.Selection.Ranges, Holds: publicationHolds(plan.Selection.Files), State: "preparing", Revision: 1, DraftUpdateTime: plan.Draft.UpdateTime, CreateTime: now, UpdateTime: now}
+	record := &interfaces.KBPublication{NetworkID: target.NetworkID, ProjectID: target.ProjectID, LineageID: target.LineageID, DefinitionCommit: plan.Full.Build.DefinitionCommit, ModelFingerprint: plan.Bundle.ModelFingerprint, GenerationID: plan.Full.Build.GenerationID, FullBuildID: plan.Full.Build.ID, Publisher: target.Publisher, Snapshot: spec, RuntimeRowID: plan.Bundle.RuntimeDigest, RuntimeDigest: plan.Bundle.RuntimeDigest, DefinitionDigest: digest(plan.Bundle.Definition), Ranges: plan.Selection.Ranges, Holds: publicationHolds(releasedFiles(plan.Full.Build)), Acceptance: plan.Full.Build.Acceptance, State: "preparing", Revision: 1, DraftUpdateTime: plan.Draft.UpdateTime, CreateTime: now, UpdateTime: now}
 	existing, err := s.Store.Get(ctx, target.NetworkID)
 	if err != nil {
 		return nil, err

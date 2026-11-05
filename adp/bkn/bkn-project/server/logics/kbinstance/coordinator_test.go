@@ -72,6 +72,9 @@ type fileRuntime struct {
 	afterComplete                                     func()
 	revokes, releases                                 int
 	input                                             *kb.FileInput
+	readErrs                                          map[string]error
+	startFor                                          func(index int) (*interfaces.BknAgentTask, error)
+	checkErrs                                         map[string]error
 }
 
 func (*fileRuntime) Version(context.Context, interfaces.AccountInfo) (int, error) { return 3, nil }
@@ -84,14 +87,20 @@ func (r *fileRuntime) Delegate(_ context.Context, _ *interfaces.KBBuild, id inte
 func (*fileRuntime) Hold(context.Context, *interfaces.KBBuild, interfaces.KBBuildIdentity) error {
 	return nil
 }
-func (r *fileRuntime) Check(context.Context, *interfaces.KBBuild, interfaces.KBBuildIdentity, interfaces.KBResourceFile) error {
+func (r *fileRuntime) Check(_ context.Context, _ *interfaces.KBBuild, _ interfaces.KBBuildIdentity, file interfaces.KBResourceFile) error {
 	r.checks++
 	if r.afterCheck != nil {
 		r.afterCheck()
 	}
+	if err := r.checkErrs[file.FileID]; err != nil {
+		return err
+	}
 	return r.checkErr
 }
 func (r *fileRuntime) ReadFile(_ context.Context, b *interfaces.KBBuild, _ interfaces.KBBuildIdentity, index int) (*kb.FileInput, error) {
+	if err := r.readErrs[b.Files[index].File.FileID]; err != nil {
+		return nil, err
+	}
 	if r.input != nil {
 		return r.input, nil
 	}
@@ -119,7 +128,7 @@ func TestCoordinatorCleanupOnlyNeedsNoDraftOrDatasetAccess(t *testing.T) {
 	}
 }
 
-func TestCoordinatorImageOnlyRegistersEvidenceAndFinishesAsReviewRequired(t *testing.T) {
+func TestCoordinatorImageOnlyRegistersEvidenceAndCountsAsSuccess(t *testing.T) {
 	build, draft, _, _ := extractionFixture(t, "inspection", true)
 	ref := fileRef(build.Files[0].File)
 	input := &kb.FileInput{Text: map[string]string{}, Media: []kb.EvidenceMedia{{SampleVersion: ref, MediaID: "original-resource", OccurrenceID: "original-position", ImageRef: "original-position", Kind: "original", MimeType: "image/jpeg"}}}
@@ -132,19 +141,27 @@ func TestCoordinatorImageOnlyRegistersEvidenceAndFinishesAsReviewRequired(t *tes
 	for i := 0; i < 4; i++ {
 		step(t, c)
 	}
-	if runtime.starts != 0 || runtime.polls != 0 || runtime.materializations != 0 || store.record.Build.State != "needs_review" || store.record.Build.Files[0].State != "evidence_only" || !store.record.Identity.Cleaned || sink.calls == 0 {
+	if runtime.starts != 0 || runtime.polls != 0 || runtime.materializations != 0 || store.record.Build.State != "succeeded" || store.record.Build.Files[0].State != "evidence_only" || !store.record.Identity.Cleaned || sink.calls == 0 {
 		t.Fatal("image evidence was lost or mistaken for business understanding", store.record.Build.State, sink.calls)
 	}
 }
-func (r *fileRuntime) Start(context.Context, *interfaces.KBBuild, interfaces.KBBuildIdentity, int, *interfaces.Draft, *kb.FileInput) (*interfaces.BknAgentTask, error) {
+func (r *fileRuntime) Start(_ context.Context, _ *interfaces.KBBuild, _ interfaces.KBBuildIdentity, index int, _ *interfaces.Draft, _ *kb.FileInput) (*interfaces.BknAgentTask, error) {
 	r.starts++
 	if r.afterStart != nil {
 		r.afterStart()
 	}
+	if r.startFor != nil {
+		return r.startFor(index)
+	}
 	return r.task, r.startErr
 }
-func (r *fileRuntime) Poll(context.Context, interfaces.KBBuildIdentity, string) (*interfaces.BknAgentTask, error) {
+func (r *fileRuntime) Poll(_ context.Context, _ interfaces.KBBuildIdentity, id string) (*interfaces.BknAgentTask, error) {
 	r.polls++
+	if r.startFor != nil && r.pollErr == nil {
+		task := *r.task
+		task.TaskID = id
+		return &task, nil
+	}
 	return r.task, r.pollErr
 }
 func (r *fileRuntime) Materialize(context.Context, *interfaces.KBBuild, interfaces.KBBuildIdentity, int, *interfaces.Draft, *kb.FileInput, *interfaces.BknAgentTask) ([]kb.DatasetWrite, error) {
@@ -168,12 +185,14 @@ func (r *fileRuntime) Complete(context.Context, *interfaces.KBBuild, interfaces.
 }
 
 type recordSink struct {
+	prunes   int
 	calls    int
 	failOnce bool
 	rows     map[string]map[string]any
 }
 
 func (s *recordSink) Prune(ctx context.Context, _ interfaces.DraftDatasetSpec, _ kb.DatasetFileScope, _ []string, guard func(context.Context) error) error {
+	s.prunes++
 	return guard(ctx)
 }
 

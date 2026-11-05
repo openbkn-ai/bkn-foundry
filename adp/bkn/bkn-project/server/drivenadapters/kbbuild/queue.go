@@ -116,6 +116,58 @@ func (a *access) Cancel(ctx context.Context, projectID, id string, caller interf
 	return true, nil
 }
 
+// AcceptFiles applies a person's acceptance to a build that ended for review. It
+// is the only path out of that state: Save refuses every ended build.
+func (a *access) AcceptFiles(ctx context.Context, projectID, id string, revision int64, apply func(*interfaces.KBBuild) error) (*interfaces.KBBuild, error) {
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	owner, archived, err := project(ctx, tx, projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r, err := read(tx.QueryRowContext(ctx, "SELECT "+columns+" FROM "+table+" WHERE f_project_id=? AND f_id=? FOR UPDATE", projectID, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if archived || owner != r.Build.Owner || !valid(r) || !r.Identity.Cleaned || r.Build.Revision != revision {
+		return nil, nil
+	}
+	active, err := current(ctx, tx, r.Build)
+	if err != nil || !active {
+		return nil, err
+	}
+	if err = apply(r.Build); err != nil {
+		return nil, err
+	}
+	r.Build.Revision++
+	r.Build.UpdateTime++
+	r.Build.MarkProgress(r.Build.UpdateTime)
+	payload, _, err := encode(r)
+	if err != nil {
+		return nil, err
+	}
+	mutation, err := tx.ExecContext(ctx, "UPDATE "+table+" SET f_state=?,f_revision=?,f_data=?,f_update_time=? WHERE f_project_id=? AND f_id=? AND f_revision=?", r.Build.State, r.Build.Revision, payload, r.Build.UpdateTime, projectID, id, revision)
+	if err != nil {
+		return nil, err
+	}
+	if count, err := mutation.RowsAffected(); err != nil || count != 1 {
+		return nil, errCorrupt
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.Build, nil
+}
+
 // WorkItems reads each record because progress lives in its process data. It
 // serves an operator endpoint, is capped, and returns no names or identities.
 func (a *access) WorkItems(ctx context.Context) ([]interfaces.KBWorkItem, error) {
@@ -145,3 +197,4 @@ func (a *access) WorkItems(ctx context.Context) ([]interfaces.KBWorkItem, error)
 
 var _ interfaces.KBBuildQueue = (*access)(nil)
 var _ interfaces.KBWorkItems = (*access)(nil)
+var _ interfaces.KBFileAcceptanceAccess = (*access)(nil)
