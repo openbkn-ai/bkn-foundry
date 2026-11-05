@@ -15,7 +15,7 @@ var buildTaskZhCN = i18n.I18nMessages{
 		"VegaBackend.BuildTask.InvalidParameter.PrimaryKeyFields":        "主键字段无效。请在资源 index_config 中配置至少一个不重复、存在于 schema 且类型受支持的 primary_key_fields 字段",
 		"VegaBackend.BuildTask.InvalidParameter.IncrementalFields":       "增量字段无效。请在资源 index_config 中配置至少一个不重复、存在于 schema 且类型受支持的 incremental_fields 字段",
 		"VegaBackend.BuildTask.StreamingUnsupported":                     "暂不支持流式构建任务。请改为创建批量构建任务",
-		"VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields": "资源包含不支持索引构建的字段类型。请处理 type 为 other 的字段后再创建索引构建任务",
+		"VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields": "资源字段不满足索引构建要求。请根据错误详情检查字段类型、精度和配置后重试",
 		"VegaBackend.BuildTask.InvalidParameter.Analyzer":                "全文分词器不可用。请选择 OpenSearch 已安装的分词器，或将受影响字段改为使用资源默认分词器",
 		"VegaBackend.BuildTask.InvalidParameter.EmbeddingModel":          "向量字段缺少嵌入模型。请为向量特征配置 config.embedding_model，或在资源上配置 index_config.default_embedding_model",
 		"VegaBackend.BuildTask.InvalidStateTransition":                   "构建任务状态转移非法。检查当前状态；start 要求 status 为 stopped 或 failed；stop 要求 status 为 pending 或 running",

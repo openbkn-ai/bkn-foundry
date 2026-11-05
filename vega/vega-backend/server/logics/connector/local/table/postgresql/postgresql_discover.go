@@ -507,10 +507,17 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 			if typeModifier > 0 {
 				column.CharMaxLen = int(typeModifier - 4)
 			}
+		case "money":
+			if !c.compatibility.moneyScale.Valid {
+				return fmt.Errorf("PostgreSQL money scale is unavailable")
+			}
+			// money 的底层整数为 int64，最多 19 位十进制有效数字。
+			column.NumPrecision = 19
+			column.NumScale = int(c.compatibility.moneyScale.Int64)
 		case "numeric":
 			if typeModifier >= 0 {
 				column.NumPrecision = int(((typeModifier - 4) >> 16) & 65535)
-				column.NumScale = int((typeModifier - 4) & 65535)
+				column.NumScale = int((((typeModifier - 4) & 0x7ff) ^ 1024) - 1024)
 			}
 		case "time", "timetz", "timestamp", "timestamptz":
 			if typeModifier >= 0 {

@@ -46,16 +46,12 @@ func prepareDocument(ctx context.Context, res *interfaces.Resource, document map
 	if document == nil {
 		return nil, nil, invalidDocumentError(ctx, "document is required")
 	}
-	if err := local_index.ValidateDecimalDocument(res, document); err != nil {
+	encoded, err := local_index.EncodeDecimalDocument(res, document)
+	if err != nil {
 		return nil, nil, query_error.DecimalIndexHTTPError(ctx, err)
 	}
-	result := make(map[string]any, len(document))
-	for key, value := range document {
-		if key == "_id" {
-			continue
-		}
-		result[key] = value
-	}
+	result := encoded
+	delete(result, "_id")
 
 	pending := []pendingEmbedding{}
 

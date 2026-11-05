@@ -346,6 +346,43 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	t.Run("money projections preserve implicit physical table qualifiers", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.Name = "Display label"
+		resource.SourceIdentifier = `"public"."payments"`
+		resource.SourceMetadata = map[string]any{"name": "payments"}
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", OriginalName: "source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal}, {Name: "id", OriginalType: "int4", Type: interfaces.DataType_Integer}}
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT payments.* FROM {{orders}} WHERE payments.source_amount > 1 ORDER BY payments.source_amount", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		statement, args, err := postgresql.ToSql(prepared.builder)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT "payments".* FROM (SELECT CAST("source_amount" AS NUMERIC) AS "source_amount", "id" FROM "public"."payments") AS "payments" WHERE ("payments"."source_amount" > CAST(1 AS BIGINT)) ORDER BY "payments"."source_amount" ASC NULLS FIRST`, statement)
+		assert.Empty(t, args)
+		assert.Equal(t, "Display label", resource.Name)
+		assert.Equal(t, "payments", sqlBuilderTables(prepared.builder)[0].SourceName)
+	})
+
+	t.Run("PostgreSQL receives source types for lossless money projection", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."payments"`
+		resource.SourceMetadata = map[string]any{"name": "payments"}
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", OriginalName: "source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal}, {Name: "id", OriginalType: "int4", Type: interfaces.DataType_Integer}}
+		mysqlRawMetadata(rs, cs, resource, true, interfaces.ConnectorTypePostgreSQL)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT * FROM {{orders}}", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, []string{"source_amount", "id"}, tables[0].ColumnNames)
+		assert.Equal(t, map[string]string{"source_amount": "money", "id": "int4"}, tables[0].ColumnOriginalTypes)
+		statement, _, err := postgresql.ToSql(prepared.builder)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT * FROM (SELECT CAST("source_amount" AS NUMERIC) AS "source_amount", "id" FROM "public"."payments") AS "payments"`, statement)
+		assert.Equal(t, "amount", resource.SchemaDefinition[0].Name)
+	})
+
 	t.Run("joined group authorizes and binds every nested source", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		ids := []string{"orders", "members", "projects"}
@@ -1353,6 +1390,7 @@ func nativeSQLConnectorMocks(t *testing.T, cf *vmock.MockConnectorFactory, conne
 		if connectorType == interfaces.ConnectorTypePostgreSQL {
 			mocks[i].ExpectQuery(`SELECT 1 FROM (SELECT ARRAY[1] AS items) AS base JOIN LATERAL generate_subscripts(base.items, 1) AS probe(position) ON true`).WillReturnRows(sqlmock.NewRows([]string{"probe"}).AddRow(1))
 			mocks[i].ExpectQuery(`SELECT ordinal_position FROM (SELECT ARRAY[1] AS items) AS base JOIN LATERAL unnest(base.items) WITH ORDINALITY AS probe(value, ordinal_position) ON true`).WillReturnRows(sqlmock.NewRows([]string{"probe"}).AddRow(1))
+			mocks[i].ExpectQuery(`SELECT pg_catalog.length(pg_catalog.split_part(CAST(CAST(CAST(0 AS money) AS numeric) AS text), '.', 2))`).WillReturnRows(sqlmock.NewRows([]string{"scale"}).AddRow(2))
 		}
 	}
 	opened := 0

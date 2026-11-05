@@ -15,6 +15,16 @@ import (
 )
 
 func TestBuildFieldMappings(t *testing.T) {
+	t.Run("integer encoding cannot be overridden by features", func(t *testing.T) {
+		for _, config := range []map[string]any{{"scaling_factor": nil}, {"scaling_factor": 1}, {"type": "scaled_float"}, {"coerce": true}, {"ignore_malformed": true}, {"null_value": 0}} {
+			mapping, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "numeric(2,-3)", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: config}}}})
+			var failure *interfaces.DecimalIndexError
+			require.ErrorAs(t, err, &failure)
+			assert.Equal(t, "unsafe_mapping_override", failure.Reason)
+			assert.Nil(t, mapping)
+		}
+	})
+
 	t.Run("features cannot override decimal safety", func(t *testing.T) {
 		for _, config := range []map[string]any{{"scaling_factor": 1e18}, {"type": "double"}, {"ignore_malformed": true}, {"null_value": 0}} {
 			mapping, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: config}}}})
@@ -35,12 +45,15 @@ func TestBuildFieldMappings(t *testing.T) {
 			{name: "numeric", original: "NUMERIC(15,4)", factor: 10000},
 			{name: "dataset", attributes: map[string]any{"precision": 12, "scale": 2}, factor: 100},
 			{name: "integer decimal", original: "decimal(15,0)", factor: 1},
+			{name: "negative scale", original: "numeric(2,-3)", factor: 1},
 			{name: "unknown", original: "decimal"},
 			{name: "wide declared precision", original: "decimal(38,18)", factor: 1e18},
 			{name: "wide precision with cents", original: "decimal(38,2)", factor: 100},
 			{name: "largest finite factor", original: "decimal(1000,308)", factor: 1e308},
 			{name: "non finite factor", original: "decimal(1000,309)"},
-			{name: "invalid scale", original: "decimal(12,13)"},
+			{name: "scale exceeds precision", original: "numeric(3,5)", factor: 1e5},
+			{name: "dataset scale exceeds precision", attributes: map[string]any{"precision": 3, "scale": 5}, factor: 1e5},
+			{name: "invalid precision", original: "decimal(0,13)"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				properties, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: tc.original, Attributes: tc.attributes}})
@@ -50,7 +63,11 @@ func TestBuildFieldMappings(t *testing.T) {
 					return
 				}
 				require.NoError(t, err)
-				assert.Equal(t, map[string]any{"type": "scaled_float", "scaling_factor": tc.factor}, properties["amount"])
+				if tc.factor == 1 {
+					assert.Equal(t, map[string]any{"type": "long", "coerce": false}, properties["amount"])
+				} else {
+					assert.Equal(t, map[string]any{"type": "scaled_float", "scaling_factor": tc.factor}, properties["amount"])
+				}
 			})
 		}
 	})

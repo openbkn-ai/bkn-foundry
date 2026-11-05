@@ -531,16 +531,13 @@ components:
         type: { type: string }
         decimal:
           description: |
-            decimal 字段的有效小数定义。precision/scale 纳入任务快照和
-            指纹。含 decimal 字段且快照缺少该定义的旧任务需要重新创建：
-            启动时因指纹不匹配返回 409 VegaBackend.BuildTask.IndexConfigChanged，
-            已进入调度的任务由 worker 标记为 failed；既有任务不会自动补齐该快照。
-            旧编码索引不能直接作为新编码的增量或恢复基线。
+            decimal 字段的有效小数定义。precision/scale 纳入任务快照和指纹。
+            物理索引类型由 scale 推导；本次仅覆盖新建索引。
           type: object
           required: [precision, scale]
           properties:
             precision: { type: integer, minimum: 1 }
-            scale: { type: integer, minimum: 0, maximum: 308 }
+            scale: { type: integer, minimum: -2147483648, maximum: 308 }
         features:
           type: array
           items:

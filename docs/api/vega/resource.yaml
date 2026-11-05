@@ -557,6 +557,11 @@ components:
             integer / large_integer / unsigned integer / float / decimal / string / text /
             date / datetime / time / boolean / binary / json / vector
             large_integer 表示大整数，JSON 值以十进制字符串无损传输；具体范围由源类型决定。
+            PostgreSQL money 探查为 decimal，num_precision=19，num_scale 取源库实际货币小数位；
+            结构化查询和 SQL 查询均在源端无损转换为 numeric，响应保留十进制文本，
+            不返回货币符号或千分位。money 定义在连接初始化时探测并保存，后续探查直接使用；
+            源端 lc_monetary 变化后须重建连接池并重新探查元数据。
+            money 定义读取失败或非法时，连接初始化失败。
           type: string
         api_name:
           description: |
@@ -600,13 +605,15 @@ components:
           description: |
             connector-specific 扩展属性。Dataset 的 decimal 字段必须通过 precision 和 scale
             声明小数定义，或提供完整的 original_type（如 decimal(12,2)）。
-            托管本地索引保留 scaled_float，scaling_factor=10^scale；要求 precision >= 1、
-            0 <= scale <= precision，且因子为有限正 double（scale <= 308）。
+            要求 precision >= 1，允许 scale > precision。scale <= 0 时映射为 long（coerce=false），
+            按源声明检查整数性、定标与 int64 范围后精确编码，不经过浮点数；
+            scale > 0 时使用 scaled_float，scaling_factor=10^scale，因子必须为有限正 double（scale <= 308）。
             不因声明 precision 较大禁止建索引；源表优先采用探查结果中的 num_precision/num_scale。
             缺失或非法定义在建索引前拒绝；写入时检查实际值是否满足声明、缩放后是否在
             signed long 范围内，以及编码/解码后按声明 scale 恢复是否无损。
             超范围、超小数位或发生精度损失的值被拒绝，不静默舍入金额。
-            原始值保持不变；SUM/MIN/MAX 输出按字段 scale 归一化，AVG 保留原生额外精度。
+            不修改调用方文档；整数 Decimal 在索引写入副本中编码为 int64。
+            SUM/MIN/MAX 输出按 max(scale,0) 归一化，AVG 保留原生额外精度。
             SUM/MIN/MAX 的 HAVING 通过桶级 script 按相同 scale 和 HALF_UP 比较，阈值保持十进制精度。
             SUM/AVG 仍使用 OpenSearch 浮点聚合，不保证任意数据规模下的十进制精确累计。
             本修复面向按新规则创建的索引，不读取实际 mapping/settings 检查历史索引兼容性。
