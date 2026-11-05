@@ -36,7 +36,7 @@ func AgentTaskDeadline() time.Duration {
 // TaskOverdue reports a task past its deadline that has not reported an end. A
 // finished task is always accepted, however late; its result is already paid for.
 func TaskOverdue(file *interfaces.KBFileBuild, task *interfaces.BknAgentTask, pollErr error, now int64) bool {
-	if file.SubmittedAt == 0 || now <= file.SubmittedAt+AgentTaskDeadline().Milliseconds() {
+	if now <= file.SubmittedAt+AgentTaskDeadline().Milliseconds() {
 		return false
 	}
 	return pollErr != nil || task == nil || task.Status == interfaces.BKN_AGENT_TASK_PENDING || task.Status == interfaces.BKN_AGENT_TASK_RUNNING
