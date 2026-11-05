@@ -56,6 +56,9 @@ func RunWorker(ctx context.Context, limits *Limits) {
 	defer ticker.Stop()
 	after := ""
 	log := kbinstance.NewWorkerLog("refresh")
+	if limits != nil {
+		log.Problem("configuration", ValidateLimits(*limits))
+	}
 	observed := map[string]string{}
 	for {
 		select {

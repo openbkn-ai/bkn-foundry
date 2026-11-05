@@ -247,6 +247,14 @@ func TestSummarizeWorkReportsTheLongestStall(t *testing.T) {
 	}
 }
 
+func TestSummarizeWorkDoesNotTimeWhatAwaitsAPerson(t *testing.T) {
+	items := []interfaces.KBWorkItem{{State: "attention", ProgressTime: 0}, {State: "running", ProgressTime: 90_000}}
+	summary := SummarizeWork(items, 100_000, "attention")
+	if summary.StuckSeconds != 10 || summary.Pending != 2 || summary.ByState["attention"] != 1 {
+		t.Fatalf("%+v", summary)
+	}
+}
+
 func TestConfiguredDeadlineFallsBackRatherThanNeverExpiring(t *testing.T) {
 	t.Cleanup(func() { ConfigureAgentTaskDeadline(0) })
 	ConfigureAgentTaskDeadline(time.Minute)

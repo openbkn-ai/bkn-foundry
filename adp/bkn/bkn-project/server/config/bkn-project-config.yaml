@@ -41,10 +41,6 @@ kbRefresh:
   maxRemovedPercent: 10
   maxDurationSeconds: 600
 
-# A document extraction task still unfinished after this long ends as a failure of that file.
-kbBuild:
-  agentTaskDeadlineSeconds: 1800
-
 # Drafting an ontology from table structure. The keyword lists are business vocabulary.
 draft:
   codeTableMaxRows: 500

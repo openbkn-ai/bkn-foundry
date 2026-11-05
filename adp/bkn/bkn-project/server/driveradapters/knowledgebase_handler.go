@@ -9,11 +9,15 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -28,6 +32,51 @@ func RegisterKnowledgeBaseResources(engine *gin.Engine) {
 	r := &restHandler{as: auth.NewAuthService(), ps: project.NewProjectService(), kbra: logics.KBRA, da: logics.DA}
 	r.registerKnowledgeBaseResources(engine)
 	r.registerKnowledgeBaseRefresh(engine)
+	engine.GET("/api/bkn-project/v1/health/kb-work", kbWorkStatus)
+}
+
+// kbWorkReport caches the operator report: it needs no account and parses stored
+// process records, so frequent calls must not reach the database each time.
+var kbWorkReport struct {
+	sync.Mutex
+	at     time.Time
+	report gin.H
+}
+
+const kbWorkReportTTL = 15 * time.Second
+
+// kbWorkStatus reports pending and stuck background work to operators. It carries
+// counts only, so like the health probes it needs no account.
+func kbWorkStatus(c *gin.Context) {
+	kbWorkReport.Lock()
+	defer kbWorkReport.Unlock()
+	if kbWorkReport.report != nil && time.Since(kbWorkReport.at) < kbWorkReportTTL {
+		rest.ReplyOK(c, http.StatusOK, kbWorkReport.report)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	now := time.Now().UnixMilli()
+	report := gin.H{}
+	for _, source := range []struct {
+		name   string
+		reader any
+		await  []string
+	}{{name: "builds", reader: logics.KBBA}, {name: "refreshes", reader: logics.KBRefreshes, await: []string{"attention"}}} {
+		reader, ok := source.reader.(interfaces.KBWorkItems)
+		if !ok {
+			continue
+		}
+		items, err := reader.WorkItems(ctx)
+		if err != nil {
+			logger.Warnf("Knowledge base work status failed: %s: %v", source.name, err)
+			rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusServiceUnavailable, httperrors.PublicError_ServiceUnavailable))
+			return
+		}
+		report[source.name] = kbinstance.SummarizeWork(items, now, source.await...)
+	}
+	kbWorkReport.at, kbWorkReport.report = time.Now(), report
+	rest.ReplyOK(c, http.StatusOK, report)
 }
 
 func (r *restHandler) registerKnowledgeBaseResources(engine *gin.Engine) {

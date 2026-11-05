@@ -19,12 +19,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbrefresh"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
@@ -84,7 +82,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	c.GET("/api/bkn-project/v1/health", r.HealthCheck)
 	c.GET("/api/bkn-project/v1/ready", r.ReadyCheck)
-	c.GET("/api/bkn-project/v1/health/kb-work", r.KBWorkStatus)
 
 	apiV1 := c.Group("/api/bkn-project/v1")
 	apiV1.Use(rest.PrivateNoCacheMiddleware())
@@ -222,31 +219,6 @@ func (r *restHandler) ReadyCheck(c *gin.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, gin.H{"status": "ready"})
-}
-
-// KBWorkStatus reports pending and stuck background work to operators. It carries
-// counts only, so like the probes above it needs no account.
-func (r *restHandler) KBWorkStatus(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), readyTimeout)
-	defer cancel()
-	now := time.Now().UnixMilli()
-	report := gin.H{}
-	for name, source := range map[string]any{"builds": logics.KBBA, "refreshes": logics.KBRefreshes} {
-		reader, ok := source.(interfaces.KBWorkItems)
-		if !ok {
-			continue
-		}
-		items, err := reader.WorkItems(ctx)
-		if err != nil {
-			logger.Warnf("Knowledge base work status failed: %s: %v", name, err)
-			rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusServiceUnavailable, httperrors.PublicError_ServiceUnavailable))
-			return
-		}
-		report[name] = kbinstance.SummarizeWork(items, now)
-	}
-	_, access := knowledgebase.ForWorker()
-	report["paused_for_licence"] = access == knowledgebase.WorkerPause
-	rest.ReplyOK(c, http.StatusOK, report)
 }
 
 // LanguageMiddleware resolves Accept-Language once and stores it in request context.

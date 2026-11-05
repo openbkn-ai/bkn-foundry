@@ -6,13 +6,10 @@ package driveradapters
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -20,10 +17,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
 )
 
 func setGinMode() func() {
@@ -102,41 +96,4 @@ func Test_RestHandler_VerifyOAuth_Failure(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusUnauthorized)
 		}
 	})
-}
-
-type fixedWorkQueue struct {
-	interfaces.KBBuildQueue
-	items []interfaces.KBWorkItem
-	err   error
-}
-
-func (q fixedWorkQueue) WorkItems(context.Context) ([]interfaces.KBWorkItem, error) {
-	return q.items, q.err
-}
-
-func TestKBWorkStatusReportsCountsOnly(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	previous := logics.KBBA
-	t.Cleanup(func() { logics.KBBA = previous })
-	run := func(queue fixedWorkQueue) *httptest.ResponseRecorder {
-		logics.KBBA = queue
-		engine := gin.New()
-		engine.GET("/status", (&restHandler{}).KBWorkStatus)
-		recorder := httptest.NewRecorder()
-		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/status", nil))
-		return recorder
-	}
-	recorder := run(fixedWorkQueue{items: []interfaces.KBWorkItem{{State: "running", ProgressTime: time.Now().Add(-time.Hour).UnixMilli()}}})
-	var body struct {
-		Builds kbinstance.WorkSummary `json:"builds"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil || recorder.Code != http.StatusOK {
-		t.Fatalf("%d %s", recorder.Code, recorder.Body.String())
-	}
-	if body.Builds.Pending != 1 || body.Builds.ByState["running"] != 1 || body.Builds.StuckSeconds < 3500 {
-		t.Fatalf("%+v", body.Builds)
-	}
-	if failed := run(fixedWorkQueue{err: errors.New("database down")}); failed.Code != http.StatusServiceUnavailable || strings.Contains(failed.Body.String(), "database down") {
-		t.Fatalf("%d %s", failed.Code, failed.Body.String())
-	}
 }

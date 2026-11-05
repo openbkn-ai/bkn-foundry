@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -108,10 +107,6 @@ func Boot() *Application {
 	logics.SetKBRefreshAccess(buildaccess.NewRefreshes(db))
 	refreshSettings := appSetting.KBRefreshSetting
 	kbrefresh.ConfigureLimits(&kbrefresh.Limits{MaxChangedPercent: refreshSettings.MaxChangedPercent, MaxRemovedPercent: refreshSettings.MaxRemovedPercent, MaxDurationMillis: refreshSettings.MaxDurationSeconds * 1000})
-	kbinstance.ConfigureAgentTaskDeadline(time.Duration(appSetting.KBBuildSetting.AgentTaskDeadlineSeconds) * time.Second)
-	if err := kbrefresh.ValidateLimits(kbrefresh.Limits{MaxChangedPercent: refreshSettings.MaxChangedPercent, MaxRemovedPercent: refreshSettings.MaxRemovedPercent, MaxDurationMillis: refreshSettings.MaxDurationSeconds * 1000}); err != nil {
-		logger.Errorf("Invalid kbRefresh configuration: %v; refresh batches will stop for review", err)
-	}
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.
@@ -162,9 +157,6 @@ func (server *Application) httpHandler() http.Handler {
 func (server *Application) Run() {
 	logger.Info("Server Starting")
 	entitlement.Freeze()
-	if missing := knowledgebase.MissingProviders(); len(missing) > 0 {
-		logger.Errorf("Knowledge base is installed without: %s; those operations stay unavailable", strings.Join(missing, ", "))
-	}
 
 	// Create the Gin engine and register APIs.
 	handler := server.httpHandler()

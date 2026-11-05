@@ -74,15 +74,9 @@ type RefreshSetting struct {
 	MaxDurationSeconds int64 `mapstructure:"maxDurationSeconds"`
 }
 
-// KBBuildSetting bounds document extraction, for builds and refresh alike.
-type KBBuildSetting struct {
-	AgentTaskDeadlineSeconds int64 `mapstructure:"agentTaskDeadlineSeconds"`
-}
-
 // AppSetting contains application configuration.
 type AppSetting struct {
 	KBRefreshSetting RefreshSetting            `mapstructure:"kbRefresh"`
-	KBBuildSetting   KBBuildSetting            `mapstructure:"kbBuild"`
 	ServerSetting    ServerSetting             `mapstructure:"server"`
 	LogSetting       logger.LogSetting         `mapstructure:"log"`
 	OtelSetting      otel.OtelConfig           `mapstructure:"otel"`
@@ -157,7 +151,6 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("kbRefresh.maxChangedPercent", 20)
 	vp.SetDefault("kbRefresh.maxRemovedPercent", 10)
 	vp.SetDefault("kbRefresh.maxDurationSeconds", 600)
-	vp.SetDefault("kbBuild.agentTaskDeadlineSeconds", 1800)
 	vp.SetDefault("draft.codeTableMaxRows", 500)
 	vp.SetDefault("draft.codeTableMaxColumns", 3)
 	vp.SetDefault("draft.adoptHitRate", 0.95)

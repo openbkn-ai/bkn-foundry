@@ -6,14 +6,20 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -108,4 +114,58 @@ func TestKnowledgeBaseResourceReads(t *testing.T) {
 			So(called, ShouldBeFalse)
 		})
 	})
+}
+
+type fixedWorkQueue struct {
+	interfaces.KBBuildQueue
+	items []interfaces.KBWorkItem
+	err   error
+	reads *int
+}
+
+func (q fixedWorkQueue) WorkItems(context.Context) ([]interfaces.KBWorkItem, error) {
+	*q.reads++
+	return q.items, q.err
+}
+
+func TestKBWorkStatusReportsCountsAndCachesThem(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	previous := logics.KBBA
+	resetCache := func() { kbWorkReport.report = nil }
+	resetCache()
+	t.Cleanup(func() { logics.KBBA = previous; resetCache() })
+	reads := 0
+	run := func(queue fixedWorkQueue) *httptest.ResponseRecorder {
+		logics.KBBA = queue
+		engine := gin.New()
+		engine.GET("/status", kbWorkStatus)
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/status", nil))
+		return recorder
+	}
+	failed := run(fixedWorkQueue{err: errors.New("database down"), reads: &reads})
+	if failed.Code != http.StatusServiceUnavailable || strings.Contains(failed.Body.String(), "database down") {
+		t.Fatalf("%d %s", failed.Code, failed.Body.String())
+	}
+	reads = 0
+	queue := fixedWorkQueue{items: []interfaces.KBWorkItem{{State: "running", ProgressTime: time.Now().Add(-time.Hour).UnixMilli()}}, reads: &reads}
+	recorder := run(queue)
+	var body struct {
+		Builds kbinstance.WorkSummary `json:"builds"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil || recorder.Code != http.StatusOK {
+		t.Fatalf("%d %s", recorder.Code, recorder.Body.String())
+	}
+	if body.Builds.Pending != 1 || body.Builds.ByState["running"] != 1 || body.Builds.StuckSeconds < 3500 {
+		t.Fatalf("%+v", body.Builds)
+	}
+	run(queue)
+	if reads != 1 {
+		t.Fatalf("a repeated call must not read the database again: %d", reads)
+	}
+	kbWorkReport.at = time.Now().Add(-kbWorkReportTTL)
+	run(queue)
+	if reads != 2 {
+		t.Fatalf("a stale report must be read again: %d", reads)
+	}
 }

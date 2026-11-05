@@ -4,6 +4,7 @@
 package kbinstance
 
 import (
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -18,8 +19,8 @@ const defaultAgentTaskDeadline = 30 * time.Minute
 
 var agentTaskDeadline atomic.Int64
 
-// ConfigureAgentTaskDeadline installs the startup setting. Zero or less keeps the
-// default, since an Agent task must never wait without limit.
+// ConfigureAgentTaskDeadline lets the edition assembly override the default. Zero
+// or less keeps the default, since an Agent task must never wait without limit.
 func ConfigureAgentTaskDeadline(deadline time.Duration) {
 	agentTaskDeadline.Store(int64(deadline))
 }
@@ -52,11 +53,15 @@ type WorkSummary struct {
 // workSampleLimit matches the adapters' cap on records read for this report.
 const workSampleLimit = 200
 
-// SummarizeWork counts work and finds the longest time without progress.
-func SummarizeWork(items []interfaces.KBWorkItem, now int64) WorkSummary {
+// SummarizeWork counts work and finds the longest time without progress. States in
+// awaitingPerson are counted but not timed: nothing is stuck while a person decides.
+func SummarizeWork(items []interfaces.KBWorkItem, now int64, awaitingPerson ...string) WorkSummary {
 	summary := WorkSummary{Pending: len(items), ByState: map[string]int{}, AtSampleLimit: len(items) >= workSampleLimit}
 	for _, item := range items {
 		summary.ByState[item.State]++
+		if slices.Contains(awaitingPerson, item.State) {
+			continue
+		}
 		if stuck := (now - item.ProgressTime) / 1000; stuck > summary.StuckSeconds {
 			summary.StuckSeconds = stuck
 		}

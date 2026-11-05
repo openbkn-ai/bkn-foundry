@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 // RunBuildWorker resumes only journaled work. It never copies a request context,
@@ -19,6 +21,10 @@ import (
 func RunBuildWorker(ctx context.Context, queue interfaces.KBBuildQueue, drafts interfaces.DraftAccess, references interfaces.KBReferenceAccess) {
 	if queue == nil || drafts == nil {
 		return
+	}
+	// Reported once at startup: registration happens before this worker starts.
+	if missing := kb.MissingProviders(); len(missing) > 0 {
+		logger.Errorf("Knowledge base is installed without: %s; those operations stay unavailable", strings.Join(missing, ", "))
 	}
 	worker := &buildWorker{queue: queue, drafts: drafts, references: references, lease: uuid.NewString(), access: kb.ForWorker, log: NewWorkerLog("build")}
 	ticker := time.NewTicker(2 * time.Second)
