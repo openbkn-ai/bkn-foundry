@@ -2378,6 +2378,18 @@ components:
             pattern: ^[0-9A-Za-z_.-]+$
           - type: 'null'
           title: Thread Id
+        model_id:
+          anyOf:
+          - type: string
+            maxLength: 100
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Model Id
+          description: 'Optional chat (llm) model the caller can use; without it the
+            Agent''s own model answers. A model the caller cannot use, or that is
+            not a chat model, is rejected before the run starts. Fixed for the thread:
+            a later turn with a different or missing model_id returns 409.'
         context:
           $ref: '#/components/schemas/ExecutionScope'
       additionalProperties: false

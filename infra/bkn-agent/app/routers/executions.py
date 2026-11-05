@@ -228,8 +228,12 @@ async def _execute_impl(
     if metric_request and (agent.tools or agent.skills):
         raise err(409, "BknAgent.Execution.Unsupported")
 
-    request_data = req.model_dump(mode="json")
+    # Without a model choice the request is stored (and fingerprinted) as before.
+    request_data = req.model_dump(
+        mode="json", exclude={"model_id"} if req.model_id is None else None
+    )
     metric_data = metric_request.model_dump(mode="json") if metric_request else None
+    model_id = metric_request.model_id if metric_request else req.model_id
     protocol = METRIC_PROTOCOL if metric_request else _PROTOCOL
     fingerprint = hashlib.sha256(
         json.dumps(metric_data or request_data, sort_keys=True).encode()
@@ -262,13 +266,14 @@ async def _execute_impl(
             raise err(409, "BknAgent.Execution.Conflict")
         if metric_request and origin.get("metric_request", {}).get("scope") != metric_data["scope"]:
             raise err(409, "BknAgent.Execution.Conflict")
-        if (
-            metric_request
-            and origin.get("metric_request", {}).get("model_id") != metric_request.model_id
-        ):
+        # The model chosen when the thread began stays for every later turn.
+        origin_model = (
+            origin.get("metric_request", {}) if metric_request else origin["request"]
+        ).get("model_id")
+        if origin_model != model_id:
             raise err(409, "BknAgent.Execution.Conflict")
-    if metric_request and metric_request.model_id:
-        selected_model = await resolve_authorized_model(metric_request.model_id)
+    if model_id:
+        selected_model = await resolve_authorized_model(model_id)
         if selected_model.model_type != "llm":
             raise err(400, "BknAgent.Execution.Unsupported")
         agent = agent.model_copy(
