@@ -17,6 +17,191 @@ import (
 
 // TestToSql 检查 PG 目标生成的标识符、绑定编号、类型、子句及拒绝边界。
 func TestToSql(t *testing.T) {
+	t.Run("lossless source casts retain fractions without changing explicit DECIMAL defaults", func(t *testing.T) {
+		for _, tc := range []struct {
+			kind   sb.CastType
+			target string
+		}{
+			{sb.CastUnboundedDecimal, "NUMERIC"},
+			{sb.CastDecimal, "NUMERIC(10,0)"},
+		} {
+			statement, args, err := ToSql(sb.Select(&sb.Cast{Expr: &sb.Column{Name: "amount"}, Type: tc.kind}))
+			require.NoError(t, err)
+			assert.Equal(t, `SELECT CAST("amount" AS `+tc.target+`)`, statement)
+			assert.Empty(t, args)
+		}
+	})
+
+	t.Run("money sources expose numeric values to SQL expressions and stars", func(t *testing.T) {
+		for _, tc := range []struct{ input, want string }{
+			{input: "SELECT COUNT(*) AS n FROM {{payments}} CROSS JOIN {{refunds}}", want: `SELECT COUNT(*) AS "n" FROM (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "payments" CROSS JOIN (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."refunds") AS "refunds"`},
+			{input: "SELECT COUNT(*) AS n FROM {{payments}} CROSS JOIN {{refunds}} r", want: `SELECT COUNT(*) AS "n" FROM (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "payments" CROSS JOIN (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."refunds") AS "r"`},
+			{input: "SELECT * FROM {{payments}}", want: `SELECT * FROM (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "payments"`},
+			{input: "SELECT p.*, SUM(p.amount) AS total FROM {{payments}} p GROUP BY p.id, p.amount HAVING SUM(p.amount) > 1.23 ORDER BY p.amount", want: `SELECT "p".*, SUM("p"."amount") AS "total" FROM (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "p" GROUP BY "p"."id", "p"."amount" HAVING (SUM("p"."amount") > CAST(1.23 AS NUMERIC)) ORDER BY "p"."amount" ASC NULLS FIRST`},
+			{input: "SELECT a.amount FROM {{payments}} a JOIN {{payments}} b ON a.amount=b.amount WHERE a.amount > 0", want: `SELECT "a"."amount" FROM (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "a" INNER JOIN (SELECT "id", CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "b" ON ("a"."amount" = "b"."amount") WHERE ("a"."amount" > CAST(0 AS BIGINT))`},
+		} {
+			t.Run(tc.input, func(t *testing.T) {
+				query, err := compiler.ParseSQL(tc.input)
+				require.NoError(t, err)
+				tables := []*sb.Table{query.FromPart.(*sb.Table)}
+				for _, join := range query.JoinsPart {
+					tables = append(tables, join.Source.(*sb.Table))
+				}
+				for _, table := range tables {
+					table.SourceIdentifier = `"public".` + pgQuoteIdent(table.ResourceID)
+					table.SourceName = table.ResourceID
+					table.ColumnNames = []string{"id", "amount"}
+					table.ColumnOriginalTypes = map[string]string{"id": "int4", "amount": "money"}
+				}
+				before, err := json.Marshal(query)
+				require.NoError(t, err)
+				statement, args, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, statement)
+				assert.Empty(t, args)
+				after, err := json.Marshal(query)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+
+	t.Run("money aliases retain source names across nested queries and joined groups", func(t *testing.T) {
+		money := &sb.Table{SourceIdentifier: `"payments"`, SourceName: "payments", ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}}
+		count := &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}
+		for _, tc := range []struct {
+			name   string
+			source sb.SqlNode
+			suffix string
+		}{
+			{name: "explicit subquery alias", source: &sb.Subquery{Query: sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"users"`}), Alias: "u"}, suffix: ` CROSS JOIN (SELECT "id" FROM "users") AS "u"`},
+			{name: "alias in parenthesized join", source: &sb.JoinedTable{From: &sb.Table{SourceIdentifier: `"users"`, Alias: "u"}, Joins: []sb.Join{{Kind: sb.CrossJoin, Source: &sb.Table{SourceIdentifier: `"charges"`}}}}, suffix: ` CROSS JOIN ("users" AS "u" CROSS JOIN "charges")`},
+			{name: "implicit physical table name", source: &sb.Table{SourceIdentifier: `"public"."users"`, SourceName: "users"}, suffix: ` CROSS JOIN "public"."users"`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				query := sb.Select(count).From(money)
+				query.JoinsPart = []sb.Join{{Kind: sb.CrossJoin, Source: tc.source}}
+				before, err := json.Marshal(query)
+				require.NoError(t, err)
+				statement, _, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Equal(t, `SELECT COUNT(*) FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "payments") AS "payments"`+tc.suffix, statement)
+				after, err := json.Marshal(query)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+
+		// 不同 SELECT 可直接复用原始表名，无需在生成器中分配别名。
+		inner := sb.Select(count).From(money)
+		query := sb.Select(count).From(money)
+		query.JoinsPart = []sb.Join{{Kind: sb.CrossJoin, Source: &sb.Subquery{Query: inner, Alias: "history"}}}
+		statement, _, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT COUNT(*) FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "payments") AS "payments" CROSS JOIN (SELECT COUNT(*) FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "payments") AS "payments") AS "history"`, statement)
+		again, _, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, statement, again)
+	})
+
+	t.Run("money projections retain implicit source qualifiers in every clause", func(t *testing.T) {
+		for _, tc := range []struct{ input, want string }{
+			{input: "SELECT payments.amount FROM {{id}} WHERE payments.amount > 1 ORDER BY payments.amount", want: `SELECT "payments"."amount" FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "payments" WHERE ("payments"."amount" > CAST(1 AS BIGINT)) ORDER BY "payments"."amount" ASC NULLS FIRST`},
+			{input: "SELECT payments.*, refunds.amount AS credit FROM {{id}} JOIN {{other}} ON payments.amount=refunds.amount", want: `SELECT "payments".*, "refunds"."amount" AS "credit" FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "payments" INNER JOIN (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "public"."refunds") AS "refunds" ON ("payments"."amount" = "refunds"."amount")`},
+			{input: "SELECT payments.amount AS key, SUM(payments.amount) AS total FROM {{id}} GROUP BY payments.amount HAVING SUM(payments.amount)>1 ORDER BY payments.amount", want: `SELECT "payments"."amount" AS "key", SUM("payments"."amount") AS "total" FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "payments" GROUP BY "payments"."amount" HAVING (SUM("payments"."amount") > CAST(1 AS BIGINT)) ORDER BY "payments"."amount" ASC NULLS FIRST`},
+			{input: "SELECT p.* FROM {{id}} p", want: `SELECT "p".* FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "p"`},
+			{input: "SELECT `Pay.ments \"archive\"`.* FROM {{quoted}}", want: `SELECT "Pay.ments ""archive""".* FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "public"."Pay.ments ""archive""") AS "Pay.ments ""archive"""`},
+		} {
+			t.Run(tc.input, func(t *testing.T) {
+				query, err := compiler.ParseSQL(tc.input)
+				require.NoError(t, err)
+				tables := []*sb.Table{query.FromPart.(*sb.Table)}
+				for _, join := range query.JoinsPart {
+					tables = append(tables, join.Source.(*sb.Table))
+				}
+				for _, table := range tables {
+					table.SourceName = "payments"
+					if table.ResourceID == "other" {
+						table.SourceName = "refunds"
+					}
+					if table.ResourceID == "quoted" {
+						table.SourceName = `Pay.ments "archive"`
+					}
+					table.SourceIdentifier = `"public".` + pgQuoteIdent(table.SourceName)
+					table.ColumnNames = []string{"amount"}
+					table.ColumnOriginalTypes = map[string]string{"amount": "money"}
+				}
+				before, err := json.Marshal(query)
+				require.NoError(t, err)
+				statement, args, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, statement)
+				assert.Empty(t, args)
+				after, err := json.Marshal(query)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+
+	t.Run("money projections leave duplicate source names for PostgreSQL to validate", func(t *testing.T) {
+		for _, mixed := range []bool{false, true} {
+			for _, projection := range []sb.SqlNode{&sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}, &sb.Column{Qualifier: "payments", Name: "amount"}, &sb.Star{Qualifier: "payments"}} {
+				first := &sb.Table{SourceIdentifier: `"sales"."payments"`, SourceName: "payments", ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}}
+				second := &sb.Table{SourceIdentifier: `"archive"."payments"`, SourceName: "payments", ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}}
+				if mixed {
+					second.ColumnOriginalTypes = map[string]string{"amount": "numeric"}
+				}
+				query := sb.Select(projection).From(first)
+				query.JoinsPart = []sb.Join{{Kind: sb.CrossJoin, Source: second}}
+				statement, args, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Empty(t, args)
+				assert.Contains(t, statement, `FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "sales"."payments") AS "payments"`)
+				if mixed {
+					assert.Contains(t, statement, `CROSS JOIN "archive"."payments"`)
+				} else {
+					assert.Contains(t, statement, `CROSS JOIN (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "archive"."payments") AS "payments"`)
+				}
+				// 保留重名以使源端报错，不能通过内部重命名让限定引用绑定到错误的表。
+				assert.NotContains(t, statement, "_vega_money")
+			}
+		}
+		for _, explicitFirst := range []bool{false, true} {
+			money := &sb.Table{SourceIdentifier: `"payments"`, SourceName: "payments", ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}}
+			other := &sb.Table{SourceIdentifier: `"users"`, Alias: "payments"}
+			first, second := sb.SqlNode(money), sb.SqlNode(other)
+			if explicitFirst {
+				first, second = second, first
+			}
+			query := sb.Select(&sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}).From(first)
+			query.JoinsPart = []sb.Join{{Kind: sb.CrossJoin, Source: second}}
+			statement, _, err := ToSql(query)
+			require.NoError(t, err)
+			assert.Contains(t, statement, `(SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "payments") AS "payments"`)
+			assert.Contains(t, statement, `"users" AS "payments"`)
+		}
+	})
+
+	t.Run("money projections require an original table name or explicit alias", func(t *testing.T) {
+		for _, alias := range []string{"", "p"} {
+			t.Run(alias, func(t *testing.T) {
+				table := &sb.Table{SourceIdentifier: `"payments"`, Alias: alias, ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}}
+				query := sb.Select(&sb.Star{}).From(table)
+				statement, args, err := ToSql(query)
+				if alias == "" {
+					require.ErrorContains(t, err, "money source requires an original table name or explicit alias")
+					assert.Empty(t, statement)
+					assert.Empty(t, args)
+				} else {
+					require.NoError(t, err)
+					assert.Equal(t, `SELECT * FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "payments") AS "p"`, statement)
+					assert.Empty(t, args)
+				}
+			})
+		}
+	})
+
 	t.Run("standalone grouping and ordering literals are typed expressions", func(t *testing.T) {
 		for _, tc := range []struct{ input, expression string }{
 			{"'x'", "CAST('x' AS TEXT)"},

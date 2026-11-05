@@ -15,7 +15,7 @@ var buildTaskEnUS = i18n.I18nMessages{
 		"VegaBackend.BuildTask.InvalidParameter.PrimaryKeyFields":        "Invalid primary key fields. Configure at least one unique primary_key_fields field that exists in the resource schema and has a supported type",
 		"VegaBackend.BuildTask.InvalidParameter.IncrementalFields":       "Invalid incremental fields. Configure at least one unique incremental_fields field that exists in the resource schema and has a supported type",
 		"VegaBackend.BuildTask.StreamingUnsupported":                     "Streaming build tasks are temporarily unsupported. Create a batch build task instead",
-		"VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields": "Resource contains field types unsupported for index builds. Resolve fields with type other before creating an index build task",
+		"VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields": "Resource fields do not meet index build requirements. Check the field types, precision, and configuration in the error details before retrying",
 		"VegaBackend.BuildTask.InvalidParameter.Analyzer":                "Unavailable full-text analyzer. Choose an analyzer installed in OpenSearch, or update the affected field to use the resource default",
 		"VegaBackend.BuildTask.InvalidParameter.EmbeddingModel":          "Missing embedding model for vector field. Set config.embedding_model on the vector feature or index_config.default_embedding_model on the resource",
 		"VegaBackend.BuildTask.InvalidStateTransition":                   "Invalid build task state transition. Check current task status; start requires status in {stopped, failed}; stop requires status in {pending, running}",

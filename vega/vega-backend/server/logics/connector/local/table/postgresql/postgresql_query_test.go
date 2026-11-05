@@ -21,9 +21,51 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
+	t.Run("money reads preserve exact decimal text and null values", func(t *testing.T) {
+		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		db.SetMaxOpenConns(1)
+		connector := &PostgresqlConnector{db: db, connected: true}
+		field := &interfaces.Property{Name: "amount", OriginalName: "source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal}
+		resource := &interfaces.Resource{SourceIdentifier: `"public"."payments"`, SchemaDefinition: []*interfaces.Property{field}}
+		cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Name: "amount", Operation: ">=", Value: json.Number("-92233720368547758.08")}, map[string]*interfaces.Property{"amount": field})
+		require.NoError(t, err)
+		base := `SELECT CAST("source_amount" AS NUMERIC) AS "amount" FROM "public"."payments" WHERE (CAST("source_amount" AS NUMERIC) >= $1)`
+		mock.ExpectQuery(base + ` ORDER BY CAST("source_amount" AS NUMERIC) ASC NULLS LAST LIMIT 10`).WithArgs("-92233720368547758.08").WillReturnRows(sqlmock.NewRows([]string{"amount"}).
+			AddRow([]byte("92233720368547758.07")).AddRow([]byte("-92233720368547758.08")).AddRow([]byte("0.00")).AddRow(nil)).RowsWillBeClosed()
+		mock.ExpectQuery(`SELECT COUNT(*) FROM (` + base + `) AS "_resource_total"`).WithArgs("-92233720368547758.08").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(4))
+		result, err := connector.ExecuteQuery(t.Context(), resource, &interfaces.ResourceDataQueryParams{ActualFilterCond: cond, Sort: []*interfaces.SortField{{Field: "amount", Direction: interfaces.ASC_DIRECTION}}, Paging: interfaces.PagingRequest{Limit: 10}, NeedTotal: true})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"amount": "92233720368547758.07"}, {"amount": "-92233720368547758.08"}, {"amount": "0.00"}, {"amount": nil}}, result.Entries)
+		assert.Equal(t, int64(4), result.TotalCount)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("money grouping and aggregate HAVING use the same numeric expression", func(t *testing.T) {
+		for _, aggr := range []string{"sum", "avg", "min", "max", "count", "count_distinct"} {
+			t.Run(aggr, func(t *testing.T) {
+				connector := &PostgresqlConnector{}
+				resource := &interfaces.Resource{SourceIdentifier: `"public"."payments"`, SchemaDefinition: []*interfaces.Property{{Name: "amount", OriginalType: "money", Type: interfaces.DataType_Decimal}}}
+				params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "amount"}}, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: aggr, Alias: "total"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: json.Number("0.001")}, Paging: interfaces.PagingRequest{Limit: 10}}
+				query, err := connector.buildSelectBuilder(resource, params)
+				require.NoError(t, err)
+				statement, args, err := ToSql(query)
+				require.NoError(t, err)
+				metric := strings.ToUpper(aggr) + `(CAST("amount" AS NUMERIC))`
+				if aggr == "count_distinct" {
+					metric = `COUNT(DISTINCT CAST("amount" AS NUMERIC))`
+				}
+				assert.Equal(t, `SELECT CAST("amount" AS NUMERIC) AS "amount", `+metric+` AS "total" FROM "public"."payments" GROUP BY CAST("amount" AS NUMERIC) HAVING (`+metric+` > $1) ORDER BY "amount" ASC NULLS FIRST LIMIT 10`, statement)
+				assert.Equal(t, []any{"0.001"}, args)
+			})
+		}
+	})
+
 	t.Run("aggregate sort aliases and group tie breaks precede pagination", func(t *testing.T) {
 		for _, tc := range []struct {
 			name     string
@@ -623,6 +665,20 @@ func TestPostgresqlConnectorConnectionString(t *testing.T) {
 
 // TestPostgresqlConnectorExecuteSQLBuilder 验证真正执行 $n 参数、二进制内容及源错误分类。
 func TestPostgresqlConnectorExecuteSQLBuilder(t *testing.T) {
+	t.Run("SQL money source projections return decimal text and preserve nulls", func(t *testing.T) {
+		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		query := sb.Select(&sb.Star{}).From(&sb.Table{SourceIdentifier: `"public"."payments"`, SourceName: "payments", ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}})
+		mock.ExpectQuery(`SELECT * FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "public"."payments") AS "payments"`).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("amount").OfType("NUMERIC", "")).AddRow([]byte("92233720368547758.07")).AddRow([]byte("-0.001")).AddRow(nil)).RowsWillBeClosed()
+		result, err := connector.ExecuteSQLBuilder(t.Context(), query)
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.ColumnInfo{{Name: "amount", Type: interfaces.DataType_Decimal}}, result.Columns)
+		assert.Equal(t, []map[string]any{{"amount": "92233720368547758.07"}, {"amount": "-0.001"}, {"amount": nil}}, result.Entries)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("bound numeric parameters and native bytea survive scanning", func(t *testing.T) {
 		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 		require.NoError(t, err)

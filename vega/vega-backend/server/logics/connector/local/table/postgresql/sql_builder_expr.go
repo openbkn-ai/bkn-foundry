@@ -243,6 +243,28 @@ func (b *pgSQLBuffer) writeNode(node sb.SqlNode) {
 		b.write(" AS ")
 		b.identifier(n.Name)
 	case *sb.Table:
+		// 在来源边界统一 money 的 Decimal 语义，涵盖星号、连接及任意 SQL 表达式。
+		if usesMoneyProjection(n) {
+			alias := n.Alias
+			if alias == "" {
+				alias = n.SourceName
+			}
+			if alias == "" {
+				b.fail("money source requires an original table name or explicit alias")
+				return
+			}
+			projection := sb.Select().From(&sb.Table{SourceIdentifier: n.SourceIdentifier})
+			for _, name := range n.ColumnNames {
+				var expr sb.SqlNode = &sb.Column{Name: name}
+				if strings.EqualFold(n.ColumnOriginalTypes[name], "money") {
+					expr = &sb.Alias{Expr: &sb.Cast{Expr: expr, Type: sb.CastUnboundedDecimal}, Name: name}
+				}
+				projection.Columns(expr)
+			}
+			// 保留原来源名；重名来源由调用方提供显式别名，合法性由 PostgreSQL 校验。
+			b.node(&sb.Subquery{Query: projection, Alias: alias})
+			break
+		}
 		b.write(n.SourceIdentifier)
 		if n.Alias != "" {
 			b.write(" AS ")
@@ -426,6 +448,16 @@ func (b *pgSQLBuffer) writeNode(node sb.SqlNode) {
 	}
 }
 
+// usesMoneyProjection 判断来源是否需要将 money 统一投影为 numeric。
+func usesMoneyProjection(table *sb.Table) bool {
+	for _, name := range table.ColumnNames {
+		if strings.EqualFold(table.ColumnOriginalTypes[name], "money") {
+			return true
+		}
+	}
+	return false
+}
+
 // selectQuery 保留当前 SELECT 的子句边界，HAVING 别名不会泄漏到嵌套查询。
 func (b *pgSQLBuffer) selectQuery(q *sb.SelectBuilder) {
 	if len(q.ColumnsPart) == 0 {
@@ -594,6 +626,8 @@ func (b *pgSQLBuffer) cast(c sb.Cast) {
 	case sb.CastUnsignedInteger:
 		b.fail("PostgreSQL does not support unsigned integer casts")
 		return
+	case sb.CastUnboundedDecimal:
+		target = "NUMERIC"
 	case sb.CastDecimal:
 		target = "NUMERIC"
 		maxParameters = 2

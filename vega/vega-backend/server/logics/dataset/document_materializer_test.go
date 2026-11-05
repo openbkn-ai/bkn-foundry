@@ -25,6 +25,35 @@ import (
 )
 
 func TestPrepareDocument(t *testing.T) {
+	t.Run("scale may exceed precision without accepting out of range values", func(t *testing.T) {
+		resource := &interfaces.Resource{LocalIndexName: "index", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"precision": 3, "scale": 5}}}}
+		for _, value := range []string{"0.00123", "0.01234", "0.001234"} {
+			original := map[string]any{"amount": value}
+			document, pending, err := prepareDocument(context.Background(), resource, original)
+			if value == "0.00123" {
+				require.NoError(t, err)
+				assert.Equal(t, value, document["amount"])
+			} else {
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Nil(t, document)
+			}
+			assert.Empty(t, pending)
+			assert.Equal(t, value, original["amount"])
+		}
+	})
+
+	t.Run("integer decimal encoding preserves the source document", func(t *testing.T) {
+		resource := &interfaces.Resource{LocalIndexName: "index", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"precision": 38, "scale": 0}}}}
+		original := map[string]any{"amount": "9007199254740993"}
+		encoded, pending, err := prepareDocument(context.Background(), resource, original)
+		require.NoError(t, err)
+		assert.Equal(t, int64(9007199254740993), encoded["amount"])
+		assert.Equal(t, "9007199254740993", original["amount"])
+		assert.Empty(t, pending)
+	})
+
 	res := &interfaces.Resource{LocalIndexName: "index", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"precision": 12, "scale": 2}}}}
 	for _, tc := range []struct {
 		value string

@@ -233,6 +233,44 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 }
 
 func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
+	for _, connectorType := range []string{"mysql", "mariadb", "postgresql", "sqlserver", "oracle", "doris", "hana"} {
+		t.Run("exact integer decimal write for "+connectorType, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			lim := vmock.NewMockLocalIndexManager(ctrl)
+			bts := vmock.NewMockBuildTaskService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			resource := &interfaces.Resource{LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(38,0)"}}}
+			mark := `{"mode":"batch","cursor":[{"key":"id","value":8000}]}`
+			task := &interfaces.BuildTask{ID: "task", IndexName: "index", ExecuteType: interfaces.BuildTaskExecuteTypeFull, SyncedMark: mark, SyncedCount: 8000,
+				IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"id"}}}}
+			lim.EXPECT().CheckIndexExist(gomock.Any(), "index").Return(true, nil)
+			connector := vmock.NewMockTableConnector(ctrl)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), connectorType, gomock.Any()).Return(connector, nil)
+			connector.EXPECT().Connect(gomock.Any()).Return(nil)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			document := map[string]any{"id": int64(8001), "amount": "9007199254740993"}
+			connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{TotalCount: 1, Entries: []map[string]any{document}}, nil)
+			bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
+			bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+				assert.Nil(t, progress.SyncedMark)
+				assert.Nil(t, progress.SyncedCount)
+				return true, nil
+			})
+			writeError := errors.New("index write failed")
+			lim.EXPECT().IndexDocuments(gomock.Any(), "index", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, writes []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
+				require.Len(t, writes, 1)
+				assert.Equal(t, int64(9007199254740993), writes[0].Document["amount"])
+				return nil, writeError
+			})
+			worker := &batchBuildWorker{lim: lim, bts: bts, cf: cf}
+			err := worker.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: connectorType}, resource, task)
+			require.ErrorIs(t, err, writeError)
+			assert.Equal(t, "9007199254740993", document["amount"])
+			assert.Equal(t, mark, task.SyncedMark)
+			assert.EqualValues(t, 8000, task.SyncedCount)
+		})
+	}
+
 	t.Run("invalid decimal values cannot write or advance incremental checkpoints", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)

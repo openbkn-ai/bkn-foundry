@@ -317,10 +317,10 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to ping PostgreSQL connection: %w", err)
 	}
 
-	compatibility := detectPostgresqlCompatibility(ctx, db)
-	if ctxErr := ctx.Err(); ctxErr != nil {
+	compatibility, err := detectPostgresqlCompatibility(ctx, db)
+	if err != nil {
 		_ = db.Close()
-		return fmt.Errorf("failed to detect PostgreSQL compatibility: %w", ctxErr)
+		return fmt.Errorf("failed to detect PostgreSQL compatibility: %w", err)
 	}
 
 	c.db, c.compatibility, c.connected = db, compatibility, true
@@ -329,6 +329,7 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 
 // Close releases the connection pool and clears connection state.
 func (c *PostgresqlConnector) Close(ctx context.Context) error {
+	c.compatibility = postgresqlCompatibility{}
 	if c.db != nil {
 		err := c.db.Close()
 		c.connected = false

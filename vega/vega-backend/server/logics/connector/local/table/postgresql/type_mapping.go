@@ -33,9 +33,9 @@ var TypeMapping = map[string]string{
 	"float8":           interfaces.DataType_Float,
 	"double precision": interfaces.DataType_Float,
 	"real":             interfaces.DataType_Float,
-	"money":            interfaces.DataType_Float,
 
 	// decimal
+	"money":   interfaces.DataType_Decimal,
 	"numeric": interfaces.DataType_Decimal,
 	"decimal": interfaces.DataType_Decimal,
 

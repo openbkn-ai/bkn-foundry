@@ -18,6 +18,8 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/lib/pq"
+	"github.com/lib/pq/pqerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -353,16 +355,66 @@ func TestPostgresqlConnectorClose(t *testing.T) {
 		require.NoError(t, err)
 		connector.db = db
 		connector.connected = true
+		connector.compatibility = postgresqlCompatibility{moneyScale: sql.NullInt64{Int64: 2, Valid: true}}
 
 		mock.ExpectClose()
 		require.NoError(t, connector.Close(context.Background()))
 		assert.False(t, connector.connected)
 		assert.Nil(t, connector.db)
+		assert.Equal(t, postgresqlCompatibility{}, connector.compatibility)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
 
 func TestPostgresqlConnectorConnectDetectsCapabilities(t *testing.T) {
+	t.Run("failed probes close the pool without publishing connection state", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, stage string
+			cause       error
+			scale       any
+		}{
+			{name: "connection failure", stage: "lateral", cause: errors.New("source connection lost")},
+			{name: "permission failure", stage: "ordinality", cause: &pq.Error{Code: pqerror.InsufficientPrivilege}},
+			{name: "money read failure", stage: "money", cause: errors.New("money definition unavailable")},
+			{name: "null money definition", stage: "money", scale: nil},
+			{name: "invalid money definition", stage: "money", scale: int64(-1)},
+			{name: "cancellation", stage: "lateral", cause: context.Canceled},
+			{name: "timeout", stage: "money", cause: context.DeadlineExceeded},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true), sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+				require.NoError(t, err)
+				defer func() { _ = db.Close() }()
+				mock.ExpectPing()
+				for _, probe := range []struct{ name, query string }{{"lateral", postgresqlLateralProbe}, {"ordinality", postgresqlWithOrdinalityProbe}, {"money", postgresqlMoneyScaleProbe}} {
+					query := mock.ExpectQuery(probe.query)
+					if probe.name == tc.stage {
+						if tc.cause != nil {
+							query.WillReturnError(tc.cause)
+						} else {
+							query.WillReturnRows(sqlmock.NewRows([]string{"scale"}).AddRow(tc.scale))
+						}
+						break
+					}
+					query.WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
+				}
+				mock.ExpectClose()
+				patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) { return db, nil })
+				defer patches.Reset()
+				connector := &PostgresqlConnector{config: &postgresqlConfig{}}
+				err = connector.Connect(t.Context())
+				require.Error(t, err)
+				if tc.cause != nil {
+					assert.ErrorIs(t, err, tc.cause)
+				}
+				assert.False(t, connector.connected)
+				assert.Nil(t, connector.db)
+				assert.Equal(t, postgresqlCompatibility{}, connector.compatibility)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
 	db, mock, err := sqlmock.New(
 		sqlmock.MonitorPingsOption(true),
 		sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual),
@@ -372,18 +424,25 @@ func TestPostgresqlConnectorConnectDetectsCapabilities(t *testing.T) {
 	mock.ExpectQuery(postgresqlLateralProbe).
 		WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
 	mock.ExpectQuery(postgresqlWithOrdinalityProbe).
-		WillReturnError(errors.New("WITH ORDINALITY is unavailable"))
+		WillReturnError(&pq.Error{Code: pqerror.FeatureNotSupported})
+	mock.ExpectQuery(postgresqlMoneyScaleProbe).WillReturnRows(sqlmock.NewRows([]string{"scale"}).AddRow(3))
 	patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) {
 		return db, nil
 	})
 	t.Cleanup(patches.Reset)
 
-	connector := &PostgresqlConnector{config: &postgresqlConfig{}}
+	connector := &PostgresqlConnector{config: &postgresqlConfig{}, compatibility: postgresqlCompatibility{moneyScale: sql.NullInt64{Int64: 9, Valid: true}}}
 	require.NoError(t, connector.Connect(context.Background()))
 	assert.True(t, connector.connected)
 	assert.Same(t, db, connector.db)
 	assert.True(t, connector.compatibility.supportsLateral())
 	assert.False(t, connector.compatibility.supportsWithOrdinality())
+
+	assert.True(t, connector.compatibility.moneyScale.Valid)
+	assert.Equal(t, int64(3), connector.compatibility.moneyScale.Int64)
+	// 已连接时重复 Connect 不应再次探测定义。
+	require.NoError(t, connector.Connect(t.Context()))
+	assert.Equal(t, int64(3), connector.compatibility.moneyScale.Int64)
 
 	mock.ExpectClose()
 	require.NoError(t, connector.Close(context.Background()))

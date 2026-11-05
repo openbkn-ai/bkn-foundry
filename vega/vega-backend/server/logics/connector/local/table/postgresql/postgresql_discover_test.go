@@ -231,6 +231,76 @@ func TestPostgresqlConnectorListSchemas(t *testing.T) {
 }
 
 func TestPostgresqlConnectorFetchColumns(t *testing.T) {
+	t.Run("money definition is reused across tables including zero scale", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, compatibility: postgresqlCompatibility{}}
+		mock.ExpectQuery(regexp.QuoteMeta(postgresqlLateralProbe)).WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
+		mock.ExpectQuery(regexp.QuoteMeta(postgresqlWithOrdinalityProbe)).WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
+		mock.ExpectQuery(regexp.QuoteMeta(postgresqlMoneyScaleProbe)).WillReturnRows(sqlmock.NewRows([]string{"scale"}).AddRow(0))
+		connector.compatibility, err = detectPostgresqlCompatibility(t.Context(), db)
+		require.NoError(t, err)
+		for _, name := range []string{"payments", "refunds"} {
+			mock.ExpectQuery("FROM pg_catalog.pg_class").WithArgs("public", name).WillReturnRows(sqlmock.NewRows([]string{
+				"name", "oid", "kind", "type", "typmod", "not_null", "default", "collation", "position", "description",
+			}).AddRow("amount", 790, "b", "money", -1, false, nil, "", 1, "")).RowsWillBeClosed()
+			mock.ExpectQuery("SELECT pg_catalog.has_schema_privilege").WithArgs("public", name).WillReturnRows(sqlmock.NewRows([]string{"readable"}).AddRow(true))
+			mock.ExpectQuery("FROM pg_catalog.pg_constraint con").WithArgs("public", name).WillReturnRows(sqlmock.NewRows([]string{"column_name"})).RowsWillBeClosed()
+			table := &interfaces.TableMeta{Schema: "public", Name: name}
+			require.NoError(t, connector.fetchColumns(t.Context(), table))
+			require.Len(t, table.Columns, 1)
+			assert.Equal(t, 19, table.Columns[0].NumPrecision)
+			assert.Zero(t, table.Columns[0].NumScale)
+		}
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	for _, tc := range []struct {
+		name  string
+		scale driver.Value
+	}{
+		{name: "money with zero fractional digits", scale: int64(0)},
+		{name: "money with two fractional digits", scale: int64(2)},
+		{name: "money with three fractional digits", scale: int64(3)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			db.SetMaxOpenConns(1)
+			connector := &PostgresqlConnector{db: db, compatibility: postgresqlCompatibility{}}
+			mock.ExpectQuery(regexp.QuoteMeta(postgresqlLateralProbe)).WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
+			mock.ExpectQuery(regexp.QuoteMeta(postgresqlWithOrdinalityProbe)).WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
+			mock.ExpectQuery(regexp.QuoteMeta(postgresqlMoneyScaleProbe)).WillReturnRows(sqlmock.NewRows([]string{"scale"}).AddRow(tc.scale))
+			connector.compatibility, err = detectPostgresqlCompatibility(t.Context(), db)
+			require.NoError(t, err)
+			mock.ExpectQuery("FROM pg_catalog.pg_class").WithArgs("public", "payments").WillReturnRows(sqlmock.NewRows([]string{
+				"name", "oid", "kind", "type", "typmod", "not_null", "default", "collation", "position", "description",
+			}).AddRow("amount", 790, "b", "money", -1, false, nil, "", 1, "").
+				AddRow("credit", 9100, "d", "money_domain", -1, false, nil, "", 2, "")).RowsWillBeClosed()
+			mock.ExpectQuery("WITH RECURSIVE domain_chain").WithArgs(int64(9100)).WillReturnRows(sqlmock.NewRows([]string{
+				"domain_oid", "base_type", "base_type_kind", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
+			}).AddRow(9100, "money", "b", -1, true, nil, ""))
+			mock.ExpectQuery("SELECT pg_catalog.has_schema_privilege").WithArgs("public", "payments").WillReturnRows(sqlmock.NewRows([]string{"readable"}).AddRow(true))
+			mock.ExpectQuery("FROM pg_catalog.pg_constraint con").WithArgs("public", "payments").WillReturnRows(sqlmock.NewRows([]string{"column_name"}))
+
+			table := &interfaces.TableMeta{Schema: "public", Name: "payments", Columns: []interfaces.TableColumnMeta{{Name: "previous"}}, PKs: []string{"previous"}}
+			err = connector.fetchColumns(t.Context(), table)
+			require.NoError(t, err)
+			require.Len(t, table.Columns, 2)
+			for _, column := range table.Columns {
+				assert.Equal(t, "money", column.Type)
+				assert.Equal(t, 19, column.NumPrecision)
+				assert.Equal(t, int(tc.scale.(int64)), column.NumScale)
+				assert.Equal(t, interfaces.DataType_Decimal, connector.MapType(column.Type))
+			}
+			assert.Equal(t, "money_domain", table.Columns[1].AliasType)
+			assert.False(t, table.Columns[1].Nullable)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
 	t.Run("zero-column tables are supported", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -271,7 +341,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 			AddRow("occurred_at", 1114, "b", "timestamp", 3, false, nil, "", 5, "").
 			AddRow("legacy_code", 9200, "d", "legacy_code_domain", -1, false, nil, "", 6, "").
 			AddRow("status", 9300, "e", "order_status", -1, false, nil, "", 7, "order state").
-			AddRow("state", 9400, "d", "order_state_domain", -1, false, nil, "", 8, "state domain"))
+			AddRow("state", 9400, "d", "order_state_domain", -1, false, nil, "", 8, "state domain").
+			AddRow("rounded", 1700, "b", "numeric", int64((2<<16)|2045)+4, false, nil, "", 9, ""))
 	mock.ExpectQuery(`(?s)WITH RECURSIVE domain_chain.*root\.oid IN \(\$1, \$2, \$3\).*pg_catalog\.pg_constraint`).
 		WithArgs(int64(9100), int64(9200), int64(9400)).
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -288,8 +359,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	if err := connector.fetchColumns(context.Background(), table); err != nil {
 		t.Fatalf("fetchColumns returned error: %v", err)
 	}
-	if len(table.Columns) != 8 {
-		t.Fatalf("expected 8 columns, got %d", len(table.Columns))
+	if len(table.Columns) != 9 {
+		t.Fatalf("expected 9 columns, got %d", len(table.Columns))
 	}
 	column := table.Columns[0]
 	if column.Name != "id" || column.DefaultValue != "" || column.Description != "" || column.Collation != "" {
@@ -314,6 +385,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	assert.Equal(t, "C", table.Columns[2].Collation)
 	assert.Equal(t, 10, table.Columns[3].NumPrecision)
 	assert.Equal(t, 2, table.Columns[3].NumScale)
+	assert.Equal(t, "rounded", table.Columns[8].Name)
+	assert.Equal(t, -3, table.Columns[8].NumScale)
 	assert.Equal(t, 3, table.Columns[4].DatetimePrecision)
 	assert.Equal(t, "legacy_code_domain", table.Columns[5].Type)
 	assert.Empty(t, table.Columns[5].AliasType)
