@@ -75,23 +75,34 @@ func sameExecution(build *interfaces.KBBuild, step *interfaces.KBFileBuild) bool
 // settleReusedExecution runs once all files have ended. Agent versions may keep
 // mutable model defaults, so a reused result can only be checked against what the
 // build actually ran. It returns whether a file went back to be extracted again.
+//
+// Reused files never pin a model for files still to run: those run on the Agent's
+// current model and would then conflict. With nothing pinned, the first reused
+// file is only the reference; the first real task pins the build, and the next
+// settlement aligns the rest. Only a build that ran nothing takes its execution
+// from what it reused.
 func settleReusedExecution(build *interfaces.KBBuild) bool {
-	requeued := false
+	reference, requeued := build, false
+	var first *interfaces.KBFileBuild
 	for index := range build.Files {
 		file := &build.Files[index]
 		if file.ReusedFrom == "" || file.State != "succeeded" {
 			continue
 		}
-		if build.ModelID == "" {
-			build.ModelID, build.Model = file.ModelID, file.Model
-			if file.PromptVersion != nil {
-				prompt := *file.PromptVersion
-				build.PromptVersion = &prompt
-			}
+		if first == nil && build.ModelID == "" {
+			first = file
+			reference = &interfaces.KBBuild{ModelID: file.ModelID, PromptVersion: file.PromptVersion}
 		}
-		if !sameExecution(build, file) {
+		if !sameExecution(reference, file) {
 			resetFileExecution(file)
 			requeued = true
+		}
+	}
+	if first != nil && !requeued {
+		build.ModelID, build.Model = first.ModelID, first.Model
+		if first.PromptVersion != nil {
+			prompt := *first.PromptVersion
+			build.PromptVersion = &prompt
 		}
 	}
 	return requeued

@@ -453,14 +453,14 @@ func (c *Coordinator) readFailure(ctx context.Context, r *interfaces.KBBuildReco
 		return c.fileAccessFailure(ctx, r, index, err)
 	}
 	file := &r.Build.Files[index]
-	file.Attempts++
-	if file.Attempts >= maxFileAttempts {
+	file.Transient++
+	if file.Transient >= maxFileAttempts {
 		if failErr := c.fail(ctx, r, index, reasonSourceUnavailable); failErr != nil {
 			return failErr
 		}
 		return err
 	}
-	file.NextAttempt = c.now() + fileBackoff(file.Attempts-1)
+	file.NextAttempt = c.now() + fileBackoff(file.Transient-1)
 	if saveErr := c.save(ctx, r); saveErr != nil {
 		return saveErr
 	}
@@ -470,12 +470,12 @@ func (c *Coordinator) readFailure(ctx context.Context, r *interfaces.KBBuildReco
 // submissionRefused puts a file back when no task can exist, up to a limit.
 func (c *Coordinator) submissionRefused(ctx context.Context, r *interfaces.KBBuildRecord, index int) error {
 	file := &r.Build.Files[index]
-	file.Attempts++
-	if file.Attempts >= maxFileAttempts {
+	file.Transient++
+	if file.Transient >= maxFileAttempts {
 		return c.fail(ctx, r, index, reasonSubmissionRefused)
 	}
 	file.State, file.Reason, file.SubmittedAt = "pending", "", 0
-	file.NextAttempt = c.now() + fileBackoff(file.Attempts-1)
+	file.NextAttempt = c.now() + fileBackoff(file.Transient-1)
 	return c.save(ctx, r)
 }
 
@@ -509,6 +509,7 @@ func (c *Coordinator) attach(ctx context.Context, r *interfaces.KBBuildRecord, i
 }
 func (c *Coordinator) fail(ctx context.Context, r *interfaces.KBBuildRecord, index int, reason string) error {
 	r.Build.Files[index].State, r.Build.Files[index].Reason = "failed", reason
+	r.Build.Files[index].NextAttempt = 0 // Whatever waited before, this failure gets its own backoff.
 	r.Build.State = "attention"
 	return c.save(ctx, r)
 }

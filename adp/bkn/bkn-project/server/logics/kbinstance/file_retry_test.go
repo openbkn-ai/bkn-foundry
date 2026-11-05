@@ -204,7 +204,7 @@ func TestTransientReadOfOneFileIsBoundedAndLetsOthersFinish(t *testing.T) {
 	}
 	runUntil(t, c, store, now, cleaned(store))
 	files := store.record.Build.Files
-	if files[0].State != "failed" || files[0].Reason != reasonSourceUnavailable || files[0].Attempts != maxFileAttempts || files[1].State != "succeeded" || files[2].State != "succeeded" {
+	if files[0].State != "failed" || files[0].Reason != reasonSourceUnavailable || files[0].Transient != maxFileAttempts || files[0].Attempts != 0 || files[1].State != "succeeded" || files[2].State != "succeeded" {
 		t.Fatalf("files %+v", files)
 	}
 }
@@ -362,6 +362,13 @@ func TestReusedFileGoesBackWhenTheBuildActuallyRanAnotherModel(t *testing.T) {
 	build = reuseBuild(same, other)
 	if !settleReusedExecution(build) || build.Files[0].State != "succeeded" || build.Files[1].State != "pending" {
 		t.Fatal("reused files that disagree cannot share a build")
+	}
+	if build.ModelID != "" || build.PromptVersion != nil {
+		t.Fatal("a reused file must not pin the model the requeued file will run on")
+	}
+	build.ModelID = "current"
+	if !settleReusedExecution(build) || build.Files[0].State != "pending" {
+		t.Fatal("once a real task pinned the build, the rest must align")
 	}
 }
 
@@ -530,4 +537,25 @@ type passingAssessor struct{}
 func (passingAssessor) Guard(context.Context, *interfaces.KBBuild) error { return nil }
 func (passingAssessor) Evaluate(context.Context, *interfaces.KBBuild, int, *interfaces.Draft, *kb.FileInput, []kb.DatasetWrite) (*AcceptanceCounts, error) {
 	return &AcceptanceCounts{}, nil
+}
+
+func TestReadFailuresDoNotUseUpExtractionRetriesOrTheirBackoff(t *testing.T) {
+	c, store, runtime, _, now := batchFixture(t)
+	store.record.Build.Files = store.record.Build.Files[:1]
+	runtime.readErrs = map[string]error{"invoice-1": errTransient}
+	_ = c.Step(context.Background(), "project", "job", "worker")
+	if file := store.record.Build.Files[0]; file.Transient != 1 || file.Attempts != 0 || file.NextAttempt == 0 {
+		t.Fatalf("%+v", file)
+	}
+	*now = now.Add(time.Hour)
+	runtime.readErrs = nil
+	runtime.task.Status = interfaces.BKN_AGENT_TASK_FAILED
+	step(t, c)
+	if file := store.record.Build.Files[0]; file.State != "failed" || file.NextAttempt != 0 {
+		t.Fatalf("a failure must not inherit an old retry time: %+v", file)
+	}
+	step(t, c)
+	if file := store.record.Build.Files[0]; file.NextAttempt != now.UnixMilli()+fileBackoff(0) {
+		t.Fatalf("the first retry takes the first backoff: %+v", file)
+	}
 }

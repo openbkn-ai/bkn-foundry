@@ -150,8 +150,10 @@ type KBFileBuild struct {
 	Reason      string `json:"reason,omitempty"`
 	// SubmittedAt starts the Agent task's deadline.
 	SubmittedAt int64 `json:"submitted_at,omitempty"`
-	// Attempts counts retries of known failures; NextAttempt is when the next may run.
+	// Attempts counts retries of known failed executions; Transient counts failed
+	// reads and refused submissions. NextAttempt is when the next try may run.
 	Attempts    int   `json:"attempts,omitempty"`
+	Transient   int   `json:"transient,omitempty"`
 	NextAttempt int64 `json:"next_attempt,omitempty"`
 	// ReusedFrom is the earlier build whose completed result this file carries.
 	ReusedFrom string `json:"reused_from,omitempty"`
