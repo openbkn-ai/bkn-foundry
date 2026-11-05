@@ -72,6 +72,33 @@ func toSQL(t *testing.T, connector *PostgresqlConnector, cond interfaces.FilterC
 
 // TestPostgresqlConnectorConvertFilterCondition 校验 LIKE 参数绑定仅转义模式字符，不额外转义 SQL 字面量。
 func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
+	t.Run("money predicates use numeric values without locale formatting", func(t *testing.T) {
+		fields := map[string]*interfaces.Property{
+			"amount": {Name: "amount", OriginalName: "p.source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal},
+			"credit": {Name: "credit", OriginalType: "money", Type: interfaces.DataType_Decimal},
+		}
+		for _, tc := range []struct {
+			name string
+			cfg  *interfaces.FilterCondCfg
+			sql  string
+			args []any
+		}{
+			{name: "exact comparison", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: ">=", Value: json.Number("92233720368547758.07")}, sql: `(CAST("p"."source_amount" AS NUMERIC) >= $1)`, args: []any{"92233720368547758.07"}},
+			{name: "set", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "in", Value: []any{json.Number("-0.01"), json.Number("123.456")}}, sql: `(CAST("p"."source_amount" AS NUMERIC) IN ($1, $2))`, args: []any{"-0.01", "123.456"}},
+			{name: "range", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "range", Value: []any{json.Number("-1.00"), json.Number("0.00")}}, sql: `((CAST("p"."source_amount" AS NUMERIC) >= $1) AND (CAST("p"."source_amount" AS NUMERIC) <= $2))`, args: []any{"-1.00", "0.00"}},
+			{name: "field comparison", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "==", ValueFrom: interfaces.ValueFrom_Field, Value: "credit"}, sql: `(CAST("p"."source_amount" AS NUMERIC) = CAST("credit" AS NUMERIC))`},
+			{name: "null", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "null", Value: nil}, sql: `(CAST("p"."source_amount" AS NUMERIC) IS NULL)`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				cond, err := filter_condition.NewFilterCondition(t.Context(), tc.cfg, fields)
+				require.NoError(t, err)
+				statement, args := toSQL(t, &PostgresqlConnector{}, cond)
+				assert.Equal(t, tc.sql, statement)
+				assert.Equal(t, tc.args, args)
+			})
+		}
+	})
+
 	t.Run("structured decimal parameters preserve scientific notation exactly", func(t *testing.T) {
 		field := &interfaces.Property{Name: "amount", OriginalName: "amount", Type: interfaces.DataType_Decimal}
 		for _, value := range []json.Number{"10.1234567890", "10.123456789000000001e0"} {

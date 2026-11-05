@@ -50,9 +50,15 @@ type Table struct {
 	ResourceID       string
 	SourceIdentifier string
 	Alias            string
+	// SourceName 是授权资源元数据中的原始表名，用于保留隐式表名限定引用。
+	// 不从展示名称推测，也不重复解析 SQL-ready SourceIdentifier。
+	// money 来源投影没有显式 Alias 时必须提供此名称。
+	SourceName string
 	// ColumnNames 保存资源 schema 中的源字段名，仅用于区分源字段与投影别名。
 	// nil 表示字段信息未知，生成器不得据此假定源字段不存在。
 	ColumnNames []string
+	// ColumnOriginalTypes 保存源字段的原生类型，由目标连接器进行无损类型投影。
+	ColumnOriginalTypes map[string]string
 }
 
 // Subquery 显式保留内部 SELECT 的过滤、排序和 LIMIT 边界。

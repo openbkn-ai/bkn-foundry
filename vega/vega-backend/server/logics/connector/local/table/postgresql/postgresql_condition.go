@@ -461,7 +461,12 @@ func sqlResourceColumn(field *interfaces.Property) sb.SqlNode {
 	if name == "" {
 		name = field.Name
 	}
-	return sqlColumnName(name)
+	column := sqlColumnName(name)
+	// 在源端转换 money，保留十进制精度并移除 locale 相关的货币格式。
+	if strings.EqualFold(field.OriginalType, "money") {
+		return &sb.Cast{Expr: column, Type: sb.CastUnboundedDecimal}
+	}
+	return column
 }
 
 func sqlColumnName(name string) sb.SqlNode {

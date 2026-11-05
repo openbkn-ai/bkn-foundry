@@ -21,16 +21,18 @@ const (
 	CastInteger         CastType = "integer"
 	CastUnsignedInteger CastType = "unsigned_integer"
 	CastDecimal         CastType = "decimal"
-	CastString          CastType = "string"
-	CastBinary          CastType = "binary"
-	CastBoolean         CastType = "boolean"
-	CastDate            CastType = "date"
-	CastDateTime        CastType = "datetime"
-	CastTimestamp       CastType = "timestamp"
-	CastTime            CastType = "time"
-	CastFloat           CastType = "float"
-	CastDouble          CastType = "double"
-	CastJSON            CastType = "json"
+	// CastUnboundedDecimal 保留输入精度和 scale，不使用方言默认的 DECIMAL(10,0)。
+	CastUnboundedDecimal CastType = "unbounded_decimal"
+	CastString           CastType = "string"
+	CastBinary           CastType = "binary"
+	CastBoolean          CastType = "boolean"
+	CastDate             CastType = "date"
+	CastDateTime         CastType = "datetime"
+	CastTimestamp        CastType = "timestamp"
+	CastTime             CastType = "time"
+	CastFloat            CastType = "float"
+	CastDouble           CastType = "double"
+	CastJSON             CastType = "json"
 )
 
 const (

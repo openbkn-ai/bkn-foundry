@@ -24,12 +24,15 @@ func TestDecimalIndexConfig(t *testing.T) {
 		failure    bool
 	}{
 		{name: "native definition", p: 12, s: 2},
+		{name: "discovered negative scale", column: interfaces.TableColumnMeta{NumPrecision: 2, NumScale: -3}, p: 2, s: -3},
 		{name: "authoritative discovered scale zero", column: interfaces.TableColumnMeta{NumPrecision: 14}, p: 14},
 		{name: "explicit dataset", attributes: map[string]any{"precision": json.Number("10"), "scale": json.Number("4")}, p: 10, s: 4},
 		{name: "large declared precision", attributes: map[string]any{"precision": 10000, "scale": 2}, p: 10000, s: 2},
 		{name: "fractional precision", attributes: map[string]any{"precision": 10.5, "scale": 2}, failure: true},
 		{name: "missing scale", attributes: map[string]any{"precision": 10}, failure: true},
-		{name: "invalid scale", attributes: map[string]any{"precision": 10, "scale": 11}, failure: true},
+		{name: "scale exceeds precision", attributes: map[string]any{"precision": 3, "scale": 5}, p: 3, s: 5},
+		{name: "invalid precision", attributes: map[string]any{"precision": 0, "scale": 11}, failure: true},
+		{name: "source scale exceeds precision", column: interfaces.TableColumnMeta{NumPrecision: 3, NumScale: 5}, p: 3, s: 5},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			copy := *property
@@ -41,12 +44,47 @@ func TestDecimalIndexConfig(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, &interfaces.DecimalIndexConfig{Precision: tc.p, Scale: tc.s}, config)
+			expected := &interfaces.DecimalIndexConfig{Precision: tc.p, Scale: tc.s}
+			assert.Equal(t, expected, config)
 		})
 	}
 }
 
 func TestDecimalIndexSchema(t *testing.T) {
+	t.Run("money uses discovered scale for index mapping and exact value checks", func(t *testing.T) {
+		for _, tc := range []struct {
+			scale   int
+			value   any
+			want    any
+			storage string
+		}{
+			{scale: 0, value: "9223372036854775807", want: int64(9223372036854775807), storage: "long"},
+			{scale: 2, value: "123.45", want: "123.45", storage: "scaled_float"},
+			{scale: 3, value: "-0.001", want: "-0.001", storage: "scaled_float"},
+		} {
+			property := &interfaces.Property{Name: "amount", OriginalName: "source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal}
+			columns := []interfaces.TableColumnMeta{{Name: "source_amount", Type: "money", NumPrecision: 19, NumScale: tc.scale}}
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{property}, SourceMetadata: map[string]any{"columns": columns}}
+			schema, err := DecimalIndexSchema(resource.SchemaDefinition, resource.ColumnMetadata())
+			require.NoError(t, err)
+			mapping, err := buildFieldMappings(schema)
+			require.NoError(t, err)
+			assert.Equal(t, tc.storage, mapping["amount"].(map[string]any)["type"])
+			doc := map[string]any{"amount": tc.value}
+			encoded, err := EncodeDecimalDocument(resource, doc)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, encoded["amount"])
+			assert.Equal(t, tc.value, doc["amount"])
+			if tc.scale == 2 {
+				encoded, err = EncodeDecimalDocument(resource, map[string]any{"amount": "92233720368547758.07"})
+				var failure *interfaces.DecimalIndexError
+				require.ErrorAs(t, err, &failure)
+				assert.Nil(t, encoded)
+				assert.Equal(t, "amount", failure.Field)
+			}
+		}
+	})
+
 	property := &interfaces.Property{Name: "amount", OriginalName: "source_amount", OriginalType: "numeric", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"comment": "source", "precision": 18, "scale": 4}}
 	input := []*interfaces.Property{property}
 	attributes := property.Attributes
@@ -104,8 +142,11 @@ func TestValidateDecimalIndexConfig(t *testing.T) {
 		{name: "large precision", precision: 10000, scale: 2},
 		{name: "largest finite scaling factor", precision: 1000, scale: 308},
 		{name: "missing precision", reason: "missing_precision_scale"},
-		{name: "invalid scale", precision: 12, scale: 13, reason: "invalid_precision_scale"},
-		{name: "negative scale", precision: 38, scale: -1, reason: "invalid_precision_scale"},
+		{name: "scale exceeds precision", precision: 3, scale: 5},
+		{name: "invalid precision", precision: -1, scale: 5, reason: "invalid_precision_scale"},
+		{name: "small precision at finite factor limit", precision: 3, scale: 308},
+		{name: "small precision with non finite factor", precision: 3, scale: 309, reason: "unsupported_scaling_factor"},
+		{name: "negative scale", precision: 38, scale: -1},
 		{name: "non finite scaling factor", precision: 1000, scale: 309, reason: "unsupported_scaling_factor"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -129,6 +170,16 @@ func TestValidateDecimalDocument(t *testing.T) {
 		valid    bool
 		original string
 	}{
+		{name: "scale exceeds precision", original: "numeric(3,5)", value: "0.00123", valid: true},
+		{name: "small positive maximum", original: "numeric(3,5)", value: "0.00999", valid: true},
+		{name: "small negative minimum", original: "numeric(3,5)", value: "-0.00999", valid: true},
+		{name: "small decimal zero", original: "numeric(3,5)", value: "0", valid: true},
+		{name: "small decimal null", original: "numeric(3,5)", value: nil, valid: true},
+		{name: "small decimal trailing zeroes", original: "numeric(3,5)", value: "0.0012300", valid: true},
+		{name: "small decimal precision overflow", original: "numeric(3,5)", value: "0.01234"},
+		{name: "small decimal scale overflow", original: "numeric(3,5)", value: "0.001234"},
+		{name: "small decimal unsafe double", original: "numeric(18,20)", value: "0.00123456789012345678"},
+		{name: "small decimal at finite factor limit", original: "numeric(3,308)", value: "1e-308", valid: true},
 		{name: "issue amount", value: "13052.52", valid: true},
 		{name: "issue maximum", value: "230134.15", valid: true},
 		{name: "zero", value: "0.00", valid: true},
@@ -154,10 +205,14 @@ func TestValidateDecimalDocument(t *testing.T) {
 		{name: "actual scaled long overflow", original: "decimal(38,18)", value: "13052.52"},
 		{name: "positive long overflow", original: "decimal(38,0)", value: "9223372036854775808"},
 		{name: "negative long overflow", original: "decimal(38,0)", value: "-9223372036854775809"},
-		{name: "long boundary rounds into saturation", original: "decimal(38,0)", value: "9223372036854775807"},
+		{name: "long maximum", original: "decimal(38,0)", value: "9223372036854775807", valid: true},
+		{name: "long minimum", original: "decimal(38,0)", value: "-9223372036854775808", valid: true},
+		{name: "negative scale integer", original: "numeric(2,-3)", value: "12000", valid: true},
+		{name: "negative scale must retain source rounding", original: "numeric(2,-3)", value: "12345"},
+		{name: "negative scale precision overflow", original: "numeric(2,-3)", value: "100000"},
 		{name: "exact large integer", original: "decimal(38,0)", value: "9007199254740992", valid: true},
 		{name: "exact integer beyond safe integer interval", original: "decimal(38,0)", value: "9007199254740994", valid: true},
-		{name: "inexact neighboring integer", original: "decimal(38,0)", value: "9007199254740993"},
+		{name: "exact integer without double", original: "decimal(38,0)", value: "9007199254740993", valid: true},
 		{name: "negative exact large integer", original: "decimal(38,0)", value: "-9007199254740992", valid: true},
 		{name: "fraction loses a significant digit", original: "decimal(38,18)", value: "0.123456789012345678"},
 		{name: "fraction rounds onto another value", original: "decimal(38,18)", value: "1.000000000000000001"},
@@ -222,6 +277,43 @@ func TestNormalizeDecimalAggregate(t *testing.T) {
 			assert.Equal(t, want, result.Entries[0]["value"])
 			assert.Nil(t, result.Entries[1]["value"])
 			assert.False(t, result.IsApproximate)
+		})
+	}
+}
+
+func TestEncodeDecimalDocument(t *testing.T) {
+	for _, tc := range []struct {
+		name, original  string
+		value, expected any
+		failure         bool
+	}{
+		{name: "maximum", original: "decimal(38,0)", value: "9223372036854775807", expected: int64(9223372036854775807)},
+		{name: "minimum", original: "decimal(38,0)", value: json.Number("-9223372036854775808"), expected: int64(-9223372036854775808)},
+		{name: "integer above double precision", original: "decimal(38,0)", value: "9007199254740993", expected: int64(9007199254740993)},
+		{name: "negative scale", original: "numeric(2,-3)", value: "12000.00", expected: int64(12000)},
+		{name: "array", original: "number(10,0)", value: []any{"12.00", nil, json.Number("-5")}, expected: []any{int64(12), nil, int64(-5)}},
+		{name: "fraction", original: "decimal(10,0)", value: "12.5", failure: true},
+		{name: "float already lacks exact precision", original: "decimal(38,0)", value: float64(9007199254740994), failure: true},
+		{name: "overflow", original: "decimal(38,0)", value: "9223372036854775808", failure: true},
+		{name: "positive scale preserves text", original: "decimal(12,2)", value: "19.99", expected: "19.99"},
+		{name: "large negative scale zero", original: "numeric(2,-1000)", value: "0", expected: int64(0)},
+		{name: "large negative scale nonzero", original: "numeric(2,-1000)", value: "1", failure: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: tc.original}}}
+			document := map[string]any{"amount": tc.value, "label": "unchanged"}
+			encoded, err := EncodeDecimalDocument(resource, document)
+			if tc.failure {
+				var failure *interfaces.DecimalIndexError
+				require.ErrorAs(t, err, &failure)
+				assert.Equal(t, "amount", failure.Field)
+				assert.Nil(t, encoded)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.expected, encoded["amount"])
+				assert.Equal(t, "unchanged", encoded["label"])
+			}
+			assert.Equal(t, tc.value, document["amount"])
 		})
 	}
 }

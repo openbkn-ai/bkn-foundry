@@ -125,6 +125,13 @@ paths:
         `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数；子查询及内置函数的具体能力
         由公共 Parser 和目标连接器共同决定。
 
+        **PostgreSQL money 来源的字段范围**：资源 schema 含 `money` 列时，来源会按已探查字段投影，
+        并将 money 转换为 numeric；`SELECT *`、限定通配符和显式字段引用均只能访问资源
+        `schema_definition` 中记录的源字段。源表新增列后，须先重新探查资源，再重新发起查询；
+        未重新探查时，通配符不包含新列，显式引用新列会报字段不存在。
+        `ctid`、`tableoid`、`xmin` 等不在资源 schema 中的 PostgreSQL 系统列不受支持，
+        重新探查也不会将这些系统列加入资源 schema。
+
         OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
         `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
         包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。

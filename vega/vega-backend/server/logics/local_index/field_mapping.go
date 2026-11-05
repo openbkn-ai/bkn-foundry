@@ -66,7 +66,13 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 				return nil, err
 			}
 			decimalConfig = config
-			fieldProps["scaling_factor"] = math.Pow10(config.Scale)
+			if config.Scale <= 0 {
+				fieldType = "long"
+				fieldProps["type"] = fieldType
+				fieldProps["coerce"] = false
+			} else {
+				fieldProps["scaling_factor"] = math.Pow10(config.Scale)
+			}
 		}
 
 		if prop.Type == interfaces.DataType_Json {
@@ -104,7 +110,12 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 		}
 		if decimalConfig != nil {
 			// Feature 配置不能覆盖数值编码或跳过非法数值，否则会重新引入静默损坏。
-			if fieldProps["type"] != "scaled_float" || fieldProps["scaling_factor"] != math.Pow10(decimalConfig.Scale) ||
+			invalidEncoding := fieldProps["type"] != "scaled_float" || fieldProps["scaling_factor"] != math.Pow10(decimalConfig.Scale)
+			if decimalConfig.Scale <= 0 {
+				_, hasScalingFactor := fieldProps["scaling_factor"]
+				invalidEncoding = fieldProps["type"] != "long" || hasScalingFactor || fieldProps["coerce"] != false
+			}
+			if invalidEncoding ||
 				fieldProps["ignore_malformed"] == true || fieldProps["null_value"] != nil {
 				return nil, interfaces.NewDecimalIndexError(prop.Name, "unsafe_mapping_override")
 			}
