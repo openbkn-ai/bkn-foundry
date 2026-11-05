@@ -48,6 +48,7 @@ func PrepareFileSubmission(build *interfaces.KBBuild, index int, now int64) (*in
 	}
 	file.State = "submitting"
 	file.Reason = ""
+	file.SubmittedAt = now
 	return next, nil
 }
 

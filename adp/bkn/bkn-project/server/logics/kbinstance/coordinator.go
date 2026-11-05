@@ -51,6 +51,7 @@ func (c *Coordinator) save(ctx context.Context, r *interfaces.KBBuildRecord) err
 	old := r.Build.Revision
 	r.Build.Revision++
 	r.Build.UpdateTime = max(c.now(), r.Build.UpdateTime+1)
+	r.Build.MarkProgress(r.Build.UpdateTime)
 	ok, err := c.Store.Save(ctx, r, old, c.now())
 	if err != nil {
 		return err
@@ -212,6 +213,11 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 				return c.accessFailure(ctx, r, err)
 			}
 			task, err := c.Runtime.Poll(ctx, r.Identity, file.AgentTaskID)
+			if file.State == "waiting" {
+				if TaskOverdue(file, task, err, c.now()) {
+					return c.fail(ctx, r, index, ReasonExtractionTimedOut)
+				}
+			}
 			if err != nil {
 				return err
 			}

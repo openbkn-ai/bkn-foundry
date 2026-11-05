@@ -65,7 +65,7 @@ func (d buildDraft) GetDraft(context.Context, string) (*interfaces.Draft, bool, 
 
 type fileRuntime struct {
 	starts, polls, checks, materializations, cleanups int
-	startErr, materializeErr, checkErr                error
+	startErr, materializeErr, checkErr, pollErr       error
 	task                                              *interfaces.BknAgentTask
 	writes                                            []kb.DatasetWrite
 	afterStart, afterCheck                            func()
@@ -145,7 +145,7 @@ func (r *fileRuntime) Start(context.Context, *interfaces.KBBuild, interfaces.KBB
 }
 func (r *fileRuntime) Poll(context.Context, interfaces.KBBuildIdentity, string) (*interfaces.BknAgentTask, error) {
 	r.polls++
-	return r.task, nil
+	return r.task, r.pollErr
 }
 func (r *fileRuntime) Materialize(context.Context, *interfaces.KBBuild, interfaces.KBBuildIdentity, int, *interfaces.Draft, *kb.FileInput, *interfaces.BknAgentTask) ([]kb.DatasetWrite, error) {
 	r.materializations++

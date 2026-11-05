@@ -87,6 +87,34 @@ func (a *refreshAccess) Get(ctx context.Context, lineage string) (*interfaces.KB
 	}
 	return r, err
 }
+
+// WorkItems lists refreshes that are not idle, for the operator endpoint.
+func (a *refreshAccess) WorkItems(ctx context.Context) ([]interfaces.KBWorkItem, error) {
+	rows, err := a.db.QueryContext(ctx, "SELECT f_state,f_data,f_update_time FROM "+refreshTable+" WHERE f_state<>'idle' ORDER BY f_update_time LIMIT 200")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := []interfaces.KBWorkItem{}
+	for rows.Next() {
+		var state, data string
+		var updated int64
+		if err = rows.Scan(&state, &data, &updated); err != nil {
+			return nil, err
+		}
+		var record struct {
+			ProgressTime int64 `json:"progress_time"`
+		}
+		if json.Unmarshal([]byte(data), &record) != nil || record.ProgressTime == 0 {
+			record.ProgressTime = updated
+		}
+		result = append(result, interfaces.KBWorkItem{State: state, ProgressTime: record.ProgressTime})
+	}
+	return result, rows.Err()
+}
+
+var _ interfaces.KBWorkItems = (*refreshAccess)(nil)
+
 func (a *refreshAccess) Claim(ctx context.Context, lineage, lease string, now, until int64) (*interfaces.KBRefreshRecord, error) {
 	return a.claim(ctx, lineage, lease, 0, now, until, false)
 }

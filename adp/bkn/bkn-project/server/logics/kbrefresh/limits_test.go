@@ -107,3 +107,14 @@ func TestExceptionalBatchReleaseCannotBypassHardFailuresOrChangeItsScope(t *test
 		})
 	}
 }
+
+func TestValidateLimitsNamesSettingsThatWouldStopEveryBatch(t *testing.T) {
+	if ValidateLimits(DefaultLimits()) != nil {
+		t.Fatal("defaults must be valid")
+	}
+	for _, bad := range []Limits{{MaxChangedPercent: 101, MaxRemovedPercent: 1, MaxDurationMillis: 1}, {MaxChangedPercent: -1, MaxRemovedPercent: 1, MaxDurationMillis: 1}, {MaxChangedPercent: 1, MaxRemovedPercent: 101, MaxDurationMillis: 1}, {MaxChangedPercent: 1, MaxRemovedPercent: -1, MaxDurationMillis: 1}, {MaxChangedPercent: 1, MaxRemovedPercent: 1}} {
+		if ValidateLimits(bad) == nil {
+			t.Fatalf("%+v should be refused", bad)
+		}
+	}
+}

@@ -3,7 +3,11 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"hash/fnv"
+)
 
 // KBBuild and KBFileBuild contain process metadata only. Extracted properties,
 // source text, Agent outputs and user credentials must never be stored here.
@@ -32,6 +36,38 @@ type KBBuild struct {
 	Files             []KBFileBuild       `json:"files"`
 	CreateTime        int64               `json:"create_time"`
 	UpdateTime        int64               `json:"update_time"`
+	// ProgressTime is when the work last moved. UpdateTime moves on every poll,
+	// so only this can tell operators how long a build has been stuck.
+	ProgressTime int64  `json:"progress_time,omitempty"`
+	ProgressMark uint64 `json:"progress_mark,omitempty"`
+}
+
+// MarkProgress moves ProgressTime when the state, a file's state or a written
+// row count changed since the last call.
+func (b *KBBuild) MarkProgress(now int64) {
+	if mark := b.progressMark(); mark != b.ProgressMark || b.ProgressTime == 0 {
+		b.ProgressMark, b.ProgressTime = mark, now
+	}
+}
+
+func (b *KBBuild) progressMark() uint64 {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(b.State))
+	for i := range b.Files {
+		_, _ = fmt.Fprintf(hash, "|%s/%d", b.Files[i].State, b.Files[i].RowsWritten)
+	}
+	return hash.Sum64()
+}
+
+// KBWorkItem is one unfinished piece of background work: no names or identities.
+type KBWorkItem struct {
+	State        string
+	ProgressTime int64
+}
+
+// KBWorkItems reports unfinished background work for operators.
+type KBWorkItems interface {
+	WorkItems(context.Context) ([]KBWorkItem, error)
 }
 
 // KBLinkingReceipt stores process evidence only. Claims, proposed matches,
@@ -77,6 +113,8 @@ type KBFileBuild struct {
 	RowsDigest  string `json:"rows_digest,omitempty"`
 	InputDigest string `json:"input_digest,omitempty"`
 	Reason      string `json:"reason,omitempty"`
+	// SubmittedAt starts the Agent task's deadline.
+	SubmittedAt int64 `json:"submitted_at,omitempty"`
 }
 
 // KBBuildIdentity is private delegation metadata, never part of a business DTO,

@@ -3,6 +3,7 @@
 package kbrefresh
 
 import (
+	"fmt"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"math"
 	"slices"
@@ -17,6 +18,14 @@ type Limits struct {
 func DefaultLimits() Limits {
 	return Limits{MaxChangedPercent: 20, MaxRemovedPercent: 10, MaxDurationMillis: 10 * 60 * 1000}
 }
+
+// ValidateLimits reports settings EvaluateLimits would refuse, for the startup log.
+func ValidateLimits(limits Limits) error {
+	if limits.MaxChangedPercent < 0 || limits.MaxChangedPercent > 100 || limits.MaxRemovedPercent < 0 || limits.MaxRemovedPercent > 100 || limits.MaxDurationMillis <= 0 {
+		return fmt.Errorf("percentages must be within 0-100 and the duration positive, got %d%%, %d%%, %d ms", limits.MaxChangedPercent, limits.MaxRemovedPercent, limits.MaxDurationMillis)
+	}
+	return nil
+}
 func (s *Service) limits() Limits {
 	if s.Limits != nil {
 		return *s.Limits
@@ -28,7 +37,7 @@ func (s *Service) limits() Limits {
 // model, normalized by available source chunk counts. An unknown estimate stays
 // unknown; neither model self-scores nor invented processing speeds fill it in.
 func EvaluateLimits(limits Limits, previous *interfaces.KBBuild, plan *ManifestPlan) (*interfaces.KBRefreshEstimate, error) {
-	if previous == nil || plan == nil || plan.Build == nil || limits.MaxChangedPercent < 0 || limits.MaxChangedPercent > 100 || limits.MaxRemovedPercent < 0 || limits.MaxRemovedPercent > 100 || limits.MaxDurationMillis <= 0 {
+	if previous == nil || plan == nil || plan.Build == nil || ValidateLimits(limits) != nil {
 		return nil, ErrInvalidManifest
 	}
 	result := &interfaces.KBRefreshEstimate{PreviousFiles: len(previous.Files), ChangedFiles: len(plan.Changed), Reasons: []string{}}
