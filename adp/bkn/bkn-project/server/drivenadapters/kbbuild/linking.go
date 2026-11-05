@@ -47,8 +47,8 @@ func (a *access) ClaimLinking(ctx context.Context, projectID, id string, caller 
 	if r.Build.Linking != nil && r.Build.Linking.OperationID == operation && r.Build.Linking.Signature != signature {
 		return nil, nil
 	}
-	for _, file := range r.Build.Files {
-		if file.State != "succeeded" {
+	for i := range r.Build.Files {
+		if !r.Build.Files[i].Completed() {
 			return nil, nil
 		}
 	}

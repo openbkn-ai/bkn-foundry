@@ -2,7 +2,10 @@
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // KBRefreshRecord is a single lineage's durable refresh journal and write lease.
 // A consumer switch cannot start a second writer against shared Datasets while
@@ -22,6 +25,8 @@ type KBRefreshRecord struct {
 	Cursors         map[string]string            `json:"cursors,omitempty"`
 	NextCheck       int64                        `json:"next_check"`
 	UpdateTime      int64                        `json:"update_time"`
+	ProgressTime    int64                        `json:"progress_time,omitempty"`
+	ProgressMark    string                       `json:"progress_mark,omitempty"`
 	LeaseID         string                       `json:"-"`
 	LeaseUntil      int64                        `json:"-"`
 }
@@ -77,4 +82,19 @@ type KBRefreshApproval struct {
 	By    AccountInfo `json:"by"`
 	Time  int64       `json:"time"`
 	Scope string      `json:"scope"`
+}
+
+// MarkProgress moves ProgressTime when the state or the position within the batch
+// changed. UpdateTime moves on every poll, so it cannot tell a stall from work.
+func (r *KBRefreshRecord) MarkProgress(now int64) {
+	mark := r.State
+	if r.Pending != nil {
+		mark += fmt.Sprintf("|%d", r.Pending.ApplyIndex)
+		if r.Pending.Build != nil {
+			mark += fmt.Sprintf("|%d", r.Pending.Build.progressMark())
+		}
+	}
+	if mark != r.ProgressMark || r.ProgressTime == 0 {
+		r.ProgressMark, r.ProgressTime = mark, now
+	}
 }

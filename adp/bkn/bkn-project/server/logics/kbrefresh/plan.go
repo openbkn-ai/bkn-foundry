@@ -41,7 +41,7 @@ func Plan(id string, previous *interfaces.KBBuild, current []interfaces.KBResour
 	}
 	old := map[string]interfaces.KBFileBuild{}
 	for _, step := range previous.Files {
-		if !validFile(step.File) || step.State != "succeeded" {
+		if !validFile(step.File) || !step.Completed() {
 			return nil, ErrInvalidManifest
 		}
 		if _, duplicate := old[step.File.Key()]; duplicate {
@@ -69,6 +69,7 @@ func Plan(id string, previous *interfaces.KBBuild, current []interfaces.KBResour
 	linking, assessment := build.Linking, build.Assessment
 	build.Linking, build.Assessment = nil, nil
 	build.Files = []interfaces.KBFileBuild{}
+	build.Skipped, build.Acceptance = nil, nil
 	var baseline interfaces.KBBuild
 	if json.Unmarshal(raw, &baseline) != nil {
 		return nil, ErrInvalidManifest
@@ -84,20 +85,21 @@ func Plan(id string, previous *interfaces.KBBuild, current []interfaces.KBResour
 		}
 		seen[key] = true
 		before, exists := copied[key]
-		if exists && before.File.ContentVersionID == file.ContentVersionID && before.File.IncludeOriginal == file.IncludeOriginal {
+		// A file left out of the release has no result to carry; try it again.
+		if exists && before.State != interfaces.KBFileExcluded && before.File.ContentVersionID == file.ContentVersionID && before.File.IncludeOriginal == file.IncludeOriginal {
 			before.File = file
 			build.Files = append(build.Files, before)
 			result.Reused++
 		} else {
 			result.Changed = append(result.Changed, len(build.Files))
 			build.Files = append(build.Files, interfaces.KBFileBuild{File: file, State: "pending"})
-			if exists && before.File.ContentVersionID != file.ContentVersionID {
+			if exists && before.State != interfaces.KBFileExcluded && before.File.ContentVersionID != file.ContentVersionID {
 				result.Removed = append(result.Removed, before.File)
 			}
 		}
 	}
 	for key, before := range old {
-		if !seen[key] {
+		if !seen[key] && before.State != interfaces.KBFileExcluded {
 			result.Removed = append(result.Removed, before.File)
 		}
 	}

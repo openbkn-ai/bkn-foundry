@@ -163,6 +163,11 @@ func (s *BuildService) Start(ctx context.Context, token, project string, caller 
 			return nil, err
 		}
 	}
+	prior, err := s.Store.List(ctx, project, 100)
+	if err != nil {
+		return nil, err
+	}
+	ReuseCompleted(build, prior)
 	grant := uuid.NewSHA1(uuid.NameSpaceURL, []byte("bkn-project-build-grant-v1/"+project+"/"+req.ID)).String()
 	record := &interfaces.KBBuildRecord{Build: build, InputHash: inputHash, Identity: interfaces.KBBuildIdentity{GrantID: grant}}
 	created, err := s.Store.Create(ctx, record)

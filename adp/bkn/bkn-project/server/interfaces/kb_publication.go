@@ -28,6 +28,8 @@ type KBPublication struct {
 	DraftUpdateTime  int64            `json:"draft_update_time"`
 	CreateTime       int64            `json:"create_time"`
 	UpdateTime       int64            `json:"update_time"`
+	// Acceptance is what a person accepted leaving out of this release.
+	Acceptance *KBFileAcceptance `json:"acceptance,omitempty"`
 }
 
 // KBPublicationAccess prepares release intent before remote writes and seals a

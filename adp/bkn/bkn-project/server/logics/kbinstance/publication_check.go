@@ -27,7 +27,7 @@ func (s *SystemLinkService) VerifyCompleted(ctx context.Context, record *interfa
 		return nil, ErrBuildChanged
 	}
 	for _, file := range build.Files {
-		if file.State != "succeeded" {
+		if !file.Completed() {
 			return nil, ErrBuildChanged
 		}
 	}

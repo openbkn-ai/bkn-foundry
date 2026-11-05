@@ -80,3 +80,32 @@ func TestRefreshPlanRefusesAmbiguousOrUnacknowledgedManifests(t *testing.T) {
 		t.Fatal("uncertain prior writes reused")
 	}
 }
+
+func TestRefreshPlanTriesLeftOutFilesAgainAndCarriesEvidence(t *testing.T) {
+	agent := 3
+	done := func(id, state string) interfaces.KBFileBuild {
+		return interfaces.KBFileBuild{File: interfaces.KBResourceFile{KnowledgeBaseID: "1", FileID: id, ContentVersionID: "v1"}, State: state, AgentVersion: &agent}
+	}
+	previous := &interfaces.KBBuild{ID: "full", Mode: "full", State: "succeeded", Files: []interfaces.KBFileBuild{done("kept", "succeeded"), done("scan", "evidence_only"), done("broken", interfaces.KBFileExcluded), done("gone-broken", interfaces.KBFileExcluded)},
+		Skipped: []interfaces.KBFileBuild{{File: interfaces.KBResourceFile{KnowledgeBaseID: "1", FileID: "unversioned"}, State: "failed", Reason: "no_content_version"}}, Acceptance: &interfaces.KBFileAcceptance{}}
+	current := []interfaces.KBResourceFile{previous.Files[0].File, previous.Files[1].File, previous.Files[2].File, {KnowledgeBaseID: "1", FileID: "unversioned", ContentVersionID: "v1"}}
+	plan, err := Plan("batch", previous, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Reused != 2 || len(plan.Changed) != 2 || len(plan.Removed) != 0 {
+		t.Fatalf("reused %d changed %v removed %v", plan.Reused, plan.Changed, plan.Removed)
+	}
+	for _, index := range plan.Changed {
+		file := plan.Build.Files[index]
+		if file.State != "pending" || (file.File.FileID != "broken" && file.File.FileID != "unversioned") {
+			t.Fatalf("%+v", file)
+		}
+	}
+	if plan.Build.Acceptance != nil || plan.Build.Skipped != nil {
+		t.Fatal("a refresh batch starts with no acceptance of its own")
+	}
+	if previous.Files[2].State != interfaces.KBFileExcluded {
+		t.Fatal("the release record must not change")
+	}
+}

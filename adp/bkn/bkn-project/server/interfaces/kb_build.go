@@ -3,7 +3,11 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"hash/fnv"
+)
 
 // KBBuild and KBFileBuild contain process metadata only. Extracted properties,
 // source text, Agent outputs and user credentials must never be stored here.
@@ -32,6 +36,73 @@ type KBBuild struct {
 	Files             []KBFileBuild       `json:"files"`
 	CreateTime        int64               `json:"create_time"`
 	UpdateTime        int64               `json:"update_time"`
+	// ProgressTime is when the work last moved. UpdateTime moves on every poll,
+	// so only this can tell operators how long a build has been stuck.
+	ProgressTime int64  `json:"progress_time,omitempty"`
+	ProgressMark uint64 `json:"progress_mark,omitempty"`
+	// Skipped lists selected files that could not enter the build at all. They are
+	// outside Files because nothing can be delegated or held for them.
+	Skipped []KBFileBuild `json:"skipped,omitempty"`
+	// Acceptance is a person's decision to release without the files it lists.
+	Acceptance *KBFileAcceptance `json:"acceptance,omitempty"`
+	// SubmitHoldUntil and SubmitFailures space out submissions during an outage.
+	SubmitHoldUntil int64 `json:"submit_hold_until,omitempty"`
+	SubmitFailures  int   `json:"submit_failures,omitempty"`
+}
+
+// KBFileAcceptance is who accepted leaving which files out of a release, and when.
+type KBFileAcceptance struct {
+	By    AccountInfo      `json:"by"`
+	Time  int64            `json:"time"`
+	Files []KBAcceptedFile `json:"files"`
+}
+
+// KBAcceptedFile is one file left out of a release and why.
+type KBAcceptedFile struct {
+	File   KBResourceFile `json:"file"`
+	Reason string         `json:"reason"`
+}
+
+// KBFileExcluded is the state of a file a person accepted leaving out.
+const KBFileExcluded = "excluded"
+
+// Completed reports a file with nothing left to do before release: extracted,
+// evidence only (nothing to extract), or left out by a person's decision.
+func (f *KBFileBuild) Completed() bool {
+	return f.State == "succeeded" || f.State == "evidence_only" || f.State == KBFileExcluded
+}
+
+// HasClaims reports a file whose rows include extracted facts for linking.
+func (f *KBFileBuild) HasClaims() bool {
+	return f.State != "evidence_only" && f.State != KBFileExcluded
+}
+
+// MarkProgress moves ProgressTime when the state, a file's state or a written
+// row count changed since the last call.
+func (b *KBBuild) MarkProgress(now int64) {
+	if mark := b.progressMark(); mark != b.ProgressMark || b.ProgressTime == 0 {
+		b.ProgressMark, b.ProgressTime = mark, now
+	}
+}
+
+func (b *KBBuild) progressMark() uint64 {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(b.State))
+	for i := range b.Files {
+		_, _ = fmt.Fprintf(hash, "|%s/%d", b.Files[i].State, b.Files[i].RowsWritten)
+	}
+	return hash.Sum64()
+}
+
+// KBWorkItem is one unfinished piece of background work: no names or identities.
+type KBWorkItem struct {
+	State        string
+	ProgressTime int64
+}
+
+// KBWorkItems reports unfinished background work for operators.
+type KBWorkItems interface {
+	WorkItems(context.Context) ([]KBWorkItem, error)
 }
 
 // KBLinkingReceipt stores process evidence only. Claims, proposed matches,
@@ -77,6 +148,17 @@ type KBFileBuild struct {
 	RowsDigest  string `json:"rows_digest,omitempty"`
 	InputDigest string `json:"input_digest,omitempty"`
 	Reason      string `json:"reason,omitempty"`
+	// SubmittedAt starts the Agent task's deadline.
+	SubmittedAt int64 `json:"submitted_at,omitempty"`
+	// Attempts counts retries of known failed executions; Transient counts failed
+	// reads and refused submissions. NextAttempt is when the next try may run.
+	Attempts    int   `json:"attempts,omitempty"`
+	Transient   int   `json:"transient,omitempty"`
+	NextAttempt int64 `json:"next_attempt,omitempty"`
+	// ReusedFrom is the earlier build whose completed result this file carries.
+	ReusedFrom string `json:"reused_from,omitempty"`
+	// Cleared means a failed file's rows from any earlier attempt were removed.
+	Cleared bool `json:"cleared,omitempty"`
 }
 
 // KBBuildIdentity is private delegation metadata, never part of a business DTO,
@@ -108,6 +190,12 @@ type KBBuildAccess interface {
 	Get(context.Context, string, string) (*KBBuildRecord, error)
 	Claim(context.Context, string, string, string, int64, int64) (*KBBuildRecord, error)
 	Save(context.Context, *KBBuildRecord, int64, int64) (bool, error)
+}
+
+// KBFileAcceptanceAccess applies a person's acceptance to a build that has ended,
+// at the revision they were shown, under the current model and owner.
+type KBFileAcceptanceAccess interface {
+	AcceptFiles(ctx context.Context, project, id string, revision int64, apply func(*KBBuild) error) (*KBBuild, error)
 }
 
 type KBBuildKey struct{ ProjectID, ID string }
