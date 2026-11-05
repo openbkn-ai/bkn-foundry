@@ -40,7 +40,8 @@ func ReuseCompleted(build *interfaces.KBBuild, prior []*interfaces.KBBuild) {
 func touchedStep(build *interfaces.KBBuild, file interfaces.KBResourceFile) *interfaces.KBFileBuild {
 	for i := range build.Files {
 		step := &build.Files[i]
-		if step.File.Key() == file.Key() && step.State != "pending" {
+		// A file left pending can still have had its rows removed when the build ended.
+		if step.File.Key() == file.Key() && (step.State != "pending" || step.Cleared) {
 			if step.File.ContentVersionID != file.ContentVersionID || step.File.IncludeOriginal != file.IncludeOriginal {
 				return &interfaces.KBFileBuild{State: "failed"}
 			}

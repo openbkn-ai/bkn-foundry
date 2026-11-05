@@ -326,6 +326,13 @@ func TestReuseTrustsOnlyTheNewestBuildThatTouchedTheFile(t *testing.T) {
 	if build.Files[0].ReusedFrom != "older" {
 		t.Fatal("a build that never reached the file says nothing about it")
 	}
+	cleared := pendingStep("patent", "v1")
+	cleared.Cleared = true
+	build = reuseBuild(pendingStep("patent", "v1"))
+	ReuseCompleted(build, []*interfaces.KBBuild{priorBuild("newer", cleared), priorBuild("older", done)})
+	if build.Files[0].State != "pending" {
+		t.Fatal("a build that never ran a file can still have removed its rows")
+	}
 	build = reuseBuild(pendingStep("patent", "v1"))
 	ReuseCompleted(build, []*interfaces.KBBuild{priorBuild("newer", completedStep("patent", "v2", "succeeded", "m", 2)), priorBuild("older", done)})
 	if build.Files[0].State != "pending" {
