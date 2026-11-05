@@ -205,17 +205,6 @@ func TestFinishedTaskIsAcceptedEvenAfterTheDeadline(t *testing.T) {
 	}
 }
 
-func TestLegacyWaitingFileGetsItsDeadlineFromFirstSight(t *testing.T) {
-	c, store, runtime, now := deadlineFixture(t)
-	store.record.Build.Files[0].SubmittedAt = 0
-	*now = now.Add(24 * time.Hour)
-	step(t, c)
-	file := store.record.Build.Files[0]
-	if file.State != "waiting" || file.SubmittedAt != now.UnixMilli() || runtime.polls != 1 {
-		t.Fatalf("file %+v", file)
-	}
-}
-
 func TestProgressMarkIgnoresPollsAndMovesOnRealChange(t *testing.T) {
 	c, store, _, now := deadlineFixture(t)
 	first := store.record.Build.ProgressTime
@@ -287,7 +276,6 @@ func TestTaskOverdueDecision(t *testing.T) {
 		{"unreachable in time", 1, nil, gone, 2, false},
 		{"finished late", 1, finished, nil, late, false},
 		{"failed late is reported by the task itself", 1, failed, nil, late, false},
-		{"never stamped", 0, running, nil, late, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := TaskOverdue(&interfaces.KBFileBuild{SubmittedAt: tc.submitted}, tc.task, tc.err, tc.now); got != tc.want {

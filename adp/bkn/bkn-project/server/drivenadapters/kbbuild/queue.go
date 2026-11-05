@@ -186,7 +186,7 @@ func (a *access) WorkItems(ctx context.Context) ([]interfaces.KBWorkItem, error)
 		var build struct {
 			ProgressTime int64 `json:"progress_time"`
 		}
-		// A record written before progress was tracked reports its last save.
+		// A record no worker has saved yet has no progress time, only its creation.
 		if json.Unmarshal([]byte(data), &build) != nil || build.ProgressTime == 0 {
 			build.ProgressTime = updated
 		}

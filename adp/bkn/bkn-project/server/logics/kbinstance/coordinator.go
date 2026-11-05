@@ -239,13 +239,6 @@ func (c *Coordinator) Step(ctx context.Context, project, id, lease string) error
 				return c.fileAccessFailure(ctx, r, index, err)
 			}
 			task, err := c.Runtime.Poll(ctx, r.Identity, file.AgentTaskID)
-			if file.SubmittedAt == 0 {
-				// Submitted before deadlines existed: start counting now.
-				file.SubmittedAt = c.now()
-				if saveErr := c.save(ctx, r); saveErr != nil {
-					return saveErr
-				}
-			}
 			if TaskOverdue(file, task, err, c.now()) {
 				return c.fail(ctx, r, index, ReasonExtractionTimedOut)
 			}

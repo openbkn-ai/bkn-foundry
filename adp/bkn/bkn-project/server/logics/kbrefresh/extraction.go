@@ -230,11 +230,7 @@ func (s *Service) ExtractStep(ctx context.Context, lineage, lease string) error 
 		}
 		task, err := s.Tasks.Poll(ctx, build.Owner, file.AgentTaskID)
 		if file.State == "waiting" {
-			now := time.Now().UnixMilli()
-			if file.SubmittedAt == 0 {
-				file.SubmittedAt = now
-			}
-			if kbinstance.TaskOverdue(file, task, err, now) {
+			if kbinstance.TaskOverdue(file, task, err, time.Now().UnixMilli()) {
 				file.State, file.Reason = "failed", kbinstance.ReasonExtractionTimedOut
 				return s.attention(ctx, r, kbinstance.ReasonExtractionTimedOut)
 			}
