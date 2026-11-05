@@ -52,6 +52,9 @@ func planIdentityLinks(build *interfaces.KBBuild, draft *interfaces.Draft, relat
 	}
 	steps := map[string]int{}
 	for index, step := range build.Files {
+		if !step.HasClaims() {
+			continue
+		}
 		if !usableClaimStep(step, staged) {
 			return nil, ErrBuildChanged
 		}

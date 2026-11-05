@@ -23,7 +23,7 @@ import (
 )
 
 func (r *restHandler) registerKBBuild(group *gin.RouterGroup) {
-	for _, route := range []struct{ method, path string }{{"GET", "/acceptance/references/status"}, {"GET", "/acceptance/references"}, {"POST", "/acceptance/references"}, {"GET", "/build-settings"}, {"GET", "/builds"}, {"GET", "/builds/:build_id/results"}, {"GET", "/builds/:build_id/system-links"}, {"POST", "/builds/:build_id/system-links"}, {"POST", "/builds"}, {"POST", "/builds/cancel"}, {"POST", "/builds/:build_id/cancel"}} {
+	for _, route := range []struct{ method, path string }{{"GET", "/acceptance/references/status"}, {"GET", "/acceptance/references"}, {"POST", "/acceptance/references"}, {"GET", "/build-settings"}, {"GET", "/builds"}, {"GET", "/builds/:build_id/results"}, {"GET", "/builds/:build_id/system-links"}, {"POST", "/builds/:build_id/system-links"}, {"POST", "/builds"}, {"POST", "/builds/cancel"}, {"POST", "/builds/:build_id/cancel"}, {"POST", "/builds/:build_id/accept-files"}} {
 		method, path := route.method, route.path
 		group.Handle(method, path, func(c *gin.Context) {
 			r.withExVisitor(c, func(c *gin.Context, visitor hydra.Visitor) {
@@ -127,6 +127,21 @@ func (r *restHandler) registerKBBuild(group *gin.RouterGroup) {
 					result, err = service.Settings(ctx, visitor.TokenID, c.Param("project_id"), visitorAccount(visitor))
 				case method == "GET":
 					result, err = service.List(ctx, visitor.TokenID, c.Param("project_id"), visitorAccount(visitor))
+				case path == "/builds/:build_id/accept-files":
+					c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+					var request struct {
+						Revision int64 `json:"revision"`
+					}
+					if c.ShouldBindJSON(&request) != nil {
+						replySourceError(c, ctx, &kb.SourceError{StatusCode: 400})
+						return
+					}
+					var build *interfaces.KBBuild
+					build, err = service.AcceptFiles(ctx, visitor.TokenID, c.Param("project_id"), c.Param("build_id"), request.Revision, visitorAccount(visitor))
+					if err == nil && build == nil {
+						err = kbinstance.ErrBuildChanged
+					}
+					result = build
 				case c.Param("build_id") != "":
 					err = service.Cancel(ctx, visitor.TokenID, c.Param("project_id"), c.Param("build_id"), visitorAccount(visitor))
 					result = gin.H{"accepted": true}
@@ -163,6 +178,8 @@ func replyBuildError(c *gin.Context, ctx context.Context, err error) {
 		values["name"] = identity.Name
 	case errors.Is(err, kbinstance.ErrAcceptanceRequired):
 		key = "BuildReviewFirst"
+	case errors.Is(err, kbinstance.ErrNothingToAccept):
+		key = "BuildNothingToAccept"
 	case errors.Is(err, kbinstance.ErrInvalidBuild), errors.Is(err, kbinstance.ErrBuildChanged):
 		key = "BuildChanged"
 	case errors.Is(err, kb.ErrUnavailable), errors.As(err, &agent):

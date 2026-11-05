@@ -69,8 +69,8 @@ func publicationBuild(ctx context.Context, tx *sql.Tx, p *interfaces.KBPublicati
 	if !valid(r) || r.Build.NetworkID != p.LineageID || r.Build.Mode != "full" || r.Build.State != "succeeded" || !r.Identity.Cleaned || r.Build.Owner != p.Publisher || r.Build.ModelFingerprint != p.ModelFingerprint || r.Build.GenerationID != p.GenerationID || r.Build.DefinitionCommit != p.DefinitionCommit || r.Build.DraftUpdateTime != p.DraftUpdateTime {
 		return false, nil
 	}
-	for _, file := range r.Build.Files {
-		if file.State != "succeeded" {
+	for i := range r.Build.Files {
+		if !r.Build.Files[i].Completed() {
 			return false, nil
 		}
 	}

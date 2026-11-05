@@ -48,6 +48,9 @@ func readSourceClaims(ctx context.Context, reader kb.DatasetFileSnapshot, build 
 	result := []SourceClaim{}
 	seen := map[string]bool{}
 	for index, step := range build.Files {
+		if !step.HasClaims() {
+			continue
+		}
 		if !usableClaimStep(step, staged) {
 			return nil, ErrBuildChanged
 		}

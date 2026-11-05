@@ -63,15 +63,19 @@ func PlanFileBuild(id, network, mode string, agentVersion int, draft *interfaces
 			}
 		}
 	}
-	files := []interfaces.KBFileBuild{}
+	files, skipped := []interfaces.KBFileBuild{}, []interfaces.KBFileBuild{}
 	seen := map[string]bool{}
 	for _, file := range selection.Files {
 		key := file.Key()
-		if file.KnowledgeBaseID == "" || file.FileID == "" || file.ContentVersionID == "" || seen[key] || (file.SampleRole != "" && file.SampleRole != "debug" && file.SampleRole != "acceptance") {
+		if file.KnowledgeBaseID == "" || file.FileID == "" || seen[key] || (file.SampleRole != "" && file.SampleRole != "debug" && file.SampleRole != "acceptance") {
 			return nil, ErrInvalidBuild
 		}
 		seen[key] = true
 		if mode != "full" && file.SampleRole != mode {
+			continue
+		}
+		if file.ContentVersionID == "" {
+			skipped = append(skipped, interfaces.KBFileBuild{File: file, State: "failed", Reason: ReasonNoContentVersion})
 			continue
 		}
 		files = append(files, interfaces.KBFileBuild{File: file, State: "pending"})
@@ -81,5 +85,5 @@ func PlanFileBuild(id, network, mode string, agentVersion int, draft *interfaces
 	}
 	slices.SortFunc(files, func(a, b interfaces.KBFileBuild) int { return strings.Compare(a.File.Key(), b.File.Key()) })
 	now := time.Now().UnixMilli()
-	return &interfaces.KBBuild{ID: id, NetworkID: network, ProjectID: draft.ProjectID, Owner: selection.Owner, Mode: mode, State: "preparing", Revision: 1, SelectionID: selection.ID, SelectionRevision: selection.Revision, ModelFingerprint: fingerprint, GenerationID: generation.ID, DraftUpdateTime: draft.UpdateTime, DefinitionCommit: draft.Items.Confirmation.Commit, AgentVersion: agentVersion, Files: files, CreateTime: now, UpdateTime: now}, nil
+	return &interfaces.KBBuild{ID: id, NetworkID: network, ProjectID: draft.ProjectID, Owner: selection.Owner, Mode: mode, State: "preparing", Revision: 1, SelectionID: selection.ID, SelectionRevision: selection.Revision, ModelFingerprint: fingerprint, GenerationID: generation.ID, DraftUpdateTime: draft.UpdateTime, DefinitionCommit: draft.Items.Confirmation.Commit, AgentVersion: agentVersion, Files: files, Skipped: skipped, CreateTime: now, UpdateTime: now}, nil
 }

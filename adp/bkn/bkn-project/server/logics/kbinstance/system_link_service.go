@@ -197,13 +197,15 @@ func (s *SystemLinkService) current(ctx context.Context, token, project, id stri
 	files := []interfaces.KBResourceFile{}
 	seenFiles := map[string]bool{}
 	for _, step := range build.Files {
-		if step.State != "succeeded" || seenFiles[step.File.Key()] || selected[step.File.Key()] != step.File {
+		if !step.Completed() || seenFiles[step.File.Key()] || selected[step.File.Key()] != step.File {
 			return nil, nil, ErrBuildChanged
 		}
 		seenFiles[step.File.Key()] = true
-		files = append(files, step.File)
+		if step.HasClaims() {
+			files = append(files, step.File)
+		}
 	}
-	if build.Mode == "full" && len(files) != len(selected) {
+	if build.Mode == "full" && len(seenFiles)+len(build.Skipped) != len(selected) {
 		return nil, nil, ErrBuildChanged
 	}
 	draft, found, err := s.Builds.Drafts.GetDraft(ctx, project)

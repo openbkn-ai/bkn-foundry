@@ -5,6 +5,7 @@ package kbbuild
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 
@@ -115,5 +116,69 @@ func TestRefreshWorkItemsSkipIdleLineages(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ProgressTime != 40 || items[0].State != "applying" {
 		t.Fatalf("%+v", items)
+	}
+}
+
+func TestAcceptFilesIsFencedByRevisionAndOwner(t *testing.T) {
+	for _, scenario := range []string{"applied", "stale_revision", "archived", "not_cleaned", "refused", "source_changed"} {
+		t.Run(scenario, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			record := processRecord()
+			record.Build.State = "needs_review"
+			record.Identity.Cleaned = scenario != "not_cleaned"
+			mock.ExpectBegin()
+			mock.ExpectQuery(regexp.QuoteMeta(projectLock)).WithArgs("project").WillReturnRows(sqlmock.NewRows([]string{"archived", "owner", "type"}).AddRow(scenario == "archived", "owner", "user"))
+			mock.ExpectQuery("FOR UPDATE").WillReturnRows(rowsFor(record))
+			revision := record.Build.Revision
+			if scenario == "stale_revision" {
+				revision--
+			}
+			if scenario == "applied" || scenario == "refused" || scenario == "source_changed" {
+				selectionRevision := record.Build.SelectionRevision
+				if scenario == "source_changed" {
+					selectionRevision++
+				}
+				mock.ExpectQuery(regexp.QuoteMeta(selectionLock)).WillReturnRows(sqlmock.NewRows([]string{"state", "revision"}).AddRow("active", selectionRevision))
+				if scenario != "source_changed" {
+					mock.ExpectQuery(regexp.QuoteMeta(draftLock)).WillReturnRows(sqlmock.NewRows([]string{"status", "at"}).AddRow(interfaces.DRAFT_STATUS_READY, record.Build.DraftUpdateTime))
+					mock.ExpectQuery(regexp.QuoteMeta(sealedGenerations)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+				}
+			}
+			if scenario == "applied" {
+				mock.ExpectExec("UPDATE t_bkn_project_kb_build SET f_state=").WithArgs("succeeded", record.Build.Revision+1, sqlmock.AnyArg(), sqlmock.AnyArg(), "project", "build", record.Build.Revision).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			} else {
+				mock.ExpectRollback()
+			}
+			refusal := errors.New("refused")
+			build, err := New(db).(interfaces.KBFileAcceptanceAccess).AcceptFiles(context.Background(), "project", "build", revision, func(b *interfaces.KBBuild) error {
+				if scenario == "refused" {
+					return refusal
+				}
+				b.State = "succeeded"
+				return nil
+			})
+			switch scenario {
+			case "applied":
+				if err != nil || build == nil || build.State != "succeeded" {
+					t.Fatalf("%v %+v", err, build)
+				}
+			case "refused":
+				if !errors.Is(err, refusal) {
+					t.Fatalf("%v", err)
+				}
+			default:
+				if err != nil || build != nil {
+					t.Fatalf("%v %+v", err, build)
+				}
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

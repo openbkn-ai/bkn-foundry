@@ -57,7 +57,7 @@ func TestBuildManifestSeparatesDebugAcceptanceAndFullScope(t *testing.T) {
 }
 
 func TestBuildRefusesUnconfirmedStaleOrPartlyPreparedModels(t *testing.T) {
-	for _, scenario := range []string{"unconfirmed", "drafting", "no_commit", "source_changed", "project_changed", "owner_changed", "model_changed", "partial", "wrong_binding", "missing_version", "duplicate_file", "unknown_role", "unknown_mode", "unknown_agent"} {
+	for _, scenario := range []string{"unconfirmed", "drafting", "no_commit", "source_changed", "project_changed", "owner_changed", "model_changed", "partial", "wrong_binding", "duplicate_file", "unknown_role", "unknown_mode", "unknown_agent"} {
 		t.Run(scenario, func(t *testing.T) {
 			draft, selection := buildPlanFixture(t)
 			mode := "debug"
@@ -81,8 +81,6 @@ func TestBuildRefusesUnconfirmedStaleOrPartlyPreparedModels(t *testing.T) {
 				draft.Items.DatasetPlans[0].Datasets[0].Ready = false
 			case "wrong_binding":
 				draft.Items.ObjectTypes[0].Table.ResourceID = "foreign-resource"
-			case "missing_version":
-				selection.Files[0].ContentVersionID = ""
 			case "duplicate_file":
 				selection.Files = append(selection.Files, selection.Files[0])
 			case "unknown_role":

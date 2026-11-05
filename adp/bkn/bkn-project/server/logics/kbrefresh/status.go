@@ -86,7 +86,7 @@ func (s *Service) Status(ctx context.Context, lineage string, canManage bool) (*
 		result.Files = len(build.Files)
 		result.Reused = max(0, result.Files-result.Changed)
 		for _, file := range build.Files {
-			if file.State == "succeeded" || file.State == "validated" {
+			if file.State == "succeeded" || file.State == "evidence_only" || file.State == "validated" {
 				result.Completed++
 			}
 		}

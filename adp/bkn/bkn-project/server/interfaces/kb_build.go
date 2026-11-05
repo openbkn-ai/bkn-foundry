@@ -40,6 +40,41 @@ type KBBuild struct {
 	// so only this can tell operators how long a build has been stuck.
 	ProgressTime int64  `json:"progress_time,omitempty"`
 	ProgressMark uint64 `json:"progress_mark,omitempty"`
+	// Skipped lists selected files that could not enter the build at all. They are
+	// outside Files because nothing can be delegated or held for them.
+	Skipped []KBFileBuild `json:"skipped,omitempty"`
+	// Acceptance is a person's decision to release without the files it lists.
+	Acceptance *KBFileAcceptance `json:"acceptance,omitempty"`
+	// SubmitHoldUntil and SubmitFailures space out submissions during an outage.
+	SubmitHoldUntil int64 `json:"submit_hold_until,omitempty"`
+	SubmitFailures  int   `json:"submit_failures,omitempty"`
+}
+
+// KBFileAcceptance is who accepted leaving which files out of a release, and when.
+type KBFileAcceptance struct {
+	By    AccountInfo      `json:"by"`
+	Time  int64            `json:"time"`
+	Files []KBAcceptedFile `json:"files"`
+}
+
+// KBAcceptedFile is one file left out of a release and why.
+type KBAcceptedFile struct {
+	File   KBResourceFile `json:"file"`
+	Reason string         `json:"reason"`
+}
+
+// KBFileExcluded is the state of a file a person accepted leaving out.
+const KBFileExcluded = "excluded"
+
+// Completed reports a file with nothing left to do before release: extracted,
+// evidence only (nothing to extract), or left out by a person's decision.
+func (f *KBFileBuild) Completed() bool {
+	return f.State == "succeeded" || f.State == "evidence_only" || f.State == KBFileExcluded
+}
+
+// HasClaims reports a file whose rows include extracted facts for linking.
+func (f *KBFileBuild) HasClaims() bool {
+	return f.State != "evidence_only" && f.State != KBFileExcluded
 }
 
 // MarkProgress moves ProgressTime when the state, a file's state or a written
@@ -115,6 +150,13 @@ type KBFileBuild struct {
 	Reason      string `json:"reason,omitempty"`
 	// SubmittedAt starts the Agent task's deadline.
 	SubmittedAt int64 `json:"submitted_at,omitempty"`
+	// Attempts counts retries of known failures; NextAttempt is when the next may run.
+	Attempts    int   `json:"attempts,omitempty"`
+	NextAttempt int64 `json:"next_attempt,omitempty"`
+	// ReusedFrom is the earlier build whose completed result this file carries.
+	ReusedFrom string `json:"reused_from,omitempty"`
+	// Cleared means a failed file's rows from any earlier attempt were removed.
+	Cleared bool `json:"cleared,omitempty"`
 }
 
 // KBBuildIdentity is private delegation metadata, never part of a business DTO,
@@ -146,6 +188,12 @@ type KBBuildAccess interface {
 	Get(context.Context, string, string) (*KBBuildRecord, error)
 	Claim(context.Context, string, string, string, int64, int64) (*KBBuildRecord, error)
 	Save(context.Context, *KBBuildRecord, int64, int64) (bool, error)
+}
+
+// KBFileAcceptanceAccess applies a person's acceptance to a build that has ended,
+// at the revision they were shown, under the current model and owner.
+type KBFileAcceptanceAccess interface {
+	AcceptFiles(ctx context.Context, project, id string, revision int64, apply func(*KBBuild) error) (*KBBuild, error)
 }
 
 type KBBuildKey struct{ ProjectID, ID string }

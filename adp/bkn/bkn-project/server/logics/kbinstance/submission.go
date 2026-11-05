@@ -42,7 +42,7 @@ func PrepareFileSubmission(build *interfaces.KBBuild, index int, now int64) (*in
 	}
 	next.State = "running"
 	for _, other := range next.Files {
-		if other.State == "failed" || other.State == "submission_unknown" || other.State == "evidence_only" {
+		if other.State == "failed" || other.State == "submission_unknown" {
 			next.State = "attention"
 		}
 	}
@@ -146,7 +146,7 @@ func AttachFileTask(build *interfaces.KBBuild, index int, agent string, task *in
 		return nil, ErrInvalidBuild
 	}
 	for _, other := range next.Files {
-		if other.State == "failed" || other.State == "submission_unknown" || other.State == "evidence_only" {
+		if other.State == "failed" || other.State == "submission_unknown" {
 			next.State = "attention"
 			break
 		}
