@@ -55,6 +55,13 @@ type Snapshot struct {
 	// of "never installed", "expired past grace" and "failed verification" —
 	// the product behaves identically in each, which is the point.
 	Licensed bool
+	// Undetermined reports that no licence hub has answered yet, so "not
+	// licensed" is the safe default rather than a verdict. Capability checks
+	// ignore it and keep withholding. It exists for work that must not be
+	// destroyed on silence: revoking a running job needs a definite answer.
+	// A hub's "no certificate", a rejected certificate and one past grace are
+	// all definite.
+	Undetermined bool
 	// Edition is the tier in force. It is EditionCommunity whenever Licensed
 	// is false: an enterprise binary without a licence behaves as community,
 	// and there is deliberately no separate "unlicensed" tier.
@@ -86,7 +93,7 @@ func (f GateFunc) Snapshot() Snapshot { return f() }
 type deniedGate struct{}
 
 func (deniedGate) Snapshot() Snapshot {
-	return Snapshot{Edition: licverify.EditionCommunity}
+	return Snapshot{Edition: licverify.EditionCommunity, Undetermined: true}
 }
 
 var (
@@ -123,6 +130,9 @@ func AtLeast(min licverify.Edition) bool { return current().Edition.AtLeast(min)
 // surfaces: it distinguishes "community deployment" from "enterprise binary
 // whose licence has not taken effect", which Edition alone cannot.
 func Licensed() bool { return current().Licensed }
+
+// Undetermined reports that no licence hub has answered yet. See Snapshot.
+func Undetermined() bool { return current().Undetermined }
 
 // State returns the certificate's own state, for operator surfaces and logs.
 func State() licverify.State { return current().State }
