@@ -113,6 +113,16 @@ class CanvasLimits(BaseModel):
     expand_threshold: int = Field(default=EXPAND_THRESHOLD, ge=0, le=MAX_NODES)
 
 
+class AnalysisCard(BaseModel):
+    """A card of the analysis the question is asked in, as the user sees it."""
+
+    model_config = {"extra": "ignore"}
+    # The number the user names the card by, shown as `#<no>`.
+    no: int = Field(ge=1)
+    title: str = Field(default="", max_length=200)
+    kind: str = Field(default="", max_length=40)
+
+
 class CanvasContext(BaseModel):
     """context.canvas of a graph explorer execution."""
 
@@ -129,6 +139,9 @@ class CanvasContext(BaseModel):
     # The network's object types the view tools may name.
     object_types: list[ObjectTypeRef] = Field(default_factory=list, max_length=1000)
     limits: CanvasLimits = Field(default_factory=CanvasLimits)
+    # The cards of the analysis the question is asked in; absent outside an
+    # analysis, where the card tool is not offered.
+    analysis_cards: Optional[list[AnalysisCard]] = Field(default=None, max_length=1000)
 
 
 def _canvas(run: builtin_tools.Run) -> CanvasContext:
@@ -227,6 +240,8 @@ async def _network(run: builtin_tools.Run) -> dict:
                     for p in (t.get("data_properties") or t.get("properties") or [])
                     if isinstance(p, dict) and isinstance(p.get("name"), str)
                 ][:SCHEMA_PROPERTIES],
+                # The properties that name an instance: codes and numbers in a question are these.
+                "keys": [k for k in t.get("primary_keys") or [] if isinstance(k, str)],
             }
             for t in detail.get("object_types") or []
             if isinstance(t, dict) and isinstance(t.get("id"), str)
@@ -465,8 +480,28 @@ class LabelSetting(TypedDict):
     label: Optional[str]
 
 
+class CardRename(TypedDict):
+    no: Annotated[int, Field(ge=1, description="The card's number, without the #.")]
+    title: Annotated[str, Field(min_length=1, max_length=60, description="The new title.")]
+
+
+class MetricCondition(TypedDict):
+    field: Annotated[str, Field(min_length=1, description="Property name.")]
+    operator: Literal["==", "!=", ">", ">=", "<", "<=", "in", "like", "contains", "starts_with", "ends_with", "is_null", "not_null"]
+    value: Annotated[str, Field(description="As text; a list for `in` is comma separated.")]
+
+
+class MetricItem(TypedDict, total=False):
+    label: Required[Annotated[str, Field(description="What the card shows, e.g. 苏州成品仓可用库存.")]]
+    otId: Required[Annotated[str, Field(min_length=1, description="Object type id whose canvas instances it measures.")]]
+    measure: Required[Literal["count", "sum", "avg", "max", "min", "distinct"]]
+    property: Annotated[str, Field(description="Property measured; a count needs none.")]
+    when: Annotated[list[MetricCondition], Field(description="Only instances meeting every condition are measured.")]
+    tone: Literal["neutral", "success", "warning", "danger", "info"]
+
+
 class AnalysisConfig(TypedDict, total=False):
-    kind: Literal["types", "relations", "category", "numeric", "time", "degree", "scatter"]
+    kind: Literal["types", "relations", "category", "numeric", "time", "degree", "scatter", "metric"]
     otIds: Annotated[Optional[list[str]], Field(description="Types to analyse; null selects the default type. numeric takes one type.")]
     propertyByOt: Annotated[dict[str, str], Field(description="Object type id -> grouping, date or numeric property.")]
     degreeOt: Annotated[Optional[str], Field(description="Degree chart type filter; null for all types.")]
@@ -478,6 +513,7 @@ class AnalysisConfig(TypedDict, total=False):
     withFolded: bool
     xByOt: dict[str, str]
     yByOt: dict[str, str]
+    metrics: Annotated[list[MetricItem], Field(max_length=8, description="For kind metric: one number card each; replaces the current list.")]
 
 
 class Filter(TypedDict, total=False):
@@ -494,6 +530,23 @@ def _condition(filters: list[Filter] | None) -> dict | None:
     if not leaves:
         return None
     return leaves[0] if len(leaves) == 1 else {"operation": "and", "sub_conditions": leaves}
+
+
+def _check_filter_fields(meta: data.ObjectTypeMeta, filters: list[Filter] | None) -> None:
+    """Refuses a filter on a property the object type does not have, or may not be
+    filtered on, by name: the platform answers both with a bare invalid parameter."""
+    if not meta.property_types:
+        return
+    unknown = [f["field"] for f in filters or [] if f["field"] not in meta.property_types]
+    if unknown:
+        names = ", ".join(list(meta.property_types)[:60])
+        raise ToolException(
+            f"{meta.id} has no property {', '.join(unknown)}. Its properties are: {names}"
+        )
+    if meta.readable is not None:
+        denied = [f["field"] for f in filters or [] if f["field"] not in meta.readable]
+        if denied:
+            raise ToolException(f"Properties {', '.join(denied)} of {meta.id} cannot be filtered on")
 
 
 async def _fetch_by_identity(
@@ -855,6 +908,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         meta = (await _metas(run, [object_type])).get(object_type)
         if meta is None:
             raise ToolException(f"Unknown object type: {object_type}")
+        _check_filter_fields(meta, filters)
         arguments: dict[str, Any] = {"ot_id": object_type, "limit": limit}
         condition = _condition(filters)
         if condition:
@@ -982,6 +1036,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             out.update(_summary(graph.nodes, with_properties=False))
             out["edges"] = _edge_summary(graph.edges)
             out.update(_merge(run, graph.nodes, graph.edges))
+            _keep_cypher_result(run, query, graph, bool(out.get("limited")))
         if graph.table:
             out["table"] = {
                 "columns": graph.table["columns"],
@@ -1137,7 +1192,9 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         scope selected uses only the visible selection and its internal edges.
         Config fields merge into the current settings. kind: types / relations
         counts; category groups by a property; numeric histogram; time timeline;
-        degree scoped degree distribution; scatter numeric/time x against numeric y.
+        degree scoped degree distribution; scatter numeric/time x against numeric y;
+        metric number cards, one per item of metrics, each measuring one type's
+        canvas instances (optionally only those meeting its conditions).
         Category and time support count/sum/avg/min/max measures. No pie charts or
         other chart styles. The Web checks the settings when it applies the plan."""
         patch = {
@@ -1148,7 +1205,11 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         if not patch:
             raise ToolException("Nothing to change.")
         known = {t.id for t in _canvas(run).object_types}
-        named = set((chart or {}).get("otIds") or ()) | set((chart or {}).get("propertyByOt") or {})
+        named = (
+            set((chart or {}).get("otIds") or ())
+            | set((chart or {}).get("propertyByOt") or {})
+            | {item["otId"] for item in (chart or {}).get("metrics") or ()}
+        )
         unknown = sorted(named - known) if known else []
         if unknown:
             raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use ids from view_state.")
@@ -1307,6 +1368,35 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         _record(run, "manual_group", **fields)
         return _dump({"planned": fields})
 
+    async def edit_analysis_cards(
+        remove: Annotated[Optional[list[int]], Field(description="Numbers of the cards to delete, without the #.")] = None,
+        rename: Optional[list[CardRename]] = None,
+    ) -> str:
+        """Delete or rename cards of the user's analysis. A card is a step of the
+        analysis (a search, a pick, a merge, a chart...) that the user names as
+        `#<number>`; it is not a node, and remove_instances never removes one.
+        Only for a question asked in an analysis, whose cards the instructions
+        list; use only those numbers. The user can undo the change. Say in the
+        answer which cards were deleted or renamed."""
+        listed = _canvas(run).analysis_cards
+        if listed is None:
+            raise ToolException("This question is not asked in an analysis; there are no cards to edit.")
+        cards = {card.no for card in listed}
+        wanted = list(dict.fromkeys(remove or ())) + [item["no"] for item in rename or ()]
+        if not wanted:
+            raise ToolException("Nothing to change.")
+        unknown = sorted({no for no in wanted if no not in cards})
+        if unknown:
+            raise ToolException(
+                f"No cards {', '.join(f'#{no}' for no in unknown)} in this analysis; use the numbers listed with the cards."
+            )
+        out: dict[str, Any] = {}
+        if remove:
+            out["removed"] = list(dict.fromkeys(remove))
+        if rename:
+            out["renamed"] = [{"no": item["no"], "title": item["title"].strip()} for item in rename]
+        return _dump(out)
+
     return [
         _tool(fn)
         for fn in (
@@ -1323,6 +1413,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             arrange_canvas,
             canvas_control,
             manual_group,
+            edit_analysis_cards,
         )
     ]
 
@@ -1359,9 +1450,13 @@ async def _instructions(run: builtin_tools.Run) -> str:
     try:
         network = await _network(run)
     except ToolException as exc:
-        return f"The network schema could not be read ({exc}); read it before naming types."
+        return "\n".join(
+            [f"The network schema could not be read ({exc}); read it before naming types.", *_card_instructions(run)]
+        )
     objects = [
-        f"- {ot_id} ({t['name']})" + (f"\n  properties: {', '.join(t['properties'])}" if t["properties"] else "")
+        f"- {ot_id} ({t['name']})"
+        + (f"\n  key: {', '.join(t['keys'])}" if t.get("keys") else "")
+        + (f"\n  properties: {', '.join(t['properties'])}" if t["properties"] else "")
         for ot_id, t in network["object_types"].items()
     ]
     relations = [
@@ -1377,17 +1472,69 @@ async def _instructions(run: builtin_tools.Run) -> str:
             "",
             "Relation types (id, name): source object type -> target object type:",
             *relations,
+            *_card_instructions(run),
         ]
     )
 
 
+def _card_instructions(run: builtin_tools.Run) -> list[str]:
+    """The analysis cards, when the question is asked in an analysis: the user
+    names them as `#<number>`, which is easily taken for a node."""
+    cards = getattr(_canvas(run), "analysis_cards", None)
+    if cards is None:
+        return []
+    listed = [f"- #{card.no} {card.title or card.kind} ({card.kind})" for card in cards]
+    return [
+        "",
+        "This question is asked in an analysis made of cards. `#<number>` in the user's message names a card,"
+        " never a node. Delete or rename cards with edit_analysis_cards.",
+        "Your canvas is what the card the user continues from holds. Clearing it (canvas_control clear) starts"
+        " a new line from nothing: no card is deleted and the user is not asked to confirm, so say that, not"
+        " that a confirmation follows. Layout, labels, grouping and the other view tools change nothing in an"
+        " analysis; do not offer or claim them.",
+        "Cards of the analysis (number, title, kind):",
+        *(listed or ["(none)"]),
+    ]
+
+
+def _keep_cypher_result(run: builtin_tools.Run, query: str, graph: data.CypherGraph, limited: bool) -> None:
+    """What a graph query found that is on the canvas once its plan applies, for
+    the page to keep as that query's result instead of running it again. Nodes the
+    canvas already had come with the query's own computed values; nodes left out
+    for lack of room are not in it and make it truncated."""
+    present, planned = _present_nodes(run), _planned_nodes(run)
+    nodes = []
+    for node in graph.nodes:
+        if node["id"] not in present:
+            continue
+        # A node planned earlier in the run holds its fetched data; the computed
+        # values are this query's alone.
+        item = {k: v for k, v in planned.get(node["id"], node).items() if k != "computed"}
+        if node.get("computed"):
+            item["computed"] = node["computed"]
+        nodes.append(item)
+    ids = {n["id"] for n in nodes}
+    run.state.setdefault("cypher_results", []).append(
+        {
+            "query": query,
+            "nodes": nodes,
+            "edges": [e for e in graph.edges if e["source"] in ids and e["target"] in ids],
+            "truncated": limited or len(nodes) < len(graph.nodes),
+        }
+    )
+
+
 def _progress(run: builtin_tools.Run) -> dict | None:
-    """The actions planned since the last call, with the graph data they name."""
+    """The actions planned since the last call, with the graph data they name, and
+    the graph queries finished since then with what each found (`cypher`, in the
+    order they finished: tool calls may run side by side, so the page matches a
+    query to its step by text)."""
     actions = _actions(run)
     start = run.state.get("emitted", 0)
     run.state["emitted"] = len(actions)
     new = actions[start:]
-    if not new:
+    cypher = run.state.pop("cypher_results", [])
+    if not new and not cypher:
         return None
     merges = [a for a in new if a["type"] == "merge_subgraph"]
 
@@ -1399,6 +1546,7 @@ def _progress(run: builtin_tools.Run) -> dict | None:
         "edges": named(_planned_edges(run), "edge_ids"),
         "aggregates": named(_planned_aggregates(run), "aggregate_ids"),
         "actions": new,
+        **({"cypher": cypher} if cypher else {}),
     }
 
 
@@ -1461,6 +1609,7 @@ TOOL_NAMES = frozenset(
         "arrange_canvas",
         "canvas_control",
         "manual_group",
+        "edit_analysis_cards",
     }
 )
 
