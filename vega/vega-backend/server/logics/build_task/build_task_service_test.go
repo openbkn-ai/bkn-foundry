@@ -134,7 +134,7 @@ func (m *analyzerValidatingIndexManager) ValidateAnalyzer(_ context.Context, ana
 
 func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
 	t.Run("rejects invalid decimal declarations before creating a task", func(t *testing.T) {
-		for _, original := range []string{"numeric", "decimal(12,13)", "decimal(1000,309)"} {
+		for _, original := range []string{"numeric", "decimal(0,13)", "decimal(1000,309)"} {
 			service := &buildTaskService{}
 			task := &interfaces.BuildTask{}
 			err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: original}}}, task)
@@ -143,7 +143,7 @@ func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
 		}
 	})
 	t.Run("snapshots wide decimal declarations without rejecting their unused value range", func(t *testing.T) {
-		for _, original := range []string{"decimal(18,2)", "decimal(38,18)"} {
+		for _, original := range []string{"decimal(18,2)", "decimal(38,18)", "numeric(3,5)", "decimal(12,13)"} {
 			service := &buildTaskService{}
 			task := &interfaces.BuildTask{}
 			err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: original}}}, task)

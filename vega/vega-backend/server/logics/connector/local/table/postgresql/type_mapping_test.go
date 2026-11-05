@@ -27,6 +27,8 @@ func TestPostgresqlMapType(t *testing.T) {
 		{"text", interfaces.DataType_Text},
 		{"jsonb", interfaces.DataType_Json},
 		{"enum", interfaces.DataType_String},
+		{"money", interfaces.DataType_Decimal},
+		{"MONEY", interfaces.DataType_Decimal},
 		// Array udt_name values with underscore prefixes remain unsupported.
 		{"_int4", interfaces.DataType_Other},
 		{"_text", interfaces.DataType_Other},

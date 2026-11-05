@@ -845,14 +845,17 @@ func (rqs *rawQueryService) prepareSQLBuilder(ctx context.Context, query *sb.Sel
 			versions[table.ResourceID] = resource.UpdateTime
 		}
 		table.SourceIdentifier = resource.SourceIdentifier
+		table.SourceName, _ = resource.SourceMetadata["name"].(string)
 		if resource.SchemaDefinition != nil {
 			table.ColumnNames = make([]string, 0, len(resource.SchemaDefinition))
+			table.ColumnOriginalTypes = make(map[string]string, len(resource.SchemaDefinition))
 			for _, field := range resource.SchemaDefinition {
 				name := field.OriginalName
 				if name == "" {
 					name = field.Name
 				}
 				table.ColumnNames = append(table.ColumnNames, name)
+				table.ColumnOriginalTypes[name] = field.OriginalType
 			}
 		}
 	}

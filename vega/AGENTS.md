@@ -40,6 +40,7 @@
 - ResourceDataService 与派生视图在对外查询入口统一映射查询错误；HTTP 映射函数只返回 `*httperrors.HTTPError` 或 nil，内部执行保留原始错误及来源，未知故障由对外入口兜底。
 - 遵循 VEGA 既有六边形架构：`interfaces` → `logics` → `driveradapters` / `drivenadapters`。
 - 连接器应将驱动错误归类为可识别的普通错误；跨连接器共用的错误类型定义在 Foundry `interfaces/errors.go`，统一通过构造函数创建，由调用方通过 `errors.As` 转换为 HTTP 错误。连接器不直接构造 HTTP 错误。
+- 连接器的数据库能力和连接生命周期内稳定的共享参数（如 PostgreSQL money 的定标定义），统一在对应 `compatibility` 的初始化探测阶段获取并保存。探查和查询路径直接只读使用，不在表或字段循环中重复查询，不另设惰性缓存或为此加锁；重建连接时重新探测。
 - 保持 diff 聚焦，不做与任务无关的格式化、重命名、文件移动或依赖升级。
 - 新模式必须说明必要性；能复用既有实现、测试 helper 和错误处理模式时优先复用。
 - 如无必要不使用闭包；已有分页 Runner 接口时，优先使用具名方法并显式保存执行状态，避免捕获可变状态。
