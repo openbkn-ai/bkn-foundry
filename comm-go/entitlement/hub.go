@@ -41,8 +41,9 @@ import (
 //
 // So: keep serving from the last snapshot that verified, and let licverify's
 // grace window decide when that stops being true. A cold start that never
-// reached the hub has no snapshot at all, which is community behaviour — the
-// zero value already points that way.
+// reached the hub has no snapshot at all, which is community behaviour — but it
+// is marked Undetermined, because silence is not a verdict and work in progress
+// must not be destroyed on it.
 //
 // # Two-stage polling
 //
@@ -120,7 +121,7 @@ func NewHubGate(cfg HubConfig) (*HubGate, error) {
 		cfg.Logf = func(format string, args ...any) { slog.Debug(fmt.Sprintf(format, args...)) }
 	}
 	g := &HubGate{cfg: cfg, keys: cfg.Keys}
-	g.publish(Snapshot{Edition: licverify.EditionCommunity})
+	g.publish(Snapshot{Edition: licverify.EditionCommunity, Undetermined: true})
 	_ = g.refresh()
 	return g, nil
 }
@@ -130,7 +131,7 @@ func (g *HubGate) Snapshot() Snapshot {
 	if s := g.snap.Load(); s != nil {
 		return *s
 	}
-	return Snapshot{Edition: licverify.EditionCommunity}
+	return Snapshot{Edition: licverify.EditionCommunity, Undetermined: true}
 }
 
 // Run keeps the snapshot current until the context is cancelled. Start it in a

@@ -316,3 +316,95 @@ func TestUnreachableHubStillLetsTheClockRun(t *testing.T) {
 		t.Fatalf("State = %q, want grace: an unreachable hub must not freeze the clock", snap.State)
 	}
 }
+
+// A worker that revokes delegations on "no licence" has to tell silence from an
+// answer: only the second may ever end somebody's work.
+func TestHubGateSeparatesSilenceFromADefiniteAnswer(t *testing.T) {
+	text, keys := enterpriseLicence(t)
+	forged, _ := enterpriseLicence(t) // signed by a key this gate does not trust
+
+	t.Run("hub down at start is undetermined", func(t *testing.T) {
+		hub := &fakeHub{}
+		hub.fail(http.StatusServiceUnavailable)
+		g, _ := newTestGate(t, hub, keys)
+		if snap := g.Snapshot(); !snap.Undetermined || snap.Licensed {
+			t.Fatalf("snapshot = %+v, want unlicensed and undetermined", snap)
+		}
+	})
+	t.Run("repeated failures stay undetermined", func(t *testing.T) {
+		hub := &fakeHub{}
+		hub.fail(http.StatusBadGateway)
+		g, _ := newTestGate(t, hub, keys)
+		_ = g.refresh()
+		if !g.Snapshot().Undetermined {
+			t.Fatal("a failed refresh with nothing held cannot become an answer")
+		}
+	})
+	t.Run("unreadable body is not an answer", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("<html>gateway</html>"))
+		}))
+		defer srv.Close()
+		g, err := NewHubGate(HubConfig{BaseURL: srv.URL, Keys: keys})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !g.Snapshot().Undetermined {
+			t.Fatal("a proxy page must not be read as a licence verdict")
+		}
+	})
+	t.Run("no certificate installed is definite", func(t *testing.T) {
+		g, _ := newTestGate(t, &fakeHub{}, keys)
+		if snap := g.Snapshot(); snap.Undetermined || snap.Licensed {
+			t.Fatalf("snapshot = %+v, want definite community", snap)
+		}
+	})
+	t.Run("a valid certificate is definite", func(t *testing.T) {
+		g, _ := newTestGate(t, &fakeHub{licence: text}, keys)
+		if snap := g.Snapshot(); snap.Undetermined || !snap.Licensed {
+			t.Fatalf("snapshot = %+v, want definite licence", snap)
+		}
+	})
+	t.Run("a rejected certificate is definite", func(t *testing.T) {
+		g, _ := newTestGate(t, &fakeHub{licence: forged}, keys)
+		if snap := g.Snapshot(); snap.Undetermined || snap.Licensed {
+			t.Fatalf("snapshot = %+v, want definite refusal", snap)
+		}
+	})
+	t.Run("the first answer ends the silence", func(t *testing.T) {
+		hub := &fakeHub{licence: text}
+		hub.fail(http.StatusServiceUnavailable)
+		g, _ := newTestGate(t, hub, keys)
+		hub.fail(0)
+		if err := g.refresh(); err != nil {
+			t.Fatal(err)
+		}
+		if snap := g.Snapshot(); snap.Undetermined || !snap.Licensed {
+			t.Fatalf("snapshot = %+v, want definite licence after recovery", snap)
+		}
+	})
+	t.Run("an outage after an answer keeps the answer", func(t *testing.T) {
+		hub := &fakeHub{}
+		g, _ := newTestGate(t, hub, keys)
+		hub.fail(http.StatusServiceUnavailable)
+		_ = g.refresh()
+		if g.Snapshot().Undetermined {
+			t.Fatal("a later outage does not retract the hub's definite answer")
+		}
+	})
+}
+
+func TestGatesWithoutAHubCannotClaimAnAnswer(t *testing.T) {
+	if !(deniedGate{}).Snapshot().Undetermined {
+		t.Fatal("the denied gate never asked anybody, so it holds no verdict")
+	}
+	ResetForTest()
+	t.Cleanup(ResetForTest)
+	if !Snap().Undetermined || Undetermined() != Snap().Undetermined {
+		t.Fatal("the package accessor must report the installed gate")
+	}
+	SetGateForTest(FixedGate(licverify.EditionCommunity))
+	if Undetermined() {
+		t.Fatal("a fixed gate is a definite statement")
+	}
+}
