@@ -11,7 +11,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/google/uuid v1.6.0
 	github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server v0.0.0-20261101020530-384ba8ad9224
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261102015423-8e29f3f0c9a8
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261105100051-2fe5ae44bfc2
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0

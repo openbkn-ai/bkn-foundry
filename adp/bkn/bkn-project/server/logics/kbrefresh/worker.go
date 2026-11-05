@@ -4,10 +4,14 @@ package kbrefresh
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -51,6 +55,8 @@ func RunWorker(ctx context.Context, limits *Limits) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	after := ""
+	log := kbinstance.NewWorkerLog("refresh")
+	observed := map[string]string{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -58,14 +64,29 @@ func RunWorker(ctx context.Context, limits *Limits) {
 		case <-ticker.C:
 		}
 		service := NewService(limits)
-		if service.Journal == nil || service.Sources == nil || service.Tasks == nil || service.Storage == nil || !service.Enabled() {
+		_, access := kb.ForWorker()
+		if access == kb.WorkerNotInstalled {
 			continue
 		}
+		paused := ""
+		if access == kb.WorkerPause {
+			paused = "licence not known yet; refresh paused"
+		}
+		log.Condition("licence", paused, "licence known; refresh resumed")
+		if access != kb.WorkerRun {
+			continue
+		}
+		if service.Journal == nil || service.Sources == nil || service.Tasks == nil || service.Storage == nil {
+			log.Problem("configuration", errors.New("refresh sources, tasks or dataset storage are not installed"))
+			continue
+		}
+		log.Problem("configuration", nil)
 		discovery, ok := service.Publications.(interfaces.KBPublicationDiscovery)
 		if !ok {
 			continue
 		}
 		networks, err := discovery.ActiveNetworks(ctx, after, 16)
+		log.Problem("discovery", err)
 		if err != nil {
 			continue
 		}
@@ -79,10 +100,34 @@ func RunWorker(ctx context.Context, limits *Limits) {
 				return
 			}
 			stepCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
-			_ = service.runNetwork(stepCtx, network, ProcessLease)
+			err := service.runNetwork(stepCtx, network, ProcessLease)
 			cancel()
+			if errors.Is(err, ErrLostLease) {
+				err = nil // Another replica owns this lineage now; that is not a failure.
+			}
+			log.Result(network, err)
+			log.Transition(network, service.observe(ctx, network, observed))
 		}
 	}
+}
+
+// observe reports a refresh's committed state change since the previous reading.
+func (s *Service) observe(ctx context.Context, network string, observed map[string]string) []string {
+	publication, err := s.Publications.Get(ctx, network)
+	if err != nil || publication == nil {
+		return nil
+	}
+	record, err := s.Journal.Get(ctx, publication.LineageID)
+	if err != nil || record == nil {
+		return nil
+	}
+	state := strings.TrimSpace(record.State + " " + record.Reason)
+	previous, seen := observed[publication.LineageID]
+	observed[publication.LineageID] = state
+	if !seen || previous == state {
+		return nil
+	}
+	return []string{fmt.Sprintf("%s -> %s", previous, state)}
 }
 func (s *Service) runNetwork(ctx context.Context, network, lease string) error {
 	publication, err := s.Publications.Get(ctx, network)

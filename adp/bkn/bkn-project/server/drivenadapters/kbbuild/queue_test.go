@@ -82,3 +82,38 @@ func TestRunnableQueueIsBoundedAndExcludesCompletedAndHumanReviewOnlyTasks(t *te
 		t.Fatal(err)
 	}
 }
+
+func TestWorkItemsReportStallFromProgressNotFromLastSave(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery("SELECT f_state,f_data,f_update_time FROM t_bkn_project_kb_build").WillReturnRows(sqlmock.NewRows([]string{"state", "data", "updated"}).
+		AddRow("running", `{"progress_time":500}`, int64(900)).
+		AddRow("queued", `{}`, int64(700)).
+		AddRow("attention", `not json`, int64(800)))
+	items, err := New(db).(interfaces.KBWorkItems).WorkItems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 3 || items[0].ProgressTime != 500 || items[1].ProgressTime != 700 || items[2].ProgressTime != 800 || items[0].State != "running" {
+		t.Fatalf("%+v", items)
+	}
+}
+
+func TestRefreshWorkItemsSkipIdleLineages(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectQuery("f_state<>'idle'").WillReturnRows(sqlmock.NewRows([]string{"state", "data", "updated"}).AddRow("applying", `{"progress_time":40}`, int64(90)))
+	items, err := NewRefreshes(db).(interfaces.KBWorkItems).WorkItems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ProgressTime != 40 || items[0].State != "applying" {
+		t.Fatalf("%+v", items)
+	}
+}

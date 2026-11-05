@@ -45,12 +45,64 @@ func Lookup() (Providers, bool) {
 	return providers, true
 }
 
-// CleanupRuntime is available after a licence expires solely so the worker can
-// revoke existing delegations and release retention holds. Normal operations
-// must continue to use Lookup and its capability gate.
-func CleanupRuntime() BuildRuntime {
-	providers, _ := registry.Get(Capability)
-	return providers.Builds
+// WorkerAccess is what a background worker may do with journaled work.
+type WorkerAccess int
+
+const (
+	// WorkerNotInstalled means this build has no knowledge-base providers.
+	WorkerNotInstalled WorkerAccess = iota
+	// WorkerRun means a licence is in force.
+	WorkerRun
+	// WorkerPause means no licence hub has answered. Work stays as it is, because
+	// silence must not revoke a licensed deployment's builds.
+	WorkerPause
+	// WorkerClean means the answer is definitely no licence: none installed, past
+	// grace or rejected. The worker may only revoke delegations and release
+	// retention holds; normal operations keep using Lookup and its gate.
+	WorkerClean
+)
+
+// ForWorker decides from a single licence reading, so a hub answering between
+// two reads can never combine "not licensed yet" with "answered".
+func ForWorker() (Providers, WorkerAccess) {
+	providers, installed := registry.Get(Capability)
+	if !installed {
+		return Providers{}, WorkerNotInstalled
+	}
+	snapshot := entitlement.Snap()
+	switch {
+	case snapshot.Edition.AtLeast(licverify.EditionProfessional):
+		return providers, WorkerRun
+	case snapshot.Undetermined:
+		return providers, WorkerPause
+	}
+	return providers, WorkerClean
+}
+
+// MissingProviders names what the assembly registered without, so a misconfigured
+// deployment is reported at startup rather than on the first build. It is nil
+// when this build has no knowledge-base extension at all.
+func MissingProviders() []string {
+	providers, installed := registry.Get(Capability)
+	if !installed {
+		return nil
+	}
+	missing := []string{}
+	for _, provider := range []struct {
+		name    string
+		present bool
+	}{
+		{"builds", providers.Builds != nil},
+		{"datasets", providers.Datasets != nil},
+		{"publication", providers.Publication != nil},
+		{"refresh sources", providers.RefreshSources != nil},
+		{"refresh tasks", providers.RefreshTasks != nil},
+	} {
+		if !provider.present {
+			missing = append(missing, provider.name)
+		}
+	}
+	return missing
 }
 
 // Gate selects between complete routers before route matching, including method

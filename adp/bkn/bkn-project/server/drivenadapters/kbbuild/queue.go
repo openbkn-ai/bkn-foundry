@@ -116,4 +116,32 @@ func (a *access) Cancel(ctx context.Context, projectID, id string, caller interf
 	return true, nil
 }
 
+// WorkItems reads each record because progress lives in its process data. It
+// serves an operator endpoint, is capped, and returns no names or identities.
+func (a *access) WorkItems(ctx context.Context) ([]interfaces.KBWorkItem, error) {
+	rows, err := a.db.QueryContext(ctx, "SELECT f_state,f_data,f_update_time FROM "+table+" WHERE f_state IN ('preparing','queued','running','attention','finishing','cancel_pending') ORDER BY f_update_time LIMIT 200")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := []interfaces.KBWorkItem{}
+	for rows.Next() {
+		var state, data string
+		var updated int64
+		if err = rows.Scan(&state, &data, &updated); err != nil {
+			return nil, err
+		}
+		var build struct {
+			ProgressTime int64 `json:"progress_time"`
+		}
+		// A record written before progress was tracked reports its last save.
+		if json.Unmarshal([]byte(data), &build) != nil || build.ProgressTime == 0 {
+			build.ProgressTime = updated
+		}
+		result = append(result, interfaces.KBWorkItem{State: state, ProgressTime: build.ProgressTime})
+	}
+	return result, rows.Err()
+}
+
 var _ interfaces.KBBuildQueue = (*access)(nil)
+var _ interfaces.KBWorkItems = (*access)(nil)

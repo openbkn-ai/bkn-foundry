@@ -17,6 +17,7 @@ func (s *Service) saveRecord(ctx context.Context, r *interfaces.KBRefreshRecord)
 	revision := r.Revision
 	r.Revision++
 	r.UpdateTime = max(time.Now().UnixMilli(), r.UpdateTime+1)
+	r.MarkProgress(r.UpdateTime)
 	until := r.UpdateTime + refreshLease.Milliseconds()
 	ok, err := s.Journal.Save(ctx, r, revision, r.LeaseID, r.UpdateTime, until)
 	if err != nil {
@@ -228,6 +229,16 @@ func (s *Service) ExtractStep(ctx context.Context, lineage, lease string) error 
 			return s.attention(ctx, r, "source_access_changed")
 		}
 		task, err := s.Tasks.Poll(ctx, build.Owner, file.AgentTaskID)
+		if file.State == "waiting" {
+			now := time.Now().UnixMilli()
+			if file.SubmittedAt == 0 {
+				file.SubmittedAt = now
+			}
+			if kbinstance.TaskOverdue(file, task, err, now) {
+				file.State, file.Reason = "failed", kbinstance.ReasonExtractionTimedOut
+				return s.attention(ctx, r, kbinstance.ReasonExtractionTimedOut)
+			}
+		}
 		if err != nil || task == nil {
 			return s.attention(ctx, r, "task_unavailable")
 		}
