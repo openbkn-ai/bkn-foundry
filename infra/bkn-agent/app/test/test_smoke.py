@@ -332,6 +332,9 @@ def test_delete_thread_refuses_a_running_chat_or_execution(monkeypatch):
         executions._thread_claims.add("t-run")
         r_chat = client.delete("/api/bkn-agent/v1/threads/t-chat", headers=SVC)
         r_run = client.delete("/api/bkn-agent/v1/threads/t-run", headers=SVC)
+        # A refused delete must not release the running turn's claim, nor take one.
+        assert "t-chat" in graph._busy_threads
+        assert "t-run" not in graph._busy_threads
     finally:
         graph._busy_threads.discard("t-chat")
         executions._thread_claims.discard("t-run")
@@ -340,8 +343,6 @@ def test_delete_thread_refuses_a_running_chat_or_execution(monkeypatch):
     assert r_chat.status_code == r_run.status_code == 409
     assert r_chat.json()["code"] == r_run.json()["code"] == "BknAgent.Thread.Busy"
     assert calls == []
-    # The refused delete must not release a claim it never took.
-    assert "t-chat" not in graph._busy_threads
 
 
 def _agent_out(agent_id, owner):

@@ -542,6 +542,11 @@ def release_thread(thread_id: str) -> None:
     _busy_threads.discard(thread_id)
 
 
+def thread_in_use(thread_id: str) -> bool:
+    """Whether a turn or a maintenance step such as deletion holds the thread."""
+    return thread_id in _busy_threads
+
+
 async def delete_thread_checkpoints(thread_id: str) -> None:
     """Drop every checkpoint and pending write of a thread. The ownership check
     lives in the router layer."""
