@@ -118,9 +118,12 @@ func bindKnEventBody(c *gin.Context, target any) bool {
 }
 
 // decodeKnEventBody decodes a JSON body; an empty body is accepted when optional.
+// An unknown field is refused, so a misspelt one is not stored as its default.
 func decodeKnEventBody(c *gin.Context, target any, optional bool) bool {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, knEventBodyLimit)
-	if err := json.NewDecoder(c.Request.Body).Decode(target); err != nil {
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
 		if optional && errors.Is(err, io.EOF) {
 			return true
 		}

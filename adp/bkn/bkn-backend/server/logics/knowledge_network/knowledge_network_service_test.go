@@ -2039,7 +2039,9 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 		Convey("Failed event cleanup rolls the deletion back\n", func() {
 			kn := &interfaces.KN{KNID: "kn1", KNName: "kn1", Branch: interfaces.MAIN_BRANCH}
 			previous := rootlogics.KECA
-			rootlogics.KECA = &knEventCleanupStub{err: errors.New("events table unavailable")}
+			cleanupErr := errors.New("events table unavailable")
+			cleanup := &knEventCleanupStub{err: cleanupErr}
+			rootlogics.KECA = cleanup
 			defer func() { rootlogics.KECA = previous }()
 
 			smock.ExpectBegin()
@@ -2047,7 +2049,9 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, cleanupErr)
+			So(cleanup.knIDs, ShouldResemble, []string{"kn1"})
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("Failed when permission check fails\n", func() {

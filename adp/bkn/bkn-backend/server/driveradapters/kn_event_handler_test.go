@@ -202,6 +202,24 @@ func TestKnEventRuleCheckBodyLimit(t *testing.T) {
 	}
 }
 
+// A misspelt field is refused rather than stored as its default.
+func TestKnEventBodiesRefuseUnknownFields(t *testing.T) {
+	stub := &knEventServiceStub{}
+	engine := newKnEventEngine(stub, nil)
+	base := "/api/bkn-backend/in/v1/knowledge-networks/kn1/"
+	for path, body := range map[string]string{
+		"rule-checks":     `{"event_type":"t","status":"ok","hit":[{"key":"a"}]}`,
+		"events/e1/close": `{"reasn":"done"}`,
+	} {
+		if got := serveKnEvent(engine, http.MethodPost, base+path, body, knEventUser).Code; got != http.StatusBadRequest {
+			t.Fatalf("%s with an unknown field: status %d, want 400", path, got)
+		}
+	}
+	if got := serveKnEvent(engine, http.MethodPost, base+"events/e1/verify", "", knEventUser).Code; got != http.StatusOK {
+		t.Fatalf("verify without a body: status %d, want 200", got)
+	}
+}
+
 func TestKnEventChangesNeedNoIdentity(t *testing.T) {
 	stub := &knEventServiceStub{}
 	engine := newKnEventEngine(stub, nil)
