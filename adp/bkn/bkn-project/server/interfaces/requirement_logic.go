@@ -110,7 +110,8 @@ type RequirementRun struct {
 	By          AccountInfo `json:"by"`
 	StartTime   int64       `json:"start_time"`
 	UpdateTime  int64       `json:"update_time"`
-	// Inputs is what the run read, to tell when it is out of date; absent until it is ready.
+	// Inputs is what the last run of its kind that ended ready read, to tell when its part is out of
+	// date; absent until one did. A run going or failed keeps the last one's.
 	Inputs *RequirementInputs `json:"inputs,omitempty"`
 	// Stale, computed when read, says its inputs changed since.
 	Stale bool `json:"stale,omitempty"`

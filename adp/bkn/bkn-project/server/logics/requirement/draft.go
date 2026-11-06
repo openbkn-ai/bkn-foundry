@@ -976,9 +976,10 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
-	// The documents' concepts come first: questions rest on them.
+	// The documents' concepts come first: questions rest on them. A run that ended ready once
+	// recorded its inputs, which a later run that fails keeps.
 	if len(docs) > 0 && (!ok || previous.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS] == nil ||
-		previous.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status != interfaces.REQUIREMENT_RUN_READY) {
+		previous.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs == nil) {
 		span.SetStatus(codes.Error, "Concepts not extracted")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_ConceptsNotExtracted)
 	}

@@ -105,10 +105,19 @@ type partRun struct {
 // startRun records a run of kind going over the specification as read at readUpdateTime (0 when
 // the project had none), refusing while the project drafts or another run goes.
 func (s *requirementService) startRun(ctx context.Context, projectID string, kind string,
-	caller interfaces.AccountInfo, readUpdateTime int64) (*interfaces.RequirementRun, error) {
+	caller interfaces.AccountInfo, previous *interfaces.Requirement) (*interfaces.RequirementRun, error) {
 	now := s.now()
 	run := &interfaces.RequirementRun{Status: interfaces.REQUIREMENT_RUN_RUNNING, RunID: s.newID(), By: caller,
 		StartTime: now, UpdateTime: now}
+	readUpdateTime := int64(0)
+	if previous != nil {
+		readUpdateTime = previous.UpdateTime
+		// What the last run that ended ready read stays until another ends ready: a run that fails
+		// leaves its part as it was, and that part was extracted from these inputs.
+		if last := previous.Spec.Runs[kind]; last != nil {
+			run.Inputs = last.Inputs
+		}
+	}
 	started, err := s.ra.StartRun(ctx, projectID, kind, run, s.staleRunBefore(), readUpdateTime)
 	switch {
 	case errors.Is(err, interfaces.ErrRequirementChanged):
@@ -143,8 +152,15 @@ func (s *requirementService) execute(ctx context.Context, p *partRun) {
 	}
 	finished, err := s.ra.FinishRun(ctx, p.projectID, p.kind, p.run.RunID, func(req *interfaces.Requirement) {
 		run := req.Spec.Runs[p.kind]
+		// Only starting the run writes the specification while it goes. Changed since, the run outlived
+		// its time and people edited what it read: it writes nothing over their edits.
+		changed := req.UpdateTime != p.run.StartTime
 		run.AgentTaskID, run.Retried, run.UpdateTime = taskID, retried, s.now()
 		req.UpdateTime = run.UpdateTime
+		if changed && failure == "" {
+			failure = failureInterrupted
+			logger.Warnf("Requirement %s run of project %s ended after the specification changed; it writes nothing", p.kind, p.projectID)
+		}
 		if failure != "" {
 			run.Status, run.Error = interfaces.REQUIREMENT_RUN_FAILED, failure
 			return

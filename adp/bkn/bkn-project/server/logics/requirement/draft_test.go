@@ -57,7 +57,8 @@ func withConcepts(req *interfaces.Requirement) *interfaces.Requirement {
 	if req.Spec.Runs == nil {
 		req.Spec.Runs = map[string]*interfaces.RequirementRun{}
 	}
-	req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS] = &interfaces.RequirementRun{Status: interfaces.REQUIREMENT_RUN_READY, RunID: "c"}
+	req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS] = &interfaces.RequirementRun{Status: interfaces.REQUIREMENT_RUN_READY, RunID: "c",
+		Inputs: &interfaces.RequirementInputs{Documents: []interfaces.RequirementInputDocument{}}}
 	return req
 }
 
@@ -998,10 +999,13 @@ func Test_RequirementDrafting(t *testing.T) {
 		})
 
 		Convey("Drafting over documents needs their concepts extracted; without documents it needs none\n", func() {
+			// Never ended ready: a first run going or failed has no inputs.
 			running := withConcepts(&interfaces.Requirement{Version: 1})
 			running.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_RUNNING
+			running.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs = nil
 			failed := withConcepts(&interfaces.Requirement{Version: 1})
 			failed.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_FAILED
+			failed.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs = nil
 			for _, previous := range []*interfaces.Requirement{nil, {Version: 1}, running, failed} {
 				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
@@ -1013,13 +1017,24 @@ func Test_RequirementDrafting(t *testing.T) {
 				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_ConceptsNotExtracted)
 			}
 
+			// A run that fails after one ended ready keeps its inputs: the concepts stand, drafting goes on.
+			failedAgain := withConcepts(&interfaces.Requirement{Version: 1, UpdateTime: 5})
+			failedAgain.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_FAILED
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(failedAgain, true, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(5)).Return(false, nil)
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
+
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
 			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(false, nil)
 
-			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
 		})
 

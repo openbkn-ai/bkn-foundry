@@ -235,3 +235,58 @@ func Test_KeepRecordsDroppedIDs(t *testing.T) {
 		So(nextID(spec, "n", spec.LogicNeeds, logicNeedID), ShouldEqual, "n2")
 	})
 }
+
+func Test_RunOutlivedByEdits(t *testing.T) {
+	Convey("A run that ends after people edited the specification writes nothing over their edits\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		ba := pmock.NewMockBknAgentAccess(ctrl)
+		svc := &requirementService{ra: ra, ba: ba, now: func() int64 { return 1000 }}
+		ctx := context.Background()
+		inputs := &interfaces.RequirementInputs{Documents: []interfaces.RequirementInputDocument{{ID: "d1", SHA256: "a"}}}
+		run := &interfaces.RequirementRun{Status: interfaces.REQUIREMENT_RUN_RUNNING, RunID: "r", StartTime: 5, Inputs: inputs}
+		st := &runStore{req: &interfaces.Requirement{ProjectID: "p1", Status: interfaces.REQUIREMENT_STATUS_READY,
+			Spec: interfaces.RequirementSpec{Rules: []*interfaces.RequirementRule{{ID: "r1", Statement: "edited", Edited: true}},
+				Runs: map[string]*interfaces.RequirementRun{interfaces.REQUIREMENT_RUN_CONCEPTS: run}}}}
+		st.expect(ra)
+		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+			Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: "{}"}, nil)
+		wrote := false
+		p := &partRun{kind: interfaces.REQUIREMENT_RUN_CONCEPTS, projectID: "p1", run: run, caller: caller,
+			newOut:         func() any { return &conceptsOutput{} },
+			prepareMessage: func(context.Context) (string, error) { return "m", nil },
+			check:          func(context.Context, any) {},
+			write:          func(*interfaces.Requirement, any) { wrote = true },
+			inputs:         &interfaces.RequirementInputs{Documents: []interfaces.RequirementInputDocument{{ID: "d1", SHA256: "b"}}}}
+
+		// An edit after the run outlived its time moved the update time on.
+		st.req.UpdateTime = 9
+		svc.execute(ctx, p)
+
+		So(wrote, ShouldBeFalse)
+		ended := st.req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]
+		So(ended.Status, ShouldEqual, interfaces.REQUIREMENT_RUN_FAILED)
+		So(ended.Error, ShouldEqual, failureInterrupted)
+		// The inputs stay the last ready run's.
+		So(ended.Inputs, ShouldResemble, inputs)
+		So(st.req.Spec.Rules[0].Statement, ShouldEqual, "edited")
+	})
+
+	Convey("A run started over a specification keeps the inputs of the last run that ended ready\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		svc := &requirementService{ra: ra, now: func() int64 { return 1000 }, newID: func() string { return "new" }}
+		inputs := &interfaces.RequirementInputs{Documents: []interfaces.RequirementInputDocument{{ID: "d1"}}}
+		previous := &interfaces.Requirement{UpdateTime: 7, Spec: interfaces.RequirementSpec{Runs: map[string]*interfaces.RequirementRun{
+			interfaces.REQUIREMENT_RUN_CONCEPTS: {Status: interfaces.REQUIREMENT_RUN_FAILED, Inputs: inputs}}}}
+		ra.EXPECT().StartRun(gomock.Any(), "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, gomock.Any(), gomock.Any(), int64(7)).Return(true, nil)
+
+		run, err := svc.startRun(context.Background(), "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, caller, previous)
+
+		So(err, ShouldBeNil)
+		So(run.Inputs, ShouldEqual, inputs)
+		So(run.Status, ShouldEqual, interfaces.REQUIREMENT_RUN_RUNNING)
+	})
+}

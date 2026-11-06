@@ -252,12 +252,12 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
-	spec, readUpdateTime, version := emptySpec(), int64(0), 1
+	spec, version, read := emptySpec(), 1, (*interfaces.Requirement)(nil)
 	if ok {
-		spec, readUpdateTime, version = withLists(cloneSpec(&previous.Spec)), previous.UpdateTime, nextVersion(previous.Version, draft)
+		spec, version, read = withLists(cloneSpec(&previous.Spec)), nextVersion(previous.Version, draft), previous
 	}
 	keepForKinetic(spec, discardDecisions)
-	run, err := s.startRun(ctx, projectID, interfaces.REQUIREMENT_RUN_KINETIC, caller, readUpdateTime)
+	run, err := s.startRun(ctx, projectID, interfaces.REQUIREMENT_RUN_KINETIC, caller, read)
 	if err != nil {
 		span.SetStatus(codes.Error, "Start run failed")
 		return nil, err
