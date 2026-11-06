@@ -89,6 +89,12 @@ type RegressionQuestion struct {
 	// Path is what joined its object types in the draft when the run started, needed as Needs are.
 	Path  []RequirementItemRef `json:"path,omitempty"`
 	Tests []RegressionTest     `json:"tests,omitempty"`
+	// NoRecord says its template asks about a record and the data had none to fill it with when
+	// the run started: it is not asked, since it could only be answered by asking back which one.
+	NoRecord bool `json:"no_record,omitempty"`
+	// Fillable says its template can be filled with a record, when it has no test (see
+	// RequirementService.RecordTests); it is not kept.
+	Fillable bool `json:"-"`
 }
 
 // Rests are what the question rests on: what it names, and the path that joined them.

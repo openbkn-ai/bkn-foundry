@@ -133,6 +133,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 		guidance[g.QuestionID] = g
 	}
 	result.SpecVersion, result.UpdateTime = req.Version, req.UpdateTime
+	unmapped := unmappedConcepts(&req.Spec)
 	for _, n := range req.Spec.LogicNeeds {
 		if linkType := interfaces.LogicLinkTypeOf(n.Kind); linkType != "" && (n.Link == nil || n.Link.Type != linkType) {
 			result.UnlinkedNeeds = append(result.UnlinkedNeeds, interfaces.ReleaseNeed{ID: n.ID, Kind: n.Kind, Name: n.Name})
@@ -146,6 +147,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 			Tests:        []interfaces.ScenarioTest{},
 		}
 		question.Path, question.Unconnected = questionPath(q, current)
+		question.Fillable = len(serverTests(q, unmapped)) > 0
 		for _, need := range q.Needs {
 			if !drafted[need] {
 				question.MissingItems = append(question.MissingItems, need)

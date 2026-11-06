@@ -176,6 +176,68 @@ func Test_RegressionService(t *testing.T) {
 			})
 		})
 
+		Convey("A question about a record is asked of one the data has, filled as the runner; without one it is not asked\n", func() {
+			fillable := func(q interfaces.ScenarioQuestion) interfaces.ScenarioQuestion {
+				q.Fillable = true
+				return q
+			}
+			withTest := fillable(regQuestion("q3", knowledge, regNeed(ot, "part")))
+			withTest.Tests = []interfaces.ScenarioTest{{ID: "t1", Text: "Text of q3 about P1", Expect: interfaces.TEST_EXPECT_EXISTS}}
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
+				fillable(regQuestion("q1", knowledge, regNeed(ot, "part"))),
+				fillable(regQuestion("q2", knowledge, regNeed(ot, "part"))),
+				// A test that passed is asked; nothing is filled for it.
+				withTest,
+				regQuestion("q4", knowledge, regNeed(ot, "part")),
+			), nil)
+			rs.EXPECT().RecordTests(gomock.Any(), runner, "p1", []string{"q1", "q2"}).Return(map[string]*interfaces.ScenarioTest{
+				"q1": {ID: "record", Text: "Text of q1 about P7", Expect: interfaces.TEST_EXPECT_EXISTS}, "q2": nil}, nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			var asked []string
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					asked = append(asked, req.Message)
+					return answered("Part."), nil
+				}).Times(3)
+			expectFinish()
+
+			_, ok, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeTrue)
+			// Filled in the background: the run starts with the questions as they are, and records them as asked.
+			So(started.Questions[0].Tests, ShouldBeEmpty)
+			So(finished.Questions[0].Tests, ShouldResemble, []interfaces.RegressionTest{{ID: "record", Text: "Text of q1 about P7",
+				Expect: interfaces.TEST_EXPECT_EXISTS}})
+			So(finished.Questions[1].NoRecord, ShouldBeTrue)
+			So(finished.Questions[2].Tests[0].ID, ShouldEqual, "t1")
+			So(asked, ShouldResemble, []string{"Text of q1 about P7", "Text of q3 about P1", "Text of q4"})
+			So(finished.Results[1], ShouldResemble, interfaces.RegressionResult{QuestionID: "q2",
+				Outcome: interfaces.REGRESSION_OUTCOME_NEEDS_VALUES})
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_PASSED)
+		})
+
+		Convey("When the data cannot be read for its record, the question is asked as it is\n", func() {
+			q := regQuestion("q1", knowledge, regNeed(ot, "part"))
+			q.Fillable = true
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(q), nil)
+			rs.EXPECT().RecordTests(gomock.Any(), runner, "p1", []string{"q1"}).Return(nil, errors.New("down"))
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					So(req.Message, ShouldEqual, "Text of q1")
+					return answered("Part."), nil
+				})
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+			So(err, ShouldBeNil)
+			So(finished.Questions[0].NoRecord, ShouldBeFalse)
+			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{passed("q1", "Part.")})
+		})
+
 		Convey("Each asked question keeps the answer and the tool calls behind it, for a later judge\n", func() {
 			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
 				regQuestion("q1", knowledge, regNeed(ot, "part")), regQuestion("q2", knowledge, regNeed(ot, "part")),

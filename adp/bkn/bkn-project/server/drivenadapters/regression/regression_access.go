@@ -169,8 +169,14 @@ func (ra *regressionAccess) FinishRegression(ctx context.Context, r *interfaces.
 		span.SetStatus(codes.Error, "Marshal results failed")
 		return false, err
 	}
+	// The questions as they were asked: a run fills some with a record of the data.
+	questions, err := writeJSON(r.Questions)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal questions failed")
+		return false, err
+	}
 	sqlStr, vals, err := sq.Update(REGRESSION_TABLE_NAME).
-		Set("f_status", r.Status).Set("f_attempt", r.Attempt).Set("f_results", results).
+		Set("f_status", r.Status).Set("f_attempt", r.Attempt).Set("f_questions", questions).Set("f_results", results).
 		Set("f_error", r.Error).Set("f_finish_time", r.FinishTime).
 		Where(sq.Eq{
 			"f_network_id": r.NetworkID,

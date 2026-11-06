@@ -146,7 +146,8 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 			for _, t := range q.Tests {
 				tests = append(tests, interfaces.RegressionTest{ID: t.ID, Text: t.Text, Expect: t.Expect})
 			}
-			question := interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests}
+			question := interfaces.RegressionQuestion{ID: q.ID, Text: q.Text, Needs: needs, Tests: tests,
+				Fillable: q.Fillable && len(tests) == 0}
 			if len(q.Path) > 0 {
 				question.Path = append([]interfaces.RequirementItemRef{}, q.Path...)
 			}
@@ -154,6 +155,37 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 		}
 	}
 	return questions, nil
+}
+
+// fillRecords asks a question about a record that has no test that passed of a record the data
+// has, its template filled as the runner; without one it is not asked. When the data cannot be
+// read for it, it is asked as its text.
+func (s *regressionService) fillRecords(ctx context.Context, projectID string, runner interfaces.AccountInfo,
+	questions []interfaces.RegressionQuestion) {
+	fill := []string{}
+	for _, q := range questions {
+		if q.Fillable {
+			fill = append(fill, q.ID)
+		}
+	}
+	if len(fill) == 0 {
+		return
+	}
+	filled, err := s.rs.RecordTests(ctx, runner, projectID, fill)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Fill questions of project %s with records: %v", projectID, err))
+		return
+	}
+	for i := range questions {
+		t, ok := filled[questions[i].ID]
+		switch {
+		case !questions[i].Fillable || !ok:
+		case t == nil:
+			questions[i].NoRecord = true
+		default:
+			questions[i].Tests = []interfaces.RegressionTest{{ID: t.ID, Text: t.Text, Expect: t.Expect}}
+		}
+	}
 }
 
 // regressionAsk is one question to ask: a question, or one of its tests in its place.
@@ -224,6 +256,10 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 	}
 	rc := s.regressionContext(ctx, release.ProjectID, files)
 	rc.gone = s.goneTables(ctx, r.Runner, files)
+	// Filled in the background, so that starting a run waits for no read of the data; the
+	// questions are recorded as asked when the run finishes.
+	r.Questions = slices.Clone(r.Questions)
+	s.fillRecords(ctx, release.ProjectID, r.Runner, r.Questions)
 
 	asks := regressionAsks(r.Questions)
 	r.Results = make([]interfaces.RegressionResult, len(asks))
@@ -316,6 +352,11 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 	}
 	if len(result.MissingTables) > 0 {
 		result.Outcome = interfaces.REGRESSION_OUTCOME_DATA_SOURCE_MISSING
+		return result
+	}
+	// Asked without a record, it could only be answered by asking back which one.
+	if a.question.NoRecord {
+		result.Outcome = interfaces.REGRESSION_OUTCOME_NEEDS_VALUES
 		return result
 	}
 	answer, err := s.ba.AnswerOnNetwork(ctx, token, &interfaces.BknAgentAnswerRequest{

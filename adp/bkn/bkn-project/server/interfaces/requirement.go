@@ -527,6 +527,9 @@ type ScenarioQuestion struct {
 	MissingItems []RequirementItemRef `json:"missing_items"`
 	// Tests are the test questions whose data check passed.
 	Tests []ScenarioTest `json:"tests"`
+	// Fillable says the server writes a test of its template, with a record from the data in its
+	// slots (see RecordTests): asked as it is, its text says no record.
+	Fillable bool `json:"fillable,omitempty"`
 }
 
 // ScenarioUnconnected names two object types a question needs, by id, that nothing joins.
@@ -875,4 +878,8 @@ type RequirementService interface {
 	// publishing and the regression after a release, which check visibility themselves. A
 	// project without a ready specification has none; that is no error.
 	ScenarioQuestions(ctx context.Context, projectID string) (*ScenarioQuestions, error)
+	// RecordTests fills the template of each fillable question named with a record from the data,
+	// as the caller, and checks it as guidance checks its tests. A question the data has no record
+	// for maps to nil; one whose data could not be read is left out, as is one it cannot fill.
+	RecordTests(ctx context.Context, caller AccountInfo, projectID string, questionIDs []string) (map[string]*ScenarioTest, error)
 }
