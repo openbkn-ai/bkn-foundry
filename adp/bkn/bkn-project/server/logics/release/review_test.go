@@ -288,7 +288,7 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(checkOf(r, interfaces.RELEASE_CHECK_DATA_SOURCE).Passed, ShouldBeTrue)
 		})
 
-		Convey("A release whose checks all pass lists the eight checks, what it adds and its risks\n", func() {
+		Convey("A release whose checks all pass lists the nine checks, what it adds and its risks\n", func() {
 			expect()
 			expectIndex()
 
@@ -297,7 +297,7 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(checkCodes(r), ShouldResemble, []string{
 				interfaces.RELEASE_CHECK_CONFIRMED, interfaces.RELEASE_CHECK_MAPPED, interfaces.RELEASE_CHECK_DATA_SOURCE,
 				interfaces.RELEASE_CHECK_NAMES, interfaces.RELEASE_CHECK_DRIFT, interfaces.RELEASE_CHECK_CHECK,
-				interfaces.RELEASE_CHECK_INDEX, interfaces.RELEASE_CHECK_BASELINE,
+				interfaces.RELEASE_CHECK_INDEX, interfaces.RELEASE_CHECK_BASELINE, interfaces.RELEASE_CHECK_METRIC_OWNERS,
 			})
 			for _, c := range r.Checks {
 				So(c.Passed, ShouldBeTrue)
@@ -316,6 +316,8 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(r.Changes.Removed, ShouldBeEmpty)
 			So(r.Risks.OnlyAdditions, ShouldBeTrue)
 			So(r.Risks.Existing, ShouldBeEmpty)
+			// Without scenario questions no need is told unimplemented.
+			So(r.Risks.UnimplementedNeeds, ShouldResemble, []interfaces.ReleaseNeed{})
 			So(r.Risks.Orphans, ShouldResemble, []interfaces.ReleaseOrphans{{
 				ReleaseItem: item(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_has_purchase_order", "Supplier has purchase order"),
 				Orphans:     4,
@@ -355,6 +357,21 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			}
 		})
 
+		Convey("A metric on the branch whose object type it no longer has blocks the release\n", func() {
+			branchFiles["object_metrics/m1/1.json"] = []byte(`{"definition":{"id":"m1","name":"Late rate","owner_object_type_id":"carrier"}}`)
+			defer delete(branchFiles, "object_metrics/m1/1.json")
+			expect()
+			expectIndex()
+
+			r := review()
+
+			c := checkOf(r, interfaces.RELEASE_CHECK_METRIC_OWNERS)
+			So(c.Passed, ShouldBeFalse)
+			So(c.Reason, ShouldEqual, interfaces.RELEASE_REASON_METRIC_OWNER_MISSING)
+			So(c.Accept, ShouldBeEmpty)
+			So(r.Blocked, ShouldBeTrue)
+		})
+
 		Convey("The scenario questions are read from the specification, which the signature follows\n", func() {
 			rs := pmock.NewMockRequirementService(mockCtrl)
 			svc.rs = rs
@@ -364,7 +381,7 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 					{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: "purchase_order"},
 					{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_has_purchase_order"},
 				},
-			}}}
+			}}, UnlinkedNeeds: []interfaces.ReleaseNeed{{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"}}}
 			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(sq, nil).Times(2)
 			expect()
 			expectIndex()
@@ -375,6 +392,9 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(r.Questions.AnswerableNew, ShouldHaveLength, 1)
 			So(r.Questions.AnswerableNew[0].ID, ShouldEqual, "q1")
 			first := r.Signature
+			// The needs linked to no implementation are a risk, not a block.
+			So(r.Risks.UnimplementedNeeds, ShouldResemble, sq.UnlinkedNeeds)
+			So(r.Blocked, ShouldBeFalse)
 
 			sq.UpdateTime = 51
 			expect()
@@ -674,6 +694,46 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Release_InternalError)
+		})
+	})
+}
+
+func Test_MetricOwnersCheck(t *testing.T) {
+	Convey("Test metricOwnersCheck\n", t, func() {
+		metric := func(id, name, owner string) []byte {
+			return []byte(`{"definition":{"id":"` + id + `","name":"` + name + `","owner_object_type_id":"` + owner + `"}}`)
+		}
+		files := map[string][]byte{
+			"network.bkn":               []byte(networkBKN),
+			"object_types/supplier.bkn": objectTypeBKN("supplier", "Supplier", true),
+		}
+
+		Convey("Metrics of object types the branch has pass, as do metrics of no object type\n", func() {
+			files["object_metrics/m1/1.json"] = metric("m1", "Late rate", "supplier")
+			files["object_metrics/m2/1.json"] = metric("m2", "Count", "")
+
+			So(metricOwnersCheck(files), ShouldResemble, interfaces.ReleaseCheck{Code: interfaces.RELEASE_CHECK_METRIC_OWNERS, Passed: true})
+		})
+
+		Convey("A metric whose object type is gone fails, named once across its versions, in id order\n", func() {
+			files["object_metrics/m2/1.json"] = metric("m2", "On time", "carrier")
+			files["object_metrics/m2/2.json"] = metric("m2", "On time", "carrier")
+			files["object_metrics/m1/1.json"] = metric("m1", "Late rate", "part")
+			files["object_metrics/m3/1.json"] = metric("m3", "Fill rate", "supplier")
+
+			So(metricOwnersCheck(files), ShouldResemble, interfaces.ReleaseCheck{Code: interfaces.RELEASE_CHECK_METRIC_OWNERS,
+				Reason: interfaces.RELEASE_REASON_METRIC_OWNER_MISSING, Details: []interfaces.ReleaseMetricOwner{
+					{ID: "m1", Name: "Late rate", OwnerObjectTypeID: "part"},
+					{ID: "m2", Name: "On time", OwnerObjectTypeID: "carrier"},
+				}})
+		})
+
+		Convey("Files that are not metric JSON are not read\n", func() {
+			files["object_metrics/m1/1.json"] = []byte(`{not json`)
+			files["object_metrics/m2/README.md"] = metric("m2", "On time", "carrier")
+			files["other/m3.json"] = metric("m3", "Fill rate", "carrier")
+
+			So(metricOwnersCheck(files).Passed, ShouldBeTrue)
 		})
 	})
 }

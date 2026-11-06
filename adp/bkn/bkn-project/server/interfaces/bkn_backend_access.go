@@ -92,6 +92,64 @@ type BknBackendAccess interface {
 	GetKN(ctx context.Context, token string, knID string) (*KnowledgeNetwork, error)
 	// ListKNIDs returns the ids of every network the caller can see.
 	ListKNIDs(ctx context.Context, token string) ([]string, error)
+
+	// The implementations kinetic needs link to, read live from the network's main branch as the
+	// caller. Object metrics are a professional feature: without it bkn-backend answers a plain 404.
+
+	// ListObjectMetrics lists the network's object metrics, of one owner object type when it is set.
+	ListObjectMetrics(ctx context.Context, token string, knID string, ownerObjectTypeID string) ([]*KNObjectMetric, error)
+	// GetObjectMetric returns one object metric at its newest version.
+	GetObjectMetric(ctx context.Context, token string, knID string, metricID string) (*KNObjectMetric, error)
+	// ListCapabilities lists the capabilities bound to the network, of one type when it is set;
+	// metadataType openapi narrows functions to APIs.
+	ListCapabilities(ctx context.Context, token string, knID string, capabilityType string, metadataType string) ([]*KNCapability, error)
+	// ListActionTypes lists the network's action types, of one object type when it is set.
+	ListActionTypes(ctx context.Context, token string, knID string, objectTypeID string) ([]*KNActionType, error)
+	// ListObjectTypeIDs lists the ids of the network's object types.
+	ListObjectTypeIDs(ctx context.Context, token string, knID string) ([]string, error)
+}
+
+// KNObjectMetric is what bkn-project reads of an object metric of a network.
+type KNObjectMetric struct {
+	ID                  string
+	Version             int
+	Code                string
+	Name                string
+	Description         string
+	OwnerObjectTypeID   string
+	OwnerObjectTypeName string
+	MetricType          string
+	Status              string
+}
+
+// KNCapability is a capability bound to a network: a Skill, a function or API of a toolbox, or a
+// tool of an MCP server (BoxID is the toolbox or MCP server).
+type KNCapability struct {
+	CapabilityType string `json:"capability_type"`
+	CapabilityID   string `json:"capability_id"`
+	BoxID          string `json:"box_id,omitempty"`
+	Name           string `json:"name,omitempty"`
+	Description    string `json:"description,omitempty"`
+	MetadataType   string `json:"metadata_type,omitempty"`
+	Status         string `json:"status,omitempty"`
+}
+
+// KNActionType is what bkn-project reads of an action type of a network.
+type KNActionType struct {
+	ID           string             `json:"id"`
+	Name         string             `json:"name"`
+	ObjectTypeID string             `json:"object_type_id"`
+	ActionType   string             `json:"action_type"`
+	Source       KNActionTypeSource `json:"action_source"`
+}
+
+// KNActionTypeSource is the tool an action type runs: a toolbox tool or an MCP tool.
+type KNActionTypeSource struct {
+	Type     string `json:"type"`
+	BoxID    string `json:"box_id,omitempty"`
+	ToolID   string `json:"tool_id,omitempty"`
+	McpID    string `json:"mcp_id,omitempty"`
+	ToolName string `json:"tool_name,omitempty"`
 }
 
 // KnowledgeNetwork is what bkn-project reads of a bkn-backend network.

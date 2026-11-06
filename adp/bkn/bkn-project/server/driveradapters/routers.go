@@ -186,6 +186,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/projects/:project_id/requirements/concepts/:concept_id/maps-to", r.MapRequirementConceptByEx)
 	apiV1.PUT("/projects/:project_id/requirements/conflicts/:conflict_id", r.ResolveRequirementConflictByEx)
 	apiV1.PUT("/projects/:project_id/requirements/choices/:choice_id", r.DecideRequirementChoiceByEx)
+	apiV1.GET("/projects/:project_id/requirements/logic-needs", r.ListLogicNeedsByEx)
+	apiV1.GET("/projects/:project_id/requirements/logic-needs/:need_id/candidates", r.LogicNeedCandidatesByEx)
+	apiV1.PUT("/projects/:project_id/requirements/logic-needs/:need_id/link", r.LinkLogicNeedByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/logic-needs/:need_id/link", r.UnlinkLogicNeedByEx)
 
 	// Test questions and development guidance of a scenario question.
 	apiV1.POST("/projects/:project_id/requirements/questions/:question_id/:action", r.QuestionActionByEx)
