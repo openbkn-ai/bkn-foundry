@@ -249,7 +249,7 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 		taken[name] = true
 	}
 	d.reserve(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, ""), taken)
-	properties := []*interfaces.DraftProperty{}
+	properties, drafted := []*interfaces.DraftProperty{}, []*interfaces.DraftProperty{}
 	for _, p := range saved {
 		displayName := strings.TrimSpace(p.DisplayName)
 		description := strings.TrimSpace(p.Comment)
@@ -287,8 +287,23 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 		} else {
 			// A display name the property was renamed to names it already.
 			property.Aliases = withoutName(property.Aliases, property.Name, property.DisplayName)
+			if !ok {
+				drafted = append(drafted, property)
+			}
 		}
 		properties = append(properties, property)
+	}
+	// A new property's aliases come from the catalog, not from the person: one BKN refuses beside
+	// the other properties is left out, as drafting leaves it out, instead of refusing the save.
+	for _, property := range drafted {
+		property.Aliases = slices.DeleteFunc(property.Aliases, func(alias string) bool {
+			return slices.ContainsFunc(properties, func(other *interfaces.DraftProperty) bool {
+				return other != property && (other.Name == alias || other.DisplayName == alias)
+			})
+		})
+		if len(property.Aliases) == 0 {
+			property.Aliases = nil
+		}
 	}
 	for _, p := range ot.Properties {
 		if kept[p.Name] {

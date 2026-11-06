@@ -201,6 +201,24 @@ func Test_SaveObjectTypeAliases(t *testing.T) {
 			So(alias, ShouldEqual, "Customer name")
 		})
 
+		Convey("A new property's catalog alias that is another property's display name is left out, not refused\n", func() {
+			table := accountsTable()
+			table.Columns[4].DisplayName, table.Columns[4].Comment = "备注", "Account name"
+			va2 := pmock.NewMockVegaAccess(ctrl)
+			va2.EXPECT().GetTables(gomock.Any(), caller, []string{"r_accounts"}).Return([]*interfaces.VegaTable{table}, nil).AnyTimes()
+			svc.va = va2
+			save := saveOf(draft)
+			save.DataProperties = append(save.DataProperties, interfaces.DraftDataPropertySave{
+				DisplayName: "Remark", MappedField: field("note")})
+
+			_, err := svc.SaveObjectType(ctx, token, "p1", "accounts", save, caller)
+
+			So(err, ShouldBeNil)
+			added := written.Items.ObjectTypes[0].Properties[3]
+			So(added.DisplayName, ShouldEqual, "Remark")
+			So(added.Aliases, ShouldBeNil)
+		})
+
 		Convey("Renaming a property to its own alias leaves that alias out\n", func() {
 			save := saveOf(draft)
 			save.DataProperties[1].DisplayName = "Customer name"
