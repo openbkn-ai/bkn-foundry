@@ -119,6 +119,13 @@ func Test_ConceptProjection(t *testing.T) {
 			items := conceptByKey(concepts, "object_types/items")
 			So(items.State, ShouldEqual, interfaces.CONCEPT_STATE_PENDING)
 			So(items.Item.Adopted, ShouldBeTrue)
+			So(items.Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_OBJECT)
+			// Left out by drafting: not included until a person judges it, as accepting the
+			// suggestions records it, though what it is stays the suggestion.
+			visits := conceptByKey(concepts, "relation_types/visits_to_stores")
+			So(visits.State, ShouldEqual, interfaces.CONCEPT_STATE_PENDING)
+			So(visits.Suggested, ShouldEqual, interfaces.CONCEPT_VERDICT_RELATION)
+			So(visits.Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_NONE)
 		})
 
 		Convey("Requirement concepts no item is keep the specification's category\n", func() {
@@ -136,7 +143,9 @@ func Test_ConceptProjection(t *testing.T) {
 			So(concepts.Counts[interfaces.CONCEPT_STATE_IN_MODEL], ShouldEqual, 1)
 			So(concepts.Counts[interfaces.CONCEPT_STATE_JUDGED], ShouldEqual, 1)
 			So(concepts.Counts[interfaces.CONCEPT_STATE_PENDING], ShouldEqual, 8)
-			So(concepts.Counts["verdict:"+interfaces.CONCEPT_VERDICT_VALUES], ShouldEqual, 1)
+			// The code table drafting did not adopt counts as not included until judged.
+			So(concepts.Counts["verdict:"+interfaces.CONCEPT_VERDICT_VALUES], ShouldEqual, 0)
+			So(conceptByKey(concepts, "value_types/currency").Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_NONE)
 		})
 
 		Convey("Without a ready draft only the requirement concepts are listed, and none can be judged\n", func() {
