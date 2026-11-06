@@ -879,7 +879,7 @@ type RequirementService interface {
 	// project without a ready specification has none; that is no error.
 	ScenarioQuestions(ctx context.Context, projectID string) (*ScenarioQuestions, error)
 	// RecordTests fills the template of each fillable question named with a record from the data,
-	// as the caller, and checks it as guidance checks its tests. A question whose record the data
-	// does not bear out, in the time given, maps to nil: there is no record to ask it about.
+	// as the caller, and checks it as guidance checks its tests. A question the data has no record
+	// for maps to nil; one whose data could not be read is left out, as is one it cannot fill.
 	RecordTests(ctx context.Context, caller AccountInfo, projectID string, questionIDs []string) (map[string]*ScenarioTest, error)
 }

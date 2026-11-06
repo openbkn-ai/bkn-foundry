@@ -6,6 +6,8 @@ package requirement
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -57,11 +59,35 @@ func Test_RecordTests(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(tests, ShouldResemble, map[string]*interfaces.ScenarioTest{"q2": nil})
 
+		})
+
+		Convey("Data that could not be read says nothing of its records: the question is left out\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil,
+				&interfaces.VegaError{HTTPCode: http.StatusInternalServerError})
+			tests, err := svc.RecordTests(ctx, caller, "p1", []string{"q2"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldBeEmpty)
+
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), checkQueryTimeout).Return(nil, errors.New("down"))
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			tests, err = svc.RecordTests(ctx, caller, "p1", []string{"q2"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldBeEmpty)
+
 			// Nor without a draft, whose fields hold the values.
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
 			tests, err = svc.RecordTests(ctx, caller, "p1", []string{"q2"})
 			So(err, ShouldBeNil)
-			So(tests, ShouldResemble, map[string]*interfaces.ScenarioTest{"q2": nil})
+			So(tests, ShouldBeEmpty)
+		})
+
+		Convey("Only a record the data lacks is no record\n", func() {
+			So(noRecord(interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordNotFound}), ShouldBeTrue)
+			So(noRecord(notChecked(checkNoValueInData)), ShouldBeTrue)
+			for _, reason := range []string{"query_forbidden", "query_failed", checkTimeout, "table_missing", checkDataNotBuilt, checkValueOutsideSlot} {
+				So(noRecord(notChecked(reason)), ShouldBeFalse)
+			}
 		})
 
 		Convey("Only the questions named are filled, and none is read for no question\n", func() {

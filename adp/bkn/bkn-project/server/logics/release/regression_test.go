@@ -206,9 +206,12 @@ func Test_RegressionService(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(ok, ShouldBeTrue)
-			So(started.Questions[0].Tests, ShouldResemble, []interfaces.RegressionTest{{ID: "record", Text: "Text of q1 about P7",
+			// Filled in the background: the run starts with the questions as they are, and records them as asked.
+			So(started.Questions[0].Tests, ShouldBeEmpty)
+			So(finished.Questions[0].Tests, ShouldResemble, []interfaces.RegressionTest{{ID: "record", Text: "Text of q1 about P7",
 				Expect: interfaces.TEST_EXPECT_EXISTS}})
-			So(started.Questions[1].NoRecord, ShouldBeTrue)
+			So(finished.Questions[1].NoRecord, ShouldBeTrue)
+			So(finished.Questions[2].Tests[0].ID, ShouldEqual, "t1")
 			So(asked, ShouldResemble, []string{"Text of q1 about P7", "Text of q3 about P1", "Text of q4"})
 			So(finished.Results[1], ShouldResemble, interfaces.RegressionResult{QuestionID: "q2",
 				Outcome: interfaces.REGRESSION_OUTCOME_NEEDS_VALUES})
@@ -231,7 +234,7 @@ func Test_RegressionService(t *testing.T) {
 
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 			So(err, ShouldBeNil)
-			So(started.Questions[0].NoRecord, ShouldBeFalse)
+			So(finished.Questions[0].NoRecord, ShouldBeFalse)
 			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{passed("q1", "Part.")})
 		})
 

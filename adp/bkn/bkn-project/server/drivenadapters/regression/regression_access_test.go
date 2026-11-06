@@ -145,9 +145,13 @@ func Test_RegressionAccess(t *testing.T) {
 			finished := *running
 			finished.Status, finished.Attempt, finished.FinishTime = interfaces.REGRESSION_STATUS_PASSED, 2, 30
 			finished.Results = []interfaces.RegressionResult{{QuestionID: "q1", Outcome: "passed", Answer: "S1."}}
-			finish := regexp.QuoteMeta("UPDATE t_bkn_project_regression SET f_status = ?, f_attempt = ?, f_results = ?, " +
+			finished.Questions = []interfaces.RegressionQuestion{{ID: "q1", Text: "Q1?", Needs: []interfaces.RequirementItemRef{},
+				Tests: []interfaces.RegressionTest{{ID: "record", Text: "Q1 of S1?", Expect: "exists"}}}}
+			finish := regexp.QuoteMeta("UPDATE t_bkn_project_regression SET f_status = ?, f_attempt = ?, f_questions = ?, f_results = ?, " +
 				"f_error = ?, f_finish_time = ? WHERE f_network_id = ? AND f_run_id = ? AND f_status = ?")
-			smock.ExpectExec(finish).WithArgs("passed", 2, `[{"question_id":"q1","outcome":"passed","answer":"S1."}]`, "",
+			smock.ExpectExec(finish).WithArgs("passed", 2,
+				`[{"id":"q1","text":"Q1?","needs":[],"tests":[{"id":"record","text":"Q1 of S1?","expect":"exists"}]}]`,
+				`[{"question_id":"q1","outcome":"passed","answer":"S1."}]`, "",
 				int64(30), "supply_v1_1_0", "r2", "running").WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectExec(finish).WillReturnResult(sqlmock.NewResult(0, 0))
 
