@@ -249,3 +249,34 @@ func Test_CompileLeftOutAliases(t *testing.T) {
 		So(string(compiled.Files["object_types/accounts.bkn"]), ShouldContainSubstring, "Customer name")
 	})
 }
+
+func Test_AliasesRevision(t *testing.T) {
+	Convey("Test checking the aliases Ask AI proposes\n", t, func() {
+		ctx := context.Background()
+		items := editableDraft().Items
+		check := func(kind string, id string, name string, current []string, proposed ...string) (*interfaces.DraftAskRevision, string) {
+			return aliasesRevision(ctx, &items, kind, id, name, current, proposed)
+		}
+
+		Convey("The whole list is proposed, trimmed, for a person to confirm\n", func() {
+			revision, reason := check(interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "Orders", []string{"PO"}, "PO", " Purchase orders ")
+			So(reason, ShouldBeEmpty)
+			So(revision.Value, ShouldResemble, []string{"PO", "Purchase orders"})
+		})
+
+		Convey("What saving would refuse, or what changes nothing, is left out with why\n", func() {
+			for _, proposed := range [][]string{{"Orders"}, {"Customers"}, {"PO,SO"}, {"PO", "PO"}} {
+				_, reason := check(interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "Orders", nil, proposed...)
+				So(reason, ShouldEqual, askDroppedInvalidAliases)
+			}
+			_, reason := check(interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "Orders", []string{"PO"}, " PO")
+			So(reason, ShouldEqual, askDroppedUnchanged)
+		})
+
+		Convey("A relation type's alias may be an object type's name\n", func() {
+			revision, reason := check(interfaces.DRAFT_KIND_RELATION_TYPES, "orders_customers", "Orders customers", nil, "Customers")
+			So(reason, ShouldBeEmpty)
+			So(revision.Value, ShouldResemble, []string{"Customers"})
+		})
+	})
+}

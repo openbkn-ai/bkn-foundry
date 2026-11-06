@@ -68,6 +68,7 @@ const (
 	askDroppedTooLong            = "too_long"
 	askDroppedInvalid            = "invalid"
 	askDroppedNotFromGivenEnd    = "not_from_given_end"
+	askDroppedInvalidAliases     = "invalid_aliases"
 )
 
 // askInput is the message the Agent reads: the question, the language to answer in, the
@@ -165,6 +166,7 @@ type askRelation struct {
 	DocumentMapping *interfaces.DraftDocumentMapping `json:"document_mapping,omitempty"`
 	ID              string                           `json:"id"`
 	Name            string                           `json:"name"`
+	Aliases         []string                         `json:"aliases,omitempty"`
 	Description     string                           `json:"description,omitempty"`
 	Source          string                           `json:"source"`
 	Target          string                           `json:"target"`
@@ -194,6 +196,7 @@ type askRevisionOutput struct {
 	Source          string                               `json:"source_object_type_id"`
 	Target          string                               `json:"target_object_type_id"`
 	Mapping         []interfaces.DraftFieldMapping       `json:"mapping"`
+	Aliases         []string                             `json:"aliases"`
 	Reason          string                               `json:"reason"`
 }
 
@@ -224,6 +227,8 @@ func askResponseFormat(fields []string) map[string]any {
 		"mapping": map[string]any{"type": "array", "items": object(map[string]any{
 			"source_property": map[string]any{"type": "string"}, "target_property": map[string]any{"type": "string"},
 		}, "source_property", "target_property")},
+		"aliases": map[string]any{"type": "array", "maxItems": interfaces.DRAFT_ALIASES_MAX,
+			"items": str(interfaces.DRAFT_ALIAS_MAX_LENGTH)},
 		"reason": str(askReasonMaxLength),
 	}, "field", "reason")
 	return object(map[string]any{
@@ -320,7 +325,7 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 	}
 	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
 		interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY,
-		interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY}
+		interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY, interfaces.DRAFT_ASK_REVISION_ALIASES}
 	if base.Document != nil && base.Document.Role != "entity" {
 		in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT}
 		if !strings.HasPrefix(base.Document.Role, "evidence_") {
@@ -330,6 +335,9 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 
 	answer, err := s.ask(ctx, caller, askTurn{input: in, finish: func(out *askOutput) *interfaces.DraftAskAnswer {
 		answer := checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
+			if r.Field == interfaces.DRAFT_ASK_REVISION_ALIASES {
+				return aliasesRevision(ctx, &draft.Items, interfaces.DRAFT_KIND_OBJECT_TYPES, base.ID, base.Name, base.Aliases, r.Aliases)
+			}
 			return objectTypeRevision(ctx, base, r, draft.Items.RelationTypes...)
 		})
 		answer.Suggestion = suggestionOf(answer.Revisions)
@@ -403,6 +411,9 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 	}
 	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
 		interfaces.DRAFT_ASK_REVISION_ENDS}
+	if base.Document == nil {
+		in.Editable = append(in.Editable, interfaces.DRAFT_ASK_REVISION_ALIASES)
+	}
 	if base.Document != nil && base.Document.Role != "relation" {
 		in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT}
 	}
@@ -411,6 +422,9 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 		return checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
 			if base.Document != nil {
 				return documentRelationRevision(ctx, documentInput, draft.Items, base, r)
+			}
+			if r.Field == interfaces.DRAFT_ASK_REVISION_ALIASES {
+				return aliasesRevision(ctx, &draft.Items, interfaces.DRAFT_KIND_RELATION_TYPES, base.ID, base.Name, base.Aliases, r.Aliases)
 			}
 			return s.relationTypeRevision(ctx, &draft.Items, base, r, caller)
 		})
@@ -453,7 +467,7 @@ func askObjectTypeOf(objectType *interfaces.DraftObjectType) askObjectType {
 }
 
 func askRelationOf(r *interfaces.DraftRelationType) askRelation {
-	relation := askRelation{ID: r.ID, Name: r.Name, Description: truncateRunes(r.Description, askDescriptionMax),
+	relation := askRelation{ID: r.ID, Name: r.Name, Aliases: r.Aliases, Description: truncateRunes(r.Description, askDescriptionMax),
 		Source: r.Source, Target: r.Target, Cardinality: r.Cardinality, Mapping: r.Mapping,
 		SourceMapping: r.SourceMapping, TargetMapping: r.TargetMapping, Adopted: r.Adopted}
 	if r.Document != nil {
