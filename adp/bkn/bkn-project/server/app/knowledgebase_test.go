@@ -13,8 +13,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/licverify"
 	. "github.com/smartystreets/goconvey/convey"
-
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 )
 
 type coreRoutes struct{}
@@ -25,9 +23,7 @@ func (coreRoutes) RegisterPublic(engine *gin.Engine) {
 
 func TestKnowledgeBaseHTTPAssembly(t *testing.T) {
 	Convey("The actual application dispatcher preserves community responses", t, func() {
-		knowledgebase.ResetForTest()
 		entitlement.ResetForTest()
-		defer knowledgebase.ResetForTest()
 		defer entitlement.ResetForTest()
 		edition := licverify.EditionCommunity
 		entitlement.SetGate(entitlement.GateFunc(func() entitlement.Snapshot {
@@ -55,14 +51,16 @@ func TestKnowledgeBaseHTTPAssembly(t *testing.T) {
 				}
 			}
 		}
+		// A professional licence alone cannot install missing code.
 		edition = licverify.EditionProfessional
-		compare()
-		knowledgebase.Register(knowledgebase.Providers{Source: knowledgebase.UnavailableSource{}, Concepts: knowledgebase.UnavailableConcepts{}})
+		So(request(community, "GET", "/kb/catalogs/").Code, ShouldEqual, http.StatusNotFound)
 		entitlement.Freeze()
 		edition = licverify.EditionCommunity
 		compare()
-		edition = licverify.EditionProfessional
-		So(request(handler, "GET", "/kb/catalogs/").Code, ShouldEqual, 204)
+		for _, tier := range []licverify.Edition{licverify.EditionProfessional, licverify.EditionEnterprise, licverify.EditionIndustry} {
+			edition = tier
+			So(request(handler, "GET", "/kb/catalogs/").Code, ShouldEqual, 204)
+		}
 		So(request(handler, "GET", "/health").Code, ShouldEqual, 204)
 		edition = licverify.EditionCommunity
 		compare()

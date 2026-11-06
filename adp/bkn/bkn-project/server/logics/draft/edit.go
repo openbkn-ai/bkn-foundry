@@ -19,7 +19,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // People edit a ready draft item by item. Each change is recorded as a decision with what it
@@ -154,7 +153,7 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		}
 	}
 	if edit.Adopted != nil && *edit.Adopted && !*item.adopted && kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
-		if kbconcept.EventParticipantsNeedRepair(*items, findObjectType(items, id)) {
+		if documentHooks().ObjectNeedsRepair(items, findObjectType(items, id)) {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentRelationNeedsRepair)
 		}
 		// BKN object types need a primary key: one without an identity cannot be compiled.
@@ -167,11 +166,10 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 			if r.ID == id && (!objectTypeAdopted(items, r.Source) || !objectTypeAdopted(items, r.Target)) {
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EndpointNotAdopted)
 			}
-			if r.ID == id && r.DocumentMapping != nil && r.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(*items, r) {
-				if kbconcept.VerifiedReferenceTarget(*items, r) != nil {
-					return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_BusinessIdentityNotVerified)
+			if r.ID == id {
+				if err := documentHooks().CheckAdoptRelation(ctx, items, r); err != nil {
+					return nil, err
 				}
-				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
 			}
 
 		}
@@ -358,7 +356,7 @@ func (s *draftService) readyDraftOf(ctx context.Context, token string, projectID
 	if err != nil {
 		return nil, nil, internalError(ctx, "Get draft failed", err)
 	}
-	if err := checkDocumentReadAccess(ctx, token, draft); err != nil {
+	if err := documentHooks().CheckRead(ctx, token, draft); err != nil {
 		return nil, nil, err
 	}
 
@@ -405,6 +403,14 @@ func (s *draftService) commitUsing(ctx context.Context, draft *interfaces.Draft,
 	return nil
 }
 
+// commitItem commits an edit by the guard of what owns the item.
+func (s *draftService) commitItem(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, model *interfaces.DraftDocumentModel) error {
+	if handled, err := documentHooks().CommitEdit(ctx, draftHost{s}, draft, decisions, caller, model); handled {
+		return err
+	}
+	return s.commit(ctx, draft, decisions, caller)
+}
+
 func (s *draftService) EditDraftItem(ctx context.Context, token string, projectID string, kind string,
 	itemID string, edit interfaces.DraftItemEdit, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "EditDraftItem")
@@ -446,13 +452,7 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 			document = relation.Document
 		}
 	}
-	write := s.commit
-	if document != nil {
-		write = func(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo) error {
-			return s.commitDocumentEdit(ctx, draft, decisions, caller, document)
-		}
-	}
-	if err := write(ctx, draft, decisions, caller); err != nil {
+	if err := s.commitItem(ctx, draft, decisions, caller, document); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
 	}

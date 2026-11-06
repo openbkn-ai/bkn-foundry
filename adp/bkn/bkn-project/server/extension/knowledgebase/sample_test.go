@@ -8,9 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"strings"
 	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
 func TestSampleSourceUnavailableAndWireIdentity(t *testing.T) {

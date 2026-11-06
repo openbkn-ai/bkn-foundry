@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -240,8 +241,10 @@ func (pa *projectAccess) SetProjectArchived(ctx context.Context, id string, arch
 		span.SetStatus(codes.Error, "Update data failed")
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE t_bkn_project_kb_selection SET f_state=CASE WHEN f_retained=1 THEN 'retained' ELSE 'release_pending' END, f_revision=f_revision+1, f_update_time=? WHERE f_project_id=? AND f_state IN ('pending','active')", updateTime, id); err != nil {
-		return err
+	if hooks := projecthooks.Current().Projects; hooks != nil {
+		if err = hooks.Archiving(ctx, tx, id, updateTime); err != nil {
+			return err
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return err

@@ -34,17 +34,7 @@ func workingObjectType(objectType *interfaces.DraftObjectType, working *interfac
 	if working == nil {
 		return &base
 	}
-	if base.Document != nil {
-		document := *base.Document
-		document.Citations = append([]interfaces.DraftSourceCitation(nil), document.Citations...)
-		document.ParticipantRelations = append([]string(nil), document.ParticipantRelations...)
-		if working.Document != nil {
-			document.TimeProperty = working.Document.TimeProperty
-			document.ParticipantRelations = append([]string(nil), working.Document.ParticipantRelations...)
-		}
-		base.Document = &document
-		base.DisplayKey = strings.TrimSpace(working.DisplayKey)
-	}
+	documentHooks().WorkingObject(&base, working)
 	if name := strings.TrimSpace(working.Name); name != "" {
 		base.Name = name
 	}
@@ -72,18 +62,11 @@ func workingObjectType(objectType *interfaces.DraftObjectType, working *interfac
 			if p == nil {
 				continue
 			}
-			if base.Document != nil && !p.ReadOnly && saved.Type != "" {
-				p.Type = saved.Type
-			}
+			documentHooks().WorkingProperty(&base, p, saved)
 			if displayName := strings.TrimSpace(saved.DisplayName); displayName != "" {
 				p.DisplayName = displayName
 			}
 			p.Description = strings.TrimSpace(saved.Comment)
-			if base.Document != nil && saved.Extraction != nil && !p.ReadOnly {
-				copied := *saved.Extraction
-				copied.Examples = append([]interfaces.DraftSourceCitation(nil), saved.Extraction.Examples...)
-				p.Extraction = &copied
-			}
 			kept = append(kept, p)
 		}
 		base.Properties = kept
@@ -107,20 +90,7 @@ func (s *draftService) workingRelationType(ctx context.Context, items *interface
 	if comment := strings.TrimSpace(working.Comment); comment != "" {
 		base.Description = comment
 	}
-	if base.Document != nil {
-		if working.SourceObjectTypeID != "" {
-			base.Source = working.SourceObjectTypeID
-		}
-		if working.TargetObjectTypeID != "" {
-			base.Target = working.TargetObjectTypeID
-		}
-		if working.Cardinality != "" {
-			base.Cardinality = working.Cardinality
-		}
-		if working.DocumentMapping != nil {
-			mapping := *working.DocumentMapping
-			base.DocumentMapping = &mapping
-		}
+	if documentHooks().WorkingRelation(&base, working) {
 		return &base
 	}
 	if working.Type != "" {
@@ -202,20 +172,8 @@ func objectTypeRevision(ctx context.Context, base *interfaces.DraftObjectType,
 		return nameOrComment(ctx, out.Field, out.Value, current(out.Field, base.Name, base.Description))
 	case interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS:
 		keys := out.Properties
-		if base.Document != nil {
-			if base.Document.Role != "entity" || len(keys) > 5 {
-				return nil, askDroppedInvalidIdentity
-			}
-			for _, name := range keys {
-				if p := findProperty(base, name); p != nil && p.ReadOnly {
-					return nil, askDroppedInvalidIdentity
-				}
-			}
-			for _, r := range relations {
-				if r != nil && r.Target == base.ID && r.DocumentMapping != nil && r.DocumentMapping.Mode == "linking" && !slices.Equal(keys, []string{r.DocumentMapping.IdentityProperty}) {
-					return nil, askDroppedInvalidIdentity
-				}
-			}
+		if !documentHooks().IdentityRevisionAllowed(base, keys, relations) {
+			return nil, askDroppedInvalidIdentity
 		}
 		if _, err := identityProperties(ctx, base, keys); err != nil {
 			return nil, askDroppedInvalidIdentity
@@ -246,16 +204,11 @@ func objectTypeRevision(ctx context.Context, base *interfaces.DraftObjectType,
 		}
 		var instruction *string
 		if out.Property.ExtractionInstruction != nil {
-			if base.Document == nil || p.Extraction == nil {
-				return nil, askDroppedNotEditable
+			revised, dropped := documentHooks().InstructionRevision(base, p, out.Property.ExtractionInstruction)
+			if dropped != "" {
+				return nil, dropped
 			}
-			value := strings.TrimSpace(*out.Property.ExtractionInstruction)
-			if value == "" || utf8.RuneCountInString(value) > 1000 {
-				return nil, askDroppedTooLong
-			}
-			if value != p.Extraction.Instruction {
-				instruction = &value
-			}
+			instruction = revised
 		}
 		// What is left empty keeps the property's own, so saving the revision clears nothing.
 		displayName, comment := strings.TrimSpace(out.Property.DisplayName), strings.TrimSpace(out.Property.Comment)

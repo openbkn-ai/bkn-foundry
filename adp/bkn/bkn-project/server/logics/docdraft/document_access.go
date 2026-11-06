@@ -1,7 +1,7 @@
 // Copyright openbkn.ai
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package draft
+package docdraft
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
-func checkDocumentReadAccess(ctx context.Context, token string, draft *interfaces.Draft) error {
+func CheckDocumentReadAccess(ctx context.Context, token string, draft *interfaces.Draft) error {
 	if draft == nil || len(kbconcept.DraftSourceIDs(draft.Items)) == 0 {
 		return nil
 	}
