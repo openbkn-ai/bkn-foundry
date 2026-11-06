@@ -164,6 +164,5 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 
 // useHooks registers the hooks given, for one test.
 func useHooks(t *testing.T, hooks projecthooks.Hooks) {
-	projecthooks.Register(hooks)
-	t.Cleanup(func() { projecthooks.Register(projecthooks.Hooks{}) })
+	t.Cleanup(projecthooks.SetForTest(hooks))
 }

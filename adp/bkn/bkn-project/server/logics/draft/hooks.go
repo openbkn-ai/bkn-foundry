@@ -122,7 +122,8 @@ func (noDocumentHooks) SnapshotObject(*interfaces.DraftObjectType, *interfaces.D
 func (noDocumentHooks) SnapshotRelation(*interfaces.DraftRelationType, *interfaces.DraftRelationTypeSnapshot) {
 }
 func (noDocumentHooks) SaveObject(ctx context.Context, _ projecthooks.Host, _ string, _ *interfaces.Draft, ot *interfaces.DraftObjectType, save interfaces.DraftObjectTypeSave, _ interfaces.AccountInfo) (*interfaces.Draft, bool, error) {
-	if ot.Document != nil || save.Document != nil {
+	// A table item ignores document settings, as before; only deriving a document item needs them.
+	if ot.Document != nil || (save.Document != nil && save.Document.Derive != nil) {
 		return nil, true, noDocuments(ctx)
 	}
 	return nil, false, nil

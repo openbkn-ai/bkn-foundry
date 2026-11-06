@@ -222,8 +222,7 @@ func Test_ProjectAccess(t *testing.T) {
 				WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectExec("UPDATE edition_rows").WithArgs(int64(9), "p1").WillReturnResult(sqlmock.NewResult(0, 2))
 			smock.ExpectCommit()
-			projecthooks.Register(projecthooks.Hooks{Projects: archivingProbe{}})
-			defer projecthooks.Register(projecthooks.Hooks{})
+			defer projecthooks.SetForTest(projecthooks.Hooks{Projects: archivingProbe{}})()
 
 			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeNil)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
@@ -236,8 +235,7 @@ func Test_ProjectAccess(t *testing.T) {
 				WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectExec("UPDATE edition_rows").WithArgs(int64(9), "p1").WillReturnError(errors.New("locked"))
 			smock.ExpectRollback()
-			projecthooks.Register(projecthooks.Hooks{Projects: archivingProbe{}})
-			defer projecthooks.Register(projecthooks.Hooks{})
+			defer projecthooks.SetForTest(projecthooks.Hooks{Projects: archivingProbe{}})()
 
 			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeError, "locked")
 			So(smock.ExpectationsWereMet(), ShouldBeNil)

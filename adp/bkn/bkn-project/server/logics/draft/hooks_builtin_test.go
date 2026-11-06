@@ -16,13 +16,12 @@ import (
 // The tests of document items run through the built-in hooks, their assertions as they were. These
 // shims name what moved; they would leave with the tests.
 func init() {
-	projecthooks.Register(projecthooks.Hooks{Drafts: docdraft.Hooks{}})
+	projecthooks.SetForTest(projecthooks.Hooks{Drafts: docdraft.Hooks{}})
 }
 
 // useDocumentResources has the built-in hooks read the source selection given, for one test.
 func useDocumentResources(t *testing.T, resources interfaces.KBResourceAccess) {
-	projecthooks.Register(projecthooks.Hooks{Drafts: docdraft.Hooks{Resources: resources}})
-	t.Cleanup(func() { projecthooks.Register(projecthooks.Hooks{Drafts: docdraft.Hooks{}}) })
+	t.Cleanup(projecthooks.SetForTest(projecthooks.Hooks{Drafts: docdraft.Hooks{Resources: resources}}))
 }
 
 func checkDocumentReadAccess(ctx context.Context, token string, draft *interfaces.Draft) error {

@@ -10,6 +10,9 @@ package projecthooks
 import (
 	"context"
 	"database/sql"
+	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
@@ -22,10 +25,31 @@ type Hooks struct {
 	Projects     Projects
 }
 
-var current Hooks
+var (
+	current    Hooks
+	registered bool
+)
 
-// Register sets the hooks of the process, before serving; a nil field keeps the community behaviour.
-func Register(hooks Hooks) { current = hooks }
+// Register sets the hooks of the process once, while assembling; a nil field keeps the community
+// behaviour. A second registration panics: the built-in knowledge base and an edition's must
+// never both be registered.
+func Register(hooks Hooks) {
+	entitlement.MustBeAssembling("bkn-project edition hooks")
+	if registered {
+		panic("projecthooks: hooks registered twice; an edition with its own knowledge base calls DisableBuiltinKnowledgeBase")
+	}
+	current, registered = hooks, true
+}
+
+// SetForTest replaces the hooks for one test and returns what restores them.
+func SetForTest(hooks Hooks) (restore func()) {
+	if !testing.Testing() {
+		panic("projecthooks: SetForTest outside a test binary")
+	}
+	previous, wasRegistered := current, registered
+	current, registered = hooks, true
+	return func() { current, registered = previous, wasRegistered }
+}
 
 // Current is the hooks registered.
 func Current() Hooks { return current }

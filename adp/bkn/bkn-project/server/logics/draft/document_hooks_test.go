@@ -261,8 +261,8 @@ func (agentHooks) AskAgentID(draft *interfaces.Draft) string {
 // Questions about a draft go to the Agent the hooks name, and to the one of the open core when
 // they name none.
 func TestAskGoesToTheAgentTheHooksName(t *testing.T) {
-	projecthooks.Register(projecthooks.Hooks{Drafts: agentHooks{}})
-	t.Cleanup(func() { projecthooks.Register(projecthooks.Hooks{Drafts: docdraft.Hooks{}}) })
+	restore := projecthooks.SetForTest(projecthooks.Hooks{Drafts: agentHooks{}})
+	t.Cleanup(restore)
 	var got askCapture
 	service := askService(t, evidenceDraft(), `{"revisions":[]}`, &got)
 	if _, err := service.AskRelationType(context.Background(), token, "p", "contains", interfaces.DraftRelationAskRequest{Question: "Is this right?"}, caller, nil); err != nil {
@@ -271,7 +271,7 @@ func TestAskGoesToTheAgentTheHooksName(t *testing.T) {
 	if got.request.AgentID != "edition-document-ask" {
 		t.Fatal("agent", got.request.AgentID)
 	}
-	projecthooks.Register(projecthooks.Hooks{Drafts: docdraft.Hooks{}})
+	restore()
 	got = askCapture{}
 	service = askService(t, evidenceDraft(), `{"revisions":[]}`, &got)
 	if _, err := service.AskRelationType(context.Background(), token, "p", "contains", interfaces.DraftRelationAskRequest{Question: "Is this right?"}, caller, nil); err != nil {
