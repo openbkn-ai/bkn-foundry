@@ -346,6 +346,11 @@ func judgeConcept(ctx context.Context, items *interfaces.DraftItems, c *interfac
 			c.Verdict, c.Reason = interfaces.CONCEPT_VERDICT_NONE, excludeReason
 		}
 	}
+	// Unjudged, the verdict is what drafting did: an item it left out is not included, as
+	// accepting the suggestions records it, until a person judges it otherwise.
+	if c.Judged == nil && c.Item != nil && !c.Item.Adopted && adoptsAs(c.Item.Kind, c.Verdict) {
+		c.Verdict = interfaces.CONCEPT_VERDICT_NONE
+	}
 	switch {
 	case c.Judged == nil:
 		c.State = interfaces.CONCEPT_STATE_PENDING
