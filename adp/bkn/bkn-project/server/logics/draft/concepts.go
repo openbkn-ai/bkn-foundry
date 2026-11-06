@@ -30,6 +30,15 @@ func requirementConceptKey(id string) string {
 	return "requirement_concepts/" + id
 }
 
+// documentConceptPrefix starts the key of a concept of the document samples that drafting modeled
+// no item for.
+const documentConceptPrefix = "document_concepts/"
+
+// documentConceptKey names a concept of the document samples that drafting modeled no item for.
+func documentConceptKey(id string) string {
+	return documentConceptPrefix + id
+}
+
 // blockers are the refusals of adopting an item that a judgment waits out: the item can be adopted
 // once a person settles them on the model, so the judgment stands meanwhile.
 var blockers = map[string]string{
@@ -198,6 +207,15 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 				ID: vt.CodeTable.ResourceID, Name: vt.CodeTable.Name}},
 			Item: &interfaces.DraftConceptItem{Kind: interfaces.DRAFT_KIND_VALUE_TYPES, ID: vt.ID, Adopted: vt.Adopted}})
 	}
+	// What the document samples hold that drafting modeled no item for, with drafting's reason.
+	for _, dc := range items.DocumentConcepts {
+		if dc == nil {
+			continue
+		}
+		add(interfaces.DraftConcept{Key: documentConceptKey(dc.ID), Name: dc.Name, Description: dc.Description,
+			Suggested: dc.Verdict, SuggestedBecause: "document_concept", Reason: dc.Reason,
+			Sources: documentSources(&interfaces.DraftDocumentModel{Citations: dc.Citations})})
+	}
 
 	if found && req != nil && req.Status == interfaces.REQUIREMENT_STATUS_READY {
 		result.RequirementUpdateTime = req.UpdateTime
@@ -205,6 +223,10 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 		byName := map[string]string{}
 		for _, key := range order {
 			c := byKey[key]
+			if c.Item == nil {
+				// A concept of the documents is no item a requirement concept could be.
+				continue
+			}
 			names := []string{c.Name}
 			switch c.Item.Kind {
 			case interfaces.DRAFT_KIND_OBJECT_TYPES:
@@ -277,13 +299,17 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			continue
 		}
 		c := byKey[key]
-		if c.Item == nil {
+		switch {
+		case c.Item != nil:
+			judgeConcept(ctx, items, c, judged[key], reviewed[key], excluded[key])
+		case strings.HasPrefix(key, documentConceptPrefix):
+			// No item: a person's judgment is all there is to it.
+			judgeConcept(ctx, items, c, judged[key], nil, "")
+		default:
 			c.Verdict = c.Suggested
 			if c.State == "" {
 				c.State = interfaces.CONCEPT_STATE_PENDING
 			}
-		} else {
-			judgeConcept(ctx, items, c, judged[key], reviewed[key], excluded[key])
 		}
 		result.Counts[c.State]++
 		result.Counts["verdict:"+c.Verdict]++
@@ -397,7 +423,8 @@ func findConcept(concepts *interfaces.DraftConcepts, key string) *interfaces.Dra
 }
 
 // JudgeConcept records what a concept is, and in the same write adopts its draft item or leaves it
-// out accordingly, with the evidence items following. An item that cannot be adopted yet, for want
+// out accordingly, with the evidence items following. A concept of the document samples that has no
+// item only records the judgment. An item that cannot be adopted yet, for want
 // of an identity, an end or a repair, keeps the judgment and waits: the concept is blocked.
 func (s *draftService) JudgeConcept(ctx context.Context, token string, projectID string,
 	req interfaces.DraftConceptJudge, caller interfaces.AccountInfo) (*interfaces.DraftConcepts, error) {
@@ -425,7 +452,7 @@ func (s *draftService) JudgeConcept(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Concept not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
-	if concept.Item == nil {
+	if concept.Item == nil && !strings.HasPrefix(req.Key, documentConceptPrefix) {
 		// What a requirement concept is lives in the specification: it is edited there.
 		span.SetStatus(codes.Error, "Requirement concept")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody).
