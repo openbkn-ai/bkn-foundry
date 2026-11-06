@@ -506,6 +506,9 @@ const (
 	DRAFT_ASK_REVISION_DISPLAY_KEY   = "display_key"
 	DRAFT_ASK_REVISION_DATA_PROPERTY = "data_property"
 	DRAFT_ASK_REVISION_ENDS          = "ends"
+	// DRAFT_ASK_REVISION_ALIASES replaces an object or relation type's aliases: Value is the whole
+	// list, those it keeps and those it proposes.
+	DRAFT_ASK_REVISION_ALIASES = "aliases"
 )
 
 // DraftAskRevision is a change to one field of the save body. Value is a string for name, comment

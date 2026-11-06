@@ -249,3 +249,64 @@ func Test_CompileLeftOutAliases(t *testing.T) {
 		So(string(compiled.Files["object_types/accounts.bkn"]), ShouldContainSubstring, "Customer name")
 	})
 }
+
+func Test_AliasesRevision(t *testing.T) {
+	Convey("Test checking the aliases Ask AI proposes\n", t, func() {
+		ctx := context.Background()
+		items := editableDraft().Items
+		check := func(kind string, id string, name string, current []string, proposed ...string) (*interfaces.DraftAskRevision, string) {
+			return aliasesRevision(ctx, &items, kind, id, name, current, proposed)
+		}
+
+		Convey("The whole list is proposed, trimmed, for a person to confirm\n", func() {
+			revision, reason := check(interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "Orders", []string{"PO"}, "PO", " Purchase orders ")
+			So(reason, ShouldBeEmpty)
+			So(revision.Value, ShouldResemble, []string{"PO", "Purchase orders"})
+		})
+
+		Convey("What saving would refuse, or what changes nothing, is left out with why\n", func() {
+			for _, proposed := range [][]string{{"Orders"}, {"Customers"}, {"PO,SO"}, {"PO", "PO"}} {
+				_, reason := check(interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "Orders", nil, proposed...)
+				So(reason, ShouldEqual, askDroppedInvalidAliases)
+			}
+			_, reason := check(interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", "Orders", []string{"PO"}, " PO")
+			So(reason, ShouldEqual, askDroppedUnchanged)
+		})
+
+		Convey("A relation type's alias may be an object type's name\n", func() {
+			revision, reason := check(interfaces.DRAFT_KIND_RELATION_TYPES, "orders_customers", "Orders customers", nil, "Customers")
+			So(reason, ShouldBeEmpty)
+			So(revision.Value, ShouldResemble, []string{"Customers"})
+		})
+	})
+}
+
+func Test_AskSeesUnsavedAliases(t *testing.T) {
+	Convey("Test Ask AI reads the aliases the form has not saved yet\n", t, func() {
+		items := editableDraft().Items
+		svc := &draftService{setting: testSetting}
+		relation := items.RelationTypes[0]
+		relation.Aliases = []string{"placed by"}
+
+		working := svc.workingRelationType(context.Background(), &items, relation,
+			&interfaces.DraftRelationTypeSave{Aliases: aliasesPtr(" ordered by ", "")}, caller)
+		So(working.Aliases, ShouldResemble, []string{"ordered by"})
+		So(relation.Aliases, ShouldResemble, []string{"placed by"})
+
+		object := workingObjectType(items.ObjectTypes[1], &interfaces.DraftObjectTypeSave{Aliases: aliasesPtr("PO")})
+		So(object.Aliases, ShouldResemble, []string{"PO"})
+		So(workingObjectType(items.ObjectTypes[1], &interfaces.DraftObjectTypeSave{}).Aliases, ShouldBeNil)
+	})
+}
+
+func Test_ObjectAskEditable(t *testing.T) {
+	Convey("Test a document object type is offered no aliases to revise, whatever its role\n", t, func() {
+		table := &interfaces.DraftObjectType{ID: "orders"}
+		So(objectAskEditable(table, nil), ShouldContain, interfaces.DRAFT_ASK_REVISION_ALIASES)
+		entity := &interfaces.DraftObjectType{ID: "order_doc", Document: &interfaces.DraftDocumentModel{Role: "entity"}}
+		So(objectAskEditable(entity, nil), ShouldNotContain, interfaces.DRAFT_ASK_REVISION_ALIASES)
+		So(objectAskEditable(entity, nil), ShouldContain, interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS)
+		hooks := []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_ALIASES}
+		So(objectAskEditable(entity, hooks), ShouldResemble, []string{interfaces.DRAFT_ASK_REVISION_NAME})
+	})
+}

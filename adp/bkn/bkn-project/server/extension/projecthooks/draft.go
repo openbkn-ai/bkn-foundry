@@ -32,6 +32,7 @@ type AskRevisionOutput struct {
 	Source          string                               `json:"source_object_type_id"`
 	Target          string                               `json:"target_object_type_id"`
 	Mapping         []interfaces.DraftFieldMapping       `json:"mapping"`
+	Aliases         []string                             `json:"aliases"`
 	Reason          string                               `json:"reason"`
 }
 
