@@ -142,7 +142,7 @@ func capabilityMetadataType(kind string) string {
 
 // liveNetwork is the project's live network, whether the project was ever released, and the object
 // types the network has; reason says why they could not be read. Before the first release the
-// network the project started from may have none, or not be readable yet: that is no failure.
+// network the project started from may have none, or not be there yet: that is no failure.
 func (s *requirementService) liveNetwork(ctx context.Context, token string, entry *interfaces.ProjectEntry) (string, bool, map[string]bool, string, error) {
 	network, released, err := logics.LiveNetworkOf(ctx, s.rla, entry.KNID)
 	if err != nil {
@@ -150,11 +150,13 @@ func (s *requirementService) liveNetwork(ctx context.Context, token string, entr
 	}
 	ids, err := s.bba.ListObjectTypeIDs(ctx, token, network)
 	if err != nil {
-		reason := ""
-		if released {
-			reason = interfaces.LOGIC_TARGET_UNAVAILABLE
+		// Only the network not being there yet, before the first release, is no failure to read:
+		// the network a project starts from is made with it. Any other error is one.
+		var backendErr *interfaces.BknBackendError
+		if !released && errors.As(err, &backendErr) && backendErr.HTTPCode == http.StatusNotFound {
+			return network, released, map[string]bool{}, "", nil
 		}
-		return network, released, map[string]bool{}, reason, nil
+		return network, released, map[string]bool{}, interfaces.LOGIC_TARGET_UNAVAILABLE, nil
 	}
 	live := map[string]bool{}
 	for _, id := range ids {

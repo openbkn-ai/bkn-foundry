@@ -213,6 +213,29 @@ func Test_ListLogicNeedsBeforeRelease(t *testing.T) {
 		So(got.Needs[0].Unconnected, ShouldResemble, []interfaces.ScenarioUnconnected{{From: "sales_order", To: "customer"}})
 		So(got.Needs[1].Unconnected, ShouldBeEmpty)
 	})
+
+	Convey("Before the first release, a network that fails to answer is still a failure to read\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		bba := pmock.NewMockBknBackendAccess(ctrl)
+		rla := pmock.NewMockReleaseAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, bba: bba, rla: rla, da: da}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{
+			Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller}}, nil)
+		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+		bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1").Return(nil, backendErr(http.StatusBadGateway, ""))
+		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(needsSpec(), true, nil)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+
+		got, err := svc.ListLogicNeeds(context.Background(), token, "p1")
+
+		So(err, ShouldBeNil)
+		So(got.Released, ShouldBeFalse)
+		So(got.Reason, ShouldEqual, interfaces.LOGIC_TARGET_UNAVAILABLE)
+	})
 }
 
 func Test_LogicNeedCandidates(t *testing.T) {
