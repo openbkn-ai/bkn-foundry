@@ -86,19 +86,6 @@ type AskRelation struct {
 	Revise   RelationReviser
 }
 
-// DocumentConcept is how the concept view reads a document item.
-type DocumentConcept struct {
-	// Evidence is an item that locates a business item's original text, such as the file or block
-	// it was read from: it follows its business items and is no concept of its own.
-	Evidence bool
-	// Event suggests the item as an event rather than an object.
-	Event bool
-	// Because says why the item is suggested.
-	Because string
-	// Sources are the documents the item was read from.
-	Sources []interfaces.DraftConceptSource
-}
-
 // Drafts is what document items add to a draft. The community default owns no item.
 //
 // The bool of a Save or Commit says the hook handled it; otherwise the draft goes on as for any item.
@@ -154,8 +141,6 @@ type Drafts interface {
 	// ObjectNeedsRepair holds back adopting an object type.
 	ObjectNeedsRepair(items *interfaces.DraftItems, ot *interfaces.DraftObjectType) bool
 	CheckAdoptRelation(ctx context.Context, items *interfaces.DraftItems, rt *interfaces.DraftRelationType) error
-	// DocumentConcept is how the concept view reads a document item.
-	DocumentConcept(document *interfaces.DraftDocumentModel) DocumentConcept
 	// ConceptBlocker names the refusal of adopting a document item that a concept judgment waits
 	// out, by its error code; false for any other.
 	ConceptBlocker(code string) (string, bool)
@@ -163,6 +148,24 @@ type Drafts interface {
 	ExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error)
 	// DefinitionRules is what a commit of the model carries beside its files.
 	DefinitionRules(ctx context.Context, draft *interfaces.Draft, lineageAvailable bool) ([]byte, error)
+
+	// Concept reads a document item as a concept of concept extraction.
+	Concept(document *interfaces.DraftDocumentModel) DocumentConcept
+	// FollowEvidence adopts the evidence the adopted business items need and leaves out what none
+	// needs any more, returning the decisions of what it changed.
+	FollowEvidence(items *interfaces.DraftItems) []*interfaces.DraftDecision
+}
+
+// DocumentConcept is what a document item is as a concept.
+type DocumentConcept struct {
+	// Evidence locates a business item's text: it follows its business items and is no concept.
+	Evidence bool
+	// Suggested is the verdict drafting suggests; empty keeps the one of the item's kind.
+	Suggested string
+	// Because is a code for why, worded by the client.
+	Because string
+	// Sources are the files it was drafted from; none reads as one document source.
+	Sources []interfaces.DraftConceptSource
 }
 
 // FindObjectType, FindRelationType, FindProperty, ObjectTypeAdopted and DraftLanguage are the pure

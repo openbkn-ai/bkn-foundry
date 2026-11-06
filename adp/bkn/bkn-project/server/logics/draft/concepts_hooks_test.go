@@ -11,13 +11,16 @@ import (
 )
 
 // conceptHooks stands for an edition that reads document items for the concept view: an
-// evidence_ role is evidence, the event role an event, and the files cited its sources. The real
+// evidence_ role is evidence, the event role an event, and the files cited its sources; it adopts
+// no evidence of its own accord. The real
 // rules are the edition's; these tests check what the draft does with what it is told.
 type conceptHooks struct{ noDocumentHooks }
 
-func (conceptHooks) DocumentConcept(document *interfaces.DraftDocumentModel) projecthooks.DocumentConcept {
-	concept := projecthooks.DocumentConcept{Evidence: strings.HasPrefix(document.Role, "evidence_"),
-		Event: document.Role == "event", Because: "document_" + document.Role}
+func (conceptHooks) Concept(document *interfaces.DraftDocumentModel) projecthooks.DocumentConcept {
+	concept := projecthooks.DocumentConcept{Evidence: strings.HasPrefix(document.Role, "evidence_"), Because: "document_" + document.Role}
+	if document.Role == "event" {
+		concept.Suggested = interfaces.CONCEPT_VERDICT_EVENT
+	}
 	seen := map[string]bool{}
 	for _, citation := range document.Citations {
 		if !seen[citation.FileID] {
