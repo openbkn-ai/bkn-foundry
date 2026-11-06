@@ -1481,6 +1481,13 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		}
 	}
 
+	// Events belong to the network, which only the main branch represents here.
+	if logics.KECA != nil {
+		if err := logics.KECA.DeleteKnEvents(ctx, tx, kn.KNID); err != nil {
+			return err
+		}
+	}
+
 	// Delete all action types before the object types they can reference.
 	err = kns.ats.DeleteActionTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
