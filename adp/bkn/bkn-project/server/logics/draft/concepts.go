@@ -21,8 +21,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
-// conceptReasonMaxLength bounds the reason a person gives with a judgment, in characters.
-const conceptReasonMaxLength = 500
+// conceptReasonMaxLength bounds the reason a person gives with a judgment, in characters: as long
+// as a reason for leaving an item out may be, since it goes with that decision too.
+const conceptReasonMaxLength = interfaces.DRAFT_REASON_MAX_LENGTH
 
 // requirementConceptKey names a requirement concept no draft item is.
 func requirementConceptKey(id string) string {
@@ -388,6 +389,7 @@ func (s *draftService) JudgeConcept(ctx context.Context, token string, projectID
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "JudgeConcept")
 	defer span.End()
 
+	req.Reason = strings.TrimSpace(req.Reason)
 	if !slices.Contains(interfaces.CONCEPT_VERDICTS, req.Verdict) ||
 		utf8.RuneCountInString(req.Reason) > conceptReasonMaxLength {
 		span.SetStatus(codes.Error, "Invalid judgment")
@@ -414,8 +416,12 @@ func (s *draftService) JudgeConcept(ctx context.Context, token string, projectID
 	var document *interfaces.DraftDocumentModel
 	if item := concept.Item; item != nil {
 		adopt := adoptsAs(item.Kind, req.Verdict)
-		edited, err := applyEdit(ctx, &draft.Items, item.Kind, item.ID,
-			interfaces.DraftItemEdit{Adopted: &adopt, Reason: req.Reason})
+		edit := interfaces.DraftItemEdit{Adopted: &adopt}
+		// A reason goes with leaving the item out, as on the model; the judgment keeps it either way.
+		if !adopt {
+			edit.Reason = req.Reason
+		}
+		edited, err := applyEdit(ctx, &draft.Items, item.Kind, item.ID, edit)
 		if _, waits := blockerOf(err); err != nil && !(adopt && waits) {
 			span.SetStatus(codes.Error, "Edit refused")
 			return nil, err

@@ -295,6 +295,18 @@ func Test_ConceptService(t *testing.T) {
 			So(adoption.Time, ShouldEqual, judgment.Time)
 		})
 
+		Convey("A reason is trimmed, kept with the judgment, and goes only with leaving the item out\n", func() {
+			write()
+			got, err := judge("object_types/items", interfaces.CONCEPT_VERDICT_OBJECT, "  Sold in stores  ")
+			So(err, ShouldBeNil)
+			So(conceptByKey(got, "object_types/items").Reason, ShouldEqual, "Sold in stores")
+			for _, d := range written.Items.Decisions {
+				if d.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES && d.ItemID == "items" {
+					So(d.Reason, ShouldBeEmpty)
+				}
+			}
+		})
+
 		Convey("Judging it not included leaves it out, with the relations to it\n", func() {
 			write()
 			got, err := judge("object_types/items", interfaces.CONCEPT_VERDICT_NONE, "Duplicate of stores")
