@@ -202,15 +202,17 @@ class TraceChatOpenAI(ChatOpenAI):
             }
         response_metadata: dict[str, Any] = {}
         trace_body: dict[str, Any] = {}
-        # A stream reports usage once, on a chunk of its own, when the gateway
-        # sends it at all.
+        # The gateway takes the usage on a stream's chunks as running totals,
+        # the last one counting (mf-model-api llm_utils); some upstreams repeat
+        # them on every chunk and others send zeros before the real count. The
+        # largest count of each field is that total, as the gateway meters it.
         stream_usage: Optional[dict[str, int]] = None
         async for chunk in super()._astream(*args, **kwargs):
             counts = _usage_counts(getattr(chunk.message, "usage_metadata", None))
             if counts is not None:
                 stream_usage = {
-                    "input_tokens": (stream_usage or {}).get("input_tokens", 0) + counts[0],
-                    "output_tokens": (stream_usage or {}).get("output_tokens", 0) + counts[1],
+                    "input_tokens": max((stream_usage or {}).get("input_tokens", 0), counts[0]),
+                    "output_tokens": max((stream_usage or {}).get("output_tokens", 0), counts[1]),
                 }
             if chunk.message.response_metadata:
                 response_metadata.update(chunk.message.response_metadata)

@@ -296,6 +296,29 @@ def test_task_usage_adds_tokens_of_every_call(monkeypatch):
     asyncio.run(run())
 
 
+def test_stream_usage_repeated_as_running_totals_counts_once(monkeypatch):
+    # Upstreams that send usage on every chunk send running totals, some with
+    # zeros first: the gateway meters the last, and so does the task.
+    async def stream(self, *args, **kwargs):
+        for counts in ((0, 0), (100, 10), (100, 25), (100, 40)):
+            yield ChatGenerationChunk(message=AIMessageChunk(content="x", usage_metadata={
+                "input_tokens": counts[0], "output_tokens": counts[1], "total_tokens": sum(counts)}))
+
+    monkeypatch.setattr(ChatOpenAI, "_astream", stream)
+    monkeypatch.setattr(llm.evidence, "new_operation", lambda: (None, None))
+
+    async def run():
+        usage = {"model": "m"}
+        token = llm.set_task_usage(usage)
+        try:
+            async for _ in llm.build_chat_model("m")._astream([]):
+                pass
+        finally:
+            llm.reset_task_usage(token)
+        assert (usage["input_tokens"], usage["output_tokens"], usage["model_calls"]) == (100, 40, 1)
+    asyncio.run(run())
+
+
 def test_task_usage_counts_calls_without_usage_apart(monkeypatch):
     _metered(monkeypatch, reported=False)
 
