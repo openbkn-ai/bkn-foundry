@@ -53,8 +53,8 @@ func (h draftHost) NameOrComment(ctx context.Context, field, value, name, descri
 func (h draftHost) UnarchivedProject(ctx context.Context, token, projectID string) (*interfaces.ProjectEntry, error) {
 	return h.s.unarchivedProject(ctx, token, projectID)
 }
-func (h draftHost) CheckCompiles(items *interfaces.DraftItems) error {
-	_, err := compileDraft(items)
+func (h draftHost) CheckCompiles(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) error {
+	_, err := compileDraft(items, evidence)
 	return err
 }
 func (h draftHost) DraftAccess() interfaces.DraftAccess { return h.s.da }
@@ -216,8 +216,11 @@ func (noDocumentHooks) CheckAdoptRelation(context.Context, *interfaces.DraftItem
 	return nil
 }
 func (noDocumentHooks) ConceptBlocker(string) (string, bool) { return "", false }
-func (noDocumentHooks) ExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error) {
+func (noDocumentHooks) ExportItems(items *interfaces.DraftItems, _ *interfaces.DraftEvidenceExport) (*interfaces.DraftItems, error) {
 	return items, nil
+}
+func (noDocumentHooks) ConfirmEvidence(context.Context, projecthooks.Host, *interfaces.Draft) (*interfaces.DraftEvidenceExport, error) {
+	return nil, nil
 }
 func (noDocumentHooks) DefinitionRules(context.Context, *interfaces.Draft, bool) ([]byte, error) {
 	return nil, nil

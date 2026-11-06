@@ -111,7 +111,11 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	if err != nil {
 		return nil, err
 	}
-	compiled, err := compileDraft(&draft.Items)
+	evidence, err := documentHooks().ConfirmEvidence(ctx, draftHost{s}, draft)
+	if err != nil {
+		return nil, err
+	}
+	compiled, err := compileDraft(&draft.Items, evidence)
 	if err != nil {
 		span.SetStatus(codes.Error, "Compile failed")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
@@ -132,6 +136,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		earlierPending = previous.Pending
 		*confirmation = *previous
 	}
+	confirmation.Evidence = evidence
 
 	// The branch may keep object types this draft did not write: an alias may not name one either.
 	preflight, err := s.ls.PreflightDefinitions(ctx, entry.KNID, entry.Branch, paths, owned)
@@ -141,7 +146,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	}
 	if len(preflight.ObjectTypeNames) > 0 {
 		// The same items at the same paths; only aliases can differ.
-		if compiled, err = compileDraftBeside(&draft.Items, preflight.ObjectTypeNames); err != nil {
+		if compiled, err = compileDraftBeside(&draft.Items, evidence, preflight.ObjectTypeNames); err != nil {
 			span.SetStatus(codes.Error, "Compile failed")
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem).
 				WithErrorDetails(err.Error())

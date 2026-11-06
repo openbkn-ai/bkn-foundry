@@ -121,7 +121,7 @@ func keepForConcepts(spec *interfaces.RequirementSpec, discard bool) {
 	recordAllIDs(spec, spec)
 	concepts, needs := questionRefs(spec.Questions)
 	spec.LogicNeeds = slices.DeleteFunc(spec.LogicNeeds, func(n *interfaces.RequirementLogicNeed) bool {
-		return n.Source == interfaces.LOGIC_NEED_FROM_DOCUMENTS && !needs[n.ID] && (discard || !n.Accepted && !n.Edited)
+		return n.Source == interfaces.LOGIC_NEED_FROM_DOCUMENTS && !needs[n.ID] && n.Link == nil && (discard || !n.Accepted && !n.Edited)
 	})
 	for _, n := range spec.LogicNeeds {
 		for _, id := range n.ConceptIDs {

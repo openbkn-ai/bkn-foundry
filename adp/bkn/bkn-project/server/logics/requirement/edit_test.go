@@ -699,6 +699,30 @@ func Test_LogicNeedEdits(t *testing.T) {
 			So(n.Citations, ShouldResemble, []interfaces.RequirementCitation{})
 		})
 
+		Convey("Changing a linked need's kind to one implemented by another kind of thing drops its link\n", func() {
+			linked := func() *interfaces.Requirement {
+				spec := needsSpec()
+				spec.Spec.LogicNeeds[0].Link = &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1"}
+				spec.Spec.LogicNeeds[1].Link = &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "b"}
+				return spec
+			}
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(linked(), true, nil)
+			expectSave()
+
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n1", interfaces.RequirementItemEdit{UpdateTime: 7,
+				LogicKind: ptr(interfaces.LOGIC_NEED_SKILL)}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.LogicNeeds[0].Link, ShouldBeNil)
+
+			// A function made an API is still implemented by a function: the link stays.
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(linked(), true, nil)
+			expectSave()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n2", interfaces.RequirementItemEdit{UpdateTime: 7,
+				LogicKind: ptr(interfaces.LOGIC_NEED_API)}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.LogicNeeds[1].Link, ShouldNotBeNil)
+		})
+
 		Convey("An edit changes the need's fields; properties go with the object types they belong to\n", func() {
 			expectRead()
 			expectSave()

@@ -22,6 +22,9 @@ const (
 	RELEASE_CHECK_CHECK       = "check"
 	RELEASE_CHECK_INDEX       = "index"
 	RELEASE_CHECK_BASELINE    = "baseline"
+	// RELEASE_CHECK_METRIC_OWNERS: every object metric the release carries belongs to an object type
+	// it carries; bkn-backend refuses to import one whose object type is gone.
+	RELEASE_CHECK_METRIC_OWNERS = "metric_owners"
 )
 
 // Why a release check did not pass.
@@ -44,6 +47,9 @@ const (
 	RELEASE_REASON_TABLE_MISSING = "table_missing"
 	// RELEASE_REASON_DATA_SOURCE_UNREADABLE: vega did not tell whether the tables are there.
 	RELEASE_REASON_DATA_SOURCE_UNREADABLE = "data_source_unreadable"
+	// RELEASE_REASON_METRIC_OWNER_MISSING: some metrics belong to object types the release removes;
+	// details name them.
+	RELEASE_REASON_METRIC_OWNER_MISSING = "metric_owner_missing"
 )
 
 // What the owner may accept to publish though a check did not pass. Nothing else can be accepted.
@@ -120,6 +126,23 @@ type ReleaseRisks struct {
 	Orphans []ReleaseOrphans `json:"orphans"`
 	// Copies counts the functions and Skills the release copies to new ids.
 	Copies int `json:"copies"`
+	// UnimplementedNeeds are the kinetic needs of the specification linked to no implementation.
+	// They do not hold the release up.
+	UnimplementedNeeds []ReleaseNeed `json:"unimplemented_needs"`
+}
+
+// ReleaseNeed names a kinetic need of the specification.
+type ReleaseNeed struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+
+// ReleaseMetricOwner is an object metric whose object type the release does not carry.
+type ReleaseMetricOwner struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	OwnerObjectTypeID string `json:"owner_object_type_id"`
 }
 
 type ReleaseOrphans struct {

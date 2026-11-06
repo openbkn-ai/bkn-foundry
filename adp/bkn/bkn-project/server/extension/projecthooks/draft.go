@@ -66,7 +66,7 @@ type Host interface {
 	NameOrComment(ctx context.Context, field, value, name, description string) (*interfaces.DraftAskRevision, string)
 	CountBusinessKey(ctx context.Context, caller interfaces.AccountInfo, resourceID, mappedField, fieldType string) BusinessKeyCount
 	UnarchivedProject(ctx context.Context, token, projectID string) (*interfaces.ProjectEntry, error)
-	CheckCompiles(items *interfaces.DraftItems) error
+	CheckCompiles(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) error
 	DraftAccess() interfaces.DraftAccess
 }
 
@@ -144,8 +144,12 @@ type Drafts interface {
 	// ConceptBlocker names the refusal of adopting a document item that a concept judgment waits
 	// out, by its error code; false for any other.
 	ConceptBlocker(code string) (string, bool)
-	// ExportItems is the items as they compile.
-	ExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error)
+	// ExportItems is the items as they compile; evidence says how document evidence is
+	// published, nil for the projection of earlier confirmations.
+	ExportItems(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) (*interfaces.DraftItems, error)
+	// ConfirmEvidence is how confirming the draft now publishes its document evidence, from the
+	// project's source selection; nil without document items.
+	ConfirmEvidence(ctx context.Context, h Host, draft *interfaces.Draft) (*interfaces.DraftEvidenceExport, error)
 	// DefinitionRules is what a commit of the model carries beside its files.
 	DefinitionRules(ctx context.Context, draft *interfaces.Draft, lineageAvailable bool) ([]byte, error)
 

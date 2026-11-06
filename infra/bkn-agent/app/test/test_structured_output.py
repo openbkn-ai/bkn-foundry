@@ -247,6 +247,79 @@ def test_run_without_response_format_text_path(monkeypatch):
     assert out == "loop done"
 
 
+def _single_call_agent(enabled=True):
+    from app.models import AgentLimits
+    agent = _agent()
+    agent.limits = AgentLimits(max_turns=1, max_tool_calls=0, single_structured_call=enabled)
+    return agent
+
+
+def _wire_single(monkeypatch, captured, tools=None):
+    _wire(monkeypatch, captured)
+
+    def graph(*a, **k):
+        captured["graph_built"] = True
+        return _FakeGraph()
+
+    monkeypatch.setattr(runner, "create_agent", graph)
+    if tools is not None:
+        async def fake_tools(agent_tools, account_id, account_type, **kwargs):
+            return tools
+
+        monkeypatch.setattr(tools_mod, "load_tools", fake_tools)
+
+    async def fake_extract(model, messages, schema, system_prompt=None):
+        captured["messages"] = messages
+        captured["extract_system_prompt"] = system_prompt
+        return {"greeting": "pong"}, "fallback"
+
+    monkeypatch.setattr(runner, "structured_extract_with_path", fake_extract)
+
+
+def test_single_structured_call_skips_free_form_call(monkeypatch):
+    captured: dict = {}
+    _wire_single(monkeypatch, captured)
+    out = asyncio.run(runner.run_agent_once(
+        _single_call_agent(), "the file", {}, [], None, "acc", "user", depth=1, response_format=SCHEMA,
+    ))
+    assert json.loads(out) == {"greeting": "pong"}
+    assert "graph_built" not in captured
+    # The structured call reads the task message itself, with the full system prompt.
+    assert [type(m) for m in captured["messages"]] == [HumanMessage]
+    assert captured["messages"][0].content == "the file"
+    assert captured["extract_system_prompt"] == "sys\n[技能] demo"
+    assert captured["streaming"] == [True, False]
+
+
+def test_single_structured_call_off_keeps_two_calls(monkeypatch):
+    captured: dict = {}
+    _wire_single(monkeypatch, captured)
+    asyncio.run(runner.run_agent_once(
+        _single_call_agent(enabled=None), "the file", {}, [], None, "acc", "user", depth=1, response_format=SCHEMA,
+    ))
+    assert captured["graph_built"] is True
+    assert captured["messages"][-1].content == "loop done"
+
+
+def test_single_structured_call_ignored_with_tools(monkeypatch):
+    captured: dict = {}
+    _wire_single(monkeypatch, captured, tools=[object()])
+    asyncio.run(runner.run_agent_once(
+        _single_call_agent(), "the file", {}, [], None, "acc", "user", depth=1, response_format=SCHEMA,
+    ))
+    assert captured["graph_built"] is True
+
+
+def test_single_structured_call_ignored_without_response_format(monkeypatch):
+    captured: dict = {}
+    _wire_single(monkeypatch, captured)
+    out = asyncio.run(runner.run_agent_once(
+        _single_call_agent(), "the file", {}, [], None, "acc", "user", depth=1,
+    ))
+    assert out == "loop done"
+    assert captured["graph_built"] is True
+
+
 def test_normalize_response_format():
     from app.core.llm import normalize_response_format
     assert normalize_response_format({"type": "object", "properties": {}})["title"] == "StructuredResponse"

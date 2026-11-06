@@ -377,7 +377,11 @@ func nextVersion(latest *interfaces.Release) string {
 // cannot tell.
 func (s *draftService) preflightConfirm(ctx context.Context, project *interfaces.Project,
 	draft *interfaces.Draft) *interfaces.DefinitionsPreflight {
-	compiled, err := compileDraft(&draft.Items)
+	evidence, err := documentHooks().ConfirmEvidence(ctx, draftHost{s}, draft)
+	if err != nil {
+		return nil
+	}
+	compiled, err := compileDraft(&draft.Items, evidence)
 	if err != nil {
 		return nil
 	}

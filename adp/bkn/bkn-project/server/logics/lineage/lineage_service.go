@@ -599,15 +599,7 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 		WithErrorDetails(err.Error())
 }
 
-// liveNetwork returns the network of the lineage's latest release, or the lineage id, which is
-// the network the lineage was started from, before the first release.
+// liveNetwork returns the network that is live for the lineage.
 func (s *lineageService) liveNetwork(ctx context.Context, lineageID string) (string, error) {
-	latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: lineageID, Limit: 1})
-	if err != nil {
-		return "", err
-	}
-	if len(latest) == 0 {
-		return lineageID, nil
-	}
-	return latest[0].NetworkID, nil
+	return logics.LiveNetwork(ctx, s.ra, lineageID)
 }

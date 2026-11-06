@@ -69,9 +69,12 @@ const (
 // requirement concepts that are it, then the requirement concepts no item is. DraftUpdateTime is
 // zero without a ready draft; nothing can be judged then.
 type DraftConcepts struct {
-	ProjectID       string         `json:"project_id"`
-	DraftUpdateTime int64          `json:"draft_update_time"`
-	Concepts        []DraftConcept `json:"concepts"`
+	ProjectID       string `json:"project_id"`
+	DraftUpdateTime int64  `json:"draft_update_time"`
+	// RequirementUpdateTime is the update time of the specification read, zero without one: a
+	// requirement concept no item is is judged by editing it there, over this time.
+	RequirementUpdateTime int64          `json:"requirement_update_time"`
+	Concepts              []DraftConcept `json:"concepts"`
 	// Counts are the concepts in each state, and by verdict under "verdict:<verdict>".
 	Counts map[string]int `json:"counts"`
 }
