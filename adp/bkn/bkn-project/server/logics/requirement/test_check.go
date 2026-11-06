@@ -168,7 +168,7 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 
 // documentsBuilt is why the tests cannot be checked yet: a document object they read has no rows
 // before the knowledge-base build. Empty when the data can be asked.
-func (s *requirementService) documentsBuilt(ctx context.Context, caller interfaces.AccountInfo, fields []*slotField) string {
+func (s *requirementService) documentsBuilt(ctx context.Context, caller interfaces.AccountInfo, testID string, fields []*slotField) string {
 	seen := map[string]bool{}
 	for _, f := range fields {
 		ot := f.objectType
@@ -178,6 +178,7 @@ func (s *requirementService) documentsBuilt(ctx context.Context, caller interfac
 		seen[ot.Table.ResourceID] = true
 		n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}}", ot.Table.ResourceID))
 		if err != nil {
+			logger.Warnf("Count for test question %s failed: %v", testID, err)
 			return queryFailure(err)
 		}
 		if n == 0 {
@@ -231,7 +232,7 @@ func (s *requirementService) checkAnchored(ctx context.Context, caller interface
 		}
 		fields = append(fields, f)
 	}
-	if reason := s.documentsBuilt(ctx, caller, fields); reason != "" {
+	if reason := s.documentsBuilt(ctx, caller, t.ID, fields); reason != "" {
 		return notChecked(reason)
 	}
 	// What is checked must be what the question asks about: a value the documents gave is said in
