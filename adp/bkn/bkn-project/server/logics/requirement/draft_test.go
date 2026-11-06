@@ -626,6 +626,37 @@ func Test_BuildDraftMessage(t *testing.T) {
 				[]messageProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}})
 		})
 
+		Convey("A document model goes without its evidence types and technical columns, which are not published\n", func() {
+			doc := func(role string) *interfaces.DraftDocumentModel { return &interfaces.DraftDocumentModel{Role: role} }
+			draft := &interfaces.Draft{Items: interfaces.DraftItems{
+				ObjectTypes: []*interfaces.DraftObjectType{
+					{ID: "contract_doc", Name: "Contract", PrimaryKeys: []string{"_id"}, Adopted: true, Document: doc("file"), Properties: []*interfaces.DraftProperty{
+						{Name: "_id", Type: "string"}, {Name: "contract_no", DisplayName: "Contract number", Type: "string"},
+						{Name: "document_id", Type: "string"}, {Name: "source_quote", Type: "text"}, {Name: "model_fingerprint", Type: "string"}}},
+					{ID: "party_doc", Name: "Party", PrimaryKeys: []string{"party_name"}, Adopted: true, Document: doc("entity"), Properties: []*interfaces.DraftProperty{
+						{Name: "_id", Type: "string"}, {Name: "party_name", Type: "string"}, {Name: "entity_id", Type: "string"}}},
+					{ID: "source_document", Name: "Source document", PrimaryKeys: []string{"_id"}, Adopted: true, Document: doc("evidence_document"), Properties: []*interfaces.DraftProperty{{Name: "name", Type: "string"}}},
+				},
+				RelationTypes: []*interfaces.DraftRelationType{
+					{ID: "signed_by", Source: "contract_doc", Target: "party_doc", Adopted: true},
+					{ID: "contract_doc_evidence", Source: "contract_doc", Target: "source_document", Adopted: true},
+				},
+			}}
+
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, nil)
+
+			So(err, ShouldBeNil)
+			var body draftMessage
+			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
+			So(body.ObjectTypes, ShouldHaveLength, 2)
+			So(body.ObjectTypes[0].PrimaryKeys, ShouldBeEmpty)
+			So(body.ObjectTypes[0].Properties, ShouldResemble, []messageProperty{{Name: "contract_no", DisplayName: "Contract number", Type: "string"}})
+			So(body.ObjectTypes[1].PrimaryKeys, ShouldResemble, []string{"party_name"})
+			So(body.ObjectTypes[1].Properties, ShouldResemble, []messageProperty{{Name: "party_name", Type: "string"}})
+			So(body.RelationTypes, ShouldHaveLength, 1)
+			So(body.RelationTypes[0].ID, ShouldEqual, "signed_by")
+		})
+
 		Convey("Only adopted items go, with their descriptions: a candidate no one adopted is not the ontology\n", func() {
 			draft := testDraft()
 			draft.Items.ObjectTypes[0].Description = "What a customer orders"
