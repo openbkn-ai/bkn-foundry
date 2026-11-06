@@ -1,0 +1,132 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package interfaces
+
+// Concepts are what a project's sources hold, read from the draft and the requirement
+// specification each time they are listed: none is stored. A person's judgment of a concept, and
+// merging one concept into another, are stored as decisions of the draft (kind DRAFT_KIND_CONCEPTS,
+// item id the concept's key), so drafting again over them asks first and discarding drops them.
+const (
+	// DRAFT_KIND_CONCEPTS names decisions on concepts; their item id is the concept's key.
+	DRAFT_KIND_CONCEPTS = "concepts"
+
+	// DRAFT_DECISION_JUDGE sets what a concept is: After is the verdict, Reason why.
+	DRAFT_DECISION_JUDGE = "judge"
+	// DRAFT_DECISION_MERGE merges the concept into another: After is the other's key.
+	DRAFT_DECISION_MERGE = "merge"
+	// DRAFT_DECISION_UNMERGE takes a merged concept out again.
+	DRAFT_DECISION_UNMERGE = "unmerge"
+)
+
+// What a concept is judged to be.
+const (
+	CONCEPT_VERDICT_OBJECT   = "object"
+	CONCEPT_VERDICT_EVENT    = "event"
+	CONCEPT_VERDICT_PROPERTY = "property"
+	CONCEPT_VERDICT_VALUES   = "values"
+	CONCEPT_VERDICT_RELATION = "relation"
+	CONCEPT_VERDICT_KINETIC  = "kinetic"
+	CONCEPT_VERDICT_NONE     = "none"
+)
+
+// CONCEPT_VERDICTS are the verdicts a person may give.
+var CONCEPT_VERDICTS = []string{
+	CONCEPT_VERDICT_OBJECT, CONCEPT_VERDICT_EVENT, CONCEPT_VERDICT_PROPERTY, CONCEPT_VERDICT_VALUES,
+	CONCEPT_VERDICT_RELATION, CONCEPT_VERDICT_KINETIC, CONCEPT_VERDICT_NONE,
+}
+
+// Where a concept stands.
+const (
+	// CONCEPT_STATE_PENDING: no person judged it yet. It may already be in the model, as drafting
+	// adopted it; confirming the model then writes it as it is.
+	CONCEPT_STATE_PENDING = "pending"
+	// CONCEPT_STATE_IN_MODEL: judged, and the model item it is is adopted.
+	CONCEPT_STATE_IN_MODEL = "in_model"
+	// CONCEPT_STATE_BLOCKED: judged as a model item, which cannot be adopted yet; Blocked says why.
+	CONCEPT_STATE_BLOCKED = "blocked"
+	// CONCEPT_STATE_JUDGED: judged, and not a model item of the concept model: a property, a value
+	// list without its item, kinetic, or not included.
+	CONCEPT_STATE_JUDGED = "judged"
+)
+
+// Why a concept judged as a model item cannot be adopted yet.
+const (
+	CONCEPT_BLOCKED_NEEDS_IDENTITY  = "needs_identity"
+	CONCEPT_BLOCKED_END_NOT_ADOPTED = "end_not_adopted"
+	CONCEPT_BLOCKED_REPAIR          = "repair"
+)
+
+// Where a concept was found.
+const (
+	CONCEPT_SOURCE_TABLE       = "table"
+	CONCEPT_SOURCE_DOCUMENT    = "document"
+	CONCEPT_SOURCE_REQUIREMENT = "requirement"
+)
+
+// DraftConcepts lists a project's concepts: those of the draft's items, each with the
+// requirement concepts that are it, then the requirement concepts no item is. DraftUpdateTime is
+// zero without a ready draft; nothing can be judged then.
+type DraftConcepts struct {
+	ProjectID       string         `json:"project_id"`
+	DraftUpdateTime int64          `json:"draft_update_time"`
+	Concepts        []DraftConcept `json:"concepts"`
+	// Counts are the concepts in each state, and by verdict under "verdict:<verdict>".
+	Counts map[string]int `json:"counts"`
+}
+
+// DraftConcept is one concept. Item is the draft item it is, absent for a requirement concept no
+// item is. Suggested is what drafting or the specification says it is, Verdict what it is now: a
+// person's judgment, else the suggestion.
+type DraftConcept struct {
+	Key         string               `json:"key"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	Sources     []DraftConceptSource `json:"sources"`
+	Item        *DraftConceptItem    `json:"item,omitempty"`
+	Suggested   string               `json:"suggested"`
+	// SuggestedBecause is a code for why drafting suggested it, worded by the client.
+	SuggestedBecause string `json:"suggested_because,omitempty"`
+	Verdict          string `json:"verdict"`
+	// Reason is what the person gave with their judgment.
+	Reason  string       `json:"reason,omitempty"`
+	Judged  *DraftReview `json:"judged,omitempty"`
+	State   string       `json:"state"`
+	Blocked string       `json:"blocked,omitempty"`
+	// Merged are the keys of the concepts merged into this one; their sources are listed here.
+	Merged []string `json:"merged,omitempty"`
+}
+
+// DraftConceptSource is where a concept was found: a table, a document of a knowledge base, or a
+// requirement concept of the specification, with its citations' documents.
+type DraftConceptSource struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// DocumentIDs are the requirement documents a requirement concept cites.
+	DocumentIDs []string `json:"document_ids,omitempty"`
+}
+
+// DraftConceptItem is the draft item a concept is, and whether it is adopted.
+type DraftConceptItem struct {
+	Kind    string `json:"kind"`
+	ID      string `json:"id"`
+	Adopted bool   `json:"adopted"`
+}
+
+// DraftConceptJudge is the body of judging a concept, on the draft read.
+type DraftConceptJudge struct {
+	UpdateTime int64  `json:"update_time"`
+	Key        string `json:"key"`
+	Verdict    string `json:"verdict"`
+	Reason     string `json:"reason"`
+}
+
+// DraftConceptMerge is the body of merging a concept into another, or of taking it out again
+// (Into empty), on the draft read.
+type DraftConceptMerge struct {
+	UpdateTime int64  `json:"update_time"`
+	Key        string `json:"key"`
+	Into       string `json:"into"`
+}
