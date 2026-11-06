@@ -14,7 +14,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // The directories of a BKN package that confirming a draft writes; the rest of a branch is not
@@ -57,7 +56,7 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 // an alias may not be one of them either.
 func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*compiledDraft, error) {
 	var err error
-	items, err = documentExportItems(items)
+	items, err = documentHooks().ExportItems(items)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +94,7 @@ func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*comp
 		if !ot.Adopted {
 			continue
 		}
-		if kbconcept.EventParticipantsNeedRepair(*items, ot) {
+		if documentHooks().ObjectNeedsRepair(items, ot) {
 			return nil, fmt.Errorf("event %q has a participant relationship requiring repair", ot.ID)
 		}
 		if ot.Table.ResourceID == "" {

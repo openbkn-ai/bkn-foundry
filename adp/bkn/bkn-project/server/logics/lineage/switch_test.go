@@ -13,8 +13,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbrefresh"
 )
 
 func schedule(id, name, status string) *interfaces.ActionSchedule {
@@ -300,7 +302,8 @@ func TestSwitchWaitsForUncertainRefreshApplication(t *testing.T) {
 	}
 	releases.EXPECT().GetReleaseByNetworkID(gomock.Any(), target).Return(&interfaces.Release{LineageID: id, NetworkID: target}, true, nil)
 	releases.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(nil, false, nil)
-	service := &lineageService{gs: realGS, bba: backend, ra: releases, refresh: &switchRefreshJournal{}}
+	service := &lineageService{gs: realGS, bba: backend, ra: releases}
+	useHooks(t, projecthooks.Hooks{Lineages: kbrefresh.Hooks{Refreshes: &switchRefreshJournal{}}})
 	_, err := service.SwitchConsumers(context.Background(), token, id, interfaces.SwitchRequest{ToNetworkID: target}, interfaces.AccountInfo{ID: "owner", Type: "user"})
 	if err == nil {
 		t.Fatal("uncertain Dataset write lost its current target")

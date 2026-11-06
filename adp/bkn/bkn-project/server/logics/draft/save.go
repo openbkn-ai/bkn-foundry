@@ -32,30 +32,7 @@ func snapshot(ot *interfaces.DraftObjectType) interfaces.DraftObjectTypeSnapshot
 		PrimaryKeys: append([]string{}, ot.PrimaryKeys...),
 		DisplayKey:  ot.DisplayKey,
 	}
-	if ot.Document != nil {
-		if ot.Document.DualSource != nil {
-			plan := *ot.Document.DualSource
-			plan.State = ""
-			plan.Fields = slices.Clone(plan.Fields)
-			for index := range plan.Fields {
-				plan.Fields[index].EvidenceOrder = slices.Clone(plan.Fields[index].EvidenceOrder)
-			}
-			s.DualSource = &plan
-		}
-		s.Document = &interfaces.DraftDocumentSettings{TimeProperty: ot.Document.TimeProperty, ParticipantRelations: append([]string(nil), ot.Document.ParticipantRelations...)}
-		if proof := ot.Document.SentenceIdentity; proof != nil {
-			s.Document.SentenceIdentity = &interfaces.SentenceIdentityDecision{Properties: slices.Clone(proof.Properties), Confirm: proof.ConfirmedAt > 0 && proof.ConfirmedBy.ID != ""}
-		}
-		if proof := ot.Document.FactResolution; proof != nil {
-			s.Document.FactResolution = &interfaces.FactResolutionDecision{ValueProperty: proof.ValueProperty, SubjectRelationID: proof.SubjectRelationID, Confirm: proof.ConfirmedBy.ID != "" && proof.ConfirmedAt > 0}
-		}
-		if proof := ot.Document.FilePeriod; proof != nil {
-			s.Document.FilePeriod = &interfaces.FilePeriodDecision{From: proof.From, Until: proof.Until, Confirm: proof.ConfirmedAt > 0 && proof.ConfirmedBy.ID != ""}
-		}
-		if proof := ot.Document.FileIdentity; proof != nil {
-			s.Document.FileIdentity = &interfaces.FileIdentityDecision{Property: proof.Property, Confirm: proof.ConfirmedAt > 0 && proof.ConfirmedBy.ID != ""}
-		}
-	}
+	documentHooks().SnapshotObject(ot, &s)
 	for _, p := range ot.Properties {
 		s.Properties = append(s.Properties, interfaces.DraftPropertySnapshot{
 			Name: p.Name, DisplayName: p.DisplayName, Description: p.Description, Type: p.Type, MappedField: p.MappedField, Extraction: p.Extraction, ReadOnly: p.ReadOnly, SourceOfRecord: p.SourceOfRecord,
@@ -91,11 +68,8 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
-	if ot.Document == nil && save.Document != nil && save.Document.Derive != nil {
-		return nil, documentEditError(ctx)
-	}
-	if ot.Document != nil {
-		return s.saveDocumentObject(ctx, token, draft, ot, save, caller)
+	if saved, handled, err := documentHooks().SaveObject(ctx, draftHost{s}, token, draft, ot, save, caller); handled {
+		return saved, err
 	}
 
 	tables, err := s.va.GetTables(ctx, caller, []string{ot.Table.ResourceID})

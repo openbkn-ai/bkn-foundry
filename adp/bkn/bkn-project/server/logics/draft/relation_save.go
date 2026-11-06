@@ -59,12 +59,9 @@ func joinable(a string, b string) bool {
 }
 
 func relationSnapshot(rt *interfaces.DraftRelationType) interfaces.DraftRelationTypeSnapshot {
-	s := interfaces.DraftRelationTypeSnapshot{DocumentRepair: rt.DocumentRepair, Name: rt.Name, Source: rt.Source, Target: rt.Target, Mapping: rt.Mapping,
+	s := interfaces.DraftRelationTypeSnapshot{Name: rt.Name, Source: rt.Source, Target: rt.Target, Mapping: rt.Mapping,
 		SourceMapping: rt.SourceMapping, TargetMapping: rt.TargetMapping}
-	if rt.Document != nil {
-		s.DocumentMapping = rt.DocumentMapping
-		s.DocumentCardinality = rt.Cardinality
-	}
+	documentHooks().SnapshotRelation(rt, &s)
 	if rt.LinkTable != nil {
 		s.LinkTable = rt.LinkTable.ResourceID
 	}
@@ -263,8 +260,8 @@ func (s *draftService) CreateRelationType(ctx context.Context, token string, pro
 	}
 	rt := &interfaces.DraftRelationType{ID: id, Name: save.Name, Description: save.Comment,
 		Origin: interfaces.DRAFT_ORIGIN_MANUAL, Verification: "confirmed"}
-	if save.DocumentMapping != nil {
-		return s.createDocumentRelation(ctx, token, draft, rt, save, caller)
+	if saved, handled, err := documentHooks().CreateRelation(ctx, draftHost{s}, token, draft, rt, save, caller); handled {
+		return saved, err
 	}
 	for _, id := range []string{save.SourceObjectTypeID, save.TargetObjectTypeID} {
 		if object := findObjectType(&draft.Items, id); object != nil && object.Document != nil {
@@ -312,11 +309,8 @@ func (s *draftService) SaveRelationType(ctx context.Context, token string, proje
 		span.SetStatus(codes.Error, "Relation type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
-	if rt.Document != nil {
-		return s.saveDocumentRelation(ctx, token, draft, rt, save, caller)
-	}
-	if save.DocumentMapping != nil {
-		return nil, invalidRelation(ctx, map[string]any{"reason": relationNoMapping})
+	if saved, handled, err := documentHooks().SaveRelation(ctx, draftHost{s}, token, draft, rt, save, caller); handled {
+		return saved, err
 	}
 	for _, id := range []string{save.SourceObjectTypeID, save.TargetObjectTypeID} {
 		if object := findObjectType(&draft.Items, id); object != nil && object.Document != nil {
@@ -377,10 +371,8 @@ func (s *draftService) DeleteRelationType(ctx context.Context, token string, pro
 		span.SetStatus(codes.Error, "Not made by a person")
 		return nil, invalidRelation(ctx, map[string]any{"reason": relationNotManual, "relation": itemID})
 	}
-	for _, object := range draft.Items.ObjectTypes {
-		if object != nil && object.Document != nil && object.Document.Role == "event" && slices.Contains(object.Document.ParticipantRelations, itemID) {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_EventParticipantInUse)
-		}
+	if err := documentHooks().CheckRelationDelete(ctx, &draft.Items, itemID); err != nil {
+		return nil, err
 	}
 	draft.Items.RelationTypes = slices.Delete(slices.Clone(draft.Items.RelationTypes), at, at+1)
 	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: itemID,

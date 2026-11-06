@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbpublication"
@@ -96,7 +97,8 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 					return nil
 				},
 			}
-			svc := &lineageService{gs: realGS, bba: bba, ra: releases, newKnowledgePublication: func(interfaces.GitStore) knowledgePublication { return probe }}
+			svc := &lineageService{gs: realGS, bba: bba, ra: releases}
+			useHooks(t, projecthooks.Hooks{Publications: kbpublication.Hooks{Using: func(interfaces.GitStore) kbpublication.Publisher { return probe }}})
 			releases.EXPECT().GetReleaseByNetworkID(gomock.Any(), network).Return(nil, false, nil)
 			releases.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
 			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
@@ -158,4 +160,10 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			}
 		})
 	}
+}
+
+// useHooks registers the hooks given, for one test.
+func useHooks(t *testing.T, hooks projecthooks.Hooks) {
+	projecthooks.Register(hooks)
+	t.Cleanup(func() { projecthooks.Register(projecthooks.Hooks{}) })
 }
