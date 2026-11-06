@@ -251,8 +251,10 @@ func (server *Application) Run() {
 	defer cancel()
 
 	logger.Info("Server Start Shutdown")
+	// A request still open past the deadline (a long AI conversation) must not
+	// skip stopping the workers and closing the database.
 	if err := s.Shutdown(shutdownCtx); err != nil {
-		logger.Fatalf("Server Shutdown:%v", err)
+		logger.Warnf("Server Shutdown:%v", err)
 	}
 	stopWorkers()
 	if err := server.db.Close(); err != nil {
