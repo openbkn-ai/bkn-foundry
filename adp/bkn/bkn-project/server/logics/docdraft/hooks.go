@@ -492,8 +492,12 @@ func (Hooks) CheckAdoptRelation(ctx context.Context, items *interfaces.DraftItem
 	return nil
 }
 
-func (Hooks) ExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error) {
-	return documentExportItems(items)
+func (Hooks) ExportItems(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) (*interfaces.DraftItems, error) {
+	return documentExportItems(items, evidence)
+}
+
+func (hooks Hooks) ConfirmEvidence(ctx context.Context, h projecthooks.Host, draft *interfaces.Draft) (*interfaces.DraftEvidenceExport, error) {
+	return hooks.service(h).evidenceExport(ctx, draft)
 }
 
 func (Hooks) DefinitionRules(ctx context.Context, draft *interfaces.Draft, lineageAvailable bool) ([]byte, error) {

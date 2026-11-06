@@ -9,6 +9,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbdataset"
 )
 
-func documentExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error) {
-	return kbdataset.ExportItems(items)
+func documentExportItems(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) (*interfaces.DraftItems, error) {
+	return kbdataset.ExportItems(items, evidence)
 }

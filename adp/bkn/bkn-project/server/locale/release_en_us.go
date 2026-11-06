@@ -10,6 +10,7 @@ var releaseEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknProject.Release.SourcePermission":         "The publisher needs query access to all source knowledge bases and permission to configure the target network.",
+		"BknProject.Release.OriginalsChanged":         "Whether files include their original text changed after the model was confirmed. Confirm the model again before publishing.",
 		"BknProject.Release.KnowledgeBaseNotReady":    "Complete and review the full knowledge-base build for the current model before publishing.",
 		"BknProject.Release.KnowledgeBaseUnavailable": "Knowledge-base publication cannot be verified right now. Please try again later.",
 		"BknProject.Release.UnfinishedAttempt":        "Earlier Publish Unfinished. An earlier attempt to publish this version stopped before it was recorded, and the branch has changed since; publish it with a new version number, see error_details.",

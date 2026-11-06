@@ -36,7 +36,7 @@ func TestPreparedDocumentDefinitionsLoadWithStableIdentityAndEvidenceEdges(t *te
 				t.Fatal(err)
 			}
 			before, _ := json.Marshal(bound)
-			compiled, err := compileDraft(&bound.Items)
+			compiled, err := compileDraft(&bound.Items, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +105,7 @@ func TestDocumentExportRefusesUnpreparedOrConflictingIdentity(t *testing.T) {
 			case "editable":
 				property.ReadOnly = false
 			}
-			if _, err := documentExportItems(&interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{object}}); err == nil {
+			if _, err := documentExportItems(&interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{object}}, nil); err == nil {
 				t.Fatal("unverified mirror accepted")
 			}
 		})

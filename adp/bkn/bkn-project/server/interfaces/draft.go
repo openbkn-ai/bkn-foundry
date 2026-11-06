@@ -205,6 +205,17 @@ type DraftConfirmation struct {
 	// RequirementVersion is the n of the requirement specification rq-n the draft was confirmed
 	// against; 0 when the project had no ready specification.
 	RequirementVersion int `json:"requirement_version,omitempty"`
+	// Evidence is how the confirmation published the document evidence; absent for drafts without
+	// documents and for confirmations from before business objects left their technical columns
+	// out, which keep that projection.
+	Evidence *DraftEvidenceExport `json:"evidence,omitempty"`
+}
+
+// DraftEvidenceExport is how a confirmation published the document evidence.
+type DraftEvidenceExport struct {
+	// IncludeOriginal is whether a file of the selection included its original: only then are the
+	// original text and image types published.
+	IncludeOriginal bool `json:"include_original"`
 }
 
 // DraftLeftOutAlias is an alias a confirmation left out of an item's definition.

@@ -238,7 +238,7 @@ func Test_CompileLeftOutAliases(t *testing.T) {
 		accounts.Aliases = []string{"Clients", "Contracts"}
 		accounts.Properties[1].Aliases = []string{"Customer name"}
 
-		compiled, err := compileDraftBeside(&items, []string{"Contracts"})
+		compiled, err := compileDraftBeside(&items, nil, []string{"Contracts"})
 
 		So(err, ShouldBeNil)
 		So(compiled.LeftOutAliases, ShouldResemble, []interfaces.DraftLeftOutAlias{{

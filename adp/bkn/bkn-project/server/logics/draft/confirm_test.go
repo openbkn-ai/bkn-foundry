@@ -33,7 +33,7 @@ func confirmableDraft() *interfaces.Draft {
 }
 
 func compiledPaths() []string {
-	compiled, err := compileDraft(&confirmableDraft().Items)
+	compiled, err := compileDraft(&confirmableDraft().Items, nil)
 	So(err, ShouldBeNil)
 	paths := []string{}
 	for p := range compiled.Files {
@@ -133,7 +133,7 @@ func Test_ConfirmDraft(t *testing.T) {
 					_ interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
 					So(len(files), ShouldEqual, len(paths))
 					// The ids of what is written are locked before it is on the branch.
-					compiled, _ := compileDraft(&confirmableDraft().Items)
+					compiled, _ := compileDraft(&confirmableDraft().Items, nil)
 					So(ira.locked, ShouldResemble, compiled.IDKeys)
 					return &interfaces.CommitDefinitionsResult{Commit: "c1"}, nil
 				}).After(first)

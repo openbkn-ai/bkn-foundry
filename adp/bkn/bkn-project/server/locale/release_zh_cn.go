@@ -10,6 +10,7 @@ var releaseZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknProject.Release.SourcePermission":         "发布者需要全部来源知识库的查询权限，以及目标知识网络的配置权限。",
+		"BknProject.Release.OriginalsChanged":         "确认模型后，文件是否保留原文的设置已改，请重新确认模型再发布。",
 		"BknProject.Release.KnowledgeBaseNotReady":    "请先完成当前模型的知识库全量构建和结果核对，再发布。",
 		"BknProject.Release.KnowledgeBaseUnavailable": "暂时无法核对知识库发布条件，请稍后重试。",
 		"BknProject.Release.UnfinishedAttempt":        "上次发布未完成 这个版本号上次发布时没能完成记录，此后分支又有改动；请换一个新版本号发布，详见 error_details。",

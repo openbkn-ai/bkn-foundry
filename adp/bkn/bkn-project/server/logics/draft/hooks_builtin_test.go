@@ -56,6 +56,6 @@ func datasetPreparation(draft *interfaces.Draft, selection *interfaces.KBSelecti
 	return docdraft.DatasetPreparation(draft, selection)
 }
 
-func documentExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error) {
-	return documentHooks().ExportItems(items)
+func documentExportItems(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) (*interfaces.DraftItems, error) {
+	return documentHooks().ExportItems(items, evidence)
 }

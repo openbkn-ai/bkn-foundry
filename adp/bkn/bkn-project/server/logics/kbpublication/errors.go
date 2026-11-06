@@ -29,6 +29,9 @@ func PublicError(ctx context.Context, err error) error {
 	if errors.As(err, &backend) && (backend.HTTPCode == 401 || backend.HTTPCode == 403) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Release_SourcePermission)
 	}
+	if errors.Is(err, ErrOriginalsChanged) {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_OriginalsChanged)
+	}
 	if errors.Is(err, ErrInvalidSnapshot) || errors.Is(err, kb.ErrVersionGone) || errors.Is(err, kbinstance.ErrAcceptanceRequired) || errors.Is(err, kbinstance.ErrBuildChanged) || errors.Is(err, kbinstance.ErrInvalidBuild) {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_KnowledgeBaseNotReady)
 	}

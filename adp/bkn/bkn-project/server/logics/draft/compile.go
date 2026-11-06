@@ -51,15 +51,16 @@ func (c *compiledDraft) addIDKey(kind string, sourceKey string) {
 	}
 }
 
-func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
-	return compileDraftBeside(items, nil)
+// evidence says how the document evidence is published; nil keeps the earlier projection.
+func compileDraft(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) (*compiledDraft, error) {
+	return compileDraftBeside(items, evidence, nil)
 }
 
 // compileDraftBeside compiles the draft to go beside the object types of names the branch keeps:
 // an alias may not be one of them either.
-func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*compiledDraft, error) {
+func compileDraftBeside(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport, keptNames []string) (*compiledDraft, error) {
 	var err error
-	items, err = documentHooks().ExportItems(items)
+	items, err = documentHooks().ExportItems(items, evidence)
 	if err != nil {
 		return nil, err
 	}

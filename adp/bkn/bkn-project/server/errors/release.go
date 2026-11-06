@@ -26,11 +26,13 @@ const (
 
 	// 409
 	BknProject_Release_KnowledgeBaseNotReady = "BknProject.Release.KnowledgeBaseNotReady"
-	BknProject_Release_VersionExists         = "BknProject.Release.VersionExists"
-	BknProject_Release_BranchBehind          = "BknProject.Release.BranchBehind"
-	BknProject_Release_Drift                 = "BknProject.Release.Drift"
-	BknProject_Release_CapabilitiesSkipped   = "BknProject.Release.CapabilitiesSkipped"
-	BknProject_Release_NetworkExists         = "BknProject.Release.NetworkExists"
+	// Whether files include their originals changed after the model was confirmed.
+	BknProject_Release_OriginalsChanged    = "BknProject.Release.OriginalsChanged"
+	BknProject_Release_VersionExists       = "BknProject.Release.VersionExists"
+	BknProject_Release_BranchBehind        = "BknProject.Release.BranchBehind"
+	BknProject_Release_Drift               = "BknProject.Release.Drift"
+	BknProject_Release_CapabilitiesSkipped = "BknProject.Release.CapabilitiesSkipped"
+	BknProject_Release_NetworkExists       = "BknProject.Release.NetworkExists"
 	// An earlier attempt of the version left its tag at another branch head.
 	BknProject_Release_UnfinishedAttempt = "BknProject.Release.UnfinishedAttempt"
 	// A project's release.
@@ -55,6 +57,7 @@ var (
 	ReleaseErrCodeList = []string{
 		BknProject_Release_SourcePermission,
 		BknProject_Release_KnowledgeBaseNotReady,
+		BknProject_Release_OriginalsChanged,
 		BknProject_Release_KnowledgeBaseUnavailable,
 		BknProject_Release_InvalidVersion,
 		BknProject_Release_InvalidProjectID,
