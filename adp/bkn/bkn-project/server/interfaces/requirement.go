@@ -756,10 +756,13 @@ const (
 	REQUIREMENT_UPLOAD_REJECTED  = "rejected"
 )
 
-// RequirementUpload is one uploaded file: its name and bytes.
+// RequirementUpload is one uploaded file: its name and bytes. Format, markdown or text, is given for
+// text that comes from elsewhere than a file of its own, such as a file a knowledge base parsed;
+// empty, the name's extension says it.
 type RequirementUpload struct {
 	Name    string
 	Content []byte
+	Format  string
 }
 
 // RequirementUploadResult is what became of one uploaded file. DocumentID is the document
