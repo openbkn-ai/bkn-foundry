@@ -112,7 +112,9 @@ func keepForKinetic(spec *interfaces.RequirementSpec, discard bool) {
 
 // addLogicNeeds checks the kinetic needs the Agent proposed and adds those that pass to spec, with
 // the server's ids, from source; concepts maps the ids the Agent named concepts by to theirs. A need
-// repeating one of the same kind and name is merged into it. A need stated in the documents quotes
+// repeating one of the same kind and name, or naming its kept- id, is merged into it: it adds its
+// concepts, and its object types and properties when the need has none and no one changed it. A
+// need stated in the documents quotes
 // them; one the analysis adds may say why instead. Numbers in a definition must be in its quotes, a
 // Skill must be one the documents name, and object types and properties must be adopted ones.
 func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, source string,
@@ -146,13 +148,18 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 			continue
 		}
 		if i := slices.IndexFunc(spec.LogicNeeds, func(n *interfaces.RequirementLogicNeed) bool {
-			return n.Kind == p.Kind && sameText(n.Name, name)
+			return p.ID == keptPrefix+n.ID || n.Kind == p.Kind && sameText(n.Name, name)
 		}); i >= 0 {
 			kept := spec.LogicNeeds[i]
 			for _, c := range conceptIDsOf(p.ConceptIDs) {
 				if !slices.Contains(kept.ConceptIDs, c) {
 					kept.ConceptIDs = append(kept.ConceptIDs, c)
 				}
+			}
+			// A need the documents stated before there was a model is placed on it when the analysis
+			// gives it again; one a person changed stays as they left it.
+			if len(kept.ObjectTypeIDs) == 0 && !kept.Edited {
+				placeOnModel(kept, p, properties)
 			}
 			continue
 		}
@@ -179,28 +186,35 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 			ConceptIDs: conceptIDsOf(p.ConceptIDs), ScenarioIDs: []string{}, Citations: citations,
 			SupplementReason: p.SupplementReason, Source: source,
 		}
-		if p.Kind == interfaces.LOGIC_NEED_METRIC && slices.Contains(interfaces.LogicNeedMetricTypes, p.SuggestedMetricType) {
-			need.SuggestedMetricType = p.SuggestedMetricType
-		}
-		// Only adopted object types and their properties stand; a property names its object type too.
-		for _, id := range p.ObjectTypeIDs {
-			if properties[id] != nil && !slices.Contains(need.ObjectTypeIDs, id) {
-				need.ObjectTypeIDs = append(need.ObjectTypeIDs, id)
-			}
-		}
-		for _, ref := range p.Properties {
-			if !properties[ref.ObjectTypeID][ref.Property] {
-				continue
-			}
-			property := interfaces.RequirementPropertyRef{ObjectTypeID: ref.ObjectTypeID, Property: ref.Property}
-			if !slices.Contains(need.Properties, property) {
-				need.Properties = append(need.Properties, property)
-			}
-			if !slices.Contains(need.ObjectTypeIDs, ref.ObjectTypeID) {
-				need.ObjectTypeIDs = append(need.ObjectTypeIDs, ref.ObjectTypeID)
-			}
-		}
+		placeOnModel(need, p, properties)
 		spec.LogicNeeds = append(spec.LogicNeeds, need)
+	}
+}
+
+// placeOnModel gives a need the object types, properties and metric type the Agent proposed for it.
+// Only adopted object types and their properties stand, by properties of each adopted object type;
+// a property names its object type too.
+func placeOnModel(need *interfaces.RequirementLogicNeed, p agentLogicNeed, properties map[string]map[string]bool) {
+	if need.Kind == interfaces.LOGIC_NEED_METRIC && need.SuggestedMetricType == "" &&
+		slices.Contains(interfaces.LogicNeedMetricTypes, p.SuggestedMetricType) {
+		need.SuggestedMetricType = p.SuggestedMetricType
+	}
+	for _, id := range p.ObjectTypeIDs {
+		if properties[id] != nil && !slices.Contains(need.ObjectTypeIDs, id) {
+			need.ObjectTypeIDs = append(need.ObjectTypeIDs, id)
+		}
+	}
+	for _, ref := range p.Properties {
+		if !properties[ref.ObjectTypeID][ref.Property] {
+			continue
+		}
+		property := interfaces.RequirementPropertyRef{ObjectTypeID: ref.ObjectTypeID, Property: ref.Property}
+		if !slices.Contains(need.Properties, property) {
+			need.Properties = append(need.Properties, property)
+		}
+		if !slices.Contains(need.ObjectTypeIDs, ref.ObjectTypeID) {
+			need.ObjectTypeIDs = append(need.ObjectTypeIDs, ref.ObjectTypeID)
+		}
 	}
 }
 

@@ -128,6 +128,37 @@ func Test_AddLogicNeeds(t *testing.T) {
 			So(spec.LogicNeeds[1].Kind, ShouldEqual, interfaces.LOGIC_NEED_FUNCTION)
 			So(rejected, ShouldResemble, []string{fmt.Sprintf("logic_need api %d %s", maxRunLogicNeeds-1, rejectedTooMany)})
 		})
+
+		Convey("Given again, a stated need without object types is placed on the model; one a person changed stays\n", func() {
+			spec := emptySpec()
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", ObjectTypeIDs: []string{},
+					Properties: []interfaces.RequirementPropertyRef{}, Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS},
+				{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Overrun", ObjectTypeIDs: []string{},
+					Properties: []interfaces.RequirementPropertyRef{}, Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS, Edited: true},
+				{ID: "n3", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Placed", ObjectTypeIDs: []string{"customer"},
+					Properties: []interfaces.RequirementPropertyRef{}, Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS},
+			}
+			proposed := []agentLogicNeed{
+				// By its kept- id, even renamed.
+				{ID: "kept-n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Lateness rate", ObjectTypeIDs: []string{"sales_order", "carrier"},
+					Properties: []agentPropertyRef{{ObjectTypeID: "sales_order", Property: "agreed_on"}}, SuggestedMetricType: "derived"},
+				{Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Overrun", ObjectTypeIDs: []string{"sales_order"}},
+				{Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Placed", ObjectTypeIDs: []string{"sales_order"}},
+			}
+
+			addLogicNeeds(spec, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS, docs, draft, concepts, reject)
+
+			So(spec.LogicNeeds, ShouldHaveLength, 3)
+			n1 := spec.LogicNeeds[0]
+			So(n1.Name, ShouldEqual, "Late rate")
+			So(n1.ObjectTypeIDs, ShouldResemble, []string{"sales_order"})
+			So(n1.Properties, ShouldResemble, []interfaces.RequirementPropertyRef{{ObjectTypeID: "sales_order", Property: "agreed_on"}})
+			So(n1.SuggestedMetricType, ShouldEqual, "derived")
+			So(n1.Source, ShouldEqual, interfaces.LOGIC_NEED_FROM_DOCUMENTS)
+			So(spec.LogicNeeds[1].ObjectTypeIDs, ShouldBeEmpty)
+			So(spec.LogicNeeds[2].ObjectTypeIDs, ShouldResemble, []string{"customer"})
+		})
 	})
 }
 
