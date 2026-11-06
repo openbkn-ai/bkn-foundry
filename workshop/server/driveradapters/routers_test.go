@@ -68,17 +68,22 @@ func TestRequireEditionMatchesAnUnmountedRoute(t *testing.T) {
 	t.Cleanup(entitlement.ResetForTest)
 
 	gated := gin.New()
+	RegisterBase(gated, fakePinger{})
 	group := gated.Group(PublicPrefix, RequireEdition(licverify.EditionProfessional), rest.PrivateNoCacheMiddleware())
 	group.GET("/apps", func(c *gin.Context) { c.String(http.StatusOK, "apps") })
 	community := gin.New()
+	RegisterBase(community, fakePinger{})
 
-	got := serve(gated, PublicPrefix+"/apps")
-	want := serve(community, PublicPrefix+"/apps")
-	if got.Code != want.Code || got.Body.String() != want.Body.String() ||
-		got.Header().Get("Content-Type") != want.Header().Get("Content-Type") ||
-		got.Header().Get("Cache-Control") != "" {
-		t.Fatalf("gated route = %d %q %v, want %d %q %v", got.Code, got.Body.String(), got.Header(),
-			want.Code, want.Body.String(), want.Header())
+	// With a trailing slash the router would redirect before the gate runs.
+	for _, path := range []string{PublicPrefix + "/apps", PublicPrefix + "/apps/"} {
+		got := serve(gated, path)
+		want := serve(community, path)
+		if got.Code != want.Code || got.Body.String() != want.Body.String() ||
+			got.Header().Get("Content-Type") != want.Header().Get("Content-Type") ||
+			got.Header().Get("Location") != "" || got.Header().Get("Cache-Control") != "" {
+			t.Fatalf("gated %s = %d %q %v, want %d %q %v", path, got.Code, got.Body.String(), got.Header(),
+				want.Code, want.Body.String(), want.Header())
+		}
 	}
 
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))

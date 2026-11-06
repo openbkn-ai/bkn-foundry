@@ -45,6 +45,9 @@ type Pinger interface {
 // RegisterBase installs the shared middleware and the probes. Run calls it
 // before any extension's routes, so every route gets the same middleware.
 func RegisterBase(engine *gin.Engine, db Pinger) {
+	// The router redirects a trailing slash before any route middleware runs,
+	// so an extension's edition gate could not hide a route it covers.
+	engine.RedirectTrailingSlash = false
 	engine.Use(accessLog())
 	engine.Use(middleware.TracingMiddleware())
 	engine.Use(rest.LanguageMiddleware())
