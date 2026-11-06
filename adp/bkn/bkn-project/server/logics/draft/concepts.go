@@ -546,3 +546,21 @@ func (s *draftService) writeConceptDecisions(ctx context.Context, draft *interfa
 	decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, document *interfaces.DraftDocumentModel) error {
 	return s.commitItem(ctx, draft, decisions, caller, document)
 }
+
+// documentSources are the files the citations of a document item name, each once; a concept read
+// from documents without a citation still says it came from documents.
+func documentSources(document *interfaces.DraftDocumentModel) []interfaces.DraftConceptSource {
+	sources := []interfaces.DraftConceptSource{}
+	seen := map[string]bool{}
+	for _, citation := range document.Citations {
+		if seen[citation.FileID] {
+			continue
+		}
+		seen[citation.FileID] = true
+		sources = append(sources, interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT, ID: citation.FileID})
+	}
+	if len(sources) == 0 {
+		sources = append(sources, interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT})
+	}
+	return sources
+}
