@@ -95,13 +95,14 @@ func reviews(items *interfaces.DraftItems) (map[string]*interfaces.DraftReview, 
 func unreviewed(items *interfaces.DraftItems) int {
 	reviewed, _ := reviews(items)
 	n := 0
+	// Evidence follows its business items: no person reviews it.
 	for _, ot := range items.ObjectTypes {
-		if reviewed[itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)] == nil {
+		if reviewed[itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)] == nil && !isEvidence(ot.Document) {
 			n++
 		}
 	}
 	for _, rt := range items.RelationTypes {
-		if reviewed[itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)] == nil {
+		if reviewed[itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)] == nil && !isEvidence(rt.Document) {
 			n++
 		}
 	}

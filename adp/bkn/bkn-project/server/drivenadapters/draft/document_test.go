@@ -111,3 +111,10 @@ func TestDocumentCandidatesCannotBeSilentlyDiscardedByTableRedrafting(t *testing
 		t.Fatal("table-only reset behavior changed")
 	}
 }
+
+func TestConceptJudgmentsAreKeptFromSilentRedrafting(t *testing.T) {
+	// Judging or merging a concept is a person's decision: drafting again asks before dropping it.
+	if !hasDecisions(`{"object_types":[],"decisions":[{"kind":"concepts","item_id":"requirement_concepts/k1","action":"judge"}]}`) {
+		t.Fatal("a concept judgment was not protected by explicit discard confirmation")
+	}
+}

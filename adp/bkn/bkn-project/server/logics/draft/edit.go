@@ -433,6 +433,10 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 	if kind == interfaces.DRAFT_KIND_OBJECT_TYPES && edit.Adopted != nil && *edit.Adopted {
 		decisions = append(decisions, regateRelations(s.setting, &draft.Items, itemID)...)
 	}
+	if edit.Adopted != nil {
+		// Evidence goes in and out with the business items that need it.
+		decisions = append(decisions, followEvidence(&draft.Items)...)
+	}
 	for _, d := range decisions {
 		if d.Action == interfaces.DRAFT_DECISION_INCREMENTAL && d.After != "" {
 			if err := s.checkIncrementalField(ctx, findObjectType(&draft.Items, itemID), caller); err != nil {

@@ -42,6 +42,15 @@ type DraftService interface {
 	// DeleteRelationType deletes a relation type a person made; drafted ones are left out instead.
 	DeleteRelationType(ctx context.Context, token string, projectID string, itemID string, updateTime int64,
 		caller AccountInfo) (*Draft, error)
+	// GetConcepts projects the project's concepts from its draft and requirement specification,
+	// with the judgments and merges people made.
+	GetConcepts(ctx context.Context, token string, projectID string) (*DraftConcepts, error)
+	// JudgeConcept records what a concept is and adopts its draft item, or leaves it out, to match.
+	JudgeConcept(ctx context.Context, token string, projectID string, req DraftConceptJudge,
+		caller AccountInfo) (*DraftConcepts, error)
+	// MergeConcept merges a concept into another, or takes it out again.
+	MergeConcept(ctx context.Context, token string, projectID string, req DraftConceptMerge,
+		caller AccountInfo) (*DraftConcepts, error)
 	// GetCandidates lists the draft's object types and relation types as candidates, those the ready
 	// requirement specification needs first, optionally of the catalog that added them.
 	GetCandidates(ctx context.Context, token string, projectID string, catalogID string) (*DraftCandidates, error)
