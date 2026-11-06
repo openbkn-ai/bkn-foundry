@@ -151,6 +151,19 @@ func publishEvidence(items *interfaces.DraftItems, aliases map[string]string, op
 	}
 	items.ObjectTypes = append(items.ObjectTypes, sources.objects...)
 	items.RelationTypes = append(items.RelationTypes, sources.relations...)
+	// The compiler leaves out a relation with an end not adopted; so does the projection, so that
+	// what reads it, such as the published bindings check, expects only what was compiled.
+	compiled := map[string]bool{}
+	for _, object := range items.ObjectTypes {
+		if object != nil && object.Adopted {
+			compiled[object.ID] = true
+		}
+	}
+	for _, relation := range items.RelationTypes {
+		if relation != nil && relation.Adopted && (!compiled[relation.Source] || !compiled[relation.Target]) {
+			relation.Adopted = false
+		}
+	}
 	// A column a compiled relation maps, a key or the display key stays declared.
 	used := map[string]map[string]bool{}
 	use := func(object, property string) {

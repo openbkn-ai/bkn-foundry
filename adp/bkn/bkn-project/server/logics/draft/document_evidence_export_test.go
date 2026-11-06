@@ -276,3 +276,32 @@ func TestConfirmingPublishesOriginalsByTheCurrentSelection(t *testing.T) {
 		t.Fatal("a table-only draft got a document projection")
 	}
 }
+
+// What reads the projection, such as the published bindings check, must expect only what the
+// compiler wrote: no relation with an end left out.
+func TestProjectionLeavesOutRelationsOfTypesNotPublished(t *testing.T) {
+	for _, originals := range []bool{false, true} {
+		d := boundEvidenceDraft(t, evidenceDomains[0])
+		projected, err := kbdataset.ExportItems(&d.Items, &interfaces.DraftEvidenceExport{IncludeOriginal: originals})
+		if err != nil {
+			t.Fatal(err)
+		}
+		network := compiledNetwork(t, d, &interfaces.DraftEvidenceExport{IncludeOriginal: originals})
+		compiled := map[string]bool{}
+		for _, r := range network.RelationTypes {
+			compiled[r.ID] = true
+		}
+		adopted := 0
+		for _, r := range projected.RelationTypes {
+			if r.Adopted {
+				adopted++
+				if !compiled[r.ID] {
+					t.Fatalf("originals=%v: projection keeps %s, which is not compiled", originals, r.ID)
+				}
+			}
+		}
+		if adopted != len(network.RelationTypes) {
+			t.Fatalf("originals=%v: %d adopted, %d compiled", originals, adopted, len(network.RelationTypes))
+		}
+	}
+}
