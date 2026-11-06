@@ -84,6 +84,10 @@ type BknAgentTask struct {
 	FailureDetail string `json:"failure_detail"`
 	CreateTime    int64  `json:"create_time"`
 	UpdateTime    int64  `json:"update_time"`
+	// InputTokens and OutputTokens are what the task's model calls reported spending; nil when
+	// none reported usage, never 0 for unknown.
+	InputTokens  *int64 `json:"input_tokens,omitempty"`
+	OutputTokens *int64 `json:"output_tokens,omitempty"`
 }
 
 // Terminal tells whether the task has finished.
