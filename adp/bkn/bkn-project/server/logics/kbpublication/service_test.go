@@ -118,3 +118,30 @@ func TestPublicationReviewSignatureTracksAcknowledgedExecution(t *testing.T) {
 		t.Fatal("base review was not bound")
 	}
 }
+
+func TestInspectRefusesOriginalsChangedSinceConfirmation(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		draft := frozenFixture(t)
+		owner := draft.Items.DatasetPlans[0].Owner
+		draft.Items.Confirmation.Evidence = &interfaces.DraftEvidenceExport{IncludeOriginal: confirmed}
+		rules, err := Definition(draft.Items)
+		if err != nil {
+			t.Fatal(err)
+		}
+		source := &publicationSource{}
+		selection := &interfaces.KBSelection{ID: "private-selection", ProjectID: "p", Owner: owner, State: "active", Revision: 1, Ranges: []interfaces.KBSourceRange{{KnowledgeBaseID: "1", IncludeOriginal: !confirmed}}}
+		service := &Service{Git: &publicationGit{rules: rules}, Projects: &publicationProject{value: &interfaces.Project{ID: "p", KNID: "lineage", Branch: "project/p", Owner: owner}}, Drafts: &publicationDraft{value: draft}, Selections: &publicationSelection{value: selection}, Source: source}
+		target := Target{ProjectID: "p", LineageID: "lineage", Branch: "project/p", BranchCommit: "head", NetworkID: "lineage_1_0_0", Publisher: owner}
+		if _, err := service.Inspect(context.Background(), "Bearer publisher", target); !errors.Is(err, ErrOriginalsChanged) {
+			t.Fatalf("confirmed=%v: err = %v", confirmed, err)
+		}
+		if source.reads != 0 {
+			t.Fatal("checked sources after a known mismatch")
+		}
+		// The same setting goes on to the usual checks.
+		selection.Ranges[0].IncludeOriginal = confirmed
+		if _, err := service.Inspect(context.Background(), "Bearer publisher", target); errors.Is(err, ErrOriginalsChanged) {
+			t.Fatal("matching setting refused")
+		}
+	}
+}

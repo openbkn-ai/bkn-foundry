@@ -419,6 +419,23 @@ exists. Original blocks and images are materialized only when the source enables
 original-text retrieval. This preparation feature does not complete a background instance coordinator,
 reconciliation or publication.
 
+The published network carries what agents use; the Datasets and the editable model
+keep every column. Confirming compiles business objects (fused, per-file,
+in-document, facts and events) without the technical columns the build writes
+(`entity_id`, `document_id`, `content_version_id`, `block_id`, quote offsets and
+text, extraction and model versions), except a column a relation, key or display
+key uses; a fused object keeps `bkn_record_id` to reach its sources. Evidence types
+leave out only the build versions. Each fused object gets a source record type,
+"{object} source records", bound to its existing link Dataset to the source
+document: one row per value a file gave for one property (`property_name`,
+`claim_value`, file, block and quote). The object reaches its records, each record
+its file, and its block when originals are included; the fused object's
+many-to-many evidence relations are not compiled. Block, image and image-resource
+types and their relations are published only when a file of the selection includes
+its original, and image references are never published. The confirmation records
+that setting; releasing after it changed asks to confirm again. Networks published
+before keep their definitions.
+
 
 ### Dual-source identity and field authority
 

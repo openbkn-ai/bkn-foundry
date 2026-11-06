@@ -20,7 +20,7 @@ func TestBlockedRelationCannotBeAdoptedOrCompiledEvenWithForgedAdoption(t *testi
 			t.Fatal("blocked relation adopted")
 		}
 		relation.Adopted = true
-		if _, err := compileDraft(items); err == nil {
+		if _, err := compileDraft(items, nil); err == nil {
 			t.Fatal("forged adopted relation compiled")
 		}
 	}
@@ -38,7 +38,7 @@ func TestEventCannotBypassBlockedParticipantByLeavingItsRelationUnadopted(t *tes
 		t.Fatal("event bypassed blocked participant")
 	}
 	event.Adopted = true
-	if _, err := compileDraft(items); err == nil {
+	if _, err := compileDraft(items, nil); err == nil {
 		t.Fatal("forged event bypassed blocked participant")
 	}
 }

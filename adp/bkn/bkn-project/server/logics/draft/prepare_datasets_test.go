@@ -222,7 +222,7 @@ func TestCompleteEvidenceGraphCompilesWithResourceAndOccurrenceDatasets(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compileDraft(&bound.Items); err != nil {
+	if _, err := compileDraft(&bound.Items, nil); err != nil {
 		t.Fatal(err)
 	}
 	if evidence.MediaID == evidence.ImageID {

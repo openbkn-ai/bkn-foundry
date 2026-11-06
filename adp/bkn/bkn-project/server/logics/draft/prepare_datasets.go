@@ -30,6 +30,25 @@ func datasetNotReady(ctx context.Context, status int) error {
 	return httperrors.NewHTTPError(ctx, status, perrors.BknProject_Draft_DocumentDataNotReady)
 }
 
+// evidenceExport is how confirming the draft now publishes its document evidence, from the
+// project's current source selection; nil for a draft without adopted documents.
+func (s *draftService) evidenceExport(ctx context.Context, draft *interfaces.Draft) (*interfaces.DraftEvidenceExport, error) {
+	if !adoptedDocuments(draft) {
+		return nil, nil
+	}
+	if s.kbResources == nil {
+		return nil, datasetNotReady(ctx, http.StatusServiceUnavailable)
+	}
+	state, err := s.kbResources.Read(ctx, draft.ProjectID)
+	if err != nil {
+		return nil, datasetNotReady(ctx, http.StatusServiceUnavailable)
+	}
+	if state == nil || state.Current == nil {
+		return nil, datasetNotReady(ctx, http.StatusConflict)
+	}
+	return kbdataset.EvidenceExport(state.Current), nil
+}
+
 // prepareDocumentDatasets uses the same project/source/draft transaction as
 // candidate adoption. Process metadata is durable before resource creation;
 // no token, source text or instance rows are added to the journal.
@@ -134,7 +153,7 @@ func (s *draftService) prepareDocumentDatasets(ctx context.Context, token string
 	if err != nil {
 		return nil, datasetNotReady(ctx, http.StatusConflict)
 	}
-	if _, err = compileDraft(&preview.Items); err != nil {
+	if _, err = compileDraft(&preview.Items, kbdataset.EvidenceExport(&selection)); err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem)
 	}
 	currentAt := draft.UpdateTime

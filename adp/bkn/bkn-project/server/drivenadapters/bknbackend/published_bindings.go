@@ -90,7 +90,11 @@ func (bba *bknBackendAccess) CheckPublishedBindings(ctx context.Context, record 
 	}
 	// The published BKN uses the same prepared identity mirrors as the compiler.
 	// Compare that projection without changing the logical execution model.
-	items, err := kbdataset.ExportItems(&draft.Items)
+	var evidence *interfaces.DraftEvidenceExport
+	if draft.Items.Confirmation != nil {
+		evidence = draft.Items.Confirmation.Evidence
+	}
+	items, err := kbdataset.ExportItems(&draft.Items, evidence)
 	if err != nil {
 		return kb.ErrPublishedBindingsChanged
 	}

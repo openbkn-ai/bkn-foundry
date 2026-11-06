@@ -156,6 +156,9 @@ func (s *Service) Inspect(ctx context.Context, token string, target Target) (*Pl
 		return nil, ErrInvalidSnapshot
 	}
 	selection := state.Current
+	if confirmed := draft.Items.Confirmation.Evidence; confirmed != nil && *confirmed != *kbdataset.EvidenceExport(selection) {
+		return nil, ErrOriginalsChanged
+	}
 	guard := func(check context.Context) error { return s.scope(check, token, target, draft, selection) }
 	if err := guard(ctx); err != nil {
 		return nil, err

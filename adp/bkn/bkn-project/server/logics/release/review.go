@@ -206,6 +206,8 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 					reason = "knowledge_base_permission"
 				case perrors.BknProject_Release_KnowledgeBaseNotReady:
 					reason = "knowledge_base_not_ready"
+				case perrors.BknProject_Release_OriginalsChanged:
+					reason = "knowledge_base_originals_changed"
 				}
 			}
 		}

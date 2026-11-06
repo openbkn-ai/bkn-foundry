@@ -25,6 +25,10 @@ const maxSnapshotBytes = 32 << 20
 
 var ErrInvalidSnapshot = errors.New("invalid published knowledge-base model")
 
+// ErrOriginalsChanged is a selection whose files include their originals otherwise than when the
+// model was confirmed: the confirmed definitions publish the original types for the other case.
+var ErrOriginalsChanged = errors.New("original inclusion changed since confirmation")
+
 // Bundle.Runtime belongs in an immutable owned Dataset row, never Git or a
 // process table. Process storage keeps only its resource/row identity and hashes.
 type Bundle struct {
