@@ -3379,6 +3379,26 @@ components:
           - type: string
           - type: 'null'
           title: Model Id
+        input_tokens:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Input Tokens
+        output_tokens:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Output Tokens
+        model_calls:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Model Calls
+        unmetered_calls:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Unmetered Calls
         status:
           type: string
           enum:
