@@ -265,6 +265,33 @@
       ]
     },
     {
+      "id": "workshop_app",
+      "name": "Workshop 应用",
+      "_source": "workshop (openbkn-ee)",
+      "_note": "专业版 Workshop 应用的授权根，只做到应用级。create 是整类的新建资格，不要求 view。应用内的事件、任务与 AI 对话跟随所属应用授权。读写应用数据仍以用户身份经平台校验知识网络权限。",
+      "operations": [
+        {"id": "view", "name": "查看", "description": "查看应用及其已发布版本。"},
+        {"id": "create", "name": "新建", "description": "新建应用；同时需要对应用所用知识网络具有查看权限。"},
+        {"id": "use", "name": "使用", "description": "在运行页使用应用：登记与核实事件、处理任务；需要同时具有查看应用权限。", "requires": ["view"]},
+        {"id": "modify", "name": "修改", "description": "修改应用信息与草稿，使用构建器 AI 对话；需要同时具有查看应用权限。", "requires": ["view"]},
+        {"id": "publish", "name": "发布", "description": "发布应用的新版本；需要同时具有修改应用权限。", "requires": ["modify"]},
+        {"id": "delete", "name": "删除", "description": "删除应用及其版本与任务（事件属于知识网络，不随应用删除）；需要同时具有修改应用权限。", "requires": ["modify"]},
+        {"id": "authorize", "name": "授权", "description": "配置应用的访问权限；需要同时具有查看应用权限。", "requires": ["view"]}
+      ]
+    },
+    {
+      "id": "graph_analysis",
+      "name": "图分析",
+      "_source": "workshop (openbkn-ee)",
+      "_note": "图探索分析画布的授权根，只做到分析级。分析的卡片查询仍以用户身份经平台校验知识网络权限。",
+      "operations": [
+        {"id": "view", "name": "查看", "description": "查看分析的卡片、连线、页面与 AI 对话。"},
+        {"id": "modify", "name": "修改", "description": "修改分析的卡片、连线、页面，并向 AI 提问；需要同时具有查看分析权限。", "requires": ["view"]},
+        {"id": "delete", "name": "删除", "description": "删除分析；需要同时具有修改分析权限。", "requires": ["modify"]},
+        {"id": "authorize", "name": "授权", "description": "配置分析的访问权限；需要同时具有查看分析权限。", "requires": ["view"]}
+      ]
+    },
+    {
       "id": "knowledge_network",
       "name": "知识网络",
       "_source": "bkn",
