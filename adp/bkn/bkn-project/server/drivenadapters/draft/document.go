@@ -12,8 +12,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
-func (da *draftAccess) CommitDocumentDraft(ctx context.Context, draft *interfaces.Draft, guard interfaces.DocumentDraftGuard) (bool, error) {
-	if draft == nil || draft.ProjectID == "" || draft.Status != interfaces.DRAFT_STATUS_READY || guard.Owner.ID == "" || guard.Owner.Type == "" || guard.SelectionID == "" || guard.SelectionRevision < 1 || draft.UpdateTime <= guard.DraftUpdateTime {
+// CommitDraftGuarded writes the draft only if the project, the draft and what lock checks are as
+// the caller read them, all in one transaction.
+func (da *draftAccess) CommitDraftGuarded(ctx context.Context, draft *interfaces.Draft, guard interfaces.DraftGuard, lock interfaces.DraftLock) (bool, error) {
+	if draft == nil || draft.ProjectID == "" || draft.Status != interfaces.DRAFT_STATUS_READY || guard.Owner.ID == "" || guard.Owner.Type == "" || lock == nil || draft.UpdateTime <= guard.DraftUpdateTime {
 		return false, nil
 	}
 	items, err := json.Marshal(draft.Items)
@@ -39,17 +41,8 @@ func (da *draftAccess) CommitDocumentDraft(ctx context.Context, draft *interface
 	if archived || owner != guard.Owner {
 		return false, nil
 	}
-	var state string
-	var revision int64
-	err = tx.QueryRowContext(ctx, "SELECT f_state,f_revision FROM t_bkn_project_kb_selection WHERE f_project_id=? AND f_id=? AND f_current=1 FOR UPDATE", draft.ProjectID, guard.SelectionID).Scan(&state, &revision)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
+	if locked, err := lock(ctx, tx); err != nil || !locked {
 		return false, err
-	}
-	if state != "active" || revision != guard.SelectionRevision {
-		return false, nil
 	}
 	var status string
 	var at int64
@@ -75,4 +68,4 @@ func (da *draftAccess) CommitDocumentDraft(ctx context.Context, draft *interface
 	return true, nil
 }
 
-var _ interfaces.DocumentDraftAccess = (*draftAccess)(nil)
+var _ interfaces.GuardedDraftAccess = (*draftAccess)(nil)

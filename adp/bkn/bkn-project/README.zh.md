@@ -158,6 +158,23 @@ Dataset 写入与实例构建留到 K3/K4。概念提议复用现有草稿类型
 确认流程，扩展不保存草稿。`source_quote` 跨层列始终存在，目录未开启原文检索时留空；
 原文块、图片行也只在开关开启时写入。
 
+### 版本扩展钩子
+
+`server/extension/projecthooks` 是版本给项目增加表以外数据来源的契约，只依赖
+`interfaces`，改它就是改与专业版的契约。`Register` 在开始服务前一次设置四组钩子，
+未设置的组保持社区版行为：
+
+- `Drafts`：文档条目对草稿的读取、保存、问 AI、确认和导出；草稿服务经 `Host`
+  回调。社区默认不认领任何条目，草稿含文档条目时按来源不可达拒绝。
+- `Publications`：发布审查增加的检查；发布时的准备、导入后挂载、记录后激活。
+- `Lineages`：数据仍在写入时拒绝切换使用中的网络。
+- `Projects`：归档事务内的一步，以及提交后的后续处理。
+
+自带知识库的版本在装配时调用 `Application.DisableBuiltinKnowledgeBase()`，注册自己的
+钩子，用 `Application.AddWorker` 加后台任务，用 `Application.DB()` 打开存储；否则
+`Run` 用同一组钩子注册核心里现有的知识库。扩展路由在 `knowledge_base` 能力已授权且
+版本安装了路由时生效。版本增加的处理器共用 `server/driveradapters/httpx`。
+
 ## 本地开发
 
 ```bash

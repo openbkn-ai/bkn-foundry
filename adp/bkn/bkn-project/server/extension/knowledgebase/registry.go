@@ -7,8 +7,6 @@
 package knowledgebase
 
 import (
-	"net/http"
-
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement/socket"
 	"github.com/openbkn-ai/licverify"
@@ -103,24 +101,6 @@ func MissingProviders() []string {
 		}
 	}
 	return missing
-}
-
-// Gate selects between complete routers before route matching, including method
-// handling and canonical-path redirects. The extended router must contain the
-// community routes too. An unlicensed build therefore leaks no extension route
-// through a redirect, Allow header or a different not-found response.
-// Authentication and project/source authorization remain required in handlers.
-func Gate(extended, community http.Handler) http.Handler {
-	if extended == nil || community == nil {
-		panic("knowledgebase: both routers are required")
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, available := Lookup(); available {
-			extended.ServeHTTP(w, r)
-			return
-		}
-		community.ServeHTTP(w, r)
-	})
 }
 
 // ResetForTest is guarded by socket's test-binary check.

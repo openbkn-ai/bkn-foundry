@@ -113,7 +113,8 @@ func preparedDraftFixture(t *testing.T) (*draftService, *datasetDraftAccess, *da
 	source := &datasetSource{allowed: true}
 	storage := &datasetProvisioner{}
 	kb.Register(kb.Providers{Source: source, Concepts: kb.UnavailableConcepts{}, Datasets: storage})
-	service := &draftService{da: access, kbResources: &datasetSelectionAccess{state: &interfaces.KBResourceState{Current: selection}}, ps: &datasetProjectAccess{entry: entry}}
+	service := &draftService{da: access, ps: &datasetProjectAccess{entry: entry}}
+	useDocumentResources(t, &datasetSelectionAccess{state: &interfaces.KBResourceState{Current: selection}})
 	return service, access, source, storage, entry
 }
 

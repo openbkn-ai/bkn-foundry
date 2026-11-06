@@ -15,10 +15,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters/httpx"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
-	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	kbservice "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbresource"
 )
 
 // Projects. A project is visible to callers who can see its network in
@@ -56,9 +56,7 @@ func (r *restHandler) ProjectActionByEx(c *gin.Context) {
 	r.withExVisitor(c, func(c *gin.Context, visitor hydra.Visitor) { r.SetProjectArchived(c, visitor, id, archived) })
 }
 
-func visitorAccount(visitor hydra.Visitor) interfaces.AccountInfo {
-	return interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
-}
+func visitorAccount(visitor hydra.Visitor) interfaces.AccountInfo { return httpx.Account(visitor) }
 
 // CreateProject serves POST /projects with {"name", "kn_id" | "new_kn", "catalog_ids"}.
 func (r *restHandler) CreateProject(c *gin.Context, visitor hydra.Visitor) {
@@ -130,12 +128,8 @@ func (r *restHandler) SetProjectArchived(c *gin.Context, visitor hydra.Visitor, 
 		replyError(c, span, err)
 		return
 	}
-	if archived && r.kbra != nil {
-		if providers, available := kb.Lookup(); available {
-			// The archive transaction already queued cleanup. A failed RPC remains
-			// retryable and must not turn a committed archive into a failed action.
-			_, _ = kbservice.NewService(r.ps, r.kbra, providers.Source).Cleanup(ctx, visitor.TokenID, id, visitorAccount(visitor))
-		}
+	if hooks := projecthooks.Current().Projects; archived && hooks != nil {
+		hooks.Archived(ctx, visitor.TokenID, id, visitorAccount(visitor))
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, entry)
