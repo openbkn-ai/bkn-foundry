@@ -1,7 +1,7 @@
 // Copyright openbkn.ai
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package draft
+package docdraft
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -33,22 +34,22 @@ func documentRelationCandidate(original *interfaces.DraftRelationType, save inte
 	}
 	return candidate, nil
 }
-func (s *draftService) saveDocumentRelation(ctx context.Context, token string, draft *interfaces.Draft, original *interfaces.DraftRelationType, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+func (s service) saveDocumentRelation(ctx context.Context, token string, draft *interfaces.Draft, original *interfaces.DraftRelationType, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	if save.DocumentMapping != nil && save.DocumentMapping.BusinessIdentity != nil {
-		return nil, invalidRelation(ctx, nil)
+		return nil, s.InvalidRelation(ctx, nil)
 	}
 	if (save.Type != "" && save.Type != "direct") || (len(save.MappingRules) > 0 && string(save.MappingRules) != "null") {
-		return nil, invalidRelation(ctx, map[string]any{"reason": relationNoMapping})
+		return nil, s.InvalidRelation(ctx, map[string]any{"reason": projecthooks.RelationNoMapping})
 	}
 	candidate, err := documentRelationCandidate(original, save)
 	if err != nil {
-		return nil, invalidRelation(ctx, nil)
+		return nil, s.InvalidRelation(ctx, nil)
 	}
-	before := relationSnapshot(original)
+	before := s.RelationSnapshot(original)
 	beforeName, beforeDescription, beforeAdopted := original.Name, original.Description, original.Adopted
 	if strings.HasPrefix(original.Document.Role, "evidence_") {
 		if candidate.Source != original.Source || candidate.Target != original.Target || candidate.Cardinality != original.Cardinality || !reflect.DeepEqual(candidate.DocumentMapping, original.DocumentMapping) {
-			return nil, invalidRelation(ctx, nil)
+			return nil, s.InvalidRelation(ctx, nil)
 		}
 	} else {
 		input, err := s.documentEditInput(ctx, token, draft, original.Document)
@@ -57,7 +58,7 @@ func (s *draftService) saveDocumentRelation(ctx context.Context, token string, d
 		}
 		candidate, err = kbconcept.ValidateEditedRelation(input, draft.Items, original, candidate)
 		if err != nil {
-			return nil, invalidRelation(ctx, nil)
+			return nil, s.InvalidRelation(ctx, nil)
 		}
 	}
 	if save.VerifyBusinessIdentity {
@@ -71,22 +72,22 @@ func (s *draftService) saveDocumentRelation(ctx context.Context, token string, d
 	*original = *candidate
 	original.Name, original.Description, original.Adopted = beforeName, beforeDescription, beforeAdopted
 	edit := interfaces.DraftItemEdit{Name: &name, Description: &description}
-	if beforeAdopted && !(objectTypeAdopted(&draft.Items, original.Source) && objectTypeAdopted(&draft.Items, original.Target)) {
+	if beforeAdopted && !(projecthooks.ObjectTypeAdopted(&draft.Items, original.Source) && projecthooks.ObjectTypeAdopted(&draft.Items, original.Target)) {
 		adopted := false
 		edit.Adopted = &adopted
-		original.ProposedBecause = proposedEndNotAdopted
+		original.ProposedBecause = projecthooks.ProposedEndNotAdopted
 	}
 	if beforeAdopted && original.DocumentMapping != nil && original.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(draft.Items, original) {
 		adopted := false
 		edit.Adopted = &adopted
 		original.ProposedBecause = ""
 	}
-	decisions, err := applyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_RELATION_TYPES, original.ID, edit)
+	decisions, err := s.ApplyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_RELATION_TYPES, original.ID, edit)
 	if err != nil {
 		return nil, err
 	}
-	after := relationSnapshot(original)
-	if !sameJoin(before, after) {
+	after := s.RelationSnapshot(original)
+	if !s.SameJoin(before, after) {
 		decisions = append(decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: original.ID, Action: interfaces.DRAFT_DECISION_SAVE, Before: before, After: after})
 	}
 	if err = s.commitDocumentEdit(ctx, draft, decisions, caller, original.Document); err != nil {
@@ -94,19 +95,19 @@ func (s *draftService) saveDocumentRelation(ctx context.Context, token string, d
 	}
 	return draft, nil
 }
-func (s *draftService) createDocumentRelation(ctx context.Context, token string, draft *interfaces.Draft, relation *interfaces.DraftRelationType, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+func (s service) createDocumentRelation(ctx context.Context, token string, draft *interfaces.Draft, relation *interfaces.DraftRelationType, save interfaces.DraftRelationTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	if save.DocumentMapping != nil && save.DocumentMapping.BusinessIdentity != nil {
-		return nil, invalidRelation(ctx, nil)
+		return nil, s.InvalidRelation(ctx, nil)
 	}
-	source := findObjectType(&draft.Items, save.SourceObjectTypeID)
+	source := projecthooks.FindObjectType(&draft.Items, save.SourceObjectTypeID)
 	if source == nil || source.Document == nil || strings.HasPrefix(source.Document.Role, "evidence_") || save.DocumentMapping == nil {
-		return nil, invalidRelation(ctx, nil)
+		return nil, s.InvalidRelation(ctx, nil)
 	}
 	input, err := s.documentEditInput(ctx, token, draft, source.Document)
 	if err != nil {
 		return nil, err
 	}
-	reason, _ := i18n.Render(i18n.Language(draftLanguage(draft)), "BknProject.Draft.DocumentRelation.ManualReason", nil)
+	reason, _ := i18n.Render(i18n.Language(projecthooks.DraftLanguage(draft)), "BknProject.Draft.DocumentRelation.ManualReason", nil)
 	relation.Source, relation.Target = save.SourceObjectTypeID, save.TargetObjectTypeID
 	relation.Cardinality = save.Cardinality
 	if relation.Cardinality == "" {
@@ -116,7 +117,7 @@ func (s *draftService) createDocumentRelation(ctx context.Context, token string,
 	relation.DocumentMapping = save.DocumentMapping
 	checked, err := kbconcept.ValidateEditedRelation(input, draft.Items, relation, relation)
 	if err != nil {
-		return nil, invalidRelation(ctx, nil)
+		return nil, s.InvalidRelation(ctx, nil)
 	}
 	if save.VerifyBusinessIdentity {
 		proof, err := s.verifyBusinessIdentity(ctx, draft, checked, caller)
@@ -126,16 +127,16 @@ func (s *draftService) createDocumentRelation(ctx context.Context, token string,
 		checked.DocumentMapping.BusinessIdentity = proof
 	}
 	checked.Origin = interfaces.DRAFT_ORIGIN_MANUAL
-	checked.Adopted = objectTypeAdopted(&draft.Items, checked.Source) && objectTypeAdopted(&draft.Items, checked.Target)
+	checked.Adopted = projecthooks.ObjectTypeAdopted(&draft.Items, checked.Source) && projecthooks.ObjectTypeAdopted(&draft.Items, checked.Target)
 	if !checked.Adopted {
-		checked.ProposedBecause = proposedEndNotAdopted
+		checked.ProposedBecause = projecthooks.ProposedEndNotAdopted
 	}
 	if checked.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(draft.Items, checked) {
 		checked.Adopted = false
 		checked.ProposedBecause = ""
 	}
 	draft.Items.RelationTypes = append(draft.Items.RelationTypes, checked)
-	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: checked.ID, Action: interfaces.DRAFT_DECISION_CREATE, After: relationSnapshot(checked)}}
+	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: checked.ID, Action: interfaces.DRAFT_DECISION_CREATE, After: s.RelationSnapshot(checked)}}
 	if err = s.commitDocumentEdit(ctx, draft, decisions, caller, source.Document); err != nil {
 		return nil, err
 	}

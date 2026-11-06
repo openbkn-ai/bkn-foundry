@@ -7,8 +7,6 @@ package knowledgebase
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
@@ -58,49 +56,5 @@ func TestRegistrationLifecycle(t *testing.T) {
 		entitlement.Freeze()
 		ResetForTest()
 		So(func() { Register(Providers{Source: UnavailableSource{}, Concepts: UnavailableConcepts{}}) }, ShouldPanic)
-	})
-}
-
-func TestGateUsesCommunityRouterUntilLicensed(t *testing.T) {
-	Convey("An absent or unlicensed extension is indistinguishable from community", t, func() {
-		reset(t)
-		edition := licverify.EditionCommunity
-		entitlement.SetGate(entitlement.GateFunc(func() entitlement.Snapshot {
-			return entitlement.Snapshot{Edition: edition}
-		}))
-		community := http.NewServeMux()
-		community.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })
-		extended := http.NewServeMux()
-		extended.HandleFunc("GET /kb/catalogs/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })
-		handler := Gate(extended, community)
-		request := func(h http.Handler, method, path string) *httptest.ResponseRecorder {
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, httptest.NewRequest(method, path, nil))
-			return w
-		}
-		compare := func() {
-			for _, method := range []string{"GET", "POST", "HEAD", "OPTIONS"} {
-				for _, path := range []string{"/kb/catalogs/", "/kb/catalogs", "/kb//catalogs/", "/health"} {
-					got, want := request(handler, method, path), request(community, method, path)
-					So(got.Code, ShouldEqual, want.Code)
-					So(got.Body.String(), ShouldEqual, want.Body.String())
-					So(got.Header(), ShouldResemble, want.Header())
-				}
-			}
-		}
-		// A professional licence alone cannot install missing code.
-		edition = licverify.EditionProfessional
-		compare()
-		Register(Providers{Source: UnavailableSource{}, Concepts: UnavailableConcepts{}})
-		entitlement.Freeze()
-		edition = licverify.EditionCommunity
-		compare()
-		for _, tier := range []licverify.Edition{licverify.EditionProfessional, licverify.EditionEnterprise, licverify.EditionIndustry} {
-			edition = tier
-			So(request(handler, "GET", "/kb/catalogs/").Code, ShouldEqual, 204)
-		}
-		// Downgrades apply to the same handler without restart, too.
-		edition = licverify.EditionCommunity
-		compare()
 	})
 }

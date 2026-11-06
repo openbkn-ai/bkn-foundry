@@ -1,7 +1,7 @@
 // Copyright openbkn.ai
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package draft
+package docdraft
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbdataset"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
@@ -32,14 +33,14 @@ func datasetNotReady(ctx context.Context, status int) error {
 
 // evidenceExport is how confirming the draft now publishes its document evidence, from the
 // project's current source selection; nil for a draft without adopted documents.
-func (s *draftService) evidenceExport(ctx context.Context, draft *interfaces.Draft) (*interfaces.DraftEvidenceExport, error) {
+func (s service) evidenceExport(ctx context.Context, draft *interfaces.Draft) (*interfaces.DraftEvidenceExport, error) {
 	if !adoptedDocuments(draft) {
 		return nil, nil
 	}
-	if s.kbResources == nil {
+	if s.resources == nil {
 		return nil, datasetNotReady(ctx, http.StatusServiceUnavailable)
 	}
-	state, err := s.kbResources.Read(ctx, draft.ProjectID)
+	state, err := s.resources.Read(ctx, draft.ProjectID)
 	if err != nil {
 		return nil, datasetNotReady(ctx, http.StatusServiceUnavailable)
 	}
@@ -52,7 +53,7 @@ func (s *draftService) evidenceExport(ctx context.Context, draft *interfaces.Dra
 // prepareDocumentDatasets uses the same project/source/draft transaction as
 // candidate adoption. Process metadata is durable before resource creation;
 // no token, source text or instance rows are added to the journal.
-func (s *draftService) prepareDocumentDatasets(ctx context.Context, token string, entry *interfaces.ProjectEntry,
+func (s service) prepareDocumentDatasets(ctx context.Context, token string, entry *interfaces.ProjectEntry,
 	draft *interfaces.Draft, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	if !adoptedDocuments(draft) {
 		return draft, nil
@@ -61,11 +62,11 @@ func (s *draftService) prepareDocumentDatasets(ctx context.Context, token string
 	if !enabled || providers.Datasets == nil {
 		return nil, datasetNotReady(ctx, http.StatusConflict)
 	}
-	access, ok := s.da.(interfaces.DocumentDraftAccess)
-	if !ok || s.kbResources == nil {
+	access, ok := kbconcept.DocumentDrafts(s.DraftAccess())
+	if !ok || s.resources == nil {
 		return nil, datasetNotReady(ctx, http.StatusServiceUnavailable)
 	}
-	state, err := s.kbResources.Read(ctx, draft.ProjectID)
+	state, err := s.resources.Read(ctx, draft.ProjectID)
 	if err != nil {
 		return nil, datasetNotReady(ctx, http.StatusServiceUnavailable)
 	}
@@ -78,21 +79,21 @@ func (s *draftService) prepareDocumentDatasets(ctx context.Context, token string
 		return nil, datasetNotReady(ctx, http.StatusConflict)
 	}
 	validate := func(checkCtx context.Context, value *interfaces.Draft) error {
-		project, err := s.unarchivedProject(checkCtx, token, draft.ProjectID)
+		project, err := s.UnarchivedProject(checkCtx, token, draft.ProjectID)
 		if err != nil {
 			return err
 		}
 		if project.Owner != caller {
 			return httperrors.NewHTTPError(checkCtx, http.StatusForbidden, perrors.BknProject_Draft_NotOwner)
 		}
-		current, err := s.kbResources.Read(checkCtx, draft.ProjectID)
+		current, err := s.resources.Read(checkCtx, draft.ProjectID)
 		if err != nil {
 			return err
 		}
 		if current == nil || current.Current == nil || current.Current.ID != selection.ID || current.Current.Revision != selection.Revision || current.Current.State != "active" || current.Current.Owner != caller {
 			return kbdataset.ErrStalePreparation
 		}
-		actual, found, err := s.da.GetDraft(checkCtx, draft.ProjectID)
+		actual, found, err := s.DraftAccess().GetDraft(checkCtx, draft.ProjectID)
 		if err != nil {
 			return err
 		}
@@ -153,7 +154,7 @@ func (s *draftService) prepareDocumentDatasets(ctx context.Context, token string
 	if err != nil {
 		return nil, datasetNotReady(ctx, http.StatusConflict)
 	}
-	if _, err = compileDraft(&preview.Items, kbdataset.EvidenceExport(&selection)); err != nil {
+	if err = s.CheckCompiles(&preview.Items, kbdataset.EvidenceExport(&selection)); err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidItem)
 	}
 	currentAt := draft.UpdateTime
@@ -194,7 +195,7 @@ func datasetPreparationError(ctx context.Context, err error) error {
 	return datasetNotReady(ctx, http.StatusServiceUnavailable)
 }
 
-func datasetPreparation(draft *interfaces.Draft, selection *interfaces.KBSelection) *interfaces.DatasetPreparation {
+func DatasetPreparation(draft *interfaces.Draft, selection *interfaces.KBSelection) *interfaces.DatasetPreparation {
 	if draft == nil || len(draft.Items.DatasetPlans) == 0 {
 		return nil
 	}

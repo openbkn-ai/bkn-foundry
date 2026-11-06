@@ -96,7 +96,8 @@ func TestSaveObjectPersistsHumanFieldChoicesThroughExistingEndpoint(t *testing.T
 		}
 		return true, nil
 	})
-	service := &draftService{da: documentDraftMock{access}, ps: projects, kbResources: documentSaveSelection{}}
+	service := &draftService{da: documentDraftMock{access}, ps: projects}
+	useDocumentResources(t, documentSaveSelection{})
 	result, err := service.SaveObjectType(context.Background(), "Bearer synthetic", "p", doc.ID, save, caller)
 	if err != nil {
 		t.Fatal(err)

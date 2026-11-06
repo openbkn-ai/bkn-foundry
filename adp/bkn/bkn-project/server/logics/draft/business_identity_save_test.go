@@ -53,7 +53,8 @@ func TestSaveSameBusinessRelationRequiresExplicitVerifiedIntent(t *testing.T) {
 			if scenario == "verify" || scenario == "pending" {
 				access.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), int64(10)).Return(true, nil)
 			}
-			service := &draftService{da: documentDraftMock{access}, ps: projects, kbResources: documentSaveSelection{}, va: backend}
+			service := &draftService{da: documentDraftMock{access}, ps: projects, va: backend}
+			useDocumentResources(t, documentSaveSelection{})
 			got, err := service.SaveRelationType(context.Background(), "Bearer synthetic", "p", relation.ID, save, caller)
 			if scenario == "duplicate" || scenario == "forged" {
 				if err == nil {

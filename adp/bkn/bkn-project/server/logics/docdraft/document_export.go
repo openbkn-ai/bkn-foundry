@@ -2,7 +2,7 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package draft
+package docdraft
 
 import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"

@@ -16,6 +16,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 func TestDocumentCandidateCommitMariaDB(t *testing.T) {
@@ -59,7 +60,8 @@ func TestDocumentCandidateCommitMariaDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := &draftAccess{db: db}
+	access := &draftAccess{db: db}
+	store, _ := kbconcept.DocumentDrafts(access)
 	owner := interfaces.AccountInfo{ID: "u", Type: "user"}
 	guard := interfaces.DocumentDraftGuard{Owner: owner, SelectionID: selection, SelectionRevision: 3}
 	draft := &interfaces.Draft{ProjectID: project, Status: "ready", Drafter: owner, CreateTime: 5, UpdateTime: 5}
@@ -126,7 +128,7 @@ func TestDocumentCandidateCommitMariaDB(t *testing.T) {
 			t.Fatalf("%s guard failed: %v %v", scenario, ok, err)
 		}
 	}
-	current, exists, err := store.GetDraft(ctx, project)
+	current, exists, err := access.GetDraft(ctx, project)
 	if err != nil || !exists || current.UpdateTime != 6 {
 		t.Fatal("rejected extraction changed stored draft")
 	}

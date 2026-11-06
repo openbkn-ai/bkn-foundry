@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -628,6 +629,261 @@ func Test_QuestionInputEdits(t *testing.T) {
 				interfaces.RequirementItemEdit{UpdateTime: 7, Template: ptr("Whose orders?"), RelativeWindow: ptr(true)}, caller)
 			So(err, ShouldBeNil)
 			So(saved.Spec.Questions[1].Inputs, ShouldBeNil)
+		})
+	})
+}
+
+// needsSpec is readySpec with kinetic needs: q1 rests on n1, n2 is of the concept c2.
+func needsSpec() *interfaces.Requirement {
+	req := readySpec()
+	req.Spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+		{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", SuggestedMetricType: "atomic",
+			ObjectTypeIDs: []string{"sales_order", "customer"},
+			Properties:    []interfaces.RequirementPropertyRef{{ObjectTypeID: "sales_order", Property: "amount"}},
+			ConceptIDs:    []string{"c1"}, ScenarioIDs: []string{"s1"}, Source: interfaces.LOGIC_NEED_FROM_ANALYSIS},
+		{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", ObjectTypeIDs: []string{},
+			Properties: []interfaces.RequirementPropertyRef{}, ConceptIDs: []string{"c2", "c1"}, ScenarioIDs: []string{},
+			Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS},
+	}
+	req.Spec.Questions[0].Layer = interfaces.REQUIREMENT_LAYER_CAPABILITY
+	req.Spec.Questions[0].LogicNeedIDs = []string{"n1"}
+	req.Spec.Questions[1].LogicNeedIDs = []string{}
+	req.Spec.LastIDs = map[string]int{"n": 3}
+	return req
+}
+
+func Test_LogicNeedEdits(t *testing.T) {
+	Convey("Test editing kinetic needs and what rests on them\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 100 }}
+		ctx := context.Background()
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(kineticDraft(), true, nil).AnyTimes()
+
+		var saved *interfaces.Requirement
+		expectRead := func() { ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(needsSpec(), true, nil) }
+		expectSave := func() {
+			ra.EXPECT().UpdateRequirement(gomock.Any(), gomock.Any(), int64(7)).DoAndReturn(
+				func(_ context.Context, req *interfaces.Requirement, _ int64) (bool, error) {
+					saved = req
+					return true, nil
+				})
+		}
+
+		Convey("A person adds a need of a kind and name, on object types and properties of the draft\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, interfaces.RequirementItemEdit{UpdateTime: 7,
+				LogicKind: ptr(interfaces.LOGIC_NEED_METRIC), Name: ptr(" Reply time "), Definition: ptr("hours to the first reply"),
+				ObjectTypeIDs:       &[]string{"sales_order", "sales_order"},
+				Properties:          &[]interfaces.RequirementPropertyRef{{ObjectTypeID: "sales_order", Property: "agreed_on"}},
+				SuggestedMetricType: ptr("derived")}, caller)
+
+			So(err, ShouldBeNil)
+			n := saved.Spec.LogicNeeds[2]
+			// No id given before is given again.
+			So(n.ID, ShouldEqual, "n4")
+			So(n.Name, ShouldEqual, "Reply time")
+			So(n.Source, ShouldEqual, interfaces.LOGIC_NEED_FROM_PERSON)
+			So(n.Edited, ShouldBeTrue)
+			So(n.Accepted, ShouldBeTrue)
+			So(n.ObjectTypeIDs, ShouldResemble, []string{"sales_order"})
+			So(n.Properties, ShouldResemble, []interfaces.RequirementPropertyRef{{ObjectTypeID: "sales_order", Property: "agreed_on"}})
+			So(n.SuggestedMetricType, ShouldEqual, "derived")
+			So(n.Citations, ShouldResemble, []interfaces.RequirementCitation{})
+		})
+
+		Convey("An edit changes the need's fields; properties go with the object types they belong to\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n1", interfaces.RequirementItemEdit{UpdateTime: 7,
+				LogicKind: ptr(interfaces.LOGIC_NEED_FUNCTION), ObjectTypeIDs: &[]string{"customer"}}, caller)
+
+			So(err, ShouldBeNil)
+			n := saved.Spec.LogicNeeds[0]
+			So(n.Kind, ShouldEqual, interfaces.LOGIC_NEED_FUNCTION)
+			So(n.ObjectTypeIDs, ShouldResemble, []string{"customer"})
+			So(n.Properties, ShouldBeEmpty)
+			// Only a metric suggests a metric type.
+			So(n.SuggestedMetricType, ShouldEqual, "")
+			So(n.Edited, ShouldBeTrue)
+			So(n.Accepted, ShouldBeTrue)
+		})
+
+		Convey("A need rests on the model: an object type drafted but not adopted is refused, as runs leave it out\n", func() {
+			expectRead()
+
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n1", interfaces.RequirementItemEdit{UpdateTime: 7,
+				ObjectTypeIDs: &[]string{"carrier"}}, caller)
+
+			So(err, ShouldNotBeNil)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+		})
+
+		Convey("A need's edit is refused when it names what is not, or sets another kind's field\n", func() {
+			for _, edit := range []interfaces.RequirementItemEdit{
+				{UpdateTime: 7, LogicKind: ptr("dashboard")},
+				{UpdateTime: 7, Name: ptr(" ")},
+				{UpdateTime: 7, ObjectTypeIDs: &[]string{"nope"}},
+				{UpdateTime: 7, Properties: &[]interfaces.RequirementPropertyRef{{ObjectTypeID: "sales_order", Property: "missing"}}},
+				// A property of an object type the need is not on.
+				{UpdateTime: 7, ObjectTypeIDs: &[]string{"customer"},
+					Properties: &[]interfaces.RequirementPropertyRef{{ObjectTypeID: "sales_order", Property: "amount"}}},
+				{UpdateTime: 7, SuggestedMetricType: ptr("guess")},
+				{UpdateTime: 7, Text: ptr("a question's")},
+			} {
+				expectRead()
+
+				_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n1", edit, caller)
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+			}
+			for _, edit := range []interfaces.RequirementItemEdit{
+				{UpdateTime: 7, Name: ptr("x")},
+				{UpdateTime: 7, LogicKind: ptr(interfaces.LOGIC_NEED_API)},
+			} {
+				expectRead()
+
+				_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, edit, caller)
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+			}
+			expectRead()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n9",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Name: ptr("x")}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+		})
+
+		Convey("Setting the needs a question rests on sets its layer, unless the person sets that too\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q2",
+				interfaces.RequirementItemEdit{UpdateTime: 7, LogicNeedIDs: &[]string{"n2", "n2", "n1"}}, caller)
+			So(err, ShouldBeNil)
+			q2 := saved.Spec.Questions[1]
+			So(q2.LogicNeedIDs, ShouldResemble, []string{"n2", "n1"})
+			So(q2.Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+			// The needs serve the scenarios of the questions resting on them.
+			So(saved.Spec.LogicNeeds[1].ScenarioIDs, ShouldResemble, []string{"s1"})
+
+			expectRead()
+			expectSave()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, LogicNeedIDs: &[]string{}}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
+			So(saved.Spec.LogicNeeds[0].ScenarioIDs, ShouldResemble, []string{})
+
+			expectRead()
+			expectSave()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, LogicNeedIDs: &[]string{},
+					Layer: ptr(interfaces.REQUIREMENT_LAYER_CAPABILITY)}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+
+			expectRead()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, LogicNeedIDs: &[]string{"n9"}}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+		})
+
+		Convey("Deleting a need takes it from the questions resting on it, and its id is not given again\n", func() {
+			expectRead()
+			expectSave()
+
+			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n1", 7, caller)
+
+			So(err, ShouldBeNil)
+			So(ids(saved.Spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n2"})
+			So(saved.Spec.Questions[0].LogicNeedIDs, ShouldResemble, []string{})
+			// Left resting on nothing, it is noted when read.
+			So(questionNotes(saved.Spec.Questions[0]), ShouldResemble, []string{interfaces.QUESTION_NOTE_CAPABILITY_WITHOUT_BASIS})
+			So(saved.Spec.LastIDs["n"], ShouldEqual, 3)
+
+			expectRead()
+			_, err = svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n9", 7, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+		})
+
+		Convey("Deleting a concept takes it from the needs; deleting a question, its scenarios from the needs\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS, "c2", 7, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.LogicNeeds[1].ConceptIDs, ShouldResemble, []string{"c1"})
+
+			expectRead()
+			expectSave()
+			_, err = svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1", 7, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.LogicNeeds[0].ScenarioIDs, ShouldResemble, []string{})
+		})
+
+		Convey("Review accepts and unaccepts needs\n", func() {
+			spec := needsSpec()
+			spec.Spec.LogicNeeds[1].Accepted = true
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(spec, true, nil)
+			expectSave()
+
+			_, err := svc.ReviewItems(ctx, token, "p1", interfaces.RequirementReview{UpdateTime: 7,
+				Accept:   []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, ID: "n1"}},
+				Unaccept: []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, ID: "n2"}}}, caller)
+
+			So(err, ShouldBeNil)
+			So(saved.Spec.LogicNeeds[0].Accepted, ShouldBeTrue)
+			So(saved.Spec.LogicNeeds[1].Accepted, ShouldBeFalse)
+			So(saved.Spec.LogicNeeds[0].Edited, ShouldBeFalse)
+
+			expectRead()
+			_, err = svc.ReviewItems(ctx, token, "p1", interfaces.RequirementReview{UpdateTime: 7,
+				Accept: []interfaces.RequirementReviewItem{{Kind: interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, ID: "n9"}}}, caller)
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_ItemNotFound)
+		})
+
+		Convey("A concept may be a kinetic need, and one a person adds is theirs\n", func() {
+			expectRead()
+			expectSave()
+			_, err := svc.AddItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS, interfaces.RequirementItemEdit{UpdateTime: 7,
+				Term: ptr("Late rate"), Category: ptr(interfaces.REQUIREMENT_CONCEPT_KINETIC)}, caller)
+			So(err, ShouldBeNil)
+			c := saved.Spec.Concepts[2]
+			So(c.Category, ShouldEqual, interfaces.REQUIREMENT_CONCEPT_KINETIC)
+			So(c.Source, ShouldEqual, interfaces.REQUIREMENT_CONCEPT_FROM_PERSON)
+
+			expectRead()
+			expectSave()
+			_, err = svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_CONCEPTS, "c2", interfaces.RequirementItemEdit{UpdateTime: 7,
+				Category: ptr(interfaces.REQUIREMENT_CONCEPT_KINETIC)}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Concepts[1].Category, ShouldEqual, interfaces.REQUIREMENT_CONCEPT_KINETIC)
+		})
+
+		Convey("No edit is made while a concepts or kinetic run goes, unless it went stale\n", func() {
+			for _, kind := range []string{interfaces.REQUIREMENT_RUN_CONCEPTS, interfaces.REQUIREMENT_RUN_KINETIC} {
+				going := needsSpec()
+				going.Spec.Runs = map[string]*interfaces.RequirementRun{kind: {Status: interfaces.REQUIREMENT_RUN_RUNNING, StartTime: 90}}
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(going, true, nil)
+
+				_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+					interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("x")}, caller)
+				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
+			}
+
+			// A run recorded going since before the service could have finished it does not hold edits.
+			stale := needsSpec()
+			stale.Spec.Runs = map[string]*interfaces.RequirementRun{interfaces.REQUIREMENT_RUN_CONCEPTS: {
+				Status: interfaces.REQUIREMENT_RUN_RUNNING, StartTime: 100 - 2*agentDeadline.Milliseconds() - time.Minute.Milliseconds() - 1}}
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(stale, true, nil)
+			expectSave()
+			_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_RULES, "r1",
+				interfaces.RequirementItemEdit{UpdateTime: 7, Statement: ptr("x")}, caller)
+			So(err, ShouldBeNil)
 		})
 	})
 }

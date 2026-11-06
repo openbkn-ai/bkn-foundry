@@ -124,7 +124,8 @@ func TestSaveDocumentFieldsUsesNativeSamplesAndKeepsAdoptionExplicit(t *testing.
 			if success {
 				da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), int64(10)).Return(true, nil)
 			}
-			service := &draftService{da: documentDraftMock{da}, ps: ps, kbResources: documentSaveSelection{changed: scenario == "stale_source"}}
+			service := &draftService{da: documentDraftMock{da}, ps: ps}
+			useDocumentResources(t, documentSaveSelection{changed: scenario == "stale_source"})
 			result, err := service.SaveObjectType(context.Background(), "Bearer synthetic", "p", "order_doc", save, caller)
 			if success != (err == nil) {
 				t.Fatalf("result=%#v err=%v", result, err)
@@ -238,7 +239,8 @@ func TestCreateAndEditDocumentRelationsUseNativeProofWithoutTableJoins(t *testin
 			if success {
 				da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), int64(10)).Return(true, nil)
 			}
-			service := &draftService{da: documentDraftMock{da}, ps: ps, kbResources: documentSaveSelection{}}
+			service := &draftService{da: documentDraftMock{da}, ps: ps}
+			useDocumentResources(t, documentSaveSelection{})
 			request := interfaces.DraftRelationTypeSave{UpdateTime: 10, ID: "order_invoice", Name: "Invoiced order", SourceObjectTypeID: "order_doc", TargetObjectTypeID: "invoice_doc", Type: "direct", DocumentMapping: mapping, Cardinality: "one_to_many"}
 			result, err := service.CreateRelationType(context.Background(), "Bearer synthetic", "p", request, caller)
 			if success != (err == nil) {
@@ -382,7 +384,8 @@ func TestDocumentDerivationIsExplicitAuditedAndVersionGuarded(t *testing.T) {
 					return scenario != "conflict", nil
 				})
 			}
-			service := &draftService{da: documentDraftMock{da}, ps: ps, kbResources: documentSaveSelection{changed: scenario == "stale"}}
+			service := &draftService{da: documentDraftMock{da}, ps: ps}
+			useDocumentResources(t, documentSaveSelection{changed: scenario == "stale"})
 			got, err := service.SaveObjectType(context.Background(), "Bearer synthetic", "p", original.ID, save, caller)
 			if (scenario == "derive") != (err == nil) {
 				t.Fatalf("%s: %v", scenario, err)

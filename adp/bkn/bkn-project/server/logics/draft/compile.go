@@ -14,7 +14,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // The directories of a BKN package that confirming a draft writes; the rest of a branch is not
@@ -29,6 +28,9 @@ type compiledDraft struct {
 	// type for, or a name another adopted value type took first. Their properties keep their base
 	// type, and confirming says which they are.
 	SkippedValueTypes []string
+	// LeftOutAliases are aliases the definitions leave out, as BKN refuses them; confirming says
+	// which they are, and the draft keeps them.
+	LeftOutAliases []interfaces.DraftLeftOutAlias
 	// IDKeys name the items written whose ids may be registered: a confirmation locks them, so
 	// what is on the branch keeps its ids.
 	IDKeys []interfaces.IDKey
@@ -58,7 +60,7 @@ func compileDraft(items *interfaces.DraftItems, evidence *interfaces.DraftEviden
 // an alias may not be one of them either.
 func compileDraftBeside(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport, keptNames []string) (*compiledDraft, error) {
 	var err error
-	items, err = documentExportItems(items, evidence)
+	items, err = documentHooks().ExportItems(items, evidence)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +98,7 @@ func compileDraftBeside(items *interfaces.DraftItems, evidence *interfaces.Draft
 		if !ot.Adopted {
 			continue
 		}
-		if kbconcept.EventParticipantsNeedRepair(*items, ot) {
+		if documentHooks().ObjectNeedsRepair(items, ot) {
 			return nil, fmt.Errorf("event %q has a participant relationship requiring repair", ot.ID)
 		}
 		if ot.Table.ResourceID == "" {
@@ -114,11 +116,23 @@ func compileDraftBeside(items *interfaces.DraftItems, evidence *interfaces.Draft
 	}
 	// People may rename items after drafting: an alias that is now its own name or another object
 	// type's is left out, as BKN refuses it. The draft keeps it, should the item be renamed back.
+	drafted := map[string]*interfaces.DraftObjectType{}
+	for _, ot := range items.ObjectTypes {
+		drafted[ot.ID] = ot
+	}
 	for _, ot := range network.ObjectTypes {
 		ot.Aliases = allowedAliases(ot.Aliases, func(alias string) bool {
 			other, taken := objectNames[alias]
 			return taken && other != ot.ID
 		}, ot.Name)
+		draftedType := drafted[ot.ID]
+		item := interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: ot.ID, Name: ot.Name}
+		result.LeftOutAliases = append(result.LeftOutAliases, leftOutAliases(item, "", draftedType.Aliases, ot.Aliases)...)
+		for _, p := range ot.DataProperties {
+			if property := findProperty(draftedType, p.Name); property != nil {
+				result.LeftOutAliases = append(result.LeftOutAliases, leftOutAliases(item, p.DisplayName, property.Aliases, p.Aliases)...)
+			}
+		}
 	}
 	for _, rt := range items.RelationTypes {
 		if rt.Adopted && rt.DocumentRepair != "" {
@@ -132,6 +146,8 @@ func compileDraftBeside(items *interfaces.DraftItems, evidence *interfaces.Draft
 				return nil, err
 			}
 			network.RelationTypes = append(network.RelationTypes, compiled)
+			result.LeftOutAliases = append(result.LeftOutAliases, leftOutAliases(
+				interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: rt.ID, Name: rt.Name}, "", rt.Aliases, compiled.Aliases)...)
 			if rt.LinkTable != nil {
 				result.addIDKey(interfaces.ID_KIND_RELATION_TYPES, rt.LinkTable.ResourceID)
 			}

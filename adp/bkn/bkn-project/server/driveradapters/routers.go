@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters/httpx"
+
 	"github.com/gin-gonic/gin"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -245,28 +247,7 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 	}
 }
 
-// Verify OAuth credentials.
-func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
-	visitor, err := r.as.VerifyToken(ctx, c)
-	if err != nil {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknProject.Validation.Detail.AuthenticationFailed", nil)
-		if renderErr != nil {
-			logger.Errorf("localized message rendering failed: %v", renderErr)
-		}
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusUnauthorized, httperrors.PublicError_Unauthorized).
-			WithErrorDetails(localizedText)
-		rest.ReplyError(c, httpErr)
-		return visitor, err
-	}
-
-	return visitor, nil
-}
-
 // withExVisitor authenticates an external request before handing it on.
 func (r *restHandler) withExVisitor(c *gin.Context, handle func(*gin.Context, hydra.Visitor)) {
-	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
-	if err != nil {
-		return
-	}
-	handle(c, visitor)
+	httpx.WithVisitor(c, r.as, handle)
 }

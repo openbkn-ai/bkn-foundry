@@ -59,7 +59,7 @@ func (s *Service) Extract(ctx context.Context, token, project string, caller int
 	if !ok {
 		return nil, kb.ErrUnavailable
 	}
-	writer, ok := s.drafts.(interfaces.DocumentDraftAccess)
+	writer, ok := DocumentDrafts(s.drafts)
 	if !ok {
 		return nil, kb.ErrUnavailable
 	}
