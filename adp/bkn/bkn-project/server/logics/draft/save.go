@@ -59,6 +59,7 @@ func snapshot(ot *interfaces.DraftObjectType) interfaces.DraftObjectTypeSnapshot
 	for _, p := range ot.Properties {
 		s.Properties = append(s.Properties, interfaces.DraftPropertySnapshot{
 			Name: p.Name, DisplayName: p.DisplayName, Description: p.Description, Type: p.Type, MappedField: p.MappedField, Extraction: p.Extraction, ReadOnly: p.ReadOnly, SourceOfRecord: p.SourceOfRecord,
+			Aliases: slices.Clone(p.Aliases),
 		})
 	}
 	return s
@@ -76,7 +77,7 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 
 	name, comment, incremental := save.Name, save.Comment, save.IncrementalKey
 	edit := interfaces.DraftItemEdit{UpdateTime: save.UpdateTime, Name: &name, Description: &comment,
-		IncrementalKey: &incremental}
+		IncrementalKey: &incremental, Aliases: save.Aliases}
 	if err := checkEdit(ctx, &edit); err != nil {
 		span.SetStatus(codes.Error, "Invalid save")
 		return nil, err
@@ -95,6 +96,9 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 		return nil, documentEditError(ctx)
 	}
 	if ot.Document != nil {
+		if edit.Aliases != nil && len(*edit.Aliases) > 0 {
+			return nil, aliasError(ctx, ot.Name, "", aliasOnDocument, "")
+		}
 		return s.saveDocumentObject(ctx, token, draft, ot, save, caller)
 	}
 
@@ -195,6 +199,12 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidProperty).
 			WithErrorDetails(details)
 	}
+	// As they were, for the alias conflicts they had already: saving changes the kept ones.
+	before := make([]*interfaces.DraftProperty, 0, len(ot.Properties))
+	for _, p := range ot.Properties {
+		copied := *p
+		before = append(before, &copied)
+	}
 	language := itemsLanguage(items)
 	byName := map[string]*interfaces.DraftProperty{}
 	for _, p := range ot.Properties {
@@ -272,6 +282,12 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 			property.DisplayName = displayName
 		}
 		property.Description, property.MissingDescription = description, description == ""
+		if p.Aliases != nil {
+			property.Aliases = cleanAliases(*p.Aliases)
+		} else {
+			// A display name the property was renamed to names it already.
+			property.Aliases = withoutName(property.Aliases, property.Name, property.DisplayName)
+		}
 		properties = append(properties, property)
 	}
 	for _, p := range ot.Properties {
@@ -291,8 +307,10 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 			})
 		}
 	}
+	if err := checkPropertyAliases(ctx, before, properties); err != nil {
+		return err
+	}
 	ot.Properties = properties
-	dropAliasesOfOtherProperties(ot.Properties)
 	return nil
 }
 
