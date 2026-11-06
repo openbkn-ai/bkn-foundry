@@ -293,3 +293,33 @@ def test_invalid_structured_result_remains_failed_instead_of_false_success(
     assert result["status"] == "failed"
     assert result["failure_detail"]
     assert not result.get("output")
+
+
+def test_delete_thread_removes_history_and_checkpoints(caller_client):
+    response = caller_client.post(
+        "/api/bkn-agent/v1/chat",
+        json={
+            "agent_id": "compat_analysis",
+            "message": "Analyze this interaction",
+            "response_format": ANALYSIS_SCHEMA,
+        },
+        headers=OWNER_HEADERS,
+    )
+    assert response.status_code == 200
+    thread = response.text.split('"thread_id": "', 1)[1].split('"', 1)[0]
+    url = f"/api/bkn-agent/v1/threads/{thread}"
+    config_ = {"configurable": {"thread_id": thread}}
+    assert asyncio.run(checkpoint._memory_saver.aget_tuple(config_)) is not None
+
+    foreign = caller_client.delete(
+        url, headers={"x-account-id": "foreign", "x-account-type": "app"}
+    )
+    assert foreign.status_code == 404
+    assert caller_client.get(url, headers=OWNER_HEADERS).status_code == 200
+
+    deleted = caller_client.delete(url, headers=OWNER_HEADERS)
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+    assert asyncio.run(checkpoint._memory_saver.aget_tuple(config_)) is None
+    assert caller_client.get(url, headers=OWNER_HEADERS).status_code == 404
+    assert caller_client.delete(url, headers=OWNER_HEADERS).status_code == 404

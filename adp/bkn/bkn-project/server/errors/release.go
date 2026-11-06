@@ -25,9 +25,6 @@ const (
 	BknProject_Release_RegressionNotFound = "BknProject.Release.RegressionNotFound"
 
 	// 409
-	BknProject_Release_KnowledgeBaseNotReady = "BknProject.Release.KnowledgeBaseNotReady"
-	// Whether files include their originals changed after the model was confirmed.
-	BknProject_Release_OriginalsChanged    = "BknProject.Release.OriginalsChanged"
 	BknProject_Release_VersionExists       = "BknProject.Release.VersionExists"
 	BknProject_Release_BranchBehind        = "BknProject.Release.BranchBehind"
 	BknProject_Release_Drift               = "BknProject.Release.Drift"
@@ -47,7 +44,6 @@ const (
 	BknProject_Rollback_NotProjectRelease = "BknProject.Rollback.NotProjectRelease"
 
 	// 503
-	BknProject_Release_KnowledgeBaseUnavailable = "BknProject.Release.KnowledgeBaseUnavailable"
 
 	// 500
 	BknProject_Release_InternalError = "BknProject.Release.InternalError"
@@ -56,9 +52,6 @@ const (
 var (
 	ReleaseErrCodeList = []string{
 		BknProject_Release_SourcePermission,
-		BknProject_Release_KnowledgeBaseNotReady,
-		BknProject_Release_OriginalsChanged,
-		BknProject_Release_KnowledgeBaseUnavailable,
 		BknProject_Release_InvalidVersion,
 		BknProject_Release_InvalidProjectID,
 		BknProject_Release_InvalidNotes,

@@ -37,6 +37,12 @@ var CONCEPT_VERDICTS = []string{
 	CONCEPT_VERDICT_RELATION, CONCEPT_VERDICT_KINETIC, CONCEPT_VERDICT_NONE,
 }
 
+// DOCUMENT_CONCEPT_VERDICTS are what a concept of the document samples that drafting modeled no
+// item for may be suggested as: none of them is an object type or relation type of its own.
+var DOCUMENT_CONCEPT_VERDICTS = []string{
+	CONCEPT_VERDICT_PROPERTY, CONCEPT_VERDICT_VALUES, CONCEPT_VERDICT_KINETIC, CONCEPT_VERDICT_NONE,
+}
+
 // Where a concept stands.
 const (
 	// CONCEPT_STATE_PENDING: no person judged it yet. It may already be in the model, as drafting
@@ -69,9 +75,12 @@ const (
 // requirement concepts that are it, then the requirement concepts no item is. DraftUpdateTime is
 // zero without a ready draft; nothing can be judged then.
 type DraftConcepts struct {
-	ProjectID       string         `json:"project_id"`
-	DraftUpdateTime int64          `json:"draft_update_time"`
-	Concepts        []DraftConcept `json:"concepts"`
+	ProjectID       string `json:"project_id"`
+	DraftUpdateTime int64  `json:"draft_update_time"`
+	// RequirementUpdateTime is the update time of the specification read, zero without one: a
+	// requirement concept no item is is judged by editing it there, over this time.
+	RequirementUpdateTime int64          `json:"requirement_update_time"`
+	Concepts              []DraftConcept `json:"concepts"`
 	// Counts are the concepts in each state, and by verdict under "verdict:<verdict>".
 	Counts map[string]int `json:"counts"`
 }
@@ -119,6 +128,20 @@ type DraftConceptItem struct {
 	Kind    string `json:"kind"`
 	ID      string `json:"id"`
 	Adopted bool   `json:"adopted"`
+}
+
+// DraftDocumentConcept is a concept the knowledge-base samples hold that document drafting
+// proposed no object type or relation type for: a property, a value list, kinetic, or not
+// included, with why and the sample text it was read from. Drafting records it in the draft, so it
+// is listed among the concepts and judged like any other; it is no model item.
+type DraftDocumentConcept struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// Verdict is one of DOCUMENT_CONCEPT_VERDICTS.
+	Verdict   string                `json:"verdict"`
+	Reason    string                `json:"reason"`
+	Citations []DraftSourceCitation `json:"citations"`
 }
 
 // DraftConceptJudge is the body of judging a concept, on the draft read.

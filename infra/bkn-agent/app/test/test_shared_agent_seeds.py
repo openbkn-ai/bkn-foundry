@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models import AgentLimits, AgentSpec, PromptSpec
-from app.public_auth import BUILTIN_AGENT_IDS
+from app.public_auth import BUILTIN_AGENT_IDS, CORE_BUILTIN_AGENT_IDS, EDITION_RESERVED_AGENT_IDS
 
 ROOT = Path(__file__).resolve().parents[4]
 MIGRATIONS = ROOT / "migrations/bkn-agent/mariadb"
@@ -56,6 +56,11 @@ CONCEPT_NATIVE = MIGRATIONS / "0.2.1/40-concept-native-evidence.sql"
 PUBLISH_BUILTINS = MIGRATIONS / "0.2.1/41-publish-builtin-agents.sql"
 REQUIREMENTS_V8 = MIGRATIONS / "0.2.2/01-requirements-concepts-kinetic-v8.sql"
 SINGLE_CALL = MIGRATIONS / "0.2.2/02-document-extraction-single-call.sql"
+# Found by name so the delta keeps its tests when its number changes.
+ONTOLOGY_ASK_V6 = next((MIGRATIONS / "0.2.2").glob("[0-9][0-9]-ontology-ask-v6.sql"))
+# The knowledge-base Agents' 0.2.1 deltas still run on upgrades from older releases.
+CONCEPT_SEED = MIGRATIONS / "0.2.1/36-seed-bkn-project-concept-extraction.sql"
+CONCEPT_BUDGET = MIGRATIONS / "0.2.1/38-concept-extraction-execution-budget.sql"
 
 
 def statements(path):
@@ -183,6 +188,12 @@ def seed_package(agent_id="business_provenance_optimizer"):
         }
 
 
+def core_rows(rows):
+    """Rows of the core's Agents and Prompts, without those an edition seeds."""
+    edition = set(EDITION_RESERVED_AGENT_IDS) | {agent + "-prompt" for agent in EDITION_RESERVED_AGENT_IDS}
+    return [row for row in rows if row[0] not in edition]
+
+
 def snapshot(db):
     return [
         [tuple(row) for row in db.execute(f"SELECT * FROM {table} ORDER BY 1,2")]
@@ -288,14 +299,16 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, PUBLISH_BUILTINS)
         apply(upgraded, REQUIREMENTS_V8)
         apply(upgraded, SINGLE_CALL)
+        apply(upgraded, ONTOLOGY_ASK_V6)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
-        assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
+        # An upgrade keeps the Agents an edition now seeds; the core compares without them.
+        assert snapshot(fresh)[:2] == [core_rows(rows) for rows in snapshot(upgraded)[:2]]
         for agent in fresh.execute("SELECT f_agent_id FROM t_agent"):
             assert item_from_db(fresh, agent[0]) == item_from_db(upgraded, agent[0])
         # Every seeded Agent is registered as builtin, so System Admin manages it
         # and it cannot be unpublished or deleted.
-        assert {row[0] for row in snapshot(fresh)[0]} == set(BUILTIN_AGENT_IDS)
+        assert {row[0] for row in snapshot(fresh)[0]} == set(CORE_BUILTIN_AGENT_IDS)
         updated = snapshot(upgraded)
         assert all(row in updated[0] for row in original[0])
         for row in original[1]:
@@ -502,7 +515,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL)]],
+            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6)]],
         ],
         "0.2.2",
         True,
@@ -885,7 +898,7 @@ def test_every_agent_starts_with_one_current_version():
         assert db.execute(
             "SELECT count(*) FROM t_agent_version WHERE f_current=1"
         ).fetchone()[0] == len(agents)
-        assert all(row["f_version"] == (3 if agent == CONCEPT_AGENT else 1) for agent, row in rows.items())
+        assert all(row["f_version"] == 1 for row in rows.values())
         assert all(row["f_current"] == 1 for row in rows.values())
         # A fresh installation restores to its initialized current defaults.
         initial = db.execute(
@@ -1068,7 +1081,7 @@ def test_retiring_keeps_the_prompt_while_another_agent_uses_it():
 
 
 # The Agents bkn-project runs, by the constants its code names them with (*AgentID = "...").
-BKN_PROJECT_AGENTS = {"bkn-project-requirements", "bkn-project-answer-judge", "bkn-project-ontology-ask", "bkn-project-concept-extraction", "bkn-project-document-extraction", "studio_smart_qa"}
+BKN_PROJECT_AGENTS = {"bkn-project-requirements", "bkn-project-answer-judge", "bkn-project-ontology-ask", "studio_smart_qa"}
 
 
 def test_every_agent_bkn_project_runs_is_builtin_and_seeded():
@@ -1081,7 +1094,7 @@ def test_every_agent_bkn_project_runs_is_builtin_and_seeded():
     }
     # A new Agent bkn-project runs is listed here, made builtin and seeded with it.
     assert named == BKN_PROJECT_AGENTS
-    assert BKN_PROJECT_AGENTS <= set(BUILTIN_AGENT_IDS)
+    assert BKN_PROJECT_AGENTS <= set(CORE_BUILTIN_AGENT_IDS)
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         seeded = {row[0] for row in db.execute("SELECT f_agent_id FROM t_agent")}
@@ -1111,7 +1124,7 @@ def test_fresh_install_publishes_every_builtin_agent():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         statuses = dict(db.execute("SELECT f_agent_id, f_status FROM t_agent"))
-        assert statuses == {agent_id: "published" for agent_id in BUILTIN_AGENT_IDS}
+        assert statuses == {agent_id: "published" for agent_id in CORE_BUILTIN_AGENT_IDS}
 
 
 def test_upgrade_publishes_draft_builtin_seeds_and_nothing_else():
@@ -1280,7 +1293,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(REQUIREMENTS_V8) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V4) if "f_localized_content" in s}
-                               | {s for s in statements(ONTOLOGY_ASK_V5) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
+                               | {s for s in statements(ONTOLOGY_ASK_V6) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | set(statements(METRIC_DESIGN_LOCALE)))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
@@ -1460,7 +1473,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -2887,14 +2900,15 @@ def test_requirements_v8_fresh_snapshot_seeds_v8_and_its_translations():
     # The fresh snapshot attaches the same translations as the upgrade.
     text = REQUIREMENTS_V8.read_text()
     assert text[text.index("-- Attach the zh-CN"):] in init
-    # Apart from the requirements Agent, the 0.2.2 snapshot is the 0.2.1 one.
+    # Apart from the requirements Agent and Ask AI, the 0.2.2 snapshot is the 0.2.1 one
+    # without the Agents an edition now seeds.
     with database() as old, database() as new:
         apply(old, MIGRATIONS / "0.2.1/init.sql")
         apply(new, MIGRATIONS / "0.2.2/init.sql")
-        for agent in old.execute("SELECT f_agent_id FROM t_agent"):
-            # The document extraction Agent's single call is the 02 delta's.
-            if agent[0] not in (RQ, DOCUMENT_AGENT):
-                assert item_from_db(old, agent[0]) == item_from_db(new, agent[0])
+        agents = {row[0] for row in new.execute("SELECT f_agent_id FROM t_agent")}
+        assert agents == {row[0] for row in old.execute("SELECT f_agent_id FROM t_agent")} - set(EDITION_RESERVED_AGENT_IDS)
+        for agent in agents - {RQ, "bkn-project-ontology-ask"}:
+            assert item_from_db(old, agent) == item_from_db(new, agent)
 
 
 @pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
@@ -3418,7 +3432,7 @@ def test_ontology_ask_seed_and_translation_are_idempotent_on_an_upgrade():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         before = snapshot(db)
-        for path in (ONTOLOGY_ASK, ONTOLOGY_ASK, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V4):
+        for path in (ONTOLOGY_ASK, ONTOLOGY_ASK, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V6):
             apply(db, path)
         assert snapshot(db) == before
 
@@ -3873,80 +3887,6 @@ def test_ontology_ask_v4_upgrade_does_not_switch_a_prompt_head_an_operator_saved
         assert snapshot(db)[3] == agent_versions_before
 
 
-CONCEPT_AGENT = "bkn-project-concept-extraction"
-CONCEPT_SEED = MIGRATIONS / "0.2.1/36-seed-bkn-project-concept-extraction.sql"
-
-
-def concept_seed_database():
-    db = database()
-    apply(db, MIGRATIONS / "0.2.1/init.sql")
-    for table, column in (("t_agent_version", "f_agent_id"), ("t_agent", "f_agent_id"), ("t_agent_prompt_version", "f_prompt_id"), ("t_agent_prompt", "f_prompt_id")):
-        db.execute(f"DELETE FROM {table} WHERE {column}=?", (CONCEPT_AGENT if column == "f_agent_id" else CONCEPT_AGENT + "-prompt",))
-    return db
-
-
-def test_concept_seed_is_builtin_tool_free_bilingual_and_idempotent():
-    with concept_seed_database() as db:
-        apply(db, CONCEPT_SEED)
-        item = item_from_db(db, CONCEPT_AGENT)
-        assert item["spec"]["mode"] == "task"
-        assert item["spec"]["status"] == "published"
-        assert item["spec"]["tools"] == item["spec"]["skills"] == []
-        assert item["spec"]["limits"] == {"max_turns": 1, "max_tool_calls": 0, "timeout_s": 120, "max_output_tokens": 16384}
-        assert CONCEPT_AGENT in BUILTIN_AGENT_IDS
-        row = db.execute("SELECT * FROM t_agent_prompt_version WHERE f_prompt_id=?", (CONCEPT_AGENT + "-prompt",)).fetchone()
-        assert row["f_source_language"] == "en-US"
-        locales = json.loads(row["f_localized_content"])
-        assert set(locales) == {"zh-CN", "en-US"}
-        assert locales["en-US"] == row["f_content"]
-        for rule in ("sample_id", "document_ref", "*_doc", "entity", "in_document", "fact", "event", "No instances", "exact", "human"):
-            assert rule in row["f_content"]
-        before = snapshot(db)
-        apply(db, CONCEPT_SEED)
-        assert snapshot(db) == before
-
-
-@pytest.mark.parametrize("completed", [1, 2, 3])
-def test_concept_seed_partial_retry_keeps_identical_defaults(completed):
-    with concept_seed_database() as db, concept_seed_database() as expected:
-        apply(expected, CONCEPT_SEED)
-        apply(db, CONCEPT_SEED, limit=completed)
-        if completed < 3:
-            assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id=?", (CONCEPT_AGENT,)).fetchone()[0] == 0
-        apply(db, CONCEPT_SEED)
-        assert snapshot(db) == snapshot(expected)
-
-
-def test_concept_seed_preserves_customized_existing_agent_and_prompt():
-    with concept_seed_database() as db:
-        apply(db, CONCEPT_SEED)
-        db.execute("UPDATE t_agent SET f_name='Custom', f_update_user='operator' WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        db.execute("UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id=?", (CONCEPT_AGENT + '-prompt',))
-        before = snapshot(db)
-        apply(db, CONCEPT_SEED)
-        assert snapshot(db) == before
-
-
-def test_concept_seed_rejects_conflicting_prompt_content():
-    with concept_seed_database() as db:
-        apply(db, CONCEPT_SEED, limit=2)
-        db.execute("UPDATE t_agent_prompt_version SET f_content='conflicting prompt' WHERE f_prompt_id=?", (CONCEPT_AGENT + '-prompt',))
-        before = snapshot(db)
-        with pytest.raises(sqlite3.IntegrityError):
-            apply(db, CONCEPT_SEED)
-        assert snapshot(db) == before
-
-
-def test_concept_seed_does_not_create_history_for_custom_agent():
-    with concept_seed_database() as db:
-        apply(db, CONCEPT_SEED)
-        db.execute("UPDATE t_agent SET f_name='Custom', f_create_user='operator' WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        db.execute("DELETE FROM t_agent_version WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        before = snapshot(db)
-        apply(db, CONCEPT_SEED)
-        assert snapshot(db) == before
-
-
 def ask_v4_state(db, start):
     ask_v3_state(db, start)
     apply(db, ONTOLOGY_ASK_V4)
@@ -3958,7 +3898,7 @@ def test_ontology_ask_document_models_v5_matches_fresh_and_preserves_history(sta
     with database() as db, database() as fresh:
         ask_v4_state(db, start)
         old = ask_prompt_version(db, 4)
-        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        apply(fresh, MIGRATIONS / "0.2.1/init.sql")
         apply(db, ONTOLOGY_ASK_V5)
         assert item_from_db(db, "bkn-project-ontology-ask") == item_from_db(fresh, "bkn-project-ontology-ask")
         new = ask_prompt_version(db, 5)
@@ -4001,7 +3941,7 @@ def test_ontology_ask_document_models_v5_keeps_custom_prompts(field):
 def test_ontology_ask_document_models_v5_does_not_take_over_an_operator_version():
     with database() as db, database() as fresh:
         ask_v4_state(db, "upgraded")
-        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        apply(fresh, MIGRATIONS / "0.2.1/init.sql")
         official = ask_prompt_version(fresh, 5)
         db.execute("INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time,f_source_language) VALUES (?,?,?,?,?,?,?)", ("bkn-project-ontology-ask-prompt",5,official["f_content"],None,"operator",1000,"en-US"))
         before = snapshot(db)
@@ -4009,66 +3949,168 @@ def test_ontology_ask_document_models_v5_does_not_take_over_an_operator_version(
         assert snapshot(db) == before
 
 
-CONCEPT_BUDGET = MIGRATIONS / "0.2.1/38-concept-extraction-execution-budget.sql"
+ASK = "bkn-project-ontology-ask"
+ASK_V6_SHA = "1963e1c9bb34a6c5addf9de388ea185169f54d710500dc9eaca7751eb49f2f90"
+ASK_V6_ZH_SHA = "adb69551e2d9f07f7f334384b60ad8b0e96971b245b5f46c072a50a1e7f93656"
 
-def test_concept_budget_upgrade_preserves_history_and_is_idempotent():
-    with concept_seed_database() as db:
-        apply(db, CONCEPT_SEED)
-        old = dict(db.execute("SELECT * FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (CONCEPT_AGENT,)).fetchone())
-        apply(db, CONCEPT_BUDGET)
-        assert item_from_db(db, CONCEPT_AGENT)["spec"]["limits"]["timeout_s"] == 300
-        versions = db.execute("SELECT * FROM t_agent_version WHERE f_agent_id=? ORDER BY f_version", (CONCEPT_AGENT,)).fetchall()
-        assert len(versions) == 2 and versions[1]["f_current"] and versions[1]["f_initial"]
-        assert json.loads(versions[1]["f_limits"])["timeout_s"] == 300
-        assert versions[1]["f_prompt_version"] == 1
-        assert all(versions[0][key] == value for key, value in old.items() if key not in {"f_current", "f_initial"})
+
+def ask_v5_state(db, start):
+    """Ask AI just before 0.2.2's v6: upgraded through 37, or installed from the 0.2.1 snapshot at v5."""
+    if start == "upgraded":
+        ask_v4_state(db, "upgraded")
+        apply(db, ONTOLOGY_ASK_V5)
+        return
+    apply(db, MIGRATIONS / "0.2.1/init.sql")
+
+
+def ask_rows(db):
+    return [tuple(row) for row in db.execute(
+        f"SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='{ASK}' AND (f_initial=1 OR f_current=1)"
+    )]
+
+
+def test_ontology_ask_v6_fresh_snapshot_is_v4_with_the_aliases_paragraph():
+    with database() as db, database() as v4:
+        apply(db, MIGRATIONS / "0.2.2/init.sql")
+        ask_v4_state(v4, "upgraded")
+        official_v4 = ask_prompt_version(v4, 4)
+        assert [row[0] for row in db.execute(
+            "SELECT f_version FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-ontology-ask-prompt'")] == [6]
+        v6 = ask_prompt_version(db, 6)
+        assert hashlib.sha256(v6["f_content"].encode()).hexdigest() == ASK_V6_SHA
+        assert v6["f_source_language"] == "en-US"
+        locales = json.loads(v6["f_localized_content"])
+        assert set(locales) == {"zh-CN", "en-US"} and locales["en-US"] == v6["f_content"]
+        assert hashlib.sha256(locales["zh-CN"].encode()).hexdigest() == ASK_V6_ZH_SHA
+        assert ask_rows(db) == [(6, 1, 1)]
+        # v6 is the official v4 with one aliases paragraph before the closing paragraph.
+        old_locales = json.loads(official_v4["f_localized_content"])
+        for new, old, aliases, closing in (
+            (v6["f_content"], official_v4["f_content"], "Aliases. ", "You only answer and propose"),
+            (locales["zh-CN"], old_locales["zh-CN"], "别名。", "你只作答和提出修订"),
+        ):
+            start, end = new.index("\n\n" + aliases), new.index("\n\n" + closing)
+            assert start < end and "\n\n" not in new[start + 2:end]
+            assert new[:start] + new[end:] == old
+        for gone in ("object_type.document", "extraction_instruction", "document_mapping"):
+            assert gone not in v6["f_content"]
+        item = item_from_db(db, ASK)
+        assert item["spec"]["status"] == "published"
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_ontology_ask_v6_upgrade_from_v5_matches_fresh_and_keeps_history(start):
+    with database() as db, database() as fresh:
+        apply(fresh, MIGRATIONS / "0.2.2/init.sql")
+        ask_v5_state(db, start)
+        old = ask_prompt_version(db, 5)
+        history = [row for row in snapshot(db)[3] if row[0] == ASK]
+        for path in (REQUIREMENTS_V8, ONTOLOGY_ASK_V6):
+            apply(db, path)
+        assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
+        new, official = ask_prompt_version(db, 6), ask_prompt_version(fresh, 6)
+        for field in ("f_content", "f_localized_content", "f_source_language", "f_vars_schema", "f_create_user"):
+            assert new[field] == official[field], field
+        assert ask_prompt_version(db, 5) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        assert ask_rows(db) == [(6, 1, 1)]
         before = snapshot(db)
-        apply(db, CONCEPT_BUDGET)
+        apply(db, ONTOLOGY_ASK_V6)
         assert snapshot(db) == before
 
-@pytest.mark.parametrize("custom", ["limits", "model", "tools", "newer_version", "future_update_time"])
-def test_concept_budget_never_overwrites_operator_configuration(custom):
-    with concept_seed_database() as db:
-        apply(db, CONCEPT_SEED)
-        if custom == "limits":
-            db.execute("UPDATE t_agent SET f_limits=json_set(f_limits,'$.timeout_s',90) WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        elif custom == "model":
-            db.execute("UPDATE t_agent SET f_model='operator-model' WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        elif custom == "tools":
-            db.execute("UPDATE t_agent SET f_tools='[{\"type\":\"operator\"}]' WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        elif custom == "future_update_time":
-            db.execute("UPDATE t_agent SET f_update_time=5000 WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        else:
-            db.execute("INSERT INTO t_agent_version SELECT f_agent_id,3,f_model,f_tools,f_limits,f_prompt_version,f_changes,0,1,0,f_create_user,f_create_time FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (CONCEPT_AGENT,))
-        before = snapshot(db)
-        apply(db, CONCEPT_BUDGET)
-        assert snapshot(db) == before
 
-def test_concept_budget_fresh_install_matches_upgrade():
-    with database() as fresh, concept_seed_database() as upgraded:
-        apply(fresh, MIGRATIONS / "0.2.1/init.sql")
-        apply(upgraded, CONCEPT_SEED)
-        apply(upgraded, CONCEPT_BUDGET)
-        assert item_from_db(fresh, CONCEPT_AGENT)["spec"]["limits"] == item_from_db(upgraded, CONCEPT_AGENT)["spec"]["limits"]
-        assert item_from_db(fresh, CONCEPT_AGENT)["spec"]["limits"]["timeout_s"] == 300
+def test_ontology_ask_v6_upgrade_from_official_v4_matches_fresh():
+    with database() as db, database() as fresh:
+        apply(fresh, MIGRATIONS / "0.2.2/init.sql")
+        ask_v4_state(db, "upgraded")
+        apply(db, ONTOLOGY_ASK_V6)
+        assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
+        assert ask_prompt_version(db, 6)["f_localized_content"] == ask_prompt_version(fresh, 6)["f_localized_content"]
+        assert db.execute("SELECT COUNT(*) FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=5").fetchone()[0] == 0
+        assert ask_rows(db) == [(6, 1, 1)]
 
 
-def test_concept_budget_preserves_explicit_operator_rollback():
-    with concept_seed_database() as db:
-        apply(db, CONCEPT_SEED)
-        apply(db, CONCEPT_BUDGET)
-        db.execute("UPDATE t_agent_version SET f_current=(f_version=1) WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        db.execute("UPDATE t_agent SET f_limits=json_set(f_limits,'$.timeout_s',120),f_update_time=5000 WHERE f_agent_id=?", (CONCEPT_AGENT,))
-        before = snapshot(db)
-        apply(db, CONCEPT_BUDGET)
-        assert snapshot(db) == before
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_ontology_ask_v6_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            ask_v5_state(connection, "upgraded")
+            if customized:
+                connection.execute(f"UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='{ASK}'")
+        apply(expected, ONTOLOGY_ASK_V6)
+        apply(db, ONTOLOGY_ASK_V6, limit=limit)
+        apply(db, ONTOLOGY_ASK_V6)
+        assert snapshot(db) == snapshot(expected)
 
-def test_concept_budget_is_noop_on_current_fresh_defaults():
+
+@pytest.mark.parametrize("customization", ["content", "zh-CN", "en-US", "higher-version", "rollback"])
+def test_ontology_ask_v6_upgrade_keeps_a_customized_prompt(customization):
     with database() as db:
-        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        ask_v5_state(db, "installed")
+        if customization == "content":
+            db.execute("UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=5")
+        elif customization in ("zh-CN", "en-US"):
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom') WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=5",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('bkn-project-ontology-ask-prompt',6,'custom newer prompt',null,'operator',9e15)"
+            )
+            if customization == "higher-version":
+                db.execute("UPDATE t_agent_prompt SET f_current_version=6 WHERE f_prompt_id='bkn-project-ontology-ask-prompt'")
         before = snapshot(db)
-        apply(db, CONCEPT_BUDGET)
+        apply(db, ONTOLOGY_ASK_V6)
         assert snapshot(db) == before
+
+
+def test_ontology_ask_v6_upgrade_does_not_switch_a_prompt_head_an_operator_saved():
+    with database() as db:
+        ask_v5_state(db, "installed")
+        db.execute("UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=9e15 WHERE f_prompt_id='bkn-project-ontology-ask-prompt'")
+        head_before, agent_versions_before = snapshot(db)[1], snapshot(db)[3]
+        apply(db, ONTOLOGY_ASK_V6)
+        assert snapshot(db)[1] == head_before
+        assert snapshot(db)[3] == agent_versions_before
+
+
+def test_ontology_ask_v6_upgrade_keeps_an_operator_rollback_to_v4():
+    with database() as db:
+        ask_v5_state(db, "upgraded")
+        db.execute("UPDATE t_agent_prompt SET f_current_version=4 WHERE f_prompt_id='bkn-project-ontology-ask-prompt'")
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_V6)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_ontology_ask_v6_upgrade_keeps_custom_settings_and_official_baseline(start):
+    with database() as db:
+        ask_v5_state(db, start)
+        original = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{ASK}' AND f_version=1").fetchone())
+        db.execute(f"UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='{ASK}'", ('{"max_turns":3}',))
+        apply(db, ONTOLOGY_ASK_V6)
+        baseline = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{ASK}' AND f_initial=1").fetchone())
+        current = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{ASK}' AND f_current=1").fetchone())
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (6, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (6, "custom-model", '{"max_turns":3}')
+
+
+def test_fresh_snapshot_attaches_the_same_v6_translations_as_the_upgrade():
+    init = (MIGRATIONS / "0.2.2/init.sql").read_text()
+    text = ONTOLOGY_ASK_V6.read_text()
+    assert text[text.index("-- Attach the zh-CN"):] in init
+    ask = init.index("-- bkn-project-ontology-ask:")
+    v6 = [s for s in statements(ONTOLOGY_ASK_V6) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v6[v6.index("select v.f_prompt_id, 6, 'en-US',") + len("select v.f_prompt_id, 6, 'en-US',"):v6.index("v.f_vars_schema,")].strip()
+    assert init.index("select 'bkn-project-ontology-ask-prompt', 6, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
 
 
 DOCUMENT_AGENT = "bkn-project-document-extraction"
@@ -4107,10 +4149,3 @@ def test_single_call_never_overwrites_operator_configuration(custom):
         apply(db, SINGLE_CALL)
         assert snapshot(db) == before
 
-
-def test_single_call_fresh_install_matches_upgrade():
-    with database() as fresh, database() as upgraded:
-        apply(fresh, MIGRATIONS / "0.2.2/init.sql")
-        apply(upgraded, MIGRATIONS / "0.2.1/init.sql")
-        apply(upgraded, SINGLE_CALL)
-        assert item_from_db(fresh, DOCUMENT_AGENT)["spec"]["limits"] == item_from_db(upgraded, DOCUMENT_AGENT)["spec"]["limits"]

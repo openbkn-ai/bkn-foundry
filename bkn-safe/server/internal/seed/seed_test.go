@@ -860,6 +860,7 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		"catalog:*":           {"create"},
 		"knowledge_network:*": {"create"},
 		"knowledge_base:*":    {"create"},
+		"workshop_app:*":      {"create"},
 		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"tool_box:*":          {"create"},

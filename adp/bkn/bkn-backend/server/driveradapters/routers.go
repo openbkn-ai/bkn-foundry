@@ -65,6 +65,7 @@ type restHandler struct {
 	rtsRisk                 interfaces.RiskTypeService
 	vts                     interfaces.ValueTypeService
 	oms                     interfaces.ObjectMetricServiceV1
+	kes                     interfaces.KnEventServiceV1
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService

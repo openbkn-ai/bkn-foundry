@@ -154,3 +154,28 @@ func leftOutAliases(item interfaces.ReleaseItem, property string, drafted []stri
 	}
 	return left
 }
+
+// aliasesRevision checks the aliases Ask AI proposes for an object or relation type named name, the
+// whole list it would have, as saving them checks them; they are proposed for a person to confirm.
+func aliasesRevision(ctx context.Context, items *interfaces.DraftItems, kind string, id string, name string,
+	current []string, proposed []string) (*interfaces.DraftAskRevision, string) {
+	aliases := cleanAliases(proposed)
+	if slices.Equal(aliases, current) {
+		return nil, askDroppedUnchanged
+	}
+	err := checkOwnAliases(ctx, name, aliases, name)
+	if err == nil && kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		for _, other := range items.ObjectTypes {
+			if other.ID != id && slices.Contains(aliases, other.Name) {
+				err = aliasError(ctx, name, other.Name, aliasOtherName, other.Name)
+			}
+		}
+	}
+	if err != nil {
+		return nil, askDroppedInvalidAliases
+	}
+	if aliases == nil {
+		aliases = []string{}
+	}
+	return &interfaces.DraftAskRevision{Value: aliases}, ""
+}

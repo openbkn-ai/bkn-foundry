@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `DELETE /api/bkn-agent/v1/threads/{thread_id}` deletes a thread's checkpoints and ownership row for its owner (404 for anyone else, 409 while a turn runs); task and execution records are kept.
+
 ### Fixed
 
 - Remove the business-provenance directory-account bootstrap, Secret dependency, and credential exception; reject the retired identity while retaining SQL defaults, caller identity, and shared configuration history (#2823).

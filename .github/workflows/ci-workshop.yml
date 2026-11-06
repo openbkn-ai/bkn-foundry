@@ -1,0 +1,34 @@
+name: ci-workshop
+
+# Compile and unit-test gate for PRs touching the Workshop service skeleton.
+
+on:
+  pull_request:
+    paths:
+      - 'workshop/**'
+      - '.github/workflows/ci-workshop.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-workshop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workshop:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: workshop/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: workshop/server/go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Run Workshop unit tests
+        env:
+          I18N_MODE_UT: "true"
+        run: go test -count=1 -gcflags="all=-l" ./...

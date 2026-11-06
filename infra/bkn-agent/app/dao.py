@@ -421,6 +421,11 @@ async def get_thread_row(session: AsyncSession, thread_id: str) -> Optional[Thre
     return await session.get(ThreadRow, thread_id)
 
 
+async def delete_thread_row(session: AsyncSession, thread_id: str) -> None:
+    await session.execute(delete(ThreadRow).where(ThreadRow.f_thread_id == thread_id))
+    await session.commit()
+
+
 async def touch_thread(session: AsyncSession, thread_id: str, agent_id: str, account_id: str) -> ThreadRow:
     """Record ownership for a new thread and refresh update_time for an existing
     one. The ownership check lives in the caller and fails closed."""

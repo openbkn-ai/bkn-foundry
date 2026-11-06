@@ -33,7 +33,8 @@ The order below matches the card groups on the documentation home page. It is co
 | Module | Directory | Coverage |
 |---|---|---|
 | 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, capability bindings, import/export, and [Object Metrics V1](bkn/bkn-object-metrics-v1.yaml). |
-| 🛡️ bkn-safe admin | [`bkn-safe-admin/`](bkn-safe-admin/) | Gateway-exposed, bearer-token-protected Enterprise security-policy management APIs. Internal decision endpoints remain under the unpublished `bkn-safe/` module. |
+| 🛡️ bkn-safe admin | [`bkn-safe-admin/`](bkn-safe-admin/) | Gateway-exposed, bearer-token-protected Enterprise security-policy management APIs. Internal decision endpoints remain under `bkn-safe/` and are not published. |
+| 🔐 bkn-safe | [`bkn-safe/`](bkn-safe/) | Only [MCP client registration and connected clients](bkn-safe/oauth-clients.yaml) is published: RFC 7591 self-registration, listing and disconnecting your connected clients, and admin cleanup. The other files are linted but stay unpublished (see below). |
 | 🟫 context-loader | [`context-loader/`](context-loader/) | Agent context entry points: schema retrieval, instance and subgraph queries, logical properties, action execution, Skill retrieval, direct data access, and MCP. **Complete external surface**; internal `/in/v1` APIs are excluded |
 | 🟩 ontology-query | [`ontology-query/`](ontology-query/) | Ontology queries, semantic retrieval, action execution, logs, and [Object Metrics V1](ontology-query/object-metrics-v1.yaml). |
 | 🟨 vega-backend | [`vega/`](vega/) | Data observability: catalogs, resources, connectors, build tasks, discovery tasks, and raw queries. **Complete** |
@@ -49,10 +50,11 @@ These directories remain in the repository but are not published on the site. Th
 
 | Directory | Reason |
 | --- | --- |
-| [`bkn-safe/`](bkn-safe/) | Contains the self-service read surface plus cluster-internal authorization and managed-proxy contracts. They are linted but are not published as general external integration APIs |
 | [`sandbox-control-plane/`](sandbox-control-plane/) | Private control-plane REST contract, derived from current Pydantic models; callbacks remain cluster internal |
 | [`sandbox-executor/`](sandbox-executor/) | Private executor contract, including asynchronous submission and session dependency synchronization |
 | [`observability/`](observability/) | Contains only `observability.json`; it has no publishable YAML and would render as an empty group |
+
+A published module can also publish only some of its files with `MODFILES_<module>` in the Makefile. `bkn-safe/` uses this: only `oauth-clients.yaml` is published, while its self-service reads and cluster-internal authorization and managed-proxy contracts are linted but not published as general integration APIs.
 
 > Every new module directory must be registered in either `MODULES` or `MODULES_UNPUBLISHED`. The `make api-docs-*` targets fail otherwise, preventing documentation from being added silently without appearing on the site.
 

@@ -684,6 +684,50 @@ def test_internal_thread_cannot_be_adopted_without_public_scope(monkeypatch):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("delete_state", ["finished", "running"])
+def test_thread_deleted_during_continuation_checks_is_not_recreated(
+    monkeypatch, delete_state
+):
+    from app.core import graph
+
+    async def run():
+        async with environment(monkeypatch) as (client, factory, calls):
+            first = await client.post(URL, json=BODY, headers=AUTH)
+            thread_id = parse_sse(first.text)[0][1]["thread_id"]
+            read_origin = dao.execution_thread_input
+
+            async def delete_meanwhile(session, tid):
+                origin = await read_origin(session, tid)
+                # The delete lands after the row check, before the claim.
+                if delete_state == "finished":
+                    async with factory() as other:
+                        await dao.delete_thread_row(other, tid)
+                else:
+                    assert graph.claim_thread(tid)
+                return origin
+
+            monkeypatch.setattr(dao, "execution_thread_input", delete_meanwhile)
+            try:
+                response = await client.post(
+                    URL,
+                    json={**BODY, "client_request_id": "next", "thread_id": thread_id},
+                    headers=AUTH,
+                )
+            finally:
+                graph.release_thread(thread_id)
+            if delete_state == "finished":
+                assert response.status_code == 404
+                async with factory() as session:
+                    assert await dao.get_thread_row(session, thread_id) is None
+            else:
+                assert response.status_code == 409
+                assert response.json()["code"] == "BknAgent.Thread.Busy"
+            assert len(calls) == 1
+            assert not executions._thread_claims
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize(
     "result,status",
     [

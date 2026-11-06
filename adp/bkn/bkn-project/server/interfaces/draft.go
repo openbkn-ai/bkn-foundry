@@ -118,6 +118,9 @@ type DraftItems struct {
 	ValueTypes    []*DraftValueType     `json:"value_types"`
 	Excluded      []*DraftExcludedField `json:"excluded"`
 	Unreadable    []*DraftTable         `json:"unreadable"`
+	// DocumentConcepts are the concepts of the document samples that document drafting modeled no
+	// item for; absent when there are none.
+	DocumentConcepts []*DraftDocumentConcept `json:"document_concepts,omitempty"`
 	// Decisions people made on the items, oldest first. They are kept with the items so a
 	// draft and its decisions are read and written together.
 	Decisions []*DraftDecision `json:"decisions"`
@@ -506,6 +509,9 @@ const (
 	DRAFT_ASK_REVISION_DISPLAY_KEY   = "display_key"
 	DRAFT_ASK_REVISION_DATA_PROPERTY = "data_property"
 	DRAFT_ASK_REVISION_ENDS          = "ends"
+	// DRAFT_ASK_REVISION_ALIASES replaces an object or relation type's aliases: Value is the whole
+	// list, those it keeps and those it proposes.
+	DRAFT_ASK_REVISION_ALIASES = "aliases"
 )
 
 // DraftAskRevision is a change to one field of the save body. Value is a string for name, comment
