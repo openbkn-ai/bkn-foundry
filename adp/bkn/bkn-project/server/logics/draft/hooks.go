@@ -114,6 +114,9 @@ func (noDocumentHooks) CheckRead(ctx context.Context, _ string, draft *interface
 			return noDocuments(ctx)
 		}
 	}
+	if len(draft.Items.DocumentConcepts) > 0 {
+		return noDocuments(ctx)
+	}
 	return nil
 }
 func (noDocumentHooks) ProjectRead(*interfaces.DraftItems) {}

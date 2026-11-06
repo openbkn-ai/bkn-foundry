@@ -118,6 +118,9 @@ type DraftItems struct {
 	ValueTypes    []*DraftValueType     `json:"value_types"`
 	Excluded      []*DraftExcludedField `json:"excluded"`
 	Unreadable    []*DraftTable         `json:"unreadable"`
+	// DocumentConcepts are the concepts of the document samples that document drafting modeled no
+	// item for; absent when there are none.
+	DocumentConcepts []*DraftDocumentConcept `json:"document_concepts,omitempty"`
 	// Decisions people made on the items, oldest first. They are kept with the items so a
 	// draft and its decisions are read and written together.
 	Decisions []*DraftDecision `json:"decisions"`

@@ -37,6 +37,12 @@ var CONCEPT_VERDICTS = []string{
 	CONCEPT_VERDICT_RELATION, CONCEPT_VERDICT_KINETIC, CONCEPT_VERDICT_NONE,
 }
 
+// DOCUMENT_CONCEPT_VERDICTS are what a concept of the document samples that drafting modeled no
+// item for may be suggested as: none of them is an object type or relation type of its own.
+var DOCUMENT_CONCEPT_VERDICTS = []string{
+	CONCEPT_VERDICT_PROPERTY, CONCEPT_VERDICT_VALUES, CONCEPT_VERDICT_KINETIC, CONCEPT_VERDICT_NONE,
+}
+
 // Where a concept stands.
 const (
 	// CONCEPT_STATE_PENDING: no person judged it yet. It may already be in the model, as drafting
@@ -122,6 +128,20 @@ type DraftConceptItem struct {
 	Kind    string `json:"kind"`
 	ID      string `json:"id"`
 	Adopted bool   `json:"adopted"`
+}
+
+// DraftDocumentConcept is a concept the knowledge-base samples hold that document drafting
+// proposed no object type or relation type for: a property, a value list, kinetic, or not
+// included, with why and the sample text it was read from. Drafting records it in the draft, so it
+// is listed among the concepts and judged like any other; it is no model item.
+type DraftDocumentConcept struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// Verdict is one of DOCUMENT_CONCEPT_VERDICTS.
+	Verdict   string                `json:"verdict"`
+	Reason    string                `json:"reason"`
+	Citations []DraftSourceCitation `json:"citations"`
 }
 
 // DraftConceptJudge is the body of judging a concept, on the draft read.
