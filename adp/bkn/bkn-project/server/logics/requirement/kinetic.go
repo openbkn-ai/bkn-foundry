@@ -106,7 +106,7 @@ func keepForKinetic(spec *interfaces.RequirementSpec, discard bool) {
 	_, needs := questionRefs(spec.Questions)
 	spec.LogicNeeds = slices.DeleteFunc(spec.LogicNeeds, func(n *interfaces.RequirementLogicNeed) bool {
 		analysed := n.Source == interfaces.LOGIC_NEED_FROM_ANALYSIS || n.Source == interfaces.LOGIC_NEED_FROM_SCENARIOS
-		return analysed && !needs[n.ID] && (discard || !n.Accepted && !n.Edited)
+		return analysed && !needs[n.ID] && n.Link == nil && (discard || !n.Accepted && !n.Edited)
 	})
 }
 

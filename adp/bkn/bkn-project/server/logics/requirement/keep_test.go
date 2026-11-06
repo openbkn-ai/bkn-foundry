@@ -221,6 +221,21 @@ func Test_KeepForConcepts(t *testing.T) {
 			So(s.Conflicts, ShouldBeEmpty)
 			So(s.Choices, ShouldBeEmpty)
 		})
+
+		Convey("A need linked to an implementation stays, even when starting over\n", func() {
+			for _, discard := range []bool{false, true} {
+				s := spec()
+				s.LogicNeeds = append(s.LogicNeeds, &interfaces.RequirementLogicNeed{ID: "n6", Kind: interfaces.LOGIC_NEED_METRIC,
+					Name: "n6", Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS, ConceptIDs: []string{"c1"},
+					Link: &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1"}})
+
+				keepForConcepts(s, discard)
+
+				So(ids(s.LogicNeeds, logicNeedID), ShouldContain, "n6")
+				// The concept the linked need rests on stays with it.
+				So(ids(s.Concepts, conceptID), ShouldContain, "c1")
+			}
+		})
 	})
 }
 
@@ -252,6 +267,14 @@ func Test_KeepForKinetic(t *testing.T) {
 		s = spec()
 		keepForKinetic(s, true)
 		So(ids(s.LogicNeeds, logicNeedID), ShouldResemble, []string{"n5", "n6", "n7"})
+
+		// A need linked to an implementation stays, even when starting over.
+		for _, discard := range []bool{false, true} {
+			s = spec()
+			s.LogicNeeds[0].Link = &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1"}
+			keepForKinetic(s, discard)
+			So(ids(s.LogicNeeds, logicNeedID), ShouldContain, "n1")
+		}
 	})
 }
 

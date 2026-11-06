@@ -76,6 +76,8 @@ type RequirementLogicNeed struct {
 	Source           string                `json:"source"`
 	Edited           bool                  `json:"edited"`
 	Accepted         bool                  `json:"accepted"`
+	// Link is the implementation it is linked to, nil until a person links one.
+	Link *RequirementLogicLink `json:"link,omitempty"`
 }
 
 // RequirementPropertyRef is a property of a drafted object type, by its name.
