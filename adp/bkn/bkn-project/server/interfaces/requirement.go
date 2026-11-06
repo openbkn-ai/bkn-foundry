@@ -130,14 +130,21 @@ type RequirementInputDocument struct {
 	DocType string `json:"doc_type"`
 }
 
-// RequirementSpec is the specification. Item ids are the server's: s1, c1, q1, r1, k1 and f1.
+// RequirementSpec is the specification. Item ids are the server's: s1, c1, q1, r1, k1, f1 and n1.
+// Concepts, rules, conflicts and choices are extracted from the documents before a model exists, in
+// the concepts run; kinetic needs come from the documents too and from the kinetic run; scenarios
+// and questions are drafted last, from the confirmed model and its kinetic needs.
 type RequirementSpec struct {
-	Scenarios []*RequirementScenario `json:"scenarios"`
-	Concepts  []*RequirementConcept  `json:"concepts"`
-	Questions []*RequirementQuestion `json:"questions"`
-	Rules     []*RequirementRule     `json:"rules"`
-	Conflicts []*RequirementConflict `json:"conflicts"`
-	Choices   []*RequirementChoice   `json:"choices"`
+	Scenarios  []*RequirementScenario  `json:"scenarios"`
+	Concepts   []*RequirementConcept   `json:"concepts"`
+	Questions  []*RequirementQuestion  `json:"questions"`
+	Rules      []*RequirementRule      `json:"rules"`
+	Conflicts  []*RequirementConflict  `json:"conflicts"`
+	Choices    []*RequirementChoice    `json:"choices"`
+	LogicNeeds []*RequirementLogicNeed `json:"logic_needs"`
+	// Runs are the states of the concepts and kinetic runs, by kind; scenario drafting is the
+	// specification's own status.
+	Runs map[string]*RequirementRun `json:"runs,omitempty"`
 	// Rejected are the drafted items the checks dropped, with why, so none is dropped unseen.
 	Rejected []*RequirementRejected `json:"rejected"`
 	// TablesOmitted counts the tables of the project's catalogs drafting did not name to the Agent:
@@ -152,7 +159,7 @@ type RequirementSpec struct {
 	// CatalogsUnlisted are the project's catalogs whose tables drafting could not list, so none of
 	// their tables went to the Agent. Absent when every catalog was listed.
 	CatalogsUnlisted []string `json:"catalogs_unlisted,omitempty"`
-	// LastIDs is the highest number given to an item of each kind (s, c, q, r) since drafting, so
+	// LastIDs is the highest number given to an item of each kind (s, c, q, r, n) since drafting, so
 	// an id once given, even of an item removed since, is never given again.
 	LastIDs map[string]int `json:"last_ids,omitempty"`
 }
@@ -182,9 +189,9 @@ type RequirementScenario struct {
 	Decision string `json:"decision"`
 	// Knowledge is what the decision needs from this network.
 	Knowledge []string `json:"knowledge"`
-	// Capabilities are what other teams build: metrics with their definition, functions, skills
-	// and applications.
-	Capabilities []RequirementCapability `json:"capabilities"`
+	// Capabilities are the names of what other teams build, as specifications drafted before
+	// kinetic needs held them; reading turns them into needs.
+	Capabilities []RequirementCapability `json:"capabilities,omitempty"`
 	Loop         *RequirementLoop        `json:"loop,omitempty"`
 	Citations    []RequirementCitation   `json:"citations"`
 	// SupplementReason says why an item without a basis in the documents is needed.
@@ -219,7 +226,7 @@ type RequirementLoop struct {
 type RequirementConcept struct {
 	ID   string `json:"id"`
 	Term string `json:"term"`
-	// Category is object, event, property, relation, evidence or not_ontology.
+	// Category is object, event, property, relation, evidence, kinetic or not_ontology.
 	Category          string `json:"category"`
 	Definition        string `json:"definition"`
 	NotOntologyReason string `json:"not_ontology_reason,omitempty"`
@@ -227,8 +234,19 @@ type RequirementConcept struct {
 	MapsTo           *RequirementItemRef   `json:"maps_to,omitempty"`
 	Citations        []RequirementCitation `json:"citations"`
 	SupplementReason string                `json:"supplement_reason,omitempty"`
-	Edited           bool                  `json:"edited"`
+	// Source is documents for a concept the concepts run extracted, scenarios for one scenario
+	// drafting added, person for one a person added; empty for one drafted before concepts were
+	// extracted on their own.
+	Source string `json:"source,omitempty"`
+	Edited bool   `json:"edited"`
 }
+
+// Where a concept comes from.
+const (
+	REQUIREMENT_CONCEPT_FROM_DOCUMENTS = "documents"
+	REQUIREMENT_CONCEPT_FROM_SCENARIOS = "scenarios"
+	REQUIREMENT_CONCEPT_FROM_PERSON    = "person"
+)
 
 type RequirementQuestion struct {
 	ID          string   `json:"id"`
@@ -242,6 +260,8 @@ type RequirementQuestion struct {
 	Template    string           `json:"template"`
 	AnswerShape string           `json:"answer_shape"`
 	Basis       RequirementBasis `json:"basis"`
+	// LogicNeedIDs are the kinetic needs it rests on; with any, it is a capability question.
+	LogicNeedIDs []string `json:"logic_need_ids"`
 	// Needs are the drafted items the question depends on; NeedsSource says whether they follow
 	// its concepts or a person set them.
 	Needs       []RequirementItemRef `json:"needs"`
@@ -297,12 +317,13 @@ const (
 	REQUIREMENT_INPUT_REFERENCE_TIME = "reference_time"
 )
 
-// RequirementBasis is what a question rests on, as bkn-eval's answer sets name it.
+// RequirementBasis is the concepts a question rests on. Metrics, functions and skills are the names
+// a specification drafted before kinetic needs held; reading turns them into needs.
 type RequirementBasis struct {
 	ConceptIDs []string `json:"concept_ids"`
-	Metrics    []string `json:"metrics"`
-	Functions  []string `json:"functions"`
-	Skills     []string `json:"skills"`
+	Metrics    []string `json:"metrics,omitempty"`
+	Functions  []string `json:"functions,omitempty"`
+	Skills     []string `json:"skills,omitempty"`
 }
 
 type RequirementRule struct {
@@ -375,6 +396,8 @@ type RequirementRejected struct {
 	Kind   string `json:"kind"`
 	Text   string `json:"text"`
 	Reason string `json:"reason"`
+	// Run is the run that dropped it, concepts or kinetic; empty for scenario drafting.
+	Run string `json:"run,omitempty"`
 }
 
 // Kinds of specification items, as the routes name them.
@@ -393,7 +416,8 @@ type RequirementReview struct {
 	Unaccept   []RequirementReviewItem `json:"unaccept"`
 }
 
-// RequirementReviewItem is a scenario or a question by its kind, scenarios or questions, and id.
+// RequirementReviewItem is a scenario, a question or a kinetic need by its kind, scenarios,
+// questions or logic_needs, and id.
 type RequirementReviewItem struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
@@ -401,7 +425,9 @@ type RequirementReviewItem struct {
 
 // RequirementItemEdit changes the fields it sets of one item, for the item's kind: name, actor,
 // trigger, decision and knowledge of a scenario; term, category and definition of a concept; text,
-// layer, template, answer_shape, scenario_ids and needs of a question; statement of a rule.
+// layer, template, answer_shape, scenario_ids, needs and logic_need_ids of a question; statement of
+// a rule; logic_kind, name, definition, object_type_ids, properties, suggested_metric_type and
+// scenario_ids of a kinetic need.
 // Setting a question's needs makes them the person's; follow_concepts makes them follow its
 // concepts again. UpdateTime is the specification's as read.
 type RequirementItemEdit struct {
@@ -427,6 +453,12 @@ type RequirementItemEdit struct {
 	// FollowConcepts set to true gives a question's needs back to its concepts.
 	FollowConcepts *bool   `json:"follow_concepts"`
 	Statement      *string `json:"statement"`
+	// LogicNeedIDs replaces the kinetic needs a question rests on, and with them its layer.
+	LogicNeedIDs        *[]string                 `json:"logic_need_ids"`
+	LogicKind           *string                   `json:"logic_kind"`
+	ObjectTypeIDs       *[]string                 `json:"object_type_ids"`
+	Properties          *[]RequirementPropertyRef `json:"properties"`
+	SuggestedMetricType *string                   `json:"suggested_metric_type"`
 }
 
 // RequirementMapping sets the drafted item a concept is; nil clears it.
@@ -686,6 +718,19 @@ type RequirementAccess interface {
 	// FailDrafting marks every specification still drafting as failed with reason; drafting runs
 	// in the service process, so ones left drafting after a restart will never finish.
 	FailDrafting(ctx context.Context, reason string, updateTime int64) (int64, error)
+	// StartRun records run as the project's run of kind unless the project is drafting or another
+	// run goes, ones started before staleBefore aside; it reports whether it did. A project without
+	// a specification gets an empty ready one, of version 1, written at run.StartTime. When
+	// readUpdateTime is set, it starts only while the specification's update time is still that;
+	// otherwise it returns ErrRequirementChanged.
+	StartRun(ctx context.Context, projectID string, kind string, run *RequirementRun, staleBefore int64,
+		readUpdateTime int64) (bool, error)
+	// FinishRun applies finish to the specification while its run of kind is still runID, and
+	// writes it with finish's update time; false means another run took it over.
+	FinishRun(ctx context.Context, projectID string, kind string, runID string,
+		finish func(req *Requirement)) (bool, error)
+	// ProjectsWithRunning lists the projects whose specification records a run still running.
+	ProjectsWithRunning(ctx context.Context) ([]string, error)
 
 	// GetGuidance returns a question's test questions and guidance, and false when it has none.
 	GetGuidance(ctx context.Context, projectID string, questionID string) (*QuestionGuidance, bool, error)
@@ -745,9 +790,19 @@ type RequirementService interface {
 	// DeleteDocument removes a document.
 	DeleteDocument(ctx context.Context, token string, projectID string, documentID string, caller AccountInfo) error
 
-	// GenerateRequirement drafts the project's specification from its documents in the
-	// background and returns it drafting. A specification with decisions is drafted again only
-	// when discardDecisions is set.
+	// ExtractConcepts extracts the concepts, rules, conflicts, choices and stated kinetic needs of
+	// the project's documents in the background, before any model exists, and returns the
+	// specification with the run going. Items with decisions are extracted again only when
+	// discardDecisions is set.
+	ExtractConcepts(ctx context.Context, token string, projectID string, caller AccountInfo,
+		discardDecisions bool) (*Requirement, error)
+	// AnalyseKinetic analyses the confirmed concept model and the documents for the kinetic needs
+	// the network has, in the background, and returns the specification with the run going.
+	AnalyseKinetic(ctx context.Context, token string, projectID string, caller AccountInfo,
+		discardDecisions bool) (*Requirement, error)
+	// GenerateRequirement drafts the project's scenarios and questions from the confirmed model,
+	// its concepts and kinetic needs in the background and returns it drafting. A specification
+	// with decisions is drafted again only when discardDecisions is set.
 	GenerateRequirement(ctx context.Context, token string, projectID string, caller AccountInfo,
 		discardDecisions bool) (*Requirement, error)
 	// GetRequirement returns the project's specification with what is computed from it.

@@ -33,9 +33,15 @@ func exportSpec() *interfaces.Requirement {
 			Inputs: &[]interfaces.RequirementInput{{Name: "order", ConceptID: "c1", Property: "order_no",
 				Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}},
 		{ID: "q2", Text: "Which orders need approval?", Template: "Which orders need approval?", ScenarioIDs: []string{"s1", "s9"}, Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY,
-			AnswerShape: "orders", Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1", "c9"},
-				Metrics: []string{"order amount"}, Functions: []string{"approval check"}, Skills: []string{}}},
+			AnswerShape: "orders", Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1", "c9"}},
+			// A need gone since, and kinds Workshop's basis does not name, are left out.
+			LogicNeedIDs: []string{"n1", "n2", "n3", "n9"}},
 		{ID: "q3", Text: "Whose orders?", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE},
+	}
+	spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+		{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "order amount"},
+		{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "approval check"},
+		{ID: "n3", Kind: interfaces.LOGIC_NEED_API, Name: "ERP lookup"},
 	}
 	return req
 }

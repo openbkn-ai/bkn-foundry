@@ -66,7 +66,7 @@ def test_claim_locale_migration_on_mariadb(upgrade):
                 return result
         fresh, selected = selected_migrations(upgrade if upgrade != "fresh" else "0.0.0")
         if upgrade == "fresh":
-            assert fresh[1] == "0.2.1"
+            assert fresh[1] == "0.2.2"
             apply(Path(fresh[0]))
         else:
             apply(MIGRATIONS / upgrade / "init.sql")
@@ -75,7 +75,7 @@ def test_claim_locale_migration_on_mariadb(upgrade):
                     cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
                 with pytest.raises(pymysql.err.OperationalError, match="doesn.t exist"):
                     cursor.execute("SELECT f_agent_id FROM t_agent FORCE INDEX (ix_agent_prompt_id_agent_id) LIMIT 0")
-            assert selected[1:] == ["0.2.1", True]
+            assert selected[1:] == ["0.2.2", True]
             for _, paths in selected[0]:
                 for path in paths:
                     apply(Path(path))

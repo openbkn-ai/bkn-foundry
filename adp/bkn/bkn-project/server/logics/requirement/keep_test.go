@@ -30,6 +30,13 @@ var (
 	departmentRef = interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "departments"}
 )
 
+// confirmedStaff is the staff ontology, confirmed.
+func confirmedStaff() *interfaces.Draft {
+	draft := staffOntology()
+	draft.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "abc"}
+	return draft
+}
+
 // staffOntology is an adopted staff ontology, and a candidate no one adopted.
 func staffOntology() *interfaces.Draft {
 	return &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
@@ -47,7 +54,8 @@ func staffOntology() *interfaces.Draft {
 }
 
 // staffSpec is a ready specification of the staff ontology: s1 and q1 accepted, q2 and s4 changed
-// by a person before acceptance was recorded, the rest as drafted.
+// by a person before acceptance was recorded, the rest as drafted; its concepts were drafted before
+// concepts were extracted on their own. q2 rests on the kinetic need n1.
 func staffSpec() *interfaces.Requirement {
 	inputs := []interfaces.RequirementInput{{Name: "employee", ConceptID: "c2", Property: "emp_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}}
 	return &interfaces.Requirement{ProjectID: "p1", Version: 2, Status: interfaces.REQUIREMENT_STATUS_READY, CreateTime: 500, UpdateTime: 7,
@@ -69,7 +77,7 @@ func staffSpec() *interfaces.Requirement {
 					Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c1"}}, Inputs: &inputs,
 					Needs: []interfaces.RequirementItemRef{departmentRef, employeeRef}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE},
 				{ID: "q2", Text: "How many employees has a department?", ScenarioIDs: []string{"s2"}, Edited: true,
-					DraftTime: 300, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE},
+					DraftTime: 300, Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, LogicNeedIDs: []string{"n1"}},
 				{ID: "q3", Text: "Who moved last month?", ScenarioIDs: []string{"s3"}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE},
 				{ID: "q7", Text: "Who leads a department?", ScenarioIDs: []string{"s3"}, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE},
 			},
@@ -78,7 +86,18 @@ func staffSpec() *interfaces.Requirement {
 			Conflicts: []*interfaces.RequirementConflict{{ID: "k1", Topic: "Grade", Deferred: true}, {ID: "k2", Topic: "Leave"}},
 			Choices: []*interfaces.RequirementChoice{{ID: "f1", Question: "Team as object?", Decision: &interfaces.RequirementChoiceDecision{OptionID: "o1"}},
 				{ID: "f2", Question: "Site as object?"}},
-			Rejected: []*interfaces.RequirementRejected{},
+			LogicNeeds: []*interfaces.RequirementLogicNeed{
+				{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Headcount", Definition: "employees per department",
+					Source: interfaces.LOGIC_NEED_FROM_ANALYSIS, ScenarioIDs: []string{}},
+				{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Move approval", Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS,
+					ScenarioIDs: []string{}},
+			},
+			Rejected: []*interfaces.RequirementRejected{
+				{Kind: rejectedScenario, Text: "Hire everyone", Reason: rejectedQuoteNotFound},
+				{Kind: rejectedRule, Text: "Moves are cheap", Reason: rejectedQuoteNotFound, Run: interfaces.REQUIREMENT_RUN_CONCEPTS},
+			},
+			Runs: map[string]*interfaces.RequirementRun{interfaces.REQUIREMENT_RUN_CONCEPTS: {
+				Status: interfaces.REQUIREMENT_RUN_READY, RunID: "c"}},
 		}}
 }
 
@@ -90,52 +109,160 @@ func ids[T any](items []T, idOf func(T) string) []string {
 	return out
 }
 
-func Test_KeptOf(t *testing.T) {
-	Convey("Test what drafting again keeps\n", t, func() {
-		Convey("Accepted and changed questions, the scenarios and concepts they rest on, changed items and decisions\n", func() {
-			kept := keptOf(staffSpec())
+func Test_DraftBase(t *testing.T) {
+	Convey("Test what scenario drafting adds to\n", t, func() {
+		Convey("Accepted and changed questions with their scenarios, what they rest on, and all the other runs wrote\n", func() {
+			previous := staffSpec()
+			previous.Spec.Concepts = append(previous.Spec.Concepts,
+				&interfaces.RequirementConcept{ID: "c5", Term: "Team", Category: "object", Source: interfaces.REQUIREMENT_CONCEPT_FROM_DOCUMENTS},
+				&interfaces.RequirementConcept{ID: "c6", Term: "Site", Category: "object", Source: interfaces.REQUIREMENT_CONCEPT_FROM_SCENARIOS},
+				&interfaces.RequirementConcept{ID: "c7", Term: "Desk", Category: "object", Source: interfaces.REQUIREMENT_CONCEPT_FROM_PERSON})
 
-			So(ids(kept.Questions, questionID), ShouldResemble, []string{"q1", "q2"})
+			base := draftBase(previous, false)
+
+			So(ids(base.Questions, questionID), ShouldResemble, []string{"q1", "q2"})
 			// s1 is accepted, s2 the scenario of a question kept, s4 changed by a person; s3 none of them.
-			So(ids(kept.Scenarios, scenarioID), ShouldResemble, []string{"s1", "s2", "s4"})
-			// c1 is a question's basis, c2 its input's concept, c3 changed by a person.
-			So(ids(kept.Concepts, conceptID), ShouldResemble, []string{"c1", "c2", "c3"})
-			So(ids(kept.Rules, ruleID), ShouldResemble, []string{"r1"})
-			So(ids(kept.Conflicts, conflictID), ShouldResemble, []string{"k1"})
-			So(ids(kept.Choices, choiceID), ShouldResemble, []string{"f1"})
+			So(ids(base.Scenarios, scenarioID), ShouldResemble, []string{"s1", "s2", "s4"})
+			// c1 is a question's basis, c2 its input's concept, c3 changed by a person; c4 and c6 an
+			// earlier drafting's that nothing rests on. Extracted and added ones are the other runs'.
+			So(ids(base.Concepts, conceptID), ShouldResemble, []string{"c1", "c2", "c3", "c5", "c7"})
+			So(ids(base.Rules, ruleID), ShouldResemble, []string{"r1", "r2"})
+			So(ids(base.Conflicts, conflictID), ShouldResemble, []string{"k1", "k2"})
+			So(ids(base.Choices, choiceID), ShouldResemble, []string{"f1", "f2"})
+			So(ids(base.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2"})
+			So(base.Runs, ShouldEqual, previous.Spec.Runs)
+			// What drafting rejected goes: it lists its own again; the other runs' stays.
+			So(base.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
+				{Kind: rejectedRule, Text: "Moves are cheap", Reason: rejectedQuoteNotFound, Run: interfaces.REQUIREMENT_RUN_CONCEPTS}})
 			// No id given before is given again, q7 not kept included.
-			So(kept.LastIDs, ShouldResemble, map[string]int{"s": 4, "c": 4, "q": 7, "r": 2, "k": 2, "f": 2})
+			So(base.LastIDs, ShouldResemble, map[string]int{"s": 4, "c": 7, "q": 7, "r": 2, "k": 2, "f": 2, "n": 2})
 			// A question drafted before draft times were recorded takes its specification's.
-			So(kept.Questions[0].DraftTime, ShouldEqual, 500)
-			So(kept.Questions[1].DraftTime, ShouldEqual, 300)
+			So(base.Questions[0].DraftTime, ShouldEqual, 500)
+			So(base.Questions[1].DraftTime, ShouldEqual, 300)
 		})
 
-		Convey("Nothing is kept of a drafting, of none, or of a specification no one made theirs\n", func() {
-			drafting := staffSpec()
-			drafting.Status = interfaces.REQUIREMENT_STATUS_DRAFTING
-			untouched := &interfaces.Requirement{Status: interfaces.REQUIREMENT_STATUS_READY, Spec: interfaces.RequirementSpec{
-				Questions: []*interfaces.RequirementQuestion{{ID: "q1", Text: "Who?"}}}}
+		Convey("Starting over keeps no scenario or question, nor the drafted concepts they rested on\n", func() {
+			base := draftBase(staffSpec(), true)
 
-			So(keptOf(nil), ShouldBeNil)
-			So(keptOf(drafting), ShouldBeNil)
-			So(keptOf(untouched), ShouldBeNil)
+			So(base.Questions, ShouldBeEmpty)
+			So(base.Scenarios, ShouldBeEmpty)
+			So(base.Concepts, ShouldBeEmpty)
+			So(ids(base.Rules, ruleID), ShouldResemble, []string{"r1", "r2"})
+			So(ids(base.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2"})
+			So(base.LastIDs["q"], ShouldEqual, 7)
 		})
 
-		Convey("A failed drafting holds what it kept, kept again\n", func() {
-			failed := staffSpec()
-			failed.Status = interfaces.REQUIREMENT_STATUS_FAILED
+		Convey("Without a specification it is empty, its lists empty\n", func() {
+			base := draftBase(nil, false)
 
-			So(ids(keptOf(failed).Questions, questionID), ShouldResemble, []string{"q1", "q2"})
+			So(base.Scenarios, ShouldNotBeNil)
+			So(base.LogicNeeds, ShouldNotBeNil)
+			So(base.LastIDs, ShouldBeEmpty)
+			So(messageKeptOf(base), ShouldBeNil)
 		})
+	})
+}
+
+func Test_KeepForConcepts(t *testing.T) {
+	Convey("Test what the concepts run keeps\n", t, func() {
+		docsNeed := func(id string, accepted, edited bool, conceptIDs ...string) *interfaces.RequirementLogicNeed {
+			return &interfaces.RequirementLogicNeed{ID: id, Kind: interfaces.LOGIC_NEED_METRIC, Name: id,
+				Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS, Accepted: accepted, Edited: edited, ConceptIDs: conceptIDs}
+		}
+		extracted := func(id string, edited bool) *interfaces.RequirementConcept {
+			return &interfaces.RequirementConcept{ID: id, Term: id, Category: "object",
+				Source: interfaces.REQUIREMENT_CONCEPT_FROM_DOCUMENTS, Edited: edited}
+		}
+		spec := func() *interfaces.RequirementSpec {
+			spec := emptySpec()
+			spec.Concepts = []*interfaces.RequirementConcept{
+				extracted("c1", false), extracted("c2", true), extracted("c3", false), extracted("c4", false),
+				{ID: "c5", Term: "Site", Source: interfaces.REQUIREMENT_CONCEPT_FROM_SCENARIOS},
+				{ID: "c6", Term: "Desk", Source: interfaces.REQUIREMENT_CONCEPT_FROM_PERSON},
+				// Drafted before concepts were extracted on their own: extracted again.
+				{ID: "c7", Term: "Legacy"},
+			}
+			spec.Questions = []*interfaces.RequirementQuestion{{ID: "q1", Basis: interfaces.RequirementBasis{ConceptIDs: []string{"c3"}},
+				LogicNeedIDs: []string{"n3"}}}
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				docsNeed("n1", false, false, "c1"), docsNeed("n2", true, false, "c4"), docsNeed("n3", false, false),
+				docsNeed("n4", false, true),
+				{ID: "n5", Kind: interfaces.LOGIC_NEED_API, Name: "n5", Source: interfaces.LOGIC_NEED_FROM_ANALYSIS},
+			}
+			spec.Rules = []*interfaces.RequirementRule{{ID: "r1", Edited: true}, {ID: "r2"}}
+			spec.Conflicts = []*interfaces.RequirementConflict{{ID: "k1", Deferred: true},
+				{ID: "k2", Resolution: &interfaces.RequirementResolution{Reason: "r"}}, {ID: "k3"}}
+			spec.Choices = []*interfaces.RequirementChoice{{ID: "f1", Decision: &interfaces.RequirementChoiceDecision{OptionID: "o1"}}, {ID: "f2"}}
+			return spec
+		}
+
+		Convey("What people made theirs and what questions and kept needs rest on stays; the other runs' items too\n", func() {
+			s := spec()
+
+			keepForConcepts(s, false)
+
+			// n1 no one made theirs; n2 accepted, n3 a question rests on, n4 changed, n5 the analysis'.
+			So(ids(s.LogicNeeds, logicNeedID), ShouldResemble, []string{"n2", "n3", "n4", "n5"})
+			// c1 rested only on n1, which went; c4 rests on n2, kept; c3 a question's; c2 changed.
+			So(ids(s.Concepts, conceptID), ShouldResemble, []string{"c2", "c3", "c4", "c5", "c6"})
+			So(ids(s.Rules, ruleID), ShouldResemble, []string{"r1"})
+			So(ids(s.Conflicts, conflictID), ShouldResemble, []string{"k1", "k2"})
+			So(ids(s.Choices, choiceID), ShouldResemble, []string{"f1"})
+		})
+
+		Convey("Starting over keeps of them only what questions rest on\n", func() {
+			s := spec()
+
+			keepForConcepts(s, true)
+
+			So(ids(s.LogicNeeds, logicNeedID), ShouldResemble, []string{"n3", "n5"})
+			So(ids(s.Concepts, conceptID), ShouldResemble, []string{"c3", "c5", "c6"})
+			So(s.Rules, ShouldBeEmpty)
+			So(s.Conflicts, ShouldBeEmpty)
+			So(s.Choices, ShouldBeEmpty)
+		})
+	})
+}
+
+func Test_KeepForKinetic(t *testing.T) {
+	Convey("Test what the kinetic run keeps\n", t, func() {
+		spec := func() *interfaces.RequirementSpec {
+			spec := emptySpec()
+			need := func(id, source string, accepted, edited bool) *interfaces.RequirementLogicNeed {
+				return &interfaces.RequirementLogicNeed{ID: id, Kind: interfaces.LOGIC_NEED_METRIC, Name: id, Source: source,
+					Accepted: accepted, Edited: edited}
+			}
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				need("n1", interfaces.LOGIC_NEED_FROM_ANALYSIS, false, false),
+				need("n2", interfaces.LOGIC_NEED_FROM_ANALYSIS, true, false),
+				need("n3", interfaces.LOGIC_NEED_FROM_SCENARIOS, false, true),
+				need("n4", interfaces.LOGIC_NEED_FROM_SCENARIOS, false, false),
+				need("n5", interfaces.LOGIC_NEED_FROM_ANALYSIS, false, false),
+				need("n6", interfaces.LOGIC_NEED_FROM_DOCUMENTS, false, false),
+				need("n7", interfaces.LOGIC_NEED_FROM_PERSON, false, false),
+			}
+			spec.Questions = []*interfaces.RequirementQuestion{{ID: "q1", LogicNeedIDs: []string{"n5"}}}
+			return spec
+		}
+
+		s := spec()
+		keepForKinetic(s, false)
+		So(ids(s.LogicNeeds, logicNeedID), ShouldResemble, []string{"n2", "n3", "n5", "n6", "n7"})
+
+		s = spec()
+		keepForKinetic(s, true)
+		So(ids(s.LogicNeeds, logicNeedID), ShouldResemble, []string{"n5", "n6", "n7"})
 	})
 }
 
 func Test_BuildSpecKeeps(t *testing.T) {
 	Convey("Test drafting around what is kept\n", t, func() {
-		kept := keptOf(staffSpec())
+		base := func() *interfaces.RequirementSpec { return draftBase(staffSpec(), false) }
 		noDocs := map[string]*interfaces.RequirementDocument{}
 
 		Convey("Kept items stay first and as they are; drafted ones join them and take ids none had\n", func() {
+			spec := base()
+			keptScenario := spec.Scenarios[0]
 			out := &draftOutput{
 				Scenarios: []agentScenario{
 					{ID: "a", Name: "Onboard a hire", SupplementReason: "employees and departments"},
@@ -155,15 +282,12 @@ func Test_BuildSpecKeeps(t *testing.T) {
 					// A kept question drafted again is not repeated.
 					{Text: "which department is an employee in?", SupplementReason: "again"},
 				},
-				Rules:     []agentRule{{Statement: "A person belongs to one department"}},
-				Conflicts: []agentConflict{{Topic: "Grade"}},
-				Choices:   []agentChoice{{Question: "Team as object?"}},
 			}
 
-			spec, _ := buildSpec(out, noDocs, staffOntology(), kept)
+			buildSpec(out, noDocs, staffOntology(), spec)
 
 			So(ids(spec.Scenarios, scenarioID), ShouldResemble, []string{"s1", "s2", "s4", "s5"})
-			So(spec.Scenarios[0], ShouldEqual, kept.Scenarios[0])
+			So(spec.Scenarios[0], ShouldEqual, keptScenario)
 			So(ids(spec.Concepts, conceptID), ShouldResemble, []string{"c1", "c2", "c3", "c5"})
 			So(ids(spec.Questions, questionID), ShouldResemble, []string{"q1", "q2", "q8", "q9"})
 			q8, q9 := spec.Questions[2], spec.Questions[3]
@@ -172,27 +296,29 @@ func Test_BuildSpecKeeps(t *testing.T) {
 			So(q8.Basis.ConceptIDs, ShouldResemble, []string{"c1", "c2", "c5"})
 			So(q8.Needs, ShouldResemble, []interfaces.RequirementItemRef{departmentRef, employeeRef})
 			So(q9.ScenarioIDs, ShouldResemble, []string{"s1"})
-			// Without documents every item rests on its reason; rules, conflicts and choices need
-			// documents, and repeats of kept ones are not listed rejected.
 			So(q8.Citations, ShouldBeEmpty)
-			So(ids(spec.Rules, ruleID), ShouldResemble, []string{"r1"})
-			So(ids(spec.Conflicts, conflictID), ShouldResemble, []string{"k1"})
-			So(ids(spec.Choices, choiceID), ShouldResemble, []string{"f1"})
-			So(spec.Rejected, ShouldBeEmpty)
+			// Rules, conflicts, choices and needs are the other runs': drafting leaves them as they are.
+			So(ids(spec.Rules, ruleID), ShouldResemble, []string{"r1", "r2"})
+			So(ids(spec.Conflicts, conflictID), ShouldResemble, []string{"k1", "k2"})
+			So(ids(spec.Choices, choiceID), ShouldResemble, []string{"f1", "f2"})
+			// The kept q2 rests on n1: n1 serves its scenario.
+			So(spec.LogicNeeds[0].ScenarioIDs, ShouldResemble, []string{"s2"})
+			So(spec.Rejected, ShouldHaveLength, 1)
 		})
 
 		Convey("At most maxSpecQuestions new questions are kept; kept ones do not count\n", func() {
+			spec := base()
+			kept := len(spec.Questions)
 			out := &draftOutput{}
 			for i := range maxSpecQuestions + 1 {
 				out.Questions = append(out.Questions, agentQuestion{Text: fmt.Sprintf("Which employees joined in week %d?", i),
 					Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, SupplementReason: "staffing"})
 			}
 
-			spec, _ := buildSpec(out, noDocs, staffOntology(), kept)
+			buildSpec(out, noDocs, staffOntology(), spec)
 
-			So(spec.Questions, ShouldHaveLength, len(kept.Questions)+maxSpecQuestions)
-			So(spec.Rejected, ShouldHaveLength, 1)
-			So(spec.Rejected[0].Reason, ShouldEqual, rejectedTooMany)
+			So(spec.Questions, ShouldHaveLength, kept+maxSpecQuestions)
+			So(spec.Rejected[len(spec.Rejected)-1].Reason, ShouldEqual, rejectedTooMany)
 		})
 
 		Convey("A concept maps only to an adopted item\n", func() {
@@ -200,13 +326,14 @@ func Test_BuildSpecKeeps(t *testing.T) {
 			out := &draftOutput{Concepts: []agentConcept{{ID: "b", Term: "Access badge", Category: "object",
 				SupplementReason: "x", MapsTo: &badge}}}
 
-			spec, _ := buildSpec(out, noDocs, staffOntology(), nil)
+			spec := built(out, noDocs, staffOntology())
 
 			So(spec.Concepts[0].MapsTo, ShouldBeNil)
 		})
 
-		Convey("The message names the kept items by prefixed ids, for the Agent to build on\n", func() {
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), kept)
+		Convey("The message names the kept items by prefixed ids, and the concepts, rules and needs by their own\n", func() {
+			spec := base()
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), spec, spec)
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -214,12 +341,15 @@ func Test_BuildSpecKeeps(t *testing.T) {
 			So(body.Documents, ShouldBeEmpty)
 			So(body.ObjectTypes, ShouldHaveLength, 2)
 			So(body.Kept.Scenarios[0], ShouldResemble, messageKeptScenario{ID: "kept-s1", Name: "Staff a project"})
-			So(body.Kept.Concepts[1].ID, ShouldEqual, "kept-c2")
-			So(body.Kept.Concepts[1].MapsTo, ShouldResemble, &employeeRef)
 			So(body.Kept.Questions[0], ShouldResemble, messageKeptQuestion{Text: "Which department is an employee in?",
 				ScenarioIDs: []string{"kept-s1"}})
+			So(body.Concepts[1].ID, ShouldEqual, "c2")
+			So(body.Concepts[1].MapsTo, ShouldResemble, &employeeRef)
+			So(body.Rules, ShouldHaveLength, 2)
+			So(body.LogicNeeds[0], ShouldResemble, messageLogicNeed{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Headcount",
+				Definition: "employees per department"})
 
-			message, _, _, _ = buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), nil)
+			message, _, _, _ = buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), emptySpec(), emptySpec())
 			So(message, ShouldNotContainSubstring, `"kept"`)
 		})
 	})
@@ -242,7 +372,7 @@ func Test_RedraftKeeps(t *testing.T) {
 			CatalogIDs: []string{"c1"}, NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
-		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(staffOntology(), true, nil).Times(2)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedStaff(), true, nil).Times(2)
 		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(staffSpec(), true, nil)
 		// The row holds what is kept from the start, written only over the specification as read.
 		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(7)).DoAndReturn(
@@ -286,6 +416,13 @@ func Test_RedraftKeeps(t *testing.T) {
 			So(finished.Spec.Questions[0].OntologySignature, ShouldEqual, "as accepted")
 			So(finished.Spec.Questions[2].OntologySignature, ShouldEqual, ontologySignature(staffOntology(), finished.Spec.Questions[2]))
 			So(finished.Spec.Questions[1].OntologySignature, ShouldNotBeEmpty)
+			// What the concepts and kinetic runs wrote survives drafting.
+			So(ids(finished.Spec.Rules, ruleID), ShouldResemble, []string{"r1", "r2"})
+			So(ids(finished.Spec.Conflicts, conflictID), ShouldResemble, []string{"k1", "k2"})
+			So(ids(finished.Spec.Choices, choiceID), ShouldResemble, []string{"f1", "f2"})
+			So(ids(finished.Spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2"})
+			So(finished.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status, ShouldEqual, interfaces.REQUIREMENT_RUN_READY)
+			So(finished.Spec.Rejected, ShouldHaveLength, 1)
 		})
 
 		Convey("A drafting that fails keeps them too\n", func() {
@@ -309,7 +446,7 @@ func Test_RedraftKeeps(t *testing.T) {
 		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, CatalogIDs: []string{"c1"}}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
-		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(staffOntology(), true, nil)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedStaff(), true, nil)
 		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(staffSpec(), true, nil)
 		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(7)).Return(false, interfaces.ErrRequirementChanged)
 
@@ -332,9 +469,10 @@ func Test_RedraftKeeps(t *testing.T) {
 		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, CatalogIDs: []string{"c1"}}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
-		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(staffOntology(), true, nil).Times(2)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedStaff(), true, nil).Times(2)
 		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(staffSpec(), true, nil)
-		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(true, nil)
+		// What the other runs wrote stays, so even starting over writes only over the specification as read.
+		ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(7)).Return(true, nil)
 		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, nil)
 		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
@@ -352,6 +490,7 @@ func Test_RedraftKeeps(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		So(finished.Spec.Questions, ShouldBeEmpty)
+		So(ids(finished.Spec.Rules, ruleID), ShouldResemble, []string{"r1", "r2"})
 	})
 }
 
