@@ -6,6 +6,7 @@ package project
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"regexp"
@@ -14,6 +15,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -207,10 +209,35 @@ func Test_ProjectAccess(t *testing.T) {
 			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_archived = ?, f_update_time = ? WHERE f_id = ?")).
 				WithArgs(true, int64(9), "p1").
 				WillReturnResult(sqlmock.NewResult(0, 1))
-			smock.ExpectExec("UPDATE t_bkn_project_kb_selection SET f_state=CASE WHEN f_retained=1 THEN 'retained' ELSE 'release_pending' END").WithArgs(int64(9), "p1").WillReturnResult(sqlmock.NewResult(0, 2))
 			smock.ExpectCommit()
 
 			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("SetProjectArchived runs what an edition adds to archiving in the same transaction\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_archived = ?, f_update_time = ? WHERE f_id = ?")).
+				WithArgs(true, int64(9), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec("UPDATE edition_rows").WithArgs(int64(9), "p1").WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectCommit()
+			defer projecthooks.SetForTest(projecthooks.Hooks{Projects: archivingProbe{}})()
+
+			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("SetProjectArchived rolls back when what an edition adds fails\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_archived = ?, f_update_time = ? WHERE f_id = ?")).
+				WithArgs(true, int64(9), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec("UPDATE edition_rows").WithArgs(int64(9), "p1").WillReturnError(errors.New("locked"))
+			smock.ExpectRollback()
+			defer projecthooks.SetForTest(projecthooks.Hooks{Projects: archivingProbe{}})()
+
+			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeError, "locked")
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
@@ -241,15 +268,6 @@ func Test_ProjectAccess(t *testing.T) {
 			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldNotBeNil)
 		})
 
-		Convey("Archiving rolls back if retention cleanup cannot be queued\n", func() {
-			smock.ExpectBegin()
-			smock.ExpectExec("UPDATE t_bkn_project_project").WillReturnResult(sqlmock.NewResult(0, 1))
-			smock.ExpectExec("UPDATE t_bkn_project_kb_selection").WillReturnError(errors.New("write failed"))
-			smock.ExpectRollback()
-			So(pa.SetProjectArchived(ctx, "p1", true, 9), ShouldBeError, "write failed")
-			So(smock.ExpectationsWereMet(), ShouldBeNil)
-		})
-
 		Convey("Unarchiving does not revive released source holds\n", func() {
 			smock.ExpectExec("UPDATE t_bkn_project_project").WithArgs(false, int64(9), "p1").WillReturnResult(sqlmock.NewResult(0, 1))
 			So(pa.SetProjectArchived(ctx, "p1", false, 9), ShouldBeNil)
@@ -257,3 +275,12 @@ func Test_ProjectAccess(t *testing.T) {
 		})
 	})
 }
+
+// archivingProbe writes one row of its own in the archive transaction.
+type archivingProbe struct{}
+
+func (archivingProbe) Archiving(ctx context.Context, tx *sql.Tx, projectID string, updateTime int64) error {
+	_, err := tx.ExecContext(ctx, "UPDATE edition_rows SET f_update_time=? WHERE f_project_id=?", updateTime, projectID)
+	return err
+}
+func (archivingProbe) Archived(context.Context, string, string, interfaces.AccountInfo) {}

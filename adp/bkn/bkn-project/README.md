@@ -198,6 +198,30 @@ save drafts. `source_quote` remains a cross-layer column; it stays empty unless
 original-text retrieval is enabled for its source catalog. Block/image rows
 are likewise only written when that option is enabled.
 
+### Edition hooks
+
+`server/extension/projecthooks` is the contract through which an edition adds
+sources beyond tables to projects. It imports only `interfaces`, so changing it
+changes the contract with the professional edition. `Register` sets four
+groups once, before serving; a nil group keeps the community behaviour:
+
+- `Drafts`: what document items add to a draft — reading, saving, Ask AI,
+  confirming, exporting. The draft service reaches back through `Host`. The
+  community default owns no item and refuses a draft that holds document items
+  as a source out of reach.
+- `Publications`: the check a release review adds and the publication a
+  release prepares, mounts after import and activates once recorded.
+- `Lineages`: refusing a switch while data is still being applied.
+- `Projects`: a step in the archive transaction, and work after it commits.
+
+An edition that brings its own knowledge base calls
+`Application.DisableBuiltinKnowledgeBase()` during assembly, registers its
+hooks, adds its workers with `Application.AddWorker` and opens its stores on
+`Application.DB()`. Otherwise `Run` registers the knowledge base still in the
+open core through the same hooks. Extension routes are served when the
+`knowledge_base` capability is licensed and an edition installed them.
+Handlers an edition adds share `server/driveradapters/httpx`.
+
 ## Local Development
 
 ```bash

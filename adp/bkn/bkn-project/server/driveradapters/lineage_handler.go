@@ -18,6 +18,7 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters/httpx"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
@@ -63,9 +64,7 @@ func (r *restHandler) withBranchAction(c *gin.Context, action string,
 	r.withExVisitor(c, func(c *gin.Context, visitor hydra.Visitor) { handle(c, visitor, branch) })
 }
 
-func replyNotFound(c *gin.Context) {
-	rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusNotFound, httperrors.PublicError_NotFound))
-}
+func replyNotFound(c *gin.Context) { httpx.ReplyNotFound(c) }
 
 // gitAuthor records the caller as the author of the commits a request makes.
 func gitAuthor(visitor hydra.Visitor) interfaces.GitAuthor {

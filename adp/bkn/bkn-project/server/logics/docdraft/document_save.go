@@ -1,7 +1,7 @@
 // Copyright openbkn.ai
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package draft
+package docdraft
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	kb "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -32,14 +33,14 @@ func documentValidationError(ctx context.Context, err error) error {
 	}
 	return documentEditError(ctx)
 }
-func (s *draftService) documentEditInput(ctx context.Context, token string, draft *interfaces.Draft, model *interfaces.DraftDocumentModel) (*kbconcept.SampleInput, error) {
+func (s service) documentEditInput(ctx context.Context, token string, draft *interfaces.Draft, model *interfaces.DraftDocumentModel) (*kbconcept.SampleInput, error) {
 	providers, enabled := kb.Lookup()
-	if !enabled || s.kbResources == nil {
+	if !enabled || s.resources == nil {
 		return nil, httperrors.NewHTTPError(ctx, 503, perrors.BknProject_Draft_SourceUnreachable)
 	}
-	state, err := s.kbResources.Read(ctx, draft.ProjectID)
+	state, err := s.resources.Read(ctx, draft.ProjectID)
 	if err != nil {
-		return nil, internalError(ctx, "Read document source selection failed", err)
+		return nil, s.InternalError(ctx, "Read document source selection failed", err)
 	}
 	if state == nil || state.Current == nil || state.Current.State != "active" || state.Current.ID != model.SelectionID || state.Current.Revision != model.SelectionRevision {
 		return nil, httperrors.NewHTTPError(ctx, 409, perrors.BknProject_Draft_Stale)
@@ -48,7 +49,7 @@ func (s *draftService) documentEditInput(ctx context.Context, token string, draf
 	if !ok {
 		return nil, httperrors.NewHTTPError(ctx, 503, perrors.BknProject_Draft_SourceUnreachable)
 	}
-	input, err := kbconcept.LoadSamples(kb.WithOperatorAuthorization(ctx, token), source, state.Current, draftLanguage(draft))
+	input, err := kbconcept.LoadSamples(kb.WithOperatorAuthorization(ctx, token), source, state.Current, projecthooks.DraftLanguage(draft))
 	if err != nil {
 		status, key := 502, "SourceUnavailable"
 		var upstream *kb.SourceError
@@ -79,14 +80,14 @@ func (s *draftService) documentEditInput(ctx context.Context, token string, draf
 	}
 	return input, nil
 }
-func (s *draftService) saveDocumentObject(ctx context.Context, token string, draft *interfaces.Draft, original *interfaces.DraftObjectType, save interfaces.DraftObjectTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+func (s service) saveDocumentObject(ctx context.Context, token string, draft *interfaces.Draft, original *interfaces.DraftObjectType, save interfaces.DraftObjectTypeSave, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	if save.Document != nil && save.Document.Derive != nil {
 		return s.deriveDocumentObject(ctx, token, draft, original, save, caller)
 	}
 	if save.IncrementalKey != "" {
 		return nil, documentEditError(ctx)
 	}
-	before := snapshot(original)
+	before := s.Snapshot(original)
 	beforeName, beforeDescription, beforeAdopted := original.Name, original.Description, original.Adopted
 	raw, err := json.Marshal(original)
 	if err != nil {
@@ -155,7 +156,7 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 		edited = checked
 	}
 	if save.Document != nil && save.Document.DualSource != nil {
-		if err := applySourceFieldDecision(ctx, draft, edited, save.Document.DualSource, caller); err != nil {
+		if err := ApplySourceFieldDecision(ctx, draft, edited, save.Document.DualSource, caller); err != nil {
 			return nil, err
 		}
 	}
@@ -193,12 +194,12 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 		adopted := false
 		edit.Adopted = &adopted
 	}
-	decisions, err := applyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_OBJECT_TYPES, original.ID, edit)
+	decisions, err := s.ApplyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_OBJECT_TYPES, original.ID, edit)
 	if err != nil {
 		return nil, err
 	}
-	after := snapshot(original)
-	if !snapshotsEqual(before, after) {
+	after := s.Snapshot(original)
+	if !s.SnapshotsEqual(before, after) {
 		decisions = append(decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: original.ID, Action: interfaces.DRAFT_DECISION_SAVE, Before: before, After: after})
 	}
 	if err = s.commitDocumentEdit(ctx, draft, decisions, caller, original.Document); err != nil {
@@ -207,16 +208,16 @@ func (s *draftService) saveDocumentObject(ctx context.Context, token string, dra
 	return draft, nil
 }
 
-func (s *draftService) commitDocumentEdit(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, model *interfaces.DraftDocumentModel) error {
+func (s service) commitDocumentEdit(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, model *interfaces.DraftDocumentModel) error {
 	kbconcept.RefreshFactResolutionStates(draft.Items)
 	if len(decisions) == 0 {
 		return nil
 	}
-	writer, ok := s.da.(interfaces.DocumentDraftAccess)
+	writer, ok := kbconcept.DocumentDrafts(s.DraftAccess())
 	if !ok || model == nil {
 		return httperrors.NewHTTPError(ctx, 503, perrors.BknProject_Draft_SourceUnreachable)
 	}
-	return s.commitUsing(ctx, draft, decisions, caller, func(ctx context.Context, draft *interfaces.Draft, readAt int64) (bool, error) {
+	return s.CommitUsing(ctx, draft, decisions, caller, func(ctx context.Context, draft *interfaces.Draft, readAt int64) (bool, error) {
 		return writer.CommitDocumentDraft(ctx, draft, interfaces.DocumentDraftGuard{Owner: caller, SelectionID: model.SelectionID, SelectionRevision: model.SelectionRevision, DraftExists: true, DraftUpdateTime: readAt})
 	})
 }

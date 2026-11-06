@@ -361,7 +361,8 @@ func TestGetDraftKeepsAuthorizedDraftWhenProgressProjectionFails(t *testing.T) {
 	projects := pmock.NewMockProjectService(ctrl)
 	projects.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil)
 	access.EXPECT().GetDraft(gomock.Any(), "p1").Return(&interfaces.Draft{ProjectID: "p1", Status: "ready", Items: interfaces.DraftItems{DatasetPlans: []*interfaces.DraftDatasetPlan{{ID: "prior-generation"}}}}, true, nil)
-	service := &draftService{da: access, ps: projects, kbResources: unavailablePreparationState{}}
+	service := &draftService{da: access, ps: projects}
+	useDocumentResources(t, unavailablePreparationState{})
 	result, err := service.GetDraft(context.Background(), token, "p1")
 	if err != nil || result == nil || result.DatasetPreparation != nil || len(result.Items.DatasetPlans) != 1 {
 		t.Fatal("display-only failure hid the authorized draft", err)
