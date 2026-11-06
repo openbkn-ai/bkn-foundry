@@ -42,6 +42,7 @@ func documentConceptDraft() *interfaces.Draft {
 }
 
 func Test_DocumentConcepts(t *testing.T) {
+	defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: conceptHooks{}})()
 	Convey("Test the concepts document drafting modeled no item for\n", t, func() {
 		ctx := context.Background()
 		draft := documentConceptDraft()

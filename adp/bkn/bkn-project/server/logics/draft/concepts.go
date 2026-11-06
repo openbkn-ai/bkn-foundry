@@ -213,9 +213,13 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 		if dc == nil {
 			continue
 		}
+		// The edition reads the files it cites; one it says nothing of is found in a document.
+		sources := documentHooks().Concept(&interfaces.DraftDocumentModel{Citations: dc.Citations}).Sources
+		if len(sources) == 0 {
+			sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT}}
+		}
 		add(interfaces.DraftConcept{Key: documentConceptKey(dc.ID), Name: dc.Name, Description: dc.Description,
-			Suggested: dc.Verdict, SuggestedBecause: "document_concept", Reason: dc.Reason,
-			Sources: documentSources(&interfaces.DraftDocumentModel{Citations: dc.Citations})})
+			Suggested: dc.Verdict, SuggestedBecause: "document_concept", Reason: dc.Reason, Sources: sources})
 	}
 
 	if found && req != nil && req.Status == interfaces.REQUIREMENT_STATUS_READY {
