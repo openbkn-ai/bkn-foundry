@@ -66,7 +66,7 @@ func checkOwnAliases(ctx context.Context, item string, aliases []string, own ...
 		switch {
 		case utf8.RuneCountInString(alias) > interfaces.DRAFT_ALIAS_MAX_LENGTH:
 			return aliasError(ctx, item, alias, aliasTooLong, "")
-		case strings.ContainsAny(alias, ",，"):
+		case strings.ContainsAny(alias, ",\uff0c"):
 			return aliasError(ctx, item, alias, aliasComma, "")
 		case seen[alias]:
 			return aliasError(ctx, item, alias, aliasRepeated, "")
