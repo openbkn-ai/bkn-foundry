@@ -330,3 +330,30 @@ func (s *draftService) FailInterrupted(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Dependencies are what a draft service reads and writes, for an edition that tests what it adds
+// to drafts through the service itself.
+type Dependencies struct {
+	Setting      common.DraftSetting
+	Drafts       interfaces.DraftAccess
+	Checks       interfaces.CheckAccess
+	IDs          interfaces.IDRegistryAccess
+	Vega         interfaces.VegaAccess
+	IndexBuilds  interfaces.IndexBuildAccess
+	Requirements interfaces.RequirementAccess
+	Projects     interfaces.ProjectService
+	Lineages     interfaces.LineageService
+	Releases     interfaces.ReleaseAccess
+	Git          interfaces.GitStore
+	Agents       interfaces.BknAgentAccess
+	// AskWait bounds Ask AI; zero is the default deadline.
+	AskWait time.Duration
+}
+
+// NewDraftServiceWith is a draft service on the dependencies given, drafting in line. The process
+// uses NewDraftService.
+func NewDraftServiceWith(deps Dependencies) interfaces.DraftService {
+	return &draftService{setting: deps.Setting, da: deps.Drafts, ca: deps.Checks, ira: deps.IDs, va: deps.Vega,
+		iba: deps.IndexBuilds, rqa: deps.Requirements, ps: deps.Projects, ls: deps.Lineages, ra: deps.Releases,
+		gs: deps.Git, ba: deps.Agents, askWait: deps.AskWait, run: func(fn func()) { fn() }}
+}

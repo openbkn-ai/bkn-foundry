@@ -141,9 +141,9 @@ async def get_public_account(
 # explorer's Cypher generation and its AI exploration.
 PUBLIC_AGENT_IDS = frozenset({"studio_smart_qa", "cypher_generation", "graph_explorer"})
 
-# Agents seeded by the migrations, in display order. System Admin lists and
-# edits these only; creating Agents is not a product operation.
-BUILTIN_AGENT_IDS = (
+# Agents seeded by the core migrations, in display order. System Admin lists
+# and edits these only; creating Agents is not a product operation.
+CORE_BUILTIN_AGENT_IDS = (
     "studio_smart_qa",
     "cypher_generation",
     "graph_explorer",
@@ -155,9 +155,20 @@ BUILTIN_AGENT_IDS = (
     "bkn-project-requirements",
     "bkn-project-answer-judge",
     "bkn-project-ontology-ask",
+)
+
+# Agents an edition seeds through its own migrations. The core does not seed
+# them; it reserves their ids so that, when present, they are built-in too:
+# listed in System Admin, never deleted and never unpublished.
+EDITION_RESERVED_AGENT_IDS = (
     "bkn-project-concept-extraction",
     "bkn-project-document-extraction",
+    "bkn-project-document-ask",
 )
+
+# Every built-in Agent id, core first. The protections and the System Admin
+# list use this; an id that is not seeded in a deployment is skipped.
+BUILTIN_AGENT_IDS = CORE_BUILTIN_AGENT_IDS + EDITION_RESERVED_AGENT_IDS
 
 
 async def authorize(account: Account, checks: list[dict]) -> None:

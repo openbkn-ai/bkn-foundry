@@ -85,36 +85,6 @@ func Test_ConfirmDraft(t *testing.T) {
 			ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller,
 		}}
 		confirm := interfaces.DraftConfirm{UpdateTime: readTime}
-
-		Convey("Adopted document models wait explicitly for Dataset preparation without touching the branch", func() {
-			draft := confirmableDraft()
-			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, &interfaces.DraftObjectType{ID: "order_doc", Name: "Order from documents", Adopted: true, PrimaryKeys: []string{"number"}, Document: &interfaces.DraftDocumentModel{Role: "entity", Layer: "entity"}})
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
-			var problem *httperrors.HTTPError
-			So(errors.As(err, &problem), ShouldBeTrue)
-			So(problem.HTTPCode, ShouldEqual, 409)
-			So(problem.BaseError.ErrorCode, ShouldEqual, "BknProject.Draft.DocumentDataNotReady")
-			So(checked, ShouldBeEmpty)
-			So(draft.Items.ObjectTypes[len(draft.Items.ObjectTypes)-1].Adopted, ShouldBeTrue)
-		})
-
-		Convey("Confirmation refuses an adopted relationship repair before any branch or Dataset write", func() {
-			draft := confirmableDraft()
-			draft.Items.RelationTypes[0].DocumentRepair = "target_identity"
-			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
-			status, code := func() (int, string) {
-				var problem *httperrors.HTTPError
-				So(errors.As(err, &problem), ShouldBeTrue)
-				return problem.HTTPCode, problem.BaseError.ErrorCode
-			}()
-			So(status, ShouldEqual, 409)
-			So(code, ShouldEqual, "BknProject.Draft.DocumentRelationNeedsRepair")
-			So(checked, ShouldBeEmpty)
-		})
 		Convey("The owner's confirmation commits the adopted items and records the commit\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)

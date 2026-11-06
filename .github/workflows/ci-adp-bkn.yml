@@ -42,6 +42,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: adp/bkn/bkn-project/server/go.mod
+      # The knowledge base of bkn-project is in the professional edition; the open core keeps only
+      # the edition hooks. Neither its packages nor its tables may come back here.
+      - name: Core keeps no knowledge base
+        working-directory: .
+        run: |
+          set -u
+          latest=$(ls migrations/bkn-project/mariadb | sort -V | tail -1)
+          hits=$(grep -rnE 'logics/kb|logics/docdraft|t_bkn_project_kb_' adp/bkn/bkn-project/server "migrations/bkn-project/mariadb/${latest}/init.sql" || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Knowledge-base code or tables found in the open core; they belong to the professional edition."
+            echo "$hits"
+            exit 1
+          fi
       - run: go build ./...
       - run: go vet ./...
       - name: Run BKN project unit tests

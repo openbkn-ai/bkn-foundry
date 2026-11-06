@@ -24,8 +24,6 @@ ENGLISH_ORIGINALS = {
     "bkn-project-requirements",
     "bkn-project-answer-judge",
     "bkn-project-ontology-ask",
-    "bkn-project-concept-extraction",
-    "bkn-project-document-extraction",
 }
 
 # Official historical template from commit ab9ae6d64 (VM Prompt v3/v4).
@@ -74,7 +72,7 @@ def add_legacy_smart_qa(db):
 
 def official_database(*, legacy_initial=False):
     db = seeds.database()
-    seeds.apply(db, seeds.MIGRATIONS / "0.2.1/init.sql")
+    seeds.apply(db, seeds.MIGRATIONS / "0.2.2/init.sql")
     if legacy_initial:
         add_legacy_smart_qa(db)
         seeds.apply(db, seeds.BUILTIN_LOCALES)
@@ -92,7 +90,7 @@ def test_official_locale_migration_preserves_versions_and_is_idempotent():
                 "SELECT a.f_agent_id, v.* FROM t_agent a JOIN t_agent_prompt p ON p.f_prompt_id=a.f_prompt_id JOIN t_agent_prompt_version v ON v.f_prompt_id=p.f_prompt_id AND v.f_version=p.f_current_version"
             )
         )
-        assert {row["f_agent_id"] for row in agents} == set(seeds.BUILTIN_AGENT_IDS)
+        assert {row["f_agent_id"] for row in agents} == set(seeds.CORE_BUILTIN_AGENT_IDS)
         for row in agents:
             expected_source = (
                 "en-US" if row["f_agent_id"] in ENGLISH_ORIGINALS else "zh-CN"
@@ -383,7 +381,7 @@ def test_all_builtin_display_history_and_runtime_share_the_same_variant(language
         async with localized_database() as session:
             token = locale.set_effective_locale(language)
             try:
-                for agent_id in seeds.BUILTIN_AGENT_IDS:
+                for agent_id in seeds.CORE_BUILTIN_AGENT_IDS:
                     agent = await dao.get_agent(session, agent_id)
                     shared = await _shared_prompt(session, agent)
                     runtime, _, version = await resolve_prompt(
@@ -470,7 +468,7 @@ def test_custom_publication_is_global_and_activation_restores_official_translati
         async with localized_database() as session:
             token = locale.set_effective_locale(language)
             try:
-                for agent_id in seeds.BUILTIN_AGENT_IDS:
+                for agent_id in seeds.CORE_BUILTIN_AGENT_IDS:
                     agent = await dao.get_agent(session, agent_id)
                     official = (await _shared_prompt(session, agent)).prompt.content
                     initial = next(

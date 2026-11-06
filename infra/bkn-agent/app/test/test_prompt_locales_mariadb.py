@@ -11,7 +11,7 @@ from pathlib import Path
 import pymysql
 import pytest
 
-from app.public_auth import BUILTIN_AGENT_IDS
+from app.public_auth import CORE_BUILTIN_AGENT_IDS, EDITION_RESERVED_AGENT_IDS
 from app.test.test_builtin_prompt_locales import (
     ENGLISH_ORIGINALS,
     LEGACY_OBJECT_METRIC_DESIGNER,
@@ -23,9 +23,6 @@ from app.test.test_shared_agent_seeds import (
     ANSWER_JUDGE_REASON,
     BUILTIN_LOCALES,
     CLAIM_LOCALES,
-    CONCEPT_AGENT,
-    CONCEPT_NATIVE,
-    CONCEPT_SEED,
     METRIC_DESIGN_LOCALE,
     MIGRATIONS,
     ONTOLOGY_ASK,
@@ -85,13 +82,10 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
         with db.cursor() as cursor:
-            cursor.execute("SELECT f_version,f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_current=1", (CONCEPT_AGENT,))
-            assert cursor.fetchone() == (3, 2)
+            # Both install paths reach the official Ask AI v6.
+            cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='bkn-project-ontology-ask' AND f_current=1")
+            assert cursor.fetchone() == (6,)
         before_locales_rerun = saved_rows()
-        apply(CONCEPT_NATIVE)
-        apply(CONCEPT_NATIVE)
-        apply(CONCEPT_SEED)
-        apply(CONCEPT_SEED)
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)
         apply(REQUIREMENTS)
@@ -113,12 +107,16 @@ def test_claim_locale_migration_on_mariadb(upgrade):
                            "JOIN t_agent_prompt_version v ON v.f_prompt_id=p.f_prompt_id "
                            "AND v.f_version=p.f_current_version")
             rows = cursor.fetchall()
-            assert len(rows) == len(BUILTIN_AGENT_IDS)
+            # An upgrade keeps the Agents an edition now seeds; a fresh install has none.
+            edition = {row[0] for row in rows} & set(EDITION_RESERVED_AGENT_IDS)
+            assert not edition if upgrade == "fresh" else edition
+            rows = [row for row in rows if row[0] not in EDITION_RESERVED_AGENT_IDS]
+            assert {row[0] for row in rows} == set(CORE_BUILTIN_AGENT_IDS)
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
-                # New seeds and ontology v5 explicitly set their source language on
+                # New seeds and ontology v6 explicitly set their source language on
                 # both install paths; unchanged historical heads preserve NULL.
-                has_explicit_source = upgrade == "fresh" or agent_id in {CONCEPT_AGENT, "bkn-project-ontology-ask", "bkn-project-document-extraction"}
+                has_explicit_source = upgrade == "fresh" or agent_id == "bkn-project-ontology-ask"
                 assert source_language == (expected if has_explicit_source else None), agent_id
                 cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
                 initial = cursor.fetchone()

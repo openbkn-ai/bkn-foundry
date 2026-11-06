@@ -35,8 +35,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/indexbuild"
-	buildaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbbuild"
-	kbaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbresource"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
 	regressionaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/regression"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
@@ -45,7 +43,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbrefresh"
 	releaselogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
@@ -59,8 +56,6 @@ type Application struct {
 	refreshLicense      func(stop <-chan struct{})
 	knowledgeBaseRoutes func(*gin.Engine)
 	workers             []func(context.Context)
-	// builtinKnowledgeBase is false once an edition brings its own knowledge base.
-	builtinKnowledgeBase bool
 }
 
 // Boot initializes shared infrastructure without opening the HTTP listener.
@@ -89,7 +84,6 @@ func Boot() *Application {
 	// Initialize the database connection.
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
-	logics.SetKBResourceAccess(kbaccess.New(db))
 	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 	logics.SetReleaseAccess(release.NewReleaseAccess(appSetting))
 	logics.SetProjectAccess(project.NewProjectAccess(appSetting))
@@ -104,12 +98,6 @@ func Boot() *Application {
 	logics.SetBknAgentAccess(bknagent.NewBknAgentAccess(appSetting))
 	logics.SetRequirementAccess(requirementaccess.NewRequirementAccess(appSetting))
 	logics.SetRegressionAccess(regressionaccess.NewRegressionAccess(appSetting))
-	logics.KBBA = buildaccess.New(db)
-	logics.KBRefs = buildaccess.NewReferences(db)
-	logics.KBPublications = buildaccess.NewPublications(db)
-	logics.SetKBRefreshAccess(buildaccess.NewRefreshes(db))
-	refreshSettings := appSetting.KBRefreshSetting
-	kbrefresh.ConfigureLimits(&kbrefresh.Limits{MaxChangedPercent: refreshSettings.MaxChangedPercent, MaxRemovedPercent: refreshSettings.MaxRemovedPercent, MaxDurationMillis: refreshSettings.MaxDurationSeconds * 1000})
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.
@@ -130,8 +118,6 @@ func Boot() *Application {
 		otelProviders:  otelProviders,
 		restHandler:    driveradapters.NewRestHandler(appSetting, db),
 		refreshLicense: refreshLicense,
-
-		builtinKnowledgeBase: true,
 	}
 }
 
@@ -148,16 +134,8 @@ func (server *Application) AddWorker(work func(ctx context.Context)) {
 	server.workers = append(server.workers, work)
 }
 
-// DisableBuiltinKnowledgeBase keeps the knowledge base of the open core from starting: neither its
-// hooks nor its workers. An edition that brings its own calls it during assembly.
-func (server *Application) DisableBuiltinKnowledgeBase() {
-	entitlement.MustBeAssembling("bkn-project built-in knowledge base")
-	server.builtinKnowledgeBase = false
-}
-
-// RegisterKnowledgeBaseRoutes installs the core K1/K2 API adapters in an edition
-// build. It does not replace any community route. Call once during assembly;
-// K0 has no business routes yet. Providers are registered separately.
+// RegisterKnowledgeBaseRoutes installs the knowledge-base API of an edition
+// build. It does not replace any community route. Call once during assembly.
 func (server *Application) RegisterKnowledgeBaseRoutes(install func(*gin.Engine)) {
 	entitlement.MustBeAssembling("bkn-project knowledge base routes")
 	if install == nil || server.knowledgeBaseRoutes != nil {
@@ -196,9 +174,6 @@ func knowledgeBaseGate(extended, community http.Handler) http.Handler {
 // Run serves until shutdown.
 func (server *Application) Run() {
 	logger.Info("Server Starting")
-	if server.builtinKnowledgeBase {
-		server.useBuiltinKnowledgeBase()
-	}
 	entitlement.Freeze()
 
 	// Create the Gin engine and register APIs.

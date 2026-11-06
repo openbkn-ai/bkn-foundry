@@ -14,6 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -37,9 +38,9 @@ func conceptDraft() *interfaces.Draft {
 			Document: &interfaces.DraftDocumentModel{Role: role, Layer: "evidence"}}
 	}
 	items.RelationTypes = append(items.RelationTypes,
-		link("order_block", "order_doc", "source_block", evidenceReferenceRole),
-		link("order_image", "order_doc", "source_image", evidenceReferenceRole),
-		link("media_image", "source_media", "source_image", evidenceOccurrenceRole))
+		link("order_block", "order_doc", "source_block", "evidence_reference"),
+		link("order_image", "order_doc", "source_image", "evidence_reference"),
+		link("media_image", "source_media", "source_image", "evidence_occurrence"))
 	return draft
 }
 
@@ -63,6 +64,7 @@ func conceptByKey(c *interfaces.DraftConcepts, key string) *interfaces.DraftConc
 }
 
 func Test_ConceptProjection(t *testing.T) {
+	defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: conceptHooks{}})()
 	Convey("Test projecting a project's concepts\n", t, func() {
 		ctx := context.Background()
 		draft := conceptDraft()
@@ -192,32 +194,10 @@ func Test_ConceptProjection(t *testing.T) {
 }
 
 func Test_FollowEvidence(t *testing.T) {
+	defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: conceptHooks{}})()
 	Convey("Test evidence following its business items\n", t, func() {
 		draft := conceptDraft()
 		items := &draft.Items
-		order := findObjectType(items, "order_doc")
-
-		Convey("Adopting a business item adopts the evidence it references and what ties that evidence\n", func() {
-			order.Adopted = true
-			decisions := followEvidence(items)
-			for _, id := range []string{"source_block", "source_image", "source_media"} {
-				So(findObjectType(items, id).Adopted, ShouldBeTrue)
-			}
-			for _, id := range []string{"order_block", "order_image", "media_image"} {
-				So(findRelationType(items, id).Adopted, ShouldBeTrue)
-			}
-			So(decisions, ShouldHaveLength, 6)
-			So(decisions[0].Action, ShouldEqual, interfaces.DRAFT_DECISION_ADOPT)
-			// Following again changes nothing.
-			So(followEvidence(items), ShouldBeEmpty)
-
-			Convey("and leaving it out leaves out the evidence no adopted business item needs\n", func() {
-				order.Adopted = false
-				So(followEvidence(items), ShouldHaveLength, 6)
-				So(findObjectType(items, "source_media").Adopted, ShouldBeFalse)
-				So(findRelationType(items, "order_block").Adopted, ShouldBeFalse)
-			})
-		})
 
 		Convey("Evidence counts neither as unreviewed nor as undecided\n", func() {
 			before := unreviewed(items)
@@ -226,10 +206,6 @@ func Test_FollowEvidence(t *testing.T) {
 				So(u.ItemID, ShouldNotEqual, "order_block")
 			}
 			So(before, ShouldEqual, unreviewed(&candidateDraft().Items)+1)
-		})
-
-		Convey("A draft without evidence is left alone\n", func() {
-			So(followEvidence(&candidateDraft().Items), ShouldBeNil)
 		})
 	})
 }
@@ -410,6 +386,23 @@ func Test_ConceptService(t *testing.T) {
 				Key: "object_types/stores"}, caller)
 			status, _ = codeOf(err)
 			So(status, ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
+func Test_ConceptsWithoutDocumentHooks(t *testing.T) {
+	Convey("Test concepts in an edition without document items\n", t, func() {
+		restore := projecthooks.SetForTest(projecthooks.Hooks{})
+		defer restore()
+		draft := conceptDraft()
+
+		Convey("Nothing is evidence and nothing follows: the open core knows no document roles\n", func() {
+			findObjectType(&draft.Items, "order_doc").Adopted = true
+			So(followEvidence(&draft.Items), ShouldBeNil)
+			So(isEvidence(findObjectType(&draft.Items, "source_block").Document), ShouldBeFalse)
+			order := conceptByKey(conceptsOf(context.Background(), "p1", draft, nil, false), "object_types/order_doc")
+			So(order.Sources, ShouldResemble, []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT}})
+			So(order.SuggestedBecause, ShouldEqual, "")
 		})
 	})
 }

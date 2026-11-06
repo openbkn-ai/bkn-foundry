@@ -206,12 +206,19 @@ func (noDocumentHooks) PrepareConfirm(_ context.Context, _ projecthooks.Host, _ 
 	return draft, nil
 }
 func (noDocumentHooks) DatasetProgress(context.Context, projecthooks.Host, *interfaces.Draft) {}
+func (noDocumentHooks) Concept(*interfaces.DraftDocumentModel) projecthooks.DocumentConcept {
+	return projecthooks.DocumentConcept{}
+}
+func (noDocumentHooks) FollowEvidence(*interfaces.DraftItems) []*interfaces.DraftDecision {
+	return nil
+}
 func (noDocumentHooks) ObjectNeedsRepair(*interfaces.DraftItems, *interfaces.DraftObjectType) bool {
 	return false
 }
 func (noDocumentHooks) CheckAdoptRelation(context.Context, *interfaces.DraftItems, *interfaces.DraftRelationType) error {
 	return nil
 }
+func (noDocumentHooks) ConceptBlocker(string) (string, bool) { return "", false }
 func (noDocumentHooks) ExportItems(items *interfaces.DraftItems, _ *interfaces.DraftEvidenceExport) (*interfaces.DraftItems, error) {
 	return items, nil
 }

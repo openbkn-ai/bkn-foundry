@@ -25,7 +25,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbrefresh"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
@@ -46,34 +45,30 @@ type pinger interface {
 }
 
 type restHandler struct {
-	refreshFactory func() *kbrefresh.Service
-	appSetting     *common.AppSetting
-	db             pinger
-	as             interfaces.AuthService
-	rs             interfaces.ReleaseService
-	ls             interfaces.LineageService
-	ps             interfaces.ProjectService
-	kbra           interfaces.KBResourceAccess
-	da             interfaces.DraftAccess
-	drs            interfaces.DraftService
-	prs            interfaces.ProjectReleaseService
-	rqs            interfaces.RequirementService
+	appSetting *common.AppSetting
+	db         pinger
+	as         interfaces.AuthService
+	rs         interfaces.ReleaseService
+	ls         interfaces.LineageService
+	ps         interfaces.ProjectService
+	da         interfaces.DraftAccess
+	drs        interfaces.DraftService
+	prs        interfaces.ProjectReleaseService
+	rqs        interfaces.RequirementService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 	return &restHandler{
-		refreshFactory: func() *kbrefresh.Service { return kbrefresh.NewService(nil) },
-		appSetting:     appSetting,
-		db:             db,
-		as:             auth.NewAuthService(),
-		rs:             release.NewReleaseService(),
-		ls:             lineage.NewLineageService(),
-		ps:             project.NewProjectService(),
-		kbra:           logics.KBRA,
-		da:             logics.DA,
-		drs:            draft.NewDraftService(appSetting),
-		prs:            release.NewProjectReleaseService(appSetting),
-		rqs:            requirement.NewRequirementService(),
+		appSetting: appSetting,
+		db:         db,
+		as:         auth.NewAuthService(),
+		rs:         release.NewReleaseService(),
+		ls:         lineage.NewLineageService(),
+		ps:         project.NewProjectService(),
+		da:         logics.DA,
+		drs:        draft.NewDraftService(appSetting),
+		prs:        release.NewProjectReleaseService(appSetting),
+		rqs:        requirement.NewRequirementService(),
 	}
 }
 
