@@ -83,7 +83,7 @@ func (s *regressionService) StartRegression(ctx context.Context, token string, r
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "StartRegression")
 	defer span.End()
 
-	questions, err := s.knowledgeQuestions(ctx, release.ProjectID)
+	questions, err := s.knowledgeQuestions(ctx, release.ProjectID, runner)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get scenario questions failed")
 		return nil, false, err
@@ -129,8 +129,11 @@ func (s *regressionService) FailInterrupted(ctx context.Context) error {
 }
 
 // knowledgeQuestions are the project's scenario questions answered from object types and relation
-// types, as the specification has them now.
-func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID string) ([]interfaces.RegressionQuestion, error) {
+// types, as the specification has them now. One about a record that has no test that passed is
+// asked of a record the data has, filled in its template as the runner; without one it is not
+// asked. When the data cannot be read for it, it is asked as its text, as before.
+func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID string,
+	runner interfaces.AccountInfo) ([]interfaces.RegressionQuestion, error) {
 	questions := []interfaces.RegressionQuestion{}
 	if s.rs == nil {
 		return questions, nil
@@ -139,6 +142,7 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 	if err != nil {
 		return nil, err
 	}
+	var fill []string
 	for _, q := range sq.Questions {
 		if q.Layer == interfaces.REQUIREMENT_LAYER_KNOWLEDGE {
 			needs := append([]interfaces.RequirementItemRef{}, q.Needs...)
@@ -150,7 +154,28 @@ func (s *regressionService) knowledgeQuestions(ctx context.Context, projectID st
 			if len(q.Path) > 0 {
 				question.Path = append([]interfaces.RequirementItemRef{}, q.Path...)
 			}
+			if q.Fillable && len(tests) == 0 {
+				fill = append(fill, q.ID)
+			}
 			questions = append(questions, question)
+		}
+	}
+	if len(fill) == 0 {
+		return questions, nil
+	}
+	filled, err := s.rs.RecordTests(ctx, runner, projectID, fill)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Fill questions of project %s with records: %v", projectID, err))
+		return questions, nil
+	}
+	for i := range questions {
+		t, ok := filled[questions[i].ID]
+		switch {
+		case !ok:
+		case t == nil:
+			questions[i].NoRecord = true
+		default:
+			questions[i].Tests = []interfaces.RegressionTest{{ID: t.ID, Text: t.Text, Expect: t.Expect}}
 		}
 	}
 	return questions, nil
@@ -316,6 +341,11 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 	}
 	if len(result.MissingTables) > 0 {
 		result.Outcome = interfaces.REGRESSION_OUTCOME_DATA_SOURCE_MISSING
+		return result
+	}
+	// Asked without a record, it could only be answered by asking back which one.
+	if a.question.NoRecord {
+		result.Outcome = interfaces.REGRESSION_OUTCOME_NEEDS_VALUES
 		return result
 	}
 	answer, err := s.ba.AnswerOnNetwork(ctx, token, &interfaces.BknAgentAnswerRequest{
