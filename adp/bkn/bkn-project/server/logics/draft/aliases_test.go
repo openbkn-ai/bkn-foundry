@@ -280,3 +280,33 @@ func Test_AliasesRevision(t *testing.T) {
 		})
 	})
 }
+
+func Test_AskSeesUnsavedAliases(t *testing.T) {
+	Convey("Test Ask AI reads the aliases the form has not saved yet\n", t, func() {
+		items := editableDraft().Items
+		svc := &draftService{setting: testSetting}
+		relation := items.RelationTypes[0]
+		relation.Aliases = []string{"placed by"}
+
+		working := svc.workingRelationType(context.Background(), &items, relation,
+			&interfaces.DraftRelationTypeSave{Aliases: aliasesPtr(" ordered by ", "")}, caller)
+		So(working.Aliases, ShouldResemble, []string{"ordered by"})
+		So(relation.Aliases, ShouldResemble, []string{"placed by"})
+
+		object := workingObjectType(items.ObjectTypes[1], &interfaces.DraftObjectTypeSave{Aliases: aliasesPtr("PO")})
+		So(object.Aliases, ShouldResemble, []string{"PO"})
+		So(workingObjectType(items.ObjectTypes[1], &interfaces.DraftObjectTypeSave{}).Aliases, ShouldBeNil)
+	})
+}
+
+func Test_ObjectAskEditable(t *testing.T) {
+	Convey("Test a document object type is offered no aliases to revise, whatever its role\n", t, func() {
+		table := &interfaces.DraftObjectType{ID: "orders"}
+		So(objectAskEditable(table, nil), ShouldContain, interfaces.DRAFT_ASK_REVISION_ALIASES)
+		entity := &interfaces.DraftObjectType{ID: "order_doc", Document: &interfaces.DraftDocumentModel{Role: "entity"}}
+		So(objectAskEditable(entity, nil), ShouldNotContain, interfaces.DRAFT_ASK_REVISION_ALIASES)
+		So(objectAskEditable(entity, nil), ShouldContain, interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS)
+		hooks := []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_ALIASES}
+		So(objectAskEditable(entity, hooks), ShouldResemble, []string{interfaces.DRAFT_ASK_REVISION_NAME})
+	})
+}

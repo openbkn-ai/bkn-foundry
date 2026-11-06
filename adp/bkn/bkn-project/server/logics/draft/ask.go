@@ -301,12 +301,7 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 			in.Relations = append(in.Relations, askRelationOf(r))
 		}
 	}
-	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
-		interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY,
-		interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY, interfaces.DRAFT_ASK_REVISION_ALIASES}
-	if editable != nil {
-		in.Editable = editable
-	}
+	in.Editable = objectAskEditable(base, editable)
 
 	answer, err := s.ask(ctx, caller, askTurn{input: in, finish: func(out *askOutput) *interfaces.DraftAskAnswer {
 		answer := checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
@@ -324,6 +319,24 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 	}
 	span.SetStatus(codes.Ok, "")
 	return answer, nil
+}
+
+// objectAskEditable are the fields Ask AI may revise of an object type: those the document hooks
+// give for a document item, else all of a table's; a document item takes no aliases, whatever its
+// role.
+func objectAskEditable(base *interfaces.DraftObjectType, hooks []string) []string {
+	if hooks != nil {
+		return slices.DeleteFunc(slices.Clone(hooks), func(field string) bool {
+			return base.Document != nil && field == interfaces.DRAFT_ASK_REVISION_ALIASES
+		})
+	}
+	editable := []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
+		interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY,
+		interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY}
+	if base.Document == nil {
+		editable = append(editable, interfaces.DRAFT_ASK_REVISION_ALIASES)
+	}
+	return editable
 }
 
 func (s *draftService) AskRelationType(ctx context.Context, token string, projectID string, itemID string,

@@ -52,9 +52,6 @@ func workingObjectType(objectType *interfaces.DraftObjectType, working *interfac
 	if key := strings.TrimSpace(working.DisplayKey); key != "" {
 		base.DisplayKey = key
 	}
-	if working.Aliases != nil {
-		base.Aliases = cleanAliases(*working.Aliases)
-	}
 	if working.DataProperties != nil {
 		kept := []*interfaces.DraftProperty{}
 		for _, saved := range working.DataProperties {
@@ -86,6 +83,9 @@ func (s *draftService) workingRelationType(ctx context.Context, items *interface
 	}
 	if name := strings.TrimSpace(working.Name); name != "" {
 		base.Name = name
+	}
+	if working.Aliases != nil {
+		base.Aliases = cleanAliases(*working.Aliases)
 	}
 	if comment := strings.TrimSpace(working.Comment); comment != "" {
 		base.Description = comment
