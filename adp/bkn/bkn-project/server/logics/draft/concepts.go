@@ -259,7 +259,7 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 		if into == nil || mergedInto[mergedInto[key]] != "" {
 			continue
 		}
-		into.Merged = append(into.Merged, key)
+		into.Merged = append(into.Merged, interfaces.DraftConceptRef{Key: key, Name: byKey[key].Name})
 		into.Sources = append(into.Sources, byKey[key].Sources...)
 	}
 

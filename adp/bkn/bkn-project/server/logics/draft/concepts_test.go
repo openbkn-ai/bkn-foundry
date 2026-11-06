@@ -178,7 +178,7 @@ func Test_ConceptProjection(t *testing.T) {
 			got := conceptsOf(ctx, "p1", draft, nil, false)
 			So(conceptByKey(got, "object_types/order_doc"), ShouldBeNil)
 			items := conceptByKey(got, "object_types/items")
-			So(items.Merged, ShouldResemble, []string{"object_types/order_doc"})
+			So(items.Merged, ShouldResemble, []interfaces.DraftConceptRef{{Key: "object_types/order_doc", Name: "Order"}})
 			So(items.Sources, ShouldHaveLength, 3)
 
 			merge(interfaces.DRAFT_DECISION_UNMERGE, nil, 9)
@@ -360,7 +360,8 @@ func Test_ConceptService(t *testing.T) {
 			got, err := svc.MergeConcept(ctx, token, "p1", interfaces.DraftConceptMerge{UpdateTime: readTime,
 				Key: "requirement_concepts/k3", Into: "object_types/stores"}, caller)
 			So(err, ShouldBeNil)
-			So(conceptByKey(got, "object_types/stores").Merged, ShouldResemble, []string{"requirement_concepts/k3"})
+			So(conceptByKey(got, "object_types/stores").Merged, ShouldResemble,
+				[]interfaces.DraftConceptRef{{Key: "requirement_concepts/k3", Name: "On-time delivery rate"}})
 			So(conceptByKey(got, "requirement_concepts/k3"), ShouldBeNil)
 
 			Convey("and taking it out again brings it back\n", func() {

@@ -94,8 +94,14 @@ type DraftConcept struct {
 	Judged  *DraftReview `json:"judged,omitempty"`
 	State   string       `json:"state"`
 	Blocked string       `json:"blocked,omitempty"`
-	// Merged are the keys of the concepts merged into this one; their sources are listed here.
-	Merged []string `json:"merged,omitempty"`
+	// Merged are the concepts merged into this one; their sources are listed here.
+	Merged []DraftConceptRef `json:"merged,omitempty"`
+}
+
+// DraftConceptRef names a concept by its key and name.
+type DraftConceptRef struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // DraftConceptSource is where a concept was found: a table, a document of a knowledge base, or a
