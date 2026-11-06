@@ -164,6 +164,7 @@ def test_historical_task_fields_remain_unknown(monkeypatch):
             async with factory() as session:
                 task = await dao.create_task(session, AGENT, {"message": "old"}, "svc-test")
                 assert (task.agent_version, task.prompt_version, task.model, task.model_id) == (None,) * 4
+                assert (task.input_tokens, task.output_tokens, task.model_calls, task.unmetered_calls) == (None,) * 4
     asyncio.run(run())
 
 
@@ -257,3 +258,84 @@ def test_agent_version_requires_a_positive_integer(version):
     for request in (InvokeRequest, RunRequest):
         with pytest.raises(ValidationError):
             request(message="Extract", agent_id=AGENT, agent_version=version)
+
+
+def _metered(monkeypatch, *, reported=True):
+    async def generate(self, *args, **kwargs):
+        message = AIMessage(content='{"answer": "ok"}')
+        if reported:
+            message.usage_metadata = {"input_tokens": 1200, "output_tokens": 300, "total_tokens": 1500}
+        return ChatResult(generations=[ChatGeneration(message=message)], llm_output={"model_name": "p"})
+
+    async def stream(self, *args, **kwargs):
+        yield ChatGenerationChunk(message=AIMessageChunk(content="draft"))
+        if reported:
+            yield ChatGenerationChunk(message=AIMessageChunk(
+                content="", usage_metadata={"input_tokens": 100, "output_tokens": 40, "total_tokens": 140}))
+
+    monkeypatch.setattr(ChatOpenAI, "_agenerate", generate)
+    monkeypatch.setattr(ChatOpenAI, "_astream", stream)
+    monkeypatch.setattr(llm.evidence, "new_operation", lambda: (None, None))
+
+
+def test_task_usage_adds_tokens_of_every_call(monkeypatch):
+    _metered(monkeypatch)
+
+    async def run():
+        usage = {"model": "m"}
+        token = llm.set_task_usage(usage)
+        try:
+            async for _ in llm.build_chat_model("m")._astream([]):
+                pass
+            await llm.build_chat_model("m", streaming=False)._agenerate([])
+            await llm.build_chat_model("m", streaming=False)._agenerate([])
+        finally:
+            llm.reset_task_usage(token)
+        assert (usage["input_tokens"], usage["output_tokens"], usage["model_calls"]) == (2500, 640, 3)
+        assert "unmetered_calls" not in usage
+    asyncio.run(run())
+
+
+def test_task_usage_counts_calls_without_usage_apart(monkeypatch):
+    _metered(monkeypatch, reported=False)
+
+    async def run():
+        usage = {"model": "m"}
+        token = llm.set_task_usage(usage)
+        try:
+            async for _ in llm.build_chat_model("m")._astream([]):
+                pass
+            await llm.build_chat_model("m", streaming=False)._agenerate([])
+        finally:
+            llm.reset_task_usage(token)
+        assert usage["unmetered_calls"] == 2
+        assert "input_tokens" not in usage
+    asyncio.run(run())
+
+
+def test_openai_token_usage_is_read_when_usage_metadata_is_missing():
+    assert llm._usage_counts({"prompt_tokens": 7, "completion_tokens": 3}) == (7, 3)
+    assert llm._usage_counts({"input_tokens": -1, "output_tokens": 3}) is None
+    assert llm._usage_counts(None) is None
+
+
+def test_finished_task_reports_its_tokens(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            await seed_versions(factory)
+            wire_runner(monkeypatch, factory, [])
+            _metered(monkeypatch)
+            response = await client.post(
+                f"/api/bkn-agent/v1/invoke/{AGENT}", headers=HEADERS,
+                json={"message": "Extract", "agent_version": 1, "response_format": {
+                    "type": "object", "properties": {"answer": {"type": "string"}},
+                    "required": ["answer"],
+                }},
+            )
+            task = response.json()
+            assert task["status"] == "succeeded", task
+            # The free-form call drafted text that is not the JSON, so the
+            # structured call ran too: both are counted.
+            assert (task["input_tokens"], task["output_tokens"], task["model_calls"]) == (1300, 340, 2)
+            assert task["unmetered_calls"] is None
+    asyncio.run(run())

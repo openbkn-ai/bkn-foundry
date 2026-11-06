@@ -34,6 +34,37 @@ def _record_task_model(model: str, metadata: dict) -> None:
         usage["model_id"] = metadata.get("model_name") or metadata.get("model") or None
 
 
+def _usage_counts(usage: Any) -> Optional[tuple[int, int]]:
+    """Input and output tokens of one model reply, from LangChain's
+    usage_metadata or the OpenAI-compatible token_usage; None when the
+    provider reported neither."""
+    if not isinstance(usage, dict):
+        return None
+    pairs = (("input_tokens", "output_tokens"), ("prompt_tokens", "completion_tokens"))
+    for input_key, output_key in pairs:
+        prompt, completion = usage.get(input_key), usage.get(output_key)
+        if isinstance(prompt, int) and isinstance(completion, int) and prompt >= 0 and completion >= 0:
+            return prompt, completion
+    return None
+
+
+def _record_task_tokens(*candidates: Any) -> None:
+    """Add one model reply's tokens to the task, from the first candidate that
+    carries them. A reply with no usage leaves the totals as they are and is
+    counted apart, so a total is never mistaken for complete."""
+    usage = _task_usage.get()
+    if usage is None:
+        return
+    for candidate in candidates:
+        counts = _usage_counts(candidate)
+        if counts is not None:
+            usage["input_tokens"] = usage.get("input_tokens", 0) + counts[0]
+            usage["output_tokens"] = usage.get("output_tokens", 0) + counts[1]
+            usage["model_calls"] = usage.get("model_calls", 0) + 1
+            return
+    usage["unmetered_calls"] = usage.get("unmetered_calls", 0) + 1
+
+
 def set_thinking_mode(value: str) -> Token:
     normalized = value.strip().lower() if value else ""
     if normalized not in {"enabled", "disabled"}:
@@ -143,6 +174,10 @@ class TraceChatOpenAI(ChatOpenAI):
                 **(result.llm_output or {}),
                 **result.generations[0].message.response_metadata,
             })
+            _record_task_tokens(
+                getattr(result.generations[0].message, "usage_metadata", None),
+                (result.llm_output or {}).get("token_usage"),
+            )
         if operation_id and result.generations:
             _record_model_response(result.generations[0].message, operation_id)
         return result
@@ -167,7 +202,16 @@ class TraceChatOpenAI(ChatOpenAI):
             }
         response_metadata: dict[str, Any] = {}
         trace_body: dict[str, Any] = {}
+        # A stream reports usage once, on a chunk of its own, when the gateway
+        # sends it at all.
+        stream_usage: Optional[dict[str, int]] = None
         async for chunk in super()._astream(*args, **kwargs):
+            counts = _usage_counts(getattr(chunk.message, "usage_metadata", None))
+            if counts is not None:
+                stream_usage = {
+                    "input_tokens": (stream_usage or {}).get("input_tokens", 0) + counts[0],
+                    "output_tokens": (stream_usage or {}).get("output_tokens", 0) + counts[1],
+                }
             if chunk.message.response_metadata:
                 response_metadata.update(chunk.message.response_metadata)
             if chunk.generation_info:
@@ -177,6 +221,7 @@ class TraceChatOpenAI(ChatOpenAI):
                 trace_body.update(candidate_body)
             yield chunk
         _record_task_model(self.model_name, response_metadata)
+        _record_task_tokens(stream_usage)
         if operation_id:
             receipt = type(
                 "ModelFactReceipt",

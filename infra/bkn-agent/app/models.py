@@ -626,6 +626,13 @@ class TaskOut(BaseModel):
     prompt_version: Optional[int] = None
     model: Optional[str] = None
     model_id: Optional[str] = None
+    # Tokens of the model calls that reported usage, agent-as-tool calls
+    # included; unmetered_calls counts those that did not. All None on tasks
+    # from before usage was recorded.
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    model_calls: Optional[int] = None
+    unmetered_calls: Optional[int] = None
     status: Literal["pending", "running", "succeeded", "failed"]
     input: Optional[dict] = None
     output: Optional[str] = None
