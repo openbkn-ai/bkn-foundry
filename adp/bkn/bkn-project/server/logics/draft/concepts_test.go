@@ -160,13 +160,17 @@ func Test_ConceptProjection(t *testing.T) {
 			So(got.Reason, ShouldEqual, "Duplicate")
 		})
 
-		Convey("A judgment read back from the database holds its verdict as a string\n", func() {
-			var after any = interfaces.CONCEPT_VERDICT_KINETIC
-			draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_CONCEPTS,
-				ItemID: "requirement_concepts/k3", Action: interfaces.DRAFT_DECISION_JUDGE, After: after, By: reviewer, Time: 7})
-			rate := conceptByKey(conceptsOf(ctx, "p1", draft, conceptRequirement(), true), "requirement_concepts/k3")
+		Convey("A requirement concept no item is is what the specification says, kinetic included\n", func() {
+			req := conceptRequirement()
+			req.UpdateTime = 42
+			req.Spec.Concepts[2].Category, req.Spec.Concepts[2].Edited = "kinetic", true
+			got := conceptsOf(ctx, "p1", draft, req, true)
+			rate := conceptByKey(got, "requirement_concepts/k3")
 			So(rate.Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_KINETIC)
+			// A person edited it there: it is judged.
 			So(rate.State, ShouldEqual, interfaces.CONCEPT_STATE_JUDGED)
+			So(conceptByKey(got, "requirement_concepts/k4").State, ShouldEqual, interfaces.CONCEPT_STATE_PENDING)
+			So(got.RequirementUpdateTime, ShouldEqual, 42)
 		})
 
 		Convey("A merged concept gives its sources to the one it went into, and comes back when taken out\n", func() {
@@ -334,12 +338,22 @@ func Test_ConceptService(t *testing.T) {
 			})
 		})
 
-		Convey("A requirement concept is judged with no item to adopt\n", func() {
-			write()
-			got, err := judge("requirement_concepts/k3", interfaces.CONCEPT_VERDICT_KINETIC, "Computed from deliveries")
+		Convey("Only an object, event or relation concept is an item by its name\n", func() {
+			req := conceptRequirement()
+			req.Spec.Concepts = append(req.Spec.Concepts,
+				&interfaces.RequirementConcept{ID: "k6", Term: "Stores", Category: "kinetic"})
+			got, err := svc.GetConcepts(ctx, token, "p1")
 			So(err, ShouldBeNil)
-			So(conceptByKey(got, "requirement_concepts/k3").Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_KINETIC)
-			So(written.Items.Decisions[len(written.Items.Decisions)-1].ItemID, ShouldEqual, "requirement_concepts/k3")
+			So(got, ShouldNotBeNil)
+			concepts := conceptsOf(ctx, "p1", draft, req, true)
+			So(conceptByKey(concepts, "requirement_concepts/k6"), ShouldNotBeNil)
+			So(conceptByKey(concepts, "requirement_concepts/k6").Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_KINETIC)
+		})
+
+		Convey("A requirement concept no item is is judged in the specification, not here\n", func() {
+			_, err := judge("requirement_concepts/k3", interfaces.CONCEPT_VERDICT_KINETIC, "Computed from deliveries")
+			status, _ := codeOf(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("An unknown verdict, a long reason or an unknown concept are refused\n", func() {
