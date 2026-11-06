@@ -26,7 +26,6 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbdataset"
 )
 
 // requirementAgentID is the bkn-agent task Agent that drafts specifications.
@@ -490,7 +489,7 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 				return 2
 			}
 			props := slices.DeleteFunc(slices.Clone(ot.Properties), func(p *interfaces.DraftProperty) bool {
-				return ot.Document != nil && (p.Name == "_id" || kbdataset.HiddenColumn(ot.Document.Role, p.Name))
+				return ot.Document != nil && (p.Name == "_id" || interfaces.DocumentHiddenColumn(ot.Document.Role, p.Name))
 			})
 			slices.SortStableFunc(props, func(a, b *interfaces.DraftProperty) int { return rank(a) - rank(b) })
 			for _, p := range props[:min(len(props), maxMessageProperties)] {
