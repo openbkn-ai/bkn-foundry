@@ -1752,6 +1752,13 @@ components:
             minimum: 10.0
           - type: 'null'
           title: Max Output Tokens
+        single_structured_call:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Single Structured Call
+          description: 'For a task with response_format and no tools: skip the free-form
+            model call and answer with the structured call alone. Default false.'
         keep_tool_results:
           anyOf:
           - type: integer
