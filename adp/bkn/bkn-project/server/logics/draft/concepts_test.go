@@ -338,6 +338,18 @@ func Test_ConceptService(t *testing.T) {
 			})
 		})
 
+		Convey("Only an object, event or relation concept is an item by its name\n", func() {
+			req := conceptRequirement()
+			req.Spec.Concepts = append(req.Spec.Concepts,
+				&interfaces.RequirementConcept{ID: "k6", Term: "Stores", Category: "kinetic"})
+			got, err := svc.GetConcepts(ctx, token, "p1")
+			So(err, ShouldBeNil)
+			So(got, ShouldNotBeNil)
+			concepts := conceptsOf(ctx, "p1", draft, req, true)
+			So(conceptByKey(concepts, "requirement_concepts/k6"), ShouldNotBeNil)
+			So(conceptByKey(concepts, "requirement_concepts/k6").Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_KINETIC)
+		})
+
 		Convey("A requirement concept no item is is judged in the specification, not here\n", func() {
 			_, err := judge("requirement_concepts/k3", interfaces.CONCEPT_VERDICT_KINETIC, "Computed from deliveries")
 			status, _ := codeOf(err)

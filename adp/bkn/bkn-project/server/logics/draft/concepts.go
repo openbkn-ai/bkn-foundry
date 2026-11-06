@@ -239,7 +239,9 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			key := ""
 			if rc.MapsTo != nil {
 				key = itemKey(kinds[rc.MapsTo.Kind], rc.MapsTo.ID)
-			} else {
+			} else if rc.Category == "object" || rc.Category == "event" || rc.Category == "relation" {
+				// Named like an item, as the specification maps them: a property, kinetic or
+				// not-included concept is one only by an explicit mapping.
 				key = byName[normalized(rc.Term)]
 			}
 			if item := byKey[key]; item != nil {
