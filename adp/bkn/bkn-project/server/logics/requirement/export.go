@@ -118,7 +118,7 @@ func buildExport(target string, req *interfaces.Requirement, guidance []*interfa
 				continue
 			}
 			wq := workshopQuestion{ID: q.ID, Question: q.Template, AnswerShape: q.AnswerShape,
-				Basis: exportBasis{Metrics: q.Basis.Metrics, Functions: q.Basis.Functions, Skills: q.Basis.Skills}}
+				Basis: basisOfNeeds(q, spec)}
 			for _, id := range q.ScenarioIDs {
 				if name, ok := scenarios[id]; ok {
 					wq.Scenarios = append(wq.Scenarios, name)
@@ -279,4 +279,25 @@ func (s *requirementService) ExportRequirement(ctx context.Context, token string
 	}
 	span.SetStatus(codes.Ok, "")
 	return body, fmt.Sprintf("%s-rq-%d-%s.yaml", projectID, req.Version, target), nil
+}
+
+// basisOfNeeds names the metrics, functions and skills a question rests on, from its kinetic needs,
+// as the export has named them.
+func basisOfNeeds(q *interfaces.RequirementQuestion, spec *interfaces.RequirementSpec) exportBasis {
+	basis := exportBasis{}
+	for _, id := range q.LogicNeedIDs {
+		i, ok := find(spec.LogicNeeds, id, logicNeedID)
+		if !ok {
+			continue
+		}
+		switch n := spec.LogicNeeds[i]; n.Kind {
+		case interfaces.LOGIC_NEED_METRIC:
+			basis.Metrics = append(basis.Metrics, n.Name)
+		case interfaces.LOGIC_NEED_FUNCTION:
+			basis.Functions = append(basis.Functions, n.Name)
+		case interfaces.LOGIC_NEED_SKILL:
+			basis.Skills = append(basis.Skills, n.Name)
+		}
+	}
+	return basis
 }

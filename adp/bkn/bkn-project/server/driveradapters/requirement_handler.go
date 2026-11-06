@@ -195,8 +195,10 @@ func (r *restHandler) DeleteRequirementDocument(c *gin.Context, visitor hydra.Vi
 // owner drafts and changes it.
 
 const (
-	requirementsActionDraft  = "requirements:draft"
-	requirementsActionReview = "requirements:review"
+	requirementsActionDraft    = "requirements:draft"
+	requirementsActionReview   = "requirements:review"
+	requirementsActionConcepts = "requirements:extract-concepts"
+	requirementsActionKinetic  = "requirements:analyze-kinetic"
 )
 
 func (r *restHandler) GetRequirementByEx(c *gin.Context) { r.withExVisitor(c, r.GetRequirement) }
@@ -269,6 +271,27 @@ func (r *restHandler) ExportRequirement(c *gin.Context, visitor hydra.Visitor) {
 // GenerateRequirement serves POST /projects/{project_id}/requirements:draft and replies 202 with
 // the specification drafting.
 func (r *restHandler) GenerateRequirement(c *gin.Context, visitor hydra.Visitor) {
+	r.startRequirementRun(c, visitor, r.rqs.GenerateRequirement)
+}
+
+// ExtractRequirementConcepts serves POST /projects/{project_id}/requirements:extract-concepts: it
+// extracts the documents' concepts, rules, conflicts, choices and stated kinetic needs in the
+// background and replies 202.
+func (r *restHandler) ExtractRequirementConcepts(c *gin.Context, visitor hydra.Visitor) {
+	r.startRequirementRun(c, visitor, r.rqs.ExtractConcepts)
+}
+
+// AnalyzeRequirementKinetic serves POST /projects/{project_id}/requirements:analyze-kinetic: it
+// analyses the confirmed model for kinetic needs in the background and replies 202.
+func (r *restHandler) AnalyzeRequirementKinetic(c *gin.Context, visitor hydra.Visitor) {
+	r.startRequirementRun(c, visitor, r.rqs.AnalyseKinetic)
+}
+
+// startRequirementRun starts a run of the specification with the optional body of
+// requirements:draft and replies 202.
+func (r *restHandler) startRequirementRun(c *gin.Context, visitor hydra.Visitor,
+	start func(ctx context.Context, token string, projectID string, caller interfaces.AccountInfo,
+		discardDecisions bool) (*interfaces.Requirement, error)) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
@@ -283,7 +306,7 @@ func (r *restHandler) GenerateRequirement(c *gin.Context, visitor hydra.Visitor)
 			return
 		}
 	}
-	spec, err := r.rqs.GenerateRequirement(ctx, visitor.TokenID, id, visitorAccount(visitor), req.DiscardDecisions)
+	spec, err := start(ctx, visitor.TokenID, id, visitorAccount(visitor), req.DiscardDecisions)
 	if err != nil {
 		replyError(c, span, err)
 		return
