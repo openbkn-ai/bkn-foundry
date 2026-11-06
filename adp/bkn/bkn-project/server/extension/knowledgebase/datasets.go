@@ -5,6 +5,7 @@ package knowledgebase
 
 import (
 	"context"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 

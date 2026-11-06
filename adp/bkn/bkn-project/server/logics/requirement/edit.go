@@ -33,9 +33,10 @@ const (
 )
 
 var itemKinds = []string{interfaces.REQUIREMENT_KIND_SCENARIOS, interfaces.REQUIREMENT_KIND_CONCEPTS,
-	interfaces.REQUIREMENT_KIND_QUESTIONS, interfaces.REQUIREMENT_KIND_RULES}
+	interfaces.REQUIREMENT_KIND_QUESTIONS, interfaces.REQUIREMENT_KIND_RULES, interfaces.REQUIREMENT_KIND_LOGIC_NEEDS}
 
-var conceptCategories = []string{"object", "event", "property", "relation", "evidence", "not_ontology"}
+var conceptCategories = []string{"object", "event", "property", "relation", "evidence",
+	interfaces.REQUIREMENT_CONCEPT_KINETIC, "not_ontology"}
 
 func invalidItem(ctx context.Context, detail string) error {
 	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem).
@@ -60,7 +61,8 @@ func (s *requirementService) update(ctx context.Context, token string, projectID
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
 	switch {
-	case ok && req.Status == interfaces.REQUIREMENT_STATUS_DRAFTING:
+	case ok && (req.Status == interfaces.REQUIREMENT_STATUS_DRAFTING || req.Spec.RunningRun(s.staleRunBefore()) != ""):
+		// A run writes its part when it ends, over what it read.
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
 	case !ok || req.Status != interfaces.REQUIREMENT_STATUS_READY:
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Requirement_NotFound)
@@ -95,6 +97,25 @@ type draftedItems struct {
 }
 
 func (d *draftedItems) has(ref interfaces.RequirementItemRef) bool { return d.refs[ref] }
+
+// adoptedObjectType is the adopted object type of the draft with the id, nil when there is none.
+func (d *draftedItems) adoptedObjectType(id string) *interfaces.DraftObjectType {
+	if d.draft == nil {
+		return nil
+	}
+	for _, ot := range d.draft.Items.ObjectTypes {
+		if ot.ID == id && ot.Adopted {
+			return ot
+		}
+	}
+	return nil
+}
+
+// hasProperty tells whether an adopted object type has the property.
+func (d *draftedItems) hasProperty(objectTypeID string, property string) bool {
+	ot := d.adoptedObjectType(objectTypeID)
+	return ot != nil && slices.ContainsFunc(ot.Properties, func(p *interfaces.DraftProperty) bool { return p.Name == property })
+}
 
 // exampleDocuments reads the project's documents for an edit that gives an input's example, which
 // must be a value they state.
@@ -182,14 +203,18 @@ func onlyFields(ctx context.Context, edit interfaces.RequirementItemEdit, kind s
 		"layer": edit.Layer != nil, "template": edit.Template != nil, "answer_shape": edit.AnswerShape != nil,
 		"scenario_ids": edit.ScenarioIDs != nil, "needs": edit.Needs != nil, "statement": edit.Statement != nil,
 		"follow_concepts": edit.FollowConcepts != nil, "inputs": edit.Inputs != nil,
-		"relative_window": edit.RelativeWindow != nil,
+		"relative_window": edit.RelativeWindow != nil, "logic_need_ids": edit.LogicNeedIDs != nil,
+		"logic_kind": edit.LogicKind != nil, "object_type_ids": edit.ObjectTypeIDs != nil,
+		"properties": edit.Properties != nil, "suggested_metric_type": edit.SuggestedMetricType != nil,
 	}
 	allowed := map[string][]string{
 		interfaces.REQUIREMENT_KIND_SCENARIOS: {"name", "actor", "trigger", "decision", "knowledge"},
 		interfaces.REQUIREMENT_KIND_CONCEPTS:  {"term", "category", "definition"},
 		interfaces.REQUIREMENT_KIND_QUESTIONS: {"text", "layer", "template", "answer_shape", "scenario_ids", "needs",
-			"follow_concepts", "inputs", "relative_window"},
+			"follow_concepts", "inputs", "relative_window", "logic_need_ids"},
 		interfaces.REQUIREMENT_KIND_RULES: {"statement"},
+		interfaces.REQUIREMENT_KIND_LOGIC_NEEDS: {"logic_kind", "name", "definition", "object_type_ids", "properties",
+			"suggested_metric_type"},
 	}[kind]
 	setSome := false
 	for field, isSet := range set {
@@ -334,6 +359,26 @@ func applyQuestion(ctx context.Context, q *interfaces.RequirementQuestion, edit 
 	if edit.RelativeWindow != nil {
 		q.RelativeWindow = *edit.RelativeWindow
 	}
+	if edit.LogicNeedIDs != nil {
+		ids := []string{}
+		for _, id := range *edit.LogicNeedIDs {
+			if _, ok := find(spec.LogicNeeds, id, logicNeedID); !ok {
+				return invalidItem(ctx, "kinetic need "+id+" does not exist")
+			}
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+		q.LogicNeedIDs = ids
+		// What it rests on decides its layer, unless the person set that too.
+		if edit.Layer == nil {
+			q.Layer = interfaces.REQUIREMENT_LAYER_KNOWLEDGE
+			if len(ids) > 0 {
+				q.Layer = interfaces.REQUIREMENT_LAYER_CAPABILITY
+			}
+		}
+		needScenarios(spec)
+	}
 	if edit.Inputs != nil || edit.Template != nil || edit.RelativeWindow != nil {
 		return checkInputs(ctx, q, spec, drafted.draft, edit.Inputs != nil || edit.RelativeWindow != nil)
 	}
@@ -362,6 +407,64 @@ func checkInputs(ctx context.Context, q *interfaces.RequirementQuestion, spec *i
 	}
 	if window && q.Inputs != nil && needsReferenceTime(q.RelativeWindow, inputs) {
 		return invalidItem(ctx, rejectedWindowWithoutRefTime)
+	}
+	return nil
+}
+
+// applyLogicNeed changes a kinetic need as a person writes it: its object types and properties must
+// be in the draft, a property's object type among its own.
+func applyLogicNeed(ctx context.Context, n *interfaces.RequirementLogicNeed, edit interfaces.RequirementItemEdit,
+	drafted *draftedItems) error {
+	if edit.LogicKind != nil {
+		if !interfaces.IsLogicNeedKind(*edit.LogicKind) {
+			return invalidItem(ctx, "logic_kind "+*edit.LogicKind+" is unknown")
+		}
+		n.Kind = *edit.LogicKind
+	}
+	if err := setText(ctx, "name", edit.Name, maxItemNameRunes, true, &n.Name); err != nil {
+		return err
+	}
+	if err := setText(ctx, "definition", edit.Definition, maxItemTextRunes, false, &n.Definition); err != nil {
+		return err
+	}
+	if edit.ObjectTypeIDs != nil {
+		ids := []string{}
+		for _, id := range *edit.ObjectTypeIDs {
+			// A kinetic need rests on the model: only adopted object types stand, as runs keep them.
+			if drafted.adoptedObjectType(id) == nil {
+				return invalidItem(ctx, "object_type "+id+" is not adopted")
+			}
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+		n.ObjectTypeIDs = ids
+	}
+	if edit.Properties != nil {
+		properties := []interfaces.RequirementPropertyRef{}
+		for _, p := range *edit.Properties {
+			if !slices.Contains(n.ObjectTypeIDs, p.ObjectTypeID) || !drafted.hasProperty(p.ObjectTypeID, p.Property) {
+				return invalidItem(ctx, "property "+p.ObjectTypeID+"."+p.Property+" is not of its object types")
+			}
+			if !slices.Contains(properties, p) {
+				properties = append(properties, p)
+			}
+		}
+		n.Properties = properties
+	} else {
+		// Properties of object types it no longer has go with them.
+		n.Properties = slices.DeleteFunc(n.Properties, func(p interfaces.RequirementPropertyRef) bool {
+			return !slices.Contains(n.ObjectTypeIDs, p.ObjectTypeID)
+		})
+	}
+	if edit.SuggestedMetricType != nil {
+		if *edit.SuggestedMetricType != "" && !slices.Contains(interfaces.LogicNeedMetricTypes, *edit.SuggestedMetricType) {
+			return invalidItem(ctx, "suggested_metric_type "+*edit.SuggestedMetricType+" is unknown")
+		}
+		n.SuggestedMetricType = *edit.SuggestedMetricType
+	}
+	if n.Kind != interfaces.LOGIC_NEED_METRIC {
+		n.SuggestedMetricType = ""
 	}
 	return nil
 }
@@ -469,6 +572,16 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 				}
 				spec.Rules[i].Edited = true
 				return applyRule(ctx, spec.Rules[i], edit)
+			case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+				i, ok := find(spec.LogicNeeds, itemID, logicNeedID)
+				if !ok {
+					return notFound(ctx)
+				}
+				if err := onlyFields(ctx, edit, kind); err != nil {
+					return err
+				}
+				spec.LogicNeeds[i].Edited, spec.LogicNeeds[i].Accepted = true, true
+				return applyLogicNeed(ctx, spec.LogicNeeds[i], edit, drafted)
 			}
 			return notFound(ctx)
 		})
@@ -500,7 +613,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 					return invalidItem(ctx, "name is empty")
 				}
 				s := &interfaces.RequirementScenario{ID: nextID(spec, "s", spec.Scenarios, scenarioID), Knowledge: []string{},
-					Capabilities: []interfaces.RequirementCapability{}, Citations: empty, Edited: true, Accepted: true}
+					Citations: empty, Edited: true, Accepted: true}
 				if err := applyScenario(ctx, s, edit); err != nil {
 					return err
 				}
@@ -510,7 +623,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 					return invalidItem(ctx, "term is empty")
 				}
 				c := &interfaces.RequirementConcept{ID: nextID(spec, "c", spec.Concepts, conceptID), Category: "object",
-					Citations: empty, Edited: true}
+					Citations: empty, Source: interfaces.REQUIREMENT_CONCEPT_FROM_PERSON, Edited: true}
 				if err := applyConcept(ctx, c, edit); err != nil {
 					return err
 				}
@@ -521,8 +634,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 				}
 				q := &interfaces.RequirementQuestion{ID: nextID(spec, "q", spec.Questions, questionID), ScenarioIDs: []string{},
 					Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
-					Basis: interfaces.RequirementBasis{ConceptIDs: []string{}, Metrics: []string{}, Functions: []string{},
-						Skills: []string{}},
+					Basis: interfaces.RequirementBasis{ConceptIDs: []string{}}, LogicNeedIDs: []string{},
 					Needs: []interfaces.RequirementItemRef{}, NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
 					Citations: empty, Edited: true, Accepted: true}
 				if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
@@ -543,6 +655,17 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 					return err
 				}
 				spec.Rules = append(spec.Rules, r)
+			case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+				if edit.LogicKind == nil || edit.Name == nil {
+					return invalidItem(ctx, "logic_kind or name is empty")
+				}
+				n := &interfaces.RequirementLogicNeed{ID: nextID(spec, "n", spec.LogicNeeds, logicNeedID),
+					ObjectTypeIDs: []string{}, Properties: []interfaces.RequirementPropertyRef{}, ConceptIDs: []string{},
+					ScenarioIDs: []string{}, Citations: empty, Source: interfaces.LOGIC_NEED_FROM_PERSON, Edited: true, Accepted: true}
+				if err := applyLogicNeed(ctx, n, edit, drafted); err != nil {
+					return err
+				}
+				spec.LogicNeeds = append(spec.LogicNeeds, n)
 			default:
 				return notFound(ctx)
 			}
@@ -590,6 +713,9 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 						q.Inputs = nil
 					}
 				}
+				for _, n := range spec.LogicNeeds {
+					n.ConceptIDs = slices.DeleteFunc(n.ConceptIDs, func(id string) bool { return id == itemID })
+				}
 				followConcepts(spec)
 			case interfaces.REQUIREMENT_KIND_QUESTIONS:
 				i, ok := find(spec.Questions, itemID, questionID)
@@ -598,6 +724,18 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 				}
 				recordIDs(spec, "q", spec.Questions, questionID)
 				spec.Questions = slices.Delete(spec.Questions, i, i+1)
+				needScenarios(spec)
+			case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+				i, ok := find(spec.LogicNeeds, itemID, logicNeedID)
+				if !ok {
+					return notFound(ctx)
+				}
+				recordIDs(spec, "n", spec.LogicNeeds, logicNeedID)
+				spec.LogicNeeds = slices.Delete(spec.LogicNeeds, i, i+1)
+				// Its questions no longer rest on it; one left resting on nothing is noted when read.
+				for _, q := range spec.Questions {
+					q.LogicNeedIDs = slices.DeleteFunc(q.LogicNeedIDs, func(id string) bool { return id == itemID })
+				}
 			case interfaces.REQUIREMENT_KIND_RULES:
 				i, ok := find(spec.Rules, itemID, ruleID)
 				if !ok {
@@ -717,8 +855,8 @@ func (s *requirementService) DecideChoice(ctx context.Context, token string, pro
 	return req, nil
 }
 
-// ReviewItems accepts and unaccepts scenarios and questions: what a person accepted stays when
-// the specification is drafted again.
+// ReviewItems accepts and unaccepts scenarios, questions and kinetic needs: what a person accepted
+// stays when the specification is drafted again.
 func (s *requirementService) ReviewItems(ctx context.Context, token string, projectID string,
 	review interfaces.RequirementReview, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ReviewRequirementItems")
@@ -748,6 +886,12 @@ func (s *requirementService) ReviewItems(ctx context.Context, token string, proj
 							return notFound(ctx)
 						}
 						spec.Scenarios[i].Accepted = accepted
+					case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+						i, ok := find(spec.LogicNeeds, item.ID, logicNeedID)
+						if !ok {
+							return notFound(ctx)
+						}
+						spec.LogicNeeds[i].Accepted = accepted
 					case interfaces.REQUIREMENT_KIND_QUESTIONS:
 						i, ok := find(spec.Questions, item.ID, questionID)
 						if !ok {

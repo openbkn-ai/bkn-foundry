@@ -11,6 +11,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 func TestDocumentCommitGuardsEverySnapshotInOneTransaction(t *testing.T) {
@@ -85,7 +86,8 @@ func TestDocumentCommitGuardsEverySnapshotInOneTransaction(t *testing.T) {
 			if !success && scenario != "commit_failed" {
 				m.ExpectRollback()
 			}
-			written, err := (&draftAccess{db: db}).CommitDocumentDraft(context.Background(), d, guard)
+			drafts, _ := kbconcept.DocumentDrafts(&draftAccess{db: db})
+			written, err := drafts.CommitDocumentDraft(context.Background(), d, guard)
 			if written != success || (success && err != nil) {
 				t.Fatalf("written=%v error=%v", written, err)
 			}

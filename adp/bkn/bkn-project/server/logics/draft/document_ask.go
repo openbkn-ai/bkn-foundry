@@ -5,118 +5,31 @@ package draft
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
-// documentAskObject verifies the working form against current native debug
-// text before any Agent call. Only existing located examples enter its context;
-// the complete debug corpus and acceptance files are never forwarded here.
-func (s *draftService) documentAskObject(ctx context.Context, token string, draft *interfaces.Draft, original, working *interfaces.DraftObjectType) (*interfaces.DraftObjectType, askObjectType, error) {
-	if original.Document == nil || strings.HasPrefix(original.Document.Role, "evidence_") {
-		return working, askObjectTypeOf(working), nil
-	}
-	input, err := s.documentEditInput(ctx, token, draft, original.Document)
+// documentAskObject has the hooks check the working form before any Agent call, and adds the examples
+// they verified to what the Agent reads.
+func (s *draftService) documentAskObject(ctx context.Context, token string, draft *interfaces.Draft, original, working *interfaces.DraftObjectType) (*interfaces.DraftObjectType, askObjectType, []string, error) {
+	checked, err := documentHooks().AskObject(ctx, draftHost{s}, token, draft, original, working)
 	if err != nil {
-		return nil, askObjectType{}, err
+		return nil, askObjectType{}, nil, err
 	}
-	checked, err := kbconcept.ValidateEditedObject(input, draft.Items, original, working)
-	if err != nil {
-		return nil, askObjectType{}, documentValidationError(ctx, err)
+	asked := askObjectTypeOf(checked.Working)
+	for i := range asked.Properties {
+		asked.Properties[i].Examples = checked.Examples[asked.Properties[i].Name]
 	}
-	asked := askObjectTypeOf(checked)
-	remaining, examples := 4000, 0
-	for i, p := range checked.Properties {
-		if p.Extraction == nil || p.ReadOnly {
-			continue
-		}
-		for _, q := range p.Extraction.Examples {
-			if remaining == 0 || examples >= 10 {
-				break
-			}
-			for _, sample := range input.Request.Samples {
-				proof := sample.Citation
-				if proof.KnowledgeBaseID != q.KnowledgeBaseID || proof.FileID != q.FileID || proof.ContentVersionID != q.ContentVersionID || proof.BlockID != q.BlockID || q.Start < proof.Start || q.End > proof.End {
-					continue
-				}
-				raw := []rune(proof.Quote)
-				from, to := q.Start-proof.Start, q.End-proof.Start
-				if from < 0 || to > len(raw) || to <= from || to-from > remaining {
-					continue
-				}
-				asked.Properties[i].Examples = append(asked.Properties[i].Examples, string(raw[from:to]))
-				remaining -= to - from
-				examples++
-				break
-			}
-		}
-	}
-	return checked, asked, nil
+	return checked.Working, asked, checked.Editable, nil
 }
 
-// Document joins are checked against native proof and existing schema, without
-// treating a mention column as a SQL table mapping or inventing hit counts.
-func documentRelationRevision(ctx context.Context, input *kbconcept.SampleInput, items interfaces.DraftItems, base *interfaces.DraftRelationType, out askRevisionOutput) (*interfaces.DraftAskRevision, string) {
-	if out.Field == interfaces.DRAFT_ASK_REVISION_NAME || out.Field == interfaces.DRAFT_ASK_REVISION_COMMENT {
-		return nameOrComment(ctx, out.Field, out.Value, current(out.Field, base.Name, base.Description))
-	}
-	if out.Field != interfaces.DRAFT_ASK_REVISION_ENDS || base.Document == nil || base.Document.Role != "relation" || out.DocumentMapping == nil || len(out.Mapping) > 0 {
-		return nil, askDroppedNotEditable
-	}
-	candidate := *base
-	mapping := *out.DocumentMapping
-	candidate.DocumentMapping = &mapping
-	if out.Source != "" {
-		candidate.Source = out.Source
-	}
-	if out.Target != "" {
-		candidate.Target = out.Target
-	}
-	if out.Cardinality != "" {
-		candidate.Cardinality = out.Cardinality
-	}
-	checked, err := kbconcept.ValidateEditedRelation(input, items, base, &candidate)
-	if err != nil {
-		return nil, askDroppedInvalid
-	}
-	if sameJoin(relationSnapshot(base), relationSnapshot(checked)) {
-		return nil, askDroppedUnchanged
-	}
-	return &interfaces.DraftAskRevision{Value: interfaces.DraftAskEndsRevision{SourceObjectTypeID: checked.Source, TargetObjectTypeID: checked.Target, Type: interfaces.DRAFT_RELATION_DIRECT, MappingRules: []interfaces.DraftRelationMapping{}, DocumentMapping: checked.DocumentMapping, Cardinality: checked.Cardinality}}, ""
-}
-
+// askNewDocumentRelation asks about a relation the hooks shape from a form not saved yet.
 func (s *draftService) askNewDocumentRelation(ctx context.Context, token string, draft *interfaces.Draft, in askInput, req interfaces.DraftRelationAskRequest, caller interfaces.AccountInfo, stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
-	working := req.Working
-	source := findObjectType(&draft.Items, working.SourceObjectTypeID)
-	if source == nil || source.Document == nil || strings.HasPrefix(source.Document.Role, "evidence_") || (working.DocumentMapping.Mode != "linking" && working.DocumentMapping.Mode != "same_document") {
-		return nil, invalidRelation(ctx, nil)
-	}
-	if working.TargetObjectTypeID != "" && findObjectType(&draft.Items, working.TargetObjectTypeID) == nil {
-		return nil, invalidRelation(ctx, nil)
-	}
-	input, err := s.documentEditInput(ctx, token, draft, source.Document)
+	asking, err := documentHooks().AskNewRelation(ctx, draftHost{s}, token, draft, req)
 	if err != nil {
 		return nil, err
 	}
-	id := "new_document_relation"
-	for n := 2; findRelationType(&draft.Items, id) != nil; n++ {
-		id = fmt.Sprintf("new_document_relation_%d", n)
-	}
-	name := strings.TrimSpace(working.Name)
-	if name == "" {
-		name, _ = i18n.Render(i18n.Language(draftLanguage(draft)), "BknProject.Draft.DocumentRelation.NewName", nil)
-	}
-	reason, _ := i18n.Render(i18n.Language(draftLanguage(draft)), "BknProject.Draft.DocumentRelation.ManualReason", nil)
-	mapping := *working.DocumentMapping
-	base := &interfaces.DraftRelationType{ID: id, Name: name, Description: strings.TrimSpace(working.Comment), Source: source.ID, Target: working.TargetObjectTypeID, Cardinality: working.Cardinality, DocumentMapping: &mapping,
-		Document: &interfaces.DraftDocumentModel{Role: "relation", Reason: reason, Citations: append([]interfaces.DraftSourceCitation(nil), source.Document.Citations...), SelectionID: source.Document.SelectionID, SelectionRevision: source.Document.SelectionRevision}}
-	if base.Cardinality == "" {
-		base.Cardinality = interfaces.DRAFT_CARDINALITY_MANY_TO_ONE
-	}
+	base, reviser := asking.Working, asking.Revise
 	in.Kind = askKindRelationType
 	asked := askRelationOf(base)
 	asked.ID = ""
@@ -159,7 +72,7 @@ func (s *draftService) askNewDocumentRelation(ctx context.Context, token string,
 					return nil, askDroppedNotEditable
 				}
 			}
-			return documentRelationRevision(ctx, input, draft.Items, base, r)
+			return reviser(r)
 		})
 	}}, stream)
 }

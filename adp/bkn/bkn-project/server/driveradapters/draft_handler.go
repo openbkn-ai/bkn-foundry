@@ -138,7 +138,8 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 }
 
 // ProjectDataActionByEx serves POST /projects/{project_id}/catalogs:understand, branch:sync,
-// drift:commit, requirements:draft and requirements:review.
+// drift:commit, requirements:draft, requirements:extract-concepts, requirements:analyze-kinetic and
+// requirements:review.
 func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
 	switch c.Param("action") {
 	case catalogsActionUnderstand:
@@ -151,6 +152,10 @@ func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.CommitProjectDrift)
 	case requirementsActionDraft:
 		r.withExVisitor(c, r.GenerateRequirement)
+	case requirementsActionConcepts:
+		r.withExVisitor(c, r.ExtractRequirementConcepts)
+	case requirementsActionKinetic:
+		r.withExVisitor(c, r.AnalyzeRequirementKinetic)
 	case requirementsActionReview:
 		r.withExVisitor(c, r.ReviewRequirementItems)
 	case sourceChangesActionDraft:

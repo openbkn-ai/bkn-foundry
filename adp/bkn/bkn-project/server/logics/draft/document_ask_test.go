@@ -86,8 +86,9 @@ func TestDocumentAskUsesVerifiedDebugExamplesWithoutChangingStoredProof(t *testi
 	draft := editableDocumentDraft(t)
 	original := draft.Items.ObjectTypes[0]
 	before, _ := json.Marshal(original)
-	service := &draftService{kbResources: documentSaveSelection{}}
-	_, asked, err := service.documentAskObject(context.Background(), "Bearer synthetic", draft, original, workingObjectType(original, nil))
+	service := &draftService{}
+	useDocumentResources(t, documentSaveSelection{})
+	_, asked, _, err := service.documentAskObject(context.Background(), "Bearer synthetic", draft, original, workingObjectType(original, nil))
 	if err != nil || len(asked.Properties[0].Examples) != 1 || asked.Properties[0].Examples[0] != "Order O-1" || source.reads != 1 {
 		t.Fatal("native debug examples missing", err)
 	}
@@ -97,7 +98,7 @@ func TestDocumentAskUsesVerifiedDebugExamplesWithoutChangingStoredProof(t *testi
 	}
 	bad := workingObjectType(original, nil)
 	bad.Properties[0].Extraction = &interfaces.DraftExtractionField{Instruction: "Read the number", Examples: []interfaces.DraftSourceCitation{{KnowledgeBaseID: "1", FileID: "42", ContentVersionID: "9", BlockID: "acceptance", Start: 0, End: 3}}}
-	if _, _, err = service.documentAskObject(context.Background(), "Bearer synthetic", draft, original, bad); err == nil {
+	if _, _, _, err = service.documentAskObject(context.Background(), "Bearer synthetic", draft, original, bad); err == nil {
 		t.Fatal("unverified example entered assistant context")
 	}
 }
@@ -160,8 +161,9 @@ func TestNewDocumentRelationAssistantDoesNotQueryTablesOrSave(t *testing.T) {
 	before, _ := json.Marshal(draft)
 	setting := testSetting
 	setting.QueryTimeout = 60
-	service := &draftService{setting: setting, kbResources: documentSaveSelection{}, ba: ba,
+	service := &draftService{setting: setting, ba: ba,
 		va: pmock.NewMockVegaAccess(ctrl), da: pmock.NewMockDraftAccess(ctrl)}
+	useDocumentResources(t, documentSaveSelection{})
 	ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest, on func(interfaces.BknAgentChatEvent)) error {
 			var in askInput
@@ -233,7 +235,8 @@ func TestBlockedRelationshipAssistantProposesStrictRepairsWithoutWriting(t *test
 				output := `{"revisions":[{"field":"ends","source_object_type_id":"order_doc","target_object_type_id":"current_doc","document_mapping":{"mode":"linking","mention_property":"number","identity_property":"` + property + `"},"cardinality":"many_to_one","reason":"Use the confirmed global business identity"}]}`
 				return answered(output, "Review this relationship.")(ctx, account, request, on)
 			})
-			service := &draftService{setting: testSetting, kbResources: documentSaveSelection{}, ba: ba, ps: ps, da: da}
+			service := &draftService{setting: testSetting, ba: ba, ps: ps, da: da}
+			useDocumentResources(t, documentSaveSelection{})
 			got, err := service.AskRelationType(context.Background(), "Bearer synthetic", "p", relation.ID, interfaces.DraftRelationAskRequest{Question: "Help repair this relationship"}, caller, nil)
 			if err != nil || got == nil {
 				t.Fatal("blocked advice failed", err)

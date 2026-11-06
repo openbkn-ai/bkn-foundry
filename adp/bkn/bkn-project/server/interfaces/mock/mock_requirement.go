@@ -132,6 +132,21 @@ func (mr *MockRequirementAccessMockRecorder) FinishGenerating(ctx, g any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinishGenerating", reflect.TypeOf((*MockRequirementAccess)(nil).FinishGenerating), ctx, g)
 }
 
+// FinishRun mocks base method.
+func (m *MockRequirementAccess) FinishRun(ctx context.Context, projectID, kind, runID string, finish func(*interfaces.Requirement)) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FinishRun", ctx, projectID, kind, runID, finish)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FinishRun indicates an expected call of FinishRun.
+func (mr *MockRequirementAccessMockRecorder) FinishRun(ctx, projectID, kind, runID, finish any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinishRun", reflect.TypeOf((*MockRequirementAccess)(nil).FinishRun), ctx, projectID, kind, runID, finish)
+}
+
 // GetDocument mocks base method.
 func (m *MockRequirementAccess) GetDocument(ctx context.Context, projectID, documentID string) (*interfaces.RequirementDocument, bool, error) {
 	m.ctrl.T.Helper()
@@ -225,6 +240,21 @@ func (mr *MockRequirementAccessMockRecorder) ListGuidance(ctx, projectID any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGuidance", reflect.TypeOf((*MockRequirementAccess)(nil).ListGuidance), ctx, projectID)
 }
 
+// ProjectsWithRunning mocks base method.
+func (m *MockRequirementAccess) ProjectsWithRunning(ctx context.Context) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProjectsWithRunning", ctx)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ProjectsWithRunning indicates an expected call of ProjectsWithRunning.
+func (mr *MockRequirementAccessMockRecorder) ProjectsWithRunning(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProjectsWithRunning", reflect.TypeOf((*MockRequirementAccess)(nil).ProjectsWithRunning), ctx)
+}
+
 // SetDocumentType mocks base method.
 func (m *MockRequirementAccess) SetDocumentType(ctx context.Context, projectID, documentID, docType string, updateTime int64) (bool, error) {
 	m.ctrl.T.Helper()
@@ -268,6 +298,21 @@ func (m *MockRequirementAccess) StartGenerating(ctx context.Context, g *interfac
 func (mr *MockRequirementAccessMockRecorder) StartGenerating(ctx, g, staleBefore any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartGenerating", reflect.TypeOf((*MockRequirementAccess)(nil).StartGenerating), ctx, g, staleBefore)
+}
+
+// StartRun mocks base method.
+func (m *MockRequirementAccess) StartRun(ctx context.Context, projectID, kind string, run *interfaces.RequirementRun, staleBefore, readUpdateTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartRun", ctx, projectID, kind, run, staleBefore, readUpdateTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StartRun indicates an expected call of StartRun.
+func (mr *MockRequirementAccessMockRecorder) StartRun(ctx, projectID, kind, run, staleBefore, readUpdateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartRun", reflect.TypeOf((*MockRequirementAccess)(nil).StartRun), ctx, projectID, kind, run, staleBefore, readUpdateTime)
 }
 
 // SuggestDocumentType mocks base method.
@@ -352,6 +397,21 @@ func (m *MockRequirementService) AddItem(ctx context.Context, token, projectID, 
 func (mr *MockRequirementServiceMockRecorder) AddItem(ctx, token, projectID, kind, edit, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddItem", reflect.TypeOf((*MockRequirementService)(nil).AddItem), ctx, token, projectID, kind, edit, caller)
+}
+
+// AnalyseKinetic mocks base method.
+func (m *MockRequirementService) AnalyseKinetic(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, discardDecisions bool) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AnalyseKinetic", ctx, token, projectID, caller, discardDecisions)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AnalyseKinetic indicates an expected call of AnalyseKinetic.
+func (mr *MockRequirementServiceMockRecorder) AnalyseKinetic(ctx, token, projectID, caller, discardDecisions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnalyseKinetic", reflect.TypeOf((*MockRequirementService)(nil).AnalyseKinetic), ctx, token, projectID, caller, discardDecisions)
 }
 
 // DecideChoice mocks base method.
@@ -457,6 +517,21 @@ func (m *MockRequirementService) ExportRequirement(ctx context.Context, token, p
 func (mr *MockRequirementServiceMockRecorder) ExportRequirement(ctx, token, projectID, target any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportRequirement", reflect.TypeOf((*MockRequirementService)(nil).ExportRequirement), ctx, token, projectID, target)
+}
+
+// ExtractConcepts mocks base method.
+func (m *MockRequirementService) ExtractConcepts(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, discardDecisions bool) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExtractConcepts", ctx, token, projectID, caller, discardDecisions)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExtractConcepts indicates an expected call of ExtractConcepts.
+func (mr *MockRequirementServiceMockRecorder) ExtractConcepts(ctx, token, projectID, caller, discardDecisions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExtractConcepts", reflect.TypeOf((*MockRequirementService)(nil).ExtractConcepts), ctx, token, projectID, caller, discardDecisions)
 }
 
 // FailInterrupted mocks base method.

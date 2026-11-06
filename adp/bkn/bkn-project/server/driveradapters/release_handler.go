@@ -7,19 +7,15 @@ package driveradapters
 import (
 	"context"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters/httpx"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -31,11 +27,7 @@ func (r *restHandler) ListReleasesByEx(c *gin.Context)   { r.withExVisitor(c, r.
 func (r *restHandler) GetReleaseByEx(c *gin.Context)     { r.withExVisitor(c, r.GetRelease) }
 func (r *restHandler) PublishReleaseByEx(c *gin.Context) { r.withExVisitor(c, r.PublishRelease) }
 
-func replyError(c *gin.Context, span trace.Span, err error) {
-	httpErr := err.(*httperrors.HTTPError)
-	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-	rest.ReplyError(c, httpErr)
-}
+func replyError(c *gin.Context, span trace.Span, err error) { httpx.ReplyError(c, span, err) }
 
 func (r *restHandler) ListReleases(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -105,18 +97,5 @@ func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 
 // parseLimit reads the page size, from 1 to max; an absent limit takes the default.
 func parseLimit(ctx context.Context, value string, defaultLimit int, max int) (int, error) {
-	if value == "" {
-		return defaultLimit, nil
-	}
-	limit, err := strconv.Atoi(value)
-	if err == nil && limit >= 1 && limit <= max {
-		return limit, nil
-	}
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknProject.Validation.Detail.LimitOutOfRange",
-		map[string]any{"max": max})
-	if renderErr != nil {
-		logger.Errorf("localized message rendering failed: %v", renderErr)
-	}
-	return 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Limit).
-		WithErrorDetails(localizedText)
+	return httpx.ParseLimit(ctx, value, defaultLimit, max)
 }
