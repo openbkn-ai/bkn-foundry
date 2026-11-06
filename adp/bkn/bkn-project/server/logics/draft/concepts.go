@@ -359,7 +359,7 @@ func (s *draftService) GetConcepts(ctx context.Context, token string, projectID 
 	}
 	if !exist {
 		draft = nil
-	} else if err := checkDocumentReadAccess(ctx, token, draft); err != nil {
+	} else if err := documentHooks().CheckRead(ctx, token, draft); err != nil {
 		return nil, err
 	}
 	concepts, err := s.readConcepts(ctx, projectID, draft)
@@ -497,8 +497,5 @@ func (s *draftService) MergeConcept(ctx context.Context, token string, projectID
 // edit, which keeps its fact resolution current.
 func (s *draftService) writeConceptDecisions(ctx context.Context, draft *interfaces.Draft,
 	decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, document *interfaces.DraftDocumentModel) error {
-	if document != nil {
-		return s.commitDocumentEdit(ctx, draft, decisions, caller, document)
-	}
-	return s.commit(ctx, draft, decisions, caller)
+	return s.commitItem(ctx, draft, decisions, caller, document)
 }
