@@ -506,6 +506,9 @@ type ScenarioQuestions struct {
 	// UpdateTime is the specification's: it moves whenever the questions may have changed.
 	UpdateTime int64              `json:"update_time"`
 	Questions  []ScenarioQuestion `json:"questions"`
+	// UnlinkedNeeds are the kinetic needs no implementation is linked to, but applications, which
+	// link to none.
+	UnlinkedNeeds []ReleaseNeed `json:"unlinked_needs"`
 }
 
 type ScenarioQuestion struct {
@@ -756,10 +759,13 @@ const (
 	REQUIREMENT_UPLOAD_REJECTED  = "rejected"
 )
 
-// RequirementUpload is one uploaded file: its name and bytes.
+// RequirementUpload is one uploaded file: its name and bytes. Format, markdown or text, is given for
+// text that comes from elsewhere than a file of its own, such as a file a knowledge base parsed;
+// empty, the name's extension says it.
 type RequirementUpload struct {
 	Name    string
 	Content []byte
+	Format  string
 }
 
 // RequirementUploadResult is what became of one uploaded file. DocumentID is the document
@@ -851,6 +857,19 @@ type RequirementService interface {
 		edit RequirementTestEdit, caller AccountInfo) (*QuestionGuidance, error)
 	DeleteTest(ctx context.Context, token string, projectID string, questionID string, testID string,
 		updateTime int64, caller AccountInfo) (*QuestionGuidance, error)
+
+	// ListLogicNeeds returns the project's kinetic needs with their implementations read live from
+	// its live network, as the caller.
+	ListLogicNeeds(ctx context.Context, token string, projectID string) (*LogicNeedsView, error)
+	// LogicNeedCandidates lists the implementations of the live network a need could link to, by
+	// name and object type; a person chooses, nothing is linked by itself.
+	LogicNeedCandidates(ctx context.Context, token string, projectID string, needID string) (*LogicNeedCandidates, error)
+	// LinkLogicNeed links a need to an implementation the live network has; UnlinkLogicNeed removes
+	// the link. Each returns the specification after.
+	LinkLogicNeed(ctx context.Context, token string, projectID string, needID string, link RequirementLogicLinkEdit,
+		caller AccountInfo) (*Requirement, error)
+	UnlinkLogicNeed(ctx context.Context, token string, projectID string, needID string, updateTime int64,
+		caller AccountInfo) (*Requirement, error)
 
 	// ScenarioQuestions returns the project's scenario questions with their needs, for
 	// publishing and the regression after a release, which check visibility themselves. A

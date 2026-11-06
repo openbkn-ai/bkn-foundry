@@ -124,6 +124,10 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.ConfirmDraft)
 	case draftActionAccept:
 		r.withExVisitor(c, r.AcceptSuggestions)
+	case conceptsActionJudge:
+		r.withExVisitor(c, r.JudgeConcept)
+	case conceptsActionMerge:
+		r.withExVisitor(c, r.MergeConcept)
 	case checkActionRun:
 		r.withExVisitor(c, r.RunCheck)
 	case indexActionBuild:

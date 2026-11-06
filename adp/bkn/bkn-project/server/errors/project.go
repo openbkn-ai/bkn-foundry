@@ -71,6 +71,9 @@ const (
 
 	// 500
 	BknProject_Requirement_InternalError = "BknProject.Requirement.InternalError"
+
+	// 503
+	BknProject_Requirement_ImplementationUnavailable = "BknProject.Requirement.ImplementationUnavailable"
 )
 
 var (
@@ -114,6 +117,7 @@ var (
 		BknProject_Requirement_NoDocuments,
 		BknProject_Requirement_ModelNotConfirmed,
 		BknProject_Requirement_ConceptsNotExtracted,
+		BknProject_Requirement_ImplementationUnavailable,
 		BknProject_Requirement_InvalidExportTarget,
 	}
 )

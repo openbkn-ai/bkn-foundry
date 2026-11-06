@@ -295,6 +295,21 @@ func (mr *MockDraftServiceMockRecorder) GetCheck(ctx, token, projectID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCheck", reflect.TypeOf((*MockDraftService)(nil).GetCheck), ctx, token, projectID)
 }
 
+// GetConcepts mocks base method.
+func (m *MockDraftService) GetConcepts(ctx context.Context, token, projectID string) (*interfaces.DraftConcepts, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetConcepts", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.DraftConcepts)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetConcepts indicates an expected call of GetConcepts.
+func (mr *MockDraftServiceMockRecorder) GetConcepts(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConcepts", reflect.TypeOf((*MockDraftService)(nil).GetConcepts), ctx, token, projectID)
+}
+
 // GetDraft mocks base method.
 func (m *MockDraftService) GetDraft(ctx context.Context, token, projectID string) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -398,6 +413,36 @@ func (m *MockDraftService) IsolatedObjectTypes(ctx context.Context, token, proje
 func (mr *MockDraftServiceMockRecorder) IsolatedObjectTypes(ctx, token, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsolatedObjectTypes", reflect.TypeOf((*MockDraftService)(nil).IsolatedObjectTypes), ctx, token, projectID)
+}
+
+// JudgeConcept mocks base method.
+func (m *MockDraftService) JudgeConcept(ctx context.Context, token, projectID string, req interfaces.DraftConceptJudge, caller interfaces.AccountInfo) (*interfaces.DraftConcepts, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "JudgeConcept", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.DraftConcepts)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// JudgeConcept indicates an expected call of JudgeConcept.
+func (mr *MockDraftServiceMockRecorder) JudgeConcept(ctx, token, projectID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "JudgeConcept", reflect.TypeOf((*MockDraftService)(nil).JudgeConcept), ctx, token, projectID, req, caller)
+}
+
+// MergeConcept mocks base method.
+func (m *MockDraftService) MergeConcept(ctx context.Context, token, projectID string, req interfaces.DraftConceptMerge, caller interfaces.AccountInfo) (*interfaces.DraftConcepts, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergeConcept", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.DraftConcepts)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MergeConcept indicates an expected call of MergeConcept.
+func (mr *MockDraftServiceMockRecorder) MergeConcept(ctx, token, projectID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeConcept", reflect.TypeOf((*MockDraftService)(nil).MergeConcept), ctx, token, projectID, req, caller)
 }
 
 // RelationSuggestions mocks base method.

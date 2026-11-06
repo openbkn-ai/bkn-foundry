@@ -155,7 +155,7 @@ func Test_Documents(t *testing.T) {
 
 		Convey("UploadDocuments stores each file, reporting duplicates and refusals one by one\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
-			ra.EXPECT().ListDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
 			var stored []*interfaces.RequirementDocument
 			ra.EXPECT().CreateDocument(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, doc *interfaces.RequirementDocument) (bool, string, error) {
@@ -193,7 +193,7 @@ func Test_Documents(t *testing.T) {
 				existing[i] = &interfaces.RequirementDocument{ID: "e"}
 			}
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
-			ra.EXPECT().ListDocuments(gomock.Any(), "p1").Return(existing, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(existing, nil)
 			ra.EXPECT().CreateDocument(gomock.Any(), gomock.Any()).Return(true, "d1", nil)
 
 			results, err := svc.UploadDocuments(ctx, token, "p1", []interfaces.RequirementUpload{
@@ -214,7 +214,7 @@ func Test_Documents(t *testing.T) {
 			}
 			existing[3].SHA256 = hashOf("again")
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
-			ra.EXPECT().ListDocuments(gomock.Any(), "p1").Return(existing, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(existing, nil)
 
 			results, err := svc.UploadDocuments(ctx, token, "p1", []interfaces.RequirementUpload{
 				{Name: "again.md", Content: []byte("again")},
@@ -234,7 +234,7 @@ func Test_Documents(t *testing.T) {
 				existing[i] = &interfaces.RequirementDocument{ID: "e"}
 			}
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
-			ra.EXPECT().ListDocuments(gomock.Any(), "p1").Return(existing, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(existing, nil)
 			ra.EXPECT().CreateDocument(gomock.Any(), gomock.Any()).Return(false, "e", nil)
 			ra.EXPECT().CreateDocument(gomock.Any(), gomock.Any()).Return(true, "d2", nil)
 
@@ -319,9 +319,36 @@ func Test_Documents(t *testing.T) {
 				perrors.BknProject_Requirement_DocumentNotFound)
 		})
 
+		Convey("Text of a given format is taken whatever its name, and a document past the drafting total is refused\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
+				{ID: "d0", SHA256: "x", Content: strings.Repeat("a", maxInputRunes-10)}}, nil)
+			var stored []*interfaces.RequirementDocument
+			ra.EXPECT().CreateDocument(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, doc *interfaces.RequirementDocument) (bool, string, error) {
+					stored = append(stored, doc)
+					return true, doc.ID, nil
+				})
+
+			results, err := svc.UploadDocuments(ctx, token, "p1", []interfaces.RequirementUpload{
+				{Name: "合同.pdf", Content: []byte("条款一"), Format: interfaces.REQUIREMENT_FORMAT_TEXT},
+				{Name: "合同.pdf", Content: []byte("x"), Format: "pdf"},
+				{Name: "long.md", Content: []byte(strings.Repeat("长", 8))},
+			}, caller)
+
+			So(err, ShouldBeNil)
+			So(stored, ShouldHaveLength, 1)
+			So(stored[0].Name, ShouldEqual, "合同.pdf")
+			So(stored[0].Format, ShouldEqual, interfaces.REQUIREMENT_FORMAT_TEXT)
+			So(results[1].Code, ShouldEqual, perrors.BknProject_Requirement_UnsupportedFormat)
+			// 3 characters added leave 7: 8 more are past the total.
+			So(results[2].Outcome, ShouldEqual, interfaces.REQUIREMENT_UPLOAD_REJECTED)
+			So(results[2].Code, ShouldEqual, perrors.BknProject_Requirement_InputsTooLarge)
+		})
+
 		Convey("Storage errors are internal errors\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
-			ra.EXPECT().ListDocuments(gomock.Any(), "p1").Return(nil, errors.New("db down"))
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(nil, errors.New("db down"))
 
 			_, err := svc.UploadDocuments(ctx, token, "p1", []interfaces.RequirementUpload{{Name: "a.md", Content: []byte("a")}}, caller)
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)

@@ -623,6 +623,21 @@ func (mr *MockRequirementServiceMockRecorder) GetRequirement(ctx, token, project
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRequirement", reflect.TypeOf((*MockRequirementService)(nil).GetRequirement), ctx, token, projectID)
 }
 
+// LinkLogicNeed mocks base method.
+func (m *MockRequirementService) LinkLogicNeed(ctx context.Context, token, projectID, needID string, link interfaces.RequirementLogicLinkEdit, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LinkLogicNeed", ctx, token, projectID, needID, link, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LinkLogicNeed indicates an expected call of LinkLogicNeed.
+func (mr *MockRequirementServiceMockRecorder) LinkLogicNeed(ctx, token, projectID, needID, link, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkLogicNeed", reflect.TypeOf((*MockRequirementService)(nil).LinkLogicNeed), ctx, token, projectID, needID, link, caller)
+}
+
 // ListDocuments mocks base method.
 func (m *MockRequirementService) ListDocuments(ctx context.Context, token, projectID string) ([]*interfaces.RequirementDocument, error) {
 	m.ctrl.T.Helper()
@@ -636,6 +651,36 @@ func (m *MockRequirementService) ListDocuments(ctx context.Context, token, proje
 func (mr *MockRequirementServiceMockRecorder) ListDocuments(ctx, token, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockRequirementService)(nil).ListDocuments), ctx, token, projectID)
+}
+
+// ListLogicNeeds mocks base method.
+func (m *MockRequirementService) ListLogicNeeds(ctx context.Context, token, projectID string) (*interfaces.LogicNeedsView, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicNeeds", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.LogicNeedsView)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicNeeds indicates an expected call of ListLogicNeeds.
+func (mr *MockRequirementServiceMockRecorder) ListLogicNeeds(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicNeeds", reflect.TypeOf((*MockRequirementService)(nil).ListLogicNeeds), ctx, token, projectID)
+}
+
+// LogicNeedCandidates mocks base method.
+func (m *MockRequirementService) LogicNeedCandidates(ctx context.Context, token, projectID, needID string) (*interfaces.LogicNeedCandidates, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LogicNeedCandidates", ctx, token, projectID, needID)
+	ret0, _ := ret[0].(*interfaces.LogicNeedCandidates)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LogicNeedCandidates indicates an expected call of LogicNeedCandidates.
+func (mr *MockRequirementServiceMockRecorder) LogicNeedCandidates(ctx, token, projectID, needID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicNeedCandidates", reflect.TypeOf((*MockRequirementService)(nil).LogicNeedCandidates), ctx, token, projectID, needID)
 }
 
 // MapConcept mocks base method.
@@ -711,6 +756,21 @@ func (m *MockRequirementService) SetDocumentType(ctx context.Context, token, pro
 func (mr *MockRequirementServiceMockRecorder) SetDocumentType(ctx, token, projectID, documentID, docType, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDocumentType", reflect.TypeOf((*MockRequirementService)(nil).SetDocumentType), ctx, token, projectID, documentID, docType, caller)
+}
+
+// UnlinkLogicNeed mocks base method.
+func (m *MockRequirementService) UnlinkLogicNeed(ctx context.Context, token, projectID, needID string, updateTime int64, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnlinkLogicNeed", ctx, token, projectID, needID, updateTime, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UnlinkLogicNeed indicates an expected call of UnlinkLogicNeed.
+func (mr *MockRequirementServiceMockRecorder) UnlinkLogicNeed(ctx, token, projectID, needID, updateTime, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnlinkLogicNeed", reflect.TypeOf((*MockRequirementService)(nil).UnlinkLogicNeed), ctx, token, projectID, needID, updateTime, caller)
 }
 
 // UploadDocuments mocks base method.

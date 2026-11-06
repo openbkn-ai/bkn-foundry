@@ -61,7 +61,33 @@ func Test_ScenarioQuestions(t *testing.T) {
 						Needs: []interfaces.RequirementItemRef{}, Path: []interfaces.RequirementItemRef{},
 						Unconnected: []interfaces.ScenarioUnconnected{}, MissingItems: []interfaces.RequirementItemRef{},
 						Tests: []interfaces.ScenarioTest{}},
-				}})
+				}, UnlinkedNeeds: []interfaces.ReleaseNeed{}})
+		})
+
+		Convey("The kinetic needs no implementation is linked to are listed, but applications, which link to none\n", func() {
+			withNeeds := *ready
+			withNeeds.Spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"},
+				{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check",
+					Link: &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "b1"}},
+				{ID: "n3", Kind: interfaces.LOGIC_NEED_APP, Name: "Portal"},
+				{ID: "n4", Kind: interfaces.LOGIC_NEED_API, Name: "Rates API"},
+				// Linked before its kind was changed: the link of another kind does not hold.
+				{ID: "n5", Kind: interfaces.LOGIC_NEED_SKILL, Name: "Triage",
+					Link: &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1"}},
+			}
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&withNeeds, true, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, nil)
+
+			got, err := svc.ScenarioQuestions(ctx, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.UnlinkedNeeds, ShouldResemble, []interfaces.ReleaseNeed{
+				{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"},
+				{ID: "n4", Kind: interfaces.LOGIC_NEED_API, Name: "Rates API"},
+				{ID: "n5", Kind: interfaces.LOGIC_NEED_SKILL, Name: "Triage"},
+			})
 		})
 
 		Convey("Each question asks the test questions that passed their check, from guidance that still applies\n", func() {

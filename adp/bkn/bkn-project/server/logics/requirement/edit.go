@@ -420,6 +420,10 @@ func applyLogicNeed(ctx context.Context, n *interfaces.RequirementLogicNeed, edi
 			return invalidItem(ctx, "logic_kind "+*edit.LogicKind+" is unknown")
 		}
 		n.Kind = *edit.LogicKind
+		// Another kind is implemented by another kind of thing: the link no longer holds.
+		if n.Link != nil && n.Link.Type != interfaces.LogicLinkTypeOf(n.Kind) {
+			n.Link = nil
+		}
 	}
 	if err := setText(ctx, "name", edit.Name, maxItemNameRunes, true, &n.Name); err != nil {
 		return err
