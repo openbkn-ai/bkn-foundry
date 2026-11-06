@@ -153,3 +153,23 @@ type FactResolutionDecision struct {
 	Confirm           bool   `json:"confirm"`
 	Clear             bool   `json:"clear,omitempty"`
 }
+
+// documentTechnicalColumns are written on every business row of a document object for building
+// and refreshing; a published network does not declare them.
+var documentTechnicalColumns = map[string]bool{
+	"entity_id": true, "document_id": true, "content_version_id": true, "block_id": true,
+	"source_start": true, "source_end": true, "source_quote": true,
+	"extraction_version": true, "model_fingerprint": true,
+}
+
+// DocumentHiddenColumn tells whether a published document object of role leaves property out of
+// its definition. Its Dataset column stays, for the build and refresh.
+func DocumentHiddenColumn(role, property string) bool {
+	switch role {
+	case "entity", "file", "in_document", "fact", "event":
+		return documentTechnicalColumns[property]
+	case "evidence_document", "evidence_block", "evidence_image", "evidence_media":
+		return property == "extraction_version" || property == "model_fingerprint"
+	}
+	return false
+}

@@ -63,6 +63,21 @@ func Test_CheckTests(t *testing.T) {
 				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_FAILED, Reason: checkRecordNotFound})
 		})
 
+		Convey("A document object is not checked before the knowledge-base build filled it\n", func() {
+			built := guidanceDraft()
+			built.Items.ObjectTypes[1].Table = interfaces.DraftTable{ResourceID: "r-cust"}
+			built.Items.ObjectTypes[1].PrimaryKeys = []string{"customer_id"}
+			built.Items.ObjectTypes[1].Document = &interfaces.DraftDocumentModel{Role: "file"}
+			count("SELECT COUNT(*) AS n FROM {{r-cust}}", float64(0))
+			So(svc.checkTest(ctx, caller, &spec, built, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))),
+				ShouldResemble, notChecked(checkDataNotBuilt))
+
+			count("SELECT COUNT(*) AS n FROM {{r-cust}}", float64(3))
+			count("SELECT COUNT(*) AS n FROM {{r-cust}} WHERE `cust_id` = '10001'", float64(1))
+			So(svc.checkTest(ctx, caller, &spec, built, asked, test(interfaces.TEST_EXPECT_EXISTS, slot("customer_id", "10001"))),
+				ShouldResemble, interfaces.QuestionTestCheck{Outcome: interfaces.TEST_CHECK_PASSED})
+		})
+
 		Convey("The server's tests ask about the documents' example: in the template test when the data has it, else in the not_exist test\n", func() {
 			withExample := *asked
 			withExample.Inputs = &[]interfaces.RequirementInput{{Name: "customer", ConceptID: "c2", Property: "customer_id",

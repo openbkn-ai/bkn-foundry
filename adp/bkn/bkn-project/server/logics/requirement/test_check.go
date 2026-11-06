@@ -56,6 +56,9 @@ const (
 	checkValueNotInText   = "value_not_in_text"
 	checkValueOutsideSlot = "value_outside_slot"
 	checkTimeout          = "check_timeout"
+	// checkDataNotBuilt: a document object's Dataset has no rows yet. Its records come from the
+	// knowledge-base build, so nothing can be checked against it before the build ran.
+	checkDataNotBuilt = "data_not_built"
 )
 
 // slotField is where a slot's value is looked for: the table of the drafted object type its
@@ -163,6 +166,28 @@ func (s *requirementService) checkTest(ctx context.Context, caller interfaces.Ac
 	return s.checkAnchored(ctx, caller, spec, draft, q, t, nil)
 }
 
+// documentsBuilt is why the tests cannot be checked yet: a document object they read has no rows
+// before the knowledge-base build. Empty when the data can be asked.
+func (s *requirementService) documentsBuilt(ctx context.Context, caller interfaces.AccountInfo, testID string, fields []*slotField) string {
+	seen := map[string]bool{}
+	for _, f := range fields {
+		ot := f.objectType
+		if ot.Document == nil || seen[ot.Table.ResourceID] {
+			continue
+		}
+		seen[ot.Table.ResourceID] = true
+		n, err := s.count(ctx, caller, fmt.Sprintf("SELECT COUNT(*) AS n FROM {{%s}}", ot.Table.ResourceID))
+		if err != nil {
+			logger.Warnf("Count for test question %s failed: %v", testID, err)
+			return queryFailure(err)
+		}
+		if n == 0 {
+			return checkDataNotBuilt
+		}
+	}
+	return ""
+}
+
 // anchorOf is the test whose record a same_record test must name: the server's template test,
 // once the data bore it out.
 func anchorOf(tests []*interfaces.QuestionTest) *interfaces.QuestionTest {
@@ -206,6 +231,9 @@ func (s *requirementService) checkAnchored(ctx context.Context, caller interface
 			return notChecked(reason)
 		}
 		fields = append(fields, f)
+	}
+	if reason := s.documentsBuilt(ctx, caller, t.ID, fields); reason != "" {
+		return notChecked(reason)
 	}
 	// What is checked must be what the question asks about: a value the documents gave is said in
 	// the text, and one the server fills stands in it as its slot.

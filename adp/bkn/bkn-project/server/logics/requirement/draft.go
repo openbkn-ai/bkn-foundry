@@ -459,12 +459,24 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 	if draft == nil {
 		return objectTypes, relationTypes, 0
 	}
+	// Evidence types and the technical columns of document objects are not published for questions
+	// to be asked about; the Agent is not shown them.
+	evidence := map[string]bool{}
 	for _, ot := range draft.Items.ObjectTypes {
-		if !ot.Adopted {
+		if ot.Adopted && ot.Document != nil && strings.HasPrefix(ot.Document.Role, "evidence_") {
+			evidence[ot.ID] = true
+		}
+	}
+	for _, ot := range draft.Items.ObjectTypes {
+		if !ot.Adopted || evidence[ot.ID] {
 			continue
 		}
+		keys := ot.PrimaryKeys
+		if ot.Document != nil {
+			keys = slices.DeleteFunc(slices.Clone(keys), func(key string) bool { return key == "_id" })
+		}
 		mot := messageObjectType{ID: ot.ID, Name: ot.Name, Description: ot.Description, Aliases: ot.Aliases,
-			PrimaryKeys: ot.PrimaryKeys, Properties: []messageProperty{}}
+			PrimaryKeys: keys, Properties: []messageProperty{}}
 		if withProperties {
 			// Keys name a record and times a moment, as inputs do: they go first.
 			rank := func(p *interfaces.DraftProperty) int {
@@ -476,7 +488,9 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 				}
 				return 2
 			}
-			props := slices.Clone(ot.Properties)
+			props := slices.DeleteFunc(slices.Clone(ot.Properties), func(p *interfaces.DraftProperty) bool {
+				return ot.Document != nil && (p.Name == "_id" || interfaces.DocumentHiddenColumn(ot.Document.Role, p.Name))
+			})
 			slices.SortStableFunc(props, func(a, b *interfaces.DraftProperty) int { return rank(a) - rank(b) })
 			for _, p := range props[:min(len(props), maxMessageProperties)] {
 				mp := messageProperty{Name: p.Name, Type: p.Type}
@@ -491,7 +505,7 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 		objectTypes = append(objectTypes, mot)
 	}
 	for _, rt := range draft.Items.RelationTypes {
-		if !rt.Adopted {
+		if !rt.Adopted || evidence[rt.Source] || evidence[rt.Target] {
 			continue
 		}
 		relationTypes = append(relationTypes, messageRelationType{ID: rt.ID, Name: rt.Name,
