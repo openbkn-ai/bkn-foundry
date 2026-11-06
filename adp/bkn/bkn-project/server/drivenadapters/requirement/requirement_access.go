@@ -242,7 +242,7 @@ func (ra *requirementAccess) StartDrafting(ctx context.Context, req *interfaces.
 	_, span := oteltrace.StartNamedClientSpan(ctx, "StartRequirementDrafting")
 	defer span.End()
 
-	specJSON, inputsJSON, err := marshalRequirement(req)
+	newSpecJSON, inputsJSON, err := marshalRequirement(req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal requirement failed")
 		return false, err
@@ -271,20 +271,27 @@ func (ra *requirementAccess) StartDrafting(ctx context.Context, req *interfaces.
 		span.SetStatus(codes.Error, "Write data failed")
 		return false, err
 	}
-	sqlStr, vals, err = sq.Select("f_status", "f_update_time").From(REQUIREMENT_TABLE_NAME).
+	sqlStr, vals, err = sq.Select("f_status", "f_update_time", "f_spec").From(REQUIREMENT_TABLE_NAME).
 		Where(sq.Eq{"f_project_id": req.ProjectID}).Suffix("FOR UPDATE").
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return false, err
 	}
-	var status string
+	var status, specJSON string
 	var updateTime int64
-	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime); {
-	case err != nil:
+	if err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime, &specJSON); err != nil {
 		span.SetStatus(codes.Error, "Query data failed")
 		return false, err
-	case status == interfaces.REQUIREMENT_STATUS_DRAFTING && updateTime >= staleBefore:
+	}
+	stored, err := unmarshalSpec(specJSON)
+	if err != nil {
+		span.SetStatus(codes.Error, "Unmarshal spec failed")
+		return false, err
+	}
+	switch {
+	case status == interfaces.REQUIREMENT_STATUS_DRAFTING && updateTime >= staleBefore,
+		stored.RunningRun(staleBefore) != "":
 		span.SetStatus(codes.Ok, "")
 		return false, nil
 	case readUpdateTime != 0 && updateTime != readUpdateTime:
@@ -292,7 +299,7 @@ func (ra *requirementAccess) StartDrafting(ctx context.Context, req *interfaces.
 		return false, interfaces.ErrRequirementChanged
 	}
 	sqlStr, vals, err = sq.Update(REQUIREMENT_TABLE_NAME).
-		Set("f_version", req.Version).Set("f_status", req.Status).Set("f_spec", specJSON).
+		Set("f_version", req.Version).Set("f_status", req.Status).Set("f_spec", newSpecJSON).
 		Set("f_inputs", inputsJSON).Set("f_error", req.Error).Set("f_run_id", req.RunID).
 		Set("f_agent_task_id", req.AgentTaskID).
 		Set("f_drafter", req.Drafter.ID).Set("f_drafter_type", req.Drafter.Type).
@@ -383,6 +390,183 @@ func (ra *requirementAccess) FailDrafting(ctx context.Context, reason string, up
 	return result.RowsAffected()
 }
 
+func (ra *requirementAccess) StartRun(ctx context.Context, projectID string, kind string, run *interfaces.RequirementRun,
+	staleBefore int64, readUpdateTime int64) (started bool, err error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "StartRequirementRun")
+	defer span.End()
+
+	tx, err := ra.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Begin transaction failed")
+		return false, err
+	}
+	defer func() {
+		if err != nil || !started {
+			_ = tx.Rollback()
+		}
+	}()
+	// As StartDrafting: the row lock makes starts of one project take turns.
+	sqlStr, vals, err := sq.Insert(REQUIREMENT_TABLE_NAME).Columns("f_project_id", "f_spec", "f_inputs").
+		Values(projectID, "", "").Suffix("ON DUPLICATE KEY UPDATE f_project_id = f_project_id").
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+	if _, err = tx.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Write data failed")
+		return false, err
+	}
+	req, err := ra.lockRequirement(ctx, tx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query data failed")
+		return false, err
+	}
+	switch {
+	case req.Status == interfaces.REQUIREMENT_STATUS_DRAFTING && req.UpdateTime >= staleBefore,
+		req.Spec.RunningRun(staleBefore) != "":
+		span.SetStatus(codes.Ok, "")
+		return false, nil
+	case readUpdateTime != 0 && req.UpdateTime != readUpdateTime:
+		span.SetStatus(codes.Ok, "")
+		return false, interfaces.ErrRequirementChanged
+	}
+	// A row only made sure of is a specification with nothing drafted yet.
+	if req.Status == "" {
+		req.Version, req.Status, req.Drafter, req.CreateTime = 1, interfaces.REQUIREMENT_STATUS_READY, run.By, run.StartTime
+		req.Spec = interfaces.RequirementSpec{
+			Scenarios: []*interfaces.RequirementScenario{}, Concepts: []*interfaces.RequirementConcept{},
+			Questions: []*interfaces.RequirementQuestion{}, Rules: []*interfaces.RequirementRule{},
+			Conflicts: []*interfaces.RequirementConflict{}, Choices: []*interfaces.RequirementChoice{},
+			LogicNeeds: []*interfaces.RequirementLogicNeed{}, Rejected: []*interfaces.RequirementRejected{},
+		}
+	}
+	if req.Spec.Runs == nil {
+		req.Spec.Runs = map[string]*interfaces.RequirementRun{}
+	}
+	req.Spec.Runs[kind] = run
+	req.UpdateTime = run.StartTime
+	if err = ra.writeRequirement(ctx, tx, req); err != nil {
+		span.SetStatus(codes.Error, "Write data failed")
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit transaction failed")
+		return false, err
+	}
+	started = true
+	span.SetStatus(codes.Ok, "")
+	return true, nil
+}
+
+func (ra *requirementAccess) FinishRun(ctx context.Context, projectID string, kind string, runID string,
+	finish func(req *interfaces.Requirement)) (finished bool, err error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "FinishRequirementRun")
+	defer span.End()
+
+	tx, err := ra.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Begin transaction failed")
+		return false, err
+	}
+	defer func() {
+		if err != nil || !finished {
+			_ = tx.Rollback()
+		}
+	}()
+	req, err := ra.lockRequirement(ctx, tx, projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		span.SetStatus(codes.Ok, "")
+		return false, nil
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Query data failed")
+		return false, err
+	}
+	if run := req.Spec.Runs[kind]; run == nil || run.RunID != runID || run.Status != interfaces.REQUIREMENT_RUN_RUNNING {
+		span.SetStatus(codes.Ok, "")
+		return false, nil
+	}
+	finish(req)
+	if err = ra.writeRequirement(ctx, tx, req); err != nil {
+		span.SetStatus(codes.Error, "Write data failed")
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit transaction failed")
+		return false, err
+	}
+	finished = true
+	span.SetStatus(codes.Ok, "")
+	return true, nil
+}
+
+func (ra *requirementAccess) ProjectsWithRunning(ctx context.Context) ([]string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "ListRequirementsWithRunning")
+	defer span.End()
+
+	// The JSON is written by encoding/json, without spaces: a run going reads as this.
+	sqlStr, vals, err := sq.Select("f_project_id").From(REQUIREMENT_TABLE_NAME).
+		Where(sq.Like{"f_spec": `%"status":"` + interfaces.REQUIREMENT_RUN_RUNNING + `"%`}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query data failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			span.SetStatus(codes.Error, "Scan data failed")
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err = rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Read rows failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return ids, nil
+}
+
+// lockRequirement reads the project's specification in tx and locks its row.
+func (ra *requirementAccess) lockRequirement(ctx context.Context, tx *sql.Tx, projectID string) (*interfaces.Requirement, error) {
+	sqlStr, vals, err := sq.Select(requirementColumns...).From(REQUIREMENT_TABLE_NAME).
+		Where(sq.Eq{"f_project_id": projectID}).Suffix("FOR UPDATE").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	return scanRequirement(tx.QueryRowContext(ctx, sqlStr, vals...))
+}
+
+// writeRequirement writes the version, status, spec, creator and times of req in tx; the drafting
+// run's own fields stay.
+func (ra *requirementAccess) writeRequirement(ctx context.Context, tx *sql.Tx, req *interfaces.Requirement) error {
+	specJSON, inputsJSON, err := marshalRequirement(req)
+	if err != nil {
+		return err
+	}
+	sqlStr, vals, err := sq.Update(REQUIREMENT_TABLE_NAME).
+		Set("f_version", req.Version).Set("f_status", req.Status).Set("f_spec", specJSON).
+		Set("f_inputs", inputsJSON).Set("f_drafter", req.Drafter.ID).Set("f_drafter_type", req.Drafter.Type).
+		Set("f_create_time", req.CreateTime).Set("f_update_time", req.UpdateTime).
+		Where(sq.Eq{"f_project_id": req.ProjectID}).
+		ToSql()
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	return err
+}
+
 type spanStatus interface {
 	SetStatus(code codes.Code, description string)
 }
@@ -442,18 +626,32 @@ func scanRequirement(row interface{ Scan(dest ...any) error }) (*interfaces.Requ
 	if err != nil {
 		return nil, err
 	}
-	// A row a first start made sure of but never wrote holds empty JSON until it is written.
-	if specJSON != "" {
-		if err = json.Unmarshal([]byte(specJSON), &req.Spec); err != nil {
-			return nil, err
-		}
+	spec, err := unmarshalSpec(specJSON)
+	if err != nil {
+		return nil, err
 	}
+	req.Spec = *spec
 	if inputsJSON != "" {
 		if err = json.Unmarshal([]byte(inputsJSON), &req.Inputs); err != nil {
 			return nil, err
 		}
 	}
 	return req, nil
+}
+
+// unmarshalSpec reads a stored specification. A row a first start made sure of but never wrote
+// holds empty JSON until it is written; a specification written before kinetic needs reads with
+// its capabilities as needs.
+func unmarshalSpec(specJSON string) (*interfaces.RequirementSpec, error) {
+	spec := &interfaces.RequirementSpec{}
+	if specJSON == "" {
+		return spec, nil
+	}
+	if err := json.Unmarshal([]byte(specJSON), spec); err != nil {
+		return nil, err
+	}
+	interfaces.NormalizeLogicNeeds(spec)
+	return spec, nil
 }
 
 func marshalRequirement(req *interfaces.Requirement) (string, string, error) {

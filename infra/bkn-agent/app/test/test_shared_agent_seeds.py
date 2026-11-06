@@ -54,6 +54,7 @@ RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
 DOCUMENT_SEED = MIGRATIONS / "0.2.1/39-seed-bkn-project-document-extraction.sql"
 CONCEPT_NATIVE = MIGRATIONS / "0.2.1/40-concept-native-evidence.sql"
 PUBLISH_BUILTINS = MIGRATIONS / "0.2.1/41-publish-builtin-agents.sql"
+REQUIREMENTS_V8 = MIGRATIONS / "0.2.2/01-requirements-concepts-kinetic-v8.sql"
 
 
 def statements(path):
@@ -284,6 +285,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, DOCUMENT_SEED)
         apply(upgraded, CONCEPT_NATIVE)
         apply(upgraded, PUBLISH_BUILTINS)
+        apply(upgraded, REQUIREMENTS_V8)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -450,7 +452,7 @@ print(json.dumps([selector.find_init_sql('bkn-agent'),selector.select_upgrade_sc
 
 def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
     fresh, upgrade = selected_migrations("0.2.0")
-    assert fresh == [str(MIGRATIONS / "0.2.1/init.sql"), "0.2.1"]
+    assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
     assert upgrade == [
         [
             [
@@ -498,8 +500,9 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
+            ["0.2.2", [str(REQUIREMENTS_V8)]],
         ],
-        "0.2.1",
+        "0.2.2",
         True,
     ]
 
@@ -822,7 +825,7 @@ def test_real_migrator_selected_cross_version_chain_preserves_semantic_agents(re
             )
         ]
         _, upgrade = selected_migrations(schema_version)
-        assert upgrade[1] == "0.2.1"
+        assert upgrade[1] == "0.2.2"
         for _, paths in upgrade[0]:
             for path in paths:
                 apply(db, Path(path))
@@ -1272,6 +1275,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | set(statements(SOURCE_LANGUAGE))
                                | {s for s in statements(SEMANTIC_NAMING) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V7) if "f_localized_content" in s}
+                               | {s for s in statements(REQUIREMENTS_V8) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V4) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V5) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
@@ -1452,9 +1456,14 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
         assert all(version.changes == ["prompt_version"] for version in upgraded)
 
 
-def test_installed_021_selects_nothing_more():
-    _, repeated = selected_migrations("0.2.1")
-    assert repeated == [[], "0.2.1", False]
+def test_installed_021_selects_only_the_022_deltas():
+    _, upgrade = selected_migrations("0.2.1")
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8)]]], "0.2.2", True]
+
+
+def test_installed_022_selects_nothing_more():
+    _, repeated = selected_migrations("0.2.2")
+    assert repeated == [[], "0.2.2", False]
 
 
 def v4_semantic_prompt():
@@ -2760,7 +2769,8 @@ def test_requirements_v7_upgrade_does_not_switch_a_prompt_head_an_operator_saved
 @pytest.mark.parametrize("start", ["upgraded", "installed"])
 def test_requirements_v7_upgrade_matches_fresh_install_and_keeps_history(start):
     with database() as db, database() as fresh:
-        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        # 0.2.1 installs started at v7; 0.2.2/01 takes them on.
+        apply(fresh, MIGRATIONS / "0.2.1/init.sql")
         requirements_v6_state(db, start)
         old = requirements_prompt_version(db, 6)
         history = snapshot(db)[3]
@@ -2799,6 +2809,148 @@ def test_requirements_v7_upgrade_matches_fresh_install_and_keeps_history(start):
         before = snapshot(db)
         apply(db, REQUIREMENTS_V7)
         assert snapshot(db) == before
+
+
+def requirements_v7_state(db, start):
+    """The Agent just before 0.2.2/01: upgraded through 33, or installed from the 0.2.1 snapshot at v7."""
+    if start == "upgraded":
+        requirements_v6_state(db, "upgraded")
+        apply(db, REQUIREMENTS_V7)
+        return
+    apply(db, MIGRATIONS / "0.2.1/init.sql")
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_requirements_v8_upgrade_matches_fresh_install_and_keeps_history(start):
+    with database() as db, database() as fresh:
+        apply(fresh, MIGRATIONS / "0.2.2/init.sql")
+        requirements_v7_state(db, start)
+        old = requirements_prompt_version(db, 7)
+        history = snapshot(db)[3]
+        apply(db, REQUIREMENTS_V8)
+        assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
+        new = requirements_prompt_version(db, 8)
+        assert new == requirements_prompt_version(fresh, 8)
+        content = new["f_content"]
+        # Concepts come from the documents before a model, kinetic needs from the model, scenarios last.
+        for rule in ("pass concepts, pass kinetic, pass draft or pass guidance",
+                     "pass concepts, for what the documents say, before or apart from any model",
+                     "kinetic (something the network computes or does rather than stores",
+                     "Give a need for every concept judged kinetic",
+                     "pass kinetic, for the kinetic needs of the adopted model",
+                     "action_type (an operation that changes records",
+                     "A lookup the ontology answers, such as a property's value or related records, is no need",
+                     "Name a skill only when a document names it",
+                     "(concept_ids and logic_need_ids)", "Give each an id beginning with new-",
+                     "- concept_maps:", "Every item of pass concepts quotes the documents"):
+            assert rule in content
+        # pass draft no longer drafts rules, conflicts, choices or capabilities.
+        draft = content[content.index("pass draft, for the business scenarios"):content.index("\n\nQuotes.")]
+        for gone in ("- rules:", "- conflicts:", "- choices:", "- doc_types:", "capabilities other teams must build"):
+            assert gone not in draft
+        # v7's question rules stay, pass guidance untouched.
+        for rule in ("Give its inputs:", "its slots are those inputs", "A filter on properties",
+                     "When the question says server_tests"):
+            assert rule in content
+        guidance = "\n\npass guidance,"
+        assert content[content.index(guidance):] == old["f_content"][old["f_content"].index(guidance):]
+        new_locales = json.loads(new["f_localized_content"])
+        assert new_locales["en-US"] == content
+        for rule in ("pass concepts", "pass kinetic", "logic_need_ids", "new-", "action_type",
+                     "\u52a8\u529b\u9700\u6c42"):
+            assert rule in new_locales["zh-CN"]
+        zh_guidance = "\n\npass guidance\uff0c"
+        old_zh = json.loads(old["f_localized_content"])["zh-CN"]
+        assert new_locales["zh-CN"][new_locales["zh-CN"].index(zh_guidance):] == old_zh[old_zh.index(zh_guidance):]
+        assert requirements_prompt_version(db, 7) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            f"SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='{RQ}' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(8, 1, 1)]
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V8)
+        assert snapshot(db) == before
+
+
+def test_requirements_v8_fresh_snapshot_seeds_v8_and_its_translations():
+    init = (MIGRATIONS / "0.2.2/init.sql").read_text()
+    v8 = [s for s in statements(REQUIREMENTS_V8) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v8[v8.index("select v.f_prompt_id, 8,") + len("select v.f_prompt_id, 8,"):v8.index("v.f_vars_schema,")].strip()
+    seed = init.index("-- bkn-project-requirements:")
+    assert init.index("select 'bkn-project-requirements-prompt', 8, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
+    # The fresh snapshot attaches the same translations as the upgrade.
+    text = REQUIREMENTS_V8.read_text()
+    assert text[text.index("-- Attach the zh-CN"):] in init
+    # Apart from the requirements Agent, the 0.2.2 snapshot is the 0.2.1 one.
+    with database() as old, database() as new:
+        apply(old, MIGRATIONS / "0.2.1/init.sql")
+        apply(new, MIGRATIONS / "0.2.2/init.sql")
+        for agent in old.execute("SELECT f_agent_id FROM t_agent"):
+            if agent[0] != RQ:
+                assert item_from_db(old, agent[0]) == item_from_db(new, agent[0])
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
+def test_requirements_v8_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        requirements_v7_state(db, "upgraded")
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=7"
+            )
+        elif customization in ("zh-CN", "en-US"):
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom') WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=7",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('bkn-project-requirements-prompt',8,'custom newer prompt',null,'operator',9e15)"
+            )
+            if customization == "higher-version":
+                db.execute("UPDATE t_agent_prompt SET f_current_version=8 WHERE f_prompt_id='bkn-project-requirements-prompt'")
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=9e15 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V8)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 8))
+def test_requirements_v8_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            requirements_v7_state(connection, "upgraded")
+            if customized:
+                connection.execute(f"UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='{RQ}'")
+        apply(expected, REQUIREMENTS_V8)
+        apply(db, REQUIREMENTS_V8, limit=limit)
+        apply(db, REQUIREMENTS_V8)
+        assert snapshot(db) == snapshot(expected)
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_requirements_v8_upgrade_keeps_custom_settings_and_official_baseline(start):
+    with database() as db:
+        requirements_v7_state(db, start)
+        original = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_version=1").fetchone())
+        db.execute(
+            f"UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='{RQ}'", ('{"max_turns":17}',)
+        )
+        apply(db, REQUIREMENTS_V8)
+        baseline = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_initial=1").fetchone())
+        current = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_current=1").fetchone())
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (8, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (8, "custom-model", '{"max_turns":17}')
 
 
 def answer_judge_prompt(db):
