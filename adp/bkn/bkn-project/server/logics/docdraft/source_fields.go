@@ -1,7 +1,7 @@
 // Copyright openbkn.ai
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package draft
+package docdraft
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func applySourceFieldDecision(ctx context.Context, draft *interfaces.Draft, edited *interfaces.DraftObjectType, decision *interfaces.DualSourceDecision, caller interfaces.AccountInfo) error {
+func ApplySourceFieldDecision(ctx context.Context, draft *interfaces.Draft, edited *interfaces.DraftObjectType, decision *interfaces.DualSourceDecision, caller interfaces.AccountInfo) error {
 	if decision == nil {
 		return nil
 	}

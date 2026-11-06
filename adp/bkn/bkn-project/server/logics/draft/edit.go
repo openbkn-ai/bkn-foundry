@@ -19,7 +19,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // People edit a ready draft item by item. Each change is recorded as a decision with what it
@@ -70,7 +69,7 @@ func objectTypeAdopted(items *interfaces.DraftItems, id string) bool {
 // checkEdit refuses an edit that changes nothing or writes an invalid name or description,
 // and trims what it writes.
 func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
-	if edit.Adopted == nil && edit.Name == nil && edit.Description == nil && edit.IncrementalKey == nil {
+	if edit.Adopted == nil && edit.Name == nil && edit.Description == nil && edit.IncrementalKey == nil && edit.Aliases == nil {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EmptyEdit)
 	}
 	if edit.Name != nil {
@@ -90,6 +89,10 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 	if edit.IncrementalKey != nil {
 		key := strings.TrimSpace(*edit.IncrementalKey)
 		edit.IncrementalKey = &key
+	}
+	if edit.Aliases != nil {
+		aliases := cleanAliases(*edit.Aliases)
+		edit.Aliases = &aliases
 	}
 	// A reason says why an item is left out: it goes with not adopting it.
 	edit.Reason = strings.TrimSpace(edit.Reason)
@@ -150,7 +153,7 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		}
 	}
 	if edit.Adopted != nil && *edit.Adopted && !*item.adopted && kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
-		if kbconcept.EventParticipantsNeedRepair(*items, findObjectType(items, id)) {
+		if documentHooks().ObjectNeedsRepair(items, findObjectType(items, id)) {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_DocumentRelationNeedsRepair)
 		}
 		// BKN object types need a primary key: one without an identity cannot be compiled.
@@ -163,11 +166,10 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 			if r.ID == id && (!objectTypeAdopted(items, r.Source) || !objectTypeAdopted(items, r.Target)) {
 				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EndpointNotAdopted)
 			}
-			if r.ID == id && r.DocumentMapping != nil && r.DocumentMapping.Mode == "linking" && !kbconcept.LinkIdentityReady(*items, r) {
-				if kbconcept.VerifiedReferenceTarget(*items, r) != nil {
-					return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_BusinessIdentityNotVerified)
+			if r.ID == id {
+				if err := documentHooks().CheckAdoptRelation(ctx, items, r); err != nil {
+					return nil, err
 				}
-				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
 			}
 
 		}
@@ -224,13 +226,17 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		decide(kind, id, interfaces.DRAFT_DECISION_UNADOPT, false, false)
 		decisions[len(decisions)-1].Reason = edit.Reason
 	}
-	if edit.Name != nil && *edit.Name != *item.name {
+	renamed := edit.Name != nil && *edit.Name != *item.name
+	if renamed {
 		decide(kind, id, interfaces.DRAFT_DECISION_RENAME, *item.name, *edit.Name)
 		if kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
 			// Relations named after the object type follow it, unless a person renamed them.
 			renameRelations(items, findObjectType(items, id), *edit.Name, decide)
 		}
 		*item.name = *edit.Name
+	}
+	if err := editAliases(ctx, items, kind, id, edit.Aliases, renamed, decide); err != nil {
+		return nil, err
 	}
 	if edit.Description != nil && *edit.Description != *item.description {
 		decide(kind, id, interfaces.DRAFT_DECISION_DESCRIBE, *item.description, *edit.Description)
@@ -241,6 +247,47 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		objectType.IncrementalKey = *edit.IncrementalKey
 	}
 	return decisions, nil
+}
+
+// editAliases replaces the aliases of an object or relation type with those sent, or, with none
+// sent, leaves out of them a name the item was renamed to; then refuses what BKN would refuse of
+// them. Value types and document items have no aliases.
+func editAliases(ctx context.Context, items *interfaces.DraftItems, kind string, id string, sent *[]string,
+	renamed bool, decide func(kind string, id string, action string, before any, after any)) error {
+	if sent == nil && !renamed {
+		return nil
+	}
+	var aliases *[]string
+	var name string
+	var document bool
+	switch kind {
+	case interfaces.DRAFT_KIND_OBJECT_TYPES:
+		ot := findObjectType(items, id)
+		aliases, name, document = &ot.Aliases, ot.Name, ot.Document != nil
+	case interfaces.DRAFT_KIND_RELATION_TYPES:
+		rt := findRelationType(items, id)
+		aliases, name, document = &rt.Aliases, rt.Name, rt.Document != nil
+	default:
+		if sent != nil && len(*sent) > 0 {
+			return aliasError(ctx, name, "", aliasOnDocument, "")
+		}
+		return nil
+	}
+	if document && sent != nil && len(*sent) > 0 {
+		return aliasError(ctx, name, "", aliasOnDocument, "")
+	}
+	next := withoutName(*aliases, name)
+	if sent != nil {
+		next = *sent
+	}
+	if !slices.Equal(next, *aliases) {
+		decide(kind, id, interfaces.DRAFT_DECISION_ALIASES, slices.Clone(*aliases), slices.Clone(next))
+		*aliases = next
+	}
+	if kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		return checkObjectTypeAliases(ctx, items, findObjectType(items, id))
+	}
+	return checkOwnAliases(ctx, name, *aliases, name)
 }
 
 // regateRelations adopts the relations of an object type just adopted that drafting proposed
@@ -309,7 +356,7 @@ func (s *draftService) readyDraftOf(ctx context.Context, token string, projectID
 	if err != nil {
 		return nil, nil, internalError(ctx, "Get draft failed", err)
 	}
-	if err := checkDocumentReadAccess(ctx, token, draft); err != nil {
+	if err := documentHooks().CheckRead(ctx, token, draft); err != nil {
 		return nil, nil, err
 	}
 
@@ -356,6 +403,14 @@ func (s *draftService) commitUsing(ctx context.Context, draft *interfaces.Draft,
 	return nil
 }
 
+// commitItem commits an edit by the guard of what owns the item.
+func (s *draftService) commitItem(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo, model *interfaces.DraftDocumentModel) error {
+	if handled, err := documentHooks().CommitEdit(ctx, draftHost{s}, draft, decisions, caller, model); handled {
+		return err
+	}
+	return s.commit(ctx, draft, decisions, caller)
+}
+
 func (s *draftService) EditDraftItem(ctx context.Context, token string, projectID string, kind string,
 	itemID string, edit interfaces.DraftItemEdit, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "EditDraftItem")
@@ -397,13 +452,7 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 			document = relation.Document
 		}
 	}
-	write := s.commit
-	if document != nil {
-		write = func(ctx context.Context, draft *interfaces.Draft, decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo) error {
-			return s.commitDocumentEdit(ctx, draft, decisions, caller, document)
-		}
-	}
-	if err := write(ctx, draft, decisions, caller); err != nil {
+	if err := s.commitItem(ctx, draft, decisions, caller, document); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
 	}

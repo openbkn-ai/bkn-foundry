@@ -22,14 +22,13 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbpublication"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 // Directories of the definitions a review names.
@@ -189,40 +188,13 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 		indexCheck(confirmation, index, indexErr),
 		baselineCheck(behind, preview),
 	}
-	var knowledgePlan *kbpublication.Plan
-	if hasDraft && kbpublication.HasDocuments(draft) {
-		inspector := kbpublication.NewService(s.gs)
-		inspector.Drafts = s.da
-		inspected, inspectErr := inspector.Inspect(ctx, token, kbpublication.Target{ProjectID: projectID, LineageID: entry.KNID, Branch: entry.Branch, BranchCommit: preview.BranchCommit, NetworkID: preview.NetworkID, Publisher: caller})
-		reason := ""
-		if inspected == nil && inspectErr == nil {
-			inspectErr = kbpublication.ErrInvalidSnapshot
+	var signKnowledge func(string) string
+	if hooks := projecthooks.Current().Publications; hooks != nil && hasDraft {
+		check, sign, ok := hooks.Review(ctx, s.gs, token, draft, projecthooks.ReleaseTarget{ProjectID: projectID, LineageID: entry.KNID, Branch: entry.Branch, BranchCommit: preview.BranchCommit, NetworkID: preview.NetworkID, Publisher: caller})
+		if ok {
+			review.Checks = append(review.Checks, check)
+			signKnowledge = sign
 		}
-		if inspectErr != nil {
-			reason = "knowledge_base_unavailable"
-			if public, ok := kbpublication.PublicError(ctx, inspectErr).(*httperrors.HTTPError); ok {
-				switch public.ErrorCode {
-				case perrors.BknProject_Release_SourcePermission:
-					reason = "knowledge_base_permission"
-				case perrors.BknProject_Release_KnowledgeBaseNotReady:
-					reason = "knowledge_base_not_ready"
-				case perrors.BknProject_Release_OriginalsChanged:
-					reason = "knowledge_base_originals_changed"
-				}
-			}
-		}
-		check := interfaces.ReleaseCheck{Code: "knowledge_base", Passed: inspectErr == nil && inspected != nil, Reason: reason}
-		if check.Passed {
-			originals := 0
-			for _, file := range inspected.Selection.Files {
-				if file.IncludeOriginal {
-					originals++
-				}
-			}
-			check.Details = map[string]int{"original_documents": originals}
-		}
-		review.Checks = append(review.Checks, check)
-		knowledgePlan = inspected
 	}
 
 	review.Risks = releaseRisks(review.Changes, preview.Changes, check, branchFiles, preview.Capabilities)
@@ -246,7 +218,10 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 	if questions != nil {
 		questionsTime = questions.UpdateTime
 	}
-	review.Signature = kbpublication.ReviewSignature(signature(preview.BranchCommit, preview.MainCommit, updateTime, questionsTime), knowledgePlan)
+	review.Signature = signature(preview.BranchCommit, preview.MainCommit, updateTime, questionsTime)
+	if signKnowledge != nil {
+		review.Signature = signKnowledge(review.Signature)
+	}
 	span.SetStatus(codes.Ok, "")
 	return review, nil
 }

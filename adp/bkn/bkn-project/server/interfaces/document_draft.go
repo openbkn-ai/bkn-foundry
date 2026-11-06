@@ -3,7 +3,27 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
+
+// DraftGuard is the project owner and draft a guarded write was read against.
+type DraftGuard struct {
+	Owner           AccountInfo
+	DraftExists     bool
+	DraftUpdateTime int64
+}
+
+// DraftLock locks and checks, in the transaction of a guarded draft write, what else the write was
+// read against; false refuses the write.
+type DraftLock func(ctx context.Context, tx *sql.Tx) (bool, error)
+
+// GuardedDraftAccess writes a draft only if the project row, the draft and what lock checks are
+// as read, in one transaction. No network or AI call happens while the locks are held.
+type GuardedDraftAccess interface {
+	CommitDraftGuarded(ctx context.Context, draft *Draft, guard DraftGuard, lock DraftLock) (bool, error)
+}
 
 // DocumentDraftGuard binds an extraction to the source selection and draft the
 // operator saw. It is a local compare-and-write guard, never a KB access grant.

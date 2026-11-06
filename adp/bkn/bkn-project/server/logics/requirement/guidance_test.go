@@ -614,6 +614,7 @@ func Test_GenerateGuidance(t *testing.T) {
 
 		Convey("FailInterrupted fails guidance a restart left generating too\n", func() {
 			ra.EXPECT().FailDrafting(gomock.Any(), failureInterrupted, int64(1000)).Return(int64(0), nil)
+			ra.EXPECT().ProjectsWithRunning(gomock.Any()).Return(nil, nil)
 			ra.EXPECT().FailGenerating(gomock.Any(), failureInterrupted, int64(1000)).Return(int64(1), nil)
 
 			So(svc.FailInterrupted(ctx), ShouldBeNil)

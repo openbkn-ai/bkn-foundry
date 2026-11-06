@@ -11,6 +11,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/docdraft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbdataset"
 )
 
@@ -22,10 +23,10 @@ type evidenceDomain struct {
 	file, fileName, fileField, factID string
 }
 
-// evidenceDraft is a document model as concept extraction leaves it: a fused business object, an
+// publishedEvidenceDraft is a document model as concept extraction leaves it: a fused business object, an
 // object per file and a fact, each with the technical columns every build writes, and the evidence
 // templates with their references.
-func evidenceDraft(domain evidenceDomain) *interfaces.Draft {
+func publishedEvidenceDraft(domain evidenceDomain) *interfaces.Draft {
 	doc := func(role string) *interfaces.DraftDocumentModel {
 		return &interfaces.DraftDocumentModel{Role: role, SelectionID: "selection", SelectionRevision: 1}
 	}
@@ -90,7 +91,7 @@ func evidenceDraft(domain evidenceDomain) *interfaces.Draft {
 
 func boundEvidenceDraft(t *testing.T, domain evidenceDomain) *interfaces.Draft {
 	t.Helper()
-	d := evidenceDraft(domain)
+	d := publishedEvidenceDraft(domain)
 	plan, err := kbdataset.NewPlan(d, "generation", "catalog", interfaces.AccountInfo{ID: "owner", Type: "user"})
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +256,7 @@ func TestEarlierConfirmationsKeepTheirProjection(t *testing.T) {
 }
 
 func TestConfirmingPublishesOriginalsByTheCurrentSelection(t *testing.T) {
-	d := evidenceDraft(evidenceDomains[0])
+	d := publishedEvidenceDraft(evidenceDomains[0])
 	for _, c := range []struct {
 		name      string
 		selection *interfaces.KBSelection
@@ -265,14 +266,14 @@ func TestConfirmingPublishesOriginalsByTheCurrentSelection(t *testing.T) {
 		{"range", &interfaces.KBSelection{Ranges: []interfaces.KBSourceRange{{KnowledgeBaseID: "1"}, {KnowledgeBaseID: "2", IncludeOriginal: true}}}, true},
 		{"file", &interfaces.KBSelection{Files: []interfaces.KBResourceFile{{FileID: "a"}, {FileID: "b", IncludeOriginal: true}}}, true},
 	} {
-		service := &draftService{kbResources: &datasetSelectionAccess{state: &interfaces.KBResourceState{Current: c.selection}}}
-		evidence, err := service.evidenceExport(context.Background(), d)
+		hooks := docdraft.Hooks{Resources: &datasetSelectionAccess{state: &interfaces.KBResourceState{Current: c.selection}}}
+		evidence, err := hooks.ConfirmEvidence(context.Background(), draftHost{&draftService{}}, d)
 		if err != nil || evidence == nil || evidence.IncludeOriginal != c.want {
 			t.Fatalf("%s: %+v %v", c.name, evidence, err)
 		}
 	}
 	tables := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "t", Adopted: true}}}}
-	if evidence, err := (&draftService{}).evidenceExport(context.Background(), tables); evidence != nil || err != nil {
+	if evidence, err := (docdraft.Hooks{}).ConfirmEvidence(context.Background(), draftHost{&draftService{}}, tables); evidence != nil || err != nil {
 		t.Fatal("a table-only draft got a document projection")
 	}
 }
