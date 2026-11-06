@@ -76,6 +76,7 @@ var requirementVerdicts = map[string]string{
 	"event":        interfaces.CONCEPT_VERDICT_EVENT,
 	"property":     interfaces.CONCEPT_VERDICT_PROPERTY,
 	"relation":     interfaces.CONCEPT_VERDICT_RELATION,
+	"kinetic":      interfaces.CONCEPT_VERDICT_KINETIC,
 	"not_ontology": interfaces.CONCEPT_VERDICT_NONE,
 }
 
@@ -199,6 +200,7 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 	}
 
 	if found && req != nil && req.Status == interfaces.REQUIREMENT_STATUS_READY {
+		result.RequirementUpdateTime = req.UpdateTime
 		// The items by their names and aliases, as a concept's term may name one.
 		byName := map[string]string{}
 		for _, key := range order {
@@ -250,6 +252,10 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			if rc.Category == "not_ontology" {
 				c.Reason = rc.NotOntologyReason
 			}
+			// The specification holds what it is: its category, which a person edits there.
+			if rc.Edited {
+				c.State = interfaces.CONCEPT_STATE_JUDGED
+			}
 			add(c)
 		}
 	}
@@ -269,7 +275,14 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			continue
 		}
 		c := byKey[key]
-		judgeConcept(ctx, items, c, judged[key], reviewed[key], excluded[key])
+		if c.Item == nil {
+			c.Verdict = c.Suggested
+			if c.State == "" {
+				c.State = interfaces.CONCEPT_STATE_PENDING
+			}
+		} else {
+			judgeConcept(ctx, items, c, judged[key], reviewed[key], excluded[key])
+		}
 		result.Counts[c.State]++
 		result.Counts["verdict:"+c.Verdict]++
 		result.Concepts = append(result.Concepts, *c)
@@ -409,6 +422,12 @@ func (s *draftService) JudgeConcept(ctx context.Context, token string, projectID
 	if concept == nil {
 		span.SetStatus(codes.Error, "Concept not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+	}
+	if concept.Item == nil {
+		// What a requirement concept is lives in the specification: it is edited there.
+		span.SetStatus(codes.Error, "Requirement concept")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody).
+			WithErrorDetails(map[string]any{"reason": "requirement_concept"})
 	}
 
 	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_CONCEPTS, ItemID: req.Key,
