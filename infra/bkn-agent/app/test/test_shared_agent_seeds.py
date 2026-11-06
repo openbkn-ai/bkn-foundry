@@ -55,6 +55,7 @@ DOCUMENT_SEED = MIGRATIONS / "0.2.1/39-seed-bkn-project-document-extraction.sql"
 CONCEPT_NATIVE = MIGRATIONS / "0.2.1/40-concept-native-evidence.sql"
 PUBLISH_BUILTINS = MIGRATIONS / "0.2.1/41-publish-builtin-agents.sql"
 REQUIREMENTS_V8 = MIGRATIONS / "0.2.2/01-requirements-concepts-kinetic-v8.sql"
+SINGLE_CALL = MIGRATIONS / "0.2.2/02-document-extraction-single-call.sql"
 
 
 def statements(path):
@@ -286,6 +287,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, CONCEPT_NATIVE)
         apply(upgraded, PUBLISH_BUILTINS)
         apply(upgraded, REQUIREMENTS_V8)
+        apply(upgraded, SINGLE_CALL)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -500,7 +502,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(REQUIREMENTS_V8)]],
+            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL)]],
         ],
         "0.2.2",
         True,
@@ -1458,7 +1460,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -2890,7 +2892,8 @@ def test_requirements_v8_fresh_snapshot_seeds_v8_and_its_translations():
         apply(old, MIGRATIONS / "0.2.1/init.sql")
         apply(new, MIGRATIONS / "0.2.2/init.sql")
         for agent in old.execute("SELECT f_agent_id FROM t_agent"):
-            if agent[0] != RQ:
+            # The document extraction Agent's single call is the 02 delta's.
+            if agent[0] not in (RQ, DOCUMENT_AGENT):
                 assert item_from_db(old, agent[0]) == item_from_db(new, agent[0])
 
 
@@ -4066,3 +4069,48 @@ def test_concept_budget_is_noop_on_current_fresh_defaults():
         before = snapshot(db)
         apply(db, CONCEPT_BUDGET)
         assert snapshot(db) == before
+
+
+DOCUMENT_AGENT = "bkn-project-document-extraction"
+
+
+def test_single_call_upgrade_preserves_history_and_is_idempotent():
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        old = dict(db.execute("SELECT * FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (DOCUMENT_AGENT,)).fetchone())
+        apply(db, SINGLE_CALL)
+        assert item_from_db(db, DOCUMENT_AGENT)["spec"]["limits"]["single_structured_call"] is True
+        versions = db.execute("SELECT * FROM t_agent_version WHERE f_agent_id=? ORDER BY f_version", (DOCUMENT_AGENT,)).fetchall()
+        assert len(versions) == 2 and versions[1]["f_current"] and versions[1]["f_initial"]
+        assert json.loads(versions[1]["f_limits"])["single_structured_call"] is True
+        assert all(versions[0][key] == value for key, value in old.items() if key not in {"f_current", "f_initial"})
+        before = snapshot(db)
+        apply(db, SINGLE_CALL)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("custom", ["limits", "model", "tools", "newer_version", "future_update_time"])
+def test_single_call_never_overwrites_operator_configuration(custom):
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        if custom == "limits":
+            db.execute("UPDATE t_agent SET f_limits=json_set(f_limits,'$.timeout_s',90) WHERE f_agent_id=?", (DOCUMENT_AGENT,))
+        elif custom == "model":
+            db.execute("UPDATE t_agent SET f_model='operator-model' WHERE f_agent_id=?", (DOCUMENT_AGENT,))
+        elif custom == "tools":
+            db.execute("UPDATE t_agent SET f_tools='[{\"type\":\"operator\"}]' WHERE f_agent_id=?", (DOCUMENT_AGENT,))
+        elif custom == "future_update_time":
+            db.execute("UPDATE t_agent SET f_update_time=99999999999999 WHERE f_agent_id=?", (DOCUMENT_AGENT,))
+        else:
+            db.execute("INSERT INTO t_agent_version SELECT f_agent_id,3,f_model,f_tools,f_limits,f_prompt_version,f_changes,0,1,0,f_create_user,f_create_time FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (DOCUMENT_AGENT,))
+        before = snapshot(db)
+        apply(db, SINGLE_CALL)
+        assert snapshot(db) == before
+
+
+def test_single_call_fresh_install_matches_upgrade():
+    with database() as fresh, database() as upgraded:
+        apply(fresh, MIGRATIONS / "0.2.2/init.sql")
+        apply(upgraded, MIGRATIONS / "0.2.1/init.sql")
+        apply(upgraded, SINGLE_CALL)
+        assert item_from_db(fresh, DOCUMENT_AGENT)["spec"]["limits"] == item_from_db(upgraded, DOCUMENT_AGENT)["spec"]["limits"]
