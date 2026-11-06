@@ -134,7 +134,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 	}
 	result.SpecVersion, result.UpdateTime = req.Version, req.UpdateTime
 	for _, n := range req.Spec.LogicNeeds {
-		if n.Link == nil && interfaces.LogicLinkTypeOf(n.Kind) != "" {
+		if linkType := interfaces.LogicLinkTypeOf(n.Kind); linkType != "" && (n.Link == nil || n.Link.Type != linkType) {
 			result.UnlinkedNeeds = append(result.UnlinkedNeeds, interfaces.ReleaseNeed{ID: n.ID, Kind: n.Kind, Name: n.Name})
 		}
 	}

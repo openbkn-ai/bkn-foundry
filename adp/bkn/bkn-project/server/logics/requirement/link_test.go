@@ -457,3 +457,9 @@ func Test_LinkLogicNeed(t *testing.T) {
 		})
 	})
 }
+
+func Test_Squeezed(t *testing.T) {
+	Convey("Names compare without case, any space, underscores or hyphens\n", t, func() {
+		So(squeezed(" Late_Rate-x　y\tz "), ShouldEqual, "lateratexyz")
+	})
+}

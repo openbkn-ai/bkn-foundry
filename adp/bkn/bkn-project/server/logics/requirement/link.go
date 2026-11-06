@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -190,7 +191,8 @@ func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, p
 				v.LiveObjectTypeIDs = append(v.LiveObjectTypeIDs, id)
 			}
 		}
-		if n.Link != nil {
+		// A link of another kind than the need's, from before its kind was changed, does not hold.
+		if n.Link != nil && n.Link.Type == interfaces.LogicLinkTypeOf(n.Kind) {
 			v.Implementation = reader.read(n.Link, n.Kind)
 		}
 		view.Needs = append(view.Needs, v)
@@ -202,7 +204,7 @@ func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, p
 // squeezed is a name compared without case, spaces, underscores or hyphens.
 func squeezed(name string) string {
 	return strings.Map(func(r rune) rune {
-		if r == ' ' || r == '_' || r == '-' || r == '　' || r == '\t' {
+		if unicode.IsSpace(r) || r == '_' || r == '-' {
 			return -1
 		}
 		return r

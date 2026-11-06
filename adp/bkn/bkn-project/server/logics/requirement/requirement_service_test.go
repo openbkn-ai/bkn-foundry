@@ -72,6 +72,9 @@ func Test_ScenarioQuestions(t *testing.T) {
 					Link: &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "b1"}},
 				{ID: "n3", Kind: interfaces.LOGIC_NEED_APP, Name: "Portal"},
 				{ID: "n4", Kind: interfaces.LOGIC_NEED_API, Name: "Rates API"},
+				// Linked before its kind was changed: the link of another kind does not hold.
+				{ID: "n5", Kind: interfaces.LOGIC_NEED_SKILL, Name: "Triage",
+					Link: &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1"}},
 			}
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&withNeeds, true, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
@@ -83,6 +86,7 @@ func Test_ScenarioQuestions(t *testing.T) {
 			So(got.UnlinkedNeeds, ShouldResemble, []interfaces.ReleaseNeed{
 				{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"},
 				{ID: "n4", Kind: interfaces.LOGIC_NEED_API, Name: "Rates API"},
+				{ID: "n5", Kind: interfaces.LOGIC_NEED_SKILL, Name: "Triage"},
 			})
 		})
 
