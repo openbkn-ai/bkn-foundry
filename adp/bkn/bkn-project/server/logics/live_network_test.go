@@ -46,3 +46,17 @@ func Test_LiveNetwork(t *testing.T) {
 		})
 	})
 }
+
+func TestLiveNetworkOfTellsWhetherReleased(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	ra := pmock.NewMockReleaseAccess(ctrl)
+	ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+	if network, released, err := LiveNetworkOf(context.Background(), ra, "kn1"); err != nil || released || network != "kn1" {
+		t.Fatalf("before a release: %q %v %v", network, released, err)
+	}
+	ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{{NetworkID: "kn1_v2"}}, nil)
+	if network, released, err := LiveNetworkOf(context.Background(), ra, "kn1"); err != nil || !released || network != "kn1_v2" {
+		t.Fatalf("after a release: %q %v %v", network, released, err)
+	}
+}
