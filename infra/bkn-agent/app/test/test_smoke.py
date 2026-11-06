@@ -203,6 +203,147 @@ def test_thread_owner_reads_history(monkeypatch):
     assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
 
 
+def test_delete_thread_requires_identity():
+    r = client.delete("/api/bkn-agent/v1/threads/t-1")
+    assert r.status_code == 401
+
+
+def test_delete_thread_missing_and_foreign_owner_indistinguishable(monkeypatch):
+    from app import dao
+    from app.models import ThreadRow
+    from app.routers import threads as threads_router
+
+    deleted = []
+
+    async def record(*args):
+        deleted.append(args)
+
+    monkeypatch.setattr(threads_router, "delete_thread_checkpoints", record)
+    monkeypatch.setattr(dao, "delete_thread_row", record)
+    key = _override_session()
+    try:
+        async def none_row(session, thread_id):
+            return None
+
+        monkeypatch.setattr(dao, "get_thread_row", none_row)
+        r_missing = client.delete("/api/bkn-agent/v1/threads/t-1", headers=SVC)
+
+        async def foreign_row(session, thread_id):
+            return ThreadRow(
+                f_thread_id=thread_id,
+                f_agent_id="a-1",
+                f_account_id="someone-else",
+                f_create_time=1,
+                f_update_time=1,
+            )
+
+        monkeypatch.setattr(dao, "get_thread_row", foreign_row)
+        r_foreign = client.delete("/api/bkn-agent/v1/threads/t-1", headers=SVC)
+    finally:
+        app.dependency_overrides.pop(key, None)
+
+    assert r_missing.status_code == r_foreign.status_code == 404
+    missing_body = r_missing.json()
+    foreign_body = r_foreign.json()
+    assert missing_body.pop("trace_id") == r_missing.headers["x-trace-id"]
+    assert foreign_body.pop("trace_id") == r_foreign.headers["x-trace-id"]
+    assert missing_body == foreign_body
+    assert deleted == []
+
+
+def _own_thread_row(session, thread_id):
+    from app.models import ThreadRow
+
+    return ThreadRow(
+        f_thread_id=thread_id,
+        f_agent_id="a-1",
+        f_account_id=SVC["x-account-id"],
+        f_create_time=1,
+        f_update_time=2,
+    )
+
+
+def _patch_delete(monkeypatch, calls):
+    from app import dao
+    from app.routers import threads as threads_router
+
+    async def own_row(session, thread_id):
+        return _own_thread_row(session, thread_id)
+
+    async def drop_checkpoints(thread_id):
+        calls.append(("checkpoints", thread_id))
+
+    async def drop_row(session, thread_id):
+        calls.append(("row", thread_id))
+
+    monkeypatch.setattr(dao, "get_thread_row", own_row)
+    monkeypatch.setattr(threads_router, "delete_thread_checkpoints", drop_checkpoints)
+    monkeypatch.setattr(dao, "delete_thread_row", drop_row)
+
+
+def test_delete_thread_drops_checkpoints_before_the_row(monkeypatch):
+    from app.core import graph
+
+    calls = []
+    _patch_delete(monkeypatch, calls)
+    key = _override_session()
+    try:
+        r = client.delete("/api/bkn-agent/v1/threads/t-1", headers=SVC)
+    finally:
+        app.dependency_overrides.pop(key, None)
+
+    assert r.status_code == 204
+    assert calls == [("checkpoints", "t-1"), ("row", "t-1")]
+    assert "t-1" not in graph._busy_threads
+
+
+def test_delete_thread_keeps_the_row_when_checkpoints_fail(monkeypatch):
+    from app.core import graph
+    from app.routers import threads as threads_router
+
+    calls = []
+    _patch_delete(monkeypatch, calls)
+
+    async def broken(thread_id):
+        raise RuntimeError("checkpoint store down")
+
+    monkeypatch.setattr(threads_router, "delete_thread_checkpoints", broken)
+    key = _override_session()
+    try:
+        with TestClient(app, raise_server_exceptions=False) as failing:
+            r = failing.delete("/api/bkn-agent/v1/threads/t-1", headers=SVC)
+    finally:
+        app.dependency_overrides.pop(key, None)
+
+    assert r.status_code == 500
+    assert calls == []
+    assert "t-1" not in graph._busy_threads
+
+
+def test_delete_thread_refuses_a_running_chat_or_execution(monkeypatch):
+    from app.core import graph
+    from app.routers import executions
+
+    calls = []
+    _patch_delete(monkeypatch, calls)
+    key = _override_session()
+    try:
+        graph._busy_threads.add("t-chat")
+        executions._thread_claims.add("t-run")
+        r_chat = client.delete("/api/bkn-agent/v1/threads/t-chat", headers=SVC)
+        r_run = client.delete("/api/bkn-agent/v1/threads/t-run", headers=SVC)
+    finally:
+        graph._busy_threads.discard("t-chat")
+        executions._thread_claims.discard("t-run")
+        app.dependency_overrides.pop(key, None)
+
+    assert r_chat.status_code == r_run.status_code == 409
+    assert r_chat.json()["code"] == r_run.json()["code"] == "BknAgent.Thread.Busy"
+    assert calls == []
+    # The refused delete must not release a claim it never took.
+    assert "t-chat" not in graph._busy_threads
+
+
 def _agent_out(agent_id, owner):
     from app.models import AgentOut
 

@@ -1501,6 +1501,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+      - BknAgent
+      summary: Delete Thread
+      description: 'Delete a thread''s history: its checkpoints and its ownership
+        row. Run records (tasks and executions that point at the thread) are kept:
+        they have their own owner check and keep execution replay idempotent. Continuing
+        the thread through /executions then answers 404; /chat with its id starts
+        an empty thread, as with any unknown id. A thread with a turn in progress
+        answers 409.'
+      operationId: delete_thread_api_bkn_agent_v1_threads__thread_id__delete
+      parameters:
+      - name: thread_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Thread Id
+      responses:
+        '204':
+          description: Successful Response
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/bkn-agent/v1/export:
     post:
       tags:

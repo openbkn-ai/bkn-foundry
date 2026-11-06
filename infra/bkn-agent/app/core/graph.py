@@ -526,6 +526,29 @@ def _text(content) -> str:
     )
 
 
+def claim_thread(thread_id: str) -> bool:
+    """Take a thread out of use for a maintenance step such as deletion.
+
+    Same busy set as a running turn, so a turn arriving meanwhile answers 409
+    and a busy thread is not taken. Synchronous, like the claim in stream_chat.
+    """
+    if thread_id in _busy_threads:
+        return False
+    _busy_threads.add(thread_id)
+    return True
+
+
+def release_thread(thread_id: str) -> None:
+    _busy_threads.discard(thread_id)
+
+
+async def delete_thread_checkpoints(thread_id: str) -> None:
+    """Drop every checkpoint and pending write of a thread. The ownership check
+    lives in the router layer."""
+    async with open_checkpointer() as checkpointer:
+        await checkpointer.adelete_thread(thread_id)
+
+
 async def read_thread_messages(thread_id: str) -> list[ThreadMessage]:
     """Thread history reads the latest checkpointer checkpoint directly; the
     ownership check lives in the router layer."""
