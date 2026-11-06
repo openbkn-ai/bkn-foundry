@@ -199,9 +199,21 @@ type DraftConfirmation struct {
 	// SkippedValueTypes are adopted value types BKN 3.0 would refuse; their properties keep
 	// their base type.
 	SkippedValueTypes []string `json:"skipped_value_types"`
+	// LeftOutAliases are aliases the definitions left out, as BKN refuses them beside the object
+	// types the branch keeps or as an item's own name; the draft keeps them.
+	LeftOutAliases []DraftLeftOutAlias `json:"left_out_aliases,omitempty"`
 	// RequirementVersion is the n of the requirement specification rq-n the draft was confirmed
 	// against; 0 when the project had no ready specification.
 	RequirementVersion int `json:"requirement_version,omitempty"`
+}
+
+// DraftLeftOutAlias is an alias a confirmation left out of an item's definition.
+type DraftLeftOutAlias struct {
+	Item ReleaseItem `json:"item"`
+	// Property is the display name of the object type's property the alias is of; empty for the
+	// item's own.
+	Property string `json:"property,omitempty"`
+	Alias    string `json:"alias"`
 }
 
 // DraftConfirm asks to commit the draft made at UpdateTime to the project branch.
@@ -253,6 +265,9 @@ type DraftItemEdit struct {
 	Description *string `json:"description"`
 	// IncrementalKey sets an object type's update field; empty clears it.
 	IncrementalKey *string `json:"incremental_key"`
+	// Aliases replace the item's other names, which agents search and understand it by; empty
+	// clears them. Object and relation types only.
+	Aliases *[]string `json:"aliases"`
 	// Reason says why an item is left out, recorded with not adopting it.
 	Reason string `json:"reason,omitempty"`
 }
@@ -273,7 +288,8 @@ type DraftObjectType struct {
 	Document *DraftDocumentModel `json:"document,omitempty"`
 	ID       string              `json:"id"`
 	Name     string              `json:"name"`
-	// Aliases are its names in the other naming language, from the catalog; absent when none.
+	// Aliases are its other names, for agents to search and understand it by: drafted from its
+	// names in the other naming language, then as people edit them; absent when none.
 	Aliases     []string         `json:"aliases,omitempty"`
 	Description string           `json:"description"`
 	Adopted     bool             `json:"adopted"`
@@ -296,7 +312,8 @@ type DraftProperty struct {
 	ReadOnly    bool                  `json:"read_only,omitempty"`
 	Name        string                `json:"name"`
 	DisplayName string                `json:"display_name"`
-	// Aliases are its names in the other naming language, from the catalog; absent when none.
+	// Aliases are its other names, for agents to search and understand it by: drafted from its
+	// names in the other naming language, then as people edit them; absent when none.
 	Aliases        []string `json:"aliases,omitempty"`
 	Type           string   `json:"type"`
 	Description    string   `json:"description"`
@@ -336,7 +353,8 @@ type DraftRelationType struct {
 	DocumentMapping *DraftDocumentMapping `json:"document_mapping,omitempty"`
 	ID              string                `json:"id"`
 	Name            string                `json:"name"`
-	// Aliases are its names in the other naming language, from the catalog; absent when none.
+	// Aliases are its other names, for agents to search and understand it by: drafted from its
+	// names in the other naming language, then as people edit them; absent when none.
 	Aliases     []string            `json:"aliases,omitempty"`
 	Description string              `json:"description"`
 	Source      string              `json:"source"`
@@ -561,6 +579,17 @@ type DraftAskSuggestion struct {
 // properties and keys as they were and became.
 const DRAFT_DECISION_SAVE = "save"
 
+// DRAFT_DECISION_ALIASES records an object or relation type's aliases a person replaced; Before and
+// After are the aliases as they were and became.
+const DRAFT_DECISION_ALIASES = "aliases"
+
+// Aliases BKN accepts of an item: at most DRAFT_ALIASES_MAX, each at most DRAFT_ALIAS_MAX_LENGTH
+// characters.
+const (
+	DRAFT_ALIASES_MAX      = 10
+	DRAFT_ALIAS_MAX_LENGTH = 40
+)
+
 // DraftObjectTypeSave is an object type of a ready draft saved as a whole, shaped as bkn-backend's
 // object type: comment is the description, and each data property maps a field of the object
 // type's table. UpdateTime is the update time of the draft the change was made on.
@@ -573,6 +602,8 @@ type DraftObjectTypeSave struct {
 	PrimaryKeys    []string                `json:"primary_keys"`
 	DisplayKey     string                  `json:"display_key"`
 	IncrementalKey string                  `json:"incremental_key"`
+	// Aliases replace the object type's aliases; absent keeps them.
+	Aliases *[]string `json:"aliases,omitempty"`
 }
 
 // DraftDataPropertySave is a data property as bkn-backend's: a property kept by its name, or a new
@@ -585,6 +616,8 @@ type DraftDataPropertySave struct {
 	Comment     string                `json:"comment"`
 	Type        string                `json:"type"`
 	MappedField *DraftMappedField     `json:"mapped_field"`
+	// Aliases replace the property's aliases; absent keeps those of a kept property.
+	Aliases *[]string `json:"aliases,omitempty"`
 }
 
 // DraftMappedField is the field of the table a property maps, by its name.
@@ -610,6 +643,7 @@ type DraftPropertySnapshot struct {
 	Description    string                `json:"description"`
 	Type           string                `json:"type"`
 	MappedField    string                `json:"mapped_field"`
+	Aliases        []string              `json:"aliases,omitempty"`
 }
 
 // DraftPropertyUse is a relation type a property to be removed joins by, named for people to read.
@@ -677,6 +711,8 @@ type DraftRelationTypeSave struct {
 	TargetObjectTypeID     string                `json:"target_object_type_id"`
 	Type                   string                `json:"type"`
 	MappingRules           json.RawMessage       `json:"mapping_rules"`
+	// Aliases replace the relation type's aliases; absent keeps them.
+	Aliases *[]string `json:"aliases,omitempty"`
 }
 
 // DraftRelationMapping is a mapping as bkn-backend's: a property, or a backing resource's field, by

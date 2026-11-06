@@ -260,6 +260,9 @@ func (s *draftService) CreateRelationType(ctx context.Context, token string, pro
 	}
 	rt := &interfaces.DraftRelationType{ID: id, Name: save.Name, Description: save.Comment,
 		Origin: interfaces.DRAFT_ORIGIN_MANUAL, Verification: "confirmed"}
+	if save.DocumentMapping != nil && save.Aliases != nil && len(cleanAliases(*save.Aliases)) > 0 {
+		return nil, aliasError(ctx, rt.Name, "", aliasOnDocument, "")
+	}
 	if saved, handled, err := documentHooks().CreateRelation(ctx, draftHost{s}, token, draft, rt, save, caller); handled {
 		return saved, err
 	}
@@ -269,6 +272,13 @@ func (s *draftService) CreateRelationType(ctx context.Context, token string, pro
 		}
 	}
 
+	if save.Aliases != nil {
+		rt.Aliases = cleanAliases(*save.Aliases)
+		if err := checkOwnAliases(ctx, rt.Name, rt.Aliases, rt.Name); err != nil {
+			span.SetStatus(codes.Error, "Invalid aliases")
+			return nil, err
+		}
+	}
 	if err := s.defineRelation(ctx, &draft.Items, rt, save, caller); err != nil {
 		span.SetStatus(codes.Error, "Invalid relation")
 		return nil, err
@@ -282,6 +292,10 @@ func (s *draftService) CreateRelationType(ctx context.Context, token string, pro
 	draft.Items.RelationTypes = append(draft.Items.RelationTypes, rt)
 	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: id,
 		Action: interfaces.DRAFT_DECISION_CREATE, After: relationSnapshot(rt)}}
+	if len(rt.Aliases) > 0 {
+		decisions = append(decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: id,
+			Action: interfaces.DRAFT_DECISION_ALIASES, Before: []string(nil), After: slices.Clone(rt.Aliases)})
+	}
 	if err := s.commit(ctx, draft, decisions, caller); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
@@ -308,6 +322,9 @@ func (s *draftService) SaveRelationType(ctx context.Context, token string, proje
 	if rt == nil {
 		span.SetStatus(codes.Error, "Relation type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+	}
+	if rt.Document != nil && save.Aliases != nil && len(cleanAliases(*save.Aliases)) > 0 {
+		return nil, aliasError(ctx, rt.Name, "", aliasOnDocument, "")
 	}
 	if saved, handled, err := documentHooks().SaveRelation(ctx, draftHost{s}, token, draft, rt, save, caller); handled {
 		return saved, err
@@ -336,8 +353,13 @@ func (s *draftService) SaveRelationType(ctx context.Context, token string, proje
 			Action: interfaces.DRAFT_DECISION_SAVE, Before: before, After: relationSnapshot(rt)})
 	}
 	name, comment := save.Name, save.Comment
+	var aliases *[]string
+	if save.Aliases != nil {
+		cleaned := cleanAliases(*save.Aliases)
+		aliases = &cleaned
+	}
 	edited, err := applyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_RELATION_TYPES, itemID,
-		interfaces.DraftItemEdit{Name: &name, Description: &comment})
+		interfaces.DraftItemEdit{Name: &name, Description: &comment, Aliases: aliases})
 	if err != nil {
 		span.SetStatus(codes.Error, "Edit refused")
 		return nil, err

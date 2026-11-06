@@ -208,6 +208,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	confirmation.By, confirmation.Time = caller, draft.UpdateTime
 	confirmation.Files, confirmation.Pending = paths, nil
 	confirmation.SkippedValueTypes = compiled.SkippedValueTypes
+	confirmation.LeftOutAliases = compiled.LeftOutAliases
 	confirmation.RequirementVersion = requirementVersion
 	if len(unresolved) > 0 {
 		draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{

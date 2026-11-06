@@ -69,7 +69,7 @@ func objectTypeAdopted(items *interfaces.DraftItems, id string) bool {
 // checkEdit refuses an edit that changes nothing or writes an invalid name or description,
 // and trims what it writes.
 func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
-	if edit.Adopted == nil && edit.Name == nil && edit.Description == nil && edit.IncrementalKey == nil {
+	if edit.Adopted == nil && edit.Name == nil && edit.Description == nil && edit.IncrementalKey == nil && edit.Aliases == nil {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_EmptyEdit)
 	}
 	if edit.Name != nil {
@@ -89,6 +89,10 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 	if edit.IncrementalKey != nil {
 		key := strings.TrimSpace(*edit.IncrementalKey)
 		edit.IncrementalKey = &key
+	}
+	if edit.Aliases != nil {
+		aliases := cleanAliases(*edit.Aliases)
+		edit.Aliases = &aliases
 	}
 	// A reason says why an item is left out: it goes with not adopting it.
 	edit.Reason = strings.TrimSpace(edit.Reason)
@@ -222,13 +226,17 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		decide(kind, id, interfaces.DRAFT_DECISION_UNADOPT, false, false)
 		decisions[len(decisions)-1].Reason = edit.Reason
 	}
-	if edit.Name != nil && *edit.Name != *item.name {
+	renamed := edit.Name != nil && *edit.Name != *item.name
+	if renamed {
 		decide(kind, id, interfaces.DRAFT_DECISION_RENAME, *item.name, *edit.Name)
 		if kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
 			// Relations named after the object type follow it, unless a person renamed them.
 			renameRelations(items, findObjectType(items, id), *edit.Name, decide)
 		}
 		*item.name = *edit.Name
+	}
+	if err := editAliases(ctx, items, kind, id, edit.Aliases, renamed, decide); err != nil {
+		return nil, err
 	}
 	if edit.Description != nil && *edit.Description != *item.description {
 		decide(kind, id, interfaces.DRAFT_DECISION_DESCRIBE, *item.description, *edit.Description)
@@ -239,6 +247,47 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		objectType.IncrementalKey = *edit.IncrementalKey
 	}
 	return decisions, nil
+}
+
+// editAliases replaces the aliases of an object or relation type with those sent, or, with none
+// sent, leaves out of them a name the item was renamed to; then refuses what BKN would refuse of
+// them. Value types and document items have no aliases.
+func editAliases(ctx context.Context, items *interfaces.DraftItems, kind string, id string, sent *[]string,
+	renamed bool, decide func(kind string, id string, action string, before any, after any)) error {
+	if sent == nil && !renamed {
+		return nil
+	}
+	var aliases *[]string
+	var name string
+	var document bool
+	switch kind {
+	case interfaces.DRAFT_KIND_OBJECT_TYPES:
+		ot := findObjectType(items, id)
+		aliases, name, document = &ot.Aliases, ot.Name, ot.Document != nil
+	case interfaces.DRAFT_KIND_RELATION_TYPES:
+		rt := findRelationType(items, id)
+		aliases, name, document = &rt.Aliases, rt.Name, rt.Document != nil
+	default:
+		if sent != nil && len(*sent) > 0 {
+			return aliasError(ctx, name, "", aliasOnDocument, "")
+		}
+		return nil
+	}
+	if document && sent != nil && len(*sent) > 0 {
+		return aliasError(ctx, name, "", aliasOnDocument, "")
+	}
+	next := withoutName(*aliases, name)
+	if sent != nil {
+		next = *sent
+	}
+	if !slices.Equal(next, *aliases) {
+		decide(kind, id, interfaces.DRAFT_DECISION_ALIASES, slices.Clone(*aliases), slices.Clone(next))
+		*aliases = next
+	}
+	if kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		return checkObjectTypeAliases(ctx, items, findObjectType(items, id))
+	}
+	return checkOwnAliases(ctx, name, *aliases, name)
 }
 
 // regateRelations adopts the relations of an object type just adopted that drafting proposed

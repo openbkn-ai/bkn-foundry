@@ -28,6 +28,9 @@ type compiledDraft struct {
 	// type for, or a name another adopted value type took first. Their properties keep their base
 	// type, and confirming says which they are.
 	SkippedValueTypes []string
+	// LeftOutAliases are aliases the definitions leave out, as BKN refuses them; confirming says
+	// which they are, and the draft keeps them.
+	LeftOutAliases []interfaces.DraftLeftOutAlias
 	// IDKeys name the items written whose ids may be registered: a confirmation locks them, so
 	// what is on the branch keeps its ids.
 	IDKeys []interfaces.IDKey
@@ -112,11 +115,23 @@ func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*comp
 	}
 	// People may rename items after drafting: an alias that is now its own name or another object
 	// type's is left out, as BKN refuses it. The draft keeps it, should the item be renamed back.
+	drafted := map[string]*interfaces.DraftObjectType{}
+	for _, ot := range items.ObjectTypes {
+		drafted[ot.ID] = ot
+	}
 	for _, ot := range network.ObjectTypes {
 		ot.Aliases = allowedAliases(ot.Aliases, func(alias string) bool {
 			other, taken := objectNames[alias]
 			return taken && other != ot.ID
 		}, ot.Name)
+		draftedType := drafted[ot.ID]
+		item := interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: ot.ID, Name: ot.Name}
+		result.LeftOutAliases = append(result.LeftOutAliases, leftOutAliases(item, "", draftedType.Aliases, ot.Aliases)...)
+		for _, p := range ot.DataProperties {
+			if property := findProperty(draftedType, p.Name); property != nil {
+				result.LeftOutAliases = append(result.LeftOutAliases, leftOutAliases(item, p.DisplayName, property.Aliases, p.Aliases)...)
+			}
+		}
 	}
 	for _, rt := range items.RelationTypes {
 		if rt.Adopted && rt.DocumentRepair != "" {
@@ -130,6 +145,8 @@ func compileDraftBeside(items *interfaces.DraftItems, keptNames []string) (*comp
 				return nil, err
 			}
 			network.RelationTypes = append(network.RelationTypes, compiled)
+			result.LeftOutAliases = append(result.LeftOutAliases, leftOutAliases(
+				interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: rt.ID, Name: rt.Name}, "", rt.Aliases, compiled.Aliases)...)
 			if rt.LinkTable != nil {
 				result.addIDKey(interfaces.ID_KIND_RELATION_TYPES, rt.LinkTable.ResourceID)
 			}
