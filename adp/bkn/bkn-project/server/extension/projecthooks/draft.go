@@ -86,6 +86,19 @@ type AskRelation struct {
 	Revise   RelationReviser
 }
 
+// DocumentConcept is how the concept view reads a document item.
+type DocumentConcept struct {
+	// Evidence is an item that locates a business item's original text, such as the file or block
+	// it was read from: it follows its business items and is no concept of its own.
+	Evidence bool
+	// Event suggests the item as an event rather than an object.
+	Event bool
+	// Because says why the item is suggested.
+	Because string
+	// Sources are the documents the item was read from.
+	Sources []interfaces.DraftConceptSource
+}
+
 // Drafts is what document items add to a draft. The community default owns no item.
 //
 // The bool of a Save or Commit says the hook handled it; otherwise the draft goes on as for any item.
@@ -141,6 +154,11 @@ type Drafts interface {
 	// ObjectNeedsRepair holds back adopting an object type.
 	ObjectNeedsRepair(items *interfaces.DraftItems, ot *interfaces.DraftObjectType) bool
 	CheckAdoptRelation(ctx context.Context, items *interfaces.DraftItems, rt *interfaces.DraftRelationType) error
+	// DocumentConcept is how the concept view reads a document item.
+	DocumentConcept(document *interfaces.DraftDocumentModel) DocumentConcept
+	// ConceptBlocker names the refusal of adopting a document item that a concept judgment waits
+	// out, by its error code; false for any other.
+	ConceptBlocker(code string) (string, bool)
 	// ExportItems is the items as they compile.
 	ExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error)
 	// DefinitionRules is what a commit of the model carries beside its files.

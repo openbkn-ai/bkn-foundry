@@ -209,6 +209,10 @@ func (noDocumentHooks) ObjectNeedsRepair(*interfaces.DraftItems, *interfaces.Dra
 func (noDocumentHooks) CheckAdoptRelation(context.Context, *interfaces.DraftItems, *interfaces.DraftRelationType) error {
 	return nil
 }
+func (noDocumentHooks) DocumentConcept(*interfaces.DraftDocumentModel) projecthooks.DocumentConcept {
+	return projecthooks.DocumentConcept{}
+}
+func (noDocumentHooks) ConceptBlocker(string) (string, bool) { return "", false }
 func (noDocumentHooks) ExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error) {
 	return items, nil
 }

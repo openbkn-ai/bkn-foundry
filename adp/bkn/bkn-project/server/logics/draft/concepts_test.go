@@ -14,6 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -63,6 +64,7 @@ func conceptByKey(c *interfaces.DraftConcepts, key string) *interfaces.DraftConc
 }
 
 func Test_ConceptProjection(t *testing.T) {
+	defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: conceptHooks{}})()
 	Convey("Test projecting a project's concepts\n", t, func() {
 		ctx := context.Background()
 		draft := conceptDraft()
@@ -188,6 +190,7 @@ func Test_ConceptProjection(t *testing.T) {
 }
 
 func Test_FollowEvidence(t *testing.T) {
+	defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: conceptHooks{}})()
 	Convey("Test evidence following its business items\n", t, func() {
 		draft := conceptDraft()
 		items := &draft.Items

@@ -10,7 +10,6 @@ var draftZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknProject.Draft.DocumentRelationNeedsRepair": "这条关联需要先修正或明确弃用。请检查两端对象、业务编号与对应方式，再保存并确认。",
-		"BknProject.Draft.DocumentRelationScope":       "请先将关系“{{.name}}”改为通过业务编号关联，再修改这个对象。业务对象可能引用多份文档中的证据。",
 		"BknProject.Draft.InvalidRelation":             "关系无效 关系的两端必须是草稿中的对象类，用它们已有的属性和关联表的字段映射，类型能够连接，且不能与已有关系相同；只有人建的关系可以删除，详见 error_details。",
 		"BknProject.Draft.InvalidProperty":             "属性无效 有属性映射了表中不存在的字段、已被其他属性映射的字段或与字段类型不符的类型，或者名称、显示名不合法，详见 error_details。",
 		"BknProject.Draft.InvalidAliases":              "别名不合法 每项最多 10 个别名，每个最长 40 个字，不能含逗号，不能重复，也不能和本项或同类其他项的名称相同，详见 error_details。",

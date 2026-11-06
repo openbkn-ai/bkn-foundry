@@ -34,7 +34,6 @@ func requirementConceptKey(id string) string {
 // once a person settles them on the model, so the judgment stands meanwhile.
 var blockers = map[string]string{
 	perrors.BknProject_Draft_NeedsIdentity:               interfaces.CONCEPT_BLOCKED_NEEDS_IDENTITY,
-	perrors.BknProject_Draft_BusinessIdentityNotVerified: interfaces.CONCEPT_BLOCKED_NEEDS_IDENTITY,
 	perrors.BknProject_Draft_EndpointNotAdopted:          interfaces.CONCEPT_BLOCKED_END_NOT_ADOPTED,
 	perrors.BknProject_Draft_DocumentRelationNeedsRepair: interfaces.CONCEPT_BLOCKED_REPAIR,
 }
@@ -45,8 +44,10 @@ func blockerOf(err error) (string, bool) {
 	if !errors.As(err, &httpErr) {
 		return "", false
 	}
-	blocker, ok := blockers[httpErr.ErrorCode]
-	return blocker, ok
+	if blocker, ok := blockers[httpErr.ErrorCode]; ok {
+		return blocker, true
+	}
+	return documentHooks().ConceptBlocker(httpErr.ErrorCode)
 }
 
 // adoptsAs tells whether a verdict puts an item of the kind in the concept model: an object type
@@ -63,11 +64,10 @@ func adoptsAs(kind string, verdict string) bool {
 	return false
 }
 
-// isEvidence tells an evidence item: what locates a business item's original text in its document,
-// such as the file, block or image it was read from. It follows its business items into and out of
-// the model and is no concept of its own.
+// isEvidence tells an evidence item, as the hooks read it: it follows its business items into and
+// out of the model and is no concept of its own.
 func isEvidence(document *interfaces.DraftDocumentModel) bool {
-	return document != nil && strings.HasPrefix(document.Role, "evidence_")
+	return document != nil && documentHooks().DocumentConcept(document).Evidence
 }
 
 // requirementVerdicts reads a requirement concept's category as a verdict; evidence has none.
@@ -161,11 +161,11 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE,
 				ID: ot.Table.ResourceID, Name: ot.Table.Name}}
 		} else {
-			if ot.Document.Role == "event" {
+			concept := documentHooks().DocumentConcept(ot.Document)
+			if concept.Event {
 				c.Suggested = interfaces.CONCEPT_VERDICT_EVENT
 			}
-			c.SuggestedBecause = "document_" + ot.Document.Role
-			c.Sources = documentSources(ot.Document)
+			c.SuggestedBecause, c.Sources = concept.Because, concept.Sources
 		}
 		add(c)
 	}
@@ -178,7 +178,7 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			Item: &interfaces.DraftConceptItem{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Adopted: rt.Adopted}}
 		switch {
 		case rt.Document != nil:
-			c.Sources = documentSources(rt.Document)
+			c.Sources = documentHooks().DocumentConcept(rt.Document).Sources
 		case rt.LinkTable != nil:
 			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE,
 				ID: rt.LinkTable.ResourceID, Name: rt.LinkTable.Name}}
@@ -314,24 +314,6 @@ func judgeConcept(ctx context.Context, items *interfaces.DraftItems, c *interfac
 	default:
 		c.State = interfaces.CONCEPT_STATE_JUDGED
 	}
-}
-
-// documentSources are a document item's knowledge-base files, by the citations it was drafted from.
-func documentSources(document *interfaces.DraftDocumentModel) []interfaces.DraftConceptSource {
-	sources := []interfaces.DraftConceptSource{}
-	seen := map[string]bool{}
-	for _, citation := range document.Citations {
-		if seen[citation.FileID] {
-			continue
-		}
-		seen[citation.FileID] = true
-		sources = append(sources, interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT,
-			ID: citation.FileID})
-	}
-	if len(sources) == 0 {
-		sources = append(sources, interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT})
-	}
-	return sources
 }
 
 // readConcepts reads the project's draft and specification and projects their concepts.

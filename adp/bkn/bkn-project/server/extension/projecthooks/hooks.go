@@ -31,12 +31,11 @@ var (
 )
 
 // Register sets the hooks of the process once, while assembling; a nil field keeps the community
-// behaviour. A second registration panics: the built-in knowledge base and an edition's must
-// never both be registered.
+// behaviour. A second registration panics: two editions' hooks must never both be registered.
 func Register(hooks Hooks) {
 	entitlement.MustBeAssembling("bkn-project edition hooks")
 	if registered {
-		panic("projecthooks: hooks registered twice; an edition with its own knowledge base calls DisableBuiltinKnowledgeBase")
+		panic("projecthooks: hooks registered twice")
 	}
 	current, registered = hooks, true
 }
