@@ -301,9 +301,9 @@ func compileValueType(vt *interfaces.DraftValueType) *bkn.BknValueType {
 
 // Compile is the definition files of the adopted items of a draft, keyed by their path in the
 // package, as a confirmation commits them; what the registered hooks export of document items
-// included.
-func Compile(items *interfaces.DraftItems) (map[string][]byte, error) {
-	compiled, err := compileDraft(items)
+// included, with evidence published as given.
+func Compile(items *interfaces.DraftItems, evidence *interfaces.DraftEvidenceExport) (map[string][]byte, error) {
+	compiled, err := compileDraft(items, evidence)
 	if err != nil {
 		return nil, err
 	}
