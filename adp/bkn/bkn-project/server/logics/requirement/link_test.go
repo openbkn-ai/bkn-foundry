@@ -58,10 +58,12 @@ func Test_ListLogicNeeds(t *testing.T) {
 		ra := pmock.NewMockRequirementAccess(ctrl)
 		bba := pmock.NewMockBknBackendAccess(ctrl)
 		rla := pmock.NewMockReleaseAccess(ctrl)
-		svc := &requirementService{ps: ps, ra: ra, bba: bba, rla: rla}
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, bba: bba, rla: rla, da: da}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
 		live := func() {
 			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", Limit: 1}).
 				Return([]*interfaces.Release{{NetworkID: "kn1_v2"}}, nil)
@@ -161,16 +163,55 @@ func Test_ListLogicNeeds(t *testing.T) {
 			So(got.Needs[0].LiveObjectTypeIDs, ShouldResemble, []string{})
 		})
 
-		Convey("A project without a specification has none, and a failed release read is an error\n", func() {
+		Convey("A project without a specification has no needs, which is no error; a failed release read is one\n", func() {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
-			_, err := svc.ListLogicNeeds(ctx, token, "p1")
-			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_NotFound)
+			live()
+			bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1_v2").Return([]string{}, nil)
+			got, err := svc.ListLogicNeeds(ctx, token, "p1")
+			So(err, ShouldBeNil)
+			So(got.Needs, ShouldBeEmpty)
+			So(got.Released, ShouldBeTrue)
+			So(got.NetworkID, ShouldEqual, "kn1_v2")
 
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(needsSpec(), true, nil)
 			rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
 			_, err = svc.ListLogicNeeds(ctx, token, "p1")
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
 		})
+	})
+}
+
+func Test_ListLogicNeedsBeforeRelease(t *testing.T) {
+	Convey("Before the first release nothing is live, and that is no failure to read\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		bba := pmock.NewMockBknBackendAccess(ctrl)
+		rla := pmock.NewMockReleaseAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, bba: bba, rla: rla, da: da}
+		ctx := context.Background()
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{
+			Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller}}, nil)
+		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+		// The network the project started from is not there yet.
+		bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1").Return(nil, backendErr(http.StatusNotFound, "BknBackend.KnowledgeNetwork.NotFound"))
+		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(needsSpec(), true, nil)
+		// Of the draft's adopted object types, sales_order and customer are joined by no relation.
+		draft := testDraft()
+		draft.Items.RelationTypes = nil
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+
+		got, err := svc.ListLogicNeeds(ctx, token, "p1")
+
+		So(err, ShouldBeNil)
+		So(got.Released, ShouldBeFalse)
+		So(got.Reason, ShouldBeEmpty)
+		So(got.NetworkID, ShouldEqual, "kn1")
+		So(got.Needs[0].LiveObjectTypeIDs, ShouldBeEmpty)
+		So(got.Needs[0].Unconnected, ShouldResemble, []interfaces.ScenarioUnconnected{{From: "sales_order", To: "customer"}})
+		So(got.Needs[1].Unconnected, ShouldBeEmpty)
 	})
 }
 

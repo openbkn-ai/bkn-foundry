@@ -140,22 +140,27 @@ func capabilityMetadataType(kind string) string {
 	return ""
 }
 
-// liveNetwork is the project's live network, and the object types it has; reason says why they
-// could not be read.
-func (s *requirementService) liveNetwork(ctx context.Context, token string, entry *interfaces.ProjectEntry) (string, map[string]bool, string, error) {
-	network, err := logics.LiveNetwork(ctx, s.rla, entry.KNID)
+// liveNetwork is the project's live network, whether the project was ever released, and the object
+// types the network has; reason says why they could not be read. Before the first release the
+// network the project started from may have none, or not be readable yet: that is no failure.
+func (s *requirementService) liveNetwork(ctx context.Context, token string, entry *interfaces.ProjectEntry) (string, bool, map[string]bool, string, error) {
+	network, released, err := logics.LiveNetworkOf(ctx, s.rla, entry.KNID)
 	if err != nil {
-		return "", nil, "", err
+		return "", false, nil, "", err
 	}
 	ids, err := s.bba.ListObjectTypeIDs(ctx, token, network)
 	if err != nil {
-		return network, map[string]bool{}, interfaces.LOGIC_TARGET_UNAVAILABLE, nil
+		reason := ""
+		if released {
+			reason = interfaces.LOGIC_TARGET_UNAVAILABLE
+		}
+		return network, released, map[string]bool{}, reason, nil
 	}
 	live := map[string]bool{}
 	for _, id := range ids {
 		live[id] = true
 	}
-	return network, live, "", nil
+	return network, released, live, "", nil
 }
 
 func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, projectID string) (*interfaces.LogicNeedsView, error) {
@@ -172,20 +177,29 @@ func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, p
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
-	if !ok {
-		span.SetStatus(codes.Error, "Requirement not found")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Requirement_NotFound)
-	}
-	network, live, reason, err := s.liveNetwork(ctx, token, entry)
+	network, released, live, reason, err := s.liveNetwork(ctx, token, entry)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get live network failed")
 		return nil, internalError(ctx, "Get live network failed", err)
 	}
-	view := &interfaces.LogicNeedsView{UpdateTime: req.UpdateTime, NetworkID: network, Reason: reason,
+	view := &interfaces.LogicNeedsView{NetworkID: network, Released: released, Reason: reason,
 		Needs: []*interfaces.LogicNeedView{}}
+	// A project without a specification has no needs yet; that is no error.
+	if !ok {
+		span.SetStatus(codes.Ok, "")
+		return view, nil
+	}
+	view.UpdateTime = req.UpdateTime
+	// Object types a need is about that nothing in the model joins are worth knowing before it is
+	// built; a draft that cannot be read leaves nothing marked.
+	draft, found, err := s.da.GetDraft(ctx, projectID)
+	if err != nil || !found {
+		draft = nil
+	}
 	reader := s.liveReader(ctx, token, network)
 	for _, n := range req.Spec.LogicNeeds {
-		v := &interfaces.LogicNeedView{RequirementLogicNeed: n, LiveObjectTypeIDs: []string{}}
+		v := &interfaces.LogicNeedView{RequirementLogicNeed: n, LiveObjectTypeIDs: []string{},
+			Unconnected: unconnectedOf(n, draft)}
 		for _, id := range n.ObjectTypeIDs {
 			if live[id] {
 				v.LiveObjectTypeIDs = append(v.LiveObjectTypeIDs, id)
@@ -199,6 +213,20 @@ func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, p
 	}
 	span.SetStatus(codes.Ok, "")
 	return view, nil
+}
+
+// unconnectedOf are the pairs of a need's object types no adopted path of at most two relations
+// joins in the draft, as for a question resting on them.
+func unconnectedOf(n *interfaces.RequirementLogicNeed, draft *interfaces.Draft) []interfaces.ScenarioUnconnected {
+	if len(n.ObjectTypeIDs) < 2 || draft == nil {
+		return []interfaces.ScenarioUnconnected{}
+	}
+	q := &interfaces.RequirementQuestion{NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS}
+	for _, id := range n.ObjectTypeIDs {
+		q.Needs = append(q.Needs, interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: id})
+	}
+	_, unconnected := questionPath(q, draft)
+	return unconnected
 }
 
 // squeezed is a name compared without case, spaces, underscores or hyphens.

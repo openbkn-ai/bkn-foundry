@@ -71,6 +71,9 @@ type LogicNeedView struct {
 	*RequirementLogicNeed
 	Implementation    *LogicNeedImplementation `json:"implementation,omitempty"`
 	LiveObjectTypeIDs []string                 `json:"live_object_type_ids"`
+	// Unconnected are the pairs of its object types that no adopted path of at most two relations
+	// joins in the draft: computing it may find nothing to join them by.
+	Unconnected []ScenarioUnconnected `json:"unconnected"`
 }
 
 // LOGIC_TARGET_UNAVAILABLE says the live network's object types could not be read.
@@ -81,10 +84,13 @@ const LOGIC_TARGET_UNAVAILABLE = "unavailable"
 // live object types: until a release puts its object types in the live network, it is only
 // recorded. Reason says the network's object types could not be read.
 type LogicNeedsView struct {
-	UpdateTime int64            `json:"update_time"`
-	NetworkID  string           `json:"network_id"`
-	Reason     string           `json:"reason,omitempty"`
-	Needs      []*LogicNeedView `json:"needs"`
+	UpdateTime int64  `json:"update_time"`
+	NetworkID  string `json:"network_id"`
+	// Released says the project was ever released: before, no implementation can be made or read
+	// live for it, and that is no failure to read.
+	Released bool             `json:"released"`
+	Reason   string           `json:"reason,omitempty"`
+	Needs    []*LogicNeedView `json:"needs"`
 }
 
 // Why a candidate is offered for a need.
