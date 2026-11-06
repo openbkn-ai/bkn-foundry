@@ -145,6 +145,24 @@ type Drafts interface {
 	ExportItems(items *interfaces.DraftItems) (*interfaces.DraftItems, error)
 	// DefinitionRules is what a commit of the model carries beside its files.
 	DefinitionRules(ctx context.Context, draft *interfaces.Draft, lineageAvailable bool) ([]byte, error)
+
+	// Concept reads a document item as a concept of concept extraction.
+	Concept(document *interfaces.DraftDocumentModel) DocumentConcept
+	// FollowEvidence adopts the evidence the adopted business items need and leaves out what none
+	// needs any more, returning the decisions of what it changed.
+	FollowEvidence(items *interfaces.DraftItems) []*interfaces.DraftDecision
+}
+
+// DocumentConcept is what a document item is as a concept.
+type DocumentConcept struct {
+	// Evidence locates a business item's text: it follows its business items and is no concept.
+	Evidence bool
+	// Suggested is the verdict drafting suggests; empty keeps the one of the item's kind.
+	Suggested string
+	// Because is a code for why, worded by the client.
+	Because string
+	// Sources are the files it was drafted from; none reads as one document source.
+	Sources []interfaces.DraftConceptSource
 }
 
 // FindObjectType, FindRelationType, FindProperty, ObjectTypeAdopted and DraftLanguage are the pure

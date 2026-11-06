@@ -14,6 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -37,9 +38,9 @@ func conceptDraft() *interfaces.Draft {
 			Document: &interfaces.DraftDocumentModel{Role: role, Layer: "evidence"}}
 	}
 	items.RelationTypes = append(items.RelationTypes,
-		link("order_block", "order_doc", "source_block", evidenceReferenceRole),
-		link("order_image", "order_doc", "source_image", evidenceReferenceRole),
-		link("media_image", "source_media", "source_image", evidenceOccurrenceRole))
+		link("order_block", "order_doc", "source_block", "evidence_reference"),
+		link("order_image", "order_doc", "source_image", "evidence_reference"),
+		link("media_image", "source_media", "source_image", "evidence_occurrence"))
 	return draft
 }
 
@@ -396,6 +397,23 @@ func Test_ConceptService(t *testing.T) {
 				Key: "object_types/stores"}, caller)
 			status, _ = codeOf(err)
 			So(status, ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
+func Test_ConceptsWithoutDocumentHooks(t *testing.T) {
+	Convey("Test concepts in an edition without document items\n", t, func() {
+		restore := projecthooks.SetForTest(projecthooks.Hooks{})
+		defer restore()
+		draft := conceptDraft()
+
+		Convey("Nothing is evidence and nothing follows: the open core knows no document roles\n", func() {
+			findObjectType(&draft.Items, "order_doc").Adopted = true
+			So(followEvidence(&draft.Items), ShouldBeNil)
+			So(isEvidence(findObjectType(&draft.Items, "source_block").Document), ShouldBeFalse)
+			order := conceptByKey(conceptsOf(context.Background(), "p1", draft, nil, false), "object_types/order_doc")
+			So(order.Sources, ShouldResemble, []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT}})
+			So(order.SuggestedBecause, ShouldEqual, "")
 		})
 	})
 }

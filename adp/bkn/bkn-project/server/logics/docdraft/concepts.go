@@ -2,9 +2,12 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package draft
+package docdraft
 
 import (
+	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -13,11 +16,41 @@ const (
 	evidenceOccurrenceRole = "evidence_occurrence"
 )
 
-// followEvidence adopts the evidence items the adopted business items need, and leaves out those no
+// isEvidence tells an evidence item: what locates a business item's original text in its document,
+// such as the file, block or image it was read from.
+func isEvidence(document *interfaces.DraftDocumentModel) bool {
+	return document != nil && strings.HasPrefix(document.Role, "evidence_")
+}
+
+// Concept reads a document item as a concept: evidence is none; an event is suggested as one; the
+// files are those its citations name.
+func (Hooks) Concept(document *interfaces.DraftDocumentModel) projecthooks.DocumentConcept {
+	if document == nil {
+		return projecthooks.DocumentConcept{}
+	}
+	if isEvidence(document) {
+		return projecthooks.DocumentConcept{Evidence: true}
+	}
+	concept := projecthooks.DocumentConcept{Because: "document_" + document.Role}
+	if document.Role == "event" {
+		concept.Suggested = interfaces.CONCEPT_VERDICT_EVENT
+	}
+	seen := map[string]bool{}
+	for _, citation := range document.Citations {
+		if !seen[citation.FileID] {
+			seen[citation.FileID] = true
+			concept.Sources = append(concept.Sources, interfaces.DraftConceptSource{
+				Kind: interfaces.CONCEPT_SOURCE_DOCUMENT, ID: citation.FileID})
+		}
+	}
+	return concept
+}
+
+// FollowEvidence adopts the evidence items the adopted business items need, and leaves out those no
 // adopted business item needs any more: an evidence object is in while a business item adopted
 // references it, a reference while its business item is, an occurrence while both its ends are.
 // No person decides on evidence; it returns the decisions of what it changed.
-func followEvidence(items *interfaces.DraftItems) []*interfaces.DraftDecision {
+func (Hooks) FollowEvidence(items *interfaces.DraftItems) []*interfaces.DraftDecision {
 	evidence := map[string]*interfaces.DraftObjectType{}
 	adopted := map[string]bool{}
 	for _, ot := range items.ObjectTypes {

@@ -63,11 +63,15 @@ func adoptsAs(kind string, verdict string) bool {
 	return false
 }
 
-// isEvidence tells an evidence item: what locates a business item's original text in its document,
-// such as the file, block or image it was read from. It follows its business items into and out of
-// the model and is no concept of its own.
+// isEvidence tells an evidence item, which follows its business items and is no concept of its own.
+// The edition that has document items knows them.
 func isEvidence(document *interfaces.DraftDocumentModel) bool {
-	return document != nil && strings.HasPrefix(document.Role, "evidence_")
+	return document != nil && documentHooks().Concept(document).Evidence
+}
+
+// followEvidence has the evidence follow the business items, where the edition has evidence.
+func followEvidence(items *interfaces.DraftItems) []*interfaces.DraftDecision {
+	return documentHooks().FollowEvidence(items)
 }
 
 // requirementVerdicts reads a requirement concept's category as a verdict; evidence has none.
@@ -161,11 +165,7 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE,
 				ID: ot.Table.ResourceID, Name: ot.Table.Name}}
 		} else {
-			if ot.Document.Role == "event" {
-				c.Suggested = interfaces.CONCEPT_VERDICT_EVENT
-			}
-			c.SuggestedBecause = "document_" + ot.Document.Role
-			c.Sources = documentSources(ot.Document)
+			documentConcept(&c, ot.Document)
 		}
 		add(c)
 	}
@@ -178,7 +178,7 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 			Item: &interfaces.DraftConceptItem{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Adopted: rt.Adopted}}
 		switch {
 		case rt.Document != nil:
-			c.Sources = documentSources(rt.Document)
+			documentConcept(&c, rt.Document)
 		case rt.LinkTable != nil:
 			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE,
 				ID: rt.LinkTable.ResourceID, Name: rt.LinkTable.Name}}
@@ -316,22 +316,20 @@ func judgeConcept(ctx context.Context, items *interfaces.DraftItems, c *interfac
 	}
 }
 
-// documentSources are a document item's knowledge-base files, by the citations it was drafted from.
-func documentSources(document *interfaces.DraftDocumentModel) []interfaces.DraftConceptSource {
-	sources := []interfaces.DraftConceptSource{}
-	seen := map[string]bool{}
-	for _, citation := range document.Citations {
-		if seen[citation.FileID] {
-			continue
-		}
-		seen[citation.FileID] = true
-		sources = append(sources, interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT,
-			ID: citation.FileID})
+// documentConcept reads a document item's suggestion and sources as the edition knows them; one
+// it says nothing of is found in a document.
+func documentConcept(c *interfaces.DraftConcept, document *interfaces.DraftDocumentModel) {
+	read := documentHooks().Concept(document)
+	if read.Suggested != "" {
+		c.Suggested = read.Suggested
 	}
-	if len(sources) == 0 {
-		sources = append(sources, interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT})
+	if read.Because != "" {
+		c.SuggestedBecause = read.Because
 	}
-	return sources
+	c.Sources = read.Sources
+	if len(c.Sources) == 0 {
+		c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT}}
+	}
 }
 
 // readConcepts reads the project's draft and specification and projects their concepts.
