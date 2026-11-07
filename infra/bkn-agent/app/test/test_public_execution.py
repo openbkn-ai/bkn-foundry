@@ -24,6 +24,7 @@ from app.core.context_loader import _MCP_RECEIPT_TRUST_TOKEN
 from app.core.public_chat import PublicChat, project
 from app.db import get_session
 from app.main import app
+from app.model_manager import ResolvedModel
 from app.models import (
     AgentRow,
     Base,
@@ -2169,5 +2170,128 @@ def test_tool_events_tell_unreachable_calls_from_tool_errors():
         finished = {d["tool_call_id"]: d for e, d in events if e == "tool_finished"}
         assert finished["a"]["error_kind"] == "unavailable"
         assert finished["b"]["error_kind"] == "error"
+
+    asyncio.run(run())
+
+
+def test_execution_model_choice_is_optional_and_bounded():
+    assert ExecutionRequest.model_validate(BODY).model_id is None
+    chosen = ExecutionRequest.model_validate({**BODY, "model_id": "chat-model-1"})
+    assert chosen.model_id == "chat-model-1"
+    for bad in ("", "../unknown", "m" * 101):
+        with pytest.raises(ValueError):
+            ExecutionRequest.model_validate({**BODY, "model_id": bad})
+
+
+def _model_recording_chat(models):
+    async def chat(session, agent, req, account_id, account_type, *, public):
+        models.append(agent.model)
+        await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+        public.answer.append("Answer")
+
+        async def events():
+            yield "event: done\ndata: {}\n\n"
+
+        return events()
+
+    return chat
+
+
+def test_execution_runs_the_chosen_model_for_the_whole_thread(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _calls):
+            resolved, models = [], []
+
+            async def resolve(model_id):
+                resolved.append(model_id)
+                return ResolvedModel(model_id, "llm", "chat-model-name")
+
+            monkeypatch.setattr(executions, "resolve_authorized_model", resolve)
+            monkeypatch.setattr(executions, "stream_chat", _model_recording_chat(models))
+            body = {**BODY, "model_id": "chat-model-1"}
+            first = await client.post(URL, json=body, headers=AUTH)
+            assert first.status_code == 200, first.text
+            meta = parse_sse(first.text)[0][1]
+            assert models == ["chat-model-name"]
+            assert resolved == ["chat-model-1"]
+            async with factory() as session:
+                row = await session.get(TaskRow, meta["run_id"])
+                assert row.f_input["request"]["model_id"] == "chat-model-1"
+                assert row.f_input["agent_snapshot"]["model"] == "chat-model-name"
+            continuation = {
+                **body,
+                "thread_id": meta["thread_id"],
+                "client_request_id": "request-2",
+            }
+            assert (await client.post(URL, json=continuation, headers=AUTH)).status_code == 200
+            assert models == ["chat-model-name", "chat-model-name"]
+            # The model cannot change within the thread, nor be dropped.
+            for index, change in enumerate(({"model_id": "chat-model-2"}, {"model_id": None})):
+                changed = {**continuation, "client_request_id": f"request-{3 + index}", **change}
+                assert (await client.post(URL, json=changed, headers=AUTH)).status_code == 409
+            assert len(models) == 2
+            async with factory() as session:
+                agent = await dao.get_agent(session, "studio_smart_qa")
+                assert agent.model != "chat-model-name"
+
+    asyncio.run(run())
+
+
+def test_execution_without_a_model_is_stored_and_run_as_before(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _calls):
+            models = []
+
+            async def resolve(_model_id):
+                raise AssertionError("no model was chosen")
+
+            monkeypatch.setattr(executions, "resolve_authorized_model", resolve)
+            monkeypatch.setattr(executions, "stream_chat", _model_recording_chat(models))
+            first = await client.post(URL, json=BODY, headers=AUTH)
+            assert first.status_code == 200, first.text
+            meta = parse_sse(first.text)[0][1]
+            async with factory() as session:
+                default = (await dao.get_agent(session, "studio_smart_qa")).model
+                row = await session.get(TaskRow, meta["run_id"])
+                # Stored exactly as before the field existed, so retries still match.
+                assert "model_id" not in row.f_input["request"]
+            assert models == [default]
+            # A model cannot be chosen for a thread that began without one.
+            later = {
+                **BODY,
+                "thread_id": meta["thread_id"],
+                "client_request_id": "request-2",
+                "model_id": "chat-model-1",
+            }
+            assert (await client.post(URL, json=later, headers=AUTH)).status_code == 409
+            assert models == [default]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "outcome, status",
+    [
+        (ResolvedModel("reasoning-model", "rlm", "reasoning-model"), 400),
+        (HTTPException(403, "BknAgent.Execution.Forbidden"), 403),
+    ],
+)
+def test_execution_with_an_unusable_model_neither_reserves_nor_runs(monkeypatch, outcome, status):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, calls):
+
+            async def resolve(_model_id):
+                if isinstance(outcome, Exception):
+                    raise outcome
+                return outcome
+
+            monkeypatch.setattr(executions, "resolve_authorized_model", resolve)
+            response = await client.post(
+                URL, json={**BODY, "model_id": "reasoning-model"}, headers=AUTH
+            )
+            assert response.status_code == status
+            assert not calls
+            async with factory() as session:
+                assert (await session.execute(select(TaskRow))).scalars().all() == []
 
     asyncio.run(run())

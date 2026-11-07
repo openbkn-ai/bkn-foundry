@@ -410,6 +410,18 @@ class ExecutionRequest(BaseModel):
     thread_id: Optional[str] = Field(
         default=None, min_length=1, max_length=50, pattern=_ID_PATTERN
     )
+    model_id: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=_ID_PATTERN,
+        description=(
+            "Optional chat (llm) model the caller can use; without it the Agent's"
+            " own model answers. A model the caller cannot use, or that is not a"
+            " chat model, is rejected before the run starts. Fixed for the thread:"
+            " a later turn with a different or missing model_id returns 409."
+        ),
+    )
     context: ExecutionScope
 
 
