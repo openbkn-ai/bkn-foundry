@@ -61,6 +61,8 @@ ONTOLOGY_ASK_V6 = next((MIGRATIONS / "0.2.2").glob("[0-9][0-9]-ontology-ask-v6.s
 # The knowledge-base Agents' 0.2.1 deltas still run on upgrades from older releases.
 CONCEPT_SEED = MIGRATIONS / "0.2.1/36-seed-bkn-project-concept-extraction.sql"
 CONCEPT_BUDGET = MIGRATIONS / "0.2.1/38-concept-extraction-execution-budget.sql"
+GRAPH_EXPLORER_V2 = MIGRATIONS / "0.2.2/04-graph-explorer-count-first-v2.sql"
+ANALYSIS_WRITER = MIGRATIONS / "0.2.2/05-seed-analysis-writer.sql"
 
 
 def statements(path):
@@ -300,6 +302,8 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, REQUIREMENTS_V8)
         apply(upgraded, SINGLE_CALL)
         apply(upgraded, ONTOLOGY_ASK_V6)
+        apply(upgraded, GRAPH_EXPLORER_V2)
+        apply(upgraded, ANALYSIS_WRITER)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         # An upgrade keeps the Agents an edition now seeds; the core compares without them.
@@ -515,7 +519,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6)]],
+            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER)]],
         ],
         "0.2.2",
         True,
@@ -583,6 +587,11 @@ def native_concept_seed_text():
     return text[text.index("-- Fresh native concept defaults."):text.index("-- Upgrade existing official concept defaults.")].rstrip()+"\n"
 
 
+def graph_explorer_v2_locales_text():
+    text = GRAPH_EXPLORER_V2.read_text()
+    return text[text.index("-- Attach the zh-CN"):]
+
+
 def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     # The fresh-install snapshot applies the same locale backfill and binding index as an upgrade.
     assert (MIGRATIONS / "0.2.1/init.sql").read_text().endswith(
@@ -610,6 +619,17 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
     v5 = [s for s in statements(ONTOLOGY_ASK_V5) if s.startswith("insert into t_agent_prompt_version")][0]
     body = v5[v5.index("select v.f_prompt_id, 5, 'en-US',") + len("select v.f_prompt_id, 5, 'en-US',"):v5.index("v.f_vars_schema,")].strip()
     assert init.index("select 'bkn-project-ontology-ask-prompt', 5, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
+
+
+def test_fresh_snapshot_seeds_graph_explorer_v2_and_the_analysis_writer():
+    init = (MIGRATIONS / "0.2.2/init.sql").read_text()
+    # Graph explorer is seeded before the locale column; a fresh install starts at v2, so its
+    # prompt is the body 04 writes, and it attaches the same translations as the upgrade.
+    explorer = init.index("-- graph_explorer:")
+    v2 = [s for s in statements(GRAPH_EXPLORER_V2) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v2[v2.index("select v.f_prompt_id, 2, 'zh-CN',") + len("select v.f_prompt_id, 2, 'zh-CN',"):v2.index("v.f_vars_schema,")].strip()
+    assert explorer < init.index("select 'graph_explorer_prompt', 2, 'zh-CN', " + body.replace("\\n", "\n"), explorer) < init.index(CLAIM_LOCALES.read_text())
+    assert init.endswith("\n" + graph_explorer_v2_locales_text() + "\n" + ANALYSIS_WRITER.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1294,6 +1314,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V4) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V6) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
+                               | {s for s in statements(GRAPH_EXPLORER_V2) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | set(statements(METRIC_DESIGN_LOCALE)))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
@@ -1473,7 +1494,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -2900,14 +2921,14 @@ def test_requirements_v8_fresh_snapshot_seeds_v8_and_its_translations():
     # The fresh snapshot attaches the same translations as the upgrade.
     text = REQUIREMENTS_V8.read_text()
     assert text[text.index("-- Attach the zh-CN"):] in init
-    # Apart from the requirements Agent and Ask AI, the 0.2.2 snapshot is the 0.2.1 one
-    # without the Agents an edition now seeds.
+    # Apart from the requirements Agent, Ask AI, graph explorer v2 and the new analysis writer,
+    # the 0.2.2 snapshot is the 0.2.1 one without the Agents an edition now seeds.
     with database() as old, database() as new:
         apply(old, MIGRATIONS / "0.2.1/init.sql")
         apply(new, MIGRATIONS / "0.2.2/init.sql")
         agents = {row[0] for row in new.execute("SELECT f_agent_id FROM t_agent")}
-        assert agents == {row[0] for row in old.execute("SELECT f_agent_id FROM t_agent")} - set(EDITION_RESERVED_AGENT_IDS)
-        for agent in agents - {RQ, "bkn-project-ontology-ask"}:
+        assert agents == ({row[0] for row in old.execute("SELECT f_agent_id FROM t_agent")} - set(EDITION_RESERVED_AGENT_IDS)) | {"analysis_writer"}
+        for agent in agents - {RQ, "bkn-project-ontology-ask", "graph_explorer", "analysis_writer"}:
             assert item_from_db(old, agent) == item_from_db(new, agent)
 
 
@@ -4128,6 +4149,99 @@ def test_single_call_upgrade_preserves_history_and_is_idempotent():
         assert all(versions[0][key] == value for key, value in old.items() if key not in {"f_current", "f_initial"})
         before = snapshot(db)
         apply(db, SINGLE_CALL)
+        assert snapshot(db) == before
+
+
+def graph_prompt_version(db, version):
+    return dict(db.execute(
+        "SELECT * FROM t_agent_prompt_version WHERE f_prompt_id='graph_explorer_prompt' AND f_version=?",
+        (version,),
+    ).fetchone())
+
+
+def graph_v1_state(db, start):
+    """Graph explorer just before 0.2.2/04: upgraded through 0.2.1's 16, 21 and 41, or installed from an earlier snapshot at v1."""
+    if start == "upgraded":
+        apply(db, GRAPH_EXPLORER)
+        apply(db, CLAIM_LOCALES)
+        apply(db, BUILTIN_LOCALES)
+        apply(db, SOURCE_LANGUAGE)
+        apply(db, PUBLISH_BUILTINS)
+        return
+    with database() as upgraded:
+        graph_v1_state(upgraded, "upgraded")
+        v1 = graph_prompt_version(upgraded, 1)
+    apply(db, Path(selected_migrations("0.0.0")[0][0]))
+    db.execute(
+        "UPDATE t_agent_prompt_version SET f_version=1,f_content=?,f_localized_content=?,f_source_language=? WHERE f_prompt_id='graph_explorer_prompt'",
+        (v1["f_content"], v1["f_localized_content"], v1["f_source_language"]),
+    )
+    db.execute("UPDATE t_agent_prompt SET f_current_version=1 WHERE f_prompt_id='graph_explorer_prompt'")
+    db.execute("DELETE FROM t_agent_version WHERE f_agent_id='graph_explorer' AND f_version<>1")
+    db.execute("UPDATE t_agent_version SET f_prompt_version=1,f_initial=1,f_current=1 WHERE f_agent_id='graph_explorer'")
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_graph_explorer_count_first_v2_matches_fresh_and_preserves_history(start):
+    with database() as db, database() as fresh:
+        graph_v1_state(db, start)
+        old = graph_prompt_version(db, 1)
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        apply(db, GRAPH_EXPLORER_V2)
+        assert item_from_db(db, "graph_explorer") == item_from_db(fresh, "graph_explorer")
+        new = graph_prompt_version(db, 2)
+        assert new["f_content"] == graph_prompt_version(fresh, 2)["f_content"]
+        assert new["f_localized_content"] == graph_prompt_version(fresh, 2)["f_localized_content"]
+        assert new["f_source_language"] == "zh-CN"
+        locales = json.loads(new["f_localized_content"])
+        assert locales["zh-CN"] == new["f_content"] and "RETURN count(x)" in locales["en-US"]
+        assert "RETURN count(x)" in new["f_content"]
+        assert "canvas_state 按对象类读出确切的 id" in new["f_content"]
+        # Records are answered as Markdown tables, in both languages.
+        assert "用 Markdown 表格" in new["f_content"] and "use a Markdown table" in locales["en-US"]
+        assert graph_prompt_version(db, 1) == old
+        rows = db.execute(
+            "SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='graph_explorer' ORDER BY f_version"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(1, 0, 0), (2, 1, 1)]
+        before = snapshot(db)
+        apply(db, GRAPH_EXPLORER_V2)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_graph_explorer_count_first_v2_resumes_interrupted_upgrades(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            graph_v1_state(connection, "upgraded")
+            if customized:
+                connection.execute("UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='graph_explorer'")
+        apply(expected, GRAPH_EXPLORER_V2)
+        apply(db, GRAPH_EXPLORER_V2, limit=limit)
+        apply(db, GRAPH_EXPLORER_V2)
+        assert snapshot(db) == snapshot(expected)
+
+
+@pytest.mark.parametrize("field", ["f_content", "f_localized_content"])
+def test_graph_explorer_count_first_v2_keeps_custom_prompts(field):
+    with database() as db:
+        graph_v1_state(db, "upgraded")
+        value = 'custom body' if field == "f_content" else '{"zh-CN":"custom body","en-US":"custom body"}'
+        db.execute(f"UPDATE t_agent_prompt_version SET {field}=? WHERE f_prompt_id='graph_explorer_prompt' AND f_version=1", (value,))
+        before = snapshot(db)
+        apply(db, GRAPH_EXPLORER_V2)
+        assert snapshot(db) == before
+
+
+def test_graph_explorer_count_first_v2_does_not_take_over_an_operator_version():
+    with database() as db, database() as fresh:
+        graph_v1_state(db, "upgraded")
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        official = graph_prompt_version(fresh, 2)
+        db.execute("INSERT INTO t_agent_prompt_version (f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time,f_source_language) VALUES (?,?,?,?,?,?,?)", ("graph_explorer_prompt",2,official["f_content"],None,"operator",1000,"zh-CN"))
+        before = snapshot(db)
+        apply(db, GRAPH_EXPLORER_V2)
         assert snapshot(db) == before
 
 

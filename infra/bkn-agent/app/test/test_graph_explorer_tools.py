@@ -136,7 +136,7 @@ def test_scalar_only_cypher_holds_no_graph():
 
 DETAIL = {
     "object_types": [
-        {"id": "teams", "name": "球队", "properties": [{"name": "team_name", "type": "string"}]},
+        {"id": "teams", "name": "球队", "primary_keys": ["key_id"], "properties": [{"name": "team_name", "type": "string"}]},
         {"id": "matches", "name": "比赛"},
     ],
     "relation_types": [
@@ -279,6 +279,22 @@ def test_cypher_scalars_come_back_as_a_table_and_plan_nothing():
     out = _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN count(t) AS n LIMIT 1")
     assert out["table"] == {"columns": ["n"], "rows": [{"n": 3}], "total": 1}
     assert "planned_added" not in out and not run.state.get("actions")
+
+
+def test_cypher_tables_come_back_whole_up_to_a_size_and_say_when_cut():
+    # 87 rows used to come back as 20, and the model queried again in slices to read them all.
+    rows = [{"team": f"T{i}", "host": "Brazil", "performance": "group stage"} for i in range(87)]
+    run, tools, _ = _run(cypher={"columns": [{"name": "team"}], "entries": rows})
+    out = _invoke(tools["run_cypher"], query="MATCH (q:qualified_teams) RETURN q.team AS team")
+    assert out["table"]["rows"] == rows and out["table"]["total"] == 87
+    assert "cut" not in out["table"]
+
+    wide = [{"text": "x" * 500, "i": i} for i in range(87)]
+    run, tools, _ = _run(cypher={"columns": [{"name": "text"}], "entries": wide})
+    out = _invoke(tools["run_cypher"], query="MATCH (q:qualified_teams) RETURN q.text AS text")
+    shown = out["table"]["rows"]
+    assert 0 < len(shown) < 87 and shown == wide[: len(shown)]
+    assert "Aggregate" in out["table"]["cut"] and f"{len(shown)} of 87" in out["table"]["cut"]
 
 
 def test_cypher_must_be_complete():
@@ -826,3 +842,217 @@ def test_cypher_keeps_the_label_the_canvas_has_for_its_nodes():
     )
     out = _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
     assert out["items"][0]["label"] == "Brazil"
+
+
+# ---- what a graph query found, sent with the progress ----
+
+_HOME = "MATCH (m:matches)-[r:rel_home]->(t:teams) RETURN t, r, m"
+
+
+def _home(match, team, **computed):
+    rel = {"kind": "relation", "relation_type_id": "rel_home", "source": _obj("matches", match), "target": _obj("teams", team)}
+    return {"t": _obj("teams", team), "r": rel, "m": _obj("matches", match), **computed}
+
+
+def test_progress_carries_what_a_graph_query_found():
+    run, tools, _ = _run(cypher={"entries": [_home(1, 9)]})
+    provider = builtin_tools.get("graph_explorer")
+    _invoke(tools["run_cypher"], query=_HOME)
+    progress = provider.progress(run)
+    [found] = progress["cypher"]
+    assert found["query"] == _HOME and found["truncated"] is False
+    nodes = {n["id"]: n for n in found["nodes"]}
+    assert set(nodes) == {"teams-9", "matches-1"}
+    # The same filled-in data the plan carries.
+    assert nodes["teams-9"]["label"] == "Brazil" and nodes["teams-9"]["properties"]["team_name"] == "Brazil"
+    assert [e["id"] for e in found["edges"]] == ["matches-1|rel_home|teams-9"]
+    # Sent once.
+    assert provider.progress(run) is None
+
+
+def test_a_graph_query_result_names_nodes_the_canvas_already_has():
+    # teams-9 is on the canvas: the plan adds only matches-1, the result holds both,
+    # with this query's computed value on the node it did not add.
+    run, tools, _ = _run(
+        nodes=[{"id": "teams-9", "object_type_id": "teams", "label": "Brazil"}],
+        cypher={"entries": [_home(1, 9, t_goals=3)]},
+    )
+    _invoke(tools["run_cypher"], query=_HOME)
+    progress = builtin_tools.get("graph_explorer").progress(run)
+    assert {n["id"] for n in progress["nodes"]} == {"matches-1"}
+    [found] = progress["cypher"]
+    nodes = {n["id"]: n for n in found["nodes"]}
+    assert set(nodes) == {"teams-9", "matches-1"}
+    assert nodes["teams-9"]["label"] == "Brazil" and nodes["teams-9"]["computed"] == {"t_goals": 3}
+    assert [e["id"] for e in found["edges"]] == ["matches-1|rel_home|teams-9"]
+
+
+def test_a_graph_query_keeps_its_own_computed_values_on_nodes_planned_earlier():
+    run, tools, _ = _run(cypher={"entries": [{"t": _obj("teams", 9), "goals": 3}]})
+    _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t, 3 AS goals")
+    builtin_tools.get("graph_explorer").progress(run)
+    run.state["context_loader"]["run_cypher"] = _tool("run_cypher", [], {"entries": [{"t": _obj("teams", 9), "wins": 1}]})
+    _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t, 1 AS wins")
+    progress = builtin_tools.get("graph_explorer").progress(run)
+    [found] = progress["cypher"]
+    [node] = found["nodes"]
+    assert node["computed"] == {"wins": 1} and node["label"] == "Brazil"
+    # The planned node keeps both, for the canvas.
+    assert run.state["nodes"]["teams-9"]["computed"] == {"goals": 3, "wins": 1}
+
+
+def test_a_graph_query_result_that_plans_nothing_is_still_sent():
+    # A full canvas: nothing is planned, and the page still learns what the query found.
+    run, tools, _ = _run(
+        nodes=[{"id": "teams-1", "object_type_id": "teams"}],
+        cypher={"entries": [{"t": _obj("teams", 9)}]},
+    )
+    run.context.limits.max_nodes = 1
+    _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
+    progress = builtin_tools.get("graph_explorer").progress(run)
+    assert progress["actions"] == [] and progress["nodes"] == [] and progress["edges"] == []
+    assert progress["cypher"] == [
+        {"query": "MATCH (t:teams) RETURN t", "nodes": [], "edges": [], "truncated": True}
+    ]
+
+
+@pytest.mark.parametrize(
+    "extra, room",
+    [({"limited": True}, None), ({"execution": {"conclusions_limited": True}}, None), ({}, 2)],
+)
+def test_a_cut_graph_query_result_says_so(extra, room):
+    run, tools, _ = _run(cypher={"entries": [{"t": _obj("teams", i)} for i in (1, 9, 21)], **extra})
+    if room:
+        run.context.limits.max_nodes = room
+    _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
+    [found] = builtin_tools.get("graph_explorer").progress(run)["cypher"]
+    assert found["truncated"] is True
+    # Nodes left out for lack of room are not in it.
+    assert len(found["nodes"]) == (room or 3)
+
+
+def test_graph_queries_finished_together_are_sent_with_their_text():
+    run, tools, _ = _run(cypher={"entries": [{"t": _obj("teams", 9)}]})
+    _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
+    _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t LIMIT 1")
+    found = builtin_tools.get("graph_explorer").progress(run)["cypher"]
+    assert [f["query"] for f in found] == ["MATCH (t:teams) RETURN t", "MATCH (t:teams) RETURN t LIMIT 1"]
+
+
+def test_table_only_queries_and_other_tools_send_no_query_result():
+    run, tools, _ = _run(cypher={"columns": [{"name": "n"}], "entries": [{"n": 3}]})
+    provider = builtin_tools.get("graph_explorer")
+    _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN count(t) AS n")
+    assert provider.progress(run) is None
+    _invoke(tools["show_instances"], ids=["teams-9"])
+    assert "cypher" not in provider.progress(run)
+
+
+def _analysis_run(cards):
+    run = builtin_tools.Run(
+        provider=builtin_tools.get("graph_explorer"),
+        kn_id="network-1",
+        context=graph.CanvasContext(canvas_id="c1", revision=0, analysis_cards=cards),
+        account_id="user-1",
+        account_type="user",
+    )
+    run.state["context_loader"] = {}
+    return run, {t.name: t for t in graph._tools(run)}
+
+
+def test_cards_are_edited_only_in_an_analysis():
+    run, tools, _ = _run()
+    # Outside an analysis the instructions say nothing of cards and the tool refuses.
+    assert graph._card_instructions(run) == []
+    with pytest.raises(ToolException, match="not asked in an analysis"):
+        asyncio.run(tools["edit_analysis_cards"].ainvoke({"remove": [1]}))
+
+
+def test_card_instructions_list_cards_by_number():
+    run, _ = _analysis_run([{"no": 19, "title": "图表", "kind": "chart"}, {"no": 20, "kind": "merge"}])
+    text = "\n".join(graph._card_instructions(run))
+    assert "never a node" in text
+    # Clearing in an analysis starts a new line; no confirmation is promised.
+    assert "starts a new line" in text and "not asked to confirm" in text
+    assert "- #19 图表 (chart)" in text and "- #20 merge (merge)" in text
+
+
+def test_card_edits_name_listed_cards_only():
+    run, tools = _analysis_run([{"no": 19, "title": "图表", "kind": "chart"}, {"no": 20, "kind": "merge"}])
+    edited = _invoke(tools["edit_analysis_cards"], remove=[19, 19], rename=[{"no": 20, "title": " 合并结果 "}])
+    assert edited == {"removed": [19], "renamed": [{"no": 20, "title": "合并结果"}]}
+    # Nothing is planned for the canvas: the page applies card edits itself.
+    assert not run.state.get("actions")
+    with pytest.raises(ToolException, match="#7"):
+        asyncio.run(tools["edit_analysis_cards"].ainvoke({"remove": [7]}))
+    with pytest.raises(ToolException, match="Nothing"):
+        asyncio.run(tools["edit_analysis_cards"].ainvoke({}))
+
+
+def test_html_is_shown_only_in_an_analysis():
+    _, tools, _ = _run()
+    with pytest.raises(ToolException, match="not asked in an analysis"):
+        asyncio.run(tools["show_html"].ainvoke({"title": "t", "html": "<p>1</p>"}))
+
+
+def test_html_travels_whole_as_an_action():
+    run, tools = _analysis_run([{"no": 1, "kind": "select"}])
+    html = "<!doctype html><svg xmlns='http://www.w3.org/2000/svg'></svg>" + "<p>x</p>" * 2000
+    shown = _invoke(tools["show_html"], title=" 交期对比 ", html=html, description=" 按供应商 ")
+    assert shown == {"shown": {"title": "交期对比", "description": "按供应商"}}
+    # The page reads the HTML from the action: a tool's input reaches it cut short.
+    action = {"action_id": "1", "type": "show_html", "html": html, "title": "交期对比", "description": "按供应商"}
+    assert graph._progress(run)["actions"] == [action]
+    assert _result(run)["actions"] == [action]
+    assert "show_html" in "\n".join(graph._card_instructions(run))
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<img src="https://cdn.example.com/a.png">',
+        '<script src="//cdn.example.com/lib.js"></script>',
+        "<script>location.href = '?d=' + data</script>",
+        "<script>window.open('x')</script>",
+        '<meta http-equiv="refresh" content="0;url=x">',
+    ],
+)
+def test_html_that_reaches_outside_is_refused(html):
+    run, tools = _analysis_run([])
+    with pytest.raises(ToolException, match="reaches outside"):
+        asyncio.run(tools["show_html"].ainvoke({"title": "t", "html": html}))
+    assert not run.state.get("actions")
+
+
+def test_metric_cards_name_known_types():
+    run, tools = _canvas_run(object_types=[graph.ObjectTypeRef(id="teams"), graph.ObjectTypeRef(id="matches")])
+    metric = {"kind": "metric", "metrics": [{"label": "球队", "otId": "teams", "measure": "count"}]}
+    planned = _invoke(tools["configure_analysis"], chart=metric)
+    assert planned["planned"]["config"]["metrics"][0]["otId"] == "teams"
+    with pytest.raises(ToolException, match="ghosts"):
+        asyncio.run(
+            tools["configure_analysis"].ainvoke(
+                {"chart": {"kind": "metric", "metrics": [{"label": "x", "otId": "ghosts", "measure": "count"}]}}
+            )
+        )
+
+
+def test_instructions_name_each_type_key():
+    run, _, _ = _run()
+    text = asyncio.run(graph._instructions(run))
+    # A code in a question is matched against the key, which the model need not guess.
+    assert "- teams (球队)\n  key: key_id\n  properties: team_name:string" in text
+    assert "- matches (比赛)" in text and "matches (比赛)\n  key" not in text
+
+
+def test_a_filter_on_a_missing_property_names_the_real_ones():
+    """Regression: a guessed field name reached ontology-query, which answers a bare
+    invalid parameter, so the model could not tell what to fix."""
+    run, tools, calls = _run()
+    with pytest.raises(ToolException, match=r"teams has no property team_code\. Its properties are: key_id$"):
+        asyncio.run(
+            tools["query_instances"].coroutine(
+                object_type="teams", filters=[{"field": "team_code", "operation": "==", "value": "x"}]
+            )
+        )
+    assert not any(c[0] == "query_object_instance" for c in calls)
