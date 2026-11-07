@@ -25,6 +25,7 @@ from typing import Any
 from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from app.core.unfinished_answer import UnfinishedAnswer
 from app.models import AgentLimits
 
 # Schema and discovery results are large but bounded; they get the wider cap.
@@ -350,6 +351,7 @@ def context_middleware(limits: AgentLimits, summary_model) -> list[AgentMiddlewa
             trim_tokens_to_summarize=limits.summarize_after_tokens,
         ),
         RepeatedReadCache(),
+        UnfinishedAnswer(),
         ToolResultBudget(
             limits.data_result_chars,
             limits.schema_result_chars,
