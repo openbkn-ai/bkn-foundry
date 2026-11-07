@@ -187,7 +187,8 @@ async def _run_agent_once_core(
     max_out = limits.max_output_tokens if limits else None
     model = build_chat_model(agent.model, max_output_tokens=max_out)
     max_tool_calls = limits.max_tool_calls if limits else None
-    tools = apply_tool_call_cap(tools, max_tool_calls, account_id, account_type)
+    tool_calls_left: dict = {}
+    tools = apply_tool_call_cap(tools, max_tool_calls, account_id, account_type, tool_calls_left)
     system_prompt += budget_instruction(max_tool_calls)
 
     with observability.span(
@@ -208,7 +209,10 @@ async def _run_agent_once_core(
                 result = {"messages": [HumanMessage(content=message)]}
             else:
                 graph = create_agent(
-                    model, tools, system_prompt=system_prompt, middleware=budget_middleware(max_tool_calls)
+                    model,
+                    tools,
+                    system_prompt=system_prompt,
+                    middleware=budget_middleware(max_tool_calls, tool_calls_left),
                 )
                 result = await graph.ainvoke(
                     {"messages": [("user", message)]},

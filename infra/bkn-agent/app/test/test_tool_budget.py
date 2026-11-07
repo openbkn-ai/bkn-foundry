@@ -32,35 +32,52 @@ def _call(i: int) -> AIMessage:
 
 
 def test_the_prompt_states_the_budget_and_nothing_without_one():
-    assert "最多调用工具 40 次" in tool_budget.budget_instruction(40)
+    assert "at most 40 times" in tool_budget.budget_instruction(40)
     assert tool_budget.budget_instruction(None) == ""
     assert tool_budget.budget_instruction(0) == ""
-    assert tool_budget.budget_middleware(None) == []
-    assert tool_budget.budget_middleware(0) == []
+    assert tool_budget.budget_middleware(None, {}) == []
+    assert tool_budget.budget_middleware(0, {}) == []
 
 
 def test_the_note_starts_at_a_quarter_left_and_says_when_none_are():
     assert tool_budget.budget_note(40, 29) is None
-    assert "还剩 10 次（共 40 次）" in tool_budget.budget_note(40, 30)
-    assert "还剩 1 次" in tool_budget.budget_note(40, 39)
-    assert "已用完（共 40 次）" in tool_budget.budget_note(40, 40)
-    assert "已用完" in tool_budget.budget_note(40, 45)
+    assert "10 of the 40 tool calls" in tool_budget.budget_note(40, 30)
+    assert "1 of the 40 tool calls" in tool_budget.budget_note(40, 39)
+    assert "The 40 tool calls of this run are used up" in tool_budget.budget_note(40, 40)
+    assert "used up" in tool_budget.budget_note(40, 45)
     # A small budget still hears of its last three calls.
     assert tool_budget.budget_note(8, 4) is None
-    assert "还剩 3 次" in tool_budget.budget_note(8, 5)
+    assert "3 of the 8 tool calls" in tool_budget.budget_note(8, 5)
 
 
-def test_only_the_current_questions_calls_count():
-    messages = [
-        HumanMessage(content="first"),
-        _call(1),
-        ToolMessage(content="r1", tool_call_id="call-1"),
-        AIMessage(content="answer"),
-        HumanMessage(content="second"),
-        _call(2),
-        ToolMessage(content="r2", tool_call_id="call-2"),
-    ]
-    assert tool_budget.calls_this_question(messages) == 1
+class _Request:
+    def __init__(self, messages):
+        self.messages = messages
+
+    def override(self, messages):
+        return _Request(messages)
+
+
+def test_the_calls_left_are_the_caps_own_count():
+    """Regression: the note counted tool results, but a read the repeated-read cache
+    answered never reaches the cap, so the model heard "used up" with calls left."""
+
+    @tool
+    async def lookup(key: str) -> str:
+        """Look a key up."""
+        return f"value-{key}"
+
+    left: dict = {}
+    capped = tools.apply_tool_call_cap([lookup], 4, "", "", left)
+    notice = tool_budget.budget_middleware(4, left)[0]
+    # Four results in the thread, all from the cache: the cap has made no call.
+    cached = [HumanMessage(content="q")]
+    for i in range(1, 5):
+        cached += [_call(i), ToolMessage(content=f"value-{i}", tool_call_id=f"call-{i}")]
+    assert notice._request(_Request(cached)).messages == cached
+    for i in range(3):
+        asyncio.run(capped[0].coroutine(key=str(i)))
+    assert "1 of the 4 tool calls" in notice._request(_Request(cached)).messages[-1].content
 
 
 def test_the_model_hears_the_calls_left_and_the_thread_keeps_no_note():
@@ -76,28 +93,29 @@ def test_the_model_hears_the_calls_left_and_the_thread_keeps_no_note():
 
     SEEN.clear()
     model = RecordingModel(responses=[_call(1), _call(2), _call(3), _call(4), AIMessage(content="done")])
-    capped = tools.apply_tool_call_cap([lookup], 4)
+    left: dict = {}
+    capped = tools.apply_tool_call_cap([lookup], 4, "", "", left)
     graph = create_agent(
         model,
         capped,
         system_prompt="You answer." + tool_budget.budget_instruction(4),
-        middleware=tool_budget.budget_middleware(4),
+        middleware=tool_budget.budget_middleware(4, left),
     )
 
     result = asyncio.run(graph.ainvoke({"messages": [HumanMessage(content="Look things up")]}))
 
     def note(request):
         last = request[-1]
-        return last.content if isinstance(last, HumanMessage) and "平台提示" in last.content else None
+        return last.content if isinstance(last, HumanMessage) and "Platform note" in last.content else None
 
     assert len(SEEN) == 5
-    assert "最多调用工具 4 次" in SEEN[0][0].content
+    assert "at most 4 times" in SEEN[0][0].content
     # Four calls, and the note starts at three left: after the first result.
     assert note(SEEN[0]) is None
-    assert ["还剩 3 次" in note(SEEN[1]), "还剩 2 次" in note(SEEN[2]), "还剩 1 次" in note(SEEN[3])] == [True] * 3
-    assert "已用完" in note(SEEN[4])
+    assert ["3 of the 4" in note(SEEN[1]), "2 of the 4" in note(SEEN[2]), "1 of the 4" in note(SEEN[3])] == [True] * 3
+    assert "used up" in note(SEEN[4])
     assert calls == ["1", "2", "3", "4"]
     # The notes were in the requests only, and the tool results are untouched.
     saved = result["messages"]
-    assert not any(isinstance(m, HumanMessage) and "平台提示" in m.content for m in saved)
+    assert not any(isinstance(m, HumanMessage) and "Platform note" in m.content for m in saved)
     assert [m.content for m in saved if isinstance(m, ToolMessage)] == ["value-1", "value-2", "value-3", "value-4"]

@@ -168,7 +168,8 @@ async def stream_chat(
         max_out = limits.max_output_tokens if limits else None
         model = build_chat_model(agent.model, max_output_tokens=max_out)
         max_tool_calls = limits.max_tool_calls if limits else None
-        tools = apply_tool_call_cap(tools, max_tool_calls, account_id, account_type)
+        tool_calls_left: dict = {}
+        tools = apply_tool_call_cap(tools, max_tool_calls, account_id, account_type, tool_calls_left)
         system_prompt += budget_instruction(max_tool_calls)
     except BaseException:
         _busy_threads.discard(thread_id)  # A failed setup must release the claim, or the thread answers 409 forever
@@ -238,7 +239,7 @@ async def stream_chat(
                                 if public
                                 else ()
                             ),
-                            *budget_middleware(max_tool_calls),
+                            *budget_middleware(max_tool_calls, tool_calls_left),
                         ],
                     )
                     cfg = {
