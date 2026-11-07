@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.core.unfinished_answer import CONTINUE, UnfinishedAnswer, unfinished
+from app.core.unfinished_answer import CONTINUE, SHORTER, UnfinishedAnswer, unfinished
 
 
 class _Request(SimpleNamespace):
@@ -15,11 +15,12 @@ class _Request(SimpleNamespace):
         return _Request(**{**self.__dict__, **changes})
 
 
-def _reply(content: str, finish: str | None = "stop", tool_calls=None) -> AIMessage:
+def _reply(content: str, finish: str | None = "stop", tool_calls=None, usage=None) -> AIMessage:
     return AIMessage(
         content=content,
         tool_calls=tool_calls or [],
         response_metadata={"finish_reason": finish} if finish else {},
+        usage_metadata=usage,
     )
 
 
@@ -45,9 +46,9 @@ def test_a_finished_answer_or_a_tool_call_passes_through():
 def test_a_reply_cut_by_length_is_finished():
     last, seen = _run([_reply("Now let me count the inventor", "length"), _reply("合计 534。")])
     assert last.content == "合计 534。"
-    # The model sees what it said so far and is asked to go on.
+    # The model sees what it said so far and is asked for the whole answer, shorter.
     assert seen[1][-2].content == "Now let me count the inventor"
-    assert seen[1][-1].content == CONTINUE
+    assert seen[1][-1].content == CONTINUE + SHORTER
 
 
 def test_a_tool_call_written_as_text_is_asked_again_without_the_markup():
@@ -56,6 +57,21 @@ def test_a_tool_call_written_as_text_is_asked_again_without_the_markup():
     last, seen = _run([_reply(written), _reply("合计 534。")])
     assert last.content == "合计 534。"
     assert seen[1][-2].content == "Now let me count."
+    assert seen[1][-1].content == CONTINUE
+
+
+def test_the_replies_sent_back_count_in_the_usage():
+    """Regression: the run's usage is read from the state, where only the last reply
+    lands, so a reply cut at the output limit and each retry went uncounted."""
+
+    def usage(i, o):
+        return {"input_tokens": i, "output_tokens": o, "total_tokens": i + o}
+
+    last, _ = _run([_reply("Now let", "length", usage=usage(100, 1000)), _reply("合计 534。", usage=usage(120, 30))])
+    assert last.content == "合计 534。"
+    assert last.usage_metadata == usage(220, 1030)
+    last, _ = _run([_reply("合计 534。", usage=usage(100, 30))])
+    assert last.usage_metadata == usage(100, 30)
 
 
 def test_it_gives_up_after_the_retries():

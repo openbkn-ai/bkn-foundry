@@ -15,20 +15,25 @@ import logging
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages.ai import add_usage
 
 logger = logging.getLogger(__name__)
 
-# The start of a tool call DeepSeek writes into the text instead of tool_calls.
-DSML_MARKER = "DSML｜"
+# The start of a tool call DeepSeek writes into the text instead of tool_calls:
+# "DSML" and a full-width bar (｜), escaped so the source stays ASCII.
+DSML_MARKER = "DSML\uff5c"
 
 CONTINUE = (
     "Your previous reply was cut off before it was finished. Call the tools you still need,"
     " or give your complete answer from the beginning: only your next reply is shown."
 )
+# A reply the output limit stopped would stop there again if written the same way.
+SHORTER = " It reached the output limit, so write it shorter, to fit."
 
 # A final reply this short and ending this way may have been cut off with a normal stop.
 _SHORT = 200
-_ENDINGS = tuple("。！？.!?）)」』|*`>:：")
+# Its ends, full-width ones escaped: 。！？ ） 」』 ：
+_ENDINGS = tuple("\u3002\uff01\uff1f.!?\uff09)\u300d\u300f|*`>:\uff1a")
 
 
 def _text(content) -> str:
@@ -63,6 +68,16 @@ def _without_markup(message: AIMessage) -> AIMessage:
     return message.model_copy(update={"content": text[: start if start >= 0 else cut].rstrip()})
 
 
+def _counted(response, spent):
+    """The response with the usage of the replies sent back added to its last message.
+    Those replies never reach the state, and the run's usage is read from the state."""
+    if spent is None or not response.result or not isinstance(response.result[-1], AIMessage):
+        return response
+    last = response.result[-1]
+    response.result[-1] = last.model_copy(update={"usage_metadata": add_usage(spent, last.usage_metadata)})
+    return response
+
+
 class UnfinishedAnswer(AgentMiddleware):
     """Asks the model to finish a final reply that was cut short."""
 
@@ -72,12 +87,13 @@ class UnfinishedAnswer(AgentMiddleware):
 
     async def awrap_model_call(self, request, handler):
         response = await handler(request)
+        spent = None
         for attempt in range(self.retries + 1):
             if response.structured_response is not None or not response.result:
-                return response
+                return _counted(response, spent)
             last = response.result[-1]
             if not isinstance(last, AIMessage) or last.tool_calls:
-                return response
+                return _counted(response, spent)
             reason = unfinished(last)
             finish = (last.response_metadata or {}).get("finish_reason")
             text = _text(last.content).rstrip()
@@ -91,11 +107,12 @@ class UnfinishedAnswer(AgentMiddleware):
                     text[-40:],
                 )
             if reason is None or attempt == self.retries:
-                return response
+                return _counted(response, spent)
             logger.warning("[BknAgent] final reply cut short (%s); asking the model to finish", reason)
+            if last.usage_metadata:
+                spent = add_usage(spent, last.usage_metadata)
+            ask = CONTINUE + (SHORTER if reason == "length" else "")
             response = await handler(
-                request.override(
-                    messages=[*request.messages, _without_markup(last), HumanMessage(CONTINUE)]
-                )
+                request.override(messages=[*request.messages, _without_markup(last), HumanMessage(ask)])
             )
-        return response
+        return _counted(response, spent)

@@ -543,7 +543,7 @@ class MetricCondition(TypedDict):
 
 
 class MetricItem(TypedDict, total=False):
-    label: Required[Annotated[str, Field(description="What the card shows, e.g. 苏州成品仓可用库存.")]]
+    label: Required[Annotated[str, Field(description="What the card shows, e.g. Available stock in the Suzhou warehouse.")]]
     otId: Required[Annotated[str, Field(min_length=1, description="Object type id whose canvas instances it measures.")]]
     measure: Required[Literal["count", "sum", "avg", "max", "min", "distinct"]]
     property: Annotated[str, Field(description="Property measured; a count needs none.")]
