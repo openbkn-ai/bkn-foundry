@@ -18,6 +18,7 @@ show_instances and run_cypher plan nodes and edges as merge_subgraph actions.
 import asyncio
 import inspect
 import json
+import logging
 import re
 import uuid
 from typing import Annotated, Any, Literal, Optional
@@ -32,6 +33,7 @@ from app.core import graph_explorer_data as data
 from app.core.graph_explorer_data import text
 
 PROVIDER_NAME = "graph_explorer"
+logger = logging.getLogger("bkn-agent.graph-explorer")
 MAX_NODES = 5000
 MAX_EDGES = 20000
 PAGE_LIMIT = 100
@@ -61,6 +63,12 @@ EXPAND_CONCURRENCY = 4
 EXPAND_THRESHOLD = 20
 # Properties listed per object type in the schema the prompt carries.
 SCHEMA_PROPERTIES = 40
+# Networks up to this many object types get their properties in that schema; larger
+# ones list names only, as the properties of every type would crowd the prompt.
+SCHEMA_PROPERTY_TYPES = 100
+# All the properties that schema lists, in characters: every type keeps the same number
+# of its first ones, so a network of wide types leaves room for the conversation.
+SCHEMA_PROPERTY_CHARS = 30_000
 
 # The Web's canvas choices, as explore-agent.ts offers them to the model.
 Layout = Literal["force", "chain", "dagre", "tree", "radial", "circular", "grid"]
@@ -283,19 +291,33 @@ async def _network(run: builtin_tools.Run) -> dict:
                 following = page.get("next_offset")
                 offset = following if isinstance(following, int) and following > offset else None
             detail = {**detail, "object_types": listed}
+        types = [t for t in detail.get("object_types") or [] if isinstance(t, dict) and isinstance(t.get("id"), str)]
+        # Both listings name object types without their properties; without them the
+        # model looks each type's properties up by querying instances, a tool call
+        # per type. Their definitions fill them in, in one call.
+        bare = [t["id"] for t in types if not (t.get("data_properties") or t.get("properties"))]
+        metas: dict[str, data.ObjectTypeMeta] = {}
+        if bare and len(types) <= SCHEMA_PROPERTY_TYPES:
+            try:
+                metas = await _metas(run, bare)
+            except ToolException as exc:
+                # The names still help; the model can look the properties up itself.
+                logger.warning("graph explorer schema properties unavailable: %s", exc)
         object_types = {
             t["id"]: {
                 "name": t.get("name") or t["id"],
-                "properties": [
-                    f"{p['name']}:{p['type']}" if p.get("type") else p["name"]
-                    for p in (t.get("data_properties") or t.get("properties") or [])
-                    if isinstance(p, dict) and isinstance(p.get("name"), str)
-                ][:SCHEMA_PROPERTIES],
+                "properties": (
+                    [
+                        f"{p['name']}:{p['type']}" if p.get("type") else p["name"]
+                        for p in (t.get("data_properties") or t.get("properties") or [])
+                        if isinstance(p, dict) and isinstance(p.get("name"), str)
+                    ]
+                    or _meta_properties(metas.get(t["id"]))
+                )[:SCHEMA_PROPERTIES],
                 # The properties that name an instance: codes and numbers in a question are these.
                 "keys": [k for k in t.get("primary_keys") or [] if isinstance(k, str)],
             }
-            for t in detail.get("object_types") or []
-            if isinstance(t, dict) and isinstance(t.get("id"), str)
+            for t in types
         }
         relation_types = {
             r["id"]: {
@@ -306,13 +328,42 @@ async def _network(run: builtin_tools.Run) -> dict:
             for r in detail.get("relation_types") or []
             if isinstance(r, dict) and isinstance(r.get("id"), str)
         }
+        shown = _fit_properties(object_types)
         cached = run.state["network"] = {
             "object_types": object_types,
             "relation_types": relation_types,
             # get_kn_detail could not list them: the network is too large.
             "relations_unlisted": detail.get("relation_types") is None,
+            **({"properties_shown": shown} if shown is not None else {}),
         }
     return cached
+
+
+def _fit_properties(object_types: dict) -> int | None:
+    """Cuts every type's properties to the same count until all of them fit in
+    SCHEMA_PROPERTY_CHARS. The count kept, or None when nothing was cut."""
+    lists = [t["properties"] for t in object_types.values()]
+    longest = max((len(p) for p in lists), default=0)
+    count = longest
+    while count > 0 and sum(len(", ".join(p[:count])) for p in lists) > SCHEMA_PROPERTY_CHARS:
+        count -= 1
+    if count == longest:
+        return None
+    for t in object_types.values():
+        t["properties"] = t["properties"][:count]
+    return count
+
+
+def _meta_properties(meta: data.ObjectTypeMeta | None) -> list[str]:
+    """An object type's properties as the schema lists them, only those the caller may
+    read: naming another in a Cypher RETURN makes bkn-backend refuse the query."""
+    if meta is None:
+        return []
+    return [
+        f"{name}:{kind}" if kind else name
+        for name, kind in meta.property_types.items()
+        if meta.readable is None or name in meta.readable
+    ]
 
 
 async def _metas(run: builtin_tools.Run, ot_ids) -> dict[str, data.ObjectTypeMeta]:
@@ -916,6 +967,31 @@ async def _expand(run: builtin_tools.Run, ids: list[str], direction: str) -> dic
 
 
 _RETURN = re.compile(r"\bRETURN\b", re.I)
+# Keywords a model names an alias after (`RETURN m AS match`), which the parser refuses.
+_KEYWORD_ALIAS = re.compile(
+    r"\bAS\s+(match|return|with|where|order|by|limit|skip|case|when|then|else|end|union"
+    r"|optional|distinct|exists|call|unwind|as|in|is|not|and|or|xor|null|true|false|asc|desc)\b",
+    re.I,
+)
+
+
+def _keyword_hint(query: str, message: str) -> str:
+    """The upstream error, with a plain word on a keyword alias: the parser only says
+    `mismatched input 'match'`, and a model rewrites the rest of the query but keeps
+    the alias, failing the same way again. Only an alias the parser stopped at is
+    named; a query that failed for another reason keeps its error as it is."""
+    error = message.lower()
+    found = sorted(
+        {
+            m.group(1).lower()
+            for m in _KEYWORD_ALIAS.finditer(query)
+            if f"mismatched input '{m.group(1).lower()}'" in error
+        }
+    )
+    if not found:
+        return message
+    names = ", ".join(found)
+    return f"{message}\nHint: {names} is a Cypher keyword and cannot name an alias; rename it (e.g. AS {found[0]}_1)."
 
 
 def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
@@ -1053,7 +1129,10 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         back as `table` rows."""
         if not _RETURN.search(query):
             raise ToolException("Write a complete query with RETURN; fragments are not run.")
-        result = await _call(run, "run_cypher", query=query)
+        try:
+            result = await _call(run, "run_cypher", query=query)
+        except ToolException as exc:
+            raise ToolException(_keyword_hint(query, str(exc))) from exc
         entries = [e for e in result.get("entries") or [] if isinstance(e, dict)]
         ot_ids: list[str] = []
 
@@ -1561,6 +1640,13 @@ async def _instructions(run: builtin_tools.Run) -> str:
     ]
     if network.get("relations_unlisted"):
         relations = ["(This network is too large to list its relation types here; ask the user which relation to use.)"]
+    if network.get("properties_shown"):
+        objects.append(
+            f"(Only the first {network['properties_shown']} properties of each object type fit here; "
+            "an instance's own properties show the rest.)"
+        )
+    elif "properties_shown" in network:
+        objects.append("(The properties do not fit here; an instance's own properties show them.)")
     return "\n".join(
         [
             "Object types of this network (id, name):",
