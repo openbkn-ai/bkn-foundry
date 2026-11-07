@@ -117,6 +117,24 @@ func Test_BknAgentAccess(t *testing.T) {
 			So(task.Terminal(), ShouldBeTrue)
 		})
 
+		Convey("GetTask reads the tokens the task spent, and leaves them unknown when not reported\n", func() {
+			respBody = `{"task_id":"t1","agent_id":"a1","status":"succeeded","output":"{}","create_time":5,"update_time":9,
+				"input_tokens":1200,"output_tokens":340,"model_calls":3,"unmetered_calls":1}`
+			task, err := ba.GetTask(ctx, account, "t1")
+			So(err, ShouldBeNil)
+			So(*task.InputTokens, ShouldEqual, 1200)
+			So(*task.OutputTokens, ShouldEqual, 340)
+			So(*task.ModelCalls, ShouldEqual, 3)
+			So(*task.UnmeteredCalls, ShouldEqual, 1)
+
+			respBody = `{"task_id":"t1","agent_id":"a1","status":"succeeded","output":"{}","create_time":5,"update_time":9,
+				"input_tokens":null,"output_tokens":null}`
+			task, err = ba.GetTask(ctx, account, "t1")
+			So(err, ShouldBeNil)
+			So(task.InputTokens, ShouldBeNil)
+			So(task.OutputTokens, ShouldBeNil)
+		})
+
 		Convey("GetTask returns a failed task with its detail\n", func() {
 			respBody = `{"task_id":"t1","agent_id":"a1","status":"failed","output":null,"failure_detail":"TimeoutError: ",
 				"create_time":5,"update_time":9}`

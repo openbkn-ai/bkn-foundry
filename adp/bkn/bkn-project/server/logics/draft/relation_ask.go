@@ -135,7 +135,7 @@ func (s *draftService) AskRelationSuggestions(ctx context.Context, token string,
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, raw, code := s.askAgent(ctx, caller, string(message), relationSuggestionsFormat(), nil, true)
+	text, raw, code := s.askAgent(ctx, caller, "", string(message), relationSuggestionsFormat(), nil, true)
 	var out relationSuggestionsOutput
 	if code == "" && json.Unmarshal(raw, &out) != nil {
 		code = perrors.BknProject_Draft_AskUnavailable

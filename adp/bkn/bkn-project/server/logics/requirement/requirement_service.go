@@ -37,6 +37,9 @@ type requirementService struct {
 	// va lists the tables of the project's catalogs, and ba runs the drafting Agent, as the caller.
 	va interfaces.VegaAccess
 	ba interfaces.BknAgentAccess
+	// bba reads the implementations kinetic needs link to, in the live network rla's releases name.
+	bba interfaces.BknBackendAccess
+	rla interfaces.ReleaseAccess
 	// now, newID, run and sleep are replaced in tests: run drafts in the background, sleep waits
 	// between reads of the Agent's task.
 	now   func() int64
@@ -53,6 +56,8 @@ func NewRequirementService() interfaces.RequirementService {
 			da:    logics.DA,
 			va:    logics.VA,
 			ba:    logics.BAA,
+			bba:   logics.BBA,
+			rla:   logics.RA,
 			now:   func() int64 { return time.Now().UnixMilli() },
 			newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 			run:   func(fn func()) { go fn() },
@@ -89,7 +94,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ScenarioQuestions")
 	defer span.End()
 
-	result := &interfaces.ScenarioQuestions{Questions: []interfaces.ScenarioQuestion{}}
+	result := &interfaces.ScenarioQuestions{Questions: []interfaces.ScenarioQuestion{}, UnlinkedNeeds: []interfaces.ReleaseNeed{}}
 	req, ok, err := s.ra.GetRequirement(ctx, projectID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get requirement failed")
@@ -128,6 +133,12 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 		guidance[g.QuestionID] = g
 	}
 	result.SpecVersion, result.UpdateTime = req.Version, req.UpdateTime
+	unmapped := unmappedConcepts(&req.Spec)
+	for _, n := range req.Spec.LogicNeeds {
+		if linkType := interfaces.LogicLinkTypeOf(n.Kind); linkType != "" && (n.Link == nil || n.Link.Type != linkType) {
+			result.UnlinkedNeeds = append(result.UnlinkedNeeds, interfaces.ReleaseNeed{ID: n.ID, Kind: n.Kind, Name: n.Name})
+		}
+	}
 	for _, q := range req.Spec.Questions {
 		question := interfaces.ScenarioQuestion{
 			ID: q.ID, Text: q.Text, Layer: q.Layer,
@@ -136,6 +147,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 			Tests:        []interfaces.ScenarioTest{},
 		}
 		question.Path, question.Unconnected = questionPath(q, current)
+		question.Fillable = len(serverTests(q, unmapped)) > 0
 		for _, need := range q.Needs {
 			if !drafted[need] {
 				question.MissingItems = append(question.MissingItems, need)

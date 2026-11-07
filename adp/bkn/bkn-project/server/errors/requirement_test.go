@@ -42,6 +42,10 @@ func TestRequirementCodesAreRegisteredAndWorded(t *testing.T) {
 		perrors.BknProject_Requirement_InvalidTest,
 		perrors.BknProject_Requirement_TestNotFound,
 		perrors.BknProject_Requirement_Generating,
+		perrors.BknProject_Requirement_NoDocuments,
+		perrors.BknProject_Requirement_ModelNotConfirmed,
+		perrors.BknProject_Requirement_ConceptsNotExtracted,
+		perrors.BknProject_Requirement_ImplementationUnavailable,
 		perrors.BknProject_Requirement_InvalidExportTarget,
 	}
 	seen := map[i18n.Language]map[string]string{}

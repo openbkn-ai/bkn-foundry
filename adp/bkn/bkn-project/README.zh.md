@@ -90,47 +90,56 @@ bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出
 | GET | `/projects/{project_id}/pending` | 确认草稿前需要人来决定的事，即确认时会检查的待定项（`needs_identity`、`unadopted_ends`），先按类别、再按 ID 排序。每项带 `options`，即能解决它的请求：`choose_identity`（附 `candidates`：只给起草时算出唯一且非空的：没有单个字段能标识记录时，合起来唯一且非空的属性对：表有自己的标识字段时，用它加上另一个命名为记录内标识的可作标识字段，如行号，且不指向其他表；表有自己的标识字段、但这样的组合都不唯一，并且全表计数显示它大量重复（不同值不超过行数的一半，就像行序号在每张单据里都会重复）时，再把它和指向其他表的标识字段组合；标识字段本身指向其他表或没有标识字段时，在前四个可作标识、且是主键、外键或按标识命名的字段之间两两组合；最多算六对、给出三对，按字段在表中的顺序，计数超过 30 秒就一对都不给；也见 `evidence.candidates`（`evidence.candidate` 为第一对）；或算过的那个字段本身；没算过的属性一律不给，因为选定标识时不会拒绝有重复的属性。任选一个替换 `$candidate`。一个都没有时，`candidates_reason` 为 `no_unique_candidate`，该选项仍可用：人可以自己给出确知的属性。没有任何属性能作标识时不可用，`reason` 为 `no_key_property`）、`adopt_end`（那一端的对象类还需先定标识时不可用，`reason` 为 `end_needs_identity`）、`unadopt`；这些是 `blocking` 的。之后是不阻断的一类：起草时没采纳、也还没人决定的项（`reason` 为 `undecided`，`because` 为 `needs_identity`、关系的 `proposed_because` 或 `not_adopted`），附 `adopt`（对象类还需定标识、或关系两端未全部采纳时不可用），没有标识的对象类另附 `choose_identity`。最后是不阻塞、也不算未决的更新字段项：已采纳的对象类有时间类属性（`date`、`time`、`datetime`、`timestamp`）但没有设更新字段时列出（`reason` 为 `needs_update_field`，本地索引按更新字段刷新），附 `set_incremental_key`，即该条目的 `PATCH`，`incremental_key` 为 `$value`，取自 `values`（时间类属性的名称，按属性顺序）；没有时间类属性的对象类不列。请求体里的 `$draft_update_time` 要换成最后一次读到的草稿更新时间；每次编辑都会推进它。在有成文的推荐规则之前，`recommendation` 一律为 null。`evidence` 是起草时的计数。`needed_by` 列出就绪需求规格中需要该项的知识类问题（`id`、`text`），没有时省略。草稿未就绪时列表为空；没有草稿时 404 `Draft.NotFound` |
 | POST | `/projects/{project_id}/ontology/draft:generate` | 后台根据项目数据目录的表起草本体：返回 202 和状态为 `drafting` 的草稿。可选请求体 `{"discard_decisions": true}` 表示同意丢弃当前草稿上已做的决定。400 `Draft.NoCatalogs`；409：正在起草时 `Draft.Drafting`，草稿已有决定且未同意丢弃时 `Draft.HasDecisions`（针对整份草稿的决定 `accept_partial` 不算在内：重新起草时直接丢弃，新草稿重新判断是否部分起草），项目已归档时 `Draft.ProjectArchived`，项目的数据目录已不存在时 `Draft.CatalogMissing`（vega-backend 返回 404；`error_details` 列出这些目录；否则起草会在其中读不到任何表）。调用方没有目录详情权限（403）时，仍按其能读的表起草 |
 | GET | `/projects/{project_id}/ontology/draft` | 草稿：`status`（`drafting`、`ready`，或 `failed` 并带 `error`：`interrupted`、`timeout` 或 vega-backend 的返回）和 `items`：`object_types`、`relation_types`、`value_types`、`excluded`、`unreadable`，每条带证据和是否默认采用；`decisions`，即人做过的修改，按时间先后排列；以及 `inputs`，即草稿的来源：`rules_version`、规则的 `settings`、起草所用的命名语言 `naming_language`、`catalog_ids`、读到的每张表及其结构 `fingerprint`（SHA-256，不含任何数据值）和 `rows`，有读不到的表时 `partial` 为 true；项目为非 ASCII 名称登记过 ID 时还有 `ids`：登记数 `count`、草稿中仍可替换的占位数 `placeholders`，以及它们的 `fingerprint`。还没有草稿时 404 `Draft.NotFound` |
-| PATCH | `/projects/{project_id}/ontology/draft/items/{kind}/{item_id}` | 修改已就绪草稿中的一项；`kind` 为 `object_types`、`relation_types` 或 `value_types`。请求体：修改所基于的草稿 `update_time`，以及 `adopted`、`name`（1–128 个字符）、`description`（最长 1000）中的任意几项；对象类还可以给出 `incremental_key`，即它的更新字段：记录每次变化时值都会增大的属性，表的本地索引据此刷新（以调用方身份读取它在表中对应的字段，类型须为 `integer`、`unsigned integer`、`string`、`date`、`time`、`datetime` 或 `timestamp`；传空值可清除）。每处修改都记为一条决定，带被替换的值；不采用某个对象类时，连到它的关系类一并改为不采用。返回草稿。400 `Draft.MissingUpdateTime`、`Draft.EmptyEdit`、`Draft.NeedsIdentity`（对象类还没选定唯一标识就采用）、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.InvalidIncrementalKey`、`Draft.EndpointNotAdopted`（关系类两端的对象类没有都采用）；404 `Draft.ItemNotFound`；409 `Draft.Stale`（`update_time` 之后草稿已被修改，需重新加载）、`Draft.NotReady`、`Draft.ProjectArchived`、`Draft.FieldNotFound`（更新字段对应的字段已不在表中，或调用方读不到这张表） |
-| PUT | `/projects/{project_id}/ontology/draft/object_types/{item_id}` | 整体保存就绪草稿中的一个对象类，请求体与 bkn-backend 的对象类结构一致：修改所基于的草稿 `update_time`、`name`、`comment`（描述）、`data_properties`（每项 `name`、`display_name`、`comment`、`type` 和 `mapped_field` `{"name"}`，即对象类所在表的字段）、`primary_keys`、`display_key` 和 `incremental_key`。名称与对象类已有属性相同的保留，字段和类型不变，显示名和描述按请求更新。其他名称或没有名称的是新属性：映射表中存在、未被其他属性映射、BKN 能映射其类型的字段；请求带了类型时必须与之一致；没有名称时按起草规则命名，非 ASCII 名称的字段从项目的 ID 注册表取 ID。映射起草或人排除过的字段，即为恢复它。请求中没有的属性会被移除，其字段之后可以再次保存来恢复；有关系经它连接时拒绝移除。标识按选择标识的规则在全表计数，更新字段按设置更新字段的规则校验。和编辑一样记录 `rename`、`describe`、`incremental`，另记一条 `save` 决定，`before` 和 `after` 为对象类的属性、标识和标题。保存内容不变时不写入。返回草稿。400 `Draft.InvalidProperty`（`error_details` 给出属性或字段及 `reason`：`no_mapped_field`、`field_mapped_twice`、`mapping_changed`、`field_not_mappable`、`invalid_name`、`too_long` 或 `display_key`）、`Draft.InvalidIdentity`、`Draft.InvalidIncrementalKey`、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.MissingUpdateTime`、`Draft.InvalidRequestBody`；404 `Draft.ItemNotFound`；409 `Draft.PropertyInUse`（`error_details` 为每个 `property` 以及经它连接的 `relation` 和其 `source`、`target`，含 `kind`、`id`、`name`）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Draft.FieldNotFound`（读不到该表） |
-| POST、PUT、DELETE | `/projects/{project_id}/ontology/draft/relation_types`、`…/relation_types/{item_id}` | 新建（POST，201）、整体保存（PUT，200）和删除（DELETE `?update_time=`，200）就绪草稿中的关系类，都返回草稿。请求体与 bkn-backend 的关系类结构一致：`update_time`、`id`（仅 POST，可选；不给时按起草规则由两端生成）、`name`、`comment`（描述）、`source_object_type_id`、`target_object_type_id`、`type` 和 `mapping_rules`：`direct` 时为 `source_property`、`target_property` `{"name"}` 的列表，即两端的属性；`indirect` 时为 `backing_data_source` `{"type":"resource","id"}`，加 `source_mapping_rules`（源端属性到关联表字段）和 `target_mapping_rules`（关联表字段到目标端属性）。两端必须是草稿中的对象类，属性属于对应端，字段属于关联表（以调用者身份读取），每一对的类型要能连接：相同，整数之间，或字符串与长文本之间；两端和映射与已有关系相同的会被拒绝，并给出该关系。在同一目录内、单个属性映射到目标端的单字段标识时，按起草的方式全表计数连接情况；否则在 `evidence.reason` 中说明原因（`composite_key`、`not_identity`、`cross_catalog`、`link_table`）。新建的关系 `origin` 为 `manual`，两端都已采纳时采纳，否则不采纳并标 `proposed_because` 为 `end_not_adopted`；保存不改变采纳状态，除非有一端未采纳。决定记录：`create` 带关系快照，`rename`、`describe` 与编辑一致，连接方式改变时记 `save` 带前后快照，`delete` 带快照；保存内容不变时不写入。只有人建的关系可以删除，起草出的关系请改为不采纳。400 `Draft.InvalidRelation`（`error_details.reason`：`unknown_end`、`unknown_property`、`unknown_field`、`type_mismatch`、`no_mapping`、`invalid_type`、`invalid_id`、带 `relation` 的 `duplicate`，或 `not_manual`）、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.MissingUpdateTime`、`Draft.InvalidRequestBody`；404 `Draft.ItemNotFound`；409 `Draft.FieldNotFound`（读不到关联表）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived` |
+| PATCH | `/projects/{project_id}/ontology/draft/items/{kind}/{item_id}` | 修改已就绪草稿中的一项；`kind` 为 `object_types`、`relation_types` 或 `value_types`。请求体：修改所基于的草稿 `update_time`，以及 `adopted`、`name`（1–128 个字符）、`description`（最长 1000）中的任意几项；对象类还可以给出 `incremental_key`，即它的更新字段：记录每次变化时值都会增大的属性，表的本地索引据此刷新（以调用方身份读取它在表中对应的字段，类型须为 `integer`、`unsigned integer`、`string`、`date`、`time`、`datetime` 或 `timestamp`；传空值可清除）；不是文档项的对象类和关系类还可以给出 `aliases`，即智能体搜索和理解它所用的其他名称，整体替换原有别名（逐个去掉首尾空白，空的不要；`[]` 清空；记为一条 `aliases` 决定，带 `before` 和 `after`）。没有给别名时，改名为自己的某个别名会去掉这个别名。每处修改都记为一条决定，带被替换的值；不采用某个对象类时，连到它的关系类一并改为不采用。返回草稿。400 `Draft.MissingUpdateTime`、`Draft.EmptyEdit`、`Draft.NeedsIdentity`（对象类还没选定唯一标识就采用）、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.InvalidIncrementalKey`、`Draft.EndpointNotAdopted`（关系类两端的对象类没有都采用）、`Draft.InvalidAliases`（BKN 不接受的别名；`error_details` 给出项的名称 `item`、`alias` 和 `reason`：`too_many`（超过 10 个）、`too_long`（超过 40 个字）、`comma`（含半角或全角逗号）、`repeated`、`own_name`、`other_name`（是另一个对象类的名称，或另一个属性的名称或显示名，见 `other`）、`alias_of_other`（新名称是 `other` 所指对象类的别名）或 `document_item`）；404 `Draft.ItemNotFound`；409 `Draft.Stale`（`update_time` 之后草稿已被修改，需重新加载）、`Draft.NotReady`、`Draft.ProjectArchived`、`Draft.FieldNotFound`（更新字段对应的字段已不在表中，或调用方读不到这张表） |
+| PUT | `/projects/{project_id}/ontology/draft/object_types/{item_id}` | 整体保存就绪草稿中的一个对象类，请求体与 bkn-backend 的对象类结构一致：修改所基于的草稿 `update_time`、`name`、`comment`（描述）、`data_properties`（每项 `name`、`display_name`、`comment`、`type`、`mapped_field` `{"name"}`，即对象类所在表的字段，以及 `aliases`）、`primary_keys`、`display_key`、`incremental_key` 和 `aliases`。给出的别名按编辑的规则整体替换；不给时对象类和保留的属性沿用原有别名，去掉与新名称或新显示名相同的那个。属性别名若会变成另一个属性的名称或显示名，整体拒绝（`Draft.InvalidAliases`），不会悄悄丢掉。名称与对象类已有属性相同的保留，字段和类型不变，显示名和描述按请求更新。其他名称或没有名称的是新属性：映射表中存在、未被其他属性映射、BKN 能映射其类型的字段；请求带了类型时必须与之一致；没有名称时按起草规则命名，非 ASCII 名称的字段从项目的 ID 注册表取 ID。映射起草或人排除过的字段，即为恢复它。请求中没有的属性会被移除，其字段之后可以再次保存来恢复；有关系经它连接时拒绝移除。标识按选择标识的规则在全表计数，更新字段按设置更新字段的规则校验。和编辑一样记录 `rename`、`describe`、`incremental`、`aliases`，另记一条 `save` 决定，`before` 和 `after` 为对象类的属性（含别名）、标识和标题。保存内容不变时不写入。返回草稿。400 `Draft.InvalidProperty`（`error_details` 给出属性或字段及 `reason`：`no_mapped_field`、`field_mapped_twice`、`mapping_changed`、`field_not_mappable`、`invalid_name`、`too_long` 或 `display_key`）、`Draft.InvalidIdentity`、`Draft.InvalidIncrementalKey`、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.InvalidAliases`、`Draft.MissingUpdateTime`、`Draft.InvalidRequestBody`；404 `Draft.ItemNotFound`；409 `Draft.PropertyInUse`（`error_details` 为每个 `property` 以及经它连接的 `relation` 和其 `source`、`target`，含 `kind`、`id`、`name`）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Draft.FieldNotFound`（读不到该表） |
+| POST、PUT、DELETE | `/projects/{project_id}/ontology/draft/relation_types`、`…/relation_types/{item_id}` | 新建（POST，201）、整体保存（PUT，200）和删除（DELETE `?update_time=`，200）就绪草稿中的关系类，都返回草稿。请求体与 bkn-backend 的关系类结构一致：`update_time`、`id`（仅 POST，可选；不给时按起草规则由两端生成）、`name`、`comment`（描述）、`source_object_type_id`、`target_object_type_id`、`aliases`（规则同编辑；PUT 不给时保留原有别名）、`type` 和 `mapping_rules`：`direct` 时为 `source_property`、`target_property` `{"name"}` 的列表，即两端的属性；`indirect` 时为 `backing_data_source` `{"type":"resource","id"}`，加 `source_mapping_rules`（源端属性到关联表字段）和 `target_mapping_rules`（关联表字段到目标端属性）。两端必须是草稿中的对象类，属性属于对应端，字段属于关联表（以调用者身份读取），每一对的类型要能连接：相同，整数之间，或字符串与长文本之间；两端和映射与已有关系相同的会被拒绝，并给出该关系。在同一目录内、单个属性映射到目标端的单字段标识时，按起草的方式全表计数连接情况；否则在 `evidence.reason` 中说明原因（`composite_key`、`not_identity`、`cross_catalog`、`link_table`）。新建的关系 `origin` 为 `manual`，两端都已采纳时采纳，否则不采纳并标 `proposed_because` 为 `end_not_adopted`；保存不改变采纳状态，除非有一端未采纳。决定记录：`create` 带关系快照，`rename`、`describe` 与编辑一致，连接方式改变时记 `save` 带前后快照，`delete` 带快照；保存内容不变时不写入。只有人建的关系可以删除，起草出的关系请改为不采纳。400 `Draft.InvalidRelation`（`error_details.reason`：`unknown_end`、`unknown_property`、`unknown_field`、`type_mismatch`、`no_mapping`、`invalid_type`、`invalid_id`、带 `relation` 的 `duplicate`，或 `not_manual`）、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.MissingUpdateTime`、`Draft.InvalidRequestBody`；404 `Draft.ItemNotFound`；409 `Draft.FieldNotFound`（读不到关联表）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived` |
 | PUT | `/projects/{project_id}/ontology/draft/object_types/{item_id}/identity` | 选定对象类的唯一标识属性。请求体：`update_time` 和 `properties`，即一个或多个不重复的属性，类型须为 `string`、`text`、`integer` 或 `unsigned integer`。单属性的标识会以调用者身份做全表计数，有重复或空值也照样接受，计数写入 `key`（`source` 为 `chosen`）；复合标识不计数。清除 `needs_identity`；是否采用仍需单独修改。400 `Draft.MissingUpdateTime`、`Draft.InvalidIdentity`；404 `Draft.ItemNotFound`；409 同修改草稿项 |
-| POST | `/projects/{project_id}/ontology/draft/object_types/{item_id}/ask` | 就已完成起草的草稿中正在编辑的一个对象类问 AI。请求体：`question`，最多 500 个字；`working`（可选），编辑器中未保存的保存请求体（与 PUT `…/object_types/{item_id}` 的请求体相同，不含 `update_time`；留空的字段沿用草稿中的值，其中新增的属性还不能被修订引用）；`history`（可选），由客户端保存的之前的对话，每轮为 `{question, answer}`，只读取最后 4 轮。以调用者身份通过 `/chat` 在新会话中运行 bkn-agent 的对话 Agent `bkn-project-ontology-ask`，它读取表单中这个对象类的状态（属性、唯一标识及其计数、显示属性、所在表，以及以它为一端的关系类和命中率；从不读行数据），在 45 秒内作答：200，返回 `answer`（最多 600 个字，使用项目的命名语言）、`revisions` 和 `dropped`。请求头带 `Accept: text/event-stream` 时，bkn-agent 开始作答后以服务端事件流式返回：`token`（`{content}`，回答文字的片段），之后是 `result`（即上述响应体，其 `answer` 替换已收到的片段）或 `error`（`{error_code, description, answer}`，`answer` 为已写出的文字；`Draft.AskTimeout` 或 `Draft.AskUnavailable`），二者恰有一个作为最后一个事件。bkn-agent 作答之前的拒绝仍是普通错误响应，不开始事件流；客户端断开即结束这次作答。修订为 `{field, value, reason}`，用保存请求体的字段表示，最多 5 条：`name`、`comment`、`display_key`（字符串），`primary_keys`（属性名），`data_property`（对象类已有属性的 `{name, display_name, comment}`，Agent 没写的部分取自该属性，保存它不会清空任何内容）。每条修订都按保存的规则对照表单检查；保存会拒绝的、不改变任何内容的、同一字段重复的、或属于关系类字段的修订放入 `dropped`，为 `{field, reason}`（`unchanged`、`repeated`、`not_editable`、`invalid_name`、`invalid_description`、`invalid_identity`、`unknown_property`、`too_long`）。修订由人合并进表单并保存才生效；提问从不修改草稿，也不保存对话。`suggestion` 为第一条可用对象类自身编辑接口采纳的修订，或 `null`：`field` 为 `name` 或 `description` 时带 `value`（PATCH `…/draft/items/object_types/{item_id}`），为 `identity` 时带 `properties`（PUT `…/object_types/{item_id}/identity`），另带 `reason`。400 `Draft.InvalidQuestion`、`Draft.InvalidRequestBody`；404 `Draft.NotFound`、`Draft.ItemNotFound`；409 `Draft.NotReady`；502 `Draft.AskUnavailable`（bkn-agent 无法运行、运行失败或返回不符合约定的内容）；504 `Draft.AskTimeout` |
+| POST | `/projects/{project_id}/ontology/draft/object_types/{item_id}/ask` | 就已完成起草的草稿中正在编辑的一个对象类问 AI。请求体：`question`，最多 500 个字；`working`（可选），编辑器中未保存的保存请求体（与 PUT `…/object_types/{item_id}` 的请求体相同，不含 `update_time`；留空的字段沿用草稿中的值，其中新增的属性还不能被修订引用）；`history`（可选），由客户端保存的之前的对话，每轮为 `{question, answer}`，只读取最后 4 轮。以调用者身份通过 `/chat` 在新会话中运行 bkn-agent 的对话 Agent `bkn-project-ontology-ask`，它读取表单中这个对象类的状态（属性、唯一标识及其计数、显示属性、所在表，以及以它为一端的关系类和命中率；从不读行数据），在 45 秒内作答：200，返回 `answer`（最多 600 个字，使用项目的命名语言）、`revisions` 和 `dropped`。请求头带 `Accept: text/event-stream` 时，bkn-agent 开始作答后以服务端事件流式返回：`token`（`{content}`，回答文字的片段），之后是 `result`（即上述响应体，其 `answer` 替换已收到的片段）或 `error`（`{error_code, description, answer}`，`answer` 为已写出的文字；`Draft.AskTimeout` 或 `Draft.AskUnavailable`），二者恰有一个作为最后一个事件。bkn-agent 作答之前的拒绝仍是普通错误响应，不开始事件流；客户端断开即结束这次作答。修订为 `{field, value, reason}`，用保存请求体的字段表示，最多 5 条：`name`、`comment`、`display_key`（字符串），`primary_keys`（属性名），`data_property`（对象类已有属性的 `{name, display_name, comment}`，Agent 没写的部分取自该属性，保存它不会清空任何内容），或 `aliases`（对象类完整的别名列表，含保留的和新提议的，按保存别名的规则检查；关系类同样可以，文档项不可以）。每条修订都按保存的规则对照表单检查；保存会拒绝的、不改变任何内容的、同一字段重复的、或属于关系类字段的修订放入 `dropped`，为 `{field, reason}`（`unchanged`、`repeated`、`not_editable`、`invalid_aliases`、`invalid_name`、`invalid_description`、`invalid_identity`、`unknown_property`、`too_long`）。修订由人合并进表单并保存才生效；提问从不修改草稿，也不保存对话。`suggestion` 为第一条可用对象类自身编辑接口采纳的修订，或 `null`：`field` 为 `name` 或 `description` 时带 `value`（PATCH `…/draft/items/object_types/{item_id}`），为 `identity` 时带 `properties`（PUT `…/object_types/{item_id}/identity`），另带 `reason`。400 `Draft.InvalidQuestion`、`Draft.InvalidRequestBody`；404 `Draft.NotFound`、`Draft.ItemNotFound`；409 `Draft.NotReady`；502 `Draft.AskUnavailable`（bkn-agent 无法运行、运行失败或返回不符合约定的内容）；504 `Draft.AskTimeout` |
 | POST | `/projects/{project_id}/ontology/draft/relation_types/{item_id}/ask` | 就已完成起草的草稿中的一个关系类问 AI，用法同对象类。`working` 为关系类未保存的保存请求体（与 PUT `…/relation_types/{item_id}` 的请求体相同）；其两端和映射只在保存能定义它们时才读取。Agent 读取关系类（两端、基数、映射或中间表及其映射、命中率）和它两端的对象类。修订：`name`、`comment` 和 `ends`，即保存请求体中的 `{source_object_type_id, target_object_type_id, type: "direct", mapping_rules}`，在副本上按保存的方式定义（保存之前不做计数）；保存会拒绝的放入 `dropped`，原因取自保存（`unknown_end`、`unknown_property`、`type_mismatch`、`no_mapping`、`duplicate`）。`suggestion` 始终为 `null`。错误码同对象类 |
 | POST | `/projects/{project_id}/ontology/draft/relation_types:ask` | 就尚未创建的关系类问 AI，只依据编辑器里的表单；请求体、事件和返回均与 `…/relation_types/{item_id}/ask` 相同。`working` 可以只有一端、有两端但没有映射，或者什么都没填；不是草稿中对象类的端会被忽略，两端和映射只在保存能定义它们时才整体读取。Agent 读取表单中的关系类、表单已选定的端及其角色（`chosen_ends`，视为已确定），以及它可能连接的对象类，顺序为：已给出的端；第一个已给出的端若已采纳，再加上它的候选的另一端（即 `GET …/relation-suggestions?object_type=` 返回的候选，10 秒内读取，最多 20 条；给了两端时只取这两端之间的候选，候选也一并放进消息）；不足两端时，再加上其他所有已采纳对象类，用精简形式（只给 id、名称、唯一标识和属性名）。修订同已保存的关系类：`ends` 可以补全另一端和映射，并在副本上按 `POST …/draft/relation_types` 的规则定义（与已起草或已保存的关系重复时放入 `dropped`，原因为 `duplicate`）；没有把表单已选定的端作为起点或终点的，放入 `dropped`，原因为 `not_from_given_end`。AI 给出了修订但没有写正文时，仍返回 200，`answer` 为空。错误码同对象类，但没有 `Draft.ItemNotFound` |
 | GET | `/projects/{project_id}/ontology/draft/relation-suggestions` | 帮人把对象类连接起来：读取已完成起草的草稿，从不修改。不带参数时返回 `isolated`，即没有任何已采纳关系类以它为一端的已采纳对象类（`kind`、`id`、`name`）。带 `?object_type=` 时，返回这个已采纳对象类可以建立的关系 `candidates`，每条都与 `POST …/draft/relation_types` 的请求体相同（`source_object_type_id`、`target_object_type_id`、`type: "direct"`、`mapping_rules`、`name`，名称按起草的规则生成），另带 `origin` 和 `evidence`：先列草稿中已有但没人采纳的关系（`drafted`，带 `relation_type_id`，用 `PATCH …/draft/items/relation_types/{id}` 采纳），再列按起草规则在两个方向上找到、但被起草时的门槛筛掉的候选：声明的外键、名称或词干与另一方单字段唯一标识匹配的字段，每个字段的每个匹配都列，类型须相同，不限数据目录；唯一标识字段不算引用。同一数据目录内的候选以调用者身份做全表计数（`evidence`：`computed`、`rows`、`hits`、`hit_rate`），一个对象类最多计 10 个、30 秒内完成，更可能的优先；超出的为 `not_counted`，跨数据目录的为 `cross_catalog`。计数否定的推断也会列出。顺序：已起草的、外键，然后按命中率，未计数的在最后。`reason` 在问 AI 给出说明前为空。不采纳任何候选。400 `Draft.InvalidItem`（`not_adopted`）；404 `Draft.NotFound`、`Draft.ItemNotFound`；409 `Draft.NotReady` |
 | POST | `/projects/{project_id}/ontology/draft/relation-suggestions:ask` | 就一个尚未连接的已采纳对象类问 AI：它可能如何与其他对象类连接。请求体 `{"object_type"}`。以调用者身份非流式运行 `bkn-project-ontology-ask`，在 45 秒内作答；它读取这个对象类、其他已采纳对象类及其属性和唯一标识，以及该对象类的候选（即 `GET …/relation-suggestions?object_type=` 返回的候选，最多 20 条，按序号）。返回 200，结构与 GET 相同，另带 `answer`（几句话说明它可能如何连接，最多 600 字）：AI 说明过的候选带上它的 `reason`，名称不超过 128 字时采用它的 `name`；另外最多 3 条按业务含义提出、候选未覆盖的关系，`origin: "ai"`，每条都按 `POST …/draft/relation_types` 的规则在副本上定义（两端已采纳，其中之一是该对象类，属性存在且能连接），并像保存后的关系一样计数；保存会拒绝的、与候选重复的、没有名称的提议都会丢弃。AI 给出了结果但没有写正文时，仍返回 200，只是不带 `answer`；其他问 AI 接口这种情况仍返回 502。不写入任何内容。400 `Draft.InvalidRequestBody`、`Draft.InvalidItem`（`not_adopted`）；404 `Draft.NotFound`、`Draft.ItemNotFound`；409 `Draft.NotReady`；502 `Draft.AskUnavailable`；504 `Draft.AskTimeout` |
 | POST | `/projects/{project_id}/ontology/draft:restore` | 把被隐私规则排除的字段恢复为属性，字段信息以调用者身份从 vega-backend 重新读取。请求体：`update_time`、`object_type`、`field`。400 `Draft.MissingUpdateTime`、`Draft.NotRestorable`（因类型无法映射而排除）；404 `Draft.ItemNotFound`；409 `Draft.FieldNotFound`（字段已不在表中，或无权读取），以及同修改草稿项的情形 |
-| POST | `/projects/{project_id}/ontology/draft:confirm` | 确认就绪的草稿：把已采纳的项写成 BKN 3.0 定义，提交到项目分支，与分支已有内容并存。按各项当前的名称，BKN 不接受的别名、以及与分支上保留的对象类同名的别名不写入定义，草稿中保留。写入之前先锁定这些项已登记的 ID，之后不再改变；锁定失败则什么都不写，之后被拒的确认会解锁它锁定的 ID。返回草稿，`items.confirmation` 记录 `commit`、`by`、`time`、`files`、`skipped_value_types`。`items.confirmation.update_time` 等于草稿的 `update_time` 时为已确认；之后任何编辑都会推进草稿的更新时间，再次确认会替换或删除上次确认写入的文件（`files`），分支上的其他内容不会被替换。重新起草会保留 `items.confirmation`（不再算已确认），之后的确认仍能替换或删除这些文件。确认的 commit 随后在后台校验（`ontology/check`），并以确认人身份为本地索引为 `not_built` 或 `stale` 的已采纳表启动全量构建（`ontology/index`）；缺少构建所需键的表（`not_configured`）会先补上：取对象类唯一标识的字段和更新字段（`incremental_key`），vega-backend 接受其类型时才写入，表上已有的键保持不变。两者都不会撤销确认。需求资料之间未决的冲突（含已提交业务确认的）不阻断确认，但只有带 `accept_unresolved_conflicts: true` 才能确认，并记一条 `accept_unresolved_conflicts` 决定，列出这些冲突；不带时 409 `Draft.ConflictsNotAccepted`（`error_details`：冲突 ID）。每次确认都在 `items.confirmation.requirement_version` 记下确认时所依据的就绪需求规格 rq-n 的 n（没有就绪规格时不出现）。请求体 `{"update_time","accept_partial","accept_undecided","accept_unresolved_conflicts"}`：起草时没采纳、也还没人决定的项（见 `pending`），只有带 `accept_undecided: true` 才会被暂不纳入，并记一条 `accept_undecided` 决定，以 `kind/item_id` 列出这些项，之后它们就算已决定；不带时 409 `Draft.UndecidedNotAccepted`（`error_details`：这些项）。起草时有表读不到（`inputs.partial`）的草稿，只有带 `accept_partial: true` 才能确认，并记一条 `accept_partial` 决定，列出那些表；不带时 409 `Draft.PartialNotAccepted`（`error_details`：这些表的资源 ID）。仅负责人：403 `Draft.NotOwner`。400 `Draft.MissingUpdateTime`、`Draft.NothingAdopted`、`Draft.InvalidItem`；409 `Draft.HasPending`（`error_details`：仍需选定唯一标识的已采纳对象类、两端未全部采纳的已采纳关系）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Lineage.DefinitionsExist`（分支上已有同路径的定义，列出）、`Lineage.BranchNotV3`（先同步分支）、`Lineage.LineageNotV3`（main 也是 2.x：先提交漂移，再同步分支）；与分支合并后不符合 BKN 校验时 400 `Lineage.InvalidDefinitions`（`error_details`：`table`、`column`、`code`、`message`）。被拒的确认不改变草稿：处理原因后可用同一个 `update_time` 再次确认。BKN 3.0 不接受的值类型（如基础类型为 `text`）不写入，列在 `skipped_value_types`，引用它的属性保留基础类型 |
+| POST | `/projects/{project_id}/ontology/draft:confirm` | 确认就绪的草稿：把已采纳的项写成 BKN 3.0 定义，提交到项目分支，与分支已有内容并存。按各项当前的名称，BKN 不接受的别名、以及与分支上保留的对象类同名的别名不写入定义，列在 `items.confirmation.left_out_aliases`（每项给出 `item` 的 `kind`、`id`、`name`，属性的别名另给属性显示名 `property`，以及 `alias`），草稿中保留。编辑时已拒绝这类别名，所以这里只会列出以前起草的、或关系随对象类改名后与自身名称相同的别名。写入之前先锁定这些项已登记的 ID，之后不再改变；锁定失败则什么都不写，之后被拒的确认会解锁它锁定的 ID。返回草稿，`items.confirmation` 记录 `commit`、`by`、`time`、`files`、`skipped_value_types`。`items.confirmation.update_time` 等于草稿的 `update_time` 时为已确认；之后任何编辑都会推进草稿的更新时间，再次确认会替换或删除上次确认写入的文件（`files`），分支上的其他内容不会被替换。重新起草会保留 `items.confirmation`（不再算已确认），之后的确认仍能替换或删除这些文件。确认的 commit 随后在后台校验（`ontology/check`），并以确认人身份为本地索引为 `not_built` 或 `stale` 的已采纳表启动全量构建（`ontology/index`）；缺少构建所需键的表（`not_configured`）会先补上：取对象类唯一标识的字段和更新字段（`incremental_key`），vega-backend 接受其类型时才写入，表上已有的键保持不变。两者都不会撤销确认。需求资料之间未决的冲突（含已提交业务确认的）不阻断确认，但只有带 `accept_unresolved_conflicts: true` 才能确认，并记一条 `accept_unresolved_conflicts` 决定，列出这些冲突；不带时 409 `Draft.ConflictsNotAccepted`（`error_details`：冲突 ID）。每次确认都在 `items.confirmation.requirement_version` 记下确认时所依据的就绪需求规格 rq-n 的 n（没有就绪规格时不出现）。请求体 `{"update_time","accept_partial","accept_undecided","accept_unresolved_conflicts"}`：起草时没采纳、也还没人决定的项（见 `pending`），只有带 `accept_undecided: true` 才会被暂不纳入，并记一条 `accept_undecided` 决定，以 `kind/item_id` 列出这些项，之后它们就算已决定；不带时 409 `Draft.UndecidedNotAccepted`（`error_details`：这些项）。起草时有表读不到（`inputs.partial`）的草稿，只有带 `accept_partial: true` 才能确认，并记一条 `accept_partial` 决定，列出那些表；不带时 409 `Draft.PartialNotAccepted`（`error_details`：这些表的资源 ID）。仅负责人：403 `Draft.NotOwner`。400 `Draft.MissingUpdateTime`、`Draft.NothingAdopted`、`Draft.InvalidItem`；409 `Draft.HasPending`（`error_details`：仍需选定唯一标识的已采纳对象类、两端未全部采纳的已采纳关系）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Lineage.DefinitionsExist`（分支上已有同路径的定义，列出）、`Lineage.BranchNotV3`（先同步分支）、`Lineage.LineageNotV3`（main 也是 2.x：先提交漂移，再同步分支）；与分支合并后不符合 BKN 校验时 400 `Lineage.InvalidDefinitions`（`error_details`：`table`、`column`、`code`、`message`）。被拒的确认不改变草稿：处理原因后可用同一个 `update_time` 再次确认。BKN 3.0 不接受的值类型（如基础类型为 `text`）不写入，列在 `skipped_value_types`，引用它的属性保留基础类型 |
 | GET | `/projects/{project_id}/ontology/check` | 上次确认的校验。确认后在后台自动运行，以确认人的身份计数：`commit`、`status`（`running`、`passed`、`issues`、`partial`，或 `failed`；服务重启中断时 `error` 为 `interrupted`）、`attempt`、`runner`、`start_time`、`finish_time` 和 `results`：`keys`（每个对象类的唯一标识：`rows`、`duplicates`、`nulls`）、`relations`（每个关系的 `joins`，每连到一端一条：`rows`、`nulls`、`orphans`、`hit_rate`）、`excluded_mapped`（映射到隐私规则排除字段的属性）、`coverage`（唯一标识和关联共 `total` 项，算出 `counted` 项）。每一项带 `state`：`counted`；`not_counted` 并带 `reason`（`cross_catalog`、`several_fields`、`unmapped`、`no_key`）；或 `failed`（`query_failed`、`timeout`）。`issues` 表示唯一标识有重复或缺失，或映射了排除字段；`partial` 表示没发现问题，但有的项没算到，因此不算 `passed`；孤儿记录只报告，不判定。一次失败后自动重试一次，只重算失败项。结果只作提示，不会撤销确认。还没有校验时 404 `Check.NotFound` |
 | GET | `/projects/{project_id}/ontology/index` | 草稿中已采纳对象类的表是否已有可用的本地索引（全文检索和向量检索需要它），以调用方身份从 vega-backend 读取：`object_types`（`id`、`name`、`table`、`state`：`ready`；`stale`，即表的配置或结构变化之前建的索引；`building`，附 `task`；`not_built`，已配置但还没有索引；`not_configured`，附构建所缺的配置 `missing`：`primary_key_fields`、`incremental_fields`；`unreadable`），按状态的 `counts`，以及 `tasks_visible`：调用方没有列出数据目录构建任务的权限（`task_manage`）时为 false，正在构建的索引会显示为未构建。正在重建的索引仍为 `ready`，并附 `task`。草稿确认过之后，每个对象类附上那次确认为其表启动构建的结果 `build`：`outcome`（`created`，附 `task_id`；`existing`，已有进行中的任务；`no_permission`，确认人没有在该数据目录构建的权限（`task_manage`）；`no_config_permission`，表缺少构建所需的键，而确认人没有修改它配置的权限（表的 `modify`）；`not_configurable`，对象类给不出的键列在 `reason` 中（`primary_key_fields`：唯一标识在表中没有 `integer`、`unsigned integer` 或 `string` 类型的字段；`incremental_fields`：更新字段类型不符）；`failed`，附 `reason`）和 `time`。没有更新字段的对象类，会把唯一标识字段写成表的增量字段：vega-backend 构建时需要用它作游标，全量构建按它的顺序读整张表。这样的表带 `full_rebuild_only`，表示其索引只能整体重建。`update_field` 给出 `property`（已选的更新字段）、`candidates`（日期或时间类型的属性，为空表示该表没有字段能作更新字段）和 `pending`（`/pending` 正在要求选择时为真，对应其中 kind 为 `object_types`、`id` 为该对象类、reason 为 `needs_update_field` 的待决项）。之后选定的更新字段会在重新确认或执行 `index:build` 时替换充当它的唯一标识字段，并重新构建索引。还没有草稿时 404 `Draft.NotFound` |
 | GET | `/projects/{project_id}/ontology/candidates?catalog_id=` | 把草稿的对象类和关系类作为候选列出，供人逐个确认；能看到项目的人都可读取；还没有草稿时 404 `Draft.NotFound`。每项有 `kind`、`id`、`name`、`adopted`、`state`（`pending`：还没有人确认；`adopted`；`excluded`：不纳入，人写了原因时附 `exclude_reason`，即在 `PATCH …/draft/items/{kind}/{item_id}` 中随 `adopted: false` 发送的 `reason`，最长 200 字）、`reviewed`（关于是否纳入的最近一次决定的 `by`、`time`：采纳或不采纳、选标识、整体保存、新建，或按建议全部采纳；只改名或改描述不算确认；对起草已采纳、还没人确认的条目发送 `adopted: true` 的 `PATCH`，会记一条 `before` 和 `after` 都为 true 的 `adopt` 决定，表示人确认采纳；已确认过的再发送不会写入，也不推进更新时间）、`added_by_catalog`、`table`、`rows`、对象类的 `needs_identity` 和 `key`、关系的 `evidence`，以及仅在需求规格就绪时给出的 `needed_by_requirements`：需要它的知识层 `questions` 和对应它的 `concepts`（已对应到它的，或未对应任何条目、名称与它的名称或别名相同的，忽略大小写和空白）。需求需要的排在前面，然后是未确认的，再按对象类、关系类以及名称排序；`counts` 为各状态的数量。`catalog_id` 只保留来自某个目录的候选：对象类看所在表的目录，关系看增加它的目录，否则看关联表或源端的目录。重新起草会丢弃决定，确认状态随之清空。状态中的 `unreviewed` 为未确认数量，不阻塞确认 |
+| GET | `/projects/{project_id}/ontology/concepts` | 项目来源里的概念，每次读取时由草稿和就绪的需求规格投影得到，不存概念清单。每个非证据的草稿条目一个（证据用来定位业务条目的原文，随业务条目走），键为 `kind/item_id`，对应它的需求概念（已对应到它，或名称与它的名称或别名相同）列在它的 `sources` 中；然后每个知识库样本中文档起草未建模的概念一个（`items.document_concepts`，专业版），键为 `document_concepts/{id}`，建议为 `property`、`values`、`kinetic` 或 `none`，`suggested_because` 为 `document_concept`，`reason` 为起草给出的理由，来源为它引用的文件；然后每个没有对应条目的需求概念一个，键为 `requirement_concepts/{id}`（类别为 `evidence` 的不列）。每项有 `name`、`description`、`sources`（`kind` 为 `table`；`document`，`id` 为文件；`requirement`，附 `document_ids`）、`item`（`kind`、`id`、`adopted`）、`suggested` 和 `suggested_because`（代码：`table_entity`、`document_<role>`、关系的来源、`code_table`、`document_concept`、`requirement_<category>`）、`verdict`（`object`、`event`、`property`、`values`、`relation`、`kinetic`、`none`：最近一次判定；之后有人在建模页采纳或不纳入该条目时，以那次决定为准，即建议值或带原因的 `none`；还没有人判定时，起草未采纳的条目读作 `none`，与接受全部建议时记录的一致，`suggested` 仍是它本来是什么）、`reason`、`judged`（`by`、`time`）、`state`（`pending`：还没有人判定，不论起草是否已采纳；`in_model`；`blocked`，附 `blocked`：`needs_identity`、`end_not_adopted` 或 `repair`，即判为模型条目但暂时不能采纳；`judged`）和 `merged`（合并进来的概念的 `key` 和 `name`，其来源一并列出）。待判定的排在前面；`counts` 为各状态和各 `verdict:<verdict>` 的数量。没有就绪草稿时 `draft_update_time` 为 0，只列需求概念。没有对应条目的需求概念按需求规格读取（类别 `kinetic` 读作 `kinetic`；有人在规格里改过即为 `judged`），要在规格里修改来判定，使用 `requirement_update_time` |
+| POST | `/projects/{project_id}/ontology/concepts:judge` | 请求体 `{"update_time", "key", "verdict", "reason"}`（原因去掉首尾空白，最长 200 字；随不纳入条目的决定一起记录，判定本身总会保留它）。记一条 `judge` 决定（kind 为 `concepts`，条目为键，`before`、`after` 为判定），并在同一次写入中按判定采纳或不纳入概念对应的条目：判定使它成为模型条目时采纳（对象类判为 `object` 或 `event`，关系类判为 `relation`，值类型判为 `values`），否则不纳入，做法同 `PATCH …/draft/items/{kind}/{item_id}`，不纳入的对象连同其关系一起不纳入；证据随需要它的业务条目进出。因缺唯一标识、端点未采纳或待修复而不能采纳的条目保留判定，状态为 `blocked`。`document_concepts/{id}` 概念没有对应条目，只记录判定。返回概念列表。有判定时重新起草返回 409 `Draft.HasDecisions`，确认丢弃后才能起草。键不在列表中时 404 `Draft.ItemNotFound`；没有对应条目的需求概念要在需求规格里判定，400 `Draft.InvalidRequestBody`（reason 为 `requirement_concept`）；409 `Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`；400 `Draft.MissingUpdateTime`、`Draft.InvalidRequestBody` |
+| POST | `/projects/{project_id}/ontology/concepts:merge` | 请求体 `{"update_time", "key", "into"}`。把概念合并到另一个独立的概念（`merge` 决定，`after` 为另一个键）；`into` 为空时取消合并（`unmerge`）。只合并概念，对应的条目不变。返回概念列表。404 `Draft.ItemNotFound`；已有概念合并进来的概念不能再合并出去，400 `Draft.InvalidRequestBody` |
 | POST | `/projects/{project_id}/ontology/draft:accept_suggestions` | 请求体 `{"update_time"}`。把所有还没有人确认的候选按起草的建议记为已确认（采纳状态保持起草给的值），写一条 `accept_suggestions` 决定（kind 为 `draft`，`after` 以 kind/item_id 列出它们）；需要人来决定的除外：没有标识的对象类、端点未采纳的关系。返回 `draft`、`accepted` 和 `skipped`；没有可确认的就不写入。409 `Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`；400 `Draft.MissingUpdateTime`、`Draft.InvalidRequestBody` |
 | POST | `/projects/{project_id}/ontology/index:build` | 以调用方身份为上次确认重新构建本地索引，做法与确认时相同：本地索引为 `not_built` 或 `stale` 的已采纳表启动全量构建；已有进行中的任务记为 `existing`。每张表的 `build` 在已确认的 commit 下替换之前的记录。返回 200 和就绪度（`ontology/index`），附构建结果。用于在原因（如 `task_manage` 权限）解决后重试没能启动的构建。仅负责人：403 `Index.NotOwner`。409 `Draft.ProjectArchived`、`Index.NothingConfirmed`、`Index.ConfirmAgain`（确认之后草稿又改过：请重新确认） |
 | POST | `/projects/{project_id}/ontology/check:run` | 以调用者身份重新校验上次确认的全部内容，返回 202 和校验（`running`）。仅负责人：403 `Check.NotOwner`。409 `Draft.ProjectArchived`、`Check.NothingConfirmed`、`Check.Running`（这次确认正在校验）、`Check.ConfirmAgain`（确认后草稿又改过，而那次确认从未校验过：请再确认一次） |
-| POST | `/projects/{project_id}/requirements/documents` | 上传需求资料：multipart 表单，文件放在 `files` 下，每个项目最多 20 份，每份为 Markdown（`.md`、`.markdown`）或纯文本（`.txt`），UTF-8 编码，不超过 1 MiB。换行符统一、去掉字节顺序标记；每份资料按段落切分为 `blocks`（连续的非空行为一段，Markdown 标题单独成段），记录字符偏移。返回 200 和 `results`，每个文件一条：`outcome` 为 `created`（带 `document_id`）、`duplicate`（项目里已有同样内容的资料：带它的 `document_id`）或 `rejected`（带 `code`：`Requirement.UnsupportedFormat`、`NotText`、`DocumentTooLarge`、`TooManyDocuments`，文件名不是 UTF-8 或超过 255 个字符时为 `InvalidRequestBody`）。新资料的类型为 `other`。仅限未归档项目的负责人：403 `Requirement.NotOwner`，409 `Requirement.ProjectArchived`。400 `Requirement.InvalidRequestBody`（不是 multipart、没有 `files`）、`Requirement.TooManyDocuments`（文件数超过项目上限）、`Requirement.DocumentTooLarge`（请求体超过上限） |
+| POST | `/projects/{project_id}/requirements/documents` | 上传需求资料：multipart 表单，文件放在 `files` 下，每个项目最多 20 份，每份为 Markdown（`.md`、`.markdown`）或纯文本（`.txt`），UTF-8 编码，不超过 1 MiB。换行符统一、去掉字节顺序标记；每份资料按段落切分为 `blocks`（连续的非空行为一段，Markdown 标题单独成段），记录字符偏移。返回 200 和 `results`，每个文件一条：`outcome` 为 `created`（带 `document_id`）、`duplicate`（项目里已有同样内容的资料：带它的 `document_id`）或 `rejected`（带 `code`：`Requirement.UnsupportedFormat`、`NotText`、`DocumentTooLarge`、`TooManyDocuments`，项目资料合计会超过一次起草能读的 120,000 个字符时为 `InputsTooLarge`，文件名不是 UTF-8 或超过 255 个字符时为 `InvalidRequestBody`）。新资料的类型为 `other`。专业版把知识库已解析的文件作为资料加入时走同样的校验，无论文件本身叫什么，都按纯文本保存。仅限未归档项目的负责人：403 `Requirement.NotOwner`，409 `Requirement.ProjectArchived`。400 `Requirement.InvalidRequestBody`（不是 multipart、没有 `files`）、`Requirement.TooManyDocuments`（文件数超过项目上限）、`Requirement.DocumentTooLarge`（请求体超过上限） |
 | GET | `/projects/{project_id}/requirements/documents` | 项目的需求资料，按上传时间从早到晚，不含正文：`entries` |
 | GET | `/projects/{project_id}/requirements/documents/{document_id}` | 一份资料，含 `content` 和 `blocks`（`id`、`heading`、按字符计的 `start`、`end`）。404 `Requirement.DocumentNotFound` |
 | PATCH | `/projects/{project_id}/requirements/documents/{document_id}` | 请求体 `{"doc_type"}`：`prd`、`policy`、`standard` 或 `other`，决定这份资料在冲突中的权威顺序。返回不含正文的资料。仅负责人。400 `Requirement.InvalidDocumentType`；404 `Requirement.DocumentNotFound` |
 | DELETE | `/projects/{project_id}/requirements/documents/{document_id}` | 删除一份资料：204。仅负责人。404 `Requirement.DocumentNotFound` |
-| POST | `/projects/{project_id}/requirements:draft` | 以调用者身份在后台基于已采纳的本体起草业务场景和场景问题：返回 202 和 `drafting` 状态的规格。需要草稿已完成起草且至少有一个已采纳的对象类；需求资料可选，用于补充业务背景、规则和用语。Agent 读取已采纳的对象类和关系类及其 ID、名称和描述，对象类带主键和至多 50 个属性（名称、类型，显示名与名称不同时带显示名），主键和时间属性优先（其余的个数记在 `spec.properties_omitted`）；按段落给出的资料（如有，合计不超过 120,000 个字符）；数据目录的表名（最多 500 张；其余的张数记在 `spec.tables_omitted`，列不出表的目录记在 `spec.catalogs_unlisted`）；以及保留的条目。没有资料时，每个场景、概念和问题都在 `supplement_reason` 中写出它依赖的条目；规则、冲突和取舍只来自资料。概念只能对应已采纳的条目。新问题的文本是给人看的：Agent 写进文本的 `{name}` 槽位会换成业务说法——记录输入写成“指定的”加其概念名称（文本里槽位前已写出概念名称时只说一次），时间输入写成“指定的”加其属性显示名，没有显示名时写“指定日期”；没有对应输入的槽位，看起来像时间的写“指定日期”，否则写“指定的值”；模板保留槽位。再次起草时保留人确认过的内容：已采纳、人新增或人改过的场景和问题，这些问题依赖的场景和概念，人改过的概念和规则，以及已裁决的冲突和已决定的取舍；它们的 ID 不变，因此保留的问题仍有自己的测试问法和开发指引。新起草的条目与保留条目重复（名称、术语、问题文本、规则陈述、冲突主题或取舍问题相同，不区分大小写）时并入保留条目，新条目使用从未用过的 ID。这些条目从起草开始就写在规格中，因此起草失败或中途被打断时也会保留；只有规格仍是读取时的样子才开始起草。规格最多保留 Agent 给出的前 10 个新场景、前 40 个新概念和前 30 个新问题（固定上限，保留的条目不计入），其余列入被拒，原因为 `too_many`；没有任何问题依赖的已采纳对象类列在 `ontology_uncovered` 中。只有类型仍为 `other` 的资料（默认如此，或由人设为 `other`）采用 Agent 建议的类型；设为其他类型的保持不变，起草进行中设定的也一样。草稿按 rq-n 确认后再起草，生成 rq-n+1。请求体可选 `{"discard_decisions": true}`，表示全部重来，什么都不保留。仅负责人。400 `Requirement.InvalidRequestBody`（请求体不是 JSON）、`Requirement.NoCatalogs`、`Requirement.InputsTooLarge`；409 `Requirement.NoAdoptedOntology`（草稿未完成起草，或没有已采纳的对象类）、`Requirement.Drafting`、`Requirement.Stale`（开始起草时规格刚被修改：请重新读取）、`Requirement.ProjectArchived`。起草运行时读不到草稿则起草失败，原因为 `interrupted` |
-| POST | `/projects/{project_id}/requirements:review` | 采纳或取消采纳已就绪规格中的场景和问题：请求体 `{"update_time", "accept": [{"kind": "scenarios"\|"questions", "id"}], "unaccept": [...]}`。已采纳的条目在再次起草时保留；新增或修改场景、问题也视为采纳。采纳问题时记录采纳时的本体（`ontology_signature`）。返回规格。仅负责人。400 `Requirement.InvalidItem`（没有要审核的条目、同一条目出现两次、其他类别）、`Requirement.MissingUpdateTime`；404 `Requirement.ItemNotFound`；409 `Requirement.Stale`、`Requirement.Drafting` |
-| GET | `/projects/{project_id}/requirements` | 需求规格：`version`（rq-n 的 n）、`status`（`drafting`、`ready`、`failed`，失败时 `error` 为 `agent_rejected`（bkn-agent 拒绝了请求，4xx）、`agent_unavailable`（连不上或 5xx）、`agent_failed`、`agent_timeout`、`output_invalid` 或 `interrupted`；Agent 的回答不是规定格式的 JSON 时（bkn-agent 报 `StructuredOutputError`，或回答无法解析），会自动再请求一次，超时则不再请求；`spec.draft_retried` 表示已再请求过一次，无论之后成功与否）、`spec`——`scenarios`、`concepts`（`maps_to` 为对应的草稿条目）、`questions`（`layer` 为 `knowledge` 或 `capability`：所依赖内容中写有指标、函数或 Skill 的问题一律为 `capability`，不论 Agent 怎么写；Skill 只有在文档某一段写到其名称时才保留（比较时忽略大小写、空白、`_` 和 `-`），否则列入被拒，类型为 `filter`、所依赖内容只有函数（没有指标或 Skill）的问题，这些函数列入被拒，因为对属性的筛选不写函数；Agent 标为 capability、但所依赖内容一项都不保留的问题为 `knowledge`，`needs` 及 `needs_source`：`concepts` 或 `person`；`inputs`：问题针对的给定取值，每项有 `name`（在 `template` 中写作 `{name}`）、`concept_id`、`property`（概念所对应已起草对象类的属性；概念尚未对应时可为空；起草给出的属性不在该对象类上、而该对象类的主键只有一个字段时，记录输入取主键，并标记 `property_from_key`，编辑输入后清除）、`role`（`record` 或 `reference_time`），以及记录类输入的 `example`：文档写明的一个取值（只有文档某一段把它作为完整取值写出、而不是更长编码的一部分时才保留；问题随之引用该段），问题不针对任何给定取值时为 `[]`，输入出现之前起草的问题没有该字段；`relative_window`：问题按参考时间往前数一段时间时为 true；`notes`：读取时计算的代码，能力层问题没有写出任何指标、函数或 Skill 时为 `capability_without_basis`；问题按参考时间往前数、却没有输入给出这个时间时为 `reference_time_unbound`，服务端不按模板为它写测试问法；某个输入的属性是服务端取的主键时为 `input_property_from_key`）、`rules`、`conflicts`（`sides`、`suggested_document_id`、`resolution`、`deferred`）、`choices`（`options`、`recommended_option_id`、`decision`）、`rejected`（`kind`、`text`、`reason`：`quote_not_found`、`unknown_document`、`number_not_in_quote`（引文中没有的数字；问题文本正是其模板填入各 `{name}` 槽位后的样子、模板只含引文中的数字、且引文中没有的数字只出现在槽位处时，问题文本仍可用文档其他地方给出的取值指一条记录）、`too_few_options`；`kind` 为 `input_example` 时，`text` 为 `名称=示例（问题）`，`reason` 为 `example_not_in_documents`（去掉示例，保留输入）；`kind` 为 `basis` 时，`text` 为 `名称（问题）`，`reason` 为 `basis_not_in_documents`（Skill）或 `function_on_filter`；问题的输入不成立时，`kind` 为 `input`，`text` 为 `名称.属性（问题）`（起草给出属性时带上），`reason` 为 `input_unknown_concept`、`input_unknown_property`、`input_not_in_template`、`input_concept_not_mapped`（项目已有草稿时，概念没有对应任何对象类）、`input_not_time`（参考时间所在属性不是日期或时间）、`input_unknown_role` 或 `input_duplicate_name`；有相对时间窗口却完全没有给出参考时间时，`text` 为 `reference_time（问题）`，`reason` 为 `window_without_reference_time`；问题本身保留，并标记 `reference_time_unbound`），每条都有 `citations`（`document_id`、`quote`、`block_id`、`start`、`end`）——以及 `inputs`。计算得出：`stale`（起草后资料、资料类型、数据目录或命名语言有变化）、`unresolved_conflicts`（含已提交业务确认的）、`undecided_choices`。首次起草前为 404 `Requirement.NotFound` 场景和问题带 `accepted`（再次起草时保留）；问题还带 `draft_time`（此后生成的开发指引对它有效）和 `ontology_signature`。读取时根据草稿计算：问题依赖的条目（它需要的条目和连接它们的路径：是否采纳、表、唯一标识、属性的名称、类型和字段、关系的两端和映射；不含名称和描述）在起草、采纳或修改之后发生变化时，该问题及其所属场景带 `ontology_changed`；`ontology_uncovered` 列出没有任何问题需要的已采纳对象类（`kind`、`id`、`name`），供再次起草时覆盖。 |
+| POST | `/projects/{project_id}/requirements:extract-concepts` | 在建模之前，以调用者身份在后台从需求文档抽取：概念（判定为 `object`、`event`、`property`、`relation`、`evidence`、`kinetic`（要计算或执行而不是存储的）或 `not_ontology`）、业务规则、文档之间的冲突、建模取舍、文档类型，以及文档写明的动力需求（`logic_needs`，`source` 为 `documents`）。返回 202 和规格，其中 `spec.runs.concepts` 为 `running`；项目还没有规格时建一份空规格 rq-1。每个条目都引用文档（不接受 `supplement_reason`）。项目有已完成的草稿时，概念可以对应已采纳的条目；运行结束后，没人对应过的对象、事件或关系概念，若恰有一个已采纳条目的名称或别名相同，就对应到它。再次运行时保留人改过的概念、规则和需求，已裁决的冲突和已决定的取舍，以及问题或保留的需求所依赖的内容；场景起草或动力分析加入的条目不动。最多 60 个新概念、30 条新需求。确认模型时检查的冲突就是这里找到的。请求体可选 `{"discard_decisions": true}`，只保留问题依赖的内容。仅负责人。400 `Requirement.NoDocuments`、`Requirement.InputsTooLarge`（合计超过 120,000 个字符）、`Requirement.InvalidRequestBody`；409 `Requirement.Drafting`（正在起草或有其他运行）、`Requirement.Stale`、`Requirement.ProjectArchived`。运行结束为 `ready`，或 `failed` 并带 `error`（取值同起草）；失败时规格保持原样；运行超时后规格被人修改过、它才结束的，记为 `interrupted` 失败，不写入任何内容 |
+| POST | `/projects/{project_id}/requirements:analyze-kinetic` | 以调用者身份在后台，结合文档分析已确认的模型，得出动力需求：返回 202，`spec.runs.kinetic` 为 `running`。一条需求（`n1`…）有 `kind`（`metric`、`function`、`skill`、`mcp_tool`、`api`、`app` 或 `action_type`：改变记录的操作，由 API 或 MCP 工具执行）、`name`、`definition`、`object_type_ids`（已采纳的对象类，所属的放第一个）、`properties`（这些对象类的 `object_type_id`、`property`）、`suggested_metric_type`（`atomic`、`derived` 或 `composite`，仅指标）、`concept_ids`、`scenario_ids`（依赖它的问题所属的场景）、`citations`、`supplement_reason`、`source`（`documents`、`analysis`、`scenarios`（从旧规格的能力转来）或 `person`）、`accepted` 和 `edited`。校验：类型已知；定义中的数字要出现在引文中；Skill 要在文档中被点名；未知的对象类和属性去掉；最多 30 条新需求；与已有需求类型和名称相同（或写明其 `kept-` id）的并入它，文档在建模之前写明、还没有对象类的需求因此落到分析给出的对象类和属性上，人改过的除外。再次运行时替换此前分析给出、没人接受或修改、也没有问题依赖的需求；文档写明的和人加的需求保留。请求体可选 `{"discard_decisions": true}`。仅负责人。409 `Requirement.ModelNotConfirmed`（模型未确认或没有已采纳的对象类）、`Requirement.Drafting`、`Requirement.Stale`、`Requirement.ProjectArchived`；400 `Requirement.InputsTooLarge` |
+| POST | `/projects/{project_id}/requirements:draft` | 以调用者身份在后台，基于已确认的模型、其概念和动力需求起草业务场景和场景问题：返回 202 和 `drafting` 状态的规格。需要模型已确认且至少有一个已采纳的对象类；项目有需求资料时，还要已抽取概念（概念抽取曾以 `ready` 结束；之后重跑失败时保留上次的概念及其 `inputs`）；资料用于补充业务背景和用语。起草前，没人对应过的对象、事件或关系概念，若恰有一个已采纳条目的名称或别名相同，就对应到它；其余的由 Agent 对应（`concept_maps`，只能是已采纳的条目），Agent 还可以补充问题需要的概念，最多 20 个（`source` 为 `scenarios`）。问题按 id 依赖动力需求（`logic_need_ids`）；一个都不成立时为 `knowledge`，除非 Agent 标为 capability。规则、冲突、取舍和动力需求保持其他运行写入的样子。Agent 读取已采纳的对象类和关系类及其 ID、名称和描述，对象类带主键和至多 50 个属性（名称、类型，显示名与名称不同时带显示名），主键和时间属性优先（其余的个数记在 `spec.properties_omitted`）；按段落给出的资料（如有，合计不超过 120,000 个字符）；数据目录的表名（最多 500 张；其余的张数记在 `spec.tables_omitted`，列不出表的目录记在 `spec.catalogs_unlisted`）；以及保留的条目。没有资料时，每个场景、概念和问题都在 `supplement_reason` 中写出它依赖的条目。新问题的文本是给人看的：Agent 写进文本的 `{name}` 槽位会换成业务说法——记录输入写成“指定的”加其概念名称（文本里槽位前已写出概念名称时只说一次），时间输入写成“指定的”加其属性显示名，没有显示名时写“指定日期”；没有对应输入的槽位，看起来像时间的写“指定日期”，否则写“指定的值”；模板保留槽位。再次起草时保留人确认过的内容：已采纳、人新增或人改过的场景和问题，以及这些问题所属的场景；起草加入的概念中，人改过的和保留的问题依赖的；以及其他运行写入的全部内容；它们的 ID 不变，因此保留的问题仍有自己的测试问法和开发指引。新起草的条目与保留条目重复（名称、术语、问题文本、规则陈述、冲突主题或取舍问题相同，不区分大小写）时并入保留条目，新条目使用从未用过的 ID。这些条目从起草开始就写在规格中，因此起草失败或中途被打断时也会保留；只有规格仍是读取时的样子才开始起草。规格最多保留 Agent 给出的前 10 个新场景、前 20 个新概念和前 30 个新问题（固定上限，保留的条目不计入），其余列入被拒，原因为 `too_many`；没有任何问题依赖的已采纳对象类列在 `ontology_uncovered` 中。只有类型仍为 `other` 的资料（默认如此，或由人设为 `other`）采用概念抽取建议的类型；设为其他类型的保持不变，运行进行中设定的也一样。草稿按 rq-n 确认后，任何运行再次写入规格都生成 rq-n+1。请求体可选 `{"discard_decisions": true}`，表示重来，不保留任何场景和问题。仅负责人。400 `Requirement.InvalidRequestBody`（请求体不是 JSON）、`Requirement.NoCatalogs`、`Requirement.InputsTooLarge`；409 `Requirement.ModelNotConfirmed`（模型未确认，或没有已采纳的对象类）、`Requirement.ConceptsNotExtracted`（有资料但从未抽取概念）、`Requirement.Drafting`（概念抽取或动力分析进行中时也是）、`Requirement.Stale`（开始起草时规格刚被修改：请重新读取）、`Requirement.ProjectArchived`。起草运行时读不到草稿则起草失败，原因为 `interrupted` |
+| POST | `/projects/{project_id}/requirements:review` | 采纳或取消采纳已就绪规格中的场景、问题和动力需求：请求体 `{"update_time", "accept": [{"kind": "scenarios"\|"questions"\|"logic_needs", "id"}], "unaccept": [...]}`。已采纳的条目在再次起草时保留；新增或修改场景、问题也视为采纳。采纳问题时记录采纳时的本体（`ontology_signature`）。返回规格。仅负责人。400 `Requirement.InvalidItem`（没有要审核的条目、同一条目出现两次、其他类别）、`Requirement.MissingUpdateTime`；404 `Requirement.ItemNotFound`；409 `Requirement.Stale`、`Requirement.Drafting` |
+| GET | `/projects/{project_id}/requirements` | 需求规格：`version`（rq-n 的 n）、`status`（`drafting`、`ready`、`failed`，失败时 `error` 为 `agent_rejected`（bkn-agent 拒绝了请求，4xx）、`agent_unavailable`（连不上或 5xx）、`agent_failed`、`agent_timeout`、`output_invalid` 或 `interrupted`；Agent 的回答不是规定格式的 JSON 时（bkn-agent 报 `StructuredOutputError`，或回答无法解析），会自动再请求一次，超时则不再请求；`spec.draft_retried` 表示已再请求过一次，无论之后成功与否）、`spec`——`scenarios`、`concepts`（`maps_to` 为对应的草稿条目）、`logic_needs`（见 `requirements:analyze-kinetic`）、`runs`（`concepts`、`kinetic`：`status` 为 `running`、`ready` 或 `failed` 并带 `error`，以及 `by`、`start_time`、`update_time`、`retried`，资料或其类型在运行之后有变化时带 `stale`）、`questions`（`logic_need_ids` 为它依赖的动力需求；`layer` 为 `knowledge` 或 `capability`：依赖动力需求的问题一律为 `capability`，不论 Agent 怎么写；规格中没有的 id 列入被拒（`unknown_logic_need`），类型为 `filter`、只依赖函数的问题，这些函数列入被拒，因为对属性的筛选不写函数；Agent 标为 capability、但依赖一项都不成立的问题为 `knowledge`；动力需求出现之前起草的规格，读取时把场景的能力和问题的指标、函数、Skill 按类型和名称合并成需求，`needs` 及 `needs_source`：`concepts` 或 `person`；`inputs`：问题针对的给定取值，每项有 `name`（在 `template` 中写作 `{name}`）、`concept_id`、`property`（概念所对应已起草对象类的属性；概念尚未对应时可为空；起草给出的属性不在该对象类上、而该对象类的主键只有一个字段时，记录输入取主键，并标记 `property_from_key`，编辑输入后清除）、`role`（`record` 或 `reference_time`），以及记录类输入的 `example`：文档写明的一个取值（只有文档某一段把它作为完整取值写出、而不是更长编码的一部分时才保留；问题随之引用该段），问题不针对任何给定取值时为 `[]`，输入出现之前起草的问题没有该字段；`relative_window`：问题按参考时间往前数一段时间时为 true；`notes`：读取时计算的代码，能力层问题没有写出任何指标、函数或 Skill 时为 `capability_without_basis`；问题按参考时间往前数、却没有输入给出这个时间时为 `reference_time_unbound`，服务端不按模板为它写测试问法；某个输入的属性是服务端取的主键时为 `input_property_from_key`）、`rules`、`conflicts`（`sides`、`suggested_document_id`、`resolution`、`deferred`）、`choices`（`options`、`recommended_option_id`、`decision`）、`rejected`（`kind`、`text`、`reason`：`quote_not_found`、`unknown_document`、`number_not_in_quote`（引文中没有的数字；问题文本正是其模板填入各 `{name}` 槽位后的样子、模板只含引文中的数字、且引文中没有的数字只出现在槽位处时，问题文本仍可用文档其他地方给出的取值指一条记录）、`too_few_options`；`kind` 为 `input_example` 时，`text` 为 `名称=示例（问题）`，`reason` 为 `example_not_in_documents`（去掉示例，保留输入）；`kind` 为 `basis` 时，`text` 为 `名称（问题）`，`reason` 为 `basis_not_in_documents`（Skill）或 `function_on_filter`；问题的输入不成立时，`kind` 为 `input`，`text` 为 `名称.属性（问题）`（起草给出属性时带上），`reason` 为 `input_unknown_concept`、`input_unknown_property`、`input_not_in_template`、`input_concept_not_mapped`（项目已有草稿时，概念没有对应任何对象类）、`input_not_time`（参考时间所在属性不是日期或时间）、`input_unknown_role` 或 `input_duplicate_name`；有相对时间窗口却完全没有给出参考时间时，`text` 为 `reference_time（问题）`，`reason` 为 `window_without_reference_time`；问题本身保留，并标记 `reference_time_unbound`），每条都有 `citations`（`document_id`、`quote`、`block_id`、`start`、`end`）——以及 `inputs`。计算得出：`stale`（起草后资料、资料类型、数据目录或命名语言有变化）、`unresolved_conflicts`（含已提交业务确认的）、`undecided_choices`。首次起草前为 404 `Requirement.NotFound` 场景和问题带 `accepted`（再次起草时保留）；问题还带 `draft_time`（此后生成的开发指引对它有效）和 `ontology_signature`。读取时根据草稿计算：问题依赖的条目（它需要的条目和连接它们的路径：是否采纳、表、唯一标识、属性的名称、类型和字段、关系的两端和映射；不含名称和描述）在起草、采纳或修改之后发生变化时，该问题及其所属场景带 `ontology_changed`；`ontology_uncovered` 列出没有任何问题需要的已采纳对象类（`kind`、`id`、`name`），供再次起草时覆盖。 |
 | GET | `/projects/{project_id}/requirements/export?target=workshop\|eval` | 以调用者身份把已就绪的需求规格导出为 YAML 文件下载（`Content-Disposition` 文件名为 `<项目>-rq-<n>-<target>.yaml`），供尚无导入接口的工具使用。`workshop`：`format`、`project_id`、`spec_version`、能力层问题（`id`、`question`、`answer_shape`、按名称列出的 `scenarios`、`basis`：概念术语、`metrics`、`functions`、`skills`）和全部规则（`id`、`statement`、`compiles_to`）。`eval`：`format`、`answer_set_access: forbidden`、`project_id`、`spec_version`、知识层问题（`id`、`question`、`answer_shape`、`inputs`：`name`、概念术语、`property`、`role`），以及指导已就绪且仍对应当前规格时的测试问法（`kind`、`question`、`expect`）。不导出任何记录取值：问题用模板；没有模板的问题不导出，列在 `questions_without_template` 里（其原文可能写有记录取值）；服务端写的测试问法按模板导出，每个输入写成 `{概念.属性}`；其他测试问法中的取值（已填入的和待填的）在其出现的每一处都写成 `{概念.属性}`，长的取值先替换，不替换已写入的名称（较短的取值也会替换文本中别处相同的数字）；也不导出核对结果。400 `Requirement.InvalidExportTarget`；没有已就绪的规格时 404 `Requirement.NotFound` |
-| POST | `/projects/{project_id}/requirements/items/{kind}` | 新增一条人写的条目：返回 201 和规格。`kind` 为 `scenarios`（`name`、`actor`、`trigger`、`decision`、`knowledge`）、`concepts`（`term`、`category`、`definition`）、`questions`（`text`、`layer`、`template`、`answer_shape`、`scenario_ids`、`needs`、`inputs`、`relative_window`）或 `rules`（`statement`）；请求体带 `update_time`。ID 取已发出过的最大编号加一。仅负责人。400 `Requirement.MissingUpdateTime`、`Requirement.InvalidItem`（为空、过长——名称 255、其他文字 2,000 个字符——字段不属于这类条目、场景或草稿条目不存在）；404 `Requirement.NotFound`、`Requirement.ItemNotFound`（类别不存在）；409 `Requirement.Stale`、`Requirement.Drafting` |
+| POST | `/projects/{project_id}/requirements/items/{kind}` | 新增一条人写的条目：返回 201 和规格。`kind` 为 `scenarios`（`name`、`actor`、`trigger`、`decision`、`knowledge`）、`concepts`（`term`、`category`、`definition`）、`questions`（`text`、`layer`、`template`、`answer_shape`、`scenario_ids`、`needs`、`inputs`、`relative_window`、`logic_need_ids`：设置后同时设定 `layer`，有需求即为 capability，除非也给了 `layer`）、`rules`（`statement`）或 `logic_needs`（必填 `logic_kind` 和 `name`，以及 `definition`、草稿中的 `object_type_ids` 和 `properties`、`suggested_metric_type`；新增即为已接受，`source` 为 `person`）；请求体带 `update_time`。ID 取已发出过的最大编号加一。仅负责人。400 `Requirement.MissingUpdateTime`、`Requirement.InvalidItem`（为空、过长——名称 255、其他文字 2,000 个字符——字段不属于这类条目、场景或草稿条目不存在）；404 `Requirement.NotFound`、`Requirement.ItemNotFound`（类别不存在）；409 `Requirement.Stale`、`Requirement.Drafting` |
 | PATCH | `/projects/{project_id}/requirements/items/{kind}/{item_id}` | 修改请求体给出的字段，规则同新增；条目标记为 `edited`。人设定的问题 `needs` 按草稿校验，之后保持为人设定；`follow_concepts: true` 让它重新跟随概念。问题的 `inputs`（没有时为 `[]`）按起草时的规则校验，修改 `template` 或 `relative_window` 时也重新校验：不成立时 400 `Requirement.InvalidItem`，写明哪个输入及原因。删除概念时，有输入属于该概念的问题，其 `inputs` 变为缺省（未知），直到重新起草或重新设置。错误码同新增，另有 404 `Requirement.ItemNotFound` |
-| DELETE | `/projects/{project_id}/requirements/items/{kind}/{item_id}?update_time=` | 删除一条条目：删除场景时从问题中去掉它，删除概念时从问题的依据中去掉它。返回规格。400 `Requirement.MissingUpdateTime`（无法解析时也是）；其余同修改 |
+| DELETE | `/projects/{project_id}/requirements/items/{kind}/{item_id}?update_time=` | 删除一条条目：删除场景时从问题中去掉它，删除概念时从问题的依据和动力需求中去掉它，删除动力需求时从依赖它的问题中去掉它。返回规格。400 `Requirement.MissingUpdateTime`（无法解析时也是）；其余同修改 |
 | PUT | `/projects/{project_id}/requirements/concepts/{concept_id}/maps-to` | 请求体 `{"update_time","maps_to"}`：概念对应的草稿对象类或关系类（`kind`、`id`），`null` 表示清除。跟随概念的问题，其 `needs` 随之更新。400 `Requirement.InvalidItem`（草稿中没有该条目）；其余同修改 |
 | PUT | `/projects/{project_id}/requirements/conflicts/{conflict_id}` | 请求体 `{"update_time","document_id","text","reason","deferred"}`：选择冲突的一方（`document_id`）或写明自己的结论（`text`），并给出 `reason`；或者提交业务确认（`deferred: true`，带 `reason`，不带一方或结论），此时仍算未决。记录裁决人和时间。400 `Requirement.InvalidResolution`；其余同修改 |
 | PUT | `/projects/{project_id}/requirements/choices/{choice_id}` | 请求体 `{"update_time","option_id","basis"}`：从建模取舍的选项中选定一项。未选择时按推荐选项处理；取舍从不阻断。400 `Requirement.InvalidOption`、`Requirement.InvalidItem`（`basis` 超过 2,000 个字符）；其余同修改 |
+| GET | `/projects/{project_id}/requirements/logic-needs` | 动力需求及其实现，以调用者身份从项目的线上网络实时读取（最近一次发布的网络，还没发布时为谱系本身的网络）：`update_time`（规格的，用于链接）、`network_id`、`released`（项目是否发布过；发布之前线上什么都没有，也不能在线上实现或读取，这不算读取失败）、网络的对象类读不到时 `reason` 为 `unavailable`（首次发布前网络还不存在、返回 404 的除外），以及 `needs`（项目还没有需求规格时为空）：每条需求带 `unconnected`（它的对象类中，草稿里没有任何不超过两跳的已采纳关系路径相连的对，`from`、`to`）、`live_object_type_ids`（它的对象类中线上网络已有的；实现需求要用到，只在分支上的对象类要等发布之后），链接了实现的带 `implementation`：`available`、`name`、`description`、`status`、`version`、`owner_object_type_id`、`owner_object_type_name`，或 `reason` 为 `missing`（网络里已经没有）、`forbidden`（调用者无权读取）或 `unavailable`（没有应答，例如当前版本没有对象指标）。实现的内容一概不存。 |
+| GET | `/projects/{project_id}/requirements/logic-needs/{need_id}/candidates` | 线上网络里可能就是这条需求的实现：指标对应对象指标，函数对应已绑定的函数（API 只看 OpenAPI 的），以及 Skill、MCP 工具、行动类。按名称（`same_name`、`similar_name`：忽略大小写、空格、`_` 和 `-`）和对象类（`same_object_type`）给出，最多 20 个，最可能的在前；列不出时 `reason` 同上。由人选择，不会自动链接。404 `Requirement.ItemNotFound` |
+| PUT | `/projects/{project_id}/requirements/logic-needs/{need_id}/link` | 请求体 `{"update_time","type","id","box_id"}`：把需求链接到线上网络中存在、调用者能读到的实现；`type` 随需求类型而定（`object_metric`；`function` 用于函数或 API，`box_id` 为工具箱；`skill`；`mcp_tool`，`box_id` 为 MCP 服务；`action_type`）；应用不链接。记录链接人和时间，同时接受该需求，再次抽取概念或分析动力需求时保留。仅负责人。400 `Requirement.InvalidItem`（id 为空、类型不符、线上网络没有或读不到）；503 `Requirement.ImplementationUnavailable`；其余同修改 |
+| DELETE | `/projects/{project_id}/requirements/logic-needs/{need_id}/link?update_time=` | 解除链接。仅负责人；其余同修改 |
 | POST | `/projects/{project_id}/requirements/questions/{question_id}/dev:generate` | 以调用者身份在后台为该场景问题生成测试问法和开发指导：返回 202 和状态为 `generating` 的指导。Agent 读取问题、所属场景、规则、概念以及它们对应的已起草条目的结构，从不读取数据。测试问法由服务端编号（`t1`…，最多 20 条）；没有文本的、问到 Agent 编造且文本里没有原样写出的取值的、或缺少空槽位占位的，不予保留，计入 `left_out_tests`。有 `inputs`、每个输入都写明了属性、所属概念都对应了对象类，模板中没有其他 `{name}`，且不是按没有输入给出的时间往前数一段时间的问题，服务端先写两条测试问法（消息中以 `server_tests` 告知 Agent；输入带 `example` 时，数据中有该记录则 template 测试问它，数据中没有则 `not_exist` 测试问它，代替从数据中取的值），标 `by_server: true`：`kind` 为 `template`（即模板，每个输入作为一个槽位，期望 `exists`），以及有记录类输入时的 `not_exist`（同一模板，第一个记录类输入改为不存在的取值）；此时 Agent 写的 `not_exist` 不予保留。有 `inputs` 的问题，没有槽位、槽位所属概念不在输入之中或没有对应对象类、或 `same_record` 测试不属于同一个输入概念或只用输入本身的属性指它的，同样不保留；`inputs: []` 的问题不保留任何测试问法。测试问法在最后一个问号之后还有文字、而问题模板没有时，不予保留。只用一个取值指同一记录的 `same_record` 测试，只有在该取值是空槽位、且服务端写了 `template` 测试时才保留，从该测试的记录取值并与之核对；否则没有东西能核对它，不予保留。测试问法的期望由其类型决定：`paraphrase` 和 `boundary` 为 `exists`，`variant` 为 `same_record`，`not_exist` 为 `not_exists`。只有文档写明的取值才保留在槽位里，其余在核对测试时以调用者身份从数据中填入，同一对象类的槽位取自同一行；测试已给出该对象类的取值时，取自这些取值所在的那一行（`not_exist` 测试中置为不存在的那条记录除外）。重新生成会替换该问题之前的指导。仅负责人：403 `Requirement.NotOwner`；没有就绪规格时 404 `Requirement.NotFound`，规格中没有该问题时 404 `Requirement.ItemNotFound`；规格正在重新起草时 409 `Requirement.Drafting`，该问题的指导正在生成时 409 `Requirement.Generating`，项目已归档时 409 `Requirement.ProjectArchived` |
-| GET | `/projects/{project_id}/requirements/questions/{question_id}/dev` | 该问题的指导：`status`（`generating`、`ready`，或 `failed` 并带 `error`，取值与起草规格相同）、生成时对应的 `spec_version` 和 `question`、`tests`、`guidance`（Markdown）、`out_of_scope`（由本问题引出、需要更多内容才能回答的问题）、`no_tests_reason`（一条都没保留时，Agent 说明的原因）、`tests_note`（读取时按问题和测试问法的核对结果计算的代码：问题有输入、但没有一条测试问法覆盖每个输入的概念时为 `inputs_untested`；有测试问法、但每条都指向问题所依赖条目中没有的概念或属性时为 `none_checkable`，否则省略）、`left_out_tests`、`deleted_tests`、`ontology_signature`、`current` 和 `ontology_changed`。每条测试问法有 `id`、`text`（已填入取值）、`kind`（`template`、`paraphrase`、`boundary`、`not_exist`、`variant` 或空）、`by_server`（由服务端按模板写出）、`slots`（`concept_id`、`property`、`value`，以及 `value_from`：取值来自问题所需某条关系能到达的记录时，关系另一端的对象类）、`expect`（`exists`；`not_exists`，第一个槽位指不应存在的记录；或 `same_record`：有空槽位、且有已通过的服务端 `template` 测试问法时，槽位合起来须指该测试问法的那条记录，空槽位从该记录取值；取值全部来自文档、或没有该测试问法时，其中两个槽位须指同一条记录）、`edited` 和 `check`（`outcome` 为 `passed`、`failed` 或 `not_checked`，`reason` 见下）。规格重新起草或问题改写之后 `current` 为 false，回归不再问它的测试问法。问题所需的已起草条目在生成之后有变化时（ID、是否采用、所在的表、唯一标识、属性的名称、类型和字段、关系两端和映射；不含名称和描述），`ontology_changed` 为 true，没有变化为 false，无法判断时为 null；它只作提示，重新生成即恢复。该问题还没有指导时 404 `Requirement.TestNotFound` 核对原因：`pending`（尚未核对）、`record_not_found`、`record_exists`（应不存在的记录存在）、`different_records`（两种标识指向了两条记录）、`no_values`（没有槽位）、`unknown_concept`、`concept_not_mapped`（概念未对应对象类）、`item_not_drafted`、`unknown_property`、`property_not_mapped`（没有字段）、`same_record_needs_two_values`（此规则之前保留的测试；服务端没写 template 测试时，现在不保留只用一个取值指同一记录的测试）、`same_record_needs_one_object_type`、`composite_identity`（多字段标识上的 same_record）、`query_failed`、`query_forbidden`（调用者无权读取测试所问的数据）、`table_missing`（测试读取的表已在 vega 中不存在，包括槽位所属对象类的表和问题所依赖条目的表；vega 对已删除表的查询同样回 403；每次核对只在第一次被拒时询问 vega 一次，vega 没有答复时仍为 `query_forbidden`）、`excluded_field`（隐私规则排除的字段从不读取）、`no_value_in_data`、`no_absent_value`（真实取值改写后的形式都存在；只有带数字的取值才有改写形式，即把最后一段数字全换成 9、再全换成 0，名称没有）、`value_not_in_text`（文本没有写出文档给出的取值，或缺少空槽位的占位）、`value_outside_slot`（文本写了没有槽位承载、问题和规则也都没写的数字、日期、时间或编码；带单位的数字如 14-day 按其数字比较）、`check_timeout`。 |
+| GET | `/projects/{project_id}/requirements/questions/{question_id}/dev` | 该问题的指导：`status`（`generating`、`ready`，或 `failed` 并带 `error`，取值与起草规格相同）、生成时对应的 `spec_version` 和 `question`、`tests`、`guidance`（Markdown）、`out_of_scope`（由本问题引出、需要更多内容才能回答的问题）、`no_tests_reason`（一条都没保留时，Agent 说明的原因）、`tests_note`（读取时按问题和测试问法的核对结果计算的代码：问题有输入、但没有一条测试问法覆盖每个输入的概念时为 `inputs_untested`；有测试问法、但每条都指向问题所依赖条目中没有的概念或属性时为 `none_checkable`，否则省略）、`left_out_tests`、`deleted_tests`、`ontology_signature`、`current` 和 `ontology_changed`。每条测试问法有 `id`、`text`（已填入取值）、`kind`（`template`、`paraphrase`、`boundary`、`not_exist`、`variant` 或空）、`by_server`（由服务端按模板写出）、`slots`（`concept_id`、`property`、`value`，以及 `value_from`：取值来自问题所需某条关系能到达的记录时，关系另一端的对象类）、`expect`（`exists`；`not_exists`，第一个槽位指不应存在的记录；或 `same_record`：有空槽位、且有已通过的服务端 `template` 测试问法时，槽位合起来须指该测试问法的那条记录，空槽位从该记录取值；取值全部来自文档、或没有该测试问法时，其中两个槽位须指同一条记录）、`edited` 和 `check`（`outcome` 为 `passed`、`failed` 或 `not_checked`，`reason` 见下）。规格重新起草或问题改写之后 `current` 为 false，回归不再问它的测试问法。问题所需的已起草条目在生成之后有变化时（ID、是否采用、所在的表、唯一标识、属性的名称、类型和字段、关系两端和映射；不含名称和描述），`ontology_changed` 为 true，没有变化为 false，无法判断时为 null；它只作提示，重新生成即恢复。该问题还没有指导时 404 `Requirement.TestNotFound` 核对原因：`pending`（尚未核对）、`record_not_found`、`record_exists`（应不存在的记录存在）、`different_records`（两种标识指向了两条记录）、`no_values`（没有槽位）、`unknown_concept`、`concept_not_mapped`（概念未对应对象类）、`item_not_drafted`、`unknown_property`、`property_not_mapped`（没有字段）、`same_record_needs_two_values`（此规则之前保留的测试；服务端没写 template 测试时，现在不保留只用一个取值指同一记录的测试）、`same_record_needs_one_object_type`、`composite_identity`（多字段标识上的 same_record）、`query_failed`、`query_forbidden`（调用者无权读取测试所问的数据）、`table_missing`（测试读取的表已在 vega 中不存在，包括槽位所属对象类的表和问题所依赖条目的表；vega 对已删除表的查询同样回 403；每次核对只在第一次被拒时询问 vega 一次，vega 没有答复时仍为 `query_forbidden`）、`excluded_field`（隐私规则排除的字段从不读取）、`no_value_in_data`、`no_absent_value`（真实取值改写后的形式都存在；只有带数字的取值才有改写形式，即把最后一段数字全换成 9、再全换成 0，名称没有）、`value_not_in_text`（文本没有写出文档给出的取值，或缺少空槽位的占位）、`value_outside_slot`（文本写了没有槽位承载、问题和规则也都没写的数字、日期、时间或编码；带单位的数字如 14-day 按其数字比较）、`check_timeout`、`data_not_built`（测试读取的文档对象还没有记录：它的 Dataset 由知识库构建写入，构建前不核对）。 |
 | PUT | `/projects/{project_id}/requirements/questions/{question_id}/tests/{test_id}` | 修改已就绪指导中的一条测试问法：请求体 `{"update_time","text","expect","slots"}`，后三项任选。该条标为 `edited`，并以调用者身份按当前规格重新核对数据。返回指导。仅负责人。400 `Requirement.MissingUpdateTime`、`Requirement.InvalidTest`（什么都没改、文本为空或超过 2000 个字符、未知的 `expect` 或概念）；403 `Requirement.NotOwner`；404 `Requirement.TestNotFound`，没有就绪规格时 `Requirement.NotFound`；409 `Requirement.Drafting`、`Requirement.Generating`、`Requirement.Stale`（`update_time` 之后已被修改）、`Requirement.ProjectArchived` |
 | DELETE | `/projects/{project_id}/requirements/questions/{question_id}/tests/{test_id}?update_time=` | 删除一条测试问法，计入 `deleted_tests`；不必等规格就绪。返回指导。仅负责人：403 `Requirement.NotOwner`；400 `Requirement.MissingUpdateTime`（无法解析时也是）；404 `Requirement.TestNotFound`；409 `Requirement.Generating`、`Requirement.Stale`、`Requirement.ProjectArchived` |
-| GET | `/projects/{project_id}/release-review?version=X.Y.Z` | 把项目分支发布为 `version` 会带来什么，以调用方身份读取，不做任何改动。`checks` 按顺序列出 8 项标准发布检查（文档模型另加下述不可跳过的 `knowledge_base` 检查），每项有 `code`、`passed`，未通过时有 `reason`，负责人可以接受后仍发布时有 `accept`，以及 `details`：`confirmed`（`not_confirmed`、`confirmation_outdated`）；`mapped`，本次确认写入的每个对象类都绑定了表、有主键、每个属性都映射到字段（`mapping_missing`，列出对象类）；`data_source`，分支上每个对象类读取的表、每个经连接表关联的关系类的连接表在 vega 中都还在，按调用者读取（`table_missing`，列出所读的表已不存在的条目，即 vega 在 `GET /resources/{ids}?ignore_missing=true` 中省略的表；`data_source_unreadable` 表示 vega 没有答复；两者都不能接受；调用者无权查看的表按存在处理）；`names`，新增的对象类、关系类与分支上同类的名称不相同（忽略大小写、全半角和首尾空白，`duplicate_names`），也不近似（去掉分隔符后相同，或长度不少于 4 个字符时只差一个字符，`similar_names`，可接受；`details.same`、`details.similar` 把新增项与另一项成对列出）；`drift`（漂移报告）；`check`，本次确认的校验已通过（`check_not_run`、`check_running`、`check_issues`、`check_failed`，或 `check_partial`，可接受）；`index`，每个已采纳对象类的索引都是 `ready`（`index_not_ready` 带各状态计数，或 `index_unreadable`；都可接受，未就绪只影响全文和向量检索）；`baseline`，线上版本仍是分支开始时的版本（`branch_behind`：先同步分支）。`refusals` 是发布本身会被拒绝的原因（如 `Release.VersionExists`、`Release.NetworkExists`）。`accepts` 是负责人需要接受的项，已排序；有不可接受的检查未通过或有拒绝原因时 `blocked` 为真。`changes`（新增、改动、移除的对象类和关系类，`kind`、`id`、`name`；`other` 是其他定义的改动数）；`risks`（`existing`，被改动或移除的线上内容；`orphans`，部分记录找不到对应记录的关系类及数量；`copies`，要复制为新 id 的函数和 Skill 数；`only_additions`）；`release`（`tag`、`network_id`、`network_name`、`live_network_id`、`base_version` 和提交）；`capabilities`，每个函数和 Skill 是复用还是复制，以及原因 `reasons`；`questions`，知识类场景问题按所需内容分组——`answerable_new`（发布后才能回答）、`affected`（现在能回答，但发布会改动或删除其所需内容）、`unanswerable`（附 `missing`，发布缺少的内容，以及 `unconnected`：所需对象类中，草稿里没有任何不超过两条已采用关系的路径把它们连起来的对象类对，`from` 和 `to` 带名称）——每个问题带 `needs` 和 `path`，即草稿中把所需对象类连起来的关系类和中间对象类，生成审阅时推导，与所需内容一样判断（人设定的所需内容不推导）；`total`、`unjudged`（没有写出所需内容的问题数）、`spec_version`；`signature`。400 `Release.InvalidVersion`；404 同 `GET /projects/{project_id}` |
+| GET | `/projects/{project_id}/release-review?version=X.Y.Z` | 把项目分支发布为 `version` 会带来什么，以调用方身份读取，不做任何改动。`checks` 按顺序列出 9 项标准发布检查（文档模型另加下述不可跳过的 `knowledge_base` 检查），每项有 `code`、`passed`，未通过时有 `reason`，负责人可以接受后仍发布时有 `accept`，以及 `details`：`confirmed`（`not_confirmed`、`confirmation_outdated`）；`mapped`，本次确认写入的每个对象类都绑定了表、有主键、每个属性都映射到字段（`mapping_missing`，列出对象类）；`data_source`，分支上每个对象类读取的表、每个经连接表关联的关系类的连接表在 vega 中都还在，按调用者读取（`table_missing`，列出所读的表已不存在的条目，即 vega 在 `GET /resources/{ids}?ignore_missing=true` 中省略的表；`data_source_unreadable` 表示 vega 没有答复；两者都不能接受；调用者无权查看的表按存在处理）；`names`，新增的对象类、关系类与分支上同类的名称不相同（忽略大小写、全半角和首尾空白，`duplicate_names`），也不近似（去掉分隔符后相同，或长度不少于 4 个字符时只差一个字符，`similar_names`，可接受；`details.same`、`details.similar` 把新增项与另一项成对列出）；`drift`（漂移报告）；`check`，本次确认的校验已通过（`check_not_run`、`check_running`、`check_issues`、`check_failed`，或 `check_partial`，可接受）；`index`，每个已采纳对象类的索引都是 `ready`（`index_not_ready` 带各状态计数，或 `index_unreadable`；都可接受，未就绪只影响全文和向量检索）；`baseline`，线上版本仍是分支开始时的版本（`branch_behind`：先同步分支）；`metric_owners`，分支上的每个对象指标都属于分支上的某个对象类，否则网络会拒绝导入（`metric_owner_missing`，列出指标的 `id`、`name`、`owner_object_type_id`；不可接受）。`refusals` 是发布本身会被拒绝的原因（如 `Release.VersionExists`、`Release.NetworkExists`）。`accepts` 是负责人需要接受的项，已排序；有不可接受的检查未通过或有拒绝原因时 `blocked` 为真。`changes`（新增、改动、移除的对象类和关系类，`kind`、`id`、`name`；`other` 是其他定义的改动数）；`risks`（`existing`，被改动或移除的线上内容；`orphans`，部分记录找不到对应记录的关系类及数量；`copies`，要复制为新 id 的函数和 Skill 数；`only_additions`；`unimplemented_needs`，需求规格中还没链接实现的动力需求（应用除外），给出 `id`、`kind`、`name`，不阻断发布）；`release`（`tag`、`network_id`、`network_name`、`live_network_id`、`base_version` 和提交）；`capabilities`，每个函数和 Skill 是复用还是复制，以及原因 `reasons`；`questions`，知识类场景问题按所需内容分组——`answerable_new`（发布后才能回答）、`affected`（现在能回答，但发布会改动或删除其所需内容）、`unanswerable`（附 `missing`，发布缺少的内容，以及 `unconnected`：所需对象类中，草稿里没有任何不超过两条已采用关系的路径把它们连起来的对象类对，`from` 和 `to` 带名称）——每个问题带 `needs` 和 `path`，即草稿中把所需对象类连起来的关系类和中间对象类，生成审阅时推导，与所需内容一样判断（人设定的所需内容不推导）；`total`、`unjudged`（没有写出所需内容的问题数）、`spec_version`；`signature`。400 `Release.InvalidVersion`；404 同 `GET /projects/{project_id}` |
 | POST | `/projects/{project_id}/releases` | 请求体 `{"version","notes","signature","accepts"}`。重新检查一遍，`signature` 与检查结果一致、且每项检查都已通过或在 `accepts` 中（只能是 `similar_names`、`check_partial`、`index_not_ready`）时，经谱系（`POST /lineages/{lineage_id}/releases`）发布项目分支。接受的项以代码形式写在发布说明的 `Accepted: ` 一行。返回 201，内容同谱系接口；随后以发布者身份在后台启动这次发布的回归（见 `regression`），回归不会让发布失败或被撤销。仅负责人：403 `Release.NotOwner`。400 `Release.InvalidRequestBody`、`Release.InvalidAccepts`；409 `Release.ProjectArchived`、`Release.ReviewOutdated`（发布确认之后分支、main 或草稿又变了，`error_details.signature` 是当前的签名：重新打开发布确认）、`Release.ChecksFailed`（`error_details`：未通过的 `checks`、`refusals`、`accepts`），以及谱系自身的拒绝 |
 | POST | `/projects/{project_id}/branch:sync` | 把线上版本（`main`）同步进项目分支，返回同 `POST /lineages/{lineage_id}/branches/{branch}/sync`；冲突返回 409 `Lineage.MergeConflict`。仅负责人：403 `Release.NotOwner`；409 `Release.ProjectArchived` |
 | POST | `/projects/{project_id}/drift:commit` | 把线上网络（最新发布，首次发布前为谱系起点网络）上的直接修改提交到 `main`，再同步项目分支：返回 `{"drift","sync"}`。仅负责人：403 `Release.NotOwner`；409 `Release.ProjectArchived`、`Lineage.MergeConflict` |
-| GET | `/projects/{project_id}/releases/{network_id}/regression` | 本项目某次发布产生的网络上，项目 knowledge 层场景问题的回归结果。`status`：`running`；`passed`（至少一题通过，且没有缺依赖项、无回答、未回答或无法提问、无法判定的题）；`not_passed`；`needs_values`（判定过的题全都缺少具体取值，回归没有证明本体能回答）；`failed`（有题无法提问或无法判定）；`no_questions`；或 `data_source_missing`（有问题因所需的表已不存在而未作答，优先于其他所有状态）。整次运行失败时的 `error`（`interrupted`、`definitions_unreadable`），`attempt`、`runner`，按当时规格保存的 `questions`（每个带 `path`：开始回归时草稿中把其对象类连起来的内容，与所需内容一样判断，没有时省略；规格给出带具体取值的测试问法时带 `tests`，回归改问测试问法），以及 `results`，每题或每条测试问法一条（`question_id`、`test_id`），每条的 `outcome`：`missing`（发布里缺问题依赖的项，列在 `missing` 里，名称取项目草稿中的名称，草稿里没有该条目时为 id；不再提问）、`data_source_missing`（问题依赖的条目或其连接路径所读的表在 vega 中已不存在，列在 `missing_tables` 里，命名方式同 `missing`；每次运行按运行者读取一次，在 `missing` 之后判断；不再提问；vega 没有答复时照常提问）；`no_answer`（回答为空）；其余由 bkn-agent 的 `studio_smart_qa` 以运行人身份在该网络上作答，再由 `bkn-project-answer-judge` 依据问题、回答、工具调用（不含工具返回的内容）、依赖项名称，以及工具调用中出现的对象类、关系类和属性的显示名判定：`passed`（结论 `answered`）、`needs_values`（`clarification_needed`：问题缺少具体取值，不是本体问题）或 `not_answered`（`cannot_answer`、`off_topic`：网络缺少所需内容、回答没有依据网络，或只回答了一部分），并带判定的 `verdict`、`reason`（用项目命名语言，写给业务读者）和 `used_needs`，以及 `warning`：理由在重新判定一次后仍写出了回答调用过的工具名时为 `reason_has_tool_name`，判定结论照旧有效，理由按原文保存；或 `error` 并带 `error_code`（作答阶段：bkn-agent 的码，如 `BknAgent.Execution.Forbidden`，`studio_smart_qa` 未发布时为 `BknAgent.NotFound`，或 `unreachable`、`answer_interrupted`、`cancelled`、`tools_unavailable`；判定阶段：`bkn-project-answer-judge` 无法调用、未发布、失败或两分钟内未完成时为 `judge_unavailable`，输出不符合其 Schema，或 `used_needs` 引用了没有提供给它的依赖项时为 `judge_invalid`）。提问过的题保存 `answer` 和 `tool_uses`（工具、输入、结束状态）。无法提问的题会再问一次；无法判定的回答会用已保存的回答再判定一次，不重新提问。拿不到判定结论时绝不算通过。回归不阻断发布。尚无回归时返回 404 `Release.RegressionNotFound`；不是本项目发布产生的网络返回 400 `Release.NotProjectRelease` |
+| GET | `/projects/{project_id}/releases/{network_id}/regression` | 本项目某次发布产生的网络上，项目 knowledge 层场景问题的回归结果。`status`：`running`；`passed`（至少一题通过，且没有缺依赖项、无回答、未回答或无法提问、无法判定的题）；`not_passed`；`needs_values`（判定过的题全都缺少具体取值，回归没有证明本体能回答）；`failed`（有题无法提问或无法判定）；`no_questions`；或 `data_source_missing`（有问题因所需的表已不存在而未作答，优先于其他所有状态）。整次运行失败时的 `error`（`interrupted`、`definitions_unreadable`），`attempt`、`runner`，按当时规格保存的 `questions`（每个带 `path`：开始回归时草稿中把其对象类连起来的内容，与所需内容一样判断，没有时省略；规格给出带具体取值的测试问法时带 `tests`，回归改问测试问法；模板问的是某条记录、又没有通过核对的测试问法时，回归开始后在后台以运行者身份从数据里取第一条记录（启动回归不等待读数据）（文档给出的示例优先）填进模板，按指导核对测试问法的方式核对，改问这条 `record` 测试问法；数据里没有这样的记录时带 `no_record`，不提问，结果为 `needs_values`；读不到数据时（被拒、出错或超时）照常问问题原文；`questions` 在回归结束时按实际所问保存），以及 `results`，每题或每条测试问法一条（`question_id`、`test_id`），每条的 `outcome`：`missing`（发布里缺问题依赖的项，列在 `missing` 里，名称取项目草稿中的名称，草稿里没有该条目时为 id；不再提问）、`data_source_missing`（问题依赖的条目或其连接路径所读的表在 vega 中已不存在，列在 `missing_tables` 里，命名方式同 `missing`；每次运行按运行者读取一次，在 `missing` 之后判断；不再提问；vega 没有答复时照常提问）；`no_answer`（回答为空）；其余由 bkn-agent 的 `studio_smart_qa` 以运行人身份在该网络上作答，再由 `bkn-project-answer-judge` 依据问题、回答、工具调用（不含工具返回的内容）、依赖项名称，以及工具调用中出现的对象类、关系类和属性的显示名判定：`passed`（结论 `answered`）、`needs_values`（`clarification_needed`：问题缺少具体取值，不是本体问题）或 `not_answered`（`cannot_answer`、`off_topic`：网络缺少所需内容、回答没有依据网络，或只回答了一部分），并带判定的 `verdict`、`reason`（用项目命名语言，写给业务读者）和 `used_needs`，以及 `warning`：理由在重新判定一次后仍写出了回答调用过的工具名时为 `reason_has_tool_name`，判定结论照旧有效，理由按原文保存；或 `error` 并带 `error_code`（作答阶段：bkn-agent 的码，如 `BknAgent.Execution.Forbidden`，`studio_smart_qa` 未发布时为 `BknAgent.NotFound`，或 `unreachable`、`answer_interrupted`、`cancelled`、`tools_unavailable`；判定阶段：`bkn-project-answer-judge` 无法调用、未发布、失败或两分钟内未完成时为 `judge_unavailable`，输出不符合其 Schema，或 `used_needs` 引用了没有提供给它的依赖项时为 `judge_invalid`）。提问过的题保存 `answer` 和 `tool_uses`（工具、输入、结束状态）。无法提问的题会再问一次；无法判定的回答会用已保存的回答再判定一次，不重新提问。拿不到判定结论时绝不算通过。回归不阻断发布。尚无回归时返回 404 `Release.RegressionNotFound`；不是本项目发布产生的网络返回 400 `Release.NotProjectRelease` |
 | POST | `/projects/{project_id}/releases/{network_id}/regression:run` | 以调用方身份、用规格当前的问题重新运行这次发布的回归：返回 202 和回归：`running`，或者规格里没有 knowledge 层问题时为已结束的 `no_questions`。仅负责人：403 `Release.NotOwner`。400 `Release.NotProjectRelease`；409 `Release.RegressionRunning`、`Release.ProjectArchived` |
 | GET | `/projects/{project_id}/switch-plan?to_network_id=` | 把使用方切换到本项目某次发布会做什么，返回同 `GET /lineages/{lineage_id}/switch-plan`（那里的查询参数叫 `to`）。不是本项目发布产生的网络返回 400 `Release.NotProjectRelease` |
 | POST | `/projects/{project_id}/switches` | 请求体 `{"to_network_id"}`。把使用方切换到本项目的某次发布，做法同 `POST /lineages/{lineage_id}/switches`：返回 201 和切换记录。仅负责人：403 `Release.NotOwner`；400 `Release.InvalidRequestBody`、`Release.NotProjectRelease`；409 `Release.ProjectArchived`、`Lineage.AlreadyInUse` |
@@ -139,22 +148,23 @@ bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出
 
 ## 知识库扩展
 
-`server/extension/knowledgebase` 定义 K1/K2 的提供者接口：目录、文件、切片的分页读取，
-明确的内容版本、保留登记，以及样本文件到概念提议。社区版空实现返回 `ErrUnavailable`，
-不会假装成功并返回空列表。锁定的版本失效时返回 `ErrVersionGone`，调用方接口须返回
-410，不能改读最新版本。保留登记原子创建，以相同 UUID 和版本集合重试；释放幂等。
-来源权限错误和上游故障须保留为错误。
+BKN 项目的知识库能力（文档来源、概念抽取、构建、验收、发布和刷新）属于专业版（openbkn-ee）。开源核心只保留下面的版本扩展钩子；社区版的 `/kb/*` 接口返回 404，草稿不含文档条目。
 
-专业版入口依次调用 `app.Boot()`、无条件注册 `knowledgebase.Providers`，按需通过
-`Application.RegisterKnowledgeBaseRoutes` 安装核心 API 适配器，然后调用 `Run()`。
-Run 冻结注册，并从 `BKN_SAFE_URL` 持续刷新签名授权。每次请求按现有 `knowledge_base`
-能力判断，Professional 及以上才能使用提供者和扩展路由；否则交给完整社区版路由处理，
-包括 404、方法判定与路径重定向。业务处理器仍须鉴权，并检查项目与来源权限。
+### 版本扩展钩子
 
-K0 不增加业务接口、Agent 种子、迁移或真实知识库调用。K1/K2 接入适配器和真实提供者；
-Dataset 写入与实例构建留到 K3/K4。概念提议复用现有草稿类型，由核心校验后进入人工
-确认流程，扩展不保存草稿。`source_quote` 跨层列始终存在，目录未开启原文检索时留空；
-原文块、图片行也只在开关开启时写入。
+`server/extension/projecthooks` 是版本给项目增加表以外数据来源的契约，只依赖
+`interfaces`，改它就是改与专业版的契约。`Register` 在开始服务前一次设置四组钩子，
+未设置的组保持社区版行为：
+
+- `Drafts`：文档条目对草稿的读取、保存、问 AI、确认和导出；草稿服务经 `Host`
+  回调。社区默认不认领任何条目，草稿含文档条目时按来源不可达拒绝。
+- `Publications`：发布审查增加的检查；发布时的准备、导入后挂载、记录后激活。
+- `Lineages`：数据仍在写入时拒绝切换使用中的网络。
+- `Projects`：归档事务内的一步，以及提交后的后续处理。
+
+版本在装配时注册钩子，用 `Application.AddWorker` 加后台任务，用 `Application.DB()` 打开存储，
+用 `Application.RegisterKnowledgeBaseRoutes` 安装路由；路由在 `knowledge_base` 能力已授权时生效。
+版本增加的处理器共用 `server/driveradapters/httpx`。
 
 ## 本地开发
 
@@ -175,445 +185,3 @@ I18N_MODE_UT=true go test ./...
 服务进程内运行：重启时仍在起草中的草稿置为失败，原因为 `interrupted`。
 
 使用 `make generate-mock` 重新生成 mock（需要 `go.uber.org/mock` 的 `mockgen`）。
-
-### 交互式知识库来源读取（K1）
-
-专业版在 `/projects/{project_id}/kb` 下装配四个核心 GET 接口：
-`/knowledge-bases`、`/catalogs`、`/files`、`/summary`。先验证用户身份和项目可见性，
-再访问来源。知识库参数为 `knowledge_base_id`；文件筛选为 `catalog_id`、
-`include_subcatalogs`、可重复的 `mime_type` 和 `updated_since`；列表支持
-`limit`（1–200）和不透明 `cursor`。目录是带父编号的分页平面树。文件汇总与列表
-使用相同筛选，返回文件数、大小合计、具有当前内容版本的文件数及切片数。
-
-操作者凭据只在已脱敏的当前请求上下文中转发，不进入 DTO、任务、决定或 git。
-知识库逐次按该用户当前的 `query_data` 判权，不挂载网络、不借代理身份。
-原文版本不再保留为 410，认证、权限、冲突、依赖故障分别保留；错误不带下层应答正文。
-
-Helm 的 `knowledgeBase.url` 指定集群内知识库 API 的源站，注入 `KB_API_URL`；
-为空时来源不可用。未获专业版授权时仍由完整社区路由应答。
-
-### 保存知识库来源和样本（K1）
-
-以下路径相对于 `/projects/{project_id}/kb`，使用相同的专业版门控。读取先校验项目
-可见性和知识库当前读权限；修改仅项目所有者可做。归档后不能锁定、继续锁定或改样本。
-即使来源读权限已撤销，仍可清理保留登记；清理接口只返回数量。
-
-| 方法 | 路径 | 决定和返回 |
-| --- | --- | --- |
-| GET | `/selection` | `current`、`pending`、`cleanup_pending`；不返回私有保留 UUID |
-| PUT | `/selection` | `operation_id`（UUID）、`expected_selection_id`（首次为空）、`ranges`：知识库/目录、子目录/类型/时间筛选和明确的 `include_original` |
-| POST | `/selection/operations/{operation_id}/resume` | 用已保存的文件版本清单和同一保留 UUID 继续；不重新扫描或换成最新版本 |
-| POST | `/selection/operations/{operation_id}/cancel` | 取消待完成选择并尝试清理登记 |
-| PUT | `/selection/samples` | `selection_id`、乐观并发 `revision`、`plan`；返回更新状态 |
-| GET | `/selection/changes` | 完整扫描后的 `added`、内容版本 `changed`、`no_longer_in_range`；不声称文件全局删除，不修改已锁定选择 |
-| POST | `/selection/clear` | 明确传 `{ "confirm_clear_all": true }`；清空当前及待完成选择，尝试清理登记 |
-| POST | `/selection/cleanup` | 以本次认证身份重试未完成的释放 |
-
-锁定先完整扫描选中范围，按知识库和文件去重，再保存操作意图，最后创建保留登记。
-扫描失败不产生新意图。每个知识库每批最多保留 1,000 个不可变内容版本。超时保留待完成
-状态，供原样继续；未知 UUID 先释放的标记使迟到创建无法恢复已取消登记（只读契约 v0.8）。
-替换时先事务激活新选择，再释放旧选择未被发布引用的登记。归档在同一事务记下待清理状态，
-取消归档不恢复已释放登记。释放未获确认就保持待清理，后续认证请求可重试；不保存凭据，
-不引入后台执行身份。
-
-样本 `plan.mode` 为 `specified` 时传 `debug_ids`、`acceptance_ids`（文件键为
-`knowledge_base_id/file_id`）；为 `random` 时明确传 `ratio`（0–1）、`minimum`。
-另抽验收样本需同时指定 `acceptance_ratio`、`acceptance_minimum`。真实目录估算前不设
-平台默认值。随机按知识库和目录分层、保持精确份数，调试与验收不重叠。没有锁定内容版本的
-文件不能作为样本。清单元数据可给出精确的文件、字节、切片合计；抽取耗时等待实测。
-
-新增 `13-kb-selection.sql` 只保存过程元数据；`init.sql` 带同表用于全新安装，已执行的
-编号升级不改写。不保存模型、实例或文档正文。保留保护标记防止释放已发布引用，发布链路
-接入该标记属于 K6。Studio 流程和真实接口验收继续跟踪 #2838。
-
-### 概念抽取的有界输入（K2 基础）
-
-可选扩展 `knowledgebase.SampleSource` 按明确知识库、文件和内容版本读取原生切片批次（只读契约 v0.9）。社区默认不可用；本步不注册抽取路由或 Agent。
-
-`kbconcept.LoadSamples` 只读活动选择里已锁定的调试文件，不读取验收文件。单次上限为 20 份文件、500 个切片、1,000 个定位片段、120,000 个 Unicode 码点；超限明确失败，不静默截断。读取必须翻完全部页面，返回身份与逐文件切片数必须匹配锁定清单；依赖失败、重复游标、重复切片、选中文件无定位等情况整次失败。
-
-原生切片的分离区间分别保留定位，不拼成跨空隙引文。`ValidateCitations` 将提议的知识库/文件/版本、块、码点区间和引文逐项对照真实片段；返回副本仅在文件的原文开关打开时保留引文，否则保留定位、引文留空。原始模型输入不另存到项目过程表、决定、草稿元数据或日志。内置模型调用复用 bkn-agent 现有执行记录（含正常任务输入和输出存储），不另建无状态执行接口。
-
-Agent、模型语义校验、候选清单接入、证据模板和编辑器仍在 #2839 继续；本基础不改变草稿采纳、确认、Dataset 创建或发布。
-
-调试样本为零切片或无可定位文本时，返回单独的 `ErrNoLocatedSamples`，由调用方提示负责人重新选择有可读内容的样本；异常计数仍是 `ErrInvalidSample`。不自动改写 K1 的样本选择。
-
-### 文档模型校验与固定证据模板（K2 逻辑库）
-
-文档对象、属性和关系元数据以可选字段加入，原有表来源草稿保持原样。`kbconcept.ValidateModel` 在候选接入前检查对象、抽取说明/例子、引文、标识与关系；模型不能绑定数据表、覆盖固定列或自行采用。事件必须有时间属性及已校验的参与方关系；“通过链接”检查提及列与目标标识的类型，“同一文档内”按文档标识加名称列连接。不支持的角色、关系和无法核实的例子拒绝进入候选。
-
-跨层定位、实体标识和抽取版本列由服务端生成且只读，事实/事件另有生效起止、状态和记录时间。`BuildEvidence` 用双语固定模板生成文档、原文块、图片及包含/引用关系，不依赖 AI；重抽复用通过结构核对的模板标识，避免和用户类型冲突。文档包含块/图片明确用一对多，业务模型引用证据用多对一。原文开关不删除对象类或引文列，只影响引文保存和后续原文块/图片实例写入。
-
-本逻辑库尚未注册抽取/编辑 API 或 Agent，不采用候选、不建 Dataset、不改发布；实际调用方和 Studio 编辑器继续在 K2 接入。已校验提议携带来源选择编号和修订，供后续草稿提交时原子核对。
-
-跨文件的业务实体保持全局/业务身份。固定的模型到证据连接只用于文件、文档内对象、事实和事件；实体的不同当前属性可能各自来自不同文件，行级定位列不能代替字段级来源。K3–K5 必须保留文件/事实声明及每个当前属性的来源，不能按文件覆盖整条实体并抹掉既有证据。本逻辑库不写实例。
-
-
-### K2 文档候选
-
-`POST /projects/{project_id}/kb/concepts:extract` 接收 `selection_id`、
-`selection_revision`、`draft_update_time`（没有草稿时为 0）。以当前负责人身份和
-实时 `query_data` 权限读取已锁定的调试文件，不读取验收样本。调用内置概念抽取
-Agent 前检查输入上限。助手缺失明确报不可用；真正没有新建议时不写草稿。
-
-服务端校验后的业务模型与缺少的固定证据模板进入现有待确认草稿，初始不采纳。
-候选返回 `source: document` 和 `document` 元数据，包含层、角色、理由和原文定位，
-不伪装成表映射。保留人工名称、采纳状态和审核记录。用户明确执行现有“采用建议”
-动作后才采纳可用的文档候选；缺唯一标识的候选仍待人确认。
-
-读取来源、调用模型时不持有数据库锁。AI 返回后再次核对锁定版本和权限，并在写入
-事务中同时检查项目负责人、归档状态、当前来源修订与草稿版本；过期或并发冲突返回
-409。读取、编辑保存的文档草稿或候选前也检查当前知识库权限，避免缓存绕过撤权。
-仅含表模型的草稿保持原有行为。
-
-未选调试样本或样本无可定位文本返回 400；超限返回 413 并提示减少样本；权限和
-版本失效保留 403/410；模型或引文不合法时整次拒绝且不写草稿，提示均有中英文。
-K3 尚未接入 Dataset 准备时，确认已采纳但未绑定数据集的文档对象会在编译、分支写入或检查之前返回明确的本地化 409 `Draft.DocumentDataNotReady`，保留候选审核状态。重新起草表模型也必须先确认丢弃已有文档候选，即使尚未逐个审核。本部分不创建 Dataset 或实例，不代表文档编辑器及 heldout 评测已完成，不部署或执行迁移。
-
-### K2 文档模型编辑
-
-复用对象类和关系类的整体保存接口。业务属性可带
-`extraction: {instruction, examples}`，`document` 设置事件的
-`time_property` 与 `participant_relations`。固定跨层列和证据模板字段只读；
-事件参与关系必须是业务关系，被事件引用时不能删除。
-
-文档关系通过 `document_mapping` 和 `cardinality` 编辑“通过链接”或
-“同一文档内”连法，不查询表行数。保存时重新校验调试原文、来源选择和当前权限，
-以原子条件拒绝过期来源或草稿。修改属性或唯一标识不会隐式审核尚未采纳的候选。
-
-`GET /projects/{project_id}/kb/samples?selection_id=...&selection_revision=...`
-为用户主动打开的例子选择器返回有界、可定位的调试片段，要求当前负责人和实时来源
-权限；不调用 Agent，不保存原文，不返回验收文件。例子须与原生片段精确匹配，
-伪造引文、偏移或固定字段的修改均拒绝；引文持久化仍受目录的原文开关控制。
-
-### 文档模型的 AI 编辑建议
-
-文档对象和关系继续使用上述 `ask` 接口。服务端先按当前锁定版本读取调试样本，校验表单及样例定位，再调用内置本体助手；只提供已经定位的样例（总计至多 4000 字、10 条），不读取验收文件。文档上下文包含角色、层次、抽取说明和受保护字段，不虚构表计数或命中率。
-
-业务属性的 `data_property` 修订可带 `extraction_instruction`（非空，最多 1000 字）；只允许修改已有的非只读抽取属性。固定证据只接受名称和描述建议，非实体对象的系统身份不允许改动。文档关系的 `ends` 修订带 `document_mapping` 和 `cardinality`，不带表映射；新关系也沿用未保存的表单，保留已选两端。所有建议在副本上按保存规则校验，提问不保存草稿或对话，采纳后仍由人保存。
-
-内置本体助手的新安装默认使用 v5；已有安装在备份后单独执行新增 Agent 迁移 37，保留历史版本、人工提示词和运行配置。不要为此执行无关的历史迁移。
-
-K3 连法范围：“同一文档内”要求两端均为文件级、文档内对象、事实或事件。全局实体
-各属性可能来自不同文件，应通过业务编号连接来源声明。候选、关系编辑和对象编辑
-均拒绝实体端点使用同文档规则；已有不合法规则不自动改写，须明确修正连接方式。
-
-涉及存量不合法连法的对象保存或助手预检返回 409 `Draft.DocumentRelationScope`，双语提示明确需要先修正的业务关系名称，内部引用仅留在结构化信息中，不显示给业务用户。
-
-### Agent 执行版本信息
-
-项目的 Agent 适配器已对接 bkn-agent #2792 的现有契约：任务请求可传
-`agent_version` 和 `prompt_override`；启动及轮询响应保留实际的
-`agent_version`、`prompt_version`、`model`、`model_id`。不传新字段时保持
-现有调用；旧任务缺失或为空的版本仍表示未知，不补为版本零。这层适配本身
-不代表已固定构建任务，也不授予 Dataset 写权限；K4 协调器在提交结果前仍须
-将实际执行信息与已验收的抽取版本比较，未知或不一致时拒绝写入。
-
-
-### 文档 Dataset 准备与证据图
-
-专业版注册 `Datasets` 后，确认文档模型会先为目标代次准备 Dataset，再提交本体定义。
-创建前持久化固定资源编号和完整字段布局；重试逐个核验已有资源，不重新分配编号。
-每次远程操作及最终绑定前重新检查来源权限、模型指纹和项目状态；写入事务比较项目
-负责人、归档状态、来源选择及修订、草稿版本。部分失败保留准备记录，不暴露半完成
-绑定；明确丢弃模型并重新起草时也保留记录。没有实现时维持原有本地化拒绝，纯表
-模型不受影响。
-
-草稿读取可返回 `dataset_preparation`，只显示当前模型及来源修订的状态和完成数量。
-模型或来源变更后旧记录显示为已过期；中断的同步请求不会让界面一直轮询。失败后
-刷新草稿，再次确认会核验并继续同一代次。该字段不暴露物理资源编号。
-
-每个文档对象类绑定自己的 Dataset；业务关系及多对多证据关联复用间接关系机制，
-在关系数据中保留定位、属性来源声明和独立证据。普通字段镜像稳定 `_id`，供本体
-唯一标识和过滤使用，避免索引元数据字段被误当成普通属性。
-编译 BKN 定义时，托管编号属性及主键、显示字段、关系端点引用统一使用这个避让重名的
-镜像字段名；可编辑模型和抽取指纹仍保留逻辑名称 `_id`。
-
-固定证据图区分图片资源与原文中的每次出现，并保留一次出现关联的全部文档块，
-支持无 OCR 的独立图片。全局实体也可关联多份证据；旧的有效直接关联保留人工决定。
-`source_quote` 列始终存在；原文开关关闭时只保留文档定位，不写原文块及图片行。
-这部分不代表后台实例构建、对账、发布和刷新已经完成。
-
-
-### 双来源业务编号和字段归属
-
-“同一业务对象”的一对一关联可保留系统主键，改用人工确认的业务编号。
-保存关系时明确传 `verify_business_identity: true`，服务端按当前操作者权限核对真实字段，
-执行全表行数、去重、空值及空白值统计；不接收客户端或 Agent 的核验证据。
-未核验的映射可保存为待确认，但不能采用；确认草稿前再次核验，失败不创建新 Dataset。
-
-普通引用（如发票指向合同）也可使用这项已核验的业务编号，支持多对一或一对一。
-引用字段不是实体自身的主键，不将两种对象视为同一对象，也不要求双来源字段归属。
-文件级、文档内对象、事实和事件的引用复用同一核验，关系仍保存目标原有主键。
-
-在既有文档对象保存接口中，`document.dual_source` 记录对应系统关联、主要文件类及逐字段归属。
-字段分为系统独有、两边都有、文本独有、时变；前两类以表为准，文本独有保留在 `_doc`，
-时变字段使用已存在的事实或事件类。需要融合的字段固定按生效时间、证据强度、录入时间排序。
-服务端只检查已抽取和编辑的模型，不自动生成字段或搬移模型。明确传 `confirm: true`
-才登记操作者和确认时间；`clear: true` 可清除决定，但不能绕过已采用关联的确认要求。
-模型、表映射、主要文件范围或来源修订变化会使确认失效；更改字段归属本身也会持久化审核记录。
-
-新抽取且未经人工审核的全局文本候选，在进入候选清单前统一使用 `_doc` API 名，
-提议中的引用同步更新；重名明确拒绝，不猜测合并。已有人工草稿身份保留，
-字段归属确认按角色与映射校验，不以新命名约定卡住旧草稿。全表统计支持以
-DECIMAL 字符串返回的整数，精确解析；非整数或溢出仍拒绝核验。
-
-
-### 合规候选保留、关系修正与显式补齐来源对象
-
-概念抽取遇到引文和字段均合规、但全局标识或同一文档内范围不兼容的关系时，
-保留合规对象，将关系以服务端 `document_repair` 标记为需修正（`target_identity`、
-`same_document_scope`）。关系保持未采纳，不携带可执行映射；响应
-`relations_needing_repair` 给出数量。未知对象/属性、非法类型/连法、错误引文仍整批拒绝，
-不部分写入、不自动重跑模型。单项和批量采纳不能绕过标记，依赖它的事件也须等待。
-保存关系时严格复核，通过后才能清除标记；确认和编译拒绝伪造的已采纳状态。
-
-既有对象保存接口支持独立的 `document.derive` 操作，英文文档给出完整请求示例。
-外层带当前 `update_time` 和原对象已保存的名称、说明；内层带新对象编号、业务名称、
-`role`、已有字段名 `fields`、业务标识 `identity` 及显式 `confirm: true`。
-用途仅允许文本当前对象（`entity`，须选择一个已有全局业务编号）或文件级声明
-（`file`，`identity` 留空，由系统提供文件范围身份）。来源仅允许已有业务对象、
-文件或文档内对象，不能混入普通字段修改，应先保存当前编辑。
-
-派生只复制选定的已有业务字段、抽取说明及重新核验的调试来源定位，不新增属性、
-引文、业务关系或字段权威决定，不改变原提议。新对象及缺少的固定证据关系在原有
-负责人/来源版本/草稿时间守卫下原子写入，保持未采纳。`derive` 决定记录来源对象和
-结果，但不视为采纳或排除；每项仍须审核。业务编号全表唯一非空校验和双来源字段
-权威确认规则不变。不涉及迁移、Dataset 创建或实例写入。
-
-派生定义不会被批量采纳建议带入，须逐项采纳。
-
-已核验但待修正的关系仍可使用现有 AI 助手，输入保留修正标记及有界的已有备选对象。
-输出关系建议仍按严格保存规则校验，不写草稿、不清除已保存标记。派生文本当前对象
-的 API 名须保留 `_doc` 后缀。
-
-### 按文件构建与独立验收
-
-专业版在 `/projects/{id}/kb` 下增加后台构建和独立验收入口，英文文档列出全部接口。
-负责人明确确认后台委托后，可启动调试、验收或全量任务；来源修订、确认草稿、
-实际 Agent 版本及模型指纹固定在任务中。状态查询不会启动推理。
-网络中断后沿用同一 `operation_id` 和请求体确认结果；Agent 提交是否成功不明确时，
-不自动再次提交。已知任务和稳定编号的 Dataset 写入可在重启后继续；取消、模型变化、
-许可失效后清理委托与保留登记。项目数据库不保存用户凭据、原文、抽取值和 Agent 输出。
-
-文件级对象保留系统 `_id`，在现有编辑面板确认用于稳定身份的“业务编号”。
-双来源对象复用已核验的编号；修改、移除编号字段后不能沿用旧确认。
-每行实例和证据包含模型指纹与实际抽取版本。图片资源和出现位置分别保存；
-无可读文字的独立图片按开关登记原生证据并标为待检查，不冒充已完成业务内容理解。
-
-“确认验收依据”独立于调试预览：只读原文和人工确认的标注，不展示验收预测。
-按文件完整确认对象、字段和关系后，参考标注写入独立 Dataset；过程表只存审核状态、
-指纹和引用。数字编辑保留精度，原文开关关闭时连参考标注也只保存原生定位，
-授权读到保留版本后才在内存还原引文。人工标注同样接受字段类型和唯一原文定位校验。
-
-验收任务固定标注修订；精确率、召回率按去重后的对象、字段和关系断言计算，
-重复引文不会抬高分数。链接对齐率单独计算，无分母显示未测量。
-全量前核对当前模型、来源、存储代次、标注修订、实际执行版本和逐文件完成证据，
-要求精确率至少 90%、召回率至少 85%、链接对齐率至少 95%。
-不能凭保存的“通过”标志放行；K5 尚未提供有效链接计数时仍不放行全量。
-这些入口不代表 K5 融合或 K6 发布、刷新已经验收。
-
-升级需在备份和明确部署方案下执行项目迁移 **14**、Agent 内置迁移 **39**；
-服务启动不自动执行迁移，不能顺带执行无关的 Agent 迁移 30。
-
-文档内对象、事实和事件可按需确认“句内区分字段”，保存为
-`document.sentence_identity: {properties: [...], confirm: true}`，最多八个已有标量字段。
-同类对象在同一句只抽出一条时无需设置；多条时才检查组合键是否完整且不重复，
-否则进入核查，不按可变业务值排序或静默合并。服务端从已校验的原文计算完整句子，
-避免模型换用长短不同的引文时改变编号。重命名、移除区分字段或改变其类型后须重新确认；
-区分字段变化使模型准备和验收失效，仅刷新确认时间不影响指纹。现有 AI 助手可读业务键选择，
-不接收人工确认的身份、时间等审核元数据。
-
-### 系统对象关联与对账
-
-所选文件全部完成抽取及委托清理后，项目负责人可核对并保存到系统对象的关联：
-
-- `GET /projects/{project_id}/kb/builds/{build_id}/system-links` 返回核对签名、匹配数量，
-  以及每个已采纳系统关联的三个去重计数（两边都有、只在系统、只在文本）。
-  接口前缀为 `/api/bkn-project/v1`，不返回抽取值或验收样本预测内容。
-  `conflicts` 仅在共同字段的归属和权威来源已人工确认时返回差异字段数，否则为空。
-- 同一路径 `POST` 仅接受 UUID 格式的 `operation_id` 和核对得到的 `signature`，
-  返回过程回执。系统表按当前操作者权限读取；仅用既有存储应用写已准备的关系 Dataset，
-  不向后台保存用户令牌。
-
-匹配及面向人的证据使用已确认的业务编号，关系实际保存系统对象原有主键。
-未匹配条目不建边。系统表必须完整读取并实时复核唯一性和权限；分页不完整不能当成空结果。
-共同字段的差异只报告供核对，不覆盖系统原值。
-
-写入沿用过程记录及项目、来源选择、已确认模型的租约校验。先校验全部写入；全部得到确认后，
-再次核对来源与系统快照，再清理旧关系，完成前还会复核。取消、撤权或范围改变会停止处理。
-应答不确定时由用户显式继续同一次操作；结果没有变化时，即使客户端产生新操作编号也不重复写入。
-活跃操作在校验通过时续期，过期操作不能恢复租约。取消关联只取消关联回执，保留已完成的抽取结果，
-后续可以重新核对并关联，无需重复抽取。项目数据库只存回执与指标。
-
-此处是系统编号关联操作，不能据此宣称 K5 全部完成。编号匹配数量不是独立验收的链接精确率，
-也不会绕过验收和全量构建门槛。共享术语、当前值融合、发布与刷新仍是后续工作。
-没有实际抽取任务回执的旧数据须显式重新构建，不会猜测或补造回执。本特性不新增 SQL 或 Agent
-迁移，沿用 K4 的升级前置要求。回退前须完成或取消正在关联的任务，旧版本不会管理新增的关联状态。
-
-### 原生实体当前值
-
-既有关联操作现已同时推演原生实体的当前值，并按已采纳的编号规则生成文件、事实等来源到实体的关联。
-预检增加 `fusion` 对象／当前字段／待核查字段数量及 `fusion_preview_only`；不返回抽取值、验收预测或原文。
-调试和验收样本只推演当前值，只有完成的全量构建才能写入、清理本次已准备版本中的实体当前值。
-
-文件对象可显式选择已有日期字段作为生效／失效日期，由人确认；修改或删除字段会使确认失效，AI 不能代选。
-映射进入模型指纹，审核人和审核时间不影响语义指纹。只有已采纳的编号关联或已确认双来源方案，才能把
-同一文件、同一内容版本的日期用于实体断言；不会按字段名相似或其他文件的日期猜测。
-
-纯文档实体在现有属性编辑器中，由人选择“文档／知识融合”，通过 `document.field_sources` 保存；
-主键、受管字段、重复项和非用户身份不能代选，双来源对象仍用既有权威方案。只有权威改变也进入决定审计，
-AI 不能选择知识融合，改名或改类型会使旧选择失效。
-
-只有明确选择“知识融合”（或双来源方案中明确确认）的字段才按日期优先裁决；
-“文档”字段可合并一致的有效断言，有冲突时保留待核查，不静默改变字段权威。
-
-当前值写入原生实体 Dataset，身份稳定。全局实体不伪造单一文件定位；其 `extraction_version` 保存输入摘要、
-逐属性选中断言编号及待核查原因，可沿既有证据关系找到准确来源，不把业务值或原文放进过程库。
-缺少时间或同级证据冲突时保留待核查。旧当前值仅在其全部来源仍存在、有效且仍支持原值时保留；
-来源被移除或改写后不能继续充当依据，不覆盖系统表的权威字段。
-
-当前值、原生实体关系与系统关联复用同一核对签名、租约、权限／模型守卫及显式恢复路径。
-全部写入确认并可见后才清理失效实体，完成前再次复核；样本不清理全量当前值。已完成且输入未变时不重复写入。
-原生实体行在写入前限制大小，确保能由配套快照接口读回。专业版须实现 `DatasetEntityRecords`。
-已有合法抽取关系保留原来的稳定记录及全部关系证据；缺少关系时才按编号补边，不重复写入或截断既有证据。
-保留记录也进入核对快照和清理保留集，原文关闭时仍只留定位。
-本模块不新增 SQL 或 Agent 迁移；共享术语、单属性事实状态裁决和发布刷新继续后续交付，不代表 K5 整体验收完成。
-
-### 单属性事实状态
-
-现有对象保存接口支持 `document.fact_resolution`：`value_property`、
-`subject_relation_id`、`confirm` 及可选 `clear`。由人确认一个已有业务值和已采纳的
-编号关系，以确定事实作用于哪个实体；其他独立业务值须拆成单独事实。未完成选择可
-保存为提议，不授予裁决权。字段类型、关系或目标身份发生变化时，原确认失效；审核
-人员、时间和显示状态不改变执行指纹。AI不能提供该人工确认。
-
-现有关联核对／保存流程同时显示事实状态数量，完整核验当前任务的事实行、独立来源
-声明和日期后，按实体及生效区间裁决当前、已被取代或待核查。目标未知或歧义、日期
-缺失、来源冲突以及倒置的有效区间保持待核查，不猜当前值。仅全量保存状态变化，
-调试／验收只预览；状态未变不重写。实例编号、业务值、关闭原文时的定位及独立证据
-保持完整；过程库只记数量，不存事实正文。沿用既有签名、租约和显式恢复，不新增
-迁移、服务或Agent。
-
-共享术语、派生变更事件、独立外部关联验收指标和K6发布刷新仍须继续交付。本次未
-部署环境或完成真实PDF验收。
-
-
-### 知识库发布与固定模型
-
-复用现有发布审阅与发布接口。`GET /projects/{project_id}/release-review` 对文档模型
-新增不可接受后继续发布的 `knowledge_base` 检查；通过时 `details.original_documents`
-显示开启原文纳入网络检索的文件份数，其他文件仅保留证据定位。未通过时返回
-`knowledge_base_not_ready`、`knowledge_base_permission` 或
-`knowledge_base_unavailable`。签名绑定已确认完成的全量任务、Dataset 代际、独立
-验收版本及关联融合结果；进入谱系锁后再次检查分支提交。纯表来源沿用既有检查，
-不要求知识库提供者。
-
-项目发布与直接谱系发布都实时复核发布人的知识库 `query_data` 权限、已确认模型和
-来源版本、完整成功的全量文件、独立验收及已确认的关联融合结果。对象、关系及属性
-实际绑定的 Dataset 必须与准备代际一致，仅语义指纹一致还不够。检查未通过时不创建
-标签、不导入网络、不记录发布。
-
-确认模型时，BKN 定义与允许的逻辑规则 `project/knowledge-base.json` 原子提交。
-Git 不存原文引文、样本定位、审核人凭证或过程历史。发布把完整执行模型及原证据
-保存在专用私有 Vega `published_model` Dataset，仅由配置的存储应用拥有；过程表
-只存引用、决定及私有保留登记编号，不存模型／实例正文或用户令牌。这些记录是内部
-数据，不得序列化到业务接口。
-
-先持久化发布意图，再为内容版本创建独立保留登记和固定快照；读回完整快照核验后，
-事务封存代际，与后续构建、关联写入互斥。已有快照不可覆盖：写入响应丢失后通过
-读回恢复，读失败或内容损坏都不能当作不存在。失败意图及其登记保留给相同请求重试；
-本特性尚不提供废弃意图的清理。来源替换和项目归档不会释放发布专用登记。
-
-网络导入成功后，按发布人身份调用后端已有能力挂载接口；全部挂载确认后才记录发布。
-后端负责知识网络代理的知识库授权。新增业务错误：403 `Release.SourcePermission`、
-409 `Release.KnowledgeBaseNotReady`、503 `Release.KnowledgeBaseUnavailable`；
-界面翻译成业务提示，不显示存储编号。激活须匹配已保存的发布记录，并使用固定模型
-引用，不依赖项目后续编辑。
-
-**升级要求：** 先备份、执行迁移 `15-kb-publication.sql`，再部署新二进制；只使用构建
-的环境也需要该迁移。新安装的 `init.sql` 已含相同表，迁移可重放。本特性没有 Agent
-迁移或 Safe SQL。自动数据刷新、发布记录写入后激活失败的恢复、跨项目文档模型继承
-及剩余 K5 验收另行交付。本地测试不代表已部署 8081 或通过真实 PDF 验收。
-
-本特性之前已确认的文档项目须重新确认并完成全量构建，才能发布固定规则；不静默
-追认或迁移旧任务。普通发布记录提交后，激活确认失败只记运维警告，继续主线和项目
-分支同步；已挂载代际仍保持封存。激活标记的自动修复仍属后续工作。
-
-## 已发布知识库的普通更新
-
-执行回执必须保留模型标识和版本证明。可选的模型名称存在时照常保留，缺失时不阻止刷新准备或已完成任务的校验，也不根据模型标识补造名称。
-每个文件保留完成时实际记录的名称，不继承其他文件的名称；后续查询中可选名称的有无变化不会改变已记录的写入摘要，已知名称相互矛盾或执行标识不一致时仍会拒绝。
-
-专业版注册已有网络代理和固定文档抽取 Agent；社区版不开放刷新能力。更新跟随谱系
-当前使用版本（含显式回切），读取私有发布模型，每次核验发布人当前 `query_data`
-权限，不借用归档项目的可编辑草稿，也不保存用户令牌。
-
-完整授权目录扫描后才判断移除；读取失败不能当作空目录。未变化文件保留实际任务、
-模型和证据记录；变化文件先校验证据并复用既有关联融合，再写入 Dataset。谱系过程
-意图恢复已知任务和同一批幂等写入，抽取提交结果不确定时不自动重跑。未使用的
-Dataset 代际分别保留实际清单和来源登记；新抽取配置只用于变化文件，继承文件保留
-自己的实际执行版本。
-
-- `GET /api/bkn-project/v1/lineages/{lineage_id}/kb-refresh`：可见当前网络的用户读取
-  汇总状态，不启动工作，不返回任务／保留登记编号、来源定位、模型指纹或正文。
-- 同地址 `POST`：要求当前网络 `modify`，提交 `action`、观察到的 `network_id` 和
-  `revision`。`check` 检查目录；`release` 只放行该批的软门槛；`discard` 放弃尚未应用
-  的批次并释放其保留登记。版本或修订冲突返回409；证据错误和权限失败不能强行放行。
-- 已记录应用意图的批次须先恢复完成，再切换使用版本；不能直接丢弃可能已写入的批次。
-
-现有发布页显示规模、进度和待处理决定。`kbRefresh` 可配置默认门槛：新增／更新超过
-20%、移除超过10%、预计抽取超过600秒，或暂时无法估算时，由负责人放行。耗时根据
-已观测的真实任务估算；普通移除同样受门槛约束，暂不提供合规下架例外。
-
-**升级：** 备份后在发布前置迁移15之后执行 `16-kb-refresh.sql`，再部署新服务。
-新安装 `init.sql` 含同一过程表；普通刷新不新增 Agent 迁移或 Safe SQL，须配套专业版
-注册。本地构造数据测试不代表真实 PDF 质量或8081验收通过；图片文件缺少可支持的
-业务抽取内容时进入待核查，不编造实例，也不把读取失败当作移除。
-
-应用意图落库后的故障保留写入／收尾阶段，30秒后重试同一份已核验计划，不放弃批次、
-不重复推理，也不绕过权限或模型校验。文件尚在解析、扫描时目录变化及临时来源故障
-同样退避后重查，无需负责人手工唤醒。
-
-
-### 恢复连接中断的概念提议
-
-负责人可在既有 `POST /projects/{id}/kb/concepts:extract` 请求中增加
-`recover_task_id`（标准任务 UUID），继续使用来源选择编号、修订及草稿更新时间守卫。
-专业版按当前操作者读取已成功任务，核对本次样本文本、已有模型、响应结构、实际执行
-版本完全可核验，且无额外提示词或 Skill 上下文；不会创建或重试推理。没有恢复能力、
-执行凭据不完整、输入变化或任务未成功时明确拒绝，不回退为新的模型调用。
-
-恢复仍经过全部原文证据和模型校验、实时来源权限复核及候选原子提交，保留人工决定和
-原文开关，候选不会自动采纳。任务输入只用于本次校验，不进入业务响应或项目过程表。
-不新增迁移、Agent、队列或页面。
-
-### 已准备文档 Dataset 的检查
-
-物理表 SQL 检查不查询已准备就绪、绑定吻合的项目文档 Dataset；相应标识和关联项明确
-记为未做 SQL 统计，原因是由知识库构建检查负责，不编造统计值。未准备好或绑定不符的
-资源不豁免；结构化表及排除字段检查保持生效。已有的部分检查放行仍须明确确认，知识库
-发布仍须通过全量构建、人工验收和链接门槛。在未变更的已确认草稿上重跑检查，会重新
-生成检查输入，不新建 Dataset，也不重新调用模型。
-
-文档结果预览复用现有受控的 Dataset 原生快照读取，保持稳定分页、验收样本隔离及原文开关。系统生成的直接证据关系与 Dataset 关系表一样，由知识库构建检查负责。
-
-文档内对象已确认句内业务键时，编号以这些字段证据共同所在的唯一原文句为准，不再取决于模型临时选择的锚点；缺失或多处证据进入待核查。原锚点、属性和引文保持不变。
-
-### 独立链接评分
-
-验收构建保存关联时，按固定版本的人工确认参考 Dataset 评估已确认的 `linking` 和
-`same_document` 关系。预期关联由参考答案中的来源声明决定，匹配数量不能代替质量
-分数；只有已核验目标且得到写入确认的关系行计入预测。证据定位边不计入业务链接评分。
-原有抽取精确率、召回率计数保持不变；链接计数在全部写入和最终校验通过后随成功回执
-保存。缺少参考答案或写入失败时不提交候选分数；重复评分替换上次链接问题计数，
-不重复累加。没有可评估链接时仍显示未测量，不能通过原有全量构建门槛。
-本次不改变门槛、标注或公开请求格式。
-
-过程存储的完成事务允许保存这些验收链接指标，同时保持抽取计数、任务回执和固定范围不变。
-各文件计数必须与汇总一致；低分照常保存供核查，不绕过既有质量门槛。
-
-发布绑定核对复用 BKN 编译的同一份 Dataset 身份转换规则，以导出的普通字段名核对
-已准备的 `_id` 镜像和直接、间接关系端点，包含防重名镜像。逻辑抽取模型、指纹和
-存储身份保持不变；未准备的镜像及真实资源、主键、类型或映射变更仍在抽取和应用前
-阻止刷新。

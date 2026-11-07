@@ -23,8 +23,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // Ask AI: a question about one item of the draft, an object type or a relation type, answered by
@@ -68,12 +68,15 @@ const (
 	askDroppedTooLong            = "too_long"
 	askDroppedInvalid            = "invalid"
 	askDroppedNotFromGivenEnd    = "not_from_given_end"
+	askDroppedInvalidAliases     = "invalid_aliases"
 )
 
 // askInput is the message the Agent reads: the question, the language to answer in, the
 // conversation so far, and the item asked about with what it joins. Table rows are
 // excluded; document items may carry bounded, verified debug examples.
 type askInput struct {
+	// agentID answers the turn; empty is askAgentID.
+	agentID  string
 	Question string                    `json:"question"`
 	Language string                    `json:"language"`
 	History  []interfaces.DraftAskTurn `json:"history,omitempty"`
@@ -93,7 +96,7 @@ type askInput struct {
 }
 
 type askObjectType struct {
-	Document      *askDocument                `json:"document,omitempty"`
+	Document      any                         `json:"document,omitempty"`
 	ID            string                      `json:"id"`
 	Name          string                      `json:"name"`
 	Aliases       []string                    `json:"aliases,omitempty"`
@@ -130,22 +133,12 @@ func (o askObjectType) MarshalJSON() ([]byte, error) {
 		names = append(names, p.Name)
 	}
 	return json.Marshal(struct {
-		ID            string       `json:"id"`
-		Name          string       `json:"name"`
-		Identity      []string     `json:"identity"`
-		PropertyNames []string     `json:"property_names"`
-		Document      *askDocument `json:"document,omitempty"`
+		ID            string   `json:"id"`
+		Name          string   `json:"name"`
+		Identity      []string `json:"identity"`
+		PropertyNames []string `json:"property_names"`
+		Document      any      `json:"document,omitempty"`
 	}{o.ID, o.Name, o.Identity, names, o.Document})
-}
-
-type askDocument struct {
-	BusinessNumber       string   `json:"business_number,omitempty"`
-	SentenceBusinessKey  []string `json:"sentence_business_key,omitempty"`
-	TimeProperty         string   `json:"time_property,omitempty"`
-	ParticipantRelations []string `json:"participant_relations,omitempty"`
-	Role                 string   `json:"role"`
-	Layer                string   `json:"layer"`
-	Reason               string   `json:"reason"`
 }
 
 type askProperty struct {
@@ -161,10 +154,11 @@ type askProperty struct {
 
 type askRelation struct {
 	DocumentRepair  string                           `json:"document_repair,omitempty"`
-	Document        *askDocument                     `json:"document,omitempty"`
+	Document        any                              `json:"document,omitempty"`
 	DocumentMapping *interfaces.DraftDocumentMapping `json:"document_mapping,omitempty"`
 	ID              string                           `json:"id"`
 	Name            string                           `json:"name"`
+	Aliases         []string                         `json:"aliases,omitempty"`
 	Description     string                           `json:"description,omitempty"`
 	Source          string                           `json:"source"`
 	Target          string                           `json:"target"`
@@ -182,20 +176,8 @@ type askOutput struct {
 	Revisions []askRevisionOutput `json:"revisions"`
 }
 
-// askRevisionOutput is a revision as the Agent gives it: Value for a name, comment or display key,
-// Properties for an identity, Property for a property, Source, Target and Mapping for ends.
-type askRevisionOutput struct {
-	DocumentMapping *interfaces.DraftDocumentMapping     `json:"document_mapping"`
-	Cardinality     string                               `json:"cardinality"`
-	Field           string                               `json:"field"`
-	Value           string                               `json:"value"`
-	Properties      []string                             `json:"properties"`
-	Property        *interfaces.DraftAskPropertyRevision `json:"property"`
-	Source          string                               `json:"source_object_type_id"`
-	Target          string                               `json:"target_object_type_id"`
-	Mapping         []interfaces.DraftFieldMapping       `json:"mapping"`
-	Reason          string                               `json:"reason"`
-}
+// askRevisionOutput is a revision as the Agent gives it.
+type askRevisionOutput = projecthooks.AskRevisionOutput
 
 // askResponseFormat is the JSON Schema of the result that follows the answer: a few revisions of
 // the fields given.
@@ -214,18 +196,19 @@ func askResponseFormat(fields []string) map[string]any {
 			"comment":                str(askValueMaxLength),
 			"extraction_instruction": str(1000),
 		}, "name"),
-		"document_mapping": object(map[string]any{
-			"mode":             map[string]any{"type": "string", "enum": []string{"linking", "same_document"}},
-			"mention_property": str(40), "identity_property": str(40), "source_name_property": str(40), "target_name_property": str(40),
-		}, "mode"),
 		"cardinality":           map[string]any{"type": "string", "enum": []string{"one_to_one", "one_to_many", "many_to_one", "many_to_many"}},
 		"source_object_type_id": map[string]any{"type": "string"},
 		"target_object_type_id": map[string]any{"type": "string"},
 		"mapping": map[string]any{"type": "array", "items": object(map[string]any{
 			"source_property": map[string]any{"type": "string"}, "target_property": map[string]any{"type": "string"},
 		}, "source_property", "target_property")},
+		"aliases": map[string]any{"type": "array", "maxItems": interfaces.DRAFT_ALIASES_MAX,
+			"items": str(interfaces.DRAFT_ALIAS_MAX_LENGTH)},
 		"reason": str(askReasonMaxLength),
 	}, "field", "reason")
+	for name, schema := range documentHooks().RevisionSchema(askValueMaxLength) {
+		revision["properties"].(map[string]any)[name] = schema
+	}
 	return object(map[string]any{
 		"revisions": map[string]any{"type": "array", "maxItems": askMaxRevisions, "items": revision},
 	}, "revisions")
@@ -254,7 +237,7 @@ func (s *draftService) readyToAsk(ctx context.Context, token string, projectID s
 	if draft.Status != interfaces.DRAFT_STATUS_READY {
 		return nil, askInput{}, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_NotReady)
 	}
-	in := askInput{Question: question, Language: draftLanguage(draft)}
+	in := askInput{Question: question, Language: draftLanguage(draft), agentID: documentHooks().AskAgentID(draft)}
 	for _, turn := range history[max(0, len(history)-interfaces.DRAFT_ASK_HISTORY_MAX):] {
 		q, a := strings.TrimSpace(turn.Question), strings.TrimSpace(turn.Answer)
 		if q == "" {
@@ -273,7 +256,7 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, raw, code := s.askAgent(ctx, caller, string(message), askResponseFormat(turn.input.Editable), stream, turn.answerOptional)
+	text, raw, code := s.askAgent(ctx, caller, turn.input.agentID, string(message), askResponseFormat(turn.input.Editable), stream, turn.answerOptional)
 	var out askOutput
 	if code == "" && json.Unmarshal(raw, &out) != nil {
 		code = perrors.BknProject_Draft_AskUnavailable
@@ -307,7 +290,7 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 	}
 	base := workingObjectType(objectType, req.Working)
 	in.Kind = askKindObjectType
-	base, asked, err := s.documentAskObject(ctx, token, draft, objectType, base)
+	base, asked, editable, err := s.documentAskObject(ctx, token, draft, objectType, base)
 	if err != nil {
 		span.SetStatus(codes.Error, "Document object not askable")
 		return nil, err
@@ -318,18 +301,13 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 			in.Relations = append(in.Relations, askRelationOf(r))
 		}
 	}
-	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
-		interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY,
-		interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY}
-	if base.Document != nil && base.Document.Role != "entity" {
-		in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT}
-		if !strings.HasPrefix(base.Document.Role, "evidence_") {
-			in.Editable = append(in.Editable, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY, interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY)
-		}
-	}
+	in.Editable = objectAskEditable(base, editable)
 
 	answer, err := s.ask(ctx, caller, askTurn{input: in, finish: func(out *askOutput) *interfaces.DraftAskAnswer {
 		answer := checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
+			if r.Field == interfaces.DRAFT_ASK_REVISION_ALIASES {
+				return aliasesRevision(ctx, &draft.Items, interfaces.DRAFT_KIND_OBJECT_TYPES, base.ID, base.Name, base.Aliases, r.Aliases)
+			}
 			return objectTypeRevision(ctx, base, r, draft.Items.RelationTypes...)
 		})
 		answer.Suggestion = suggestionOf(answer.Revisions)
@@ -341,6 +319,24 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 	}
 	span.SetStatus(codes.Ok, "")
 	return answer, nil
+}
+
+// objectAskEditable are the fields Ask AI may revise of an object type: those the document hooks
+// give for a document item, else all of a table's; a document item takes no aliases, whatever its
+// role.
+func objectAskEditable(base *interfaces.DraftObjectType, hooks []string) []string {
+	if hooks != nil {
+		return slices.DeleteFunc(slices.Clone(hooks), func(field string) bool {
+			return base.Document != nil && field == interfaces.DRAFT_ASK_REVISION_ALIASES
+		})
+	}
+	editable := []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
+		interfaces.DRAFT_ASK_REVISION_PRIMARY_KEYS, interfaces.DRAFT_ASK_REVISION_DISPLAY_KEY,
+		interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY}
+	if base.Document == nil {
+		editable = append(editable, interfaces.DRAFT_ASK_REVISION_ALIASES)
+	}
+	return editable
 }
 
 func (s *draftService) AskRelationType(ctx context.Context, token string, projectID string, itemID string,
@@ -359,23 +355,12 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
 	base := s.workingRelationType(ctx, &draft.Items, relationType, req.Working, caller)
-	var documentInput *kbconcept.SampleInput
-	if base.Document != nil && base.Document.Role == "relation" {
-		documentInput, err = s.documentEditInput(ctx, token, draft, base.Document)
-		if err != nil {
-			span.SetStatus(codes.Error, "Document samples unavailable")
-			return nil, err
-		}
-		validate := kbconcept.ValidateEditedRelation
-		if relationType.DocumentRepair != "" {
-			validate = kbconcept.ReviewRelationForAdvice
-		}
-		base, err = validate(documentInput, draft.Items, relationType, base)
-		if err != nil {
-			span.SetStatus(codes.Error, "Invalid document relation")
-			return nil, documentEditError(ctx)
-		}
+	asking, err := documentHooks().AskRelation(ctx, draftHost{s}, token, draft, relationType, base)
+	if err != nil {
+		span.SetStatus(codes.Error, "Document relation not askable")
+		return nil, err
 	}
+	base, reviser := asking.Working, asking.Revise
 	in.Kind = askKindRelationType
 	asked := askRelationOf(base)
 	in.RelationType, in.Ends = &asked, []askObjectType{}
@@ -389,7 +374,7 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 	if base.DocumentRepair != "" {
 		offered := 0
 		for _, object := range draft.Items.ObjectTypes {
-			if object.ID == base.Source || object.ID == base.Target || (object.Document != nil && strings.HasPrefix(object.Document.Role, "evidence_")) {
+			if object.ID == base.Source || object.ID == base.Target || !documentHooks().AskOfferable(object) {
 				continue
 			}
 			if offered >= 20 {
@@ -403,14 +388,20 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 	}
 	in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT,
 		interfaces.DRAFT_ASK_REVISION_ENDS}
-	if base.Document != nil && base.Document.Role != "relation" {
-		in.Editable = []string{interfaces.DRAFT_ASK_REVISION_NAME, interfaces.DRAFT_ASK_REVISION_COMMENT}
+	if base.Document == nil {
+		in.Editable = append(in.Editable, interfaces.DRAFT_ASK_REVISION_ALIASES)
+	}
+	if asking.Editable != nil {
+		in.Editable = asking.Editable
 	}
 
 	answer, err := s.ask(ctx, caller, askTurn{input: in, finish: func(out *askOutput) *interfaces.DraftAskAnswer {
 		return checkRevisions(out.Revisions, in.Editable, func(r askRevisionOutput) (*interfaces.DraftAskRevision, string) {
-			if base.Document != nil {
-				return documentRelationRevision(ctx, documentInput, draft.Items, base, r)
+			if reviser != nil {
+				return reviser(r)
+			}
+			if r.Field == interfaces.DRAFT_ASK_REVISION_ALIASES {
+				return aliasesRevision(ctx, &draft.Items, interfaces.DRAFT_KIND_RELATION_TYPES, base.ID, base.Name, base.Aliases, r.Aliases)
 			}
 			return s.relationTypeRevision(ctx, &draft.Items, base, r, caller)
 		})
@@ -431,39 +422,23 @@ func askObjectTypeOf(objectType *interfaces.DraftObjectType) askObjectType {
 		Identity: append([]string{}, objectType.PrimaryKeys...), IdentityCount: objectType.Key,
 		DisplayKey: objectType.DisplayKey, Properties: []askProperty{},
 	}
-	if objectType.Document != nil {
-		asked.Document = &askDocument{Role: objectType.Document.Role, Layer: objectType.Document.Layer, Reason: objectType.Document.Reason, TimeProperty: objectType.Document.TimeProperty, ParticipantRelations: append([]string(nil), objectType.Document.ParticipantRelations...)}
-		if objectType.Document.FileIdentity != nil {
-			asked.Document.BusinessNumber = objectType.Document.FileIdentity.Property
-		}
-		if objectType.Document.SentenceIdentity != nil {
-			asked.Document.SentenceBusinessKey = append([]string(nil), objectType.Document.SentenceIdentity.Properties...)
-		}
-	}
+	var instructions map[string]string
+	asked.Document, instructions = documentHooks().AskObjectContext(objectType)
 	for _, p := range objectType.Properties {
 		asked.Properties = append(asked.Properties, askProperty{
 			Name: p.Name, DisplayName: p.DisplayName, Type: p.Type, Field: p.MappedField,
 			Description: truncateRunes(p.Description, askDescriptionMax), ReadOnly: p.ReadOnly,
 		})
-		if objectType.Document != nil && p.Extraction != nil {
-			asked.Properties[len(asked.Properties)-1].ExtractionInstruction = truncateRunes(p.Extraction.Instruction, 1000)
-		}
+		asked.Properties[len(asked.Properties)-1].ExtractionInstruction = truncateRunes(instructions[p.Name], 1000)
 	}
 	return asked
 }
 
 func askRelationOf(r *interfaces.DraftRelationType) askRelation {
-	relation := askRelation{ID: r.ID, Name: r.Name, Description: truncateRunes(r.Description, askDescriptionMax),
+	relation := askRelation{ID: r.ID, Name: r.Name, Aliases: r.Aliases, Description: truncateRunes(r.Description, askDescriptionMax),
 		Source: r.Source, Target: r.Target, Cardinality: r.Cardinality, Mapping: r.Mapping,
 		SourceMapping: r.SourceMapping, TargetMapping: r.TargetMapping, Adopted: r.Adopted}
-	if r.Document != nil {
-		relation.Document = &askDocument{Role: r.Document.Role, Layer: r.Document.Layer, Reason: r.Document.Reason}
-		if r.DocumentMapping != nil {
-			mapping := *r.DocumentMapping
-			mapping.BusinessIdentity = nil
-			relation.DocumentMapping = &mapping
-		}
-	}
+	relation.Document, relation.DocumentMapping = documentHooks().AskRelationContext(r)
 	if r.LinkTable != nil {
 		relation.LinkTable = r.LinkTable.Name
 	}
@@ -475,9 +450,10 @@ func askRelationOf(r *interfaces.DraftRelationType) askRelation {
 }
 
 // askAgent runs the chat Agent as the caller until the deadline, handing the answer's text to
-// stream as it is written. It returns the text and the result that follows it, as given, or the
-// code of why there is none. A result with no text written fails unless answerOptional.
-func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountInfo, message string,
+// stream as it is written; an empty agentID is askAgentID. It returns the text and the result
+// that follows it, as given, or the code of why there is none. A result with no text written
+// fails unless answerOptional.
+func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountInfo, agentID, message string,
 	format map[string]any, stream *interfaces.DraftAskStream, answerOptional bool) (string, json.RawMessage, string) {
 	if s.ba == nil {
 		return "", nil, perrors.BknProject_Draft_AskUnavailable
@@ -492,7 +468,10 @@ func (s *draftService) askAgent(ctx context.Context, caller interfaces.AccountIn
 	var out json.RawMessage
 	var failure string
 	started := false
-	err := s.ba.Chat(ctx, caller, &interfaces.BknAgentChatRequest{AgentID: askAgentID, Message: message,
+	if agentID == "" {
+		agentID = askAgentID
+	}
+	err := s.ba.Chat(ctx, caller, &interfaces.BknAgentChatRequest{AgentID: agentID, Message: message,
 		ResponseFormat: format}, func(event interfaces.BknAgentChatEvent) {
 		if !started && stream != nil {
 			stream.Start()

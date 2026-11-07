@@ -22,7 +22,7 @@ from app.commons.i18n import build_error_content
 from app.config import config
 from app.core import builtin_tools
 from app.core.agent_settings import merge
-from app.core.graph import stream_chat
+from app.core.graph import stream_chat, thread_in_use
 from app.core.llm import build_chat_model
 from app.core.public_chat import PublicChat
 from app.db import SessionLocal, get_session
@@ -279,10 +279,18 @@ async def _execute_impl(
         agent = agent.model_copy(
             update={"model": selected_model.model_name}
         )
-    if thread_id in _thread_claims:
+    # A running delete holds the thread as in use, and a delete refuses a
+    # claimed thread. One that finished during the checks above is caught by
+    # reading the row again, so the turn cannot recreate a deleted thread.
+    if thread_id in _thread_claims or thread_in_use(thread_id):
         raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
     _thread_claims.add(thread_id)
     try:
+        if req.thread_id:
+            # A fresh session: this request's transaction may still see the row.
+            async with SessionLocal() as fresh:
+                if not await dao.get_thread_row(fresh, thread_id):
+                    raise not_found("thread", thread_id)
         agent_version = await dao.current_version(session, agent.agent_id)
         task_input = {
             "protocol": protocol,

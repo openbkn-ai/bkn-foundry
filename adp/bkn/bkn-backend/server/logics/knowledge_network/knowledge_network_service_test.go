@@ -31,6 +31,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 )
 
+type knEventCleanupStub struct {
+	knIDs  []string
+	withTx bool
+	err    error
+}
+
+func (stub *knEventCleanupStub) DeleteKnEvents(_ context.Context, tx *sql.Tx, knID string) error {
+	stub.knIDs = append(stub.knIDs, knID)
+	stub.withTx = tx != nil
+	return stub.err
+}
+
 type objectMetricIDsAccessStub struct {
 	interfaces.ObjectMetricAccessV1
 	ids []string
@@ -1994,6 +2006,52 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			err := service.DeleteKN(ctx, kn)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("Deleting KN removes its events in the same transaction\n", func() {
+			kn := &interfaces.KN{KNID: "kn1", KNName: "kn1", Branch: interfaces.MAIN_BRANCH}
+			cleanup := &knEventCleanupStub{}
+			previous := rootlogics.KECA
+			rootlogics.KECA = cleanup
+			defer func() { rootlogics.KECA = previous }()
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			smock.ExpectCommit()
+
+			err := service.DeleteKN(ctx, kn)
+			So(err, ShouldBeNil)
+			So(cleanup.knIDs, ShouldResemble, []string{"kn1"})
+			So(cleanup.withTx, ShouldBeTrue)
+		})
+
+		Convey("Failed event cleanup rolls the deletion back\n", func() {
+			kn := &interfaces.KN{KNID: "kn1", KNName: "kn1", Branch: interfaces.MAIN_BRANCH}
+			previous := rootlogics.KECA
+			cleanupErr := errors.New("events table unavailable")
+			cleanup := &knEventCleanupStub{err: cleanupErr}
+			rootlogics.KECA = cleanup
+			defer func() { rootlogics.KECA = previous }()
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			smock.ExpectRollback()
+
+			err := service.DeleteKN(ctx, kn)
+			So(err, ShouldEqual, cleanupErr)
+			So(cleanup.knIDs, ShouldResemble, []string{"kn1"})
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("Failed when permission check fails\n", func() {

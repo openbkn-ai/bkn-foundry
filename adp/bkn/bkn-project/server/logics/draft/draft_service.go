@@ -23,7 +23,6 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 )
@@ -46,9 +45,8 @@ var (
 )
 
 type draftService struct {
-	setting     common.DraftSetting
-	da          interfaces.DraftAccess
-	kbResources interfaces.KBResourceAccess
+	setting common.DraftSetting
+	da      interfaces.DraftAccess
 	// ca records the check run after a draft is confirmed.
 	ca interfaces.CheckAccess
 	// ira keeps the ids of items drafted from names that are not ASCII, so drafts do not change them.
@@ -77,20 +75,19 @@ type draftService struct {
 func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 	dsOnce.Do(func() {
 		ds = &draftService{
-			setting:     appSetting.DraftSetting,
-			da:          logics.DA,
-			kbResources: logics.KBRA,
-			ca:          logics.CA,
-			ira:         logics.IRA,
-			va:          logics.VA,
-			iba:         logics.IBA,
-			rqa:         logics.RQA,
-			ps:          project.NewProjectService(),
-			ls:          lineage.NewLineageService(),
-			ra:          logics.RA,
-			gs:          logics.GS,
-			ba:          logics.BAA,
-			run:         func(fn func()) { go fn() },
+			setting: appSetting.DraftSetting,
+			da:      logics.DA,
+			ca:      logics.CA,
+			ira:     logics.IRA,
+			va:      logics.VA,
+			iba:     logics.IBA,
+			rqa:     logics.RQA,
+			ps:      project.NewProjectService(),
+			ls:      lineage.NewLineageService(),
+			ra:      logics.RA,
+			gs:      logics.GS,
+			ba:      logics.BAA,
+			run:     func(fn func()) { go fn() },
 		}
 	})
 	return ds
@@ -302,7 +299,7 @@ func (s *draftService) GetDraft(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Get draft failed")
 		return nil, internalError(ctx, "Get draft failed", err)
 	}
-	if err := checkDocumentReadAccess(ctx, token, draft); err != nil {
+	if err := documentHooks().CheckRead(ctx, token, draft); err != nil {
 		return nil, err
 	}
 
@@ -310,35 +307,8 @@ func (s *draftService) GetDraft(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
-	kbconcept.RefreshFactResolutionStates(draft.Items)
-	for _, object := range draft.Items.ObjectTypes {
-		if object == nil || object.Document == nil || object.Document.DualSource == nil {
-			continue
-		}
-		plan := object.Document.DualSource
-		plan.State = "proposed"
-		if plan.ConfirmedAt > 0 {
-			plan.State = "stale"
-			if kbconcept.SourcePlanReady(draft.Items, object, false) {
-				plan.State = "confirmed"
-			}
-		}
-	}
-	if len(draft.Items.DatasetPlans) > 0 && s.kbResources != nil {
-		state, readErr := s.kbResources.Read(ctx, projectID)
-		if readErr != nil {
-			// This is only a progress projection. Source authorization was
-			// independently checked above; failures must not hide the draft.
-			otellog.LogWarn(ctx, "Read Dataset preparation progress failed")
-			draft.DatasetPreparation = nil
-		} else {
-			var selection *interfaces.KBSelection
-			if state != nil {
-				selection = state.Current
-			}
-			draft.DatasetPreparation = datasetPreparation(draft, selection)
-		}
-	}
+	documentHooks().ProjectRead(&draft.Items)
+	documentHooks().DatasetProgress(ctx, draftHost{s}, draft)
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
 }
@@ -359,4 +329,31 @@ func (s *draftService) FailInterrupted(ctx context.Context) error {
 		logger.Warnf("Failed %d checks left running by a previous run", n)
 	}
 	return nil
+}
+
+// Dependencies are what a draft service reads and writes, for an edition that tests what it adds
+// to drafts through the service itself.
+type Dependencies struct {
+	Setting      common.DraftSetting
+	Drafts       interfaces.DraftAccess
+	Checks       interfaces.CheckAccess
+	IDs          interfaces.IDRegistryAccess
+	Vega         interfaces.VegaAccess
+	IndexBuilds  interfaces.IndexBuildAccess
+	Requirements interfaces.RequirementAccess
+	Projects     interfaces.ProjectService
+	Lineages     interfaces.LineageService
+	Releases     interfaces.ReleaseAccess
+	Git          interfaces.GitStore
+	Agents       interfaces.BknAgentAccess
+	// AskWait bounds Ask AI; zero is the default deadline.
+	AskWait time.Duration
+}
+
+// NewDraftServiceWith is a draft service on the dependencies given, drafting in line. The process
+// uses NewDraftService.
+func NewDraftServiceWith(deps Dependencies) interfaces.DraftService {
+	return &draftService{setting: deps.Setting, da: deps.Drafts, ca: deps.Checks, ira: deps.IDs, va: deps.Vega,
+		iba: deps.IndexBuilds, rqa: deps.Requirements, ps: deps.Projects, ls: deps.Lineages, ra: deps.Releases,
+		gs: deps.Git, ba: deps.Agents, askWait: deps.AskWait, run: func(fn func()) { fn() }}
 }

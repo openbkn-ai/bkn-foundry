@@ -112,7 +112,7 @@ func loadWithBranch(files map[string][]byte) (*bkn.BknNetwork, error) {
 func Test_CompileDraft(t *testing.T) {
 	Convey("Test compileDraft\n", t, func() {
 		Convey("Only adopted items are written, as definition files of a 3.0 package\n", func() {
-			compiled, err := compileDraft(compileFixture())
+			compiled, err := compileDraft(compileFixture(), nil)
 			files := compiled.Files
 
 			So(err, ShouldBeNil)
@@ -132,7 +132,7 @@ func Test_CompileDraft(t *testing.T) {
 		})
 
 		Convey("The files read back under a branch's network.bkn as the draft's definitions\n", func() {
-			compiled, err := compileDraft(compileFixture())
+			compiled, err := compileDraft(compileFixture(), nil)
 			files := compiled.Files
 			So(err, ShouldBeNil)
 
@@ -195,7 +195,7 @@ func Test_CompileDraft(t *testing.T) {
 				}
 			}
 
-			compiled, err := compileDraft(&items)
+			compiled, err := compileDraft(&items, nil)
 			So(err, ShouldBeNil)
 			files := compiled.Files
 			network, err := loadWithBranch(files)
@@ -229,7 +229,7 @@ func Test_CompileDraft(t *testing.T) {
 				&interfaces.DraftValueType{ID: "grade", Name: "Order status", BaseType: "string", Adopted: true,
 					Values: []interfaces.DraftEnumValue{{Value: "A", Display: "Top"}}})
 
-			compiled, err := compileDraft(items)
+			compiled, err := compileDraft(items, nil)
 
 			So(err, ShouldBeNil)
 			So(compiled.SkippedValueTypes, ShouldResemble, []string{"region", "grade"})
@@ -256,7 +256,7 @@ func Test_CompileDraft(t *testing.T) {
 		})
 
 		Convey("Nothing adopted writes no definitions\n", func() {
-			compiled, err := compileDraft(&interfaces.DraftItems{})
+			compiled, err := compileDraft(&interfaces.DraftItems{}, nil)
 
 			So(err, ShouldBeNil)
 			So(compiled.Files, ShouldBeEmpty)
@@ -269,7 +269,7 @@ func Test_CompileDraft(t *testing.T) {
 			items := compileFixture()
 			items.ObjectTypes[0].Table.ResourceID = ""
 
-			_, err := compileDraft(items)
+			_, err := compileDraft(items, nil)
 
 			So(err, ShouldNotBeNil)
 		})
@@ -281,7 +281,7 @@ func Test_CompileDraftIDKeys(t *testing.T) {
 		items := compileFixture()
 		items.ValueTypes[0].CodeTable = interfaces.DraftTable{ResourceID: "res_order_status"}
 		// Not written: channel is not adopted, audit_log is not, nor are relations to it.
-		compiled, err := compileDraft(items)
+		compiled, err := compileDraft(items, nil)
 
 		So(err, ShouldBeNil)
 		key := func(kind, sourceKey string) interfaces.IDKey {
@@ -307,7 +307,7 @@ func Test_CompileDraftIDKeys(t *testing.T) {
 		items := compileFixture()
 		items.ValueTypes[0].CodeTable = interfaces.DraftTable{ResourceID: "res_order_status"}
 		items.ValueTypes[0].BaseType = "geometry"
-		compiled, err := compileDraft(items)
+		compiled, err := compileDraft(items, nil)
 
 		So(err, ShouldBeNil)
 		So(compiled.SkippedValueTypes, ShouldResemble, []string{"order_status"})
@@ -331,7 +331,7 @@ func Test_CompileAliases(t *testing.T) {
 		So(compiledRT.Aliases, ShouldResemble, []string{"包含商品"})
 		So(bkn.ValidateRelationTypeDeclarations(compiledRT), ShouldBeNil)
 
-		compiled, err := compileDraft(items)
+		compiled, err := compileDraft(items, nil)
 		So(err, ShouldBeNil)
 		So(string(compiled.Files["object_types/orders.bkn"]), ShouldContainSubstring, "订单号")
 		So(string(compiled.Files["object_types/orders.bkn"]), ShouldContainSubstring, "aliases:")
@@ -351,7 +351,7 @@ func Test_CompileDropsRefusedAliases(t *testing.T) {
 		customers.Aliases = []string{"客户"}
 		items.RelationTypes[1].Name, items.RelationTypes[1].Aliases = "包含", []string{"包含", "包含商品"}
 
-		compiled, err := compileDraft(items)
+		compiled, err := compileDraft(items, nil)
 		So(err, ShouldBeNil)
 		network, err := loadWithBranch(compiled.Files)
 		So(err, ShouldBeNil)

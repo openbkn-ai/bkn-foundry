@@ -6,6 +6,8 @@ package requirement
 
 import (
 	"context"
+	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"testing"
@@ -16,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
-const emptySpec = `{"scenarios":null,"concepts":null,"questions":null,"rules":null,"conflicts":null,"choices":null,"rejected":null}`
+const emptySpec = `{"scenarios":null,"concepts":null,"questions":null,"rules":null,"conflicts":null,"choices":null,"logic_needs":null,"rejected":null}`
 
 var docColumns = []string{"f_id", "f_project_id", "f_name", "f_doc_type", "f_format", "f_sha256", "f_size",
 	"f_uploader", "f_uploader_type", "f_create_time", "f_update_time"}
@@ -149,14 +151,14 @@ func Test_RequirementSpecification(t *testing.T) {
 			Drafter: interfaces.AccountInfo{ID: "u1", Type: "user"}, CreateTime: 5, UpdateTime: 5,
 		}
 		ensureRow := regexp.QuoteMeta("INSERT INTO t_bkn_project_requirement (f_project_id,f_spec,f_inputs) VALUES (?,?,?) ON DUPLICATE KEY UPDATE f_project_id = f_project_id")
-		lockRow := regexp.QuoteMeta("SELECT f_status, f_update_time FROM t_bkn_project_requirement WHERE f_project_id = ? FOR UPDATE")
-		lockCols := []string{"f_status", "f_update_time"}
+		lockRow := regexp.QuoteMeta("SELECT f_status, f_update_time, f_spec FROM t_bkn_project_requirement WHERE f_project_id = ? FOR UPDATE")
+		lockCols := []string{"f_status", "f_update_time", "f_spec"}
 		start := regexp.QuoteMeta("UPDATE t_bkn_project_requirement SET f_version = ?, f_status = ?, f_spec = ?, f_inputs = ?, f_error = ?, f_run_id = ?, f_agent_task_id = ?, f_drafter = ?, f_drafter_type = ?, f_create_time = ?, f_update_time = ? WHERE f_project_id = ?")
 
 		Convey("StartDrafting writes the first specification of a project into the row it makes sure of\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WithArgs("p1", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
-			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols).AddRow("", int64(0)))
+			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols).AddRow("", int64(0), ""))
 			smock.ExpectExec(start).
 				WithArgs(1, "drafting", emptySpec, "null", "", "run1", "", "u1", "user", int64(5), int64(5), "p1").
 				WillReturnResult(sqlmock.NewResult(0, 1))
@@ -172,11 +174,11 @@ func Test_RequirementSpecification(t *testing.T) {
 		Convey("StartDrafting leaves a project that is drafting alone, unless its drafting went stale\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(4)))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(4), ""))
 			smock.ExpectRollback()
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(2)))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(2), ""))
 			smock.ExpectExec(start).WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
@@ -192,11 +194,11 @@ func Test_RequirementSpecification(t *testing.T) {
 		Convey("StartDrafting replaces a specification it read only while it is as read\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(9)))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(9), ""))
 			smock.ExpectRollback()
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(7)))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(7), ""))
 			smock.ExpectExec(start).WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
@@ -213,7 +215,7 @@ func Test_RequirementSpecification(t *testing.T) {
 		Convey("StartDrafting rolls back when the write fails\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2)))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), ""))
 			smock.ExpectExec(start).WillReturnError(errors.New("boom"))
 			smock.ExpectRollback()
 
@@ -279,7 +281,165 @@ func Test_RequirementSpecification(t *testing.T) {
 			So(n, ShouldEqual, 2)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
+
+		Convey("StartDrafting leaves a project alone while one of its runs goes, unless it went stale\n", func() {
+			running := `{"runs":{"concepts":{"status":"running","run_id":"r1","by":{"id":"u1","type":"user"},"start_time":4,"update_time":4}}}`
+			staleRun := `{"runs":{"concepts":{"status":"running","run_id":"r1","by":{"id":"u1","type":"user"},"start_time":2,"update_time":2}}}`
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(4), running))
+			smock.ExpectRollback()
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), staleRun))
+			smock.ExpectExec(start).WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+
+			started, err := ra.StartDrafting(ctx, drafting, 3, 0)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeFalse)
+			started, err = ra.StartDrafting(ctx, drafting, 3, 0)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		lockReq := regexp.QuoteMeta("SELECT f_project_id, f_version, f_status, f_spec, f_inputs, f_error, f_run_id, f_agent_task_id, f_drafter, f_drafter_type, f_create_time, f_update_time FROM t_bkn_project_requirement WHERE f_project_id = ? FOR UPDATE")
+		write := regexp.QuoteMeta("UPDATE t_bkn_project_requirement SET f_version = ?, f_status = ?, f_spec = ?, f_inputs = ?, f_drafter = ?, f_drafter_type = ?, f_create_time = ?, f_update_time = ? WHERE f_project_id = ?")
+		run := &interfaces.RequirementRun{Status: interfaces.REQUIREMENT_RUN_RUNNING, RunID: "r2",
+			By: interfaces.AccountInfo{ID: "u2", Type: "user"}, StartTime: 10, UpdateTime: 10}
+
+		Convey("StartRun gives a project without a specification an empty ready one with the run going\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WithArgs("p1", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectQuery(lockReq).WithArgs("p1").WillReturnRows(sqlmock.NewRows(reqColumns).
+				AddRow("p1", 0, "", "", "", "", "", "", "", "", int64(0), int64(0)))
+			smock.ExpectExec(write).
+				WithArgs(1, "ready", specWith(func(spec *interfaces.RequirementSpec) bool {
+					r := spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]
+					return r != nil && r.RunID == "r2" && r.Status == "running" && spec.Concepts != nil && spec.LogicNeeds != nil
+				}), "null", "u2", "user", int64(10), int64(10), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+
+			started, err := ra.StartRun(ctx, "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, run, 3, 0)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("StartRun refuses while the project drafts or another run goes, and when it changed since read\n", func() {
+			kinetic := `{"runs":{"kinetic":{"status":"running","run_id":"r1","by":{"id":"u1","type":"user"},"start_time":5,"update_time":5}}}`
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockReq).WillReturnRows(sqlmock.NewRows(reqColumns).
+				AddRow("p1", 1, "drafting", "", "", "", "run1", "", "u1", "user", int64(5), int64(5)))
+			smock.ExpectRollback()
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockReq).WillReturnRows(sqlmock.NewRows(reqColumns).
+				AddRow("p1", 1, "ready", kinetic, "", "", "run1", "", "u1", "user", int64(5), int64(5)))
+			smock.ExpectRollback()
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockReq).WillReturnRows(sqlmock.NewRows(reqColumns).
+				AddRow("p1", 1, "ready", `{}`, "", "", "run1", "", "u1", "user", int64(5), int64(9)))
+			smock.ExpectRollback()
+
+			started, err := ra.StartRun(ctx, "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, run, 3, 0)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeFalse)
+			started, err = ra.StartRun(ctx, "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, run, 3, 0)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeFalse)
+			started, err = ra.StartRun(ctx, "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, run, 3, 7)
+			So(errors.Is(err, interfaces.ErrRequirementChanged), ShouldBeTrue)
+			So(started, ShouldBeFalse)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("FinishRun applies finish only while the run is still the one going\n", func() {
+			going := `{"runs":{"concepts":{"status":"running","run_id":"r2","by":{"id":"u2","type":"user"},"start_time":10,"update_time":10}}}`
+			smock.ExpectBegin()
+			smock.ExpectQuery(lockReq).WithArgs("p1").WillReturnRows(sqlmock.NewRows(reqColumns).
+				AddRow("p1", 2, "ready", going, "", "", "run1", "", "u1", "user", int64(5), int64(10)))
+			smock.ExpectExec(write).
+				WithArgs(2, "ready", specWith(func(spec *interfaces.RequirementSpec) bool {
+					r := spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]
+					return r.Status == "ready" && len(spec.Rules) == 1
+				}), "null", "u1", "user", int64(5), int64(12), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+			smock.ExpectBegin()
+			smock.ExpectQuery(lockReq).WithArgs("p1").WillReturnRows(sqlmock.NewRows(reqColumns).
+				AddRow("p1", 2, "ready", going, "", "", "run1", "", "u1", "user", int64(5), int64(10)))
+			smock.ExpectRollback()
+			smock.ExpectBegin()
+			smock.ExpectQuery(lockReq).WithArgs("p2").WillReturnRows(sqlmock.NewRows(reqColumns))
+			smock.ExpectRollback()
+
+			finished, err := ra.FinishRun(ctx, "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, "r2", func(req *interfaces.Requirement) {
+				req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = "ready"
+				req.Spec.Rules = []*interfaces.RequirementRule{{ID: "r1", Statement: "s"}}
+				req.UpdateTime = 12
+			})
+			So(err, ShouldBeNil)
+			So(finished, ShouldBeTrue)
+			called := false
+			finished, err = ra.FinishRun(ctx, "p1", interfaces.REQUIREMENT_RUN_CONCEPTS, "r9", func(*interfaces.Requirement) { called = true })
+			So(err, ShouldBeNil)
+			So(finished, ShouldBeFalse)
+			So(called, ShouldBeFalse)
+			finished, err = ra.FinishRun(ctx, "p2", interfaces.REQUIREMENT_RUN_CONCEPTS, "r2", func(*interfaces.Requirement) { called = true })
+			So(err, ShouldBeNil)
+			So(finished, ShouldBeFalse)
+			So(called, ShouldBeFalse)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("ProjectsWithRunning lists the projects whose specification records a run going\n", func() {
+			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_project_id FROM t_bkn_project_requirement WHERE f_spec LIKE ?")).
+				WithArgs(`%"status":"running"%`).
+				WillReturnRows(sqlmock.NewRows([]string{"f_project_id"}).AddRow("p1").AddRow("p2"))
+
+			ids, err := ra.ProjectsWithRunning(ctx)
+			So(err, ShouldBeNil)
+			So(ids, ShouldResemble, []string{"p1", "p2"})
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("GetRequirement reads a specification drafted before kinetic needs with its names as needs\n", func() {
+			legacy := `{"scenarios":[{"id":"s1","name":"S","capabilities":[{"kind":"metric","name":"Rate","definition":"d"}]}],` +
+				`"questions":[{"id":"q1","text":"t","scenario_ids":["s1"],"basis":{"concept_ids":[],"metrics":["rate"],"functions":["f"],"skills":[]}}]}`
+			smock.ExpectQuery(regexp.QuoteMeta("FROM t_bkn_project_requirement WHERE f_project_id = ?")).WithArgs("p1").
+				WillReturnRows(sqlmock.NewRows(reqColumns).
+					AddRow("p1", 1, "ready", legacy, "", "", "run1", "", "u1", "user", int64(5), int64(7)))
+
+			req, ok, err := ra.GetRequirement(ctx, "p1")
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeTrue)
+			So(req.Spec.LogicNeeds, ShouldHaveLength, 2)
+			So(req.Spec.Questions[0].LogicNeedIDs, ShouldResemble, []string{"n1", "n2"})
+			So(req.Spec.Scenarios[0].Capabilities, ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
 	})
+}
+
+// specArg matches a spec argument whose JSON satisfies match.
+type specArg func(spec *interfaces.RequirementSpec) bool
+
+func specWith(match func(spec *interfaces.RequirementSpec) bool) sqlmock.Argument {
+	return specArg(match)
+}
+
+func (m specArg) Match(v driver.Value) bool {
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	spec := &interfaces.RequirementSpec{}
+	return json.Unmarshal([]byte(s), spec) == nil && m(spec)
 }
 
 func Test_SuggestDocumentType(t *testing.T) {

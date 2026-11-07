@@ -25,6 +25,7 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`lint-commit.yml`](./lint-commit.yml) | Commit Message Lint | `pull_request` | Commit message checks |
 | [`ci-vega-backend.yml`](./ci-vega-backend.yml) | ci-vega-backend | `pull_request` / `push` (`vega/**`) | Vega backend dependency, lint, unit-test, coverage, race, and build gate |
 | [`ci-execution-factory.yml`](./ci-execution-factory.yml) | ci-execution-factory | `pull_request` / `push` (`adp/execution-factory/**`), `workflow_dispatch` | L2 smoke collect-only + operator-integration Go unit tests; optional live smoke |
+| [`ci-workshop.yml`](./ci-workshop.yml) | ci-workshop | `pull_request` (`workshop/**`) | Build, vet and unit-test gate for the Workshop service skeleton |
 | [`ci-bkn-trace.yml`](./ci-bkn-trace.yml) | ci-bkn-trace | `pull_request` (`bkn-trace/**`) | Compile gate for agent-observability |
 | [`reusable-version.yml`](./reusable-version.yml) | reusable-version | `workflow_call` | Resolves the repository-wide immutable release version from `VERSION`, ref, and commit |
 | [`reusable-release-verify.yml`](./reusable-release-verify.yml) | reusable-release-verify | `workflow_call` | Go, Python, or Helm release verification before image/chart build and publish |

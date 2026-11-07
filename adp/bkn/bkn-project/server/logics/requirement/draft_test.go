@@ -45,7 +45,31 @@ func testDraft() *interfaces.Draft {
 	}}
 }
 
+// confirmedDraft is testDraft confirmed: the kinetic run and scenario drafting rest on it.
+func confirmedDraft() *interfaces.Draft {
+	draft := testDraft()
+	draft.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "abc"}
+	return draft
+}
+
+// withConcepts records a ready concepts run in req, as scenario drafting over documents needs.
+func withConcepts(req *interfaces.Requirement) *interfaces.Requirement {
+	if req.Spec.Runs == nil {
+		req.Spec.Runs = map[string]*interfaces.RequirementRun{}
+	}
+	req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS] = &interfaces.RequirementRun{Status: interfaces.REQUIREMENT_RUN_READY, RunID: "c",
+		Inputs: &interfaces.RequirementInputs{Documents: []interfaces.RequirementInputDocument{}}}
+	return req
+}
+
 func cite(docID, quote string) agentCitation { return agentCitation{DocumentID: docID, Quote: quote} }
+
+// built is what buildSpec adds to an empty specification.
+func built(out *draftOutput, docs map[string]*interfaces.RequirementDocument, draft *interfaces.Draft) *interfaces.RequirementSpec {
+	spec := emptySpec()
+	buildSpec(out, docs, draft, spec)
+	return spec
+}
 
 func Test_BuildSpec(t *testing.T) {
 	Convey("Test buildSpec\n", t, func() {
@@ -66,7 +90,7 @@ func Test_BuildSpec(t *testing.T) {
 					Citations: []agentCitation{cite("prd", "show where the current date comes from")}}},
 			}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			spec := built(out, docs, draft)
 
 			So(spec.Scenarios[0].ID, ShouldEqual, "s1")
 			So(spec.Concepts[0].ID, ShouldEqual, "c1")
@@ -92,7 +116,7 @@ func Test_BuildSpec(t *testing.T) {
 				Questions: []agentQuestion{{Text: "t", ConceptIDs: []string{"a", "b"}, SupplementReason: "r"}},
 			}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			spec := built(out, docs, draft)
 
 			So(spec.Questions[0].Basis.ConceptIDs, ShouldResemble, []string{"c1", "c2"})
 			So(spec.Questions[0].Needs, ShouldResemble, []interfaces.RequirementItemRef{*ref})
@@ -106,7 +130,7 @@ func Test_BuildSpec(t *testing.T) {
 				{ID: "d", Term: "Belongs to", SupplementReason: "r", MapsTo: &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "sales_order_customer"}},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			spec := built(out, docs, draft)
 
 			So(spec.Concepts[0].MapsTo, ShouldResemble, &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"})
 			So(spec.Concepts[1].MapsTo, ShouldBeNil)
@@ -118,7 +142,7 @@ func Test_BuildSpec(t *testing.T) {
 			out := &draftOutput{Concepts: []agentConcept{{ID: "a", Term: "Customer", SupplementReason: "r",
 				MapsTo: &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}}}}
 
-			spec, _ := buildSpec(out, docs, nil, nil)
+			spec := built(out, docs, nil)
 
 			So(spec.Concepts[0].MapsTo, ShouldBeNil)
 		})
@@ -134,7 +158,7 @@ func Test_BuildSpec(t *testing.T) {
 					SupplementReason: "a supplement does not save a quote not found"}},
 			}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			spec := built(out, docs, draft)
 
 			So(spec.Scenarios, ShouldBeEmpty)
 			So(spec.Questions, ShouldBeEmpty)
@@ -146,32 +170,13 @@ func Test_BuildSpec(t *testing.T) {
 			})
 		})
 
-		Convey("A rule needs a quote, and its numbers must be in it\n", func() {
-			out := &draftOutput{Rules: []agentRule{
-				{Statement: "Answer within 2 working days", CompilesTo: "metric_definition",
-					Citations: []agentCitation{cite("pol", "within 2 working days")}},
-				{Statement: "Answer within 3 working days", Citations: []agentCitation{cite("pol", "within 2 working days")}},
-				{Statement: "Only signed changes count"},
-			}}
-
-			spec, _ := buildSpec(out, docs, draft, nil)
-
-			So(spec.Rules, ShouldHaveLength, 1)
-			So(spec.Rules[0].ID, ShouldEqual, "r1")
-			So(spec.Rules[0].CompilesTo, ShouldEqual, "metric_definition")
-			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
-				{Kind: rejectedRule, Text: "Answer within 3 working days", Reason: rejectedNumberNotInQuote},
-				{Kind: rejectedRule, Text: "Only signed changes count", Reason: rejectedQuoteNotFound},
-			})
-		})
-
 		Convey("A question's numbers must be in its quotes too, unless it has none\n", func() {
 			out := &draftOutput{Questions: []agentQuestion{
 				{Text: "Which requests wait over 5 days?", Citations: []agentCitation{cite("pol", "within 2 working days")}},
 				{Text: "Which requests wait over 5 days?", SupplementReason: "asked by the business"},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			spec := built(out, docs, draft)
 
 			So(spec.Questions, ShouldHaveLength, 1)
 			So(spec.Questions[0].SupplementReason, ShouldEqual, "asked by the business")
@@ -197,7 +202,7 @@ func Test_BuildSpec(t *testing.T) {
 				{Text: "When is order A due in 2 days?", Template: "When is order {order} due in 2 days?", Citations: quote},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			spec := built(out, docs, draft)
 
 			So(spec.Questions, ShouldHaveLength, 1)
 			So(spec.Questions[0].Text, ShouldEqual, "When is order 2 due?")
@@ -258,7 +263,7 @@ func Test_BuildSpec(t *testing.T) {
 				},
 			}
 
-			spec, _ := buildSpec(out, docs, withProps, nil)
+			spec := built(out, docs, withProps)
 
 			byText := map[string]*interfaces.RequirementQuestion{}
 			for _, q := range spec.Questions {
@@ -299,7 +304,7 @@ func Test_BuildSpec(t *testing.T) {
 
 			// A key of several fields names no record alone: the property stays unknown.
 			withProps.Items.ObjectTypes[0].PrimaryKeys = []string{"order_no", "signed_on"}
-			spec, _ = buildSpec(out, docs, withProps, nil)
+			spec = built(out, docs, withProps)
 			reasons = map[string]string{}
 			for _, r := range spec.Rejected {
 				reasons[r.Kind+" "+r.Text] = r.Reason
@@ -311,7 +316,7 @@ func Test_BuildSpec(t *testing.T) {
 
 			// Before the project has a draft, a concept maps to nothing yet: its property cannot be
 			// checked and stands, but a reference time with no property cannot be told a time.
-			spec, _ = buildSpec(out, docs, nil, nil)
+			spec = built(out, docs, nil)
 			byText, reasons = map[string]*interfaces.RequirementQuestion{}, map[string]string{}
 			for _, q := range spec.Questions {
 				byText[q.Text] = q
@@ -362,7 +367,7 @@ func Test_BuildSpec(t *testing.T) {
 				},
 			}
 
-			spec, _ := buildSpec(out, exDocs, withProps, nil)
+			spec := built(out, exDocs, withProps)
 
 			examples := []string{}
 			for _, q := range spec.Questions {
@@ -400,194 +405,165 @@ func Test_BuildSpec(t *testing.T) {
 						Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}}},
 			}
 
-			spec, _ := buildSpec(out, exDocs, withProps, nil)
+			spec := built(out, exDocs, withProps)
 
 			So(spec.Questions[0].Citations, ShouldHaveLength, 1)
 			So(spec.Questions[0].Citations[0].Quote, ShouldEqual, "Staff ask which lines an order has. For example, order SO-1002.")
 			So(spec.Questions[0].Citations[0].Start, ShouldEqual, 0)
 		})
 
-		Convey("A question's layer is knowledge only when said so\n", func() {
+		Convey("A question's layer is knowledge only when said so, or when it rests on no kinetic need\n", func() {
+			spec := emptySpec()
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "amount over threshold"},
+				{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "approval check"},
+				{ID: "n3", Kind: interfaces.LOGIC_NEED_SKILL, Name: "Signed-Change"},
+			}
 			out := &draftOutput{Questions: []agentQuestion{
 				{Text: "a", Layer: "knowledge", SupplementReason: "r"},
 				{Text: "b", Layer: "capability", SupplementReason: "r"},
 				{Text: "c", Layer: "whatever", SupplementReason: "r"},
 				// Said knowledge, but resting on a metric, a function or a skill: more than the ontology.
-				{Text: "d", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"amount over threshold"}},
-				{Text: "e", Layer: "knowledge", SupplementReason: "r", Functions: []string{"approval check"}},
-				{Text: "f", Layer: "knowledge", SupplementReason: "r", Skills: []string{"Signed-Change"}},
-				// Blank names are none: still knowledge, and not kept.
-				{Text: "g", Layer: "knowledge", SupplementReason: "r", Metrics: []string{"", " "}, Functions: []string{" "}},
+				{Text: "d", Layer: "knowledge", SupplementReason: "r", LogicNeedIDs: []string{"n1"}},
+				{Text: "e", Layer: "knowledge", SupplementReason: "r", LogicNeedIDs: []string{"n2", "n2"}},
+				// Kept needs may be named by their prefixed id.
+				{Text: "f", Layer: "knowledge", SupplementReason: "r", LogicNeedIDs: []string{"kept-n3"}},
+				// Blank ids are none: still knowledge.
+				{Text: "g", Layer: "knowledge", SupplementReason: "r", LogicNeedIDs: []string{"", " "}},
+				// A need the specification does not have is rejected; said capability for nothing that
+				// stands, it is a lookup.
+				{Text: "h", Layer: "capability", SupplementReason: "r", LogicNeedIDs: []string{"n9"}},
+				{Text: "i", Layer: "capability", SupplementReason: "r", LogicNeedIDs: []string{"n9", "n1"}},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			buildSpec(out, docs, draft, spec)
 
-			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
-			So(spec.Questions[1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
-			So(spec.Questions[2].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
-			for _, q := range spec.Questions[3:6] {
-				So(q.Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+			layers := []string{}
+			for _, q := range spec.Questions {
+				layers = append(layers, q.Layer)
 			}
-			So(spec.Questions[6].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
-			So(spec.Questions[6].Basis.Metrics, ShouldResemble, []string{})
-			So(spec.Questions[3].Basis.Metrics, ShouldResemble, []string{"amount over threshold"})
-		})
-
-		Convey("A skill stands in a question's basis only when the documents name it\n", func() {
-			out := &draftOutput{
-				// A skill the Agent designed for a scenario in the same pass names nothing the documents ask for.
-				Scenarios: []agentScenario{{Name: "Answer", SupplementReason: "r", Capabilities: []interfaces.RequirementCapability{
-					{Kind: "skill", Name: "Date lookup Skill"}}}},
-				Questions: []agentQuestion{
-					// A lookup the Agent rests on a serving skill of its own: knowledge after all.
-					{Text: "a", Layer: "capability", SupplementReason: "r", Skills: []string{"Date lookup Skill", " ", "__"}},
-					// Named by the documents, compared without case, spaces, underscores or hyphens.
-					{Text: "b", Layer: "knowledge", SupplementReason: "r", Skills: []string{"signed_change", "Date lookup Skill"}},
-					// Metrics and functions are named by the Agent: they stand as given.
-					{Text: "c", Layer: "knowledge", SupplementReason: "r", Functions: []string{"approval check"}, Skills: []string{"Date lookup Skill"}},
-				},
-			}
-
-			spec, _ := buildSpec(out, docs, draft, nil)
-
-			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
-			So(spec.Questions[0].Basis.Skills, ShouldResemble, []string{})
-			So(spec.Questions[1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
-			So(spec.Questions[1].Basis.Skills, ShouldResemble, []string{"signed_change"})
-			So(spec.Questions[2].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
-			So(spec.Questions[2].Basis.Functions, ShouldResemble, []string{"approval check"})
-			So(spec.Scenarios[0].Capabilities, ShouldHaveLength, 1)
-			rejected := []interfaces.RequirementRejected{}
-			for _, r := range spec.Rejected {
-				rejected = append(rejected, *r)
-			}
-			So(rejected, ShouldResemble, []interfaces.RequirementRejected{
-				{Kind: rejectedBasis, Text: "Date lookup Skill (a)", Reason: rejectedBasisNotInDocuments},
-				{Kind: rejectedBasis, Text: "__ (a)", Reason: rejectedBasisNotInDocuments},
-				{Kind: rejectedBasis, Text: "Date lookup Skill (b)", Reason: rejectedBasisNotInDocuments},
-				{Kind: rejectedBasis, Text: "Date lookup Skill (c)", Reason: rejectedBasisNotInDocuments}})
+			k, c := interfaces.REQUIREMENT_LAYER_KNOWLEDGE, interfaces.REQUIREMENT_LAYER_CAPABILITY
+			So(layers, ShouldResemble, []string{k, c, c, c, c, c, k, k, c})
+			So(spec.Questions[3].LogicNeedIDs, ShouldResemble, []string{"n1"})
+			So(spec.Questions[4].LogicNeedIDs, ShouldResemble, []string{"n2"})
+			So(spec.Questions[5].LogicNeedIDs, ShouldResemble, []string{"n3"})
+			So(spec.Questions[6].LogicNeedIDs, ShouldResemble, []string{})
+			So(spec.Questions[8].LogicNeedIDs, ShouldResemble, []string{"n1"})
+			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
+				{Kind: rejectedBasis, Text: "n9 (h)", Reason: rejectedUnknownLogicNeed},
+				{Kind: rejectedBasis, Text: "n9 (i)", Reason: rejectedUnknownLogicNeed}})
+			// A need serves the scenarios of the questions resting on it.
+			So(spec.LogicNeeds[0].ScenarioIDs, ShouldResemble, []string{})
 		})
 
 		Convey("A filter backed by functions alone is a filter on properties: knowledge, its functions rejected\n", func() {
+			spec := emptySpec()
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				{ID: "n1", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "window check"},
+				{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "status check"},
+				{ID: "n3", Kind: interfaces.LOGIC_NEED_METRIC, Name: "late count"},
+				{ID: "n4", Kind: interfaces.LOGIC_NEED_SKILL, Name: "signed change"},
+				{ID: "n5", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "approval check"},
+			}
 			out := &draftOutput{Questions: []agentQuestion{
-				{Text: "a", Type: "filter", Layer: "capability", SupplementReason: "r", Functions: []string{"window check", "status check"}},
-				// A metric, a skill the documents name, or another type keeps what it rests on.
-				{Text: "b", Type: "filter", Layer: "capability", SupplementReason: "r", Metrics: []string{"late count"}, Functions: []string{"window check"}},
-				{Text: "c", Type: "filter", Layer: "capability", SupplementReason: "r", Functions: []string{"window check"}, Skills: []string{"signed change"}},
-				{Text: "d", Type: "judge", Layer: "capability", SupplementReason: "r", Functions: []string{"approval check"}},
+				{Text: "a", Type: "filter", Layer: "capability", SupplementReason: "r", LogicNeedIDs: []string{"n1", "n2"}},
+				// A metric, a skill, or another type keeps what it rests on.
+				{Text: "b", Type: "filter", Layer: "capability", SupplementReason: "r", LogicNeedIDs: []string{"n3", "n1"}},
+				{Text: "c", Type: "filter", Layer: "capability", SupplementReason: "r", LogicNeedIDs: []string{"n1", "n4"}},
+				{Text: "d", Type: "judge", Layer: "capability", SupplementReason: "r", LogicNeedIDs: []string{"n5"}},
 			}}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			buildSpec(out, docs, draft, spec)
 
 			So(spec.Questions[0].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_KNOWLEDGE)
-			So(spec.Questions[0].Basis.Functions, ShouldResemble, []string{})
-			for i, fns := range [][]string{{"window check"}, {"window check"}, {"approval check"}} {
+			So(spec.Questions[0].LogicNeedIDs, ShouldResemble, []string{})
+			for i, needs := range [][]string{{"n3", "n1"}, {"n1", "n4"}, {"n5"}} {
 				So(spec.Questions[i+1].Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
-				So(spec.Questions[i+1].Basis.Functions, ShouldResemble, fns)
+				So(spec.Questions[i+1].LogicNeedIDs, ShouldResemble, needs)
 			}
-			rejected := []interfaces.RequirementRejected{}
-			for _, r := range spec.Rejected {
-				rejected = append(rejected, *r)
-			}
-			So(rejected, ShouldResemble, []interfaces.RequirementRejected{
+			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
 				{Kind: rejectedBasis, Text: "window check (a)", Reason: rejectedFunctionOnFilter},
 				{Kind: rejectedBasis, Text: "status check (a)", Reason: rejectedFunctionOnFilter}})
 		})
 
-		Convey("At most maxSpecScenarios scenarios and maxSpecConcepts concepts are kept, the first; the rest are rejected\n", func() {
+		Convey("At most maxSpecScenarios scenarios and maxDraftConcepts concepts are kept, the first; the rest are rejected\n", func() {
 			out := &draftOutput{}
 			for i := range maxSpecScenarios + 1 {
 				out.Scenarios = append(out.Scenarios, agentScenario{Name: fmt.Sprintf("s%d", i), SupplementReason: "r"})
 			}
 			// One that does not stand takes no place.
 			out.Concepts = append(out.Concepts, agentConcept{Term: "unquoted"})
-			for i := range maxSpecConcepts + 2 {
+			for i := range maxDraftConcepts + 2 {
 				out.Concepts = append(out.Concepts, agentConcept{Term: fmt.Sprintf("t%d", i), SupplementReason: "r"})
 			}
 			// Past the bound, one that would not stand anyway says why.
 			out.Concepts = append(out.Concepts, agentConcept{Term: "late unquoted"})
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			spec := built(out, docs, draft)
 
 			So(spec.Scenarios, ShouldHaveLength, maxSpecScenarios)
-			So(spec.Concepts, ShouldHaveLength, maxSpecConcepts)
+			So(spec.Concepts, ShouldHaveLength, maxDraftConcepts)
 			So(spec.Concepts[0].Term, ShouldEqual, "t0")
 			reasons := map[string]string{}
 			for _, r := range spec.Rejected {
 				reasons[r.Kind+" "+r.Text] = r.Reason
 			}
 			So(reasons, ShouldResemble, map[string]string{
-				"concept unquoted":                            rejectedQuoteNotFound,
-				"concept late unquoted":                       rejectedQuoteNotFound,
-				fmt.Sprintf("scenario s%d", maxSpecScenarios): rejectedTooMany,
-				fmt.Sprintf("concept t%d", maxSpecConcepts):   rejectedTooMany,
-				fmt.Sprintf("concept t%d", maxSpecConcepts+1): rejectedTooMany,
+				"concept unquoted":                             rejectedQuoteNotFound,
+				"concept late unquoted":                        rejectedQuoteNotFound,
+				fmt.Sprintf("scenario s%d", maxSpecScenarios):  rejectedTooMany,
+				fmt.Sprintf("concept t%d", maxDraftConcepts):   rejectedTooMany,
+				fmt.Sprintf("concept t%d", maxDraftConcepts+1): rejectedTooMany,
 			})
 		})
 
-		Convey("A conflict keeps the sides found, needs two documents, and gets the authority's suggestion\n", func() {
-			out := &draftOutput{Conflicts: []agentConflict{
-				{Topic: "Email confirmation", Kind: conflictRule, Sides: []agentConflictSide{
-					{DocumentID: "prd", Quote: "confirmed by email updates the agreed date", Position: "email is enough"},
-					{DocumentID: "pol", Quote: "Requests by email do not change the agreed date", Position: "signed only"},
-					{DocumentID: "pol", Quote: "not in the policy", Position: "dropped"},
-				}},
-				{Topic: "One-sided", Kind: conflictRule, Sides: []agentConflictSide{
-					{DocumentID: "prd", Quote: "confirmed by email updates the agreed date"},
-					{DocumentID: "pol", Quote: "not in the policy"},
-				}},
-			}}
+		Convey("Drafting reads the extracted concepts and needs, maps only unmapped concepts, and adds only new ones\n", func() {
+			customer := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "customer"}
+			order := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "sales_order"}
+			badge := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "badge"}
+			spec := emptySpec()
+			spec.Concepts = []*interfaces.RequirementConcept{
+				{ID: "c1", Term: "Client", Category: "object", Source: interfaces.REQUIREMENT_CONCEPT_FROM_DOCUMENTS},
+				{ID: "c2", Term: "Order", Category: "object", MapsTo: &order, Source: interfaces.REQUIREMENT_CONCEPT_FROM_DOCUMENTS},
+				{ID: "c3", Term: "Buyer", Category: "object", Edited: true, Source: interfaces.REQUIREMENT_CONCEPT_FROM_DOCUMENTS},
+				{ID: "c4", Term: "Badge", Category: "object", Source: interfaces.REQUIREMENT_CONCEPT_FROM_DOCUMENTS},
+			}
+			spec.LastIDs["c"] = 4
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"}}
+			out := &draftOutput{
+				Scenarios: []agentScenario{{ID: "sc", Name: "Chase late orders", SupplementReason: "r"}},
+				ConceptMaps: []agentConceptMap{
+					{ConceptID: "c1", MapsTo: &customer},
+					// Mapped already, changed by a person, or to an item not adopted: left as is.
+					{ConceptID: "kept-c2", MapsTo: &customer},
+					{ConceptID: "c3", MapsTo: &customer},
+					{ConceptID: "c4", MapsTo: &badge},
+					{ConceptID: "c9", MapsTo: &customer},
+				},
+				Concepts: []agentConcept{
+					// A concept extracted already is not added again; the Agent's id names it.
+					{ID: "x", Term: " client ", SupplementReason: "r"},
+					{ID: "y", Term: "Reminder", Category: "event", SupplementReason: "r"},
+				},
+				Questions: []agentQuestion{{Text: "Which orders of a client are late?", ScenarioIDs: []string{"sc"}, Layer: "knowledge",
+					ConceptIDs: []string{"x", "c2", "y"}, LogicNeedIDs: []string{"n1"}, SupplementReason: "r"}},
+			}
 
-			spec, _ := buildSpec(out, docs, draft, nil)
+			buildSpec(out, docs, draft, spec)
 
-			So(spec.Conflicts, ShouldHaveLength, 1)
-			k := spec.Conflicts[0]
-			So(k.ID, ShouldEqual, "k1")
-			So(k.Sides, ShouldHaveLength, 2)
-			So(k.Sides[1].Position, ShouldEqual, "signed only")
-			So(k.Sides[1].BlockID, ShouldEqual, "b1")
-			So(k.SuggestedDocumentID, ShouldEqual, "pol")
-			So(k.Resolution, ShouldBeNil)
-			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
-				{Kind: rejectedConflict, Text: "One-sided", Reason: rejectedQuoteNotFound},
-			})
+			So(spec.Concepts[0].MapsTo, ShouldResemble, &customer)
+			So(spec.Concepts[1].MapsTo, ShouldResemble, &order)
+			So(spec.Concepts[2].MapsTo, ShouldBeNil)
+			So(spec.Concepts[3].MapsTo, ShouldBeNil)
+			So(ids(spec.Concepts, conceptID), ShouldResemble, []string{"c1", "c2", "c3", "c4", "c5"})
+			So(spec.Concepts[4].Source, ShouldEqual, interfaces.REQUIREMENT_CONCEPT_FROM_SCENARIOS)
+			q := spec.Questions[0]
+			So(q.Basis.ConceptIDs, ShouldResemble, []string{"c1", "c2", "c5"})
+			So(q.Needs, ShouldResemble, []interfaces.RequirementItemRef{customer, order})
+			So(q.Layer, ShouldEqual, interfaces.REQUIREMENT_LAYER_CAPABILITY)
+			So(spec.LogicNeeds[0].ScenarioIDs, ShouldResemble, []string{"s1"})
 		})
 
-		Convey("A choice needs a quote and two options; a recommendation outside them is dropped\n", func() {
-			options := []agentOption{{ID: "a", Label: "As an event"}, {ID: "b", Label: "As a property"}}
-			out := &draftOutput{Choices: []agentChoice{
-				{Question: "Model date changes?", Options: options, RecommendedOptionID: "a",
-					Citations: []agentCitation{cite("pol", "only a signed change does")}},
-				{Question: "Odd recommendation?", Options: options, RecommendedOptionID: "z",
-					Citations: []agentCitation{cite("pol", "only a signed change does")}},
-				{Question: "One option?", Options: options[:1], Citations: []agentCitation{cite("pol", "only a signed change does")}},
-				{Question: "No quote?", Options: options},
-			}}
-
-			spec, _ := buildSpec(out, docs, draft, nil)
-
-			So(spec.Choices, ShouldHaveLength, 2)
-			So(spec.Choices[0].ID, ShouldEqual, "f1")
-			So(spec.Choices[0].Options[0].ID, ShouldEqual, "o1")
-			So(spec.Choices[0].RecommendedOptionID, ShouldEqual, "o1")
-			So(spec.Choices[1].RecommendedOptionID, ShouldEqual, "")
-			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
-				{Kind: rejectedChoice, Text: "One option?", Reason: rejectedTooFewOptions},
-				{Kind: rejectedChoice, Text: "No quote?", Reason: rejectedQuoteNotFound},
-			})
-		})
-
-		Convey("Document types the agent suggests are kept only for known documents and types\n", func() {
-			out := &draftOutput{DocTypes: []agentDocType{
-				{DocumentID: "prd", DocType: interfaces.REQUIREMENT_DOC_PRD},
-				{DocumentID: "pol", DocType: "manual"},
-				{DocumentID: "gone", DocType: interfaces.REQUIREMENT_DOC_POLICY},
-			}}
-
-			_, types := buildSpec(out, docs, draft, nil)
-
-			So(types, ShouldResemble, map[string]string{"prd": interfaces.REQUIREMENT_DOC_PRD})
-		})
 	})
 }
 
@@ -599,7 +575,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				tables[i] = &interfaces.VegaTable{Name: fmt.Sprintf("t%d", i)}
 			}
 
-			message, omitted, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil, nil)
+			message, omitted, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil, emptySpec(), emptySpec())
 
 			So(err, ShouldBeNil)
 			So(omitted, ShouldEqual, 5)
@@ -615,7 +591,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				Properties: []*interfaces.DraftProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}},
 			}}}}
 
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, nil)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec())
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -626,6 +602,37 @@ func Test_BuildDraftMessage(t *testing.T) {
 				[]messageProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}})
 		})
 
+		Convey("A document model goes without its evidence types and technical columns, which are not published\n", func() {
+			doc := func(role string) *interfaces.DraftDocumentModel { return &interfaces.DraftDocumentModel{Role: role} }
+			draft := &interfaces.Draft{Items: interfaces.DraftItems{
+				ObjectTypes: []*interfaces.DraftObjectType{
+					{ID: "contract_doc", Name: "Contract", PrimaryKeys: []string{"_id"}, Adopted: true, Document: doc("file"), Properties: []*interfaces.DraftProperty{
+						{Name: "_id", Type: "string"}, {Name: "contract_no", DisplayName: "Contract number", Type: "string"},
+						{Name: "document_id", Type: "string"}, {Name: "source_quote", Type: "text"}, {Name: "model_fingerprint", Type: "string"}}},
+					{ID: "party_doc", Name: "Party", PrimaryKeys: []string{"party_name"}, Adopted: true, Document: doc("entity"), Properties: []*interfaces.DraftProperty{
+						{Name: "_id", Type: "string"}, {Name: "party_name", Type: "string"}, {Name: "entity_id", Type: "string"}}},
+					{ID: "source_document", Name: "Source document", PrimaryKeys: []string{"_id"}, Adopted: true, Document: doc("evidence_document"), Properties: []*interfaces.DraftProperty{{Name: "name", Type: "string"}}},
+				},
+				RelationTypes: []*interfaces.DraftRelationType{
+					{ID: "signed_by", Source: "contract_doc", Target: "party_doc", Adopted: true},
+					{ID: "contract_doc_evidence", Source: "contract_doc", Target: "source_document", Adopted: true},
+				},
+			}}
+
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec())
+
+			So(err, ShouldBeNil)
+			var body draftMessage
+			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &body), ShouldBeNil)
+			So(body.ObjectTypes, ShouldHaveLength, 2)
+			So(body.ObjectTypes[0].PrimaryKeys, ShouldBeEmpty)
+			So(body.ObjectTypes[0].Properties, ShouldResemble, []messageProperty{{Name: "contract_no", DisplayName: "Contract number", Type: "string"}})
+			So(body.ObjectTypes[1].PrimaryKeys, ShouldResemble, []string{"party_name"})
+			So(body.ObjectTypes[1].Properties, ShouldResemble, []messageProperty{{Name: "party_name", Type: "string"}})
+			So(body.RelationTypes, ShouldHaveLength, 1)
+			So(body.RelationTypes[0].ID, ShouldEqual, "signed_by")
+		})
+
 		Convey("Only adopted items go, with their descriptions: a candidate no one adopted is not the ontology\n", func() {
 			draft := testDraft()
 			draft.Items.ObjectTypes[0].Description = "What a customer orders"
@@ -633,7 +640,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 			draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "maybe",
 				Source: "sales_order", Target: "candidate"})
 
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, nil)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec())
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -653,7 +660,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 			draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{
 				{ID: "ot1", Name: "Item", PrimaryKeys: []string{"id"}, Properties: props, Adopted: true}}}}
 
-			message, _, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, nil)
+			message, _, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec())
 
 			So(err, ShouldBeNil)
 			So(omitted, ShouldEqual, 5)
@@ -696,10 +703,12 @@ func Test_RequirementDrafting(t *testing.T) {
 		expectStart := func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil)
-			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
+			// Scenarios are drafted over the concepts extracted from the documents.
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(withConcepts(&interfaces.Requirement{ProjectID: "p1", Version: 1,
+				Status: interfaces.REQUIREMENT_STATUS_READY, UpdateTime: 900}), true, nil)
 			// A run may wait for the Agent twice, the second time after an answer it could not use.
-			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-2*agentDeadline.Milliseconds()-time.Minute.Milliseconds(), int64(0)).
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), int64(1000)-2*agentDeadline.Milliseconds()-time.Minute.Milliseconds(), int64(900)).
 				DoAndReturn(func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
 					So(req.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_DRAFTING)
 					So(req.Version, ShouldEqual, 1)
@@ -722,8 +731,7 @@ func Test_RequirementDrafting(t *testing.T) {
 				})
 		}
 		output := `{"scenarios":[{"id":"s","name":"Answer date requests","citations":[{"document_id":"prd","quote":"answer a customer's request for a new date"}]}],
-			"concepts":[],"questions":[],"rules":[{"statement":"Answer within 2 working days","compiles_to":"metric_definition","citations":[{"document_id":"pol","quote":"within 2 working days"}]}],
-			"conflicts":[],"choices":[],"doc_types":[{"document_id":"pol","doc_type":"policy"},{"document_id":"prd","doc_type":"standard"}]}`
+			"concepts":[],"concept_maps":[],"questions":[]}`
 
 		Convey("Drafting runs the Agent as the caller and records the checked specification\n", func() {
 			expectStart()
@@ -743,8 +751,6 @@ func Test_RequirementDrafting(t *testing.T) {
 			ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(nil, errors.New("blip"))
 			ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
 				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
-			// Only a document still typed other takes the suggested type.
-			ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", "pol", interfaces.REQUIREMENT_DOC_POLICY, gomock.Any()).Return(true, nil)
 			expectFinish()
 
 			req, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
@@ -759,32 +765,14 @@ func Test_RequirementDrafting(t *testing.T) {
 			So(finished.Spec.TablesOmitted, ShouldEqual, 0)
 			// A catalog whose tables could not be listed is named, so no one takes its tables as seen.
 			So(finished.Spec.CatalogsUnlisted, ShouldResemble, []string{"c1"})
-			So(finished.Spec.Rules[0].Citations[0].DocumentID, ShouldEqual, "pol")
 			So(finished.Inputs, ShouldResemble, &interfaces.RequirementInputs{
 				RulesVersion: requirementRulesVersion,
 				Documents: []interfaces.RequirementInputDocument{
-					{ID: "pol", SHA256: "h-pol", DocType: interfaces.REQUIREMENT_DOC_POLICY},
+					{ID: "pol", SHA256: "h-pol", DocType: interfaces.REQUIREMENT_DOC_OTHER},
 					{ID: "prd", SHA256: "h-prd", DocType: interfaces.REQUIREMENT_DOC_PRD},
 				},
 				CatalogIDs: []string{"c1", "c2"}, NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US,
 			})
-		})
-
-		Convey("A type the owner set while drafting ran is kept, and the specification records what it read\n", func() {
-			expectStart()
-			expectContext()
-			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
-				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
-			// The owner typed pol meanwhile: the conditional write changes nothing.
-			ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", "pol", interfaces.REQUIREMENT_DOC_POLICY, gomock.Any()).Return(false, nil)
-			expectFinish()
-
-			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
-
-			So(err, ShouldBeNil)
-			// Drafting read pol as other: once its type differs, the specification reads as stale.
-			So(finished.Inputs.Documents[0], ShouldResemble, interfaces.RequirementInputDocument{
-				ID: "pol", SHA256: "h-pol", DocType: interfaces.REQUIREMENT_DOC_OTHER})
 		})
 
 		Convey("Drafting ends at its deadline even when reads of the task never come back\n", func() {
@@ -947,7 +935,6 @@ func Test_RequirementDrafting(t *testing.T) {
 				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t2"}, nil)
 				ba.EXPECT().GetTask(gomock.Any(), caller, "t2").Return(&interfaces.BknAgentTask{TaskID: "t2",
 					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
-				ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 				expectFinish()
 
 				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
@@ -968,7 +955,6 @@ func Test_RequirementDrafting(t *testing.T) {
 				ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t2"}, nil)
 				ba.EXPECT().GetTask(gomock.Any(), caller, "t2").Return(&interfaces.BknAgentTask{TaskID: "t2",
 					Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil)
-				ra.EXPECT().SuggestDocumentType(gomock.Any(), "p1", gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 				expectFinish()
 
 				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
@@ -1025,29 +1011,69 @@ func Test_RequirementDrafting(t *testing.T) {
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InputsTooLarge)
 		})
 
-		Convey("Drafting needs an adopted object type in a ready draft, documents or none\n", func() {
-			notReady := testDraft()
+		Convey("Drafting needs a confirmed model adopting an object type, documents or none\n", func() {
+			notReady := confirmedDraft()
 			notReady.Status = interfaces.DRAFT_STATUS_DRAFTING
-			noneAdopted := testDraft()
+			noneAdopted := confirmedDraft()
 			for _, ot := range noneAdopted.Items.ObjectTypes {
 				ot.Adopted = false
 			}
-			for _, d := range []*interfaces.Draft{nil, notReady, noneAdopted} {
+			for _, d := range []*interfaces.Draft{nil, notReady, noneAdopted, testDraft()} {
 				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, d != nil, nil)
 
 				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 
-				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_NoAdoptedOntology)
+				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_ModelNotConfirmed)
 			}
+		})
+
+		Convey("Drafting over documents needs their concepts extracted; without documents it needs none\n", func() {
+			// Never ended ready: a first run going or failed has no inputs.
+			running := withConcepts(&interfaces.Requirement{Version: 1})
+			running.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_RUNNING
+			running.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs = nil
+			failed := withConcepts(&interfaces.Requirement{Version: 1})
+			failed.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_FAILED
+			failed.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs = nil
+			for _, previous := range []*interfaces.Requirement{nil, {Version: 1}, running, failed} {
+				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(previous, previous != nil, nil)
+
+				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_ConceptsNotExtracted)
+			}
+
+			// A run that fails after one ended ready keeps its inputs: the concepts stand, drafting goes on.
+			failedAgain := withConcepts(&interfaces.Requirement{Version: 1, UpdateTime: 5})
+			failedAgain.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_FAILED
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(failedAgain, true, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(5)).Return(false, nil)
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
+
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(false, nil)
+
+			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, false)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
 		})
 
 		Convey("A project drafting is not drafted again, and a store that fails says so\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).Times(2)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil).Times(2)
-			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil).Times(2)
-			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(testDraft(), true, nil).Times(2)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(withConcepts(&interfaces.Requirement{Version: 3}), true, nil).Times(2)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil).Times(2)
 			// Decisions are kept with the rest, never discarded unasked: drafting again is never refused for them.
 			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(false, nil)
 			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).DoAndReturn(
@@ -1069,9 +1095,9 @@ func Test_RequirementDrafting(t *testing.T) {
 			}{{3, 4}, {2, 3}, {0, 3}} {
 				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
-				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(&interfaces.Requirement{Version: 3}, true, nil)
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(withConcepts(&interfaces.Requirement{Version: 3}), true, nil)
 				draft := testDraft()
-				draft.Items.Confirmation = &interfaces.DraftConfirmation{RequirementVersion: c.confirmed}
+				draft.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "abc", RequirementVersion: c.confirmed}
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 				want := c.want
 				ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).DoAndReturn(
@@ -1104,6 +1130,7 @@ func Test_RequirementDrafting(t *testing.T) {
 
 		Convey("FailInterrupted fails what a previous run left drafting\n", func() {
 			ra.EXPECT().FailDrafting(gomock.Any(), failureInterrupted, int64(1000)).Return(int64(1), nil)
+			ra.EXPECT().ProjectsWithRunning(gomock.Any()).Return([]string{}, nil)
 			ra.EXPECT().FailGenerating(gomock.Any(), failureInterrupted, int64(1000)).Return(int64(0), nil)
 
 			So(svc.FailInterrupted(ctx), ShouldBeNil)
@@ -1135,10 +1162,10 @@ func Test_GetRequirement(t *testing.T) {
 					Choices: []*interfaces.RequirementChoice{{ID: "f1"}, {ID: "f2", Decision: &interfaces.RequirementChoiceDecision{OptionID: "o1"}}},
 					Questions: []*interfaces.RequirementQuestion{
 						{ID: "q1", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY},
-						{ID: "q2", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Functions: []string{"f"}}},
+						{ID: "q2", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, LogicNeedIDs: []string{"n1"}},
 						{ID: "q3", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, Notes: []string{"stale"}},
-						{ID: "q4", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Metrics: []string{"m"}}},
-						{ID: "q5", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, Basis: interfaces.RequirementBasis{Skills: []string{"s"}}},
+						{ID: "q4", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, LogicNeedIDs: []string{"n2"}},
+						{ID: "q5", Layer: interfaces.REQUIREMENT_LAYER_CAPABILITY, LogicNeedIDs: []string{"n3"}},
 						// A period counted back from a time no input gives, inputs known or not.
 						{ID: "q6", Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, RelativeWindow: true,
 							Inputs: &[]interfaces.RequirementInput{{Name: "o", Role: interfaces.REQUIREMENT_INPUT_RECORD}}},

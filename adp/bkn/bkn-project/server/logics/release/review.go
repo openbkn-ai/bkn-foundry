@@ -22,20 +22,21 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbpublication"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 // Directories of the definitions a review names.
 const (
 	objectTypesDir   = "object_types/"
 	relationTypesDir = "relation_types/"
+	// objectMetricsDir holds a file per version of each object metric.
+	objectMetricsDir = "object_metrics/"
 )
 
 var (
@@ -188,42 +189,22 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 		checkCheck(confirmation, check),
 		indexCheck(confirmation, index, indexErr),
 		baselineCheck(behind, preview),
+		metricOwnersCheck(branchFiles),
 	}
-	var knowledgePlan *kbpublication.Plan
-	if hasDraft && kbpublication.HasDocuments(draft) {
-		inspector := kbpublication.NewService(s.gs)
-		inspector.Drafts = s.da
-		inspected, inspectErr := inspector.Inspect(ctx, token, kbpublication.Target{ProjectID: projectID, LineageID: entry.KNID, Branch: entry.Branch, BranchCommit: preview.BranchCommit, NetworkID: preview.NetworkID, Publisher: caller})
-		reason := ""
-		if inspected == nil && inspectErr == nil {
-			inspectErr = kbpublication.ErrInvalidSnapshot
+	var signKnowledge func(string) string
+	if hooks := projecthooks.Current().Publications; hooks != nil && hasDraft {
+		check, sign, ok := hooks.Review(ctx, s.gs, token, draft, projecthooks.ReleaseTarget{ProjectID: projectID, LineageID: entry.KNID, Branch: entry.Branch, BranchCommit: preview.BranchCommit, NetworkID: preview.NetworkID, Publisher: caller})
+		if ok {
+			review.Checks = append(review.Checks, check)
+			signKnowledge = sign
 		}
-		if inspectErr != nil {
-			reason = "knowledge_base_unavailable"
-			if public, ok := kbpublication.PublicError(ctx, inspectErr).(*httperrors.HTTPError); ok {
-				switch public.ErrorCode {
-				case perrors.BknProject_Release_SourcePermission:
-					reason = "knowledge_base_permission"
-				case perrors.BknProject_Release_KnowledgeBaseNotReady:
-					reason = "knowledge_base_not_ready"
-				}
-			}
-		}
-		check := interfaces.ReleaseCheck{Code: "knowledge_base", Passed: inspectErr == nil && inspected != nil, Reason: reason}
-		if check.Passed {
-			originals := 0
-			for _, file := range inspected.Selection.Files {
-				if file.IncludeOriginal {
-					originals++
-				}
-			}
-			check.Details = map[string]int{"original_documents": originals}
-		}
-		review.Checks = append(review.Checks, check)
-		knowledgePlan = inspected
 	}
 
 	review.Risks = releaseRisks(review.Changes, preview.Changes, check, branchFiles, preview.Capabilities)
+	review.Risks.UnimplementedNeeds = []interfaces.ReleaseNeed{}
+	if questions != nil && questions.UnlinkedNeeds != nil {
+		review.Risks.UnimplementedNeeds = questions.UnlinkedNeeds
+	}
 
 	for _, c := range review.Checks {
 		switch {
@@ -244,7 +225,10 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 	if questions != nil {
 		questionsTime = questions.UpdateTime
 	}
-	review.Signature = kbpublication.ReviewSignature(signature(preview.BranchCommit, preview.MainCommit, updateTime, questionsTime), knowledgePlan)
+	review.Signature = signature(preview.BranchCommit, preview.MainCommit, updateTime, questionsTime)
+	if signKnowledge != nil {
+		review.Signature = signKnowledge(review.Signature)
+	}
 	span.SetStatus(codes.Ok, "")
 	return review, nil
 }
@@ -347,6 +331,45 @@ func namesCheck(added []string, files map[string][]byte) interfaces.ReleaseCheck
 			interfaces.RELEASE_ACCEPT_SIMILAR_NAMES, details)
 	}
 	return passed(interfaces.RELEASE_CHECK_NAMES)
+}
+
+// metricOwnersCheck finds the object metrics on the branch whose object type it no longer has: the
+// network would refuse the release when it imports them.
+func metricOwnersCheck(files map[string][]byte) interfaces.ReleaseCheck {
+	owners := map[string]bool{}
+	for p := range files {
+		if kindOf(p) == interfaces.RELEASE_ITEM_OBJECT_TYPE {
+			owners[strings.TrimSuffix(path.Base(p), path.Ext(p))] = true
+		}
+	}
+	missing := []interfaces.ReleaseMetricOwner{}
+	seen := map[string]bool{}
+	for p, body := range files {
+		if !strings.HasPrefix(p, objectMetricsDir) || path.Ext(p) != ".json" {
+			continue
+		}
+		var record struct {
+			Definition struct {
+				ID                string `json:"id"`
+				Name              string `json:"name"`
+				OwnerObjectTypeID string `json:"owner_object_type_id"`
+			} `json:"definition"`
+		}
+		if json.Unmarshal(body, &record) != nil {
+			continue
+		}
+		d := record.Definition
+		if d.OwnerObjectTypeID == "" || owners[d.OwnerObjectTypeID] || seen[d.ID] {
+			continue
+		}
+		seen[d.ID] = true
+		missing = append(missing, interfaces.ReleaseMetricOwner{ID: d.ID, Name: d.Name, OwnerObjectTypeID: d.OwnerObjectTypeID})
+	}
+	if len(missing) == 0 {
+		return passed(interfaces.RELEASE_CHECK_METRIC_OWNERS)
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i].ID < missing[j].ID })
+	return failed(interfaces.RELEASE_CHECK_METRIC_OWNERS, interfaces.RELEASE_REASON_METRIC_OWNER_MISSING, "", missing)
 }
 
 func driftCheck(drift *interfaces.ReleaseRefusal) interfaces.ReleaseCheck {

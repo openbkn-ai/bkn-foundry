@@ -6,7 +6,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -17,7 +16,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
-	buildaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbbuild"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
@@ -104,7 +102,6 @@ func TestServicesHaveEveryDependency(t *testing.T) {
 	logics.SetAuthAccess(pmock.NewMockAuthAccess(ctrl))
 	logics.SetReleaseAccess(pmock.NewMockReleaseAccess(ctrl))
 	logics.SetProjectAccess(pmock.NewMockProjectAccess(ctrl))
-	logics.SetKBResourceAccess(pmock.NewMockKBResourceAccess(ctrl))
 	logics.SetDraftAccess(pmock.NewMockDraftAccess(ctrl))
 	logics.SetCheckAccess(pmock.NewMockCheckAccess(ctrl))
 	logics.SetIDRegistryAccess(pmock.NewMockIDRegistryAccess(ctrl))
@@ -116,8 +113,6 @@ func TestServicesHaveEveryDependency(t *testing.T) {
 	logics.SetBknAgentAccess(pmock.NewMockBknAgentAccess(ctrl))
 	logics.SetRequirementAccess(pmock.NewMockRequirementAccess(ctrl))
 	logics.SetRegressionAccess(pmock.NewMockRegressionAccess(ctrl))
-
-	logics.SetKBRefreshAccess(buildaccess.NewRefreshes(&sql.DB{}))
 
 	handler := driveradapters.NewRestHandler(&common.AppSetting{}, pinger{})
 

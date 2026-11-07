@@ -20,10 +20,9 @@ const (
 	BknProject_Draft_NothingAdopted        = "BknProject.Draft.NothingAdopted"
 	BknProject_Draft_InvalidItem           = "BknProject.Draft.InvalidItem"
 	BknProject_Draft_InvalidProperty       = "BknProject.Draft.InvalidProperty"
+	BknProject_Draft_InvalidAliases        = "BknProject.Draft.InvalidAliases"
 	BknProject_Draft_InvalidRelation       = "BknProject.Draft.InvalidRelation"
 	BknProject_Draft_InvalidQuestion       = "BknProject.Draft.InvalidQuestion"
-
-	BknProject_Draft_InvalidSourceFields = "BknProject.Draft.InvalidSourceFields"
 
 	// 403
 	BknProject_Draft_NotOwner = "BknProject.Draft.NotOwner"
@@ -33,13 +32,7 @@ const (
 	BknProject_Draft_ItemNotFound = "BknProject.Draft.ItemNotFound"
 
 	// 409
-	BknProject_Draft_DualSourceNotConfirmed      = "BknProject.Draft.DualSourceNotConfirmed"
-	BknProject_Draft_DocumentRelationScope       = "BknProject.Draft.DocumentRelationScope"
 	BknProject_Draft_DocumentRelationNeedsRepair = "BknProject.Draft.DocumentRelationNeedsRepair"
-	BknProject_Draft_EventParticipantInUse       = "BknProject.Draft.EventParticipantInUse"
-	BknProject_Draft_BusinessIdentityNotVerified = "BknProject.Draft.BusinessIdentityNotVerified"
-	BknProject_Draft_BusinessIdentityNotUnique   = "BknProject.Draft.BusinessIdentityNotUnique"
-	BknProject_Draft_DocumentDataNotReady        = "BknProject.Draft.DocumentDataNotReady"
 	BknProject_Draft_Drafting                    = "BknProject.Draft.Drafting"
 	BknProject_Draft_ProjectArchived             = "BknProject.Draft.ProjectArchived"
 	BknProject_Draft_NotReady                    = "BknProject.Draft.NotReady"
@@ -56,8 +49,7 @@ const (
 	BknProject_Draft_NoSourceChanges             = "BknProject.Draft.NoSourceChanges"
 
 	// 503
-	BknProject_Draft_BusinessIdentityUnavailable = "BknProject.Draft.BusinessIdentityUnavailable"
-	BknProject_Draft_SourceUnreachable           = "BknProject.Draft.SourceUnreachable"
+	BknProject_Draft_SourceUnreachable = "BknProject.Draft.SourceUnreachable"
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
@@ -105,15 +97,7 @@ const (
 
 var (
 	DraftErrCodeList = []string{
-		BknProject_Draft_DualSourceNotConfirmed,
-		BknProject_Draft_InvalidSourceFields,
-		BknProject_Draft_BusinessIdentityNotVerified,
-		BknProject_Draft_BusinessIdentityNotUnique,
-		BknProject_Draft_BusinessIdentityUnavailable,
-		BknProject_Draft_DocumentRelationScope,
 		BknProject_Draft_DocumentRelationNeedsRepair,
-		BknProject_Draft_EventParticipantInUse,
-		BknProject_Draft_DocumentDataNotReady,
 		BknProject_Draft_NoCatalogs,
 		BknProject_Draft_NotFound,
 		BknProject_Draft_Drafting,
@@ -138,6 +122,7 @@ var (
 		BknProject_Draft_NothingAdopted,
 		BknProject_Draft_InvalidItem,
 		BknProject_Draft_InvalidProperty,
+		BknProject_Draft_InvalidAliases,
 		BknProject_Draft_InvalidRelation,
 		BknProject_Draft_PropertyInUse,
 		BknProject_Draft_InvalidQuestion,

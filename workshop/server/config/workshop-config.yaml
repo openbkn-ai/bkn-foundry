@@ -1,0 +1,46 @@
+server:
+  runMode: release
+  httpPort: 13022
+  language: zh-CN
+  readTimeOut: 600
+  writeTimeOut: 600
+log:
+  logLevel: debug
+  developMode: false
+  maxAge: 100
+  maxBackups: 20
+  maxSize: 100
+# OTel Collector configuration.
+otel:
+  service_name: "workshop"
+  environment: "production"
+  otlp_endpoint: "otelcol-contrib:4318"
+  trace:
+    enabled: false
+    sampling_rate: 1.0
+  log:
+    enabled: false
+    level: "info"
+
+# bkn-safe is configured by the BKN_SAFE_URL environment variable.
+depServices:
+  class-443:
+    ingressClass: class-443
+  rds:
+    host: mariadb-mariadb-master.resource.svc.cluster.local.
+    port: 3330
+    user: root
+    password: ""
+    type: MariaDB
+  hydra-admin:
+    host: hydra-admin
+    port: 4445
+    protocol: http
+  bkn-agent:
+    host: bkn-agent
+    port: 30800
+    protocol: http
+  bkn-backend:
+    host: bkn-backend-svc
+    port: 13014
+    protocol: http

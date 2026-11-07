@@ -107,6 +107,7 @@ func init() {
 	httperrors.Register(RiskTypeErrCodeList)
 	httperrors.Register(ValueTypeErrCodeList)
 	httperrors.Register(ObjectMetricErrCodeList)
+	httperrors.Register(KnEventErrCodeList)
 	httperrors.Register(CapabilityBindingErrCodeList)
 	httperrors.Register(CypherErrCodeList)
 	httperrors.Register(KNDiffErrCodeList)

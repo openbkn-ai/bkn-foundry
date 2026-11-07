@@ -3,7 +3,7 @@ import json
 from typing import Any, Optional
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app import dao, evidence, observability
 from app.config import config
@@ -202,12 +202,18 @@ async def _run_agent_once_core(
             "prompt.version": prompt_version,
         },
     ):
-        graph = create_agent(model, tools, system_prompt=system_prompt)
         async with asyncio.timeout(timeout_s):
-            result = await graph.ainvoke(
-                {"messages": [("user", message)]},
-                {"recursion_limit": max_turns * 2 + 1},
-            )
+            if response_format and not tools and limits and limits.single_structured_call:
+                # With no tool to call, the free-form turn only drafts an answer
+                # the structured call then redoes with the schema, often hitting
+                # the output cap with an empty body. Go straight to it.
+                result = {"messages": [HumanMessage(content=message)]}
+            else:
+                graph = create_agent(model, tools, system_prompt=system_prompt)
+                result = await graph.ainvoke(
+                    {"messages": [("user", message)]},
+                    {"recursion_limit": max_turns * 2 + 1},
+                )
             if response_format:
                 # Extract the structure separately once the tool loop is done:
                 # native support first, prompt-based degradation otherwise.

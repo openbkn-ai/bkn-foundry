@@ -23,6 +23,7 @@ var (
 	CGA            interfaces.ConceptGroupAccess
 	KBA            interfaces.KnowledgeBaseAccess
 	KNA            interfaces.KNAccess
+	KECA           interfaces.KnEventCleanupAccess
 	KPA            interfaces.KNProxyAccess
 	KPOA           interfaces.KNProxyOutboxAccess
 	OMA            interfaces.ObjectMetricAccessV1
@@ -84,6 +85,12 @@ func SetManagedProxyAccess(mpa interfaces.ManagedProxyAccess) {
 
 func SetObjectMetricAccess(oma interfaces.ObjectMetricAccessV1) {
 	OMA = oma
+}
+
+// SetKnEventCleanupAccess installs the paid image's cleanup of a network's
+// events, run in the transaction that deletes the network.
+func SetKnEventCleanupAccess(keca interfaces.KnEventCleanupAccess) {
+	KECA = keca
 }
 
 func SetModelFactoryAccess(mfa interfaces.ModelFactoryAccess) {

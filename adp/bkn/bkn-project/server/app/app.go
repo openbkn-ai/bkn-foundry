@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
+	"github.com/openbkn-ai/licverify"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
@@ -33,19 +35,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/indexbuild"
-	buildaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbbuild"
-	kbaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/kbresource"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
 	regressionaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/regression"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
 	requirementaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/requirement"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/vega"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/knowledgebase"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbinstance"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbrefresh"
 	releaselogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
@@ -58,6 +55,7 @@ type Application struct {
 	restHandler         driveradapters.RestHandler
 	refreshLicense      func(stop <-chan struct{})
 	knowledgeBaseRoutes func(*gin.Engine)
+	workers             []func(context.Context)
 }
 
 // Boot initializes shared infrastructure without opening the HTTP listener.
@@ -86,7 +84,6 @@ func Boot() *Application {
 	// Initialize the database connection.
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
-	logics.SetKBResourceAccess(kbaccess.New(db))
 	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 	logics.SetReleaseAccess(release.NewReleaseAccess(appSetting))
 	logics.SetProjectAccess(project.NewProjectAccess(appSetting))
@@ -101,12 +98,6 @@ func Boot() *Application {
 	logics.SetBknAgentAccess(bknagent.NewBknAgentAccess(appSetting))
 	logics.SetRequirementAccess(requirementaccess.NewRequirementAccess(appSetting))
 	logics.SetRegressionAccess(regressionaccess.NewRegressionAccess(appSetting))
-	logics.KBBA = buildaccess.New(db)
-	logics.KBRefs = buildaccess.NewReferences(db)
-	logics.KBPublications = buildaccess.NewPublications(db)
-	logics.SetKBRefreshAccess(buildaccess.NewRefreshes(db))
-	refreshSettings := appSetting.KBRefreshSetting
-	kbrefresh.ConfigureLimits(&kbrefresh.Limits{MaxChangedPercent: refreshSettings.MaxChangedPercent, MaxRemovedPercent: refreshSettings.MaxRemovedPercent, MaxDurationMillis: refreshSettings.MaxDurationSeconds * 1000})
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.
@@ -130,9 +121,21 @@ func Boot() *Application {
 	}
 }
 
-// RegisterKnowledgeBaseRoutes installs the core K1/K2 API adapters in an edition
-// build. It does not replace any community route. Call once during assembly;
-// K0 has no business routes yet. Providers are registered separately.
+// DB is the database of the process, for an edition to open its own stores on.
+func (server *Application) DB() *sql.DB { return server.db }
+
+// AddWorker runs work beside serving until shutdown, which waits for it to return. Call during
+// assembly.
+func (server *Application) AddWorker(work func(ctx context.Context)) {
+	entitlement.MustBeAssembling("bkn-project worker")
+	if work == nil {
+		panic("bkn-project: a worker must not be nil")
+	}
+	server.workers = append(server.workers, work)
+}
+
+// RegisterKnowledgeBaseRoutes installs the knowledge-base API of an edition
+// build. It does not replace any community route. Call once during assembly.
 func (server *Application) RegisterKnowledgeBaseRoutes(install func(*gin.Engine)) {
 	entitlement.MustBeAssembling("bkn-project knowledge base routes")
 	if install == nil || server.knowledgeBaseRoutes != nil {
@@ -150,7 +153,22 @@ func (server *Application) httpHandler() http.Handler {
 	extended := gin.New()
 	server.restHandler.RegisterPublic(extended)
 	server.knowledgeBaseRoutes(extended)
-	return knowledgebase.Gate(extended, community)
+	return knowledgeBaseGate(extended, community)
+}
+
+// knowledgeBaseGate selects between complete routers before route matching, including method
+// handling and canonical-path redirects. The extended router must contain the community routes
+// too, and is installed only by an edition that brings the knowledge base. Unlicensed, it leaks no
+// extension route through a redirect, Allow header or a different not-found response; downgrades
+// apply without restart. Authentication and project or source authorization stay in handlers.
+func knowledgeBaseGate(extended, community http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if entitlement.AtLeast(licverify.EditionProfessional) {
+			extended.ServeHTTP(w, r)
+			return
+		}
+		community.ServeHTTP(w, r)
+	})
 }
 
 // Run serves until shutdown.
@@ -165,16 +183,14 @@ func (server *Application) Run() {
 	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	buildWorkerDone := make(chan struct{})
+	var workers sync.WaitGroup
+	for _, work := range server.workers {
+		workers.Go(func() { work(ctx) })
+	}
+	workersDone := make(chan struct{})
 	go func() {
-		defer close(buildWorkerDone)
-		kbinstance.RunBuildWorker(ctx, logics.KBBA, logics.DA, logics.KBRefs)
-	}()
-	refreshWorkerDone := make(chan struct{})
-	go func() {
-		defer close(refreshWorkerDone)
-		settings := server.appSetting.KBRefreshSetting
-		kbrefresh.RunWorker(ctx, &kbrefresh.Limits{MaxChangedPercent: settings.MaxChangedPercent, MaxRemovedPercent: settings.MaxRemovedPercent, MaxDurationMillis: settings.MaxDurationSeconds * 1000})
+		workers.Wait()
+		close(workersDone)
 	}()
 	if server.refreshLicense != nil {
 		go server.refreshLicense(ctx.Done())
@@ -210,11 +226,7 @@ func (server *Application) Run() {
 		logger.Fatalf("Server Shutdown:%v", err)
 	}
 	select {
-	case <-buildWorkerDone:
-	case <-shutdownCtx.Done():
-	}
-	select {
-	case <-refreshWorkerDone:
+	case <-workersDone:
 	case <-shutdownCtx.Done():
 	}
 	if err := server.db.Close(); err != nil {
