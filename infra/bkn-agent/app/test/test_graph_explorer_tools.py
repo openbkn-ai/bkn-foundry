@@ -281,6 +281,22 @@ def test_cypher_scalars_come_back_as_a_table_and_plan_nothing():
     assert "planned_added" not in out and not run.state.get("actions")
 
 
+def test_cypher_tables_come_back_whole_up_to_a_size_and_say_when_cut():
+    # 87 rows used to come back as 20, and the model queried again in slices to read them all.
+    rows = [{"team": f"T{i}", "host": "Brazil", "performance": "group stage"} for i in range(87)]
+    run, tools, _ = _run(cypher={"columns": [{"name": "team"}], "entries": rows})
+    out = _invoke(tools["run_cypher"], query="MATCH (q:qualified_teams) RETURN q.team AS team")
+    assert out["table"]["rows"] == rows and out["table"]["total"] == 87
+    assert "cut" not in out["table"]
+
+    wide = [{"text": "x" * 500, "i": i} for i in range(87)]
+    run, tools, _ = _run(cypher={"columns": [{"name": "text"}], "entries": wide})
+    out = _invoke(tools["run_cypher"], query="MATCH (q:qualified_teams) RETURN q.text AS text")
+    shown = out["table"]["rows"]
+    assert 0 < len(shown) < 87 and shown == wide[: len(shown)]
+    assert "Aggregate" in out["table"]["cut"] and f"{len(shown)} of 87" in out["table"]["cut"]
+
+
 def test_cypher_must_be_complete():
     _, tools, calls = _run()
     with pytest.raises(Exception, match="complete query"):
@@ -866,6 +882,41 @@ def test_card_edits_name_listed_cards_only():
         asyncio.run(tools["edit_analysis_cards"].ainvoke({"remove": [7]}))
     with pytest.raises(ToolException, match="Nothing"):
         asyncio.run(tools["edit_analysis_cards"].ainvoke({}))
+
+
+def test_html_is_shown_only_in_an_analysis():
+    _, tools, _ = _run()
+    with pytest.raises(ToolException, match="not asked in an analysis"):
+        asyncio.run(tools["show_html"].ainvoke({"title": "t", "html": "<p>1</p>"}))
+
+
+def test_html_travels_whole_as_an_action():
+    run, tools = _analysis_run([{"no": 1, "kind": "select"}])
+    html = "<!doctype html><svg xmlns='http://www.w3.org/2000/svg'></svg>" + "<p>x</p>" * 2000
+    shown = _invoke(tools["show_html"], title=" 交期对比 ", html=html, description=" 按供应商 ")
+    assert shown == {"shown": {"title": "交期对比", "description": "按供应商"}}
+    # The page reads the HTML from the action: a tool's input reaches it cut short.
+    action = {"action_id": "1", "type": "show_html", "html": html, "title": "交期对比", "description": "按供应商"}
+    assert graph._progress(run)["actions"] == [action]
+    assert _result(run)["actions"] == [action]
+    assert "show_html" in "\n".join(graph._card_instructions(run))
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<img src="https://cdn.example.com/a.png">',
+        '<script src="//cdn.example.com/lib.js"></script>',
+        "<script>location.href = '?d=' + data</script>",
+        "<script>window.open('x')</script>",
+        '<meta http-equiv="refresh" content="0;url=x">',
+    ],
+)
+def test_html_that_reaches_outside_is_refused(html):
+    run, tools = _analysis_run([])
+    with pytest.raises(ToolException, match="reaches outside"):
+        asyncio.run(tools["show_html"].ainvoke({"title": "t", "html": html}))
+    assert not run.state.get("actions")
 
 
 def test_metric_cards_name_known_types():

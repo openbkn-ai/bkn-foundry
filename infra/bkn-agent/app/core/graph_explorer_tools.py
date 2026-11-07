@@ -41,6 +41,10 @@ SAMPLE = 50
 NODE_LIMIT = 500
 # Items the model reads per result, and properties / characters per item.
 ITEM_LIMIT = 20
+# Rows of a query's table the model reads: whole up to this size, so that it does not
+# query again in slices to see the rest.
+TABLE_ROWS = 200
+TABLE_CHARS = 12_000
 PROPERTY_CAP = 8
 VALUE_CAP = 120
 # Identities per query_object_instance request, paths per query_instance_subgraph.
@@ -144,6 +148,33 @@ class CanvasContext(BaseModel):
     analysis_cards: Optional[list[AnalysisCard]] = Field(default=None, max_length=1000)
 
 
+# Largest HTML a card of an analysis keeps (the Web's limit too).
+HTML_MAX_LENGTH = 256 * 1024
+
+# What in an HTML card would reach outside: addresses of other sites and ways to
+# leave the page. The card's frame loads and connects to nothing; leaving the page
+# by navigation it cannot block, so the HTML must not try.
+_EXTERNAL = (
+    re.compile(r"(?:\bhttps?:)?//[a-z0-9][\w.-]*\.[a-z]{2,}[^\s\"'<>)]*", re.IGNORECASE),
+    re.compile(r"\blocation(?:\.href)?\s*="),
+    re.compile(r"\blocation\.(?:assign|replace)\s*\("),
+    re.compile(r"\bwindow\.open\s*\("),
+    re.compile(r"<meta[^>]+http-equiv\s*=\s*[\"']?refresh", re.IGNORECASE),
+)
+# A namespace URI names a vocabulary; nothing is fetched from it.
+_NAMESPACE = re.compile(r"^(?:https?:)?//www\.w3\.org/", re.IGNORECASE)
+
+
+def _external_refs(html: str) -> list[str]:
+    found: dict[str, None] = {}
+    for pattern in _EXTERNAL:
+        for match in pattern.finditer(html):
+            ref = match.group(0)[:120]
+            if not _NAMESPACE.match(ref):
+                found[ref] = None
+    return list(found)
+
+
 def _canvas(run: builtin_tools.Run) -> CanvasContext:
     return run.context  # type: ignore[return-value]
 
@@ -173,6 +204,26 @@ def _warn(run: builtin_tools.Run, message: str) -> None:
 
 def _dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _table(columns: list[Any], rows: list[Any]) -> dict[str, Any]:
+    """A query's rows as the model reads them: all of them up to TABLE_ROWS and
+    TABLE_CHARS, and, when they are cut, how to get an answer instead of the rest."""
+    shown: list[Any] = []
+    size = 0
+    for row in rows[:TABLE_ROWS]:
+        size += len(_dump(row))
+        if shown and size > TABLE_CHARS:
+            break
+        shown.append(row)
+    table: dict[str, Any] = {"columns": columns, "rows": shown, "total": len(rows)}
+    if len(shown) < len(rows):
+        table["cut"] = (
+            f"Only the first {len(shown)} of {len(rows)} rows are shown. Aggregate (count, sum,"
+            " collect) or narrow with WHERE for the answer; do not run the query again in"
+            " slices to read the rest."
+        )
+    return table
 
 
 # ---- Context Loader ----
@@ -1038,14 +1089,10 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             out.update(_merge(run, graph.nodes, graph.edges))
             _keep_cypher_result(run, query, graph, bool(out.get("limited")))
         if graph.table:
-            out["table"] = {
-                "columns": graph.table["columns"],
-                "rows": graph.table["rows"][:ITEM_LIMIT],
-                "total": len(graph.table["rows"]),
-            }
+            out["table"] = _table(graph.table["columns"], graph.table["rows"])
         elif not graph.holds_graph:
             columns = [c.get("name") for c in result.get("columns") or [] if isinstance(c, dict)]
-            out["table"] = {"columns": columns, "rows": entries[:ITEM_LIMIT], "total": len(entries)}
+            out["table"] = _table(columns, entries)
         return _dump(out)
 
     async def canvas_state(
@@ -1397,6 +1444,53 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             out["renamed"] = [{"no": item["no"], "title": item["title"].strip()} for item in rename]
         return _dump(out)
 
+    async def show_html(
+        title: Annotated[str, Field(min_length=1, max_length=60, description="The card's title, a few words.")],
+        html: Annotated[
+            str,
+            Field(min_length=1, max_length=HTML_MAX_LENGTH, description="A whole HTML document, everything inline."),
+        ],
+        description: Annotated[
+            Optional[str], Field(max_length=200, description="One sentence: what the HTML shows.")
+        ] = None,
+    ) -> str:
+        """Show a piece of HTML as a card of the user's analysis, when a picture
+        makes the answer easier to take in than text: figures side by side, a
+        ranking, a comparison, a timeline, a small dashboard. Only for a question
+        asked in an analysis. The card follows what your canvas holds when you call
+        this, and the page hands that to the HTML before its scripts run:
+        window.BKN_DATA = {theme: "light" | "dark", result: {kind: "graph", nodes:
+        [{id, type, name, props, computed}], edges: [{id, source, target, type,
+        computed}]} or {kind: "table", columns, rows} or null}. `type` is the object
+        or relation type name, `props` the instance's properties, `computed` the
+        columns a Cypher query returned beside it. Figures you worked out that are
+        not on the canvas (totals from run_cypher), write into the HTML itself.
+        The HTML runs isolated with no network: no outside addresses at all (links,
+        images, scripts, styles, fonts: inline them or leave them out), no
+        navigation, no libraries of your own; HTML, JavaScript or inline SVG.
+        Tailwind CSS (v4) is already in the page, so never link it or load it from
+        a CDN: style with its utility classes rather than CSS of your own. For surfaces and text use the theme's colours bkn-bg,
+        bkn-raised, bkn-fill, bkn-text, bkn-muted, bkn-faint, bkn-border,
+        bkn-accent, bkn-success, bkn-warning, bkn-error (bg-bkn-raised,
+        text-bkn-muted, border-bkn-border), so the card follows light and dark;
+        Tailwind's palette is there for more accents. Show at most one per answer,
+        never beside a chart of the same figures, after the data is gathered, and
+        still answer in text."""
+        if _canvas(run).analysis_cards is None:
+            raise ToolException("This question is not asked in an analysis; there is no card to show HTML in.")
+        refs = _external_refs(html)
+        if refs:
+            raise ToolException(
+                f"The HTML reaches outside the page: {', '.join(refs[:5])}. It runs with no network:"
+                " inline every image, style and script (or leave it out) and do not navigate."
+                " Tailwind CSS is already in the page; use its classes without linking it."
+            )
+        shown = {"title": title.strip()}
+        if description and description.strip():
+            shown["description"] = description.strip()
+        _record(run, "show_html", html=html, **shown)
+        return _dump({"shown": shown})
+
     return [
         _tool(fn)
         for fn in (
@@ -1414,6 +1508,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             canvas_control,
             manual_group,
             edit_analysis_cards,
+            show_html,
         )
     ]
 
@@ -1440,6 +1535,7 @@ ACTION_TYPES = frozenset(
         "clear",
         "manual_group",
         "undo",
+        "show_html",
     }
 )
 
@@ -1488,6 +1584,11 @@ def _card_instructions(run: builtin_tools.Run) -> list[str]:
         "",
         "This question is asked in an analysis made of cards. `#<number>` in the user's message names a card,"
         " never a node. Delete or rename cards with edit_analysis_cards.",
+        "When a picture makes the answer easier to take in, show one picture per answer, after the data is"
+        " gathered, and still answer in text. A chart (configure_analysis) when one can show it: the user can"
+        " click into a chart, and it counts the instances on your canvas. Otherwise show_html: figures you"
+        " worked out with run_cypher, figures side by side, a ranking, a comparison, a timeline. Never both"
+        " for the same figures.",
         "Your canvas is what the card the user continues from holds. Clearing it (canvas_control clear) starts"
         " a new line from nothing: no card is deleted and the user is not asked to confirm, so say that, not"
         " that a confirmation follows. Layout, labels, grouping and the other view tools change nothing in an"
@@ -1610,6 +1711,7 @@ TOOL_NAMES = frozenset(
         "canvas_control",
         "manual_group",
         "edit_analysis_cards",
+        "show_html",
     }
 )
 

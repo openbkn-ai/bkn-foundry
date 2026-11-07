@@ -55,6 +55,7 @@ DOCUMENT_SEED = MIGRATIONS / "0.2.1/39-seed-bkn-project-document-extraction.sql"
 CONCEPT_NATIVE = MIGRATIONS / "0.2.1/40-concept-native-evidence.sql"
 PUBLISH_BUILTINS = MIGRATIONS / "0.2.1/41-publish-builtin-agents.sql"
 GRAPH_EXPLORER_V2 = MIGRATIONS / "0.2.1/42-graph-explorer-count-first-v2.sql"
+ANALYSIS_WRITER = MIGRATIONS / "0.2.1/43-seed-analysis-writer.sql"
 
 
 def statements(path):
@@ -286,6 +287,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, CONCEPT_NATIVE)
         apply(upgraded, PUBLISH_BUILTINS)
         apply(upgraded, GRAPH_EXPLORER_V2)
+        apply(upgraded, ANALYSIS_WRITER)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -499,6 +501,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(CONCEPT_NATIVE),
                     str(PUBLISH_BUILTINS),
                     str(GRAPH_EXPLORER_V2),
+                    str(ANALYSIS_WRITER),
                 ],
             ],
         ],
@@ -583,6 +586,7 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + ontology_ask_v5_locales_text() + "\n\n" + DOCUMENT_SEED.read_text()
         + "\n" + native_concept_seed_text()
         + "\n" + graph_explorer_v2_locales_text()
+        + "\n" + ANALYSIS_WRITER.read_text()
     )
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
