@@ -10,6 +10,7 @@ from app.config import config
 from app.core import context_loader, llm
 from app.core.llm import build_chat_model
 from app.core.structured import structured_extract_with_path
+from app.core.tool_budget import budget_instruction, budget_middleware
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.db import SessionLocal
@@ -185,12 +186,9 @@ async def _run_agent_once_core(
     timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
     max_out = limits.max_output_tokens if limits else None
     model = build_chat_model(agent.model, max_output_tokens=max_out)
-    tools = apply_tool_call_cap(
-        tools,
-        limits.max_tool_calls if limits else None,
-        account_id,
-        account_type,
-    )
+    max_tool_calls = limits.max_tool_calls if limits else None
+    tools = apply_tool_call_cap(tools, max_tool_calls, account_id, account_type)
+    system_prompt += budget_instruction(max_tool_calls)
 
     with observability.span(
         "agent.task",
@@ -209,7 +207,9 @@ async def _run_agent_once_core(
                 # the output cap with an empty body. Go straight to it.
                 result = {"messages": [HumanMessage(content=message)]}
             else:
-                graph = create_agent(model, tools, system_prompt=system_prompt)
+                graph = create_agent(
+                    model, tools, system_prompt=system_prompt, middleware=budget_middleware(max_tool_calls)
+                )
                 result = await graph.ainvoke(
                     {"messages": [("user", message)]},
                     {"recursion_limit": max_turns * 2 + 1},

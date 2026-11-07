@@ -18,6 +18,7 @@ from app.core.structured import StructuredOutputError, structured_extract_with_p
 from app.core.prompt import resolve_prompt
 from app.core.agent_settings import instruction_block, shared_limits
 from app.core.context_budget import context_middleware
+from app.core.tool_budget import budget_instruction, budget_middleware
 from app.core.public_chat import PublicChat, classify_failure
 from app.core.skills import load_skills
 from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools
@@ -166,12 +167,9 @@ async def stream_chat(
         )
         max_out = limits.max_output_tokens if limits else None
         model = build_chat_model(agent.model, max_output_tokens=max_out)
-        tools = apply_tool_call_cap(
-            tools,
-            limits.max_tool_calls if limits else None,
-            account_id,
-            account_type,
-        )
+        max_tool_calls = limits.max_tool_calls if limits else None
+        tools = apply_tool_call_cap(tools, max_tool_calls, account_id, account_type)
+        system_prompt += budget_instruction(max_tool_calls)
     except BaseException:
         _busy_threads.discard(thread_id)  # A failed setup must release the claim, or the thread answers 409 forever
         # When setup raises, _events() was never constructed, so its finally can
@@ -229,14 +227,19 @@ async def stream_chat(
                         system_prompt=system_prompt,
                         checkpointer=checkpointer,
                         # Legacy callers keep the unbounded history they had.
-                        middleware=context_middleware(
-                            shared_limits(agent),
-                            build_chat_model(
-                                agent.model, streaming=False, max_output_tokens=max_out
+                        middleware=[
+                            *(
+                                context_middleware(
+                                    shared_limits(agent),
+                                    build_chat_model(
+                                        agent.model, streaming=False, max_output_tokens=max_out
+                                    ),
+                                )
+                                if public
+                                else ()
                             ),
-                        )
-                        if public
-                        else (),
+                            *budget_middleware(max_tool_calls),
+                        ],
                     )
                     cfg = {
                         "configurable": {"thread_id": thread_id},
