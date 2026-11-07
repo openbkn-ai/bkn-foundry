@@ -865,7 +865,7 @@ async def _expand(run: builtin_tools.Run, ids: list[str], direction: str) -> dic
 _RETURN = re.compile(r"\bRETURN\b", re.I)
 # Keywords a model names an alias after (`RETURN m AS match`), which the parser refuses.
 _KEYWORD_ALIAS = re.compile(
-    r"\bAS\s+(match|return|with|where|order|by|limit|skip|count|case|when|then|else|end|union"
+    r"\bAS\s+(match|return|with|where|order|by|limit|skip|case|when|then|else|end|union"
     r"|optional|distinct|exists|call|unwind|as|in|is|not|and|or|xor|null|true|false|asc|desc)\b",
     re.I,
 )
@@ -874,8 +874,16 @@ _KEYWORD_ALIAS = re.compile(
 def _keyword_hint(query: str, message: str) -> str:
     """The upstream error, with a plain word on a keyword alias: the parser only says
     `mismatched input 'match'`, and a model rewrites the rest of the query but keeps
-    the alias, failing the same way again."""
-    found = sorted({m.group(1).lower() for m in _KEYWORD_ALIAS.finditer(query)})
+    the alias, failing the same way again. Only an alias the parser stopped at is
+    named; a query that failed for another reason keeps its error as it is."""
+    error = message.lower()
+    found = sorted(
+        {
+            m.group(1).lower()
+            for m in _KEYWORD_ALIAS.finditer(query)
+            if f"mismatched input '{m.group(1).lower()}'" in error
+        }
+    )
     if not found:
         return message
     names = ", ".join(found)

@@ -401,6 +401,20 @@ def test_a_keyword_alias_failure_says_which_word_to_rename():
     assert "Hint" not in str(plain.value)
 
 
+def test_a_keyword_alias_hint_needs_the_parser_to_stop_at_it():
+    """`count` is a legal alias, and a query that failed for another reason has no
+    keyword to rename: neither gets the hint."""
+
+    def refuse(kwargs):
+        return {"error": "object type matchez not found"}
+
+    run, tools, _ = _run(cypher=refuse)
+    for query in ("MATCH (mt:matchez) RETURN count(mt) AS count", "MATCH (mt:matchez) RETURN mt AS match"):
+        with pytest.raises(ToolException) as failed:
+            asyncio.run(tools["run_cypher"].coroutine(query=query))
+        assert "Hint" not in str(failed.value), query
+
+
 def test_without_context_loader_the_tools_say_so():
     run, tools, _ = _run()
     run.state.pop("context_loader")
