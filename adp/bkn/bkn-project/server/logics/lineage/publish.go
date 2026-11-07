@@ -26,10 +26,10 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/drift"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbpublication"
 )
 
 const (
@@ -158,17 +158,19 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	networkID, tag, branchHead := preview.NetworkID, preview.Tag, preview.BranchCommit
 	liveID, baseVersion, previous := preview.LiveNetworkID, preview.BaseVersion, checked.previous
 
-	publisherService := s.knowledgePublisher(gs)
-	projectID := strings.TrimPrefix(req.Branch, "project/")
-	publication, err := publisherService.Prepare(ctx, token, kbpublication.Target{DeclaredProjectID: req.ProjectID, ProjectID: projectID, LineageID: lineageID, Branch: req.Branch, BranchCommit: branchHead, NetworkID: networkID, Publisher: publisher})
-	if err != nil {
-		return nil, kbpublication.PublicError(ctx, err)
+	var publication projecthooks.Publication
+	if hooks := projecthooks.Current().Publications; hooks != nil {
+		projectID := strings.TrimPrefix(req.Branch, "project/")
+		publication, err = hooks.Prepare(ctx, gs, token, projecthooks.ReleaseTarget{DeclaredProjectID: req.ProjectID, ProjectID: projectID, LineageID: lineageID, Branch: req.Branch, BranchCommit: branchHead, NetworkID: networkID, Publisher: publisher})
+		if err != nil {
+			return nil, err
+		}
 	}
 	if publication != nil {
-		if req.ProjectID != "" && req.ProjectID != publication.ProjectID {
+		if req.ProjectID != "" && req.ProjectID != publication.ProjectID() {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidProjectID)
 		}
-		req.ProjectID = publication.ProjectID
+		req.ProjectID = publication.ProjectID()
 	}
 
 	if !checked.retry {
@@ -190,8 +192,10 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 			WithErrorDetails(map[string]any{"network_id": networkID, "tag": tag, "skipped": imported.Capabilities.Skipped})
 	}
 
-	if err := publisherService.Mount(ctx, token, publication); err != nil {
-		return nil, kbpublication.PublicError(ctx, err)
+	if publication != nil {
+		if err := publication.Mount(ctx, token); err != nil {
+			return nil, err
+		}
 	}
 
 	id, err := uuid.NewV7()
@@ -216,11 +220,13 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	if err := s.ra.CreateRelease(ctx, release); err != nil {
 		return nil, err
 	}
-	if err := publisherService.Activate(ctx, publication); err != nil {
-		// The ordinary release already committed. Its mounted generation remains
-		// sealed; a private activation acknowledgement must not stop main/branch
-		// synchronization or turn a successful release into a retry refusal.
-		otellog.LogWarn(ctx, fmt.Sprintf("Activate knowledge publication for released network %s failed: %v", networkID, err))
+	if publication != nil {
+		if err := publication.Activate(ctx); err != nil {
+			// The ordinary release already committed. Its mounted generation remains
+			// sealed; a private activation acknowledgement must not stop main/branch
+			// synchronization or turn a successful release into a retry refusal.
+			otellog.LogWarn(ctx, fmt.Sprintf("Activate knowledge publication for released network %s failed: %v", networkID, err))
+		}
 	}
 
 	commit, err := gs.FastForward(ctx, lineageID, interfaces.GIT_MAIN_BRANCH, branchHead)

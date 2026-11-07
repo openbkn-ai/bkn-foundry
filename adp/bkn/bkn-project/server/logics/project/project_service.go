@@ -422,17 +422,9 @@ func (s *projectService) lineageOf(ctx context.Context, token string, knID strin
 	return release.LineageID, nil
 }
 
-// liveNetworkID is the network of the lineage's newest release, or the network
-// itself before any release.
+// liveNetworkID is the network that is live for the lineage.
 func (s *projectService) liveNetworkID(ctx context.Context, knID string) (string, error) {
-	newest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: knID, Limit: 1})
-	if err != nil {
-		return "", err
-	}
-	if len(newest) == 0 {
-		return knID, nil
-	}
-	return newest[0].NetworkID, nil
+	return logics.LiveNetwork(ctx, s.ra, knID)
 }
 
 // withOtherProjects counts, for each project, the other unarchived projects of its network.

@@ -102,6 +102,58 @@ func Test_RequirementSpecRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_InvalidRequestBody)
 		})
 
+		Convey("requirements:extract-concepts and requirements:analyze-kinetic start their runs and reply 202\n", func() {
+			running := &interfaces.Requirement{ProjectID: "p1", Status: interfaces.REQUIREMENT_STATUS_READY,
+				Spec: interfaces.RequirementSpec{Runs: map[string]*interfaces.RequirementRun{
+					interfaces.REQUIREMENT_RUN_CONCEPTS: {Status: interfaces.REQUIREMENT_RUN_RUNNING, RunID: "r1"}}}}
+			rqs.EXPECT().ExtractConcepts(gomock.Any(), "Bearer t", "p1", caller, false).Return(running, nil)
+			rqs.EXPECT().ExtractConcepts(gomock.Any(), "Bearer t", "p1", caller, true).Return(running, nil)
+			rqs.EXPECT().AnalyseKinetic(gomock.Any(), "Bearer t", "p1", caller, true).Return(running, nil)
+			rqs.EXPECT().AnalyseKinetic(gomock.Any(), "Bearer t", "p1", caller, false).
+				Return(nil, httpError(http.StatusConflict, perrors.BknProject_Requirement_ModelNotConfirmed))
+
+			w := serve(handler, http.MethodPost, "/api/bkn-project/v1/projects/p1/requirements:extract-concepts")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
+			So(w.Body.String(), ShouldContainSubstring, `"runs":{"concepts":{"status":"running"`)
+			w = serveBody(handler, http.MethodPost, "/api/bkn-project/v1/projects/p1/requirements:extract-concepts",
+				[]byte(`{"discard_decisions":true}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
+			w = serveBody(handler, http.MethodPost, "/api/bkn-project/v1/projects/p1/requirements:analyze-kinetic",
+				[]byte(`{"discard_decisions":true}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusAccepted)
+			w = serve(handler, http.MethodPost, "/api/bkn-project/v1/projects/p1/requirements:analyze-kinetic")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusConflict)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_ModelNotConfirmed)
+			w = serveBody(handler, http.MethodPost, "/api/bkn-project/v1/projects/p1/requirements:analyze-kinetic", []byte(`{`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_InvalidRequestBody)
+		})
+
+		Convey("Kinetic needs are added, edited and deleted as items of kind logic_needs\n", func() {
+			rqs.EXPECT().AddItem(gomock.Any(), "Bearer t", "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, gomock.Any(), caller).DoAndReturn(
+				func(_ context.Context, _, _, _ string, edit interfaces.RequirementItemEdit, _ interfaces.AccountInfo) (*interfaces.Requirement, error) {
+					So(*edit.LogicKind, ShouldEqual, interfaces.LOGIC_NEED_METRIC)
+					So(*edit.Name, ShouldEqual, "Late rate")
+					So(*edit.Properties, ShouldResemble, []interfaces.RequirementPropertyRef{{ObjectTypeID: "ot1", Property: "due"}})
+					So(*edit.SuggestedMetricType, ShouldEqual, "atomic")
+					return spec, nil
+				})
+			rqs.EXPECT().EditItem(gomock.Any(), "Bearer t", "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1", gomock.Any(), caller).DoAndReturn(
+				func(_ context.Context, _, _, _, _ string, edit interfaces.RequirementItemEdit, _ interfaces.AccountInfo) (*interfaces.Requirement, error) {
+					So(*edit.LogicNeedIDs, ShouldResemble, []string{"n1"})
+					return spec, nil
+				})
+			rqs.EXPECT().DeleteItem(gomock.Any(), "Bearer t", "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n1", int64(7), caller).Return(spec, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/items/logic_needs", []byte(`{"update_time":7,"logic_kind":"metric",`+
+				`"name":"Late rate","object_type_ids":["ot1"],"properties":[{"object_type_id":"ot1","property":"due"}],"suggested_metric_type":"atomic"}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
+			w = serveBody(handler, http.MethodPatch, base+"/items/questions/q1", []byte(`{"update_time":7,"logic_need_ids":["n1"]}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			w = serve(handler, http.MethodDelete, base+"/items/logic_needs/n1?update_time=7")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
 		Convey("An item is added, edited and deleted by kind\n", func() {
 			rqs.EXPECT().AddItem(gomock.Any(), "Bearer t", "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, gomock.Any(), caller).DoAndReturn(
 				func(_ context.Context, _, _, _ string, edit interfaces.RequirementItemEdit, _ interfaces.AccountInfo) (*interfaces.Requirement, error) {

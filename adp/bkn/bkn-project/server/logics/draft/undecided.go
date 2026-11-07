@@ -57,7 +57,8 @@ func undecidedItems(items *interfaces.DraftItems) []undecidedItem {
 	}
 	undecided := []undecidedItem{}
 	for _, ot := range items.ObjectTypes {
-		if ot.Adopted || decided[interfaces.DRAFT_KIND_OBJECT_TYPES+"/"+ot.ID] {
+		// Evidence follows its business items: it is never undecided on its own.
+		if ot.Adopted || decided[interfaces.DRAFT_KIND_OBJECT_TYPES+"/"+ot.ID] || isEvidence(ot.Document) {
 			continue
 		}
 		because := undecidedNotAdopted
@@ -67,7 +68,7 @@ func undecidedItems(items *interfaces.DraftItems) []undecidedItem {
 		undecided = append(undecided, undecidedItem{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: ot.ID, Because: because})
 	}
 	for _, rt := range items.RelationTypes {
-		if rt.Adopted || decided[interfaces.DRAFT_KIND_RELATION_TYPES+"/"+rt.ID] {
+		if rt.Adopted || decided[interfaces.DRAFT_KIND_RELATION_TYPES+"/"+rt.ID] || isEvidence(rt.Document) {
 			continue
 		}
 		because := rt.ProposedBecause

@@ -48,6 +48,7 @@ const (
 	BknProject_Requirement_NoCatalogs          = "BknProject.Requirement.NoCatalogs"
 	BknProject_Requirement_InputsTooLarge      = "BknProject.Requirement.InputsTooLarge"
 	BknProject_Requirement_InvalidTest         = "BknProject.Requirement.InvalidTest"
+	BknProject_Requirement_NoDocuments         = "BknProject.Requirement.NoDocuments"
 
 	// 403
 	BknProject_Requirement_NotOwner = "BknProject.Requirement.NotOwner"
@@ -59,15 +60,20 @@ const (
 	BknProject_Requirement_TestNotFound     = "BknProject.Requirement.TestNotFound"
 
 	// 409
-	BknProject_Requirement_Drafting            = "BknProject.Requirement.Drafting"
-	BknProject_Requirement_Generating          = "BknProject.Requirement.Generating"
-	BknProject_Requirement_InvalidExportTarget = "BknProject.Requirement.InvalidExportTarget"
-	BknProject_Requirement_Stale               = "BknProject.Requirement.Stale"
-	BknProject_Requirement_HasDecisions        = "BknProject.Requirement.HasDecisions"
-	BknProject_Requirement_ProjectArchived     = "BknProject.Requirement.ProjectArchived"
+	BknProject_Requirement_Drafting             = "BknProject.Requirement.Drafting"
+	BknProject_Requirement_Generating           = "BknProject.Requirement.Generating"
+	BknProject_Requirement_InvalidExportTarget  = "BknProject.Requirement.InvalidExportTarget"
+	BknProject_Requirement_Stale                = "BknProject.Requirement.Stale"
+	BknProject_Requirement_HasDecisions         = "BknProject.Requirement.HasDecisions"
+	BknProject_Requirement_ProjectArchived      = "BknProject.Requirement.ProjectArchived"
+	BknProject_Requirement_ModelNotConfirmed    = "BknProject.Requirement.ModelNotConfirmed"
+	BknProject_Requirement_ConceptsNotExtracted = "BknProject.Requirement.ConceptsNotExtracted"
 
 	// 500
 	BknProject_Requirement_InternalError = "BknProject.Requirement.InternalError"
+
+	// 503
+	BknProject_Requirement_ImplementationUnavailable = "BknProject.Requirement.ImplementationUnavailable"
 )
 
 var (
@@ -108,6 +114,10 @@ var (
 		BknProject_Requirement_InvalidTest,
 		BknProject_Requirement_TestNotFound,
 		BknProject_Requirement_Generating,
+		BknProject_Requirement_NoDocuments,
+		BknProject_Requirement_ModelNotConfirmed,
+		BknProject_Requirement_ConceptsNotExtracted,
+		BknProject_Requirement_ImplementationUnavailable,
 		BknProject_Requirement_InvalidExportTarget,
 	}
 )

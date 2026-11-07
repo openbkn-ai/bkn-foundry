@@ -232,6 +232,18 @@ class AgentLimits(BaseModel):
     # mf-model-api (logics.py max_tokens: conint(ge=10)): accepting 1..9 would
     # let the agent be created while every execution failed downstream with 400.
     max_output_tokens: Optional[int] = Field(default=None, ge=10, le=65536)
+    # A task with response_format and no tools normally makes a free-form model
+    # call first and then a structured call over that turn. True skips the
+    # free-form call: the structured call (native, then prompt fallback) reads
+    # the message directly. Ignored when the Agent has tools or the task has no
+    # response_format. Unset keeps the two calls.
+    single_structured_call: Optional[bool] = Field(
+        default=None,
+        description=(
+            "For a task with response_format and no tools: skip the free-form "
+            "model call and answer with the structured call alone. Default false."
+        ),
+    )
     # Context budget, applied on the public execution surface only. Each tool
     # result sent to the model is capped (schema/discovery tools get their own,
     # wider cap), the most recent results that fit the question's budget are
@@ -626,6 +638,13 @@ class TaskOut(BaseModel):
     prompt_version: Optional[int] = None
     model: Optional[str] = None
     model_id: Optional[str] = None
+    # Tokens of the model calls that reported usage, agent-as-tool calls
+    # included; unmetered_calls counts those that did not. All None on tasks
+    # from before usage was recorded.
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    model_calls: Optional[int] = None
+    unmetered_calls: Optional[int] = None
     status: Literal["pending", "running", "succeeded", "failed"]
     input: Optional[dict] = None
     output: Optional[str] = None

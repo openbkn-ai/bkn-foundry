@@ -16,7 +16,6 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/kbconcept"
 )
 
 // reviewActions are the decisions on an item that say a person reviewed whether it is in: adopting
@@ -96,13 +95,14 @@ func reviews(items *interfaces.DraftItems) (map[string]*interfaces.DraftReview, 
 func unreviewed(items *interfaces.DraftItems) int {
 	reviewed, _ := reviews(items)
 	n := 0
+	// Evidence follows its business items: no person reviews it.
 	for _, ot := range items.ObjectTypes {
-		if reviewed[itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)] == nil {
+		if reviewed[itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)] == nil && !isEvidence(ot.Document) {
 			n++
 		}
 	}
 	for _, rt := range items.RelationTypes {
-		if reviewed[itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)] == nil {
+		if reviewed[itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)] == nil && !isEvidence(rt.Document) {
 			n++
 		}
 	}
@@ -279,7 +279,7 @@ func (s *draftService) GetCandidates(ctx context.Context, token string, projectI
 		span.SetStatus(codes.Error, "Get draft failed")
 		return nil, internalError(ctx, "Get draft failed", err)
 	}
-	if err := checkDocumentReadAccess(ctx, token, draft); err != nil {
+	if err := documentHooks().CheckRead(ctx, token, draft); err != nil {
 		return nil, err
 	}
 
@@ -322,7 +322,7 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 		key := itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)
 		switch {
 		case reviewed[key] != nil:
-		case derived[key] || ot.NeedsIdentity || kbconcept.EventParticipantsNeedRepair(*items, ot):
+		case derived[key] || ot.NeedsIdentity || documentHooks().ObjectNeedsRepair(items, ot):
 			result.Skipped = append(result.Skipped, key)
 		default:
 			if ot.Document != nil {

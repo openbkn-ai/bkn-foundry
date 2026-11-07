@@ -56,6 +56,10 @@ func readUpload(file interfaces.RequirementUpload) (*upload, string) {
 	// Browsers on Windows may send the full path.
 	name := path.Base(strings.ReplaceAll(file.Name, `\`, "/"))
 	format, ok := formats[strings.ToLower(path.Ext(name))]
+	if file.Format != "" {
+		format = file.Format
+		ok = format == interfaces.REQUIREMENT_FORMAT_MARKDOWN || format == interfaces.REQUIREMENT_FORMAT_TEXT
+	}
 	if !ok || name == "." || name == "/" {
 		return nil, perrors.BknProject_Requirement_UnsupportedFormat
 	}
@@ -140,12 +144,18 @@ func (s *requirementService) UploadDocuments(ctx context.Context, token string, 
 		span.SetStatus(codes.Error, "Project not writable")
 		return nil, err
 	}
-	existing, err := s.ra.ListDocuments(ctx, projectID)
+	existing, err := s.ra.GetDocuments(ctx, projectID)
 	if err != nil {
-		span.SetStatus(codes.Error, "List documents failed")
-		return nil, internalError(ctx, "List documents failed", err)
+		span.SetStatus(codes.Error, "Get documents failed")
+		return nil, internalError(ctx, "Get documents failed", err)
 	}
 	count := len(existing)
+	// Drafting reads every document at once, at most maxInputRunes: a document past that is refused
+	// as it is added, not when drafting.
+	runes := 0
+	for _, d := range existing {
+		runes += utf8.RuneCountInString(d.Content)
+	}
 	// A document the project has is reported as such before the limit is weighed: uploading it
 	// again adds nothing.
 	stored := make(map[string]string, len(existing))
@@ -170,6 +180,12 @@ func (s *requirementService) UploadDocuments(ctx context.Context, token string, 
 				Outcome: interfaces.REQUIREMENT_UPLOAD_REJECTED, Code: perrors.BknProject_Requirement_TooManyDocuments})
 			continue
 		}
+		length := utf8.RuneCountInString(read.content)
+		if runes+length > maxInputRunes {
+			results = append(results, interfaces.RequirementUploadResult{Name: read.name,
+				Outcome: interfaces.REQUIREMENT_UPLOAD_REJECTED, Code: perrors.BknProject_Requirement_InputsTooLarge})
+			continue
+		}
 		now := s.now()
 		doc := &interfaces.RequirementDocument{
 			ID: s.newID(), ProjectID: projectID, Name: read.name, DocType: interfaces.REQUIREMENT_DOC_OTHER,
@@ -188,6 +204,7 @@ func (s *requirementService) UploadDocuments(ctx context.Context, token string, 
 			continue
 		}
 		count++
+		runes += length
 		results = append(results, interfaces.RequirementUploadResult{Name: read.name,
 			Outcome: interfaces.REQUIREMENT_UPLOAD_CREATED, DocumentID: doc.ID})
 	}

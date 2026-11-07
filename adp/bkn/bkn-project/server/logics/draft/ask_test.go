@@ -198,7 +198,7 @@ func Test_AskObjectType(t *testing.T) {
 					on func(interfaces.BknAgentChatEvent)) error {
 					So(req.AgentID, ShouldEqual, askAgentID)
 					schema, _ := json.Marshal(req.ResponseFormat)
-					So(string(schema), ShouldContainSubstring, `"enum":["name","comment","primary_keys","display_key","data_property"]`)
+					So(string(schema), ShouldContainSubstring, `"enum":["name","comment","primary_keys","display_key","data_property","aliases"]`)
 					var in askInput
 					So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
 					So(in.Question, ShouldEqual, "工号能做标识吗？")
@@ -598,7 +598,7 @@ func Test_AskRelationType(t *testing.T) {
 				DoAndReturn(func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
 					on func(interfaces.BknAgentChatEvent)) error {
 					schema, _ := json.Marshal(req.ResponseFormat)
-					So(string(schema), ShouldContainSubstring, `"enum":["name","comment","ends"]`)
+					So(string(schema), ShouldContainSubstring, `"enum":["name","comment","ends","aliases"]`)
 					var in askInput
 					So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
 					So(in.Kind, ShouldEqual, askKindRelationType)
