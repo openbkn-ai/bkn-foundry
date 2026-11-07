@@ -74,7 +74,7 @@ def wire_runner(monkeypatch, factory, calls, *, stream_content='{"answer": "ok"}
 
     monkeypatch.setattr(ChatOpenAI, "_astream", stream)
 
-    def create_agent(model, refs, *, system_prompt):
+    def create_agent(model, refs, *, system_prompt, middleware=()):
         calls.append(("config", model.model_name, model.max_tokens, system_prompt))
 
         class Graph:

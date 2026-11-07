@@ -386,13 +386,18 @@ def apply_tool_call_cap(
     max_tool_calls: int | None,
     account_id: str = "",
     account_type: str = "",
+    budget: dict | None = None,
 ) -> list[Any]:
     """Enforce AgentLimits.max_tool_calls. Once the turn's tool-call budget is
     spent, the tools return a notice string the model can converge on, rather
-    than the limit being silently ignored. None means unlimited."""
+    than the limit being silently ignored. None means unlimited. `budget`, when
+    given, is filled with the counter the calls draw on ("left"), so the budget
+    notice reads the calls left from it."""
     if max_tool_calls is None:
         return tools
-    budget = {"left": max(max_tool_calls, 0), "exhausted_emitted": False}
+    if budget is None:
+        budget = {}
+    budget.update(left=max(max_tool_calls, 0), exhausted_emitted=False)
     capped: list[Any] = []
     for t in tools:
         inner = getattr(t, "coroutine", None)
