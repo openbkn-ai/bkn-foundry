@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>Skill 召回</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.5.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.1">.eQypqI{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eQypqI{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hKgHXU"]{content:"eQypqI,"}/*!sc*/
+.bKZuAK{padding:40px 0;}/*!sc*/
+.bKZuAK:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.bKZuAK>.bKZuAK:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.bKZuAK{padding:0;}}/*!sc*/
+.hxxgNd{padding:40px 0;position:relative;}/*!sc*/
+.hxxgNd:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.hxxgNd>.hxxgNd:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.hxxgNd{padding:0;}}/*!sc*/
+.hxxgNd:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eCsseJ"]{content:"bKZuAK,hxxgNd,"}/*!sc*/
+.kWQHAp{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.kWQHAp{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jSgsbC"]{content:"kWQHAp,"}/*!sc*/
+.jYdWFY{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gKscir"]{content:"jYdWFY,"}/*!sc*/
+.cOCikg{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cOCikg{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBPUmU"]{content:"cOCikg,"}/*!sc*/
+.edtrWC{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-fubEtJ"]{content:"edtrWC,"}/*!sc*/
+.bwjsfx{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pGbXd"]{content:"bwjsfx,"}/*!sc*/
+.hgYAAF{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kEjckD"]{content:"hgYAAF,"}/*!sc*/
+.iFTCOQ{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-iqHZue"]{content:"iFTCOQ,"}/*!sc*/
+.itgZBm{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.itgZBm:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.itgZBm::before,h2:hover>.itgZBm::before,.itgZBm:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-crrrsl"]{content:"itgZBm,"}/*!sc*/
+.cWjMmC{height:18px;width:18px;min-width:18px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.dHiXwH{height:1.3em;width:1.3em;min-width:1.3em;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.iTiSfO{height:18px;width:18px;min-width:18px;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.idFXFs polygon{fill:#1d8127;}/*!sc*/
+.djPqdM{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.djPqdM polygon{fill:#d41f1c;}/*!sc*/
+.dvMtUQ{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.dvMtUQ polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-dQoBM"]{content:"cWjMmC,dHiXwH,iTiSfO,idFXFs,djPqdM,dvMtUQ,"}/*!sc*/
+.DPwQp{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.DPwQp{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.DPwQp,tr.last>.DPwQp{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.DPwQp{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.DPwQp{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.DPwQp{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBFaCF"]{content:"DPwQp,"}/*!sc*/
+.hUqyua{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.hUqyua.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFubTW"]{content:"hUqyua,"}/*!sc*/
+.gNQdZ{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .gNQdZ{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.gNQdZ{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.gNQdZ{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bkAakD"]{content:"gNQdZ,"}/*!sc*/
+.iNiPzl{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.iNiPzl::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.iNiPzl::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idOkdQ"]{content:"iNiPzl,"}/*!sc*/
+.juzVUC{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.juzVUC >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.juzVUC{display:block;}.juzVUC >tr,.juzVUC >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.juzVUC td{float:left;width:100%;}}/*!sc*/
+.juzVUC .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.juzVUC .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux,.juzVUC .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux .sc-dIUiux{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hHfrpe"]{content:"juzVUC,"}/*!sc*/
+.hqsuVf >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.hqsuVf >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.hqsuVf >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.hqsuVf >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.hqsuVf >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.hqsuVf >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.hqsuVf >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.hqsuVf >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div,.hqsuVf >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.hqsuVf >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxFMaL"]{content:"hqsuVf,"}/*!sc*/
+.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.iNuSsz code[class*='language-'],.iNuSsz pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.iNuSsz pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.iNuSsz .token.comment,.iNuSsz .token.prolog,.iNuSsz .token.doctype,.iNuSsz .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.iNuSsz .token.punctuation{opacity:0.7;}/*!sc*/
+.iNuSsz .namespace{opacity:0.7;}/*!sc*/
+.iNuSsz .token.property,.iNuSsz .token.tag,.iNuSsz .token.number,.iNuSsz .token.constant,.iNuSsz .token.symbol{color:#4a8bb3;}/*!sc*/
+.iNuSsz .token.boolean{color:#e64441;}/*!sc*/
+.iNuSsz .token.selector,.iNuSsz .token.attr-name,.iNuSsz .token.string,.iNuSsz .token.char,.iNuSsz .token.builtin,.iNuSsz .token.inserted{color:#a0fbaa;}/*!sc*/
+.iNuSsz .token.selector+a,.iNuSsz .token.attr-name+a,.iNuSsz .token.string+a,.iNuSsz .token.char+a,.iNuSsz .token.builtin+a,.iNuSsz .token.inserted+a,.iNuSsz .token.selector+a:visited,.iNuSsz .token.attr-name+a:visited,.iNuSsz .token.string+a:visited,.iNuSsz .token.char+a:visited,.iNuSsz .token.builtin+a:visited,.iNuSsz .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.iNuSsz .token.property.string{color:white;}/*!sc*/
+.iNuSsz .token.operator,.iNuSsz .token.entity,.iNuSsz .token.url,.iNuSsz .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.iNuSsz .token.atrule,.iNuSsz .token.attr-value,.iNuSsz .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.iNuSsz .token.regex,.iNuSsz .token.important{color:#e90;}/*!sc*/
+.iNuSsz .token.important,.iNuSsz .token.bold{font-weight:bold;}/*!sc*/
+.iNuSsz .token.italic{font-style:italic;}/*!sc*/
+.iNuSsz .token.entity{cursor:help;}/*!sc*/
+.iNuSsz .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iJuXkV"]{content:"iNuSsz,"}/*!sc*/
+.ldPDIU{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.ldPDIU:focus-within{opacity:1;}/*!sc*/
+.ldPDIU >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.ldPDIU >button :hover,.ldPDIU >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-giIpqw"]{content:"ldPDIU,"}/*!sc*/
+.bsUDpT{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLgmGd"]{content:"bsUDpT,"}/*!sc*/
+.lgCKWg{position:absolute;pointer-events:none;z-index:1;top:50%;-webkit-transform:translateY(-50%);-ms-transform:translateY(-50%);transform:translateY(-50%);right:8px;margin:auto;text-align:center;}/*!sc*/
+.lgCKWg polyline{color:white;}/*!sc*/
+data-styled.g39[id="sc-iktELE"]{content:"lgCKWg,"}/*!sc*/
+.ekMQOb{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.5);vertical-align:bottom;padding:2px 0px 2px 6px;position:relative;width:auto;background:white;color:#263238;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;cursor:pointer;transition:border 0.25s ease,color 0.25s ease,box-shadow 0.25s ease;}/*!sc*/
+.ekMQOb label{box-sizing:border-box;min-width:100px;outline:none;display:inline-block;font-family:Montserrat,sans-serif;color:#333333;vertical-align:bottom;width:auto;text-transform:none;padding:0 22px 0 4px;font-size:0.929em;line-height:1.5em;font-family:inherit;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}/*!sc*/
+.ekMQOb .dropdown-select{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;border:none;appearance:none;cursor:pointer;color:#333333;line-height:inherit;font-family:inherit;}/*!sc*/
+.ekMQOb:hover,.ekMQOb:focus-within{border:1px solid #32329f;color:#32329f;box-shadow:0px 0px 0px 1px #32329f;}/*!sc*/
+data-styled.g40[id="sc-jJEKGn"]{content:"ekMQOb,"}/*!sc*/
+.eBDHRN{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gWHgjU"]{content:"eBDHRN,"}/*!sc*/
+.jtfGmi{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.jtfGmi p:last-child{margin-bottom:0;}/*!sc*/
+.jtfGmi h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.jtfGmi h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.jtfGmi code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.jtfGmi pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.jtfGmi pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.jtfGmi pre code:before,.jtfGmi pre code:after{content:none;}/*!sc*/
+.jtfGmi blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.jtfGmi img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.jtfGmi ul,.jtfGmi ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.jtfGmi ul ul,.jtfGmi ol ul,.jtfGmi ul ol,.jtfGmi ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.jtfGmi table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.jtfGmi table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.jtfGmi table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.jtfGmi table th,.jtfGmi table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.jtfGmi table th{text-align:left;font-weight:bold;}/*!sc*/
+.jtfGmi .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.jtfGmi .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.jtfGmi h1:hover>.share-link::before,.jtfGmi h2:hover>.share-link::before,.jtfGmi .share-link:hover::before{visibility:visible;}/*!sc*/
+.jtfGmi a{text-decoration:auto;color:#32329f;}/*!sc*/
+.jtfGmi a:visited{color:#32329f;}/*!sc*/
+.jtfGmi a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dyntKg{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg p:first-child{margin-top:0;}/*!sc*/
+.dyntKg p:last-child{margin-bottom:0;}/*!sc*/
+.dyntKg h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dyntKg h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dyntKg code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dyntKg pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dyntKg pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dyntKg pre code:before,.dyntKg pre code:after{content:none;}/*!sc*/
+.dyntKg blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dyntKg img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dyntKg ul,.dyntKg ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dyntKg ul ul,.dyntKg ol ul,.dyntKg ul ol,.dyntKg ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dyntKg table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dyntKg table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dyntKg table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dyntKg table th,.dyntKg table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dyntKg table th{text-align:left;font-weight:bold;}/*!sc*/
+.dyntKg .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dyntKg .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dyntKg h1:hover>.share-link::before,.dyntKg h2:hover>.share-link::before,.dyntKg .share-link:hover::before{visibility:visible;}/*!sc*/
+.dyntKg a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dyntKg a:visited{color:#32329f;}/*!sc*/
+.dyntKg a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.eBjiEo{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p:first-child{margin-top:0;}/*!sc*/
+.eBjiEo p:last-child{margin-bottom:0;}/*!sc*/
+.eBjiEo p{display:inline-block;}/*!sc*/
+.eBjiEo h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.eBjiEo h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.eBjiEo code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.eBjiEo pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.eBjiEo pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.eBjiEo pre code:before,.eBjiEo pre code:after{content:none;}/*!sc*/
+.eBjiEo blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.eBjiEo img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.eBjiEo ul,.eBjiEo ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.eBjiEo ul ul,.eBjiEo ol ul,.eBjiEo ul ol,.eBjiEo ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.eBjiEo table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.eBjiEo table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.eBjiEo table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.eBjiEo table th,.eBjiEo table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.eBjiEo table th{text-align:left;font-weight:bold;}/*!sc*/
+.eBjiEo .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.eBjiEo .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.eBjiEo h1:hover>.share-link::before,.eBjiEo h2:hover>.share-link::before,.eBjiEo .share-link:hover::before{visibility:visible;}/*!sc*/
+.eBjiEo a{text-decoration:auto;color:#32329f;}/*!sc*/
+.eBjiEo a:visited{color:#32329f;}/*!sc*/
+.eBjiEo a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBNeAB"]{content:"jtfGmi,dyntKg,eBjiEo,"}/*!sc*/
+.hynizp{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cittYi"]{content:"hynizp,"}/*!sc*/
+.hiQxbu{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jcVbNL"]{content:"hiQxbu,"}/*!sc*/
+.fRRakq:hover>.sc-giIpqw{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cTkvqA"]{content:"fRRakq,"}/*!sc*/
+.cCicSb{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.cCicSb .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.cCicSb .callback-function{color:gray;}/*!sc*/
+.cCicSb .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.cCicSb .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.cCicSb .ellipsis:after{content:' … ';}/*!sc*/
+.cCicSb .collapsible{margin-left:2em;}/*!sc*/
+.cCicSb .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.cCicSb .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.cCicSb .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.cCicSb .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.cCicSb ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.cCicSb li{position:relative;display:block;}/*!sc*/
+.cCicSb .hoverable{display:inline-block;}/*!sc*/
+.cCicSb .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.cCicSb .collapsed>.collapsible{display:none;}/*!sc*/
+.cCicSb .ellipsis{display:none;}/*!sc*/
+.cCicSb .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNMdgd"]{content:"cCicSb,"}/*!sc*/
+.ilXydl{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dOSQqJ"]{content:"ilXydl,"}/*!sc*/
+.fLqWfi{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBrNAk"]{content:"fLqWfi,"}/*!sc*/
+.jyrVDw{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cOahfn"]{content:"jyrVDw,"}/*!sc*/
+.dMpNQv{margin:0 0 10px 0;display:block;background-color:rgba(38,50,56,0.4);border:none;padding:0.9em 1.6em 0.9em 0.9em;box-shadow:none;}/*!sc*/
+.dMpNQv label{color:#ffffff;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;font-size:1em;text-transform:none;border:none;}/*!sc*/
+.dMpNQv:hover,.dMpNQv:focus-within{border:none;box-shadow:none;background-color:rgba(38,50,56,0.7);}/*!sc*/
+data-styled.g55[id="sc-AzeoO"]{content:"dMpNQv,"}/*!sc*/
+.icbUjL{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTZjHc"]{content:"icbUjL,"}/*!sc*/
+.bvJPfa.deprecated span.property-name{text-decoration:line-through;color:#707070;}/*!sc*/
+.bvJPfa button{background-color:transparent;border:0;outline:0;font-size:13px;font-family:Courier,monospace;cursor:pointer;padding:0;color:#333333;}/*!sc*/
+.bvJPfa button:focus{font-weight:600;}/*!sc*/
+.bvJPfa .sc-dQoBM{height:1.1em;width:1.1em;}/*!sc*/
+.bvJPfa .sc-dQoBM polygon{fill:#666;}/*!sc*/
+data-styled.g58[id="sc-jgHDmf"]{content:"bvJPfa,"}/*!sc*/
+.gCMUGw{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gTgAvG"]{content:"gCMUGw,"}/*!sc*/
+.dCeeDp{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-laROWl"]{content:"dCeeDp,"}/*!sc*/
+.cxjEEA{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNqMfM"]{content:"cxjEEA,"}/*!sc*/
+.jJMDiT{color:#666;word-break:break-word;}/*!sc*/
+data-styled.g62[id="sc-jeGQnC"]{content:"jJMDiT,"}/*!sc*/
+.egFobb{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJMOEj"]{content:"egFobb,"}/*!sc*/
+.jzGNYG{border-radius:2px;word-break:break-word;background-color:rgba(51,51,51,0.05);color:rgba(51,51,51,0.9);padding:0 5px;border:1px solid rgba(51,51,51,0.1);font-family:Courier,monospace;}/*!sc*/
+.sc-lcukLb+.sc-lcukLb{margin-left:0;}/*!sc*/
+data-styled.g67[id="sc-lcukLb"]{content:"jzGNYG,"}/*!sc*/
+.gAOGaI{border-radius:2px;background-color:rgba(104,104,207,0.05);color:rgba(50,50,159,0.9);margin:0 5px;padding:0 5px;border:1px solid rgba(50,50,159,0.1);}/*!sc*/
+.sc-clsJvZ+.sc-clsJvZ{margin-left:0;}/*!sc*/
+data-styled.g69[id="sc-clsJvZ"]{content:"gAOGaI,"}/*!sc*/
+.ewkFZw:after{content:' and ';font-weight:normal;}/*!sc*/
+.ewkFZw:last-child:after{content:none;}/*!sc*/
+.ewkFZw a{text-decoration:auto;color:#32329f;}/*!sc*/
+.ewkFZw a:visited{color:#32329f;}/*!sc*/
+.ewkFZw a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g82[id="sc-hOqsyU"]{content:"ewkFZw,"}/*!sc*/
+.gXVZLC{white-space:nowrap;}/*!sc*/
+.gXVZLC:after{content:' or ';white-space:pre;}/*!sc*/
+.gXVZLC:last-child:after,.gXVZLC:only-child:after{content:none;}/*!sc*/
+.gXVZLC a{text-decoration:auto;color:#32329f;}/*!sc*/
+.gXVZLC a:visited{color:#32329f;}/*!sc*/
+.gXVZLC a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g83[id="sc-dtwqPB"]{content:"gXVZLC,"}/*!sc*/
+.hnzXSU{flex:1 1 auto;cursor:pointer;}/*!sc*/
+data-styled.g84[id="sc-dacGni"]{content:"hnzXSU,"}/*!sc*/
+.jnRUlI{width:75%;text-overflow:ellipsis;border-radius:4px;overflow:hidden;}/*!sc*/
+@media screen and (max-width: 50rem){.jnRUlI{margin-top:10px;}}/*!sc*/
+data-styled.g85[id="sc-jUEocL"]{content:"jnRUlI,"}/*!sc*/
+.htSlhJ{display:inline-block;margin:0;}/*!sc*/
+data-styled.g86[id="sc-jQbHUc"]{content:"htSlhJ,"}/*!sc*/
+.bhICnb{width:100%;display:flex;margin:1em 0;flex-direction:row;}/*!sc*/
+@media screen and (max-width: 50rem){.bhICnb{flex-direction:column;}}/*!sc*/
+data-styled.g87[id="sc-fvhGkJ"]{content:"bhICnb,"}/*!sc*/
+.eSPXsI{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-ctaZPk"]{content:"eSPXsI,"}/*!sc*/
+.kdqpyX{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.kdqpyX.get{background-color:#2F8132;}/*!sc*/
+.kdqpyX.post{background-color:#186FAF;}/*!sc*/
+.kdqpyX.put{background-color:#95507c;}/*!sc*/
+.kdqpyX.options{background-color:#947014;}/*!sc*/
+.kdqpyX.patch{background-color:#bf581d;}/*!sc*/
+.kdqpyX.delete{background-color:#cc3333;}/*!sc*/
+.kdqpyX.basic{background-color:#707070;}/*!sc*/
+.kdqpyX.link{background-color:#07818F;}/*!sc*/
+.kdqpyX.head{background-color:#A23DAD;}/*!sc*/
+.kdqpyX.hook{background-color:#32329f;}/*!sc*/
+.kdqpyX.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-XhXdA"]{content:"kdqpyX,"}/*!sc*/
+.eqhvhc{margin:0;padding:0;}/*!sc*/
+.eqhvhc:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+.eGBeQN{margin:0;padding:0;display:none;}/*!sc*/
+.eGBeQN:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikPCzd .sc-ikPCzd{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikPCzd"]{content:"eqhvhc,eGBeQN,"}/*!sc*/
+.hNMAOR{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tYrig"]{content:"hNMAOR,"}/*!sc*/
+.kYHuni{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;font-size:0.929em;text-transform:none;background-color:#fafafa;}/*!sc*/
+.kYHuni:hover{color:#32329f;background-color:#e1e1e1;}/*!sc*/
+.kYHuni .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.kYHuni .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+.ehmZgs{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.ehmZgs:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.ehmZgs .sc-dQoBM{height:1.5em;width:1.5em;}/*!sc*/
+.ehmZgs .sc-dQoBM polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-biBsFP"]{content:"kYHuni,ehmZgs,"}/*!sc*/
+.dYJaHY{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eHfQNO"]{content:"dYJaHY,"}/*!sc*/
+.icnaqS{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.icnaqS a,.icnaqS a:visited,.icnaqS a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.icnaqS img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.icnaqS{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hzMLOJ"]{content:"icnaqS,"}/*!sc*/
+.gnyOsi{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fXozIE"]{content:"gnyOsi,"}/*!sc*/
+.kmRXcZ{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-FyhMp"]{content:"kmRXcZ,"}/*!sc*/
+.eJFCKx{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.eJFCKx ..sc-FyhMp{color:#ffffff;}/*!sc*/
+.eJFCKx:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jXkukm"]{content:"eJFCKx,"}/*!sc*/
+.kcqnuN{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eFucnX"]{content:"kcqnuN,"}/*!sc*/
+.AnL{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmlIYk"]{content:"AnL,"}/*!sc*/
+.gjZMty{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljRaAR"]{content:"gjZMty,"}/*!sc*/
+.eFxVeO{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.eFxVeO >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmhDzS"]{content:"eFxVeO,"}/*!sc*/
+.eEdthm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUrlDD"]{content:"eEdthm,"}/*!sc*/
+.jNapuE{text-transform:lowercase;margin-left:0;line-height:1.5em;color:#666;font-size:0.9em;}/*!sc*/
+data-styled.g120[id="sc-htubao"]{content:"jNapuE,"}/*!sc*/
+.ciHfuN{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.ciHfuN:focus{outline:auto #1d8127;}/*!sc*/
+.iagvZz{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.iagvZz:focus{outline:auto #d41f1c;}/*!sc*/
+data-styled.g121[id="sc-cbDJdZ"]{content:"ciHfuN,iagvZz,"}/*!sc*/
+.mtsUp{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWPeRB"]{content:"mtsUp,"}/*!sc*/
+.ihqrCS{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHYzZk"]{content:"ihqrCS,"}/*!sc*/
+.iTRatv{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iGcuFr"]{content:"iTRatv,"}/*!sc*/
+.iDYPDd{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-irlPNa"]{content:"iDYPDd,"}/*!sc*/
+.lkswgW{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.lkswgW{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.lkswgW{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eWvQxi"]{content:"lkswgW,"}/*!sc*/
+.fsqnbI{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.fsqnbI{display:flex;}}/*!sc*/
+.fsqnbI svg{color:#0065FB;}/*!sc*/
+@media print{.fsqnbI{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kUbhZP"]{content:"fsqnbI,"}/*!sc*/
+.iABphV{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iABphV *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dwcwXc"]{content:"iABphV,"}/*!sc*/
+.JaJkD{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.JaJkD{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jtHOzJ"]{content:"JaJkD,"}/*!sc*/
+.dQcVAt{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.dQcVAt{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elsZMO"]{content:"dQcVAt,"}/*!sc*/
+.heVKiz{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kiYrpv"]{content:"heVKiz,"}/*!sc*/
+.gyVKdy{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cKZGmI"]{content:"gyVKdy,"}/*!sc*/
+.eIwqum{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.eIwqum path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iIEXPp"]{content:"eIwqum,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dwcwXc iABphV redoc-wrap"><div class="sc-eWvQxi lkswgW menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kiYrpv heVKiz"><svg class="sc-iIEXPp eIwqum search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cKZGmI gyVKdy search-input" value=""/></div><div class="sc-kLgmGd bsUDpT scrollbar-container undefined"><ul role="menu" class="sc-ikPCzd eqhvhc"><li tabindex="0" depth="1" data-item-id="tag/Skill" role="menuitem" aria-label="Skill" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP kYHuni -depth1"><span width="calc(100% - 38px)" title="Skill" class="sc-eHfQNO dYJaHY">Skill</span><svg class="sc-dQoBM cWjMmC" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></label><ul class="sc-ikPCzd eGBeQN"><li tabindex="0" depth="2" data-item-id="tag/Skill/operation/findSkills" role="menuitem" aria-label="按业务上下文召回 Skill" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">按业务上下文召回 Skill</span></label></li><li tabindex="0" depth="2" data-item-id="tag/Skill/operation/listSkills" role="menuitem" aria-label="浏览已发布 Skill" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">浏览已发布 Skill</span></label></li><li tabindex="0" depth="2" data-item-id="tag/Skill/operation/getSkillContent" role="menuitem" aria-label="读 SKILL.md 正文与包内文件清单" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">读 SKILL.md 正文与包内文件清单</span></label></li><li tabindex="0" depth="2" data-item-id="tag/Skill/operation/readSkillFile" role="menuitem" aria-label="读技能包内单个文件" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">读技能包内单个文件</span></label></li><li tabindex="0" depth="2" data-item-id="tag/Skill/operation/executeSkill" role="menuitem" aria-label="在沙箱内执行 Skill 入口命令" aria-expanded="false" class="sc-tYrig hNMAOR"><label class="sc-biBsFP ehmZgs -depth2"><span type="post" class="sc-XhXdA kdqpyX operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eHfQNO dYJaHY">在沙箱内执行 Skill 入口命令</span></label></li></ul></li></ul><div class="sc-hzMLOJ icnaqS"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kUbhZP fsqnbI"><div class="sc-irlPNa iDYPDd"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jtHOzJ JaJkD api-content"><div class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI api-info"><h1 class="sc-fubEtJ sc-ctaZPk edtrWC eSPXsI">Skill 召回<!-- --> <span>(<!-- -->0.1.3<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-summary" html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><div data-role="redoc-description" html="&lt;p&gt;按业务上下文召回 Skill 候选。Agent 在运行时传入知识网络与对象类（可再加具体
+实例），拿回一批相关 Skill 的最小元数据（&lt;code&gt;skill_id&lt;/code&gt; / &lt;code&gt;name&lt;/code&gt; / &lt;code&gt;description&lt;/code&gt;），
+再决定装载哪一个。&lt;/p&gt;
+&lt;p&gt;召回只是入口。拿到 &lt;code&gt;skill_id&lt;/code&gt; 之后：&lt;code&gt;get_skill_content&lt;/code&gt; 读 SKILL.md 正文与包内
+文件清单，&lt;code&gt;read_skill_file&lt;/code&gt; 按 &lt;code&gt;rel_path&lt;/code&gt; 单取附属文件（渐进式加载，大文件不必
+常驻上下文），&lt;code&gt;execute_skill&lt;/code&gt; 在沙箱内执行 SKILL.md 声明的入口命令。不需要知识
+网络上下文时用 &lt;code&gt;list_skills&lt;/code&gt; 直接翻已发布技能列表。&lt;/p&gt;
+&lt;p&gt;Skill 与业务对象的绑定关系建在知识网络里：平台约定该网中存在一个固定的
+&lt;code&gt;skills&lt;/code&gt; 对象类，业务对象类通过关系类与它相连，召回就是沿这些关系走。
+&lt;code&gt;skills&lt;/code&gt; 对象类由 execution-factory 在注册 Skill 时写入。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;认证&lt;/strong&gt;：&lt;code&gt;Authorization: Bearer &amp;lt;token&amp;gt;&lt;/code&gt;（OAuth access token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey）。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>按业务上下文召回 Skill 候选。Agent 在运行时传入知识网络与对象类（可再加具体
+实例），拿回一批相关 Skill 的最小元数据（<code>skill_id</code> / <code>name</code> / <code>description</code>），
+再决定装载哪一个。</p>
+<p>召回只是入口。拿到 <code>skill_id</code> 之后：<code>get_skill_content</code> 读 SKILL.md 正文与包内
+文件清单，<code>read_skill_file</code> 按 <code>rel_path</code> 单取附属文件（渐进式加载，大文件不必
+常驻上下文），<code>execute_skill</code> 在沙箱内执行 SKILL.md 声明的入口命令。不需要知识
+网络上下文时用 <code>list_skills</code> 直接翻已发布技能列表。</p>
+<p>Skill 与业务对象的绑定关系建在知识网络里：平台约定该网中存在一个固定的
+<code>skills</code> 对象类，业务对象类通过关系类与它相连，召回就是沿这些关系走。
+<code>skills</code> 对象类由 execution-factory 在注册 Skill 时写入。</p>
+<p><strong>认证</strong>：<code>Authorization: Bearer &lt;token&gt;</code>（OAuth access token 或 <code>bak_</code> AppKey）。</p>
+</div></div></div></div><div id="tag/Skill" data-section-id="tag/Skill" class="sc-eCsseJ bKZuAK"><div class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Skill" aria-label="tag/Skill"></a>Skill</h2></div></div></div><div id="tag/Skill/operation/findSkills" data-section-id="tag/Skill/operation/findSkills" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/findSkills" id="operation/findSkills" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Skill/operation/findSkills" aria-label="tag/Skill/operation/findSkills"></a>按业务上下文召回 Skill<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;&lt;strong&gt;召回模式由参数自动决定，不用显式指定&lt;/strong&gt;：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;传入参数&lt;/th&gt;
+&lt;th&gt;模式&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;kn_id&lt;/code&gt; + &lt;code&gt;object_type_id&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;对象类级：沿对象类与 &lt;code&gt;skills&lt;/code&gt; 之间的关系路径召回&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;再加 &lt;code&gt;instance_identities&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;实例级：从具体实例出发召回，并补充对象类级结果&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;skill_query&lt;/code&gt; 的检索方式随索引能力降级&lt;/strong&gt;：对 &lt;code&gt;skills&lt;/code&gt; 实例的 &lt;code&gt;name&lt;/code&gt; /
+&lt;code&gt;description&lt;/code&gt; 追加文本过滤——BKN 已建向量索引时用 &lt;code&gt;knn&lt;/code&gt;，已建全文索引时用
+&lt;code&gt;match&lt;/code&gt;，都没有时退化为 &lt;code&gt;like&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;skills&lt;/code&gt; 对象类至少要有 &lt;code&gt;skill_id&lt;/code&gt; 与 &lt;code&gt;name&lt;/code&gt; 两个数据属性，&lt;code&gt;description&lt;/code&gt;
+可选；不满足时返回 400 并在 &lt;code&gt;details&lt;/code&gt; 里列出缺失属性。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;空结果是 200 不是错误&lt;/strong&gt;：没有匹配时返回 &lt;code&gt;entries: []&lt;/code&gt;，并可能带一个
+&lt;code&gt;message&lt;/code&gt; 说明为什么为空（如该对象类未绑定任何 Skill）以及下一步建议。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p><strong>召回模式由参数自动决定，不用显式指定</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>传入参数</th>
+<th>模式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>kn_id</code> + <code>object_type_id</code></td>
+<td>对象类级：沿对象类与 <code>skills</code> 之间的关系路径召回</td>
+</tr>
+<tr>
+<td>再加 <code>instance_identities</code></td>
+<td>实例级：从具体实例出发召回，并补充对象类级结果</td>
+</tr>
+</tbody></table>
+<p><strong><code>skill_query</code> 的检索方式随索引能力降级</strong>：对 <code>skills</code> 实例的 <code>name</code> /
+<code>description</code> 追加文本过滤——BKN 已建向量索引时用 <code>knn</code>，已建全文索引时用
+<code>match</code>，都没有时退化为 <code>like</code>。</p>
+<p><code>skills</code> 对象类至少要有 <code>skill_id</code> 与 <code>name</code> 两个数据属性，<code>description</code>
+可选；不满足时返回 400 并在 <code>details</code> 里列出缺失属性。</p>
+<p><strong>空结果是 200 不是错误</strong>：没有匹配时返回 <code>entries: []</code>，并可能带一个
+<code>message</code> 说明为什么为空（如该对象类未绑定任何 Skill）以及下一步建议。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。&lt;/p&gt;
+&lt;p&gt;两个必填子字段均为服务端签发的句柄、不可自拟：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;：首轮调用 Context Loader MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;：调用 Context Loader 的 MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+&lt;code&gt;/api/agent-observability/v1&lt;/code&gt; 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey，外部调用方直接调用会得到
+&lt;code&gt;401 permission_denied&lt;/code&gt;。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 &lt;code&gt;operation_key&lt;/code&gt;。网络重试应复用
+&lt;code&gt;bkn-request-id&lt;/code&gt;，或提供同一次逻辑调用稳定不变的
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。</p>
+<p>两个必填子字段均为服务端签发的句柄、不可自拟：</p>
+<ul>
+<li><code>conversation_id</code>：首轮调用 Context Loader MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+<li><code>interaction_id</code>：调用 Context Loader 的 MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+</ul>
+<p>这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+<code>/api/agent-observability/v1</code> 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 <code>bak_</code> AppKey，外部调用方直接调用会得到
+<code>401 permission_denied</code>。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 <code>operation_key</code>。网络重试应复用
+<code>bkn-request-id</code>，或提供同一次逻辑调用稳定不变的
+<code>X-OpenBKN-Client-Invocation-Id</code> 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="kn_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">kn_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;知识网络 ID。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>知识网络 ID。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="object_type_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">object_type_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;业务对象类 ID（取自 &lt;code&gt;search_schema&lt;/code&gt; 返回的概念 ID）。必填，且必须存在于
+该知识网络中。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>业务对象类 ID（取自 <code>search_schema</code> 返回的概念 ID）。必填，且必须存在于
+该知识网络中。</p>
+</div></div></div></td></tr><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="instance_identities"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand instance_identities"><span class="property-name">instance_identities</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp">Array of </span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">objects</span></div> <div><div html="&lt;p&gt;对象实例标识列表，&lt;strong&gt;必须从 &lt;code&gt;query_object_instance&lt;/code&gt; 或
+&lt;code&gt;query_instance_subgraph&lt;/code&gt; 结果里的 &lt;code&gt;_instance_identity&lt;/code&gt; 取，不可自拼&lt;/strong&gt;。
+传入即切换到实例级召回。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>对象实例标识列表，<strong>必须从 <code>query_object_instance</code> 或
+<code>query_instance_subgraph</code> 结果里的 <code>_instance_identity</code> 取，不可自拼</strong>。
+传入即切换到实例级召回。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="skill_query" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">skill_query</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Skill 语义过滤词，对 &lt;code&gt;skills&lt;/code&gt; 实例的 &lt;code&gt;name&lt;/code&gt; / &lt;code&gt;description&lt;/code&gt; 追加文本过滤。
+检索方式按索引能力降级：向量索引用 &lt;code&gt;knn&lt;/code&gt;，全文索引用 &lt;code&gt;match&lt;/code&gt;，否则 &lt;code&gt;like&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Skill 语义过滤词，对 <code>skills</code> 实例的 <code>name</code> / <code>description</code> 追加文本过滤。
+检索方式按索引能力降级：向量索引用 <code>knn</code>，全文索引用 <code>match</code>，否则 <code>like</code>。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="top_k" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">top_k</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->[ 1 .. 20 ]<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">10</span></div> <div><div html="&lt;p&gt;最多返回的 Skill 数量。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>最多返回的 Skill 数量。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;Skill 候选列表，可能为空&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Skill 候选列表，可能为空</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;参数错误：缺少 &lt;code&gt;kn_id&lt;/code&gt; / &lt;code&gt;object_type_id&lt;/code&gt;，或 &lt;code&gt;skills&lt;/code&gt; 对象类的数据属性
+契约不完整（缺 &lt;code&gt;skill_id&lt;/code&gt; / &lt;code&gt;name&lt;/code&gt;）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>参数错误：缺少 <code>kn_id</code> / <code>object_type_id</code>，或 <code>skills</code> 对象类的数据属性
+契约不完整（缺 <code>skill_id</code> / <code>name</code>）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;指定对象类不存在，或当前知识网络中缺少 &lt;code&gt;skills&lt;/code&gt; 对象类&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>指定对象类不存在，或当前知识网络中缺少 <code>skills</code> 对象类</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">500<!-- --> </strong><div html="&lt;p&gt;服务内部错误&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>服务内部错误</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">502<!-- --> </strong><div html="&lt;p&gt;上游服务不可用（BKN 或 ontology-query 异常）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>上游服务不可用（BKN 或 ontology-query 异常）</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/find_skills</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/find_skills</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_996q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_996q_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_996q_0" aria-labelledby="tab_R_996q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="对象类级" selected="">对象类级</option><option value="实例级">实例级</option><option value="带语义过滤">带语义过滤</option></select><label>对象类级</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"kn_id"</span>: <span class="token string">&quot;kn_legal&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"object_type_id"</span>: <span class="token string">&quot;contract&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"top_k"</span>: <span class="token number">10</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9p6q_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9p6q_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9p6q_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9p6q_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_9p6q_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9p6q_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_9p6q_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9p6q_3" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_9p6q_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9p6q_4" data-rttab="true">500</li><li class="tab-error" role="tab" id="tab_R_9p6q_5" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9p6q_5" data-rttab="true">502</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9p6q_0" aria-labelledby="tab_R_9p6q_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="有候选" selected="">有候选</option><option value="空结果">空结果</option></select><label>有候选</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"skill_id"</span>: <span class="token string">&quot;skill_contract_review&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;合同审查&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;对合同条款进行全面审查，识别风险点&quot;</span></div></li></ul><span class="token punctuation">}</span>,</div></li><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"skill_id"</span>: <span class="token string">&quot;skill_clause_extract&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;关键条款提取&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;提取合同中的关键条款和义务&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9p6q_1" aria-labelledby="tab_R_9p6q_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9p6q_2" aria-labelledby="tab_R_9p6q_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9p6q_3" aria-labelledby="tab_R_9p6q_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9p6q_4" aria-labelledby="tab_R_9p6q_4"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9p6q_5" aria-labelledby="tab_R_9p6q_5"></div></div></div></div></div></div><div id="tag/Skill/operation/listSkills" data-section-id="tag/Skill/operation/listSkills" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/listSkills" id="operation/listSkills" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Skill/operation/listSkills" aria-label="tag/Skill/operation/listSkills"></a>浏览已发布 Skill<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;翻已发布 Skill 列表，不需要知识网络上下文。与 &lt;code&gt;find_skills&lt;/code&gt; 互补：那条按对象类
+/ 实例召回，这条按名称或分类分页浏览。&lt;/p&gt;
+&lt;p&gt;只返回&lt;strong&gt;已发布&lt;/strong&gt;状态的 Skill；草稿态不出现在这里。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;空结果是 200 不是错误&lt;/strong&gt;：无匹配时 &lt;code&gt;entries: []&lt;/code&gt; 并带 &lt;code&gt;message&lt;/code&gt; 说明。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>翻已发布 Skill 列表，不需要知识网络上下文。与 <code>find_skills</code> 互补：那条按对象类
+/ 实例召回，这条按名称或分类分页浏览。</p>
+<p>只返回<strong>已发布</strong>状态的 Skill；草稿态不出现在这里。</p>
+<p><strong>空结果是 200 不是错误</strong>：无匹配时 <code>entries: []</code> 并带 <code>message</code> 说明。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-htubao jNapuE">optional</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。&lt;/p&gt;
+&lt;p&gt;两个必填子字段均为服务端签发的句柄、不可自拟：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;：首轮调用 Context Loader MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;：调用 Context Loader 的 MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+&lt;code&gt;/api/agent-observability/v1&lt;/code&gt; 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey，外部调用方直接调用会得到
+&lt;code&gt;401 permission_denied&lt;/code&gt;。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 &lt;code&gt;operation_key&lt;/code&gt;。网络重试应复用
+&lt;code&gt;bkn-request-id&lt;/code&gt;，或提供同一次逻辑调用稳定不变的
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。</p>
+<p>两个必填子字段均为服务端签发的句柄、不可自拟：</p>
+<ul>
+<li><code>conversation_id</code>：首轮调用 Context Loader MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+<li><code>interaction_id</code>：调用 Context Loader 的 MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+</ul>
+<p>这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+<code>/api/agent-observability/v1</code> 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 <code>bak_</code> AppKey，外部调用方直接调用会得到
+<code>401 permission_denied</code>。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 <code>operation_key</code>。网络重试应复用
+<code>bkn-request-id</code>，或提供同一次逻辑调用稳定不变的
+<code>X-OpenBKN-Client-Invocation-Id</code> 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="name" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">name</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;按 Skill 名称模糊过滤。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>按 Skill 名称模糊过滤。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="category" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">category</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;按 Skill 分类过滤。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>按 Skill 分类过滤。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="page" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">page</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->&gt;= 1<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">1</span></div> <div><div html="&lt;p&gt;页码，从 1 开始。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>页码，从 1 开始。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="page_size" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">page_size</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->[ 1 .. 100 ]<!-- --> </span></span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">20</span></div> <div><div html="&lt;p&gt;每页大小。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>每页大小。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;已发布 Skill 列表，可能为空&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>已发布 Skill 列表，可能为空</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">502<!-- --> </strong><div html="&lt;p&gt;上游 execution-factory 不可用&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>上游 execution-factory 不可用</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/list_skills</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/list_skills</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_99aq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_99aq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_99aq_0" aria-labelledby="tab_R_99aq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Example</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="全部" selected="">全部</option><option value="按名称过滤">按名称过滤</option></select><label>全部</label></div></div><div><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><span class="token punctuation">{ }</span></code></div></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9paq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9paq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9paq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9paq_1" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_9paq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9paq_2" data-rttab="true">502</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9paq_0" aria-labelledby="tab_R_9paq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"entries"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"skill_id"</span>: <span class="token string">&quot;skill_contract_review&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;合同审查&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <span class="token string">&quot;对合同条款进行全面审查，识别风险点&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"version"</span>: <span class="token string">&quot;1.0.2&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"category"</span>: <span class="token string">&quot;legal&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"total_count"</span>: <span class="token number">1</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"page"</span>: <span class="token number">1</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"page_size"</span>: <span class="token number">20</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9paq_1" aria-labelledby="tab_R_9paq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9paq_2" aria-labelledby="tab_R_9paq_2"></div></div></div></div></div></div><div id="tag/Skill/operation/getSkillContent" data-section-id="tag/Skill/operation/getSkillContent" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/getSkillContent" id="operation/getSkillContent" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Skill/operation/getSkillContent" aria-label="tag/Skill/operation/getSkillContent"></a>读 SKILL.md 正文与包内文件清单<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;返回 Skill 主文档 &lt;code&gt;SKILL.md&lt;/code&gt; 的正文，以及技能包内的文件清单
+（&lt;code&gt;files[].rel_path&lt;/code&gt;）。Skill 的用法与入口命令都写在正文里。&lt;/p&gt;
+&lt;p&gt;需要某个附属文件的内容时再调 &lt;code&gt;read_skill_file&lt;/code&gt; 单取，不必整包下载。&lt;/p&gt;
+&lt;p&gt;正文超过 40000 字符会截断，此时 &lt;code&gt;truncated=true&lt;/code&gt; 并带 &lt;code&gt;message&lt;/code&gt; 说明。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>返回 Skill 主文档 <code>SKILL.md</code> 的正文，以及技能包内的文件清单
+（<code>files[].rel_path</code>）。Skill 的用法与入口命令都写在正文里。</p>
+<p>需要某个附属文件的内容时再调 <code>read_skill_file</code> 单取，不必整包下载。</p>
+<p>正文超过 40000 字符会截断，此时 <code>truncated=true</code> 并带 <code>message</code> 说明。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。&lt;/p&gt;
+&lt;p&gt;两个必填子字段均为服务端签发的句柄、不可自拟：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;：首轮调用 Context Loader MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;：调用 Context Loader 的 MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+&lt;code&gt;/api/agent-observability/v1&lt;/code&gt; 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey，外部调用方直接调用会得到
+&lt;code&gt;401 permission_denied&lt;/code&gt;。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 &lt;code&gt;operation_key&lt;/code&gt;。网络重试应复用
+&lt;code&gt;bkn-request-id&lt;/code&gt;，或提供同一次逻辑调用稳定不变的
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。</p>
+<p>两个必填子字段均为服务端签发的句柄、不可自拟：</p>
+<ul>
+<li><code>conversation_id</code>：首轮调用 Context Loader MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+<li><code>interaction_id</code>：调用 Context Loader 的 MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+</ul>
+<p>这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+<code>/api/agent-observability/v1</code> 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 <code>bak_</code> AppKey，外部调用方直接调用会得到
+<code>401 permission_denied</code>。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 <code>operation_key</code>。网络重试应复用
+<code>bkn-request-id</code>，或提供同一次逻辑调用稳定不变的
+<code>X-OpenBKN-Client-Invocation-Id</code> 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="skill_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">skill_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;Skill ID，取自 &lt;code&gt;find_skills&lt;/code&gt; 或 &lt;code&gt;list_skills&lt;/code&gt;。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>Skill ID，取自 <code>find_skills</code> 或 <code>list_skills</code>。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;SKILL.md 正文与文件清单&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>SKILL.md 正文与文件清单</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;缺少 &lt;code&gt;skill_id&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>缺少 <code>skill_id</code></p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">401<!-- --> </strong><div html="&lt;p&gt;凭据缺失或无效&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>凭据缺失或无效</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">403<!-- --> </strong><div html="&lt;p&gt;当前账户对该 Skill 无执行 / 查看 / 公开访问权限&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>当前账户对该 Skill 无执行 / 查看 / 公开访问权限</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;Skill 不存在或未发布&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Skill 不存在或未发布</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/get_skill_content</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/get_skill_content</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_99eq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_99eq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_99eq_0" aria-labelledby="tab_R_99eq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"skill_id"</span>: <span class="token string">&quot;skill_contract_review&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9peq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9peq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9peq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9peq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_9peq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9peq_2" data-rttab="true">401</li><li class="tab-error" role="tab" id="tab_R_9peq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9peq_3" data-rttab="true">403</li><li class="tab-error" role="tab" id="tab_R_9peq_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9peq_4" data-rttab="true">404</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9peq_0" aria-labelledby="tab_R_9peq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"skill_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"status"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"content"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"truncated"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"files"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"rel_path"</span>: <span class="token string">&quot;refs/checklist.md&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"file_type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"size"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"mime_type"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9peq_1" aria-labelledby="tab_R_9peq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9peq_2" aria-labelledby="tab_R_9peq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9peq_3" aria-labelledby="tab_R_9peq_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9peq_4" aria-labelledby="tab_R_9peq_4"></div></div></div></div></div></div><div id="tag/Skill/operation/readSkillFile" data-section-id="tag/Skill/operation/readSkillFile" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/readSkillFile" id="operation/readSkillFile" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Skill/operation/readSkillFile" aria-label="tag/Skill/operation/readSkillFile"></a>读技能包内单个文件<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;按 &lt;code&gt;rel_path&lt;/code&gt; 取技能包内单个文件的正文。&lt;code&gt;rel_path&lt;/code&gt; 取自
+&lt;code&gt;get_skill_content&lt;/code&gt; 返回的 &lt;code&gt;files[].rel_path&lt;/code&gt;，&lt;strong&gt;不接受包外路径&lt;/strong&gt;（&lt;code&gt;../&lt;/code&gt; 被拒）。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;二进制文件不回正文&lt;/strong&gt;：&lt;code&gt;mime_type&lt;/code&gt; 为图片 / 音视频 / 压缩包 / PDF，或正文不是
+合法 UTF-8 时，只返回元数据与 &lt;code&gt;message&lt;/code&gt; 说明，避免把乱码灌进模型上下文。&lt;/p&gt;
+&lt;p&gt;正文超过 40000 字符会截断（&lt;code&gt;truncated=true&lt;/code&gt;）；单文件超过 5 MiB 返回 413。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>按 <code>rel_path</code> 取技能包内单个文件的正文。<code>rel_path</code> 取自
+<code>get_skill_content</code> 返回的 <code>files[].rel_path</code>，<strong>不接受包外路径</strong>（<code>../</code> 被拒）。</p>
+<p><strong>二进制文件不回正文</strong>：<code>mime_type</code> 为图片 / 音视频 / 压缩包 / PDF，或正文不是
+合法 UTF-8 时，只返回元数据与 <code>message</code> 说明，避免把乱码灌进模型上下文。</p>
+<p>正文超过 40000 字符会截断（<code>truncated=true</code>）；单文件超过 5 MiB 返回 413。</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><div><h5 class="sc-iqHZue iFTCOQ">query<!-- --> Parameters</h5><table class="sc-hHfrpe juzVUC"><tbody><tr class="last "><td kind="field" title="response_format" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">response_format</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Default:<!-- --> </span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span></div><div><span class="sc-gTgAvG gCMUGw"> <!-- -->Enum<!-- -->:</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;json&quot;</span> <span class="sc-gTgAvG sc-lcukLb gCMUGw jzGNYG">&quot;toon&quot;</span> </div> <div><div html="&lt;p&gt;响应格式。&lt;code&gt;toon&lt;/code&gt; 返回 &lt;code&gt;application/toon&lt;/code&gt;，同构数组压成表格，省 token。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>响应格式。<code>toon</code> 返回 <code>application/toon</code>，同构数组压成表格，省 token。</p>
+</div></div></div></td></tr></tbody></table></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。&lt;/p&gt;
+&lt;p&gt;两个必填子字段均为服务端签发的句柄、不可自拟：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;：首轮调用 Context Loader MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;：调用 Context Loader 的 MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+&lt;code&gt;/api/agent-observability/v1&lt;/code&gt; 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey，外部调用方直接调用会得到
+&lt;code&gt;401 permission_denied&lt;/code&gt;。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 &lt;code&gt;operation_key&lt;/code&gt;。网络重试应复用
+&lt;code&gt;bkn-request-id&lt;/code&gt;，或提供同一次逻辑调用稳定不变的
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。</p>
+<p>两个必填子字段均为服务端签发的句柄、不可自拟：</p>
+<ul>
+<li><code>conversation_id</code>：首轮调用 Context Loader MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+<li><code>interaction_id</code>：调用 Context Loader 的 MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+</ul>
+<p>这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+<code>/api/agent-observability/v1</code> 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 <code>bak_</code> AppKey，外部调用方直接调用会得到
+<code>401 permission_denied</code>。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 <code>operation_key</code>。网络重试应复用
+<code>bkn-request-id</code>，或提供同一次逻辑调用稳定不变的
+<code>X-OpenBKN-Client-Invocation-Id</code> 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="skill_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">skill_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div></div></div></td></tr><tr class="last "><td kind="field" title="rel_path" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">rel_path</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;技能包内相对路径，取自 &lt;code&gt;get_skill_content&lt;/code&gt; 的 &lt;code&gt;files[].rel_path&lt;/code&gt;。
+包外路径（含 &lt;code&gt;../&lt;/code&gt;）返回 400。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>技能包内相对路径，取自 <code>get_skill_content</code> 的 <code>files[].rel_path</code>。
+包外路径（含 <code>../</code>）返回 400。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;文件元数据与正文（二进制文件无正文）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>文件元数据与正文（二进制文件无正文）</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;缺少 &lt;code&gt;skill_id&lt;/code&gt; / &lt;code&gt;rel_path&lt;/code&gt;，或路径越出技能包&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>缺少 <code>skill_id</code> / <code>rel_path</code>，或路径越出技能包</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">403<!-- --> </strong><div html="&lt;p&gt;当前账户对该 Skill 无执行 / 查看 / 公开访问权限&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>当前账户对该 Skill 无执行 / 查看 / 公开访问权限</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;Skill 或该路径的文件不存在&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Skill 或该路径的文件不存在</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">413<!-- --> </strong><div html="&lt;p&gt;文件超过 5 MiB 上限，改用技能包下载接口&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>文件超过 5 MiB 上限，改用技能包下载接口</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/read_skill_file</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/read_skill_file</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_99iq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_99iq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_99iq_0" aria-labelledby="tab_R_99iq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"skill_id"</span>: <span class="token string">&quot;skill_contract_review&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"rel_path"</span>: <span class="token string">&quot;refs/checklist.md&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9piq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9piq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9piq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9piq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_9piq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9piq_2" data-rttab="true">403</li><li class="tab-error" role="tab" id="tab_R_9piq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9piq_3" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_9piq_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9piq_4" data-rttab="true">413</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9piq_0" aria-labelledby="tab_R_9piq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-jJEKGn sc-AzeoO ekMQOb dMpNQv"><svg class="sc-iktELE lgCKWg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg><select class="dropdown-select"><option value="application/json" selected="">application/json</option><option value="application/toon">application/toon</option></select><label>application/json</label></div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"skill_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"rel_path"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"mime_type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"file_type"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"content"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"truncated"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9piq_1" aria-labelledby="tab_R_9piq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9piq_2" aria-labelledby="tab_R_9piq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9piq_3" aria-labelledby="tab_R_9piq_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9piq_4" aria-labelledby="tab_R_9piq_4"></div></div></div></div></div></div><div id="tag/Skill/operation/executeSkill" data-section-id="tag/Skill/operation/executeSkill" class="sc-eCsseJ hxxgNd"><div data-section-id="operation/executeSkill" id="operation/executeSkill" class="sc-iBPUmU cOCikg"><div class="sc-hKgHXU eQypqI"><h2 class="sc-pGbXd bwjsfx"><a class="sc-crrrsl itgZBm" href="#tag/Skill/operation/executeSkill" aria-label="tag/Skill/operation/executeSkill"></a>在沙箱内执行 Skill 入口命令<!-- --> </h2><div class="sc-iGcuFr iTRatv"><div html="&lt;p&gt;把 Skill 包投进沙箱会话解压，执行 &lt;code&gt;entry_shell&lt;/code&gt; 指定的入口命令，回收
+&lt;code&gt;exit_code&lt;/code&gt; / &lt;code&gt;stdout&lt;/code&gt; / &lt;code&gt;stderr&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;entry_shell&lt;/code&gt; 必须取自 SKILL.md 声明的入口&lt;/strong&gt;，先用 &lt;code&gt;get_skill_content&lt;/code&gt;
+读清楚再调；这条接口不校验命令与 Skill 的对应关系。&lt;/p&gt;
+&lt;p&gt;授权由 execution-factory 按账户强制：需要该 Skill 的 &lt;code&gt;execute&lt;/code&gt; 或
+&lt;code&gt;public_access&lt;/code&gt; 权限，无权限返回 403。&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;stdout&lt;/code&gt; / &lt;code&gt;stderr&lt;/code&gt; 各自超过 8000 字符会截断（&lt;code&gt;truncated=true&lt;/code&gt;）。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;本端点由技能执行总闸控制&lt;/strong&gt;：&lt;code&gt;EXECUTE_SKILL_ENABLED=true&lt;/code&gt; 时才注册这条
+路由，同名 MCP 工具也才出现在 &lt;code&gt;tools/list&lt;/code&gt; 与 &lt;code&gt;GET /mcp/info&lt;/code&gt;。默认关闭，
+此时这条路径返回 404——「这个部署没有技能执行能力」在路由表上成立。
+（旧名 &lt;code&gt;MCP_EXECUTE_SKILL_ENABLED&lt;/code&gt; 仍被识别，用于兼容已按旧名配置的部署。）&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"><p>把 Skill 包投进沙箱会话解压，执行 <code>entry_shell</code> 指定的入口命令，回收
+<code>exit_code</code> / <code>stdout</code> / <code>stderr</code>。</p>
+<p><strong><code>entry_shell</code> 必须取自 SKILL.md 声明的入口</strong>，先用 <code>get_skill_content</code>
+读清楚再调；这条接口不校验命令与 Skill 的对应关系。</p>
+<p>授权由 execution-factory 按账户强制：需要该 Skill 的 <code>execute</code> 或
+<code>public_access</code> 权限，无权限返回 403。</p>
+<p><code>stdout</code> / <code>stderr</code> 各自超过 8000 字符会截断（<code>truncated=true</code>）。</p>
+<p><strong>本端点由技能执行总闸控制</strong>：<code>EXECUTE_SKILL_ENABLED=true</code> 时才注册这条
+路由，同名 MCP 工具也才出现在 <code>tools/list</code> 与 <code>GET /mcp/info</code>。默认关闭，
+此时这条路径返回 404——「这个部署没有技能执行能力」在路由表上成立。
+（旧名 <code>MCP_EXECUTE_SKILL_ENABLED</code> 仍被识别，用于兼容已按旧名配置的部署。）</p>
+</div></div><div class="sc-fvhGkJ bhICnb"><div class="sc-dacGni hnzXSU"><h5 class="sc-iqHZue sc-jQbHUc iFTCOQ htSlhJ">Authorizations:</h5><svg class="sc-dQoBM dHiXwH" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></div><div class="sc-jUEocL jnRUlI"><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>OAuth2</i></span></span><span class="sc-dtwqPB gXVZLC"><span class="sc-hOqsyU ewkFZw"><i>AppKey</i></span></span></div></div><h5 class="sc-iqHZue iFTCOQ">Request Body schema: <span class="sc-gWHgjU eBDHRN">application/json</span><div class="sc-gTgAvG sc-eJMOEj sc-dUrlDD gCMUGw egFobb eEdthm">required</div></h5><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz jtfGmi"></div><table class="sc-hHfrpe juzVUC"><tbody><tr class=""><td class="sc-hBFaCF sc-fFubTW sc-jgHDmf DPwQp hUqyua bvJPfa" kind="field" title="bkn_context"><span class="sc-idOkdQ iNiPzl"></span><button aria-label="expand bkn_context"><span class="property-name">bkn_context</span><svg class="sc-dQoBM iTiSfO" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">object</span><span class="sc-gTgAvG sc-jeGQnC gCMUGw jJMDiT"> (<!-- -->BKNContext<!-- -->) </span></div> <div><div html="&lt;p&gt;BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。&lt;/p&gt;
+&lt;p&gt;两个必填子字段均为服务端签发的句柄、不可自拟：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;conversation_id&lt;/code&gt;：首轮调用 Context Loader MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;interaction_id&lt;/code&gt;：调用 Context Loader 的 MCP 工具
+&lt;code&gt;bkn_start_interaction&lt;/code&gt; 取得&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+&lt;code&gt;/api/agent-observability/v1&lt;/code&gt; 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 &lt;code&gt;bak_&lt;/code&gt; AppKey，外部调用方直接调用会得到
+&lt;code&gt;401 permission_denied&lt;/code&gt;。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 &lt;code&gt;operation_key&lt;/code&gt;。网络重试应复用
+&lt;code&gt;bkn-request-id&lt;/code&gt;，或提供同一次逻辑调用稳定不变的
+&lt;code&gt;X-OpenBKN-Client-Invocation-Id&lt;/code&gt; 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。</p>
+<p>两个必填子字段均为服务端签发的句柄、不可自拟：</p>
+<ul>
+<li><code>conversation_id</code>：首轮调用 Context Loader MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+<li><code>interaction_id</code>：调用 Context Loader 的 MCP 工具
+<code>bkn_start_interaction</code> 取得</li>
+</ul>
+<p>这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+<code>/api/agent-observability/v1</code> 会话接口只接受集群内可信服务的网关凭据，
+不接受 OAuth token 或 <code>bak_</code> AppKey，外部调用方直接调用会得到
+<code>401 permission_denied</code>。
+Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+幂等标识；调用方不得提交 <code>operation_key</code>。网络重试应复用
+<code>bkn-request-id</code>，或提供同一次逻辑调用稳定不变的
+<code>X-OpenBKN-Client-Invocation-Id</code> 请求头。该提示只用于幂等，不参与身份、
+权限或数据隔离判定。</p>
+</div></div></div></td></tr><tr class=""><td kind="field" title="skill_id" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">skill_id</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div></div></div></td></tr><tr class=""><td kind="field" title="entry_shell" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">entry_shell</span><div class="sc-gTgAvG sc-eJMOEj gCMUGw egFobb">required</div></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">string</span></div> <div><div html="&lt;p&gt;沙箱内执行的入口命令，取自 SKILL.md 声明的入口。技能包已解压到工作目录，
+命令相对该目录执行。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>沙箱内执行的入口命令，取自 SKILL.md 声明的入口。技能包已解压到工作目录，
+命令相对该目录执行。</p>
+</div></div></div></td></tr><tr class="last "><td kind="field" title="timeout" class="sc-hBFaCF sc-fFubTW DPwQp hUqyua"><span class="sc-idOkdQ iNiPzl"></span><span class="property-name">timeout</span></td><td class="sc-bkAakD gNQdZ"><div><div><span class="sc-gTgAvG sc-laROWl gCMUGw dCeeDp"></span><span class="sc-gTgAvG sc-iNqMfM gCMUGw cxjEEA">integer</span><span> <span class="sc-gTgAvG sc-clsJvZ gCMUGw gAOGaI"> <!-- -->[ 1 .. 600 ]<!-- --> </span></span></div> <div><div html="&lt;p&gt;执行超时秒数。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"><p>执行超时秒数。</p>
+</div></div></div></td></tr></tbody></table><div><h3 class="sc-fHYzZk ihqrCS">Responses</h3><div><button class="sc-cbDJdZ ciHfuN"><svg class="sc-dQoBM idFXFs" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">200<!-- --> </strong><div html="&lt;p&gt;执行完成。注意 &lt;code&gt;exit_code != 0&lt;/code&gt; 同样是 200——命令跑完了但业务失败，
+与接口调用失败是两回事。&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>执行完成。注意 <code>exit_code != 0</code> 同样是 200——命令跑完了但业务失败，
+与接口调用失败是两回事。</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">400<!-- --> </strong><div html="&lt;p&gt;缺少 &lt;code&gt;skill_id&lt;/code&gt; / &lt;code&gt;entry_shell&lt;/code&gt;&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>缺少 <code>skill_id</code> / <code>entry_shell</code></p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">403<!-- --> </strong><div html="&lt;p&gt;当前账户对该 Skill 无执行权限&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>当前账户对该 Skill 无执行权限</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">404<!-- --> </strong><div html="&lt;p&gt;Skill 不存在或未发布&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>Skill 不存在或未发布</p>
+</div></button></div><div><button class="sc-cbDJdZ iagvZz"><svg class="sc-dQoBM djPqdM" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWPeRB mtsUp">502<!-- --> </strong><div html="&lt;p&gt;沙箱或上游 execution-factory 不可用&lt;/p&gt;
+" class="sc-iJuXkV sc-cBNeAB sc-cittYi iNuSsz eBjiEo hynizp"><p>沙箱或上游 execution-factory 不可用</p>
+</div></button></div></div></div><div class="sc-jSgsbC sc-gKscir kWQHAp jYdWFY"><div class="sc-fXozIE gnyOsi"><button class="sc-jXkukm eJFCKx"><span type="post" class="sc-eFucnX kcqnuN http-verb post">post</span><span class="sc-FyhMp kmRXcZ">/kn/execute_skill</span><svg class="sc-dQoBM dvMtUQ" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmlIYk AnL"><div class="sc-ljRaAR gjZMty"><div html="" class="sc-iJuXkV sc-cBNeAB iNuSsz dyntKg"></div><div tabindex="0" role="button"><div class="sc-jmhDzS eFxVeO"><span>/api/agent-retrieval/v1</span>/kn/execute_skill</div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_99mq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_99mq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_99mq_0" aria-labelledby="tab_R_99mq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"skill_id"</span>: <span class="token string">&quot;skill_contract_review&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"entry_shell"</span>: <span class="token string">&quot;python main.py --input contract.txt&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"timeout"</span>: <span class="token number">60</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kEjckD hgYAAF"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxFMaL hqsuVf" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_9pmq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_9pmq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_9pmq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pmq_1" data-rttab="true">400</li><li class="tab-error" role="tab" id="tab_R_9pmq_2" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pmq_2" data-rttab="true">403</li><li class="tab-error" role="tab" id="tab_R_9pmq_3" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pmq_3" data-rttab="true">404</li><li class="tab-error" role="tab" id="tab_R_9pmq_4" aria-selected="false" aria-disabled="false" aria-controls="panel_R_9pmq_4" data-rttab="true">502</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_9pmq_0" aria-labelledby="tab_R_9pmq_0"><div><div class="sc-cOahfn jyrVDw"><span class="sc-bBrNAk fLqWfi">Content type</span><div class="sc-dOSQqJ ilXydl">application/json</div></div><div class="sc-hTZjHc icbUjL"><div class="sc-cTkvqA fRRakq"><div class="sc-giIpqw ldPDIU"><button><div class="sc-jcVbNL hiQxbu">Copy</div></button></div><div tabindex="0" class="sc-iJuXkV iNuSsz sc-jNMdgd cCicSb"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"skill_id"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"exit_code"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"stdout"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"stderr"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"truncated"</span>: <span class="token boolean">true</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"execution_time"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"work_dir"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"command"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"mocked"</span>: <span class="token boolean">true</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pmq_1" aria-labelledby="tab_R_9pmq_1"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pmq_2" aria-labelledby="tab_R_9pmq_2"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pmq_3" aria-labelledby="tab_R_9pmq_3"></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_9pmq_4" aria-labelledby="tab_R_9pmq_4"></div></div></div></div></div></div></div><div class="sc-elsZMO dQcVAt"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.0.3","info":{"title":"Skill 召回","description":"按业务上下文召回 Skill 候选。Agent 在运行时传入知识网络与对象类（可再加具体\n实例），拿回一批相关 Skill 的最小元数据（`skill_id` / `name` / `description`），\n再决定装载哪一个。\n\n召回只是入口。拿到 `skill_id` 之后：`get_skill_content` 读 SKILL.md 正文与包内\n文件清单，`read_skill_file` 按 `rel_path` 单取附属文件（渐进式加载，大文件不必\n常驻上下文），`execute_skill` 在沙箱内执行 SKILL.md 声明的入口命令。不需要知识\n网络上下文时用 `list_skills` 直接翻已发布技能列表。\n\nSkill 与业务对象的绑定关系建在知识网络里：平台约定该网中存在一个固定的\n`skills` 对象类，业务对象类通过关系类与它相连，召回就是沿这些关系走。\n`skills` 对象类由 execution-factory 在注册 Skill 时写入。\n\n**认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。\n","version":"0.1.3"},"servers":[{"url":"/api/agent-retrieval/v1"}],"security":[{"OAuth2":[]},{"AppKey":[]}],"paths":{"/kn/find_skills":{"post":{"tags":["Skill"],"summary":"按业务上下文召回 Skill","operationId":"findSkills","x-contract-probe":{"readonly":true,"order":3,"body":{"kn_id":"{cl_kn_id}","object_type_id":"{cl_ot_id}","top_k":3}},"description":"**召回模式由参数自动决定，不用显式指定**：\n\n| 传入参数 | 模式 |\n|---|---|\n| `kn_id` + `object_type_id` | 对象类级：沿对象类与 `skills` 之间的关系路径召回 |\n| 再加 `instance_identities` | 实例级：从具体实例出发召回，并补充对象类级结果 |\n\n**`skill_query` 的检索方式随索引能力降级**：对 `skills` 实例的 `name` /\n`description` 追加文本过滤——BKN 已建向量索引时用 `knn`，已建全文索引时用\n`match`，都没有时退化为 `like`。\n\n`skills` 对象类至少要有 `skill_id` 与 `name` 两个数据属性，`description`\n可选；不满足时返回 400 并在 `details` 里列出缺失属性。\n\n**空结果是 200 不是错误**：没有匹配时返回 `entries: []`，并可能带一个\n`message` 说明为什么为空（如该对象类未绑定任何 Skill）以及下一步建议。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FindSkillsRequest"},"examples":{"对象类级":{"value":{"kn_id":"kn_legal","object_type_id":"contract","top_k":10}},"实例级":{"value":{"kn_id":"kn_legal","object_type_id":"contract","instance_identities":[{"contract_id":"C-2024-001"}],"top_k":10}},"带语义过滤":{"value":{"kn_id":"kn_legal","object_type_id":"contract","instance_identities":[{"contract_id":"C-2024-001"}],"skill_query":"合同审查","top_k":5}}}}}},"responses":{"200":{"description":"Skill 候选列表，可能为空","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FindSkillsResponse"},"examples":{"有候选":{"value":{"entries":[{"skill_id":"skill_contract_review","name":"合同审查","description":"对合同条款进行全面审查，识别风险点"},{"skill_id":"skill_clause_extract","name":"关键条款提取","description":"提取合同中的关键条款和义务"}]}},"空结果":{"value":{"entries":[],"message":"当前对象类未配置 Skill 绑定关系，无法在该范围内召回 Skill。请确认该对象类是否已绑定 Skill。"}}}},"application/toon":{"schema":{"type":"string"}}}},"400":{"description":"参数错误：缺少 `kn_id` / `object_type_id`，或 `skills` 对象类的数据属性\n契约不完整（缺 `skill_id` / `name`）\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"},"examples":{"skills契约不完整":{"value":{"code":"Public.BadRequest","description":"参数错误","details":{"kn_id":"kn_legal","skills_object_type_id":"skills","missing_data_properties":["skill_id","name"],"reason":"skills object type contract is incomplete"},"solution":"请检查当前知识网络下 skills ObjectType 的数据属性定义，确保至少存在 skill_id 与 name","link":"无"}}}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"404":{"description":"指定对象类不存在，或当前知识网络中缺少 `skills` 对象类","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"500":{"description":"服务内部错误","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"502":{"description":"上游服务不可用（BKN 或 ontology-query 异常）","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}},"/kn/list_skills":{"post":{"tags":["Skill"],"summary":"浏览已发布 Skill","operationId":"listSkills","x-contract-probe":{"readonly":true,"order":4,"body":{"page_size":3}},"description":"翻已发布 Skill 列表，不需要知识网络上下文。与 `find_skills` 互补：那条按对象类\n/ 实例召回，这条按名称或分类分页浏览。\n\n只返回**已发布**状态的 Skill；草稿态不出现在这里。\n\n**空结果是 200 不是错误**：无匹配时 `entries: []` 并带 `message` 说明。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":false,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ListSkillsRequest"},"examples":{"全部":{"value":{}},"按名称过滤":{"value":{"name":"合同","page":1,"page_size":20}}}}}},"responses":{"200":{"description":"已发布 Skill 列表，可能为空","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ListSkillsResponse"},"examples":{"有结果":{"value":{"entries":[{"skill_id":"skill_contract_review","name":"合同审查","description":"对合同条款进行全面审查，识别风险点","version":"1.0.2","category":"legal"}],"total_count":1,"page":1,"page_size":20}}}},"application/toon":{"schema":{"type":"string"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"502":{"description":"上游 execution-factory 不可用","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}},"/kn/get_skill_content":{"post":{"tags":["Skill"],"summary":"读 SKILL.md 正文与包内文件清单","operationId":"getSkillContent","description":"返回 Skill 主文档 `SKILL.md` 的正文，以及技能包内的文件清单\n（`files[].rel_path`）。Skill 的用法与入口命令都写在正文里。\n\n需要某个附属文件的内容时再调 `read_skill_file` 单取，不必整包下载。\n\n正文超过 40000 字符会截断，此时 `truncated=true` 并带 `message` 说明。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/GetSkillContentRequest"},"examples":{"example":{"value":{"skill_id":"skill_contract_review"}}}}}},"responses":{"200":{"description":"SKILL.md 正文与文件清单","content":{"application/json":{"schema":{"$ref":"#/components/schemas/GetSkillContentResponse"}},"application/toon":{"schema":{"type":"string"}}}},"400":{"description":"缺少 `skill_id`","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"401":{"description":"凭据缺失或无效","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"403":{"description":"当前账户对该 Skill 无执行 / 查看 / 公开访问权限","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"404":{"description":"Skill 不存在或未发布","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}},"/kn/read_skill_file":{"post":{"tags":["Skill"],"summary":"读技能包内单个文件","operationId":"readSkillFile","description":"按 `rel_path` 取技能包内单个文件的正文。`rel_path` 取自\n`get_skill_content` 返回的 `files[].rel_path`，**不接受包外路径**（`../` 被拒）。\n\n**二进制文件不回正文**：`mime_type` 为图片 / 音视频 / 压缩包 / PDF，或正文不是\n合法 UTF-8 时，只返回元数据与 `message` 说明，避免把乱码灌进模型上下文。\n\n正文超过 40000 字符会截断（`truncated=true`）；单文件超过 5 MiB 返回 413。\n","parameters":[{"$ref":"#/components/parameters/ResponseFormat"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReadSkillFileRequest"},"examples":{"example":{"value":{"skill_id":"skill_contract_review","rel_path":"refs/checklist.md"}}}}}},"responses":{"200":{"description":"文件元数据与正文（二进制文件无正文）","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReadSkillFileResponse"}},"application/toon":{"schema":{"type":"string"}}}},"400":{"description":"缺少 `skill_id` / `rel_path`，或路径越出技能包","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"403":{"description":"当前账户对该 Skill 无执行 / 查看 / 公开访问权限","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"404":{"description":"Skill 或该路径的文件不存在","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"413":{"description":"文件超过 5 MiB 上限，改用技能包下载接口","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}},"/kn/execute_skill":{"post":{"tags":["Skill"],"summary":"在沙箱内执行 Skill 入口命令","operationId":"executeSkill","description":"把 Skill 包投进沙箱会话解压，执行 `entry_shell` 指定的入口命令，回收\n`exit_code` / `stdout` / `stderr`。\n\n**`entry_shell` 必须取自 SKILL.md 声明的入口**，先用 `get_skill_content`\n读清楚再调；这条接口不校验命令与 Skill 的对应关系。\n\n授权由 execution-factory 按账户强制：需要该 Skill 的 `execute` 或\n`public_access` 权限，无权限返回 403。\n\n`stdout` / `stderr` 各自超过 8000 字符会截断（`truncated=true`）。\n\n**本端点由技能执行总闸控制**：`EXECUTE_SKILL_ENABLED=true` 时才注册这条\n路由，同名 MCP 工具也才出现在 `tools/list` 与 `GET /mcp/info`。默认关闭，\n此时这条路径返回 404——「这个部署没有技能执行能力」在路由表上成立。\n（旧名 `MCP_EXECUTE_SKILL_ENABLED` 仍被识别，用于兼容已按旧名配置的部署。）\n","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExecuteSkillRequest"},"examples":{"example":{"value":{"skill_id":"skill_contract_review","entry_shell":"python main.py --input contract.txt","timeout":60}}}}}},"responses":{"200":{"description":"执行完成。注意 `exit_code != 0` 同样是 200——命令跑完了但业务失败，\n与接口调用失败是两回事。\n","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExecuteSkillResponse"}}}},"400":{"description":"缺少 `skill_id` / `entry_shell`","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"403":{"description":"当前账户对该 Skill 无执行权限","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"404":{"description":"Skill 不存在或未发布","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}},"502":{"description":"沙箱或上游 execution-factory 不可用","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorAgentRetrieval"}}}}}}}},"components":{"securitySchemes":{"OAuth2":{"type":"oauth2","description":"OAuth2 认证，用于外网接口。","flows":{"clientCredentials":{"tokenUrl":"/oauth2/token","scopes":{}}}},"AppKey":{"type":"apiKey","in":"header","name":"Authorization","description":"应用密钥（`bak_` 前缀）。以 `Authorization: Bearer bak_xxx` 形式携带，\n用于服务间 / 应用级调用。\n"}},"parameters":{"ResponseFormat":{"name":"response_format","in":"query","required":false,"schema":{"type":"string","enum":["json","toon"],"default":"json"},"description":"响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。"}},"schemas":{"FindSkillsRequest":{"type":"object","required":["bkn_context","kn_id","object_type_id"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"kn_id":{"type":"string","description":"知识网络 ID。","example":"kn_legal"},"object_type_id":{"type":"string","description":"业务对象类 ID（取自 `search_schema` 返回的概念 ID）。必填，且必须存在于\n该知识网络中。\n","example":"contract"},"instance_identities":{"type":"array","items":{"type":"object","additionalProperties":{"oneOf":[{"type":"string"},{"type":"number"},{"type":"boolean"}]}},"description":"对象实例标识列表，**必须从 `query_object_instance` 或\n`query_instance_subgraph` 结果里的 `_instance_identity` 取，不可自拼**。\n传入即切换到实例级召回。\n","example":[{"contract_id":"C-2024-001"}]},"skill_query":{"type":"string","description":"Skill 语义过滤词，对 `skills` 实例的 `name` / `description` 追加文本过滤。\n检索方式按索引能力降级：向量索引用 `knn`，全文索引用 `match`，否则 `like`。\n","example":"合同审查"},"top_k":{"type":"integer","default":10,"minimum":1,"maximum":20,"description":"最多返回的 Skill 数量。"}}},"FindSkillsResponse":{"type":"object","required":["entries"],"properties":{"entries":{"type":"array","items":{"$ref":"#/components/schemas/SkillItem"},"description":"Skill 候选列表。排序：先按命中层级（实例级优先于对象类级），再按相关性\n分数降序；同优先级同分数时按 `skill_id` 字典序，保证顺序稳定。\n无匹配时为空数组。\n"},"message":{"type":"string","description":"空结果说明。仅当 `entries` 为空且返回 200 时出现，用于告诉调用方为什么\n没有结果与下一步建议；`entries` 非空时不返回。文案随请求的 `X-Language`\n头本地化。\n"}}},"SkillItem":{"type":"object","required":["skill_id","name"],"properties":{"skill_id":{"type":"string","description":"Skill 唯一标识，由 execution-factory 写入 `skills` 对象类时确定。","example":"skill_contract_review"},"name":{"type":"string","description":"Skill 名称。","example":"合同审查"},"description":{"type":"string","description":"Skill 功能描述。BKN 中无该属性时不返回，也不影响召回。","example":"对合同条款进行全面审查，识别风险点"}}},"ListSkillsRequest":{"type":"object","properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"name":{"type":"string","description":"按 Skill 名称模糊过滤。","example":"合同"},"category":{"type":"string","description":"按 Skill 分类过滤。"},"page":{"type":"integer","minimum":1,"default":1,"description":"页码，从 1 开始。"},"page_size":{"type":"integer","minimum":1,"maximum":100,"default":20,"description":"每页大小。"}}},"ListSkillsResponse":{"type":"object","required":["entries","total_count"],"properties":{"entries":{"type":"array","items":{"$ref":"#/components/schemas/SkillListItem"}},"total_count":{"type":"integer","description":"符合过滤条件的已发布 Skill 总数。"},"page":{"type":"integer"},"page_size":{"type":"integer"},"message":{"type":"string","description":"空结果说明。仅当 `entries` 为空时出现。"}}},"SkillListItem":{"type":"object","required":["skill_id","name"],"properties":{"skill_id":{"type":"string","example":"skill_contract_review"},"name":{"type":"string","example":"合同审查"},"description":{"type":"string"},"version":{"type":"string","description":"已发布版本。","example":"1.0.2"},"category":{"type":"string"}}},"GetSkillContentRequest":{"type":"object","required":["bkn_context","skill_id"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"skill_id":{"type":"string","description":"Skill ID，取自 `find_skills` 或 `list_skills`。","example":"skill_contract_review"}}},"GetSkillContentResponse":{"type":"object","required":["skill_id","content","files"],"properties":{"skill_id":{"type":"string"},"status":{"type":"string","description":"Skill 状态，正常为 `published`。"},"content":{"type":"string","description":"SKILL.md 正文。"},"truncated":{"type":"boolean","description":"正文是否因超长（40000 字符）被截断。"},"files":{"type":"array","description":"技能包内文件清单，`rel_path` 供 `read_skill_file` 使用。","items":{"$ref":"#/components/schemas/SkillFileSummary"}},"message":{"type":"string","description":"补充说明（如截断提示）。"}}},"SkillFileSummary":{"type":"object","required":["rel_path"],"properties":{"rel_path":{"type":"string","example":"refs/checklist.md"},"file_type":{"type":"string"},"size":{"type":"integer","description":"字节数。"},"mime_type":{"type":"string"}}},"ReadSkillFileRequest":{"type":"object","required":["bkn_context","skill_id","rel_path"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"skill_id":{"type":"string","example":"skill_contract_review"},"rel_path":{"type":"string","description":"技能包内相对路径，取自 `get_skill_content` 的 `files[].rel_path`。\n包外路径（含 `../`）返回 400。\n","example":"refs/checklist.md"}}},"ReadSkillFileResponse":{"type":"object","required":["skill_id","rel_path"],"properties":{"skill_id":{"type":"string"},"rel_path":{"type":"string"},"mime_type":{"type":"string"},"file_type":{"type":"string"},"content":{"type":"string","description":"文件正文。二进制文件不返回该字段。"},"truncated":{"type":"boolean"},"message":{"type":"string","description":"补充说明（二进制未返回正文 / 截断提示）。"}}},"ExecuteSkillRequest":{"type":"object","required":["bkn_context","skill_id","entry_shell"],"properties":{"bkn_context":{"$ref":"#/components/schemas/BKNContext"},"skill_id":{"type":"string","example":"skill_contract_review"},"entry_shell":{"type":"string","description":"沙箱内执行的入口命令，取自 SKILL.md 声明的入口。技能包已解压到工作目录，\n命令相对该目录执行。\n","example":"python main.py --input contract.txt"},"timeout":{"type":"integer","minimum":1,"maximum":600,"description":"执行超时秒数。"}}},"ExecuteSkillResponse":{"type":"object","required":["skill_id","exit_code"],"properties":{"skill_id":{"type":"string"},"exit_code":{"type":"integer","description":"进程退出码，0 为成功。非 0 时接口仍返回 200。"},"stdout":{"type":"string"},"stderr":{"type":"string"},"truncated":{"type":"boolean","description":"`stdout` / `stderr` 是否被截断（各自 8000 字符上限）。"},"execution_time":{"type":"integer","description":"执行耗时（毫秒）。"},"work_dir":{"type":"string"},"command":{"type":"string"},"mocked":{"type":"boolean","description":"沙箱不可用时的桩执行标记。"}}},"BKNContext":{"type":"object","additionalProperties":false,"description":"BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。\n\n两个必填子字段均为服务端签发的句柄、不可自拟：\n\n- `conversation_id`：首轮调用 Context Loader MCP 工具\n  `bkn_start_interaction` 取得\n- `interaction_id`：调用 Context Loader 的 MCP 工具\n  `bkn_start_interaction` 取得\n\n这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的\n`/api/agent-observability/v1` 会话接口只接受集群内可信服务的网关凭据，\n不接受 OAuth token 或 `bak_` AppKey，外部调用方直接调用会得到\n`401 permission_denied`。\nContext Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation\n幂等标识；调用方不得提交 `operation_key`。网络重试应复用\n`bkn-request-id`，或提供同一次逻辑调用稳定不变的\n`X-OpenBKN-Client-Invocation-Id` 请求头。该提示只用于幂等，不参与身份、\n权限或数据隔离判定。\n","required":["conversation_id","interaction_id"],"properties":{"conversation_id":{"type":"string","description":"业务对话 ID，服务端签发。","example":"conv_8eca1655217a128b16727ce664cd579c"},"interaction_id":{"type":"string","description":"交互（一轮问答）ID，服务端签发。","example":"int_0ab58662974fe9edcfb4ae3e77e43502"},"parent_operation_id":{"type":"string","description":"触发本次调用的上游操作 ID，用于表达因果边。"},"causation_event_ids":{"type":"array","items":{"type":"string"},"description":"触发本次调用的事件 ID 列表，用于表达因果边。"},"business_refs":{"type":"array","maxItems":64,"description":"当前调用已知的规范化业务对象、数据或逻辑引用。","items":{"type":"object","additionalProperties":false,"required":["ref_type","ref_id"],"properties":{"ref_type":{"type":"string","description":"业务引用类型，例如 object_type、property 或 data_resource。"},"ref_id":{"type":"string","description":"规范化业务引用 ID；除 data_resource 外必须属于当前知识网络。"},"version":{"type":"string","description":"引用版本；省略时为 unversioned。"}}}}}},"ErrorCompact":{"description":"adp 下 context-loader（`agent-retrieval`）与 execution-factory\n（`agent-operator-integration`）共用的错误响应体，由各自的\n`infra/errors.HTTPError` 序列化得到。字段名与上面的 `Error` **不同**，\n对接时不要混用。\n\n另一个易踩的点：错误来自下游服务时，这两个服务会原样透传下游响应体，\n此时字段名是下游的信封（通常是 `error_code` / `error_details`）。\n判断来源看 `code` 前缀：`Public.*` 与服务自己的前缀\n（`agentRetrieval.*` / `AgentOperatorIntegration.*`，注意后者首字母大写）\n是本服务产生的。\n\n**例外：来自 mf-model-api 的错误不适用上面的 `code` 前缀判定。**\n`mf-model-api` 的 `/v1/chat/completions` 是 OpenAI 兼容面，失败一律返回\nOpenAI 错误体 `{\"error\": {\"message\", \"type\", \"param\", \"code\"}}`，顶层\n没有 `code`（原来的业务码挪进了 `error.code`）。凡是走大模型调用的端点\n（如 execution-factory 的 `/ai_generate/*`），透传出来的就是这个形态：\n顶层有 `error` 对象即表示错误来自模型调用链路，用 `error.message`\n取文案、`error.type` 取分类（`rate_limit_exceeded` /\n`service_unavailable_error` / `invalid_request_error` 等）。\n","type":"object","properties":{"code":{"type":"string","description":"机器可读错误码。通用错误为 `Public.<ErrCode>`（如 `Public.BadRequest`），\n业务错误为 `<服务名>.<ErrCode>.<ExtCode>`，如\n`AgentOperatorIntegration.BadRequest.ValidationRequired`。\n","example":"Public.BadRequest"},"description":{"type":"string","description":"人类可读错误说明（按请求语言本地化）。"},"solution":{"type":"string","description":"建议的处理方式。"},"link":{"type":"string","description":"指向错误详情文档的链接；无对应文档时为「无」。"},"details":{"description":"详细内容，类型不固定（字符串或对象）。"}}},"ErrorAgentRetrieval":{"description":"`ErrorCompact` 的别名，供 context-loader 的 YAML 引用（#578 合入时用的是\n这个名字，9 份文件都按它写的，故保留）。**结构完全等同 `ErrorCompact`**，\n新写文档请直接引 `ErrorCompact`。\n","allOf":[{"$ref":"#/components/schemas/ErrorCompact"}]}}}}},"searchIndex":{"store":["tag/Skill","tag/Skill/operation/findSkills","tag/Skill/operation/listSkills","tag/Skill/operation/getSkillContent","tag/Skill/operation/readSkillFile","tag/Skill/operation/executeSkill"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,0.204]],["description/0",[]],["title/1",[0,0.163,1,0.288]],["description/1",[0,0.237,1,0.594,2,1.121,3,1.121,4,1.121,5,1.121,6,1.684,7,1.684,8,1.121,9,1.121,10,1.121,11,1.121,12,1.121,13,1.121,14,0.749,15,0.749,16,0.321,17,1.121]],["title/2",[0,0.163,1,0.288]],["description/2",[0,0.248,1,0.586,14,1.201,15,1.201,16,0.516,18,1.797,19,1.797]],["title/3",[1,0.347,20,0.575]],["description/3",[0,0.19,1,0.581,16,0.516,20,0.809,21,1.797,22,1.797,23,1.201,24,0.809,25,1.797]],["title/4",[1,0.362]],["description/4",[1,0.584,16,0.433,23,1.01,24,0.68,26,2.09,27,1.01,28,1.511,29,1.511,30,1.511,31,1.511,32,1.511,33,1.511,34,1.511,35,1.511]],["title/5",[0,0.135,1,0.347]],["description/5",[0,0.221,1,0.586,20,0.533,24,0.533,27,0.792,36,1.755,37,1.184,38,1.755,39,1.755,40,1.184,41,1.184,42,1.184,43,1.184,44,1.184,45,1.184,46,1.184,47,1.184,48,1.184,49,1.184,50,1.184,51,1.184]]],"invertedIndex":[["",{"_index":1,"title":{"1":{},"2":{},"3":{},"4":{},"5":{}},"description":{"1":{},"2":{},"3":{},"4":{},"5":{}}}],["200",{"_index":14,"title":{},"description":{"1":{},"2":{}}}],["400",{"_index":12,"title":{},"description":{"1":{}}}],["40000",{"_index":23,"title":{},"description":{"3":{},"4":{}}}],["403",{"_index":43,"title":{},"description":{"5":{}}}],["404",{"_index":49,"title":{},"description":{"5":{}}}],["413",{"_index":34,"title":{},"description":{"4":{}}}],["5",{"_index":32,"title":{},"description":{"4":{}}}],["8000",{"_index":44,"title":{},"description":{"5":{}}}],["bkn",{"_index":8,"title":{},"description":{"1":{}}}],["descript",{"_index":7,"title":{},"description":{"1":{}}}],["detail",{"_index":13,"title":{},"description":{"1":{}}}],["entri",{"_index":15,"title":{},"description":{"1":{},"2":{}}}],["entry_shel",{"_index":36,"title":{},"description":{"5":{}}}],["execut",{"_index":41,"title":{},"description":{"5":{}}}],["execute_skill_enabled=tru",{"_index":45,"title":{},"description":{"5":{}}}],["execution-factori",{"_index":40,"title":{},"description":{"5":{}}}],["exit_cod",{"_index":37,"title":{},"description":{"5":{}}}],["files[].rel_path",{"_index":28,"title":{},"description":{"4":{}}}],["files[].rel_path`）。skil",{"_index":21,"title":{},"description":{"3":{}}}],["find_skil",{"_index":18,"title":{},"description":{"2":{}}}],["get_skill_cont",{"_index":27,"title":{},"description":{"4":{},"5":{}}}],["instance_ident",{"_index":4,"title":{},"description":{"1":{}}}],["kn/execute_skil",{"_index":51,"title":{},"description":{"5":{}}}],["kn/find_skil",{"_index":17,"title":{},"description":{"1":{}}}],["kn/get_skill_cont",{"_index":25,"title":{},"description":{"3":{}}}],["kn/list_skil",{"_index":19,"title":{},"description":{"2":{}}}],["kn/read_skill_fil",{"_index":35,"title":{},"description":{"4":{}}}],["kn_id",{"_index":2,"title":{},"description":{"1":{}}}],["knn",{"_index":9,"title":{},"description":{"1":{}}}],["match",{"_index":10,"title":{},"description":{"1":{}}}],["mcp",{"_index":46,"title":{},"description":{"5":{}}}],["mcp/info",{"_index":48,"title":{},"description":{"5":{}}}],["mcp_execute_skill_en",{"_index":50,"title":{},"description":{"5":{}}}],["messag",{"_index":16,"title":{},"description":{"1":{},"2":{},"3":{},"4":{}}}],["mib",{"_index":33,"title":{},"description":{"4":{}}}],["mime_typ",{"_index":29,"title":{},"description":{"4":{}}}],["name",{"_index":6,"title":{},"description":{"1":{}}}],["object_type_id",{"_index":3,"title":{},"description":{"1":{}}}],["pdf",{"_index":30,"title":{},"description":{"4":{}}}],["public_access",{"_index":42,"title":{},"description":{"5":{}}}],["read_skill_fil",{"_index":22,"title":{},"description":{"3":{}}}],["rel_path",{"_index":26,"title":{},"description":{"4":{}}}],["skill",{"_index":0,"title":{"0":{},"1":{},"2":{},"5":{}},"description":{"1":{},"2":{},"3":{},"5":{}}}],["skill.md",{"_index":20,"title":{"3":{}},"description":{"3":{},"5":{}}}],["skill_id",{"_index":11,"title":{},"description":{"1":{}}}],["skill_queri",{"_index":5,"title":{},"description":{"1":{}}}],["stderr",{"_index":39,"title":{},"description":{"5":{}}}],["stdout",{"_index":38,"title":{},"description":{"5":{}}}],["tools/list",{"_index":47,"title":{},"description":{"5":{}}}],["truncated=tru",{"_index":24,"title":{},"description":{"3":{},"4":{},"5":{}}}],["utf-8",{"_index":31,"title":{},"description":{"4":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>
