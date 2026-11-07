@@ -310,6 +310,97 @@ def test_the_prompt_carries_the_network_schema():
     assert "- rel_home (主队): matches -> teams" in text
 
 
+def test_the_prompt_lists_properties_the_network_detail_leaves_out():
+    """Regression: get_kn_detail names object types without their properties, so the
+    schema in the prompt had none and the model queried instances of each type to
+    learn them, a tool call per type out of the run's budget."""
+    run, _, calls = _run()
+    run.state["context_loader"]["get_kn_detail"] = _tool(
+        "get_kn_detail", calls, {**DETAIL, "object_types": [{"id": "teams", "name": "球队"}, {"id": "matches", "name": "比赛"}]}
+    )
+    run.state["context_loader"]["get_object_types"] = _tool(
+        "get_object_types",
+        calls,
+        {
+            "object_types": [
+                {
+                    "id": "teams",
+                    "name": "球队",
+                    "primary_keys": ["key_id"],
+                    "data_properties": [{"name": "key_id", "type": "integer"}, {"name": "team_name", "type": "string"}, {"name": "secret"}],
+                    "effective_permissions": {"key_id": "full", "team_name": "full", "secret": "masked"},
+                },
+                OBJECT_TYPES["object_types"][1],
+            ]
+        },
+    )
+    text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
+    assert "- teams (球队)\n  properties: key_id:integer, team_name:string" in text
+    assert "secret" not in text
+    assert "- matches (比赛)\n  properties: key_id:integer" in text
+    # One call for every type, and the definitions serve the tools after it.
+    assert [c[1]["ids"] for c in calls if c[0] == "get_object_types"] == [["teams", "matches"]]
+    assert set(run.state["metas"]) == {"teams", "matches"}
+
+
+def test_a_large_network_lists_names_only_and_a_failed_lookup_keeps_them(monkeypatch):
+    run, _, calls = _run()
+    run.state["context_loader"]["get_kn_detail"] = _tool(
+        "get_kn_detail", calls, {**DETAIL, "object_types": [{"id": "teams", "name": "球队"}, {"id": "matches", "name": "比赛"}]}
+    )
+    monkeypatch.setattr(graph, "SCHEMA_PROPERTY_TYPES", 1)
+    text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
+    assert "- teams (球队)" in text and "properties" not in text
+    assert not any(c[0] == "get_object_types" for c in calls)
+
+    monkeypatch.setattr(graph, "SCHEMA_PROPERTY_TYPES", 100)
+    run.state.pop("network")
+
+    async def broken(**kwargs):
+        raise TimeoutError("read timed out")
+
+    run.state["context_loader"]["get_object_types"] = SimpleNamespace(name="get_object_types", coroutine=broken)
+    text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
+    assert "- teams (球队)" in text and "- matches (比赛)" in text and "properties" not in text
+
+
+def test_the_schema_properties_fit_a_budget_and_say_so(monkeypatch):
+    """A network of many wide object types listed every property of each, crowding the
+    conversation out of the prompt; each type now keeps the same number of its first ones."""
+    run, _, calls = _run()
+    wide = {"id": "teams", "name": "球队", "properties": [{"name": "key_id", "type": "integer"}, {"name": "team_name", "type": "string"}]}
+    run.state["context_loader"]["get_kn_detail"] = _tool(
+        "get_kn_detail", calls, {**DETAIL, "object_types": [wide, {"id": "matches", "name": "比赛"}]}
+    )
+    monkeypatch.setattr(graph, "SCHEMA_PROPERTY_CHARS", len("key_id:integer") * 2)
+    text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
+    assert "- teams (球队)\n  properties: key_id:integer\n" in text
+    assert "team_name" not in text
+    assert "Only the first 1 properties of each object type fit here" in text
+
+    monkeypatch.undo()
+    run, _, _ = _run()
+    text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
+    assert "team_name:string" in text and "fit here" not in text
+
+
+def test_a_keyword_alias_failure_says_which_word_to_rename():
+    """Regression: `RETURN m AS match` failed with only `mismatched input 'match'`; the
+    model renamed the variable, kept the alias and failed again until the budget ran out."""
+
+    def refuse(kwargs):
+        return {"error": "Cypher 查询语法解析失败: line 1, column 30: mismatched input 'match'"}
+
+    run, tools, _ = _run(cypher=refuse)
+    with pytest.raises(ToolException) as failed:
+        asyncio.run(tools["run_cypher"].coroutine(query="MATCH (mt:matches) RETURN mt AS match"))
+    assert "mismatched input 'match'" in str(failed.value)
+    assert "match is a Cypher keyword" in str(failed.value)
+    with pytest.raises(ToolException) as plain:
+        asyncio.run(tools["run_cypher"].coroutine(query="MATCH (mt:matches) RETURN mt AS game"))
+    assert "Hint" not in str(plain.value)
+
+
 def test_without_context_loader_the_tools_say_so():
     run, tools, _ = _run()
     run.state.pop("context_loader")
