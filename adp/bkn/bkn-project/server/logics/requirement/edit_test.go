@@ -675,6 +675,64 @@ func Test_LogicNeedEdits(t *testing.T) {
 				})
 		}
 
+		Convey("An action type names the api or mcp_tool need that executes it, and loses it when that one goes\n", func() {
+			withActions := func(executedBy string) *interfaces.Requirement {
+				req := needsSpec()
+				req.Spec.LogicNeeds = append(req.Spec.LogicNeeds,
+					&interfaces.RequirementLogicNeed{ID: "n5", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Send reminder",
+						ExecutedBy: executedBy},
+					&interfaces.RequirementLogicNeed{ID: "n6", Kind: interfaces.LOGIC_NEED_API, Name: "Reminder service"},
+					&interfaces.RequirementLogicNeed{ID: "n7", Kind: interfaces.LOGIC_NEED_MCP_TOOL, Name: "Mail tool"})
+				req.Spec.LastIDs = map[string]int{"n": 7}
+				return req
+			}
+			edit := func(from *interfaces.Requirement, id string, e interfaces.RequirementItemEdit) error {
+				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(from, true, nil)
+				e.UpdateTime = 7
+				_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, id, e, caller)
+				return err
+			}
+			executor := func(id string) string {
+				i, _ := find(saved.Spec.LogicNeeds, id, logicNeedID)
+				return saved.Spec.LogicNeeds[i].ExecutedBy
+			}
+
+			for _, by := range []string{"n6", "n7"} {
+				expectSave()
+				So(edit(withActions(""), "n5", interfaces.RequirementItemEdit{ExecutedBy: ptr(by)}), ShouldBeNil)
+				So(executor("n5"), ShouldEqual, by)
+			}
+			// "" says nothing executes it.
+			expectSave()
+			So(edit(withActions("n6"), "n5", interfaces.RequirementItemEdit{ExecutedBy: ptr("")}), ShouldBeNil)
+			So(executor("n5"), ShouldEqual, "")
+
+			// Only an api or mcp_tool need of the specification executes, and only an action type.
+			for _, c := range []struct {
+				id, by string
+			}{{"n5", "n1"}, {"n5", "n5"}, {"n5", "n9"}, {"n1", "n6"}} {
+				err := edit(withActions(""), c.id, interfaces.RequirementItemEdit{ExecutedBy: ptr(c.by)})
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+			}
+
+			// It goes when the need named is removed or becomes another kind, or the action type does.
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(withActions("n6"), true, nil)
+			expectSave()
+			_, err := svc.DeleteItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_LOGIC_NEEDS, "n6", 7, caller)
+			So(err, ShouldBeNil)
+			So(executor("n5"), ShouldEqual, "")
+			expectSave()
+			So(edit(withActions("n6"), "n6", interfaces.RequirementItemEdit{LogicKind: ptr(interfaces.LOGIC_NEED_SKILL)}), ShouldBeNil)
+			So(executor("n5"), ShouldEqual, "")
+			expectSave()
+			So(edit(withActions("n6"), "n5", interfaces.RequirementItemEdit{LogicKind: ptr(interfaces.LOGIC_NEED_FUNCTION)}), ShouldBeNil)
+			So(executor("n5"), ShouldEqual, "")
+			// An api made an mcp_tool still executes it.
+			expectSave()
+			So(edit(withActions("n6"), "n6", interfaces.RequirementItemEdit{LogicKind: ptr(interfaces.LOGIC_NEED_MCP_TOOL)}), ShouldBeNil)
+			So(executor("n5"), ShouldEqual, "n6")
+		})
+
 		Convey("A person adds a need of a kind and name, on object types and properties of the draft\n", func() {
 			expectRead()
 			expectSave()

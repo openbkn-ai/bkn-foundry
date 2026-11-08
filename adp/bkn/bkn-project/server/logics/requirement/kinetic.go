@@ -35,6 +35,9 @@ type agentLogicNeed struct {
 	ConceptIDs          []string           `json:"concept_ids"`
 	Citations           []agentCitation    `json:"citations"`
 	SupplementReason    string             `json:"supplement_reason"`
+	// ExecutedBy is, for an action type, the id of the api or mcp_tool need that carries it out:
+	// one of this output, or a kept- id.
+	ExecutedBy string `json:"executed_by"`
 }
 
 type agentPropertyRef struct {
@@ -52,6 +55,7 @@ func logicNeedSchema() map[string]any {
 		}, "object_type_id", "property")),
 		"suggested_metric_type": schemaEnum(append([]string{""}, interfaces.LogicNeedMetricTypes...)...),
 		"concept_ids":           schemaStrings(), "citations": citationsSchema(), "supplement_reason": schemaString(),
+		"executed_by": schemaString(),
 	}, "id", "kind", "name", "definition", "citations")
 }
 
@@ -141,7 +145,15 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 		}
 		return out
 	}
+	// What executes an action type that a run dropped no longer does: the Agent may name it anew.
+	followExecutors(spec)
 	added := 0
+	// The needs by the ids the Agent gave them, and what it said executes each, to name once all are in.
+	ids := map[string]*interfaces.RequirementLogicNeed{}
+	for _, n := range spec.LogicNeeds {
+		ids[keptPrefix+n.ID] = n
+	}
+	executors := map[*interfaces.RequirementLogicNeed]string{}
 	for _, p := range proposed {
 		name := strings.TrimSpace(p.Name)
 		if name == "" {
@@ -151,6 +163,13 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 			return p.ID == keptPrefix+n.ID || n.Kind == p.Kind && sameText(n.Name, name)
 		}); i >= 0 {
 			kept := spec.LogicNeeds[i]
+			if p.ID != "" {
+				ids[p.ID] = kept
+			}
+			// One a person changed keeps what they said executes it.
+			if !kept.Edited && kept.ExecutedBy == "" {
+				executors[kept] = strings.TrimSpace(p.ExecutedBy)
+			}
 			for _, c := range conceptIDsOf(p.ConceptIDs) {
 				if !slices.Contains(kept.ConceptIDs, c) {
 					kept.ConceptIDs = append(kept.ConceptIDs, c)
@@ -188,7 +207,17 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 		}
 		placeOnModel(need, p, properties)
 		spec.LogicNeeds = append(spec.LogicNeeds, need)
+		if p.ID != "" {
+			ids[p.ID] = need
+		}
+		executors[need] = strings.TrimSpace(p.ExecutedBy)
 	}
+	for need, ref := range executors {
+		if by, ok := ids[ref]; ok && by != need && need.Kind == interfaces.LOGIC_NEED_ACTION_TYPE && interfaces.CanExecute(by.Kind) {
+			need.ExecutedBy = by.ID
+		}
+	}
+	followExecutors(spec)
 }
 
 // placeOnModel gives a need the object types, properties and metric type the Agent proposed for it.

@@ -432,7 +432,7 @@ type RequirementReviewItem struct {
 // trigger, decision and knowledge of a scenario; term, category and definition of a concept; text,
 // layer, template, answer_shape, scenario_ids, needs and logic_need_ids of a question; statement of
 // a rule; logic_kind, name, definition, object_type_ids, properties, suggested_metric_type and
-// scenario_ids of a kinetic need.
+// executed_by of a kinetic need.
 // Setting a question's needs makes them the person's; follow_concepts makes them follow its
 // concepts again. UpdateTime is the specification's as read.
 type RequirementItemEdit struct {
@@ -464,6 +464,8 @@ type RequirementItemEdit struct {
 	ObjectTypeIDs       *[]string                 `json:"object_type_ids"`
 	Properties          *[]RequirementPropertyRef `json:"properties"`
 	SuggestedMetricType *string                   `json:"suggested_metric_type"`
+	// ExecutedBy names the api or mcp_tool need that carries out an action type; "" clears it.
+	ExecutedBy *string `json:"executed_by"`
 }
 
 // RequirementMapping sets the drafted item a concept is; nil clears it.
