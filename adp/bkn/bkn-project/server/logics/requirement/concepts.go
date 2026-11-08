@@ -66,7 +66,8 @@ func conceptsResponseFormat() map[string]any {
 		"doc_types": schemaArray(schemaObject(map[string]any{
 			"document_id": schemaString(),
 			"doc_type": schemaEnum(interfaces.REQUIREMENT_DOC_PRD, interfaces.REQUIREMENT_DOC_POLICY,
-				interfaces.REQUIREMENT_DOC_STANDARD, interfaces.REQUIREMENT_DOC_OTHER),
+				interfaces.REQUIREMENT_DOC_STANDARD, interfaces.REQUIREMENT_DOC_SKILL, interfaces.REQUIREMENT_DOC_API,
+				interfaces.REQUIREMENT_DOC_OTHER),
 		}, "document_id", "doc_type")),
 		"logic_needs": schemaArray(logicNeedSchema()),
 	}, "concepts", "rules", "conflicts", "choices", "doc_types", "logic_needs")

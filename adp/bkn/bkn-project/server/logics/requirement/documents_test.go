@@ -305,6 +305,10 @@ func Test_Documents(t *testing.T) {
 			So(doc.Blocks, ShouldBeNil)
 			_, err = svc.SetDocumentType(ctx, token, "p1", "d1", "manual", caller)
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidDocumentType)
+			// A Skill document and an API description are types of their own.
+			for _, docType := range []string{interfaces.REQUIREMENT_DOC_SKILL, interfaces.REQUIREMENT_DOC_API} {
+				So(interfaces.IsRequirementDocType(docType), ShouldBeTrue)
+			}
 			_, err = svc.SetDocumentType(ctx, token, "p1", "d9", interfaces.REQUIREMENT_DOC_PRD, caller)
 			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Requirement_DocumentNotFound)
 		})
