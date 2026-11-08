@@ -14,3 +14,9 @@
 {{- printf "%s:%s" .Values.image.repository .Values.image.tag -}}
 {{- end -}}
 {{- end -}}
+
+
+{{/* The Secret holding the database account: keys user and password. */}}
+{{- define "bkn-project.dbSecret" -}}
+{{- .Values.depServices.rds.existingSecret | default (printf "%s-db" .Values.moduleName) -}}
+{{- end -}}

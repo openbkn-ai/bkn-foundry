@@ -46,3 +46,31 @@ func TestShippedConfigurationNamesEveryDependency(t *testing.T) {
 		}
 	}
 }
+
+// The chart passes the database account from a Secret; the file then holds no credentials, and a
+// variable that is set wins over the file even when it is empty.
+func TestSetDBSettingTakesTheAccountFromTheEnvironment(t *testing.T) {
+	previous := appSetting
+	defer func() { appSetting = previous }()
+	file := map[string]any{"host": "mariadb", "port": 3306, "user": "file-user", "password": "file-password"}
+
+	appSetting = &AppSetting{DepServices: map[string]map[string]any{rdsServiceName: file}}
+	SetDBSetting()
+	if got := appSetting.DBSetting; got.Username != "file-user" || got.Password != "file-password" {
+		t.Fatalf("without variables: %q / %q", got.Username, got.Password)
+	}
+
+	t.Setenv(DBUserEnv, "bkn_project")
+	t.Setenv(DBPasswordEnv, "")
+	appSetting = &AppSetting{DepServices: map[string]map[string]any{rdsServiceName: file}}
+	SetDBSetting()
+	if got := appSetting.DBSetting; got.Username != "bkn_project" || got.Password != "" {
+		t.Fatalf("with variables: %q / %q", got.Username, got.Password)
+	}
+
+	appSetting = &AppSetting{DepServices: map[string]map[string]any{rdsServiceName: {"host": "mariadb", "port": 3306}}}
+	SetDBSetting()
+	if got := appSetting.DBSetting; got.Username != "bkn_project" || got.Host != "mariadb" {
+		t.Fatalf("file without credentials: %+v", got)
+	}
+}
