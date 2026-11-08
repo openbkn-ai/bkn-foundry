@@ -22,18 +22,23 @@ const (
 	REQUIREMENT_STATUS_FAILED   = "failed"
 )
 
-// Requirement document types, in the order of authority for terms and rules.
+// Requirement document types: standard, policy and prd in the order of authority for terms and
+// rules; skill (how a Skill does its work) and api (what an interface takes and returns) describe
+// kinetic needs and, like other, outrank none.
 const (
 	REQUIREMENT_DOC_STANDARD = "standard"
 	REQUIREMENT_DOC_POLICY   = "policy"
 	REQUIREMENT_DOC_PRD      = "prd"
+	REQUIREMENT_DOC_SKILL    = "skill"
+	REQUIREMENT_DOC_API      = "api"
 	REQUIREMENT_DOC_OTHER    = "other"
 )
 
 // IsRequirementDocType tells whether docType is a requirement document type.
 func IsRequirementDocType(docType string) bool {
 	switch docType {
-	case REQUIREMENT_DOC_STANDARD, REQUIREMENT_DOC_POLICY, REQUIREMENT_DOC_PRD, REQUIREMENT_DOC_OTHER:
+	case REQUIREMENT_DOC_STANDARD, REQUIREMENT_DOC_POLICY, REQUIREMENT_DOC_PRD, REQUIREMENT_DOC_SKILL,
+		REQUIREMENT_DOC_API, REQUIREMENT_DOC_OTHER:
 		return true
 	}
 	return false
