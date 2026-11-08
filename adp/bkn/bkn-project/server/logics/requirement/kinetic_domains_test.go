@@ -193,6 +193,8 @@ func Test_KineticAcrossDomains(t *testing.T) {
 			So(again[d.actionType].ID, ShouldEqual, ids[d.actionType])
 			So(again[executor.Name].ID, ShouldEqual, ids[executor.Name])
 			So(again[d.actionType].ExecutedBy, ShouldEqual, ids[executor.Name])
+			So(again[d.actionType].Accepted, ShouldBeTrue)
+			So(again[executor.Name].Accepted, ShouldBeTrue)
 			// One no one accepted is analysed anew, under an id never given before.
 			So(again[d.metric].ID, ShouldNotEqual, ids[d.metric])
 		})
