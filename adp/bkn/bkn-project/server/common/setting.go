@@ -6,6 +6,7 @@ package common
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -209,10 +210,25 @@ func SetDBSetting() {
 	appSetting.DBSetting = libdb.DBSetting{
 		Host:     setting["host"].(string),
 		Port:     setting["port"].(int),
-		Username: setting["user"].(string),
-		Password: setting["password"].(string),
+		Username: dbCredential(setting, "user", DBUserEnv),
+		Password: dbCredential(setting, "password", DBPasswordEnv),
 		DBName:   DATA_BASE_NAME,
 	}
+}
+
+// The database account can come from the environment, as the chart passes it from a Secret, so
+// the configuration file holds no credentials. A set variable wins over the file.
+const (
+	DBUserEnv     = "BKN_PROJECT_DB_USER"
+	DBPasswordEnv = "BKN_PROJECT_DB_PASSWORD"
+)
+
+func dbCredential(setting map[string]any, key, env string) string {
+	if value, ok := os.LookupEnv(env); ok {
+		return value
+	}
+	value, _ := setting[key].(string)
+	return value
 }
 
 func SetHydraAdminSetting() {

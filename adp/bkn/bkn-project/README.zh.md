@@ -166,6 +166,56 @@ BKN 项目的知识库能力（文档来源、概念抽取、构建、验收、�
 用 `Application.RegisterKnowledgeBaseRoutes` 安装路由；路由在 `knowledge_base` 能力已授权时生效。
 版本增加的处理器共用 `server/driveradapters/httpx`。
 
+## 部署
+
+### 数据库账号
+
+chart 通过 Secret 把数据库账号以 `BKN_PROJECT_DB_USER`、`BKN_PROJECT_DB_PASSWORD`
+传给容器，ConfigMap 只保留地址、端口和类型。默认 chart 把 `depServices.rds.user`、
+`depServices.rds.password` 写入自己的 Secret `bkn-project-db`；设置
+`depServices.rds.existingSecret` 为一个含 `user`、`password` 两个键的 Secret 时改用它。
+账号变化会重启 Pod。
+
+不要使用 root。服务只需要 `openbkn` 库里 `t_bkn_project_*` 表的 `SELECT`、`INSERT`、
+`UPDATE`、`DELETE`；表由 data-migrator 用它自己的账号创建。版本在 init 容器里迁移
+自己的表时，使用单独的迁移账号，或从同一个 Secret 读服务账号：
+
+```yaml
+initContainers:
+  - name: migrate
+    env:
+      - name: BKN_PROJECT_DB_USER
+        valueFrom: {secretKeyRef: {name: bkn-project-db, key: user}}
+      - name: BKN_PROJECT_DB_PASSWORD
+        valueFrom: {secretKeyRef: {name: bkn-project-db, key: password}}
+```
+
+### 资源和停止
+
+请求 100m CPU、256Mi 内存，上限 1 CPU、1Gi。收到 SIGTERM 后服务不再接收请求，
+最多等 60 秒让请求和后台任务结束；`terminationGracePeriodSeconds` 为 75，Pod 不会先被强制结束。
+
+### Agent 任务输入
+
+起草、需求抽取、发布评审，以及专业版的概念抽取和文档抽取都作为 bkn-agent 任务运行。
+每个任务是 `openbkn` 库 `t_agent_task` 里的一行：`f_input` 是发给模型的内容，包括读取的
+需求文档和知识库文件正文，与网络是否纳入原文无关；`f_output` 是模型的回答。
+
+- **保留什么：** 每个任务的行及其输入和输出，直到被删除。bkn-project 的结果保存在
+  自己的表和 Dataset 里；它只在运行过程中回读任务，概念抽取请求中断后用它找回回答。
+- **保留多久：** 0.2.2 不会自动删除。建议已结束的任务保留 30 天；文档敏感时可以更短。
+- **怎么清理：** 删除超过保留期、已结束的 bkn-project Agent 任务，例如 30 天：
+
+  ```sql
+  DELETE FROM openbkn.t_agent_task
+  WHERE f_agent_id LIKE 'bkn-project-%'
+    AND f_status NOT IN ('pending', 'running')
+    AND f_update_time < (UNIX_TIMESTAMP() - 30 * 86400) * 1000;
+  ```
+
+  运行中的任务不受影响，构建、发布和草稿不变。截止时间前中断的概念抽取不能再找回，
+  需要重新运行。bkn-trace 为这些任务记录的追踪数据按 bkn-trace 自己的保留设置处理。
+
 ## 本地开发
 
 ```bash

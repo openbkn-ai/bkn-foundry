@@ -59,8 +59,13 @@ depServices:
   rds:
     host: mariadb-mariadb-master.resource.svc.cluster.local.
     port: 3330
-    user: root
+    # The service account: SELECT, INSERT, UPDATE and DELETE on the t_bkn_project_* tables of the
+    # openbkn database, no DDL (tables are created by data-migrator). Not root.
+    user: bkn_project
     password: ""
+    # A Secret with keys `user` and `password` to use instead of the two values above. When empty,
+    # the chart keeps them in its own Secret; they never go into the ConfigMap.
+    existingSecret: ""
     type: MariaDB
   hydra-admin:
     # Introspect against bkn-safe's paired Hydra.
@@ -141,8 +146,12 @@ config:
 # Resource configuration.
 resources:
   requests:
-    cpu: 0
-    memory: 0Gi
+    cpu: 100m
+    memory: 256Mi
   limits:
     cpu: 1
     memory: 1Gi
+
+# The service drains requests and waits for its workers for up to 60 s after SIGTERM; the pod gets
+# a little longer before it is killed.
+terminationGracePeriodSeconds: 75
