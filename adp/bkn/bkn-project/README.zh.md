@@ -174,7 +174,8 @@ chart 通过 Secret 把数据库账号以 `BKN_PROJECT_DB_USER`、`BKN_PROJECT_D
 传给容器，ConfigMap 只保留地址、端口和类型。默认 chart 把 `depServices.rds.user`、
 `depServices.rds.password` 写入自己的 Secret `bkn-project-db`；设置
 `depServices.rds.existingSecret` 为一个含 `user`、`password` 两个键的 Secret 时改用它。
-账号变化会重启 Pod。
+chart 自己的 Secret 变化会重启 Pod；chart 不读取已有的 Secret，改了它之后需要手动重启
+（`kubectl rollout restart deployment/bkn-project`）。
 
 不要使用 root。服务只需要 `openbkn` 库里 `t_bkn_project_*` 表的 `SELECT`、`INSERT`、
 `UPDATE`、`DELETE`；表由 data-migrator 用它自己的账号创建。版本在 init 容器里迁移

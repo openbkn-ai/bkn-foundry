@@ -25,7 +25,7 @@ spec:
       labels:
         module: {{ .Values.moduleName }}
       annotations:
-        # Restart the pod when the database account changes.
+        # Restart the pod when the chart's own Secret changes; an existing Secret is not read.
         checksum/db: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}

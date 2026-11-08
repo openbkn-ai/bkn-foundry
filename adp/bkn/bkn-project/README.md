@@ -209,7 +209,9 @@ The chart passes the database account to the pod from a Secret as
 host, port and type. By default the chart writes `depServices.rds.user` and
 `depServices.rds.password` into its own Secret `bkn-project-db`; set
 `depServices.rds.existingSecret` to a Secret with keys `user` and `password` to
-use that instead. A changed account restarts the pod.
+use that instead. A change to the chart's own Secret restarts the pod; the
+chart does not read an existing Secret, so after changing one restart the pod
+yourself (`kubectl rollout restart deployment/bkn-project`).
 
 Use an account other than root. The service needs only `SELECT`, `INSERT`,
 `UPDATE` and `DELETE` on the `t_bkn_project_*` tables of database `openbkn`;
