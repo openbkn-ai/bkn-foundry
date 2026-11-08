@@ -152,6 +152,8 @@ func Test_SuggestedDocument(t *testing.T) {
 			{ID: "prd", DocType: interfaces.REQUIREMENT_DOC_PRD},
 			{ID: "prd2", DocType: interfaces.REQUIREMENT_DOC_PRD},
 			{ID: "oth", DocType: interfaces.REQUIREMENT_DOC_OTHER},
+			{ID: "skl", DocType: interfaces.REQUIREMENT_DOC_SKILL},
+			{ID: "api", DocType: interfaces.REQUIREMENT_DOC_API},
 		})
 		side := func(id string) interfaces.RequirementConflictSide {
 			return interfaces.RequirementConflictSide{RequirementCitation: interfaces.RequirementCitation{DocumentID: id}}
@@ -169,6 +171,14 @@ func Test_SuggestedDocument(t *testing.T) {
 			for _, kind := range []string{conflictGoal, conflictScope, conflictScenario} {
 				So(suggestedDocument(kind, []interfaces.RequirementConflictSide{side("std"), side("prd")}, docs), ShouldEqual, "prd")
 				So(suggestedDocument(kind, []interfaces.RequirementConflictSide{side("std"), side("pol")}, docs), ShouldEqual, "")
+			}
+		})
+
+		Convey("A Skill document or an API description outranks no other type, like other\n", func() {
+			for _, id := range []string{"skl", "api"} {
+				So(suggestedDocument(conflictTerm, []interfaces.RequirementConflictSide{side(id), side("prd")}, docs), ShouldEqual, "prd")
+				So(suggestedDocument(conflictRule, []interfaces.RequirementConflictSide{side(id), side("oth")}, docs), ShouldEqual, "")
+				So(suggestedDocument(conflictScenario, []interfaces.RequirementConflictSide{side(id), side("std")}, docs), ShouldEqual, "")
 			}
 		})
 

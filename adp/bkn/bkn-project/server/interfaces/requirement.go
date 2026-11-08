@@ -22,18 +22,23 @@ const (
 	REQUIREMENT_STATUS_FAILED   = "failed"
 )
 
-// Requirement document types, in the order of authority for terms and rules.
+// Requirement document types: standard, policy and prd in the order of authority for terms and
+// rules; skill (how a Skill does its work) and api (what an interface takes and returns) describe
+// kinetic needs and, like other, outrank none.
 const (
 	REQUIREMENT_DOC_STANDARD = "standard"
 	REQUIREMENT_DOC_POLICY   = "policy"
 	REQUIREMENT_DOC_PRD      = "prd"
+	REQUIREMENT_DOC_SKILL    = "skill"
+	REQUIREMENT_DOC_API      = "api"
 	REQUIREMENT_DOC_OTHER    = "other"
 )
 
 // IsRequirementDocType tells whether docType is a requirement document type.
 func IsRequirementDocType(docType string) bool {
 	switch docType {
-	case REQUIREMENT_DOC_STANDARD, REQUIREMENT_DOC_POLICY, REQUIREMENT_DOC_PRD, REQUIREMENT_DOC_OTHER:
+	case REQUIREMENT_DOC_STANDARD, REQUIREMENT_DOC_POLICY, REQUIREMENT_DOC_PRD, REQUIREMENT_DOC_SKILL,
+		REQUIREMENT_DOC_API, REQUIREMENT_DOC_OTHER:
 		return true
 	}
 	return false
@@ -427,7 +432,7 @@ type RequirementReviewItem struct {
 // trigger, decision and knowledge of a scenario; term, category and definition of a concept; text,
 // layer, template, answer_shape, scenario_ids, needs and logic_need_ids of a question; statement of
 // a rule; logic_kind, name, definition, object_type_ids, properties, suggested_metric_type and
-// scenario_ids of a kinetic need.
+// executed_by of a kinetic need.
 // Setting a question's needs makes them the person's; follow_concepts makes them follow its
 // concepts again. UpdateTime is the specification's as read.
 type RequirementItemEdit struct {
@@ -459,6 +464,8 @@ type RequirementItemEdit struct {
 	ObjectTypeIDs       *[]string                 `json:"object_type_ids"`
 	Properties          *[]RequirementPropertyRef `json:"properties"`
 	SuggestedMetricType *string                   `json:"suggested_metric_type"`
+	// ExecutedBy names the api or mcp_tool need that carries out an action type; "" clears it.
+	ExecutedBy *string `json:"executed_by"`
 }
 
 // RequirementMapping sets the drafted item a concept is; nil clears it.
