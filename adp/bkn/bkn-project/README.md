@@ -200,6 +200,71 @@ routes with `Application.RegisterKnowledgeBaseRoutes`. Those routes are served
 when the `knowledge_base` capability is licensed.
 Handlers an edition adds share `server/driveradapters/httpx`.
 
+## Deployment
+
+### Database account
+
+The chart passes the database account to the pod from a Secret as
+`BKN_PROJECT_DB_USER` and `BKN_PROJECT_DB_PASSWORD`; the ConfigMap holds only the
+host, port and type. By default the chart writes `depServices.rds.user` and
+`depServices.rds.password` into its own Secret `bkn-project-db`; set
+`depServices.rds.existingSecret` to a Secret with keys `user` and `password` to
+use that instead. A change to the chart's own Secret restarts the pod; the
+chart does not read an existing Secret, so after changing one restart the pod
+yourself (`kubectl rollout restart deployment/bkn-project`).
+
+Use an account other than root. The service needs only `SELECT`, `INSERT`,
+`UPDATE` and `DELETE` on the `t_bkn_project_*` tables of database `openbkn`;
+data-migrator creates the tables with its own account. An edition that migrates
+its own tables in an init container does so with a separate migration account,
+or reads the service account from the same Secret:
+
+```yaml
+initContainers:
+  - name: migrate
+    env:
+      - name: BKN_PROJECT_DB_USER
+        valueFrom: {secretKeyRef: {name: bkn-project-db, key: user}}
+      - name: BKN_PROJECT_DB_PASSWORD
+        valueFrom: {secretKeyRef: {name: bkn-project-db, key: password}}
+```
+
+### Resources and shutdown
+
+Requests are 100m CPU and 256Mi memory, limits 1 CPU and 1Gi. After SIGTERM the
+service stops taking requests and waits up to 60 s for requests and workers to
+finish; `terminationGracePeriodSeconds` is 75 so the pod is not killed first.
+
+### Agent task input
+
+Drafting, requirement extraction, the release judge and, in the professional
+edition, concept and document extraction run as bkn-agent tasks. Each task is a
+row of `t_agent_task` in database `openbkn`: `f_input` holds what was sent to the
+model, which includes the text of the requirement documents and knowledge-base
+files read, whether or not original text is included in the network;
+`f_output` holds the model's answer.
+
+- **What is kept:** every task row, with its input and output, until removed.
+  bkn-project keeps its own results in its tables and Datasets; it reads a task
+  back only while the run is going and, for a concept extraction, to recover its
+  answer after an interrupted request.
+- **How long:** 0.2.2 removes nothing on its own. Keep finished tasks for 30
+  days, or shorter if the documents are sensitive.
+- **How to clean:** remove finished tasks of the bkn-project agents older than
+  the period, for example 30 days:
+
+  ```sql
+  DELETE FROM openbkn.t_agent_task
+  WHERE f_agent_id LIKE 'bkn-project-%'
+    AND f_status NOT IN ('pending', 'running')
+    AND f_update_time < (UNIX_TIMESTAMP() - 30 * 86400) * 1000;
+  ```
+
+  Running tasks are not touched, and builds, releases and drafts do not change.
+  A concept extraction interrupted before the cut can no longer be recovered
+  and is run again. Traces that bkn-trace recorded for these tasks follow
+  bkn-trace's own retention.
+
 ## Local Development
 
 ```bash

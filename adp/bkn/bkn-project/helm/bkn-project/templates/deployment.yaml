@@ -24,7 +24,11 @@ spec:
     metadata:
       labels:
         module: {{ .Values.moduleName }}
+      annotations:
+        # Restart the pod when the chart's own Secret changes; an existing Secret is not read.
+        checksum/db: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
 {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
@@ -111,6 +115,16 @@ spec:
           {{- end }}
           - name: DM_SVC_PATH
             value: /opt/bkn-project/config
+          - name: BKN_PROJECT_DB_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "bkn-project.dbSecret" . }}
+                key: user
+          - name: BKN_PROJECT_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "bkn-project.dbSecret" . }}
+                key: password
           {{- with .Values.extraEnv }}
           {{- toYaml . | nindent 10 }}
           {{- end }}

@@ -16,7 +16,9 @@ data:
     draft:
       {{- toYaml .Values.config.draft | nindent 6 }}
     depServices:
-      {{- toYaml .Values.depServices | nindent 6 }}
+      {{- /* The database account goes to the pod from a Secret, never into this file. */}}
+      {{- $rds := omit .Values.depServices.rds "user" "password" "existingSecret" }}
+      {{- toYaml (merge (dict "rds" $rds) (omit .Values.depServices "rds")) | nindent 6 }}
 
   dm_svc.conf: |
     TIME_ZON=(480)
