@@ -179,17 +179,20 @@ chart 自己的 Secret 变化会重启 Pod；chart 不读取已有的 Secret，�
 
 不要使用 root。服务只需要 `openbkn` 库里 `t_bkn_project_*` 表的 `SELECT`、`INSERT`、
 `UPDATE`、`DELETE`；表由 data-migrator 用它自己的账号创建。版本在 init 容器里迁移
-自己的表时，使用单独的迁移账号，或从同一个 Secret 读服务账号：
+自己的表时，给它单独的迁移账号。迁移程序可以退回使用服务账号，但这时服务账号也要有迁移
+权限，所以不要依赖这种退回。ConfigMap 里没有账号，init 容器从 Secret 取账号：
 
 ```yaml
 initContainers:
   - name: migrate
     env:
-      - name: BKN_PROJECT_DB_USER
-        valueFrom: {secretKeyRef: {name: bkn-project-db, key: user}}
-      - name: BKN_PROJECT_DB_PASSWORD
-        valueFrom: {secretKeyRef: {name: bkn-project-db, key: password}}
+      - name: BKN_PROJECT_MIGRATION_DB_USER
+        valueFrom: {secretKeyRef: {name: <迁移账号 Secret>, key: user}}
+      - name: BKN_PROJECT_MIGRATION_DB_PASSWORD
+        valueFrom: {secretKeyRef: {name: <迁移账号 Secret>, key: password}}
 ```
+
+两个账号的权限见专业版 README。
 
 ### 资源和停止
 
