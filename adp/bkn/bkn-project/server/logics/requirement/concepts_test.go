@@ -156,6 +156,9 @@ func Test_BuildConcepts(t *testing.T) {
 				{DocumentID: "prd", DocType: interfaces.REQUIREMENT_DOC_PRD},
 				{DocumentID: "pol", DocType: "manual"},
 				{DocumentID: "gone", DocType: interfaces.REQUIREMENT_DOC_POLICY},
+				// Skill documents and API descriptions are a person's to set.
+				{DocumentID: "pol", DocType: interfaces.REQUIREMENT_DOC_SKILL},
+				{DocumentID: "pol", DocType: interfaces.REQUIREMENT_DOC_API},
 			}}
 
 			_, types := extractedFrom(out, docs, draft)
