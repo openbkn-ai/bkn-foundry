@@ -216,18 +216,22 @@ yourself (`kubectl rollout restart deployment/bkn-project`).
 Use an account other than root. The service needs only `SELECT`, `INSERT`,
 `UPDATE` and `DELETE` on the `t_bkn_project_*` tables of database `openbkn`;
 data-migrator creates the tables with its own account. An edition that migrates
-its own tables in an init container does so with a separate migration account,
-or reads the service account from the same Secret:
+its own tables in an init container gives it a separate migration account. Its
+migrator may fall back to the service account, but that account then needs the
+migration privileges too, so do not rely on the fallback. The ConfigMap holds no
+account, so the init container gets its account from a Secret:
 
 ```yaml
 initContainers:
   - name: migrate
     env:
-      - name: BKN_PROJECT_DB_USER
-        valueFrom: {secretKeyRef: {name: bkn-project-db, key: user}}
-      - name: BKN_PROJECT_DB_PASSWORD
-        valueFrom: {secretKeyRef: {name: bkn-project-db, key: password}}
+      - name: BKN_PROJECT_MIGRATION_DB_USER
+        valueFrom: {secretKeyRef: {name: <migration secret>, key: user}}
+      - name: BKN_PROJECT_MIGRATION_DB_PASSWORD
+        valueFrom: {secretKeyRef: {name: <migration secret>, key: password}}
 ```
+
+The professional edition's README lists the privileges of both accounts.
 
 ### Resources and shutdown
 
