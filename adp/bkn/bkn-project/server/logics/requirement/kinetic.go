@@ -145,6 +145,8 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 		}
 		return out
 	}
+	// What executes an action type that a run dropped no longer does: the Agent may name it anew.
+	followExecutors(spec)
 	added := 0
 	// The needs by the ids the Agent gave them, and what it said executes each, to name once all are in.
 	ids := map[string]*interfaces.RequirementLogicNeed{}

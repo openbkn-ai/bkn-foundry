@@ -111,6 +111,30 @@ func Test_AddLogicNeeds(t *testing.T) {
 				"Send reminder": "n3", "Mail customer": "n1", "Close order": "", "Window check": "", "Cancel order": ""})
 		})
 
+		Convey("An action type whose executor a run dropped takes the one the Agent names again\n", func() {
+			rejected = nil
+			spec := emptySpec()
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				{ID: "n2", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS,
+					ExecutedBy: "n6"},
+				{ID: "n6", Kind: interfaces.LOGIC_NEED_API, Name: "Hold service", Source: interfaces.LOGIC_NEED_FROM_ANALYSIS},
+			}
+			spec.LastIDs = map[string]int{"n": 6}
+			// The run analyses n6 anew: no one accepted it.
+			keepForKinetic(spec, false)
+			proposed := []agentLogicNeed{
+				{ID: "a1", Kind: interfaces.LOGIC_NEED_API, Name: "Hold service", SupplementReason: "r"},
+				{ID: "kept-n2", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ExecutedBy: "a1"},
+			}
+
+			addLogicNeeds(spec, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS, docs, draft, concepts, reject)
+
+			So(rejected, ShouldBeEmpty)
+			So(spec.LogicNeeds[0].ID, ShouldEqual, "n2")
+			So(spec.LogicNeeds[1].ID, ShouldEqual, "n7")
+			So(spec.LogicNeeds[0].ExecutedBy, ShouldEqual, "n7")
+		})
+
 		Convey("Only adopted object types and their properties stand; a property names its object type\n", func() {
 			rejected = nil
 			spec := emptySpec()
