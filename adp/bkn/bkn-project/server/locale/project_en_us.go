@@ -26,7 +26,7 @@ var projectEnUS = i18n.I18nMessages{
 		"BknProject.Requirement.NotText":                   "Not a Text File. The file must be UTF-8 text.",
 		"BknProject.Requirement.DocumentTooLarge":          "File Too Large. The file exceeds the size limit of a requirement document.",
 		"BknProject.Requirement.TooManyDocuments":          "Too Many Documents. The project has reached its limit of requirement documents; remove ones it no longer needs first.",
-		"BknProject.Requirement.InvalidDocumentType":       "Invalid Document Type. doc_type must be prd, policy, standard or other.",
+		"BknProject.Requirement.InvalidDocumentType":       "Invalid Document Type. doc_type must be prd, policy, standard, skill, api or other.",
 		"BknProject.Requirement.InvalidItem":               "Invalid Item. The item misses required content, is too long, or refers to items that do not exist, see error_details.",
 		"BknProject.Requirement.InvalidResolution":         "Invalid Resolution. A resolution needs a chosen document or a written conclusion, and a reason.",
 		"BknProject.Requirement.InvalidOption":             "Option Not Found. The chosen option is not one of this choice's options.",

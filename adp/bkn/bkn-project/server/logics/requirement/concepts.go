@@ -65,11 +65,18 @@ func conceptsResponseFormat() map[string]any {
 		}, "question", "options", "recommended_option_id", "reason", "citations")),
 		"doc_types": schemaArray(schemaObject(map[string]any{
 			"document_id": schemaString(),
+			// Skill documents and API descriptions are a person's to set: the analyst is not told of them.
 			"doc_type": schemaEnum(interfaces.REQUIREMENT_DOC_PRD, interfaces.REQUIREMENT_DOC_POLICY,
 				interfaces.REQUIREMENT_DOC_STANDARD, interfaces.REQUIREMENT_DOC_OTHER),
 		}, "document_id", "doc_type")),
 		"logic_needs": schemaArray(logicNeedSchema()),
 	}, "concepts", "rules", "conflicts", "choices", "doc_types", "logic_needs")
+}
+
+// personSetType tells whether only a person sets a document to docType: the analyst is not told what
+// a Skill document or an API description is, so it does not suggest them.
+func personSetType(docType string) bool {
+	return docType == interfaces.REQUIREMENT_DOC_SKILL || docType == interfaces.REQUIREMENT_DOC_API
 }
 
 // conceptsMessage is the user message of pass concepts: the documents block by block, the tables
@@ -270,7 +277,7 @@ func buildConcepts(out *conceptsOutput, docs map[string]*interfaces.RequirementD
 
 	types := map[string]string{}
 	for _, t := range out.DocTypes {
-		if _, ok := docs[t.DocumentID]; ok && interfaces.IsRequirementDocType(t.DocType) {
+		if _, ok := docs[t.DocumentID]; ok && interfaces.IsRequirementDocType(t.DocType) && !personSetType(t.DocType) {
 			types[t.DocumentID] = t.DocType
 		}
 	}

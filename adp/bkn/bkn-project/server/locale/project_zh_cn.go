@@ -26,7 +26,7 @@ var projectZhCN = i18n.I18nMessages{
 		"BknProject.Requirement.NotText":                   "不是文本文件 文件必须是 UTF-8 编码的文本。",
 		"BknProject.Requirement.DocumentTooLarge":          "文件过大 文件超过了单个需求资料的大小上限。",
 		"BknProject.Requirement.TooManyDocuments":          "需求资料过多 项目的需求资料已达数量上限，请先移除不用的资料。",
-		"BknProject.Requirement.InvalidDocumentType":       "文档类型不合法 doc_type 只能是 prd、policy、standard 或 other。",
+		"BknProject.Requirement.InvalidDocumentType":       "文档类型不合法 doc_type 只能是 prd、policy、standard、skill、api 或 other。",
 		"BknProject.Requirement.InvalidItem":               "条目不合法 条目缺少必填内容、内容过长，或引用了不存在的条目，见 error_details。",
 		"BknProject.Requirement.InvalidResolution":         "裁决不合法 裁决需要选择一方文档或写明结论，并给出理由。",
 		"BknProject.Requirement.InvalidOption":             "选项不存在 所选的取舍选项不在这个分叉的选项里。",
