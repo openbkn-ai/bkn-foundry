@@ -78,6 +78,14 @@ type RequirementLogicNeed struct {
 	Accepted         bool                  `json:"accepted"`
 	// Link is the implementation it is linked to, nil until a person links one.
 	Link *RequirementLogicLink `json:"link,omitempty"`
+	// ExecutedBy is, for an action type only, the api or mcp_tool need of the same specification
+	// that carries it out; empty when none is named.
+	ExecutedBy string `json:"executed_by,omitempty"`
+}
+
+// CanExecute tells whether a need of kind can carry out an action type.
+func CanExecute(kind string) bool {
+	return kind == LOGIC_NEED_API || kind == LOGIC_NEED_MCP_TOOL
 }
 
 // RequirementPropertyRef is a property of a drafted object type, by its name.

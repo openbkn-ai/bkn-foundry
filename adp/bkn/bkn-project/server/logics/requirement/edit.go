@@ -206,6 +206,7 @@ func onlyFields(ctx context.Context, edit interfaces.RequirementItemEdit, kind s
 		"relative_window": edit.RelativeWindow != nil, "logic_need_ids": edit.LogicNeedIDs != nil,
 		"logic_kind": edit.LogicKind != nil, "object_type_ids": edit.ObjectTypeIDs != nil,
 		"properties": edit.Properties != nil, "suggested_metric_type": edit.SuggestedMetricType != nil,
+		"executed_by": edit.ExecutedBy != nil,
 	}
 	allowed := map[string][]string{
 		interfaces.REQUIREMENT_KIND_SCENARIOS: {"name", "actor", "trigger", "decision", "knowledge"},
@@ -214,7 +215,7 @@ func onlyFields(ctx context.Context, edit interfaces.RequirementItemEdit, kind s
 			"follow_concepts", "inputs", "relative_window", "logic_need_ids"},
 		interfaces.REQUIREMENT_KIND_RULES: {"statement"},
 		interfaces.REQUIREMENT_KIND_LOGIC_NEEDS: {"logic_kind", "name", "definition", "object_type_ids", "properties",
-			"suggested_metric_type"},
+			"suggested_metric_type", "executed_by"},
 	}[kind]
 	setSome := false
 	for field, isSet := range set {
@@ -411,10 +412,11 @@ func checkInputs(ctx context.Context, q *interfaces.RequirementQuestion, spec *i
 	return nil
 }
 
-// applyLogicNeed changes a kinetic need as a person writes it: its object types and properties must
-// be in the draft, a property's object type among its own.
-func applyLogicNeed(ctx context.Context, n *interfaces.RequirementLogicNeed, edit interfaces.RequirementItemEdit,
-	drafted *draftedItems) error {
+// applyLogicNeed changes a kinetic need of spec as a person writes it: its object types and
+// properties must be in the draft, a property's object type among its own, and what executes an
+// action type an api or mcp_tool need of spec.
+func applyLogicNeed(ctx context.Context, spec *interfaces.RequirementSpec, n *interfaces.RequirementLogicNeed,
+	edit interfaces.RequirementItemEdit, drafted *draftedItems) error {
 	if edit.LogicKind != nil {
 		if !interfaces.IsLogicNeedKind(*edit.LogicKind) {
 			return invalidItem(ctx, "logic_kind "+*edit.LogicKind+" is unknown")
@@ -470,7 +472,34 @@ func applyLogicNeed(ctx context.Context, n *interfaces.RequirementLogicNeed, edi
 	if n.Kind != interfaces.LOGIC_NEED_METRIC {
 		n.SuggestedMetricType = ""
 	}
+	if edit.ExecutedBy != nil {
+		if id := *edit.ExecutedBy; id != "" {
+			i, ok := find(spec.LogicNeeds, id, logicNeedID)
+			if !ok || id == n.ID || !interfaces.CanExecute(spec.LogicNeeds[i].Kind) {
+				return invalidItem(ctx, "executed_by "+id+" is not an api or mcp_tool need")
+			}
+			if n.Kind != interfaces.LOGIC_NEED_ACTION_TYPE {
+				return invalidItem(ctx, "executed_by is of an action type only")
+			}
+		}
+		n.ExecutedBy = *edit.ExecutedBy
+	}
+	followExecutors(spec)
 	return nil
+}
+
+// followExecutors clears what executes an action type where it no longer can: the need is not an
+// action type, or the one it named is gone or no longer an api or mcp_tool.
+func followExecutors(spec *interfaces.RequirementSpec) {
+	kinds := map[string]string{}
+	for _, n := range spec.LogicNeeds {
+		kinds[n.ID] = n.Kind
+	}
+	for _, n := range spec.LogicNeeds {
+		if n.ExecutedBy != "" && (n.Kind != interfaces.LOGIC_NEED_ACTION_TYPE || !interfaces.CanExecute(kinds[n.ExecutedBy])) {
+			n.ExecutedBy = ""
+		}
+	}
 }
 
 func applyRule(ctx context.Context, r *interfaces.RequirementRule, edit interfaces.RequirementItemEdit) error {
@@ -585,7 +614,7 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 					return err
 				}
 				spec.LogicNeeds[i].Edited, spec.LogicNeeds[i].Accepted = true, true
-				return applyLogicNeed(ctx, spec.LogicNeeds[i], edit, drafted)
+				return applyLogicNeed(ctx, spec, spec.LogicNeeds[i], edit, drafted)
 			}
 			return notFound(ctx)
 		})
@@ -666,10 +695,10 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 				n := &interfaces.RequirementLogicNeed{ID: nextID(spec, "n", spec.LogicNeeds, logicNeedID),
 					ObjectTypeIDs: []string{}, Properties: []interfaces.RequirementPropertyRef{}, ConceptIDs: []string{},
 					ScenarioIDs: []string{}, Citations: empty, Source: interfaces.LOGIC_NEED_FROM_PERSON, Edited: true, Accepted: true}
-				if err := applyLogicNeed(ctx, n, edit, drafted); err != nil {
+				spec.LogicNeeds = append(spec.LogicNeeds, n)
+				if err := applyLogicNeed(ctx, spec, n, edit, drafted); err != nil {
 					return err
 				}
-				spec.LogicNeeds = append(spec.LogicNeeds, n)
 			default:
 				return notFound(ctx)
 			}
@@ -740,6 +769,8 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 				for _, q := range spec.Questions {
 					q.LogicNeedIDs = slices.DeleteFunc(q.LogicNeedIDs, func(id string) bool { return id == itemID })
 				}
+				// Nor is an action type carried out by it any longer.
+				followExecutors(spec)
 			case interfaces.REQUIREMENT_KIND_RULES:
 				i, ok := find(spec.Rules, itemID, ruleID)
 				if !ok {
