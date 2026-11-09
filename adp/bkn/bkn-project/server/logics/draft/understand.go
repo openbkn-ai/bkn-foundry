@@ -19,7 +19,7 @@ import (
 )
 
 // Semantic understanding of the tables in a project's data catalogs: vega-backend's tasks fill in
-// the names, descriptions and English short names drafting then uses. vega-backend keeps the
+// the names and descriptions drafting then uses. vega-backend keeps the
 // tasks; the progress is read from it each time.
 
 // Statuses of a semantic understanding task under way, or done well.

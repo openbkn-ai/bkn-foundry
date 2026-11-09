@@ -140,8 +140,8 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 
 	relationIDs := map[string]bool{}
 	d.reserve(interfaces.ID_KIND_RELATION_TYPES, "", relationIDs)
-	// Relations from link tables named otherwise come last: their short names take only what the
-	// relations named in ASCII leave.
+	// Relations from link tables named otherwise come last: their ids take only what the relations
+	// named in ASCII leave.
 	namedLater := []*interfaces.VegaTable{}
 	for _, table := range tables {
 		var err error
@@ -181,7 +181,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]bool) {
 	name, aliases := d.tableName(table)
 	objectType := &interfaces.DraftObjectType{
-		ID:          d.itemID(interfaces.ID_KIND_OBJECT_TYPES, table.ID, physicalName(table), table.APIName, idPrefixObjectType, typeIDs),
+		ID:          d.itemID(interfaces.ID_KIND_OBJECT_TYPES, table.ID, physicalName(table), idPrefixObjectType, typeIDs),
 		Name:        name,
 		Aliases:     aliases,
 		Description: table.Description,
@@ -218,8 +218,8 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 		}
 		columns = append(columns, c)
 	}
-	// Fields named in ASCII take their names first, as they always did; short names of the others
-	// take what is left. The properties keep the order of the fields.
+	// Fields named in ASCII take their names first, as they always did; the ids of the others take
+	// what is left. The properties keep the order of the fields.
 	names := map[string]bool{}
 	d.reserve(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, ""), names)
 	fields := map[string]string{}
@@ -227,7 +227,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 		for _, c := range columns {
 			if isASCII(c.Name) == ascii {
 				fields[c.Name] = d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, c.Name), c.Name,
-					c.APIName, idPrefixProperty, names)
+					idPrefixProperty, names)
 			}
 		}
 	}
@@ -563,7 +563,7 @@ func (d *drafter) addValueType(ctx context.Context, table *interfaces.VegaTable,
 	// BKN has no aliases of value types: the name alone.
 	valueTypeName, _ := d.tableName(table)
 	valueType := &interfaces.DraftValueType{
-		ID:        d.itemID(interfaces.ID_KIND_VALUE_TYPES, table.ID, physicalName(table), table.APIName, idPrefixValueType, ids),
+		ID:        d.itemID(interfaces.ID_KIND_VALUE_TYPES, table.ID, physicalName(table), idPrefixValueType, ids),
 		Name:      valueTypeName,
 		BaseType:  bknTypes[c.Type],
 		Values:    values,
@@ -847,7 +847,7 @@ func (d *drafter) addLinkRelation(table *interfaces.VegaTable, ids map[string]bo
 	}
 	link := draftTable(table)
 	relation := &interfaces.DraftRelationType{
-		ID:            d.itemID(interfaces.ID_KIND_RELATION_TYPES, table.ID, physicalName(table), table.APIName, idPrefixRelationType, ids),
+		ID:            d.itemID(interfaces.ID_KIND_RELATION_TYPES, table.ID, physicalName(table), idPrefixRelationType, ids),
 		Source:        ends[0].ID,
 		Target:        ends[1].ID,
 		Origin:        interfaces.DRAFT_ORIGIN_LINK_TABLE,

@@ -55,7 +55,7 @@ func accountsTable() *interfaces.VegaTable {
 	return &interfaces.VegaTable{ID: "r_accounts", Name: "accounts", PrimaryKeys: []string{"id"}, Columns: []interfaces.VegaColumn{
 		{Name: "id", Type: "integer"}, {Name: "name", Type: "string"}, {Name: "phone", Type: "string"},
 		{Name: "level_code", Type: "string"}, {Name: "note", Type: "text", DisplayName: "Note"},
-		{Name: "opened_at", Type: "datetime"}, {Name: "区域", Type: "string", APIName: "region"},
+		{Name: "opened_at", Type: "datetime"}, {Name: "区域", Type: "string"},
 		{Name: "location", Type: "other"},
 	}}
 }
@@ -152,8 +152,9 @@ func Test_SaveObjectType(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(ira.recorded, ShouldHaveLength, 1)
-			So(ira.recorded[0].ID, ShouldEqual, "region")
-			So(findProperty(got.Items.ObjectTypes[0], "region").MappedField, ShouldEqual, "区域")
+			region := idFrom("区域", idPrefixProperty)
+			So(ira.recorded[0].ID, ShouldEqual, region)
+			So(findProperty(got.Items.ObjectTypes[0], region).MappedField, ShouldEqual, "区域")
 		})
 
 		Convey("Renaming a property moves its field to the new name, which is not taken out\n", func() {

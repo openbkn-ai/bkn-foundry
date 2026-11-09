@@ -20,9 +20,9 @@ const (
 // Origins of registered IDs.
 const (
 	// ID_ORIGIN_SEMANTIC is an ID made from the English short name semantic understanding gave.
+	// Drafting no longer makes them (#3017); those registered earlier stay as they are.
 	ID_ORIGIN_SEMANTIC = "semantic"
-	// ID_ORIGIN_FALLBACK is a short-hash placeholder, made when semantic understanding gave no
-	// usable short name; a later draft replaces it with one until a confirmation locks it.
+	// ID_ORIGIN_FALLBACK is a short-hash placeholder, made for a name that is not ASCII.
 	ID_ORIGIN_FALLBACK = "fallback"
 )
 
@@ -41,7 +41,7 @@ type RegisteredID struct {
 	IDKey
 	ID     string
 	Origin string
-	// Basis is what the ID was made from, such as the physical name and the short name, JSON.
+	// Basis is what the ID was made from, such as the physical name, JSON.
 	Basis      json.RawMessage
 	Locked     bool
 	CreateTime int64

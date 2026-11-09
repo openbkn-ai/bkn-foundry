@@ -242,7 +242,7 @@ func saveProperties(ctx context.Context, items *interfaces.DraftItems, ot *inter
 			name := p.Name
 			switch {
 			case name == "":
-				name = d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, c.Name), c.Name, c.APIName,
+				name = d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, c.Name), c.Name,
 					idPrefixProperty, taken)
 			case apiName(name) != name || taken[name] || names[name]:
 				return invalid(map[string]any{"property": name, "reason": "invalid_name"})

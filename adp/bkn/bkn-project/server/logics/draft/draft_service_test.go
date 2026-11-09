@@ -151,10 +151,7 @@ func Test_DraftService(t *testing.T) {
 			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{{ID: "r1", CatalogID: "c1"}}, nil)
-			code := col("编号", "string", "")
-			code.APIName = "supplier_code"
-			supplier := table("r1", "c1", "供应商", 2, []string{"编号"}, code)
-			supplier.APIName = "supplier"
+			supplier := table("r1", "c1", "供应商", 2, []string{"编号"}, col("编号", "string", ""))
 			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r1"}).Return([]*interfaces.VegaTable{supplier}, nil)
 			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).
 				Return([]map[string]any{{"total": float64(2), "distinct_values": float64(2), "nulls": float64(0)}}, nil).AnyTimes()
@@ -172,13 +169,13 @@ func Test_DraftService(t *testing.T) {
 			// Drafted in the project's naming language.
 			So(finished.Items.Inputs.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_EN_US)
 			So(len(ira.recorded), ShouldEqual, 1)
-			So(ira.recorded[0].ID, ShouldEqual, "supplier_code")
+			So(ira.recorded[0].ID, ShouldEqual, idFrom("编号", idPrefixProperty))
 			So(ira.recorded[0].ProjectID, ShouldEqual, "p1")
 			So(ira.recorded[0].CreateTime, ShouldBeGreaterThan, 0)
 			So(ira.recorded[0].UpdateTime, ShouldEqual, ira.recorded[0].CreateTime)
 			// The draft's inputs sum up the registry as drafting left it.
 			So(finished.Items.Inputs.IDs.Count, ShouldEqual, 2)
-			So(finished.Items.Inputs.IDs.Placeholders, ShouldEqual, 0)
+			So(finished.Items.Inputs.IDs.Placeholders, ShouldEqual, 1)
 		})
 
 		for _, failure := range []string{"read", "record"} {

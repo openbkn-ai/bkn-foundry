@@ -189,9 +189,9 @@ type ProjectStatusDraft struct {
 	Status     string `json:"status"`
 	UpdateTime int64  `json:"update_time"`
 	Decisions  int    `json:"decisions"`
-	// Placeholders counts the ids of names that are not ASCII still standing in for a short name
-	// that drafting again can replace: running semantic understanding on their catalog gives them
-	// one. A placeholder a confirmation locked is not counted. They do not block.
+	// Placeholders counts the ids of names that are not ASCII that are placeholders: the kind's
+	// prefix and a short hash of the name. A placeholder a confirmation locked is not counted. They
+	// do not block.
 	Placeholders int `json:"placeholders"`
 }
 

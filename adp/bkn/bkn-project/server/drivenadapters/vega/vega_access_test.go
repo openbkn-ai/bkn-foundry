@@ -499,7 +499,7 @@ func Test_VegaAccess(t *testing.T) {
 			So(vegaErr.ErrorDetails, ShouldEqual, "an active task")
 		})
 
-		Convey("GetTables takes the English short names semantic understanding gave\n", func() {
+		Convey("GetTables reads a table an older vega-backend still gives short names (api_name) for\n", func() {
 			respBody = `{"entries":[{"id":"r1","name":"供应商档案","api_name":"supplier",
 				"schema_definition":[
 					{"name":"编号","display_name":"供应商编号","type":"string","original_name":"编号","api_name":"supplier_code"},
@@ -511,8 +511,11 @@ func Test_VegaAccess(t *testing.T) {
 			tables, err := va.GetTables(ctx, account, []string{"r1"})
 
 			So(err, ShouldBeNil)
-			So(tables[0].APIName, ShouldEqual, "supplier")
-			So([]string{tables[0].Columns[0].APIName, tables[0].Columns[1].APIName}, ShouldResemble, []string{"supplier_code", ""})
+			So(tables[0].SourceName, ShouldEqual, "供应商")
+			So(tables[0].Columns, ShouldResemble, []interfaces.VegaColumn{
+				{Name: "编号", DisplayName: "供应商编号", Type: "string"},
+				{Name: "电话", Type: "string"},
+			})
 		})
 
 		Convey("GetTables falls back to the estimated row count, and asks nothing for no ids\n", func() {

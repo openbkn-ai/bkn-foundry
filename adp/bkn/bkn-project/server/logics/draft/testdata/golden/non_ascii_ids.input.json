@@ -1,5 +1,5 @@
 {
-  "description": "Tables and fields named in Chinese take their ids from the English short names semantic understanding gave (api_name), registered with the project so later drafts give them again. 供应商 takes supplier_2: the ASCII table supplier keeps the id it always had. 仓库 had an unlocked placeholder, which gives way to its short name; 物料's placeholder was locked by a confirmation and stays. 采购单 has no short name and takes a placeholder, registered as fallback. 备注 has none either.",
+  "description": "Tables and fields named in Chinese take placeholder ids, the kind's prefix and a short hash of the name, registered with the project so later drafts give them again. 仓库 keeps the unlocked placeholder registered for it, and 物料 the one a confirmation locked. The ASCII table supplier keeps the id it always had.",
   "tables": [
     {
       "ID": "r_gys",
@@ -20,8 +20,7 @@
           "Description": "",
           "Comment": "",
           "DisplayName": "",
-          "Nullable": false,
-          "APIName": "supplier_code"
+          "Nullable": false
         },
         {
           "Name": "名称",
@@ -29,8 +28,7 @@
           "Description": "",
           "Comment": "",
           "DisplayName": "",
-          "Nullable": false,
-          "APIName": "name"
+          "Nullable": false
         },
         {
           "Name": "备注",
@@ -42,8 +40,7 @@
         }
       ],
       "Indices": null,
-      "ForeignKeys": [],
-      "APIName": "supplier"
+      "ForeignKeys": []
     },
     {
       "ID": "r_supplier",
@@ -97,13 +94,11 @@
           "Description": "",
           "Comment": "",
           "DisplayName": "",
-          "Nullable": false,
-          "APIName": "warehouse_code"
+          "Nullable": false
         }
       ],
       "Indices": null,
-      "ForeignKeys": [],
-      "APIName": "warehouse"
+      "ForeignKeys": []
     },
     {
       "ID": "r_wl",
@@ -124,13 +119,11 @@
           "Description": "",
           "Comment": "",
           "DisplayName": "",
-          "Nullable": false,
-          "APIName": "material_code"
+          "Nullable": false
         }
       ],
       "Indices": null,
-      "ForeignKeys": [],
-      "APIName": "material"
+      "ForeignKeys": []
     },
     {
       "ID": "r_cgd",

@@ -29,7 +29,9 @@ import (
 // from the first clause of its description.
 // Version 6: a relation drafted from a referring field is named after the field and its object type
 // rather than by its id.
-const draftRulesVersion = 6
+// Version 7: a physical name that is not ASCII no longer takes semantic understanding's short name:
+// its id is the registered one, else a placeholder.
+const draftRulesVersion = 7
 
 // draftInputsOf records what a draft is made from: the rules and their settings, the catalogs
 // and the tables read, listed by resource ID.
@@ -70,7 +72,6 @@ type fingerprintedTable struct {
 	Description  string                      `json:"description"`
 	SourceSchema string                      `json:"source_schema"`
 	SourceName   string                      `json:"source_name"`
-	APIName      string                      `json:"api_name,omitempty"`
 	Columns      []interfaces.VegaColumn     `json:"columns"`
 	PrimaryKeys  []string                    `json:"primary_keys"`
 	Indices      []interfaces.VegaIndex      `json:"indices"`
@@ -81,7 +82,7 @@ type fingerprintedTable struct {
 func fingerprint(table *interfaces.VegaTable) string {
 	structure := fingerprintedTable{
 		Name: table.Name, Description: table.Description, SourceSchema: table.SourceSchema,
-		SourceName: table.SourceName, APIName: table.APIName, Columns: table.Columns, PrimaryKeys: table.PrimaryKeys,
+		SourceName: table.SourceName, Columns: table.Columns, PrimaryKeys: table.PrimaryKeys,
 		Indices:     slices.Clone(table.Indices),
 		ForeignKeys: slices.Clone(table.ForeignKeys),
 	}
@@ -102,8 +103,8 @@ func fingerprint(table *interfaces.VegaTable) string {
 }
 
 // registryInputsOf sums up the registry as a draft leaves it: what it read, with what it recorded
-// in place of what that replaced. It is nil when nothing is registered. Placeholders are those a
-// later draft can still replace: unlocked, of items this draft named.
+// in place of what that replaced. It is nil when nothing is registered. Placeholders are the
+// unlocked ones of items this draft named.
 func registryInputsOf(registered []*interfaces.RegisteredID, recorded []*interfaces.RegisteredID,
 	named map[interfaces.IDKey]bool) *interfaces.DraftInputIDs {
 	byKey := map[interfaces.IDKey]*interfaces.RegisteredID{}

@@ -565,7 +565,7 @@ func applySourceChanges(items *interfaces.DraftItems, changes *interfaces.Source
 					})
 					continue
 				}
-				name := d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, col.Name), col.Name, col.APIName,
+				name := d.itemID(interfaces.ID_KIND_PROPERTIES, propertySourceKey(table.ID, col.Name), col.Name,
 					idPrefixProperty, taken)
 				ot.Properties = append(ot.Properties, newProperty(col, name, language))
 			case c.Change == interfaces.SOURCE_CHANGE_REMOVED || c.Unsupported:
