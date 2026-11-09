@@ -59,7 +59,7 @@ func capabilityToolSchemas(locale *mcpLocaleBundle, toolName string) (json.RawMe
 	if len(input) == 0 {
 		for _, extra := range mcptool.Extras() {
 			if extra.Name == toolName {
-				return offerBKNContext(extra.Input), extra.Output
+				return extraInputSchema(extra), extra.Output
 			}
 		}
 	}
@@ -133,7 +133,7 @@ func mustLoadCapabilityManifest() CapabilityManifest {
 		tools = append(tools, CapabilityContract{
 			CanonicalToolName:   extra.Name,
 			ToolVersion:         serverVersion,
-			InputSchemaDigest:   schemaDigest(offerBKNContext(extra.Input)),
+			InputSchemaDigest:   schemaDigest(extraInputSchema(extra)),
 			OutputSchemaDigest:  schemaDigest(extra.Output),
 			ExecutionRole:       "extension",
 			EvidenceContract:    "execution_only",

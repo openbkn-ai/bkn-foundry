@@ -2202,6 +2202,25 @@ components:
           description: Object type name
           type: string
           maxLength: 128
+        aliases:
+          description: Other names of the object type (BKN spec 3.0). Left out when it has none.
+          type: array
+          items:
+            type: string
+        lifecycle:
+          description: |
+            Whether the object type is still in use (BKN spec 3.0, §4.3); not the index status. Left out when the object
+            type is active.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags. May be empty.
           type: array

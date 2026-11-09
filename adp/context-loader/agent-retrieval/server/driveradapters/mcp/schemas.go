@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 )
 
 //go:embed schemas/*.json schemas/*.py schemas/locales/*/*.json schemas/locales/*/*.txt
@@ -411,8 +412,20 @@ func expectedResourceSchema(idField string) map[string]any {
 }
 
 func isBusinessTool(toolKey string) bool {
+	for _, tool := range mcptool.Extras() {
+		if tool.Key == toolKey || tool.Name == toolKey {
+			return !tool.ControlPlane
+		}
+	}
 	_, lifecycle := lifecycleToolNames[toolKey]
 	return !lifecycle
+}
+
+func extraInputSchema(tool mcptool.ExtraTool) json.RawMessage {
+	if tool.ControlPlane {
+		return tool.Input
+	}
+	return offerBKNContext(tool.Input)
 }
 
 func offerBKNContext(input json.RawMessage) json.RawMessage {
