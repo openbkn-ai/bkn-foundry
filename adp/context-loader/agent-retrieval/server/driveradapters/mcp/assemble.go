@@ -87,14 +87,11 @@ func (b *toolBuilder) addExtras() {
 	for _, t := range mcptool.Extras() {
 		b.claimName(t.Name, t.Key)
 		b.gated[t.Name] = t
-		// An enterprise tool is a business tool by this service's own
-		// definition (isBusinessTool is "not a lifecycle tool"), so the
-		// lifecycle middleware will demand bkn_context from it exactly as it
-		// does from core's tools. Its advertised schema has to say so, or the
-		// tool is unusable by anyone following it — the schema comes from ee,
-		// which has no reason to know this service has a lifecycle guard.
+		// Business extensions use the same lifecycle context as core tools.
+		// Control-plane extensions bootstrap or manage work and authorize
+		// their own resources, so they keep the provider's input schema.
 		b.pending = append(b.pending, pendingTool{
-			newToolWithSchemas(extraToolMeta(t), offerBKNContext(t.Input), t.Output),
+			newToolWithSchemas(extraToolMeta(t), extraInputSchema(t), t.Output),
 			mcptool.Gated(t),
 		})
 	}

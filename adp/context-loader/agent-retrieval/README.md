@@ -66,6 +66,32 @@ non-main branch, page through `get_object_types` without ids to find object
 types before requesting their definitions. Clients can render metric results
 using their own capabilities.
 
+## Optional HTTP MCP extensions
+
+Context Loader can load paid tools from an HTTP extension provider without
+embedding that provider's business logic. Set the Helm value
+`mcpExtensionManifestURL` (environment variable
+`CONTEXT_LOADER_EXTENSION_MANIFEST_URL`) to its manifest URL. The default is empty,
+which keeps the existing tool catalogue unchanged. Restart Context Loader after
+changing the manifest or its URL; a configured provider that cannot be loaded
+prevents startup rather than advertising unusable tools.
+
+For Eval, use the EE backend manifest
+`http://<bkn-backend-host>:<port>/api/bkn-backend/v1/eval-mcp/tools` and enable
+`OPENBKN_EVAL_ENABLED=true` and `OPENBKN_EVAL_EXTERNAL_AGENT_ENABLED=true` in that
+backend. Clients continue connecting to `/api/agent-retrieval/v1/mcp/` or the
+compact MCP entry. Professional-or-higher licensing and backend user permissions
+still apply. The provider publishes `bkn_eval_list_suites`, `bkn_eval_start_run`,
+`bkn_eval_next_case`, `bkn_eval_submit_result`, and `bkn_eval_get_progress`.
+
+The manifest owns tool schemas and a call path on the same origin. Context Loader
+forwards only the authenticated transport's `Authorization` header to that path;
+it does not trust account headers or credentials supplied as tool arguments and
+does not follow redirects. Eval control tools can bootstrap a run without an
+existing Interaction; business tools continue to require their normal lifecycle
+context. Eval creates and verifies each question's Interaction and Trace in its
+own backend. Existing business tools and their evidence handling are unchanged.
+
 ## Technical Architecture
 
 ### Tech Stack
