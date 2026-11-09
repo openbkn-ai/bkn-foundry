@@ -770,6 +770,10 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		logger.Errorf("UpdateActionType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改行动类失败")
+		if errors.Is(err, common.ErrRowNotFound) {
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+				berrors.BknBackend_ActionType_ActionTypeNotFound).WithErrorDetails(err.Error())
+		}
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())

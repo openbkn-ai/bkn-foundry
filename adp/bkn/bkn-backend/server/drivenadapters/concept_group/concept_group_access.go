@@ -697,18 +697,10 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 		common.LogSafeError(ctx, "update concept group error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": conceptGroup.CGID, "f_kn_id": conceptGroup.KNID, "f_branch": conceptGroup.Branch}
+	if err = common.EnsureRowUpdated(ctx, tx, ret, CONCEPT_GROUP_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update concept group found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update concept group affected unexpected row count: concept_group_id=%s, rows=%d",
-			conceptGroup.CGID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -847,17 +839,10 @@ func (cga *conceptGroupAccess) UpdateConceptGroupDetail(ctx context.Context, knI
 		common.LogSafeError(ctx, "update concept group detail error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": cgID, "f_kn_id": knID, "f_branch": branch}
+	if err = common.EnsureRowUpdated(ctx, cga.db, ret, CONCEPT_GROUP_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update concept group detail found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		otellog.LogWarn(ctx, fmt.Sprintf("Update concept group detail %s RowsAffected not equal 1, RowsAffected is %d",
-			knID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

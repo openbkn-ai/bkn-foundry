@@ -1258,9 +1258,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改对象类失败")
 
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(err.Error())
+		return objectTypeUpdateError(ctx, err)
 	}
 	// Standalone object updates retain full-replacement group semantics. Whole-network import
 	// defers relationships to its normalized additive membership plan.
@@ -1367,9 +1365,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改对象类失败")
 
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(err.Error())
+		return objectTypeUpdateError(ctx, err)
 	}
 
 	err = ots.InsertDatasetData(ctx, []*interfaces.ObjectType{objectType})
@@ -3022,4 +3018,15 @@ func (ots *objectTypeService) GetTotalWithOTIDs(ctx context.Context,
 	}
 
 	return total, nil
+}
+
+// objectTypeUpdateError maps a failed object type UPDATE to its HTTP error: a row missing
+// from the branch is not found, anything else is internal.
+func objectTypeUpdateError(ctx context.Context, err error) error {
+	if errors.Is(err, common.ErrRowNotFound) {
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(err.Error())
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+		berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 }

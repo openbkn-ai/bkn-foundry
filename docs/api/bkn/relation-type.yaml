@@ -379,6 +379,12 @@ paths:
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
         "403":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "404":
+          description: Relation type not found on the requested branch (BknBackend.RelationType.RelationTypeNotFound)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "502":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
         "503":

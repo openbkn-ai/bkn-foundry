@@ -529,6 +529,7 @@ func Test_conceptGroupAccess_UpdateConceptGroup(t *testing.T) {
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, "+
 			"f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
 			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", CONCEPT_GROUP_TABLE_NAME)
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", CONCEPT_GROUP_TABLE_NAME)
 
 		conceptGroup := &interfaces.ConceptGroup{
 			CGID:   "cg1",
@@ -587,6 +588,30 @@ func Test_conceptGroupAccess_UpdateConceptGroup(t *testing.T) {
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}
+		})
+
+		Convey("UpdateConceptGroup changes nothing on a row that already holds the values\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("main", "cg1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+
+			tx, _ := cga.db.Begin()
+			err := cga.UpdateConceptGroup(testCtx, tx, conceptGroup)
+			So(err, ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("UpdateConceptGroup reports a row missing on the branch\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("main", "cg1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}))
+
+			tx, _ := cga.db.Begin()
+			err := cga.UpdateConceptGroup(testCtx, tx, conceptGroup)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("UpdateConceptGroup RowsAffected 2\n", func() {
@@ -651,11 +676,21 @@ func Test_conceptGroupAccess_UpdateConceptGroupDetail(t *testing.T) {
 			}
 		})
 
+		Convey("UpdateConceptGroupDetail reports a row missing on the branch\n", func() {
+			existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", CONCEPT_GROUP_TABLE_NAME)
+			smock.ExpectExec(sqlStr).WithArgs(detail, cgID, knID, branch).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs(branch, cgID, knID).WillReturnRows(sqlmock.NewRows([]string{"1"}))
+
+			err := cga.UpdateConceptGroupDetail(testCtx, knID, branch, cgID, detail)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("UpdateConceptGroupDetail RowsAffected not 1\n", func() {
 			smock.ExpectExec(sqlStr).WithArgs(detail, cgID, knID, branch).WillReturnResult(sqlmock.NewResult(1, 2))
 
 			err := cga.UpdateConceptGroupDetail(testCtx, knID, branch, cgID, detail)
-			So(err, ShouldBeNil) // Note: when RowsAffected != 1, the implementation logs a warning instead of returning an error.
+			So(err, ShouldBeNil)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)

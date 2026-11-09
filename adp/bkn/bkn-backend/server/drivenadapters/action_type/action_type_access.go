@@ -1026,6 +1026,7 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		SetMap(data).
 		Where(sq.Eq{"f_id": actionType.ATID}).
 		Where(sq.Eq{"f_kn_id": actionType.KNID}).
+		Where(sq.Eq{"f_branch": actionType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update action type by action type id, error", err)
@@ -1040,18 +1041,10 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		common.LogSafeError(ctx, "update action type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": actionType.ATID, "f_kn_id": actionType.KNID, "f_branch": actionType.Branch}
+	if err = common.EnsureRowUpdated(ctx, tx, ret, AT_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update action type found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update action type affected unexpected row count: action_type_id=%s, rows=%d",
-			actionType.ATID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

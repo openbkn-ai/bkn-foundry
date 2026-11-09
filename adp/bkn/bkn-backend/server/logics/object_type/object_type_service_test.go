@@ -1787,6 +1787,28 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Returns not found when the row is gone from the branch\n", func() {
+			objectType := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object_type1",
+				},
+				KNID:   "kn1",
+				Branch: "dev",
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrRowNotFound)
+			smock.ExpectRollback()
+
+			err := service.UpdateObjectType(ctx, nil, objectType, true)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		})
+
 		Convey("Failed when syncObjectGroups returns error\n", func() {
 			objectType := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1887,6 +1909,24 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("Returns not found when the row is gone from the branch\n", func() {
+			objectType := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "object_type1"},
+				KNID:                   "kn1",
+				Branch:                 "dev",
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrRowNotFound)
+			smock.ExpectRollback()
+
+			err := service.UpdateDataProperties(ctx, objectType, []*interfaces.DataProperty{{Name: "prop1"}})
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Success with vector index when strictMode false skips model validation\n", func() {

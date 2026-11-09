@@ -696,7 +696,8 @@ func Test_relationTypeAccess_UpdateRelationType(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta, smock := MockNewRelationTypeAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_cardinality = ?, f_color = ?, f_comment = ?, f_constraints = ?, f_deprecation = ?, f_fallback_for = ?, f_icon = ?, f_importance = ?, f_lifecycle_status = ?, f_mapping_rules = ?, f_name = ?, f_reverse_name = ?, f_source_object_type_id = ?, f_tags = ?, f_target_object_type_id = ?, f_type = ?, f_update_time = ?, f_updater = ?, f_updater_type = ?, f_verification = ? WHERE f_id = ? AND f_kn_id = ?", RT_TABLE_NAME)
+		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_cardinality = ?, f_color = ?, f_comment = ?, f_constraints = ?, f_deprecation = ?, f_fallback_for = ?, f_icon = ?, f_importance = ?, f_lifecycle_status = ?, f_mapping_rules = ?, f_name = ?, f_reverse_name = ?, f_source_object_type_id = ?, f_tags = ?, f_target_object_type_id = ?, f_type = ?, f_update_time = ?, f_updater = ?, f_updater_type = ?, f_verification = ? WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", RT_TABLE_NAME)
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", RT_TABLE_NAME)
 
 		relationType := &interfaces.RelationType{
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
@@ -713,7 +714,8 @@ func Test_relationTypeAccess_UpdateRelationType(t *testing.T) {
 				Icon:    "icon1",
 				Color:   "color1",
 			},
-			KNID: "kn1",
+			KNID:   "kn1",
+			Branch: "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -748,13 +750,30 @@ func Test_relationTypeAccess_UpdateRelationType(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateRelationType RowsAffected != 1 \n", func() {
+		Convey("UpdateRelationType changes nothing on a row that already holds the values\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "rt1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
 
 			tx, _ := rta.db.Begin()
 			err := rta.UpdateRelationType(testCtx, tx, relationType)
 			So(err, ShouldBeNil)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+
+		Convey("UpdateRelationType reports a row missing on the branch\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "rt1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}))
+
+			tx, _ := rta.db.Begin()
+			err := rta.UpdateRelationType(testCtx, tx, relationType)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
