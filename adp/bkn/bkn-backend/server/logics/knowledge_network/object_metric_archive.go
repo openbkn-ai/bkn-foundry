@@ -144,11 +144,15 @@ func validateArchiveMetricRelationPath(source, expectedTarget string, steps []in
 		if relation == nil {
 			return fmt.Errorf("relation type %s is missing from the archive", step.RelationTypeID)
 		}
+		direction, validDirection := interfaces.NormalizeObjectMetricRelationDirectionV1(step.Direction)
+		if !validDirection {
+			return fmt.Errorf("relation type %s has invalid direction %s", step.RelationTypeID, step.Direction)
+		}
 		next := ""
 		switch {
-		case step.Direction == "outgoing" && relation.SourceObjectTypeID == current:
+		case direction == interfaces.DIRECTION_FORWARD && relation.SourceObjectTypeID == current:
 			next = relation.TargetObjectTypeID
-		case step.Direction == "incoming" && relation.TargetObjectTypeID == current:
+		case direction == interfaces.DIRECTION_BACKWARD && relation.TargetObjectTypeID == current:
 			next = relation.SourceObjectTypeID
 		default:
 			return fmt.Errorf("relation type %s is disconnected from object type %s", step.RelationTypeID, current)

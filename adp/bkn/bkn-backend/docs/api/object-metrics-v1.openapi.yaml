@@ -444,7 +444,14 @@ components:
       required: [relation_type_id, direction, target_object_type_id]
       properties:
         relation_type_id: { type: string, minLength: 1 }
-        direction: { type: string, enum: [outgoing, incoming] }
+        direction:
+          type: string
+          enum: [forward, backward, outgoing, incoming]
+          description: >-
+            Traversal direction relative to the relationship definition. forward walks from its
+            source object type to its target object type; backward walks in reverse. outgoing and
+            incoming are deprecated aliases accepted only for backward compatibility. They are
+            normalized to forward and backward when a draft is saved.
         target_object_type_id: { type: string, minLength: 1 }
     ObjectMetricRelationPath:
       type: object

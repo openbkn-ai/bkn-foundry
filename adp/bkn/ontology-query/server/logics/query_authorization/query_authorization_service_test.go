@@ -361,6 +361,48 @@ func TestAuthorizeObjectMetricTrialRequiresEveryReferencedResource(t *testing.T)
 	}
 }
 
+func TestAuthorizeObjectMetricTrialAcceptsBackwardAndLegacyIncomingDirections(t *testing.T) {
+	for _, direction := range []string{interfaces.DIRECTION_BACKWARD, "incoming"} {
+		t.Run(direction, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			models := omock.NewMockOntologyManagerAccess(ctrl)
+			permissions := omock.NewMockPermissionService(ctrl)
+			service := &queryAuthorizationService{models: models, permissions: permissions}
+
+			models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "product").Return(
+				publishedObjectType("kn-a", "product", "product-resource"), true, nil)
+			models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", "sales-order-product").Return(
+				interfaces.RelationType{
+					RTID: "sales-order-product", Type: interfaces.RELATION_TYPE_DIRECT,
+					SourceObjectTypeID: "sales-order", TargetObjectTypeID: "product",
+				}, true, nil)
+			models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "sales-order").Return(
+				publishedObjectType("kn-a", "sales-order", "sales-order-resource"), true, nil)
+			permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
+				{Type: "knowledge_network", ID: "kn-a"},
+				{Type: "object_type", ID: "kn-a/product"},
+				{Type: "relation_type", ID: "kn-a/sales-order-product"},
+				{Type: "object_type", ID: "kn-a/sales-order"},
+			}).Return(nil)
+
+			err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", &interfaces.ObjectMetricDefinitionV1{
+				OwnerObjectTypeID: "product",
+				Specification: interfaces.ObjectMetricSpecificationV1{
+					BusinessQualifiers: &interfaces.ObjectMetricBusinessQualifiersV1{
+						RelationPath: &interfaces.ObjectMetricRelationPathV1{Steps: []interfaces.ObjectMetricRelationStepV1{{
+							RelationTypeID: "sales-order-product", Direction: direction,
+							TargetObjectTypeID: "sales-order",
+						}}},
+					},
+				},
+			}, nil)
+			if err != nil {
+				t.Fatalf("AuthorizeObjectMetricTrial() direction=%q error = %v", direction, err)
+			}
+		})
+	}
+}
+
 func TestAuthorizeObjectMetricTrialRequiresFullPropertyAccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
