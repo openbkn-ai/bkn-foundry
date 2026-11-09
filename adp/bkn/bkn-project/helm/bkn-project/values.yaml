@@ -16,6 +16,16 @@ extraEnv: []
 # Containers an edition runs before the service, such as its database migration.
 initContainers: []
 
+# A migration an edition runs before the service, on the service's own image (so it follows
+# image.registry and image.tag), with the same configuration mounted. The community image has no
+# migration; keep it off there.
+migration:
+  enabled: false
+  args: [migrate]
+  # A Secret with keys `user` and `password` for the migration account. When empty, the migration
+  # runs with the service account, which then needs the migration's privileges too.
+  existingSecret: ""
+
 replicaCount: 1
 
 # Node selector.

@@ -28,7 +28,7 @@ spec:
         # Restart the pod when the chart's own Secret changes; an existing Secret is not read.
         checksum/db: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
-      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 75 }}
 {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
@@ -67,9 +67,55 @@ spec:
                       - {{ .Values.moduleName }}
         {{- end }}
       {{- end }}
-      {{- with .Values.initContainers }}
+      {{- /* An upgrade with --reuse-values keeps a release's older values, which may have no migration. */}}
+      {{- $migration := .Values.migration | default dict }}
+      {{- if or .Values.initContainers $migration.enabled }}
       initContainers:
+        {{- if $migration.enabled }}
+        - name: {{ .Values.moduleName }}-migrate
+          image: {{ template "bkn-project.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: {{- toYaml ($migration.args | default (list "migrate")) | nindent 12 }}
+          env:
+            - name: TZ
+              value: {{ .Values.env.timezone }}
+            {{- if .Values.depServices.rds.type }}
+            - name: DB_TYPE
+              value: {{ .Values.depServices.rds.type | quote }}
+            {{- end }}
+            - name: DM_SVC_PATH
+              value: /opt/bkn-project/config
+            {{- if $migration.existingSecret }}
+            - name: BKN_PROJECT_MIGRATION_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $migration.existingSecret }}
+                  key: user
+            - name: BKN_PROJECT_MIGRATION_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $migration.existingSecret }}
+                  key: password
+            {{- else }}
+            - name: BKN_PROJECT_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bkn-project.dbSecret" . }}
+                  key: user
+            - name: BKN_PROJECT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bkn-project.dbSecret" . }}
+                  key: password
+            {{- end }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: {{ .Values.moduleName }}-cm
+              mountPath: /opt/bkn-project/config
+        {{- end }}
+        {{- with .Values.initContainers }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       containers:
       - name: bkn-project

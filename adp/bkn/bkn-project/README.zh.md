@@ -178,19 +178,12 @@ chart 自己的 Secret 变化会重启 Pod；chart 不读取已有的 Secret，�
 （`kubectl rollout restart deployment/bkn-project`）。
 
 不要使用 root。服务只需要 `openbkn` 库里 `t_bkn_project_*` 表的 `SELECT`、`INSERT`、
-`UPDATE`、`DELETE`；表由 data-migrator 用它自己的账号创建。版本在 init 容器里迁移
-自己的表时，给它单独的迁移账号。迁移程序可以退回使用服务账号，但这时服务账号也要有迁移
-权限，所以不要依赖这种退回。ConfigMap 里没有账号，init 容器从 Secret 取账号：
-
-```yaml
-initContainers:
-  - name: migrate
-    env:
-      - name: BKN_PROJECT_MIGRATION_DB_USER
-        valueFrom: {secretKeyRef: {name: <迁移账号 Secret>, key: user}}
-      - name: BKN_PROJECT_MIGRATION_DB_PASSWORD
-        valueFrom: {secretKeyRef: {name: <迁移账号 Secret>, key: password}}
-```
+`UPDATE`、`DELETE`；表由 data-migrator 用它自己的账号创建。版本需要迁移
+自己的表时设置 `migration.enabled`：chart 在 init 容器里用服务自己的镜像运行 `migration.args`
+（默认 `migrate`），镜像随 `image.registry`、`image.tag` 一起变，并挂同一份配置。用
+`migration.existingSecret`（含 `user`、`password` 两个键的 Secret，以
+`BKN_PROJECT_MIGRATION_DB_USER`、`BKN_PROJECT_MIGRATION_DB_PASSWORD` 传入）给它单独的迁移账号；
+留空时用服务账号迁移，这时服务账号也要有迁移权限。`initContainers` 仍可放版本要先运行的其他容器。
 
 两个账号的权限见专业版 README。
 
