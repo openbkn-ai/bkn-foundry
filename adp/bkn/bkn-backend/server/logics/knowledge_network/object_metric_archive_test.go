@@ -54,7 +54,7 @@ func TestValidateObjectMetricArchive(t *testing.T) {
 	plan.ObjectTypes = append(plan.ObjectTypes, &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customer"}})
 	plan.ObjectMetrics[0].Definition.Specification.BusinessQualifiers = &interfaces.ObjectMetricBusinessQualifiersV1{
 		RelationPath: &interfaces.ObjectMetricRelationPathV1{Steps: []interfaces.ObjectMetricRelationStepV1{{
-			RelationTypeID: "order-customer", Direction: "outgoing", TargetObjectTypeID: "customer",
+			RelationTypeID: "order-customer", Direction: interfaces.DIRECTION_FORWARD, TargetObjectTypeID: "customer",
 		}}},
 	}
 	if err := validateObjectMetricArchive(plan); err == nil || !strings.Contains(err.Error(), "relation type") {
@@ -66,9 +66,17 @@ func TestValidateObjectMetricArchive(t *testing.T) {
 	if err := validateObjectMetricArchive(plan); err != nil {
 		t.Fatalf("a valid relation path should import: %v", err)
 	}
-	plan.ObjectMetrics[0].Definition.Specification.BusinessQualifiers.RelationPath.Steps[0].Direction = "incoming"
+	plan.ObjectMetrics[0].Definition.Specification.BusinessQualifiers.RelationPath.Steps[0].Direction = "outgoing"
+	if err := validateObjectMetricArchive(plan); err != nil {
+		t.Fatalf("a legacy outgoing relation path should remain importable: %v", err)
+	}
+	plan.ObjectMetrics[0].Definition.Specification.BusinessQualifiers.RelationPath.Steps[0].Direction = interfaces.DIRECTION_BACKWARD
 	if err := validateObjectMetricArchive(plan); err == nil || !strings.Contains(err.Error(), "disconnected") {
 		t.Fatalf("a disconnected relation path must fail: %v", err)
+	}
+	plan.ObjectMetrics[0].Definition.Specification.BusinessQualifiers.RelationPath.Steps[0].Direction = "sideways"
+	if err := validateObjectMetricArchive(plan); err == nil || !strings.Contains(err.Error(), "invalid direction") {
+		t.Fatalf("an invalid relation direction must fail: %v", err)
 	}
 }
 

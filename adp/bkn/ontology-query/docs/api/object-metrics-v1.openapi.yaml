@@ -360,7 +360,11 @@ components:
       properties:
         definition:
           type: object
-          description: A complete atomic, derived, or composite ObjectMetricDefinitionV1. Non-atomic dependencies must reference published immutable versions.
+          description: >-
+            A complete atomic, derived, or composite ObjectMetricDefinitionV1. Relationship path
+            steps use forward to follow the relationship definition and backward to traverse it in
+            reverse. Legacy persisted outgoing/incoming values remain readable. Non-atomic
+            dependencies must reference published immutable versions.
           additionalProperties: true
         query: { $ref: "#/components/schemas/ObjectMetricQuery" }
     ObjectMetricData:

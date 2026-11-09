@@ -431,11 +431,15 @@ func (s *queryAuthorizationService) objectMetricRelationPathResources(ctx contex
 		if err != nil {
 			return nil, err
 		}
+		direction, normalized := interfaces.NormalizeObjectMetricRelationDirectionV1(step.Direction)
+		if !normalized {
+			direction = step.Direction
+		}
 		edge := interfaces.TypeEdge{
 			RelationTypeId:     step.RelationTypeID,
 			SourceObjectTypeId: currentObjectTypeID,
 			TargetObjectTypeId: step.TargetObjectTypeID,
-			Direction:          step.Direction,
+			Direction:          direction,
 		}
 		if _, err := logics.ResolveTypeEdgeDirection(ctx, i, edge, relationType); err != nil {
 			return nil, err

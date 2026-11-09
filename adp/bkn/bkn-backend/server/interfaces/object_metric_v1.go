@@ -243,6 +243,20 @@ type ObjectMetricRelationStepV1 struct {
 	TargetObjectTypeID string `json:"target_object_type_id"`
 }
 
+// NormalizeObjectMetricRelationDirectionV1 returns the graph-query direction
+// used by Object Metric V1. outgoing/incoming are accepted only as legacy
+// aliases for definitions persisted before the direction contract was aligned.
+func NormalizeObjectMetricRelationDirectionV1(direction string) (string, bool) {
+	switch direction {
+	case DIRECTION_FORWARD, "outgoing":
+		return DIRECTION_FORWARD, true
+	case DIRECTION_BACKWARD, "incoming":
+		return DIRECTION_BACKWARD, true
+	default:
+		return direction, false
+	}
+}
+
 type ObjectMetricTimeWindowV1 struct {
 	Mode      string `json:"mode"`
 	Length    int    `json:"length,omitempty"`
