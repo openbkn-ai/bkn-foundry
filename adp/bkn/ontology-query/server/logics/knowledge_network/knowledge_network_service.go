@@ -1163,7 +1163,8 @@ func farMappingRules(mappingRules *interfaces.InDirectMapping, isForward bool) [
 
 // indirectNextObjectConditions builds the next-object filter from the backing
 // rows of each current object, and returns the rows of the objects that have
-// any for the later association check.
+// any for the later association check. A row whose far key has a null or
+// missing component reaches no object, so it is left out of both.
 func indirectNextObjectConditions(currentLevelObjects []interfaces.LevelObject,
 	batchViewData map[string][]map[string]any, targetMappingRules []interfaces.Mapping,
 	isForward bool) ([]*cond.CondCfg, map[string][]map[string]any) {
@@ -1174,8 +1175,8 @@ func indirectNextObjectConditions(currentLevelObjects []interfaces.LevelObject,
 	var inField string
 	// Build query conditions for each object.
 	for _, levelObj := range currentLevelObjects {
-		objectViewData, exists := batchViewData[levelObj.ObjectID]
-		if !exists || len(objectViewData) == 0 {
+		objectViewData := joinableRows(batchViewData[levelObj.ObjectID], targetMappingRules, isForward)
+		if len(objectViewData) == 0 {
 			continue
 		}
 
@@ -1222,6 +1223,17 @@ func indirectNextObjectConditions(currentLevelObjects []interfaces.LevelObject,
 		}, viewDataMap
 	}
 	return conditions, viewDataMap
+}
+
+// joinableRows returns the rows with a full key through rules.
+func joinableRows(rows []map[string]any, rules []interfaces.Mapping, isForward bool) []map[string]any {
+	joinable := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if logics.HasMappingValues(rules, isForward, row) {
+			joinable = append(joinable, row)
+		}
+	}
+	return joinable
 }
 
 func groupConditions(operation string, conditions []*cond.CondCfg) *cond.CondCfg {
@@ -1380,6 +1392,10 @@ func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
 		var inValues []any
 		var inField string
 		for _, levelObj := range batch {
+			// An object with a null or missing near key has no backing rows.
+			if !logics.HasMappingValues(mappingRulesToUse, isForward, levelObj.ObjectData) {
+				continue
+			}
 			objectConditions, targetField, inValue := logics.BuildCondition(nil, mappingRulesToUse, isForward, levelObj.ObjectData)
 			inValues = append(inValues, inValue)
 			inField = targetField
@@ -1390,6 +1406,11 @@ func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
 			}
 			batchConditions = append(batchConditions, objectCondition)
 			objectMapping[len(batchConditions)-1] = levelObj.ObjectID
+		}
+		// No object in the batch has a key: without a filter the read would
+		// return the whole backing resource.
+		if len(batchConditions) == 0 {
+			continue
 		}
 
 		var filters *cond.CondCfg
