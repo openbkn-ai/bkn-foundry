@@ -53,6 +53,65 @@ func TestRouteExtensionsRejectInvalidAndDuplicateRegistrations(t *testing.T) {
 	}
 }
 
+func TestWorkerExtensionsFreezeAndStop(t *testing.T) {
+	application := &Application{routeExtensions: make(map[string]func(*gin.Engine))}
+	started := make(chan string, 2)
+	worker := func(name string) func(context.Context) error {
+		return func(ctx context.Context) error {
+			started <- name
+			<-ctx.Done()
+			return ctx.Err()
+		}
+	}
+	if err := application.RegisterWorker("zeta", worker("zeta")); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.RegisterWorker("alpha", worker("alpha")); err != nil {
+		t.Fatal(err)
+	}
+	application.freezeRouteExtensions()
+	workers := application.frozenWorkerExtensions()
+	if len(workers) != 2 || workers[0].name != "alpha" || workers[1].name != "zeta" {
+		t.Fatalf("worker order = %+v, want alpha, zeta", workers)
+	}
+	if err := application.RegisterWorker("late", worker("late")); err == nil {
+		t.Fatal("RegisterWorker after freeze succeeded")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := startWorkerExtensions(ctx, workers)
+	for range workers {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			cancel()
+			t.Fatal("worker extension did not start")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("worker extensions did not stop after cancellation")
+	}
+}
+
+func TestWorkerExtensionsRejectInvalidAndDuplicateRegistrations(t *testing.T) {
+	application := &Application{}
+	run := func(context.Context) error { return nil }
+	if err := application.RegisterWorker("", run); err == nil {
+		t.Fatal("RegisterWorker accepted an empty name")
+	}
+	if err := application.RegisterWorker("eval", nil); err == nil {
+		t.Fatal("RegisterWorker accepted a nil runner")
+	}
+	if err := application.RegisterWorker("eval", run); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.RegisterWorker("eval", run); err == nil {
+		t.Fatal("RegisterWorker accepted a duplicate name")
+	}
+}
+
 func TestEvidenceFlushLoopDeliversQueuedRecord(t *testing.T) {
 	records := make(chan evidencepublisher.Record, 1)
 	publisher, err := evidencepublisher.New(evidencepublisher.Config{

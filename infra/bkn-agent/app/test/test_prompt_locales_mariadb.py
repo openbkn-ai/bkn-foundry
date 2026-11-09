@@ -114,10 +114,12 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert {row[0] for row in rows} == set(CORE_BUILTIN_AGENT_IDS)
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
-                # New seeds (the analysis writer), ontology v6, graph explorer v2 and resource semantic understanding v7
-                # explicitly set their source language on both install paths; unchanged historical heads preserve NULL.
+                # New seeds (the analysis writer, the eval assistant), ontology v6, graph explorer v2 and resource
+                # semantic understanding v7 explicitly set their source language on both install paths; unchanged
+                # historical heads preserve NULL.
                 has_explicit_source = upgrade == "fresh" or agent_id in {
-                    "bkn-project-ontology-ask", "graph_explorer", "analysis_writer", "resource-semantic-understanding"}
+                    "bkn-project-ontology-ask", "graph_explorer", "analysis_writer", "eval_assistant",
+                    "resource-semantic-understanding"}
                 assert source_language == (expected if has_explicit_source else None), agent_id
                 cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
                 initial = cursor.fetchone()

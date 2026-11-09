@@ -4,11 +4,13 @@
 
 ### Added
 
+- Add the quality-evaluation assistant to the built-in Agent catalog, preserve administrator changes when seeding it, and carry an explicit Eval purpose through public execution and request deduplication (#2570).
+
 - `DELETE /api/bkn-agent/v1/threads/{thread_id}` deletes a thread's checkpoints and ownership row for its owner (404 for anyone else, 409 while a turn runs); task and execution records are kept.
 
 ### Fixed
 
-- Resource semantic understanding v7 (`0.2.2/06-semantic-drop-api-name.sql`) no longer asks for an English short name (`api_name`): the official v6 without its api_name rules. Only an untouched official v6 is upgraded; customized prompts, history and runtime settings are kept, and fresh installs start at v7. Apply it before the vega release that reverts its api_name support (#3017).
+- Resource semantic understanding v7 (`0.2.2/07-semantic-drop-api-name.sql`) no longer asks for an English short name (`api_name`): the official v6 without its api_name rules. Only an untouched official v6 is upgraded; customized prompts, history and runtime settings are kept, and fresh installs start at v7. Apply it before the vega release that reverts its api_name support (#3017).
 - Remove the business-provenance directory-account bootstrap, Secret dependency, and credential exception; reject the retired identity while retaining SQL defaults, caller identity, and shared configuration history (#2823).
 
 - Backfill the exact historical Object Metric Designer v1 Chinese Prompt with a protected en-US translation, without replacing canonical content, administrator translations, or version pointers (#2784).

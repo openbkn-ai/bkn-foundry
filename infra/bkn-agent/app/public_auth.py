@@ -137,15 +137,16 @@ async def get_public_account(
     return account
 
 
-# Built-in Agents admitted on the public surface: Studio smart Q&A, the graph
-# explorer's Cypher generation, its AI exploration and the text its analysis
-# canvas writes from the data on it.
-PUBLIC_AGENT_IDS = frozenset({"studio_smart_qa", "cypher_generation", "graph_explorer", "analysis_writer"})
+# Built-in Agents admitted on the public surface, including Eval and analysis writing.
+PUBLIC_AGENT_IDS = frozenset(
+    {"studio_smart_qa", "eval_assistant", "cypher_generation", "graph_explorer", "analysis_writer"}
+)
 
 # Agents seeded by the core migrations, in display order. System Admin lists
 # and edits these only; creating Agents is not a product operation.
 CORE_BUILTIN_AGENT_IDS = (
     "studio_smart_qa",
+    "eval_assistant",
     "cypher_generation",
     "graph_explorer",
     "analysis_writer",

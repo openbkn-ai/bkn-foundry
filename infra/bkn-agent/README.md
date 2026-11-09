@@ -20,6 +20,20 @@ uvicorn main:app --port 30800
 
 See `app/config.py` for key environment variables (`RDS*`, `MF_MODEL_API_PRIVATE_BASE`, `OPERATOR_INTEGRATION_BASE`, and `CHECKPOINTER_BACKEND`).
 
+## 0.2.2 Eval assistant initialization
+
+Current fresh installs use `migrations/bkn-agent/mariadb/0.2.2/init.sql`, the
+complete Agent snapshot. Upgrades from 0.2.1 execute only
+`0.2.2/06-seed-eval-assistant.sql` for this release. The dedicated
+`eval_assistant` and its Prompt are created only when missing, published with
+the platform-default model, and repeated execution preserves administrator
+changes. Released 0.2.1 scripts do not contain this seed.
+
+Eval business tables remain private to the EE backend and use its own
+`eval/migrations/mariadb/0.2.2/init.sql` plus the explicit `eval-init` command.
+They are not part of the shared Agent database migrations. Neither Agent nor
+Eval service startup applies these database changes automatically.
+
 ## 0.2.1 LangGraph dependency baseline (#2174 / #537)
 
 The runtime lock pins LangGraph 1.2.15 and the complete dependency trees for LangChain, the checkpoint/MySQL saver, MCP adapters, and observability integrations. `requirements.txt` still declares acceptable ranges. Docker installs from `requirements.lock`; CI installs from that runtime lock and the constrained `test-requirements.lock`. Both verify distribution hashes. Test dependencies do not enter the runtime image.
@@ -204,7 +218,7 @@ reads.
 
 `POST /api/bkn-agent/v1/executions` returns SSE; `GET /api/bkn-agent/v1/executions/{run_id}` reads run status and the committed result; `POST /api/bkn-agent/v1/executions/{run_id}/cancel` requests cancellation. All three require `Authorization: Bearer ...`. OAuth credentials are validated through Hydra, and `bak_` AppKeys through bkn-safe. External account headers are not accepted as identity. Dependency addresses are configured with `runtime.hydraAdminBase` / `HYDRA_ADMIN_BASE` and `runtime.bknSafeBase` / `BKN_SAFE_BASE`; the original caller credential is forwarded downstream.
 
-The API serves `studio_smart_qa` and `cypher_generation`. Before use, an administrator must complete shared configuration and publish the Agent, and the caller must have that Agent's `use` permission and the knowledge network's `view_detail` permission. Downstream services continue to enforce actual data and action permissions. This API does not automatically publish an Agent, grant permissions, or modify defaults.
+The API serves `studio_smart_qa`, `eval_assistant`, `cypher_generation`, and `graph_explorer`. Before use, an administrator must complete shared configuration and publish the Agent, and the caller must have that Agent's `use` permission and the knowledge network's `view_detail` permission. Downstream services continue to enforce actual data and action permissions. This API does not automatically publish an Agent, grant permissions, or modify defaults. The Eval assistant only proposes controlled workspace actions; the Eval service still validates and executes every state change.
 
 ```json
 {
