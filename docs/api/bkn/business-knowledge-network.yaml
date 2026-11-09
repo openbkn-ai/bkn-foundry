@@ -1370,7 +1370,10 @@ components:
           description: Branch ID
           type: string
     UpdateKnowledgeNetwork:
-      description: Business knowledge network creation request body
+      description: >-
+        Business knowledge network update request body. Name, tags, comment, icon and color belong to
+        the network and apply to every branch. skill_content applies to the branch named by the
+        `branch` query parameter only.
       required:
         - branch
         - name
@@ -1396,6 +1399,11 @@ components:
           type: string
         branch:
           description: Branch ID
+          type: string
+        skill_content:
+          description: >-
+            The network's SKILL.md body on this branch. Leave it out to keep the stored value; send an
+            empty string to remove it.
           type: string
     UpdateObjectType:
       description: Object type update
