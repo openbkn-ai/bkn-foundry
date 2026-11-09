@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Resource semantic understanding v7 (`0.2.2/06-semantic-drop-api-name.sql`) no longer asks for an English short name (`api_name`): the official v6 without its api_name rules. Only an untouched official v6 is upgraded; customized prompts, history and runtime settings are kept, and fresh installs start at v7. Apply it before the vega release that reverts its api_name support (#3017).
 - Remove the business-provenance directory-account bootstrap, Secret dependency, and credential exception; reject the retired identity while retaining SQL defaults, caller identity, and shared configuration history (#2823).
 
 - Backfill the exact historical Object Metric Designer v1 Chinese Prompt with a protected en-US translation, without replacing canonical content, administrator translations, or version pointers (#2784).
