@@ -158,6 +158,10 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 
+# Optional, same-origin HTTP extension provider. Schemas and authorization stay
+# in the provider. Leave empty for the unchanged community tool catalogue.
+mcpExtensionManifestURL: ""
+
 # Master switch for skill execution capability; disabled by default.
 # When disabled, execute_skill is not assembled as an MCP tool (absent from tools/list and /mcp/info),
 # and the corresponding REST route is not registered, so the route table reflects that this deployment has no skill execution capability.

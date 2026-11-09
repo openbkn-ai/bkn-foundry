@@ -401,7 +401,7 @@ func (c *nativeCatalog) resolve(ctx context.Context, name string) (targetDefinit
 	if tool, handler, ok := c.lookup(ctx, name); ok {
 		return targetDefinition{input: tool.RawInputSchema, output: tool.RawOutputSchema, handler: handler}, nil
 	}
-	if _, published := compactProfile.published[name]; published {
+	if _, published := compactProfile.published[name]; published || !isBusinessTool(name) {
 		return targetDefinition{}, &gatewayRefusal{
 			Code: refusalPublishedDirectly, Name: name,
 			Message: fmt.Sprintf("%s is published on this entry; call it directly.", name),
