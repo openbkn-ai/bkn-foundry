@@ -47,6 +47,9 @@ class PublicChat:
     kn_id: str
     sequence: int = 0
     prompt_version: int | None = None
+    # Only a lifecycle-issued Context Loader Interaction may be returned as a
+    # managed Trace reference. A local evidence ID is not an equivalent proof.
+    interaction_id: str | None = None
     answer: list[str] = field(default_factory=list)
     # The last assistant message without tool calls. Text spoken before a tool
     # call is progress narration and streams as tokens, but is not the answer.

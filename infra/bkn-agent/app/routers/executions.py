@@ -166,6 +166,8 @@ async def cancel_execution(
             "part of the answer. "
             "Each event carries run_id and sequence. result.content.answer is the last "
             "assistant message; text streamed before tool calls is progress, not the answer. "
+            "result.content.interaction_id is present only when Context Loader opened "
+            "a lifecycle-issued Interaction; GET and replay retain the same reference. "
             "tool_finished of a built-in provider's tool may carry progress, {<result key>: what "
             "the run planned since the previous one}, to show before the run ends; the final "
             "result stays authoritative. "
@@ -195,6 +197,8 @@ async def _execute_impl(
         metric_request and req.agent_id == METRIC_AGENT_ID
     ):
         raise not_found("agent", req.agent_id)
+    if req.context.purpose and req.agent_id != "eval_assistant":
+        raise err(409, "BknAgent.Execution.Unsupported")
     agent = await dao.get_agent(session, req.agent_id)
     if not agent or agent.status != "published" or agent.mode != "chat":
         raise not_found("agent", req.agent_id)
@@ -225,6 +229,14 @@ async def _execute_impl(
         user_row.f_version if user_row else 0,
     )
     agent = effective.agent
+    if req.context.purpose == "eval_root_cause":
+        # A prompt is not a sandbox. Remove all runtime tools/skills regardless
+        # of shared/network/user configuration; supplemental reads are performed
+        # by Eval against the requesting user's frozen evidence references.
+        agent = agent.model_copy(update={"tools": [], "skills": []})
+        effective.allowed_tools = set()
+        effective.allowed_builtin_tools = set()
+        provider, provider_context = None, None
     if metric_request and (agent.tools or agent.skills):
         raise err(409, "BknAgent.Execution.Unsupported")
 
@@ -232,6 +244,8 @@ async def _execute_impl(
     request_data = req.model_dump(
         mode="json", exclude={"model_id"} if req.model_id is None else None
     )
+    if req.context.purpose is None:
+        request_data["context"].pop("purpose", None)
     metric_data = metric_request.model_dump(mode="json") if metric_request else None
     model_id = metric_request.model_id if metric_request else req.model_id
     protocol = METRIC_PROTOCOL if metric_request else _PROTOCOL
@@ -415,6 +429,7 @@ async def _execute_impl(
                         if public.final is not None
                         else "".join(public.answer),
                         "context": request_data["context"],
+                        **({"interaction_id": public.interaction_id} if public.interaction_id else {}),
                         "prompt_version": public.prompt_version,
                         "usage": public.usage or None,
                         **({"proposal": proposal} if metric_request else {}),
@@ -505,7 +520,7 @@ def _provider_context(req: ExecutionRequest, provider):
     given = {
         name
         for name in type(req.context).model_fields
-        if name != "kn_id" and getattr(req.context, name) is not None
+        if name not in {"kn_id", "purpose"} and getattr(req.context, name) is not None
     }
     expected = {provider.context_key} if provider else set()
     if given - expected:

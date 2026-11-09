@@ -65,6 +65,51 @@ def test_execution_scope_accepts_maximum_length_network_id():
         )
 
 
+def test_eval_analysis_disables_all_tools_and_preserves_purpose(monkeypatch):
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, _):
+            async with factory() as session:
+                session.add(AgentRow(
+                    f_agent_id="eval_assistant", f_name="Eval", f_mode="chat",
+                    f_prompt_id="qa-prompt", f_tools=[{"type": "context_loader"}],
+                    f_skills=[], f_status="published", f_create_user="admin",
+                    f_update_user="admin", f_create_time=1, f_update_time=1,
+                ))
+                await session.commit()
+            calls = []
+
+            async def chat(session, agent, req, account_id, account_type, *, public):
+                calls.append(req)
+                assert agent.tools == [] and agent.skills == []
+                assert public.allowed_tools == set()
+                assert public.allowed_builtin_tools == set()
+                assert public.builtin_run is None
+                await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+                public.final = '{"summary":"暂未确定根因"}'
+
+                async def events():
+                    yield "event: done\ndata: {}\n\n"
+                return events()
+
+            monkeypatch.setattr(executions, "stream_chat", chat)
+            body = {**BODY, "agent_id": "eval_assistant", "context": {
+                "kn_id": "network-1", "purpose": "eval_root_cause",
+            }}
+            response = await client.post(URL, json=body, headers=AUTH)
+            frames = parse_sse(response.text)
+            assert frames[-1][1]["status"] == "succeeded"
+            run_id = frames[0][1]["run_id"]
+            persisted = (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()
+            assert persisted["result"]["context"]["purpose"] == "eval_root_cause"
+            replay = await client.post(URL, json=body, headers=AUTH)
+            assert parse_sse(replay.text)[-1][1]["status"] == "succeeded"
+            assert len(calls) == 1
+            rejected = await client.post(URL, json={**body, "agent_id": "studio_smart_qa"}, headers=AUTH)
+            assert rejected.status_code == 409
+
+    asyncio.run(run())
+
+
 @asynccontextmanager
 async def environment(monkeypatch, *, stream=True):
     directory = tempfile.TemporaryDirectory(prefix="bkn-execution-test-")
@@ -188,6 +233,7 @@ def test_run_persisted_before_success_and_retry_does_not_run_twice(monkeypatch):
             result = (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()
             assert result["status"] == "succeeded"
             assert result["result"]["answer"] == "Answer"
+            assert "interaction_id" not in result["result"]
             async with factory() as session:
                 row = await session.get(TaskRow, run_id)
                 assert row.f_account_id == "user-1"
@@ -284,14 +330,15 @@ def test_public_request_rejects_config_and_lifecycle_overrides(monkeypatch, extr
     asyncio.run(run())
 
 
-def test_cypher_generation_runs_on_the_public_surface(monkeypatch):
+@pytest.mark.parametrize("agent_id", ["cypher_generation", "eval_assistant"])
+def test_allowed_agent_runs_on_the_public_surface(monkeypatch, agent_id):
     async def run():
         async with environment(monkeypatch) as (client, factory, calls):
             async with factory() as session:
                 session.add(
                     AgentRow(
-                        f_agent_id="cypher_generation",
-                        f_name="Cypher",
+                        f_agent_id=agent_id,
+                        f_name="Allowed Agent",
                         f_mode="chat",
                         f_prompt_id="qa-prompt",
                         f_tools=[
@@ -319,15 +366,15 @@ def test_cypher_generation_runs_on_the_public_surface(monkeypatch):
                 return await allow(url, **kwargs)
 
             monkeypatch.setattr(public_auth, "_post", post)
-            body = {**BODY, "agent_id": "cypher_generation"}
+            body = {**BODY, "agent_id": agent_id}
             response = await client.post(URL, json=body, headers=AUTH)
             assert response.status_code == 200, response.text
             events = parse_sse(response.text)
-            assert events[0][1]["agent_id"] == "cypher_generation"
+            assert events[0][1]["agent_id"] == agent_id
             assert events[-1][1]["status"] == "succeeded"
-            assert [call.agent_id for call in calls] == ["cypher_generation"]
+            assert [call.agent_id for call in calls] == [agent_id]
             # The caller needs use on this Agent, not on smart Q&A.
-            assert {"resource": {"type": "agent", "id": "cypher_generation"}, "operation": "use"} in checked
+            assert {"resource": {"type": "agent", "id": agent_id}, "operation": "use"} in checked
 
     asyncio.run(run())
 
@@ -954,6 +1001,57 @@ def test_missing_mcp_session_is_failure_in_public_loop(monkeypatch):
             assert events[-1][1]["status"] == "failed"
             assert events[-1][1]["error"]["code"] == "BknAgent.Execution.Unavailable"
             assert not executions._thread_claims
+
+    asyncio.run(run())
+
+
+def test_lifecycle_interaction_id_is_persisted_for_managed_execution(monkeypatch):
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import graph
+    from app.core.context_loader import ContextLoaderSession
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, _):
+            async with factory() as session:
+                row = await session.get(AgentRow, "studio_smart_qa")
+                row.f_tools = [{"type": "context_loader"}]
+                await session.commit()
+
+            async def session(*args, **kwargs):
+                return ContextLoaderSession("conversation-1", "interaction-1")
+
+            async def close(*args, **kwargs):
+                return None
+
+            async def tools(*args, **kwargs):
+                return []
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield MemorySaver()
+
+            monkeypatch.setattr(graph.context_loader, "open_session", session)
+            monkeypatch.setattr(graph.context_loader, "close_session", close)
+            monkeypatch.setattr(graph, "load_tools", tools)
+            monkeypatch.setattr(graph, "build_chat_model", lambda *args, **kwargs: Model(responses=[AIMessage(content="Answer")]))
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            events = parse_sse(response.text)
+            assert events[-1][1]["status"] == "succeeded", response.text
+            result = next(data for name, data in events if name == "result")
+            assert result["content"]["interaction_id"] == "interaction-1"
+            run_id = events[0][1]["run_id"]
+            persisted = (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()
+            assert persisted["result"]["interaction_id"] == "interaction-1"
+            replay = parse_sse((await client.post(URL, json=BODY, headers=AUTH)).text)
+            assert next(data for name, data in replay if name == "result")["content"]["interaction_id"] == "interaction-1"
 
     asyncio.run(run())
 

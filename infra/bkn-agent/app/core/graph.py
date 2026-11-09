@@ -117,6 +117,8 @@ async def stream_chat(
                 profile=context_loader.profile_of(agent.tools),
             )
             if cl_session is not None:
+                if public:
+                    public.interaction_id = cl_session.interaction_id
                 # Set only when a session was really opened.
                 #
                 # An earlier version reset this in the finally of _events(). That

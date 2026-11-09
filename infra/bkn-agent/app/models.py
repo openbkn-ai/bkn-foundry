@@ -396,6 +396,11 @@ ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_
 class ExecutionScope(BaseModel):
     model_config = {"extra": "forbid"}
     kn_id: str = Field(min_length=1, max_length=128, pattern=_ID_PATTERN)
+    # Analysis is inference over backend-collected evidence, never a tool runner.
+    purpose: Optional[Literal["eval_root_cause"]] = Field(
+        default=None,
+        description="Root cause analysis for eval_assistant only. Disables all tools and skills; evidence is collected by Eval before execution.",
+    )
     # The graph explorer's canvas: snapshot, selection, canvas_id and revision.
     # Required by an Agent that mounts the graph_explorer builtin provider, which
     # validates it; other Agents must not receive it.
