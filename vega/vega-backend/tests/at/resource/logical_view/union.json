@@ -1,5 +1,5 @@
 {
-  "logic_definition": [
+  "logical_view_definition": [
     {
       "id": "node-output",
       "type": "output",

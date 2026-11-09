@@ -39,6 +39,10 @@ func TestSemanticUnderstandingResponseFormat(t *testing.T) {
 		assert.NotContains(t, logicalViews, "maxItems")
 		logicalView := logicalViews["items"].(map[string]any)
 		assert.Equal(t, []string{"create", "update"}, logicalView["properties"].(map[string]any)["action"].(map[string]any)["enum"])
+		assert.Contains(t, logicalView["properties"], "logical_view_definition")
+		assert.Contains(t, logicalView["required"], "logical_view_definition")
+		assert.NotContains(t, logicalView["properties"], "logic_definition")
+		assert.NotContains(t, logicalView["required"], "logic_definition")
 	})
 
 	t.Run("unsupported scope", func(t *testing.T) {

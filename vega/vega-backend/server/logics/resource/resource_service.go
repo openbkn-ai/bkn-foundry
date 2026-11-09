@@ -153,12 +153,12 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		id = generatedID.String()
 	}
 
-	var logicType string
+	var logicalType string
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicalView:
 		var viewFields []*interfaces.Property
 		req.SourceMetadata = nil
-		logicType, viewFields, err = PrepareLogicalView(ctx, req)
+		logicalType, viewFields, err = PrepareLogicalView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -196,27 +196,33 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		return nil, err
 	}
 	resource := &interfaces.Resource{
-		ID:               id,
-		CatalogID:        req.CatalogID,
-		Name:             req.Name,
-		Tags:             req.Tags,
-		Description:      req.Description,
-		Category:         req.Category,
-		Builtin:          resourceBuiltin,
-		Enabled:          true,
-		Status:           req.Status,
-		Schema:           req.Schema,
-		SourceIdentifier: req.SourceIdentifier,
-		SourceMetadata:   req.SourceMetadata,
-		SchemaDefinition: req.SchemaDefinition,
-		IndexConfig:      req.IndexConfig,
-		LocalIndexStatus: interfaces.ResourceLocalIndexStatusUnavailable,
-		LogicType:        logicType,
-		LogicDefinition:  req.LogicDefinition,
-		Creator:          accountInfo,
-		CreateTime:       now,
-		Updater:          accountInfo,
-		UpdateTime:       now,
+		ID:                    id,
+		CatalogID:             req.CatalogID,
+		Name:                  req.Name,
+		Tags:                  req.Tags,
+		Description:           req.Description,
+		Category:              req.Category,
+		Builtin:               resourceBuiltin,
+		Enabled:               true,
+		Status:                req.Status,
+		Schema:                req.Schema,
+		SourceIdentifier:      req.SourceIdentifier,
+		SourceMetadata:        req.SourceMetadata,
+		SchemaDefinition:      req.SchemaDefinition,
+		IndexConfig:           req.IndexConfig,
+		LocalIndexStatus:      interfaces.ResourceLocalIndexStatusUnavailable,
+		LogicalType:           logicalType,
+		LogicalViewDefinition: req.LogicalViewDefinition,
+		Creator:               accountInfo,
+		CreateTime:            now,
+		Updater:               accountInfo,
+		UpdateTime:            now,
+	}
+
+	if err := encodeResourceLogicFields(resource); err != nil {
+		span.SetStatus(codes.Error, "Encode resource definition failed")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
+			WithErrorDetails("failed to encode resource definition")
 	}
 
 	if resource.Category == interfaces.ResourceCategoryDataset {
@@ -306,6 +312,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		span.SetStatus(codes.Error, "Resource not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	decodeResourceLogicFields(resource)
 	populateResourceColumnCount(resource)
 
 	// Apply the fixed internal guard before checking resource permissions.
@@ -368,6 +375,7 @@ func (rs *resourceService) InternalGetByID(ctx context.Context, tx *sql.Tx, id s
 	if err != nil {
 		return nil, err
 	}
+	decodeResourceLogicFields(resource)
 	populateResourceColumnCount(resource)
 	return resource, nil
 }
@@ -387,6 +395,7 @@ func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) (
 		return nil, err
 	}
 	for _, resource := range resourcesByID {
+		decodeResourceLogicFields(resource)
 		populateResourceColumnCount(resource)
 	}
 	span.SetStatus(codes.Ok, "")
@@ -404,6 +413,7 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 		return nil, err
 	}
 	for _, resource := range resources {
+		decodeResourceLogicFields(resource)
 		populateResourceColumnCount(resource)
 	}
 	span.SetStatus(codes.Ok, "")
@@ -433,6 +443,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 		}
 	}
 	for _, resource := range resources {
+		decodeResourceLogicFields(resource)
 		populateResourceColumnCount(resource)
 	}
 
@@ -503,6 +514,40 @@ func (rs *resourceService) populateResourceRowCounts(ctx context.Context, resour
 			resource.RowCountTime = nil
 		}
 	}
+}
+
+// decodeResourceLogicFields maps stored values to the fields owned by the resource category.
+func decodeResourceLogicFields(resource *interfaces.Resource) {
+	if resource == nil {
+		return
+	}
+	resource.LogicalType = ""
+	resource.LogicalViewDefinition = nil
+	if resource.Category == interfaces.ResourceCategoryLogicalView {
+		resource.LogicalType = resource.LogicType
+		if resource.LogicDefinitionStr != "" {
+			// Preserve the existing read behavior; view validation handles invalid stored definitions.
+			_ = common.UnmarshalPreciseJSON([]byte(resource.LogicDefinitionStr), &resource.LogicalViewDefinition)
+		}
+	}
+}
+
+// encodeResourceLogicFields leaves other categories' stored values intact.
+func encodeResourceLogicFields(resource *interfaces.Resource) error {
+	if resource.Category != interfaces.ResourceCategoryLogicalView {
+		return nil
+	}
+	encoded, err := json.Marshal(resource.LogicalViewDefinition)
+	if err != nil {
+		return err
+	}
+	definition := string(encoded)
+	if definition == "null" {
+		return fmt.Errorf("logical_view_definition is required")
+	}
+	resource.LogicType = resource.LogicalType
+	resource.LogicDefinitionStr = definition
+	return nil
 }
 
 func populateResourceColumnCount(resource *interfaces.Resource) {
@@ -629,6 +674,9 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 		for _, id := range batchIDs {
 			if summary, exists := summariesByID[id]; exists {
+				if summary.Category == interfaces.ResourceCategoryLogicalView {
+					summary.LogicalType = summary.LogicType
+				}
 				summaries = append(summaries, summary)
 			}
 		}
@@ -665,6 +713,11 @@ func (rs *resourceService) InternalList(ctx context.Context, params interfaces.R
 		span.SetStatus(codes.Error, "List resources failed")
 		return nil, err
 	}
+	for _, summary := range summaries {
+		if summary.Category == interfaces.ResourceCategoryLogicalView {
+			summary.LogicalType = summary.LogicType
+		}
+	}
 	span.SetStatus(codes.Ok, "")
 	return summaries, nil
 }
@@ -691,6 +744,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		span.SetStatus(codes.Error, "Resource not found")
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	decodeResourceLogicFields(resource)
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
@@ -767,8 +821,8 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	switch resource.Category {
 	case interfaces.ResourceCategoryLogicalView:
 		resource.SchemaDefinition = req.SchemaDefinition
-		resource.LogicType = req.LogicType
-		resource.LogicDefinition = req.LogicDefinition
+		resource.LogicalType = req.LogicalType
+		resource.LogicalViewDefinition = req.LogicalViewDefinition
 		resource.SourceMetadata = req.SourceMetadata
 	default:
 		resource.SchemaDefinition = applyMutableSchemaFields(
@@ -839,6 +893,12 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	now := time.Now().UnixMilli()
 	resource.Updater = accountInfo
 	resource.UpdateTime = now
+
+	if err := encodeResourceLogicFields(resource); err != nil {
+		span.SetStatus(codes.Error, "Encode resource definition failed")
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			WithErrorDetails("failed to encode resource definition")
+	}
 
 	tx, err := rs.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1034,6 +1094,7 @@ func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bo
 		span.SetStatus(codes.Error, "Resource not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	decodeResourceLogicFields(resource)
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
@@ -1280,6 +1341,10 @@ func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateSemanticMetadata")
 	defer span.End()
 
+	if err := encodeResourceLogicFields(resource); err != nil {
+		span.SetStatus(codes.Error, "Encode resource definition failed")
+		return err
+	}
 	rowsAffected, err := rs.ra.UpdateSemanticMetadata(ctx, tx, resource, expectedUpdateTime)
 	if err != nil {
 		return err
@@ -1388,11 +1453,11 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 	}
 
 	var (
-		logicType string
-		err       error
+		logicalType string
+		err         error
 	)
 	if req.Category == interfaces.ResourceCategoryLogicalView {
-		logicType, req.SchemaDefinition, err = PrepareLogicalView(ctx, req)
+		logicalType, req.SchemaDefinition, err = PrepareLogicalView(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -1409,27 +1474,30 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 	keepStoredPropertyAPINames(nil, req.SchemaDefinition)
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	resource := &interfaces.Resource{
-		ID:               id,
-		CatalogID:        req.CatalogID,
-		Name:             req.Name,
-		Tags:             req.Tags,
-		Description:      req.Description,
-		Category:         req.Category,
-		Enabled:          true,
-		Builtin:          resourceBuiltin,
-		Status:           req.Status,
-		Schema:           req.Schema,
-		SourceIdentifier: req.SourceIdentifier,
-		SourceMetadata:   req.SourceMetadata,
-		SchemaDefinition: req.SchemaDefinition,
-		IndexConfig:      req.IndexConfig,
-		LocalIndexStatus: interfaces.ResourceLocalIndexStatusUnavailable,
-		LogicType:        logicType,
-		LogicDefinition:  req.LogicDefinition,
-		Creator:          accountInfo,
-		CreateTime:       now,
-		Updater:          accountInfo,
-		UpdateTime:       now,
+		ID:                    id,
+		CatalogID:             req.CatalogID,
+		Name:                  req.Name,
+		Tags:                  req.Tags,
+		Description:           req.Description,
+		Category:              req.Category,
+		Enabled:               true,
+		Builtin:               resourceBuiltin,
+		Status:                req.Status,
+		Schema:                req.Schema,
+		SourceIdentifier:      req.SourceIdentifier,
+		SourceMetadata:        req.SourceMetadata,
+		SchemaDefinition:      req.SchemaDefinition,
+		IndexConfig:           req.IndexConfig,
+		LocalIndexStatus:      interfaces.ResourceLocalIndexStatusUnavailable,
+		LogicalType:           logicalType,
+		LogicalViewDefinition: req.LogicalViewDefinition,
+		Creator:               accountInfo,
+		CreateTime:            now,
+		Updater:               accountInfo,
+		UpdateTime:            now,
+	}
+	if err := encodeResourceLogicFields(resource); err != nil {
+		return nil, err
 	}
 	if err := rs.ra.Create(ctx, tx, resource); err != nil {
 		return nil, err
@@ -1515,21 +1583,21 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
-		if req.LogicType != resource.LogicType {
-			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
+		if req.LogicalType != resource.LogicalType {
+			return false, unsupportedResourceUpdateError(ctx, "logical_type cannot be changed")
 		}
 		req.SourceMetadata = nil
-		logicType, viewFields, err := PrepareLogicalView(ctx, req)
+		logicalType, viewFields, err := PrepareLogicalView(ctx, req)
 		if err != nil {
 			return false, err
 		}
-		if logicType != resource.LogicType {
-			return false, unsupportedResourceUpdateError(ctx, "logic_type cannot be changed")
+		if logicalType != resource.LogicalType {
+			return false, unsupportedResourceUpdateError(ctx, "logical_type cannot be changed")
 		}
 		// 先带回已存的 api_name 再比较，否则只差 api_name 也会被当成结构变化。
 		keepStoredPropertyAPINames(resource.SchemaDefinition, viewFields)
 		req.SchemaDefinition = viewFields
-		return !jsonNumbersEqual(resource.LogicDefinition, req.LogicDefinition) ||
+		return !jsonNumbersEqual(resource.LogicalViewDefinition, req.LogicalViewDefinition) ||
 			!jsonNumbersEqual(resource.SchemaDefinition, viewFields), nil
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)

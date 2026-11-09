@@ -61,15 +61,15 @@ func catalogSemanticUnderstandingResponseFormat() map[string]any {
 		"output_fields": arraySchema(stringSchema()),
 	}, "id", "type")
 	logicalView := objectSchema(map[string]any{
-		"action":             map[string]any{"type": "string", "enum": []string{"create", "update"}},
-		"target_resource_id": stringSchema(),
-		"name":               stringSchema(),
-		"source_identifier":  stringSchema(),
-		"description":        stringSchema(),
-		"source_resources":   arraySchema(stringSchema()),
-		"logic_definition":   arraySchema(logicDefinitionNode),
-		"confidence":         confidence,
-	}, "action", "target_resource_id", "name", "source_identifier", "description", "source_resources", "logic_definition")
+		"action":                  map[string]any{"type": "string", "enum": []string{"create", "update"}},
+		"target_resource_id":      stringSchema(),
+		"name":                    stringSchema(),
+		"source_identifier":       stringSchema(),
+		"description":             stringSchema(),
+		"source_resources":        arraySchema(stringSchema()),
+		"logical_view_definition": arraySchema(logicDefinitionNode),
+		"confidence":              confidence,
+	}, "action", "target_resource_id", "name", "source_identifier", "description", "source_resources", "logical_view_definition")
 	obsoleteLogicalView := objectSchema(map[string]any{
 		"target_resource_id": stringSchema(),
 		"reason":             stringSchema(),

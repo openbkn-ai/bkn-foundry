@@ -31,7 +31,7 @@ func NewFilterCondition(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 
 	// Determine whether the filter is an empty object {}
-	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
+	if cfg.Field == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
 		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
 	}
 
@@ -65,7 +65,7 @@ func NormalizeValueFrom(cfg *interfaces.FilterCondCfg) error {
 	if cfg == nil {
 		return nil
 	}
-	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
+	if cfg.Field == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
 		return nil
 	}
 	if cfg.Operation == "" {

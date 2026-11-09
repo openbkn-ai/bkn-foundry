@@ -33,12 +33,12 @@ func (c *NotInCond) RequiredValueLen() int      { return -1 }
 func (c *NotInCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [not_in] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [not_in] left field '%s' not found in schema", cfg.Name)
+		return nil, fmt.Errorf("condition [not_in] left field '%s' not found in schema", cfg.Field)
 	}
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return nil, fmt.Errorf("condition [not_in] does not support value_from type '%s'", cfg.ValueFrom)

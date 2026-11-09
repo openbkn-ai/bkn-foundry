@@ -7,12 +7,15 @@ info:
 
     A connector type describes a registered data-source driver, such as mysql,
     postgresql, or opensearch, together with its registration metadata and enabled
-    state. Field configuration (`field_config`, compatible with JSON Schema
-    `properties`) is returned only by the detail endpoint and is obtained from the
+    state. Custom field configuration metadata (`field_config`) is returned only
+    by the detail endpoint and is obtained from the
     runtime implementation. Local definitions come from implementations in the
     current process; runtime field definitions for remote connectors are not yet
     implemented. `mode` distinguishes in-process `local` connectors from `remote`
     connectors invoked over HTTP. `category` identifies the data-source category.
+    `field_config` is not a standard JSON Schema: its field-level boolean `required`,
+    display `name`, and `encrypted` members need conversion or separate handling
+    before the metadata can be used with a standard JSON Schema validator.
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -304,14 +307,21 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
     ConnectorFieldConfig:
-      description: Connector configuration-field metadata compatible with JSON Schema `properties`.
+      description: |
+        Custom connector configuration-field metadata, not a standard JSON Schema.
+        `type` and `description` use the familiar Schema keyword meanings; `name`
+        (display name), field-level `required` (boolean), and `encrypted` are custom
+        metadata. Convert this format before using it as JSON Schema: collect required
+        field identifiers in the enclosing object's `required` array and handle display
+        names and encryption separately. This API preserves the existing metadata
+        shape and does not perform that conversion.
       type: object
       required:
         - name
         - type
       properties:
         name:
-          description: Field display name
+          description: Field display name (custom metadata, not a JSON Schema keyword)
           type: string
         type:
           description: Field type
@@ -327,7 +337,7 @@ components:
           description: Field description
           type: string
         required:
-          description: Whether the field is required
+          description: Custom field-level required flag; standard JSON Schema uses an array of property names on the enclosing object
           type: boolean
           default: false
         encrypted:
@@ -432,7 +442,7 @@ components:
           description: Remote service address, used only in `remote` mode
           type: string
         field_config:
-          description: Field configuration compatible with JSON Schema `properties`; each key is a field identifier
+          description: Custom connector configuration metadata keyed by field identifier; conversion is required before use as standard JSON Schema
           type: object
           additionalProperties:
             $ref: "#/components/schemas/ConnectorFieldConfig"

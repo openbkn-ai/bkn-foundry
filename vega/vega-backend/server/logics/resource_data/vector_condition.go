@@ -50,11 +50,11 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 		return nil
 	}
 
-	field, err := vectorFieldFor(resource, cfg.Name)
+	field, err := vectorFieldFor(resource, cfg.Field)
 	if err != nil {
 		return err
 	}
-	modelID, err := rds.embeddingModelForIndex(ctx, resource, cfg.Name)
+	modelID, err := rds.embeddingModelForIndex(ctx, resource, cfg.Field)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 		// 错误向量来自模型输出，不能作为调用方输入错误继续传播。
 		return fmt.Errorf("condition [knn_vector] embedding model returned an invalid vector: %s", err.Error())
 	}
-	cfg.Name = field
+	cfg.Field = field
 	cfg.Value = vectors[0].Vector
 	return nil
 }

@@ -33,15 +33,15 @@ func (c *NotPrefixCond) RequiredValueLen() int      { return -1 }
 func (c *NotPrefixCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [not_prefix] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [not_prefix] left field '%s' not found", cfg.Name)
+		return nil, fmt.Errorf("condition [not_prefix] left field '%s' not found", cfg.Field)
 	}
 	if !interfaces.DataType_IsString(field.Type) {
-		return nil, fmt.Errorf("condition [not_prefix] left field '%s' is not a string/text field", cfg.Name)
+		return nil, fmt.Errorf("condition [not_prefix] left field '%s' is not a string/text field", cfg.Field)
 	}
 
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {

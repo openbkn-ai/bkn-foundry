@@ -32,15 +32,15 @@ func (c *FalseCond) RequiredValueLen() int      { return -1 }
 func (c *FalseCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [false] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [false] left field '%s' not found", cfg.Name)
+		return nil, fmt.Errorf("condition [false] left field '%s' not found", cfg.Field)
 	}
 	if !supportsBooleanPredicate(field) {
-		return nil, fmt.Errorf("condition [false] left field is not a boolean or supported numeric field: %s:%s", cfg.Name, field.Type)
+		return nil, fmt.Errorf("condition [false] left field is not a boolean or supported numeric field: %s:%s", cfg.Field, field.Type)
 	}
 
 	return &FalseCond{

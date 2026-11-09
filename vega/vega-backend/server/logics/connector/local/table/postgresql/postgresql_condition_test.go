@@ -33,7 +33,7 @@ func testFieldsMap() map[string]*interfaces.Property {
 func TestBooleanConditionRejectsNumericField(t *testing.T) {
 	fields := testFieldsMap()
 	for _, operation := range []string{"true", "false"} {
-		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "age", Operation: operation}, fields)
+		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "age", Operation: operation}, fields)
 		require.NoError(t, err)
 		_, err = (&PostgresqlConnector{}).ConvertFilterCondition(condition, nil, nil)
 		require.ErrorContains(t, err, "requires BOOLEAN")
@@ -44,7 +44,7 @@ func TestBooleanConditionRejectsNumericField(t *testing.T) {
 func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCondition {
 	t.Helper()
 	cfg := &interfaces.FilterCondCfg{
-		Name:      name,
+		Field:     name,
 		Operation: op,
 		ValueFrom: interfaces.ValueFrom_Const,
 		Value:     value,
@@ -83,11 +83,11 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 			sql  string
 			args []any
 		}{
-			{name: "exact comparison", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: ">=", Value: json.Number("92233720368547758.07")}, sql: `(CAST("p"."source_amount" AS NUMERIC) >= $1)`, args: []any{"92233720368547758.07"}},
-			{name: "set", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "in", Value: []any{json.Number("-0.01"), json.Number("123.456")}}, sql: `(CAST("p"."source_amount" AS NUMERIC) IN ($1, $2))`, args: []any{"-0.01", "123.456"}},
-			{name: "range", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "range", Value: []any{json.Number("-1.00"), json.Number("0.00")}}, sql: `((CAST("p"."source_amount" AS NUMERIC) >= $1) AND (CAST("p"."source_amount" AS NUMERIC) <= $2))`, args: []any{"-1.00", "0.00"}},
-			{name: "field comparison", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "==", ValueFrom: interfaces.ValueFrom_Field, Value: "credit"}, sql: `(CAST("p"."source_amount" AS NUMERIC) = CAST("credit" AS NUMERIC))`},
-			{name: "null", cfg: &interfaces.FilterCondCfg{Name: "amount", Operation: "null", Value: nil}, sql: `(CAST("p"."source_amount" AS NUMERIC) IS NULL)`},
+			{name: "exact comparison", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: ">=", Value: json.Number("92233720368547758.07")}, sql: `(CAST("p"."source_amount" AS NUMERIC) >= $1)`, args: []any{"92233720368547758.07"}},
+			{name: "set", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "in", Value: []any{json.Number("-0.01"), json.Number("123.456")}}, sql: `(CAST("p"."source_amount" AS NUMERIC) IN ($1, $2))`, args: []any{"-0.01", "123.456"}},
+			{name: "range", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "range", Value: []any{json.Number("-1.00"), json.Number("0.00")}}, sql: `((CAST("p"."source_amount" AS NUMERIC) >= $1) AND (CAST("p"."source_amount" AS NUMERIC) <= $2))`, args: []any{"-1.00", "0.00"}},
+			{name: "field comparison", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "==", ValueFrom: interfaces.ValueFrom_Field, Value: "credit"}, sql: `(CAST("p"."source_amount" AS NUMERIC) = CAST("credit" AS NUMERIC))`},
+			{name: "null", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "null", Value: nil}, sql: `(CAST("p"."source_amount" AS NUMERIC) IS NULL)`},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cond, err := filter_condition.NewFilterCondition(t.Context(), tc.cfg, fields)
@@ -102,7 +102,7 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 	t.Run("structured decimal parameters preserve scientific notation exactly", func(t *testing.T) {
 		field := &interfaces.Property{Name: "amount", OriginalName: "amount", Type: interfaces.DataType_Decimal}
 		for _, value := range []json.Number{"10.1234567890", "10.123456789000000001e0"} {
-			cfg := &interfaces.FilterCondCfg{Name: "amount", Operation: "==", Value: value}
+			cfg := &interfaces.FilterCondCfg{Field: "amount", Operation: "==", Value: value}
 			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"amount": field})
 			require.NoError(t, err)
 			text, args := toSQL(t, &PostgresqlConnector{}, cond)
@@ -146,7 +146,7 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 					if operation.op == "prefix" || operation.op == "not_prefix" {
 						input = value.prefixInput
 					}
-					cfg := &interfaces.FilterCondCfg{Name: "name", Operation: operation.op, ValueFrom: interfaces.ValueFrom_Const, Value: input}
+					cfg := &interfaces.FilterCondCfg{Field: "name", Operation: operation.op, ValueFrom: interfaces.ValueFrom_Const, Value: input}
 					cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"name": field})
 					require.NoError(t, err)
 					sql, args := toSQL(t, &PostgresqlConnector{}, cond)
@@ -179,7 +179,7 @@ func TestPostgresqlConnectorConvertFilterConditionPrefix(t *testing.T) {
 			Cfg:    &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Field},
 			Lfield: field, Value: "ali",
 		}
-		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}, map[string]*interfaces.Property{"name": field})
+		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Field: "name", ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}, map[string]*interfaces.Property{"name": field})
 		require.ErrorContains(t, err, "value_from")
 		assert.Nil(t, expr)
 	})
@@ -355,7 +355,7 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 	})
 
 	t.Run("rejects numeric time values before conversion", func(t *testing.T) {
-		cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "event_time", Operation: ">=", Value: float64(1785295334428)}, testFieldsMap())
+		cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "event_time", Operation: ">=", Value: float64(1785295334428)}, testFieldsMap())
 		require.ErrorContains(t, err, "invalid time value")
 		assert.Nil(t, cond)
 	})
@@ -403,7 +403,7 @@ func TestPostgresqlConnectorConvertFilterConditionBefore(t *testing.T) {
 			t.Run(fieldType+"/"+unit, func(t *testing.T) {
 				field := &interfaces.Property{Name: "created", OriginalName: "created_at", Type: fieldType}
 				cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{
-					Name: "created", Operation: "before", ValueFrom: interfaces.ValueFrom_Const,
+					Field: "created", Operation: "before", ValueFrom: interfaces.ValueFrom_Const,
 					Value: []any{json.Number("3"), unit},
 				}, map[string]*interfaces.Property{"created": field})
 				require.NoError(t, err)
@@ -500,7 +500,7 @@ func TestPostgresqlConnectorTemporalInputContract(t *testing.T) {
 	t.Setenv("TZ", "Asia/Shanghai")
 	t.Run("timezone-aware source column retains the instant", func(t *testing.T) {
 		field := &interfaces.Property{Name: "value", OriginalName: "value", Type: interfaces.DataType_Datetime, OriginalType: "timestamp with time zone"}
-		cfg := &interfaces.FilterCondCfg{Name: "value", Operation: "==", Value: "2026-10-19 00:00:00"}
+		cfg := &interfaces.FilterCondCfg{Field: "value", Operation: "==", Value: "2026-10-19 00:00:00"}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 		require.NoError(t, err)
 		expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond, nil, nil)
@@ -533,7 +533,7 @@ func TestPostgresqlConnectorTemporalInputContract(t *testing.T) {
 							value = []any{literal, literal}
 							count = 2
 						}
-						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, Value: value}
+						cfg := &interfaces.FilterCondCfg{Field: "value", Operation: op, Value: value}
 						cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 						require.NoError(t, err)
 						expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond, nil, nil)

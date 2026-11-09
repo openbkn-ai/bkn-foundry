@@ -30,17 +30,17 @@ func (c *NotEmptyCond) RequiredValueLen() int      { return -1 }
 
 // The not_empty condition determines whether a field is not an empty string
 func (c *NotEmptyCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg, fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [not_empty] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [not_empty] left field '%s' not found", cfg.Name)
+		return nil, fmt.Errorf("condition [not_empty] left field '%s' not found", cfg.Field)
 	}
 
 	// Only string types are allowed
 	if !interfaces.DataType_IsString(field.Type) {
-		return nil, fmt.Errorf("condition [not_empty] left field %s is not of string type, but %s", cfg.Name, field.Type)
+		return nil, fmt.Errorf("condition [not_empty] left field %s is not of string type, but %s", cfg.Field, field.Type)
 	}
 
 	return &NotEmptyCond{

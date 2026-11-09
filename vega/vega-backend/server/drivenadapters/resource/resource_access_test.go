@@ -28,13 +28,6 @@ import (
 
 type jsonArgument struct{ expected string }
 
-func TestMarshalResourceLogicDefinitionPreservesLargeInteger(t *testing.T) {
-	resource := &interfaces.Resource{LogicDefinition: map[string]any{
-		"filter_condition": map[string]any{"value": json.Number("9007199254740993")},
-	}}
-	assert.Equal(t, `{"filter_condition":{"value":9007199254740993}}`, string(marshalResourceLogicDefinition(resource)))
-}
-
 func (arg jsonArgument) Match(value driver.Value) bool {
 	actual, ok := value.(string)
 	if !ok {
@@ -140,19 +133,22 @@ func TestResourceAccessGetByID(t *testing.T) {
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
 		values[5] = interfaces.ResourceCategoryLogicalView
-		values[23] = interfaces.LogicType_Derived
+		values[23] = interfaces.LogicalType_Derived
 		values[24] = `{"source_resource_id":"source-1","filter_condition":{"field":"amount","operation":">","value":9007199254740993}}`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
 		got, err := access.GetByID(context.Background(), nil, "resource-1")
 		require.NoError(t, err)
-		require.NotNil(t, got.LogicDefinition)
-		definition, err := interfaces.DecodeDerivedLogicDefinition(got.LogicDefinition)
+		assert.Equal(t, interfaces.LogicalType_Derived, got.LogicType)
+		assert.Equal(t, values[24], got.LogicDefinitionStr)
+		assert.Empty(t, got.LogicalType)
+		assert.Nil(t, got.LogicalViewDefinition)
+		encoded, err := json.Marshal(got)
 		require.NoError(t, err)
-		assert.Equal(t, "source-1", definition.SourceResourceID)
-		stored := got.LogicDefinition.(map[string]any)
-		condition := stored["filter_condition"].(map[string]any)
-		assert.Equal(t, json.Number("9007199254740993"), condition["value"])
+		assert.NotContains(t, string(encoded), `"logical_view_definition"`)
+		assert.NotContains(t, string(encoded), `"logical_type"`)
+		assert.NotContains(t, string(encoded), `"logic_type"`)
+		assert.NotContains(t, string(encoded), "LogicDefinitionStr")
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -161,7 +157,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
 		values[5] = interfaces.ResourceCategoryLogicalView
-		values[23] = interfaces.LogicType_Composite
+		values[23] = interfaces.LogicalType_Composite
 		values[24] = `[{"id":"source","type":"resource"}]`
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
@@ -170,7 +166,10 @@ func TestResourceAccessGetByID(t *testing.T) {
 		require.NoError(t, err)
 		encoded, err := json.Marshal(got)
 		require.NoError(t, err)
-		assert.Contains(t, string(encoded), `"logic_definition":[{"id":"source","type":"resource"}]`)
+		assert.Equal(t, values[24], got.LogicDefinitionStr)
+		assert.Nil(t, got.LogicalViewDefinition)
+		assert.NotContains(t, string(encoded), `"logical_view_definition"`)
+		assert.NotContains(t, string(encoded), `"logic_definition"`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -195,10 +194,10 @@ func TestResourceAccessGetByID(t *testing.T) {
 		assert.Equal(t, `{"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
 		assert.Nil(t, got.ColumnCount)
 		assert.Nil(t, got.RowCount)
-		assert.Nil(t, got.LogicDefinition)
+		assert.Nil(t, got.LogicalViewDefinition)
 		encoded, err := json.Marshal(got)
 		require.NoError(t, err)
-		assert.NotContains(t, string(encoded), `"logic_definition"`)
+		assert.NotContains(t, string(encoded), `"logical_view_definition"`)
 		properties := got.SourceMetadata["properties"].(map[string]any)
 		assert.Equal(t, json.Number("42"), properties["row_count"])
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -440,8 +439,8 @@ func TestResourceAccessUpdate(t *testing.T) {
 		defer cleanup()
 		res := sampleResource()
 		res.Category = interfaces.ResourceCategoryLogicalView
-		res.LogicType = interfaces.LogicType_Derived
-		res.LogicDefinition = &interfaces.DerivedLogicDefinition{SourceResourceID: "source-1"}
+		res.LogicType = interfaces.LogicalType_Derived
+		res.LogicDefinitionStr = `{"source_resource_id":"source-1"}`
 		res.SourceMetadata = map[string]any{
 			"properties":      map[string]any{},
 			"source_resource": map[string]any{"catalog_id": "catalog-1"},
@@ -452,7 +451,7 @@ func TestResourceAccessUpdate(t *testing.T) {
 			WithArgs(res.Name, `"pii","core"`, res.Description,
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
 				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
-				interfaces.LogicType_Derived, definition,
+				interfaces.LogicalType_Derived, definition,
 				res.Updater.ID, res.Updater.Type, res.UpdateTime, metadata, res.ID, res.UpdateTime).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 		rows, err := access.Update(context.Background(), nil, res, res.UpdateTime)
@@ -1016,6 +1015,7 @@ func newResourceAccessMock(t *testing.T) (*resourceAccess, sqlmock.Sqlmock, func
 
 func sampleResource() *interfaces.Resource {
 	return &interfaces.Resource{
+		LogicDefinitionStr: "[]",
 		ID:                 "resource-1",
 		CatalogID:          "catalog-1",
 		Name:               "orders",
@@ -1254,6 +1254,63 @@ func TestResourceAccessReadsIndependentStatistics(t *testing.T) {
 			} else {
 				assert.Nil(t, got.RowCount)
 				assert.Nil(t, got.RowCountTime)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestResourceAccessKeepsRawLogicFields(t *testing.T) {
+	const stored = `{ "value": 9007199254740993, "enabled": false, "count": 0 }`
+	for _, category := range []string{interfaces.ResourceCategoryLogicalView, interfaces.ResourceCategoryAPI, interfaces.ResourceCategoryTable} {
+		t.Run(category, func(t *testing.T) {
+			access, mock, cleanup := newResourceAccessMock(t)
+			defer cleanup()
+			values := resourceRowValues(sampleResource())
+			values[5], values[23], values[24] = category, "stored-type", stored
+			mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
+				WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
+			got, err := access.GetByID(t.Context(), nil, "resource-1")
+			require.NoError(t, err)
+			assert.Equal(t, "stored-type", got.LogicType)
+			assert.Equal(t, stored, got.LogicDefinitionStr)
+			assert.Empty(t, got.LogicalType)
+			assert.Nil(t, got.LogicalViewDefinition)
+
+			// Even conflicting or non-JSON public fields must not affect raw persistence.
+			got.LogicalType = "public-type"
+			got.LogicalViewDefinition = make(chan int)
+			for _, write := range []struct {
+				name            string
+				argc            int
+				typeIndex       int
+				definitionIndex int
+				run             func() error
+			}{
+				{"create", 31, 20, 21, func() error { return access.Create(t.Context(), nil, got) }},
+				{"update", 12, 5, 6, func() error { _, err := access.Update(t.Context(), nil, got, 2); return err }},
+				{"semantic", 10, -1, 4, func() error { _, err := access.UpdateSemanticMetadata(t.Context(), nil, got, 2); return err }},
+			} {
+				t.Run(write.name, func(t *testing.T) {
+					argc := write.argc
+					if write.name == "update" && category == interfaces.ResourceCategoryLogicalView {
+						argc++
+					}
+					args := make([]driver.Value, argc)
+					for i := range args {
+						args[i] = sqlmock.AnyArg()
+					}
+					if write.typeIndex >= 0 {
+						args[write.typeIndex] = "stored-type"
+					}
+					args[write.definitionIndex] = stored
+					sql := "UPDATE t_resource"
+					if write.name == "create" {
+						sql = "INSERT INTO t_resource"
+					}
+					mock.ExpectExec(sql).WithArgs(args...).WillReturnResult(sqlmock.NewResult(1, 1))
+					require.NoError(t, write.run())
+				})
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})

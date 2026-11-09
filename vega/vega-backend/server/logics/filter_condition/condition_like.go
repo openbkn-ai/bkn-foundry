@@ -37,15 +37,15 @@ func (c *LikeCond) RequiredValueLen() int      { return -1 }
 func (c *LikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [like] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [like] left field '%s' not found", cfg.Name)
+		return nil, fmt.Errorf("condition [like] left field '%s' not found", cfg.Field)
 	}
 	if !interfaces.DataType_IsString(field.Type) {
-		return nil, fmt.Errorf("condition [like] left field '%s' is not a string field", cfg.Name)
+		return nil, fmt.Errorf("condition [like] left field '%s' is not a string field", cfg.Field)
 	}
 
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {

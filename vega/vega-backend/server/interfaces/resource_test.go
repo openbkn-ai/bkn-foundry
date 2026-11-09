@@ -51,8 +51,8 @@ func TestResourceLocalStateJSON(t *testing.T) {
 	}
 }
 
-func TestDerivedLogicDefinitionJSON(t *testing.T) {
-	precise, err := DecodeDerivedLogicDefinition(map[string]any{
+func TestDerivedLogicalViewDefinitionJSON(t *testing.T) {
+	precise, err := DecodeDerivedLogicalViewDefinition(map[string]any{
 		"source_resource_id": "source",
 		"filter_condition":   map[string]any{"value": json.Number("9007199254740993")},
 	})
@@ -64,20 +64,20 @@ func TestDerivedLogicDefinitionJSON(t *testing.T) {
 		t.Fatalf("filter value lost precision: %v", condition["value"])
 	}
 	var request ResourceRequest
-	err = json.Unmarshal([]byte(`{"category":"logical_view","logic_definition":{"source_resource_id":"source","distinct":false}}`), &request)
+	err = json.Unmarshal([]byte(`{"category":"logical_view","logical_view_definition":{"source_resource_id":"source","distinct":false}}`), &request)
 	if err != nil {
 		t.Fatalf("decode generic definition: %v", err)
 	}
-	if _, err := DecodeDerivedLogicDefinition(request.LogicDefinition); err == nil {
+	if _, err := DecodeDerivedLogicalViewDefinition(request.LogicalViewDefinition); err == nil {
 		t.Fatal("derived definition must reject unsupported fields")
 	}
-	if err := sonic.Unmarshal([]byte(`{"logic_definition":{"source_resource_id":"source","distinct":false}}`), &request); err != nil {
+	if err := sonic.Unmarshal([]byte(`{"logical_view_definition":{"source_resource_id":"source","distinct":false}}`), &request); err != nil {
 		t.Fatalf("sonic decode generic definition: %v", err)
 	}
-	if _, err := DecodeDerivedLogicDefinition(request.LogicDefinition); err == nil {
+	if _, err := DecodeDerivedLogicalViewDefinition(request.LogicalViewDefinition); err == nil {
 		t.Fatal("derived conversion must reject unsupported fields from sonic")
 	}
-	if _, err := DecodeDerivedLogicDefinition([]any{map[string]any{"type": "resource"}}); err == nil {
+	if _, err := DecodeDerivedLogicalViewDefinition([]any{map[string]any{"type": "resource"}}); err == nil {
 		t.Fatal("derived conversion must reject composite arrays")
 	}
 	for _, raw := range []any{
@@ -85,17 +85,17 @@ func TestDerivedLogicDefinitionJSON(t *testing.T) {
 		map[string]any{"source_resource_id": ""},
 		map[string]any{"source_resource_id": "  "},
 	} {
-		if _, err := DecodeDerivedLogicDefinition(raw); err == nil {
+		if _, err := DecodeDerivedLogicalViewDefinition(raw); err == nil {
 			t.Fatalf("derived conversion must reject missing source_resource_id: %#v", raw)
 		}
 	}
-	err = json.Unmarshal([]byte(`{"category":"logical_view","logic_definition":{"source_resource_id":"source"}}`), &request)
-	definition, decodeErr := DecodeDerivedLogicDefinition(request.LogicDefinition)
+	err = json.Unmarshal([]byte(`{"category":"logical_view","logical_view_definition":{"source_resource_id":"source"}}`), &request)
+	definition, decodeErr := DecodeDerivedLogicalViewDefinition(request.LogicalViewDefinition)
 	if err != nil || decodeErr != nil || definition.SourceResourceID != "source" {
-		t.Fatalf("decode derived definition: definition=%+v, err=%v", request.LogicDefinition, err)
+		t.Fatalf("decode derived definition: definition=%+v, err=%v", request.LogicalViewDefinition, err)
 	}
-	encoded, err := json.Marshal(&Resource{LogicDefinition: request.LogicDefinition})
-	if err != nil || !strings.Contains(string(encoded), `"logic_definition":{"source_resource_id":"source"}`) {
+	encoded, err := json.Marshal(&Resource{LogicalViewDefinition: request.LogicalViewDefinition})
+	if err != nil || !strings.Contains(string(encoded), `"logical_view_definition":{"source_resource_id":"source"}`) {
 		t.Fatalf("encode derived definition: %s, err=%v", encoded, err)
 	}
 }

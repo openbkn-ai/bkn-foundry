@@ -63,7 +63,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 	t.Run("convert equal field to field", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "name",
+			Field:     "name",
 			Operation: "==",
 			ValueFrom: interfaces.ValueFrom_Field,
 			Value:     "tags",
@@ -80,7 +80,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 	t.Run("convert equal alias column", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "alias_col",
+			Field:     "alias_col",
 			Operation: "==",
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     "test",
@@ -235,7 +235,7 @@ func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
 
 	t.Run("rejects numeric time values before conversion", func(t *testing.T) {
 		cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{
-			Name: "event_time", Operation: ">=", Value: float64(1785295334428),
+			Field: "event_time", Operation: ">=", Value: float64(1785295334428),
 		}, testFieldsMap())
 		require.ErrorContains(t, err, "invalid time value")
 		assert.Nil(t, cond)
@@ -294,7 +294,7 @@ func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
 func TestMariaDBConnectorConvertFilterConditionNull(t *testing.T) {
 	t.Run("convert null", func(t *testing.T) {
 		c := &MariaDBConnector{}
-		cfg := &interfaces.FilterCondCfg{Name: "name", Operation: "null"}
+		cfg := &interfaces.FilterCondCfg{Field: "name", Operation: "null"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, _ := toSQL(t, c, cond)
 		if sql != "(`name` IS NULL)" {
@@ -305,7 +305,7 @@ func TestMariaDBConnectorConvertFilterConditionNull(t *testing.T) {
 func TestMariaDBConnectorConvertFilterConditionNotNull(t *testing.T) {
 	t.Run("convert not null", func(t *testing.T) {
 		c := &MariaDBConnector{}
-		cfg := &interfaces.FilterCondCfg{Name: "name", Operation: "not_null"}
+		cfg := &interfaces.FilterCondCfg{Field: "name", Operation: "not_null"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, _ := toSQL(t, c, cond)
 		if sql != "(`name` IS NOT NULL)" {
@@ -316,7 +316,7 @@ func TestMariaDBConnectorConvertFilterConditionNotNull(t *testing.T) {
 func TestMariaDBConnectorConvertFilterConditionEmpty(t *testing.T) {
 	t.Run("convert empty", func(t *testing.T) {
 		c := &MariaDBConnector{}
-		cfg := &interfaces.FilterCondCfg{Name: "name", Operation: "empty"}
+		cfg := &interfaces.FilterCondCfg{Field: "name", Operation: "empty"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, args := toSQL(t, c, cond)
 		if sql != "(`name` = '')" {
@@ -396,7 +396,7 @@ func TestMariaDBConnectorConvertFilterConditionRegex(t *testing.T) {
 func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 	t.Run("convert true", func(t *testing.T) {
 		c := &MariaDBConnector{}
-		cfg := &interfaces.FilterCondCfg{Name: "is_active", Operation: "true"}
+		cfg := &interfaces.FilterCondCfg{Field: "is_active", Operation: "true"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, args := toSQL(t, c, cond)
 		if sql != "(`is_active` = TRUE)" {
@@ -417,7 +417,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			{operation: "true", sql: "(`flag` <> 0)"},
 			{operation: "false", sql: "(`flag` = 0)"},
 		} {
-			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "flag", Operation: test.operation}, fields)
+			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "flag", Operation: test.operation}, fields)
 			if err != nil {
 				t.Fatalf("build %s condition: %v", test.operation, err)
 			}
@@ -438,7 +438,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 		field := &interfaces.Property{Name: "count", OriginalName: "count", OriginalType: "int(11)", Type: interfaces.DataType_Integer}
 		fields := map[string]*interfaces.Property{"count": field}
 		for _, operation := range []string{"true", "false"} {
-			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "count", Operation: operation}, fields)
+			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "count", Operation: operation}, fields)
 			if err != nil {
 				t.Fatalf("build %s condition: %v", operation, err)
 			}
@@ -467,7 +467,7 @@ func TestMariaDBConnectorConvertFilterConditionPrefix(t *testing.T) {
 			Cfg:    &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Field},
 			Lfield: field, Value: "ali",
 		}
-		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}, map[string]*interfaces.Property{"name": field})
+		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Field: "name", ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}, map[string]*interfaces.Property{"name": field})
 		if expr != nil || err == nil || !strings.Contains(err.Error(), "value_from") {
 			t.Fatalf("expected constant-source error and nil expression, got expr=%v err=%v", expr, err)
 		}
@@ -479,8 +479,8 @@ func TestMariaDBConnectorConvertFilterConditionAnd(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Operation: "and",
 			SubConds: []*interfaces.FilterCondCfg{
-				{Name: "name", Operation: "==", ValueFrom: "const", Value: "alice"},
-				{Name: "age", Operation: ">", ValueFrom: "const", Value: 18},
+				{Field: "name", Operation: "==", ValueFrom: "const", Value: "alice"},
+				{Field: "age", Operation: ">", ValueFrom: "const", Value: 18},
 			},
 		}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
@@ -505,8 +505,8 @@ func TestMariaDBConnectorConvertFilterConditionOr(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Operation: "or",
 			SubConds: []*interfaces.FilterCondCfg{
-				{Name: "name", Operation: "==", ValueFrom: "const", Value: "alice"},
-				{Name: "name", Operation: "==", ValueFrom: "const", Value: "bob"},
+				{Field: "name", Operation: "==", ValueFrom: "const", Value: "alice"},
+				{Field: "name", Operation: "==", ValueFrom: "const", Value: "bob"},
 			},
 		}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
@@ -551,7 +551,7 @@ func toSQL(t *testing.T, connector *MariaDBConnector, cond interfaces.FilterCond
 func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCondition {
 	t.Helper()
 	cfg := &interfaces.FilterCondCfg{
-		Name:      name,
+		Field:     name,
 		Operation: op,
 		ValueFrom: interfaces.ValueFrom_Const,
 		Value:     value,
@@ -570,7 +570,7 @@ func TestMariaDBConnectorConvertFilterConditionCurrent(t *testing.T) {
 	} {
 		t.Run(tc.interval, func(t *testing.T) {
 			fields := map[string]*interfaces.Property{"created": {Name: "created", OriginalName: "created_at", Type: interfaces.DataType_Datetime}}
-			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationCurrent, ValueFrom: interfaces.ValueFrom_Const, Value: tc.interval}
+			cfg := &interfaces.FilterCondCfg{Field: "created", Operation: filter_condition.OperationCurrent, ValueFrom: interfaces.ValueFrom_Const, Value: tc.interval}
 			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
 			if err != nil {
 				t.Fatal(err)
@@ -603,7 +603,7 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 		{"negative", float64(-1), false}, {"fractional", float64(1.5), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationBefore, ValueFrom: interfaces.ValueFrom_Const, Value: []any{tc.value, "day"}}
+			cfg := &interfaces.FilterCondCfg{Field: "created", Operation: filter_condition.OperationBefore, ValueFrom: interfaces.ValueFrom_Const, Value: []any{tc.value, "day"}}
 			cond := &filter_condition.BeforeCond{Cfg: cfg, Lfield: field, Value: cfg.Value.([]any)}
 			expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond, nil, nil)
 			if !tc.valid {
@@ -680,7 +680,7 @@ func TestMariaDBConnectorTemporalInputContract(t *testing.T) {
 							value = []any{literal, literal}
 							count = 2
 						}
-						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, Value: value}
+						cfg := &interfaces.FilterCondCfg{Field: "value", Operation: op, Value: value}
 						cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 						require.NoError(t, err)
 						expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond, nil, nil)
@@ -748,7 +748,7 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 		})
 	}
 	t.Run("parsed LIKE is literal and parameters never become SQL", func(t *testing.T) {
-		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "x", Operation: filter_condition.OperationLike, Value: `O'Reilly\%_!`}, map[string]*interfaces.Property{"x": field})
+		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "x", Operation: filter_condition.OperationLike, Value: `O'Reilly\%_!`}, map[string]*interfaces.Property{"x": field})
 		require.NoError(t, err)
 		node, err := connector.ConvertFilterCondition(condition, nil, nil)
 		require.NoError(t, err)
@@ -761,7 +761,7 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 	t.Run("temporal parsing preserves the server timezone and precision", func(t *testing.T) {
 		t.Setenv("TZ", "UTC")
 		field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
-		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationEqual, Value: "2026-10-27T12:30:00.123456Z"}, map[string]*interfaces.Property{"created": field})
+		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "created", Operation: filter_condition.OperationEqual, Value: "2026-10-27T12:30:00.123456Z"}, map[string]*interfaces.Property{"created": field})
 		require.NoError(t, err)
 		node, err := connector.ConvertFilterCondition(condition, nil, nil)
 		require.NoError(t, err)

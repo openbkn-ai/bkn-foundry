@@ -123,7 +123,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Equal(t, verrors.VegaBackend_Resource_QueryTimeOutOfRange, httpErr.ErrorCode)
 		assert.Equal(t, "created", httpErr.Metadata["field"])
 		dated := &interfaces.Resource{LocalIndexName: "dataset-1", SchemaDefinition: []*interfaces.Property{{Name: "created", Type: interfaces.DataType_Datetime}}}
-		query := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "created", Operation: "before", Value: []any{2147483647, "year"}}}
+		query := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "created", Operation: "before", Value: []any{2147483647, "year"}}}
 		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", dated, query).Return(nil, cause)
 		result, err := ds.DeleteDocumentsByQuery(ctx, dated, query)
 		assert.Nil(t, result)
@@ -346,7 +346,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		ds, _ := newDatasetServiceMock(t)
 		resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
 		for _, operation := range []string{filter_condition.OperationNotExist, filter_condition.OperationNull} {
-			_, err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "payload", Operation: operation}})
+			_, err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "payload", Operation: operation}})
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -365,7 +365,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			}},
 		}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
-			Name:      "id",
+			Field:     "id",
 			Operation: filter_condition.OperationEqual,
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     1,
@@ -388,7 +388,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
 			Operation: filter_condition.OperationAnd,
 			SubConds: []*interfaces.FilterCondCfg{{
-				Name: "title", Operation: filter_condition.OperationLike,
+				Field: "title", Operation: filter_condition.OperationLike,
 				Value: "old",
 			}},
 		}}
@@ -419,7 +419,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 				ds, _ := newDatasetServiceMock(t)
 				resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1"}
 				condition := &interfaces.FilterCondCfg{
-					Name: "title", Operation: tc.operation,
+					Field: "title", Operation: tc.operation,
 					Value: "old",
 				}
 				if tc.nested {
@@ -447,7 +447,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_String}},
 		}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
-			Name: "title", Operation: filter_condition.OperationEqual,
+			Field: "title", Operation: filter_condition.OperationEqual,
 			ValueFrom: "unknown", Value: "old",
 		}}
 
@@ -505,7 +505,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			}},
 		}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
-			Name:      "content_vector",
+			Field:     "content_vector",
 			Operation: filter_condition.OperationKnnVector,
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     []float32{0.1, 0.2},
@@ -532,7 +532,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			}},
 		}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
-			Name:      "missing",
+			Field:     "missing",
 			Operation: filter_condition.OperationEqual,
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     "value",
@@ -704,7 +704,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 func TestDatasetServiceDeleteDocumentsByQueryIncompleteResult(t *testing.T) {
 	ds, lim := newDatasetServiceMock(t)
 	resource := &interfaces.Resource{ID: "dataset", LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "kind", Type: interfaces.DataType_String}}}
-	params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "kind", Operation: filter_condition.OperationEqual2, Value: "old"}}
+	params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "kind", Operation: filter_condition.OperationEqual2, Value: "old"}}
 	progress := &interfaces.DeleteByQueryResult{Deleted: 2, TimedOut: true, VersionConflicts: 1, Failures: []interfaces.DocumentWriteResult{{ID: "", Status: 400, ErrorCode: interfaces.DocumentInvalid}}}
 	lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "index", resource, params).Return(progress, interfaces.NewDeleteByQueryIncompleteError(progress))
 	result, err := ds.DeleteDocumentsByQuery(context.Background(), resource, params)

@@ -44,11 +44,11 @@ func ValidateLogicalViewRequest(ctx context.Context, req *interfaces.ResourceReq
 func PrepareLogicalView(ctx context.Context, req *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
 	if lvs := GetLogicalViewService(); lvs != nil {
 		req.SourceMetadata = nil
-		logicType, fields, err := lvs.Prepare(ctx, req)
+		logicalType, fields, err := lvs.Prepare(ctx, req)
 		if err != nil {
 			return "", nil, err
 		}
-		if logicType == interfaces.LogicType_Derived {
+		if logicalType == interfaces.LogicalType_Derived {
 			sourceResource, ok := req.SourceMetadata["source_resource"].(map[string]any)
 			if !ok || len(sourceResource) == 0 {
 				return "", nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -56,7 +56,7 @@ func PrepareLogicalView(ctx context.Context, req *interfaces.ResourceRequest) (s
 					WithErrorDetails("logical view service did not provide source_resource metadata")
 			}
 		}
-		return logicType, fields, nil
+		return logicalType, fields, nil
 	}
 	return "", nil, logicalViewServiceUnavailable(ctx)
 }

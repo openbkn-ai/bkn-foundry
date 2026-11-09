@@ -309,14 +309,14 @@ type SemanticUnderstandingCatalogResult struct {
 }
 
 type SemanticUnderstandingCatalogLogicalView struct {
-	Action           string                 `json:"action"`
-	TargetResourceID string                 `json:"target_resource_id"`
-	Name             string                 `json:"name"`
-	SourceIdentifier string                 `json:"source_identifier"`
-	Description      string                 `json:"description"`
-	SourceResources  []string               `json:"source_resources"`
-	LogicDefinition  []*LogicDefinitionNode `json:"logic_definition"`
-	Confidence       *float64               `json:"confidence,omitempty"`
+	Action                string                       `json:"action"`
+	TargetResourceID      string                       `json:"target_resource_id"`
+	Name                  string                       `json:"name"`
+	SourceIdentifier      string                       `json:"source_identifier"`
+	Description           string                       `json:"description"`
+	SourceResources       []string                     `json:"source_resources"`
+	LogicalViewDefinition []*LogicalViewDefinitionNode `json:"logical_view_definition"`
+	Confidence            *float64                     `json:"confidence,omitempty"`
 }
 
 type SemanticUnderstandingCatalogObsoleteView struct {

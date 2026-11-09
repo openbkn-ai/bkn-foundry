@@ -34,12 +34,12 @@ func (c *GteCond) RequiredValueLen() int      { return -1 }
 func (c *GteCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [gte] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [gte] left field '%s' not found in schema", cfg.Name)
+		return nil, fmt.Errorf("condition [gte] left field '%s' not found in schema", cfg.Field)
 	}
 
 	if IsSlice(cfg.Value) {

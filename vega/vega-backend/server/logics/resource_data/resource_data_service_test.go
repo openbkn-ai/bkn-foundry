@@ -125,7 +125,7 @@ func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 				SchemaDefinition: []*interfaces.Property{{Name: "embedding", Type: interfaces.DataType_Vector,
 					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}},
 			}
-			condition := &interfaces.FilterCondCfg{Name: "embedding", Operation: filter_condition.OperationKnnVector,
+			condition := &interfaces.FilterCondCfg{Field: "embedding", Operation: filter_condition.OperationKnnVector,
 				ValueFrom: interfaces.ValueFrom_Const, Value: "query text"}
 			params := &interfaces.ResourceDataQueryParams{FilterCondCfg: condition}
 			if tc.stored {
@@ -245,7 +245,7 @@ func TestQuerySourcePageSearchPrerequisitesPrecedeOutputFields(t *testing.T) {
 						resource.LocalIndexName = "index"
 						resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 					}
-					condition := &interfaces.FilterCondCfg{Name: "title", Operation: operation, Value: "search text"}
+					condition := &interfaces.FilterCondCfg{Field: "title", Operation: operation, Value: "search text"}
 					if nested {
 						condition = &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{condition}}
 					}
@@ -365,7 +365,7 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 		resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryIndex,
 			SourceIdentifier: "physical-index",
 			SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text}}}
-		fixed := &interfaces.FilterCondCfg{Name: "title", Operation: filter_condition.OperationEqual,
+		fixed := &interfaces.FilterCondCfg{Field: "title", Operation: filter_condition.OperationEqual,
 			ValueFrom: interfaces.ValueFrom_Const, Value: "example"}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: fixed, FixedFilterCondCfg: fixed}
 		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
@@ -852,7 +852,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1",
 			Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 			LocalIndexName: "source-index", SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text}}}
-		fixed := &interfaces.FilterCondCfg{Name: "title", Operation: filter_condition.OperationEqual,
+		fixed := &interfaces.FilterCondCfg{Field: "title", Operation: filter_condition.OperationEqual,
 			ValueFrom: interfaces.ValueFrom_Const, Value: "example"}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: fixed, FixedFilterCondCfg: fixed}
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
@@ -991,7 +991,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		}
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondCfg: &interfaces.FilterCondCfg{
-				Name:      "name",
+				Field:     "name",
 				Operation: "==",
 				ValueFrom: interfaces.ValueFrom_Const,
 				Value:     "alice",
@@ -1694,7 +1694,7 @@ func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
 				resource := tableResource("index")
 				resource.CatalogID = "catalog-1"
 				resource.SchemaDefinition = []*interfaces.Property{{Name: "payload", Type: fieldType}}
-				cfg := &interfaces.FilterCondCfg{Name: "payload", Operation: "exist"}
+				cfg := &interfaces.FilterCondCfg{Field: "payload", Operation: "exist"}
 				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
 				if stored {
 					params.FixedFilterCondCfg = cfg
@@ -1740,7 +1740,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			ignore := true
 			bounds := []any{"-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"}
 			params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, NeedTotal: true,
-				FilterCondCfg: &interfaces.FilterCondCfg{Name: "wide", Operation: op, Value: bounds}}
+				FilterCondCfg: &interfaces.FilterCondCfg{Field: "wide", Operation: op, Value: bounds}}
 			cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}, nil)
 			cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeDoris, gomock.Any()).Return(conn, nil)
 			conn.EXPECT().Connect(gomock.Any()).Return(nil)
@@ -1780,7 +1780,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 					resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 					resource.LocalIndexName = "test-index"
 				}
-				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "wide", Operation: "eq", ValueFrom: "const", Value: "+00100"}}
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "wide", Operation: "eq", ValueFrom: "const", Value: "+00100"}}
 				wantValue := "+00100"
 				wantRows := []map[string]any{{"wide": "100", "payload": map[string]any{"id": json.Number("9007199254740993")}}}
 				cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: connectorType}, nil)
@@ -1835,7 +1835,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 	}
 	t.Run("JSON content queries never execute", func(t *testing.T) {
 		for _, cfg := range []*interfaces.FilterCondCfg{
-			{Name: "payload.id", Operation: "eq", ValueFrom: "const", Value: "1"},
+			{Field: "payload.id", Operation: "eq", ValueFrom: "const", Value: "1"},
 		} {
 			ctrl := gomock.NewController(t)
 			cs := mock_interfaces.NewMockCatalogService(ctrl)
@@ -1867,7 +1867,7 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 				service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: mock_interfaces.NewMockLocalIndexManager(ctrl), ds: mock_interfaces.NewMockDatasetService(ctrl)}
 				resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: category, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "test-index", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
 				cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL}, nil)
-				cfg := &interfaces.FilterCondCfg{Name: "payload.id", Operation: "eq", ValueFrom: "const", Value: "1"}
+				cfg := &interfaces.FilterCondCfg{Field: "payload.id", Operation: "eq", ValueFrom: "const", Value: "1"}
 				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
 				if stored {
 					params.FixedFilterCondCfg = cfg
@@ -1937,7 +1937,7 @@ func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
 				models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
 				models.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return([]*interfaces.VectorResp{{Vector: make([]float32, 1024)}}, nil)
 			}
-			cfg := &interfaces.FilterCondCfg{Name: field, Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: tc.value}
+			cfg := &interfaces.FilterCondCfg{Field: field, Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: tc.value}
 			params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
 			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", Enabled: true}, nil)
 			if tc.name != "raw mismatch" {
@@ -1949,7 +1949,7 @@ func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
 				require.NotNil(t, result)
 				assert.Equal(t, int64(1), result.TotalCount)
 				require.Len(t, result.Entries, 1)
-				assert.Equal(t, "title_vector", cfg.Name)
+				assert.Equal(t, "title_vector", cfg.Field)
 				return
 			}
 			var httpErr *httperrors.HTTPError
@@ -1980,9 +1980,9 @@ func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) 
 			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
 			models := mock_interfaces.NewMockModelFactoryService(ctrl)
 			resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
-			cfg := &interfaces.FilterCondCfg{Name: "title_vector", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: make([]float32, 3)}
+			cfg := &interfaces.FilterCondCfg{Field: "title_vector", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: make([]float32, 3)}
 			if tc.text {
-				cfg.Name = "title"
+				cfg.Field = "title"
 				cfg.Value = "query text"
 				model := &interfaces.SmallModel{ModelID: "model"}
 				models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
@@ -2023,7 +2023,7 @@ func TestQuerySourcePageTemporalConfigurationErrors(t *testing.T) {
 		svc := &resourceDataService{cs: catalogs}
 		field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
 		source := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{field}}
-		cfg := &interfaces.FilterCondCfg{Name: "created", Operation: ">=", Value: "2026-10-19 00:00:00"}
+		cfg := &interfaces.FilterCondCfg{Field: "created", Operation: ">=", Value: "2026-10-19 00:00:00"}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
 		if stored {
 			params.FixedFilterCondCfg = cfg

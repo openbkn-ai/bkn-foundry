@@ -545,7 +545,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 		} {
 			t.Run(tc.connector+"/"+tc.unit, func(t *testing.T) {
 				cf.SetConnectorEnabled(tc.connector, true)
-				cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationBefore, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, tc.unit}}
+				cfg := &interfaces.FilterCondCfg{Field: "created", Operation: filter_condition.OperationBefore, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, tc.unit}}
 				cond, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"created": {Name: "created", Type: interfaces.DataType_Datetime}})
 				require.NoError(t, err)
 				for _, tree := range []interfaces.FilterCondition{
@@ -566,7 +566,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
 		cf.RegisterCoreLocalConnectors()
 		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
-		cfg := &interfaces.FilterCondCfg{Name: "content", Operation: filter_condition.OperationMatch, ValueFrom: interfaces.ValueFrom_Const, Value: "search"}
+		cfg := &interfaces.FilterCondCfg{Field: "content", Operation: filter_condition.OperationMatch, ValueFrom: interfaces.ValueFrom_Const, Value: "search"}
 		condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"content": {Name: "content", Type: interfaces.DataType_Text}})
 		require.NoError(t, err)
 		err = cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, nil, nil)
@@ -581,7 +581,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 4}}}}
 		source := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{field}}
 		for _, value := range []string{"okay", "longer"} {
-			cfg := &interfaces.FilterCondCfg{Name: field.Name, Operation: filter_condition.OperationEqual, ValueFrom: interfaces.ValueFrom_Const, Value: value}
+			cfg := &interfaces.FilterCondCfg{Field: field.Name, Operation: filter_condition.OperationEqual, ValueFrom: interfaces.ValueFrom_Const, Value: value}
 			cond, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{field.Name: field})
 			require.NoError(t, err)
 			err = cf.ValidateFilterCondition(interfaces.ConnectorTypeOpenSearch, cond, source.SchemaDefinition, nil)

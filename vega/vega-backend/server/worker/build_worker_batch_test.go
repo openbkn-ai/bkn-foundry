@@ -84,14 +84,14 @@ func TestBuildBatchCursorFilter(t *testing.T) {
 	assert.Equal(t, &interfaces.FilterCondCfg{
 		Operation: "and",
 		SubConds: []*interfaces.FilterCondCfg{
-			{Name: "customer_id", Operation: "gt", Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const},
+			{Field: "customer_id", Operation: "gt", Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const},
 		},
 	}, filter.SubConds[0])
 	assert.Equal(t, &interfaces.FilterCondCfg{
 		Operation: "and",
 		SubConds: []*interfaces.FilterCondCfg{
-			{Name: "customer_id", Operation: "==", Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const},
-			{Name: "id", Operation: "gt", Value: 100, ValueFrom: interfaces.ValueFrom_Const},
+			{Field: "customer_id", Operation: "==", Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const},
+			{Field: "id", Operation: "gt", Value: 100, ValueFrom: interfaces.ValueFrom_Const},
 		},
 	}, filter.SubConds[1])
 }
@@ -112,9 +112,9 @@ func TestBuildBatchCursorFilterAppendsPrimaryKeyForSameIncrementalValue(t *testi
 
 	require.Equal(t, []string{"ingested_at", "id"}, keys)
 	require.Len(t, filter.SubConds, 2)
-	assert.Equal(t, "ingested_at", filter.SubConds[1].SubConds[0].Name)
+	assert.Equal(t, "ingested_at", filter.SubConds[1].SubConds[0].Field)
 	assert.Equal(t, "==", filter.SubConds[1].SubConds[0].Operation)
-	assert.Equal(t, "id", filter.SubConds[1].SubConds[1].Name)
+	assert.Equal(t, "id", filter.SubConds[1].SubConds[1].Field)
 	assert.Equal(t, "gt", filter.SubConds[1].SubConds[1].Operation)
 	assert.Equal(t, int64(1000), filter.SubConds[1].SubConds[1].Value)
 }
@@ -167,8 +167,8 @@ func matchesStringInt64CursorFilter(t *testing.T, filter *interfaces.FilterCondC
 		require.Equal(t, "and", branch.Operation)
 		matches := true
 		for _, condition := range branch.SubConds {
-			actual, exists := row[condition.Name]
-			require.True(t, exists, "row is missing cursor field %q", condition.Name)
+			actual, exists := row[condition.Field]
+			require.True(t, exists, "row is missing cursor field %q", condition.Field)
 			switch condition.Operation {
 			case "==":
 				matches = matches && actual == condition.Value
@@ -202,7 +202,7 @@ func TestBatchCursorKeepsCompositePrimaryFieldsForResume(t *testing.T) {
 
 	require.Equal(t, []string{"updated_at", "tenant_id", "id"}, keys)
 	require.Len(t, filter.SubConds, 3)
-	assert.Equal(t, "id", filter.SubConds[2].SubConds[2].Name)
+	assert.Equal(t, "id", filter.SubConds[2].SubConds[2].Field)
 	assert.Equal(t, "gt", filter.SubConds[2].SubConds[2].Operation)
 	assert.Equal(t, int64(1000), filter.SubConds[2].SubConds[2].Value)
 }
@@ -749,7 +749,7 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 			if queryCount == 2 {
 				require.Len(t, params.FilterCondCfg.SubConds, 2)
 				idCondition := params.FilterCondCfg.SubConds[1].SubConds[1]
-				assert.Equal(t, "id", idCondition.Name)
+				assert.Equal(t, "id", idCondition.Field)
 				assert.Equal(t, "gt", idCondition.Operation)
 				assert.Equal(t, int64(1020), idCondition.Value)
 			}

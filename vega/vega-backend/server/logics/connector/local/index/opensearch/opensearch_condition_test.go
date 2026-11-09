@@ -246,7 +246,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			{"in", []any{first, second}, union},
 			{"not_in", []any{first, second}, map[string]any{"bool": map[string]any{"filter": map[string]any{"exists": map[string]any{"field": "created"}}, "must_not": union}}},
 		} {
-			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: tc.op, Value: tc.value}
+			cfg := &interfaces.FilterCondCfg{Field: "created", Operation: tc.op, Value: tc.value}
 			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
 			require.NoError(t, err)
 			got, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
@@ -267,7 +267,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 					case "in", "not_in", "range", "out_range", "between":
 						value = []any{literal, literal}
 					}
-					cfg := &interfaces.FilterCondCfg{Name: "created", Operation: op, Value: value}
+					cfg := &interfaces.FilterCondCfg{Field: "created", Operation: op, Value: value}
 					cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
 					require.NoError(t, err)
 					dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
@@ -286,7 +286,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 
 	t.Run("datetime keeps nanosecond precision", func(t *testing.T) {
 		field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime}
-		cfg := &interfaces.FilterCondCfg{Name: "created", Operation: ">", Value: "2026-10-19T00:00:00.123456789Z"}
+		cfg := &interfaces.FilterCondCfg{Field: "created", Operation: ">", Value: "2026-10-19T00:00:00.123456789Z"}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
 		require.NoError(t, err)
 		dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
@@ -312,7 +312,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 					case "in", "not_in", "range", "out_range", "between":
 						value = []any{literal, literal}
 					}
-					cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, Value: value}
+					cfg := &interfaces.FilterCondCfg{Field: "value", Operation: op, Value: value}
 					cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 					require.NoError(t, err)
 					dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
@@ -360,7 +360,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 					operation == filter_condition.OperationContain || operation == filter_condition.OperationNotContain {
 					value = []any{"hello"}
 				}
-				cfg := &interfaces.FilterCondCfg{Name: alias.Name, Operation: operation,
+				cfg := &interfaces.FilterCondCfg{Field: alias.Name, Operation: operation,
 					ValueFrom: interfaces.ValueFrom_Const, Value: value}
 				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
 				require.NoError(t, err)
@@ -381,7 +381,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 						operation == filter_condition.OperationContain || operation == filter_condition.OperationNotContain {
 						value = []any{value}
 					}
-					cfg := &interfaces.FilterCondCfg{Name: field, Operation: operation,
+					cfg := &interfaces.FilterCondCfg{Field: field, Operation: operation,
 						ValueFrom: interfaces.ValueFrom_Const, Value: value}
 					condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
 					require.NoError(t, err)
@@ -396,7 +396,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		}
 
 		t.Run("field comparisons resolve aliases on both sides", func(t *testing.T) {
-			cfg := &interfaces.FilterCondCfg{Name: alias.Name, Operation: filter_condition.OperationEqual,
+			cfg := &interfaces.FilterCondCfg{Field: alias.Name, Operation: filter_condition.OperationEqual,
 				ValueFrom: interfaces.ValueFrom_Field, Value: alias.Name}
 			condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
 			require.NoError(t, err)
@@ -409,7 +409,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		})
 		t.Run("missing keyword feature is still rejected", func(t *testing.T) {
 			target.Features = nil
-			cfg := &interfaces.FilterCondCfg{Name: alias.Name, Operation: filter_condition.OperationEqual,
+			cfg := &interfaces.FilterCondCfg{Field: alias.Name, Operation: filter_condition.OperationEqual,
 				ValueFrom: interfaces.ValueFrom_Const, Value: "hello"}
 			condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
 			require.NoError(t, err)
@@ -651,7 +651,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		conn := &OpenSearchConnector{}
 		schema := opensearchConditionSchema()
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "embedding",
+			Field:     "embedding",
 			Operation: filter_condition.OperationKnnVector,
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     []float32{0.1, 0.2},
@@ -684,7 +684,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 
 	t.Run("uses direct k when limit key is absent", func(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "embedding",
+			Field:     "embedding",
 			Operation: filter_condition.OperationKnnVector,
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     []float32{0.1, 0.2},
@@ -842,7 +842,7 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		fields := map[string]*interfaces.Property{"left": schema[0], "right": schema[1]}
 		for _, operation := range []string{filter_condition.OperationEqual, filter_condition.OperationNotEqual} {
 			cfg := &interfaces.FilterCondCfg{
-				Name: "left", Operation: operation,
+				Field: "left", Operation: operation,
 				ValueFrom: interfaces.ValueFrom_Field, Value: "right",
 			}
 			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
@@ -879,7 +879,7 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		}
 		fields := map[string]*interfaces.Property{"left": schema[0], "right": schema[1]}
 		cfg := &interfaces.FilterCondCfg{
-			Name: "left", Operation: filter_condition.OperationEqual,
+			Field: "left", Operation: filter_condition.OperationEqual,
 			ValueFrom: interfaces.ValueFrom_Field, Value: "right",
 		}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
@@ -1049,7 +1049,7 @@ func TestOpenSearchConnectorConvertFilterConditionOrderedFieldComparison(t *test
 	for _, tt := range tests {
 		t.Run(tt.operation, func(t *testing.T) {
 			cfg := &interfaces.FilterCondCfg{
-				Name:      "left",
+				Field:     "left",
 				Operation: tt.operation,
 				ValueFrom: interfaces.ValueFrom_Field,
 				Value:     "right",
@@ -1096,7 +1096,7 @@ func mustOSCondition(t *testing.T, cfg *interfaces.FilterCondCfg) interfaces.Fil
 
 func osConstCfg(name string, op string, value any) *interfaces.FilterCondCfg {
 	return &interfaces.FilterCondCfg{
-		Name:      name,
+		Field:     name,
 		Operation: op,
 		ValueFrom: interfaces.ValueFrom_Const,
 		Value:     value,
@@ -1270,7 +1270,7 @@ func TestOpenSearchConnectorConvertFilterConditionUnsignedFieldComparison(t *tes
 					{Name: "left", OriginalName: "physical.left", Type: types[0]},
 					{Name: "right", OriginalName: "physical.right", Type: types[1]},
 				}
-				cfg := &interfaces.FilterCondCfg{Name: "left", Operation: operation,
+				cfg := &interfaces.FilterCondCfg{Field: "left", Operation: operation,
 					ValueFrom: interfaces.ValueFrom_Field, Value: "right"}
 				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg,
 					map[string]*interfaces.Property{"left": schema[0], "right": schema[1]})
@@ -1301,7 +1301,7 @@ func TestOpenSearchConnectorConvertFilterConditionTemporalFieldComparison(t *tes
 			fields := map[string]*interfaces.Property{"start": schema[0], "end": schema[1]}
 			for _, operation := range []string{"==", "!=", ">", ">=", "<", "<="} {
 				t.Run(leftType+"/"+operation+"/"+rightType, func(t *testing.T) {
-					cfg := &interfaces.FilterCondCfg{Name: "start", Operation: operation,
+					cfg := &interfaces.FilterCondCfg{Field: "start", Operation: operation,
 						ValueFrom: interfaces.ValueFrom_Field, Value: "end"}
 					condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
 					require.NoError(t, err)
@@ -1383,7 +1383,7 @@ func TestIndexBeforeQuery(t *testing.T) {
 			for _, unit := range []string{"year", "month", "week", "day", "hour", "minute", "second"} {
 				t.Run(zone+"/"+typ+"/"+unit, func(t *testing.T) {
 					t.Setenv("TZ", zone)
-					cfg := &interfaces.FilterCondCfg{Name: "at", Operation: "before", ValueFrom: interfaces.ValueFrom_Const, Value: []any{json.Number("3"), unit}}
+					cfg := &interfaces.FilterCondCfg{Field: "at", Operation: "before", ValueFrom: interfaces.ValueFrom_Const, Value: []any{json.Number("3"), unit}}
 					condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"at": {Name: "at", OriginalName: "physical.at", Type: typ}})
 					require.NoError(t, err)
 					got, err := indexBeforeQuery(condition.(*filter_condition.BeforeCond), now)
@@ -1466,7 +1466,7 @@ func TestValidateIndexTimeBoundary(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cutoff, err := time.Parse(time.RFC3339Nano, tc.value)
 			require.NoError(t, err)
-			cfg := &interfaces.FilterCondCfg{Name: "at", Operation: "before", Value: []any{1, "day"}}
+			cfg := &interfaces.FilterCondCfg{Field: "at", Operation: "before", Value: []any{1, "day"}}
 			cond := &filter_condition.BeforeCond{Cfg: cfg, Lfield: &interfaces.Property{Name: "at", OriginalType: tc.typ}}
 			err = validateIndexTimeBoundary(cond, cutoff, 1, "day")
 			if tc.bad {
@@ -1480,14 +1480,14 @@ func TestValidateIndexTimeBoundary(t *testing.T) {
 		})
 	}
 	t.Run("captures the actual field without retaining the condition", func(t *testing.T) {
-		cfg := &interfaces.FilterCondCfg{Name: "published_at"}
+		cfg := &interfaces.FilterCondCfg{Field: "published_at"}
 		field := &interfaces.Property{Name: "source_at", OriginalType: "date_nanos"}
 		cond := &filter_condition.BeforeCond{Cfg: cfg, Lfield: field}
 		err := validateIndexTimeBoundary(cond, time.Unix(0, -1), 1, "day")
 		var temporal *interfaces.TemporalRangeError
 		require.ErrorAs(t, err, &temporal)
 		assert.Equal(t, "source_at", temporal.Field)
-		cfg.Name = "renamed_request"
+		cfg.Field = "renamed_request"
 		field.Name = "renamed_source"
 		assert.Equal(t, "source_at", temporal.Field)
 	})
@@ -1534,7 +1534,7 @@ func TestOpenSearchConnectorTextKeywordOperations(t *testing.T) {
 			if op == "contain" || op == "not_contain" {
 				value = []any{"hello", "world"}
 			}
-			cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Name: "body", Operation: op, ValueFrom: interfaces.ValueFrom_Const, Value: value}, map[string]*interfaces.Property{"body": field})
+			cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "body", Operation: op, ValueFrom: interfaces.ValueFrom_Const, Value: value}, map[string]*interfaces.Property{"body": field})
 			require.NoError(t, err)
 			got, err := conn.ConvertFilterCondition(cond, []*interfaces.Property{field})
 			require.NoError(t, err)
@@ -1566,7 +1566,7 @@ func TestOpenSearchConnectorConvertFilterConditionMixedTemporalFields(t *testing
 				for _, op := range []string{"==", "!=", ">", ">=", "<", "<="} {
 					t.Run(types[0]+"/"+op+"/"+types[1], func(t *testing.T) {
 						schema := []*interfaces.Property{{Name: "left", OriginalName: "physical.left", Type: types[0]}, {Name: "right", OriginalName: "physical.right", Type: types[1]}}
-						cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Name: "left", Operation: op, ValueFrom: interfaces.ValueFrom_Field, Value: "right"}, map[string]*interfaces.Property{"left": schema[0], "right": schema[1]})
+						cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "left", Operation: op, ValueFrom: interfaces.ValueFrom_Field, Value: "right"}, map[string]*interfaces.Property{"left": schema[0], "right": schema[1]})
 						require.NoError(t, err)
 						dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, schema)
 						var buildErr *interfaces.ConditionBuildError

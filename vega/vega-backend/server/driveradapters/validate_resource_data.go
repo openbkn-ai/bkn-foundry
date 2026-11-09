@@ -176,7 +176,7 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 	}
 
 	// Determine whether the filter is an empty object {}
-	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
+	if cfg.Field == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
 		return nil
 	}
 
@@ -212,7 +212,7 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 
 	if condFactory.NeedName() {
 		// The name of the filter field cannot be empty
-		if cfg.Name == "" {
+		if cfg.Field == "" {
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionName)
 		}
 	}

@@ -16,7 +16,7 @@ info:
     | `fileset` | 物理 | 文件集（计划中） |
     | `metric` | 物理 | 指标（计划中） |
     | `api` | 物理 | API 数据源（计划中） |
-    | `logical_view` | 逻辑 | 专业版及以上可用；由 `logic_definition` 定义，目前仅支持衍生视图 |
+    | `logical_view` | 逻辑 | 专业版及以上可用；由 `logical_view_definition` 定义，目前仅支持衍生视图 |
     | `dataset` | 逻辑 | 文档集合（RAG 索引），documents 子资源走 [resource-data.yaml] |
 
     `enabled` 和 `status` 相互独立：`enabled=false` 表示该资源不可用于查询或构建；
@@ -42,7 +42,7 @@ paths:
       summary: 获取资源列表
       description: |
         分页 + 多维过滤获取 Resource 摘要。列表不返回扩展 JSON 字段
-        `source_metadata`、`schema_definition`、`index_config`、`logic_definition`；
+        `source_metadata`、`schema_definition`、`index_config`、`logical_view_definition`；
         需要这些字段时使用 `GET /resources/{id}`。
       parameters:
         - name: name
@@ -162,8 +162,8 @@ paths:
           直接调用本接口创建会返回 400 `VegaBackend.Resource.CategoryNotCreatable`。
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
         - `category=logical_view` 仅在 EE 专业版及以上授权可创建，且必须提交
-          `logic_type=derived` 与对应的
-          `logic_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`、
+          `logical_type=derived` 与对应的
+          `logical_view_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`、
           `type` 与非空 `display_name` 必填，`type` 必须等于绑定的源 Resource 字段类型。
           `display_name` 是 View 自身的显示名，可与源字段不同，最多 255 个字符；
           不提供自动继承。同一 View 内输出字段的 `name` 与 `display_name` 均不得重复；
@@ -664,7 +664,7 @@ components:
             创建/更新时查询模型登记信息并写入只读 `dimension`，调用方不应指定它。
           type: object
           additionalProperties: true
-    LogicDefinitionNode:
+    LogicalViewDefinitionNode:
       description: |
         逻辑视图（`category=logical_view`）定义图中的一个节点。
 
@@ -718,7 +718,7 @@ components:
         - `index_name` 是服务端管理的物理索引名：Dataset 创建时分配，BuildTask 也会使用其
           自己快照的目标索引名；外部请求不应设置。
         - derived 逻辑视图同时使用 `schema_definition`（公开字段）与
-          `logic_definition`（单一源及固定过滤）；物理资源只使用前者。
+          `logical_view_definition`（单一源及固定过滤）；物理资源只使用前者。
       type: object
       required:
         - id
@@ -856,19 +856,19 @@ components:
           description: 最近一次发现记录的源端行数估算；无法提供时省略。若同时存在 row_count，应优先使用精确值
           type: integer
           format: int64
-        logic_type:
+        logical_type:
           description: 逻辑视图类型（仅 category=logical_view 有意义）
           type: string
           enum:
             - derived
             - composite
-        logic_definition:
+        logical_view_definition:
           description: derived 返回对象；已保存的 composite 视图仍返回旧节点数组
           oneOf:
-            - $ref: "#/components/schemas/DerivedLogicDefinition"
+            - $ref: "#/components/schemas/DerivedLogicalViewDefinition"
             - type: array
               items:
-                $ref: "#/components/schemas/LogicDefinitionNode"
+                $ref: "#/components/schemas/LogicalViewDefinitionNode"
         creator:
           $ref: "#/components/schemas/AccountInfo"
         create_time:
@@ -985,13 +985,19 @@ components:
             $ref: "#/components/schemas/Property"
         index_config:
           $ref: "#/components/schemas/ResourceIndexConfig"
-        logic_type:
-          description: 创建和完整 PUT 更新逻辑视图时必填；须与当前定义结构一致，PUT 不可改变既有类型
+        logical_type:
+          description: |
+            创建和完整 PUT 更新逻辑视图时必填；须与当前定义结构一致，PUT 不可改变既有类型。
+            旧 logic_type 按未知字段忽略，不作为别名或回退值；仅提交旧字段会因缺少此必填字段而失败。
           type: string
           enum: [derived, composite]
-        logic_definition:
-          $ref: "#/components/schemas/DerivedLogicDefinition"
-    DerivedLogicDefinition:
+        logical_view_definition:
+          description: |
+            创建和完整 PUT 更新逻辑视图时必填且不能为 null。
+            旧 logic_definition 字段按未知字段忽略，不作为别名或回退值；
+            仅提交旧字段会因缺少此必填字段而失败。
+          $ref: "#/components/schemas/DerivedLogicalViewDefinition"
+    DerivedLogicalViewDefinition:
       description: derived 逻辑视图的单一源和固定过滤配置；不接受旧节点数组、distinct 或未知字段
       type: object
       additionalProperties: false
@@ -1046,7 +1052,7 @@ components:
     ResourceSummary:
       description: |
         Resource 列表摘要。为避免列表反序列化扩展 JSON，不包含
-        `source_metadata`、`schema_definition`、`index_config`、`logic_definition`；
+        `source_metadata`、`schema_definition`、`index_config`、`logical_view_definition`；
         详情请使用 `GET /resources/{id}`。
       type: object
       required:
@@ -1117,7 +1123,7 @@ components:
         index_name:
           description: 关联索引名
           type: string
-        logic_type:
+        logical_type:
           description: 逻辑视图类型
           type: string
           enum: [derived, composite]

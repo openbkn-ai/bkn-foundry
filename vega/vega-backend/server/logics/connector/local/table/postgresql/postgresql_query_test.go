@@ -33,7 +33,7 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 		connector := &PostgresqlConnector{db: db, connected: true}
 		field := &interfaces.Property{Name: "amount", OriginalName: "source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal}
 		resource := &interfaces.Resource{SourceIdentifier: `"public"."payments"`, SchemaDefinition: []*interfaces.Property{field}}
-		cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Name: "amount", Operation: ">=", Value: json.Number("-92233720368547758.08")}, map[string]*interfaces.Property{"amount": field})
+		cond, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "amount", Operation: ">=", Value: json.Number("-92233720368547758.08")}, map[string]*interfaces.Property{"amount": field})
 		require.NoError(t, err)
 		base := `SELECT CAST("source_amount" AS NUMERIC) AS "amount" FROM "public"."payments" WHERE (CAST("source_amount" AS NUMERIC) >= $1)`
 		mock.ExpectQuery(base + ` ORDER BY CAST("source_amount" AS NUMERIC) ASC NULLS LAST LIMIT 10`).WithArgs("-92233720368547758.08").WillReturnRows(sqlmock.NewRows([]string{"amount"}).

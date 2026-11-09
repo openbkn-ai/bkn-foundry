@@ -34,7 +34,7 @@ func testFieldsMap() map[string]*interfaces.Property {
 
 func constCfg(name, op string, value any) *interfaces.FilterCondCfg {
 	return &interfaces.FilterCondCfg{
-		Name:      name,
+		Field:     name,
 		Operation: op,
 		ValueFrom: interfaces.ValueFrom_Const,
 		Value:     value,
@@ -45,10 +45,10 @@ func TestNormalizeValueFrom(t *testing.T) {
 	require.NoError(t, NormalizeValueFrom(nil))
 	require.NoError(t, NormalizeValueFrom(&interfaces.FilterCondCfg{}))
 	condition := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{
-		{Name: "age", Operation: OperationGt, Value: 0},
+		{Field: "age", Operation: OperationGt, Value: 0},
 		{Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{
-			{Name: "age", Operation: OperationEqual, Value: 1},
-			{Name: "age", Operation: OperationEqual, Value: 2},
+			{Field: "age", Operation: OperationEqual, Value: 1},
+			{Field: "age", Operation: OperationEqual, Value: 2},
 		}},
 	}}
 	require.NoError(t, NormalizeValueFrom(condition))
@@ -353,7 +353,7 @@ func TestNewFilterCondition(t *testing.T) {
 			assert.Equal(t, "best_fields", got.MatchType)
 		}},
 		{name: "knn vector accepts vector field and sub conditions", cfg: &interfaces.FilterCondCfg{
-			Name:      "embedding",
+			Field:     "embedding",
 			Operation: OperationKnnVector,
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     []float32{0.1, 0.2},
@@ -468,7 +468,7 @@ func TestEqualCond(t *testing.T) {
 	})
 	t.Run("equal cond field to field", func(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "name",
+			Field:     "name",
 			Operation: "==",
 			ValueFrom: interfaces.ValueFrom_Field,
 			Value:     "other_name",
@@ -487,7 +487,7 @@ func TestEqualCond(t *testing.T) {
 	})
 	t.Run("equal cond field to field right not found", func(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "name",
+			Field:     "name",
 			Operation: "==",
 			ValueFrom: interfaces.ValueFrom_Field,
 			Value:     "nonexistent",
@@ -547,7 +547,7 @@ func TestInCond(t *testing.T) {
 	})
 	t.Run("in cond rejects field value from", func(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "name",
+			Field:     "name",
 			Operation: "in",
 			ValueFrom: interfaces.ValueFrom_Field,
 			Value:     []any{"alice"},
@@ -896,7 +896,7 @@ func TestAllOperationsRegistered(t *testing.T) {
 func TestNullCondValid(t *testing.T) {
 	t.Run("null cond valid", func(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
-			Name:      "name",
+			Field:     "name",
 			Operation: "null",
 		}
 		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
@@ -930,12 +930,12 @@ func TestBooleanPredicateFieldTypes(t *testing.T) {
 	for _, operation := range []string{OperationTrue, OperationFalse} {
 		t.Run(operation, func(t *testing.T) {
 			for _, field := range []string{"native_boolean", "oracle_flag", "mariadb_flag", "number_two", "fractional_number", "unqualified_number", "integer", "tinyint_two", "unsigned_integer"} {
-				condition, err := NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: field, Operation: operation}, fields)
+				condition, err := NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: field, Operation: operation}, fields)
 				require.NoError(t, err)
 				require.NotNil(t, condition)
 			}
 			for _, field := range []string{"float", "name"} {
-				condition, err := NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: field, Operation: operation}, fields)
+				condition, err := NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: field, Operation: operation}, fields)
 				require.ErrorContains(t, err, "not a boolean or supported numeric field")
 				assert.Nil(t, condition)
 			}
@@ -1070,7 +1070,7 @@ func TestConditionConstructorsRejectNilValues(t *testing.T) {
 	fields := testFieldsMap()
 	for _, operation := range []string{OperationEqual, OperationNotEqual, OperationGt, OperationGte, OperationLt, OperationLte} {
 		t.Run(operation, func(t *testing.T) {
-			cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueFrom: interfaces.ValueFrom_Const}
+			cfg := &interfaces.FilterCondCfg{Field: "age", Operation: operation, ValueFrom: interfaces.ValueFrom_Const}
 			condition, err := OperationMap[operation].New(context.Background(), cfg, fields)
 			require.ErrorContains(t, err, "must not be nil")
 			assert.Nil(t, condition)
@@ -1079,7 +1079,7 @@ func TestConditionConstructorsRejectNilValues(t *testing.T) {
 	for _, operation := range []string{OperationRange, OperationOutRange, OperationBetween} {
 		for _, values := range [][]any{{nil, 2}, {1, nil}} {
 			t.Run(operation, func(t *testing.T) {
-				cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueFrom: interfaces.ValueFrom_Const, Value: values}
+				cfg := &interfaces.FilterCondCfg{Field: "age", Operation: operation, ValueFrom: interfaces.ValueFrom_Const, Value: values}
 				condition, err := OperationMap[operation].New(context.Background(), cfg, fields)
 				require.ErrorContains(t, err, "must not be nil")
 				assert.Nil(t, condition)
@@ -1100,7 +1100,7 @@ func TestConstantOnlyConditionConstructorsRejectFieldSources(t *testing.T) {
 			fields := testFieldsMap()
 			switch operation {
 			case OperationRange, OperationOutRange, OperationBetween, OperationBefore, OperationCurrent:
-				cfg.Name = "created_at"
+				cfg.Field = "created_at"
 			case OperationKnnVector:
 				fields["name"].Type = interfaces.DataType_Vector
 			}

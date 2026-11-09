@@ -57,17 +57,17 @@ func (c *MatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		}
 	} else {
 		// Compatible with the old single field method
-		if cfg.Name == "" {
+		if cfg.Field == "" {
 			return nil, fmt.Errorf("condition [match] left field is empty")
 		}
-		if cfg.Name == interfaces.AllField {
+		if cfg.Field == interfaces.AllField {
 			for fieldName := range fieldsMap {
 				fields = append(fields, fieldsMap[fieldName])
 			}
 		} else {
-			field, ok := fieldsMap[cfg.Name]
+			field, ok := fieldsMap[cfg.Field]
 			if !ok {
-				return nil, fmt.Errorf("condition [match] left field '%s' not found", cfg.Name)
+				return nil, fmt.Errorf("condition [match] left field '%s' not found", cfg.Field)
 			}
 			fields = append(fields, field)
 		}
