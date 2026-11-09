@@ -283,6 +283,10 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		if release.Notes != "" {
 			notes = strings.TrimSpace(notes + "\n\n" + release.Notes)
 		}
+		// Refused before the version is published: once it is, the notes must still fit the row.
+		if len(notes) > maxNotesBytes {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidNotes)
+		}
 		published, err := s.publishVersion(ctx, token, release, notes, req.AllowOutdatedBase)
 		if err != nil {
 			return nil, err
@@ -460,7 +464,9 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 	if err != nil {
 		return nil, err
 	}
-	if found && existing.State == interfaces.RELEASE_STATE_PUBLISHED && refuse(httperrors.NewHTTPError(ctx, http.StatusConflict,
+	// Any release of the version but one still prepared has taken it, a record of the
+	// one-network-per-release scheme included.
+	if found && existing.State != interfaces.RELEASE_STATE_PREPARED && refuse(httperrors.NewHTTPError(ctx, http.StatusConflict,
 		perrors.BknProject_Release_VersionExists).WithErrorDetails(map[string]any{"lineage_id": lineageID, "version": version})) {
 		return checked, nil
 	}

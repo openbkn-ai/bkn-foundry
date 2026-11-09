@@ -69,7 +69,7 @@ bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出
 | --- | --- | --- |
 | GET | `/health` | 服务信息 |
 | GET | `/ready` | 数据库可达时返回 200，否则返回 503 |
-| GET | `/lineages/{lineage_id}/releases?limit=&cursor=` | 谱系下的发布记录，按时间倒序，游标分页。`state` 为 `prepared`（已写入草稿，尚未发布）或 `published`，带 `kn_version`，即它运行时的网络版本号 |
+| GET | `/lineages/{lineage_id}/releases?limit=&cursor=` | 谱系下的发布记录，按时间倒序，游标分页。`state` 为 `prepared`（已写入草稿，尚未发布）、`published`（带 `kn_version`，即它运行时的网络版本号），或 `legacy`（按旧方式每次发布一个新网络时的记录，版本号仍被占用） |
 | GET | `/lineages/{lineage_id}/releases/{version}` | 谱系中版本号为 `version` 的发布记录 |
 | POST | `/lineages/{lineage_id}/releases` | 请求体 `{"branch","version","project_id","notes","overwrite_draft_changes","allow_outdated_base"}`。把分支准备到网络草稿并立即发布，中间不跑回归：返回 201 `{"release","network_id","tag","commit","kn_version","warnings","published_metrics","purged_version"}`。409 `Release.NotVersioned`、`BranchBehind`（先同步分支）、`Drift`（草稿里有不在 `main` 中的修改；先提交漂移再同步）、`VersionExists`、`CapabilitiesSkipped`、`DraftHasChanges`（有人改了草稿还没发布：先把这些修改提交到项目，或带 `overwrite_draft_changes`）、`DraftChanged`（准备之后草稿又变了）、`DraftOutdated`（运行版本在这次发布的基础版本之后被回退过；负责人确认带回后带 `allow_outdated_base`）、`RunningChanged`、`NothingToPublish`（网络没有变化）；400 `ValidationFailed`（bkn-backend 的问题清单在 `error_details`）；503 `NotReady`。回复丢失的发布靠版本来源里记下的发布记录 ID 认出；再次发布会补完 git 步骤 |
 | POST | `/lineages` | 请求体 `{"kn_id"}`。导出网络的运行版本并在 `main` 上创建谱系；返回 201 `{"lineage_id","commit"}`，已存在返回 409 |

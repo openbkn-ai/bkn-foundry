@@ -214,7 +214,8 @@ func Test_LineageRestHandler(t *testing.T) {
 			gomock.InOrder(
 				ls.EXPECT().PrepareRelease(gomock.Any(), "Bearer t1", "orders", req, publisher).
 					Return(&interfaces.Release{ID: "r1", State: interfaces.RELEASE_STATE_PREPARED}, nil),
-				ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", req, publisher, author).
+				// The notes went with preparing; publishing adds none, so they are not written twice.
+				ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", withoutNotes(req), publisher, author).
 					Return(&interfaces.PublishReleaseResult{
 						Release: &interfaces.Release{ID: "r1", NetworkID: "orders"}, NetworkID: "orders", Tag: "v1.1.0", Commit: "c5",
 						KNVersion: 3,
@@ -290,4 +291,9 @@ func Test_LineageRestHandler(t *testing.T) {
 
 		So(w.Result().StatusCode, ShouldEqual, http.StatusUnauthorized)
 	})
+}
+
+func withoutNotes(req interfaces.PublishReleaseRequest) interfaces.PublishReleaseRequest {
+	req.Notes = ""
+	return req
 }

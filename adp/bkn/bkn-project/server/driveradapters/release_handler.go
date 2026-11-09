@@ -91,6 +91,8 @@ func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 		replyError(c, span, err)
 		return
 	}
+	// The notes went with preparing; publishing adds none of its own.
+	req.Notes = ""
 	result, err := r.ls.PublishRelease(ctx, visitor.TokenID, lineageID, req, publisher, gitAuthor(visitor))
 	if err != nil {
 		replyError(c, span, err)

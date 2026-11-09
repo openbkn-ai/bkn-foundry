@@ -13,6 +13,8 @@ package interfaces
 const (
 	RELEASE_STATE_PREPARED  = "prepared"
 	RELEASE_STATE_PUBLISHED = "published"
+	// RELEASE_STATE_LEGACY is a release of the one-network-per-release scheme, kept as a record.
+	RELEASE_STATE_LEGACY = "legacy"
 )
 
 // Release list paging.

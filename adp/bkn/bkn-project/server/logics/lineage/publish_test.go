@@ -289,6 +289,19 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Release_BranchBehind)
 		})
 
+		Convey("A version a release of the one-network-per-release scheme took replies 409\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(2, 7, false), nil)
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(&interfaces.Release{
+				LineageID: id, Version: "1.0.0", State: interfaces.RELEASE_STATE_LEGACY}, true, nil)
+
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			_, code := httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
+		})
+
 		Convey("A version already published replies 409\n", func() {
 			id := newLineageID()
 			_, _ = setUp(id)
@@ -668,6 +681,21 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(status, ShouldEqual, http.StatusConflict)
 			So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
 			So(errorDetails(err), ShouldResemble, map[string]any{"tag": "v1.0.0", "commit": mainHead})
+		})
+
+		Convey("Notes that would not fit with the prepared ones are refused before publishing\n", func() {
+			id, _ := setUp()
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(&interfaces.Release{ID: "r1", LineageID: id,
+				Version: "1.0.0", State: interfaces.RELEASE_STATE_PREPARED, Notes: strings.Repeat("a", 40000)}, true, nil)
+			long := request
+			long.Notes = strings.Repeat("b", 30000)
+
+			_, err := svc.PublishRelease(ctx, token, id, long, publisher, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Release_InvalidNotes)
+			noTag(id)
 		})
 
 		Convey("A version that was not prepared replies 409\n", func() {

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_release (
   f_publisher VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Publisher ID',
   f_publisher_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Publisher type',
   f_notes TEXT NOT NULL COMMENT 'Release notes',
-  f_state VARCHAR(20) NOT NULL DEFAULT 'prepared' COMMENT 'State: prepared or published',
+  f_state VARCHAR(20) NOT NULL DEFAULT 'prepared' COMMENT 'State: prepared, published, or legacy for one-network-per-release records',
   f_kn_version INT NOT NULL DEFAULT 0 COMMENT 'Network version publishing made; 0 while prepared',
   f_branch_commit VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Commit holding the prepared definitions',
   f_draft_revision BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Draft revision once the definitions were written',
