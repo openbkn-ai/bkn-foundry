@@ -115,3 +115,17 @@ func (mr *MockReleaseAccessMockRecorder) PrepareRelease(ctx, release any) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareRelease", reflect.TypeOf((*MockReleaseAccess)(nil).PrepareRelease), ctx, release)
 }
+
+// SavePublishRequest mocks base method.
+func (m *MockReleaseAccess) SavePublishRequest(ctx context.Context, releaseID string, req *interfaces.KNVersionPublish) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SavePublishRequest", ctx, releaseID, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SavePublishRequest indicates an expected call of SavePublishRequest.
+func (mr *MockReleaseAccessMockRecorder) SavePublishRequest(ctx, releaseID, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePublishRequest", reflect.TypeOf((*MockReleaseAccess)(nil).SavePublishRequest), ctx, releaseID, req)
+}

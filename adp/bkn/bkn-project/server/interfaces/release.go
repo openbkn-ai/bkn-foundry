@@ -48,8 +48,11 @@ type Release struct {
 	DraftRevision int64 `json:"-"`
 	// Capabilities are the function and Skill files, release.yaml among them, publishing commits to main.
 	Capabilities map[string][]byte `json:"-"`
-	CreateTime   int64             `json:"create_time"`
-	UpdateTime   int64             `json:"update_time"`
+	// PublishRequest is the publish sent for the release, with its idempotency key, kept until
+	// bkn-backend answers it: a retry sends it again as it was.
+	PublishRequest *KNVersionPublish `json:"-"`
+	CreateTime     int64             `json:"create_time"`
+	UpdateTime     int64             `json:"update_time"`
 }
 
 // ReleaseCursor is the keyset position after which the next page starts.

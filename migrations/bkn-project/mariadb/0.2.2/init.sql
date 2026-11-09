@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_release (
   f_branch_commit VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Commit holding the prepared definitions',
   f_draft_revision BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Draft revision once the definitions were written',
   f_capabilities MEDIUMTEXT NOT NULL COMMENT 'Function and Skill files publishing commits, JSON',
+  f_publish_request MEDIUMTEXT NOT NULL COMMENT 'Publish sent with its idempotency key, JSON; empty until sent',
   f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Create time',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Update time',
   PRIMARY KEY (f_id),

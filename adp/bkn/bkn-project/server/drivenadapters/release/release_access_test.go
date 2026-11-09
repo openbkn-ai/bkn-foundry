@@ -19,7 +19,7 @@ import (
 
 func releaseRow(id, state string, knVersion int, createTime int64) []driver.Value {
 	return []driver.Value{id, "orders", "orders", "1.0.0", "0.9.0", "p1", "u1", "user", "first", state, knVersion,
-		"c1", int64(4), `{"release.yaml":"YQ=="}`, createTime, createTime}
+		"c1", int64(4), `{"release.yaml":"YQ=="}`, "", createTime, createTime}
 }
 
 func Test_ReleaseAccess(t *testing.T) {
@@ -31,7 +31,7 @@ func Test_ReleaseAccess(t *testing.T) {
 		ctx := context.Background()
 		selectAll := "SELECT f_id, f_lineage_id, f_network_id, f_version, f_base_version, f_project_id, f_publisher, " +
 			"f_publisher_type, f_notes, f_state, f_kn_version, f_branch_commit, f_draft_revision, f_capabilities, " +
-			"f_create_time, f_update_time FROM t_bkn_project_release"
+			"f_publish_request, f_create_time, f_update_time FROM t_bkn_project_release"
 
 		Convey("ListReleases reads the first page newest first\n", func() {
 			smock.ExpectQuery(regexp.QuoteMeta(selectAll + " WHERE f_lineage_id = ? ORDER BY f_create_time DESC, f_id DESC LIMIT 3")).
@@ -49,6 +49,7 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(releases[0].BranchCommit, ShouldEqual, "c1")
 			So(releases[0].DraftRevision, ShouldEqual, 4)
 			So(releases[0].Capabilities, ShouldResemble, map[string][]byte{"release.yaml": []byte("a")})
+			So(releases[0].PublishRequest, ShouldBeNil)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
@@ -116,6 +117,29 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(exist, ShouldBeTrue)
 			So(release.ID, ShouldEqual, "r1")
 			So(release.State, ShouldEqual, "prepared")
+			So(release.PublishRequest, ShouldBeNil)
+		})
+
+		Convey("GetRelease reads the saved publish request, and fails on one that does not read\n", func() {
+			row := releaseRow("r1", "prepared", 0, 1)
+			row[14] = `{"expected_running_version":2,"expected_draft_revision":5,"notes":"n","source":{"release_id":"r1"},` +
+				`"fail_on_skipped_sources":true,"idempotency_key":"k1"}`
+			smock.ExpectQuery("FROM t_bkn_project_release").WillReturnRows(sqlmock.NewRows(releaseColumns).AddRow(row...))
+
+			release, _, err := ra.GetRelease(ctx, "orders", "1.0.0")
+
+			So(err, ShouldBeNil)
+			So(release.PublishRequest, ShouldResemble, &interfaces.KNVersionPublish{
+				ExpectedRunningVersion: 2, ExpectedDraftRevision: 5, Notes: "n",
+				Source: interfaces.KNVersionSource{ReleaseID: "r1"}, FailOnSkippedSources: true, IdempotencyKey: "k1",
+			})
+
+			row[14] = "{not json"
+			smock.ExpectQuery("FROM t_bkn_project_release").WillReturnRows(sqlmock.NewRows(releaseColumns).AddRow(row...))
+
+			_, _, err = ra.GetRelease(ctx, "orders", "1.0.0")
+
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("GetRelease reports a version never prepared, and passes a failure on\n", func() {
@@ -146,9 +170,9 @@ func Test_ReleaseAccess(t *testing.T) {
 			smock.ExpectExec(regexp.QuoteMeta(
 				"INSERT INTO t_bkn_project_release (f_id,f_lineage_id,f_network_id,f_version,f_base_version,f_project_id,"+
 					"f_publisher,f_publisher_type,f_notes,f_state,f_kn_version,f_branch_commit,f_draft_revision,f_capabilities,"+
-					"f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
+					"f_publish_request,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
 				WithArgs("r9", "orders", "orders", "1.0.0", "0.9.0", "p1", "u1", "user", "first", "prepared", 0,
-					"c2", int64(6), `{"release.yaml":"YQ=="}`, int64(7), int64(8)).
+					"c2", int64(6), `{"release.yaml":"YQ=="}`, "", int64(7), int64(8)).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 
 			release := prepared()
@@ -165,9 +189,9 @@ func Test_ReleaseAccess(t *testing.T) {
 				WillReturnRows(sqlmock.NewRows(releaseColumns).AddRow(releaseRow("r1", "prepared", 0, 3)...))
 			smock.ExpectExec(regexp.QuoteMeta(
 				"UPDATE t_bkn_project_release SET f_base_version = ?, f_branch_commit = ?, f_capabilities = ?, "+
-					"f_draft_revision = ?, f_network_id = ?, f_notes = ?, f_project_id = ?, f_publisher = ?, "+
+					"f_draft_revision = ?, f_network_id = ?, f_notes = ?, f_project_id = ?, f_publish_request = ?, f_publisher = ?, "+
 					"f_publisher_type = ?, f_update_time = ? WHERE f_id = ? AND f_state = ?")).
-				WithArgs("0.9.0", "c2", `{"release.yaml":"YQ=="}`, int64(6), "orders", "first", "p1", "u1", "user",
+				WithArgs("0.9.0", "c2", `{"release.yaml":"YQ=="}`, int64(6), "orders", "first", "p1", "", "u1", "user",
 					int64(8), "r1", "prepared").
 				WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -178,6 +202,7 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(release.ID, ShouldEqual, "r1")
 			So(release.CreateTime, ShouldEqual, 3)
+			So(release.State, ShouldEqual, "prepared")
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
@@ -230,6 +255,36 @@ func Test_ReleaseAccess(t *testing.T) {
 			smock.ExpectExec("UPDATE t_bkn_project_release").WillReturnError(errors.New("db down"))
 
 			So(ra.MarkPublished(ctx, "r1", 3, "shipped", 9), ShouldNotBeNil)
+		})
+
+		savePublish := regexp.QuoteMeta("UPDATE t_bkn_project_release SET f_publish_request = ? WHERE f_id = ? AND f_state = ?")
+
+		Convey("SavePublishRequest keeps the request, idempotency key included, on the prepared release\n", func() {
+			smock.ExpectExec(savePublish).
+				WithArgs(`{"expected_running_version":2,"expected_draft_revision":5,"notes":"n","source":{"release_id":"r1"},`+
+					`"fail_on_skipped_sources":true,"idempotency_key":"k1"}`, "r1", "prepared").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+
+			err := ra.SavePublishRequest(ctx, "r1", &interfaces.KNVersionPublish{
+				ExpectedRunningVersion: 2, ExpectedDraftRevision: 5, Notes: "n",
+				Source: interfaces.KNVersionSource{ReleaseID: "r1"}, FailOnSkippedSources: true, IdempotencyKey: "k1",
+			})
+
+			So(err, ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("SavePublishRequest of none forgets the request\n", func() {
+			smock.ExpectExec(savePublish).WithArgs("", "r1", "prepared").WillReturnResult(sqlmock.NewResult(0, 1))
+
+			So(ra.SavePublishRequest(ctx, "r1", nil), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("SavePublishRequest passes a write failure on\n", func() {
+			smock.ExpectExec(savePublish).WillReturnError(errors.New("db down"))
+
+			So(ra.SavePublishRequest(ctx, "r1", nil), ShouldNotBeNil)
 		})
 	})
 }

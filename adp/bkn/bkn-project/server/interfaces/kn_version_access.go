@@ -123,8 +123,9 @@ type KNVersionPublish struct {
 	// of the new version: the regression ran with the publisher's own permissions and cannot
 	// tell.
 	FailOnSkippedSources bool `json:"fail_on_skipped_sources"`
-	// IdempotencyKey makes a retried publish return the first result.
-	IdempotencyKey string `json:"-"`
+	// IdempotencyKey makes a retried publish return the first result. It is kept with the request
+	// in bkn-project's release record, never sent in the body.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // KNVersionWarning is a warning a publish or an activation succeeded with.

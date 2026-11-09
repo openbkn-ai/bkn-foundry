@@ -267,8 +267,10 @@ func (bba *bknBackendAccess) ExportVersion(ctx context.Context, token string, kn
 func (bba *bknBackendAccess) Publish(ctx context.Context, token string, knID string,
 	req interfaces.KNVersionPublish) (*interfaces.KNVersionPublished, error) {
 	out := &interfaces.KNVersionPublished{}
+	key := req.IdempotencyKey
+	req.IdempotencyKey = "" // a header, not part of the body
 	if err := bba.callWith(ctx, "PublishKNVersion", http.MethodPost, bba.networkUrl(knID, "versions"), nil, token,
-		map[string]string{idempotencyKeyHeader: req.IdempotencyKey}, req, http.StatusCreated, out); err != nil {
+		map[string]string{idempotencyKeyHeader: key}, req, http.StatusCreated, out); err != nil {
 		return nil, err
 	}
 	return out, nil

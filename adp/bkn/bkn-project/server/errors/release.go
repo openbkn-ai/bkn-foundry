@@ -38,6 +38,8 @@ const (
 	BknProject_Release_NothingToPublish = "BknProject.Release.NothingToPublish"
 	BknProject_Release_ValidationFailed = "BknProject.Release.ValidationFailed"
 	BknProject_Release_NotVersioned     = "BknProject.Release.NotVersioned"
+	// A publish of the version was sent and its answer never came; publishing again finishes it.
+	BknProject_Release_PublishPending = "BknProject.Release.PublishPending"
 	// A project's release.
 	BknProject_Release_ProjectArchived = "BknProject.Release.ProjectArchived"
 	BknProject_Release_ChecksFailed    = "BknProject.Release.ChecksFailed"
@@ -84,6 +86,7 @@ var (
 		BknProject_Release_NothingToPublish,
 		BknProject_Release_ValidationFailed,
 		BknProject_Release_NotVersioned,
+		BknProject_Release_PublishPending,
 		BknProject_Rollback_BrokenReferences,
 		BknProject_Rollback_NotActivatable,
 		BknProject_Rollback_EditionRestricted,

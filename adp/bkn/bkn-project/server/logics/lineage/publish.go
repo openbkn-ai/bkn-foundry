@@ -6,6 +6,9 @@ package lineage
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -296,10 +299,12 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		if len(notes) > maxNotesBytes {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidNotes)
 		}
-		published, err := s.publishVersion(ctx, token, release, notes, req.AllowOutdatedBase)
+		published, sent, err := s.publishVersion(ctx, token, release, notes, req.AllowOutdatedBase)
 		if err != nil {
 			return nil, err
 		}
+		// A retry resent the first request: its notes are what the version carries.
+		notes = sent.Notes
 		result.KNVersion, result.Warnings = published.Version, published.Warnings
 		result.PublishedMetrics, result.PurgedVersion = published.PublishedMetrics, published.PurgedVersion
 		now := time.Now().UnixMilli()
@@ -328,33 +333,58 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 }
 
 // publishVersion publishes the draft at the revision the release prepared, refusing a source the
-// network's agents could not read. A retry sends the same idempotency key and gets the first
-// result, so a publish whose reply was lost is not made twice.
+// network's agents could not read. The request is kept with the release before it is sent, with
+// an idempotency key of its own content: a retry whose first reply was lost sends it again byte for
+// byte, under the same key, and gets the first result, never a second publish. Once bkn-backend
+// has answered it with a refusal, nothing was published under it and it is forgotten: the next
+// attempt, after the owner confirmed something or prepared again, is a new request with a new key.
 func (s *lineageService) publishVersion(ctx context.Context, token string, release *interfaces.Release, notes string,
-	allowOutdated bool) (*interfaces.KNVersionPublished, error) {
-	versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
-	if err != nil {
-		return nil, err
+	allowOutdated bool) (*interfaces.KNVersionPublished, *interfaces.KNVersionPublish, error) {
+	req := release.PublishRequest
+	if req == nil {
+		versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
+		if err != nil {
+			return nil, nil, err
+		}
+		built := interfaces.KNVersionPublish{
+			ExpectedRunningVersion: versioning.RunningVersion, ExpectedDraftRevision: release.DraftRevision, Notes: notes,
+			Label: "v" + release.Version, AllowOutdatedBase: allowOutdated, FailOnSkippedSources: true,
+			Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: release.ProjectID,
+				Ref: release.BranchCommit, ReleaseID: release.ID},
+		}
+		if built.IdempotencyKey, err = publishKey(release, built); err != nil {
+			return nil, nil, err
+		}
+		if err := s.ra.SavePublishRequest(ctx, release.ID, &built); err != nil {
+			return nil, nil, err
+		}
+		req = &built
 	}
-	return s.kva.Publish(ctx, token, release.LineageID, interfaces.KNVersionPublish{
-		ExpectedRunningVersion: versioning.RunningVersion, ExpectedDraftRevision: release.DraftRevision, Notes: notes,
-		Label: "v" + release.Version, AllowOutdatedBase: allowOutdated, FailOnSkippedSources: true,
-		IdempotencyKey: publishKey(release),
-		Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: release.ProjectID,
-			Ref: release.BranchCommit, ReleaseID: release.ID},
-	})
+	published, err := s.kva.Publish(ctx, token, release.LineageID, *req)
+	var backendErr *interfaces.BknBackendError
+	if errors.As(err, &backendErr) && backendErr.HTTPCode >= http.StatusBadRequest && backendErr.HTTPCode < http.StatusInternalServerError {
+		if forgetErr := s.ra.SavePublishRequest(context.WithoutCancel(ctx), release.ID, nil); forgetErr != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Forget the refused publish of %s %s: %v", release.LineageID, release.Version, forgetErr))
+		}
+	}
+	return published, req, err
 }
 
-// publishKey is the idempotency key of publishing a release: its project, or its lineage when no
-// project made it, its version, and the draft revision it prepared. A retry of the same preparing
-// sends the same key; preparing again, after a refused publish, gets a new one, so the earlier
-// attempt's key is never reused for another request.
-func publishKey(release *interfaces.Release) string {
+// publishKey is the idempotency key of a publish request: the release's project, or its lineage
+// when no project made it, its version, and a digest of the request, so that another request for
+// the same release never reuses it.
+func publishKey(release *interfaces.Release, req interfaces.KNVersionPublish) (string, error) {
+	req.IdempotencyKey = ""
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
 	owner := release.ProjectID
 	if owner == "" {
 		owner = release.LineageID
 	}
-	return fmt.Sprintf("%s:%s:%d", owner, release.Version, release.DraftRevision)
+	return fmt.Sprintf("%s:%s:%s", owner, release.Version, hex.EncodeToString(sum[:8])), nil
 }
 
 // recordInGit tags the release's definitions, brings main to them with what the running version
@@ -464,6 +494,13 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 	}
 	// Any release of the version but one still prepared has taken it, a record of the
 	// one-network-per-release scheme included.
+	// A publish sent for it with no answer may have gone through: preparing again would build
+	// another request and publish the version twice. Publishing again finishes it.
+	if found && existing.State == interfaces.RELEASE_STATE_PREPARED && existing.PublishRequest != nil &&
+		refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_PublishPending).
+			WithErrorDetails(map[string]any{"lineage_id": lineageID, "version": version})) {
+		return checked, nil
+	}
 	if found && existing.State != interfaces.RELEASE_STATE_PREPARED && refuse(httperrors.NewHTTPError(ctx, http.StatusConflict,
 		perrors.BknProject_Release_VersionExists).WithErrorDetails(map[string]any{"lineage_id": lineageID, "version": version})) {
 		return checked, nil

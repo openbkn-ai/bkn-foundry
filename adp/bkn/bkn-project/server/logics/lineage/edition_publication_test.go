@@ -178,6 +178,7 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			events = events[:0]
 			releases.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(prepared, true, nil)
 			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+			releases.EXPECT().SavePublishRequest(gomock.Any(), prepared.ID, gomock.Not(gomock.Nil())).Return(nil)
 			kva.EXPECT().Publish(gomock.Any(), token, id, gomock.Any()).DoAndReturn(
 				func(context.Context, string, string, interfaces.KNVersionPublish) (*interfaces.KNVersionPublished, error) {
 					events = append(events, "publish")

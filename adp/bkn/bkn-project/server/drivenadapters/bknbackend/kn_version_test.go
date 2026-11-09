@@ -283,6 +283,7 @@ func Test_KNVersionAccess(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(got[0].idempotencyKey, ShouldEqual, "r1:1.1.0")
+			So(got[0].body, ShouldNotContainKey, "idempotency_key")
 			So(got[0].method, ShouldEqual, http.MethodPost)
 			So(got[0].path, ShouldEqual, networkPath+"/versions")
 			So(got[0].body, ShouldResemble, map[string]any{

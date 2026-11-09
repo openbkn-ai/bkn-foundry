@@ -20,6 +20,7 @@ ALTER TABLE t_bkn_project_release
   ADD COLUMN f_branch_commit VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Commit holding the prepared definitions' AFTER f_kn_version,
   ADD COLUMN f_draft_revision BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Draft revision once the definitions were written' AFTER f_branch_commit,
   ADD COLUMN f_capabilities MEDIUMTEXT NOT NULL COMMENT 'Function and Skill files publishing commits, JSON' AFTER f_draft_revision,
+  ADD COLUMN f_publish_request MEDIUMTEXT NOT NULL COMMENT 'Publish sent with its idempotency key, JSON; empty until sent' AFTER f_capabilities,
   ADD UNIQUE KEY uk_bkn_project_release_version (f_lineage_id, f_version);
 
 -- Regressions were keyed by the network a release created; key them by that

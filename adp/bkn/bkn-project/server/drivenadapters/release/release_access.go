@@ -33,7 +33,7 @@ var (
 var releaseColumns = []string{
 	"f_id", "f_lineage_id", "f_network_id", "f_version", "f_base_version", "f_project_id",
 	"f_publisher", "f_publisher_type", "f_notes", "f_state", "f_kn_version", "f_branch_commit",
-	"f_draft_revision", "f_capabilities", "f_create_time", "f_update_time",
+	"f_draft_revision", "f_capabilities", "f_publish_request", "f_create_time", "f_update_time",
 }
 
 type releaseAccess struct {
@@ -163,7 +163,7 @@ func (ra *releaseAccess) PrepareRelease(ctx context.Context, release *interfaces
 			"f_network_id": release.NetworkID, "f_base_version": release.BaseVersion, "f_project_id": release.ProjectID,
 			"f_publisher": release.Publisher.ID, "f_publisher_type": release.Publisher.Type, "f_notes": release.Notes,
 			"f_branch_commit": release.BranchCommit, "f_draft_revision": release.DraftRevision,
-			"f_capabilities": string(capabilities), "f_update_time": release.UpdateTime,
+			"f_capabilities": string(capabilities), "f_publish_request": "", "f_update_time": release.UpdateTime,
 		}).Where(sq.Eq{"f_id": existing.ID, "f_state": interfaces.RELEASE_STATE_PREPARED}).ToSql()
 		if err != nil {
 			span.SetStatus(codes.Error, "Build sql failed")
@@ -184,7 +184,7 @@ func (ra *releaseAccess) PrepareRelease(ctx context.Context, release *interfaces
 		Values(
 			release.ID, release.LineageID, release.NetworkID, release.Version, release.BaseVersion, release.ProjectID,
 			release.Publisher.ID, release.Publisher.Type, release.Notes, interfaces.RELEASE_STATE_PREPARED, 0,
-			release.BranchCommit, release.DraftRevision, string(capabilities), release.CreateTime, release.UpdateTime,
+			release.BranchCommit, release.DraftRevision, string(capabilities), "", release.CreateTime, release.UpdateTime,
 		).
 		ToSql()
 	if err != nil {
@@ -203,6 +203,33 @@ func (ra *releaseAccess) PrepareRelease(ctx context.Context, release *interfaces
 	release.State = interfaces.RELEASE_STATE_PREPARED
 	span.SetStatus(codes.Ok, "")
 	return true, nil
+}
+
+func (ra *releaseAccess) SavePublishRequest(ctx context.Context, releaseID string, req *interfaces.KNVersionPublish) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "SavePublishRequest")
+	defer span.End()
+
+	stored := ""
+	if req != nil {
+		data, err := json.Marshal(req)
+		if err != nil {
+			span.SetStatus(codes.Error, "Marshal request failed")
+			return err
+		}
+		stored = string(data)
+	}
+	sqlStr, vals, err := sq.Update(RELEASE_TABLE_NAME).Set("f_publish_request", stored).
+		Where(sq.Eq{"f_id": releaseID, "f_state": interfaces.RELEASE_STATE_PREPARED}).ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Update data failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 func (ra *releaseAccess) MarkPublished(ctx context.Context, releaseID string, knVersion int, notes string, updateTime int64) error {
@@ -227,11 +254,11 @@ func (ra *releaseAccess) MarkPublished(ctx context.Context, releaseID string, kn
 // scanRelease reads one row selected with releaseColumns.
 func scanRelease(row interface{ Scan(dest ...any) error }) (*interfaces.Release, error) {
 	release := &interfaces.Release{}
-	var capabilities string
+	var capabilities, publishRequest string
 	err := row.Scan(
 		&release.ID, &release.LineageID, &release.NetworkID, &release.Version, &release.BaseVersion, &release.ProjectID,
 		&release.Publisher.ID, &release.Publisher.Type, &release.Notes, &release.State, &release.KNVersion,
-		&release.BranchCommit, &release.DraftRevision, &capabilities, &release.CreateTime, &release.UpdateTime,
+		&release.BranchCommit, &release.DraftRevision, &capabilities, &publishRequest, &release.CreateTime, &release.UpdateTime,
 	)
 	if err != nil {
 		return nil, err
@@ -239,6 +266,12 @@ func scanRelease(row interface{ Scan(dest ...any) error }) (*interfaces.Release,
 	if capabilities != "" {
 		if err := json.Unmarshal([]byte(capabilities), &release.Capabilities); err != nil {
 			return nil, fmt.Errorf("read functions and Skills of release %s: %w", release.ID, err)
+		}
+	}
+	if publishRequest != "" {
+		release.PublishRequest = &interfaces.KNVersionPublish{}
+		if err := json.Unmarshal([]byte(publishRequest), release.PublishRequest); err != nil {
+			return nil, fmt.Errorf("read the publish request of release %s: %w", release.ID, err)
 		}
 	}
 	return release, nil

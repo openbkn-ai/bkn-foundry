@@ -17,6 +17,8 @@ type ReleaseAccess interface {
 	// PrepareRelease inserts a prepared release, or replaces the one of the same version while it is
 	// still prepared. It reports false when that version is already published.
 	PrepareRelease(ctx context.Context, release *Release) (bool, error)
+	// SavePublishRequest keeps the publish sent for a prepared release, or forgets it when nil.
+	SavePublishRequest(ctx context.Context, releaseID string, req *KNVersionPublish) error
 	// MarkPublished records the network version a prepared release was published as, with its notes.
 	MarkPublished(ctx context.Context, releaseID string, knVersion int, notes string, updateTime int64) error
 }
