@@ -53,11 +53,10 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 		t.Run(scenario, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			bba := pmock.NewMockBknBackendAccess(ctrl)
+			kva := pmock.NewMockKNVersionAccess(ctrl)
 			releases := pmock.NewMockReleaseAccess(ctrl)
 			ctx := context.Background()
 			id := newLineageID()
-			network := id + "_v1_0_0"
 			branch := "project/p1"
 			live := definitions("A part.", "A supplier.")
 			if _, err := realGS.InitLineage(ctx, id, live, "init", author); err != nil {
@@ -77,7 +76,8 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			probe = &publicationProbe{
 				prepare: func(target projecthooks.ReleaseTarget) (projecthooks.Publication, error) {
 					events = append(events, "prepare")
-					if target.ProjectID != "p1" || target.LineageID != id || target.NetworkID != network || target.Publisher != publisher {
+					// The release goes into the lineage's own versioned network.
+					if target.ProjectID != "p1" || target.LineageID != id || target.NetworkID != id || target.Publisher != publisher {
 						t.Fatal("wrong publisher scope")
 					}
 					repo, err := git.PlainOpen(filepath.Join(gitRoot, id+".git"))
@@ -85,16 +85,16 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 						t.Fatal(err)
 					}
 					if _, err := repo.Reference(plumbing.NewTagReferenceName("v1.0.0"), true); !errors.Is(err, plumbing.ErrReferenceNotFound) {
-						t.Fatal("tag created before knowledge preflight", err)
+						t.Fatal("tag created before the network version was published", err)
 					}
 					if scenario == "source_denied" {
 						return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Release_SourcePermission)
 					}
-					return probedPublication{probe: probe, project: "p1", network: network}, nil
+					return probedPublication{probe: probe, project: "p1", network: id}, nil
 				},
 				mount: func(mounted string) error {
 					events = append(events, "mount")
-					if mounted != network {
+					if mounted != id {
 						t.Fatal("wrong mounted network")
 					}
 					if scenario == "mount_uncertain" {
@@ -110,27 +110,29 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 					return nil
 				},
 			}
-			svc := &lineageService{gs: realGS, bba: bba, ra: releases}
+			svc := &lineageService{gs: realGS, kva: kva, ra: releases}
 			useHooks(t, projecthooks.Hooks{Publications: probe})
-			releases.EXPECT().GetReleaseByNetworkID(gomock.Any(), network).Return(nil, false, nil)
-			releases.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, network).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 7, false), nil)
+			releases.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(nil, false, nil)
+			releases.EXPECT().ListReleases(gomock.Any(), publishedQuery(id)).Return([]*interfaces.Release{}, nil)
 			if successful || scenario == "mount_uncertain" {
-				bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(func(context.Context, string, map[string][]byte) (*interfaces.BKNImportResult, error) {
-					events = append(events, "import")
-					return &interfaces.BKNImportResult{KNID: network}, nil
-				})
+				kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).DoAndReturn(
+					func(context.Context, string, map[string][]byte, interfaces.KNReplaceImport) (*interfaces.BKNImportResult, error) {
+						events = append(events, "import")
+						return &interfaces.BKNImportResult{KNID: id}, nil
+					})
 			}
+			var prepared *interfaces.Release
 			if successful {
-				releases.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, release *interfaces.Release) error {
+				kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+				releases.EXPECT().PrepareRelease(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, release *interfaces.Release) (bool, error) {
 					events = append(events, "record")
 					if release.ProjectID != "p1" {
 						t.Fatal("direct release lost actual project identity")
 					}
-					return nil
+					prepared = release
+					return true, nil
 				})
-				bba.EXPECT().ExportBKN(gomock.Any(), token, network).Return(nil, &interfaces.BknBackendError{HTTPCode: 502})
 			}
 			// A direct caller may omit the informational project_id; the real branch
 			// owns the knowledge publication and the resulting ordinary release row.
@@ -138,14 +140,9 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			if scenario == "review_outdated" {
 				request.ExpectedBranchCommit = "previous-reviewed-head"
 			}
-			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 			if (err == nil) != successful {
 				t.Fatal("incorrect publication outcome", err)
-			}
-			if scenario == "source_denied" || scenario == "review_outdated" {
-				if _, err := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0"); !errors.Is(err, plumbing.ErrReferenceNotFound) {
-					t.Fatal("rejected publication left a tag", err)
-				}
 			}
 
 			expected := []string{"prepare"}
@@ -156,20 +153,47 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 				expected = append(expected, "import", "mount")
 			}
 			if successful {
-				expected = append(expected, "record", "activate")
-			}
-			if successful {
-				main, err := realGS.ResolveRef(ctx, id, "refs/heads/main")
-				if err != nil {
-					t.Fatal(err)
-				}
-				tag, err := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-				if err != nil || main != tag {
-					t.Fatal("recorded release did not advance main", err)
-				}
+				expected = append(expected, "record")
 			}
 			if !reflect.DeepEqual(events, expected) {
 				t.Fatal("unsafe release ordering", events)
+			}
+			if !successful {
+				return
+			}
+
+			// Publishing activates the publication once the version runs and is recorded.
+			events = events[:0]
+			releases.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(prepared, true, nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+			kva.EXPECT().GetVersion(gomock.Any(), token, id, 1).Return(&interfaces.KNVersion{Version: 1}, nil)
+			kva.EXPECT().Publish(gomock.Any(), token, id, gomock.Any()).DoAndReturn(
+				func(context.Context, string, string, interfaces.KNVersionPublish) (*interfaces.KNVersionPublished, error) {
+					events = append(events, "publish")
+					return &interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 2}}, nil
+				})
+			releases.EXPECT().MarkPublished(gomock.Any(), prepared.ID, 2, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(context.Context, string, int, string, int64) error {
+					events = append(events, "mark")
+					return nil
+				})
+			if scenario == "activation_uncertain" {
+				// The branch is ahead of main, so main moves to it; an export it cannot read keeps main at the tag.
+				kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(nil, &interfaces.BknBackendError{HTTPCode: 502})
+			}
+			if _, err := svc.PublishRelease(ctx, token, id, interfaces.PublishReleaseRequest{Branch: branch, Version: "1.0.0"}, publisher, author); err != nil {
+				t.Fatal("an unacknowledged activation failed the release", err)
+			}
+			if !reflect.DeepEqual(events, []string{"publish", "mark", "prepare", "activate"}) {
+				t.Fatal("unsafe publish ordering", events)
+			}
+			main, err := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			tag, err := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			if err != nil || main != tag {
+				t.Fatal("published release did not advance main", err)
 			}
 		})
 	}

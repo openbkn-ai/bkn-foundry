@@ -86,7 +86,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	// Release lineage.
 	apiV1.GET("/lineages/:lineage_id/releases", r.ListReleasesByEx)
 	apiV1.POST("/lineages/:lineage_id/releases", r.PublishReleaseByEx)
-	apiV1.GET("/releases/:network_id", r.GetReleaseByEx)
+	apiV1.GET("/lineages/:lineage_id/releases/:version", r.GetReleaseByEx)
 
 	// Lineages and project branches. A branch name may contain "/", so the
 	// branch routes catch the rest of the path: {branch}/definitions and {branch}/sync.
@@ -95,8 +95,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/lineages/:lineage_id/branches/*branch", r.CommitDefinitionsByEx)
 	apiV1.POST("/lineages/:lineage_id/branches/*branch", r.SyncBranchByEx)
 	apiV1.POST("/lineages/:lineage_id/drift", r.CheckDriftByEx)
-	apiV1.GET("/lineages/:lineage_id/switch-plan", r.PlanSwitchByEx)
-	apiV1.POST("/lineages/:lineage_id/switches", r.SwitchByEx)
 
 	// Projects. Actions on a project are custom methods, {project_id}:archive
 	// and {project_id}:unarchive, so the POST route reads them from the id.
@@ -119,20 +117,21 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects/:project_id/source-changes", r.GetSourceChangesByEx)
 	// What waits for a person before the draft can be confirmed, with the requests that settle it.
 	apiV1.GET("/projects/:project_id/pending", r.GetPendingByEx)
-	// A project's releases: what publishing would bring, publishing it, and switching consumers to
-	// a release of the project.
+	// A project's releases: what publishing would bring, preparing it in the network's draft
+	// (releases/{version}/prepare, below) and publishing it.
 	apiV1.GET("/projects/:project_id/release-review", r.ReviewReleaseByEx)
 	apiV1.POST("/projects/:project_id/releases", r.PublishProjectByEx)
-	apiV1.GET("/projects/:project_id/switch-plan", r.PlanProjectSwitchByEx)
-	apiV1.POST("/projects/:project_id/switches", r.SwitchProjectByEx)
-	// Rolling consumers back to the network before the one in use: the plan first, then the rollback
-	// with the plan's signature.
+	// Switching the running version back: the plan first, then the rollback with the plan's
+	// signature.
+	// The versions of the project's network, and copying one back into the project as its draft.
+	apiV1.GET("/projects/:project_id/versions", r.ListVersionsByEx)
+	apiV1.POST("/projects/:project_id/versions/:kn_version/copy", r.CopyVersionByEx)
 	apiV1.GET("/projects/:project_id/rollback-plan", r.PlanRollbackByEx)
 	apiV1.POST("/projects/:project_id/rollbacks", r.RollbackByEx)
-	// What a release's scenario questions got on its network, and running that again:
-	// regression:run is a custom method on the release.
-	apiV1.GET("/projects/:project_id/releases/:network_id/regression", r.GetRegressionByEx)
-	apiV1.POST("/projects/:project_id/releases/:network_id/:action", r.ReleaseActionByEx)
+	// What a release's scenario questions got on the draft it prepared, and running that again:
+	// prepare and regression:run are methods on the release.
+	apiV1.GET("/projects/:project_id/releases/:version/regression", r.GetRegressionByEx)
+	apiV1.POST("/projects/:project_id/releases/:version/:action", r.ReleaseActionByEx)
 
 	// Ontology drafts: drafting, restoring an excluded field and confirming are custom methods,
 	// ontology/draft:generate, draft:restore and draft:confirm; people edit items one by one and

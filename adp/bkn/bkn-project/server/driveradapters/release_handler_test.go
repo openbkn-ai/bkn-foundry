@@ -40,7 +40,7 @@ func Test_ReleaseRestHandler(t *testing.T) {
 			next := "abc"
 			rs.EXPECT().ListReleases(gomock.Any(), "orders", interfaces.DEFAULT_RELEASE_LIMIT, "").
 				Return(&interfaces.ReleaseList{
-					Entries:    []*interfaces.Release{{ID: "r1", LineageID: "orders", NetworkID: "orders_1-0-0", State: interfaces.RELEASE_STATE_LIVE}},
+					Entries:    []*interfaces.Release{{ID: "r1", LineageID: "orders", NetworkID: "orders", State: interfaces.RELEASE_STATE_PUBLISHED}},
 					Total:      2,
 					NextCursor: &next,
 				}, nil)
@@ -84,24 +84,30 @@ func Test_ReleaseRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_InvalidParameter_Cursor)
 		})
 
-		Convey("Get returns the bare release\n", func() {
-			rs.EXPECT().GetRelease(gomock.Any(), "orders_1-0-0").
-				Return(&interfaces.Release{ID: "r1", NetworkID: "orders_1-0-0", Version: "1.0.0"}, nil)
+		Convey("Get returns the lineage's release of the version the path names\n", func() {
+			rs.EXPECT().GetRelease(gomock.Any(), "orders", "1.0.0").
+				Return(&interfaces.Release{ID: "r1", NetworkID: "orders", Version: "1.0.0", KNVersion: 2}, nil)
 
-			w := serve(handler, http.MethodGet, "/api/bkn-project/v1/releases/orders_1-0-0")
+			w := serve(handler, http.MethodGet, listURL+"/1.0.0")
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-			So(w.Body.String(), ShouldContainSubstring, `"network_id":"orders_1-0-0"`)
+			So(w.Body.String(), ShouldContainSubstring, `"version":"1.0.0"`)
+			So(w.Body.String(), ShouldContainSubstring, `"kn_version":2`)
 		})
 
-		Convey("Get replies not found\n", func() {
-			rs.EXPECT().GetRelease(gomock.Any(), "orders").
+		Convey("Get replies not found, and the release route by network is gone\n", func() {
+			rs.EXPECT().GetRelease(gomock.Any(), "orders", "9.9.9").
 				Return(nil, httperrors.NewHTTPError(context.Background(), http.StatusNotFound, perrors.BknProject_Release_NotFound))
 
-			w := serve(handler, http.MethodGet, "/api/bkn-project/v1/releases/orders")
+			w := serve(handler, http.MethodGet, listURL+"/9.9.9")
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Release_NotFound)
+
+			w = serve(handler, http.MethodGet, "/api/bkn-project/v1/releases/orders")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
+			So(w.Body.String(), ShouldNotContainSubstring, perrors.BknProject_Release_NotFound)
 		})
 	})
 }

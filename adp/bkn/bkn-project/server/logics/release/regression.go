@@ -95,7 +95,7 @@ func (s *regressionService) StartRegression(ctx context.Context, token string, r
 	}
 	now := time.Now()
 	r := &interfaces.Regression{
-		NetworkID: release.NetworkID, ProjectID: release.ProjectID, Version: release.Version,
+		ReleaseID: release.ID, ProjectID: release.ProjectID, Version: release.Version,
 		Status: interfaces.REGRESSION_STATUS_RUNNING, RunID: runID.String(), Attempt: 1, Runner: runner,
 		Questions: questions, Results: []interfaces.RegressionResult{}, StartTime: now.UnixMilli(),
 	}
@@ -237,7 +237,7 @@ func (c *regressionContext) name(kind string, id string) interfaces.ReleaseItem 
 	return key
 }
 
-// answer asks each question, or its tests, on the release's network, has the judge decide each
+// answer asks each question, or its tests, in the network's draft holding the release, has the judge decide each
 // answer, and asks once more what could not be asked; a judgement that failed is made once more
 // from the answer kept. It records the outcome as the run that started.
 func (s *regressionService) answer(ctx context.Context, token string, release *interfaces.Release,
@@ -245,12 +245,12 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 	defer func() {
 		r.FinishTime = time.Now().UnixMilli()
 		if ok, err := s.ra.FinishRegression(ctx, r); err != nil || !ok {
-			otellog.LogWarn(ctx, fmt.Sprintf("Record regression of %s: recorded %v, %v", r.NetworkID, ok, err))
+			otellog.LogWarn(ctx, fmt.Sprintf("Record regression of %s: recorded %v, %v", r.ReleaseID, ok, err))
 		}
 	}()
-	files, err := s.gs.ReadTree(ctx, release.LineageID, "refs/tags/v"+release.Version)
+	files, err := s.gs.ReadTree(ctx, release.LineageID, release.BranchCommit)
 	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Read definitions of release %s: %v", release.NetworkID, err))
+		otellog.LogWarn(ctx, fmt.Sprintf("Read definitions of release %s: %v", release.ID, err))
 		r.Status, r.Error = interfaces.REGRESSION_STATUS_FAILED, interfaces.REGRESSION_ERROR_DEFINITIONS_UNREADABLE
 		return
 	}
@@ -360,7 +360,7 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 		return result
 	}
 	answer, err := s.ba.AnswerOnNetwork(ctx, token, &interfaces.BknAgentAnswerRequest{
-		AgentID: answerAgentID, Message: a.text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID,
+		AgentID: answerAgentID, Message: a.text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID, KNVersion: interfaces.KN_VERSION_DRAFT,
 	})
 	var agentErr *interfaces.BknAgentError
 	if errors.As(err, &agentErr) {

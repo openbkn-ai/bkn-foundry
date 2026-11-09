@@ -29,13 +29,13 @@ var (
 
 type driftService struct {
 	gs  interfaces.GitStore
-	bba interfaces.BknBackendAccess
+	kva interfaces.KNVersionAccess
 	efa interfaces.ExecutionFactoryAccess
 }
 
 func NewDriftService() interfaces.DriftService {
 	dsOnce.Do(func() {
-		ds = &driftService{gs: logics.GS, bba: logics.BBA, efa: logics.EFA}
+		ds = &driftService{gs: logics.GS, kva: logics.KVA, efa: logics.EFA}
 	})
 	return ds
 }
@@ -44,7 +44,7 @@ func (s *driftService) DriftCheck(ctx context.Context, token string, lineageID s
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DriftCheck")
 	defer span.End()
 
-	live, err := s.bba.ExportBKN(ctx, token, knID)
+	live, err := s.kva.ExportVersion(ctx, token, knID, interfaces.KN_VERSION_DRAFT)
 	if err != nil {
 		otellog.LogError(ctx, "Export live definitions failed", err)
 		span.SetStatus(codes.Error, "Export live definitions failed")

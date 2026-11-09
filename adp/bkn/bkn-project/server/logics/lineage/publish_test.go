@@ -7,12 +7,10 @@ package lineage
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -44,18 +42,47 @@ func copyFiles(files map[string][]byte) map[string][]byte {
 	return out
 }
 
-func Test_LineageService_PublishRelease(t *testing.T) {
-	Convey("Test lineageService PublishRelease on a real git store\n", t, func() {
+// versioningAt is a versioned network whose running version is running and whose draft is at
+// revision, with or without edits not published.
+func versioningAt(running int, revision int64, changes bool) *interfaces.KNVersioning {
+	return &interfaces.KNVersioning{Enabled: true, RunningVersion: running, PreviousVersion: max(running-1, 0),
+		Draft: interfaces.KNDraftState{BaseVersion: running, HasChanges: changes, Revision: revision}}
+}
+
+func publishedQuery(id string) interfaces.ReleasesQuery {
+	return interfaces.ReleasesQuery{LineageID: id, State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}
+}
+
+func preparedQuery(id string) interfaces.ReleasesQuery {
+	return interfaces.ReleasesQuery{LineageID: id, State: interfaces.RELEASE_STATE_PREPARED, Limit: interfaces.MAX_RELEASE_LIMIT}
+}
+
+// versionRefusal is a refusal of the bkn-backend version API.
+func versionRefusal(code string) error {
+	return &interfaces.BknBackendError{HTTPCode: http.StatusConflict, BaseError: httperrors.BaseError{ErrorCode: code}}
+}
+
+// expectChecks expects the reads the checks of a release make up to the drift check: the
+// network's versioning, the release of the version, if any, and the latest published release.
+func expectChecks(kva *pmock.MockKNVersionAccess, ra *pmock.MockReleaseAccess, id string, version string,
+	versioning *interfaces.KNVersioning, existing *interfaces.Release, latest []*interfaces.Release) {
+	kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioning, nil)
+	ra.EXPECT().GetRelease(gomock.Any(), id, version).Return(existing, existing != nil, nil)
+	ra.EXPECT().ListReleases(gomock.Any(), publishedQuery(id)).Return(latest, nil)
+}
+
+func Test_LineageService_PrepareRelease(t *testing.T) {
+	Convey("Test lineageService PrepareRelease on a real git store\n", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		bba := pmock.NewMockBknBackendAccess(mockCtrl)
+		kva := pmock.NewMockKNVersionAccess(mockCtrl)
 		ra := pmock.NewMockReleaseAccess(mockCtrl)
-		svc := &lineageService{gs: realGS, bba: bba, ra: ra}
+		svc := &lineageService{gs: realGS, kva: kva, ra: ra}
 		ctx := context.Background()
 		const branch = "project/p1"
 
-		// setUp starts a lineage whose live network matches main and a branch with one edit.
+		// setUp starts a lineage whose network matches main and a branch with one edit.
 		setUp := func(id string) (live map[string][]byte, branchHead string) {
 			live = definitions("A part.", "A supplier.")
 			_, err := realGS.InitLineage(ctx, id, live, "init", author)
@@ -67,147 +94,176 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			return live, branchHead
 		}
 		request := interfaces.PublishReleaseRequest{Branch: branch, Version: "1.0.0", ProjectID: "p1", Notes: "first"}
-
-		Convey("A release tags the branch, imports it as a new network and records it\n", func() {
-			id := newLineageID()
-			live, branchHead := setUp(id)
-			networkID := id + "_v1_0_0"
-			var imported map[string][]byte
+		// expectWrite expects the draft written with req and read back at revision, and the release
+		// recorded; it returns where the written package and the recorded release land.
+		expectWrite := func(id string, req interfaces.KNReplaceImport, revision int64) (*map[string][]byte, **interfaces.Release) {
+			var written map[string][]byte
 			var recorded *interfaces.Release
-
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: id, Limit: 1}).Return([]*interfaces.Release{}, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-			// The target network does not exist yet.
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(
-				func(_ context.Context, _ string, files map[string][]byte) (*interfaces.BKNImportResult, error) {
-					imported = files
-					return &interfaces.BKNImportResult{KNID: networkID, Capabilities: &interfaces.CapabilityImportReport{}}, nil
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), req).DoAndReturn(
+				func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, error) {
+					written = files
+					return &interfaces.BKNImportResult{KNID: id, Capabilities: &interfaces.CapabilityImportReport{}}, nil
 				})
-			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, release *interfaces.Release) error {
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, revision, true), nil)
+			ra.EXPECT().PrepareRelease(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, release *interfaces.Release) (bool, error) {
 					recorded = release
-					return nil
+					return true, nil
 				})
-			// The import re-serializes network.bkn; the export brings that back.
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).DoAndReturn(
-				func(context.Context, string, string) (map[string][]byte, error) {
-					exported := copyFiles(imported)
-					exported["network.bkn"] = append(exported["network.bkn"], []byte("\nRe-serialized.\n")...)
-					return exported, nil
-				})
+			return &written, &recorded
+		}
 
-			result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+		Convey("Preparing writes the branch into the draft at the revision read and records a prepared release\n", func() {
+			id := newLineageID()
+			_, branchHead := setUp(id)
+			mainBefore, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+			// A draft without edits of its own is overwritten without asking.
+			written, recorded := expectWrite(id, interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}, 8)
+
+			release, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
 			So(err, ShouldBeNil)
-			So(result.NetworkID, ShouldEqual, networkID)
-			So(result.Tag, ShouldEqual, "v1.0.0")
-			So(result.Release, ShouldEqual, recorded)
-			So(recorded.LineageID, ShouldEqual, id)
-			So(recorded.NetworkID, ShouldEqual, networkID)
-			So(recorded.Version, ShouldEqual, "1.0.0")
-			So(recorded.BaseVersion, ShouldBeEmpty)
-			So(recorded.ProjectID, ShouldEqual, "p1")
-			So(recorded.Publisher, ShouldResemble, publisher)
-			So(recorded.Notes, ShouldEqual, "first")
-			So(recorded.State, ShouldEqual, interfaces.RELEASE_STATE_LIVE)
-			So(recorded.ID, ShouldNotBeEmpty)
-			So(recorded.CreateTime, ShouldBeGreaterThan, 0)
+			So(release, ShouldEqual, *recorded)
+			So(release.ID, ShouldNotBeEmpty)
+			So(release.LineageID, ShouldEqual, id)
+			So(release.NetworkID, ShouldEqual, id)
+			So(release.Version, ShouldEqual, "1.0.0")
+			So(release.BaseVersion, ShouldBeEmpty)
+			So(release.ProjectID, ShouldEqual, "p1")
+			So(release.Publisher, ShouldResemble, publisher)
+			So(release.Notes, ShouldEqual, "first")
+			So(release.State, ShouldEqual, interfaces.RELEASE_STATE_PREPARED)
+			So(release.KNVersion, ShouldEqual, 0)
+			So(release.BranchCommit, ShouldEqual, branchHead)
+			// The revision recorded is the one the write left, for publishing to expect.
+			So(release.DraftRevision, ShouldEqual, 8)
+			// A lineage that never used a function or Skill records none.
+			So(release.Capabilities, ShouldBeNil)
+			So(release.CreateTime, ShouldBeGreaterThan, 0)
 
-			tagHead, err := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-			So(err, ShouldBeNil)
-			So(tagHead, ShouldEqual, branchHead)
+			// The package is the branch with only the network id set to the lineage's.
+			So(string((*written)["network.bkn"]), ShouldEqual, strings.Replace(networkText, "id: supply", "id: "+id, 1))
+			tagged, _ := realGS.ReadTree(ctx, id, branchHead)
+			So((*written)["object_types/part.bkn"], ShouldResemble, tagged["object_types/part.bkn"])
+			So(*written, ShouldHaveLength, len(tagged))
 
-			// The package is the tag with only the network id and name changed.
-			network, err := bkn.ParseNetworkFile(string(imported["network.bkn"]), "network.bkn")
-			So(err, ShouldBeNil)
-			So(network.ID, ShouldEqual, networkID)
-			So(network.Name, ShouldEqual, "Supply chain · 1.0.0")
-			So(string(imported["network.bkn"]), ShouldEqual, strings.Replace(strings.Replace(networkText,
-				"id: supply", "id: "+networkID, 1), "name: Supply chain", "name: Supply chain · 1.0.0", 1))
-			tagged, _ := realGS.ReadTree(ctx, id, "refs/tags/v1.0.0")
-			So(imported["object_types/part.bkn"], ShouldResemble, tagged["object_types/part.bkn"])
-			So(imported, ShouldHaveLength, len(tagged))
-
-			// main moved past the tag to the commit of the re-serialized export.
-			mainHead, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
-			So(result.Commit, ShouldEqual, mainHead)
-			repo, err := git.PlainOpen(filepath.Join(gitRoot, id+".git"))
-			So(err, ShouldBeNil)
-			commit, err := repo.CommitObject(plumbing.NewHash(mainHead))
-			So(err, ShouldBeNil)
-			So(commit.ParentHashes, ShouldResemble, []plumbing.Hash{plumbing.NewHash(branchHead)})
-			So(commit.Message, ShouldEqual, "sync live definitions after release v1.0.0")
-			onMain, _ := realGS.ReadTree(ctx, id, "main")
-			So(string(onMain["network.bkn"]), ShouldEndWith, "Re-serialized.\n")
-
-			// The project branch follows main, so the project's next release does not start behind it.
-			branchAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
-			So(branchAfter, ShouldEqual, mainHead)
-
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), id+"_v1_1_0").Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{recorded}, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(onMain, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id+"_v1_1_0").Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			next, err := svc.PreviewRelease(ctx, token, id, branch, "1.1.0")
-			So(err, ShouldBeNil)
-			for _, refusal := range next.Refusals {
-				So(refusal.Code, ShouldNotEqual, perrors.BknProject_Release_BranchBehind)
-			}
+			// Nothing is tagged and main stays where it was until the release is published.
+			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+			mainAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			So(mainAfter, ShouldEqual, mainBefore)
 		})
 
-		Convey("A release after another one checks drift against it and builds on its version\n", func() {
+		Convey("A release after another one builds on its version and drops the version the old scheme put in the name\n", func() {
 			id := newLineageID()
-			live, _ := setUp(id)
-			previous := &interfaces.Release{NetworkID: id + "_v1_0_0", Version: "1.0.0"}
-			networkID := id + "_v1_1_0"
-
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{previous}, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, previous.NetworkID).Return(live, nil)
-			// The target network does not exist yet.
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{KNID: networkID}, nil)
-			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(nil)
-			// A failed export after the release leaves main at the tag; the release stands.
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusBadGateway})
+			_, _ = setUp(id)
+			named := definitions("A part, edited.", "A supplier.")
+			named["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain", "name: Supply chain · 1.0.0", 1))
+			_, err := realGS.CommitFiles(ctx, id, branch, named, "old name", author)
+			So(err, ShouldBeNil)
+			expectChecks(kva, ra, id, "1.1.0", versioningAt(2, 7, false), nil,
+				[]*interfaces.Release{{LineageID: id, NetworkID: id, Version: "1.0.0", State: interfaces.RELEASE_STATE_PUBLISHED}})
+			written, _ := expectWrite(id, interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}, 8)
 
 			req := request
 			req.Version = "1.1.0"
-			result, err := svc.PublishRelease(ctx, token, id, req, publisher, author)
+			release, err := svc.PrepareRelease(ctx, token, id, req, publisher)
 
 			So(err, ShouldBeNil)
-			So(result.Release.BaseVersion, ShouldEqual, "1.0.0")
-			tagHead, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.1.0")
-			So(result.Commit, ShouldEqual, tagHead)
+			So(release.BaseVersion, ShouldEqual, "1.0.0")
+			network, err := bkn.ParseNetworkFile(string((*written)["network.bkn"]), "network.bkn")
+			So(err, ShouldBeNil)
+			So(network.ID, ShouldEqual, id)
+			So(network.Name, ShouldEqual, "Supply chain")
 		})
 
-		Convey("A branch without the head of main replies 409 and tags nothing\n", func() {
+		Convey("Edits someone made to the draft are refused as DraftHasChanges unless the owner overwrites them\n", func() {
 			id := newLineageID()
-			_, _ = setUp(id)
-			_, err := realGS.CommitFiles(ctx, id, "main", definitions("A part.", "A supplier, edited live."), "drift", author)
-			So(err, ShouldBeNil)
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			live, _ := setUp(id)
+			expectDraftEdited := func() {
+				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), nil, nil)
+				// The draft's revision is not one a prepared release of the lineage wrote.
+				ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{
+					{ID: "other", LineageID: id, Version: "0.9.0", State: interfaces.RELEASE_STATE_PREPARED, DraftRevision: 5},
+				}, nil)
+				// Its definitions match main, so it is no drift.
+				kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_DRAFT).Return(live, nil)
+			}
+			expectDraftEdited()
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 7}).
+				Return(nil, versionRefusal(interfaces.KN_VERSION_ERROR_DRAFT_HAS_CHANGES))
 
-			_, err = svc.PublishRelease(ctx, token, id, request, publisher, author)
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
-			So(code, ShouldEqual, perrors.BknProject_Release_BranchBehind)
-			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+			So(code, ShouldEqual, perrors.BknProject_Release_DraftHasChanges)
+
+			Convey("and once the owner confirms, the draft is overwritten\n", func() {
+				expectDraftEdited()
+				_, recorded := expectWrite(id, interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}, 8)
+
+				req := request
+				req.OverwriteDraftChanges = true
+				release, err := svc.PrepareRelease(ctx, token, id, req, publisher)
+
+				So(err, ShouldBeNil)
+				So(release, ShouldEqual, *recorded)
+			})
 		})
 
-		Convey("Drift on the live network replies 409 with the paths and tags nothing\n", func() {
+		Convey("A re-prepare of the same version overwrites its own draft and keeps the release\n", func() {
+			id := newLineageID()
+			_, branchHead := setUp(id)
+			earlier := &interfaces.Release{ID: "r1", LineageID: id, NetworkID: id, Version: "1.0.0",
+				State: interfaces.RELEASE_STATE_PREPARED, DraftRevision: 7, CreateTime: 5}
+			// The draft has edits, all of them what preparing 1.0.0 wrote: no drift check, no question.
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), earlier, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{earlier}, nil)
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}).
+				Return(&interfaces.BKNImportResult{KNID: id}, nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 9, true), nil)
+			prepared := ra.EXPECT().PrepareRelease(gomock.Any(), gomock.Any())
+
+			Convey("under the id and create time of the release it replaces\n", func() {
+				prepared.DoAndReturn(func(_ context.Context, release *interfaces.Release) (bool, error) {
+					So(release.Version, ShouldEqual, "1.0.0")
+					So(release.State, ShouldEqual, interfaces.RELEASE_STATE_PREPARED)
+					release.ID, release.CreateTime = earlier.ID, earlier.CreateTime
+					return true, nil
+				})
+
+				release, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+				So(err, ShouldBeNil)
+				So(release.ID, ShouldEqual, "r1")
+				So(release.CreateTime, ShouldEqual, 5)
+				So(release.DraftRevision, ShouldEqual, 9)
+				So(release.BranchCommit, ShouldEqual, branchHead)
+			})
+
+			Convey("but a version published in the meantime replies 409\n", func() {
+				prepared.Return(false, nil)
+
+				_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+				status, code := httpCode(err)
+				So(status, ShouldEqual, http.StatusConflict)
+				So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
+				So(errorDetails(err), ShouldResemble, map[string]any{"lineage_id": id, "version": "1.0.0"})
+			})
+		})
+
+		Convey("Drift between main and the draft replies 409 with the paths and writes nothing\n", func() {
 			id := newLineageID()
 			_, _ = setUp(id)
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(definitions("A part.", "A supplier, edited in Studio."), nil)
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), nil, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{}, nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_DRAFT).
+				Return(definitions("A part.", "A supplier, edited in Studio."), nil)
 
-			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
@@ -217,176 +273,100 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(report.Changed, ShouldResemble, []string{"object_types/supplier.bkn"})
 			So(report.Added, ShouldBeEmpty)
 			So(report.Removed, ShouldBeEmpty)
-			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
 		})
 
-		Convey("Skipped capabilities fail the release without recording it\n", func() {
-			id := newLineageID()
-			live, branchHead := setUp(id)
-			networkID := id + "_v1_0_0"
-			mainBefore, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
-			skipped := []*interfaces.CapabilitySkip{{CapabilityType: "skill", Name: "planner", Reason: "no_execute_permission"}}
-
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-			// The target network does not exist yet.
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{
-				KNID: networkID, Capabilities: &interfaces.CapabilityImportReport{Skipped: skipped}}, nil)
-
-			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-			status, code := httpCode(err)
-			So(status, ShouldEqual, http.StatusConflict)
-			So(code, ShouldEqual, perrors.BknProject_Release_CapabilitiesSkipped)
-			So(errorDetails(err), ShouldResemble, map[string]any{"network_id": networkID, "tag": "v1.0.0", "skipped": skipped})
-			mainAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
-			So(mainAfter, ShouldEqual, mainBefore)
-			tagHead, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-			So(tagHead, ShouldEqual, branchHead)
-
-			Convey("and the same version from the same branch head publishes on retry\n", func() {
-				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-				bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-				bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{KNID: networkID}, nil)
-				ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(nil)
-				bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(definitions("A part, edited.", "A supplier."), nil)
-
-				result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-				So(err, ShouldBeNil)
-				So(result.Tag, ShouldEqual, "v1.0.0")
-				tagAgain, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-				So(tagAgain, ShouldEqual, branchHead)
-			})
-
-			Convey("and the same version from a moved branch replies 409 as unfinished, naming the network\n", func() {
-				moved, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited again.", "A supplier."), "edit", author)
-				So(err, ShouldBeNil)
-				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-
-				_, err = svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-				status, code := httpCode(err)
-				So(status, ShouldEqual, http.StatusConflict)
-				So(code, ShouldEqual, perrors.BknProject_Release_UnfinishedAttempt)
-				So(errorDetails(err), ShouldResemble, map[string]any{
-					"tag": "v1.0.0", "commit": branchHead, "branch_commit": moved, "network_id": networkID,
-				})
-			})
-		})
-
-		Convey("A network imported by an attempt whose release failed to record is imported over and recorded on retry\n", func() {
-			id := newLineageID()
-			live, branchHead := setUp(id)
-			networkID := id + "_v1_0_0"
-			mainBefore, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{KNID: networkID}, nil)
-			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(errors.New("Data too long for column 'f_project_id'"))
-
-			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-			So(err, ShouldNotBeNil)
-			mainAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
-			So(mainAfter, ShouldEqual, mainBefore)
-
-			Convey("the retry does not refuse the network as someone else's: it imports over it and records the release\n", func() {
-				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-				bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-				imported := bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{KNID: networkID}, nil)
-				var recorded *interfaces.Release
-				ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).After(imported).DoAndReturn(
-					func(_ context.Context, r *interfaces.Release) error {
-						recorded = r
-						return nil
-					})
-				bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(live, nil)
-
-				result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-				So(err, ShouldBeNil)
-				So(result.Release, ShouldEqual, recorded)
-				So(recorded.NetworkID, ShouldEqual, networkID)
-				So(recorded.Version, ShouldEqual, "1.0.0")
-				tagHead, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-				So(tagHead, ShouldEqual, branchHead)
-			})
-		})
-
-		Convey("A network that already exists but no release created replies 409 and is not overwritten\n", func() {
-			id := newLineageID()
-			live, _ := setUp(id)
-			networkID := id + "_v1_0_0"
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(live, nil)
-
-			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-			status, code := httpCode(err)
-			So(status, ShouldEqual, http.StatusConflict)
-			So(code, ShouldEqual, perrors.BknProject_Release_NetworkExists)
-			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
-		})
-
-		Convey("A version already released replies 409\n", func() {
+		Convey("A branch without the head of main replies 409 and writes nothing\n", func() {
 			id := newLineageID()
 			_, _ = setUp(id)
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), id+"_v1_0_0").
-				Return(&interfaces.Release{LineageID: id, Version: "1.0.0"}, true, nil)
+			_, err := realGS.CommitFiles(ctx, id, "main", definitions("A part.", "A supplier, edited live."), "drift", author)
+			So(err, ShouldBeNil)
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
 
-			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+			_, err = svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Release_BranchBehind)
+		})
+
+		Convey("A version already published replies 409\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(2, 7, false), nil)
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(&interfaces.Release{
+				LineageID: id, Version: "1.0.0", State: interfaces.RELEASE_STATE_PUBLISHED, KNVersion: 2}, true, nil)
+
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
 			So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
+			So(errorDetails(err), ShouldResemble, map[string]any{"lineage_id": id, "version": "1.0.0"})
 		})
 
-		Convey("A lineage ID over the old limit is preserved when the release ID fits 128 characters\n", func() {
-			seq++
-			id := fmt.Sprintf("%s_%04d", strings.Repeat("s", 33), seq)
-			So(id, ShouldHaveLength, 38)
-			live, _ := setUp(id)
-			networkID := id + "_v1_0_0"
-			var imported map[string][]byte
+		Convey("A network that is not versioned replies 409\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(&interfaces.KNVersioning{}, nil)
 
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
-			// The target network does not exist yet.
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(
-				func(_ context.Context, _ string, files map[string][]byte) (*interfaces.BKNImportResult, error) {
-					imported = files
-					return &interfaces.BKNImportResult{KNID: networkID}, nil
-				})
-			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(nil)
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(live, nil)
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
-			result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Release_NotVersioned)
+		})
 
+		Convey("A branch that moved since the review replies 409 and writes nothing\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+
+			req := request
+			req.ExpectedBranchCommit = "previous-reviewed-head"
+			_, err := svc.PrepareRelease(ctx, token, id, req, publisher)
+
+			_, code := httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Release_ReviewOutdated)
+		})
+
+		Convey("Skipped capabilities fail preparing without recording it\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			skipped := []*interfaces.CapabilitySkip{{CapabilityType: "skill", Name: "planner", Reason: "no_execute_permission"}}
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{
+				KNID: id, Capabilities: &interfaces.CapabilityImportReport{Skipped: skipped}}, nil)
+
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Release_CapabilitiesSkipped)
+			So(errorDetails(err), ShouldResemble, map[string]any{"network_id": id, "version": "1.0.0", "skipped": skipped})
+		})
+
+		Convey("Definitions the release cannot rename reply 400 and write nothing\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			// A block name loads but cannot be swapped line for line.
+			broken := definitions("A part, edited.", "A supplier.")
+			broken["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain", "name: |\n  Supply chain", 1))
+			_, err := realGS.CommitFiles(ctx, id, branch, broken, "block name", author)
 			So(err, ShouldBeNil)
-			So(result.NetworkID, ShouldEqual, networkID)
-			network, err := bkn.ParseNetworkFile(string(imported["network.bkn"]), "network.bkn")
-			So(err, ShouldBeNil)
-			So(network.ID, ShouldEqual, networkID)
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+
+			_, err = svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
 		})
 
 		Convey("Bad versions and branches are refused before anything is read\n", func() {
 			for _, version := range []string{"", "1.0", "v1.0.0", "01.0.0", "1.0.0-rc1", "1.0.0.0", strings.Repeat("1", 31) + ".0.0"} {
 				req := request
 				req.Version = version
-				_, err := svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+				_, err := svc.PrepareRelease(ctx, token, "orders", req, publisher)
 				status, code := httpCode(err)
 				So(status, ShouldEqual, http.StatusBadRequest)
 				So(code, ShouldEqual, perrors.BknProject_Release_InvalidVersion)
@@ -394,7 +374,7 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 
 			req := request
 			req.Branch = "main"
-			_, err := svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			_, err := svc.PrepareRelease(ctx, token, "orders", req, publisher)
 			_, code := httpCode(err)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_MainBranchReadOnly)
 		})
@@ -402,14 +382,14 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 		Convey("A project id or notes the release table cannot hold are refused before anything is read\n", func() {
 			req := request
 			req.ProjectID = strings.Repeat("项", 41)
-			_, err := svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			_, err := svc.PrepareRelease(ctx, token, "orders", req, publisher)
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusBadRequest)
 			So(code, ShouldEqual, perrors.BknProject_Release_InvalidProjectID)
 
 			req = request
 			req.Notes = strings.Repeat("n", 65536)
-			_, err = svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			_, err = svc.PrepareRelease(ctx, token, "orders", req, publisher)
 			status, code = httpCode(err)
 			So(status, ShouldEqual, http.StatusBadRequest)
 			So(code, ShouldEqual, perrors.BknProject_Release_InvalidNotes)
@@ -417,65 +397,309 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			Convey("while the longest values that fit pass\n", func() {
 				id := newLineageID()
 				_, _ = setUp(id)
-				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), id+"_v1_0_0").
-					Return(&interfaces.Release{LineageID: id, Version: "1.0.0"}, true, nil)
+				kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 7, false), nil)
+				ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").
+					Return(&interfaces.Release{LineageID: id, Version: "1.0.0", State: interfaces.RELEASE_STATE_PUBLISHED}, true, nil)
 				req := request
 				req.ProjectID = strings.Repeat("项", 40)
 				req.Notes = strings.Repeat("n", 65535)
 
-				_, err := svc.PublishRelease(ctx, token, id, req, publisher, author)
+				_, err := svc.PrepareRelease(ctx, token, id, req, publisher)
 
 				_, code := httpCode(err)
 				So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
 			})
 		})
 
-		Convey("Definitions the release cannot rename reply 400 and tag nothing, so a fixed branch publishes the same version\n", func() {
-			id := newLineageID()
-			live, _ := setUp(id)
-			networkID := id + "_v1_0_0"
-			// A block name loads but cannot be swapped line for line.
-			broken := definitions("A part, edited.", "A supplier.")
-			broken["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain", "name: |\n  Supply chain", 1))
-			_, err := realGS.CommitFiles(ctx, id, branch, broken, "block name", author)
-			So(err, ShouldBeNil)
-
-			// The reads may run in any order; the network exists only once imported.
-			var imported map[string][]byte
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil).AnyTimes()
-			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil).AnyTimes()
-			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).DoAndReturn(
-				func(context.Context, string, string) (map[string][]byte, error) {
-					if imported == nil {
-						return nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound}
-					}
-					return imported, nil
-				}).AnyTimes()
-
-			_, err = svc.PublishRelease(ctx, token, id, request, publisher, author)
+		Convey("An unknown lineage replies 404 before anything is read\n", func() {
+			_, err := svc.PrepareRelease(ctx, token, "missing", request, publisher)
 
 			status, code := httpCode(err)
-			So(status, ShouldEqual, http.StatusBadRequest)
-			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
-			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+			So(status, ShouldEqual, http.StatusNotFound)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NotFound)
+		})
+	})
+}
 
-			fixedHead, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited.", "A supplier."), "fix name", author)
+func Test_LineageService_PublishRelease(t *testing.T) {
+	Convey("Test lineageService PublishRelease on a real git store\n", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		kva := pmock.NewMockKNVersionAccess(mockCtrl)
+		ra := pmock.NewMockReleaseAccess(mockCtrl)
+		svc := &lineageService{gs: realGS, kva: kva, ra: ra}
+		ctx := context.Background()
+		const branch = "project/p1"
+		request := interfaces.PublishReleaseRequest{Branch: branch, Version: "1.0.0", Notes: "go live"}
+		const notes = "go live\n\nfirst"
+
+		// setUp starts a lineage with a branch of one edit, prepared as 1.0.0.
+		setUp := func() (id string, release *interfaces.Release) {
+			id = newLineageID()
+			_, err := realGS.InitLineage(ctx, id, definitions("A part.", "A supplier."), "init", author)
 			So(err, ShouldBeNil)
-			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(
-				func(_ context.Context, _ string, files map[string][]byte) (*interfaces.BKNImportResult, error) {
-					imported = files
-					return &interfaces.BKNImportResult{KNID: networkID}, nil
-				})
-			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(nil)
+			_, err = svc.CreateBranch(ctx, id, branch, "")
+			So(err, ShouldBeNil)
+			branchHead, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited.", "A supplier."), "edit", author)
+			So(err, ShouldBeNil)
+			return id, &interfaces.Release{ID: "r-" + id, LineageID: id, NetworkID: id, Version: "1.0.0", ProjectID: "p1",
+				Publisher: publisher, Notes: "first", State: interfaces.RELEASE_STATE_PREPARED, BranchCommit: branchHead, DraftRevision: 8}
+		}
+		// running expects the network's running version read, published by releaseID.
+		running := func(id string, version int, releaseID string) {
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(version, 8, true), nil)
+			kva.EXPECT().GetVersion(gomock.Any(), token, id, version).Return(&interfaces.KNVersion{Version: version, Label: "v0.9.0",
+				State: interfaces.KN_VERSION_STATE_RUNNING, Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ReleaseID: releaseID}}, nil)
+		}
+		publishOf := func(release *interfaces.Release, expectedRunning int) interfaces.KNVersionPublish {
+			return interfaces.KNVersionPublish{ExpectedRunningVersion: expectedRunning, ExpectedDraftRevision: release.DraftRevision,
+				Notes: notes, Label: "v" + release.Version, Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE,
+					ProjectID: release.ProjectID, Ref: release.BranchCommit, ReleaseID: release.ID}}
+		}
+		// exported is what the running version reads back: bkn-backend re-serializes network.bkn.
+		exported := func(id string, commit string) map[string][]byte {
+			files, err := realGS.ReadTree(ctx, id, commit)
+			So(err, ShouldBeNil)
+			files = copyFiles(files)
+			files["network.bkn"] = append(append([]byte{}, files["network.bkn"]...), []byte("\nRe-serialized.\n")...)
+			return files
+		}
+		noTag := func(id string) {
+			_, err := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+		}
+
+		Convey("Publishing makes the draft the running version, then tags the release and brings main and the branch to it\n", func() {
+			id, release := setUp()
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+			running(id, 1, "someone-else")
+			warnings := []interfaces.KNVersionWarning{{Category: "metric", ID: "m1", Description: "not indexed"}}
+			kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).Return(&interfaces.KNVersionPublished{
+				KNVersion: interfaces.KNVersion{Version: 2, Label: "v1.0.0"}, Warnings: warnings,
+				PublishedMetrics: []interfaces.KNPublishedMetric{{ID: "m1", Version: 2}}, PurgedVersion: 0}, nil)
+			ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, notes, gomock.Any()).Return(nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
 
 			result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
 
 			So(err, ShouldBeNil)
+			So(result.NetworkID, ShouldEqual, id)
 			So(result.Tag, ShouldEqual, "v1.0.0")
+			So(result.KNVersion, ShouldEqual, 2)
+			So(result.Warnings, ShouldResemble, warnings)
+			So(result.PublishedMetrics, ShouldResemble, []interfaces.KNPublishedMetric{{ID: "m1", Version: 2}})
+			So(result.Release, ShouldEqual, release)
+			So(release.State, ShouldEqual, interfaces.RELEASE_STATE_PUBLISHED)
+			So(release.KNVersion, ShouldEqual, 2)
+			So(release.Notes, ShouldEqual, notes)
+
+			tagHead, err := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(err, ShouldBeNil)
+			So(tagHead, ShouldEqual, release.BranchCommit)
+
+			// main moved past the tag to the commit of the re-serialized export.
+			mainHead, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			So(result.Commit, ShouldEqual, mainHead)
+			repo, err := git.PlainOpen(filepath.Join(gitRoot, id+".git"))
+			So(err, ShouldBeNil)
+			commit, err := repo.CommitObject(plumbing.NewHash(mainHead))
+			So(err, ShouldBeNil)
+			So(commit.ParentHashes, ShouldResemble, []plumbing.Hash{plumbing.NewHash(release.BranchCommit)})
+			So(commit.Message, ShouldEqual, "sync live definitions after release v1.0.0")
+			onMain, _ := realGS.ReadTree(ctx, id, "main")
+			So(string(onMain["network.bkn"]), ShouldEndWith, "Re-serialized.\n")
+
+			// The project branch follows main, so the project's next release does not start behind it.
+			branchAfter, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			So(branchAfter, ShouldEqual, mainHead)
+
+			expectChecks(kva, ra, id, "1.1.0", versioningAt(2, 9, false), nil, []*interfaces.Release{release})
+			next, err := svc.PreviewRelease(ctx, token, id, branch, "1.1.0")
+			So(err, ShouldBeNil)
+			So(next.Refusals, ShouldBeEmpty)
+			So(next.BaseVersion, ShouldEqual, "1.0.0")
+		})
+
+		Convey("The first publish onto a network without a running version expects none\n", func() {
+			id, release := setUp()
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(0, 8, true), nil)
+			kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 0)).
+				Return(&interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 1}}, nil)
+			ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 1, notes, gomock.Any()).Return(nil)
+			// A failed export after the publish leaves main at the tag; the release stands.
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).
+				Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusBadGateway})
+
+			result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			So(err, ShouldBeNil)
+			So(result.KNVersion, ShouldEqual, 1)
+			So(result.Commit, ShouldEqual, release.BranchCommit)
+			mainHead, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			So(mainHead, ShouldEqual, release.BranchCommit)
+		})
+
+		Convey("A publish whose reply was lost is recognised by the release id of the running version\n", func() {
+			id, release := setUp()
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+			running(id, 2, release.ID)
+			// No Publish: the mock expects none.
+			ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, notes, gomock.Any()).Return(nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
+
+			result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			So(err, ShouldBeNil)
+			So(result.KNVersion, ShouldEqual, 2)
 			tagHead, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
-			So(tagHead, ShouldEqual, fixedHead)
+			So(tagHead, ShouldEqual, release.BranchCommit)
+		})
+
+		Convey("A running version that moved while publishing\n", func() {
+			id, release := setUp()
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+			running(id, 1, "someone-else")
+			kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).
+				Return(nil, versionRefusal(interfaces.KN_VERSION_ERROR_RUNNING_MISMATCH))
+
+			Convey("is the release's own when its source names the release\n", func() {
+				running(id, 2, release.ID)
+				ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, notes, gomock.Any()).Return(nil)
+				kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
+
+				result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+				So(err, ShouldBeNil)
+				So(result.KNVersion, ShouldEqual, 2)
+			})
+
+			Convey("and someone else's otherwise, which replies 409 and tags nothing\n", func() {
+				running(id, 2, "someone-else")
+
+				_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+				status, code := httpCode(err)
+				So(status, ShouldEqual, http.StatusConflict)
+				So(code, ShouldEqual, perrors.BknProject_Release_RunningChanged)
+				noTag(id)
+			})
+		})
+
+		Convey("Refusals of the publish are worded as bkn-project's and tag nothing\n", func() {
+			for _, refusal := range []struct{ backend, code string }{
+				{interfaces.KN_VERSION_ERROR_NOTHING_TO_PUBLISH, perrors.BknProject_Release_NothingToPublish},
+				{interfaces.KN_VERSION_ERROR_DRAFT_BASE_OUTDATED, perrors.BknProject_Release_DraftOutdated},
+				{interfaces.KN_VERSION_ERROR_DRAFT_REVISION_MISMATCH, perrors.BknProject_Release_DraftChanged},
+			} {
+				id, release := setUp()
+				ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+				running(id, 1, "someone-else")
+				kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).Return(nil, versionRefusal(refusal.backend))
+
+				_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+				status, got := httpCode(err)
+				So(status, ShouldEqual, http.StatusConflict)
+				So(got, ShouldEqual, refusal.code)
+				So(release.State, ShouldEqual, interfaces.RELEASE_STATE_PREPARED)
+				noTag(id)
+			}
+		})
+
+		Convey("An outdated base the owner confirmed is published\n", func() {
+			id, release := setUp()
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+			running(id, 1, "someone-else")
+			confirmed := publishOf(release, 1)
+			confirmed.AllowOutdatedBase = true
+			kva.EXPECT().Publish(gomock.Any(), token, id, confirmed).Return(&interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 3}}, nil)
+			ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 3, notes, gomock.Any()).Return(nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
+
+			req := request
+			req.AllowOutdatedBase = true
+			result, err := svc.PublishRelease(ctx, token, id, req, publisher, author)
+
+			So(err, ShouldBeNil)
+			So(result.KNVersion, ShouldEqual, 3)
+		})
+
+		Convey("A release published already only has its git steps finished\n", func() {
+			id, release := setUp()
+			release.State, release.KNVersion, release.Notes = interfaces.RELEASE_STATE_PUBLISHED, 2, notes
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+			// No versioning read and no Publish or MarkPublished: the mocks expect none.
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
+
+			result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			So(err, ShouldBeNil)
+			So(result.KNVersion, ShouldEqual, 2)
+			tagHead, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(tagHead, ShouldEqual, release.BranchCommit)
+			mainHead, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			So(result.Commit, ShouldEqual, mainHead)
+			So(mainHead, ShouldNotEqual, release.BranchCommit)
+
+			Convey("and once they are, a retry changes nothing\n", func() {
+				ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+
+				again, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+				So(err, ShouldBeNil)
+				So(again.Commit, ShouldEqual, mainHead)
+				after, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+				So(after, ShouldEqual, mainHead)
+			})
+		})
+
+		Convey("A tag of the version at another commit replies 409\n", func() {
+			id, release := setUp()
+			release.State, release.KNVersion = interfaces.RELEASE_STATE_PUBLISHED, 2
+			mainHead, _ := realGS.ResolveRef(ctx, id, "refs/heads/main")
+			So(realGS.Tag(ctx, id, "v1.0.0", mainHead), ShouldBeNil)
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
+
+			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
+			So(errorDetails(err), ShouldResemble, map[string]any{"tag": "v1.0.0", "commit": mainHead})
+		})
+
+		Convey("A version that was not prepared replies 409\n", func() {
+			id, _ := setUp()
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(nil, false, nil)
+
+			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Release_NotPrepared)
+			noTag(id)
+		})
+
+		Convey("Bad versions, branches and notes are refused before anything is read\n", func() {
+			req := request
+			req.Version = "1.0"
+			_, err := svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			_, code := httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Release_InvalidVersion)
+
+			req = request
+			req.Branch = "main"
+			_, err = svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			_, code = httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_MainBranchReadOnly)
+
+			req = request
+			req.Notes = strings.Repeat("n", 65536)
+			_, err = svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			_, code = httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Release_InvalidNotes)
 		})
 
 		Convey("An unknown lineage replies 404 before anything is read\n", func() {
@@ -488,42 +712,27 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 	})
 }
 
-func Test_ReleaseNetworkID(t *testing.T) {
-	Convey("Test releaseNetworkID\n", t, func() {
-		So(releaseNetworkID("supply_ontology_hand", "1.1.0"), ShouldEqual, "supply_ontology_hand_v1_1_0")
+func Test_CopySuffix(t *testing.T) {
+	Convey("Test copySuffix\n", t, func() {
+		So(copySuffix("supply_ontology_hand", "1.1.0"), ShouldEqual, "supply_ontology_hand_v1_1_0")
+
+		Convey("Two versions of a lineage name their copies apart\n", func() {
+			So(copySuffix("supply", "1.0.0"), ShouldNotEqual, copySuffix("supply", "1.1.0"))
+			So(copySuffix("supply", "1.10.0"), ShouldNotEqual, copySuffix("supply", "1.1.0"))
+		})
 
 		Convey("A long lineage id is cut and loses the separator the cut leaves\n", func() {
 			lineageID := strings.Repeat("a", 121) + "_bcdef"
 			So(lineageID, ShouldHaveLength, 127)
-			id := releaseNetworkID(lineageID, "1.10.0")
-			So(id, ShouldEqual, strings.Repeat("a", 120)+"_v1_10_0")
-			So(len(id), ShouldBeLessThanOrEqualTo, maxNetworkIDLength)
+			suffix := copySuffix(lineageID, "1.10.0")
+			So(suffix, ShouldEqual, strings.Repeat("a", 120)+"_v1_10_0")
+			So(len(suffix), ShouldBeLessThanOrEqualTo, maxNetworkIDLength)
 		})
 
 		Convey("The longest version still leaves part of the lineage id\n", func() {
-			id := releaseNetworkID(strings.Repeat("b", 128), strings.Repeat("9", 28)+".0.0")
-			So(id, ShouldHaveLength, maxNetworkIDLength)
-			So(id, ShouldStartWith, strings.Repeat("b", 94)+"_v")
-		})
-	})
-}
-
-func Test_ReleaseNetworkName(t *testing.T) {
-	Convey("Test releaseNetworkName\n", t, func() {
-		So(releaseNetworkName("Supply chain", "1.1.0"), ShouldEqual, "Supply chain · 1.1.0")
-
-		Convey("The version of an earlier release is replaced, not appended to\n", func() {
-			So(releaseNetworkName("Supply chain · 1.0.0", "1.1.0"), ShouldEqual, "Supply chain · 1.1.0")
-		})
-
-		Convey("A long base name is cut by characters to fit 128\n", func() {
-			name := releaseNetworkName(strings.Repeat("供应链", 50), "1.10.0")
-			So(utf8.RuneCountInString(name), ShouldEqual, maxNetworkNameRunes)
-			So(name, ShouldEndWith, " · 1.10.0")
-			So(utf8.ValidString(name), ShouldBeTrue)
-
-			cut := releaseNetworkName(strings.Repeat("x", 119)+" tail", "1.0.0")
-			So(cut, ShouldEqual, strings.Repeat("x", 119)+" · 1.0.0")
+			suffix := copySuffix(strings.Repeat("b", 128), strings.Repeat("9", 28)+".0.0")
+			So(suffix, ShouldHaveLength, maxNetworkIDLength)
+			So(suffix, ShouldStartWith, strings.Repeat("b", 94)+"_v")
 		})
 	})
 }
@@ -532,28 +741,28 @@ func Test_SetNetworkHeader(t *testing.T) {
 	Convey("Test setNetworkHeader\n", t, func() {
 		Convey("Only the id and name lines change\n", func() {
 			text := "---\ntype: knowledge_network\nid: supply\nname: Supply\ntags: [a]\n---\n\n# Supply\n\nid: in the body\n"
-			out, err := setNetworkHeader(text, "supply_v1_0_0", "Supply · 1.0.0")
+			out, err := setNetworkHeader(text, "orders", "Orders")
 			So(err, ShouldBeNil)
-			So(out, ShouldEqual, "---\ntype: knowledge_network\nid: supply_v1_0_0\nname: Supply · 1.0.0\ntags: [a]\n---\n\n# Supply\n\nid: in the body\n")
+			So(out, ShouldEqual, "---\ntype: knowledge_network\nid: orders\nname: Orders\ntags: [a]\n---\n\n# Supply\n\nid: in the body\n")
 		})
 
 		Convey("A name YAML would misread is quoted, and CRLF lines keep their ending\n", func() {
 			text := "---\r\ntype: knowledge_network\r\nid: supply\r\nname: \"Supply\"\r\n---\r\n"
-			out, err := setNetworkHeader(text, "supply_v1_0_0", "Supply: core · 1.0.0")
+			out, err := setNetworkHeader(text, "orders", "Supply: core")
 			So(err, ShouldBeNil)
 			fm, err := bkn.ParseFrontmatter(out)
 			So(err, ShouldBeNil)
-			So(fm["name"], ShouldEqual, "Supply: core · 1.0.0")
-			So(fm["id"], ShouldEqual, "supply_v1_0_0")
+			So(fm["name"], ShouldEqual, "Supply: core")
+			So(fm["id"], ShouldEqual, "orders")
 			So(out, ShouldContainSubstring, "\r\n---\r\n")
 		})
 
 		Convey("A frontmatter without name, or with a block name, is refused\n", func() {
-			_, err := setNetworkHeader("---\ntype: knowledge_network\nid: supply\n---\n", "x_v1_0_0", "X · 1.0.0")
+			_, err := setNetworkHeader("---\ntype: knowledge_network\nid: supply\n---\n", "x", "X")
 			So(err, ShouldNotBeNil)
-			_, err = setNetworkHeader("---\nid: supply\nname: |\n  Supply\n---\n", "x_v1_0_0", "X · 1.0.0")
+			_, err = setNetworkHeader("---\nid: supply\nname: |\n  Supply\n---\n", "x", "X")
 			So(err, ShouldNotBeNil)
-			_, err = setNetworkHeader("# no frontmatter\n", "x_v1_0_0", "X · 1.0.0")
+			_, err = setNetworkHeader("# no frontmatter\n", "x", "X")
 			So(err, ShouldNotBeNil)
 		})
 	})

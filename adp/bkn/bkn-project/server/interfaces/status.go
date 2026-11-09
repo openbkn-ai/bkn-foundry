@@ -93,8 +93,6 @@ const (
 	// ACTION_REVIEW_RELEASE reads what publishing the confirmation would bring; publishing goes on
 	// from the review, which needs a version.
 	ACTION_REVIEW_RELEASE = "review_release"
-	// ACTION_SWITCH_CONSUMERS switches consumers to the release that published the project.
-	ACTION_SWITCH_CONSUMERS = "switch_consumers"
 	// ACTION_DRAFT_SOURCE_CHANGES drafts the source changes of the tables the draft binds.
 	ACTION_DRAFT_SOURCE_CHANGES = "draft_source_changes"
 )
@@ -212,8 +210,18 @@ type ProjectStatusCheck struct {
 type ProjectStatusRelease struct {
 	Version   string `json:"version"`
 	NetworkID string `json:"network_id"`
-	// InUse is whether consumers use the release's network: the lineage's latest switch was to it.
-	InUse bool `json:"in_use"`
+	// KNVersion is the network version the release was published as.
+	KNVersion int `json:"kn_version"`
+	// RolledBack is set when the network runs another version than the release's, as after a
+	// rollback; Running then names it.
+	RolledBack bool                  `json:"rolled_back"`
+	Running    *ProjectStatusRunning `json:"running,omitempty"`
+}
+
+// ProjectStatusRunning is the version the project's network runs.
+type ProjectStatusRunning struct {
+	KNVersion int    `json:"kn_version"`
+	Label     string `json:"label"`
 }
 
 type ProjectStatusBlocker struct {

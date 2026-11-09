@@ -61,6 +61,8 @@ type draftService struct {
 	ls interfaces.LineageService
 	// ra tells whether a release published the confirmation.
 	ra interfaces.ReleaseAccess
+	// kva tells which version of the network is running, so a release rolled back is shown so.
+	kva interfaces.KNVersionAccess
 	// gs reads the published definitions the source changes compare.
 	gs interfaces.GitStore
 	// ba answers Ask AI within askWait, askDeadline when unset; tests shorten it.
@@ -85,6 +87,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
 			ra:      logics.RA,
+			kva:     logics.KVA,
 			gs:      logics.GS,
 			ba:      logics.BAA,
 			run:     func(fn func()) { go fn() },
@@ -344,6 +347,7 @@ type Dependencies struct {
 	Projects     interfaces.ProjectService
 	Lineages     interfaces.LineageService
 	Releases     interfaces.ReleaseAccess
+	Versions     interfaces.KNVersionAccess
 	Git          interfaces.GitStore
 	Agents       interfaces.BknAgentAccess
 	// AskWait bounds Ask AI; zero is the default deadline.
@@ -354,6 +358,6 @@ type Dependencies struct {
 // uses NewDraftService.
 func NewDraftServiceWith(deps Dependencies) interfaces.DraftService {
 	return &draftService{setting: deps.Setting, da: deps.Drafts, ca: deps.Checks, ira: deps.IDs, va: deps.Vega,
-		iba: deps.IndexBuilds, rqa: deps.Requirements, ps: deps.Projects, ls: deps.Lineages, ra: deps.Releases,
+		iba: deps.IndexBuilds, rqa: deps.Requirements, ps: deps.Projects, ls: deps.Lineages, ra: deps.Releases, kva: deps.Versions,
 		gs: deps.Git, ba: deps.Agents, askWait: deps.AskWait, run: func(fn func()) { fn() }}
 }

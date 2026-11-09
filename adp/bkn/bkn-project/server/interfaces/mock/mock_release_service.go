@@ -42,18 +42,18 @@ func (m *MockReleaseService) EXPECT() *MockReleaseServiceMockRecorder {
 }
 
 // GetRelease mocks base method.
-func (m *MockReleaseService) GetRelease(ctx context.Context, networkID string) (*interfaces.Release, error) {
+func (m *MockReleaseService) GetRelease(ctx context.Context, lineageID, version string) (*interfaces.Release, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRelease", ctx, networkID)
+	ret := m.ctrl.Call(m, "GetRelease", ctx, lineageID, version)
 	ret0, _ := ret[0].(*interfaces.Release)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetRelease indicates an expected call of GetRelease.
-func (mr *MockReleaseServiceMockRecorder) GetRelease(ctx, networkID any) *gomock.Call {
+func (mr *MockReleaseServiceMockRecorder) GetRelease(ctx, lineageID, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRelease", reflect.TypeOf((*MockReleaseService)(nil).GetRelease), ctx, networkID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRelease", reflect.TypeOf((*MockReleaseService)(nil).GetRelease), ctx, lineageID, version)
 }
 
 // ListReleases mocks base method.

@@ -29,9 +29,15 @@ const (
 	BknProject_Release_BranchBehind        = "BknProject.Release.BranchBehind"
 	BknProject_Release_Drift               = "BknProject.Release.Drift"
 	BknProject_Release_CapabilitiesSkipped = "BknProject.Release.CapabilitiesSkipped"
-	BknProject_Release_NetworkExists       = "BknProject.Release.NetworkExists"
-	// An earlier attempt of the version left its tag at another branch head.
-	BknProject_Release_UnfinishedAttempt = "BknProject.Release.UnfinishedAttempt"
+	// Publishing into the versioned network.
+	BknProject_Release_NotPrepared      = "BknProject.Release.NotPrepared"
+	BknProject_Release_DraftHasChanges  = "BknProject.Release.DraftHasChanges"
+	BknProject_Release_DraftChanged     = "BknProject.Release.DraftChanged"
+	BknProject_Release_DraftOutdated    = "BknProject.Release.DraftOutdated"
+	BknProject_Release_RunningChanged   = "BknProject.Release.RunningChanged"
+	BknProject_Release_NothingToPublish = "BknProject.Release.NothingToPublish"
+	BknProject_Release_ValidationFailed = "BknProject.Release.ValidationFailed"
+	BknProject_Release_NotVersioned     = "BknProject.Release.NotVersioned"
 	// A project's release.
 	BknProject_Release_ProjectArchived = "BknProject.Release.ProjectArchived"
 	BknProject_Release_ChecksFailed    = "BknProject.Release.ChecksFailed"
@@ -42,8 +48,13 @@ const (
 	BknProject_Rollback_PlanOutdated      = "BknProject.Rollback.PlanOutdated"
 	BknProject_Rollback_NoPrevious        = "BknProject.Rollback.NoPrevious"
 	BknProject_Rollback_NotProjectRelease = "BknProject.Rollback.NotProjectRelease"
+	BknProject_Rollback_BrokenReferences  = "BknProject.Rollback.BrokenReferences"
+	BknProject_Rollback_NotActivatable    = "BknProject.Rollback.NotActivatable"
+	BknProject_Rollback_EditionRestricted = "BknProject.Rollback.EditionRestricted"
+	BknProject_Release_VersionPurged      = "BknProject.Release.VersionPurged"
 
 	// 503
+	BknProject_Release_NotReady = "BknProject.Release.NotReady"
 
 	// 500
 	BknProject_Release_InternalError = "BknProject.Release.InternalError"
@@ -65,8 +76,19 @@ var (
 		BknProject_Release_BranchBehind,
 		BknProject_Release_Drift,
 		BknProject_Release_CapabilitiesSkipped,
-		BknProject_Release_NetworkExists,
-		BknProject_Release_UnfinishedAttempt,
+		BknProject_Release_NotPrepared,
+		BknProject_Release_DraftHasChanges,
+		BknProject_Release_DraftChanged,
+		BknProject_Release_DraftOutdated,
+		BknProject_Release_RunningChanged,
+		BknProject_Release_NothingToPublish,
+		BknProject_Release_ValidationFailed,
+		BknProject_Release_NotVersioned,
+		BknProject_Rollback_BrokenReferences,
+		BknProject_Rollback_NotActivatable,
+		BknProject_Rollback_EditionRestricted,
+		BknProject_Release_VersionPurged,
+		BknProject_Release_NotReady,
 		BknProject_Release_ProjectArchived,
 		BknProject_Release_ChecksFailed,
 		BknProject_Release_ReviewOutdated,

@@ -238,7 +238,7 @@ func (ba *bknAgentAccess) AnswerOnNetwork(ctx context.Context, token string,
 
 	body := map[string]any{
 		"agent_id": req.AgentID, "message": req.Message, "client_request_id": req.ClientRequestID,
-		"context": map[string]any{"kn_id": req.KNID},
+		"context": answerContext(req),
 	}
 	reqHeaders := map[string]string{
 		rest.ContentTypeKey: rest.ContentTypeJson,
@@ -351,4 +351,13 @@ func readAnswer(respBody []byte) (*interfaces.BknAgentAnswer, error) {
 		return nil, fmt.Errorf("%w: no terminal event", interfaces.ErrBknAgentAnswerCut)
 	}
 	return answer, nil
+}
+
+// answerContext names the network, and the version of it when one is asked for.
+func answerContext(req *interfaces.BknAgentAnswerRequest) map[string]any {
+	context := map[string]any{"kn_id": req.KNID}
+	if req.KNVersion != "" {
+		context["kn_version"] = req.KNVersion
+	}
+	return context
 }

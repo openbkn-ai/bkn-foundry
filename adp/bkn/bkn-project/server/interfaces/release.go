@@ -4,17 +4,15 @@
 
 package interfaces
 
-// A release lineage is the chain of knowledge networks published from one base
-// network. Each release is imported as a new network whose id is
-// <base_id>_<version>; the lineage id is the base network id. The newest
-// release is live and every earlier one archived; the state is worked out when
-// a release is read, not stored. Switching consumers (see Switch) changes no
-// state. bkn-backend does not enforce read-only on archived networks.
+// A release lineage is the history of one versioned knowledge network, whose id is the lineage
+// id. A release is prepared first: its definitions are written into the network's draft, where the
+// project's scenario questions are answered. Publishing it then turns the draft into the network's
+// running version, numbered by bkn-backend (KNVersion) and labelled v<version>.
 
 // Release states.
 const (
-	RELEASE_STATE_LIVE     = "live"
-	RELEASE_STATE_ARCHIVED = "archived"
+	RELEASE_STATE_PREPARED  = "prepared"
+	RELEASE_STATE_PUBLISHED = "published"
 )
 
 // Release list paging.
@@ -40,8 +38,16 @@ type Release struct {
 	Publisher   AccountInfo `json:"publisher"`
 	Notes       string      `json:"notes"`
 	State       string      `json:"state"`
-	CreateTime  int64       `json:"create_time"`
-	UpdateTime  int64       `json:"update_time"`
+	// KNVersion is the network version publishing made; 0 while prepared.
+	KNVersion int `json:"kn_version"`
+	// BranchCommit holds the definitions prepared; publishing tags it v<version>.
+	BranchCommit string `json:"branch_commit"`
+	// DraftRevision is the draft's revision once the definitions were written into it.
+	DraftRevision int64 `json:"-"`
+	// Capabilities are the function and Skill files, release.yaml among them, publishing commits to main.
+	Capabilities map[string][]byte `json:"-"`
+	CreateTime   int64             `json:"create_time"`
+	UpdateTime   int64             `json:"update_time"`
 }
 
 // ReleaseCursor is the keyset position after which the next page starts.
@@ -54,7 +60,9 @@ type ReleaseCursor struct {
 // ReleasesQuery selects one page of a lineage's releases.
 type ReleasesQuery struct {
 	LineageID string
-	Limit     int
+	// State selects one state; empty selects every release.
+	State string
+	Limit int
 	// Cursor is nil for the first page.
 	Cursor *ReleaseCursor
 }

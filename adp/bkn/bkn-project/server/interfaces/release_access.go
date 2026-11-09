@@ -12,12 +12,11 @@ type ReleaseAccess interface {
 	ListReleases(ctx context.Context, query ReleasesQuery) ([]*Release, error)
 	// CountReleases returns how many releases the lineage has.
 	CountReleases(ctx context.Context, lineageID string) (int64, error)
-	// GetReleaseByNetworkID returns the release that published the network, and false when there is none.
-	GetReleaseByNetworkID(ctx context.Context, networkID string) (*Release, bool, error)
-	// CreateRelease inserts a release. A second release of the same network fails on the unique key.
-	CreateRelease(ctx context.Context, release *Release) error
-	// GetLatestSwitch returns the lineage's latest switch, and false when there is none.
-	GetLatestSwitch(ctx context.Context, lineageID string) (*Switch, bool, error)
-	// RecordSwitch inserts a switch.
-	RecordSwitch(ctx context.Context, sw *Switch) error
+	// GetRelease returns the lineage's release of version, and false when there is none.
+	GetRelease(ctx context.Context, lineageID string, version string) (*Release, bool, error)
+	// PrepareRelease inserts a prepared release, or replaces the one of the same version while it is
+	// still prepared. It reports false when that version is already published.
+	PrepareRelease(ctx context.Context, release *Release) (bool, error)
+	// MarkPublished records the network version a prepared release was published as, with its notes.
+	MarkPublished(ctx context.Context, releaseID string, knVersion int, notes string, updateTime int64) error
 }

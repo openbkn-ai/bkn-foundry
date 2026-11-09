@@ -23,7 +23,6 @@ import (
 
 const (
 	RELEASE_TABLE_NAME = "t_bkn_project_release"
-	SWITCH_TABLE_NAME  = "t_bkn_project_switch"
 )
 
 var (
@@ -31,16 +30,10 @@ var (
 	raAccess interfaces.ReleaseAccess
 )
 
-// f_state is left out: a release's state is worked out when it is read (see
-// interfaces.Release), and the column keeps its default.
 var releaseColumns = []string{
 	"f_id", "f_lineage_id", "f_network_id", "f_version", "f_base_version", "f_project_id",
-	"f_publisher", "f_publisher_type", "f_notes", "f_create_time", "f_update_time",
-}
-
-var switchColumns = []string{
-	"f_id", "f_lineage_id", "f_from_network_id", "f_to_network_id",
-	"f_operator", "f_operator_type", "f_schedules", "f_create_time",
+	"f_publisher", "f_publisher_type", "f_notes", "f_state", "f_kn_version", "f_branch_commit",
+	"f_draft_revision", "f_capabilities", "f_create_time", "f_update_time",
 }
 
 type releaseAccess struct {
@@ -60,6 +53,9 @@ func (ra *releaseAccess) ListReleases(ctx context.Context, query interfaces.Rele
 
 	builder := sq.Select(releaseColumns...).From(RELEASE_TABLE_NAME).
 		Where(sq.Eq{"f_lineage_id": query.LineageID})
+	if query.State != "" {
+		builder = builder.Where(sq.Eq{"f_state": query.State})
+	}
 	if query.Cursor != nil {
 		builder = builder.Where(sq.Or{
 			sq.Lt{"f_create_time": query.Cursor.CreateTime},
@@ -117,12 +113,12 @@ func (ra *releaseAccess) CountReleases(ctx context.Context, lineageID string) (i
 	return total, nil
 }
 
-func (ra *releaseAccess) GetReleaseByNetworkID(ctx context.Context, networkID string) (*interfaces.Release, bool, error) {
-	_, span := oteltrace.StartNamedClientSpan(ctx, "GetReleaseByNetworkID")
+func (ra *releaseAccess) GetRelease(ctx context.Context, lineageID string, version string) (*interfaces.Release, bool, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "GetRelease")
 	defer span.End()
 
 	sqlStr, vals, err := sq.Select(releaseColumns...).From(RELEASE_TABLE_NAME).
-		Where(sq.Eq{"f_network_id": networkID}).
+		Where(sq.Eq{"f_lineage_id": lineageID, "f_version": version}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -141,87 +137,87 @@ func (ra *releaseAccess) GetReleaseByNetworkID(ctx context.Context, networkID st
 	return release, true, nil
 }
 
-func (ra *releaseAccess) CreateRelease(ctx context.Context, release *interfaces.Release) error {
-	_, span := oteltrace.StartNamedClientSpan(ctx, "CreateRelease")
+// PrepareRelease keeps the id of a prepared release it replaces, so the regression recorded under
+// that id stays the release's.
+func (ra *releaseAccess) PrepareRelease(ctx context.Context, release *interfaces.Release) (bool, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "PrepareRelease")
 	defer span.End()
 
+	capabilities, err := json.Marshal(release.Capabilities)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal capabilities failed")
+		return false, err
+	}
+	existing, found, err := ra.GetRelease(ctx, release.LineageID, release.Version)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query data failed")
+		return false, err
+	}
+	if found && existing.State != interfaces.RELEASE_STATE_PREPARED {
+		span.SetStatus(codes.Ok, "")
+		return false, nil
+	}
+	if found {
+		release.ID, release.CreateTime = existing.ID, existing.CreateTime
+		sqlStr, vals, err := sq.Update(RELEASE_TABLE_NAME).SetMap(map[string]any{
+			"f_network_id": release.NetworkID, "f_base_version": release.BaseVersion, "f_project_id": release.ProjectID,
+			"f_publisher": release.Publisher.ID, "f_publisher_type": release.Publisher.Type, "f_notes": release.Notes,
+			"f_branch_commit": release.BranchCommit, "f_draft_revision": release.DraftRevision,
+			"f_capabilities": string(capabilities), "f_update_time": release.UpdateTime,
+		}).Where(sq.Eq{"f_id": existing.ID, "f_state": interfaces.RELEASE_STATE_PREPARED}).ToSql()
+		if err != nil {
+			span.SetStatus(codes.Error, "Build sql failed")
+			return false, err
+		}
+		result, err := ra.db.ExecContext(ctx, sqlStr, vals...)
+		if err != nil {
+			span.SetStatus(codes.Error, "Update data failed")
+			return false, err
+		}
+		n, err := result.RowsAffected()
+		release.State = interfaces.RELEASE_STATE_PREPARED
+		span.SetStatus(codes.Ok, "")
+		return err == nil && n == 1, err
+	}
 	sqlStr, vals, err := sq.Insert(RELEASE_TABLE_NAME).
 		Columns(releaseColumns...).
 		Values(
 			release.ID, release.LineageID, release.NetworkID, release.Version, release.BaseVersion, release.ProjectID,
-			release.Publisher.ID, release.Publisher.Type, release.Notes, release.CreateTime, release.UpdateTime,
+			release.Publisher.ID, release.Publisher.Type, release.Notes, interfaces.RELEASE_STATE_PREPARED, 0,
+			release.BranchCommit, release.DraftRevision, string(capabilities), release.CreateTime, release.UpdateTime,
 		).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+		return false, err
 	}
 	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		// A row of the version written meanwhile, by a concurrent preparing, means it is taken.
+		if _, found, readErr := ra.GetRelease(ctx, release.LineageID, release.Version); readErr == nil && found {
+			span.SetStatus(codes.Ok, "")
+			return false, nil
+		}
 		span.SetStatus(codes.Error, "Insert data failed")
-		return err
+		return false, err
 	}
+	release.State = interfaces.RELEASE_STATE_PREPARED
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return true, nil
 }
 
-func (ra *releaseAccess) GetLatestSwitch(ctx context.Context, lineageID string) (*interfaces.Switch, bool, error) {
-	_, span := oteltrace.StartNamedClientSpan(ctx, "GetLatestSwitch")
+func (ra *releaseAccess) MarkPublished(ctx context.Context, releaseID string, knVersion int, notes string, updateTime int64) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "MarkPublished")
 	defer span.End()
 
-	sqlStr, vals, err := sq.Select(switchColumns...).From(SWITCH_TABLE_NAME).
-		Where(sq.Eq{"f_lineage_id": lineageID}).
-		OrderBy("f_create_time DESC", "f_id DESC").
-		Limit(1).
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, false, err
-	}
-	sw := &interfaces.Switch{}
-	var schedules string
-	err = ra.db.QueryRowContext(ctx, sqlStr, vals...).Scan(
-		&sw.ID, &sw.LineageID, &sw.FromNetworkID, &sw.ToNetworkID,
-		&sw.Operator.ID, &sw.Operator.Type, &schedules, &sw.CreateTime,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		span.SetStatus(codes.Ok, "")
-		return nil, false, nil
-	}
-	if err != nil {
-		span.SetStatus(codes.Error, "Query data failed")
-		return nil, false, err
-	}
-	if err := json.Unmarshal([]byte(schedules), &sw.Schedules); err != nil {
-		span.SetStatus(codes.Error, "Unmarshal schedules failed")
-		return nil, false, fmt.Errorf("unmarshal schedules of switch %s: %w", sw.ID, err)
-	}
-	span.SetStatus(codes.Ok, "")
-	return sw, true, nil
-}
-
-func (ra *releaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch) error {
-	_, span := oteltrace.StartNamedClientSpan(ctx, "RecordSwitch")
-	defer span.End()
-
-	schedules := sw.Schedules
-	if schedules == nil {
-		schedules = []interfaces.SwitchedSchedule{}
-	}
-	scheduleJSON, err := json.Marshal(schedules)
-	if err != nil {
-		span.SetStatus(codes.Error, "Marshal schedules failed")
-		return err
-	}
-	sqlStr, vals, err := sq.Insert(SWITCH_TABLE_NAME).Columns(switchColumns...).Values(
-		sw.ID, sw.LineageID, sw.FromNetworkID, sw.ToNetworkID,
-		sw.Operator.ID, sw.Operator.Type, string(scheduleJSON), sw.CreateTime,
-	).ToSql()
+	sqlStr, vals, err := sq.Update(RELEASE_TABLE_NAME).SetMap(map[string]any{
+		"f_state": interfaces.RELEASE_STATE_PUBLISHED, "f_kn_version": knVersion, "f_notes": notes, "f_update_time": updateTime,
+	}).Where(sq.Eq{"f_id": releaseID, "f_state": interfaces.RELEASE_STATE_PREPARED}).ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
 	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
-		span.SetStatus(codes.Error, "Insert data failed")
+		span.SetStatus(codes.Error, "Update data failed")
 		return err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -231,12 +227,19 @@ func (ra *releaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch
 // scanRelease reads one row selected with releaseColumns.
 func scanRelease(row interface{ Scan(dest ...any) error }) (*interfaces.Release, error) {
 	release := &interfaces.Release{}
+	var capabilities string
 	err := row.Scan(
 		&release.ID, &release.LineageID, &release.NetworkID, &release.Version, &release.BaseVersion, &release.ProjectID,
-		&release.Publisher.ID, &release.Publisher.Type, &release.Notes, &release.CreateTime, &release.UpdateTime,
+		&release.Publisher.ID, &release.Publisher.Type, &release.Notes, &release.State, &release.KNVersion,
+		&release.BranchCommit, &release.DraftRevision, &capabilities, &release.CreateTime, &release.UpdateTime,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if capabilities != "" {
+		if err := json.Unmarshal([]byte(capabilities), &release.Capabilities); err != nil {
+			return nil, fmt.Errorf("read functions and Skills of release %s: %w", release.ID, err)
+		}
 	}
 	return release, nil
 }

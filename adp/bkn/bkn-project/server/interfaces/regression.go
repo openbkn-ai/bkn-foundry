@@ -61,8 +61,8 @@ const (
 
 // Regression is the regression of one release, kept in t_bkn_project_regression.
 type Regression struct {
-	// NetworkID is the network the release created.
-	NetworkID string `json:"network_id"`
+	// ReleaseID is the release whose prepared definitions were answered on, in the network's draft.
+	ReleaseID string `json:"release_id"`
 	ProjectID string `json:"project_id"`
 	Version   string `json:"version"`
 	Status    string `json:"status"`
@@ -134,9 +134,8 @@ type RegressionResult struct {
 
 //go:generate mockgen -source ../interfaces/regression.go -destination ../interfaces/mock/mock_regression.go
 type RegressionAccess interface {
-	// GetRegression returns the regression of the release that created networkID, and false when
-	// it has none.
-	GetRegression(ctx context.Context, networkID string) (*Regression, bool, error)
+	// GetRegression returns the regression of the release, and false when it has none.
+	GetRegression(ctx context.Context, releaseID string) (*Regression, bool, error)
 	// StartRegression writes r, running, as its release's regression unless one is running already;
 	// it reports whether it did. One running since before staleBefore is taken over: it has ended
 	// without being recorded.

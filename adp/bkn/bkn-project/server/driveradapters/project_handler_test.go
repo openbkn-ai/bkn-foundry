@@ -50,6 +50,16 @@ func Test_ProjectRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"other_projects":1`)
 		})
 
+		Convey("Create passes the confirmation to turn versioning on\n", func() {
+			ps.EXPECT().CreateProject(gomock.Any(), "Bearer t", interfaces.CreateProjectRequest{
+				Name: "Orders", KNID: "orders", EnableVersioning: true,
+			}, caller, interfaces.GitAuthor{Name: "u1"}).Return(entry, nil)
+
+			w := serveBody(handler, http.MethodPost, base, []byte(`{"name":"Orders","kn_id":"orders","enable_versioning":true}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
+		})
+
 		Convey("Create refuses a body that is not JSON\n", func() {
 			w := serveBody(handler, http.MethodPost, base, []byte(`{`))
 

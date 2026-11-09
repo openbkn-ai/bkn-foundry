@@ -545,7 +545,7 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 		})
 
 		Convey("A refusal of the release blocks it though every check passes\n", func() {
-			preview.Refusals = []interfaces.ReleaseRefusal{{Code: perrors.BknProject_Release_NetworkExists}}
+			preview.Refusals = []interfaces.ReleaseRefusal{{Code: perrors.BknProject_Release_DraftHasChanges}}
 			expect()
 			expectIndex()
 

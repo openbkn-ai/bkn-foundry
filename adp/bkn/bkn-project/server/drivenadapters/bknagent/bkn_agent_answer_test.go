@@ -96,6 +96,17 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			})
 		})
 
+		Convey("An answer on a version of the network names that version in the context\n", func() {
+			respBody = sse([2]string{"result", `{"content":{"answer":"S1."}}`}, [2]string{"terminal", `{"status":"succeeded"}`})
+			onDraft := *req
+			onDraft.KNID, onDraft.KNVersion = "supply", interfaces.KN_VERSION_DRAFT
+
+			_, err := ba.AnswerOnNetwork(ctx, "Bearer t", &onDraft)
+
+			So(err, ShouldBeNil)
+			So(got[0].body["context"], ShouldResemble, map[string]any{"kn_id": "supply", "kn_version": "draft"})
+		})
+
 		Convey("A tool call's input too large to keep is left out and said so; one unfinished has no status\n", func() {
 			large := `{"query":"` + strings.Repeat("x", maxToolInputBytes) + `"}`
 			respBody = sse(

@@ -11,6 +11,6 @@ type ReleaseService interface {
 	// ListReleases returns one page of a lineage's releases. cursor is the
 	// opaque next_cursor of the previous page, or empty for the first page.
 	ListReleases(ctx context.Context, lineageID string, limit int, cursor string) (*ReleaseList, error)
-	// GetRelease returns the release that published the network.
-	GetRelease(ctx context.Context, networkID string) (*Release, error)
+	// GetRelease returns the lineage's release of version.
+	GetRelease(ctx context.Context, lineageID string, version string) (*Release, error)
 }

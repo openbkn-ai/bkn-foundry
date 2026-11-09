@@ -57,7 +57,7 @@ func Test_RegressionService(t *testing.T) {
 		ctx := context.Background()
 		const token = "Bearer t"
 		runner := interfaces.AccountInfo{ID: "u1", Type: "user"}
-		release := &interfaces.Release{LineageID: "supply", NetworkID: "supply_v1_1_0", Version: "1.1.0", ProjectID: "p1"}
+		release := &interfaces.Release{ID: "r2", LineageID: "supply", NetworkID: "supply", Version: "1.1.0", ProjectID: "p1", BranchCommit: "b1"}
 		knowledge := interfaces.REQUIREMENT_LAYER_KNOWLEDGE
 		ot := interfaces.RELEASE_ITEM_OBJECT_TYPE
 		questions := func(qs ...interfaces.ScenarioQuestion) *interfaces.ScenarioQuestions {
@@ -125,7 +125,7 @@ func Test_RegressionService(t *testing.T) {
 				withPath(regQuestion("q5", knowledge, regNeed(ot, "supplier")), regNeed(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_part")),
 			), nil)
 			expectStart()
-			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(files, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "supply", "b1").Return(files, nil)
 			var asked []*interfaces.BknAgentAnswerRequest
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
@@ -142,7 +142,7 @@ func Test_RegressionService(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(ok, ShouldBeTrue)
 			So(r.Status, ShouldEqual, interfaces.REGRESSION_STATUS_RUNNING)
-			So(started.NetworkID, ShouldEqual, "supply_v1_1_0")
+			So(started.ReleaseID, ShouldEqual, "r2")
 			So(started.ProjectID, ShouldEqual, "p1")
 			So(started.Version, ShouldEqual, "1.1.0")
 			So(started.Runner, ShouldResemble, runner)
@@ -159,7 +159,8 @@ func Test_RegressionService(t *testing.T) {
 			So(asked, ShouldHaveLength, 2)
 			for _, req := range asked {
 				So(req.AgentID, ShouldEqual, answerAgentID)
-				So(req.KNID, ShouldEqual, "supply_v1_1_0")
+				So(req.KNID, ShouldEqual, "supply")
+				So(req.KNVersion, ShouldEqual, interfaces.KN_VERSION_DRAFT)
 				So(regexp.MustCompile(`^[0-9A-Za-z_.-]{1,100}$`).MatchString(req.ClientRequestID), ShouldBeTrue)
 			}
 			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_NOT_PASSED)
@@ -273,7 +274,7 @@ func Test_RegressionService(t *testing.T) {
 			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(
 				withPath(regQuestion("q1", knowledge, regNeed(ot, "part")), regNeed(ot, "supplier"))), nil)
 			expectStart()
-			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(files, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "supply", "b1").Return(files, nil)
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("Part P1."), nil)
 			expectFinish()
 
@@ -295,7 +296,7 @@ func Test_RegressionService(t *testing.T) {
 				regQuestion("q4", knowledge, regNeed(ot, "part")),
 			), nil)
 			expectStart()
-			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(files, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "supply", "b1").Return(files, nil)
 			calls := map[string][]string{}
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
@@ -667,7 +668,7 @@ func Test_RegressionService(t *testing.T) {
 				regQuestion("q4", knowledge, regNeed(ot, "customer"), regNeed(ot, "part")),
 			), nil)
 			expectStart()
-			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(bound, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "supply", "b1").Return(bound, nil)
 			// One read, as the runner, each table once; a refused table (left out of the reply) is there.
 			va.EXPECT().MissingTables(gomock.Any(), runner, []string{"t_part", "t_supplier", "t_supplier_part"}).
 				Return([]string{"t_part", "t_supplier_part"}, nil)

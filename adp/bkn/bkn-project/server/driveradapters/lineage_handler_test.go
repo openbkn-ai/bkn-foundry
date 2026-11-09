@@ -207,27 +207,46 @@ func Test_LineageRestHandler(t *testing.T) {
 
 		releasesURL := "/api/bkn-project/v1/lineages/orders/releases"
 
-		Convey("Publish imports with the caller's token, records the caller and replies 201\n", func() {
-			req := interfaces.PublishReleaseRequest{Branch: "project/p1", Version: "1.1.0", ProjectID: "p1", Notes: "n"}
+		Convey("Publish prepares the branch in the draft, then publishes it, and replies 201\n", func() {
+			req := interfaces.PublishReleaseRequest{Branch: "project/p1", Version: "1.1.0", ProjectID: "p1", Notes: "n",
+				OverwriteDraftChanges: true, AllowOutdatedBase: true}
 			publisher := interfaces.AccountInfo{ID: "u1", Type: string(hydra.VisitorType_User)}
-			ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", req, publisher, author).
-				Return(&interfaces.PublishReleaseResult{
-					Release: &interfaces.Release{ID: "r1", NetworkID: "orders_v1_1_0"}, NetworkID: "orders_v1_1_0", Tag: "v1.1.0", Commit: "c5",
-				}, nil)
+			gomock.InOrder(
+				ls.EXPECT().PrepareRelease(gomock.Any(), "Bearer t1", "orders", req, publisher).
+					Return(&interfaces.Release{ID: "r1", State: interfaces.RELEASE_STATE_PREPARED}, nil),
+				ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", req, publisher, author).
+					Return(&interfaces.PublishReleaseResult{
+						Release: &interfaces.Release{ID: "r1", NetworkID: "orders"}, NetworkID: "orders", Tag: "v1.1.0", Commit: "c5",
+						KNVersion: 3,
+					}, nil),
+			)
 
-			w := serveBody(handler, http.MethodPost, releasesURL,
-				[]byte(`{"branch":"project/p1","version":"1.1.0","project_id":"p1","notes":"n"}`))
+			w := serveBody(handler, http.MethodPost, releasesURL, []byte(`{"branch":"project/p1","version":"1.1.0",`+
+				`"project_id":"p1","notes":"n","overwrite_draft_changes":true,"allow_outdated_base":true}`))
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
 			var body map[string]any
 			So(json.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
-			So(body["network_id"], ShouldEqual, "orders_v1_1_0")
+			So(body["network_id"], ShouldEqual, "orders")
 			So(body["tag"], ShouldEqual, "v1.1.0")
 			So(body["commit"], ShouldEqual, "c5")
+			So(body["kn_version"], ShouldEqual, 3)
 			So(body["release"].(map[string]any)["id"], ShouldEqual, "r1")
 		})
 
-		Convey("Publish replies the service error and refuses a bad body\n", func() {
+		Convey("Publish replies a prepare refusal without publishing\n", func() {
+			ls.EXPECT().PrepareRelease(gomock.Any(), "Bearer t1", "orders", gomock.Any(), gomock.Any()).
+				Return(nil, httpError(http.StatusConflict, perrors.BknProject_Release_Drift))
+
+			w := serveBody(handler, http.MethodPost, releasesURL, []byte(`{"branch":"project/p1","version":"1.1.0"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusConflict)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Release_Drift)
+		})
+
+		Convey("Publish replies the publish error and refuses a bad body\n", func() {
+			ls.EXPECT().PrepareRelease(gomock.Any(), "Bearer t1", "orders", gomock.Any(), gomock.Any()).
+				Return(&interfaces.Release{ID: "r1"}, nil)
 			ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", gomock.Any(), gomock.Any(), author).
 				Return(nil, httpError(http.StatusConflict, perrors.BknProject_Release_Drift))
 
@@ -242,35 +261,12 @@ func Test_LineageRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Lineage_InvalidRequestBody)
 		})
 
-		Convey("A switch plan reads the target from the query\n", func() {
-			ls.EXPECT().PlanSwitch(gomock.Any(), "Bearer t1", "orders", "orders_v1_1_0").Return(&interfaces.SwitchPlan{
-				LineageID: "orders", FromNetworkID: "orders_v1_0_0", ToNetworkID: "orders_v1_1_0",
-				Schedules: []*interfaces.ActionSchedule{{ID: "s1", Name: "nightly", ActionTypeID: "restock", Status: "active"}},
-			}, nil)
+		Convey("Switch routes are gone\n", func() {
+			w := serveBody(handler, http.MethodGet, "/api/bkn-project/v1/lineages/orders/switch-plan?to=orders", nil)
+			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 
-			w := serveBody(handler, http.MethodGet, "/api/bkn-project/v1/lineages/orders/switch-plan?to=orders_v1_1_0", nil)
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-			var body map[string]any
-			So(json.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
-			So(body["from_network_id"], ShouldEqual, "orders_v1_0_0")
-			So(body["schedules"].([]any)[0].(map[string]any)["name"], ShouldEqual, "nightly")
-		})
-
-		Convey("A switch records the caller as operator and replies 201\n", func() {
-			operator := interfaces.AccountInfo{ID: "u1", Type: string(hydra.VisitorType_User)}
-			ls.EXPECT().SwitchConsumers(gomock.Any(), "Bearer t1", "orders", interfaces.SwitchRequest{ToNetworkID: "orders"}, operator).
-				Return(&interfaces.Switch{ID: "w1", FromNetworkID: "orders_v1_0_0", ToNetworkID: "orders",
-					Schedules: []interfaces.SwitchedSchedule{}}, nil)
-
-			w := serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/switches", []byte(`{"to_network_id":"orders"}`))
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
-			So(w.Body.String(), ShouldContainSubstring, `"to_network_id":"orders"`)
-
-			w = serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/switches", []byte(`not json`))
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+			w = serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/switches", []byte(`{}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})
 	})
 
