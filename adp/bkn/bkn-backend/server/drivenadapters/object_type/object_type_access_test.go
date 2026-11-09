@@ -9,6 +9,7 @@ package object_type
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"testing"
@@ -2123,5 +2124,57 @@ func Test_objectTypeAccess_ListDeprecatedObjectTypes(t *testing.T) {
 		So(list[0].OTID, ShouldEqual, "old_order")
 		So(list[0].Lifecycle, ShouldResemble, &interfaces.Lifecycle{Status: "deprecated", Reason: "merged", ReplacedBy: "order"})
 		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func Test_objectTypeAccess_ListObjectTypeSummaries(t *testing.T) {
+	Convey("test ListObjectTypeSummaries\n", t, func() {
+		appSetting := &common.AppSetting{}
+		ota, smock := MockNewObjectTypeAccess(appSetting)
+
+		sqlStr := fmt.Sprintf("SELECT ot.f_id, ot.f_name, ot.f_tags, ot.f_comment, ot.f_icon, ot.f_color, "+
+			"ot.f_kn_id, ot.f_branch, ot.f_data_source, ot.f_aliases, ot.f_lifecycle_status, ot.f_deprecation, "+
+			"ot.f_creator, ot.f_creator_type, ot.f_create_time, ot.f_updater, ot.f_updater_type, ot.f_update_time, "+
+			"ots.f_incremental_key, ots.f_incremental_value, ots.f_index, ots.f_index_available, "+
+			"ots.f_doc_count, ots.f_storage_size, ots.f_update_time "+
+			"FROM %s AS ot JOIN %s AS ots ON ot.f_id = ots.f_id AND ot.f_kn_id = ots.f_kn_id AND ot.f_branch = ots.f_branch "+
+			"WHERE ot.f_kn_id = ? AND ot.f_branch = ?", OT_TABLE_NAME, OT_STATUS_TABLE_NAME)
+
+		columns := []string{
+			"ot.f_id", "ot.f_name", "ot.f_tags", "ot.f_comment", "ot.f_icon", "ot.f_color",
+			"ot.f_kn_id", "ot.f_branch", "ot.f_data_source", "ot.f_aliases", "ot.f_lifecycle_status", "ot.f_deprecation",
+			"ot.f_creator", "ot.f_creator_type", "ot.f_create_time", "ot.f_updater", "ot.f_updater_type", "ot.f_update_time",
+			"ots.f_incremental_key", "ots.f_incremental_value", "ots.f_index", "ots.f_index_available",
+			"ots.f_doc_count", "ots.f_storage_size", "ots.f_update_time",
+		}
+		row := func(id string, aliases, status, deprecation any) []driver.Value {
+			return []driver.Value{
+				id, "Object Type", `"tag1"`, "comment", "icon", "color",
+				"kn1", "main", []byte(`{}`), aliases, status, deprecation,
+				"admin", "admin", testUpdateTime, "admin", "admin", testUpdateTime,
+				"", "", "index1", true, int64(0), int64(0), testUpdateTime,
+			}
+		}
+		query := interfaces.ObjectTypesQueryParams{KNID: "kn1", Branch: "main"}
+
+		Convey("carries the aliases and lifecycle, and none for a row without them\n", func() {
+			rows := sqlmock.NewRows(columns).
+				AddRow(row("ot1", `["Patient","病人"]`, "deprecated", `{"reason":"Merged","replaced_by":"ot2"}`)...).
+				AddRow(row("ot2", nil, nil, nil)...)
+			smock.ExpectQuery(sqlStr).WithArgs("kn1", "main").WillReturnRows(rows)
+
+			objectTypes, err := ota.ListObjectTypeSummaries(testCtx, nil, query)
+			So(err, ShouldBeNil)
+			So(len(objectTypes), ShouldEqual, 2)
+			So(objectTypes[0].Aliases, ShouldResemble, []string{"Patient", "病人"})
+			So(objectTypes[0].Lifecycle, ShouldResemble,
+				&interfaces.Lifecycle{Status: "deprecated", Reason: "Merged", ReplacedBy: "ot2"})
+			So(objectTypes[1].Aliases, ShouldBeNil)
+			So(objectTypes[1].Lifecycle, ShouldBeNil)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
 	})
 }

@@ -693,6 +693,9 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 		"ot.f_kn_id",
 		"ot.f_branch",
 		"ot.f_data_source",
+		"ot.f_aliases",
+		"ot.f_lifecycle_status",
+		"ot.f_deprecation",
 		"ot.f_creator",
 		"ot.f_creator_type",
 		"ot.f_create_time",
@@ -746,7 +749,7 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 			Status:     &interfaces.ObjectTypeStatus{},
 		}
 		var tags string
-		var dataSource []byte
+		var dataSource, aliases, lifecycleStatus, deprecation []byte
 		if err := rows.Scan(
 			&item.OTID,
 			&item.OTName,
@@ -757,6 +760,9 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 			&item.KNID,
 			&item.Branch,
 			&dataSource,
+			&aliases,
+			&lifecycleStatus,
+			&deprecation,
 			&item.Creator.ID,
 			&item.Creator.Type,
 			&item.CreateTime,
@@ -777,6 +783,10 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 		if err := common.UnmarshalStoredJSON(dataSource, &item.DataSource); err != nil {
 			return nil, err
 		}
+		// Lists tag deprecated object types and offer replacements by them, so they carry the
+		// aliases and lifecycle too.
+		item.Aliases = common.DecodeStoredAliases(ctx, aliases)
+		item.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatus, deprecation))
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {
