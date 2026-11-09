@@ -5,6 +5,7 @@
 package release
 
 import (
+	"sync"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -16,10 +17,28 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/requirement"
 )
 
+// freshServices makes NewRegressionService and NewProjectReleaseService build their services
+// again from the services set now, and puts the ones built before back when the test ends: a test
+// run again, as with -count, sets new mocks that services built in an earlier run would not hold.
+func freshServices(t *testing.T) {
+	savedRGS, savedPRS := rgs, prs
+	rgsOnce, rgs, prsOnce, prs = sync.Once{}, nil, sync.Once{}, nil
+	t.Cleanup(func() {
+		rgsOnce, rgs, prsOnce, prs = sync.Once{}, savedRGS, sync.Once{}, savedPRS
+		if savedRGS != nil {
+			rgsOnce.Do(func() {})
+		}
+		if savedPRS != nil {
+			prsOnce.Do(func() {})
+		}
+	})
+}
+
 func Test_NewRegressionService(t *testing.T) {
 	Convey("Test NewRegressionService\n", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
+		freshServices(t)
 
 		rga := pmock.NewMockRegressionAccess(mockCtrl)
 		baa := pmock.NewMockBknAgentAccess(mockCtrl)
