@@ -405,6 +405,25 @@ class ExecutionScope(BaseModel):
     # Required by an Agent that mounts the graph_explorer builtin provider, which
     # validates it; other Agents must not receive it.
     canvas: Optional[dict[str, Any]] = None
+    # Which definitions of the network the run reads. Both are sent to Context
+    # Loader as headers and pinned into every scoped tool call like kn_id.
+    kn_version: Optional[str] = Field(
+        default=None,
+        pattern=r"^(running|draft|[1-9][0-9]{0,9})$",
+        description=(
+            "Version of the knowledge network the run reads: running, draft, or a"
+            " version number. Without it the network's default read applies."
+        ),
+    )
+    draft_revision: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Draft revision the run must read; only with kn_version=draft (422"
+            " otherwise). A read after the draft moved on fails instead of mixing"
+            " revisions."
+        ),
+    )
 
 
 class ExecutionRequest(BaseModel):

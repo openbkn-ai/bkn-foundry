@@ -747,3 +747,38 @@ def test_without_a_thread_an_open_interaction_is_not_closed(monkeypatch):
 
     assert finish.calls == []
     assert len(start.calls) == 1
+
+
+def test_client_sends_the_network_version_headers():
+    headers = context_loader._client("Bearer t", None, None, "draft", 7).connections[
+        context_loader._CONNECTION_NAME
+    ]["headers"]
+    assert headers["X-Kn-Version"] == "draft"
+    assert headers["X-Kn-Draft-Revision"] == "7"
+    running = context_loader._client("Bearer t", None, None, "running").connections[
+        context_loader._CONNECTION_NAME
+    ]["headers"]
+    assert running["X-Kn-Version"] == "running"
+    assert "X-Kn-Draft-Revision" not in running
+    plain = context_loader._client("Bearer t").connections[context_loader._CONNECTION_NAME]["headers"]
+    assert not {"X-Kn-Version", "X-Kn-Draft-Revision"} & set(plain)
+
+
+def test_open_session_passes_the_network_version_to_the_client(monkeypatch):
+    received = []
+
+    class _Client:
+        async def get_tools(self):
+            return [_start_tool(), _FakeTool("bkn_finish_interaction")]
+
+    def client(*args, **kwargs):
+        received.append(args)
+        return _Client()
+
+    monkeypatch.setattr(context_loader, "_client", client)
+    token = auth.set_caller_token("Bearer t")
+    try:
+        asyncio.run(context_loader.open_session(kn_version="draft", draft_revision=7))
+    finally:
+        auth._caller_token.reset(token)
+    assert received[0][3:] == ("draft", 7)

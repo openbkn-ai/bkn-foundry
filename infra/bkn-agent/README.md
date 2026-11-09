@@ -229,7 +229,13 @@ The API serves `studio_smart_qa`, `eval_assistant`, `cypher_generation`, and `gr
 }
 ```
 
-Include the first turn's `thread_id` from `meta` on follow-up turns; use a new thread when switching networks. Requests cannot override the model, tools, Skill, or Prompt. The new entry point always uses the shared Prompt; the old API's personal and request overrides remain compatible.
+`context` may also name the network version the run reads: `kn_version` is `running`, `draft` or a version number, and `draft_revision` pins one draft revision and is only accepted with `kn_version=draft` (422 otherwise). bkn-agent sends them to Context Loader as `X-Kn-Version` / `X-Kn-Draft-Revision` and also pins them into every network-scoped tool call, because a tool argument overrides the header; a model-supplied value that differs returns `ToolScopeMismatch`. The run's record and its result `context` keep the version. Without these fields nothing is sent and the network's default read applies, exactly as before. BKN-project uses `kn_version=draft` with the draft revision it read to run its regression on the draft before publishing.
+
+```json
+"context": {"kn_id": "network-01", "kn_version": "draft", "draft_revision": 128}
+```
+
+Include the first turn's `thread_id` from `meta` on follow-up turns; use a new thread when switching networks or network versions. Requests cannot override the model, tools, Skill, or Prompt. The new entry point always uses the shared Prompt; the old API's personal and request overrides remain compatible.
 
 SSE events are `meta/token/tool_started/tool_finished/usage/result/terminal`, with a `run_id` and monotonically increasing sequence number. Tool events reference a real call ID; parameters and results are size-limited and redacted. The result is written to the existing `t_agent_task` before a successful terminal event is sent; GET can recover the committed result. Missing actual usage is explicitly marked unavailable. See the [OpenAPI contract](../../docs/api/bkn-agent/bkn-agent.yaml) for endpoint and error details.
 
