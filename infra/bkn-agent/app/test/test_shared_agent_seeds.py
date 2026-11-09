@@ -50,6 +50,7 @@ ONTOLOGY_ASK_REVISIONS = MIGRATIONS / "0.2.1/31-bkn-project-ontology-ask-revisio
 ONTOLOGY_ASK_V3 = MIGRATIONS / "0.2.1/34-ontology-ask-relation-suggestions-v3.sql"
 ONTOLOGY_ASK_V4 = MIGRATIONS / "0.2.1/35-ontology-ask-chosen-ends-v4.sql"
 ONTOLOGY_ASK_V5 = MIGRATIONS / "0.2.1/37-ontology-ask-document-models-v5.sql"
+EVAL_ASSISTANT = MIGRATIONS / "0.2.2/06-seed-eval-assistant.sql"
 RETIRE_DRAFTER = MIGRATIONS / "0.2.1/32-retire-bkn-project-drafter.sql"
 DOCUMENT_SEED = MIGRATIONS / "0.2.1/39-seed-bkn-project-document-extraction.sql"
 CONCEPT_NATIVE = MIGRATIONS / "0.2.1/40-concept-native-evidence.sql"
@@ -304,6 +305,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, ONTOLOGY_ASK_V6)
         apply(upgraded, GRAPH_EXPLORER_V2)
         apply(upgraded, ANALYSIS_WRITER)
+        apply(upgraded, EVAL_ASSISTANT)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         # An upgrade keeps the Agents an edition now seeds; the core compares without them.
@@ -365,11 +367,25 @@ def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
         assert "expand_neighbours" in seeded["prompt"]["content"]
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS, ANSWER_JUDGE, ONTOLOGY_ASK])
+def test_eval_assistant_is_a_dedicated_safe_workspace_agent():
+    with database() as db:
+        apply(db, CLAIM_LOCALES)
+        apply(db, SOURCE_LANGUAGE)
+        apply(db, EVAL_ASSISTANT)
+        seeded = item_from_db(db, "eval_assistant")
+        assert seeded["spec"]["name"] == "质量评测助手"
+        assert seeded["spec"]["status"] == "published"
+        assert seeded["spec"]["tools"] == [{"type": "context_loader"}]
+        assert "Eval 工作区快照" in seeded["prompt"]["content"]
+        assert "不得声称已经新增、修改、删除、启停、运行或回归" in seeded["prompt"]["content"]
+
+
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER, DRAFTER, REQUIREMENTS, ANSWER_JUDGE, ONTOLOGY_ASK, EVAL_ASSISTANT])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         # 18 also attaches translations, to the column 10 adds.
         apply(db, CLAIM_LOCALES)
+        apply(db, SOURCE_LANGUAGE)
         apply(db, path)
         db.execute(
             "UPDATE t_agent SET f_model='custom', f_status='draft', f_tools='[]'"
@@ -519,7 +535,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER)]],
+            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT)]],
         ],
         "0.2.2",
         True,
@@ -602,6 +618,7 @@ def test_fresh_snapshot_ends_with_the_locale_and_index_upgrades():
         + "\n" + ontology_ask_v5_locales_text() + "\n\n" + DOCUMENT_SEED.read_text()
         + "\n" + native_concept_seed_text()
     )
+    assert (MIGRATIONS / "0.2.2/init.sql").read_text().endswith("\n" + EVAL_ASSISTANT.read_text())
     # The seed itself sits with the other seeds, before the locale column is added; a fresh
     # install starts at v6, so its prompt is the body 28 writes.
     init = (MIGRATIONS / "0.2.1/init.sql").read_text()
@@ -629,7 +646,7 @@ def test_fresh_snapshot_seeds_graph_explorer_v2_and_the_analysis_writer():
     v2 = [s for s in statements(GRAPH_EXPLORER_V2) if s.startswith("insert into t_agent_prompt_version")][0]
     body = v2[v2.index("select v.f_prompt_id, 2, 'zh-CN',") + len("select v.f_prompt_id, 2, 'zh-CN',"):v2.index("v.f_vars_schema,")].strip()
     assert explorer < init.index("select 'graph_explorer_prompt', 2, 'zh-CN', " + body.replace("\\n", "\n"), explorer) < init.index(CLAIM_LOCALES.read_text())
-    assert init.endswith("\n" + graph_explorer_v2_locales_text() + "\n" + ANALYSIS_WRITER.read_text())
+    assert init.endswith("\n" + graph_explorer_v2_locales_text() + "\n" + ANALYSIS_WRITER.read_text() + "\n" + EVAL_ASSISTANT.read_text())
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -1494,7 +1511,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -2927,8 +2944,8 @@ def test_requirements_v8_fresh_snapshot_seeds_v8_and_its_translations():
         apply(old, MIGRATIONS / "0.2.1/init.sql")
         apply(new, MIGRATIONS / "0.2.2/init.sql")
         agents = {row[0] for row in new.execute("SELECT f_agent_id FROM t_agent")}
-        assert agents == ({row[0] for row in old.execute("SELECT f_agent_id FROM t_agent")} - set(EDITION_RESERVED_AGENT_IDS)) | {"analysis_writer"}
-        for agent in agents - {RQ, "bkn-project-ontology-ask", "graph_explorer", "analysis_writer"}:
+        assert agents == ({row[0] for row in old.execute("SELECT f_agent_id FROM t_agent")} - set(EDITION_RESERVED_AGENT_IDS)) | {"analysis_writer", "eval_assistant"}
+        for agent in agents - {RQ, "bkn-project-ontology-ask", "graph_explorer", "analysis_writer", "eval_assistant"}:
             assert item_from_db(old, agent) == item_from_db(new, agent)
 
 
@@ -4263,3 +4280,17 @@ def test_single_call_never_overwrites_operator_configuration(custom):
         apply(db, SINGLE_CALL)
         assert snapshot(db) == before
 
+def test_eval_assistant_delta_preserves_existing_defaults():
+    fresh, upgrade = selected_migrations("0.2.1")
+    assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT)]]], "0.2.2", True]
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='eval_assistant'").fetchone()[0] == 0
+        before = snapshot(db)
+        apply(db, EVAL_ASSISTANT)
+        after = snapshot(db)
+        assert all(row in new_rows for rows, new_rows in zip(before, after) for row in rows)
+        assert item_from_db(db, "eval_assistant")["spec"]["status"] == "published"
+        apply(db, EVAL_ASSISTANT)
+        assert snapshot(db) == after
