@@ -14,11 +14,13 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"time"
+	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"go.opentelemetry.io/otel"
 	attr "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -33,12 +35,19 @@ const (
 	idempotencyKeyHeader = "Idempotency-Key"
 )
 
+var (
+	rawOnce   sync.Once
+	rawShared *http.Client
+)
+
 // rawClient sends a request whose reply headers are needed, which the REST client does not return.
+// It is set up as the REST client is: the same timeout, TLS and redirect rules.
 func (bba *bknBackendAccess) rawClient() *http.Client {
 	if bba.raw != nil {
 		return bba.raw
 	}
-	return &http.Client{Timeout: 900 * time.Second}
+	rawOnce.Do(func() { rawShared = rest.NewRawHTTPClientWithOptions(rest.HttpClientOptions{TimeOut: 900}) })
+	return rawShared
 }
 
 // NewKNVersionAccess calls the version API of bkn-backend (design bkn-docs@122618a, section 13).
@@ -188,6 +197,8 @@ func (bba *bknBackendAccess) ReplaceDraft(ctx context.Context, token string, fil
 	}
 	request.Header.Set("Authorization", token)
 	request.Header.Set(rest.ContentTypeKey, contentType)
+	// As the REST client does, so bkn-backend's import joins this trace.
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(request.Header))
 	resp, err := bba.rawClient().Do(request)
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Http import BKN failed")

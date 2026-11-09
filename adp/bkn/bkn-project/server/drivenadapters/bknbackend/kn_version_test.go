@@ -12,7 +12,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -348,4 +354,39 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(backendErr.ErrorCode, ShouldBeEmpty)
 		})
 	})
+}
+
+func TestReplaceDraftSendsAsTheRESTClientDoes(t *testing.T) {
+	bba := &bknBackendAccess{}
+	client := bba.rawClient()
+	if client != bba.rawClient() {
+		t.Fatal("the raw client is shared, not made per request")
+	}
+	if client.CheckRedirect == nil || client.Timeout != 900*time.Second {
+		t.Fatal("the raw client is not set up as the REST client is", client.Timeout)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || !transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("the raw client does not take bkn-backend's certificate as the REST client does")
+	}
+
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	ctx := trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled}))
+	got := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("traceparent")
+		w.Header().Set("X-Kn-Draft-Revision", "3")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	bba.baseUrl = server.URL
+	if _, _, err := bba.ReplaceDraft(ctx, "t", map[string][]byte{"network.bkn": []byte("x")}, interfaces.KNReplaceImport{}); err != nil {
+		t.Fatal(err)
+	}
+	if got == "" || !strings.Contains(got, "4bf92f3577b34da6a3ce929d0e0e4736") {
+		t.Fatal("the import does not carry the trace", got)
+	}
 }
