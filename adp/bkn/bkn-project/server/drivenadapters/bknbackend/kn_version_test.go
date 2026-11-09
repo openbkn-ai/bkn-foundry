@@ -24,8 +24,8 @@ func Test_KNVersionAccess(t *testing.T) {
 	Convey("Test the knowledge network version calls\n", t, func() {
 		type request struct {
 			method, path, query, auth, contentType, idempotencyKey string
-			body                                   map[string]any
-			files                                  map[string]string
+			body                                                   map[string]any
+			files                                                  map[string]string
 		}
 		var got []request
 		status, respBody := http.StatusOK, ""
@@ -271,7 +271,7 @@ func Test_KNVersionAccess(t *testing.T) {
 
 			published, err := bba.Publish(ctx, token, "orders", interfaces.KNVersionPublish{
 				ExpectedRunningVersion: 4, ExpectedDraftRevision: 9, Notes: "n", Label: "v1.1.0",
-				Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1", ReleaseID: "r1"},
+				Source:               interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1", ReleaseID: "r1"},
 				FailOnSkippedSources: true, IdempotencyKey: "r1:1.1.0",
 			})
 
@@ -281,7 +281,7 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(got[0].path, ShouldEqual, networkPath+"/versions")
 			So(got[0].body, ShouldResemble, map[string]any{
 				"expected_running_version": float64(4), "expected_draft_revision": float64(9), "notes": "n", "label": "v1.1.0",
-				"source": map[string]any{"type": "bkn-project", "project_id": "p1", "release_id": "r1"},
+				"source":                  map[string]any{"type": "bkn-project", "project_id": "p1", "release_id": "r1"},
 				"fail_on_skipped_sources": true,
 			})
 			So(published.Version, ShouldEqual, 5)
