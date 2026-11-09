@@ -46,6 +46,12 @@ config:
   # Set to the ingress/pod CIDR(s) in prod; "0.0.0.0/0" trusts any forwarder.
   tlsAllowTerminationFrom: "0.0.0.0/0"
   logLevel: "info"
+  # Optional bkn-safe token hook for JWT bearer SSO exchange.
+  ssoTokenHook:
+    enabled: false
+    url: ""
+    secretName: ""
+    secretKey: "hookKey"
 
 # `hydra migrate sql` runs as a pre-install/pre-upgrade Job before serving.
 migrate:

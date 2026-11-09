@@ -57,6 +57,16 @@ func (h *HydraAdmin) VerifyToken(ctx context.Context, token string) (string, err
 	return info.GetSub(), nil
 }
 
+// InspectToken returns the full introspection result, including the legacy
+// ext contract, so a newly issued exchange token can be checked before release.
+func (h *HydraAdmin) InspectToken(ctx context.Context, token string) (*hydra.IntrospectedOAuth2Token, error) {
+	info, _, err := h.api.OAuth2API.IntrospectOAuth2Token(ctx).Token(token).Execute()
+	if err != nil {
+		return nil, fmt.Errorf("introspect token: %w", err)
+	}
+	return info, nil
+}
+
 // AcceptUserCode accepts a device-flow user_code for a device challenge and
 // returns hydra's redirect target (to the login flow). The stable v2.2 typed
 // client lacks device methods, so this calls the admin endpoint directly:

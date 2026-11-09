@@ -136,3 +136,8 @@ side effect of `helm upgrade`.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/* Empty means a release-owned Secret, not an additional customer setup step. */}}
+{{- define "bkn-safe.ssoSecretName" -}}
+{{- .Values.bundledDeps.ssoTokenHook.secretName | default (printf "%s-sso" .Release.Name) -}}
+{{- end -}}
