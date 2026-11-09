@@ -266,11 +266,19 @@ class PublicChat:
         network version when the run has one and the tool takes it. A value
         is passed in the type the tool declares."""
         pinned: dict = {"kn_id": self.kn_id}
+        if self.kn_version is None:
+            return pinned
+        # With a version set, the run also decides the draft revision: a run
+        # without one sends none, so the model cannot add one the entry point
+        # would have refused (draft_revision=5 on kn_version=running).
         for name, value in (
             ("kn_version", self.kn_version),
             ("draft_revision", self.draft_revision),
         ):
-            if value is None or name not in properties:
+            if name not in properties:
+                continue
+            if value is None:
+                pinned[name] = None
                 continue
             declared = _declared_types(properties[name])
             if "integer" in declared and str(value).isdigit():
@@ -339,7 +347,10 @@ class PublicChat:
                                     ensure_ascii=False,
                                 )
                             )
-                        kwargs[name] = value
+                        if value is None:
+                            kwargs.pop(name, None)
+                        else:
+                            kwargs[name] = value
                     try:
                         return await inner(**kwargs)
                     except ToolException:

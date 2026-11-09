@@ -2505,6 +2505,23 @@ def test_tool_scope_pins_network_version_like_kn_id():
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("kn_version", ["running", "3", "draft"])
+def test_tool_scope_refuses_a_draft_revision_the_run_did_not_set(kn_version):
+    async def run():
+        calls = []
+        tool = _scoped_tool(
+            calls, {"kn_version": {"type": "string"}, "draft_revision": {"type": "integer"}}
+        )
+        guarded = PublicChat("run", "network-1", kn_version=kn_version).guard_tools([tool])[0]
+        assert "ToolScopeMismatch" in await guarded.ainvoke({"draft_revision": 5})
+        assert await guarded.ainvoke({"draft_revision": None}) == "ok"
+        assert await guarded.ainvoke({}) == "ok"
+        pinned = {"kn_id": "network-1", "kn_version": kn_version}
+        assert calls == [pinned, pinned]
+
+    asyncio.run(run())
+
+
 def test_tool_scope_passes_a_numbered_version_in_the_declared_type():
     async def run():
         calls = []
