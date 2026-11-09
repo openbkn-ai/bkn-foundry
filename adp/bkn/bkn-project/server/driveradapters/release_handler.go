@@ -6,9 +6,11 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -16,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters/httpx"
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -87,7 +90,9 @@ func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 	span.SetAttributes(attr.Key("branch").String(req.Branch), attr.Key("version").String(req.Version))
 
 	publisher := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
-	if _, err := r.ls.PrepareRelease(ctx, visitor.TokenID, lineageID, req, publisher); err != nil {
+	// A publish of the version sent before with no answer is finished, not prepared anew: publishing
+	// resends it as it was.
+	if _, err := r.ls.PrepareRelease(ctx, visitor.TokenID, lineageID, req, publisher); err != nil && !isCode(err, perrors.BknProject_Release_PublishPending) {
 		replyError(c, span, err)
 		return
 	}
@@ -105,4 +110,10 @@ func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 // parseLimit reads the page size, from 1 to max; an absent limit takes the default.
 func parseLimit(ctx context.Context, value string, defaultLimit int, max int) (int, error) {
 	return httpx.ParseLimit(ctx, value, defaultLimit, max)
+}
+
+// isCode tells whether err is the bkn-project error code.
+func isCode(err error, code string) bool {
+	var httpErr *httperrors.HTTPError
+	return errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == code
 }

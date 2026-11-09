@@ -207,6 +207,21 @@ func Test_LineageRestHandler(t *testing.T) {
 
 		releasesURL := "/api/bkn-project/v1/lineages/orders/releases"
 
+		Convey("A publish sent before with no answer is finished: publishing resends it\n", func() {
+			req := interfaces.PublishReleaseRequest{Branch: "project/p1", Version: "1.1.0"}
+			publisher := interfaces.AccountInfo{ID: "u1", Type: string(hydra.VisitorType_User)}
+			gomock.InOrder(
+				ls.EXPECT().PrepareRelease(gomock.Any(), "Bearer t1", "orders", req, publisher).
+					Return(nil, httpError(http.StatusConflict, perrors.BknProject_Release_PublishPending)),
+				ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", req, publisher, author).
+					Return(&interfaces.PublishReleaseResult{Release: &interfaces.Release{ID: "r1"}, NetworkID: "orders", KNVersion: 3}, nil),
+			)
+
+			w := serveBody(handler, http.MethodPost, releasesURL, []byte(`{"branch":"project/p1","version":"1.1.0"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
+		})
+
 		Convey("Publish prepares the branch in the draft, then publishes it, and replies 201\n", func() {
 			req := interfaces.PublishReleaseRequest{Branch: "project/p1", Version: "1.1.0", ProjectID: "p1", Notes: "n",
 				OverwriteDraftChanges: true, AllowOutdatedBase: true}
