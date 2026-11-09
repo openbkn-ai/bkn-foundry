@@ -806,7 +806,7 @@ func Test_BuildDirectBatchConditions(t *testing.T) {
 				{
 					ObjectID: "obj1",
 					ObjectData: map[string]any{
-						"id": "123",
+						"target_id": "123",
 					},
 				},
 			}
@@ -848,8 +848,8 @@ func Test_BuildDirectBatchConditions(t *testing.T) {
 
 			conditions, err := BuildDirectBatchConditions(currentLevelObjects, edge, true)
 			So(err, ShouldBeNil)
-			// When inValue is nil, return a normal condition instead of an in condition.
-			So(len(conditions), ShouldBeGreaterThanOrEqualTo, 0)
+			// An object without the mapped value joins nothing: no condition on a null.
+			So(conditions, ShouldBeEmpty)
 		})
 
 		Convey("成功 - 空对象列表", func() {

@@ -288,10 +288,12 @@ func BuildDirectBatchConditions(currentLevelObjects []interfaces.LevelObject,
 		// Build filter clauses by association relationship.
 		// For multi-field associations, join each object's filter conditions with AND, then join filters for different objects with OR.
 		// For one association field, use an IN operation for filters across multiple objects.
-		objectConditions, targetField, inValue := BuildCondition(nil, mappingRules, isForward, levelObj.ObjectData)
-		if inValue != nil {
-			inValues = append(inValues, inValue)
+		// An object with a null or missing key component joins nothing.
+		if !HasMappingValues(mappingRules, isForward, levelObj.ObjectData) {
+			continue
 		}
+		objectConditions, targetField, inValue := BuildCondition(nil, mappingRules, isForward, levelObj.ObjectData)
+		inValues = append(inValues, inValue)
 		inField = targetField
 
 		// If an object has multiple filter clauses, join them with AND.
@@ -317,6 +319,23 @@ func BuildDirectBatchConditions(currentLevelObjects []interfaces.LevelObject,
 	}
 
 	return conditions, nil
+}
+
+// HasMappingValues reports whether data has a non-null value for every field
+// BuildCondition reads from it with the same rules and direction. Like SQL
+// equality, a null or missing component never joins, and a downstream filter
+// rejects it, so such data must not reach a condition.
+func HasMappingValues(mappingRules []interfaces.Mapping, isForward bool, data map[string]any) bool {
+	for _, mapping := range mappingRules {
+		name := mapping.SourceProp.Name
+		if !isForward {
+			name = mapping.TargetProp.Name
+		}
+		if value, exists := data[name]; !exists || value == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func BuildCondition(viewQuery *interfaces.ViewQuery, mappingRules []interfaces.Mapping,
@@ -403,12 +422,18 @@ func CheckDirectMappingConditions(currentObjectData map[string]any,
 		}
 
 		// Compare whether values are equal.
-		if !CompareValues(sourceValue, targetValue) {
+		if !JoinValuesEqual(sourceValue, targetValue) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// JoinValuesEqual reports whether two mapped values join. Like SQL equality,
+// a null on either side never matches, not even another null.
+func JoinValuesEqual(a, b any) bool {
+	return a != nil && b != nil && CompareValues(a, b)
 }
 
 // Compare whether two values are equal while handling different types.
@@ -501,7 +526,7 @@ func CheckIndirectMappingConditionsWithViewData(currentObjectData map[string]any
 			}
 			currentValue, ok1 := currentObjectData[sorcePropName]
 			viewValue, ok2 := viewRecord[targetPropName]
-			if !ok1 || !ok2 || !CompareValues(currentValue, viewValue) {
+			if !ok1 || !ok2 || !JoinValuesEqual(currentValue, viewValue) {
 				sourceMatch = false
 				break
 			}
@@ -532,7 +557,7 @@ func CheckIndirectMappingConditionsWithViewData(currentObjectData map[string]any
 
 			viewValue, ok1 := viewRecord[sorcePropName]
 			nextValue, ok2 := nextObject[targetPropName]
-			if !ok1 || !ok2 || !CompareValues(viewValue, nextValue) {
+			if !ok1 || !ok2 || !JoinValuesEqual(viewValue, nextValue) {
 				targetMatch = false
 				break
 			}
