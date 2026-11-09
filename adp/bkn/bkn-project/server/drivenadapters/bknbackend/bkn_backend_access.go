@@ -40,6 +40,8 @@ var (
 type bknBackendAccess struct {
 	httpClient rest.HTTPClient
 	baseUrl    string
+	// raw sends the requests whose reply headers are read; nil is a default client.
+	raw *http.Client
 }
 
 func NewBknBackendAccess(appSetting *common.AppSetting) interfaces.BknBackendAccess {

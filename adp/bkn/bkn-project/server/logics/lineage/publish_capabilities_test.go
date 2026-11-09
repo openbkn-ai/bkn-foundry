@@ -123,11 +123,11 @@ func Test_LineageService_PrepareRelease_Capabilities(t *testing.T) {
 			var written map[string][]byte
 			var recorded *interfaces.Release
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, error) {
+				func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
 					written = files
-					return &interfaces.BKNImportResult{KNID: id}, nil
+					return &interfaces.BKNImportResult{KNID: id}, revision, nil
 				})
-			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, revision, true), nil)
+			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(nil)
 			ra.EXPECT().PrepareRelease(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, release *interfaces.Release) (bool, error) {
 					recorded = release
@@ -217,7 +217,6 @@ func Test_LineageService_PrepareRelease_Capabilities(t *testing.T) {
 			Convey("and publishing commits them to main after the running version's definitions\n", func() {
 				ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
 				kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
-				kva.EXPECT().GetVersion(gomock.Any(), token, id, 1).Return(&interfaces.KNVersion{Version: 1}, nil)
 				kva.EXPECT().Publish(gomock.Any(), token, id, gomock.Any()).Return(&interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 2}}, nil)
 				ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, gomock.Any(), gomock.Any()).Return(nil)
 				kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(*written, nil)

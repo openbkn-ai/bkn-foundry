@@ -204,7 +204,15 @@ func (s *projectReleaseService) Rollback(ctx context.Context, token string, proj
 		return nil, versionError(ctx, "Activate version failed", err)
 	}
 	span.SetStatus(codes.Ok, "")
-	return &interfaces.RollbackResult{RunningVersion: activated.RunningVersion, Warnings: activated.Warnings}, nil
+	// Switching does not restore the code of functions and Skills; the copies each release makes
+	// already keep it, so that warning says nothing to the owner.
+	warnings := []interfaces.KNVersionWarning{}
+	for _, w := range activated.Warnings {
+		if w.Category != interfaces.KN_VERSION_WARNING_CAPABILITY_NOT_PINNED {
+			warnings = append(warnings, w)
+		}
+	}
+	return &interfaces.RollbackResult{RunningVersion: activated.RunningVersion, Warnings: warnings}, nil
 }
 
 // lineageReleases are the lineage's releases, newest first.

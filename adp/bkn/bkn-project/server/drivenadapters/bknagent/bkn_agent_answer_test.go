@@ -107,6 +107,19 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			So(got[0].body["context"], ShouldResemble, map[string]any{"kn_id": "supply", "kn_version": "draft"})
 		})
 
+		Convey("An answer pinned to a draft revision names that revision in the context\n", func() {
+			respBody = sse([2]string{"result", `{"content":{"answer":"S1."}}`}, [2]string{"terminal", `{"status":"succeeded"}`})
+			pinned := *req
+			pinned.KNID, pinned.KNVersion, pinned.DraftRevision = "supply", interfaces.KN_VERSION_DRAFT, 12
+
+			_, err := ba.AnswerOnNetwork(ctx, "Bearer t", &pinned)
+
+			So(err, ShouldBeNil)
+			So(got[0].body["context"], ShouldResemble, map[string]any{
+				"kn_id": "supply", "kn_version": "draft", "draft_revision": float64(12),
+			})
+		})
+
 		Convey("A tool call's input too large to keep is left out and said so; one unfinished has no status\n", func() {
 			large := `{"query":"` + strings.Repeat("x", maxToolInputBytes) + `"}`
 			respBody = sse(

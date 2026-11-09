@@ -154,6 +154,11 @@ const (
 	REGRESSION_ERROR_INTERRUPTED = "interrupted"
 	// REGRESSION_ERROR_DEFINITIONS_UNREADABLE: the release's definitions could not be read.
 	REGRESSION_ERROR_DEFINITIONS_UNREADABLE = "definitions_unreadable"
+	// REGRESSION_ERROR_DRAFT_CHANGED: the network's draft was written while the regression read it,
+	// so its answers are of no one revision; preparing again runs it anew.
+	REGRESSION_ERROR_DRAFT_CHANGED = "draft_changed"
+	// REGRESSION_ERROR_INDEX_NOT_READY: the draft's search index was not ready in time.
+	REGRESSION_ERROR_INDEX_NOT_READY = "index_not_ready"
 )
 
 // REGRESSION_WARNING_REASON_HAS_TOOL_NAME: the judge's reason names a tool the answer called, even

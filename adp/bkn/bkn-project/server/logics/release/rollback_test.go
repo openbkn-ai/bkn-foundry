@@ -239,14 +239,29 @@ func Test_Rollback(t *testing.T) {
 			plan, err := svc.PlanRollback(ctx, reviewToken, "p1", 0)
 			So(err, ShouldBeNil)
 			expectQuestions("3", "2")
-			warnings := []interfaces.KNVersionWarning{{Category: "metric", ID: "m1", Description: "stale"}}
+			kept := interfaces.KNVersionWarning{Category: "metric", ID: "m1", Description: "stale"}
+			// Each release copies its functions and Skills, so their code not being restored says nothing.
+			notPinned := interfaces.KNVersionWarning{Category: interfaces.KN_VERSION_WARNING_CAPABILITY_NOT_PINNED, ID: "f1"}
 			kva.EXPECT().Activate(gomock.Any(), reviewToken, "supply", 2, 3, rollbackNotes).
-				Return(&interfaces.KNVersionActivated{RunningVersion: 2, Warnings: warnings}, nil)
+				Return(&interfaces.KNVersionActivated{RunningVersion: 2, Warnings: []interfaces.KNVersionWarning{notPinned, kept}}, nil)
 
 			got, err := svc.Rollback(ctx, reviewToken, "p1", interfaces.ProjectRollback{Signature: plan.Signature}, reviewOwner)
 
 			So(err, ShouldBeNil)
-			So(got, ShouldResemble, &interfaces.RollbackResult{RunningVersion: 2, Warnings: warnings})
+			So(got, ShouldResemble, &interfaces.RollbackResult{RunningVersion: 2, Warnings: []interfaces.KNVersionWarning{kept}})
+		})
+
+		Convey("An activation with only warnings dropped has an empty list of them\n", func() {
+			expectQuestions("3", "2")
+			kva.EXPECT().Activate(gomock.Any(), reviewToken, "supply", 2, 3, rollbackNotes).
+				Return(&interfaces.KNVersionActivated{RunningVersion: 2, Warnings: []interfaces.KNVersionWarning{
+					{Category: interfaces.KN_VERSION_WARNING_CAPABILITY_NOT_PINNED, ID: "s1"}}}, nil)
+
+			got, err := svc.Rollback(ctx, reviewToken, "p1", interfaces.ProjectRollback{Signature: rollbackSignature(3, 2)}, reviewOwner)
+
+			So(err, ShouldBeNil)
+			So(got.Warnings, ShouldNotBeNil)
+			So(got.Warnings, ShouldBeEmpty)
 		})
 
 		Convey("A version published or activated between the plan and the rollback is caught by bkn-backend\n", func() {

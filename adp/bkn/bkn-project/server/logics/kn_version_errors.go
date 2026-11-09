@@ -19,6 +19,9 @@ import (
 // network's agents would read through it.
 const proxyPermissionMissing = "BknBackend.KnowledgeNetwork.Proxy.PermissionMissing"
 
+// proxySyncPending is bkn-backend's reply when another sync holds the network's proxy lease.
+const proxySyncPending = "BknBackend.KnowledgeNetwork.Proxy.SyncPending"
+
 type versionRefusal struct {
 	status int
 	code   string
@@ -39,7 +42,11 @@ var versionRefusals = map[string]versionRefusal{
 	interfaces.KN_VERSION_ERROR_PURGED:                  {http.StatusGone, perrors.BknProject_Release_VersionPurged},
 	interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_FAILED:    {http.StatusServiceUnavailable, perrors.BknProject_Release_NotReady},
 	interfaces.KN_VERSION_ERROR_PROXY_SYNC_REQUIRED:     {http.StatusServiceUnavailable, perrors.BknProject_Release_NotReady},
-	proxyPermissionMissing:                              {http.StatusForbidden, perrors.BknProject_Release_SourcePermission},
+	interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_BUILDING:  {http.StatusServiceUnavailable, perrors.BknProject_Release_NotReady},
+	proxySyncPending: {http.StatusServiceUnavailable, perrors.BknProject_Release_NotReady},
+	// The key is the project and the version, one operation each; reusing it is a fault here.
+	interfaces.KN_VERSION_ERROR_IDEMPOTENCY_KEY_REUSED: {http.StatusInternalServerError, perrors.BknProject_Release_InternalError},
+	proxyPermissionMissing:                             {http.StatusForbidden, perrors.BknProject_Release_SourcePermission},
 }
 
 // KNVersionHTTPError words a bkn-backend version refusal as bkn-project's own, keeping the details

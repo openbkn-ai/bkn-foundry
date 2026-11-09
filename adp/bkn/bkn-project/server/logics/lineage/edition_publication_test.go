@@ -117,18 +117,30 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			releases.EXPECT().ListReleases(gomock.Any(), publishedQuery(id)).Return([]*interfaces.Release{}, nil)
 			if successful || scenario == "mount_uncertain" {
 				kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).DoAndReturn(
-					func(context.Context, string, map[string][]byte, interfaces.KNReplaceImport) (*interfaces.BKNImportResult, error) {
+					func(context.Context, string, map[string][]byte, interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
 						events = append(events, "import")
-						return &interfaces.BKNImportResult{KNID: id}, nil
+						return &interfaces.BKNImportResult{KNID: id}, 8, nil
 					})
 			}
 			var prepared *interfaces.Release
 			if successful {
-				kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+				// Mounting writes into the draft too, so the revision prepared is read after it.
+				kva.EXPECT().GetVersioning(gomock.Any(), token, id).DoAndReturn(
+					func(context.Context, string, string) (*interfaces.KNVersioning, error) {
+						events = append(events, "revision")
+						return versioningAt(1, 9, true), nil
+					})
+				kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).DoAndReturn(func(context.Context, string, string) error {
+					events = append(events, "index")
+					return nil
+				})
 				releases.EXPECT().PrepareRelease(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, release *interfaces.Release) (bool, error) {
 					events = append(events, "record")
 					if release.ProjectID != "p1" {
 						t.Fatal("direct release lost actual project identity")
+					}
+					if release.DraftRevision != 9 {
+						t.Fatal("prepared revision is not the one mounting left", release.DraftRevision)
 					}
 					prepared = release
 					return true, nil
@@ -153,7 +165,7 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 				expected = append(expected, "import", "mount")
 			}
 			if successful {
-				expected = append(expected, "record")
+				expected = append(expected, "revision", "index", "record")
 			}
 			if !reflect.DeepEqual(events, expected) {
 				t.Fatal("unsafe release ordering", events)
@@ -166,7 +178,6 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			events = events[:0]
 			releases.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(prepared, true, nil)
 			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
-			kva.EXPECT().GetVersion(gomock.Any(), token, id, 1).Return(&interfaces.KNVersion{Version: 1}, nil)
 			kva.EXPECT().Publish(gomock.Any(), token, id, gomock.Any()).DoAndReturn(
 				func(context.Context, string, string, interfaces.KNVersionPublish) (*interfaces.KNVersionPublished, error) {
 					events = append(events, "publish")

@@ -160,9 +160,10 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 	if err != nil {
 		return nil, err
 	}
-	// Edits someone made to the draft and did not publish are dropped only when the owner said so,
-	// or when they are what an earlier preparing of this lineage wrote.
-	imported, err := s.kva.ReplaceDraft(ctx, token, pkg, interfaces.KNReplaceImport{
+	// Every write into the draft comes first; the regression then reads the draft at the revision
+	// the last of them made. Edits someone made to the draft and did not publish are dropped only
+	// when the owner said so, or when they are what an earlier preparing of this lineage wrote.
+	imported, revision, err := s.kva.ReplaceDraft(ctx, token, pkg, interfaces.KNReplaceImport{
 		ExpectedDraftRevision: checked.versioning.Draft.Revision,
 		Overwrite:             req.OverwriteDraftChanges || checked.ownDraft,
 	})
@@ -177,9 +178,17 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 		if err := publication.Mount(ctx, token); err != nil {
 			return nil, err
 		}
+		// Mounting is the edition's own write into the draft; the revision it leaves is the one
+		// prepared.
+		written, err := s.kva.GetVersioning(ctx, token, lineageID)
+		if err != nil {
+			return nil, err
+		}
+		revision = written.Draft.Revision
 	}
-	written, err := s.kva.GetVersioning(ctx, token, lineageID)
-	if err != nil {
+	// The concept index of the draft is built ahead, so the regression's searches find it ready
+	// and publishing reuses it; the regression waits for it.
+	if err := s.kva.BuildDraftIndex(ctx, token, lineageID); err != nil {
 		return nil, err
 	}
 
@@ -203,7 +212,7 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 		ID: id.String(), LineageID: lineageID, NetworkID: lineageID, Version: req.Version,
 		BaseVersion: preview.BaseVersion, ProjectID: req.ProjectID, Publisher: publisher, Notes: req.Notes,
 		State: interfaces.RELEASE_STATE_PREPARED, BranchCommit: preview.BranchCommit,
-		DraftRevision: written.Draft.Revision, Capabilities: recorded, CreateTime: now, UpdateTime: now,
+		DraftRevision: revision, Capabilities: recorded, CreateTime: now, UpdateTime: now,
 	}
 	stored, err := s.ra.PrepareRelease(ctx, release)
 	if err != nil {
@@ -318,45 +327,34 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	return result, nil
 }
 
-// publishVersion publishes the draft the release wrote. When the running version moved because
-// this release was published already, by an attempt whose reply was lost, it is that version.
+// publishVersion publishes the draft at the revision the release prepared, refusing a source the
+// network's agents could not read. A retry sends the same idempotency key and gets the first
+// result, so a publish whose reply was lost is not made twice.
 func (s *lineageService) publishVersion(ctx context.Context, token string, release *interfaces.Release, notes string,
 	allowOutdated bool) (*interfaces.KNVersionPublished, error) {
-	mine := func() (*interfaces.KNVersionPublished, bool, error) {
-		versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
-		if err != nil || versioning.RunningVersion == 0 {
-			return nil, false, err
-		}
-		running, err := s.kva.GetVersion(ctx, token, release.LineageID, versioning.RunningVersion)
-		if err != nil {
-			return nil, false, err
-		}
-		if running.Source.ReleaseID != release.ID {
-			return &interfaces.KNVersionPublished{KNVersion: *running}, false, nil
-		}
-		return &interfaces.KNVersionPublished{KNVersion: *running}, true, nil
+	versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
+	if err != nil {
+		return nil, err
 	}
-	current, done, err := mine()
-	if err != nil || done {
-		return current, err
-	}
-	expected := 0
-	if current != nil {
-		expected = current.Version
-	}
-	published, err := s.kva.Publish(ctx, token, release.LineageID, interfaces.KNVersionPublish{
-		ExpectedRunningVersion: expected, ExpectedDraftRevision: release.DraftRevision, Notes: notes,
-		Label: "v" + release.Version, AllowOutdatedBase: allowOutdated,
+	return s.kva.Publish(ctx, token, release.LineageID, interfaces.KNVersionPublish{
+		ExpectedRunningVersion: versioning.RunningVersion, ExpectedDraftRevision: release.DraftRevision, Notes: notes,
+		Label: "v" + release.Version, AllowOutdatedBase: allowOutdated, FailOnSkippedSources: true,
+		IdempotencyKey: publishKey(release),
 		Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: release.ProjectID,
 			Ref: release.BranchCommit, ReleaseID: release.ID},
 	})
-	var backendErr *interfaces.BknBackendError
-	if errors.As(err, &backendErr) && backendErr.ErrorCode == interfaces.KN_VERSION_ERROR_RUNNING_MISMATCH {
-		if current, done, readErr := mine(); readErr == nil && done {
-			return current, nil
-		}
+}
+
+// publishKey is the idempotency key of publishing a release: its project, or its lineage when no
+// project made it, its version, and the draft revision it prepared. A retry of the same preparing
+// sends the same key; preparing again, after a refused publish, gets a new one, so the earlier
+// attempt's key is never reused for another request.
+func publishKey(release *interfaces.Release) string {
+	owner := release.ProjectID
+	if owner == "" {
+		owner = release.LineageID
 	}
-	return published, err
+	return fmt.Sprintf("%s:%s:%d", owner, release.Version, release.DraftRevision)
 }
 
 // recordInGit tags the release's definitions, brings main to them with what the running version

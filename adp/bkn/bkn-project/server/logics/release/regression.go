@@ -46,6 +46,7 @@ func NewRegressionService() interfaces.RegressionService {
 	rgsOnce.Do(func() {
 		rgs = &regressionService{
 			ra:    logics.RGA,
+			kva:   logics.KVA,
 			rs:    requirement.NewRequirementService(),
 			ba:    logics.BAA,
 			gs:    logics.GS,
@@ -62,6 +63,8 @@ func NewRegressionService() interfaces.RegressionService {
 
 type regressionService struct {
 	ra interfaces.RegressionAccess
+	// kva tells when the draft's index is ready and whether the draft moved on while it was read.
+	kva interfaces.KNVersionAccess
 	// rs reads the scenario questions; without it a release has none.
 	rs interfaces.RequirementService
 	ba interfaces.BknAgentAccess
@@ -216,6 +219,8 @@ func regressionAsks(questions []interfaces.RegressionQuestion) []regressionAsk {
 // project's draft gives, the display names of the release's items and properties, and the language
 // reasons are written in.
 type regressionContext struct {
+	// draftRevision is the draft revision every answer reads.
+	draftRevision int64
 	// gone are the items, by kind and id, whose table is gone in vega.
 	gone     map[interfaces.ReleaseItem]bool
 	defined  map[interfaces.ReleaseItem]string
@@ -254,8 +259,19 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 		r.Status, r.Error = interfaces.REGRESSION_STATUS_FAILED, interfaces.REGRESSION_ERROR_DEFINITIONS_UNREADABLE
 		return
 	}
+	// The draft is read at the revision the release prepared, once its search index is built.
+	if code := s.awaitDraft(ctx, token, release); code != "" {
+		r.Status, r.Error = interfaces.REGRESSION_STATUS_FAILED, code
+		return
+	}
+	defer func() {
+		if r.Status != interfaces.REGRESSION_STATUS_FAILED && s.draftMoved(ctx, token, release) {
+			r.Status, r.Error = interfaces.REGRESSION_STATUS_FAILED, interfaces.REGRESSION_ERROR_DRAFT_CHANGED
+		}
+	}()
 	rc := s.regressionContext(ctx, release.ProjectID, files)
 	rc.gone = s.goneTables(ctx, r.Runner, files)
+	rc.draftRevision = release.DraftRevision
 	// Filled in the background, so that starting a run waits for no read of the data; the
 	// questions are recorded as asked when the run finishes.
 	r.Questions = slices.Clone(r.Questions)
@@ -360,7 +376,7 @@ func (s *regressionService) judge(ctx context.Context, token string, networkID s
 		return result
 	}
 	answer, err := s.ba.AnswerOnNetwork(ctx, token, &interfaces.BknAgentAnswerRequest{
-		AgentID: answerAgentID, Message: a.text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID, KNVersion: interfaces.KN_VERSION_DRAFT,
+		AgentID: answerAgentID, Message: a.text, ClientRequestID: clientRequestID(runID, index, attempt), KNID: networkID, KNVersion: interfaces.KN_VERSION_DRAFT, DraftRevision: rc.draftRevision,
 	})
 	var agentErr *interfaces.BknAgentError
 	if errors.As(err, &agentErr) {
@@ -490,4 +506,47 @@ func regressionStatus(results []interfaces.RegressionResult) string {
 // anew instead of replaying the failed answer.
 func clientRequestID(runID string, index int, attempt int) string {
 	return fmt.Sprintf("%s.%d.%d", runID, index, attempt)
+}
+
+// draftIndexWait bounds the wait for the draft's search index; draftIndexPoll paces it.
+const (
+	draftIndexWait = 10 * time.Minute
+	draftIndexPoll = 5 * time.Second
+)
+
+// awaitDraft waits until the draft's search index is built at the revision the release prepared,
+// and tells why the regression cannot run when it is not: the draft moved on, or the index did not
+// come in time.
+func (s *regressionService) awaitDraft(ctx context.Context, token string, release *interfaces.Release) string {
+	if s.kva == nil {
+		return ""
+	}
+	deadline := s.now().Add(draftIndexWait)
+	for {
+		versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
+		switch {
+		case err != nil:
+			otellog.LogWarn(ctx, fmt.Sprintf("Read draft of %s for the regression: %v", release.LineageID, err))
+		case versioning.Draft.Revision != release.DraftRevision:
+			return interfaces.REGRESSION_ERROR_DRAFT_CHANGED
+		case versioning.Draft.IndexReady:
+			return ""
+		case versioning.Draft.Index.Status == interfaces.KN_DRAFT_INDEX_FAILED:
+			return interfaces.REGRESSION_ERROR_INDEX_NOT_READY
+		}
+		if !s.now().Before(deadline) {
+			return interfaces.REGRESSION_ERROR_INDEX_NOT_READY
+		}
+		s.sleep(draftIndexPoll)
+	}
+}
+
+// draftMoved tells whether the draft was written while the regression read it. A draft that cannot
+// be read counts as moved: the answers cannot be vouched for.
+func (s *regressionService) draftMoved(ctx context.Context, token string, release *interfaces.Release) bool {
+	if s.kva == nil {
+		return false
+	}
+	versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
+	return err != nil || versioning.Draft.Revision != release.DraftRevision
 }

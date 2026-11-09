@@ -35,6 +35,19 @@ const (
 	KN_VERSION_ERROR_PURGED                  = KN_VERSION_ERROR_PREFIX + "VersionPurged"
 	KN_VERSION_ERROR_CONCEPT_INDEX_FAILED    = KN_VERSION_ERROR_PREFIX + "ConceptIndexFailed"
 	KN_VERSION_ERROR_PROXY_SYNC_REQUIRED     = KN_VERSION_ERROR_PREFIX + "ProxySyncRequired"
+	KN_VERSION_ERROR_CONCEPT_INDEX_BUILDING  = KN_VERSION_ERROR_PREFIX + "ConceptIndexBuilding"
+	KN_VERSION_ERROR_IDEMPOTENCY_KEY_REUSED  = KN_VERSION_ERROR_PREFIX + "IdempotencyKeyReused"
+)
+
+// KN_VERSION_WARNING_CAPABILITY_NOT_PINNED warns that switching versions does not restore the code
+// of functions and Skills; bkn-project's copies are per release version, so it does not apply.
+const KN_VERSION_WARNING_CAPABILITY_NOT_PINNED = "capability_not_pinned"
+
+// Draft concept index build states.
+const (
+	KN_DRAFT_INDEX_BUILDING = "building"
+	KN_DRAFT_INDEX_READY    = "ready"
+	KN_DRAFT_INDEX_FAILED   = "failed"
 )
 
 // Version states as bkn-backend reports them.
@@ -66,6 +79,15 @@ type KNDraftState struct {
 	// Outdated is set once the running version was switched after the draft took its base.
 	Outdated bool  `json:"outdated"`
 	Revision int64 `json:"revision"`
+	// IndexReady is set once the concept index of the draft at Revision is built.
+	IndexReady bool              `json:"index_ready"`
+	Index      KNDraftIndexState `json:"index"`
+}
+
+// KNDraftIndexState is the concept index build of a draft revision.
+type KNDraftIndexState struct {
+	Revision int64  `json:"revision"`
+	Status   string `json:"status"`
 }
 
 // KNVersionSource is where a version came from. bkn-project fills ReleaseID with its release
@@ -97,6 +119,12 @@ type KNVersionPublish struct {
 	Label                  string          `json:"label,omitempty"`
 	Source                 KNVersionSource `json:"source"`
 	AllowOutdatedBase      bool            `json:"allow_outdated_base,omitempty"`
+	// FailOnSkippedSources refuses the publish when the network's agents could not read a source
+	// of the new version: the regression ran with the publisher's own permissions and cannot
+	// tell.
+	FailOnSkippedSources bool `json:"fail_on_skipped_sources"`
+	// IdempotencyKey makes a retried publish return the first result.
+	IdempotencyKey string `json:"-"`
 }
 
 // KNVersionWarning is a warning a publish or an activation succeeded with.
@@ -148,8 +176,12 @@ type KNVersionAccess interface {
 	// ListVersions returns every version, newest first.
 	ListVersions(ctx context.Context, token string, knID string) ([]*KNVersion, error)
 	GetVersion(ctx context.Context, token string, knID string, version int) (*KNVersion, error)
-	// ReplaceDraft imports files into the draft with import_mode=replace.
-	ReplaceDraft(ctx context.Context, token string, files map[string][]byte, req KNReplaceImport) (*BKNImportResult, error)
+	// ReplaceDraft imports files into the draft with import_mode=replace, and returns the draft
+	// revision the import made.
+	ReplaceDraft(ctx context.Context, token string, files map[string][]byte, req KNReplaceImport) (*BKNImportResult, int64, error)
+	// BuildDraftIndex starts building the concept index of the draft as it is; GetVersioning tells
+	// when it is ready.
+	BuildDraftIndex(ctx context.Context, token string, knID string) error
 	// ExportVersion exports kn_version (draft, running or a number) as BKN 3.0 files.
 	ExportVersion(ctx context.Context, token string, knID string, version string) (map[string][]byte, error)
 	Publish(ctx context.Context, token string, knID string, req KNVersionPublish) (*KNVersionPublished, error)

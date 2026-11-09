@@ -7,6 +7,7 @@ package lineage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -94,18 +95,20 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			return live, branchHead
 		}
 		request := interfaces.PublishReleaseRequest{Branch: branch, Version: "1.0.0", ProjectID: "p1", Notes: "first"}
-		// expectWrite expects the draft written with req and read back at revision, and the release
-		// recorded; it returns where the written package and the recorded release land.
+		// expectWrite expects the draft written with req, replying the revision the write made, its
+		// concept index built, and the release recorded; it returns where the written package and
+		// the recorded release land.
 		expectWrite := func(id string, req interfaces.KNReplaceImport, revision int64) (*map[string][]byte, **interfaces.Release) {
 			var written map[string][]byte
 			var recorded *interfaces.Release
-			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), req).DoAndReturn(
-				func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, error) {
+			replaced := kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), req).DoAndReturn(
+				func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
 					written = files
-					return &interfaces.BKNImportResult{KNID: id, Capabilities: &interfaces.CapabilityImportReport{}}, nil
+					return &interfaces.BKNImportResult{KNID: id, Capabilities: &interfaces.CapabilityImportReport{}}, revision, nil
 				})
-			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, revision, true), nil)
-			ra.EXPECT().PrepareRelease(gomock.Any(), gomock.Any()).DoAndReturn(
+			// No versioning read after the write: the reply names the revision.
+			indexed := kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).After(replaced).Return(nil)
+			ra.EXPECT().PrepareRelease(gomock.Any(), gomock.Any()).After(indexed).DoAndReturn(
 				func(_ context.Context, release *interfaces.Release) (bool, error) {
 					recorded = release
 					return true, nil
@@ -192,7 +195,7 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			}
 			expectDraftEdited()
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 7}).
-				Return(nil, versionRefusal(interfaces.KN_VERSION_ERROR_DRAFT_HAS_CHANGES))
+				Return(nil, int64(0), versionRefusal(interfaces.KN_VERSION_ERROR_DRAFT_HAS_CHANGES))
 
 			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
@@ -222,8 +225,8 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), earlier, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{earlier}, nil)
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}).
-				Return(&interfaces.BKNImportResult{KNID: id}, nil)
-			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 9, true), nil)
+				Return(&interfaces.BKNImportResult{KNID: id}, int64(9), nil)
+			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(nil)
 			prepared := ra.EXPECT().PrepareRelease(gomock.Any(), gomock.Any())
 
 			Convey("under the id and create time of the release it replaces\n", func() {
@@ -348,7 +351,7 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			skipped := []*interfaces.CapabilitySkip{{CapabilityType: "skill", Name: "planner", Reason: "no_execute_permission"}}
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{
-				KNID: id, Capabilities: &interfaces.CapabilityImportReport{Skipped: skipped}}, nil)
+				KNID: id, Capabilities: &interfaces.CapabilityImportReport{Skipped: skipped}}, int64(8), nil)
 
 			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
@@ -356,6 +359,21 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			So(status, ShouldEqual, http.StatusConflict)
 			So(code, ShouldEqual, perrors.BknProject_Release_CapabilitiesSkipped)
 			So(errorDetails(err), ShouldResemble, map[string]any{"network_id": id, "version": "1.0.0", "skipped": skipped})
+		})
+
+		Convey("A concept index the draft cannot get built fails preparing without recording it\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{KNID: id}, int64(8), nil)
+			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(versionRefusal(interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_FAILED))
+			// No PrepareRelease: the mock expects none.
+
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
+			So(code, ShouldEqual, perrors.BknProject_Release_NotReady)
 		})
 
 		Convey("Definitions the release cannot rename reply 400 and write nothing\n", func() {
@@ -459,15 +477,16 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			return id, &interfaces.Release{ID: "r-" + id, LineageID: id, NetworkID: id, Version: "1.0.0", ProjectID: "p1",
 				Publisher: publisher, Notes: "first", State: interfaces.RELEASE_STATE_PREPARED, BranchCommit: branchHead, DraftRevision: 8}
 		}
-		// running expects the network's running version read, published by releaseID.
-		running := func(id string, version int, releaseID string) {
+		// running expects the network's running version read for the publish to expect.
+		running := func(id string, version int) {
 			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(version, 8, true), nil)
-			kva.EXPECT().GetVersion(gomock.Any(), token, id, version).Return(&interfaces.KNVersion{Version: version, Label: "v0.9.0",
-				State: interfaces.KN_VERSION_STATE_RUNNING, Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ReleaseID: releaseID}}, nil)
 		}
+		// publishOf is the publish of the release's draft revision, refusing sources the network's
+		// agents cannot read, under the idempotency key of the release's project and version.
 		publishOf := func(release *interfaces.Release, expectedRunning int) interfaces.KNVersionPublish {
 			return interfaces.KNVersionPublish{ExpectedRunningVersion: expectedRunning, ExpectedDraftRevision: release.DraftRevision,
-				Notes: notes, Label: "v" + release.Version, Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE,
+				Notes: notes, Label: "v" + release.Version, FailOnSkippedSources: true, IdempotencyKey: fmt.Sprintf("%s:%s:%d", release.ProjectID, release.Version, release.DraftRevision),
+				Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE,
 					ProjectID: release.ProjectID, Ref: release.BranchCommit, ReleaseID: release.ID}}
 		}
 		// exported is what the running version reads back: bkn-backend re-serializes network.bkn.
@@ -486,7 +505,7 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 		Convey("Publishing makes the draft the running version, then tags the release and brings main and the branch to it\n", func() {
 			id, release := setUp()
 			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
-			running(id, 1, "someone-else")
+			running(id, 1)
 			warnings := []interfaces.KNVersionWarning{{Category: "metric", ID: "m1", Description: "not indexed"}}
 			kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).Return(&interfaces.KNVersionPublished{
 				KNVersion: interfaces.KNVersion{Version: 2, Label: "v1.0.0"}, Warnings: warnings,
@@ -554,11 +573,25 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(mainHead, ShouldEqual, release.BranchCommit)
 		})
 
-		Convey("A publish whose reply was lost is recognised by the release id of the running version\n", func() {
+		Convey("A retry after a lost reply sends the same idempotency key and takes the first result\n", func() {
 			id, release := setUp()
-			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
-			running(id, 2, release.ID)
-			// No Publish: the mock expects none.
+			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil).Times(2)
+			running(id, 1)
+			// The first reply is lost on the way back: the version may be published, the release is not marked.
+			kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).Return(nil, errors.New("connection reset"))
+
+			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			status, _ := httpCode(err)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(release.State, ShouldEqual, interfaces.RELEASE_STATE_PREPARED)
+			noTag(id)
+
+			// The retry reads the running version as it was, and bkn-backend answers the key with the
+			// first result instead of publishing again.
+			running(id, 1)
+			kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).
+				Return(&interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 2, Label: "v1.0.0"}}, nil)
 			ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, notes, gomock.Any()).Return(nil)
 			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
 
@@ -570,51 +603,44 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(tagHead, ShouldEqual, release.BranchCommit)
 		})
 
-		Convey("A running version that moved while publishing\n", func() {
+		Convey("A release no project made is keyed by its lineage\n", func() {
 			id, release := setUp()
+			release.ProjectID = ""
 			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
-			running(id, 1, "someone-else")
-			kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).
-				Return(nil, versionRefusal(interfaces.KN_VERSION_ERROR_RUNNING_MISMATCH))
+			running(id, 1)
+			keyed := publishOf(release, 1)
+			keyed.IdempotencyKey = fmt.Sprintf("%s:1.0.0:%d", id, release.DraftRevision)
+			kva.EXPECT().Publish(gomock.Any(), token, id, keyed).Return(&interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 2}}, nil)
+			ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, notes, gomock.Any()).Return(nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
 
-			Convey("is the release's own when its source names the release\n", func() {
-				running(id, 2, release.ID)
-				ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, notes, gomock.Any()).Return(nil)
-				kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
+			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
 
-				result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-				So(err, ShouldBeNil)
-				So(result.KNVersion, ShouldEqual, 2)
-			})
-
-			Convey("and someone else's otherwise, which replies 409 and tags nothing\n", func() {
-				running(id, 2, "someone-else")
-
-				_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
-
-				status, code := httpCode(err)
-				So(status, ShouldEqual, http.StatusConflict)
-				So(code, ShouldEqual, perrors.BknProject_Release_RunningChanged)
-				noTag(id)
-			})
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Refusals of the publish are worded as bkn-project's and tag nothing\n", func() {
-			for _, refusal := range []struct{ backend, code string }{
-				{interfaces.KN_VERSION_ERROR_NOTHING_TO_PUBLISH, perrors.BknProject_Release_NothingToPublish},
-				{interfaces.KN_VERSION_ERROR_DRAFT_BASE_OUTDATED, perrors.BknProject_Release_DraftOutdated},
-				{interfaces.KN_VERSION_ERROR_DRAFT_REVISION_MISMATCH, perrors.BknProject_Release_DraftChanged},
+			for _, refusal := range []struct {
+				backend, code string
+				status        int
+			}{
+				{interfaces.KN_VERSION_ERROR_NOTHING_TO_PUBLISH, perrors.BknProject_Release_NothingToPublish, http.StatusConflict},
+				{interfaces.KN_VERSION_ERROR_DRAFT_BASE_OUTDATED, perrors.BknProject_Release_DraftOutdated, http.StatusConflict},
+				{interfaces.KN_VERSION_ERROR_DRAFT_REVISION_MISMATCH, perrors.BknProject_Release_DraftChanged, http.StatusConflict},
+				// Someone else published or switched versions since the running version was read.
+				{interfaces.KN_VERSION_ERROR_RUNNING_MISMATCH, perrors.BknProject_Release_RunningChanged, http.StatusConflict},
+				// The key names another publish: nothing the owner can fix.
+				{interfaces.KN_VERSION_ERROR_IDEMPOTENCY_KEY_REUSED, perrors.BknProject_Release_InternalError, http.StatusInternalServerError},
 			} {
 				id, release := setUp()
 				ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
-				running(id, 1, "someone-else")
+				running(id, 1)
 				kva.EXPECT().Publish(gomock.Any(), token, id, publishOf(release, 1)).Return(nil, versionRefusal(refusal.backend))
 
 				_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
 
 				status, got := httpCode(err)
-				So(status, ShouldEqual, http.StatusConflict)
+				So(status, ShouldEqual, refusal.status)
 				So(got, ShouldEqual, refusal.code)
 				So(release.State, ShouldEqual, interfaces.RELEASE_STATE_PREPARED)
 				noTag(id)
@@ -624,7 +650,7 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 		Convey("An outdated base the owner confirmed is published\n", func() {
 			id, release := setUp()
 			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
-			running(id, 1, "someone-else")
+			running(id, 1)
 			confirmed := publishOf(release, 1)
 			confirmed.AllowOutdatedBase = true
 			kva.EXPECT().Publish(gomock.Any(), token, id, confirmed).Return(&interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 3}}, nil)
@@ -794,4 +820,16 @@ func Test_SetNetworkHeader(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+func TestPublishKeyChangesWhenTheReleaseIsPreparedAgain(t *testing.T) {
+	first := &interfaces.Release{ProjectID: "p1", LineageID: "l1", Version: "1.0.0", DraftRevision: 8}
+	again := *first
+	again.DraftRevision = 12
+	if publishKey(first) != publishKey(first) {
+		t.Fatal("a retry of the same preparing must send the same key")
+	}
+	if publishKey(first) == publishKey(&again) {
+		t.Fatal("preparing again must not reuse the key of a refused publish", publishKey(first))
+	}
 }

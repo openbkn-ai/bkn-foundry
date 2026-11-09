@@ -23,16 +23,18 @@ import (
 func Test_KNVersionAccess(t *testing.T) {
 	Convey("Test the knowledge network version calls\n", t, func() {
 		type request struct {
-			method, path, query, auth, contentType string
+			method, path, query, auth, contentType, idempotencyKey string
 			body                                   map[string]any
 			files                                  map[string]string
 		}
 		var got []request
 		status, respBody := http.StatusOK, ""
 		replies := []string{}
+		header := map[string]string{}
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			req := request{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery,
-				auth: r.Header.Get("Authorization"), contentType: r.Header.Get("Content-Type")}
+				auth: r.Header.Get("Authorization"), contentType: r.Header.Get("Content-Type"),
+				idempotencyKey: r.Header.Get("Idempotency-Key")}
 			if file, _, err := r.FormFile("file"); err == nil {
 				data, _ := io.ReadAll(file)
 				req.files = readTar(data)
@@ -43,6 +45,9 @@ func Test_KNVersionAccess(t *testing.T) {
 			body := respBody
 			if len(replies) > 0 {
 				body, replies = replies[0], replies[1:]
+			}
+			for k, v := range header {
+				w.Header().Set(k, v)
 			}
 			w.WriteHeader(status)
 			_, _ = w.Write([]byte(body))
@@ -89,7 +94,8 @@ func Test_KNVersionAccess(t *testing.T) {
 
 		Convey("GetVersioning reads the running version and the draft\n", func() {
 			respBody = `{"enabled":true,"running_version":3,"previous_version":2,"full_history":false,` +
-				`"draft":{"base_version":3,"has_changes":true,"outdated":false,"revision":12}}`
+				`"draft":{"base_version":3,"has_changes":true,"outdated":false,"revision":12,"index_ready":true,` +
+				`"index":{"revision":12,"status":"ready"}}}`
 
 			v, err := bba.GetVersioning(ctx, token, "orders")
 
@@ -97,7 +103,8 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(got[0].method, ShouldEqual, http.MethodGet)
 			So(got[0].path, ShouldEqual, networkPath+"/versioning")
 			So(v, ShouldResemble, &interfaces.KNVersioning{Enabled: true, RunningVersion: 3, PreviousVersion: 2,
-				Draft: interfaces.KNDraftState{BaseVersion: 3, HasChanges: true, Revision: 12}})
+				Draft: interfaces.KNDraftState{BaseVersion: 3, HasChanges: true, Revision: 12, IndexReady: true,
+					Index: interfaces.KNDraftIndexState{Revision: 12, Status: "ready"}}})
 		})
 
 		Convey("ListVersions reads page after page until a short one\n", func() {
@@ -143,13 +150,15 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(v.State, ShouldEqual, interfaces.KN_VERSION_STATE_HISTORY)
 		})
 
-		Convey("ReplaceDraft posts the files as a tar with the expected draft revision\n", func() {
+		Convey("ReplaceDraft posts the files as a tar with the expected draft revision and reads the new one\n", func() {
 			respBody = `{"kn_id":"orders","capabilities":{"bound":1,"skipped":[]}}`
+			header["X-Kn-Draft-Revision"] = "8"
 			files := map[string][]byte{"network.bkn": []byte("network"), "object_types/order.bkn": []byte("order")}
 
-			result, err := bba.ReplaceDraft(ctx, token, files, interfaces.KNReplaceImport{ExpectedDraftRevision: 7})
+			result, revision, err := bba.ReplaceDraft(ctx, token, files, interfaces.KNReplaceImport{ExpectedDraftRevision: 7})
 
 			So(err, ShouldBeNil)
+			So(revision, ShouldEqual, 8)
 			So(got[0].method, ShouldEqual, http.MethodPost)
 			So(got[0].path, ShouldEqual, "/api/bkn-backend/v1/bkns")
 			So(got[0].query, ShouldEqual, "expected_draft_revision=7&import_mode=replace")
@@ -161,8 +170,9 @@ func Test_KNVersionAccess(t *testing.T) {
 
 		Convey("ReplaceDraft confirms overwriting unpublished edits when asked\n", func() {
 			respBody = `{"kn_id":"orders"}`
+			header["X-Kn-Draft-Revision"] = "1"
 
-			_, err := bba.ReplaceDraft(ctx, token, map[string][]byte{"network.bkn": []byte("n")},
+			_, _, err := bba.ReplaceDraft(ctx, token, map[string][]byte{"network.bkn": []byte("n")},
 				interfaces.KNReplaceImport{ExpectedDraftRevision: 0, Overwrite: true})
 
 			So(err, ShouldBeNil)
@@ -172,12 +182,47 @@ func Test_KNVersionAccess(t *testing.T) {
 		Convey("ReplaceDraft keeps a revision conflict's status and code\n", func() {
 			status, respBody = http.StatusConflict, `{"error_code":"BknBackend.KNVersion.DraftRevisionMismatch"}`
 
-			_, err := bba.ReplaceDraft(ctx, token, map[string][]byte{"network.bkn": []byte("n")}, interfaces.KNReplaceImport{})
+			_, _, err := bba.ReplaceDraft(ctx, token, map[string][]byte{"network.bkn": []byte("n")}, interfaces.KNReplaceImport{})
 
 			var backendErr *interfaces.BknBackendError
 			So(errors.As(err, &backendErr), ShouldBeTrue)
 			So(backendErr.HTTPCode, ShouldEqual, http.StatusConflict)
 			So(backendErr.ErrorCode, ShouldEqual, interfaces.KN_VERSION_ERROR_DRAFT_REVISION_MISMATCH)
+		})
+
+		Convey("ReplaceDraft fails on a 200 without the draft revision, or with one that is not a number\n", func() {
+			respBody = `{"kn_id":"orders"}`
+
+			_, _, err := bba.ReplaceDraft(ctx, token, map[string][]byte{"network.bkn": []byte("n")}, interfaces.KNReplaceImport{})
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "X-Kn-Draft-Revision")
+
+			header["X-Kn-Draft-Revision"] = "seven"
+			_, _, err = bba.ReplaceDraft(ctx, token, map[string][]byte{"network.bkn": []byte("n")}, interfaces.KNReplaceImport{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("BuildDraftIndex posts to the draft's index and takes 202 and 200 as success\n", func() {
+			for _, code := range []int{http.StatusAccepted, http.StatusOK} {
+				status, respBody = code, `{}`
+
+				So(bba.BuildDraftIndex(ctx, token, "orders"), ShouldBeNil)
+			}
+			So(got, ShouldHaveLength, 2)
+			So(got[0].method, ShouldEqual, http.MethodPost)
+			So(got[0].path, ShouldEqual, networkPath+"/draft/index")
+			So(got[0].auth, ShouldEqual, token)
+		})
+
+		Convey("BuildDraftIndex decodes another status as a bkn-backend error\n", func() {
+			status, respBody = http.StatusConflict, `{"error_code":"BknBackend.KNVersion.ConceptIndexFailed"}`
+
+			err := bba.BuildDraftIndex(ctx, token, "orders")
+
+			var backendErr *interfaces.BknBackendError
+			So(errors.As(err, &backendErr), ShouldBeTrue)
+			So(backendErr.HTTPCode, ShouldEqual, http.StatusConflict)
+			So(backendErr.ErrorCode, ShouldEqual, interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_FAILED)
 		})
 
 		Convey("ExportVersion reads the draft, the running version and a number as BKN 3.0\n", func() {
@@ -202,8 +247,8 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(got[0].method, ShouldEqual, http.MethodGet)
 			So(got[0].path, ShouldEqual, "/api/bkn-backend/v1/bkns/orders")
 			So(got[0].auth, ShouldEqual, token)
-			So(got[0].query, ShouldEqual, "bkn_spec=3.0&branch=draft")
-			So(got[1].query, ShouldEqual, "bkn_spec=3.0&branch=main")
+			So(got[0].query, ShouldEqual, "bkn_spec=3.0&kn_version=draft")
+			So(got[1].query, ShouldEqual, "bkn_spec=3.0&kn_version=running")
 			So(got[2].query, ShouldEqual, "bkn_spec=3.0&kn_version=3")
 		})
 
@@ -219,7 +264,7 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(backendErr.ErrorCode, ShouldEqual, interfaces.KN_VERSION_ERROR_PURGED)
 		})
 
-		Convey("Publish posts the expectations and source and reads 201\n", func() {
+		Convey("Publish posts the expectations, source and idempotency key and reads 201\n", func() {
 			status = http.StatusCreated
 			respBody = `{"version":5,"label":"v1.1.0","status":"running","warnings":[{"category":"metric","id":"m1",` +
 				`"description":"late"}],"published_metrics":[{"id":"m1","version":2}],"purged_version":3}`
@@ -227,14 +272,17 @@ func Test_KNVersionAccess(t *testing.T) {
 			published, err := bba.Publish(ctx, token, "orders", interfaces.KNVersionPublish{
 				ExpectedRunningVersion: 4, ExpectedDraftRevision: 9, Notes: "n", Label: "v1.1.0",
 				Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1", ReleaseID: "r1"},
+				FailOnSkippedSources: true, IdempotencyKey: "r1:1.1.0",
 			})
 
 			So(err, ShouldBeNil)
+			So(got[0].idempotencyKey, ShouldEqual, "r1:1.1.0")
 			So(got[0].method, ShouldEqual, http.MethodPost)
 			So(got[0].path, ShouldEqual, networkPath+"/versions")
 			So(got[0].body, ShouldResemble, map[string]any{
 				"expected_running_version": float64(4), "expected_draft_revision": float64(9), "notes": "n", "label": "v1.1.0",
 				"source": map[string]any{"type": "bkn-project", "project_id": "p1", "release_id": "r1"},
+				"fail_on_skipped_sources": true,
 			})
 			So(published.Version, ShouldEqual, 5)
 			So(published.Warnings, ShouldResemble, []interfaces.KNVersionWarning{{Category: "metric", ID: "m1", Description: "late"}})
@@ -247,6 +295,8 @@ func Test_KNVersionAccess(t *testing.T) {
 
 			_, err := bba.Publish(ctx, token, "orders", interfaces.KNVersionPublish{})
 
+			So(got[0].idempotencyKey, ShouldBeEmpty)
+			So(got[0].body["fail_on_skipped_sources"], ShouldEqual, false)
 			var backendErr *interfaces.BknBackendError
 			So(errors.As(err, &backendErr), ShouldBeTrue)
 			So(backendErr.HTTPCode, ShouldEqual, http.StatusConflict)

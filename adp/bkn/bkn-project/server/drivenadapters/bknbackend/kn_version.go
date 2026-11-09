@@ -5,12 +5,16 @@
 package bknbackend
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -20,8 +24,22 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
-// replaceImportMode removes from the draft what the package does not have.
-const replaceImportMode = "replace"
+const (
+	// replaceImportMode removes from the draft what the package does not have.
+	replaceImportMode = "replace"
+	// draftRevisionHeader carries the draft revision a draft write made, or a draft read saw.
+	draftRevisionHeader = "X-Kn-Draft-Revision"
+	// idempotencyKeyHeader makes a retried version operation return its first result.
+	idempotencyKeyHeader = "Idempotency-Key"
+)
+
+// rawClient sends a request whose reply headers are needed, which the REST client does not return.
+func (bba *bknBackendAccess) rawClient() *http.Client {
+	if bba.raw != nil {
+		return bba.raw
+	}
+	return &http.Client{Timeout: 900 * time.Second}
+}
 
 // NewKNVersionAccess calls the version API of bkn-backend (design bkn-docs@122618a, section 13).
 func NewKNVersionAccess(appSetting *common.AppSetting) interfaces.KNVersionAccess {
@@ -39,6 +57,12 @@ func (bba *bknBackendAccess) networkUrl(knID string, rest ...string) string {
 // call sends one request and decodes a reply of the wanted status into out.
 func (bba *bknBackendAccess) call(ctx context.Context, name string, method string, httpUrl string, query url.Values,
 	token string, body any, want int, out any) error {
+	return bba.callWith(ctx, name, method, httpUrl, query, token, nil, body, want, out)
+}
+
+// callWith is call with extra headers; an empty value is left out.
+func (bba *bknBackendAccess) callWith(ctx context.Context, name string, method string, httpUrl string, query url.Values,
+	token string, extra map[string]string, body any, want int, out any) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, name)
 	defer span.End()
 	if len(query) > 0 {
@@ -46,6 +70,11 @@ func (bba *bknBackendAccess) call(ctx context.Context, name string, method strin
 	}
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: method})
 	headers := map[string]string{"Authorization": token}
+	for k, v := range extra {
+		if v != "" {
+			headers[k] = v
+		}
+	}
 	var respCode int
 	var respBody []byte
 	var err error
@@ -135,9 +164,11 @@ func (bba *bknBackendAccess) GetVersion(ctx context.Context, token string, knID 
 }
 
 // ReplaceDraft calls POST /bkns?import_mode=replace&expected_draft_revision=N[&overwrite_changes=true]
-// with the files as a tar; the network id in network.bkn names the target.
+// with the files as a tar; the network id in network.bkn names the target. The reply's
+// X-Kn-Draft-Revision is the draft revision the import made, read from the reply itself, since a
+// read afterwards could see a later write.
 func (bba *bknBackendAccess) ReplaceDraft(ctx context.Context, token string, files map[string][]byte,
-	req interfaces.KNReplaceImport) (*interfaces.BKNImportResult, error) {
+	req interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ReplaceDraft")
 	defer span.End()
 
@@ -149,39 +180,53 @@ func (bba *bknBackendAccess) ReplaceDraft(ctx context.Context, token string, fil
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
 	body, contentType, err := multipartTar(files)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	respCode, respBody, err := bba.httpClient.PostNoUnmarshal(ctx, httpUrl,
-		map[string]string{"Authorization": token, rest.ContentTypeKey: contentType}, body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, httpUrl, bytes.NewReader(body))
 	if err != nil {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http import BKN failed")
-		return nil, fmt.Errorf("replace draft: %w", err)
+		return nil, 0, err
 	}
-	if respCode != http.StatusOK {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		return nil, backendError(respCode, respBody)
+	request.Header.Set("Authorization", token)
+	request.Header.Set(rest.ContentTypeKey, contentType)
+	resp, err := bba.rawClient().Do(request)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Http import BKN failed")
+		return nil, 0, fmt.Errorf("replace draft: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("replace draft: read reply: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, resp.StatusCode, "InternalError", "Http status is not 200")
+		return nil, 0, backendError(resp.StatusCode, respBody)
 	}
 	result := &interfaces.BKNImportResult{}
 	if err := json.Unmarshal(respBody, result); err != nil {
-		return nil, fmt.Errorf("unmarshal import response: %w", err)
+		return nil, 0, fmt.Errorf("unmarshal import response: %w", err)
 	}
-	oteltrace.AddHttpAttrs4Ok(span, respCode)
-	return result, nil
+	revision, err := strconv.ParseInt(resp.Header.Get(draftRevisionHeader), 10, 64)
+	if err != nil {
+		return nil, 0, fmt.Errorf("replace draft: no %s in the reply", draftRevisionHeader)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, resp.StatusCode)
+	return result, revision, nil
 }
 
-// exportVersionQuery names the version to export. Until bkn-backend exports by kn_version, the draft
-// and the running version are read through the branches they are kept in: draft and main.
-func exportVersionQuery(version string) url.Values {
-	switch version {
-	case interfaces.KN_VERSION_DRAFT:
-		return url.Values{"branch": {interfaces.KN_VERSION_DRAFT}}
-	case interfaces.KN_VERSION_RUNNING:
-		return url.Values{"branch": {interfaces.GIT_MAIN_BRANCH}}
+// BuildDraftIndex calls POST /knowledge-networks/{kn_id}/draft/index: 202 while a build starts or
+// runs, 200 once it is ready.
+func (bba *bknBackendAccess) BuildDraftIndex(ctx context.Context, token string, knID string) error {
+	err := bba.call(ctx, "BuildDraftIndex", http.MethodPost, bba.networkUrl(knID, "draft", "index"), nil, token, nil, http.StatusAccepted, nil)
+	var backendErr *interfaces.BknBackendError
+	if errors.As(err, &backendErr) && backendErr.HTTPCode == http.StatusOK {
+		return nil
 	}
-	return url.Values{"kn_version": {version}}
+	return err
 }
 
-// ExportVersion calls GET /bkns/{kn_id}?<version>&bkn_spec=3.0 (see exportVersionQuery).
+// ExportVersion calls GET /bkns/{kn_id}?kn_version=<version>&bkn_spec=3.0: the draft, the running
+// version or a version number.
 func (bba *bknBackendAccess) ExportVersion(ctx context.Context, token string, knID string, version string) (map[string][]byte, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ExportVersion")
 	defer span.End()
@@ -189,8 +234,7 @@ func (bba *bknBackendAccess) ExportVersion(ctx context.Context, token string, kn
 
 	httpUrl := fmt.Sprintf("%s/bkns/%s", bba.baseUrl, url.PathEscape(knID))
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
-	query := exportVersionQuery(version)
-	query.Set("bkn_spec", exportBknSpec)
+	query := url.Values{"kn_version": {version}, "bkn_spec": {exportBknSpec}}
 	respCode, respBody, err := bba.httpClient.GetNoUnmarshal(ctx, httpUrl, query, map[string]string{"Authorization": token})
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http export BKN failed")
@@ -212,7 +256,8 @@ func (bba *bknBackendAccess) ExportVersion(ctx context.Context, token string, kn
 func (bba *bknBackendAccess) Publish(ctx context.Context, token string, knID string,
 	req interfaces.KNVersionPublish) (*interfaces.KNVersionPublished, error) {
 	out := &interfaces.KNVersionPublished{}
-	if err := bba.call(ctx, "PublishKNVersion", http.MethodPost, bba.networkUrl(knID, "versions"), nil, token, req, http.StatusCreated, out); err != nil {
+	if err := bba.callWith(ctx, "PublishKNVersion", http.MethodPost, bba.networkUrl(knID, "versions"), nil, token,
+		map[string]string{idempotencyKeyHeader: req.IdempotencyKey}, req, http.StatusCreated, out); err != nil {
 		return nil, err
 	}
 	return out, nil
