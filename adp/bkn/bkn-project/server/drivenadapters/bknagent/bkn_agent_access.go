@@ -359,7 +359,8 @@ func answerContext(req *interfaces.BknAgentAnswerRequest) map[string]any {
 	if req.KNVersion != "" {
 		context["kn_version"] = req.KNVersion
 	}
-	if req.DraftRevision != 0 {
+	// bkn-agent takes a draft revision only with the draft (422 otherwise).
+	if req.DraftRevision != 0 && req.KNVersion == interfaces.KN_VERSION_DRAFT {
 		context["draft_revision"] = req.DraftRevision
 	}
 	return context
