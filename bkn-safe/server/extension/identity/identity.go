@@ -31,13 +31,13 @@ func (c Cleanup) Initialize(*gorm.DB) error { return nil }
 func RegisterCleanup(db *gorm.DB, callbacks Cleanup) error { return db.Use(callbacks) }
 
 func CleanupUser(tx *gorm.DB, id string) error {
-	if c, ok := tx.Config.Plugins[(Cleanup{}).Name()].(Cleanup); ok && c.User != nil {
+	if c, ok := tx.Plugins[(Cleanup{}).Name()].(Cleanup); ok && c.User != nil {
 		return c.User(tx, id)
 	}
 	return nil
 }
 func CleanupDepartment(tx *gorm.DB, id string) error {
-	if c, ok := tx.Config.Plugins[(Cleanup{}).Name()].(Cleanup); ok && c.Department != nil {
+	if c, ok := tx.Plugins[(Cleanup{}).Name()].(Cleanup); ok && c.Department != nil {
 		return c.Department(tx, id)
 	}
 	return nil
