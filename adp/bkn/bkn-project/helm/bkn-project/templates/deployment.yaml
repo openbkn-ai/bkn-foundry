@@ -67,9 +67,53 @@ spec:
                       - {{ .Values.moduleName }}
         {{- end }}
       {{- end }}
-      {{- with .Values.initContainers }}
+      {{- if or .Values.initContainers .Values.migration.enabled }}
       initContainers:
+        {{- if .Values.migration.enabled }}
+        - name: {{ .Values.moduleName }}-migrate
+          image: {{ template "bkn-project.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: {{- toYaml .Values.migration.args | nindent 12 }}
+          env:
+            - name: TZ
+              value: {{ .Values.env.timezone }}
+            {{- if .Values.depServices.rds.type }}
+            - name: DB_TYPE
+              value: {{ .Values.depServices.rds.type | quote }}
+            {{- end }}
+            - name: DM_SVC_PATH
+              value: /opt/bkn-project/config
+            {{- if .Values.migration.existingSecret }}
+            - name: BKN_PROJECT_MIGRATION_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.migration.existingSecret }}
+                  key: user
+            - name: BKN_PROJECT_MIGRATION_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.migration.existingSecret }}
+                  key: password
+            {{- else }}
+            - name: BKN_PROJECT_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bkn-project.dbSecret" . }}
+                  key: user
+            - name: BKN_PROJECT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bkn-project.dbSecret" . }}
+                  key: password
+            {{- end }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: {{ .Values.moduleName }}-cm
+              mountPath: /opt/bkn-project/config
+        {{- end }}
+        {{- with .Values.initContainers }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       containers:
       - name: bkn-project
