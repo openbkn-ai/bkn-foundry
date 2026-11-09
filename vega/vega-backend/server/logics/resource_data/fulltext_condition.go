@@ -50,8 +50,8 @@ func rejectFulltext(resource *interfaces.Resource, cfg *interfaces.FilterCondCfg
 	}
 	if ignoreLocalIndex {
 		return fmt.Errorf("condition [%s] on field %q cannot use the local index while ignore_local_index is true",
-			cfg.Operation, cfg.Name)
+			cfg.Operation, cfg.Field)
 	}
 	return fmt.Errorf("condition [%s] on field %q: resource %q has no local index; build one before full-text search",
-		cfg.Operation, cfg.Name, resource.Name)
+		cfg.Operation, cfg.Field, resource.Name)
 }

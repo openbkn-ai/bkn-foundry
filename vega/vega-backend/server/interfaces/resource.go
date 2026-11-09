@@ -115,9 +115,13 @@ type Resource struct {
 	EstimatedRowCount *int64 `json:"estimated_row_count,omitempty"` // Source metadata estimate when an exact count is unavailable
 	RowCountTime      *int64 `json:"row_count_time,omitempty"`      // 精确数量采集时间，独立列存储；未知时省略
 
+	// Internal storage fields; the service maps them according to Category.
+	LogicType          string `json:"-"`
+	LogicDefinitionStr string `json:"-"`
+
 	// Fields specific to the logical view
-	LogicType       string `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite)
-	LogicDefinition any    `json:"logic_definition,omitempty"` // Definition shape depends on logic_type
+	LogicalType           string `json:"logical_type,omitempty"`            // Logical types: derived(derived), composite(composite)
+	LogicalViewDefinition any    `json:"logical_view_definition,omitempty"` // Definition shape depends on logical_type
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
@@ -152,7 +156,8 @@ type ResourceSummary struct {
 	LocalIndexName   string `json:"index_name,omitempty"`
 	SyncMark         string `json:"-"`
 
-	LogicType string `json:"logic_type,omitempty"`
+	LogicType   string `json:"-"` // Raw database value, mapped by the service.
+	LogicalType string `json:"logical_type,omitempty"`
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
@@ -235,8 +240,8 @@ type ResourceRequest struct {
 
 	IndexConfig *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
 
-	LogicType       string `json:"logic_type,omitempty"`       // Required for logical views; selects the definition shape
-	LogicDefinition any    `json:"logic_definition,omitempty"` // Definition shape depends on logic_type
+	LogicalType           string `json:"logical_type,omitempty"`            // Required for logical views; selects the definition shape
+	LogicalViewDefinition any    `json:"logical_view_definition,omitempty"` // Definition shape depends on logical_type
 
 	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
 }

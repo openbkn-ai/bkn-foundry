@@ -31,7 +31,7 @@ func Test_validateFulltextConditions(t *testing.T) {
 	matchCond := &interfaces.FilterCondCfg{
 		Operation: filter_condition.OperationAnd,
 		SubConds: []*interfaces.FilterCondCfg{
-			{Name: "content", Operation: filter_condition.OperationMatch},
+			{Field: "content", Operation: filter_condition.OperationMatch},
 		},
 	}
 
@@ -83,7 +83,7 @@ func Test_validateFulltextConditions(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Operation: filter_condition.OperationAnd,
 			SubConds: []*interfaces.FilterCondCfg{
-				{Name: "content", Operation: filter_condition.OperationLike},
+				{Field: "content", Operation: filter_condition.OperationLike},
 			},
 		}
 		if err := validateFulltextConditions(tableResource(""), cfg, false); err != nil {
@@ -96,8 +96,8 @@ func Test_validateFulltextConditions(t *testing.T) {
 			Operation: filter_condition.OperationAnd,
 			SubConds: []*interfaces.FilterCondCfg{
 				{Operation: filter_condition.OperationOr, SubConds: []*interfaces.FilterCondCfg{
-					{Name: "id", Operation: filter_condition.OperationEqual},
-					{Name: "title", Operation: filter_condition.OperationMultiMatch},
+					{Field: "id", Operation: filter_condition.OperationEqual},
+					{Field: "title", Operation: filter_condition.OperationMultiMatch},
 				}},
 			},
 		}

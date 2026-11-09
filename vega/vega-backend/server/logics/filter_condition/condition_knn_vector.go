@@ -35,15 +35,15 @@ func (c *KnnVectorCond) RequiredValueLen() int      { return -1 }
 func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [knn_vector] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [knn_vector] left field '%s' not found", cfg.Name)
+		return nil, fmt.Errorf("condition [knn_vector] left field '%s' not found", cfg.Field)
 	}
 	if field.Type != interfaces.DataType_Vector {
-		return nil, fmt.Errorf("condition [knn_vector] left field '%s' type must be vector", cfg.Name)
+		return nil, fmt.Errorf("condition [knn_vector] left field '%s' type must be vector", cfg.Field)
 	}
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return nil, fmt.Errorf("condition [knn_vector] does not support value_from type '%s'", cfg.ValueFrom)
@@ -67,7 +67,7 @@ func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 
 	return &KnnVectorCond{
 		Cfg:             cfg,
-		FilterFieldName: cfg.Name,
+		FilterFieldName: cfg.Field,
 		SubConds:        subConds,
 	}, nil
 }

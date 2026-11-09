@@ -131,7 +131,7 @@ func parseDatetimeValue(value any, timeZone string) (time.Time, error) {
 // normalizeTemporalCondition 创建运行时副本，原始配置及数组元素保持不变。
 // before/current 使用相对日历参数，字段比较不包含时间字面值。
 func normalizeTemporalCondition(cfg *interfaces.FilterCondCfg, fields map[string]*interfaces.Property) (*interfaces.FilterCondCfg, error) {
-	field := fields[cfg.Name]
+	field := fields[cfg.Field]
 	if field == nil || (field.Type != interfaces.DataType_Date && field.Type != interfaces.DataType_Datetime && field.Type != interfaces.DataType_Time) || cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return cfg, nil
 	}
@@ -163,7 +163,7 @@ func normalizeTemporalCondition(cfg *interfaces.FilterCondCfg, fields map[string
 		}
 		parsed, err := ParseTemporalValue(field.Type, value, common.ServerTimeZone())
 		if err != nil {
-			return nil, fmt.Errorf("condition [%s] field %q: %w", cfg.Operation, cfg.Name, err)
+			return nil, fmt.Errorf("condition [%s] field %q: %w", cfg.Operation, cfg.Field, err)
 		}
 		normalized[i] = parsed
 	}

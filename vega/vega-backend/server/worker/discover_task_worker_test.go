@@ -935,9 +935,9 @@ func TestDiscoverTaskWorkerCountLogicalView(t *testing.T) {
 			resourcelogic.SetLogicalViewService(lvs)
 			t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
 			view := &interfaces.Resource{ID: "view", CatalogID: "logical", Category: interfaces.ResourceCategoryLogicalView, UpdateTime: 10,
-				LogicType:       interfaces.LogicType_Derived,
-				LogicDefinition: &interfaces.DerivedLogicDefinition{SourceResourceID: "source", FilterCondition: map[string]any{"field": "status", "operation": "==", "value": "active"}},
-				SourceMetadata:  map[string]any{"properties": map[string]any{"row_count": int64(99), "row_count_time": int64(20)}},
+				LogicalType:           interfaces.LogicalType_Derived,
+				LogicalViewDefinition: &interfaces.DerivedLogicalViewDefinition{SourceResourceID: "source", FilterCondition: map[string]any{"field": "status", "operation": "==", "value": "active"}},
+				SourceMetadata:        map[string]any{"properties": map[string]any{"row_count": int64(99), "row_count_time": int64(20)}},
 			}
 			catalog := &interfaces.Catalog{ID: "logical", Type: interfaces.CatalogTypeLogical}
 			task := &interfaces.DiscoverTask{ID: "task", ResourceID: "view"}
@@ -959,7 +959,7 @@ func TestDiscoverTaskWorkerCountLogicalView(t *testing.T) {
 			}
 			lvs.EXPECT().QueryWithPaging(gomock.Any(), view, gomock.Any()).DoAndReturn(func(queryCtx context.Context, got *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				require.Same(t, view, got)
-				require.Same(t, view.LogicDefinition, got.LogicDefinition, "the view service must receive the complete fixed filter")
+				require.Same(t, view.LogicalViewDefinition, got.LogicalViewDefinition, "the view service must receive the complete fixed filter")
 				require.True(t, params.NeedTotal)
 				require.NotNil(t, params.IgnoreLocalIndex)
 				require.True(t, *params.IgnoreLocalIndex)

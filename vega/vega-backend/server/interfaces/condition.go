@@ -21,7 +21,7 @@ const (
 )
 
 type FilterCondCfg struct {
-	Name      string           `json:"field,omitempty" mapstructure:"field"` // Pass "name"
+	Field     string           `json:"field,omitempty" mapstructure:"field"` // Field identifier
 	Operation string           `json:"operation,omitempty" mapstructure:"operation"`
 	SubConds  []*FilterCondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
 	ValueFrom string           `json:"value_from,omitempty" mapstructure:"value_from"`

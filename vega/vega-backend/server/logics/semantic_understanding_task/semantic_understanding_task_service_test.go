@@ -78,7 +78,7 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 				Description:      "订单统计逻辑视图",
 				Status:           interfaces.ResourceStatusActive,
 				Category:         interfaces.ResourceCategoryLogicalView,
-				LogicDefinition:  []*interfaces.LogicDefinitionNode{{ID: "hidden"}},
+				LogicalViewDefinition:  []*interfaces.LogicalViewDefinitionNode{{ID: "hidden"}},
 			},
 			{
 				ID:               "resource-1",
@@ -138,7 +138,7 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	require.Len(t, logicalViews, 1)
 	logicalView := logicalViews[0].(map[string]any)
 	assert.Equal(t, "order_summary", logicalView["source_identifier"])
-	assert.NotContains(t, logicalView, "logic_definition")
+	assert.NotContains(t, logicalView, "logical_view_definition")
 }
 */
 

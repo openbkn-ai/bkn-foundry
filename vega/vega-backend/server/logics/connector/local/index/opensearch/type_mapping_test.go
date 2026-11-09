@@ -62,7 +62,7 @@ func TestOpenSearchConnectorMapType(t *testing.T) {
 
 	t.Run("wildcard accepts regex conditions", func(t *testing.T) {
 		property := &interfaces.Property{Name: "name", Type: connector.MapType("wildcard")}
-		cfg := &interfaces.FilterCondCfg{Name: property.Name, ValueFrom: interfaces.ValueFrom_Const, Value: "prefix.*"}
+		cfg := &interfaces.FilterCondCfg{Field: property.Name, ValueFrom: interfaces.ValueFrom_Const, Value: "prefix.*"}
 		condition, err := (&filter_condition.RegexCond{}).New(t.Context(), cfg,
 			map[string]*interfaces.Property{property.Name: property})
 		require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestOpenSearchConnectorMapType(t *testing.T) {
 
 	t.Run("structured features reject scalar ranges", func(t *testing.T) {
 		property := &interfaces.Property{Name: "features", Type: connector.MapType("rank_features")}
-		cfg := &interfaces.FilterCondCfg{Name: property.Name, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10}}
+		cfg := &interfaces.FilterCondCfg{Field: property.Name, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10}}
 		condition, err := (&filter_condition.RangeCond{}).New(t.Context(), cfg,
 			map[string]*interfaces.Property{property.Name: property})
 		require.ErrorContains(t, err, "not a date/number field")
@@ -81,7 +81,7 @@ func TestOpenSearchConnectorMapType(t *testing.T) {
 	t.Run("unsupported vectors reject OpenSearch knn conditions", func(t *testing.T) {
 		for _, nativeType := range []string{"dense_vector", "sparse_vector"} {
 			property := &interfaces.Property{Name: "embedding", Type: connector.MapType(nativeType)}
-			cfg := &interfaces.FilterCondCfg{Name: property.Name, ValueFrom: interfaces.ValueFrom_Const, Value: []float32{0.1, 0.2, 0.3}}
+			cfg := &interfaces.FilterCondCfg{Field: property.Name, ValueFrom: interfaces.ValueFrom_Const, Value: []float32{0.1, 0.2, 0.3}}
 			condition, err := (&filter_condition.KnnVectorCond{}).New(t.Context(), cfg,
 				map[string]*interfaces.Property{property.Name: property})
 			require.ErrorContains(t, err, "type must be vector", nativeType)
@@ -96,7 +96,7 @@ func TestOpenSearchConnectorMapType(t *testing.T) {
 			OriginalType: "knn_vector",
 		}
 		cfg := &interfaces.FilterCondCfg{
-			Name:      property.Name,
+			Field:     property.Name,
 			Operation: filter_condition.OperationKnnVector,
 			ValueFrom: interfaces.ValueFrom_Const,
 			Value:     []float32{0.1, 0.2, 0.3},

@@ -72,7 +72,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, params.FilterCondCfg)
-		assert.Equal(t, "name", params.FilterCondCfg.Name)
+		assert.Equal(t, "name", params.FilterCondCfg.Field)
 	})
 
 	t.Run("normalizes precise before interval for connectors", func(t *testing.T) {
@@ -262,7 +262,7 @@ func TestValidateFilterCondCfg(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Operation: filter_condition.OperationAnd,
 			SubConds: []*interfaces.FilterCondCfg{
-				{Name: "name", Operation: filter_condition.OperationEqual, Value: "alice"},
+				{Field: "name", Operation: filter_condition.OperationEqual, Value: "alice"},
 			},
 		}
 
@@ -271,7 +271,7 @@ func TestValidateFilterCondCfg(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported value source before querying", func(t *testing.T) {
-		cfg := &interfaces.FilterCondCfg{Name: "age", Operation: filter_condition.OperationGt,
+		cfg := &interfaces.FilterCondCfg{Field: "age", Operation: filter_condition.OperationGt,
 			ValueFrom: "unknown", Value: 1}
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, validateFilterCondCfg(ctx, cfg), &httpErr)

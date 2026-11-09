@@ -665,16 +665,16 @@ func TestResourceUpdateUsesFeatureSemanticsForEverySupportedCategory(t *testing.
 func TestValidateResourceUpdateScopeRejectsLogicTypeChange(t *testing.T) {
 	resource := &interfaces.Resource{
 		CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicalView,
-		LogicType: interfaces.LogicType_Derived,
+		LogicalType: interfaces.LogicalType_Derived,
 	}
-	for _, logicType := range []string{"", interfaces.LogicType_Composite} {
+	for _, logicalType := range []string{"", interfaces.LogicalType_Composite} {
 		changed, err := (&resourceService{}).validateResourceUpdateScope(context.Background(), resource,
 			&interfaces.ResourceRequest{
-				CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicalView, LogicType: logicType,
+				CatalogID: "catalog-1", Category: interfaces.ResourceCategoryLogicalView, LogicalType: logicalType,
 			})
 		assert.False(t, changed)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "logic_type cannot be changed")
+		assert.Contains(t, err.Error(), "logical_type cannot be changed")
 	}
 }
 
@@ -1115,12 +1115,12 @@ func TestJSONNumbersEqual(t *testing.T) {
 		"source_resource_id": "source-1",
 		"filter_condition":   map[string]any{"operation": "eq", "value": float64(1)},
 	}
-	prepared := &interfaces.DerivedLogicDefinition{
+	prepared := &interfaces.DerivedLogicalViewDefinition{
 		SourceResourceID: "source-1",
 		FilterCondition:  map[string]any{"operation": "eq", "value": json.Number("1.0")},
 	}
 	assert.True(t, jsonNumbersEqual(stored, prepared))
-	assert.False(t, jsonNumbersEqual(stored, &interfaces.DerivedLogicDefinition{
+	assert.False(t, jsonNumbersEqual(stored, &interfaces.DerivedLogicalViewDefinition{
 		SourceResourceID: "source-2",
 		FilterCondition:  prepared.FilterCondition,
 	}))
@@ -1139,7 +1139,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		SetLogicalViewService(viewService)
 		t.Cleanup(func() { SetLogicalViewService(previous) })
 		req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
-			LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
+			LogicalType: interfaces.LogicalType_Derived, LogicalViewDefinition: map[string]any{
 				"source_resource_id": "source", "filter_condition": map[string]any{
 					"field": "created", "operation": ">=", "value": "2026-10-19",
 				},
@@ -1157,7 +1157,12 @@ func TestResourceServiceCreate(t *testing.T) {
 	t.Run("create dataset category", func(t *testing.T) {
 		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+				assert.Empty(t, got.LogicType)
+				assert.Empty(t, got.LogicDefinitionStr)
+				return nil
+			})
 		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, got *interfaces.Resource) error {
 				require.Len(t, got.SchemaDefinition, 2)
@@ -1261,6 +1266,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
 				assert.False(t, resource.Builtin)
+				assert.Empty(t, resource.LogicType)
+				assert.Empty(t, resource.LogicDefinitionStr)
 				return nil
 			})
 
@@ -1557,6 +1564,8 @@ func TestResourceServiceInternalCreateTracksParentForTransactionCompensation(t *
 	mockRA.EXPECT().Create(gomock.Any(), tx, gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
 			assert.True(t, resource.Builtin)
+			assert.Empty(t, resource.LogicType)
+			assert.Empty(t, resource.LogicDefinitionStr)
 			require.Len(t, resource.SchemaDefinition, 1)
 			assert.Empty(t, resource.SchemaDefinition[0].APIName)
 			return nil
@@ -2029,6 +2038,15 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 	}
 	mockRA, ok := rs.ra.(*vmock.MockResourceAccess)
 	require.True(t, ok)
+	// Model an access-layer row when existing fixtures describe public view fields.
+	if resource != nil && resource.Category == interfaces.ResourceCategoryLogicalView && resource.LogicalType != "" {
+		encoded, err := json.Marshal(resource.LogicalViewDefinition)
+		require.NoError(t, err)
+		resource.LogicType = resource.LogicalType
+		resource.LogicDefinitionStr = string(encoded)
+		resource.LogicalType = ""
+		resource.LogicalViewDefinition = nil
+	}
 	mockRA.EXPECT().GetByID(gomock.Any(), nil, id).Return(resource, nil)
 	req.ID = id
 	return rs.Update(context.Background(), req)
@@ -2081,7 +2099,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		SetLogicalViewService(viewService)
 		t.Cleanup(func() { SetLogicalViewService(previous) })
 		req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
-			LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
+			LogicalType: interfaces.LogicalType_Derived, LogicalViewDefinition: map[string]any{
 				"source_resource_id": "source", "filter_condition": map[string]any{
 					"field": "created", "operation": ">=", "value": "2026-10-19",
 				},
@@ -2093,11 +2111,11 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, _, permissions, _, _, _, _ := newTestService(t)
 		permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		stored := &interfaces.Resource{ID: "view", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicalView,
-			LogicType: interfaces.LogicType_Derived, Name: "original"}
+			LogicalType: interfaces.LogicalType_Derived, Name: "original"}
 		err := updateResourceForTest(t, rs, stored, req)
 		assert.Same(t, invalid, err)
 		assert.Equal(t, "original", stored.Name)
-		assert.Nil(t, stored.LogicDefinition)
+		assert.Nil(t, stored.LogicalViewDefinition)
 	})
 
 	t.Run("rejects existing dataset analyzer changes before side effects", func(t *testing.T) {
@@ -3497,6 +3515,211 @@ func TestChangedDatasetFulltextAnalyzer(t *testing.T) {
 				req.IndexConfig = &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: tc.nextDefault}
 			}
 			assert.Equal(t, tc.changedField, changedDatasetFulltextAnalyzer(resource, req))
+		})
+	}
+}
+
+func TestResourceServiceReadsRawLogicFields(t *testing.T) {
+	const stored = `{"source_resource_id":"source-1","filter_condition":{"field":"amount","operation":">","value":9007199254740993}}`
+	for _, category := range []string{interfaces.ResourceCategoryLogicalView, interfaces.ResourceCategoryAPI} {
+		for _, path := range []string{"detail", "details", "internal-detail", "internal-details", "catalog", "enable", "enable-noop"} {
+			t.Run(category+"/"+path, func(t *testing.T) {
+				rs, ra, ps, _, ums, _, _ := newTestService(t)
+				raw := &interfaces.Resource{ID: "r1", Category: category, LogicType: interfaces.LogicalType_Derived, LogicDefinitionStr: stored}
+				var got *interfaces.Resource
+				var err error
+				if path == "detail" || path == "details" {
+					ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), []string{"r1"}, gomock.Any(), gomock.Any()).
+						Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
+					ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+				}
+				switch path {
+				case "detail", "internal-detail", "enable", "enable-noop":
+					ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(raw, nil)
+					switch path {
+					case "detail":
+						got, err = rs.GetByID(t.Context(), "r1")
+					case "internal-detail":
+						got, err = rs.InternalGetByID(t.Context(), nil, "r1")
+					default:
+						ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+						if path == "enable" {
+							ra.EXPECT().UpdateEnabled(gomock.Any(), "r1", true, gomock.Any(), gomock.Any()).Return(nil)
+						}
+						got, err = rs.SetEnabled(t.Context(), "r1", path == "enable")
+					}
+				case "details", "internal-details":
+					ra.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{"r1": raw}, nil)
+					if path == "details" {
+						var result []*interfaces.Resource
+						result, err = rs.GetByIDs(t.Context(), []string{"r1"}, false)
+						require.Len(t, result, 1)
+						got = result[0]
+					} else {
+						var result map[string]*interfaces.Resource
+						result, err = rs.InternalGetByIDs(t.Context(), []string{"r1"})
+						got = result["r1"]
+					}
+				case "catalog":
+					ra.EXPECT().GetByCatalogID(gomock.Any(), "cat1").Return([]*interfaces.Resource{raw}, nil)
+					var result []*interfaces.Resource
+					result, err = rs.InternalGetByCatalogID(t.Context(), "cat1")
+					require.Len(t, result, 1)
+					got = result[0]
+				}
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				assert.Equal(t, stored, got.LogicDefinitionStr)
+				encoded, err := json.Marshal(got)
+				require.NoError(t, err)
+				assert.NotContains(t, string(encoded), `"logic_type"`)
+				assert.NotContains(t, string(encoded), "LogicDefinitionStr")
+				if category == interfaces.ResourceCategoryLogicalView {
+					assert.Equal(t, interfaces.LogicalType_Derived, got.LogicalType)
+					require.NotNil(t, got.LogicalViewDefinition)
+					definition, err := interfaces.DecodeDerivedLogicalViewDefinition(got.LogicalViewDefinition)
+					require.NoError(t, err)
+					assert.Equal(t, json.Number("9007199254740993"), definition.FilterCondition.(map[string]any)["value"])
+					assert.Contains(t, string(encoded), `"logical_type":"derived"`)
+					assert.Contains(t, string(encoded), "9007199254740993")
+				} else {
+					assert.Empty(t, got.LogicalType)
+					assert.Nil(t, got.LogicalViewDefinition)
+					assert.NotContains(t, string(encoded), `"logical_type"`)
+					assert.NotContains(t, string(encoded), `"logical_view_definition"`)
+				}
+			})
+		}
+	}
+}
+
+func TestResourceServiceListsRawLogicType(t *testing.T) {
+	for _, internal := range []bool{false, true} {
+		t.Run(fmt.Sprint(internal), func(t *testing.T) {
+			rs, ra, ps, _, ums, _, _ := newTestService(t)
+			summaries := []*interfaces.ResourceSummary{
+				{ID: "view", Category: interfaces.ResourceCategoryLogicalView, LogicType: interfaces.LogicalType_Derived},
+				{ID: "api", Category: interfaces.ResourceCategoryAPI, LogicType: "read"},
+			}
+			params := interfaces.ResourcesQueryParams{PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1}}
+			var got []*interfaces.ResourceSummary
+			var err error
+			if internal {
+				ra.EXPECT().List(gomock.Any(), gomock.Any()).Return(summaries, int64(2), nil)
+				got, err = rs.InternalList(t.Context(), params)
+			} else {
+				ra.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return([]interfaces.ResourcePermissionRef{{ResourceID: "view"}, {ResourceID: "api"}}, nil)
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(map[string]interfaces.PermissionResourceOps{"view": {ResourceID: "view"}, "api": {ResourceID: "api"}}, nil)
+				ra.EXPECT().GetSummariesByIDs(gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ResourceSummary{"view": summaries[0], "api": summaries[1]}, nil)
+				ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+				got, _, err = rs.List(t.Context(), params)
+			}
+			require.NoError(t, err)
+			require.Len(t, got, 2)
+			assert.Equal(t, interfaces.LogicalType_Derived, got[0].LogicalType)
+			assert.Empty(t, got[1].LogicalType)
+			encoded, err := json.Marshal(got)
+			require.NoError(t, err)
+			assert.NotContains(t, string(encoded), `"logic_type"`)
+		})
+	}
+}
+
+func TestResourceServiceSemanticUpdateEncodesLogicFields(t *testing.T) {
+	for _, category := range []string{interfaces.ResourceCategoryLogicalView, interfaces.ResourceCategoryAPI} {
+		t.Run(category, func(t *testing.T) {
+			rs, ra, _, _, _, _, _ := newTestService(t)
+			const stored = `{ "stored": 1 }`
+			resource := &interfaces.Resource{
+				Category: category, LogicType: "stored-type", LogicDefinitionStr: stored,
+				LogicalType:           interfaces.LogicalType_Derived,
+				LogicalViewDefinition: map[string]any{"value": json.Number("9007199254740993"), "enabled": false, "count": 0},
+			}
+			ra.EXPECT().UpdateSemanticMetadata(gomock.Any(), nil, resource, int64(2)).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+					if category == interfaces.ResourceCategoryLogicalView {
+						assert.Equal(t, interfaces.LogicalType_Derived, got.LogicType)
+						assert.Equal(t, `{"count":0,"enabled":false,"value":9007199254740993}`, got.LogicDefinitionStr)
+					} else {
+						assert.Equal(t, "stored-type", got.LogicType)
+						assert.Equal(t, stored, got.LogicDefinitionStr)
+					}
+					return 1, nil
+				})
+			require.NoError(t, rs.InternalUpdateSemanticMetadata(t.Context(), nil, resource, 2))
+		})
+	}
+	for _, tc := range []struct {
+		name       string
+		definition any
+		errText    string
+	}{
+		{"missing definition", nil, "logical_view_definition is required"},
+		{"nil pointer", (*interfaces.DerivedLogicalViewDefinition)(nil), "logical_view_definition is required"},
+		{"nil map", map[string]any(nil), "logical_view_definition is required"},
+		{"nil slice", []*interfaces.LogicalViewDefinitionNode(nil), "logical_view_definition is required"},
+		{"JSON null", json.RawMessage(" \nnull\t"), "logical_view_definition is required"},
+		{"encoding failure", make(chan int), "unsupported type"},
+	} {
+		t.Run(tc.name+" does not write", func(t *testing.T) {
+			rs, ra, _, _, _, _, _ := newTestService(t)
+			ra.EXPECT().UpdateSemanticMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			resource := &interfaces.Resource{Category: interfaces.ResourceCategoryLogicalView,
+				LogicType: "stored-type", LogicDefinitionStr: "stored-definition",
+				LogicalType: interfaces.LogicalType_Derived, LogicalViewDefinition: tc.definition}
+			require.ErrorContains(t, rs.InternalUpdateSemanticMetadata(t.Context(), nil, resource, 2), tc.errText)
+			assert.Equal(t, "stored-type", resource.LogicType)
+			assert.Equal(t, "stored-definition", resource.LogicDefinitionStr)
+		})
+	}
+}
+
+func TestResourceServiceUpdatePreservesOtherCategoriesLogicFields(t *testing.T) {
+	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryAPI} {
+		t.Run(category, func(t *testing.T) {
+			rs, ra, ps, _, _, cs, _ := newTestService(t)
+			expectResourceServiceTransaction(t, rs, true)
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+			const stored = `{ "value": 9007199254740993, "enabled": false }`
+			raw := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: category,
+				LogicType: "stored-type", LogicDefinitionStr: stored}
+			ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+					assert.Equal(t, "renamed", got.Name)
+					assert.Equal(t, "stored-type", got.LogicType)
+					assert.Equal(t, stored, got.LogicDefinitionStr)
+					assert.Empty(t, got.LogicalType)
+					assert.Nil(t, got.LogicalViewDefinition)
+					return 1, nil
+				})
+			require.NoError(t, updateResourceForTest(t, rs, raw, &interfaces.ResourceRequest{
+				Name: "renamed", CatalogID: "cat1", Category: category,
+			}))
+		})
+	}
+}
+
+func TestResourceServiceReadsCompositeAndEmptyStoredDefinitions(t *testing.T) {
+	for _, stored := range []string{`[{"id":"source","type":"resource"}]`, "", "null", "invalid-json"} {
+		t.Run(stored, func(t *testing.T) {
+			rs, ra, _, _, _, _, _ := newTestService(t)
+			ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
+				Category:  interfaces.ResourceCategoryLogicalView,
+				LogicType: interfaces.LogicalType_Composite, LogicDefinitionStr: stored,
+			}, nil)
+			got, err := rs.InternalGetByID(t.Context(), nil, "r1")
+			require.NoError(t, err)
+			assert.Equal(t, interfaces.LogicalType_Composite, got.LogicalType)
+			assert.Equal(t, stored, got.LogicDefinitionStr)
+			if strings.HasPrefix(stored, "[") {
+				encoded, err := json.Marshal(got.LogicalViewDefinition)
+				require.NoError(t, err)
+				assert.JSONEq(t, stored, string(encoded))
+			} else {
+				assert.Nil(t, got.LogicalViewDefinition)
+			}
 		})
 	}
 }

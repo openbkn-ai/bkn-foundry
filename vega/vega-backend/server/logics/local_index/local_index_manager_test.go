@@ -237,7 +237,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 			{name: "measure", params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"}}},
 			{name: "group", params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"}, GroupBy: []*interfaces.GroupByItem{{Property: "amount"}}}},
 			{name: "sort", params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"}, Sort: []*interfaces.SortField{{Field: "amount", Direction: "asc"}}}},
-			{name: "filter", params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"}, FilterCondCfg: &interfaces.FilterCondCfg{Name: "id", Operation: "==", Value: 1, ValueFrom: interfaces.ValueFrom_Const}}},
+			{name: "filter", params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"}, FilterCondCfg: &interfaces.FilterCondCfg{Field: "id", Operation: "==", Value: 1, ValueFrom: interfaces.ValueFrom_Const}}},
 			{name: "unreferenced decimal", params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"}}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -527,7 +527,7 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 		}
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondCfg: &interfaces.FilterCondCfg{
-				Name:      "id",
+				Field:     "id",
 				Operation: "==",
 				ValueFrom: interfaces.ValueFrom_Const,
 				Value:     1,
@@ -563,12 +563,12 @@ func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
 		assert.Equal(t, "source_wide", source.OriginalName)
 		fields := map[string]*interfaces.Property{"wide": got[0]}
 		for _, op := range []string{"==", "like", "prefix"} {
-			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, Value: "0100"}, fields)
+			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "wide", Operation: op, Value: "0100"}, fields)
 			require.NoError(t, err)
 			assert.Equal(t, op, actual.GetOperation())
 		}
 		for _, op := range []string{"range", "out_range", "between"} {
-			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, Value: []any{"-09", "010"}}, fields)
+			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "wide", Operation: op, Value: []any{"-09", "010"}}, fields)
 			require.Error(t, err)
 			assert.Nil(t, actual)
 		}

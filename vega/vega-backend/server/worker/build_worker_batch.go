@@ -252,14 +252,14 @@ func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) (*in
 		subConditions := make([]*interfaces.FilterCondCfg, 0, i+1)
 		for j := 0; j < i; j++ {
 			subConditions = append(subConditions, &interfaces.FilterCondCfg{
-				Name:      keys[j], //nolint:gosec // keyValues length is checked to equal keys above.
+				Field:     keys[j], //nolint:gosec // keyValues length is checked to equal keys above.
 				Operation: "==",
 				Value:     keyValues[j].Value, //nolint:gosec // keyValues length is checked to equal keys above.
 				ValueFrom: interfaces.ValueFrom_Const,
 			})
 		}
 		subConditions = append(subConditions, &interfaces.FilterCondCfg{
-			Name:      key,
+			Field:     key,
 			Operation: "gt",
 			Value:     keyValues[i].Value, //nolint:gosec // keyValues length is checked to equal keys above.
 			ValueFrom: interfaces.ValueFrom_Const,

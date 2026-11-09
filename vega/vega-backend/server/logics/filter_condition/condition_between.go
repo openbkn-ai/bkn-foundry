@@ -33,15 +33,15 @@ func (c *BetweenCond) RequiredValueLen() int      { return 2 }
 func (c *BetweenCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	if cfg.Name == "" {
+	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [between] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Name]
+	field, ok := fieldsMap[cfg.Field]
 	if !ok {
-		return nil, fmt.Errorf("condition [between] left field '%s' not found in schema", cfg.Name)
+		return nil, fmt.Errorf("condition [between] left field '%s' not found in schema", cfg.Field)
 	}
 	if !interfaces.DataType_IsDate(field.Type) && !interfaces.DataType_IsNumber(field.Type) {
-		return nil, fmt.Errorf("condition [between] left field is not a date or number field: %s:%s", cfg.Name, field.Type)
+		return nil, fmt.Errorf("condition [between] left field is not a date or number field: %s:%s", cfg.Field, field.Type)
 	}
 
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {

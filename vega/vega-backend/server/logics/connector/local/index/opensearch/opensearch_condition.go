@@ -258,7 +258,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
+		if err := validateKeywordValues(fieldName, cond.Cfg.Field, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
 		if cond.Lfield.Type == interfaces.DataType_Time {
@@ -307,7 +307,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
+		if err := validateKeywordValues(fieldName, cond.Cfg.Field, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
 		var query map[string]any
@@ -485,7 +485,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 	if err != nil {
 		return nil, err
 	}
-	if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Cfg.Field, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -520,7 +520,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	if err != nil {
 		return nil, err
 	}
-	if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Cfg.Field, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -625,7 +625,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionContain(condition interfaces
 	if err != nil {
 		return nil, err
 	}
-	if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Cfg.Field, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -661,7 +661,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotContain(condition interfa
 	if err != nil {
 		return nil, err
 	}
-	if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Cfg.Field, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
