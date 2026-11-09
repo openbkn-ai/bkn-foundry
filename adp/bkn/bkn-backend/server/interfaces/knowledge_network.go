@@ -122,6 +122,9 @@ type KN struct {
 	ImportSkipped bool `json:"-" mapstructure:"-"`
 
 	SkillContent string `json:"skill_content,omitempty" mapstructure:"skill_content"`
+	// KeepSkillContent tells UpdateKN to leave the stored skill content alone, set when an
+	// update request leaves skill_content out.
+	KeepSkillContent bool `json:"-" mapstructure:"-"`
 
 	Branch string `json:"branch,omitempty" mapstructure:"branch"`
 

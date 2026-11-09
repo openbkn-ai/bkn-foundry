@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -682,9 +683,16 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Bind request parameters.
+	// Bind request parameters. A request that leaves skill_content out keeps the stored value.
 	kn := interfaces.KN{}
-	err = c.ShouldBindJSON(&kn)
+	fields := struct {
+		SkillContent *string `json:"skill_content"`
+	}{}
+	err = c.ShouldBindBodyWith(&kn, binding.JSON)
+	if err == nil {
+		err = c.ShouldBindBodyWith(&fields, binding.JSON)
+	}
+	kn.KeepSkillContent = fields.SkillContent == nil
 	if err != nil {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
 		if renderErr != nil {

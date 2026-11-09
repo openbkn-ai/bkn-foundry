@@ -517,33 +517,32 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(kn.Tags)
 
-	data := map[string]any{
-		"f_name":            kn.KNName,
-		"f_tags":            tagsStr,
-		"f_comment":         kn.Comment,
-		"f_icon":            kn.Icon,
-		"f_color":           kn.Color,
-		"f_bkn_raw_content": kn.BKNRawContent,
-		"f_skill_content":   kn.SkillContent,
-		"f_updater":         kn.Updater.ID,
-		"f_updater_type":    kn.Updater.Type,
-		"f_update_time":     kn.UpdateTime,
-	}
-	sqlStr, vals, err := sq.Update(KN_TABLE_NAME).
-		SetMap(data).
-		Where(sq.Eq{"f_id": kn.KNID}).
-		ToSql()
-	if err != nil {
-		common.LogSafeError(ctx, "Failed to build the sql of update knowledge network by knowledge network_id, error", err)
+	// Basic info belongs to the network, so it goes to every branch.
+	info := sq.Update(KN_TABLE_NAME).
+		SetMap(map[string]any{
+			"f_name":         kn.KNName,
+			"f_tags":         tagsStr,
+			"f_comment":      kn.Comment,
+			"f_icon":         kn.Icon,
+			"f_color":        kn.Color,
+			"f_updater":      kn.Updater.ID,
+			"f_updater_type": kn.Updater.Type,
+			"f_update_time":  kn.UpdateTime,
+		}).
+		Where(sq.Eq{"f_id": kn.KNID})
+	if _, err := kna.execUpdate(ctx, tx, info); err != nil {
 		return err
 	}
 
-	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
-
-	ret, err := tx.Exec(sqlStr, vals...)
+	// The content belongs to the branch the request names.
+	content := map[string]any{"f_bkn_raw_content": kn.BKNRawContent}
+	if !kn.KeepSkillContent {
+		content["f_skill_content"] = kn.SkillContent
+	}
+	ret, err := kna.execUpdate(ctx, tx, sq.Update(KN_TABLE_NAME).
+		SetMap(content).
+		Where(sq.Eq{"f_id": kn.KNID, "f_branch": kn.Branch}))
 	if err != nil {
-		common.LogSafeError(ctx, "Update data error", err)
 		return err
 	}
 
@@ -562,6 +561,22 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (kna *knowledgeNetworkAccess) execUpdate(ctx context.Context, tx *sql.Tx, builder sq.UpdateBuilder) (sql.Result, error) {
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to build the sql of update knowledge network, error", err)
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+
+	ret, err := tx.Exec(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Update data error", err)
+		return nil, err
+	}
+	return ret, nil
 }
 
 func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,

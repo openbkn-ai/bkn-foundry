@@ -498,18 +498,25 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna, smock := MockNewKNAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, "+
-			"f_skill_content = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? WHERE f_id = ?", KN_TABLE_NAME)
+		// Basic info belongs to the network and goes to every branch; content belongs to one branch.
+		infoSQL := fmt.Sprintf("UPDATE %s SET f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, "+
+			"f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? WHERE f_id = ?", KN_TABLE_NAME)
+		contentSQL := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_skill_content = ? "+
+			"WHERE f_branch = ? AND f_id = ?", KN_TABLE_NAME)
+		rawOnlySQL := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ? WHERE f_branch = ? AND f_id = ?", KN_TABLE_NAME)
 
 		kn := &interfaces.KN{
 			KNID:   "kn1",
 			KNName: "Updated Knowledge Network",
 			CommonInfo: interfaces.CommonInfo{
-				Tags:    testTags,
-				Comment: "updated comment",
-				Icon:    "icon1",
-				Color:   "color1",
+				Tags:          testTags,
+				Comment:       "updated comment",
+				Icon:          "icon1",
+				Color:         "color1",
+				BKNRawContent: "raw",
 			},
+			SkillContent: "skill",
+			Branch:       "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -519,7 +526,8 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 
 		Convey("UpdateKN Success \n", func() {
 			smock.ExpectBegin()
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(contentSQL).WithArgs("raw", "skill", "dev", "kn1").WillReturnResult(sqlmock.NewResult(0, 1))
 
 			tx, _ := kna.db.Begin()
 			err := kna.UpdateKN(testCtx, tx, kn)
@@ -530,10 +538,26 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateKN failed prepare \n", func() {
+		Convey("UpdateKN keeps the stored skill content \n", func() {
+			keep := *kn
+			keep.KeepSkillContent = true
+			smock.ExpectBegin()
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(rawOnlySQL).WithArgs("raw", "dev", "kn1").WillReturnResult(sqlmock.NewResult(0, 1))
+
+			tx, _ := kna.db.Begin()
+			err := kna.UpdateKN(testCtx, tx, &keep)
+			So(err, ShouldBeNil)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+
+		Convey("UpdateKN failed on basic info \n", func() {
 			smock.ExpectBegin()
 			expectedErr := errors.New("prepare error")
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnError(expectedErr)
+			smock.ExpectExec(infoSQL).WillReturnError(expectedErr)
 
 			tx, _ := kna.db.Begin()
 			err := kna.UpdateKN(testCtx, tx, kn)
@@ -544,23 +568,11 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateKN RowsAffected != 1 \n", func() {
+		Convey("UpdateKN failed on branch content \n", func() {
 			smock.ExpectBegin()
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
-
-			tx, _ := kna.db.Begin()
-			err := kna.UpdateKN(testCtx, tx, kn)
-			So(err, ShouldBeNil)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
-		})
-
-		Convey("UpdateKN RowsAffected error \n", func() {
-			smock.ExpectBegin()
-			expectedErr := errors.New("Get RowsAffected error")
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewErrorResult(expectedErr))
+			expectedErr := errors.New("exec error")
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(contentSQL).WillReturnError(expectedErr)
 
 			tx, _ := kna.db.Begin()
 			err := kna.UpdateKN(testCtx, tx, kn)
