@@ -28,7 +28,7 @@ spec:
         # Restart the pod when the chart's own Secret changes; an existing Secret is not read.
         checksum/db: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
-      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 75 }}
 {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
@@ -67,13 +67,15 @@ spec:
                       - {{ .Values.moduleName }}
         {{- end }}
       {{- end }}
-      {{- if or .Values.initContainers .Values.migration.enabled }}
+      {{- /* An upgrade with --reuse-values keeps a release's older values, which may have no migration. */}}
+      {{- $migration := .Values.migration | default dict }}
+      {{- if or .Values.initContainers $migration.enabled }}
       initContainers:
-        {{- if .Values.migration.enabled }}
+        {{- if $migration.enabled }}
         - name: {{ .Values.moduleName }}-migrate
           image: {{ template "bkn-project.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: {{- toYaml .Values.migration.args | nindent 12 }}
+          args: {{- toYaml ($migration.args | default (list "migrate")) | nindent 12 }}
           env:
             - name: TZ
               value: {{ .Values.env.timezone }}
@@ -83,16 +85,16 @@ spec:
             {{- end }}
             - name: DM_SVC_PATH
               value: /opt/bkn-project/config
-            {{- if .Values.migration.existingSecret }}
+            {{- if $migration.existingSecret }}
             - name: BKN_PROJECT_MIGRATION_DB_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.migration.existingSecret }}
+                  name: {{ $migration.existingSecret }}
                   key: user
             - name: BKN_PROJECT_MIGRATION_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.migration.existingSecret }}
+                  name: {{ $migration.existingSecret }}
                   key: password
             {{- else }}
             - name: BKN_PROJECT_DB_USER
