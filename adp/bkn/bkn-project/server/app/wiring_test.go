@@ -109,6 +109,7 @@ func TestServicesHaveEveryDependency(t *testing.T) {
 	logics.SetIndexBuildAccess(pmock.NewMockIndexBuildAccess(ctrl))
 	logics.SetGitStore(pmock.NewMockGitStore(ctrl))
 	logics.SetBknBackendAccess(pmock.NewMockBknBackendAccess(ctrl))
+	logics.SetKNVersionAccess(pmock.NewMockKNVersionAccess(ctrl))
 	logics.SetExecutionFactoryAccess(pmock.NewMockExecutionFactoryAccess(ctrl))
 	logics.SetBknAgentAccess(pmock.NewMockBknAgentAccess(ctrl))
 	logics.SetRequirementAccess(pmock.NewMockRequirementAccess(ctrl))

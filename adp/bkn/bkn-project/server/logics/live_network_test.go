@@ -22,7 +22,7 @@ func Test_LiveNetwork(t *testing.T) {
 		defer ctrl.Finish()
 		ra := pmock.NewMockReleaseAccess(ctrl)
 		ctx := context.Background()
-		latest := ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", Limit: 1})
+		latest := ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1})
 
 		Convey("Before the first release the live network is the lineage's own\n", func() {
 			latest.Return([]*interfaces.Release{}, nil)
@@ -31,11 +31,11 @@ func Test_LiveNetwork(t *testing.T) {
 			So(network, ShouldEqual, "kn1")
 		})
 
-		Convey("After a release it is the network of the latest release\n", func() {
-			latest.Return([]*interfaces.Release{{NetworkID: "kn1_v1_1_0"}}, nil)
+		Convey("After a release it is still the lineage's network, which keeps its id\n", func() {
+			latest.Return([]*interfaces.Release{{NetworkID: "kn1"}}, nil)
 			network, err := LiveNetwork(ctx, ra, "kn1")
 			So(err, ShouldBeNil)
-			So(network, ShouldEqual, "kn1_v1_1_0")
+			So(network, ShouldEqual, "kn1")
 		})
 
 		Convey("A failed read is an error\n", func() {
@@ -55,8 +55,8 @@ func TestLiveNetworkOfTellsWhetherReleased(t *testing.T) {
 	if network, released, err := LiveNetworkOf(context.Background(), ra, "kn1"); err != nil || released || network != "kn1" {
 		t.Fatalf("before a release: %q %v %v", network, released, err)
 	}
-	ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{{NetworkID: "kn1_v2"}}, nil)
-	if network, released, err := LiveNetworkOf(context.Background(), ra, "kn1"); err != nil || !released || network != "kn1_v2" {
+	ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{{NetworkID: "kn1"}}, nil)
+	if network, released, err := LiveNetworkOf(context.Background(), ra, "kn1"); err != nil || !released || network != "kn1" {
 		t.Fatalf("after a release: %q %v %v", network, released, err)
 	}
 }

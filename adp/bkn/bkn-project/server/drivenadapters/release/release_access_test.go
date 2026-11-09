@@ -106,7 +106,7 @@ func Test_ReleaseAccess(t *testing.T) {
 		})
 
 		Convey("GetRelease finds a lineage's version\n", func() {
-			smock.ExpectQuery(regexp.QuoteMeta(selectAll + " WHERE f_lineage_id = ? AND f_version = ?")).
+			smock.ExpectQuery(regexp.QuoteMeta(selectAll+" WHERE f_lineage_id = ? AND f_version = ?")).
 				WithArgs("orders", "1.0.0").
 				WillReturnRows(sqlmock.NewRows(releaseColumns).AddRow(releaseRow("r1", "prepared", 0, 1)...))
 
