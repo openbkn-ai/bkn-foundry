@@ -293,6 +293,12 @@ paths:
       responses:
         "204":
           description: Update succeeded
+        "404":
+          description: The network does not exist on the requested branch (BknBackend.KnowledgeNetwork.NotFound)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
       summary: Update a business knowledge network
     delete:
       parameters:

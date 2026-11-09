@@ -539,24 +539,13 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 	if !kn.KeepSkillContent {
 		content["f_skill_content"] = kn.SkillContent
 	}
-	ret, err := kna.execUpdate(ctx, tx, sq.Update(KN_TABLE_NAME).
-		SetMap(content).
-		Where(sq.Eq{"f_id": kn.KNID, "f_branch": kn.Branch}))
+	branchRow := sq.Eq{"f_id": kn.KNID, "f_branch": kn.Branch}
+	ret, err := kna.execUpdate(ctx, tx, sq.Update(KN_TABLE_NAME).SetMap(content).Where(branchRow))
 	if err != nil {
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	if err := common.EnsureRowUpdated(ctx, tx, ret, KN_TABLE_NAME, branchRow); err != nil {
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update knowledge network affected unexpected row count: knowledge_network_id=%s, rows=%d",
-			kn.KNID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/action_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/concept_group"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/relation_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -61,8 +62,12 @@ func newKN(t *testing.T, db *sql.DB) string {
 	knID := fmt.Sprintf("it_branch_%d", time.Now().UnixNano())
 	t.Cleanup(func() {
 		for _, table := range []string{"t_object_type", "t_object_type_status", "t_relation_type",
-			"t_action_type", "t_concept_group"} {
-			if _, err := db.Exec("DELETE FROM "+table+" WHERE f_kn_id = ?", knID); err != nil {
+			"t_action_type", "t_concept_group", "t_knowledge_network"} {
+			column := "f_kn_id"
+			if table == "t_knowledge_network" {
+				column = "f_id"
+			}
+			if _, err := db.Exec("DELETE FROM "+table+" WHERE "+column+" = ?", knID); err != nil {
 				t.Errorf("clean %s: %v", table, err)
 			}
 		}
@@ -243,4 +248,52 @@ func TestConceptGroupUpdateStaysOnItsBranch(t *testing.T) {
 		must(t, err)
 		return cg.CGName
 	}, "cg1")
+}
+
+// Basic info belongs to the network; the raw and skill content belong to one branch.
+func TestKNUpdateKeepsContentOnItsBranch(t *testing.T) {
+	setting, db := openDB(t)
+	ctx := context.Background()
+	knID := newKN(t, db)
+	kna := knowledge_network.NewKNAccess(setting)
+	for _, branch := range []string{interfaces.MAIN_BRANCH, otherBranch} {
+		must(t, inTx(t, db, func(tx *sql.Tx) error {
+			return kna.CreateKN(ctx, tx, &interfaces.KN{KNID: knID, KNName: knID, Branch: branch,
+				CommonInfo: interfaces.CommonInfo{BKNRawContent: "raw-" + branch}, SkillContent: "skill-" + branch})
+		}))
+	}
+	update := func(branch, name string) error {
+		return inTx(t, db, func(tx *sql.Tx) error {
+			return kna.UpdateKN(ctx, tx, &interfaces.KN{KNID: knID, KNName: name, Branch: branch,
+				CommonInfo: interfaces.CommonInfo{BKNRawContent: "raw-new"}, KeepSkillContent: true})
+		})
+	}
+	read := func(branch string) *interfaces.KN {
+		kn, err := kna.GetKNByID(ctx, knID, branch)
+		must(t, err)
+		return kn
+	}
+
+	must(t, update(otherBranch, "renamed"))
+	main, dev := read(interfaces.MAIN_BRANCH), read(otherBranch)
+	if main.KNName != "renamed" || dev.KNName != "renamed" {
+		t.Fatalf("names = %q, %q, want renamed on both branches", main.KNName, dev.KNName)
+	}
+	if main.BKNRawContent != "raw-main" || main.SkillContent != "skill-main" {
+		t.Fatalf("main content = %q, %q after updating %s", main.BKNRawContent, main.SkillContent, otherBranch)
+	}
+	if dev.BKNRawContent != "raw-new" || dev.SkillContent != "skill-dev" {
+		t.Fatalf("dev content = %q, %q, want raw-new and the kept skill", dev.BKNRawContent, dev.SkillContent)
+	}
+
+	// MariaDB counts changed rows only: writing the same values again affects zero rows.
+	must(t, update(otherBranch, "renamed"))
+
+	// A branch the network is not on fails, and the basic-info write rolls back with it.
+	if err := update("missing", "lost"); !errors.Is(err, common.ErrRowNotFound) {
+		t.Fatalf("update on a missing branch = %v, want ErrRowNotFound", err)
+	}
+	if got := read(interfaces.MAIN_BRANCH).KNName; got != "renamed" {
+		t.Fatalf("main name = %q after the failed update, want renamed", got)
+	}
 }

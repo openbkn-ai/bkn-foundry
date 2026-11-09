@@ -568,6 +568,31 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 			}
 		})
 
+		// MariaDB counts changed rows only; an existence check tells a no-op write from a missing row.
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? LIMIT 1", KN_TABLE_NAME)
+
+		Convey("UpdateKN succeeds when the branch row already holds the content \n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(contentSQL).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "kn1").WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+
+			tx, _ := kna.db.Begin()
+			So(kna.UpdateKN(testCtx, tx, kn), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("UpdateKN reports a branch the network is not on \n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec(contentSQL).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "kn1").WillReturnRows(sqlmock.NewRows([]string{"1"}))
+
+			tx, _ := kna.db.Begin()
+			So(errors.Is(kna.UpdateKN(testCtx, tx, kn), common.ErrRowNotFound), ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("UpdateKN failed on branch content \n", func() {
 			smock.ExpectBegin()
 			expectedErr := errors.New("exec error")

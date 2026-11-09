@@ -1867,6 +1867,21 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Returns not found when the network is not on the branch\n", func() {
+			kn := &interfaces.KN{KNID: "kn1", KNName: "kn1", Branch: "dev"}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrRowNotFound)
+			smock.ExpectRollback()
+
+			err := service.UpdateKN(ctx, nil, kn, false)
+			httpErr := &httperrors.HTTPError{}
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		})
+
 		Convey("Failed when InsertDatasetData returns error\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",

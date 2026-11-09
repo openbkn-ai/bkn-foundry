@@ -1385,6 +1385,10 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 
 	// Update model information.
 	err = kns.kna.UpdateKN(ctx, tx, kn)
+	if errors.Is(err, common.ErrRowNotFound) {
+		span.SetStatus(codes.Error, "Knowledge network not found on the branch")
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+	}
 	if err != nil {
 		logger.Errorf("UpdateKN error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改业务知识网络失败")
