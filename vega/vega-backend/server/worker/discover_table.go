@@ -317,7 +317,6 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 			}
 			if existing, ok := existingProperties[column.Name]; ok {
 				property.DisplayName = existing.DisplayName
-				property.APIName = existing.APIName
 				property.Description = resolveSourceDescription(existing.Description, existing.OriginalDescription, column.Description)
 				property.Features = existing.Features
 			}
