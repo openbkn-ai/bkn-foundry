@@ -673,7 +673,15 @@ func (kna *knowledgeNetworkAccess) DeleteKN(ctx context.Context,
 }
 
 // Build SQL filter conditions.
+// oneRowPerNetwork keeps one row per network in a listing: its main row, or its first branch by
+// name when it has no main row. Its only argument is the main branch name.
+const oneRowPerNetwork = "f_branch = COALESCE(" +
+	"(SELECT m.f_branch FROM " + KN_TABLE_NAME + " m WHERE m.f_id = " + KN_TABLE_NAME + ".f_id AND m.f_branch = ?), " +
+	"(SELECT MIN(b.f_branch) FROM " + KN_TABLE_NAME + " b WHERE b.f_id = " + KN_TABLE_NAME + ".f_id))"
+
 func processQueryCondition(query interfaces.KNsQueryParams, subBuilder sq.SelectBuilder) sq.SelectBuilder {
+	subBuilder = subBuilder.Where(sq.Expr(oneRowPerNetwork, interfaces.MAIN_BRANCH))
+
 	if query.NamePattern != "" {
 		// Fuzzy-match name or ID; either match is sufficient.
 		subBuilder = subBuilder.Where(sq.Expr("(instr(f_name, ?) > 0 OR instr(f_id, ?) > 0)", query.NamePattern, query.NamePattern))
