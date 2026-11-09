@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -93,9 +94,19 @@ func validateEndpoint(raw string, allowHTTP bool) error {
 	return nil
 }
 
+// An explicit environment reference takes precedence and never falls back to the
+// database when missing, so a broken Secret reference cannot silently use stale data.
+func providerSecret(p *model.SSOProvider) string {
+	if p.ClientSecretEnv != "" {
+		return os.Getenv(p.ClientSecretEnv)
+	}
+	return p.ClientSecret
+}
+
 func validateProvider(p *model.SSOProvider) error {
 	if !validID(p.ID) || p.Protocol != "oidc" || (p.Adapter != "casdoor" && p.Adapter != "generic") ||
-		p.ClientID == "" || !envName.MatchString(p.ClientSecretEnv) || os.Getenv(p.ClientSecretEnv) == "" {
+		p.ClientID == "" || providerSecret(p) == "" ||
+		(p.ClientSecretEnv != "" && !envName.MatchString(p.ClientSecretEnv)) {
 		return ErrInvalidProvider
 	}
 	if err := validateEndpoint(p.Issuer, p.AllowInsecureHTTP); err != nil {
@@ -218,7 +229,7 @@ func (s *Service) introspect(ctx context.Context, p *model.SSOProvider, m *metad
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(p.ClientID, os.Getenv(p.ClientSecretEnv))
+	req.SetBasicAuth(p.ClientID, providerSecret(p))
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -273,4 +284,27 @@ func (s *Service) ValidateExchange(ctx context.Context, p *model.SSOProvider, to
 		}
 	}
 	return info, nil
+}
+
+// The dedicated Hydra client admits exactly the union of enabled providers'
+// configured output scopes. A DB change is reflected on the next exchange.
+func (s *Service) exchangeScopes(ctx context.Context) ([]string, error) {
+	var providers []model.SSOProvider
+	if err := s.db.WithContext(ctx).Select("hydra_issue_scope", "exchange_scope").
+		Where("enabled = ? AND exchange_enabled = ?", true, true).Find(&providers).Error; err != nil {
+		return nil, err
+	}
+	var scopes []string
+	for _, p := range providers {
+		fields := strings.Fields(hydraIssueScope(&p))
+		if len(fields) == 0 {
+			return nil, ErrInvalidProvider
+		}
+		scopes = append(scopes, fields...)
+	}
+	if len(scopes) == 0 {
+		return nil, ErrInvalidProvider
+	}
+	slices.Sort(scopes)
+	return slices.Compact(scopes), nil
 }

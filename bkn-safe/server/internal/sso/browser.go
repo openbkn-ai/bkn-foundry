@@ -17,7 +17,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -132,7 +131,7 @@ func (s *Service) Complete(ctx context.Context, h *auth.HydraAdmin, providerID, 
 		return "", err
 	}
 	form := url.Values{"grant_type": {"authorization_code"}, "client_id": {p.ClientID},
-		"client_secret": {os.Getenv(p.ClientSecretEnv)}, "code": {code},
+		"client_secret": {providerSecret(p)}, "code": {code},
 		"redirect_uri": {p.RedirectURI}, "code_verifier": {row.CodeVerifier}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.Token, strings.NewReader(form.Encode()))
 	if err != nil {

@@ -46,8 +46,32 @@ spec:
                 name: {{ .Release.Name }}-instance-id
             - secretRef:
                 name: {{ .Release.Name }}-secrets
-          {{- if or .Values.auditPublisher.enabled .Values.extraEnv }}
+          {{- if or .Values.auditPublisher.enabled .Values.extraEnv .Values.bundledDeps.ssoTokenHook.enabled }}
           env:
+          {{- if .Values.bundledDeps.ssoTokenHook.enabled }}
+          {{- /* Preserve explicit extraEnv from existing manual deployments,
+                 emitting each env name only once for Kubernetes strategic merge. */}}
+          {{- $overrides := dict }}
+          {{- range .Values.extraEnv }}{{- $_ := set $overrides .name true }}{{- end }}
+          {{- $defaults := list
+                (dict "name" "SAFE_SSO_AUTO_BOOTSTRAP" "value" "true")
+                (dict "name" "SAFE_SSO_HYDRA_CLIENT_ID" "value" (printf "%s-sso-exchange" .Release.Name))
+                (dict "name" "SAFE_SSO_ASSERTION_ISSUER" "value" (printf "%s/bkn-safe/sso-exchange" (include "bkn-safe.hydraBrowserPublicURL" .))) }}
+          {{- range $defaults }}
+          {{- if not (hasKey $overrides .name) }}
+          {{- toYaml (list .) | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- range $env, $key := dict "SAFE_SSO_HYDRA_CLIENT_SECRET" "hydraClientSecret" "SAFE_SSO_ASSERTION_PRIVATE_KEY_PEM" "assertionPrivateKeyPEM" "SAFE_SSO_HOOK_KEY" .Values.bundledDeps.ssoTokenHook.secretKey }}
+          {{- if not (hasKey $overrides $env) }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bkn-safe.ssoSecretName" $ | quote }}
+                  key: {{ $key | quote }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
           {{- if .Values.auditPublisher.enabled }}
             - name: BKN_AUDIT_ENVIRONMENT
               value: {{ required "auditPublisher.environment is required" .Values.auditPublisher.environment | quote }}

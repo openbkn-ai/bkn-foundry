@@ -280,9 +280,12 @@ bundledDeps:
   # builds login/consent/device page URLs from it so human browser flows work
   # off-cluster. Empty => in-cluster service hostnames (pure in-cluster dev only).
   publicBaseURL: ""
-  # Enable only after the same hook key and assertion signing key are mounted
-  # into bkn-safe, and the dedicated Hydra JWT grant client/trust are created.
+  # Ready on first install: generate persistent internal credentials, wire both
+  # services, and let bkn-safe initialize its Hydra client/trust on first exchange.
+  # No identity provider is enabled until configured in sso_providers.
   ssoTokenHook:
-    enabled: false
+    enabled: true
+    # Empty => Helm-managed <release>-sso Secret. An override must already exist
+    # with hookKey (or secretKey), hydraClientSecret and assertionPrivateKeyPEM.
     secretName: ""
     secretKey: "hookKey"

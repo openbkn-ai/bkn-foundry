@@ -63,9 +63,11 @@ func TestSwapSeparatesExternalAndHydraScopes(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name, external, hydra, legacy, wantHydra string
+		auto                                     bool
 	}{
-		{"read user token to openid Hydra token", "read", "openid", "openid", "openid"},
-		{"legacy configuration", "", "", "read", "read"},
+		{"read user token to openid Hydra token", "read", "openid", "openid", "openid", false},
+		{"legacy configuration", "", "", "read", "read", false},
+		{"database-only first exchange", "read", "openid", "", "openid", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -93,10 +95,33 @@ func TestSwapSeparatesExternalAndHydraScopes(t *testing.T) {
 					response = metadata{Issuer: baseURL, Authorize: baseURL + "/authorize", Token: baseURL + "/casdoor/token",
 						UserInfo: baseURL + "/userinfo", Introspect: baseURL + "/casdoor/introspect", JWKS: baseURL + "/jwks"}
 				case "/casdoor/introspect":
+					id, secret, ok := r.BasicAuth()
+					expected := "casdoor-test-secret"
+					if tc.auto {
+						expected = "database-only-secret"
+					}
+					if !ok || id != "safe" || secret != expected {
+						t.Error("wrong Casdoor credentials")
+						w.WriteHeader(401)
+						return
+					}
 					response = TokenInfo{Active: true, Issuer: baseURL, Subject: "external-user", ClientID: "trusted-app",
 						Audience: stringAudience{"safe-api"}, Scope: "read", Type: "Bearer", Expiry: time.Now().Add(time.Minute).Unix()}
 				case "/userinfo":
 					response = map[string]string{"sub": "external-user", "name": "Test User"}
+				case "/admin/clients/exchange-client":
+					w.WriteHeader(http.StatusNotFound)
+					return
+				case "/admin/clients":
+					w.WriteHeader(http.StatusCreated)
+					return
+				case "/admin/trust/grants/jwt-bearer/issuers":
+					if r.Method == http.MethodGet {
+						response = []any{}
+					} else {
+						w.WriteHeader(http.StatusCreated)
+						return
+					}
 				case "/oauth2/token":
 					if err := r.ParseForm(); err != nil {
 						t.Errorf("parse Hydra token request: %v", err)
@@ -113,6 +138,15 @@ func TestSwapSeparatesExternalAndHydraScopes(t *testing.T) {
 						t.Errorf("invalid signed assertion: %v", err)
 						w.WriteHeader(http.StatusBadRequest)
 						return
+					}
+					if tc.auto {
+						body, _ := json.Marshal(map[string]any{"request": map[string]any{"client_id": "exchange-client", "grant_types": []string{jwtBearerGrant}, "payload": map[string][]string{"assertion": {r.PostForm.Get("assertion")}}}})
+						ext, modified, err := exchange.Hook(r.Context(), "test-hook-key", body)
+						if err != nil || !modified || ext["visitor_type"] == nil {
+							t.Errorf("hook error: %v", err)
+							w.WriteHeader(500)
+							return
+						}
 					}
 					issuedSubject.Store(claims.Subject)
 					tokenRequested.Store(true)
@@ -133,13 +167,17 @@ func TestSwapSeparatesExternalAndHydraScopes(t *testing.T) {
 				Issuer: baseURL, DiscoveryURL: baseURL + "/discovery", ClientID: "safe", ClientSecretEnv: "TEST_CASDOOR_SECRET",
 				ExchangeEnabled: true, AllowInsecureHTTP: true, ExchangeAudience: "safe-api", AllowedClientIDs: "trusted-app",
 				ExternalRequiredScope: tc.external, HydraIssueScope: tc.hydra, ExchangeScope: tc.legacy}
+			if tc.auto {
+				provider.ClientSecretEnv = ""
+				provider.ClientSecret = "database-only-secret"
+			}
 			if err := db.Create(provider).Error; err != nil {
 				t.Fatal(err)
 			}
 			exchange = &Exchange{service: New(db, srv.Client()), hydra: auth.NewHydraAdmin(baseURL), client: srv.Client(),
 				tokenURL: baseURL + "/oauth2/token", audience: "https://openbkn.example/oauth2/token",
 				issuer: "https://openbkn.example/sso-exchange", keyID: "test-key", key: key,
-				clientID: "exchange-client", secret: "test-client-secret"}
+				clientID: "exchange-client", secret: "test-client-secret", autoBootstrap: tc.auto, hookKey: "test-hook-key"}
 			result, err := exchange.Swap(context.Background(), "casdoor", "casdoor-read-token", "127.0.0.1")
 			if err != nil {
 				t.Fatalf("Swap() failed: %v", err)

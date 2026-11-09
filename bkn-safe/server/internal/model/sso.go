@@ -6,8 +6,9 @@ package model
 
 import "time"
 
-// SSOProvider is an externally managed OAuth/OIDC provider. ClientSecretEnv
-// names an environment variable; credentials are never stored in this table.
+// SSOProvider is an externally managed OAuth/OIDC provider. ClientSecret supports
+// DB-only configuration; ClientSecretEnv remains available for Secret-backed installs.
+// Both credential fields are excluded from JSON responses.
 type SSOProvider struct {
 	ID                    string `gorm:"primaryKey;size:64"`
 	DisplayName           string `gorm:"size:128"`
@@ -16,7 +17,8 @@ type SSOProvider struct {
 	Issuer                string `gorm:"size:512"`
 	DiscoveryURL          string `gorm:"size:1024"`
 	ClientID              string `gorm:"size:255"`
-	ClientSecretEnv       string `gorm:"size:128"`
+	ClientSecret          string `gorm:"type:text" json:"-"`
+	ClientSecretEnv       string `gorm:"size:128" json:"-"`
 	RedirectURI           string `gorm:"size:1024"`
 	Scopes                string `gorm:"size:512"`
 	DepartmentClaim       string `gorm:"size:128"`

@@ -18,9 +18,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -32,17 +35,21 @@ const jwtBearerGrant = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 // Exchange uses a dedicated Hydra client and a short-lived RSA assertion.
 // The corresponding public JWK must be registered as a Hydra trusted issuer.
 type Exchange struct {
-	service  *Service
-	hydra    *auth.HydraAdmin
-	client   *http.Client
-	tokenURL string
-	audience string
-	issuer   string
-	keyID    string
-	clientID string
-	secret   string
-	hookKey  string
-	key      *rsa.PrivateKey
+	service       *Service
+	hydra         *auth.HydraAdmin
+	client        *http.Client
+	tokenURL      string
+	audience      string
+	issuer        string
+	keyID         string
+	clientID      string
+	secret        string
+	hookKey       string
+	key           *rsa.PrivateKey
+	autoBootstrap bool
+	setupScopes   []string
+	setupMu       sync.Mutex
+	setupAt       time.Time
 }
 
 type ExchangeConfig struct {
@@ -54,11 +61,12 @@ type ExchangeConfig struct {
 	ClientSecret  string
 	HookKey       string
 	PrivateKeyPEM string
+	AutoBootstrap bool
 }
 
 func NewExchange(service *Service, hydra *auth.HydraAdmin, cfg ExchangeConfig) (*Exchange, error) {
 	if service == nil || hydra == nil || cfg.TokenURL == "" || cfg.Audience == "" || cfg.Issuer == "" || cfg.ClientID == "" ||
-		cfg.ClientSecret == "" || len(cfg.HookKey) < 32 || cfg.PrivateKeyPEM == "" || cfg.KeyID == "" {
+		cfg.ClientSecret == "" || len(cfg.HookKey) < 32 || cfg.PrivateKeyPEM == "" {
 		return nil, errors.New("incomplete SSO exchange configuration")
 	}
 	block, _ := pem.Decode([]byte(cfg.PrivateKeyPEM))
@@ -80,7 +88,12 @@ func NewExchange(service *Service, hydra *auth.HydraAdmin, cfg ExchangeConfig) (
 	if err := validateEndpoint(cfg.Audience, true); err != nil {
 		return nil, err
 	}
-	return &Exchange{service: service, hydra: hydra, client: &http.Client{Timeout: 8 * time.Second},
+	if cfg.KeyID == "" {
+		// A key-specific kid prevents reusing stale trust after deliberate rotation.
+		fingerprint := sha256.Sum256(x509.MarshalPKCS1PublicKey(&key.PublicKey))
+		cfg.KeyID = fmt.Sprintf("sso-%x", fingerprint[:16])
+	}
+	return &Exchange{autoBootstrap: cfg.AutoBootstrap, service: service, hydra: hydra, client: &http.Client{Timeout: 8 * time.Second},
 		tokenURL: cfg.TokenURL, audience: cfg.Audience, issuer: cfg.Issuer, keyID: cfg.KeyID, clientID: cfg.ClientID,
 		secret: cfg.ClientSecret, hookKey: cfg.HookKey, key: key}, nil
 }
@@ -171,6 +184,11 @@ func (e *Exchange) Swap(ctx context.Context, providerID, externalToken, loginIP 
 	if err != nil {
 		return nil, err
 	}
+	if e.autoBootstrap {
+		if err := e.ensureHydra(ctx); err != nil {
+			return nil, err
+		}
+	}
 	u, err := e.service.ResolveUser(ctx, p, externalToken, info.Subject)
 	if err != nil {
 		return nil, err
@@ -188,10 +206,12 @@ func (e *Exchange) Swap(ctx context.Context, providerID, externalToken, loginIP 
 	req.SetBasicAuth(e.clientID, e.secret)
 	resp, err := e.client.Do(req)
 	if err != nil {
+		e.invalidateSetup()
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
+		e.invalidateSetup()
 		return nil, fmt.Errorf("Hydra JWT bearer grant status %d", resp.StatusCode)
 	}
 	var out TokenResponse
@@ -249,4 +269,45 @@ func (e *Exchange) Hook(ctx context.Context, providedKey string, body []byte) (m
 		return nil, false, ErrForbidden
 	}
 	return auth.ExtClaims(&user, claims.LoginIP, "unknown"), true, nil
+}
+
+// ensureHydra initializes on demand, so Hydra startup does not depend on bkn-safe
+// readiness (and vice versa). No provider means no setup writes. Reconcile daily
+// on use, renewing trust well before expiry. Failures are retried next time.
+func (e *Exchange) ensureHydra(ctx context.Context) error {
+	e.setupMu.Lock()
+	defer e.setupMu.Unlock()
+	scopes, err := e.service.exchangeScopes(ctx)
+	if err != nil {
+		return err
+	}
+	if !e.setupAt.IsZero() && time.Since(e.setupAt) < 24*time.Hour && slices.Equal(scopes, e.setupScopes) {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	pub := &e.key.PublicKey
+	err = e.hydra.ReconcileSSOExchange(ctx, auth.SSOExchangeRegistration{
+		ClientID: e.clientID, ClientSecret: e.secret, Issuer: e.issuer, KeyID: e.keyID, Scopes: scopes,
+		PublicJWK: map[string]any{"kty": "RSA", "use": "sig", "alg": "RS256", "kid": e.keyID,
+			"n": base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
+			"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes())},
+	})
+	if err != nil {
+		return err
+	}
+	e.setupAt = time.Now()
+	e.setupScopes = scopes
+	return nil
+}
+
+// A restored/recreated Hydra DB may lose registration while this process keeps
+// running. Recheck after a failed grant instead of waiting for the daily TTL.
+func (e *Exchange) invalidateSetup() {
+	if !e.autoBootstrap {
+		return
+	}
+	e.setupMu.Lock()
+	defer e.setupMu.Unlock()
+	e.setupAt = time.Time{}
 }

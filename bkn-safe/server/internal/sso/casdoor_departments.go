@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -114,7 +113,7 @@ func (s *Service) resolveDepartments(ctx context.Context, p *model.SSOProvider, 
 }
 
 func (s *Service) casdoorDepartmentObject(ctx context.Context, p *model.SSOProvider, endpoint, id string) (*casdoorDepartmentObject, error) {
-	secret := os.Getenv(p.ClientSecretEnv)
+	secret := providerSecret(p)
 	if p.ClientID == "" || secret == "" {
 		return nil, ErrInvalidProvider
 	}

@@ -111,3 +111,30 @@ func TestValidateProviderRejectsEmptyExchangeScopes(t *testing.T) {
 		})
 	}
 }
+
+func TestDatabaseProviderCredentials(t *testing.T) {
+	t.Setenv("TEST_SSO_SECRET", "environment-secret")
+	t.Setenv("MISSING_SSO_SECRET_FOR_TEST", "")
+	for _, tc := range []struct {
+		name, secret, env, want string
+		valid                   bool
+	}{
+		{"database only", "database-secret", "", "database-secret", true},
+		{"legacy environment", "", "TEST_SSO_SECRET", "environment-secret", true},
+		{"explicit environment wins", "database-secret", "TEST_SSO_SECRET", "environment-secret", true},
+		{"missing reference fails closed", "database-secret", "MISSING_SSO_SECRET_FOR_TEST", "", false},
+		{"missing both", "", "", "", false},
+		{"invalid reference", "database-secret", "not an env name", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &model.SSOProvider{ID: "casdoor", Protocol: "oidc", Adapter: "casdoor", ClientID: "safe", ClientSecret: tc.secret, ClientSecretEnv: tc.env,
+				Issuer: "https://casdoor.example", DiscoveryURL: "https://casdoor.example/discovery"}
+			if got := providerSecret(p); got != tc.want {
+				t.Fatal("wrong credential source")
+			}
+			if err := validateProvider(p); (err == nil) != tc.valid {
+				t.Fatalf("validation error %v, valid=%v", err, tc.valid)
+			}
+		})
+	}
+}

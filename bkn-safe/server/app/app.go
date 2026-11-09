@@ -155,6 +155,7 @@ func Boot(opts Options) (*App, error) {
 			ClientSecret:  os.Getenv("SAFE_SSO_HYDRA_CLIENT_SECRET"),
 			HookKey:       os.Getenv("SAFE_SSO_HOOK_KEY"),
 			PrivateKeyPEM: os.Getenv("SAFE_SSO_ASSERTION_PRIVATE_KEY_PEM"),
+			AutoBootstrap: os.Getenv("SAFE_SSO_AUTO_BOOTSTRAP") == "true",
 		})
 		if err != nil {
 			return nil, fmt.Errorf("init SSO exchange: %w", err)
