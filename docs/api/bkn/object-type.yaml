@@ -1199,6 +1199,12 @@ paths:
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
         "403":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "404":
+          description: Object type not found on the requested branch (BknBackend.ObjectType.ObjectTypeNotFound)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "502":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
         "503":
@@ -1423,6 +1429,12 @@ paths:
       responses:
         "204":
           description: Updated successfully
+        "404":
+          description: Object type not found on the requested branch (BknBackend.ObjectType.ObjectTypeNotFound)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
       summary: Update data properties
     parameters:
       - name: kn_id

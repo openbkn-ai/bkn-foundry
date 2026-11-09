@@ -9,6 +9,7 @@ package concept_group
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -1114,6 +1115,10 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 		logger.Errorf("UpdateConceptGroup error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改概念分组失败")
 
+		if errors.Is(err, common.ErrRowNotFound) {
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).WithErrorDetails(err.Error())
+		}
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).
 			WithErrorDetails(err.Error())

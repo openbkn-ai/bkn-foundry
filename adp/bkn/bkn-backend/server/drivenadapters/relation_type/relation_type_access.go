@@ -835,6 +835,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		SetMap(data).
 		Where(sq.Eq{"f_id": relationType.RTID}).
 		Where(sq.Eq{"f_kn_id": relationType.KNID}).
+		Where(sq.Eq{"f_branch": relationType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update relation type by relation type id, error", err)
@@ -849,18 +850,10 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		common.LogSafeError(ctx, "update relation type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": relationType.RTID, "f_kn_id": relationType.KNID, "f_branch": relationType.Branch}
+	if err = common.EnsureRowUpdated(ctx, tx, ret, RT_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update relation type found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update relation type affected unexpected row count: relation_type_id=%s, rows=%d",
-			relationType.RTID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

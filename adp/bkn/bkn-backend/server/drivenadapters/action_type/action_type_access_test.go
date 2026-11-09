@@ -920,7 +920,8 @@ func Test_ActionTypeAccess_UpdateActionType(t *testing.T) {
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_action_intent = ?, f_action_source = ?, f_action_type = ?, f_affect = ?, f_aliases = ?, f_bkn_raw_content = ?, "+
 			"f_color = ?, f_comment = ?, f_condition = ?, f_deprecation = ?, f_icon = ?, f_impact_contracts = ?, f_lifecycle_status = ?, f_name = ?, f_object_type_id = ?, f_parameters = ?, "+
 			"f_schedule = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
-			"WHERE f_id = ? AND f_kn_id = ?", AT_TABLE_NAME)
+			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", AT_TABLE_NAME)
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", AT_TABLE_NAME)
 
 		actionType := &interfaces.ActionType{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -930,7 +931,7 @@ func Test_ActionTypeAccess_UpdateActionType(t *testing.T) {
 				ObjectTypeID: "ot1",
 			},
 			KNID:   "kn1",
-			Branch: "main",
+			Branch: "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -986,6 +987,36 @@ func Test_ActionTypeAccess_UpdateActionType(t *testing.T) {
 			tx, _ := ata.db.Begin()
 			err := ata.UpdateActionType(testCtx, tx, actionType)
 			So(err, ShouldBeNil)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+
+		Convey("UpdateActionType changes nothing on a row that already holds the values\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "at1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+
+			tx, _ := ata.db.Begin()
+			err := ata.UpdateActionType(testCtx, tx, actionType)
+			So(err, ShouldBeNil)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+
+		Convey("UpdateActionType reports a row missing on the branch\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "at1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}))
+
+			tx, _ := ata.db.Begin()
+			err := ata.UpdateActionType(testCtx, tx, actionType)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)

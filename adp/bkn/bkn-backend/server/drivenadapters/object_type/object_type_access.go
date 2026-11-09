@@ -1305,6 +1305,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		SetMap(data).
 		Where(sq.Eq{"f_id": objectType.OTID}).
 		Where(sq.Eq{"f_kn_id": objectType.KNID}).
+		Where(sq.Eq{"f_branch": objectType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update object type by object type id, error", err)
@@ -1314,9 +1315,13 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
-	var ret sql.Result
+	var (
+		ret     sql.Result
+		queryer common.RowQueryer = ota.db
+	)
 	if tx != nil {
 		ret, err = tx.Exec(sqlStr, vals...)
+		queryer = tx
 	} else {
 		ret, err = ota.db.Exec(sqlStr, vals...)
 	}
@@ -1324,22 +1329,18 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		common.LogSafeError(ctx, "update object type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	if err = common.EnsureRowUpdated(ctx, queryer, ret, OT_TABLE_NAME, objectTypeKey(objectType)); err != nil {
+		common.LogSafeError(ctx, "Update object type found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update object type affected unexpected row count: object_type_id=%s, rows=%d",
-			objectType.OTID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+// objectTypeKey identifies one object type row: its id within a network and branch.
+func objectTypeKey(objectType *interfaces.ObjectType) sq.Eq {
+	return sq.Eq{"f_id": objectType.OTID, "f_kn_id": objectType.KNID, "f_branch": objectType.Branch}
 }
 
 func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
@@ -1496,6 +1497,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		SetMap(data).
 		Where(sq.Eq{"f_id": objectType.OTID}).
 		Where(sq.Eq{"f_kn_id": objectType.KNID}).
+		Where(sq.Eq{"f_branch": objectType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update object type by object type id, error", err)
@@ -1510,18 +1512,9 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		common.LogSafeError(ctx, "update object type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	if err = common.EnsureRowUpdated(ctx, tx, ret, OT_TABLE_NAME, objectTypeKey(objectType)); err != nil {
+		common.LogSafeError(ctx, "Update data properties found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update object type affected unexpected row count: object_type_id=%s, rows=%d",
-			objectType.OTID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

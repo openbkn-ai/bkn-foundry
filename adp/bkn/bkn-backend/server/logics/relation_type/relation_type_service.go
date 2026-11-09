@@ -709,6 +709,10 @@ func (rts *relationTypeService) updateRelationType(ctx context.Context, tx *sql.
 		logger.Errorf("relationType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改关系类失败")
 
+		if errors.Is(err, common.ErrRowNotFound) {
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+				berrors.BknBackend_RelationType_RelationTypeNotFound).WithErrorDetails(err.Error())
+		}
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RelationType_InternalError).
 			WithErrorDetails(err.Error())
