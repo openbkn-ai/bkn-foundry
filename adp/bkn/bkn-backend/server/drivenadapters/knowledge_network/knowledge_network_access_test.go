@@ -718,19 +718,20 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 			"main", "admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		).AddRow(
-			"kn2", "Knowledge Network 2", `"tag2"`, "comment2", "icon2", "color2", "detail2", "skill2",
-			"feature", "admin", "admin", testUpdateTime,
+			"kn1", "Knowledge Network 1", `"tag2"`, "comment2", "icon2", "color2", "detail2", "skill2",
+			"dev", "admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		)
 
+		// Every branch of a network is its own row; none may hide another.
 		Convey("GetAllKNs Success \n", func() {
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(err, ShouldBeNil)
 			So(len(kns), ShouldEqual, 2)
-			So(kns["kn1"], ShouldNotBeNil)
-			So(kns["kn2"], ShouldNotBeNil)
+			So([]string{kns[0].KNID + "/" + kns[0].Branch, kns[1].KNID + "/" + kns[1].Branch},
+				ShouldResemble, []string{"kn1/main", "kn1/dev"})
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
@@ -742,7 +743,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnError(expectedErr)
 
 			kns, err := kna.GetAllKNs(testCtx)
-			So(kns, ShouldResemble, map[string]*interfaces.KN{})
+			So(kns, ShouldBeEmpty)
 			So(err, ShouldResemble, expectedErr)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
@@ -764,7 +765,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
-			So(kns, ShouldResemble, map[string]*interfaces.KN{})
+			So(kns, ShouldBeEmpty)
 			So(err, ShouldNotBeNil)
 
 			if err := smock.ExpectationsWereMet(); err != nil {

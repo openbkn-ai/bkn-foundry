@@ -104,10 +104,10 @@ func (mr *MockKNAccessMockRecorder) DeleteKN(ctx, tx, knID, branch any) *gomock.
 }
 
 // GetAllKNs mocks base method.
-func (m *MockKNAccess) GetAllKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
+func (m *MockKNAccess) GetAllKNs(ctx context.Context) ([]*interfaces.KN, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllKNs", ctx)
-	ret0, _ := ret[0].(map[string]*interfaces.KN)
+	ret0, _ := ret[0].([]*interfaces.KN)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

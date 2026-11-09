@@ -959,18 +959,23 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 	return rtPathsMap, nil
 }
 
-// GetAllKNs queries knowledge networks across all branches for existing callers
-// such as concept synchronization.
-func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
+// GetAllKNs returns every branch row of every knowledge network, for callers such as
+// concept synchronization that handle each branch on its own.
+func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) ([]*interfaces.KN, error) {
 	return kna.getAllKNs(ctx, "")
 }
 
-// GetAllMainBranchKNs queries only published main-branch knowledge networks.
+// GetAllMainBranchKNs queries only published main-branch knowledge networks, keyed by id.
 func (kna *knowledgeNetworkAccess) GetAllMainBranchKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
-	return kna.getAllKNs(ctx, interfaces.MAIN_BRANCH)
+	kns, err := kna.getAllKNs(ctx, interfaces.MAIN_BRANCH)
+	byID := make(map[string]*interfaces.KN, len(kns))
+	for _, kn := range kns {
+		byID[kn.KNID] = kn
+	}
+	return byID, err
 }
 
-func (kna *knowledgeNetworkAccess) getAllKNs(ctx context.Context, branch string) (map[string]*interfaces.KN, error) {
+func (kna *knowledgeNetworkAccess) getAllKNs(ctx context.Context, branch string) ([]*interfaces.KN, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge networks")
 	defer span.End()
 
@@ -1001,7 +1006,7 @@ func (kna *knowledgeNetworkAccess) getAllKNs(ctx context.Context, branch string)
 	sqlStr, vals, err := query.ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of select knowledge networks, error", err)
-		return map[string]*interfaces.KN{}, err
+		return []*interfaces.KN{}, err
 	}
 
 	// Record the processed SQL string.
@@ -1010,11 +1015,11 @@ func (kna *knowledgeNetworkAccess) getAllKNs(ctx context.Context, branch string)
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
 		common.LogSafeError(ctx, "List data error", err)
-		return map[string]*interfaces.KN{}, err
+		return []*interfaces.KN{}, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	KNs := make(map[string]*interfaces.KN)
+	KNs := make([]*interfaces.KN, 0)
 	for rows.Next() {
 		KN := interfaces.KN{
 			ModuleType: interfaces.MODULE_TYPE_KN,
@@ -1039,12 +1044,12 @@ func (kna *knowledgeNetworkAccess) getAllKNs(ctx context.Context, branch string)
 		)
 		if err != nil {
 			common.LogSafeError(ctx, "Row scan error", err)
-			return map[string]*interfaces.KN{}, err
+			return []*interfaces.KN{}, err
 		}
 
 		// Convert a tag string to an array.
 		KN.Tags = libCommon.TagString2TagSlice(tagsStr)
-		KNs[KN.KNID] = &KN
+		KNs = append(KNs, &KN)
 	}
 
 	span.SetStatus(codes.Ok, "")

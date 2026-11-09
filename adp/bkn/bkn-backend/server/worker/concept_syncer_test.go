@@ -116,7 +116,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 		}
 
 		Convey("Success with no knowledge networks", func() {
-			kna.EXPECT().GetAllKNs(ctx).Return(map[string]*interfaces.KN{}, nil)
+			kna.EXPECT().GetAllKNs(ctx).Return([]*interfaces.KN{}, nil)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
@@ -148,7 +148,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 
 			// handleKNs call order:
 			// 1. GetAllKNs
-			kna.EXPECT().GetAllKNs(ctx).Return(map[string]*interfaces.KN{knID: kn}, nil)
+			kna.EXPECT().GetAllKNs(ctx).Return([]*interfaces.KN{kn}, nil)
 			// 2. getAllKNsFromDataset (internally calls QueryResourceData)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
@@ -170,6 +170,43 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		// Each branch of a network has its own concept document. Keyed by network id alone, one
+		// branch's document hid the other's and that branch was rebuilt every round.
+		Convey("Skips every branch whose concept document is current", func() {
+			ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+			rta := bmock.NewMockRelationTypeAccess(mockCtrl)
+			ata := bmock.NewMockActionTypeAccess(mockCtrl)
+			cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+			cs.ota, cs.rta, cs.ata, cs.cga = ota, rta, ata, cga
+
+			kns := []*interfaces.KN{
+				{KNID: "kn1", Branch: "main", UpdateTime: 100},
+				{KNID: "kn1", Branch: "dev", UpdateTime: 200},
+			}
+			kna.EXPECT().GetAllKNs(ctx).Return(kns, nil)
+			docs := []map[string]any{
+				{"id": "kn1", "branch": "main", "update_time": int64(100)},
+				{"id": "kn1", "branch": "dev", "update_time": int64(200)},
+			}
+			vbs.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+					if params.FilterCondition["field"] == "module_type" {
+						return &interfaces.DatasetQueryResponse{Entries: docs}, nil
+					}
+					return &interfaces.DatasetQueryResponse{Entries: []map[string]any{}}, nil
+				}).AnyTimes()
+			for _, branch := range []string{"main", "dev"} {
+				ota.EXPECT().GetAllObjectTypesByKnID(ctx, "kn1", branch).Return(map[string]*interfaces.ObjectType{}, nil)
+				rta.EXPECT().GetAllRelationTypesByKnID(ctx, "kn1", branch).Return(map[string]*interfaces.RelationType{}, nil)
+				ata.EXPECT().GetAllActionTypesByKnID(ctx, "kn1", branch).Return(map[string]*interfaces.ActionType{}, nil)
+				cga.EXPECT().GetAllConceptGroupsByKnID(ctx, "kn1", branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
+			}
+			// No UpdateKNDetail and no WriteDatasetDocument: gomock fails the test on either call.
+
+			err := cs.handleKNs()
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Failed to get knowledge networks", func() {
 			kna.EXPECT().GetAllKNs(ctx).Return(nil, errors.New("db error"))
 
@@ -178,7 +215,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 		})
 
 		Convey("Failed to get knowledge networks from dataset", func() {
-			kna.EXPECT().GetAllKNs(ctx).Return(map[string]*interfaces.KN{}, nil)
+			kna.EXPECT().GetAllKNs(ctx).Return([]*interfaces.KN{}, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			err := cs.handleKNs()
