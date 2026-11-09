@@ -55,6 +55,9 @@ func newNativeCatalog(b *toolBuilder) *nativeCatalog {
 	catalog := &nativeCatalog{builder: b, targets: map[string]pendingTool{}}
 	for _, p := range b.pending {
 		name := p.tool.Name
+		if !isBusinessTool(name) {
+			continue
+		}
 		if _, published := compactProfile.published[name]; published {
 			continue
 		}
