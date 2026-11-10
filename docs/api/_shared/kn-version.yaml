@@ -16,11 +16,14 @@ components:
       description: |
         Which version of a versioned knowledge network to read: `running` (the default), `draft`, or a
         version number. Reading the draft needs `modify` on the network; reading any other version
-        needs `view_detail`. Do not combine it with `branch`. On a network without versioning only
-        `running` is accepted, and it means the main branch.
+        needs `view_detail`. Do not combine it with `branch` (400 `BknBackend.KNVersion.InvalidVersion`,
+        which is also the answer to a value that is not `running`, `draft` or a positive integer). A
+        version that does not exist is 404 `BknBackend.KNVersion.VersionNotFound` and a purged one is
+        410 `BknBackend.KNVersion.VersionPurged`. On a network without versioning only `running` is
+        accepted, and it means the main branch; any other value is 400 `BknBackend.KNVersion.NotVersioned`.
 
         Not accepted on writes: a write to a versioned network always goes to its draft, and a write
-        that names `kn_version` is refused with 409 `BknBackend.KNVersion.InvalidVersion`.
+        that names `kn_version` is refused with 400 `BknBackend.KNVersion.InvalidVersion`.
       schema:
         type: string
         example: draft
@@ -91,6 +94,14 @@ components:
       schema:
         type: integer
         format: int64
+    XKnRunningVersion:
+      description: |
+        The running version of the network when the read was resolved. Sent for reads of a versioned
+        network that has a running version (not before its first publish), also when another
+        version or the draft was read, so a caller that named a version number can tell whether it
+        is the running one.
+      schema:
+        type: integer
     ETag:
       description: |
         Revision of the single definition returned, quoted. Send it back as `If-Match` when updating
@@ -173,8 +184,10 @@ components:
         `BknBackend.KNVersion.DraftRevisionMismatch` when `expected_draft_revision` no longer matches
         (details `draft_revision`); `BknBackend.KNVersion.DraftHasChanges` when a whole-draft replace
         would overwrite unpublished changes without `overwrite_changes=true`;
-        `BknBackend.KNVersion.InvalidVersion` when the write names a version or a branch other than
-        the draft; `BknBackend.KNVersion.VersioningDisabling` while versioning is being turned off.
+        `BknBackend.KNVersion.InvalidVersion` when a write that was resolved before versioning was
+        enabled reaches a branch other than the draft (a request that names `kn_version` or a
+        branch other than `main` or `draft` is refused earlier, with 400);
+        `BknBackend.KNVersion.VersioningDisabling` while versioning is being turned off.
       content:
         application/json:
           schema:
@@ -184,7 +197,15 @@ components:
         A read of the draft of a versioned network that no longer holds. `BknBackend.KNVersion.DraftRevisionMismatch`
         when `draft_revision` differs from the current revision, or the draft was written while the
         read was running (details `draft_revision`); `BknBackend.KNVersion.VersioningDisabling` while
-        versioning is being turned off.
+        versioning is being turned off. A draft written while the read was running makes the server
+        run the read once more before it answers 409, so the error means the draft kept changing.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/KnVersionError'
+    VersionNotFound:
+      description: |
+        `BknBackend.KNVersion.VersionNotFound`. The requested version number was never published.
       content:
         application/json:
           schema:

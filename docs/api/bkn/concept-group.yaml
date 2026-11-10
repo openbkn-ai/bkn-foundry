@@ -51,6 +51,8 @@ paths:
           headers:
             X-Kn-Version:
               $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
             X-Kn-Draft-Revision:
               $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
             ETag:
@@ -215,6 +217,8 @@ paths:
           headers:
             X-Kn-Version:
               $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
             X-Kn-Draft-Revision:
               $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:

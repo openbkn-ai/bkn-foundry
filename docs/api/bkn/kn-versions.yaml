@@ -33,12 +33,32 @@ info:
     ## Reading a version
 
     Every read endpoint of a versioned network accepts `kn_version` (`running`, `draft` or a version
-    number) and, for the draft, `draft_revision`. The response carries `X-Kn-Version`, and for the
-    draft `X-Kn-Draft-Revision`. Reading the draft needs `modify` on the network; reading a version
-    needs `view_detail`. A read that finds its version purged while it ran answers 410
-    `BknBackend.KNVersion.VersionPurged`; a read of the draft that was written meanwhile answers 409
-    `BknBackend.KNVersion.DraftRevisionMismatch`. On an unversioned network `kn_version` accepts only
-    `running`, which means main, so callers can use one code path for both.
+    number) and, for the draft, `draft_revision`. The response carries `X-Kn-Version`, for the
+    draft `X-Kn-Draft-Revision`, and `X-Kn-Running-Version` (the running version, sent whichever
+    version was read). Reading the draft needs `modify` on the network; reading a version
+    needs `view_detail`. A version number that was never published is 404
+    `BknBackend.KNVersion.VersionNotFound`; a purged one is 410 `BknBackend.KNVersion.VersionPurged`;
+    a malformed value or a `kn_version` combined with `branch` is 400
+    `BknBackend.KNVersion.InvalidVersion`. A read that finds its version purged while it ran answers 410
+    `BknBackend.KNVersion.VersionPurged`; a read of the draft that was written meanwhile is run once
+    more, and answers 409 `BknBackend.KNVersion.DraftRevisionMismatch` if the draft changed again.
+    The server holds the response of a versioned read until it has checked this, so a read never
+    returns a mix of two draft revisions. On an unversioned network `kn_version` accepts only
+    `running`, which means main (any other value is 400 `BknBackend.KNVersion.NotVersioned`), so
+    callers can use one code path for both.
+
+    A network created with versioning (see `versioning` of the create request) has no running
+    version until its first publish: reads of the running version return an empty network, and
+    `X-Kn-Version` and `X-Kn-Running-Version` are not sent.
+
+    Concept search (`search` over concepts) reads the concept index of the version it resolves to.
+    Every published version has an index of its own, written in the same transaction that publishes
+    it; the draft's index is updated by every write to the draft, so a search over
+    `kn_version=draft` always sees the latest edit. Purging a version, or turning versioning off,
+    deletes its index. Two kinds of endpoint do not read the definitions of a chosen version: the
+    `validation` endpoints check the request body (the version only matters for the existence check
+    of the network), and `overview-graph` reads the branch named by `branch` (main, which holds the
+    running version, by default).
 
     ## Writing to the draft
 
@@ -57,6 +77,24 @@ info:
     A write without its precondition is 428 `BknBackend.KNVersion.PreconditionRequired`; a stale
     `If-Match` is 409 `BknBackend.KNVersion.DefinitionModified` with `current_etag` in the error
     details; a stale `expected_draft_revision` is 409 `BknBackend.KNVersion.DraftRevisionMismatch`.
+    A write that names `kn_version`, or a branch other than `main` or `draft`, is refused with 400
+    `BknBackend.KNVersion.InvalidVersion`; `main` is accepted and means the draft.
+
+    The same rules cover the object-metric endpoints (`bkn-object-metrics-v1.yaml`, Enterprise
+    edition): their writes go to the draft, an update needs `If-Match`, and a delete needs `If-Match`
+    or `expected_draft_revision`.
+
+    ## Metrics
+
+    In the Enterprise edition a publish also publishes the metrics of the draft. A metric whose
+    latest version is `validated` is published with the network when every metric it depends on is
+    already published or is published in the same batch. The other metrics are left as they are and
+    reported in `warnings` of the publish response: `unvalidated_metric` for a version that is still
+    a draft or no longer passes validation, and `metric_dependency_unmet` for a validated version
+    whose dependency is not published. The versions the publish made live are listed in
+    `published_metrics`. An edition that does not serve metrics publishes none and reports no
+    metric warnings. Metric version numbers are allocated per network, not per
+    branch, so a number names one version in every branch.
 
     ## Idempotency
 
@@ -217,17 +255,27 @@ paths:
       summary: Publish the draft as a new version
       description: |
         Publishes the draft as the next version and makes it the running version, in one transaction
-        that also switches the network's main branch, concept index and proxy grants to it. The
-        request must name the running version and the draft revision it was prepared against, so a
+        that also switches the network's main branch, the version's concept index and proxy grants to
+        it. The request must name the running version and the draft revision it was prepared against, so a
         publish never goes out over a change the caller did not see.
 
         Refused with 400 `BknBackend.KNVersion.ValidationFailed` when the draft references things
-        that do not exist; its details list `problems`. Refused with 409
+        that do not exist: the ends of a relation type, the object type of an action type, the
+        members of a concept group, the action types of active schedules (read from main), and
+        bound functions, Skills or knowledge bases that are gone. Its details list `problems`. The
+        check does not cover metric references, permissions on referenced knowledge bases or the
+        proxy. Refused with 409
         `BknBackend.KNVersion.NothingToPublish` when the draft has no unpublished changes (the first
         version of a network without a running version publishes even without edits), and with 409
         `BknBackend.KNVersion.DraftBaseOutdated` when the running version was switched after the draft
         took its base, unless `allow_outdated_base` is true. In the Community edition the publish
         purges the version before the previous one.
+
+        The concept index of the new version is written inside the publish; if that fails the
+        publish is rolled back and answers 503 `BknBackend.KNVersion.ConceptIndexFailed`, and can be
+        retried. Metrics are published with the network as described under Metrics; the response
+        lists them in `published_metrics` and what it left out in `warnings`. A retry with the same
+        `Idempotency-Key` returns the version record only, without `warnings` and `published_metrics`.
       operationId: publishKnVersion
       parameters:
         - $ref: "#/components/parameters/KNID"
@@ -249,11 +297,26 @@ paths:
                 ref: 9f3c2e1
       responses:
         "201":
-          description: Published. Returns the new version.
+          description: Published. Returns the new version, with the metrics it published and the warnings.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublishResult"
+              example:
+                kn_id: kn_01
+                version: 4
+                label: v1.2.0
+                status: running
+                origin: publish
+                base_version: 3
+                draft_revision: 128
+                published_metrics:
+                  - metric_id: 7c1e0b3a-0000-4000-8000-000000000001
+                    version: 2
+                warnings:
+                  - category: unvalidated_metric
+                    definition_id: 7c1e0b3a-0000-4000-8000-000000000002
+                    description: metric 7c1e0b3a-0000-4000-8000-000000000002 version 1 is not validated and is not published
         "400":
           description: |
             `BknBackend.KNVersion.ValidationFailed` (details `problems`), `BknBackend.KNVersion.InvalidParameter`
@@ -282,7 +345,9 @@ paths:
         "422":
           $ref: "#/components/responses/IdempotencyKeyReused"
         "500":
-          description: Internal error, including `BknBackend.KNVersion.ConceptIndexFailed` when the concept index of the new version could not be built. Retry the publish.
+          $ref: "#/components/responses/InternalError"
+        "503":
+          description: "`BknBackend.KNVersion.ConceptIndexFailed`: the concept index of the new version could not be written. Nothing was published; retry."
           content:
             application/json:
               schema:
@@ -390,7 +455,8 @@ paths:
       summary: Make a version the running version
       description: |
         Switches the running version to a `history` version, in one transaction that also switches the
-        main branch, concept index and proxy grants. The previous running version becomes `history`.
+        main branch and proxy grants; searches then read the concept index the version already has.
+        The previous running version becomes `history`.
         The target's references are checked first; a version that references resources that no longer
         exist is refused with 409 `BknBackend.KNVersion.BrokenReferences` and its details list
         `problems`. Only a `history` version can be activated (409 `BknBackend.KNVersion.VersionNotActivatable`,
@@ -866,6 +932,38 @@ components:
             purged_version:
               type: integer
               description: Present only when a version was purged by this publish.
+            published_metrics:
+              type: array
+              description: The metric versions this publish made live. Absent when there are none.
+              items:
+                $ref: "#/components/schemas/MetricVersionRef"
+            warnings:
+              type: array
+              description: Things the publish went ahead despite. Absent when there are none.
+              items:
+                $ref: "#/components/schemas/PublishWarning"
+    MetricVersionRef:
+      type: object
+      properties:
+        metric_id:
+          type: string
+        version:
+          type: integer
+    PublishWarning:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [unvalidated_metric, metric_dependency_unmet]
+          description: |
+            `unvalidated_metric`: the latest version of a metric is a draft, or no longer passes
+            validation, and was not published. `metric_dependency_unmet`: a validated metric depends on
+            a metric version that is not published, and stays validated.
+        definition_id:
+          type: string
+          description: The metric id.
+        description:
+          type: string
     KnVersionEvent:
       type: object
       properties:
@@ -961,6 +1059,7 @@ components:
           description: Currently `broken_reference`, a definition, schedule or binding that points at nothing.
         definition_type:
           type: string
+          enum: [relation_type, action_type, concept_group, action_schedule, capability_binding]
         definition_id:
           type: string
         description:
