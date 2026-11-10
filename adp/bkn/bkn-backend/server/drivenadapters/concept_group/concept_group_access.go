@@ -233,6 +233,7 @@ func (cga *conceptGroupAccess) CreateConceptGroup(ctx context.Context, tx *sql.T
 			"f_updater",
 			"f_updater_type",
 			"f_update_time",
+			"f_revision",
 		).
 		Values(
 			conceptGroup.CGID,
@@ -249,7 +250,8 @@ func (cga *conceptGroupAccess) CreateConceptGroup(ctx context.Context, tx *sql.T
 			conceptGroup.CreateTime,
 			conceptGroup.Updater.ID,
 			conceptGroup.Updater.Type,
-			conceptGroup.UpdateTime).
+			conceptGroup.UpdateTime,
+			interfaces.NewDefinitionRevision()).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of insert concept group, error", err)
@@ -284,7 +286,7 @@ func (cga *conceptGroupAccess) CreateConceptGroups(ctx context.Context, tx *sql.
 		builder := sq.Insert(CONCEPT_GROUP_TABLE_NAME).Columns(
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_creator", "f_creator_type", "f_create_time",
-			"f_updater", "f_updater_type", "f_update_time",
+			"f_updater", "f_updater_type", "f_update_time", "f_revision",
 		)
 		for _, conceptGroup := range conceptGroups[start:end] {
 			builder = builder.Values(
@@ -292,7 +294,7 @@ func (cga *conceptGroupAccess) CreateConceptGroups(ctx context.Context, tx *sql.
 				conceptGroup.Comment, conceptGroup.Icon, conceptGroup.Color, conceptGroup.BKNRawContent,
 				conceptGroup.KNID, conceptGroup.Branch, conceptGroup.Creator.ID, conceptGroup.Creator.Type,
 				conceptGroup.CreateTime, conceptGroup.Updater.ID, conceptGroup.Updater.Type,
-				conceptGroup.UpdateTime,
+				conceptGroup.UpdateTime, interfaces.NewDefinitionRevision(),
 			)
 		}
 		sqlStr, vals, err := builder.ToSql()
@@ -677,6 +679,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 		"f_updater":         conceptGroup.Updater.ID,
 		"f_updater_type":    conceptGroup.Updater.Type,
 		"f_update_time":     conceptGroup.UpdateTime,
+		"f_revision":        interfaces.NewDefinitionRevision(),
 	}
 	sqlStr, vals, err := sq.Update(CONCEPT_GROUP_TABLE_NAME).
 		SetMap(data).
@@ -697,18 +700,10 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 		common.LogSafeError(ctx, "update concept group error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": conceptGroup.CGID, "f_kn_id": conceptGroup.KNID, "f_branch": conceptGroup.Branch}
+	if err = common.EnsureRowUpdated(ctx, tx, ret, CONCEPT_GROUP_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update concept group found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update concept group affected unexpected row count: concept_group_id=%s, rows=%d",
-			conceptGroup.CGID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -769,6 +764,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroups(ctx context.Context, tx *sql.
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, conceptGroup := range batch {
@@ -847,17 +843,10 @@ func (cga *conceptGroupAccess) UpdateConceptGroupDetail(ctx context.Context, knI
 		common.LogSafeError(ctx, "update concept group detail error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": cgID, "f_kn_id": knID, "f_branch": branch}
+	if err = common.EnsureRowUpdated(ctx, cga.db, ret, CONCEPT_GROUP_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update concept group detail found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		otellog.LogWarn(ctx, fmt.Sprintf("Update concept group detail %s RowsAffected not equal 1, RowsAffected is %d",
-			knID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

@@ -36,7 +36,7 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricExecutionWithFingerprin
 func (s *queryAuthorizationService) AuthorizeObjectMetricTrialWithFingerprint(ctx context.Context,
 	knID, branch string, definition *interfaces.ObjectMetricDefinitionV1,
 	query *interfaces.ObjectMetricQueryRequestV1, dependencies []*interfaces.ObjectMetricDefinitionV1) (interfaces.ObjectMetricAuthorizationFingerprint, error) {
-	if err := validateQueryIdentity(ctx, knID, branch, "object-metric-trial"); err != nil {
+	if err := validateTrialIdentity(ctx, knID, branch); err != nil {
 		return interfaces.ObjectMetricAuthorizationFingerprint{}, err
 	}
 	inputs := []objectMetricAuthorizationInput{{definition: definition, query: query}}

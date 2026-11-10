@@ -265,7 +265,7 @@ func Test_knowledgeNetworkAccess_ListKNs(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, f_skill_content, "+
 			"f_branch, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
-			"FROM %s", KN_TABLE_NAME)
+			"FROM %s WHERE %s", KN_TABLE_NAME, oneRowPerNetwork)
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content", "f_skill_content",
@@ -352,8 +352,8 @@ func Test_knowledgeNetworkAccess_ListKNs(t *testing.T) {
 			}
 			sqlStrWithAll := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, f_skill_content, "+
 				"f_branch, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
-				"FROM %s WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0 ORDER BY f_name ASC LIMIT 20 OFFSET 10",
-				KN_TABLE_NAME)
+				"FROM %s WHERE %s AND (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0 ORDER BY f_name ASC LIMIT 20 OFFSET 10",
+				KN_TABLE_NAME, oneRowPerNetwork)
 
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content", "f_skill_content",
@@ -361,7 +361,7 @@ func Test_knowledgeNetworkAccess_ListKNs(t *testing.T) {
 				"f_updater", "f_updater_type", "f_update_time",
 			})
 
-			smock.ExpectQuery(sqlStrWithAll).WithArgs("test", "test", `"tag1"`).WillReturnRows(rows)
+			smock.ExpectQuery(sqlStrWithAll).WithArgs(interfaces.MAIN_BRANCH, "test", "test", `"tag1"`).WillReturnRows(rows)
 
 			kns, err := kna.ListKNs(testCtx, queryWithAll)
 			So(err, ShouldBeNil)
@@ -379,7 +379,7 @@ func Test_knowledgeNetworkAccess_GetKNsTotal(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna, smock := MockNewKNAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("SELECT COUNT(f_id) FROM %s", KN_TABLE_NAME)
+		sqlStr := fmt.Sprintf("SELECT COUNT(f_id) FROM %s WHERE %s", KN_TABLE_NAME, oneRowPerNetwork)
 
 		rows := sqlmock.NewRows([]string{"COUNT(f_id)"}).AddRow(1)
 
@@ -415,7 +415,7 @@ func Test_knowledgeNetworkAccess_GetKNsTotal(t *testing.T) {
 				NamePattern: "test",
 				Tag:         "tag1",
 			}
-			sqlStrWithAll := fmt.Sprintf("SELECT COUNT(f_id) FROM %s WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0", KN_TABLE_NAME)
+			sqlStrWithAll := fmt.Sprintf("SELECT COUNT(f_id) FROM %s WHERE %s AND (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0", KN_TABLE_NAME, oneRowPerNetwork)
 
 			rows := sqlmock.NewRows([]string{"COUNT(f_id)"}).AddRow(5)
 			smock.ExpectQuery(sqlStrWithAll).WithArgs().WillReturnRows(rows)
@@ -498,18 +498,25 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna, smock := MockNewKNAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, "+
-			"f_skill_content = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? WHERE f_id = ?", KN_TABLE_NAME)
+		// Basic info belongs to the network and goes to every branch; content belongs to one branch.
+		infoSQL := fmt.Sprintf("UPDATE %s SET f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, "+
+			"f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? WHERE f_id = ?", KN_TABLE_NAME)
+		contentSQL := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_skill_content = ? "+
+			"WHERE f_branch = ? AND f_id = ?", KN_TABLE_NAME)
+		rawOnlySQL := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ? WHERE f_branch = ? AND f_id = ?", KN_TABLE_NAME)
 
 		kn := &interfaces.KN{
 			KNID:   "kn1",
 			KNName: "Updated Knowledge Network",
 			CommonInfo: interfaces.CommonInfo{
-				Tags:    testTags,
-				Comment: "updated comment",
-				Icon:    "icon1",
-				Color:   "color1",
+				Tags:          testTags,
+				Comment:       "updated comment",
+				Icon:          "icon1",
+				Color:         "color1",
+				BKNRawContent: "raw",
 			},
+			SkillContent: "skill",
+			Branch:       "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -519,7 +526,8 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 
 		Convey("UpdateKN Success \n", func() {
 			smock.ExpectBegin()
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(contentSQL).WithArgs("raw", "skill", "dev", "kn1").WillReturnResult(sqlmock.NewResult(0, 1))
 
 			tx, _ := kna.db.Begin()
 			err := kna.UpdateKN(testCtx, tx, kn)
@@ -530,10 +538,26 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateKN failed prepare \n", func() {
+		Convey("UpdateKN keeps the stored skill content \n", func() {
+			keep := *kn
+			keep.KeepSkillContent = true
+			smock.ExpectBegin()
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(rawOnlySQL).WithArgs("raw", "dev", "kn1").WillReturnResult(sqlmock.NewResult(0, 1))
+
+			tx, _ := kna.db.Begin()
+			err := kna.UpdateKN(testCtx, tx, &keep)
+			So(err, ShouldBeNil)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+
+		Convey("UpdateKN failed on basic info \n", func() {
 			smock.ExpectBegin()
 			expectedErr := errors.New("prepare error")
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnError(expectedErr)
+			smock.ExpectExec(infoSQL).WillReturnError(expectedErr)
 
 			tx, _ := kna.db.Begin()
 			err := kna.UpdateKN(testCtx, tx, kn)
@@ -544,23 +568,36 @@ func Test_knowledgeNetworkAccess_UpdateKN(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateKN RowsAffected != 1 \n", func() {
+		// MariaDB counts changed rows only; an existence check tells a no-op write from a missing row.
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? LIMIT 1", KN_TABLE_NAME)
+
+		Convey("UpdateKN succeeds when the branch row already holds the content \n", func() {
 			smock.ExpectBegin()
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(contentSQL).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "kn1").WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
 
 			tx, _ := kna.db.Begin()
-			err := kna.UpdateKN(testCtx, tx, kn)
-			So(err, ShouldBeNil)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
+			So(kna.UpdateKN(testCtx, tx, kn), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
-		Convey("UpdateKN RowsAffected error \n", func() {
+		Convey("UpdateKN reports a branch the network is not on \n", func() {
 			smock.ExpectBegin()
-			expectedErr := errors.New("Get RowsAffected error")
-			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewErrorResult(expectedErr))
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec(contentSQL).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "kn1").WillReturnRows(sqlmock.NewRows([]string{"1"}))
+
+			tx, _ := kna.db.Begin()
+			So(errors.Is(kna.UpdateKN(testCtx, tx, kn), common.ErrRowNotFound), ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("UpdateKN failed on branch content \n", func() {
+			smock.ExpectBegin()
+			expectedErr := errors.New("exec error")
+			smock.ExpectExec(infoSQL).WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(contentSQL).WillReturnError(expectedErr)
 
 			tx, _ := kna.db.Begin()
 			err := kna.UpdateKN(testCtx, tx, kn)
@@ -628,6 +665,29 @@ func Test_knowledgeNetworkAccess_UpdateKNDetail(t *testing.T) {
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}
+		})
+	})
+}
+
+func Test_knowledgeNetworkAccess_ListKNBranches(t *testing.T) {
+	Convey("Test ListKNBranches\n", t, func() {
+		kna, smock := MockNewKNAccess(&common.AppSetting{})
+		sqlStr := fmt.Sprintf("SELECT f_branch FROM %s WHERE f_id = ? ORDER BY f_branch", KN_TABLE_NAME)
+
+		Convey("Returns every branch of the network\n", func() {
+			smock.ExpectQuery(sqlStr).WithArgs("kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"f_branch"}).AddRow("dev").AddRow("main"))
+			branches, err := kna.ListKNBranches(testCtx, "kn1")
+			So(err, ShouldBeNil)
+			So(branches, ShouldResemble, []string{"dev", "main"})
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("Returns the query error\n", func() {
+			expectedErr := errors.New("query error")
+			smock.ExpectQuery(sqlStr).WithArgs("kn1").WillReturnError(expectedErr)
+			_, err := kna.ListKNBranches(testCtx, "kn1")
+			So(err, ShouldResemble, expectedErr)
 		})
 	})
 }
@@ -718,19 +778,20 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 			"main", "admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		).AddRow(
-			"kn2", "Knowledge Network 2", `"tag2"`, "comment2", "icon2", "color2", "detail2", "skill2",
-			"feature", "admin", "admin", testUpdateTime,
+			"kn1", "Knowledge Network 1", `"tag2"`, "comment2", "icon2", "color2", "detail2", "skill2",
+			"dev", "admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		)
 
+		// Every branch of a network is its own row; none may hide another.
 		Convey("GetAllKNs Success \n", func() {
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
 			So(err, ShouldBeNil)
 			So(len(kns), ShouldEqual, 2)
-			So(kns["kn1"], ShouldNotBeNil)
-			So(kns["kn2"], ShouldNotBeNil)
+			So([]string{kns[0].KNID + "/" + kns[0].Branch, kns[1].KNID + "/" + kns[1].Branch},
+				ShouldResemble, []string{"kn1/main", "kn1/dev"})
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
@@ -742,7 +803,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnError(expectedErr)
 
 			kns, err := kna.GetAllKNs(testCtx)
-			So(kns, ShouldResemble, map[string]*interfaces.KN{})
+			So(kns, ShouldBeEmpty)
 			So(err, ShouldResemble, expectedErr)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
@@ -764,7 +825,7 @@ func Test_knowledgeNetworkAccess_GetAllKNs(t *testing.T) {
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
 
 			kns, err := kna.GetAllKNs(testCtx)
-			So(kns, ShouldResemble, map[string]*interfaces.KN{})
+			So(kns, ShouldBeEmpty)
 			So(err, ShouldNotBeNil)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
@@ -805,7 +866,7 @@ func Test_knowledgeNetworkAccess_ListKnSrcs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna, smock := MockNewKNAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("SELECT f_id, f_name FROM %s", KN_TABLE_NAME)
+		sqlStr := fmt.Sprintf("SELECT f_id, f_name FROM %s WHERE %s", KN_TABLE_NAME, oneRowPerNetwork)
 
 		query := interfaces.KNsQueryParams{}
 
@@ -861,7 +922,7 @@ func Test_knowledgeNetworkAccess_ListKnSrcs(t *testing.T) {
 					Direction: "ASC",
 				},
 			}
-			sqlStrWithParams := fmt.Sprintf("SELECT f_id, f_name FROM %s WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) ORDER BY f_name ASC", KN_TABLE_NAME)
+			sqlStrWithParams := fmt.Sprintf("SELECT f_id, f_name FROM %s WHERE %s AND (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) ORDER BY f_name ASC", KN_TABLE_NAME, oneRowPerNetwork)
 
 			rows := sqlmock.NewRows([]string{"f_id", "f_name"}).
 				AddRow("kn1", "Knowledge Network 1")
@@ -938,13 +999,21 @@ func Test_knowledgeNetworkAccess_ProcessQueryCondition(t *testing.T) {
 
 		sqlBuilder := sq.Select("COUNT(f_id)").From(KN_TABLE_NAME)
 
+		// A network with rows on several branches is listed once: main when it exists, otherwise its
+		// first branch by name.
+		Convey("Lists one row per network ", func() {
+			sqlStr, args, _ := processQueryCondition(interfaces.KNsQueryParams{}, sqlBuilder).ToSql()
+			So(sqlStr, ShouldEqual, fmt.Sprintf("SELECT COUNT(f_id) FROM %s WHERE %s", KN_TABLE_NAME, oneRowPerNetwork))
+			So(args, ShouldResemble, []any{interfaces.MAIN_BRANCH})
+		})
+
 		Convey("NamePattern query ", func() {
 			query := interfaces.KNsQueryParams{
 				NamePattern: "name_a",
 			}
 
 			expectedSqlStr := fmt.Sprintf("SELECT COUNT(f_id) FROM %s "+
-				"WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0)", KN_TABLE_NAME)
+				"WHERE %s AND (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0)", KN_TABLE_NAME, oneRowPerNetwork)
 
 			sqlBuilder := processQueryCondition(query, sqlBuilder)
 			sqlStr, _, _ := sqlBuilder.ToSql()
@@ -957,7 +1026,7 @@ func Test_knowledgeNetworkAccess_ProcessQueryCondition(t *testing.T) {
 			}
 
 			expectedSqlStr := fmt.Sprintf("SELECT COUNT(f_id) FROM %s "+
-				"WHERE instr(f_tags, ?) > 0", KN_TABLE_NAME)
+				"WHERE %s AND instr(f_tags, ?) > 0", KN_TABLE_NAME, oneRowPerNetwork)
 
 			sqlBuilder := processQueryCondition(query, sqlBuilder)
 			sqlStr, _, _ := sqlBuilder.ToSql()

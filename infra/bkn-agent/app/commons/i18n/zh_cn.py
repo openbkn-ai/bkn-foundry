@@ -52,9 +52,9 @@ error_messages = {
     },
     "BknAgent.Execution.Forbidden": {
         "code": "BknAgent.Execution.Forbidden",
-        "description": "当前账号没有使用此 Agent 或知识网络的权限。",
-        "detail": "当前账号没有使用此 Agent 或知识网络的权限。",
-        "solution": "请申请对应资源权限。",
+        "description": "当前账号没有该知识网络的权限。",
+        "detail": "当前账号没有该知识网络的权限。",
+        "solution": "请申请该知识网络的权限。",
     },
     "BknAgent.Execution.Unsupported": {
         "code": "BknAgent.Execution.Unsupported",

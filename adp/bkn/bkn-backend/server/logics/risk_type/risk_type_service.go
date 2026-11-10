@@ -130,6 +130,12 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
+		if len(riskTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, riskTypes[0].KNID, riskTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return nil, err
+			}
+		}
 		defer func() {
 			if err != nil {
 				if rollbackErr := tx.Rollback(); rollbackErr != nil {
@@ -456,6 +462,10 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, riskType.KNID, riskType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		defer func() {
 			if err != nil {
 				_ = tx.Rollback()
@@ -463,6 +473,9 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 				_ = tx.Commit()
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRiskType, riskType.KNID, riskType.Branch, riskType.RTID); err != nil {
+		return err
 	}
 
 	if err = rts.rta.UpdateRiskType(ctx, tx, riskType); err != nil {
@@ -534,6 +547,10 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		defer func() {
 			if err != nil {
 				if rollbackErr := tx.Rollback(); rollbackErr != nil {
@@ -546,6 +563,9 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRiskType, knID, branch, rtIDs...); err != nil {
+		return err
 	}
 
 	_, err = rts.rta.DeleteRiskTypesByIDs(ctx, tx, knID, branch, rtIDs)
@@ -565,7 +585,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, branch, rtIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -835,7 +855,7 @@ func (rts *riskTypeService) DeleteRiskTypesByKnID(ctx context.Context, tx *sql.T
 		return err
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, branch, rtIDs)
 	span.SetStatus(codes.Ok, "")
 	return err
 }

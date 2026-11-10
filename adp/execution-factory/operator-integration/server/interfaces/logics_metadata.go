@@ -123,14 +123,30 @@ type ScriptType string
 
 const (
 	ScriptTypePython ScriptType = "python" // Python script types.
+	// ScriptTypeCypher is a function whose code is one read-only Cypher
+	// statement. It runs in bkn-backend, not in the sandbox.
+	ScriptTypeCypher ScriptType = "cypher"
+)
+
+// CypherResultShape is what a Cypher function returns.
+type CypherResultShape string
+
+const (
+	// CypherResultShapeValue returns {"value": x}: one scalar column, at most one row.
+	CypherResultShapeValue CypherResultShape = "value"
+	// CypherResultShapeTable returns {columns, entries, limited} as bkn-backend answered.
+	CypherResultShapeTable CypherResultShape = "table"
 )
 
 // FunctionContent function content definition.
 type FunctionContent struct {
-	ScriptType      ScriptType       `json:"script_type" form:"script_type" default:"python" validate:"required,oneof=python"` // Script type.
-	Code            string           `json:"code" form:"code" validate:"required"`                                             // Python code (required)
-	Dependencies    []DependencyInfo `json:"dependencies" form:"dependencies"`                                                 // Dependency list.
-	DependenciesURL string           `json:"dependencies_url" form:"dependencies_url"`                                         // Dependency library installation source address.
+	ScriptType      ScriptType       `json:"script_type" form:"script_type" default:"python" validate:"required,oneof=python cypher"` // Script type.
+	Code            string           `json:"code" form:"code" validate:"required"`                                                    // Python code (required)
+	Dependencies    []DependencyInfo `json:"dependencies" form:"dependencies"`                                                        // Dependency list.
+	DependenciesURL string           `json:"dependencies_url" form:"dependencies_url"`                                                // Dependency library installation source address.
+	// KnID and ResultShape are set only for a Cypher function.
+	KnID        string            `json:"kn_id,omitempty"`        // Knowledge network the statement reads.
+	ResultShape CypherResultShape `json:"result_shape,omitempty"` // value or table.
 	// The parameter definition is expanded into the API specification when it is stored, and is decoded back when read, so that the caller can use it in its original form.
 	Inputs  []*ParameterDef `json:"inputs,omitempty"`  // Input parameter definition.
 	Outputs []*ParameterDef `json:"outputs,omitempty"` // Output parameter definition.
@@ -179,10 +195,13 @@ type FunctionInput struct {
 	Inputs  []*ParameterDef `json:"inputs,omitempty" form:"inputs"`   // Input parameter list.
 	Outputs []*ParameterDef `json:"outputs,omitempty" form:"outputs"` // Output parameter list.
 	// Code related.
-	ScriptType      ScriptType        `json:"script_type" form:"script_type" default:"python" validate:"required,oneof=python"` // Script type.
-	Code            string            `json:"code" form:"code"`                                                                 // Python code (required)
-	Dependencies    []*DependencyInfo `json:"dependencies,omitempty" form:"dependencies"`                                       // Dependency list.
-	DependenciesURL string            `json:"dependencies_url,omitempty" form:"dependencies_url"`                               // Dependency library installation source address.
+	ScriptType      ScriptType        `json:"script_type" form:"script_type" default:"python" validate:"required,oneof=python cypher"` // Script type.
+	Code            string            `json:"code" form:"code"`                                                                        // Python code (required)
+	Dependencies    []*DependencyInfo `json:"dependencies,omitempty" form:"dependencies"`                                              // Dependency list.
+	DependenciesURL string            `json:"dependencies_url,omitempty" form:"dependencies_url"`                                      // Dependency library installation source address.
+	// Cypher function only: the knowledge network Code reads, and whether it returns one value or a table.
+	KnID        string            `json:"kn_id,omitempty" form:"kn_id"`
+	ResultShape CypherResultShape `json:"result_shape,omitempty" form:"result_shape"`
 }
 
 // FunctionInputEdit function input edit definition.
@@ -191,10 +210,13 @@ type FunctionInputEdit struct {
 	Inputs  []*ParameterDef `json:"inputs,omitempty" form:"inputs"`   // Input parameter list.
 	Outputs []*ParameterDef `json:"outputs,omitempty" form:"outputs"` // Output parameter list.
 	// Code related.
-	ScriptType      ScriptType        `json:"script_type" form:"script_type" default:"python" validate:"required,oneof=python"` // Script type.
-	Code            string            `json:"code" form:"code"`                                                                 // Python code (required)
-	Dependencies    []*DependencyInfo `json:"dependencies,omitempty" form:"dependencies"`                                       // Dependency list.
-	DependenciesURL string            `json:"dependencies_url,omitempty" form:"dependencies_url"`                               // Dependency library installation source address.
+	ScriptType      ScriptType        `json:"script_type" form:"script_type" default:"python" validate:"required,oneof=python cypher"` // Script type.
+	Code            string            `json:"code" form:"code"`                                                                        // Python code (required)
+	Dependencies    []*DependencyInfo `json:"dependencies,omitempty" form:"dependencies"`                                              // Dependency list.
+	DependenciesURL string            `json:"dependencies_url,omitempty" form:"dependencies_url"`                                      // Dependency library installation source address.
+	// Cypher function only: the knowledge network Code reads, and whether it returns one value or a table.
+	KnID        string            `json:"kn_id,omitempty" form:"kn_id"`
+	ResultShape CypherResultShape `json:"result_shape,omitempty" form:"result_shape"`
 }
 
 // OpenAPIInput OpenAPI input definition.

@@ -280,6 +280,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			"f_updater",
 			"f_updater_type",
 			"f_update_time",
+			"f_revision",
 		).
 		Values(
 			objectType.OTID,
@@ -305,7 +306,8 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			objectType.CreateTime,
 			objectType.Updater.ID,
 			objectType.Updater.Type,
-			objectType.UpdateTime).
+			objectType.UpdateTime,
+			interfaces.NewDefinitionRevision()).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of insert object type, error", err)
@@ -345,7 +347,7 @@ func (ota *objectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_data_source", "f_data_properties", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_logic_properties",
 			"f_primary_keys", "f_display_key", "f_incremental_key", "f_creator", "f_creator_type",
-			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
+			"f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_revision",
 		)
 		for _, objectType := range objectTypes[start:end] {
 			values, err := objectTypeInsertValues(objectType)
@@ -405,7 +407,7 @@ func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
 		objectType.Icon, objectType.Color, objectType.BKNRawContent, objectType.KNID, objectType.Branch,
 		dataSourceBytes, dataPropertiesBytes, aliases, lifecycleStatus, deprecation, logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey,
 		objectType.IncrementalKey, objectType.Creator.ID, objectType.Creator.Type, objectType.CreateTime,
-		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime,
+		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime, interfaces.NewDefinitionRevision(),
 	}, nil
 }
 
@@ -693,6 +695,9 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 		"ot.f_kn_id",
 		"ot.f_branch",
 		"ot.f_data_source",
+		"ot.f_aliases",
+		"ot.f_lifecycle_status",
+		"ot.f_deprecation",
 		"ot.f_creator",
 		"ot.f_creator_type",
 		"ot.f_create_time",
@@ -746,7 +751,7 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 			Status:     &interfaces.ObjectTypeStatus{},
 		}
 		var tags string
-		var dataSource []byte
+		var dataSource, aliases, lifecycleStatus, deprecation []byte
 		if err := rows.Scan(
 			&item.OTID,
 			&item.OTName,
@@ -757,6 +762,9 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 			&item.KNID,
 			&item.Branch,
 			&dataSource,
+			&aliases,
+			&lifecycleStatus,
+			&deprecation,
 			&item.Creator.ID,
 			&item.Creator.Type,
 			&item.CreateTime,
@@ -777,6 +785,10 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 		if err := common.UnmarshalStoredJSON(dataSource, &item.DataSource); err != nil {
 			return nil, err
 		}
+		// Lists tag deprecated object types and offer replacements by them, so they carry the
+		// aliases and lifecycle too.
+		item.Aliases = common.DecodeStoredAliases(ctx, aliases)
+		item.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatus, deprecation))
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -1290,11 +1302,13 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		"f_updater":          objectType.Updater.ID,
 		"f_updater_type":     objectType.Updater.Type,
 		"f_update_time":      objectType.UpdateTime,
+		"f_revision":         interfaces.NewDefinitionRevision(),
 	}
 	sqlStr, vals, err := sq.Update(OT_TABLE_NAME).
 		SetMap(data).
 		Where(sq.Eq{"f_id": objectType.OTID}).
 		Where(sq.Eq{"f_kn_id": objectType.KNID}).
+		Where(sq.Eq{"f_branch": objectType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update object type by object type id, error", err)
@@ -1304,9 +1318,13 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
-	var ret sql.Result
+	var (
+		ret     sql.Result
+		queryer common.RowQueryer = ota.db
+	)
 	if tx != nil {
 		ret, err = tx.Exec(sqlStr, vals...)
+		queryer = tx
 	} else {
 		ret, err = ota.db.Exec(sqlStr, vals...)
 	}
@@ -1314,22 +1332,18 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		common.LogSafeError(ctx, "update object type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	if err = common.EnsureRowUpdated(ctx, queryer, ret, OT_TABLE_NAME, objectTypeKey(objectType)); err != nil {
+		common.LogSafeError(ctx, "Update object type found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update object type affected unexpected row count: object_type_id=%s, rows=%d",
-			objectType.OTID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+// objectTypeKey identifies one object type row: its id within a network and branch.
+func objectTypeKey(objectType *interfaces.ObjectType) sq.Eq {
+	return sq.Eq{"f_id": objectType.OTID, "f_kn_id": objectType.KNID, "f_branch": objectType.Branch}
 }
 
 func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
@@ -1397,6 +1411,7 @@ func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, objectType := range batch {
@@ -1481,11 +1496,13 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		"f_updater":         objectType.Updater.ID,
 		"f_updater_type":    objectType.Updater.Type,
 		"f_update_time":     objectType.UpdateTime,
+		"f_revision":        interfaces.NewDefinitionRevision(),
 	}
 	sqlStr, vals, err := sq.Update(OT_TABLE_NAME).
 		SetMap(data).
 		Where(sq.Eq{"f_id": objectType.OTID}).
 		Where(sq.Eq{"f_kn_id": objectType.KNID}).
+		Where(sq.Eq{"f_branch": objectType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update object type by object type id, error", err)
@@ -1500,18 +1517,9 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		common.LogSafeError(ctx, "update object type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	if err = common.EnsureRowUpdated(ctx, tx, ret, OT_TABLE_NAME, objectTypeKey(objectType)); err != nil {
+		common.LogSafeError(ctx, "Update data properties found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update object type affected unexpected row count: object_type_id=%s, rows=%d",
-			objectType.OTID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

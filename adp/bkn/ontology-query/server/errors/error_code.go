@@ -89,5 +89,6 @@ func init() {
 	httperrors.Register(actionExecutionErrCodeList)
 	httperrors.Register(actionTypeErrCodeList)
 	httperrors.Register(riskTypeErrCodeList)
+	httperrors.Register(knVersionErrCodeList)
 	httperrors.Register(metricErrCodeList)
 }

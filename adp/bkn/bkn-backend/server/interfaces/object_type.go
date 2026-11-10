@@ -105,6 +105,7 @@ type ObjectType struct {
 
 	KNID          string          `json:"kn_id" mapstructure:"kn_id"`
 	Branch        string          `json:"branch" mapstructure:"branch"`
+	Revision      string          `json:"revision,omitempty" mapstructure:"-"`
 	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 
 	Status *ObjectTypeStatus `json:"status,omitempty" mapstructure:"status"`
@@ -485,3 +486,9 @@ type ObjectTypeSampleData struct {
 	TotalCount  int64                         `json:"total_count,omitempty"`
 	SearchAfter []any                         `json:"search_after,omitempty"`
 }
+
+func (d *ObjectType) RevisionID() string { return d.OTID }
+
+func (d *ObjectType) SetRevision(revision string) { d.Revision = revision }
+
+func (d *ObjectType) GetRevision() string { return d.Revision }

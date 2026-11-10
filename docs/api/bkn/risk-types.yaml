@@ -73,6 +73,9 @@ paths:
                 - $ref: "#/components/schemas/ConceptsQuery"
       responses:
         "201":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Creation succeeded. Returns an array of risk type IDs for create operations only.
           content:
             application/json:
@@ -166,8 +169,17 @@ paths:
               - asc
               - desc
             default: desc
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
           content:
             application/json:
@@ -195,6 +207,10 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types/{rt_id}:
     put:
       tags:
@@ -223,6 +239,7 @@ paths:
           schema:
             type: string
             default: main
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
@@ -231,6 +248,9 @@ paths:
               $ref: "#/components/schemas/RiskTypeInput"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Update succeeded with no response body
         "400":
           description: Invalid parameters, including an existing name
@@ -246,6 +266,10 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types/{rt_ids}:
     get:
       tags:
@@ -274,8 +298,19 @@ paths:
           schema:
             type: string
             default: main
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
+            ETag:
+              $ref: "../_shared/kn-version.yaml#/components/headers/ETag"
           description: ok
           content:
             application/json:
@@ -294,6 +329,10 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
     delete:
       tags:
         - RiskType
@@ -321,8 +360,13 @@ paths:
           schema:
             type: string
             default: main
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Deletion succeeded with no response body
         "401":
           description: Unauthorized
@@ -332,6 +376,10 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
 components:
   securitySchemes:
     OAuth2:

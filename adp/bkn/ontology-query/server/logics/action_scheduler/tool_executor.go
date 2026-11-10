@@ -39,7 +39,15 @@ func ExecuteTool(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, a
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(execRequest.Timeout)*time.Second)
 	defer cancel()
 
-	result, err := aoAccess.ExecuteToolAsProxy(execCtx, source.BoxID, source.ToolID, execRequest)
+	var (
+		result any
+		err    error
+	)
+	if interfaces.CallerIdentityExecutionFromContext(ctx) {
+		result, err = aoAccess.ExecuteTool(execCtx, source.BoxID, source.ToolID, execRequest)
+	} else {
+		result, err = aoAccess.ExecuteToolAsProxy(execCtx, source.BoxID, source.ToolID, execRequest)
+	}
 	if err != nil {
 		logger.Errorf("Tool execution failed: %v", err)
 		return nil, fmt.Errorf("tool execution failed: %w", err)

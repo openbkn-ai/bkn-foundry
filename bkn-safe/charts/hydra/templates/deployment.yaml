@@ -44,6 +44,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.image.name }}-secret
                   key: secretsSystem
+            {{- if .Values.config.ssoTokenHook.enabled }}
+            - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "config.ssoTokenHook.secretName is required" .Values.config.ssoTokenHook.secretName | quote }}
+                  key: {{ .Values.config.ssoTokenHook.secretKey | quote }}
+            {{- end }}
           ports:
             - name: public
               containerPort: {{ .Values.service.ports.public }}

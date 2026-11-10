@@ -26,6 +26,8 @@ import (
 type KNDiffSideRequest struct {
 	KNID   string `json:"kn_id"`
 	Branch string `json:"branch"`
+	// KNVersion picks a version of a versioned network: running, draft or a version number.
+	KNVersion string `json:"kn_version"`
 }
 
 // KNDiffRequestBody is the request body of the comparison endpoint.
@@ -76,6 +78,12 @@ func (r *restHandler) diffKNs(c *gin.Context, vis hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+
+	for _, side := range []*KNDiffSideRequest{&body.Base, &body.Target} {
+		if !r.resolveDiffSide(ctx, c, side) {
+			return
+		}
 	}
 
 	span.SetAttributes(
@@ -226,4 +234,24 @@ func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsReque
 		}
 	}
 	return nil
+}
+
+// resolveDiffSide turns the branch or kn_version of one side into the branch to read, as a read
+// of that network would.
+func (r *restHandler) resolveDiffSide(ctx context.Context, c *gin.Context, side *KNDiffSideRequest) bool {
+	if r.kvs == nil {
+		return true
+	}
+	req := interfaces.KNBranchRequest{Branch: side.Branch, KNVersion: side.KNVersion}
+	if req.Branch == interfaces.MAIN_BRANCH {
+		req.Branch = ""
+	}
+	resolved, err := r.kvs.ResolveBranch(ctx, side.KNID, req)
+	if err != nil {
+		replyKNVersionError(c, err)
+		return false
+	}
+	markVersionedRead(c, side.KNID, resolved)
+	side.Branch = resolved.Branch
+	return true
 }

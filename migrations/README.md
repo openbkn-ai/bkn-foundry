@@ -40,6 +40,12 @@ numbered incremental scripts. Fresh installations and upgrades must resolve the
 same current defaults; upgrade-only history need not be recreated on a fresh
 installation.
 
+The `bkn-backend/mariadb/0.2.2/init.sql` snapshot also creates the 26 Eval
+storage tables. The community `core-data-migrator` owns their initialization;
+Eval execution and license checks remain in EE. EE startup only verifies the
+installed table/column contract. This addition covers fresh deployment only;
+there is no historical Eval upgrade script or separate EE initializer.
+
 ### Version upgrades
 
 For an existing installation, data-migrator skips every `init.sql` and executes

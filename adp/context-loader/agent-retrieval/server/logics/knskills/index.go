@@ -38,6 +38,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/knversion"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
@@ -398,7 +399,14 @@ func notProvisionedWhenForbidden(ctx context.Context, err error) error {
 
 // callerRefused reports whether the execution factory refused the caller's own read, the one
 // outcome that sends the read through the network's proxy.
-func callerRefused(err error) bool {
+//
+// Only the running version falls back to the proxy. A draft or a history version is read
+// as the caller and nobody else: the proxy was granted the Skills the running version
+// mounts, and must not open what its editors are still working on.
+func callerRefused(ctx context.Context, err error) bool {
+	if !knversion.FromContext(ctx).ReadsRunning() {
+		return false
+	}
 	status, ok := infraErr.HTTPStatus(err)
 	return ok && status == http.StatusForbidden
 }
@@ -414,7 +422,7 @@ func (s *knSkillsService) GetSkillContent(ctx context.Context, knID, skillID str
 		return nil, err
 	}
 	resp, err := s.operator.GetSkillContent(ctx, skillID)
-	if callerRefused(err) {
+	if callerRefused(ctx, err) {
 		reader, account, proxyErr := s.proxyReadAccount(ctx, knID, mount, skillID)
 		if proxyErr != nil {
 			return nil, proxyErr
@@ -473,7 +481,7 @@ func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileR
 
 	fileReq := &interfaces.ReadSkillFileRequest{SkillID: skillID, RelPath: relPath}
 	resp, err := s.operator.ReadSkillFile(ctx, fileReq)
-	if callerRefused(err) {
+	if callerRefused(ctx, err) {
 		reader, account, proxyErr := s.proxyReadAccount(ctx, req.KnID, mount, skillID)
 		if proxyErr != nil {
 			return nil, proxyErr

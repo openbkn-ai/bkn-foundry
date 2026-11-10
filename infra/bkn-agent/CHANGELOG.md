@@ -4,9 +4,15 @@
 
 ### Added
 
+- Public executions accept an optional `kn_version` (`running`, `draft` or a version number) and `draft_revision` in `context`. Both are sent to Context Loader as `X-Kn-Version` / `X-Kn-Draft-Revision`, pinned into scoped tool calls like `kn_id` (a different model-supplied value returns `ToolScopeMismatch`), and stored with the execution. `draft_revision` without `kn_version=draft` returns 422. Requests without them are stored and run as before (#1229).
+
+- Add the quality-evaluation assistant to the built-in Agent catalog, preserve administrator changes when seeding it, and carry an explicit Eval purpose through public execution and request deduplication (#2570).
+
 - `DELETE /api/bkn-agent/v1/threads/{thread_id}` deletes a thread's checkpoints and ownership row for its owner (404 for anyone else, 409 while a turn runs); task and execution records are kept.
 
 ### Fixed
+
+- Stop requiring the Agent's `use` permission on public executions and Agent settings: the public surface runs built-in Agents only, so access follows the knowledge network's authorization alone (`view_detail` to run or read, `modify` to change a network's setting). Users with network access no longer get `BknAgent.Execution.Forbidden` for lacking an Agent grant that role administration could not assign.
 
 - Remove the business-provenance directory-account bootstrap, Secret dependency, and credential exception; reject the retired identity while retaining SQL defaults, caller identity, and shared configuration history (#2823).
 

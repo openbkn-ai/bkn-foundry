@@ -75,6 +75,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.AccessLog())
 	c.Use(r.TraceContextMiddleware())
 	c.Use(r.LanguageMiddleware())
+	c.Use(r.KNVersionMiddleware())
 
 	c.GET("/api/ontology-query/v1/health", r.HealthCheck)
 

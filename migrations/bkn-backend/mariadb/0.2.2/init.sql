@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS t_object_type (
   f_aliases TEXT DEFAULT NULL COMMENT '别名，JSON 字符串数组',
   f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
   f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_object_type_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '对象类';
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS t_relation_type (
   f_importance VARCHAR(20) DEFAULT NULL COMMENT '主次，空即 primary',
   f_fallback_for VARCHAR(128) DEFAULT NULL COMMENT '替代的主关系id，空为无',
   f_verification VARCHAR(20) DEFAULT NULL COMMENT '可信度，空为未声明',
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
   PRIMARY KEY (f_kn_id,f_branch,f_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '关系类';
 
@@ -138,6 +140,7 @@ CREATE TABLE IF NOT EXISTS t_action_type (
   f_aliases TEXT DEFAULT NULL COMMENT '别名，JSON 字符串数组',
   f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
   f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_action_type_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '行动类';
@@ -160,6 +163,7 @@ CREATE TABLE IF NOT EXISTS t_concept_group (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_concept_group_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '概念分组';
@@ -198,6 +202,7 @@ CREATE TABLE IF NOT EXISTS t_value_type (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_value_type_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '值类型';
@@ -251,6 +256,7 @@ CREATE TABLE IF NOT EXISTS t_risk_type (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
   PRIMARY KEY (f_kn_id, f_branch, f_id),
   UNIQUE KEY uk_risk_type_name (f_kn_id, f_branch, f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '风险类';
@@ -307,6 +313,7 @@ CREATE TABLE IF NOT EXISTS t_operation_audit (
   failure_message VARCHAR(512) NOT NULL DEFAULT '',
   change_summary TEXT NOT NULL,
   schema_version VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  kn_version VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
   PRIMARY KEY (event_id),
   INDEX idx_bkn_audit_network_time (knowledge_network_id, event_time, event_id),
   INDEX idx_bkn_audit_actor_time (actor_id, event_time, event_id)
@@ -410,7 +417,8 @@ CREATE TABLE IF NOT EXISTS t_kn_capability_binding (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
-  PRIMARY KEY (f_id),
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
+  PRIMARY KEY (f_kn_id, f_branch, f_id),
   UNIQUE KEY uk_kn_capability (f_kn_id, f_branch, f_capability_type, f_owner_id, f_capability_id),
   KEY idx_capability (f_capability_type, f_owner_id, f_capability_id),
   KEY idx_kn_branch (f_kn_id, f_branch)
@@ -435,6 +443,7 @@ CREATE TABLE IF NOT EXISTS t_object_metric_definition (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者ID',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
   PRIMARY KEY (f_kn_id, f_branch, f_id, f_version),
   UNIQUE KEY uk_object_metric_code_version (f_kn_id, f_branch, f_code, f_version),
   INDEX idx_object_metric_owner (f_kn_id, f_branch, f_owner_object_type_id, f_update_time),
@@ -568,3 +577,516 @@ CREATE TABLE IF NOT EXISTS t_kn_event_head (
   f_last_seq BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最新变更序号',
   PRIMARY KEY (f_kn_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件序号';
+
+-- 知识网络版本状态：每个开启版本管理的网络一行，没有这一行表示未开启
+CREATE TABLE IF NOT EXISTS t_kn_version_state (
+  f_kn_id VARCHAR(128) NOT NULL COMMENT '业务知识网络id',
+  f_mode VARCHAR(20) NOT NULL DEFAULT 'enabled' COMMENT 'enabled / disabling',
+  f_running_version INT NOT NULL DEFAULT 0 COMMENT '运行版本号，0 表示未发布',
+  f_previous_version INT NOT NULL DEFAULT 0 COMMENT '上一版，0 表示没有',
+  f_next_version INT NOT NULL DEFAULT 1 COMMENT '下一个版本号',
+  f_draft_base_version INT NOT NULL DEFAULT 0 COMMENT '草稿的上游（来源版本号）',
+  f_draft_based_on_running INT NOT NULL DEFAULT 0 COMMENT '草稿确定上游时的运行版本号',
+  f_draft_modified TINYINT(1) NOT NULL DEFAULT 0 COMMENT '草稿自来源之后是否被修改',
+  f_draft_revision BIGINT NOT NULL DEFAULT 0 COMMENT '草稿修订号，任何草稿写入加一',
+  f_draft_index_build VARCHAR(40) NOT NULL DEFAULT '' COMMENT '草稿引用的概念索引构建，空表示未构建',
+  f_draft_index_revision BIGINT NOT NULL DEFAULT -1 COMMENT '草稿引用的构建对应的草稿修订号',
+  f_enabled_by VARCHAR(40) NOT NULL DEFAULT '' COMMENT '开启者id',
+  f_enabled_by_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '开启者类型',
+  f_enable_time BIGINT NOT NULL DEFAULT 0 COMMENT '开启时间',
+  f_update_time BIGINT NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络版本状态';
+
+-- 知识网络版本：内容列写入后不变，状态列与 f_index_build 可变
+CREATE TABLE IF NOT EXISTS t_kn_version (
+  f_kn_id VARCHAR(128) NOT NULL COMMENT '业务知识网络id',
+  f_version INT NOT NULL COMMENT '版本号',
+  f_label VARCHAR(64) NOT NULL DEFAULT '' COMMENT '版本标签，如 v1.2.0',
+  f_status VARCHAR(20) NOT NULL COMMENT 'running / history / deprecated / purged',
+  f_origin VARCHAR(20) NOT NULL COMMENT '产生方式：enable / publish',
+  f_base_version INT NOT NULL DEFAULT 0 COMMENT '发布时草稿的来源版本号',
+  f_draft_revision BIGINT NOT NULL DEFAULT 0 COMMENT '发布时的草稿修订号',
+  f_index_build VARCHAR(40) NOT NULL DEFAULT '' COMMENT '引用的概念索引构建',
+  f_notes TEXT NOT NULL COMMENT '发布说明',
+  f_source TEXT NOT NULL COMMENT '来源，JSON：{"type","project_id","ref"}',
+  f_publisher VARCHAR(40) NOT NULL DEFAULT '' COMMENT '发布人id',
+  f_publisher_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '发布人类型',
+  f_publish_time BIGINT NOT NULL DEFAULT 0 COMMENT '发布时间',
+  f_status_by VARCHAR(40) NOT NULL DEFAULT '' COMMENT '最近一次状态变更人id',
+  f_status_by_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '最近一次状态变更人类型',
+  f_status_time BIGINT NOT NULL DEFAULT 0 COMMENT '最近一次状态变更时间',
+  PRIMARY KEY (f_kn_id, f_version),
+  KEY idx_kn_version_status (f_kn_id, f_status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络版本';
+
+-- 知识网络版本事件：只追加，记录谁在何时对版本做了什么
+CREATE TABLE IF NOT EXISTS t_kn_version_event (
+  f_id VARCHAR(40) NOT NULL COMMENT '事件id',
+  f_kn_id VARCHAR(128) NOT NULL COMMENT '业务知识网络id',
+  f_type VARCHAR(20) NOT NULL COMMENT 'enable / publish / switch / copy / discard / deprecate / restore / purge / disable',
+  f_from_version INT NOT NULL DEFAULT 0 COMMENT '操作前运行版本或复制来源',
+  f_to_version INT NOT NULL DEFAULT 0 COMMENT '操作后运行版本或目标版本',
+  f_reason VARCHAR(20) NOT NULL DEFAULT '' COMMENT '触发原因，社区版发布时的自动清理为 retention',
+  f_notes TEXT NOT NULL COMMENT '说明',
+  f_operator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '操作人id',
+  f_operator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '操作人类型',
+  f_create_time BIGINT NOT NULL DEFAULT 0 COMMENT '时间',
+  f_idempotency_key VARCHAR(64) DEFAULT NULL COMMENT '幂等键，取自请求头 Idempotency-Key，未带时为 NULL',
+  PRIMARY KEY (f_id),
+  KEY idx_kn_version_event (f_kn_id, f_create_time),
+  UNIQUE KEY uk_kn_version_event_idem (f_kn_id, f_idempotency_key)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络版本事件';
+
+
+-- 对象指标版本号分配：按网络分配，复制或切换版本不会复用版本号
+CREATE TABLE IF NOT EXISTS t_object_metric_version_seq (
+  f_kn_id VARCHAR(128) NOT NULL COMMENT '业务知识网络id',
+  f_metric_id VARCHAR(40) NOT NULL COMMENT '对象指标id',
+  f_last_version INT NOT NULL DEFAULT 0 COMMENT '已分配的最大版本号',
+  PRIMARY KEY (f_kn_id, f_metric_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '对象指标版本号分配';
+
+-- Copyright openbkn.ai
+-- Eval schema: licensed under the OpenBKN License. See LICENSE-OPENBKN.txt.
+-- Initialized by the community data-migrator; Eval execution remains an EE capability.
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_suite (
+    id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_eval_suite_kn (kn_id),
+    description VARCHAR(1000) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_suite_version (
+    id VARCHAR(128) NOT NULL,
+    suite_id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    version INT NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    members_json JSON NOT NULL,
+    members_sha256 CHAR(64) NOT NULL,
+    published_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_suite_version (kn_id, suite_id, version),
+    CONSTRAINT fk_eval_suite_version_suite FOREIGN KEY (suite_id) REFERENCES t_bkn_eval_suite (id),
+    tags_json JSON NOT NULL,
+    name_snapshot VARCHAR(255) NOT NULL,
+    description_snapshot VARCHAR(1000) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_case (
+    id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_eval_case_kn (kn_id),
+    archived_at DATETIME(6) NULL,
+    archived_by VARCHAR(128) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_case_version (
+    id VARCHAR(128) NOT NULL,
+    case_id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    version INT NOT NULL,
+    review_status VARCHAR(32) NOT NULL,
+    source_json JSON NOT NULL,
+    input_spec_json JSON NOT NULL,
+    execution_spec_json JSON NOT NULL,
+    assertions_json JSON NOT NULL,
+    expected_ciphertext LONGBLOB NOT NULL,
+    expected_nonce VARBINARY(32) NOT NULL,
+    expected_sha256 CHAR(64) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_case_version (case_id, version),
+    KEY idx_eval_case_version_kn (kn_id, review_status),
+    CONSTRAINT fk_eval_case_version_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id),
+    title_snapshot VARCHAR(255) NOT NULL,
+    expected_source_json JSON NOT NULL,
+    category VARCHAR(32) NOT NULL,
+    risk_level VARCHAR(32) NOT NULL,
+    diagnostic_spec_json JSON NOT NULL,
+    definition_sha256 CHAR(64) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_run (
+    id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    requested_by VARCHAR(128) NOT NULL,
+    idempotency_key VARCHAR(128) NOT NULL,
+    request_sha256 CHAR(64) NOT NULL,
+    scope_kind VARCHAR(32) NOT NULL,
+    suite_id VARCHAR(128) NOT NULL,
+    suite_version INT NOT NULL,
+    target_branch VARCHAR(128) NOT NULL,
+    data_baseline_id VARCHAR(128) NOT NULL,
+    runner_type VARCHAR(64) NOT NULL,
+    selection_snapshot_json JSON NOT NULL,
+    selection_sha256 CHAR(64) NOT NULL,
+    execution_status VARCHAR(32) NOT NULL,
+    phase VARCHAR(32) NULL,
+    quality_outcome VARCHAR(32) NULL,
+    target_snapshot_json JSON NULL,
+    target_snapshot_sha256 CHAR(64) NULL,
+    planned_cases INT NOT NULL DEFAULT 0,
+    completed_cases INT NOT NULL DEFAULT 0,
+    planned_attempts INT NOT NULL DEFAULT 0,
+    completed_attempts INT NOT NULL DEFAULT 0,
+    result_revision INT NULL,
+    result_checksum CHAR(64) NULL,
+    started_at DATETIME(6) NULL,
+    finished_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_run_idempotency (kn_id, idempotency_key),
+    KEY idx_eval_run_kn_created (kn_id, created_at, id),
+    trigger_type VARCHAR(16) NOT NULL DEFAULT 'manual',
+    run_plan_id VARCHAR(36) NULL,
+    scheduled_at DATETIME(6) NULL,
+    KEY idx_eval_run_plan_id (kn_id, run_plan_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_run_credential (
+    run_id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    requested_by VARCHAR(128) NOT NULL,
+    ciphertext LONGBLOB NOT NULL,
+    nonce VARBINARY(32) NOT NULL,
+    expires_at DATETIME(6) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (run_id),
+    KEY idx_eval_run_credential_expiry (expires_at),
+    CONSTRAINT fk_eval_run_credential_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_case_run (
+    id VARCHAR(128) NOT NULL,
+    run_id VARCHAR(128) NOT NULL,
+    case_id VARCHAR(128) NOT NULL,
+    case_version_id VARCHAR(128) NOT NULL,
+    attempt_no INT NOT NULL,
+    execution_status VARCHAR(32) NOT NULL,
+    phase VARCHAR(32) NULL,
+    quality_outcome VARCHAR(32) NULL,
+    interaction_id VARCHAR(128) NULL,
+    interaction_intent_key VARCHAR(128) NULL,
+    client_invocation_id CHAR(64) NULL,
+    observation_json JSON NULL,
+    observation_sha256 CHAR(64) NULL,
+    evidence_refs_json JSON NULL,
+    evidence_refs_sha256 CHAR(64) NULL,
+    duration_ms BIGINT NULL,
+    created_at DATETIME(6) NOT NULL,
+    finished_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_case_run_attempt (run_id, case_version_id, attempt_no),
+    KEY idx_eval_case_run_page (run_id, created_at, id),
+    CONSTRAINT fk_eval_case_run_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_assertion_result (
+    id VARCHAR(128) NOT NULL,
+    case_run_id VARCHAR(128) NOT NULL,
+    assertion_id VARCHAR(128) NOT NULL,
+    evaluator_version VARCHAR(64) NOT NULL,
+    assertion_type VARCHAR(64) NOT NULL,
+    outcome VARCHAR(32) NOT NULL,
+    message TEXT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_assertion_once (case_run_id, assertion_id, evaluator_version),
+    CONSTRAINT fk_eval_assertion_case_run FOREIGN KEY (case_run_id) REFERENCES t_bkn_eval_case_run (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_finding (
+    id VARCHAR(128) NOT NULL,
+    case_run_id VARCHAR(128) NOT NULL,
+    category VARCHAR(64) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    detail_json JSON NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_eval_finding_case_run (case_run_id),
+    CONSTRAINT fk_eval_finding_case_run FOREIGN KEY (case_run_id) REFERENCES t_bkn_eval_case_run (id),
+    first_result_revision INT NOT NULL DEFAULT 1,
+    last_result_revision INT NULL,
+    assertion_id VARCHAR(128) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_job (
+    id VARCHAR(128) NOT NULL,
+    run_id VARCHAR(128) NOT NULL,
+    case_run_id VARCHAR(128) NULL,
+    job_type VARCHAR(32) NOT NULL,
+    idempotency_key VARCHAR(128) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    next_retry_at DATETIME(6) NOT NULL,
+    lease_owner VARCHAR(128) NULL,
+    lease_until DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_job_once (job_type, idempotency_key),
+    KEY idx_eval_job_claim (status, next_retry_at, lease_until, created_at, id),
+    CONSTRAINT fk_eval_job_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_case_draft (
+    case_id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    revision INT NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    category VARCHAR(32) NOT NULL,
+    risk_level VARCHAR(32) NOT NULL,
+    source_json JSON NOT NULL,
+    input_spec_json JSON NOT NULL,
+    execution_spec_json JSON NOT NULL,
+    assertions_json JSON NOT NULL,
+    expected_source_json JSON NOT NULL,
+    expected_ciphertext LONGBLOB NOT NULL,
+    expected_nonce VARBINARY(32) NOT NULL,
+    expected_sha256 CHAR(64) NOT NULL,
+    diagnostic_spec_json JSON NOT NULL,
+    definition_sha256 CHAR(64) NOT NULL,
+    created_by VARCHAR(128) NOT NULL,
+    updated_by VARCHAR(128) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (case_id),
+    KEY idx_eval_case_draft_kn_status (kn_id, status, updated_at, case_id),
+    CONSTRAINT fk_eval_case_draft_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_gold_access_audit (
+    id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    case_id VARCHAR(128) NOT NULL,
+    draft_revision INT NOT NULL,
+    principal_id VARCHAR(128) NOT NULL,
+    accessed_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_eval_gold_audit_case (kn_id, case_id, accessed_at),
+    KEY idx_eval_gold_audit_principal (kn_id, principal_id, accessed_at),
+    CONSTRAINT fk_eval_gold_audit_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_template_config (
+    kn_id VARCHAR(128) NOT NULL,
+    revision INT NOT NULL,
+    rules_json JSON NOT NULL,
+    rules_sha256 CHAR(64) NOT NULL,
+    published_version INT NOT NULL DEFAULT 0,
+    published_revision INT NOT NULL DEFAULT 0,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (kn_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_template_config_version (
+    kn_id VARCHAR(128) NOT NULL,
+    version INT NOT NULL,
+    rules_json JSON NOT NULL,
+    rules_sha256 CHAR(64) NOT NULL,
+    published_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (kn_id, version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_run_result_revision (
+    run_id VARCHAR(128) NOT NULL,
+    revision INT NOT NULL,
+    result_checksum CHAR(64) NOT NULL,
+    quality_outcome VARCHAR(32) NOT NULL,
+    target_snapshot_sha256 CHAR(64) NOT NULL,
+    members_json JSON NOT NULL,
+    members_sha256 CHAR(64) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (run_id, revision),
+    CONSTRAINT fk_eval_result_revision_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_target_scan (
+    id VARCHAR(36) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    actor_id VARCHAR(128) NOT NULL,
+    resources_json JSON NOT NULL,
+    resources_sha256 CHAR(64) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_eval_scan_kn (kn_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_generation_plan (
+    id VARCHAR(36) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    scan_id VARCHAR(36) NOT NULL,
+    template_version INT NOT NULL,
+    template_sha256 CHAR(64) NOT NULL,
+    revision INT NOT NULL,
+    selection_json JSON NOT NULL,
+    selection_sha256 CHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    actor_id VARCHAR(128) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_eval_plan_kn (kn_id, created_at),
+    CONSTRAINT fk_eval_plan_scan FOREIGN KEY (scan_id) REFERENCES t_bkn_eval_target_scan (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_generation_job (
+    id VARCHAR(36) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    plan_id VARCHAR(36) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    created_by VARCHAR(128) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_generation_plan_once (plan_id),
+    KEY idx_eval_generation_kn (kn_id, created_at),
+    CONSTRAINT fk_eval_generation_plan FOREIGN KEY (plan_id) REFERENCES t_bkn_eval_generation_plan (id),
+    credential_ciphertext LONGBLOB NULL,
+    credential_nonce VARBINARY(32) NULL,
+    lease_owner VARCHAR(36) NULL,
+    lease_until DATETIME(6) NULL,
+    error_code VARCHAR(80) NULL,
+    updated_at DATETIME(6) NULL,
+    KEY idx_eval_generation_claim (status, lease_until, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_case_candidate (
+    id VARCHAR(36) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    job_id VARCHAR(36) NOT NULL,
+    target_id VARCHAR(128) NOT NULL,
+    rule_id VARCHAR(128) NOT NULL,
+    rule_revision INT NOT NULL,
+    definition_json JSON NOT NULL,
+    definition_sha256 CHAR(64) NOT NULL,
+    expected_ciphertext LONGBLOB NULL,
+    expected_nonce VARBINARY(32) NULL,
+    expected_sha256 CHAR(64) NULL,
+    status VARCHAR(20) NOT NULL,
+    case_id VARCHAR(128) NULL,
+    reason VARCHAR(255) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_candidate_target_rule (job_id, target_id, rule_id),
+    KEY idx_eval_candidate_kn (kn_id, job_id, status),
+    CONSTRAINT fk_eval_candidate_job FOREIGN KEY (job_id) REFERENCES t_bkn_eval_generation_job (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_template_grant (
+    kn_id VARCHAR(128) NOT NULL,
+    account_id VARCHAR(128) NOT NULL,
+    operation VARCHAR(32) NOT NULL,
+    granted_by VARCHAR(128) NOT NULL,
+    granted_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (kn_id, account_id, operation)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_template_origin (
+    kn_id VARCHAR(128) NOT NULL,
+    target_id VARCHAR(128) NOT NULL,
+    rule_id VARCHAR(128) NOT NULL,
+    rule_revision INT NOT NULL,
+    case_id VARCHAR(128) NOT NULL,
+    KEY idx_eval_template_origin_case (case_id),
+    CONSTRAINT fk_eval_template_origin_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id),
+    PRIMARY KEY (kn_id, target_id, rule_id, case_id),
+    UNIQUE KEY uk_eval_template_origin_case (case_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_case_state (
+    case_id VARCHAR(128) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    enabled TINYINT(1) NOT NULL,
+    updated_by VARCHAR(128) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (case_id),
+    KEY idx_eval_case_state_kn (kn_id, enabled),
+    CONSTRAINT fk_eval_case_state_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_run_plan (
+    id VARCHAR(36) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    suite_id VARCHAR(128) NOT NULL,
+    version_policy VARCHAR(16) NOT NULL,
+    suite_version INT NULL,
+    schedule_kind VARCHAR(16) NOT NULL,
+    time_of_day CHAR(5) NOT NULL,
+    weekday TINYINT NULL,
+    day_of_month TINYINT NULL,
+    timezone VARCHAR(64) NOT NULL,
+    overlap_policy VARCHAR(16) NOT NULL,
+    enabled TINYINT(1) NOT NULL,
+    next_run_at DATETIME(6) NULL,
+    last_triggered_at DATETIME(6) NULL,
+    last_run_id VARCHAR(36) NULL,
+    last_status VARCHAR(16) NULL,
+    lease_owner VARCHAR(64) NULL,
+    lease_expires_at DATETIME(6) NULL,
+    revision INT NOT NULL,
+    created_by VARCHAR(128) NOT NULL,
+    updated_by VARCHAR(128) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_eval_run_plan_name (kn_id, name),
+    KEY idx_eval_run_plan_due (enabled, next_run_at, lease_expires_at),
+    KEY idx_eval_run_plan_kn (kn_id, updated_at),
+    CONSTRAINT fk_eval_run_plan_suite FOREIGN KEY (suite_id) REFERENCES t_bkn_eval_suite (id),
+    last_error_code VARCHAR(64) NULL,
+    last_error_message VARCHAR(512) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_run_plan_authorization (
+    plan_id VARCHAR(36) NOT NULL PRIMARY KEY,
+    kn_id VARCHAR(128) NOT NULL,
+    requested_by VARCHAR(128) NOT NULL,
+    refresh_ciphertext BLOB NULL,
+    refresh_nonce BINARY(12) NULL,
+    authorized_at DATETIME(6) NULL,
+    pending_ciphertext BLOB NULL,
+    pending_nonce BINARY(12) NULL,
+    state_sha256 CHAR(64) NULL,
+    pending_until DATETIME(6) NULL,
+    updated_at DATETIME(6) NOT NULL,
+    CONSTRAINT fk_eval_plan_authorization FOREIGN KEY (plan_id) REFERENCES t_bkn_eval_run_plan(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_overview_scope (
+    kn_id VARCHAR(128) NOT NULL,
+    revision INT NOT NULL,
+    excluded_kinds_json JSON NOT NULL,
+    excluded_resources_json JSON NOT NULL,
+    updated_by VARCHAR(128) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (kn_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_root_cause_analysis (
+    id CHAR(64) NOT NULL PRIMARY KEY,
+    kn_id VARCHAR(128) NOT NULL,
+    run_id VARCHAR(128) NOT NULL,
+    case_run_id VARCHAR(128) NOT NULL,
+    requested_by VARCHAR(128) NOT NULL,
+    result_revision INT NOT NULL,
+    context_sha256 CHAR(64) NOT NULL,
+    context_json JSON NOT NULL,
+    contains_gold BOOLEAN NOT NULL DEFAULT FALSE,
+    status VARCHAR(16) NOT NULL,
+    result_json JSON NULL,
+    error_code VARCHAR(64) NULL,
+    agent_run_id VARCHAR(128) NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    INDEX idx_eval_analysis_history (kn_id, requested_by, run_id, case_run_id, result_revision, created_at, id),
+    CONSTRAINT fk_eval_analysis_case_run FOREIGN KEY (case_run_id) REFERENCES t_bkn_eval_case_run (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

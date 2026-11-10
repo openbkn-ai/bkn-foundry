@@ -57,6 +57,9 @@ type ObjectMetricRecordV1 struct {
 	Updater             AccountInfo              `json:"updater"`
 	CreateTime          int64                    `json:"create_time"`
 	UpdateTime          int64                    `json:"update_time"`
+	// Revision changes on every write of this version and is returned as the ETag that a write to a
+	// versioned network sends back as If-Match.
+	Revision string `json:"revision,omitempty"`
 }
 
 type ObjectMetricListQueryV1 struct {

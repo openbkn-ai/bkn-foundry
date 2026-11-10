@@ -37,6 +37,7 @@ type ValueType struct {
 	CommonInfo `mapstructure:",squash"`
 	KNID       string `json:"kn_id" mapstructure:"kn_id"`
 	Branch     string `json:"branch" mapstructure:"branch"`
+	Revision   string `json:"revision,omitempty" mapstructure:"-"`
 
 	BaseType            string `json:"base_type" mapstructure:"base_type"`
 	ValueTypeDefinition `mapstructure:",squash"`
@@ -110,3 +111,9 @@ type ValueTypeService interface {
 	GetAllValueTypesByKnID(ctx context.Context, knID string, branch string) ([]*ValueType, error)
 	DeleteValueTypesByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error
 }
+
+func (d *ValueType) RevisionID() string { return d.VTID }
+
+func (d *ValueType) SetRevision(revision string) { d.Revision = revision }
+
+func (d *ValueType) GetRevision() string { return d.Revision }

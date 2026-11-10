@@ -155,6 +155,11 @@ type ObjectType struct {
 	// RelatedMetricCount is the same information one number wide, for the get_kn_detail
 	// summary: enough to decide whether drilling into this object type is worth it.
 	RelatedMetricCount int `json:"related_metric_count,omitempty"`
+
+	// DataPropertyCount and LogicPropertyCount stand in for the property lists when a
+	// get_kn_detail answer was too large to carry them (see ReduceToOutline).
+	DataPropertyCount  int `json:"data_property_count,omitempty"`
+	LogicPropertyCount int `json:"logic_property_count,omitempty"`
 }
 
 // RelatedMetric is one published object-metric version advertised by get_object_types.
@@ -409,13 +414,16 @@ type KnowledgeNetworkDetail struct {
 	// tool into every "describe this network" answer.
 	MountedCapabilities *MountedCapabilityCounts `json:"mounted_capabilities,omitempty"`
 
-	// The three counts and the notice below appear together, and only when the network
-	// was too large to answer with its concept model -- see ReduceToNavigationShell.
+	// The three counts appear only on the navigation shell -- see ReduceToNavigationShell.
 	// On every other answer the arrays are the count, so repeating it would be noise.
-	ObjectTypeCount   int    `json:"object_type_count,omitempty"`
-	RelationTypeCount int    `json:"relation_type_count,omitempty"`
-	ActionTypeCount   int    `json:"action_type_count,omitempty"`
-	Notice            string `json:"notice,omitempty"`
+	ObjectTypeCount   int `json:"object_type_count,omitempty"`
+	RelationTypeCount int `json:"relation_type_count,omitempty"`
+	ActionTypeCount   int `json:"action_type_count,omitempty"`
+	// Notice appears whenever the answer carries less than the level asked for: on the
+	// navigation shell, and on an outline (see FitWithin).
+	Notice string `json:"notice,omitempty"`
+
+	navigationShell bool
 }
 
 // MountedCapabilityCounts is how many capabilities of each kind a network has mounted.
@@ -519,6 +527,7 @@ func (d *KnowledgeNetworkDetail) ReduceToNavigationShell() {
 	d.ObjectTypes = nil
 	d.RelationTypes = nil
 	d.ActionTypes = nil
+	d.navigationShell = true
 }
 
 // NavigationShellNoticeKey names the localized notice that fits this shell.
@@ -742,6 +751,12 @@ type RelationTypesResp struct {
 	KnID          string          `json:"kn_id"`
 	RelationTypes []*RelationType `json:"relation_types"`
 	Missing       []string        `json:"missing,omitempty"`
+
+	// The three below appear only when the caller listed instead of naming ids, and
+	// mean what they mean on ObjectTypesResp.
+	TotalCount int64  `json:"total_count,omitempty"`
+	NextOffset *int   `json:"next_offset,omitempty"`
+	Notice     string `json:"notice,omitempty"`
 }
 
 // FilterObjectTypes returns the object types whose ID (or, as a fallback, Name)
