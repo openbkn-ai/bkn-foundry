@@ -44,6 +44,10 @@ type txPublisher struct {
 	problems map[string][]*interfaces.KNVersionProblem
 }
 
+func (txPublisher) IndexVersion(context.Context, string, string, string) error { return nil }
+
+func (txPublisher) DeleteBranchIndex(context.Context, string, string) error { return nil }
+
 func (p txPublisher) CheckReferences(_ context.Context, _, branch string) ([]*interfaces.KNVersionProblem, error) {
 	return p.problems[branch], nil
 }

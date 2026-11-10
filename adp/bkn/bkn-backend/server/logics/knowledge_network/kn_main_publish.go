@@ -338,3 +338,45 @@ func pruneReplacedDefinitions(ctx context.Context, tx *sql.Tx, kn *interfaces.KN
 	}
 	return nil
 }
+
+// IndexVersion writes the concept index of version branch dst from the content of src before the
+// version goes live. The index of a version is not written again afterwards, so a search of it
+// reads one whole index; documents left from an earlier attempt at the same number are dropped.
+func (kns *knowledgeNetworkService) IndexVersion(ctx context.Context, knID, src, dst string) error {
+	kn, err := kns.loadKNForDatasetSnapshot(ctx, knID, src)
+	if err != nil {
+		return err
+	}
+	if err := kns.DeleteBranchIndex(ctx, knID, dst); err != nil {
+		return err
+	}
+	rebranch(kn, dst)
+	for _, write := range []func() error{
+		func() error { return kns.cgs.InsertDatasetDatas(ctx, kn.ConceptGroups) },
+		func() error { return kns.ots.InsertDatasetData(ctx, kn.ObjectTypes) },
+		func() error { return kns.rts.InsertDatasetData(ctx, kn.RelationTypes) },
+		func() error { return kns.ats.InsertDatasetData(ctx, kn.ActionTypes) },
+		func() error { return kns.riskTypeS.InsertDatasetData(ctx, kn.RiskTypes) },
+		func() error { return kns.InsertDatasetData(ctx, kn) },
+	} {
+		if err := write(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteBranchIndex deletes every concept index document of one branch.
+func (kns *knowledgeNetworkService) DeleteBranchIndex(ctx context.Context, knID, branch string) error {
+	docID := interfaces.GenerateConceptDocuemtnID(knID, interfaces.MODULE_TYPE_KN, knID, branch)
+	if err := kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docID); err != nil {
+		return err
+	}
+	return kns.vbs.DeleteDatasetDocumentsByQuery(ctx, interfaces.BKN_DATASET_ID, map[string]any{
+		"operation": "and",
+		"sub_conditions": []map[string]any{
+			{"field": "kn_id", "operation": "==", "value": knID, "value_from": "const"},
+			{"field": "branch", "operation": "==", "value": branch, "value_from": "const"},
+		},
+	})
+}

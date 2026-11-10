@@ -460,16 +460,10 @@ func (r *restHandler) writeBranchNeeding(ctx *context.Context, c *gin.Context, k
 	return resolved.Branch, true
 }
 
-// searchBranch resolves the branch whose concept index a search reads.
+// searchBranch resolves the branch whose concept index a search reads: every version has an
+// index of its own, written when it was published.
 func (r *restHandler) searchBranch(ctx *context.Context, c *gin.Context, knID string) (string, bool) {
-	resolved, ok := r.resolveBranch(ctx, c, knID, false)
-	if !ok {
-		return "", false
-	}
-	if resolved.IndexBranch != "" {
-		return resolved.IndexBranch, true
-	}
-	return resolved.Branch, true
+	return r.readBranch(ctx, c, knID)
 }
 
 // writeWholeDraftBranch resolves the branch of a write that replaces several definitions at

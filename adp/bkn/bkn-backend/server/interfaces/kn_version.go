@@ -255,10 +255,6 @@ type KNBranchRequest struct {
 // the X-Kn-Version response header, empty when none is sent.
 type KNResolvedBranch struct {
 	Branch string
-	// IndexBranch is the branch of the concept index to search. Until versions have concept
-	// index builds of their own, the running version is searched in the index of main, which
-	// has the same content.
-	IndexBranch   string
 	Versioned     bool
 	Version       string
 	DraftRevision int64
@@ -381,6 +377,10 @@ type BranchCopier interface {
 // does. mutate runs inside the transaction and performs the copy.
 type KNMainPublisher interface {
 	PublishKNMain(ctx context.Context, knID, srcBranch string, mutate func(context.Context, *sql.Tx) error) error
+	// IndexVersion writes the concept index of version branch dst from the content of src.
+	IndexVersion(ctx context.Context, knID, src, dst string) error
+	// DeleteBranchIndex deletes the concept index of one branch.
+	DeleteBranchIndex(ctx context.Context, knID, branch string) error
 	// CheckReferences lists what a branch references that does not exist, before it goes live.
 	CheckReferences(ctx context.Context, knID, branch string) ([]*KNVersionProblem, error)
 	// ReplaceKNDraft runs mutate, which replaces the draft, in one transaction, and keeps the

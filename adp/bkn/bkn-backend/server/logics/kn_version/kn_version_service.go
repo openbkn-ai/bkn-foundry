@@ -333,6 +333,9 @@ func (s *service) Enable(ctx context.Context, knID string, req *interfaces.KNEna
 			return nil, err
 		}
 		n := latest + 1
+		if err := s.indexVersion(ctx, knID, interfaces.MAIN_BRANCH, n); err != nil {
+			return nil, err
+		}
 		if err := s.bc.ReplaceBranch(ctx, tx, knID, interfaces.MAIN_BRANCH, interfaces.VersionBranch(n)); err != nil {
 			return nil, err
 		}
@@ -512,6 +515,9 @@ func (s *service) Publish(ctx context.Context, knID string, req *interfaces.KNPu
 			return nil, err
 		}
 		n, previous, now, who := state.NextVersion, state.RunningVersion, s.now(), s.operator(ctx)
+		if err := s.indexVersion(ctx, knID, interfaces.DRAFT_BRANCH, n); err != nil {
+			return nil, err
+		}
 		if err := s.bc.ReplaceBranch(ctx, tx, knID, interfaces.DRAFT_BRANCH, interfaces.VersionBranch(n)); err != nil {
 			return nil, err
 		}
@@ -610,7 +616,27 @@ func (s *service) purgeInTx(ctx context.Context, tx *sql.Tx, knID string, versio
 	if err := s.bc.DeleteBranch(ctx, tx, knID, interfaces.VersionBranch(version)); err != nil {
 		return err
 	}
+	s.deleteVersionIndex(ctx, knID, version)
 	return s.setStatus(ctx, tx, knID, version, interfaces.KNVersionPurged)
+}
+
+// indexVersion writes the concept index of version n from src while the network is locked. A
+// version goes live only with a whole index, so a failure refuses the operation.
+func (s *service) indexVersion(ctx context.Context, knID, src string, n int) error {
+	if err := s.pub.IndexVersion(ctx, knID, src, interfaces.VersionBranch(n)); err != nil {
+		otellog.LogError(ctx, "Build the concept index of a version failed", err)
+		return newHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNVersion_ConceptIndexFailed).
+			WithErrorDetails(err.Error())
+	}
+	return nil
+}
+
+// deleteVersionIndex drops the concept index of a purged version. Nothing reads it any more, so
+// a failure leaves only unused documents and is logged.
+func (s *service) deleteVersionIndex(ctx context.Context, knID string, version int) {
+	if err := s.pub.DeleteBranchIndex(ctx, knID, interfaces.VersionBranch(version)); err != nil {
+		otellog.LogError(ctx, "Delete the concept index of a purged version failed", err)
+	}
 }
 
 // editionAllows reports whether the Community edition may use version k: only the running and
@@ -937,6 +963,7 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 			if err := s.setStatus(ctx, tx, knID, version.Version, interfaces.KNVersionPurged); err != nil {
 				return err
 			}
+			s.deleteVersionIndex(ctx, knID, version.Version)
 		}
 		if err := s.va.CreateEvent(ctx, tx, s.newEvent(ctx, knID, interfaces.KNVersionEventDisable,
 			state.RunningVersion, 0, req.Notes, "")); err != nil {
