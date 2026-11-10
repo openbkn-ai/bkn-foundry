@@ -22,6 +22,8 @@ const (
 	// that report the version a read was served from.
 	HTTPHeaderKNVersion       = "X-Kn-Version"
 	HTTPHeaderKNDraftRevision = "X-Kn-Draft-Revision"
+	// HTTPHeaderKNRunningVersion reports the running version on every read of a versioned network.
+	HTTPHeaderKNRunningVersion = "X-Kn-Running-Version"
 )
 
 type knVersionPinKey struct{}
@@ -42,6 +44,8 @@ type KNVersionPin struct {
 	// version and revision are what bkn-backend reported: "<N>" or "draft", and the draft revision.
 	version  string
 	revision string
+	// running is the running version bkn-backend reported (X-Kn-Running-Version), "" if none.
+	running string
 }
 
 // NewKNVersionPin builds the pin of a request from its kn_version and draft_revision values.
@@ -128,6 +132,18 @@ func (p *KNVersionPin) Observe(version, revision string) error {
 	return nil
 }
 
+// ObserveRunning records the running version bkn-backend reported. The first answer wins.
+func (p *KNVersionPin) ObserveRunning(running string) {
+	if p == nil || running == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.running == "" {
+		p.running = running
+	}
+}
+
 // ReadsRunningVersion reports whether the query asked for whatever version is running.
 func (p *KNVersionPin) ReadsRunningVersion() bool {
 	return p == nil || p.requested == "" || p.requested == KNVersionRunning
@@ -144,7 +160,13 @@ func (p *KNVersionPin) UsesCallerIdentity() bool {
 	if p == nil {
 		return false
 	}
-	return !p.ReadsRunningVersion()
+	if p.ReadsRunningVersion() {
+		return false
+	}
+	// A version asked for by number is the running version when bkn-backend says so.
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.requested == KNVersionDraft || p.version != p.requested || p.running != p.requested
 }
 
 // ProxyBranch is the branch to resolve the proxy for: "v<N>" for a pinned running version

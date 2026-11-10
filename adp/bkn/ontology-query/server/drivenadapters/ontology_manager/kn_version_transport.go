@@ -29,6 +29,7 @@ func (t *knVersionTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if pin == nil || resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return resp, nil
 	}
+	pin.ObserveRunning(resp.Header.Get(interfaces.HTTPHeaderKNRunningVersion))
 	if err := pin.Observe(resp.Header.Get(interfaces.HTTPHeaderKNVersion),
 		resp.Header.Get(interfaces.HTTPHeaderKNDraftRevision)); err != nil {
 		_ = resp.Body.Close()
