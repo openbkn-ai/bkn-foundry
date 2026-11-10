@@ -10,6 +10,7 @@ import (
 	"context"
 	"log"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-playground/validator/v10"
@@ -868,15 +869,27 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 	}
 }
 
+// knRelationTypesArgs is knDrillArgs plus what a caller without ids lists by: the
+// object types the relation types should touch, and the window. Like
+// knObjectTypesArgs, the listing inputs are ignored once ids are named.
+type knRelationTypesArgs struct {
+	knDrillArgs
+	Branch        string   `json:"branch"`
+	ObjectTypeIDs []string `json:"object_type_ids"`
+	Offset        int      `json:"offset"`
+	Limit         int      `json:"limit"`
+}
+
 // handleGetRelationTypes handles get_relation_types tool calls: return the full
-// definition (incl. mapping_rules) of the requested relation type ids.
+// definition (incl. mapping_rules) of the requested relation type ids, or, without
+// ids, one page of the relation type index.
 func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
 			return inputValidationToolError(ctx, err.Error()), nil
 		}
-		args := &knDrillArgs{}
+		args := &knRelationTypesArgs{}
 		if err := bindArguments(req, args); err != nil {
 			return inputValidationToolError(ctx, err.Error()), nil
 		}
@@ -884,24 +897,91 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 		if knID == "" {
 			return inputValidationToolError(ctx, "kn_id is required"), nil
 		}
-		if len(args.IDs) == 0 {
-			return inputValidationToolError(ctx, "ids is required (relation type ids from get_kn_detail)"), nil
-		}
 
-		matched, err := bkn.GetRelationTypeDetail(ctx, knID, args.IDs, true)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		// No ids means the caller has none to give: get_kn_detail answered with its
+		// navigation shell, where relation_types is null, and on a branch other than
+		// main search_schema cannot recall them either. So this lists instead of
+		// refusing, as get_object_types does (#1889).
+		var (
+			matched    []*interfaces.RelationType
+			totalCount int64
+			nextOffset *int
+			notice     string
+			offset     int
+		)
+		listing := len(args.IDs) == 0
+		if listing {
+			var limit int
+			var clamped bool
+			offset, limit, clamped = interfaces.ResolveObjectTypePage(args.Offset, args.Limit)
+			page, err := knmetrics.RelationTypesForBranch(ctx, bkn, knID, args.Branch, args.ObjectTypeIDs, offset, limit)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			matched, totalCount = page.Entries, page.TotalCount
+			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+			interfaces.ReduceToRelationTypeIndex(matched)
+			if clamped {
+				notice = renderDetailNotice(ctx, "agentRetrieval.Detail.RelationTypePageLimitClamped",
+					map[string]any{"Arg1": args.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
+			}
+		} else {
+			matched, err = knmetrics.RelationTypeDetailForBranch(ctx, bkn, knID, args.Branch, args.IDs, true)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 		}
 		// Relation declarations are search_schema's to surface, but for lifecycle and the fallback marking (#2285).
 		interfaces.OmitRelationDeclarations(matched)
-		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "relation", knID, schemaRelationTypeIDs(matched), matched, len(matched) == len(args.IDs))
-		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched}
+		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched,
+			TotalCount: totalCount, NextOffset: nextOffset, Notice: notice}
+		if listing {
+			// Measured on the text the caller reads, before the snapshot, so the
+			// evidence is the page the caller got.
+			if _, err := interfaces.FitRelationTypePage(resp, offset, interfaces.MaxRelationTypePageChars,
+				func(kept int) string {
+					return renderDetailNotice(ctx, "agentRetrieval.Detail.RelationTypePageCharsCut",
+						map[string]any{"Arg1": interfaces.MaxRelationTypePageChars, "Arg2": kept})
+				},
+				func(r *interfaces.RelationTypesResp) (int, error) { return toolTextRunes(r, format) },
+			); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
+		// A listed page is complete for what it asked: nothing was requested by name.
+		complete := listing || len(resp.RelationTypes) == len(args.IDs)
+		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "relation", knID, schemaRelationTypeIDs(resp.RelationTypes), resp.RelationTypes, complete)
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return result, nil
 	}
+}
+
+// renderDetailNotice renders a localized notice, logging rather than failing when
+// the message cannot be rendered.
+func renderDetailNotice(ctx context.Context, key string, args map[string]any) string {
+	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), key, args)
+	if err != nil {
+		logger.Errorf("localized message rendering failed: %v", err)
+	}
+	return text
+}
+
+// toolTextRunes is how many characters the text of resp's tool result carries.
+func toolTextRunes(resp any, format rest.ResponseFormat) (int, error) {
+	result, err := BuildMCPToolResult(resp, format)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, content := range result.Content {
+		if text, ok := content.(mcp.TextContent); ok {
+			n += utf8.RuneCountInString(text.Text)
+		}
+	}
+	return n, nil
 }
 
 func schemaObjectTypeIDs(items []*interfaces.ObjectType) []string {

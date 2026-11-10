@@ -276,7 +276,7 @@ paths:
     post:
       tags:
         - KnExplore
-      summary: 按 ID 批量取关系类完整定义
+      summary: 按 ID 批量取关系类完整定义，或列举关系类索引
       operationId: getRelationTypes
       x-contract-probe:
         readonly: true
@@ -288,6 +288,18 @@ paths:
       description: |
         `get_object_types` 的关系类版本：取回 summary 级别剥掉的 `mapping_rules`
         与起终点对象类详情。同样支持按名称兜底匹配，未命中的 ID 落 `missing`。
+
+        **不传 `ids` 时按 `offset` / `limit` 列举关系类索引**，与 `get_object_types` 的
+        列举模式相同：默认 50 条、上限 200，按名称排序，带 `total_count` 与 `next_offset`。
+        索引条目只有 `id` / `name` / `comment` / `tags` / `source_object_type_id` /
+        `target_object_type_id` / `type`，不含 `mapping_rules` 与起终点对象类详情；
+        `comment` 只保留前 120 个字符，超出部分以「…」结尾，完整说明按 ID 取。
+        单页内容超过约 30000 字符时提前截断，`next_offset` 指向截断处，`notice` 说明原因。
+        传 `object_type_ids` 时只列起点或终点是其中之一的关系类。已经选好对象类、
+        要找它们之间有哪些关系时优先用它，通常一页就能列完。
+
+        需要列举的情形：`get_kn_detail` 只返回导航壳时 `relation_types` 为 `null`；
+        在非 `main` 分支上 `search_schema` 不能召回概念。`branch` 对两种模式都有效。
 
         与 `get_kn_detail` 相同，不带 BKN 3.0 声明：关系类的 `aliases` / `reverse_name` /
         `cardinality` / `constraints` / `verification`，以及间接关系 `mapping_rules.properties`
@@ -302,16 +314,23 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DrillRequest'
+              $ref: '#/components/schemas/RelationTypesRequest'
             examples:
               下钻一条关系:
                 value:
                   kn_id: kn_medical
                   ids:
                     - rt_produced_by
+              列举两个对象类之间的关系:
+                value:
+                  kn_id: kn_medical
+                  object_type_ids:
+                    - ot_patient
+                    - ot_visit
+                  limit: 50
       responses:
         '200':
-          description: 关系类完整定义
+          description: 关系类完整定义，或一页关系类索引
           content:
             application/json:
               schema:
@@ -320,7 +339,7 @@ paths:
               schema:
                 type: string
         '400':
-          description: 缺少 `kn_id` 或 `ids` 为空
+          description: 缺少 `kn_id`
           content:
             application/json:
               schema:
@@ -448,24 +467,6 @@ components:
           default: summary
           description: 详情级别，见端点说明。
 
-    DrillRequest:
-      type: object
-      required:
-        - ids
-      properties:
-        bkn_context:
-          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
-        kn_id:
-          type: string
-          description: 知识网络 ID。与 `x-kn-id` 头二选一，本字段优先。
-        ids:
-          type: array
-          items:
-            type: string
-          description: |
-            要下钻的概念 ID 列表（取自 `get_kn_detail`）。也接受概念名称作为兜底匹配。
-            为空时返回 400。
-
     ObjectTypesRequest:
       type: object
       description: |
@@ -504,6 +505,52 @@ components:
             几百字节，所以比按 ID 取定义时能装得多。超过上限不报错，按上限返回，
             并在响应的 `notice` 里说明——一页比你要的短却什么都不说，会被读成
             「这张网就这么大」。
+
+    RelationTypesRequest:
+      type: object
+      description: |
+        `get_relation_types` 的入参。`ids` 可选：传了就是按 ID 取完整定义，不传就是列举
+        关系类索引，可用 `object_type_ids` 收窄。两种模式的条目形状不同——索引条目不含
+        `mapping_rules` 与起终点对象类详情；列举还会额外带 `total_count` 与 `next_offset`。
+      properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        kn_id:
+          type: string
+          description: 知识网络 ID。与 `x-kn-id` 头二选一，本字段优先。
+        branch:
+          type: string
+          default: main
+          description: 关系类所属的知识网络分支；省略时使用 main。
+        ids:
+          type: array
+          items:
+            type: string
+          description: |
+            要下钻的关系类 ID 列表（取自 `get_kn_detail`、`search_schema` 或本接口的列举
+            模式）。也接受名称作为兜底匹配。**留空即切换到列举模式**，不再返回 400；传了
+            `ids` 时 `object_type_ids` / `offset` / `limit` 无效。
+        object_type_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            列举时只返回起点或终点是这些对象类之一的关系类。仅在不传 `ids` 时有效。
+            已经选好对象类时优先用它，通常一页就能列完。
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+          description: 列举的起始位置。仅在不传 `ids` 时有效；续页请用响应里的 `next_offset`。
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+          description: |
+            列举的单页条数，默认 50、上限 200。仅在不传 `ids` 时有效。超过上限不报错，
+            按上限返回，并在响应的 `notice` 里说明；单页内容超过约 30000 字符时也会提前
+            截断，同样在 `notice` 里说明。
 
     KnowledgeNetworkDetail:
       type: object
@@ -634,11 +681,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RelationType'
+          description: |
+            传了 `ids` 时是完整定义；**列举模式下是索引条目**，不含 `mapping_rules` 与
+            起终点对象类详情，`comment` 只保留前 120 个字符。要完整内容把 `id` 传回本接口。
         missing:
           type: array
           items:
             type: string
           description: 请求里没匹配到任何关系类的 ID；全部命中时该字段不返回。
+        total_count:
+          type: integer
+          description: |
+            当前账号可见、且符合 `object_type_ids` 条件的关系类总数。**仅列举模式返回**。
+            授权过滤发生在分页之前，所以这个数是「你能看到多少」。
+        next_offset:
+          type: integer
+          description: |
+            续走本次列举的下一个 `offset`。**仅列举模式返回，且走完最后一页即不再出现**。
+            不要用 `offset + relation_types.length` 自行推算。
+        notice:
+          type: string
+          description: |
+            本次请求没有被原样兑现时的说明。有两种情形：`limit` 超过上限，按上限返回了；
+            或者这一页超过约 30000 字符，只返回了前面一部分。是否还有下一页只看 `next_offset`。
 
     ConceptGroup:
       type: object

@@ -559,11 +559,45 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 
 // GetRelationTypeDetail gets relation type details.
 func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID string, rtIDs []string, includeDetail bool) ([]*interfaces.RelationType, error) {
+	return b.GetRelationTypeDetailBranch(ctx, knID, "main", rtIDs, includeDetail)
+}
+
+// ListRelationTypesBranch reads one page of a knowledge network's relation types in name
+// order, for a caller that has no ids yet. objectTypeIDs keeps the relation types that
+// start or end at one of them -- bkn-backend's bound_object_type_id -- which is how a
+// caller who has picked object types finds what connects them without walking the list.
+//
+// bkn-backend filters by the caller's authorization before it pages, so the total and the
+// offsets are over what this caller may see.
+func (b *bknBackendAccess) ListRelationTypesBranch(ctx context.Context, knID, branch string, objectTypeIDs []string,
+	offset, limit int) (*interfaces.RelationTypePage, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/relation-types", b.baseURL, url.PathEscape(knID))
+	query := url.Values{}
+	setMetricDiscoveryBranch(query, branch)
+	for _, id := range objectTypeIDs {
+		query.Add("bound_object_type_id", id)
+	}
+	query.Set("offset", strconv.Itoa(offset))
+	query.Set("limit", strconv.Itoa(limit))
+	query.Set("sort", "name")
+	query.Set("direction", "asc")
+
+	page := &knPagedEnvelope[*interfaces.RelationType]{}
+	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.relation_type.list", query, page); err != nil {
+		return nil, err
+	}
+	return &interfaces.RelationTypePage{
+		Entries: page.Entries, TotalCount: page.TotalCount, Scanned: len(page.Entries),
+	}, nil
+}
+
+func (b *bknBackendAccess) GetRelationTypeDetailBranch(ctx context.Context, knID, branch string, rtIDs []string, includeDetail bool) ([]*interfaces.RelationType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/relation-types/%s", b.baseURL, url.PathEscape(knID), pathIDList(rtIDs))
 	header := common.GetHeaderForChildOperation(ctx, "bkn.relation_type.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	queryValues := url.Values{}
+	setMetricDiscoveryBranch(queryValues, branch)
 	queryValues.Set("include_detail", strconv.FormatBool(includeDetail))
 
 	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)

@@ -142,11 +142,11 @@
   "get_relation_types": {
     "title": "Relation Type Detail",
     "group_title": "Networks & Schema",
-    "description": "Fetch full relation type definitions by id (including mapping_rules and the source/target object names). For progressive drill-down: call get_kn_detail (summary) for the relation ids first, then expand them here. ids takes several at once; ids that match nothing come back under missing.",
+    "description": "Fetch full relation type definitions by id (including mapping_rules and the source/target object names). For progressive drill-down: call get_kn_detail (summary) for the relation ids first, then expand them here. ids takes several at once; ids that match nothing come back under missing. **Leave ids out to list the relation type index** by offset/limit, without mapping_rules and with only the first 120 characters of each comment (50 per page, 200 at most; a page past about 30,000 characters is cut short; the response carries total_count and next_offset). Once you have picked object types, prefer object_type_ids, which keeps the relation types that start or end at them; name the ids back for the definitions. branch names the branch and defaults to main.",
     "gateway": {
-      "summary": "Get the full definition of relation types by ID: the object types on each end and the mapping rules.",
-      "use_when": "You need to confirm which two object types a relation connects and on which fields.",
-      "not_for": "Without the relation type ID, use search_schema or get_kn_detail first.",
+      "summary": "Get the full definition of relation types by ID: the object types on each end and the mapping rules; without an ID, one page of them, optionally only those of given object types.",
+      "use_when": "You need to confirm which two object types a relation connects and on which fields, or which relations connect the object types you picked.",
+      "not_for": "To find which relation is relevant, use search_schema; this only reads by ID or lists by page.",
       "next_step": "Once the path is confirmed, fetch instances with query_instance_subgraph."
     }
   },
