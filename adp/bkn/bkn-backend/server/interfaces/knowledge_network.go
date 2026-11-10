@@ -189,6 +189,8 @@ type OverviewGraphNode struct {
 	IndexStatus   *ObjectTypeIndexStatus      `json:"index_status,omitempty"`
 	Degree        int                         `json:"degree,omitempty"`
 	ConceptGroups []OverviewGraphConceptGroup `json:"concept_groups,omitempty"`
+	// Lifecycle is left out while the object type is active.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 }
 
 type OverviewGraphEdge struct {
@@ -197,6 +199,11 @@ type OverviewGraphEdge struct {
 	SourceID    string `json:"source_id"`
 	TargetID    string `json:"target_id"`
 	MappingMode string `json:"mapping_mode"`
+	// Lifecycle is left out while the relation type is active.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
+	// Cardinality and Constraints are left out when the relation type does not declare them.
+	Cardinality string               `json:"cardinality,omitempty"`
+	Constraints *RelationConstraints `json:"constraints,omitempty"`
 }
 
 type OverviewGraph struct {

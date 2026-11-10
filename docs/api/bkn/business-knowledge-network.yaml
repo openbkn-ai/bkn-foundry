@@ -667,6 +667,9 @@ components:
                 type: string
               name:
                 type: string
+        lifecycle:
+          description: Whether the object type is still in use (BKN spec 3.0, §4.3). Left out when it is active.
+          $ref: ./relation-type.yaml#/components/schemas/Lifecycle
     OverviewGraphEdge:
       type: object
       required: [id, name, source_id, target_id, mapping_mode]
@@ -682,6 +685,16 @@ components:
         mapping_mode:
           type: string
           enum: [direct, indirect, filtered_cross_join]
+        lifecycle:
+          description: Whether the relation type is still in use (BKN spec 3.0, §4.3). Left out when it is active.
+          $ref: ./relation-type.yaml#/components/schemas/Lifecycle
+        cardinality:
+          description: BKN spec 3.0. How many counterparts an instance of each end has, from source to target. Left out when it is not declared.
+          type: string
+          enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        constraints:
+          description: BKN spec 3.0. The required ends and characteristics of the relation type. Left out when it declares none.
+          $ref: ./relation-type.yaml#/components/schemas/RelationConstraints
     AuthorizationResourceList:
       type: object
       required: [entries, total]
