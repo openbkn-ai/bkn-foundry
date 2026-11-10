@@ -1503,6 +1503,13 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 		}
 	}
+	// So do its version state, versions and version events.
+	if logics.KNVA != nil {
+		if err := logics.KNVA.DeleteNetwork(ctx, tx, kn.KNID); err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+		}
+	}
 
 	for _, branch := range branches {
 		if err = kns.deleteKNBranch(ctx, tx, kn.KNID, branch); err != nil {

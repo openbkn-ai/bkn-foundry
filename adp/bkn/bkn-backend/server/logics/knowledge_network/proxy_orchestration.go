@@ -421,34 +421,8 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		if err != nil {
 			return invalidProxyTargetError(ctx, err)
 		}
-		if kns.kpoa != nil {
-			delta, err = kns.buildFullProxyDelta(ctx, plan, sources)
-			if err != nil {
-				return err
-			}
-			selection, preflightErr := kns.preflightProxyDelta(ctx, plan.mapping.ProxyAccountID,
-				plan.delegatorID, delta)
-			if preflightErr != nil {
-				return preflightErr
-			}
-			if err := finalizeProxyGrantDelta(delta, selection); err != nil {
-				return proxyHTTPError(ctx, http.StatusServiceUnavailable, "finalize full proxy grant delta")
-			}
-			plan.delta = delta
-			plan.grants = selection
-			plan.resolvedSources = selection.resolved
-			plan.modelVersion = delta.targetVersion
-		} else {
-			grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
-			if err != nil {
-				return err
-			}
-			plan.grants = grants
-			plan.resolvedSources = grants.resolved
-			plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
-			if err != nil {
-				return proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
-			}
+		if err := kns.planFullProxyProjection(ctx, plan, sources); err != nil {
+			return err
 		}
 	}
 

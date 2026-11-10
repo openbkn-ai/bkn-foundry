@@ -23,6 +23,8 @@ var (
 	CGA            interfaces.ConceptGroupAccess
 	KBA            interfaces.KnowledgeBaseAccess
 	KNA            interfaces.KNAccess
+	KNVA           interfaces.KNVersionAccess
+	BC             interfaces.BranchCopier
 	KECA           interfaces.KnEventCleanupAccess
 	KPA            interfaces.KNProxyAccess
 	KPOA           interfaces.KNProxyOutboxAccess
@@ -69,6 +71,11 @@ func SetConceptGroupAccess(cga interfaces.ConceptGroupAccess) {
 
 func SetKNAccess(kna interfaces.KNAccess) {
 	KNA = kna
+}
+
+func SetKNVersionAccess(knva interfaces.KNVersionAccess, bc interfaces.BranchCopier) {
+	KNVA = knva
+	BC = bc
 }
 
 func SetKNProxyAccess(kpa interfaces.KNProxyAccess) {

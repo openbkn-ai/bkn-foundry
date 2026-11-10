@@ -104,6 +104,29 @@ func (bc *branchCopier) DeleteBranch(ctx context.Context, tx *sql.Tx, knID, bran
 	return err
 }
 
+func (bc *branchCopier) BranchesWithData(ctx context.Context, tx *sql.Tx, knID string) ([]string, error) {
+	parts := []string{"SELECT f_branch FROM " + knTable + " WHERE f_id = ?"}
+	args := []any{knID}
+	for _, table := range versionedTables {
+		parts = append(parts, "SELECT f_branch FROM "+table.name+" WHERE f_kn_id = ?")
+		args = append(args, knID)
+	}
+	rows, err := tx.QueryContext(ctx, strings.Join(parts, " UNION ")+" ORDER BY f_branch", args...)
+	if err != nil {
+		return nil, fmt.Errorf("list the branches of network %s: %w", knID, err)
+	}
+	defer func() { _ = rows.Close() }()
+	branches := []string{}
+	for rows.Next() {
+		var branch string
+		if err := rows.Scan(&branch); err != nil {
+			return nil, err
+		}
+		branches = append(branches, branch)
+	}
+	return branches, rows.Err()
+}
+
 func (bc *branchCopier) deleteDefinitions(ctx context.Context, tx *sql.Tx, knID, branch string) error {
 	for i := len(versionedTables) - 1; i >= 0; i-- {
 		query := "DELETE FROM " + versionedTables[i].name + " WHERE f_kn_id = ? AND f_branch = ?"
