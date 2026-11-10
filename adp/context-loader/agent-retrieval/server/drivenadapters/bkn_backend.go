@@ -102,9 +102,30 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 	if len(respBody) == 0 {
 		return resp, nil
 	}
-	if err := sonic.Unmarshal(respBody, resp); err != nil {
+	// bkn-backend calls the description `comment`; this tool has always answered it as
+	// `description`, so it is renamed here rather than in what callers read.
+	listed := &struct {
+		Entries []*struct {
+			interfaces.KnBrief
+			Comment string `json:"comment"`
+		} `json:"entries"`
+		TotalCount int64 `json:"total_count"`
+	}{}
+	if err := sonic.Unmarshal(respBody, listed); err != nil {
 		b.logger.Errorf("[BknBackendAccess] ListKnowledgeNetworks unmarshal response failed: %v\n", err)
 		return nil, err
+	}
+	resp.TotalCount = listed.TotalCount
+	resp.Entries = make([]*interfaces.KnBrief, 0, len(listed.Entries))
+	for _, e := range listed.Entries {
+		if e == nil {
+			continue
+		}
+		brief := e.KnBrief
+		if brief.Description == "" {
+			brief.Description = e.Comment
+		}
+		resp.Entries = append(resp.Entries, &brief)
 	}
 	return resp, nil
 }
