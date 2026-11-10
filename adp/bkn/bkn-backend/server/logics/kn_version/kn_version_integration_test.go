@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,8 @@ func (allowAll) CheckPermission(context.Context, interfaces.PermissionResource, 
 type txPublisher struct {
 	db       *sql.DB
 	problems map[string][]*interfaces.KNVersionProblem
+	// indexDeletes records each concept index deletion as "<branch>:<committed version status>".
+	indexDeletes *[]string
 }
 
 func (txPublisher) BranchReferences(_ context.Context, _, branch string) (*interfaces.KNBranchReferences, error) {
@@ -50,7 +53,20 @@ func (txPublisher) BranchReferences(_ context.Context, _, branch string) (*inter
 
 func (txPublisher) IndexVersion(context.Context, string, string, string) error { return nil }
 
-func (txPublisher) DeleteBranchIndex(context.Context, string, string) error { return nil }
+func (p txPublisher) DeleteBranchIndex(_ context.Context, knID, branch string) error {
+	if p.indexDeletes == nil {
+		return nil
+	}
+	// A separate connection sees only what is committed.
+	var status string
+	err := p.db.QueryRow("SELECT f_status FROM t_kn_version WHERE f_kn_id = ? AND f_version = ?",
+		knID, strings.TrimPrefix(branch, "v")).Scan(&status)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	*p.indexDeletes = append(*p.indexDeletes, branch+":"+status)
+	return nil
+}
 
 func (p txPublisher) CheckReferences(_ context.Context, _, branch string) ([]*interfaces.KNVersionProblem, error) {
 	return p.problems[branch], nil
@@ -79,6 +95,8 @@ type fixture struct {
 	knID string
 	ctx  context.Context
 	full bool
+
+	indexDeletes []string
 }
 
 func setup(t *testing.T) *fixture {
@@ -101,7 +119,7 @@ func setup(t *testing.T) *fixture {
 			interfaces.AccountInfo{ID: "u1", Type: "user"})}
 	f.svc = &service{
 		db: db, va: versionaccess.NewKNVersionAccessWithDB(db), bc: versionaccess.NewBranchCopier(setting),
-		ps: allowAll{}, pub: txPublisher{db: db, problems: map[string][]*interfaces.KNVersionProblem{}},
+		ps: allowAll{}, pub: txPublisher{db: db, problems: map[string][]*interfaces.KNVersionProblem{}, indexDeletes: &f.indexDeletes},
 		fullHistory: func() bool { return f.full },
 		now:         func() int64 { return time.Now().UnixMilli() },
 	}
@@ -542,5 +560,24 @@ func TestPublishPublishesMetricsWithTheNetwork(t *testing.T) {
 	}
 	if got := f.state().Draft.Revision; got != revision || mp.applied != 2 {
 		t.Fatalf("empty plan: revision %d want %d, applied %d", got, revision, mp.applied)
+	}
+}
+
+// The concept index of a purged version is deleted only once the purge is committed, so a purge
+// that rolls back leaves the version searchable.
+func TestPurgeDeletesTheIndexAfterCommit(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(1, f.editDraft("name-2"), ""); err != nil {
+		t.Fatal(err)
+	}
+	// v2 is running and the draft's base, so v1 is an ordinary history version.
+	if _, err := f.svc.Purge(f.ctx, f.knID, 1, &interfaces.KNVersionStatusRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.indexDeletes) != 1 || f.indexDeletes[0] != "v1:"+interfaces.KNVersionPurged {
+		t.Fatalf("index deletions = %v, want [v1:%s] (deleted after the purge committed)", f.indexDeletes, interfaces.KNVersionPurged)
 	}
 }

@@ -250,7 +250,9 @@ func (s *service) run(ctx context.Context, knID string, op *operation,
 		}
 	}
 	var result any
+	ctx, purged := withIndexCleanup(ctx)
 	err = inTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		purged.versions = nil
 		if event, err := s.findReplayLocked(ctx, tx, knID, op); err != nil || event != nil {
 			if event != nil {
 				return &errReplayed{event: event}
@@ -268,6 +270,7 @@ func (s *service) run(ctx context.Context, knID string, op *operation,
 	if err != nil {
 		return nil, internalError(ctx, err)
 	}
+	s.deleteVersionIndexes(ctx, knID, purged)
 	return result, nil
 }
 
@@ -657,7 +660,7 @@ func (s *service) purgeInTx(ctx context.Context, tx *sql.Tx, knID string, versio
 	if err := s.bc.DeleteBranch(ctx, tx, knID, interfaces.VersionBranch(version)); err != nil {
 		return err
 	}
-	s.deleteVersionIndex(ctx, knID, version)
+	deleteIndexAfterCommit(ctx, version)
 	return s.setStatus(ctx, tx, knID, version, interfaces.KNVersionPurged)
 }
 
@@ -670,6 +673,31 @@ func (s *service) indexVersion(ctx context.Context, knID, src string, n int) err
 			WithErrorDetails(err.Error())
 	}
 	return nil
+}
+
+type indexCleanupKey struct{}
+
+// indexCleanup collects the versions a transaction purges, so that their concept indexes are
+// deleted only once it has committed: a purge that rolls back keeps its version searchable.
+type indexCleanup struct{ versions []int }
+
+func withIndexCleanup(ctx context.Context) (context.Context, *indexCleanup) {
+	cleanup := &indexCleanup{}
+	return context.WithValue(ctx, indexCleanupKey{}, cleanup), cleanup
+}
+
+// deleteIndexAfterCommit queues the concept index of version for deletion after the transaction
+// in ctx commits.
+func deleteIndexAfterCommit(ctx context.Context, version int) {
+	if cleanup, ok := ctx.Value(indexCleanupKey{}).(*indexCleanup); ok {
+		cleanup.versions = append(cleanup.versions, version)
+	}
+}
+
+func (s *service) deleteVersionIndexes(ctx context.Context, knID string, cleanup *indexCleanup) {
+	for _, version := range cleanup.versions {
+		s.deleteVersionIndex(ctx, knID, version)
+	}
 }
 
 // deleteVersionIndex drops the concept index of a purged version. Nothing reads it any more, so
@@ -973,7 +1001,9 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 	}
 	// 2. Delete the draft and every version branch, keep the version records as purged, and
 	// remove the state row. The draft's concept index goes with the draft.
+	ctx, purged := withIndexCleanup(ctx)
 	err = s.draftTx(knID)(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		purged.versions = nil
 		state, err := s.lockAnyState(ctx, tx, knID)
 		if err != nil {
 			return err
@@ -1004,7 +1034,7 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 			if err := s.setStatus(ctx, tx, knID, version.Version, interfaces.KNVersionPurged); err != nil {
 				return err
 			}
-			s.deleteVersionIndex(ctx, knID, version.Version)
+			deleteIndexAfterCommit(ctx, version.Version)
 		}
 		if err := s.va.CreateEvent(ctx, tx, s.newEvent(ctx, knID, interfaces.KNVersionEventDisable,
 			state.RunningVersion, 0, req.Notes, "")); err != nil {
@@ -1015,6 +1045,7 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 	if err != nil {
 		return nil, internalError(ctx, err)
 	}
+	s.deleteVersionIndexes(ctx, knID, purged)
 	return s.view(nil), nil
 }
 
