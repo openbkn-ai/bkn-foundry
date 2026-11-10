@@ -51,9 +51,9 @@ func Test_ProjectVersions(t *testing.T) {
 			Draft: interfaces.KNDraftState{BaseVersion: 4, Revision: 17}}
 		v4 := &interfaces.KNVersion{Version: 4, Label: "hotfix", State: interfaces.KN_VERSION_STATE_RUNNING}
 		v3 := &interfaces.KNVersion{Version: 3, Label: "v1.2.0", State: interfaces.KN_VERSION_STATE_HISTORY,
-			Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p2", ReleaseID: "r3"}}
+			Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p2"}}
 		v2 := &interfaces.KNVersion{Version: 2, Label: "v1.1.0", State: interfaces.KN_VERSION_STATE_HISTORY,
-			Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1", ReleaseID: "r2"}}
+			Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1"}}
 		v1 := &interfaces.KNVersion{Version: 1, State: interfaces.KN_VERSION_STATE_PURGED}
 
 		Convey("Listing\n", func() {
@@ -169,7 +169,7 @@ func Test_ProjectVersions(t *testing.T) {
 			Convey("a purged version is read from its release's tag\n", func() {
 				versioning.FullHistory = true
 				purged := &interfaces.KNVersion{Version: 2, Label: "v1.1.0", State: interfaces.KN_VERSION_STATE_PURGED,
-					Source: interfaces.KNVersionSource{ReleaseID: "r2"}}
+					Source: interfaces.KNVersionSource{Ref: "c1"}}
 				kva.EXPECT().ListVersions(gomock.Any(), reviewToken, "supply").Return([]*interfaces.KNVersion{purged}, nil)
 				gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/tags/v1.1.0").Return(files, nil)
 				ls.EXPECT().CommitDefinitions(gomock.Any(), "supply", "project/p1", files, "copy v1.1.0 as draft", author).Return(copied, nil)
@@ -247,4 +247,20 @@ func Test_ProjectVersions(t *testing.T) {
 			project.Archived = false
 		})
 	})
+}
+
+func TestReleaseOfVersionByNumberThenByProjectAndLabel(t *testing.T) {
+	recorded := &interfaces.Release{ID: "r2", ProjectID: "p1", Version: "1.1.0", KNVersion: 2}
+	unrecorded := &interfaces.Release{ID: "r3", ProjectID: "p1", Version: "1.2.0"}
+	releases := []*interfaces.Release{recorded, unrecorded}
+	if got := releaseOfVersion(releases, &interfaces.KNVersion{Version: 2}); got != recorded {
+		t.Fatal("a version is the release that recorded its number", got)
+	}
+	project := interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1"}
+	if got := releaseOfVersion(releases, &interfaces.KNVersion{Version: 3, Label: "v1.2.0", Source: project}); got != unrecorded {
+		t.Fatal("a version whose number was not recorded is the release of its project and label", got)
+	}
+	if got := releaseOfVersion(releases, &interfaces.KNVersion{Version: 3, Label: "v1.2.0"}); got != nil {
+		t.Fatal("a version the workspace published is no release's", got)
+	}
 }

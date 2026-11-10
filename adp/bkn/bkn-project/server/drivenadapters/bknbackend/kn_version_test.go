@@ -90,6 +90,7 @@ func Test_KNVersionAccess(t *testing.T) {
 		})
 
 		Convey("EnableVersioning posts the notes to the network's versioning\n", func() {
+			status = http.StatusCreated
 			err := bba.EnableVersioning(ctx, token, "orders", "turn on")
 
 			So(err, ShouldBeNil)
@@ -122,14 +123,14 @@ func Test_KNVersionAccess(t *testing.T) {
 				page += `{"version":1}`
 			}
 			page += `]}`
-			replies = []string{page, `{"entries":[{"version":2,"label":"v1.0.0","status":"running","source":{"release_id":"r1"}}]}`}
+			replies = []string{page, `{"entries":[{"version":2,"label":"v1.0.0","status":"running","source":{"ref":"c1"}}]}`}
 
 			versions, err := bba.ListVersions(ctx, token, "orders")
 
 			So(err, ShouldBeNil)
 			So(versions, ShouldHaveLength, 101)
 			So(versions[100], ShouldResemble, &interfaces.KNVersion{Version: 2, Label: "v1.0.0", State: "running",
-				Source: interfaces.KNVersionSource{ReleaseID: "r1"}})
+				Source: interfaces.KNVersionSource{Ref: "c1"}})
 			So(got, ShouldHaveLength, 2)
 			So(got[0].path, ShouldEqual, networkPath+"/versions")
 			So(got[0].query, ShouldEqual, "limit=100&offset=0")
@@ -272,12 +273,12 @@ func Test_KNVersionAccess(t *testing.T) {
 
 		Convey("Publish posts the expectations, source and idempotency key and reads 201\n", func() {
 			status = http.StatusCreated
-			respBody = `{"version":5,"label":"v1.1.0","status":"running","warnings":[{"category":"metric","id":"m1",` +
-				`"description":"late"}],"published_metrics":[{"id":"m1","version":2}],"purged_version":3}`
+			respBody = `{"version":5,"label":"v1.1.0","status":"running","warnings":[{"category":"metric","definition_id":"m1",` +
+				`"description":"late"}],"published_metrics":[{"metric_id":"m1","version":2}],"purged_version":3}`
 
 			published, err := bba.Publish(ctx, token, "orders", interfaces.KNVersionPublish{
 				ExpectedRunningVersion: 4, ExpectedDraftRevision: 9, Notes: "n", Label: "v1.1.0",
-				Source:               interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1", ReleaseID: "r1"},
+				Source:               interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1"},
 				FailOnSkippedSources: true, IdempotencyKey: "r1:1.1.0",
 			})
 
@@ -288,7 +289,7 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(got[0].path, ShouldEqual, networkPath+"/versions")
 			So(got[0].body, ShouldResemble, map[string]any{
 				"expected_running_version": float64(4), "expected_draft_revision": float64(9), "notes": "n", "label": "v1.1.0",
-				"source":                  map[string]any{"type": "bkn-project", "project_id": "p1", "release_id": "r1"},
+				"source":                  map[string]any{"type": "bkn-project", "project_id": "p1"},
 				"fail_on_skipped_sources": true,
 			})
 			So(published.Version, ShouldEqual, 5)
@@ -332,7 +333,8 @@ func Test_KNVersionAccess(t *testing.T) {
 		})
 
 		Convey("ReferencedResources returns the resource ids\n", func() {
-			respBody = `{"entries":[{"id":"ds1"},{"id":"ds2"}]}`
+			respBody = `{"data_resources":[{"resource_id":"ds1","versions":[3,"draft"]},{"resource_id":"ds2","versions":[3]}],` +
+				`"functions":[{"box_id":"b1","tool_id":"t1","versions":[3]}],"skills":[{"skill_id":"s1","versions":["draft"]}]}`
 
 			ids, err := bba.ReferencedResources(ctx, token, "orders")
 

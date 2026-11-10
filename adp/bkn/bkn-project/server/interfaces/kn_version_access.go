@@ -90,13 +90,12 @@ type KNDraftIndexState struct {
 	Status   string `json:"status"`
 }
 
-// KNVersionSource is where a version came from. bkn-project fills ReleaseID with its release
-// record, so a retried publish can tell its own version from someone else's.
+// KNVersionSource is where a version came from: for a release of bkn-project, the project and the
+// commit of its definitions. bkn-backend refuses any other field.
 type KNVersionSource struct {
 	Type      string `json:"type,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
 	Ref       string `json:"ref,omitempty"`
-	ReleaseID string `json:"release_id,omitempty"`
 }
 
 // KNVersion is one published version.
@@ -107,7 +106,7 @@ type KNVersion struct {
 	BaseVersion int             `json:"base_version"`
 	Notes       string          `json:"notes"`
 	Publisher   AccountInfo     `json:"publisher"`
-	CreateTime  int64           `json:"create_time"`
+	CreateTime  int64           `json:"publish_time"`
 	Source      KNVersionSource `json:"source"`
 }
 
@@ -131,13 +130,13 @@ type KNVersionPublish struct {
 // KNVersionWarning is a warning a publish or an activation succeeded with.
 type KNVersionWarning struct {
 	Category    string `json:"category"`
-	ID          string `json:"id"`
+	ID          string `json:"definition_id"`
 	Description string `json:"description"`
 }
 
 // KNPublishedMetric is a metric version a publish made queryable.
 type KNPublishedMetric struct {
-	ID      string `json:"id"`
+	ID      string `json:"metric_id"`
 	Version int    `json:"version"`
 }
 

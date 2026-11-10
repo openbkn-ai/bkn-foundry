@@ -350,7 +350,7 @@ func (s *lineageService) publishVersion(ctx context.Context, token string, relea
 			ExpectedRunningVersion: versioning.RunningVersion, ExpectedDraftRevision: release.DraftRevision, Notes: notes,
 			Label: "v" + release.Version, AllowOutdatedBase: allowOutdated, FailOnSkippedSources: true,
 			Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: release.ProjectID,
-				Ref: release.BranchCommit, ReleaseID: release.ID},
+				Ref: release.BranchCommit},
 		}
 		if built.IdempotencyKey, err = publishKey(release, built); err != nil {
 			return nil, nil, err
@@ -379,12 +379,14 @@ func publishKey(release *interfaces.Release, req interfaces.KNVersionPublish) (s
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(body)
 	owner := release.ProjectID
 	if owner == "" {
 		owner = release.LineageID
 	}
-	return fmt.Sprintf("%s:%s:%s", owner, release.Version, hex.EncodeToString(sum[:8])), nil
+	// bkn-backend takes at most 64 characters, and a lineage id alone may be 128: the key is a
+	// digest of what names the request, with a short prefix to tell it apart in logs.
+	sum := sha256.Sum256(append([]byte(owner+"\x00"+release.Version+"\x00"), body...))
+	return "bknp-" + hex.EncodeToString(sum[:24]), nil
 }
 
 // recordInGit tags the release's definitions, brings main to them with what the running version

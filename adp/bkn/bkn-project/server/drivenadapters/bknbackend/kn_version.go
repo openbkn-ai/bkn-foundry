@@ -132,7 +132,7 @@ func (bba *bknBackendAccess) CreateVersionedKN(ctx context.Context, token string
 // EnableVersioning calls POST /knowledge-networks/{kn_id}/versioning.
 func (bba *bknBackendAccess) EnableVersioning(ctx context.Context, token string, knID string, notes string) error {
 	return bba.call(ctx, "EnableVersioning", http.MethodPost, bba.networkUrl(knID, "versioning"), nil, token,
-		map[string]any{"notes": notes}, http.StatusOK, nil)
+		map[string]any{"notes": notes}, http.StatusCreated, nil)
 }
 
 // GetVersioning calls GET /knowledge-networks/{kn_id}/versioning.
@@ -295,20 +295,21 @@ func (bba *bknBackendAccess) ResetDraft(ctx context.Context, token string, knID 
 	return bba.call(ctx, "ResetKNDraft", http.MethodPost, bba.networkUrl(knID, "draft", "reset"), nil, token, body, http.StatusOK, nil)
 }
 
-// ReferencedResources calls GET /knowledge-networks/{kn_id}/versions/referenced-resources.
+// ReferencedResources calls GET /knowledge-networks/{kn_id}/versions/referenced-resources and
+// returns the ids of the data resources an unpurged version, or the draft, binds.
 func (bba *bknBackendAccess) ReferencedResources(ctx context.Context, token string, knID string) ([]string, error) {
 	out := &struct {
-		Entries []struct {
-			ID string `json:"id"`
-		} `json:"entries"`
+		DataResources []struct {
+			ResourceID string `json:"resource_id"`
+		} `json:"data_resources"`
 	}{}
 	if err := bba.call(ctx, "ReferencedResources", http.MethodGet, bba.networkUrl(knID, "versions", "referenced-resources"),
 		nil, token, nil, http.StatusOK, out); err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(out.Entries))
-	for _, e := range out.Entries {
-		ids = append(ids, e.ID)
+	ids := make([]string, 0, len(out.DataResources))
+	for _, r := range out.DataResources {
+		ids = append(ids, r.ResourceID)
 	}
 	return ids, nil
 }

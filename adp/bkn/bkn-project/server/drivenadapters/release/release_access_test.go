@@ -122,7 +122,7 @@ func Test_ReleaseAccess(t *testing.T) {
 
 		Convey("GetRelease reads the saved publish request, and fails on one that does not read\n", func() {
 			row := releaseRow("r1", "prepared", 0, 1)
-			row[14] = `{"expected_running_version":2,"expected_draft_revision":5,"notes":"n","source":{"release_id":"r1"},` +
+			row[14] = `{"expected_running_version":2,"expected_draft_revision":5,"notes":"n","source":{"ref":"c1"},` +
 				`"fail_on_skipped_sources":true,"idempotency_key":"k1"}`
 			smock.ExpectQuery("FROM t_bkn_project_release").WillReturnRows(sqlmock.NewRows(releaseColumns).AddRow(row...))
 
@@ -131,7 +131,7 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(release.PublishRequest, ShouldResemble, &interfaces.KNVersionPublish{
 				ExpectedRunningVersion: 2, ExpectedDraftRevision: 5, Notes: "n",
-				Source: interfaces.KNVersionSource{ReleaseID: "r1"}, FailOnSkippedSources: true, IdempotencyKey: "k1",
+				Source: interfaces.KNVersionSource{Ref: "c1"}, FailOnSkippedSources: true, IdempotencyKey: "k1",
 			})
 
 			row[14] = "{not json"
@@ -261,13 +261,13 @@ func Test_ReleaseAccess(t *testing.T) {
 
 		Convey("SavePublishRequest keeps the request, idempotency key included, on the prepared release\n", func() {
 			smock.ExpectExec(savePublish).
-				WithArgs(`{"expected_running_version":2,"expected_draft_revision":5,"notes":"n","source":{"release_id":"r1"},`+
+				WithArgs(`{"expected_running_version":2,"expected_draft_revision":5,"notes":"n","source":{"ref":"c1"},`+
 					`"fail_on_skipped_sources":true,"idempotency_key":"k1"}`, "r1", "prepared").
 				WillReturnResult(sqlmock.NewResult(0, 1))
 
 			err := ra.SavePublishRequest(ctx, "r1", &interfaces.KNVersionPublish{
 				ExpectedRunningVersion: 2, ExpectedDraftRevision: 5, Notes: "n",
-				Source: interfaces.KNVersionSource{ReleaseID: "r1"}, FailOnSkippedSources: true, IdempotencyKey: "k1",
+				Source: interfaces.KNVersionSource{Ref: "c1"}, FailOnSkippedSources: true, IdempotencyKey: "k1",
 			})
 
 			So(err, ShouldBeNil)

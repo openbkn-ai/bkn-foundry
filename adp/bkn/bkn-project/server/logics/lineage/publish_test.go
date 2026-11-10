@@ -500,7 +500,8 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 		keyed := func(release *interfaces.Release, req interfaces.KNVersionPublish) interfaces.KNVersionPublish {
 			key, err := publishKey(release, req)
 			So(err, ShouldBeNil)
-			So(key, ShouldStartWith, map[bool]string{true: release.ProjectID, false: release.LineageID}[release.ProjectID != ""]+":"+release.Version+":")
+			So(key, ShouldStartWith, "bknp-")
+			So(len(key), ShouldBeLessThanOrEqualTo, 64)
 			req.IdempotencyKey = key
 			return req
 		}
@@ -510,7 +511,7 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			return keyed(release, interfaces.KNVersionPublish{ExpectedRunningVersion: expectedRunning, ExpectedDraftRevision: release.DraftRevision,
 				Notes: notes, Label: "v" + release.Version, FailOnSkippedSources: true,
 				Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE,
-					ProjectID: release.ProjectID, Ref: release.BranchCommit, ReleaseID: release.ID}})
+					ProjectID: release.ProjectID, Ref: release.BranchCommit}})
 		}
 		// expectPublish expects req kept with the release, then sent.
 		expectPublish := func(release *interfaces.Release, req interfaces.KNVersionPublish) *gomock.Call {
@@ -700,7 +701,7 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			ra.EXPECT().GetRelease(gomock.Any(), id, "1.0.0").Return(release, true, nil)
 			running(id, 1)
 			byLineage := publishOf(release, 1)
-			So(byLineage.IdempotencyKey, ShouldStartWith, id+":1.0.0:")
+			So(byLineage.IdempotencyKey, ShouldStartWith, "bknp-")
 			expectPublish(release, byLineage).Return(&interfaces.KNVersionPublished{KNVersion: interfaces.KNVersion{Version: 2}}, nil)
 			ra.EXPECT().MarkPublished(gomock.Any(), release.ID, 2, notes, gomock.Any()).Return(nil)
 			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(exported(id, release.BranchCommit), nil)
@@ -919,7 +920,7 @@ func Test_SetNetworkHeader(t *testing.T) {
 func TestPublishKeyChangesWithTheRequest(t *testing.T) {
 	release := &interfaces.Release{ID: "r1", ProjectID: "p1", LineageID: "l1", Version: "1.0.0", DraftRevision: 8}
 	req := interfaces.KNVersionPublish{ExpectedRunningVersion: 1, ExpectedDraftRevision: 8, Notes: "n", Label: "v1.0.0",
-		FailOnSkippedSources: true, Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1", ReleaseID: "r1"}}
+		FailOnSkippedSources: true, Source: interfaces.KNVersionSource{Type: interfaces.KN_VERSION_SOURCE_TYPE, ProjectID: "p1"}}
 	key := func(r *interfaces.Release, req interfaces.KNVersionPublish) string {
 		k, err := publishKey(r, req)
 		if err != nil {
@@ -928,8 +929,8 @@ func TestPublishKeyChangesWithTheRequest(t *testing.T) {
 		return k
 	}
 	first := key(release, req)
-	if !strings.HasPrefix(first, "p1:1.0.0:") || len(first) != len("p1:1.0.0:")+16 {
-		t.Fatal("the key is the project, the version and 8 bytes of the request's digest", first)
+	if !strings.HasPrefix(first, "bknp-") || len(first) > 64 {
+		t.Fatal("the key fits bkn-backend's 64 characters", first)
 	}
 	if key(release, req) != first {
 		t.Fatal("the same request must have the same key")
@@ -951,7 +952,12 @@ func TestPublishKeyChangesWithTheRequest(t *testing.T) {
 	}
 	noProject := *release
 	noProject.ProjectID = ""
-	if !strings.HasPrefix(key(&noProject, req), "l1:1.0.0:") {
-		t.Fatal("a release no project made is keyed by its lineage")
+	if key(&noProject, req) == first {
+		t.Fatal("a release no project made is keyed by its lineage, not the project")
+	}
+	long := *release
+	long.ProjectID, long.Version = strings.Repeat("l", 128), "123456789.123456789.123456789"
+	if k := key(&long, req); len(k) > 64 {
+		t.Fatal("a long lineage id must still give a key bkn-backend takes", len(k))
 	}
 }

@@ -44,10 +44,8 @@ func (s *projectReleaseService) ListVersions(ctx context.Context, token string, 
 		span.SetStatus(codes.Error, "List releases failed")
 		return nil, internalError(ctx, "List releases failed", err)
 	}
-	byID := map[string]*interfaces.Release{}
 	result := &interfaces.ProjectVersions{Versioning: *versioning, Entries: []interfaces.ProjectVersion{}}
 	for _, r := range releases {
-		byID[r.ID] = r
 		// The project's newest prepared release waits to be published.
 		if r.State == interfaces.RELEASE_STATE_PREPARED && r.ProjectID == entry.ID && result.Prepared == nil {
 			result.Prepared = r
@@ -55,7 +53,7 @@ func (s *projectReleaseService) ListVersions(ctx context.Context, token string, 
 	}
 	for _, v := range versions {
 		pv := interfaces.ProjectVersion{KNVersion: *v, Origin: interfaces.VERSION_ORIGIN_WORKSPACE}
-		if r := byID[v.Source.ReleaseID]; r != nil {
+		if r := releaseOfVersion(published(releases), v); r != nil {
 			pv.Release = r.Version
 			pv.Origin = interfaces.VERSION_ORIGIN_OTHER_PROJECT
 			if r.ProjectID == entry.ID {
@@ -153,10 +151,36 @@ func (s *projectReleaseService) releaseOf(ctx context.Context, lineageID string,
 	if err != nil {
 		return nil, false, err
 	}
+	r := releaseOfVersion(published(releases), version)
+	return r, r != nil, nil
+}
+
+// published keeps the published releases.
+func published(releases []*interfaces.Release) []*interfaces.Release {
+	out := []*interfaces.Release{}
 	for _, r := range releases {
-		if r.State == interfaces.RELEASE_STATE_PUBLISHED && (r.ID == version.Source.ReleaseID || r.KNVersion == version.Version) {
-			return r, true, nil
+		if r.State == interfaces.RELEASE_STATE_PUBLISHED {
+			out = append(out, r)
 		}
 	}
-	return nil, false, nil
+	return out
+}
+
+// releaseOfVersion is the release that published version: the one that recorded its number, or,
+// for one whose recording did not land, the release of the version's project and label.
+func releaseOfVersion(releases []*interfaces.Release, version *interfaces.KNVersion) *interfaces.Release {
+	for _, r := range releases {
+		if r.KNVersion == version.Version {
+			return r
+		}
+	}
+	if version.Source.Type != interfaces.KN_VERSION_SOURCE_TYPE {
+		return nil
+	}
+	for _, r := range releases {
+		if r.ProjectID == version.Source.ProjectID && "v"+r.Version == version.Label {
+			return r
+		}
+	}
+	return nil
 }
