@@ -44,6 +44,8 @@ func networkAtConceptCounts(objectTypes, relationTypes int) *interfaces.Knowledg
 // Validate the handler's structuredContent against the same embedded schema
 // advertised through tools/list and /mcp/info so prose and runtime cannot drift.
 func TestGetKnDetailOutputSchemaAcceptsBothShapesAtTheBoundaries(t *testing.T) {
+	// The count caps alone; the outline and brief shapes are validated below.
+	setAsideKnDetailBudget(t)
 	_, rawSchema := loadToolSchemas(toolKeyGetKnDetail)
 	schema, err := compileExecutableSchema(rawSchema)
 	if err != nil {
@@ -107,6 +109,29 @@ func TestGetKnDetailOutputSchemaAcceptsBothShapesAtTheBoundaries(t *testing.T) {
 					t.Errorf("ordinary response unexpectedly carries navigation-shell fields: %v", structured)
 				}
 			})
+		}
+	}
+}
+
+// The two shapes the character limit and brief add: an outline whose object types
+// carry property counts instead of lists, and a shell asked for outright.
+func TestGetKnDetailOutputSchemaAcceptsTheOutlineAndBrief(t *testing.T) {
+	_, rawSchema := loadToolSchemas(toolKeyGetKnDetail)
+	schema, err := compileExecutableSchema(rawSchema)
+	if err != nil {
+		t.Fatalf("compile get_kn_detail output schema: %v", err)
+	}
+	for name, args := range map[string]map[string]any{
+		"outline": {"kn_id": "kn-001", "response_format": "json"},
+		"brief":   {"kn_id": "kn-001", "response_format": "json", "detail_level": interfaces.DetailLevelBrief},
+	} {
+		result, _ := callKnDetail(t, propertyHeavyNetwork(), args)
+		structured := resultToMap(t, result)
+		if structured["notice"] == nil {
+			t.Fatalf("%s: fixture did not narrow, so this validates nothing new", name)
+		}
+		if err := schema.Validate(structured); err != nil {
+			t.Fatalf("%s: structuredContent does not match advertised output schema: %v", name, err)
 		}
 	}
 }

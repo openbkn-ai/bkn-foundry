@@ -665,24 +665,21 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		}
 
 		branch := getStringArg(req, "branch", "main")
+		detailLevel := getStringArg(req, "detail_level", interfaces.DetailLevelSummary)
 		resp, err := knmetrics.NetworkDetailForBranch(ctx, bkn, knID, branch)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		notice := func(reduction interfaces.KnDetailReduction) string {
+			return renderKnDetailNotice(ctx, resp, reduction, detailLevel, branch)
+		}
 		// A network too large to answer with its concept model narrows to its navigation
 		// shell, and does so here -- before the two steps below, which each cost a
 		// downstream call per object type of a list this answer will not carry (#1877).
-		if resp.NeedsNavigationShell() {
+		// brief asks for that shell outright.
+		if detailLevel == interfaces.DetailLevelBrief || resp.NeedsNavigationShell() {
 			resp.ReduceToNavigationShell()
-			noticeKey := resp.NavigationShellNoticeKey()
-			if selected := strings.TrimSpace(branch); selected != "" && selected != "main" {
-				noticeKey = "KnDetailNavigationShellBranch"
-			}
-			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+noticeKey, map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
-			if renderErr != nil {
-				logger.Errorf("localized message rendering failed: %v", renderErr)
-			}
-			resp.Notice = localizedText
+			resp.Notice = notice(interfaces.KnDetailReductionShell)
 		} else {
 			resp.ObjectTypes, err = objectpermission.FilterObjectTypesBranch(ctx, schemaAccess, knID, branch, resp.ObjectTypes)
 			if err != nil {
@@ -715,8 +712,17 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			// whoever reads the answer, and only one of them is worth investigating.
 			log.Printf("WARN: get_kn_detail capability bindings unreadable for kn %s: %v", knID, err)
 		}
-		detailLevel := getStringArg(req, "detail_level", interfaces.DetailLevelSummary)
 		resp.Slim(detailLevel)
+		// Narrowed to what the caller can read in one result, measured as they will read
+		// it, and before the snapshot so the evidence is the answer they were given.
+		if _, err := resp.FitWithin(interfaces.MaxKnDetailChars, notice, func(d *interfaces.KnowledgeNetworkDetail) (int, error) {
+			if detailLevel != interfaces.DetailLevelFull {
+				d = objectpermission.WithUnrestrictedPermissionsOmitted(d)
+			}
+			return toolResultRunes(d, format)
+		}); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "network", knID, nil, resp, true)
 		// After the snapshot, which records permissions as they are: the evidence
 		// keeps every entry, only the answer drops the ones that say nothing.
@@ -729,6 +735,17 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		}
 		return result, nil
 	}
+}
+
+// renderKnDetailNotice is the localized notice for a get_kn_detail answer that carries
+// less than the level asked for.
+func renderKnDetailNotice(ctx context.Context, detail *interfaces.KnowledgeNetworkDetail, reduction interfaces.KnDetailReduction, detailLevel, branch string) string {
+	key, args := detail.KnDetailNotice(reduction, detailLevel, branch)
+	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+key, args)
+	if err != nil {
+		logger.Errorf("localized message rendering failed: %v", err)
+	}
+	return text
 }
 
 // knDrillArgs are the arguments for the get_object_types / get_relation_types
