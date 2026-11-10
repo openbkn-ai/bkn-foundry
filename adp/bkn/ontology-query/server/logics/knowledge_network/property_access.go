@@ -13,6 +13,7 @@ import (
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 	propertyaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/property_access"
 )
 
@@ -114,6 +115,9 @@ func (kns *knowledgeNetworkService) resolvePathObjectType(ctx context.Context, k
 	}
 	objectType, exists, err := kns.omAccess.GetObjectType(ctx, knID, branch, pathObjectType.OTID)
 	if err != nil {
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return interfaces.ObjectType{}, false, versionErr
+		}
 		return interfaces.ObjectType{}, false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
 			WithErrorDetails("failed to load object type schema for relation access")
