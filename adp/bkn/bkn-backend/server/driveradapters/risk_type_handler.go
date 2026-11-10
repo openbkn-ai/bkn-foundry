@@ -417,7 +417,7 @@ func (r *restHandler) ListRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler ListRiskTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	if !replyWithRevisions(ctx, c, interfaces.RevisionKindRiskType, knID, branch, list) {
+	if !fillListRevisions(ctx, c, interfaces.RevisionKindRiskType, knID, branch, list) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": list, "total_count": total})

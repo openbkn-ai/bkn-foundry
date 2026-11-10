@@ -727,9 +727,6 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	// if simpleInfo {
 	// Get relation type summaries.
 	otList, total, err := r.rts.ListRelationTypeSummaries(ctx, parameter)
-	if !replyWithRevisions(ctx, c, interfaces.RevisionKindRelationType, knID, branch, otList) {
-		return
-	}
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
@@ -741,6 +738,10 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if !fillListRevisions(ctx, c, interfaces.RevisionKindRelationType, knID, branch, otList) {
 		return
 	}
 

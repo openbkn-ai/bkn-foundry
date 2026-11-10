@@ -740,9 +740,6 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 
 	// Get concept group summaries.
 	knList, total, tags, err := r.cgs.ListConceptGroupSummaries(ctx, parameter)
-	if !replyWithRevisions(ctx, c, interfaces.RevisionKindConceptGroup, knID, branch, knList) {
-		return
-	}
 	result := map[string]any{"entries": knList, "total_count": total, "available_tags": tags}
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
@@ -754,6 +751,10 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if !fillListRevisions(ctx, c, interfaces.RevisionKindConceptGroup, knID, branch, knList) {
 		return
 	}
 

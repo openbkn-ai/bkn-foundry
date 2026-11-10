@@ -1001,8 +1001,10 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 		if err != nil {
 			return err
 		}
+		// Only the branches versioning owns go; an ordinary branch the network had before
+		// versioning was enabled stays.
 		for _, branch := range branches {
-			if branch == interfaces.MAIN_BRANCH {
+			if !IsReservedBranch(branch) {
 				continue
 			}
 			if err := s.bc.DeleteBranch(ctx, tx, knID, branch); err != nil {

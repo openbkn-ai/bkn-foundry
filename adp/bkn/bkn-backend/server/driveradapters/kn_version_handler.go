@@ -498,6 +498,16 @@ func replyWithRevisions[T interfaces.Revisioned](ctx context.Context, c *gin.Con
 	return true
 }
 
+// fillListRevisions sets the revision of each definition in a list response. A list carries no
+// ETag, even with one entry: If-Match belongs to reads of one definition.
+func fillListRevisions[T interfaces.Revisioned](ctx context.Context, c *gin.Context, kind, knID, branch string, items []T) bool {
+	if err := logics.FillRevisions(ctx, kind, knID, branch, items); err != nil {
+		replyKNVersionError(c, err)
+		return false
+	}
+	return true
+}
+
 // setETag sets the ETag of a response that returns one definition.
 func setETag[T interfaces.Revisioned](c *gin.Context, items []T) {
 	if len(items) != 1 {

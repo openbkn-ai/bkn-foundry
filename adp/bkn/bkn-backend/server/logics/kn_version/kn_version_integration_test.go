@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -397,6 +398,34 @@ func TestDisableKeepsRunningVersionOnMain(t *testing.T) {
 	view, err = f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{})
 	if err != nil || view.RunningVersion != 3 {
 		t.Fatalf("enable again: %+v %v", view, err)
+	}
+}
+
+// Disabling removes only the branches versioning added. An ordinary branch the network had
+// before versioning was enabled survives.
+func TestDisableKeepsOrdinaryBranches(t *testing.T) {
+	f := setup(t)
+	f.exec("INSERT INTO t_object_type (f_kn_id, f_id, f_name, f_branch, f_comment, f_bkn_raw_content, f_data_source) VALUES (?, 'ot1', 'dev-name', 'dev', '', '', '')", f.knID)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(1, f.editDraft("name-2"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Disable(f.ctx, f.knID, &interfaces.KNDisableVersioningRequest{DiscardDraft: true}); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := f.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	branches, err := f.svc.bc.BranchesWithData(f.ctx, tx, f.knID)
+	_ = tx.Rollback()
+	if err != nil || !slices.Equal(branches, []string{"dev", interfaces.MAIN_BRANCH}) {
+		t.Fatalf("after disable: branches %v %v, want [dev main]", branches, err)
+	}
+	if name := f.objectName("dev"); name != "dev-name" {
+		t.Fatalf("dev branch object = %q, want dev-name", name)
 	}
 }
 
