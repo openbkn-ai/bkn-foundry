@@ -199,7 +199,8 @@ func TestExploreSubgraphSchema_DescriptionsAreLocalized(t *testing.T) {
 		// Each description in the baseline must have a corresponding coverage entry, otherwise the English client will silently fall back to Chinese.
 		for _, path := range collectDescriptionPaths(wrapper, nil) {
 			// bkn_context is injected by offerBKNContext at assembly time and is not part of the baseline of this file.
-			if strings.Contains(path, "bkn_context") {
+			// kn_version and draft_revision are injected by offerKnVersion, in English.
+			if strings.Contains(path, "bkn_context") || strings.Contains(path, "kn_version") || strings.Contains(path, "draft_revision") {
 				continue
 			}
 			convey.So(replacements[path], convey.ShouldNotBeBlank)

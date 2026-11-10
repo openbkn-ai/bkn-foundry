@@ -284,8 +284,17 @@ func ptcStubSignature(tool MCPToolInfo) string {
 	if branchKeywordOnly {
 		signature = strings.Replace(signature, ", branch: str = 'main'", "", 1)
 	}
+	// kn_version and draft_revision arrived the same way: after scripts used the
+	// optional arguments positionally, so they are by-name only for every tool.
+	var keywordOnly []string
+	for _, kw := range []string{"draft_revision: int = None", "kn_version: str = None"} {
+		if strings.Contains(signature, ", "+kw) {
+			signature = strings.Replace(signature, ", "+kw, "", 1)
+			keywordOnly = append(keywordOnly, kw)
+		}
+	}
 	tolerated := ptcToleratedParams(tool.InputSchema)
-	if len(tolerated) == 0 && !branchKeywordOnly {
+	if len(tolerated) == 0 && !branchKeywordOnly && len(keywordOnly) == 0 {
 		return signature
 	}
 	parts := make([]string, 0, len(tolerated))
@@ -299,11 +308,17 @@ func ptcStubSignature(tool MCPToolInfo) string {
 		}
 		signature += strings.Join(parts, ", ")
 	}
-	if branchKeywordOnly {
+	if branchKeywordOnly || len(keywordOnly) > 0 {
 		if !strings.HasSuffix(signature, "(") {
 			signature += ", "
 		}
-		signature += "*, branch: str = 'main'"
+		signature += "*"
+		if branchKeywordOnly {
+			signature += ", branch: str = 'main'"
+		}
+		for i := len(keywordOnly) - 1; i >= 0; i-- {
+			signature += ", " + keywordOnly[i]
+		}
 	}
 	return signature + ")"
 }

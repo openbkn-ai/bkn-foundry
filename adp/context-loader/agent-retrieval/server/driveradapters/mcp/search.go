@@ -44,7 +44,10 @@ const (
 	// Chinese has about half the runes of the same schema in English and about
 	// as many bytes, so a rune budget would hand the shortcut to one locale
 	// and withhold it from the other for the same tool.
-	maxReadySchemaBytes = 4000
+	//
+	// Raised from 4000 when every network-scoped tool gained kn_version and
+	// draft_revision, which pushed explore_subgraph just past the old rail.
+	maxReadySchemaBytes = 4400
 )
 
 // Search weights. The catalogue is a handful of tools with short copy, so
