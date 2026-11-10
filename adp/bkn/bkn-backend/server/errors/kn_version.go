@@ -21,8 +21,6 @@ const (
 	BknBackend_KNVersion_DefinitionModified     = "BknBackend.KNVersion.DefinitionModified"
 	BknBackend_KNVersion_PreconditionRequired   = "BknBackend.KNVersion.PreconditionRequired"
 	BknBackend_KNVersion_ConceptIndexFailed     = "BknBackend.KNVersion.ConceptIndexFailed"
-	BknBackend_KNVersion_ConceptIndexBuilding   = "BknBackend.KNVersion.ConceptIndexBuilding"
-	BknBackend_KNVersion_ProxySyncRequired      = "BknBackend.KNVersion.ProxySyncRequired"
 	BknBackend_KNVersion_NothingToPublish       = "BknBackend.KNVersion.NothingToPublish"
 	BknBackend_KNVersion_ValidationFailed       = "BknBackend.KNVersion.ValidationFailed"
 	BknBackend_KNVersion_BrokenReferences       = "BknBackend.KNVersion.BrokenReferences"
@@ -51,8 +49,6 @@ var KNVersionErrCodeList = []string{
 	BknBackend_KNVersion_DefinitionModified,
 	BknBackend_KNVersion_PreconditionRequired,
 	BknBackend_KNVersion_ConceptIndexFailed,
-	BknBackend_KNVersion_ConceptIndexBuilding,
-	BknBackend_KNVersion_ProxySyncRequired,
 	BknBackend_KNVersion_NothingToPublish,
 	BknBackend_KNVersion_ValidationFailed,
 	BknBackend_KNVersion_BrokenReferences,

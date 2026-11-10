@@ -24,8 +24,6 @@ var knVersionZhCN = i18n.I18nMessages{
 		"BknBackend.KNVersion.DefinitionModified":     "该定义已被他人修改，请重新读取后重试。",
 		"BknBackend.KNVersion.PreconditionRequired":   "写入版本化网络需要前置条件：修改单个定义带 If-Match，其余带 expected_draft_revision。",
 		"BknBackend.KNVersion.ConceptIndexFailed":     "概念索引构建失败，请重试。",
-		"BknBackend.KNVersion.ConceptIndexBuilding":   "草稿的概念索引仍在构建，请稍后重试。",
-		"BknBackend.KNVersion.ProxySyncRequired":      "新版本的代理授权尚未生效。请重试代理同步后再执行该操作。",
 		"BknBackend.KNVersion.NothingToPublish":       "草稿没有未发布的修改。",
 		"BknBackend.KNVersion.ValidationFailed":       "草稿未通过发布校验，请修正所列问题后重试。",
 		"BknBackend.KNVersion.BrokenReferences":       "目标版本引用的资源已不存在，请修正所列问题后重试。",

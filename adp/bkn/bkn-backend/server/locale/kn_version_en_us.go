@@ -24,8 +24,6 @@ var knVersionEnUS = i18n.I18nMessages{
 		"BknBackend.KNVersion.DefinitionModified":     "The definition was modified by someone else. Reload it and retry.",
 		"BknBackend.KNVersion.PreconditionRequired":   "Writes to a versioned knowledge network need a precondition: If-Match for one definition, or expected_draft_revision.",
 		"BknBackend.KNVersion.ConceptIndexFailed":     "Building the concept index failed. Retry the operation.",
-		"BknBackend.KNVersion.ConceptIndexBuilding":   "The concept index of the draft is still being built. Retry later.",
-		"BknBackend.KNVersion.ProxySyncRequired":      "The proxy permissions of the new version are not in effect yet. Retry the proxy synchronization, then retry the operation.",
 		"BknBackend.KNVersion.NothingToPublish":       "The draft has no unpublished changes.",
 		"BknBackend.KNVersion.ValidationFailed":       "The draft did not pass the publish checks. Fix the listed problems and retry.",
 		"BknBackend.KNVersion.BrokenReferences":       "The target version references resources that no longer exist. Fix the listed problems and retry.",
