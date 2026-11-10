@@ -173,8 +173,10 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		actionProxy             = &interfaces.TrustedProxyContext{}
 		proxyPermissionSnapshot []interfaces.PermissionRequirement
 	)
+	// Decided once: the instance read below can resolve the pin and change its answer.
 	pin := interfaces.KNVersionPinFromContext(ctx)
-	if pin.UsesCallerIdentity() {
+	callerIdentity := pin.UsesCallerIdentity()
+	if callerIdentity {
 		actionProxy.PublishedModelVersion = interfaces.CallerIdentityModelPrefix + pin.Token()
 	} else {
 		actionProxy, proxyPermissionSnapshot, err = s.resolveActionProxyContext(ctx, req.KNID, &actionType)
@@ -258,7 +260,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	executionID := generatedExecutionID.String()
 	actionProxy.ExecutionID = executionID
 	var proxySubject *interfaces.AccountInfo
-	if !pin.UsesCallerIdentity() {
+	if !callerIdentity {
 		subject := actionProxy.Proxy
 		proxySubject = &subject
 	}
