@@ -4,9 +4,14 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ## Unreleased
 
+- Align MCP catalog group labels in Chinese and English, and preserve optional HTTP extension titles, group titles, and ordering in both MCP discovery profiles. Tool names, schemas, and execution behavior are unchanged.
+  - Deployment: Rebuild and upgrade the sandbox image together with Context Loader. Catalog metadata contributes to the generated SDK toolkit fingerprint; `run_code` rejects an older sandbox image with `sandbox toolkit version mismatch`.
+
 - `list_knowledge_networks` returns each network's `description` again. bkn-backend names the field `comment`, so it was dropped while reading the list and every network came back with an empty description.
 
 - `get_kn_detail` answers within about 30000 characters, counted in the format the caller reads; over MCP the bound holds for both the text and the `structuredContent` JSON beside it. A larger summary or full answer is narrowed with a `notice`: first object types drop their property lists for `data_property_count` / `logic_property_count`, then the answer falls back to the navigation shell. New `detail_level=brief` returns only the network's name, description, concept groups and concept counts; the MCP instructions now start exploration with it. The default level stays `summary`; networks whose answer fits are unchanged.
+
+- `get_relation_types` lists the relation type index when called without `ids`: one page in name order (50 by default, 200 at most) with `total_count` and `next_offset`, entries without `mapping_rules` and with the first 120 characters of `comment`; a page past about 30,000 characters is cut short and continues at `next_offset`. `object_type_ids` keeps the relation types that start or end at the given object types. The tool also takes `branch` in both modes. Calls with `ids` on main are unchanged.
 
 - Add opt-in HTTP MCP extensions with same-origin authenticated forwarding, licence gating, and direct control-plane tools in the full and compact profiles. Enables the EE Eval participant tools without embedding Eval business logic; the default catalogue is unchanged. (#2570)
 

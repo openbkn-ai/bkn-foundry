@@ -388,15 +388,22 @@
   "get_relation_types": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
-    "input_schema.properties.ids.description": "Relation type ids to expand, taken from relation_types[].id of the get_kn_detail summary; a name is accepted too. Several may be given and are fetched in one batch.",
+    "input_schema.properties.ids.description": "Relation type ids to expand, from relation_types[].id of the get_kn_detail summary, from search_schema, or from this tool's listing mode; a name is accepted too. Several may be given and come back in full in one batch. **Leave ids out to list the network's relation type index** by offset/limit instead -- id, name, comment, tags, source_object_type_id, target_object_type_id and type, with only the first 120 characters of comment and without mapping_rules. When get_kn_detail answers with its navigation shell, or search_schema cannot be used off main, this is the way to the relation type ids; name them back here for the definitions. With ids, object_type_ids, offset and limit are ignored.",
+    "input_schema.properties.object_type_ids.description": "When listing, keep only the relation types that start or end at one of these object types. Prefer it once you have picked object types: what connects them usually fits one page, with no walk over the whole network. Applies only without ids; leave it out to list every relation type.",
+    "input_schema.properties.offset.description": "Where the listing starts. Applies only without ids; continue with the next_offset in the response rather than computing it.",
+    "input_schema.properties.limit.description": "How many entries one listed page carries: 50 by default, 200 at most. Applies only without ids. A limit past the maximum is not refused: the page carries the maximum and notice says so. A page past about 30,000 characters is cut short, and notice says that too.",
+    "input_schema.properties.branch.description": "Knowledge network branch containing these relation types. Defaults to main.",
     "output_schema.properties.kn_id.description": "Knowledge network id",
     "output_schema.properties.relation_types.items.properties.id.description": "Relation type id",
     "output_schema.properties.relation_types.items.properties.name.description": "Relation name",
-    "output_schema.properties.relation_types.items.properties.comment.description": "Description",
+    "output_schema.properties.relation_types.items.properties.comment.description": "Description. When listing, only its first 120 characters, ending in an ellipsis when cut; name the id back for the whole of it.",
     "output_schema.properties.relation_types.items.properties.source_object_type_id.description": "Source object type id",
     "output_schema.properties.relation_types.items.properties.target_object_type_id.description": "Target object type id",
-    "output_schema.properties.relation_types.description": "The complete relation type definitions, including mapping_rules and the source and target object names",
-    "output_schema.properties.missing.description": "Ids that were requested but matched nothing"
+    "output_schema.properties.relation_types.description": "The complete relation type definitions, including mapping_rules and the source and target object names. Listing mode returns relation type index entries only; name the ids back for the definitions.",
+    "output_schema.properties.missing.description": "Ids that were requested but matched nothing",
+    "output_schema.properties.total_count.description": "How many relation types this account may see in the network that match object_type_ids. Present only when listing.",
+    "output_schema.properties.next_offset.description": "The offset that continues this listing. Present only when listing, and **absent after the last page** -- do not derive it from offset + length.",
+    "output_schema.properties.notice.description": "Why the request was not answered exactly as asked, for one of two reasons: a limit past the maximum was answered with the maximum, or the page passed about 30,000 characters and carries its first entries only. The page is then shorter than asked for, which does not mean the listing has ended; next_offset says whether it has."
   },
   "get_skill_content": {
     "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself, and the Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",

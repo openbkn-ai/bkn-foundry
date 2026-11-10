@@ -4,9 +4,14 @@
 
 ## Unreleased
 
+- 统一 MCP 工具分类的中英文名称；HTTP 扩展透传可选的工具标题、分组名称及排序，完整与精简 MCP 接口均可正确展示。工具调用名称、参数及执行行为保持不变。
+  - 发布注意：沙箱镜像需要重新构建，并与 Context Loader 配套升级。工具分类元数据参与 SDK 工具包指纹计算；`run_code` 会拒绝旧沙箱镜像并返回 `sandbox toolkit version mismatch`。
+
 - `list_knowledge_networks` 恢复返回各知识网络的 `description`。bkn-backend 的字段名是 `comment`，读取列表时被丢弃，所有网络的说明都是空的。
 
 - `get_kn_detail` 的返回限制在约 30000 字符以内，按调用方实际读到的格式计数；MCP 返回时，文本和同时附带的 `structuredContent` JSON 都不超过这个上限。summary 或 full 超过时逐级收窄并附 `notice`：先把对象类的属性列表换成 `data_property_count` / `logic_property_count`，仍超过则只返回导航壳。新增 `detail_level=brief`，只返回网络名称、说明、概念组与各类概念数量；MCP 使用说明改为以它开局。默认级别仍是 `summary`，返回未超限的网络输出不变。
+
+- `get_relation_types` 不传 `ids` 时列举关系类索引：按名称排序分页返回（默认 50 条，上限 200），带 `total_count` 与 `next_offset`，条目不含 `mapping_rules`，`comment` 只保留前 120 个字符；单页超过约 3 万字符时提前截断，从 `next_offset` 续页。传 `object_type_ids` 时只列起点或终点是这些对象类之一的关系类。两种模式都支持 `branch`。在 main 上按 `ids` 调用的行为不变。
 
 - 增加可选 HTTP MCP 扩展，按同源路径转发认证、核验许可，并在完整及精简入口直接发布控制工具。支持接入 EE Eval 参评工具，不内嵌 Eval 业务逻辑；默认工具目录不变。 (#2570)
 

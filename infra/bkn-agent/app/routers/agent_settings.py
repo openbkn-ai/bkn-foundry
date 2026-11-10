@@ -38,7 +38,6 @@ from app.models import (
 from app.public_auth import (
     BUILTIN_AGENT_IDS,
     PUBLIC_AGENT_IDS,
-    authorize_agent,
     authorize_network_setting,
     can_manage_agents,
     get_public_account,
@@ -86,7 +85,6 @@ async def get_user_setting(
     session: AsyncSession = Depends(get_session),
 ):
     await _public_agent(session, agent_id)
-    await authorize_agent(account, agent_id)
     return _out(
         agent_id, await dao.get_user_setting(session, agent_id, account.account_id)
     )
@@ -100,7 +98,6 @@ async def put_user_setting(
     session: AsyncSession = Depends(get_session),
 ):
     await _public_agent(session, agent_id)
-    await authorize_agent(account, agent_id)
     row = await dao.put_user_setting(
         session, agent_id, account.account_id, _content(setting)
     )
@@ -114,7 +111,6 @@ async def delete_user_setting(
     session: AsyncSession = Depends(get_session),
 ):
     await _public_agent(session, agent_id)
-    await authorize_agent(account, agent_id)
     await dao.delete_user_setting(session, agent_id, account.account_id)
     return _out(agent_id, None)
 
@@ -129,7 +125,7 @@ async def get_network_setting(
     session: AsyncSession = Depends(get_session),
 ):
     await _public_agent(session, agent_id)
-    await authorize_network_setting(account, agent_id, kn_id, write=False)
+    await authorize_network_setting(account, kn_id, write=False)
     return _out(agent_id, await dao.get_network_setting(session, agent_id, kn_id))
 
 
@@ -144,7 +140,7 @@ async def put_network_setting(
     session: AsyncSession = Depends(get_session),
 ):
     await _public_agent(session, agent_id)
-    await authorize_network_setting(account, agent_id, kn_id, write=True)
+    await authorize_network_setting(account, kn_id, write=True)
     row = await dao.put_network_setting(
         session, agent_id, kn_id, _content(setting), account.account_id
     )
@@ -161,7 +157,7 @@ async def delete_network_setting(
     session: AsyncSession = Depends(get_session),
 ):
     await _public_agent(session, agent_id)
-    await authorize_network_setting(account, agent_id, kn_id, write=True)
+    await authorize_network_setting(account, kn_id, write=True)
     await dao.delete_network_setting(session, agent_id, kn_id)
     return _out(agent_id, None)
 
@@ -201,9 +197,9 @@ async def get_agent_config(
     session: AsyncSession = Depends(get_session),
 ):
     agent = await _public_agent(session, agent_id)
-    await authorize_network_setting(account, agent_id, kn_id, write=False)
+    await authorize_network_setting(account, kn_id, write=False)
     try:
-        await authorize_network_setting(account, agent_id, kn_id, write=True)
+        await authorize_network_setting(account, kn_id, write=True)
         can_edit = True
     except HTTPException as exc:
         if exc.status_code != 403:

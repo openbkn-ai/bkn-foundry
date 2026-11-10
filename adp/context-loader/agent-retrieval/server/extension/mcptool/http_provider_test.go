@@ -17,6 +17,40 @@ import (
 	"github.com/openbkn-ai/licverify"
 )
 
+func TestHTTPProviderPreservesOptionalDisplayMetadata(t *testing.T) {
+	for _, withDisplay := range []bool{false, true} {
+		definition := map[string]any{
+			"name": "probe", "description": "provider description", "capability": "probe",
+			"min_edition": "professional", "control_plane": true, "group": "evaluation",
+			"input_schema": map[string]any{"type": "object"},
+		}
+		if withDisplay {
+			definition["title"] = "Start evaluation"
+			definition["group_title"] = "Quality evaluation"
+			definition["order"] = 820
+		}
+		raw, err := json.Marshal(map[string]any{"call_path": "/api/extension/call", "tools": []any{definition}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools, err := LoadHTTPProviderManifest("https://provider.invalid/manifest", raw, nil)
+		if err != nil || len(tools) != 1 {
+			t.Fatalf("load display=%v: %v", withDisplay, err)
+		}
+		tool := tools[0]
+		if tool.Name != "probe" || tool.Desc != "provider description" || tool.Group != "evaluation" || !tool.ControlPlane {
+			t.Fatalf("provider metadata changed: %+v", tool)
+		}
+		if withDisplay {
+			if tool.Title != "Start evaluation" || tool.GroupTitle != "Quality evaluation" || tool.Order != 820 {
+				t.Fatalf("display metadata lost in HTTP adapter: %+v", tool)
+			}
+		} else if tool.Title != "" || tool.GroupTitle != "" || tool.Order != 0 {
+			t.Fatalf("legacy provider display defaults changed: %+v", tool)
+		}
+	}
+}
+
 func TestHTTPProviderForwardsOnlyTransportCredentialToFixedOrigin(t *testing.T) {
 	calls := 0
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

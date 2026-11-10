@@ -297,9 +297,8 @@ func (h *knQueryToolsHandler) DescribeResource(c *gin.Context) {
 type knDrillReq struct {
 	KnID string   `json:"kn_id" form:"kn_id"`
 	IDs  []string `json:"ids"`
-	// Offset and Limit are the window get_object_types walks with when no ids are
-	// given; they are ignored when ids are, and get_relation_types ignores them
-	// outright -- it has never had a caller without ids.
+	// Offset and Limit are the window get_object_types and get_relation_types walk
+	// with when no ids are given; they are ignored when ids are.
 	Offset int `json:"offset" form:"offset"`
 	Limit  int `json:"limit" form:"limit"`
 }
@@ -307,6 +306,14 @@ type knDrillReq struct {
 type getObjectTypesReq struct {
 	knDrillReq
 	Branch string `json:"branch" form:"branch"`
+}
+
+type getRelationTypesReq struct {
+	knDrillReq
+	Branch string `json:"branch" form:"branch"`
+	// ObjectTypeIDs narrows a listing to the relation types that start or end at one
+	// of these object types.
+	ObjectTypeIDs []string `json:"object_type_ids" form:"object_type_ids"`
 }
 
 func (r *knDrillReq) resolveKnID(c *gin.Context) string {
@@ -395,7 +402,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 // GetRelationTypes retrieves complete definitions of relation types (including mapping_rules) in batches by id.
 func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 	ctx := c.Request.Context()
-	req := &knDrillReq{}
+	req := &getRelationTypesReq{}
 	_ = c.ShouldBindQuery(req)
 	_ = c.ShouldBindJSON(req)
 	knID := req.resolveKnID(c)
@@ -403,21 +410,78 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "kn_id is required"))
 		return
 	}
-	if len(req.IDs) == 0 {
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "ids is required (relation type ids from get_kn_detail)"))
-		return
-	}
 
-	matched, err := h.bknBackend.GetRelationTypeDetail(ctx, knID, req.IDs, true)
-	if err != nil {
+	// Without ids, one page of the relation type index, as get_object_types lists its own.
+	var (
+		matched    []*interfaces.RelationType
+		err        error
+		totalCount int64
+		nextOffset *int
+		notice     string
+		offset     int
+	)
+	lang := i18n.GetLanguageByCtx(ctx)
+	listing := len(req.IDs) == 0
+	if listing {
+		var limit int
+		var clamped bool
+		offset, limit, clamped = interfaces.ResolveObjectTypePage(req.Offset, req.Limit)
+		page, listErr := knmetrics.RelationTypesForBranch(ctx, h.bknBackend, knID, req.Branch, req.ObjectTypeIDs, offset, limit)
+		if listErr != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetRelationTypes] list failed: %v", listErr)
+			rest.ReplyError(c, listErr)
+			return
+		}
+		matched, totalCount = page.Entries, page.TotalCount
+		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+		interfaces.ReduceToRelationTypeIndex(matched)
+		if clamped {
+			notice = renderNotice(lang, "agentRetrieval.Detail.RelationTypePageLimitClamped",
+				map[string]any{"Arg1": req.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
+		}
+	} else if matched, err = knmetrics.RelationTypeDetailForBranch(ctx, h.bknBackend, knID, req.Branch, req.IDs, true); err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetRelationTypes] failed: %v", err)
 		rest.ReplyError(c, err)
 		return
 	}
 	// Relation declarations are search_schema's to surface, but for lifecycle and the fallback marking (#2285).
 	interfaces.OmitRelationDeclarations(matched)
-	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "relation", knID, req.IDs, len(matched))
-	rest.ReplyOK(c, http.StatusOK, &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched})
+	resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched,
+		TotalCount: totalCount, NextOffset: nextOffset, Notice: notice}
+	if listing {
+		// Measured in the format this reply is written in.
+		format := rest.FormatJSON
+		if v, ok := common.GetResponseFormatFromCtx(ctx); ok {
+			if f, ok := v.(rest.ResponseFormat); ok {
+				format = f
+			}
+		}
+		if _, fitErr := interfaces.FitRelationTypePage(resp, offset, interfaces.MaxRelationTypePageChars,
+			func(kept int) string {
+				return renderNotice(lang, "agentRetrieval.Detail.RelationTypePageCharsCut",
+					map[string]any{"Arg1": interfaces.MaxRelationTypePageChars, "Arg2": kept})
+			},
+			func(r *interfaces.RelationTypesResp) (int, error) {
+				_, body, marshalErr := rest.MarshalResponse(format, r)
+				return utf8.RuneCount(body), marshalErr
+			},
+		); fitErr != nil {
+			rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusInternalServerError, fitErr.Error()))
+			return
+		}
+	}
+	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "relation", knID, req.IDs, len(resp.RelationTypes))
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// renderNotice renders a localized notice, logging rather than failing when the
+// message cannot be rendered.
+func renderNotice(lang i18n.Language, key string, args map[string]any) string {
+	text, err := i18n.Render(lang, key, args)
+	if err != nil {
+		logger.Errorf("localized message rendering failed: %v", err)
+	}
+	return text
 }
 
 // QueryMetric takes the number according to the metric's own semantics (step 3 of the OT-first path).
