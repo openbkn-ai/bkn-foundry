@@ -38,7 +38,15 @@ func (allowAll) CheckPermission(context.Context, interfaces.PermissionResource, 
 }
 
 // txPublisher replaces main in a plain transaction, as the KN service does without a proxy.
-type txPublisher struct{ db *sql.DB }
+// problems, when set, is what CheckReferences reports for each branch.
+type txPublisher struct {
+	db       *sql.DB
+	problems map[string][]*interfaces.KNVersionProblem
+}
+
+func (p txPublisher) CheckReferences(_ context.Context, _, branch string) ([]*interfaces.KNVersionProblem, error) {
+	return p.problems[branch], nil
+}
 
 func (p txPublisher) PublishKNMain(ctx context.Context, _, _ string, mutate func(context.Context, *sql.Tx) error) error {
 	tx, err := p.db.BeginTx(ctx, nil)
@@ -85,7 +93,7 @@ func setup(t *testing.T) *fixture {
 			interfaces.AccountInfo{ID: "u1", Type: "user"})}
 	f.svc = &service{
 		db: db, va: versionaccess.NewKNVersionAccessWithDB(db), bc: versionaccess.NewBranchCopier(setting),
-		ps: allowAll{}, pub: txPublisher{db: db},
+		ps: allowAll{}, pub: txPublisher{db: db, problems: map[string][]*interfaces.KNVersionProblem{}},
 		fullHistory: func() bool { return f.full },
 		now:         func() int64 { return time.Now().UnixMilli() },
 	}
@@ -363,5 +371,33 @@ func TestDisableKeepsRunningVersionOnMain(t *testing.T) {
 	view, err = f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{})
 	if err != nil || view.RunningVersion != 3 {
 		t.Fatalf("enable again: %+v %v", view, err)
+	}
+}
+
+// Broken references in the branch going live refuse publish and activate; a replay of a
+// publish that already succeeded is not checked again.
+func TestBrokenReferencesRefuseGoingLive(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(1, f.editDraft("name-2"), "pub-2"); err != nil {
+		t.Fatal(err)
+	}
+	problems := f.svc.pub.(txPublisher).problems
+	problem := &interfaces.KNVersionProblem{Category: interfaces.KNProblemBrokenReference,
+		DefinitionType: interfaces.MODULE_TYPE_RELATION_TYPE, DefinitionID: "rt1"}
+	problems[interfaces.DRAFT_BRANCH] = []*interfaces.KNVersionProblem{problem}
+	problems[interfaces.VersionBranch(1)] = []*interfaces.KNVersionProblem{problem}
+
+	if _, err := f.publish(1, f.state().Draft.Revision, "pub-2"); err != nil {
+		t.Fatalf("replay checked again: %v", err)
+	}
+	_, err := f.publish(2, f.editDraft("name-3"), "")
+	wantCode(t, err, berrors.BknBackend_KNVersion_ValidationFailed)
+	_, err = f.svc.Activate(f.ctx, f.knID, 1, &interfaces.KNActivateRequest{ExpectedRunningVersion: ptr(2)})
+	wantCode(t, err, berrors.BknBackend_KNVersion_BrokenReferences)
+	if got := f.state().RunningVersion; got != 2 {
+		t.Fatalf("running version after refusals = %d", got)
 	}
 }

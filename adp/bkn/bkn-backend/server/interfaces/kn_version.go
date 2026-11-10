@@ -200,6 +200,17 @@ type KNPublishRequest struct {
 
 // KNPublishResult is the publish response: the new version, and the version the Community
 // edition purged to keep only one previous version.
+// KNVersionProblem is one reason a branch cannot go live.
+type KNVersionProblem struct {
+	Category       string `json:"category"`
+	DefinitionType string `json:"definition_type"`
+	DefinitionID   string `json:"definition_id"`
+	Description    string `json:"description"`
+}
+
+// KNProblemBrokenReference is a definition, schedule or binding that points at nothing.
+const KNProblemBrokenReference = "broken_reference"
+
 type KNPublishResult struct {
 	*KNVersion
 	PurgedVersion int `json:"purged_version,omitempty"`
@@ -367,6 +378,8 @@ type BranchCopier interface {
 // does. mutate runs inside the transaction and performs the copy.
 type KNMainPublisher interface {
 	PublishKNMain(ctx context.Context, knID, srcBranch string, mutate func(context.Context, *sql.Tx) error) error
+	// CheckReferences lists what a branch references that does not exist, before it goes live.
+	CheckReferences(ctx context.Context, knID, branch string) ([]*KNVersionProblem, error)
 	// ReplaceKNDraft runs mutate, which replaces the draft, in one transaction, and keeps the
 	// draft's concept index in step with it.
 	ReplaceKNDraft(ctx context.Context, knID string, mutate func(context.Context, *sql.Tx) error) error

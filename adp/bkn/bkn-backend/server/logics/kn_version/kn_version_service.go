@@ -141,6 +141,8 @@ type operation struct {
 	target int
 	key    string
 	replay func(ctx context.Context, event *interfaces.KNVersionEvent) (any, error)
+	// precheck refuses early, outside the transaction, unless the request is a replay.
+	precheck func(ctx context.Context) error
 }
 
 // errReplayed rolls back a transaction that found the idempotency key already used.
@@ -235,6 +237,11 @@ func (s *service) run(ctx context.Context, knID string, op *operation,
 	}
 	if event != nil {
 		return s.replay(ctx, op, event)
+	}
+	if op.precheck != nil {
+		if err := op.precheck(ctx); err != nil {
+			return nil, err
+		}
 	}
 	var result any
 	err = inTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
@@ -488,12 +495,14 @@ func (s *service) Publish(ctx context.Context, knID string, req *interfaces.KNPu
 				return nil, err
 			}
 			return &interfaces.KNPublishResult{KNVersion: v}, nil
+		},
+		precheck: func(ctx context.Context) error {
+			if err := s.checkPublishable(ctx, state, req); err != nil {
+				return err
+			}
+			return s.checkReferences(ctx, knID, interfaces.DRAFT_BRANCH,
+				http.StatusBadRequest, berrors.BknBackend_KNVersion_ValidationFailed)
 		}}
-	if req.IdempotencyKey == "" {
-		if err := s.checkPublishable(ctx, state, req); err != nil {
-			return nil, err
-		}
-	}
 	result, err := s.run(ctx, knID, op, s.mainTx(knID, interfaces.DRAFT_BRANCH), func(ctx context.Context, tx *sql.Tx) (any, error) {
 		state, err := s.lockState(ctx, tx, knID)
 		if err != nil {
@@ -578,6 +587,18 @@ func (s *service) checkPublishable(ctx context.Context, state *interfaces.KNVers
 	return nil
 }
 
+// checkReferences refuses a branch that references what does not exist, listing the problems.
+func (s *service) checkReferences(ctx context.Context, knID, branch string, status int, code string) error {
+	problems, err := s.pub.CheckReferences(ctx, knID, branch)
+	if err != nil {
+		return internalError(ctx, err)
+	}
+	if len(problems) > 0 {
+		return newHTTPError(ctx, status, code).WithErrorDetails(map[string]any{"problems": problems})
+	}
+	return nil
+}
+
 func (s *service) setStatus(ctx context.Context, tx *sql.Tx, knID string, version int, status string) error {
 	return s.va.UpdateVersionStatus(ctx, tx, &interfaces.KNVersion{
 		KNID: knID, Version: version, Status: status, StatusBy: s.operator(ctx), StatusTime: s.now(),
@@ -624,13 +645,15 @@ func (s *service) Activate(ctx context.Context, knID string, k int, req *interfa
 	if err := s.checkPermission(ctx, knID, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return nil, err
 	}
-	op := &operation{types: []string{interfaces.KNVersionEventSwitch}, target: k, key: req.IdempotencyKey, replay: s.replayState}
 	// Check the target before the main publisher reads its content.
-	if req.IdempotencyKey == "" {
-		if err := s.checkActivatable(ctx, nil, knID, k, req); err != nil {
-			return nil, err
-		}
-	}
+	op := &operation{types: []string{interfaces.KNVersionEventSwitch}, target: k, key: req.IdempotencyKey, replay: s.replayState,
+		precheck: func(ctx context.Context) error {
+			if err := s.checkActivatable(ctx, nil, knID, k, req); err != nil {
+				return err
+			}
+			return s.checkReferences(ctx, knID, interfaces.VersionBranch(k),
+				http.StatusConflict, berrors.BknBackend_KNVersion_BrokenReferences)
+		}}
 	result, err := s.run(ctx, knID, op, s.mainTx(knID, interfaces.VersionBranch(k)), func(ctx context.Context, tx *sql.Tx) (any, error) {
 		state, err := s.lockState(ctx, tx, knID)
 		if err != nil {
