@@ -799,6 +799,19 @@ func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error 
 
 func mergeProxyMutationChanges(current, changes *interfaces.KN, mergeMode string) *interfaces.KN {
 	candidate := *current
+	if changes.ReplaceContent {
+		// A whole-package replace leaves only what the package defines.
+		candidate.ConceptGroups, candidate.ObjectTypes = changes.ConceptGroups, changes.ObjectTypes
+		candidate.RelationTypes, candidate.ActionTypes = changes.RelationTypes, changes.ActionTypes
+		candidate.ObjectMetrics = mergeProxyItems(current.ObjectMetrics, changes.ObjectMetrics, false,
+			func(item *interfaces.ObjectMetricRecordV1) (string, bool) {
+				if item == nil {
+					return "", false
+				}
+				return fmt.Sprintf("%s@%d", item.Definition.ID, item.Definition.Version), true
+			})
+		return &candidate
+	}
 	keepExisting := mergeMode != interfaces.ImportMode_Overwrite
 	candidate.ConceptGroups = mergeProxyItems(current.ConceptGroups, changes.ConceptGroups, keepExisting,
 		func(item *interfaces.ConceptGroup) (string, bool) {

@@ -344,6 +344,10 @@ type BranchCopier interface {
 	DeleteBranch(ctx context.Context, tx *sql.Tx, knID, branch string) error
 	// CopyNetworkRow copies only the network row of src to dst.
 	CopyNetworkRow(ctx context.Context, tx *sql.Tx, knID, src, dst string) error
+	// PruneBranch deletes the definitions of the branch that keep does not list, by module type
+	// (object, relation, action, risk and value types, concept groups), with the rows that
+	// depend on them. A module type missing from keep is left alone.
+	PruneBranch(ctx context.Context, tx *sql.Tx, knID, branch string, keep map[string][]string) error
 	// BranchesWithData lists the branches of a network that have a network row or any
 	// versioned row, so enabling can refuse reserved branches that already hold data.
 	BranchesWithData(ctx context.Context, tx *sql.Tx, knID string) ([]string, error)

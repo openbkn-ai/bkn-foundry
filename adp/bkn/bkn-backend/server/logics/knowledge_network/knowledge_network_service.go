@@ -361,6 +361,11 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
 			return "", err
 		}
+		if kn.ReplaceContent {
+			if err = pruneReplacedDefinitions(ctx, tx, kn); err != nil {
+				return "", err
+			}
+		}
 	}
 
 	if isCreate || isUpdate {
@@ -409,6 +414,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	)
 	transactionStart = time.Time{}
 	modelCommitted = true
+	if isUpdate && kn.ReplaceContent {
+		kns.deleteStaleConceptDocuments(context.WithoutCancel(ctx), overwriteSnapshot, kn)
+	}
 	if err = kns.finishProxyPublish(ctx, proxyPlan); err != nil {
 		return kn.KNID, err
 	}

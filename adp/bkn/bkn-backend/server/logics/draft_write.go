@@ -28,6 +28,9 @@ type DraftWrite struct {
 	// changes. It is cleared once checked, so later transactions of the request do not check
 	// it again against the revision the request itself produced.
 	IfMatch string
+	// RefuseDraftChanges makes the first write refuse a draft with unpublished changes, for a
+	// whole-package replace without overwrite_changes. It is cleared once checked.
+	RefuseDraftChanges bool
 }
 
 type draftWriteKey struct{}
@@ -77,6 +80,11 @@ func GuardDefinitionWrite(ctx context.Context, tx *sql.Tx, knID, branch string, 
 	var expected *int64
 	if dw != nil {
 		expected = dw.Expected
+		if dw.RefuseDraftChanges && state.DraftHasChanges() {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_DraftHasChanges).
+				WithErrorDetails("pass overwrite_changes=true to replace the unpublished changes")
+		}
+		dw.RefuseDraftChanges = false
 	}
 	revision, ok, err := KNVA.MarkDraftWritten(ctx, tx, knID, expected)
 	if err != nil {

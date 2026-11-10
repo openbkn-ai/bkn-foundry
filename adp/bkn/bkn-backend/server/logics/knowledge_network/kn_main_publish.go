@@ -215,6 +215,31 @@ func rebranch(kn *interfaces.KN, branch string) {
 // oldKN is nil when the branch was empty, newKN when it no longer exists; both are on one branch.
 func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, oldKN, newKN *interfaces.KN) {
 	ctx = context.WithoutCancel(ctx)
+	kns.deleteStaleConceptDocuments(ctx, oldKN, newKN)
+	if newKN == nil {
+		return
+	}
+	steps := []struct {
+		name string
+		run  func() error
+	}{
+		{"concept groups", func() error { return kns.cgs.InsertDatasetDatas(ctx, newKN.ConceptGroups) }},
+		{"object types", func() error { return kns.ots.InsertDatasetData(ctx, newKN.ObjectTypes) }},
+		{"relation types", func() error { return kns.rts.InsertDatasetData(ctx, newKN.RelationTypes) }},
+		{"action types", func() error { return kns.ats.InsertDatasetData(ctx, newKN.ActionTypes) }},
+		{"risk types", func() error { return kns.riskTypeS.InsertDatasetData(ctx, newKN.RiskTypes) }},
+		{"network", func() error { return kns.InsertDatasetData(ctx, newKN) }},
+	}
+	for _, step := range steps {
+		if err := step.run(); err != nil {
+			otellog.LogError(ctx, fmt.Sprintf("Write the concept index of %s on %s failed", step.name, newKN.Branch), err)
+		}
+	}
+}
+
+// deleteStaleConceptDocuments deletes the concept index documents of the definitions oldKN has
+// and newKN no longer has. newKN nil means the branch is gone, its network document too.
+func (kns *knowledgeNetworkService) deleteStaleConceptDocuments(ctx context.Context, oldKN, newKN *interfaces.KN) {
 	ids := func(kn *interfaces.KN) map[string]struct{} {
 		set := map[string]struct{}{}
 		if kn == nil {
@@ -238,6 +263,9 @@ func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, old
 		for _, item := range kn.RiskTypes {
 			add(interfaces.MODULE_TYPE_RISK_TYPE, item.RTID)
 		}
+		if newKN == nil {
+			add(interfaces.MODULE_TYPE_KN, kn.KNID)
+		}
 		return set
 	}
 	keep := ids(newKN)
@@ -247,31 +275,6 @@ func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, old
 		}
 		if err := kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, id); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Delete concept index document %s failed", id), err)
-		}
-	}
-	if newKN == nil {
-		if oldKN != nil {
-			if err := kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID,
-				interfaces.GenerateConceptDocuemtnID(oldKN.KNID, interfaces.MODULE_TYPE_KN, oldKN.KNID, oldKN.Branch)); err != nil {
-				otellog.LogError(ctx, "Delete the concept index document of the network failed", err)
-			}
-		}
-		return
-	}
-	steps := []struct {
-		name string
-		run  func() error
-	}{
-		{"concept groups", func() error { return kns.cgs.InsertDatasetDatas(ctx, newKN.ConceptGroups) }},
-		{"object types", func() error { return kns.ots.InsertDatasetData(ctx, newKN.ObjectTypes) }},
-		{"relation types", func() error { return kns.rts.InsertDatasetData(ctx, newKN.RelationTypes) }},
-		{"action types", func() error { return kns.ats.InsertDatasetData(ctx, newKN.ActionTypes) }},
-		{"risk types", func() error { return kns.riskTypeS.InsertDatasetData(ctx, newKN.RiskTypes) }},
-		{"network", func() error { return kns.InsertDatasetData(ctx, newKN) }},
-	}
-	for _, step := range steps {
-		if err := step.run(); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Write the concept index of %s on %s failed", step.name, newKN.Branch), err)
 		}
 	}
 }
@@ -291,6 +294,46 @@ func initVersionedNetwork(ctx context.Context, tx *sql.Tx, kn *interfaces.KN) er
 		KNID: kn.KNID, Mode: interfaces.KNVersioningEnabled, NextVersion: 1, DraftIndexRevision: -1,
 		EnabledBy: account.ID, EnabledByType: account.Type, EnableTime: now, UpdateTime: now,
 	}); err != nil {
+		return proxyHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	return nil
+}
+
+// pruneReplacedDefinitions completes a whole-package replace: after the package overwrote the
+// branch, the definitions it leaves out are deleted. The package was validated as a whole, so
+// nothing it keeps refers to them. Capability bindings are replaced with the capabilities.
+func pruneReplacedDefinitions(ctx context.Context, tx *sql.Tx, kn *interfaces.KN) error {
+	if logics.BC == nil {
+		return proxyHTTPError(ctx, http.StatusNotImplemented, "replace import is unavailable")
+	}
+	keep := map[string][]string{
+		interfaces.MODULE_TYPE_OBJECT_TYPE:   {},
+		interfaces.MODULE_TYPE_RELATION_TYPE: {},
+		interfaces.MODULE_TYPE_ACTION_TYPE:   {},
+		interfaces.MODULE_TYPE_CONCEPT_GROUP: {},
+		interfaces.MODULE_TYPE_RISK_TYPE:     {},
+		interfaces.MODULE_TYPE_VALUE_TYPE:    {},
+	}
+	add := func(kind, id string) { keep[kind] = append(keep[kind], id) }
+	for _, item := range kn.ObjectTypes {
+		add(interfaces.MODULE_TYPE_OBJECT_TYPE, item.OTID)
+	}
+	for _, item := range kn.RelationTypes {
+		add(interfaces.MODULE_TYPE_RELATION_TYPE, item.RTID)
+	}
+	for _, item := range kn.ActionTypes {
+		add(interfaces.MODULE_TYPE_ACTION_TYPE, item.ATID)
+	}
+	for _, item := range kn.ConceptGroups {
+		add(interfaces.MODULE_TYPE_CONCEPT_GROUP, item.CGID)
+	}
+	for _, item := range kn.RiskTypes {
+		add(interfaces.MODULE_TYPE_RISK_TYPE, item.RTID)
+	}
+	for _, item := range kn.ValueTypes {
+		add(interfaces.MODULE_TYPE_VALUE_TYPE, item.VTID)
+	}
+	if err := logics.BC.PruneBranch(ctx, tx, kn.KNID, kn.Branch, keep); err != nil {
 		return proxyHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return nil

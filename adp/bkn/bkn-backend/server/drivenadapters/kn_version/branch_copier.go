@@ -234,3 +234,65 @@ func (bc *branchCopier) tableColumns(ctx context.Context, tx *sql.Tx, table stri
 	bc.mu.Unlock()
 	return columns, nil
 }
+
+// prunedTables are the tables of each module type that PruneBranch deletes from, by f_id.
+var prunedTables = map[string][]string{
+	interfaces.MODULE_TYPE_OBJECT_TYPE:   {"t_object_type", "t_object_type_status"},
+	interfaces.MODULE_TYPE_RELATION_TYPE: {"t_relation_type"},
+	interfaces.MODULE_TYPE_ACTION_TYPE:   {"t_action_type"},
+	interfaces.MODULE_TYPE_CONCEPT_GROUP: {"t_concept_group"},
+	interfaces.MODULE_TYPE_RISK_TYPE:     {"t_risk_type"},
+	interfaces.MODULE_TYPE_VALUE_TYPE:    {"t_value_type"},
+}
+
+func (bc *branchCopier) PruneBranch(ctx context.Context, tx *sql.Tx, knID, branch string, keep map[string][]string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Prune knowledge network branch")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
+
+	notIn := func(column string, ids []string) (string, []any) {
+		if len(ids) == 0 {
+			return "", nil
+		}
+		args := make([]any, 0, len(ids))
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		return " AND " + column + " NOT IN (?" + strings.Repeat(", ?", len(ids)-1) + ")", args
+	}
+	exec := func(query string, args ...any) error {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("prune branch %s of %s: %w", branch, knID, err)
+		}
+		return nil
+	}
+	for kind, ids := range keep {
+		tables, ok := prunedTables[kind]
+		if !ok {
+			return fmt.Errorf("prune branch: unknown module type %q", kind)
+		}
+		cond, args := notIn("f_id", ids)
+		for _, table := range tables {
+			if err := exec("DELETE FROM "+table+" WHERE f_kn_id = ? AND f_branch = ?"+cond,
+				append([]any{knID, branch}, args...)...); err != nil {
+				return err
+			}
+		}
+		// Group members go with their group, and with their object type.
+		switch kind {
+		case interfaces.MODULE_TYPE_CONCEPT_GROUP:
+			cond, args := notIn("f_group_id", ids)
+			if err := exec("DELETE FROM t_concept_group_relation WHERE f_kn_id = ? AND f_branch = ?"+cond,
+				append([]any{knID, branch}, args...)...); err != nil {
+				return err
+			}
+		case interfaces.MODULE_TYPE_OBJECT_TYPE:
+			cond, args := notIn("f_concept_id", ids)
+			if err := exec("DELETE FROM t_concept_group_relation WHERE f_kn_id = ? AND f_branch = ? AND f_concept_type = ?"+cond,
+				append([]any{knID, branch, interfaces.MODULE_TYPE_OBJECT_TYPE}, args...)...); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
