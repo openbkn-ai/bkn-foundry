@@ -142,7 +142,7 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricQuery(ctx context.Conte
 func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Context,
 	knID, branch string, definition *interfaces.ObjectMetricDefinitionV1,
 	query *interfaces.ObjectMetricQueryRequestV1) error {
-	if err := validateQueryIdentity(ctx, knID, branch, "object-metric-trial"); err != nil {
+	if err := validateTrialIdentity(ctx, knID, branch); err != nil {
 		return err
 	}
 	return s.authorizeObjectMetricDefinitions(ctx, knID, []objectMetricAuthorizationInput{{
@@ -864,6 +864,15 @@ func uniquePermissionResources(resources []interfaces.PermissionResource) []inte
 		result = append(result, resource)
 	}
 	return result
+}
+
+// validateTrialIdentity is validateQueryIdentity for a trial run, which may also read the draft of
+// a versioned knowledge network: a trial evaluates a definition that is not published yet.
+func validateTrialIdentity(ctx context.Context, knID, branch string) error {
+	if branch == interfaces.DRAFT_BRANCH {
+		branch = interfaces.MAIN_BRANCH
+	}
+	return validateQueryIdentity(ctx, knID, branch, "object-metric-trial")
 }
 
 // validateQueryIdentity checks the branch and the resource ids of a query. The branch is
