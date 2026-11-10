@@ -107,7 +107,10 @@ func (r *restHandler) CreateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -278,7 +281,10 @@ func (r *restHandler) ValidateConceptGroups(c *gin.Context, visitor hydra.Visito
 	}
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
@@ -376,7 +382,10 @@ func (r *restHandler) UpdateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -558,7 +567,10 @@ func (r *restHandler) DeleteConceptGroup(c *gin.Context) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -662,7 +674,10 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -739,6 +754,10 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if !fillListRevisions(ctx, c, interfaces.RevisionKindConceptGroup, knID, branch, knList) {
+		return
+	}
+
 	logger.Debug("Handler ListConceptGroups Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, result)
@@ -782,7 +801,10 @@ func (r *restHandler) GetConceptGroup(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -871,6 +893,9 @@ func (r *restHandler) GetConceptGroup(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetConceptGroup Success")
+	if !replyWithRevisions(ctx, c, interfaces.RevisionKindConceptGroup, knID, branch, []*interfaces.ConceptGroup{cg}) {
+		return
+	}
 	rest.ReplyOK(c, http.StatusOK, cg)
 }
 
@@ -911,7 +936,10 @@ func (r *restHandler) AddObjectTypesToConceptGroup(c *gin.Context, visitor hydra
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranchNeeding(&ctx, c, knID, preconditionIfMatch)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -1062,7 +1090,10 @@ func (r *restHandler) DeleteObjectTypesFromGroup(c *gin.Context, visitor hydra.V
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),

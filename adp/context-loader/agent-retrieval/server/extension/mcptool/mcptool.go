@@ -61,6 +61,9 @@ type Handler = func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 // come with it rather than from core's embedded schemas directory: core should
 // not carry the schema of a capability whose code it cannot see.
 type ExtraTool struct {
+	// ControlPlane tools manage work rather than execute a business query.
+	// They must authorize their own resource and do not require an Interaction.
+	ControlPlane bool
 	// Capability names the paid capability this tool belongs to. Several
 	// entries commonly share one — an extra tool plus a decorator is the usual
 	// shape — and the assembly registry records it once.

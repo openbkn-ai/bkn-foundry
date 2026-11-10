@@ -41,6 +41,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -116,6 +117,19 @@ func Boot(opts Options) (*App, error) {
 func (a *App) Run() error {
 	if err := validatePorts(a.config.Project); err != nil {
 		return err
+	}
+	endpoint := strings.TrimSpace(os.Getenv("CONTEXT_LOADER_EXTENSION_MANIFEST_URL"))
+	manifest := []byte(os.Getenv("CONTEXT_LOADER_EXTENSION_MANIFEST_JSON"))
+	if endpoint != "" || len(manifest) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		tools, err := mcptool.LoadConfiguredHTTPProvider(ctx, endpoint, manifest, nil)
+		cancel()
+		if err != nil {
+			return err
+		}
+		for _, tool := range tools {
+			mcptool.Register(tool)
+		}
 	}
 	entitlement.Freeze()
 	if caps := entitlement.Assembled(); len(caps) > 0 {

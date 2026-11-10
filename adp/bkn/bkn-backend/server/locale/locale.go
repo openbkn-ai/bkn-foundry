@@ -37,6 +37,8 @@ func Register() {
 		i18n.RegisterI18n(&knDiffZhCN)
 		i18n.RegisterI18n(&knEventEnUS)
 		i18n.RegisterI18n(&knEventZhCN)
+		i18n.RegisterI18n(&knVersionEnUS)
+		i18n.RegisterI18n(&knVersionZhCN)
 		i18n.RegisterI18n(&knowledgeNetworkEnUS)
 		i18n.RegisterI18n(&knowledgeNetworkZhCN)
 		i18n.RegisterI18n(&objectMetricEnUS)

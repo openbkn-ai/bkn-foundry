@@ -42,7 +42,10 @@ const (
 type CypherQuery struct {
 	KNID   string
 	Branch string
-	Query  string
+	// RunningVersion marks Branch as the running version of a versioned network, whose content
+	// main mirrors, so a refused statement may fall back to the proxy as on main.
+	RunningVersion bool
+	Query          string
 	// Parameters supply the values the query refers to as $name. They are
 	// values only: a parameter can change which rows come back, never which
 	// resource or column is read.

@@ -24,7 +24,20 @@ type FunctionMetadataDB struct {
 	Code            string `json:"f_code" db:"f_code"`                 // function code.
 	Dependencies    string `json:"f_dependencies" db:"f_dependencies"` // Third-party package dependencies, such as the requests library in Python.
 	DependenciesURL string `json:"f_dependencies_url" db:"f_dependencies_url"`
-	ErrMessage      string `json:"-"` // error message.
+	// KnID and ResultShape are set only when ScriptType is cypher: the knowledge
+	// network the statement reads and whether it returns one value or a table.
+	KnID        string `json:"f_kn_id" db:"f_kn_id"`
+	ResultShape string `json:"f_result_shape" db:"f_result_shape"`
+	ErrMessage  string `json:"-"` // error message.
+}
+
+// ScriptTypeCypher is the script type of a function that runs one read-only
+// Cypher statement instead of code in the sandbox.
+const ScriptTypeCypher = "cypher"
+
+// IsCypher reports whether the function runs a Cypher statement.
+func (f *FunctionMetadataDB) IsCypher() bool {
+	return f != nil && f.ScriptType == ScriptTypeCypher
 }
 
 // IFunctionMetadataDB function metadata database interface.

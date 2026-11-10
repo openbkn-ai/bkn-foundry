@@ -73,6 +73,20 @@ info:
     不给链接也不给名称。路径模板和开关由部署配置
     `permission_request.path_template` / `permission_request.disabled` 决定，
     社区版没有申请流程时应关闭。空结果或空值本身不代表权限不足。
+
+    **Knowledge-network versions**: every tool that takes `kn_id` also takes the optional arguments
+    `kn_version` (`running` by default, `draft`, or a version number of a versioned knowledge network) and
+    `draft_revision` (an integer, only with `kn_version=draft`). Without the arguments, the
+    connection headers `X-Kn-Version` and `X-Kn-Draft-Revision` supply the defaults; an argument
+    overrides the headers as a whole. The legacy `branch` argument still works but must agree with
+    `kn_version` (`main` is the running version, `draft` is the draft). A tool call reads one version
+    only: the first answer of the knowledge-network services fixes it for the rest of the call, and if
+    the draft moves on during a call that did not name its `draft_revision`, the call is repeated once
+    against the new draft. Errors about the version are returned as the usual `Public.*` error with the
+    downstream code in `error_details`: for example a version that does not exist is `Public.NotFound` with
+    `BknBackend.KNVersion.VersionNotFound`, a purged one (HTTP 410) is also `Public.NotFound` with
+    `BknBackend.KNVersion.VersionPurged`, and a draft that changed is `Public.Conflict` with
+    `BknBackend.KNVersion.DraftRevisionMismatch`. The REST endpoints of this service take no version.
   version: 0.1.3
 servers:
   - url: /api/agent-retrieval/v1

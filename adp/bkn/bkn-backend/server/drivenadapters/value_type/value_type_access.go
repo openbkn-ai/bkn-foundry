@@ -36,6 +36,7 @@ var valueTypeColumns = []string{
 	"f_id", "f_name", "f_comment", "f_tags", "f_icon", "f_color", "f_bkn_raw_content",
 	"f_kn_id", "f_branch", "f_base_type", "f_definition",
 	"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+	"f_revision",
 }
 
 type valueTypeAccess struct {
@@ -107,6 +108,7 @@ func (vta *valueTypeAccess) CreateValueTypes(ctx context.Context, tx *sql.Tx, va
 				vt.VTID, vt.VTName, vt.Comment, libCommon.TagSlice2TagString(vt.Tags), vt.Icon, vt.Color, vt.BKNRawContent,
 				vt.KNID, vt.Branch, vt.BaseType, definition,
 				vt.Creator.ID, vt.Creator.Type, vt.CreateTime, vt.Updater.ID, vt.Updater.Type, vt.UpdateTime,
+				interfaces.NewDefinitionRevision(),
 			)
 		}
 		sqlStr, vals, err := builder.ToSql()
@@ -216,6 +218,7 @@ func (vta *valueTypeAccess) UpdateValueType(ctx context.Context, tx *sql.Tx, vt 
 			"f_updater":         vt.Updater.ID,
 			"f_updater_type":    vt.Updater.Type,
 			"f_update_time":     vt.UpdateTime,
+			"f_revision":        interfaces.NewDefinitionRevision(),
 		}).
 		Where(sq.Eq{"f_id": vt.VTID}).
 		Where(sq.Eq{"f_kn_id": vt.KNID}).
@@ -291,6 +294,7 @@ func (vta *valueTypeAccess) queryIn(tx *sql.Tx, sqlStr string, vals []any) ([]*i
 			&vt.VTID, &vt.VTName, &vt.Comment, &tags, &vt.Icon, &vt.Color, &vt.BKNRawContent,
 			&vt.KNID, &vt.Branch, &vt.BaseType, &definition,
 			&vt.Creator.ID, &vt.Creator.Type, &vt.CreateTime, &vt.Updater.ID, &vt.Updater.Type, &vt.UpdateTime,
+			&vt.Revision,
 		); err != nil {
 			return nil, err
 		}

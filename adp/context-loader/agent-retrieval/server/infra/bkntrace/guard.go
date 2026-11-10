@@ -195,7 +195,8 @@ func (g *Guard) Finish(
 	// them so retries cannot acquire targets from late callbacks.
 	// What the caller declared is not here: see BusinessContext.
 	input.EvidenceExpectation = freezeEvidenceExpectation(ctx)
-	input.BusinessRefs = mergeBusinessRefs(retainedBusinessRefs(ctx), requestDerivedBusinessRefsFromContext(ctx))
+	input.BusinessRefs = stampKnVersion(
+		mergeBusinessRefs(retainedBusinessRefs(ctx), requestDerivedBusinessRefsFromContext(ctx)), recordedKnVersion(ctx))
 	attempted, accepted := snapshotEvidenceOutcome(ctx)
 	switch {
 	case attempted:

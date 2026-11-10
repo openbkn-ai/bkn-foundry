@@ -117,7 +117,7 @@ MODTITLE_sandbox-executor       := 沙箱执行器
 MODTITLE_bkn-safe               := 身份与授权
 
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
-MODDESC_bkn               := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
+MODDESC_bkn               := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 版本管理 / 导入导出
 MODDESC_bkn-safe-admin    := 企业版安全策略：角色权限 / 行过滤策略配置与生效说明
 MODDESC_bkn-agent         := Agent 运行时：Agent 增删改查 / 对话与调用 / 任务 / 提示词版本 / 会话 / 导入导出
 MODDESC_execution-factory := 执行工厂：函数与沙箱执行 / 工具箱 / MCP / Skill / 导入导出
@@ -180,6 +180,7 @@ RESNAME_execution-factory_skill   := Skill
 RESNAME_bkn-capabilities                           := 能力绑定
 RESNAME_cypher-queries                             := Cypher 查询
 RESNAME_proxy-accounts                             := 代理账户
+RESNAME_kn-versions                                := 版本管理
 RESNAME_context-loader_cypher                      := Cypher 查询
 RESNAME_context-loader_tool                        := 能力检索与调用
 RESNAME_catalog-health-check-schedule              := 目录健康检查调度

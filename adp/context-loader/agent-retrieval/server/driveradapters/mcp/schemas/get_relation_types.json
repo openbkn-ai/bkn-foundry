@@ -20,12 +20,36 @@
         "items": {
           "type": "string"
         },
-        "description": "要展开的关系类 id（取自 get_kn_detail summary 的 relation_types[].id，也接受 name）。支持多个，一次批量取回。"
+        "description": "要展开的关系类 id（取自 get_kn_detail summary 的 relation_types[].id、search_schema，或本工具的列举模式；也接受 name）。支持多个，一次批量取回完整定义。**不传 ids 就是按 offset/limit 列举该网络的关系类索引**——只给 id/name/comment/tags/source_object_type_id/target_object_type_id/type，其中 comment 只是前 120 字的摘要，不含 mapping_rules；get_kn_detail 只回导航壳、或在非 main 分支上 search_schema 用不了时，这里是拿到关系类 id 的入口。挑好之后再把 id 传回本工具取完整定义。传了 ids 则 object_type_ids/offset/limit 无效。"
+      },
+      "object_type_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "列举时只返回起点或终点是这些对象类之一的关系类，已经选好对象类、要找它们之间有哪些关系时优先用它，通常一页就能列完，不必整网翻页。只在不传 ids 时有效；不传则列举全部关系类。"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0,
+        "description": "列举时的起始位置。只在不传 ids 时有效；续页用响应里的 next_offset，别自己算。"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 50,
+        "description": "列举时单页条数，默认 50，上限 200。只在不传 ids 时有效。超过上限不报错，按上限返回并在 notice 里说明；单页内容超过约 3 万字符时也会提前截断，同样在 notice 里说明。"
+      },
+      "branch": {
+        "type": "string",
+        "default": "main",
+        "description": "关系类所属的知识网络分支；省略时使用 main。"
       }
     },
     "required": [
-      "kn_id",
-      "ids"
+      "kn_id"
     ]
   },
   "output_schema": {
@@ -50,7 +74,7 @@
             },
             "comment": {
               "type": "string",
-              "description": "说明"
+              "description": "说明。列举模式下只是前 120 字的摘要，超出部分以「…」结尾；完整说明把 id 传回本工具取。"
             },
             "source_object_type_id": {
               "type": "string",
@@ -71,6 +95,18 @@
           "type": "string"
         },
         "description": "请求了但未匹配到的 id"
+      },
+      "total_count": {
+        "type": "integer",
+        "description": "当前账号可见、且符合 object_type_ids 条件的关系类总数。仅列举时出现。"
+      },
+      "next_offset": {
+        "type": "integer",
+        "description": "续走这次列举的下一个 offset。仅列举时出现，**走完最后一页就不再出现**——别自己用 offset+len 推算。"
+      },
+      "notice": {
+        "type": "string",
+        "description": "本次请求没有被原样兑现时的说明，有两种情形：limit 超过上限，按上限返回了；或者这一页超过约 3 万字符，只返回了前面一部分。它出现时这一页比你要的短，但不代表已经列完，是否还有看 next_offset。"
       }
     }
   }

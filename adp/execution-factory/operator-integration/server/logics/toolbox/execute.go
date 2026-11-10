@@ -366,6 +366,9 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 			fmt.Sprintf("metadata type: %s id: %s not found", tool.SourceType, tool.SourceID))
 		return
 	}
+	if function, ok := metadata.(*model.FunctionMetadataDB); ok && tool.SourceType == model.SourceTypeFunction && function.IsCypher() {
+		return s.executeCypherFunction(ctx, req, function)
+	}
 	var url string
 	switch tool.SourceType {
 	case model.SourceTypeOpenAPI:

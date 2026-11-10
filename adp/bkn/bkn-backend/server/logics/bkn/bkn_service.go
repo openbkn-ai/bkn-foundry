@@ -283,6 +283,15 @@ func (bs *bknService) DiffNetworks(ctx context.Context, req interfaces.KNDiffReq
 	if err != nil {
 		return nil, err
 	}
+	// The bindings are compared too: a version restores them along with the definitions.
+	for _, side := range []struct {
+		net *bknsdk.BknNetwork
+		ref interfaces.KNRef
+	}{{base, req.Base}, {target, req.Target}} {
+		if side.net.Capabilities, err = bs.exportCapabilities(ctx, side.ref.KNID, side.ref.Branch); err != nil {
+			return nil, err
+		}
+	}
 
 	diff := bknsdk.DiffNetworkModels(base, target, bknsdk.DiffOptions{
 		FallbackByName:   req.FallbackByName,

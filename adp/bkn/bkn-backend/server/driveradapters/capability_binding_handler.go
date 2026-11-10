@@ -69,21 +69,25 @@ func (r *restHandler) ListCapabilitiesByIn(c *gin.Context) {
 
 // resolveCapabilityKN parses the shared path parameters and confirms the knowledge network branch
 // exists. It returns false when a reply has already been written.
-func (r *restHandler) resolveCapabilityKN(c *gin.Context, ctx context.Context, span interface {
+func (r *restHandler) resolveCapabilityKN(c *gin.Context, ctx *context.Context, span interface {
 	SetAttributes(...attr.KeyValue)
 }) (knID, branch string, ok bool) {
 	knID = c.Param("kn_id")
-	branch = c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	resolved, ok := r.resolveBranch(ctx, c, knID, c.Request.Method != http.MethodGet)
+	if !ok {
+		return "", "", false
+	}
+	branch = resolved.Branch
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
 
-	knName, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
+	knName, exist, err := r.kns.CheckKNExistByID(*ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
 		rest.ReplyError(c, httpErr)
 		return "", "", false
 	}
 	if !exist {
-		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound))
+		rest.ReplyError(c, httperrors.NewHTTPError(*ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound))
 		return "", "", false
 	}
 	if r.auditRecorder != nil {
@@ -100,7 +104,7 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	knID, branch, ok := r.resolveCapabilityKN(c, ctx, span)
+	knID, branch, ok := r.resolveCapabilityKN(c, &ctx, span)
 	if !ok {
 		return
 	}
@@ -169,7 +173,7 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	knID, branch, ok := r.resolveCapabilityKN(c, ctx, span)
+	knID, branch, ok := r.resolveCapabilityKN(c, &ctx, span)
 	if !ok {
 		return
 	}
@@ -215,7 +219,7 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	knID, branch, ok := r.resolveCapabilityKN(c, ctx, span)
+	knID, branch, ok := r.resolveCapabilityKN(c, &ctx, span)
 	if !ok {
 		return
 	}
@@ -277,7 +281,7 @@ func (r *restHandler) ResolveCapabilities(c *gin.Context, vis hydra.Visitor) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	knID, branch, ok := r.resolveCapabilityKN(c, ctx, span)
+	knID, branch, ok := r.resolveCapabilityKN(c, &ctx, span)
 	if !ok {
 		return
 	}

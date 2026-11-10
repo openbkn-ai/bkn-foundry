@@ -29,7 +29,7 @@ func IndexIndirectViewData(currentObjectData map[string]any, mappingRules *inter
 			objectProperty, viewField := mappingEnds(mapping, isForward)
 			currentValue, ok1 := currentObjectData[objectProperty]
 			viewValue, ok2 := viewRecord[viewField]
-			if !ok1 || !ok2 || !CompareValues(currentValue, viewValue) {
+			if !ok1 || !ok2 || !JoinValuesEqual(currentValue, viewValue) {
 				connected = false
 				break
 			}
@@ -42,7 +42,7 @@ func IndexIndirectViewData(currentObjectData map[string]any, mappingRules *inter
 		for position, mapping := range far {
 			viewField, _ := mappingEnds(mapping, isForward)
 			value, ok := viewRecord[viewField]
-			if !ok {
+			if !ok || value == nil {
 				complete = false
 				break
 			}
@@ -56,8 +56,8 @@ func IndexIndirectViewData(currentObjectData map[string]any, mappingRules *inter
 }
 
 // IndirectNextObjectKey returns the key IndexIndirectViewData would give a
-// row reaching nextObject; ok is false when nextObject lacks a mapped
-// property, so no row can reach it.
+// row reaching nextObject; ok is false when a mapped property of nextObject
+// is null or missing, so no row can reach it.
 func IndirectNextObjectKey(nextObject map[string]any, mappingRules *interfaces.InDirectMapping,
 	isForward bool) (string, bool) {
 	_, far := indirectMappingSides(mappingRules, isForward)
@@ -65,7 +65,7 @@ func IndirectNextObjectKey(nextObject map[string]any, mappingRules *interfaces.I
 	for position, mapping := range far {
 		_, objectProperty := mappingEnds(mapping, isForward)
 		value, ok := nextObject[objectProperty]
-		if !ok {
+		if !ok || value == nil {
 			return "", false
 		}
 		values[position] = value
@@ -102,8 +102,8 @@ func mappingEnds(mapping interfaces.Mapping, isForward bool) (string, string) {
 }
 
 // comparableKey encodes values so that two keys are equal exactly when
-// CompareValues holds for every position: nil equals only nil, and other
-// values compare by their default formatting.
+// CompareValues holds for every position. Callers leave out nulls, which never
+// join; non-null values compare by their default formatting.
 func comparableKey(values []any) string {
 	var key strings.Builder
 	for _, value := range values {

@@ -765,8 +765,15 @@ components:
       properties:
         script_type:
           type: string
-          description: "脚本类型"
-          enum: ["python"]
+          description: "脚本类型：python，或 cypher（code 为只读 Cypher 语句，另带 kn_id 与 result_shape）"
+          enum: ["python", "cypher"]
+        kn_id:
+          type: string
+          description: "Cypher 函数查询的知识网络ID"
+        result_shape:
+          type: string
+          enum: ["value", "table"]
+          description: "Cypher 函数返回形状"
         code:
           type: string
           description: "函数代码"
@@ -991,9 +998,16 @@ components:
           description: "函数代码"
         script_type:
           type: string
-          description: "脚本类型"
+          description: "脚本类型：python，或 cypher（code 为只读 Cypher 语句，需同时提供 kn_id 与 result_shape）"
           default: "python"
-          enum: ["python"]
+          enum: ["python", "cypher"]
+        kn_id:
+          type: string
+          description: "Cypher 函数查询的知识网络ID（仅 cypher）"
+        result_shape:
+          type: string
+          enum: ["value", "table"]
+          description: "Cypher 函数返回形状（仅 cypher）：value 返回 {value}，table 返回 {columns, entries, limited}"
     FunctionParameterDef:
       type: object
       description: "函数参数定义"

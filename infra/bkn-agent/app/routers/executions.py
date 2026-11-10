@@ -119,9 +119,9 @@ async def _owned(session, run_id, account):
     if info["protocol"] == METRIC_PROTOCOL:
         if task.agent_id != METRIC_AGENT_ID or not info.get("metric_request"):
             raise not_found("task", run_id)
-        await authorize_network_setting(account, task.agent_id, kn_id, write=True)
+        await authorize_network_setting(account, kn_id, write=True)
     else:
-        await authorize_execution(account, task.agent_id, kn_id)
+        await authorize_execution(account, kn_id)
     return task
 
 
@@ -199,15 +199,21 @@ async def _execute_impl(
         raise not_found("agent", req.agent_id)
     if req.context.purpose and req.agent_id != "eval_assistant":
         raise err(409, "BknAgent.Execution.Unsupported")
+    if req.context.draft_revision is not None and req.context.kn_version != "draft":
+        raise err(
+            422,
+            "BknAgent.Execution.ContextInvalid",
+            field="draft_revision requires kn_version=draft",
+        )
     agent = await dao.get_agent(session, req.agent_id)
     if not agent or agent.status != "published" or agent.mode != "chat":
         raise not_found("agent", req.agent_id)
     if metric_request:
         if account.account_type != "user":
             raise err(403, "BknAgent.Execution.Forbidden")
-        await authorize_network_setting(account, agent.agent_id, req.context.kn_id, write=True)
+        await authorize_network_setting(account, req.context.kn_id, write=True)
     else:
-        await authorize_execution(account, agent.agent_id, req.context.kn_id)
+        await authorize_execution(account, req.context.kn_id)
     if metric_request and (agent.tools or agent.skills):
         raise err(409, "BknAgent.Execution.Unsupported")
     if not metric_request and any(
@@ -244,8 +250,11 @@ async def _execute_impl(
     request_data = req.model_dump(
         mode="json", exclude={"model_id"} if req.model_id is None else None
     )
-    if req.context.purpose is None:
-        request_data["context"].pop("purpose", None)
+    # Unset optional scope stays out of the record, so the fingerprint and the
+    # thread's context check match requests made before these fields existed.
+    for name in ("purpose", "kn_version", "draft_revision"):
+        if getattr(req.context, name) is None:
+            request_data["context"].pop(name, None)
     metric_data = metric_request.model_dump(mode="json") if metric_request else None
     model_id = metric_request.model_id if metric_request else req.model_id
     protocol = METRIC_PROTOCOL if metric_request else _PROTOCOL
@@ -331,7 +340,12 @@ async def _execute_impl(
     except BaseException:
         _thread_claims.discard(thread_id)
         raise
-    public = PublicChat(run_id, req.context.kn_id)
+    public = PublicChat(
+        run_id,
+        req.context.kn_id,
+        kn_version=req.context.kn_version,
+        draft_revision=req.context.draft_revision,
+    )
     public.instructions = effective.instructions
     public.allowed_tools = effective.allowed_tools
     public.allowed_builtin_tools = effective.allowed_builtin_tools
@@ -514,13 +528,17 @@ async def _execute_impl(
     return _response(events())
 
 
+# Context every Agent accepts; any other field belongs to a builtin provider.
+_SCOPE_FIELDS = {"kn_id", "purpose", "kn_version", "draft_revision"}
+
+
 def _provider_context(req: ExecutionRequest, provider):
     """The request context a builtin provider needs, validated; other Agents
     must not be sent provider context at all."""
     given = {
         name
         for name in type(req.context).model_fields
-        if name not in {"kn_id", "purpose"} and getattr(req.context, name) is not None
+        if name not in _SCOPE_FIELDS and getattr(req.context, name) is not None
     }
     expected = {provider.context_key} if provider else set()
     if given - expected:

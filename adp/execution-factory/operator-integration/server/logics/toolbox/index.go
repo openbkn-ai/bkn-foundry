@@ -59,6 +59,8 @@ type ToolServiceImpl struct {
 	// re-reads the rows itself, so telling it about a write that was then rolled back is safe:
 	// what it indexes is whatever the table ended up holding.
 	CapabilityIndex capabilityindex.Reconciler
+	// BknBackend runs Cypher functions (#2670), and checks them with explain before they are saved.
+	BknBackend interfaces.BknBackendClient
 }
 
 // NewToolServiceImpl creates a toolbox service.
@@ -80,6 +82,7 @@ func NewToolServiceImpl() interfaces.IToolService {
 			AuthService:      auth.NewAuthServiceImpl(),
 			AuditLog:         metric.NewAuditLogBuilder(),
 			MetadataService:  metadata.NewMetadataService(),
+			BknBackend:       drivenadapters.NewBknBackendClient(),
 			CapabilityIndex:  capabilityindex.NewReconciler(),
 			ActionEvidence:   bkntrace.NewConfiguredKafkaEmitter(conf.GetLogger()),
 			ActionExecutions: bkntrace.NewRedisExecutionGate(redisClient),

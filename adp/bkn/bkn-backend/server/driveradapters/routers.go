@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +36,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/kn_version"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_data_stats"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
@@ -66,6 +68,8 @@ type restHandler struct {
 	vts                     interfaces.ValueTypeService
 	oms                     interfaces.ObjectMetricServiceV1
 	kes                     interfaces.KnEventServiceV1
+	kvs                     interfaces.KNVersionService
+	kvsOnce                 sync.Once
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService
@@ -106,6 +110,7 @@ func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecord
 		rtsRisk:                 risk_type.NewRiskTypeService(appSetting),
 		vts:                     value_type.NewValueTypeService(appSetting),
 		bs:                      bkn.NewBKNService(appSetting),
+		kvs:                     kn_version.NewKNVersionService(appSetting, knService),
 		projectionGrantVerifier: projectionVerifier,
 		cqs:                     cypher.NewCypherQueryService(appSetting),
 		odss:                    object_data_stats.NewObjectDataStatsService(appSetting),
@@ -127,8 +132,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	apiV1 := c.Group("/api/bkn-backend/v1")
 	bknApiV2 := c.Group("/api/bkn-backend/v2")
-	apiV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
-	bknApiV2.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
+	apiV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations(), r.consistentReads())
+	bknApiV2.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations(), r.consistentReads())
 	apiV1.GET("/proxy-accounts", r.ListKNProxiesByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxyByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/proxy-account/plan", r.PlanKNProxySyncByEx)
@@ -144,6 +149,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/knowledge-networks", r.ListKNsByEx)
 	apiV1.GET("/knowledge-networks/:kn_id", r.GetKNByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/overview-graph", r.ListOverviewGraphByEx)
+	r.registerKNVersionRoutes(apiV1)
 	apiV1.POST("/knowledge-networks/:kn_id/validation", r.verifyJsonContentType(), r.ValidateKNByEx)
 	apiV1.POST("/knowledge-networks/:kn_id/relation-type-paths", r.GetRelationTypePathsByEx)
 
@@ -233,7 +239,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/bkns/diff/object-data-stats", r.verifyJsonContentType(), r.ObjectDataStatsByEx)
 
 	apiInV1 := c.Group("/api/bkn-backend/in/v1")
-	apiInV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
+	apiInV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations(), r.consistentReads())
 	apiInV1.GET("/trace/projection/knowledge-networks/:kn_id", r.GetKNByProjectionGrant)
 	apiInV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxy)
 	apiInV1.POST("/knowledge-networks/:kn_id/proxy-account/resolve", r.verifyJsonContentType(), r.ResolveKNProxyBinding)
@@ -242,6 +248,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.POST("/knowledge-networks/:kn_id/proxy-account/deletion/finalize", r.FinalizeKNProxyDeletion)
 	apiInV1.POST("/proxy-accounts/reconcile", r.ReconcileKNProxies)
 	apiInV1.GET("/authorization-resources", r.ListAuthorizationResources)
+	apiInV1.POST("/knowledge-networks/:kn_id/versioning/disable", knEventInternal(r.disableKNVersioning))
 
 	// Knowledge networks.
 	apiInV1.POST("/knowledge-networks", r.verifyJsonContentType(), r.CreateKNByIn)

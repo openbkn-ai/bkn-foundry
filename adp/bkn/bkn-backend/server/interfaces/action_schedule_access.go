@@ -20,6 +20,8 @@ type ActionScheduleAccess interface {
 	UpdateSchedule(ctx context.Context, tx *sql.Tx, schedule *ActionSchedule) error
 	UpdateScheduleStatus(ctx context.Context, scheduleID, status string, nextRunTime int64) error
 	DeleteSchedules(ctx context.Context, tx *sql.Tx, scheduleIDs []string) error
+	// DeleteSchedulesByKnID deletes every schedule of a network, on all branches.
+	DeleteSchedulesByKnID(ctx context.Context, tx *sql.Tx, knID string) error
 	GetSchedule(ctx context.Context, scheduleID string) (*ActionSchedule, error)
 	GetSchedules(ctx context.Context, scheduleIDs []string) (map[string]*ActionSchedule, error)
 	ListSchedules(ctx context.Context, queryParams ActionScheduleQueryParams) ([]*ActionSchedule, error)

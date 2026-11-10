@@ -122,8 +122,16 @@ type KN struct {
 	ImportSkipped bool `json:"-" mapstructure:"-"`
 
 	SkillContent string `json:"skill_content,omitempty" mapstructure:"skill_content"`
+	// KeepSkillContent tells UpdateKN to leave the stored skill content alone, set when an
+	// update request leaves skill_content out.
+	KeepSkillContent bool `json:"-" mapstructure:"-"`
+	// ReplaceContent makes an overwrite import delete the definitions the package leaves out.
+	ReplaceContent bool `json:"-" mapstructure:"-"`
 
 	Branch string `json:"branch,omitempty" mapstructure:"branch"`
+	// Versioning is true in a create request for a network versioned from the start, and the
+	// version state in a read of a versioned network.
+	Versioning *KNVersioningField `json:"versioning,omitempty" mapstructure:"-"`
 
 	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 	ObjectTypes   []*ObjectType   `json:"object_types,omitempty" mapstructure:"object_types"`
@@ -186,6 +194,8 @@ type OverviewGraphNode struct {
 	IndexStatus   *ObjectTypeIndexStatus      `json:"index_status,omitempty"`
 	Degree        int                         `json:"degree,omitempty"`
 	ConceptGroups []OverviewGraphConceptGroup `json:"concept_groups,omitempty"`
+	// Lifecycle is left out while the object type is active.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 }
 
 type OverviewGraphEdge struct {
@@ -194,6 +204,8 @@ type OverviewGraphEdge struct {
 	SourceID    string `json:"source_id"`
 	TargetID    string `json:"target_id"`
 	MappingMode string `json:"mapping_mode"`
+	// Lifecycle is left out while the relation type is active.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 }
 
 type OverviewGraph struct {

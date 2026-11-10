@@ -103,11 +103,26 @@ func (mr *MockKNAccessMockRecorder) DeleteKN(ctx, tx, knID, branch any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteKN", reflect.TypeOf((*MockKNAccess)(nil).DeleteKN), ctx, tx, knID, branch)
 }
 
+// ListKNBranches mocks base method.
+func (m *MockKNAccess) ListKNBranches(ctx context.Context, knID string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListKNBranches", ctx, knID)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListKNBranches indicates an expected call of ListKNBranches.
+func (mr *MockKNAccessMockRecorder) ListKNBranches(ctx, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKNBranches", reflect.TypeOf((*MockKNAccess)(nil).ListKNBranches), ctx, knID)
+}
+
 // GetAllKNs mocks base method.
-func (m *MockKNAccess) GetAllKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
+func (m *MockKNAccess) GetAllKNs(ctx context.Context) ([]*interfaces.KN, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllKNs", ctx)
-	ret0, _ := ret[0].(map[string]*interfaces.KN)
+	ret0, _ := ret[0].([]*interfaces.KN)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

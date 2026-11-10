@@ -9,6 +9,7 @@ package object_type
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"testing"
@@ -219,8 +220,8 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_data_source,f_data_properties,f_aliases,f_lifecycle_status,f_deprecation,f_logic_properties,f_primary_keys,"+
-			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
+			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
 
 		Convey("CreateObjectType Success \n", func() {
 			smock.ExpectBegin()
@@ -432,8 +433,8 @@ func Test_objectTypeAccess_CreateObjectTypes(t *testing.T) {
 		second.OTName = "Object Type 2"
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_data_source,f_data_properties,f_aliases,f_lifecycle_status,f_deprecation,f_logic_properties,f_primary_keys,"+
-			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
+			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
 		smock.ExpectBegin()
 		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
 		tx, err := ota.db.Begin()
@@ -1278,8 +1279,9 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_data_properties = ?, "+
 			"f_data_source = ?, f_deprecation = ?, f_display_key = ?, f_icon = ?, f_incremental_key = ?, f_lifecycle_status = ?, f_logic_properties = ?, "+
-			"f_name = ?, f_primary_keys = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
-			"WHERE f_id = ? AND f_kn_id = ?", OT_TABLE_NAME)
+			"f_name = ?, f_primary_keys = ?, f_revision = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", OT_TABLE_NAME)
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", OT_TABLE_NAME)
 
 		objectType := &interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1298,7 +1300,8 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 				Icon:    "icon1",
 				Color:   "color1",
 			},
-			KNID: "kn1",
+			KNID:   "kn1",
+			Branch: "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -1367,9 +1370,11 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateObjectType RowsAffected not equal 1\n", func() {
+		Convey("UpdateObjectType changes nothing on a row that already holds the values\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(1, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "ot1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
 
 			tx, _ := ota.db.Begin()
 			err := ota.UpdateObjectType(testCtx, tx, objectType)
@@ -1394,13 +1399,15 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateObjectType RowsAffected != 1 \n", func() {
+		Convey("UpdateObjectType reports a row missing on the branch\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "ot1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}))
 
 			tx, _ := ota.db.Begin()
 			err := ota.UpdateObjectType(testCtx, tx, objectType)
-			So(err, ShouldBeNil)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
@@ -1429,15 +1436,17 @@ func Test_objectTypeAccess_UpdateDataProperties(t *testing.T) {
 		ota, smock := MockNewObjectTypeAccess(appSetting)
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_data_properties = ?, "+
-			"f_update_time = ?, f_updater = ?, f_updater_type = ? "+
-			"WHERE f_id = ? AND f_kn_id = ?", OT_TABLE_NAME)
+			"f_revision = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", OT_TABLE_NAME)
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", OT_TABLE_NAME)
 
 		objectType := &interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 				OTID:           "ot1",
 				DataProperties: []*interfaces.DataProperty{},
 			},
-			KNID: "kn1",
+			KNID:   "kn1",
+			Branch: "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -1472,13 +1481,15 @@ func Test_objectTypeAccess_UpdateDataProperties(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateDataProperties RowsAffected != 1 \n", func() {
+		Convey("UpdateDataProperties reports a row missing on the branch\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "ot1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}))
 
 			tx, _ := ota.db.Begin()
 			err := ota.UpdateDataProperties(testCtx, tx, objectType)
-			So(err, ShouldBeNil)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
@@ -2123,5 +2134,57 @@ func Test_objectTypeAccess_ListDeprecatedObjectTypes(t *testing.T) {
 		So(list[0].OTID, ShouldEqual, "old_order")
 		So(list[0].Lifecycle, ShouldResemble, &interfaces.Lifecycle{Status: "deprecated", Reason: "merged", ReplacedBy: "order"})
 		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func Test_objectTypeAccess_ListObjectTypeSummaries(t *testing.T) {
+	Convey("test ListObjectTypeSummaries\n", t, func() {
+		appSetting := &common.AppSetting{}
+		ota, smock := MockNewObjectTypeAccess(appSetting)
+
+		sqlStr := fmt.Sprintf("SELECT ot.f_id, ot.f_name, ot.f_tags, ot.f_comment, ot.f_icon, ot.f_color, "+
+			"ot.f_kn_id, ot.f_branch, ot.f_data_source, ot.f_aliases, ot.f_lifecycle_status, ot.f_deprecation, "+
+			"ot.f_creator, ot.f_creator_type, ot.f_create_time, ot.f_updater, ot.f_updater_type, ot.f_update_time, "+
+			"ots.f_incremental_key, ots.f_incremental_value, ots.f_index, ots.f_index_available, "+
+			"ots.f_doc_count, ots.f_storage_size, ots.f_update_time "+
+			"FROM %s AS ot JOIN %s AS ots ON ot.f_id = ots.f_id AND ot.f_kn_id = ots.f_kn_id AND ot.f_branch = ots.f_branch "+
+			"WHERE ot.f_kn_id = ? AND ot.f_branch = ?", OT_TABLE_NAME, OT_STATUS_TABLE_NAME)
+
+		columns := []string{
+			"ot.f_id", "ot.f_name", "ot.f_tags", "ot.f_comment", "ot.f_icon", "ot.f_color",
+			"ot.f_kn_id", "ot.f_branch", "ot.f_data_source", "ot.f_aliases", "ot.f_lifecycle_status", "ot.f_deprecation",
+			"ot.f_creator", "ot.f_creator_type", "ot.f_create_time", "ot.f_updater", "ot.f_updater_type", "ot.f_update_time",
+			"ots.f_incremental_key", "ots.f_incremental_value", "ots.f_index", "ots.f_index_available",
+			"ots.f_doc_count", "ots.f_storage_size", "ots.f_update_time",
+		}
+		row := func(id string, aliases, status, deprecation any) []driver.Value {
+			return []driver.Value{
+				id, "Object Type", `"tag1"`, "comment", "icon", "color",
+				"kn1", "main", []byte(`{}`), aliases, status, deprecation,
+				"admin", "admin", testUpdateTime, "admin", "admin", testUpdateTime,
+				"", "", "index1", true, int64(0), int64(0), testUpdateTime,
+			}
+		}
+		query := interfaces.ObjectTypesQueryParams{KNID: "kn1", Branch: "main"}
+
+		Convey("carries the aliases and lifecycle, and none for a row without them\n", func() {
+			rows := sqlmock.NewRows(columns).
+				AddRow(row("ot1", `["Patient","病人"]`, "deprecated", `{"reason":"Merged","replaced_by":"ot2"}`)...).
+				AddRow(row("ot2", nil, nil, nil)...)
+			smock.ExpectQuery(sqlStr).WithArgs("kn1", "main").WillReturnRows(rows)
+
+			objectTypes, err := ota.ListObjectTypeSummaries(testCtx, nil, query)
+			So(err, ShouldBeNil)
+			So(len(objectTypes), ShouldEqual, 2)
+			So(objectTypes[0].Aliases, ShouldResemble, []string{"Patient", "病人"})
+			So(objectTypes[0].Lifecycle, ShouldResemble,
+				&interfaces.Lifecycle{Status: "deprecated", Reason: "Merged", ReplacedBy: "ot2"})
+			So(objectTypes[1].Aliases, ShouldBeNil)
+			So(objectTypes[1].Lifecycle, ShouldBeNil)
+
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
 	})
 }

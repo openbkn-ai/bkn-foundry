@@ -26,6 +26,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/kn_version"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 )
 
@@ -99,6 +100,26 @@ func (r *restHandler) objectMetricExternal(c *gin.Context, next func(*gin.Contex
 
 func objectMetricContext(c *gin.Context, vis hydra.Visitor) context.Context {
 	return context.WithValue(c.Request.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: vis.ID, Type: string(vis.Type)})
+}
+
+// useKNVersionService shares the version service of the main handler. It is looked up on first
+// use because the paid routes are installed before that handler exists.
+func (r *restHandler) useKNVersionService() {
+	r.kvsOnce.Do(func() {
+		if r.kvs == nil {
+			r.kvs = kn_version.Current()
+		}
+	})
+}
+
+// objectMetricWrite resolves the branch of a metric write like any definition write: a versioned
+// network writes its draft and needs the preconditions of the method (428 without them), and
+// kn_version is refused. The returned context carries the preconditions for the write transaction.
+func (r *restHandler) objectMetricWrite(c *gin.Context, vis hydra.Visitor) (context.Context, string, bool) {
+	r.useKNVersionService()
+	ctx := objectMetricContext(c, vis)
+	branch, ok := r.writeBranch(&ctx, c, c.Param("kn_id"))
+	return ctx, branch, ok
 }
 
 func replyObjectMetricError(c *gin.Context, err error) {
@@ -189,7 +210,11 @@ func (r *restHandler) createObjectMetricDraft(c *gin.Context, vis hydra.Visitor)
 		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
-	record, err := r.oms.CreateDraft(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), &definition)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	record, err := r.oms.CreateDraft(ctx, c.Param("kn_id"), branch, &definition)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -217,7 +242,11 @@ func (r *restHandler) updateObjectMetricDraft(c *gin.Context, vis hydra.Visitor)
 			return
 		}
 	}
-	record, err := r.oms.UpdateDraft(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), &definition)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	record, err := r.oms.UpdateDraft(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), &definition)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -262,8 +291,12 @@ func (r *restHandler) getObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	if !ok {
 		return
 	}
+	r.useKNVersionService()
 	ctx := objectMetricContext(c, vis)
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, ok := r.readBranch(&ctx, c, c.Param("kn_id"))
+	if !ok {
+		return
+	}
 	record, err := r.oms.Get(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
@@ -273,6 +306,10 @@ func (r *restHandler) getObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
+	}
+	// The ETag a later write to a versioned network sends back as If-Match.
+	if record.Revision != "" {
+		c.Header("ETag", `"`+record.Revision+`"`)
 	}
 	rest.ReplyOK(c, http.StatusOK, projected[0])
 }
@@ -300,6 +337,13 @@ func (r *restHandler) listObjectMetrics(c *gin.Context, vis hydra.Visitor, inclu
 	}
 	ctx := objectMetricContext(c, vis)
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	r.useKNVersionService()
+	if includeOwnerNames { // the public list resolves kn_version; the internal one reads the branch it is given
+		var ok bool
+		if branch, ok = r.readBranch(&ctx, c, c.Param("kn_id")); !ok {
+			return
+		}
+	}
 	result, err := r.oms.List(ctx, interfaces.ObjectMetricListQueryV1{
 		KNID: c.Param("kn_id"), Branch: branch,
 		OwnerObjectTypeID: c.Query("owner_object_type_id"), MetricType: c.Query("metric_type"),
@@ -351,8 +395,11 @@ func (r *restHandler) deleteObjectMetricVersion(c *gin.Context, vis hydra.Visito
 		return
 	}
 	c.Set("operation_audit_target_ids", []string{fmt.Sprintf("%s@%d", c.Param("metric_id"), version)})
-	record, err := r.oms.DeleteVersion(objectMetricContext(c, vis), c.Param("kn_id"),
-		c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	record, err := r.oms.DeleteVersion(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -371,8 +418,13 @@ func (r *restHandler) ListObjectMetricVersionsByEx(c *gin.Context) {
 }
 
 func (r *restHandler) listObjectMetricVersions(c *gin.Context, vis hydra.Visitor) {
+	r.useKNVersionService()
+	r.useKNVersionService()
 	ctx := objectMetricContext(c, vis)
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, ok := r.readBranch(&ctx, c, c.Param("kn_id"))
+	if !ok {
+		return
+	}
 	entries, err := r.oms.ListVersions(ctx, c.Param("kn_id"), branch, c.Param("metric_id"))
 	if err != nil {
 		replyObjectMetricError(c, err)
@@ -387,7 +439,11 @@ func (r *restHandler) listObjectMetricVersions(c *gin.Context, vis hydra.Visitor
 }
 
 func (r *restHandler) createObjectMetricVersion(c *gin.Context, vis hydra.Visitor) {
-	record, err := r.oms.CreateNextDraft(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"))
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	record, err := r.oms.CreateNextDraft(ctx, c.Param("kn_id"), branch, c.Param("metric_id"))
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -412,7 +468,11 @@ func (r *restHandler) validateObjectMetricVersion(c *gin.Context, vis hydra.Visi
 		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
-	record, issues, err := r.oms.ValidateVersion(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	record, issues, err := r.oms.ValidateVersion(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -430,7 +490,11 @@ func (r *restHandler) validateObjectMetric(c *gin.Context, vis hydra.Visitor) {
 		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
-	result, err := r.oms.Validate(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), &definition)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	result, err := r.oms.Validate(ctx, c.Param("kn_id"), branch, &definition)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -475,7 +539,11 @@ func (r *restHandler) previewObjectMetric(c *gin.Context, vis hydra.Visitor) {
 		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
-	result, err := r.oms.Preview(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), &definition)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	result, err := r.oms.Preview(ctx, c.Param("kn_id"), branch, &definition)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -496,7 +564,11 @@ func (r *restHandler) publishObjectMetric(c *gin.Context, vis hydra.Visitor) {
 		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
-	record, issues, err := r.oms.Publish(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	record, issues, err := r.oms.Publish(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -527,7 +599,11 @@ func (r *restHandler) deprecateObjectMetric(c *gin.Context, vis hydra.Visitor) {
 		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
-	record, err := r.oms.Deprecate(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	ctx, branch, ok := r.objectMetricWrite(c, vis)
+	if !ok {
+		return
+	}
+	record, err := r.oms.Deprecate(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return

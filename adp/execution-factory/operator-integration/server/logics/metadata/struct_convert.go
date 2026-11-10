@@ -67,6 +67,10 @@ func MetadataDBToStruct(metadataDB interfaces.IMetadataDB) *interfaces.MetadataI
 			Inputs:          inputs,
 			Outputs:         outputs,
 		}
+		if v.IsCypher() {
+			metadata.FunctionContent.KnID = v.KnID
+			metadata.FunctionContent.ResultShape = interfaces.CypherResultShape(v.ResultShape)
+		}
 		return metadata
 	case *model.APIMetadataDB:
 		return apimetadataDBToAPIMetadata(v)

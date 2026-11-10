@@ -47,6 +47,31 @@ func NewVegaBackendAccess(appSetting *common.AppSetting) interfaces.VegaBackendA
 	return vb
 }
 
+// readsAsCaller reports whether a data read runs with the caller's own identity instead of
+// the knowledge network proxy: the query is on the draft or a history version, and no
+// proxy context was attached. A proxy context always wins, so a read that carries one is
+// never downgraded to the caller path by accident.
+func readsAsCaller(ctx context.Context) bool {
+	if _, ok := interfaces.TrustedProxyContextFromContext(ctx); ok {
+		return false
+	}
+	return interfaces.KNVersionPinFromContext(ctx).UsesCallerIdentity()
+}
+
+// callerHeaders are the headers of a read made as the caller: the ordinary internal Vega
+// API checks the caller's own permission on the resource.
+func callerHeaders(ctx context.Context) (map[string]string, error) {
+	caller, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok || caller.ID == "" || caller.Type == "" {
+		return nil, fmt.Errorf("request caller is unavailable")
+	}
+	return common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   caller.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: caller.Type,
+	}, "vega.resource.query", 1), nil
+}
+
 func (v *vegaBackendAccess) buildProxyHeaders(
 	ctx context.Context, resourceID, operation string,
 ) (map[string]string, error) {
@@ -88,7 +113,15 @@ func (v *vegaBackendAccess) GetResourceSchema(ctx context.Context,
 	defer span.End()
 
 	httpURL := fmt.Sprintf("%s/proxy/resources/%s/schema", v.baseURL, url.PathEscape(resourceID))
-	headers, err := v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationViewDetail)
+	var headers map[string]string
+	var err error
+	if readsAsCaller(ctx) {
+		httpURL = fmt.Sprintf("%s/resources/%s/schema?operation=%s", v.baseURL, url.PathEscape(resourceID),
+			interfaces.PermissionOperationViewDetail)
+		headers, err = callerHeaders(ctx)
+	} else {
+		headers, err = v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationViewDetail)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +148,14 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	defer span.End()
 
 	httpURL := fmt.Sprintf("%s/proxy/resources/%s/data", v.baseURL, url.PathEscape(resourceID))
-	headers, err := v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationQueryData)
+	var headers map[string]string
+	var err error
+	if readsAsCaller(ctx) {
+		httpURL = fmt.Sprintf("%s/resources/%s/data", v.baseURL, url.PathEscape(resourceID))
+		headers, err = callerHeaders(ctx)
+	} else {
+		headers, err = v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationQueryData)
+	}
 	if err != nil {
 		return nil, err
 	}

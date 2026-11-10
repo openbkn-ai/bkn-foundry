@@ -10,11 +10,64 @@ Typical ingress prefix:
 | --- | --- |
 | `/api/agent-operator-integration/v1` | Toolbox, MCP, and Skill management and tool execution surface |
 
+## Cypher Functions
+
+A function in a function toolbox has one of two script types: `python` (code run in the sandbox) or `cypher`. A Cypher function is one read-only Cypher statement, and its `$name` placeholders are its inputs. It does not run in the sandbox: the platform runs the statement in the knowledge network as the caller, so the caller's row and column permissions apply. It can back an object type's logic property, and agents and MCP call it like any other tool.
+
+| Field | Meaning |
+| --- | --- |
+| `script_type` | `cypher` |
+| `kn_id` | The knowledge network the statement reads |
+| `code` | One read-only Cypher statement; see the [Cypher query manual](cypher.md) |
+| `inputs` | Exactly the statement's `$name`s; each is a `string`, `number` or `boolean`, or an `array` of one of those for `IN $name`; all are required and all need a description |
+| `result_shape` | `value`: returns `{"value": x}`, one scalar column, `null` for no row, an error for more than one row; `table`: returns `{columns, entries, limited}` |
+
+Before saving, the platform has the knowledge network compile the statement without reading data. A syntax error, a write clause, an object type or property that does not exist, no read permission, or a `value` statement that returns several columns or a node, relationship or list is refused with the reason.
+
+```bash
+# Create a Cypher function in function toolbox <box_id>: how many materials a supplier supplies
+curl -sk -X POST "https://<host>/api/agent-operator-integration/v1/tool-box/<box_id>/tool" \
+  -H "Authorization: Bearer $(openbkn token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata_type": "function",
+    "function_input": {
+      "name": "supplier_material_count",
+      "description": "Number of materials a supplier supplies",
+      "script_type": "cypher",
+      "kn_id": "<kn_id>",
+      "code": "MATCH (s:supplier {supplier_id: $id})-[:supplies]->(m:material) RETURN count(m)",
+      "inputs": [{"name": "id", "type": "string", "required": true, "description": "supplier_id of the supplier"}],
+      "result_shape": "value"
+    }
+  }'
+
+# Call it once enabled, in a published toolbox: returns {"status_code": 200, "body": {"value": 12}, ...}
+curl -sk -X POST "https://<host>/api/agent-operator-integration/v1/tool-box/<box_id>/proxy/<tool_id>" \
+  -H "Authorization: Bearer $(openbkn token)" \
+  -H "Content-Type: application/json" \
+  -d '{"body": {"id": "S001"}}'
+```
+
+As a logic property:
+
+- Start from the instance by primary key. Use `$id` for a single primary key; for a composite key use one parameter per key property, named after it, such as `$order_id` and `$line_no`. Bind each to its key property.
+- Choose the `value` shape and set `ResultPath` to `$.value`.
+- A logic property's value follows the permissions of whoever reads it: the knowledge network's proxy only checks that the logic property may call the function, and the statement runs as the reader, with row and property permissions applied, so data the reader cannot see is never counted. Each instance runs one query; prefer an object metric for a plain numeric aggregate.
+
+Notes:
+
+- Send `script_type: cypher` when editing a Cypher function. The script type cannot change between `python` and `cypher`; create a new function instead.
+- Parameters replace values only, never object type, relation type or property names. A parameter cannot be `null`, so a filter that applies only when given needs two functions.
+- Importing a toolbox does not check its statements, because the target environment may not have the network yet. A statement that no longer fits fails when it is called.
+- `LIMIT` and `SKIP` take an integer, not a `$parameter`. A `table` statement without `LIMIT` returns at most 1000 rows, with `limited` set to `true` when there were more; a statement that writes its own `LIMIT` is cut there and `limited` does not say so. `LIMIT` is at most 10000.
+- A `value` statement that takes one row with `LIMIT 1` needs an `ORDER BY`, or which row it gets is arbitrary; aggregate (`count()`, `max()` and the like) where you can.
+
 ## CLI
 
 ### Toolboxes and Tools
 
-A toolbox groups tools into one publishable box. An `openapi` box proxies its tools to a service; a `function` box holds platform functions. A tool can be executed only when it is enabled and its toolbox is published.
+A toolbox groups tools into one publishable box. An `openapi` box proxies its tools to a service; a `function` box holds platform functions, written in Python or as a Cypher statement. A tool can be executed only when it is enabled and its toolbox is published.
 
 ```bash
 # List toolboxes (the id is `box_id`)
