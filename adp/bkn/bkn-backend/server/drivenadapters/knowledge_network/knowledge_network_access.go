@@ -616,6 +616,39 @@ func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,
 	return nil
 }
 
+// ListKNBranches returns every branch the network has a row on, in name order.
+func (kna *knowledgeNetworkAccess) ListKNBranches(ctx context.Context, knID string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge network branches")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(knID))
+
+	sqlStr, vals, err := sq.Select("f_branch").From(KN_TABLE_NAME).
+		Where(sq.Eq{"f_id": knID}).OrderBy("f_branch").ToSql()
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to build the sql of listing knowledge network branches", err)
+		return nil, err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+
+	rows, err := kna.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "List knowledge network branches error", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	branches := []string{}
+	for rows.Next() {
+		var branch string
+		if err := rows.Scan(&branch); err != nil {
+			common.LogSafeError(ctx, "Scan knowledge network branch error", err)
+			return nil, err
+		}
+		branches = append(branches, branch)
+	}
+	return branches, rows.Err()
+}
+
 func (kna *knowledgeNetworkAccess) DeleteKN(ctx context.Context,
 	tx *sql.Tx, knID string, branch string) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete knowledge networks from db")

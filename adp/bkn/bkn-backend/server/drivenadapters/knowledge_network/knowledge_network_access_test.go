@@ -669,6 +669,29 @@ func Test_knowledgeNetworkAccess_UpdateKNDetail(t *testing.T) {
 	})
 }
 
+func Test_knowledgeNetworkAccess_ListKNBranches(t *testing.T) {
+	Convey("Test ListKNBranches\n", t, func() {
+		kna, smock := MockNewKNAccess(&common.AppSetting{})
+		sqlStr := fmt.Sprintf("SELECT f_branch FROM %s WHERE f_id = ? ORDER BY f_branch", KN_TABLE_NAME)
+
+		Convey("Returns every branch of the network\n", func() {
+			smock.ExpectQuery(sqlStr).WithArgs("kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"f_branch"}).AddRow("dev").AddRow("main"))
+			branches, err := kna.ListKNBranches(testCtx, "kn1")
+			So(err, ShouldBeNil)
+			So(branches, ShouldResemble, []string{"dev", "main"})
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("Returns the query error\n", func() {
+			expectedErr := errors.New("query error")
+			smock.ExpectQuery(sqlStr).WithArgs("kn1").WillReturnError(expectedErr)
+			_, err := kna.ListKNBranches(testCtx, "kn1")
+			So(err, ShouldResemble, expectedErr)
+		})
+	})
+}
+
 func Test_knowledgeNetworkAccess_DeleteKN(t *testing.T) {
 	Convey("Test DeleteKN\n", t, func() {
 		appSetting := &common.AppSetting{}
