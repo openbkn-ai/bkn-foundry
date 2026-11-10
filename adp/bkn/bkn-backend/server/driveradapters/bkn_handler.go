@@ -64,11 +64,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// non-strict. Keep those omission defaults for existing callers while honoring explicit values.
 	// replace is overwrite that also deletes what the package leaves out; only uploads take it.
 	replace := c.Query(interfaces.QueryParam_ImportMode) == interfaces.ImportMode_Replace
-	if replace {
-		query := c.Request.URL.Query()
-		query.Set(interfaces.QueryParam_ImportMode, interfaces.ImportMode_Overwrite)
-		c.Request.URL.RawQuery = query.Encode()
-	}
 	overwriteChanges, parseErr := strconv.ParseBool(c.DefaultQuery("overwrite_changes", "false"))
 	if parseErr != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
@@ -78,7 +73,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		return
 	}
 	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c,
-		interfaces.ImportMode_Overwrite, false)
+		interfaces.ImportMode_Overwrite, false, true)
 	if httpErr != nil {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

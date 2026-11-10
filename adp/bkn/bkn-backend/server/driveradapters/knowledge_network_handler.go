@@ -275,9 +275,13 @@ func (r *restHandler) CreateKNByEx(c *gin.Context) {
 
 // parseKnowledgeNetworkImportOptions parses the import behavior shared by JSON and archive imports.
 // strict_mode takes precedence over the deprecated validate_dependency parameter.
+// With allowReplace, replace is accepted and parsed as overwrite; the caller prunes what is left out.
 func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context,
-	defaultMode string, defaultStrictMode bool) (string, bool, *httperrors.HTTPError) {
+	defaultMode string, defaultStrictMode bool, allowReplace bool) (string, bool, *httperrors.HTTPError) {
 	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, defaultMode)
+	if allowReplace && mode == interfaces.ImportMode_Replace {
+		mode = interfaces.ImportMode_Overwrite
+	}
 	if httpErr := validateImportMode(ctx, mode); httpErr != nil {
 		return "", false, httpErr
 	}
@@ -320,7 +324,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c,
-		interfaces.ImportMode_Normal, true)
+		interfaces.ImportMode_Normal, true, false)
 	if httpErr != nil {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

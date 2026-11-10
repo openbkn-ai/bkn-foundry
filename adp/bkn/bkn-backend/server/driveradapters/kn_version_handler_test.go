@@ -96,3 +96,23 @@ func TestIfMatchRevision(t *testing.T) {
 		}
 	}
 }
+
+// Uploads take import_mode=replace as overwrite; JSON imports keep refusing it.
+func TestParseImportOptionsReplace(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		allowReplace bool
+		wantMode     string
+		wantErr      bool
+	}{{true, interfaces.ImportMode_Overwrite, false}, {false, "", true}} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/bkns?import_mode=replace", nil)
+		// The handler reads the query before parsing, as UploadBKN does.
+		_ = c.Query(interfaces.QueryParam_ImportMode)
+		mode, _, httpErr := parseKnowledgeNetworkImportOptions(context.Background(), c,
+			interfaces.ImportMode_Overwrite, false, tc.allowReplace)
+		if (httpErr != nil) != tc.wantErr || mode != tc.wantMode {
+			t.Errorf("allowReplace %v: mode %q err %v", tc.allowReplace, mode, httpErr)
+		}
+	}
+}
