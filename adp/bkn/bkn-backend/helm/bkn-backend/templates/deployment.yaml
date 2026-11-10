@@ -169,6 +169,9 @@ spec:
           - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS
             value: {{ .Values.bknTrace.evidencePublisher.retryBackoffMs | quote }}
           {{- end }}
+          {{- with .Values.extraEnv }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
           - name: POD_IP
             valueFrom:
               fieldRef:
