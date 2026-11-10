@@ -8,7 +8,7 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| 工具箱与工具（ToolBox / Tool） | 工具箱把一组工具打包发布：`openapi` 工具箱把工具代理到外部服务，`function` 工具箱承载平台函数；工具由智能体运行时按需调用 |
+| 工具箱与工具（ToolBox / Tool） | 工具箱把一组工具打包发布：`openapi` 工具箱把工具代理到外部服务，`function` 工具箱承载平台函数（Python 函数或 Cypher 函数）；工具由智能体运行时按需调用 |
 | MCP | 接入的 MCP Server 及其工具 |
 | 技能包（Skill） | 可分发、可安装的能力包，包含文档与元数据 |
 
@@ -17,6 +17,59 @@
 | 前缀 | 作用 |
 | --- | --- |
 | `/api/agent-operator-integration/v1` | 工具箱、MCP、Skill 管理与工具执行面 |
+
+### Cypher 函数
+
+函数工具箱里的函数有两种脚本类型：`python`（在沙箱中运行代码）和 `cypher`。Cypher 函数的实现就是一条只读 Cypher 语句，语句里的 `$name` 就是函数入参；它不进沙箱，由平台以调用人的身份在知识网络中执行，行列权限照常生效。它可以挂成对象类的逻辑属性，也可以像其他工具一样被智能体、MCP 调用。
+
+| 字段 | 说明 |
+| --- | --- |
+| `script_type` | `cypher` |
+| `kn_id` | 语句查询的知识网络 |
+| `code` | 只读 Cypher 语句，语法见 [Cypher 查询手册](cypher.md) |
+| `inputs` | 与语句中的 `$name` 一一对应；类型为 `string`、`number`、`boolean`，或它们的 `array`（用于 `IN $name`）；都必填，都要写说明 |
+| `result_shape` | `value`：返回 `{"value": x}`，只能一列标量，0 行为 `null`，多于 1 行报错；`table`：返回 `{columns, entries, limited}` |
+
+保存前平台会让知识网络编译一次语句（不读数据）：语法错误、写操作、对象类或属性不存在、没有读取权限，以及 `value` 形状返回多列或节点、关系、列表时，都拒绝保存并给出原因。
+
+```bash
+# 在函数工具箱 <box_id> 中新建一个 Cypher 函数：某供应商供应的物料数
+curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/tool-box/<box_id>/tool" \
+  -H "Authorization: Bearer $(openbkn token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata_type": "function",
+    "function_input": {
+      "name": "supplier_material_count",
+      "description": "供应商供应的物料数",
+      "script_type": "cypher",
+      "kn_id": "<kn_id>",
+      "code": "MATCH (s:supplier {supplier_id: $id})-[:supplies]->(m:material) RETURN count(m)",
+      "inputs": [{"name": "id", "type": "string", "required": true, "description": "供应商的 supplier_id"}],
+      "result_shape": "value"
+    }
+  }'
+
+# 启用后调用（工具箱需已发布）：返回 {"status_code": 200, "body": {"value": 12}, ...}
+curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/tool-box/<box_id>/proxy/<tool_id>" \
+  -H "Authorization: Bearer $(openbkn token)" \
+  -H "Content-Type: application/json" \
+  -d '{"body": {"id": "S001"}}'
+```
+
+用作逻辑属性时：
+
+- 起点按主键匹配。单主键的对象类用 `$id`；联合主键每个主键一个同名参数，如 `$order_id`、`$line_no`。参数绑定到对应主键属性。
+- 选 `value` 形状，`ResultPath` 写 `$.value`。
+- 逻辑属性的值按查看人的权限计算：知识网络代理只负责校验这个逻辑属性能否调用该函数，语句以查看人身份执行，行权限和属性权限照常生效，查看人看不到的数据不会算进结果。每个实例执行一次查询，纯数值汇总优先用对象指标。
+
+注意：
+
+- 编辑 Cypher 函数时要传 `script_type: cypher`。脚本类型不能在 `python` 与 `cypher` 之间修改，要换类型就新建函数。
+- 语句只能替换值，不能替换对象类、关系类和属性名；参数不接受 `null`，需要「不填就不过滤」时建两个函数。
+- 导入工具箱时不校验语句（目标环境可能还没有这个网络），语句失效会在调用时报错。
+- `LIMIT`、`SKIP` 后面只能写整数，不能写 `$参数`。`table` 形状不写 `LIMIT` 时最多返回 1000 行，超出时 `limited` 为 `true`；自己写了 `LIMIT` 时按它截断，`limited` 不再提示。`LIMIT` 最大 10000。
+- `value` 形状用 `LIMIT 1` 取一行时要配 `ORDER BY`，否则取到哪一行不确定；能聚合（`count()`、`max()` 等）时优先聚合。
 
 ### CLI
 
