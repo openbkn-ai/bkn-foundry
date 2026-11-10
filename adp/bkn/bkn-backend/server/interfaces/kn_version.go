@@ -200,6 +200,37 @@ type KNPublishRequest struct {
 
 // KNPublishResult is the publish response: the new version, and the version the Community
 // edition purged to keep only one previous version.
+// KNBranchReferences is what one branch uses outside the network.
+type KNBranchReferences struct {
+	DataResources []string
+	Functions     [][2]string // box id, tool id
+	Skills        []string
+}
+
+// KNReferencedResources answers which data resources, functions and Skills the draft and the
+// versions not purged use, so that a cleanup keeps them. versions lists "draft" and numbers.
+type KNReferencedResources struct {
+	DataResources []*KNReferencedResource `json:"data_resources"`
+	Functions     []*KNReferencedFunction `json:"functions"`
+	Skills        []*KNReferencedSkill    `json:"skills"`
+}
+
+type KNReferencedResource struct {
+	ResourceID string `json:"resource_id"`
+	Versions   []any  `json:"versions"`
+}
+
+type KNReferencedFunction struct {
+	BoxID    string `json:"box_id"`
+	ToolID   string `json:"tool_id"`
+	Versions []any  `json:"versions"`
+}
+
+type KNReferencedSkill struct {
+	SkillID  string `json:"skill_id"`
+	Versions []any  `json:"versions"`
+}
+
 // KNVersionProblem is one reason a branch cannot go live.
 type KNVersionProblem struct {
 	Category       string `json:"category"`
@@ -285,6 +316,7 @@ type KNVersionService interface {
 	Disable(ctx context.Context, knID string, req *KNDisableVersioningRequest) (*KNVersioningView, error)
 	// BuildDraftIndex makes the draft's concept index match its current revision.
 	BuildDraftIndex(ctx context.Context, knID string) (*KNDraftIndexView, error)
+	ReferencedResources(ctx context.Context, knID string) (*KNReferencedResources, error)
 }
 
 // KNDisableVersioningRequest is the body of the operator's disable request.
@@ -383,6 +415,8 @@ type KNMainPublisher interface {
 	IndexVersion(ctx context.Context, knID, src, dst string) error
 	// DeleteBranchIndex deletes the concept index of one branch.
 	DeleteBranchIndex(ctx context.Context, knID, branch string) error
+	// BranchReferences lists the data resources, functions and Skills one branch uses.
+	BranchReferences(ctx context.Context, knID, branch string) (*KNBranchReferences, error)
 	// CheckReferences lists what a branch references that does not exist, before it goes live.
 	CheckReferences(ctx context.Context, knID, branch string) ([]*KNVersionProblem, error)
 	// ReplaceKNDraft runs mutate, which replaces the draft, in one transaction, and keeps the

@@ -44,6 +44,10 @@ type txPublisher struct {
 	problems map[string][]*interfaces.KNVersionProblem
 }
 
+func (txPublisher) BranchReferences(_ context.Context, _, branch string) (*interfaces.KNBranchReferences, error) {
+	return &interfaces.KNBranchReferences{DataResources: []string{"res-" + branch, "shared", "shared"}}, nil
+}
+
 func (txPublisher) IndexVersion(context.Context, string, string, string) error { return nil }
 
 func (txPublisher) DeleteBranchIndex(context.Context, string, string) error { return nil }
@@ -429,4 +433,31 @@ func TestCheckReadEnd(t *testing.T) {
 	wantCode(t, f.svc.CheckReadEnd(f.ctx, f.knID, draft), berrors.BknBackend_KNVersion_DraftRevisionMismatch)
 	f.exec("UPDATE t_kn_version SET f_status = 'purged' WHERE f_kn_id = ? AND f_version = 1", f.knID)
 	wantCode(t, f.svc.CheckReadEnd(f.ctx, f.knID, v1), berrors.BknBackend_KNVersion_VersionPurged)
+}
+
+func TestReferencedResources(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(1, f.editDraft("name-2"), ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.svc.ReferencedResources(f.ctx, f.knID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string][]any{}
+	for _, r := range got.DataResources {
+		byID[r.ResourceID] = r.Versions
+	}
+	want := map[string]string{"shared": "[draft 2 1]", "res-draft": "[draft]", "res-v2": "[2]", "res-v1": "[1]"}
+	for id, versions := range want {
+		if fmt.Sprint(byID[id]) != versions {
+			t.Errorf("%s used by %v, want %s", id, byID[id], versions)
+		}
+	}
+	if len(byID) != len(want) {
+		t.Errorf("resources %v", byID)
+	}
 }

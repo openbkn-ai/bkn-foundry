@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -975,4 +976,82 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 		return nil, internalError(ctx, err)
 	}
 	return s.view(nil), nil
+}
+
+// ReferencedResources lists the data resources, functions and Skills the draft and the versions
+// not purged use, each with the versions that use it, the draft first and then newest first.
+func (s *service) ReferencedResources(ctx context.Context, knID string) (*interfaces.KNReferencedResources, error) {
+	if err := s.checkPermission(ctx, knID, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+		return nil, err
+	}
+	state, err := s.va.GetState(ctx, nil, knID, false)
+	if err != nil {
+		return nil, internalError(ctx, err)
+	}
+	if state == nil {
+		return nil, newHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_NotVersioned)
+	}
+	versions, _, err := s.va.ListVersions(ctx, knID, &interfaces.KNVersionsQuery{
+		Statuses: []string{interfaces.KNVersionRunning, interfaces.KNVersionHistory, interfaces.KNVersionDeprecated},
+		Limit:    -1,
+	})
+	if err != nil {
+		return nil, internalError(ctx, err)
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i].Version > versions[j].Version })
+	type use struct {
+		label  any
+		branch string
+	}
+	uses := []use{{interfaces.DRAFT_BRANCH, interfaces.DRAFT_BRANCH}}
+	for _, v := range versions {
+		uses = append(uses, use{v.Version, interfaces.VersionBranch(v.Version)})
+	}
+
+	result := &interfaces.KNReferencedResources{DataResources: []*interfaces.KNReferencedResource{},
+		Functions: []*interfaces.KNReferencedFunction{}, Skills: []*interfaces.KNReferencedSkill{}}
+	resources, functions, skills := map[string]*interfaces.KNReferencedResource{},
+		map[[2]string]*interfaces.KNReferencedFunction{}, map[string]*interfaces.KNReferencedSkill{}
+	for _, u := range uses {
+		refs, err := s.pub.BranchReferences(ctx, knID, u.branch)
+		if err != nil {
+			return nil, internalError(ctx, err)
+		}
+		// A branch lists one thing once however many definitions use it.
+		seen := map[any]bool{}
+		for _, id := range refs.DataResources {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			if resources[id] == nil {
+				resources[id] = &interfaces.KNReferencedResource{ResourceID: id}
+				result.DataResources = append(result.DataResources, resources[id])
+			}
+			resources[id].Versions = append(resources[id].Versions, u.label)
+		}
+		for _, key := range refs.Functions {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			if functions[key] == nil {
+				functions[key] = &interfaces.KNReferencedFunction{BoxID: key[0], ToolID: key[1]}
+				result.Functions = append(result.Functions, functions[key])
+			}
+			functions[key].Versions = append(functions[key].Versions, u.label)
+		}
+		for _, id := range refs.Skills {
+			if seen["skill:"+id] {
+				continue
+			}
+			seen["skill:"+id] = true
+			if skills[id] == nil {
+				skills[id] = &interfaces.KNReferencedSkill{SkillID: id}
+				result.Skills = append(result.Skills, skills[id])
+			}
+			skills[id].Versions = append(skills[id].Versions, u.label)
+		}
+	}
+	return result, nil
 }

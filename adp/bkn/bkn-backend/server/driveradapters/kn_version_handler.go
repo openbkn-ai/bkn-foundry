@@ -40,6 +40,7 @@ func (r *restHandler) registerKNVersionRoutes(apiV1 *gin.RouterGroup) {
 		{http.MethodGet, "/versions", r.listKNVersions},
 		{http.MethodPost, "/versions", r.publishKNVersion},
 		{http.MethodGet, "/versions/events", r.listKNVersionEvents},
+		{http.MethodGet, "/versions/referenced-resources", r.listKNReferencedResources},
 		{http.MethodGet, "/versions/:version", r.getKNVersion},
 		{http.MethodPost, "/versions/:version/activate", r.activateKNVersion},
 		{http.MethodPost, "/versions/:version/deprecate", r.deprecateKNVersion},
@@ -295,6 +296,15 @@ func (r *restHandler) listKNVersionEvents(c *gin.Context, ctx context.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, gin.H{"entries": events, "total_count": total})
+}
+
+func (r *restHandler) listKNReferencedResources(c *gin.Context, ctx context.Context) {
+	result, err := r.kvs.ReferencedResources(ctx, c.Param("kn_id"))
+	if err != nil {
+		replyKNVersionError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
 }
 
 // draftRevisionWriter adds X-Kn-Draft-Revision to the response once a draft write has

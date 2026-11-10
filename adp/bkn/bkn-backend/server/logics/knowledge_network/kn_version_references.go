@@ -98,3 +98,48 @@ func brokenReferences(kn *interfaces.KN, members []interfaces.ConceptGroupRelati
 	}
 	return problems
 }
+
+// BranchReferences lists what one branch uses outside the network: the data resources its object
+// types and relation types read, the tools its logic properties, action types and bindings call,
+// and the Skills bound to it.
+func (kns *knowledgeNetworkService) BranchReferences(ctx context.Context, knID, branch string) (*interfaces.KNBranchReferences, error) {
+	kn, err := kns.loadKNForDatasetSnapshot(ctx, knID, branch)
+	if err != nil {
+		return nil, err
+	}
+	refs := &interfaces.KNBranchReferences{}
+	for _, ot := range kn.ObjectTypes {
+		if ot.DataSource != nil && ot.DataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE && ot.DataSource.ID != "" {
+			refs.DataResources = append(refs.DataResources, ot.DataSource.ID)
+		}
+		for _, p := range ot.LogicProperties {
+			if p != nil && p.DataSource != nil && p.DataSource.Type == interfaces.LOGIC_PROPERTY_TYPE_TOOL && p.DataSource.ToolID != "" {
+				refs.Functions = append(refs.Functions, [2]string{p.DataSource.BoxID, p.DataSource.ToolID})
+			}
+		}
+	}
+	for _, rt := range kn.RelationTypes {
+		if backing, ok, _ := indirectRelationProxyResource(rt.MappingRules); ok && backing != nil && backing.ID != "" {
+			refs.DataResources = append(refs.DataResources, backing.ID)
+		}
+	}
+	for _, at := range kn.ActionTypes {
+		if at.ActionSource.Type == interfaces.ACTION_SOURCE_TYPE_TOOL && at.ActionSource.ToolID != "" {
+			refs.Functions = append(refs.Functions, [2]string{at.ActionSource.BoxID, at.ActionSource.ToolID})
+		}
+	}
+	for _, capabilityType := range []string{interfaces.CAPABILITY_TYPE_FUNCTION, interfaces.CAPABILITY_TYPE_SKILL} {
+		bound, err := kns.cbs.ResolveCapabilities(ctx, knID, branch, capabilityType)
+		if err != nil {
+			return nil, err
+		}
+		for _, ref := range bound.Entries {
+			if capabilityType == interfaces.CAPABILITY_TYPE_SKILL {
+				refs.Skills = append(refs.Skills, ref.CapabilityID)
+			} else {
+				refs.Functions = append(refs.Functions, [2]string{ref.BoxID, ref.CapabilityID})
+			}
+		}
+	}
+	return refs, nil
+}
