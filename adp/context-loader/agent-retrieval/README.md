@@ -76,7 +76,16 @@ which keeps the existing tool catalogue unchanged. Restart Context Loader after
 changing the manifest or its URL; a configured provider that cannot be loaded
 prevents startup rather than advertising unusable tools.
 
-For Eval, use the EE backend manifest
+For providers whose discovery endpoint is edition-gated, supply the provider-owned
+JSON deployment artifact using Helm `mcpExtensionManifestJSON` (environment
+`CONTEXT_LOADER_EXTENSION_MANIFEST_JSON`) alongside the URL. This registers the
+schemas before the registry freezes, without an HTTP discovery request. Tool
+visibility and calls still recheck the current licence; activation and revocation
+take effect without a restart. The artifact must match the deployed provider.
+Empty JSON retains the existing HTTP discovery mode, including startup failure
+when that configured provider is unavailable. Community defaults stay empty.
+
+For Eval, the enterprise bundle supplies its generated artifact and the EE backend manifest
 `http://<bkn-backend-host>:<port>/api/bkn-backend/v1/eval-mcp/tools` and enable
 `OPENBKN_EVAL_ENABLED=true` and `OPENBKN_EVAL_EXTERNAL_AGENT_ENABLED=true` in that
 backend. Clients continue connecting to `/api/agent-retrieval/v1/mcp/` or the

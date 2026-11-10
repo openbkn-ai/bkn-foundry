@@ -169,9 +169,6 @@ spec:
           - name: BKN_TRACE_EVIDENCE_RETRY_BACKOFF_MS
             value: {{ .Values.bknTrace.evidencePublisher.retryBackoffMs | quote }}
           {{- end }}
-          {{- with .Values.extraEnv }}
-          {{- toYaml . | nindent 10 }}
-          {{- end }}
           - name: POD_IP
             valueFrom:
               fieldRef:
@@ -192,6 +189,9 @@ spec:
             value: /opt/bkn-backend/config
           - name: KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE
             value: {{ .Values.auth.knChildResourceFilterChunkSize | quote }}
+          {{- with .Values.extraEnv }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm
