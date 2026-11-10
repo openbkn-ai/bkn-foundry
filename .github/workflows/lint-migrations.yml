@@ -30,6 +30,36 @@ permissions:
   contents: read
 
 jobs:
+  eval-fresh-install:
+    name: Eval schema on fresh MariaDB
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: migration-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install migration test dependencies
+        run: >-
+          python -m pip install pytest PyYAML sqlparse
+          'git+https://github.com/openbkn-ai/bkn-comm-py.git@v0.0.1'
+      - name: Verify backend snapshot and fresh-install execution
+        env:
+          PYTHONPATH: data-migrator
+          EVAL_FRESH_INSTALL_DB_HOST: 127.0.0.1
+          EVAL_FRESH_INSTALL_DB_USER: root
+          EVAL_FRESH_INSTALL_DB_PASSWORD: migration-test
+        run: python -m pytest data-migrator/tests/test_eval_initial_schema.py -q
+
   upgrade-scripts-select-a-database:
     name: upgrade scripts must select a database
     runs-on: ubuntu-24.04
