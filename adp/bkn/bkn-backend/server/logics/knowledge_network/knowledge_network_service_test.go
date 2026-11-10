@@ -1991,6 +1991,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			vts:        vts,
 			db:         db,
 		}
+		kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{interfaces.MAIN_BRANCH}, nil).AnyTimes()
 		kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn1"}, interfaces.MAIN_BRANCH).
 			Return(nil, nil).AnyTimes()
 
@@ -2198,11 +2199,14 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			// be supplied by the caller, so leftover rows would be inherited by a network
 			// recreated under the same ID.
 			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			// The Vega client returns a plain error; the handler expects an HTTP error.
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("vega dependency request failed"))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
 			So(err, ShouldNotBeNil)
+			_, isHTTPError := err.(*httperrors.HTTPError)
+			So(isHTTPError, ShouldBeTrue)
 		})
 
 		Convey("Failed when DeleteDatasetDocumentsByQuery returns error\n", func() {
@@ -2301,6 +2305,88 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+// Deleting a network removes every branch it has, and its action schedules, in one transaction.
+// A network whose main row is gone (left by deletes before every branch was removed) is deleted
+// through a branch it still has.
+func Test_knowledgeNetworkService_DeleteKN_AllBranches(t *testing.T) {
+	cases := []struct {
+		name     string
+		request  string
+		branches []string
+	}{
+		{"main with a dev branch", interfaces.MAIN_BRANCH, []string{"dev", interfaces.MAIN_BRANCH}},
+		{"dev left without main", "dev", []string{"dev"}},
+	}
+	for _, tc := range cases {
+		Convey("DeleteKN removes every branch and the schedules: "+tc.name+"\n", t, func() {
+			ctx := context.Background()
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+
+			kna := bmock.NewMockKNAccess(mockCtrl)
+			ps := bmock.NewMockPermissionService(mockCtrl)
+			vbs := bmock.NewMockVegaBackendService(mockCtrl)
+			ots := bmock.NewMockObjectTypeService(mockCtrl)
+			rts := bmock.NewMockRelationTypeService(mockCtrl)
+			ats := bmock.NewMockActionTypeService(mockCtrl)
+			riskTypeS := bmock.NewMockRiskTypeService(mockCtrl)
+			cgs := bmock.NewMockConceptGroupService(mockCtrl)
+			cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
+			vts := bmock.NewMockValueTypeService(mockCtrl)
+			asa := bmock.NewMockActionScheduleAccess(mockCtrl)
+			previous := rootlogics.ASA
+			rootlogics.ASA = asa
+			defer func() { rootlogics.ASA = previous }()
+
+			db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			service := &knowledgeNetworkService{appSetting: &common.AppSetting{}, kna: kna, ps: ps, vbs: vbs,
+				ots: ots, rts: rts, ats: ats, riskTypeS: riskTypeS, cgs: cgs, cbs: cbs, vts: vts, db: db}
+
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return(tc.branches, nil)
+			for _, branch := range tc.branches {
+				candidates := []interfaces.KNChildResourceCandidate(nil)
+				if branch == "dev" {
+					// An object type created only on dev still has a policy to remove.
+					candidates = []interfaces.KNChildResourceCandidate{
+						{KNID: "kn1", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ResourceID: "ot-dev"}}
+				}
+				kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn1"}, branch).Return(candidates, nil)
+			}
+			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				[]string{"kn1/ot-dev"}).Return(nil)
+
+			smock.ExpectBegin()
+			asa.EXPECT().DeleteSchedulesByKnID(gomock.Any(), gomock.Not(gomock.Nil()), "kn1").Return(nil)
+			for _, branch := range tc.branches {
+				ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), "kn1", branch).Return(nil)
+				rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), "kn1", branch).Return(nil)
+				riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), "kn1", branch).Return(nil)
+				cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), "kn1", branch).Return(nil)
+				ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), "kn1", branch).Return(nil)
+				vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), "kn1", branch).Return(nil)
+				cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", branch).Return(nil)
+				vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
+					interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_KN, "kn1", branch)).Return(nil)
+				vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, map[string]any{
+					"operation": "and",
+					"sub_conditions": []map[string]any{
+						{"field": "kn_id", "operation": "==", "value": "kn1", "value_from": "const"},
+						{"field": "branch", "operation": "==", "value": branch, "value_from": "const"},
+					},
+				}).Return(nil)
+				kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), "kn1", branch).Return(int64(1), nil)
+			}
+			smock.ExpectCommit()
+			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1"}).Return(nil)
+
+			err := service.DeleteKN(ctx, &interfaces.KN{KNID: "kn1", Branch: tc.request})
+			So(err, ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+	}
 }
 
 func TestCleanupKNChildAuthorizationFollowsDependencyOrder(t *testing.T) {

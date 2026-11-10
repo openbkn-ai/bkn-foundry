@@ -309,19 +309,18 @@ paths:
           in: path
           required: true
         - name: branch
-          description: Branch to delete. Only the main branch is currently supported.
+          description: main. The request deletes the whole network, on every branch. A network that no longer has a main branch is deleted through a branch it still has.
           schema:
             type: string
-            enum: [main]
             default: main
           in: query
       responses:
         "204":
           description: Deletion succeeded
         "400":
-          description: A non-main branch was requested
+          description: A branch other than main was requested while the network has a main branch
       summary: Delete a business knowledge network
-      description: Deletes a business knowledge network and all of its object types, relation types, action types, and concept groups.
+      description: Deletes a business knowledge network on every branch it has, with all of its object types, relation types, action types, concept groups, capability bindings, and action schedules.
     parameters:
       - name: kn_id
         description: Business knowledge network ID
