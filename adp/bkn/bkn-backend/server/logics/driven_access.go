@@ -29,6 +29,7 @@ var (
 	KPA            interfaces.KNProxyAccess
 	KPOA           interfaces.KNProxyOutboxAccess
 	OMA            interfaces.ObjectMetricAccessV1
+	OMVP           interfaces.ObjectMetricVersionPublisher
 	MPA            interfaces.ManagedProxyAccess
 	MFA            interfaces.ModelFactoryAccess
 	OSA            interfaces.OpenSearchAccess
@@ -92,6 +93,12 @@ func SetManagedProxyAccess(mpa interfaces.ManagedProxyAccess) {
 
 func SetObjectMetricAccess(oma interfaces.ObjectMetricAccessV1) {
 	OMA = oma
+}
+
+// SetObjectMetricVersionPublisher installs the paid image's publication of metrics with the
+// network. Without it a network publish leaves metrics alone.
+func SetObjectMetricVersionPublisher(p interfaces.ObjectMetricVersionPublisher) {
+	OMVP = p
 }
 
 // SetKnEventCleanupAccess installs the paid image's cleanup of a network's

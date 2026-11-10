@@ -245,6 +245,45 @@ const KNProblemBrokenReference = "broken_reference"
 type KNPublishResult struct {
 	*KNVersion
 	PurgedVersion int `json:"purged_version,omitempty"`
+	// Warnings never fail the publish; PublishedMetrics are the metric versions it made live.
+	Warnings         []*KNPublishWarning `json:"warnings,omitempty"`
+	PublishedMetrics []*MetricVersionRef `json:"published_metrics,omitempty"`
+}
+
+// Warning categories a publish reports for metrics.
+const (
+	KNWarningUnvalidatedMetric     = "unvalidated_metric"
+	KNWarningMetricDependencyUnmet = "metric_dependency_unmet"
+)
+
+// KNPublishWarning is something a publish succeeded despite.
+type KNPublishWarning struct {
+	Category     string `json:"category"`
+	DefinitionID string `json:"definition_id"`
+	Description  string `json:"description"`
+}
+
+// MetricVersionRef names one metric version.
+type MetricVersionRef struct {
+	MetricID string `json:"metric_id"`
+	Version  int    `json:"version"`
+}
+
+// MetricPublishPlan is what a network publish does to the metrics of the draft: the versions it
+// publishes, and the warnings for the ones it leaves alone.
+type MetricPublishPlan struct {
+	Publish  []*MetricVersionRef
+	Warnings []*KNPublishWarning
+}
+
+// ObjectMetricVersionPublisher publishes the metrics of a draft together with the network. The
+// Enterprise edition provides it; the Community edition has none, and publishes no metrics.
+type ObjectMetricVersionPublisher interface {
+	// PlanPublish lists the draft metric versions a network publish will publish, and warns about
+	// the ones it will skip. It runs before the transaction and changes nothing.
+	PlanPublish(ctx context.Context, knID, branch string) (*MetricPublishPlan, error)
+	// ApplyPublish marks the planned versions published inside the network publish transaction.
+	ApplyPublish(ctx context.Context, tx *sql.Tx, knID, branch string, plan *MetricPublishPlan) error
 }
 
 type KNActivateRequest struct {

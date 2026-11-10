@@ -461,3 +461,86 @@ func TestReferencedResources(t *testing.T) {
 		t.Errorf("resources %v", byID)
 	}
 }
+
+// fakeMetricPublisher stands in for the Enterprise publisher: apply changes the draft inside the
+// publish transaction the way marking metrics published does.
+type fakeMetricPublisher struct {
+	f       *fixture
+	plan    *interfaces.MetricPublishPlan
+	planned int
+	applied int
+	fail    bool
+}
+
+func (p *fakeMetricPublisher) PlanPublish(_ context.Context, _, branch string) (*interfaces.MetricPublishPlan, error) {
+	p.planned++
+	if branch != interfaces.DRAFT_BRANCH {
+		p.f.t.Errorf("planned on %s", branch)
+	}
+	return p.plan, nil
+}
+
+func (p *fakeMetricPublisher) ApplyPublish(ctx context.Context, tx *sql.Tx, knID, branch string, _ *interfaces.MetricPublishPlan) error {
+	p.applied++
+	if _, err := tx.ExecContext(ctx, "UPDATE t_object_type SET f_name = 'metrics-applied' WHERE f_kn_id = ? AND f_branch = ?", knID, branch); err != nil {
+		return err
+	}
+	if p.fail {
+		return errors.New("apply failed")
+	}
+	return nil
+}
+
+func TestPublishPublishesMetricsWithTheNetwork(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	mp := &fakeMetricPublisher{f: f, plan: &interfaces.MetricPublishPlan{
+		Publish:  []*interfaces.MetricVersionRef{{MetricID: "m1", Version: 3}},
+		Warnings: []*interfaces.KNPublishWarning{{Category: interfaces.KNWarningUnvalidatedMetric, DefinitionID: "m2", Description: "latest version is a draft"}},
+	}}
+	f.svc.mp = mp
+	revision := f.editDraft("name-2")
+
+	// A failing apply rolls the publish back: the draft change and version numbers stay put.
+	mp.fail = true
+	if _, err := f.publish(1, revision, ""); err == nil {
+		t.Fatal("publish succeeded although the metrics could not be published")
+	}
+	if f.objectName("draft") != "name-2" || f.objectName("main") != "name-1" || f.state().RunningVersion != 1 {
+		t.Fatal("a failed apply leaked into the draft, main or the state")
+	}
+
+	mp.fail = false
+	result, err := f.publish(1, revision, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mp.applied != 2 || mp.planned != 2 {
+		t.Fatalf("planned %d applied %d", mp.planned, mp.applied)
+	}
+	// The version carries what the apply wrote, and the response reports the plan.
+	if f.objectName("v2") != "metrics-applied" || f.objectName("main") != "metrics-applied" {
+		t.Fatal("v2 and main do not carry the published metrics")
+	}
+	if len(result.PublishedMetrics) != 1 || result.PublishedMetrics[0].Version != 3 ||
+		len(result.Warnings) != 1 || result.Warnings[0].DefinitionID != "m2" {
+		t.Fatalf("response: %+v %+v", result.PublishedMetrics, result.Warnings)
+	}
+	// The apply changed the draft, so its revision moved once; the version records the one published.
+	view := f.state()
+	if view.Draft.Revision != revision+1 || result.DraftRevision != revision || view.Draft.HasChanges {
+		t.Fatalf("draft revision %d (published %d, was %d) changes %v", view.Draft.Revision, result.DraftRevision, revision, view.Draft.HasChanges)
+	}
+
+	// An empty plan leaves the revision alone.
+	mp.plan = &interfaces.MetricPublishPlan{}
+	revision = f.editDraft("name-3")
+	if _, err := f.publish(2, revision, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.state().Draft.Revision; got != revision || mp.applied != 2 {
+		t.Fatalf("empty plan: revision %d want %d, applied %d", got, revision, mp.applied)
+	}
+}

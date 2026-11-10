@@ -41,6 +41,8 @@ type service struct {
 	bc  interfaces.BranchCopier
 	ps  interfaces.PermissionService
 	pub interfaces.KNMainPublisher
+	// mp publishes metrics with the network; nil falls back to the installed one, and Community has none.
+	mp interfaces.ObjectMetricVersionPublisher
 
 	// fullHistory reports the Professional edition, which keeps every version.
 	fullHistory func() bool
@@ -492,6 +494,9 @@ func (s *service) Publish(ctx context.Context, knID string, req *interfaces.KNPu
 	if state == nil {
 		return nil, newHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_NotVersioned)
 	}
+	// The plan is made before the transaction, from the draft at the revision checked below: the
+	// transaction refuses a draft whose revision has moved, so the plan is still what the draft holds.
+	var plan *interfaces.MetricPublishPlan
 	op := &operation{types: []string{interfaces.KNVersionEventPublish}, key: req.IdempotencyKey,
 		replay: func(ctx context.Context, event *interfaces.KNVersionEvent) (any, error) {
 			v, err := s.GetVersion(ctx, event.KNID, event.ToVersion)
@@ -504,8 +509,17 @@ func (s *service) Publish(ctx context.Context, knID string, req *interfaces.KNPu
 			if err := s.checkPublishable(ctx, state, req); err != nil {
 				return err
 			}
-			return s.checkReferences(ctx, knID, interfaces.DRAFT_BRANCH,
-				http.StatusBadRequest, berrors.BknBackend_KNVersion_ValidationFailed)
+			if err := s.checkReferences(ctx, knID, interfaces.DRAFT_BRANCH,
+				http.StatusBadRequest, berrors.BknBackend_KNVersion_ValidationFailed); err != nil {
+				return err
+			}
+			if mp := s.metricPublisher(); mp != nil {
+				var err error
+				if plan, err = mp.PlanPublish(ctx, knID, interfaces.DRAFT_BRANCH); err != nil {
+					return internalError(ctx, err)
+				}
+			}
+			return nil
 		}}
 	result, err := s.run(ctx, knID, op, s.mainTx(knID, interfaces.DRAFT_BRANCH), func(ctx context.Context, tx *sql.Tx) (any, error) {
 		state, err := s.lockState(ctx, tx, knID)
@@ -516,6 +530,15 @@ func (s *service) Publish(ctx context.Context, knID string, req *interfaces.KNPu
 			return nil, err
 		}
 		n, previous, now, who := state.NextVersion, state.RunningVersion, s.now(), s.operator(ctx)
+		publishedRevision := state.DraftRevision
+		// Publish the metrics in the draft first, so that v<N> and main carry their new status.
+		if plan != nil && len(plan.Publish) > 0 {
+			if err := s.metricPublisher().ApplyPublish(ctx, tx, knID, interfaces.DRAFT_BRANCH, plan); err != nil {
+				return nil, err
+			}
+			// The draft changed, so its revision moves like after any draft write.
+			state.DraftRevision++
+		}
 		if err := s.indexVersion(ctx, knID, interfaces.DRAFT_BRANCH, n); err != nil {
 			return nil, err
 		}
@@ -528,7 +551,7 @@ func (s *service) Publish(ctx context.Context, knID string, req *interfaces.KNPu
 		version := &interfaces.KNVersion{
 			KNID: knID, Version: n, Label: req.Label, Status: interfaces.KNVersionRunning,
 			Origin: interfaces.KNVersionOriginPublish, BaseVersion: state.DraftBaseVersion,
-			DraftRevision: state.DraftRevision, Notes: req.Notes, Source: req.Source,
+			DraftRevision: publishedRevision, Notes: req.Notes, Source: req.Source,
 			Publisher: who, PublishTime: now, StatusBy: who, StatusTime: now,
 		}
 		if err := s.va.CreateVersion(ctx, tx, version); err != nil {
@@ -561,12 +584,26 @@ func (s *service) Publish(ctx context.Context, knID string, req *interfaces.KNPu
 			previous, n, req.Notes, req.IdempotencyKey)); err != nil {
 			return nil, err
 		}
-		return &interfaces.KNPublishResult{KNVersion: version, PurgedVersion: purged}, nil
+		result := &interfaces.KNPublishResult{KNVersion: version, PurgedVersion: purged}
+		if plan != nil {
+			result.Warnings, result.PublishedMetrics = plan.Warnings, plan.Publish
+		}
+		return result, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return result.(*interfaces.KNPublishResult), nil
+}
+
+func (s *service) metricPublisher() interfaces.ObjectMetricVersionPublisher {
+	if s.mp != nil {
+		return s.mp
+	}
+	if logics.OMVP != nil {
+		return logics.OMVP
+	}
+	return nil
 }
 
 func (s *service) checkPublishable(ctx context.Context, state *interfaces.KNVersionState, req *interfaces.KNPublishRequest) error {
