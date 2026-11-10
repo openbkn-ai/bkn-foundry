@@ -4,6 +4,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ## Unreleased
 
+- Align MCP catalog group labels in Chinese and English, and preserve optional HTTP extension titles, group titles, and ordering in both MCP discovery profiles. Tool names, schemas, and execution behavior are unchanged.
+
 - `list_knowledge_networks` returns each network's `description` again. bkn-backend names the field `comment`, so it was dropped while reading the list and every network came back with an empty description.
 
 - `get_kn_detail` answers within about 30000 characters, counted in the format the caller reads; over MCP the bound holds for both the text and the `structuredContent` JSON beside it. A larger summary or full answer is narrowed with a `notice`: first object types drop their property lists for `data_property_count` / `logic_property_count`, then the answer falls back to the navigation shell. New `detail_level=brief` returns only the network's name, description, concept groups and concept counts; the MCP instructions now start exploration with it. The default level stays `summary`; networks whose answer fits are unchanged.

@@ -29,11 +29,14 @@ type HTTPManifest struct {
 
 type HTTPTool struct {
 	Name         string            `json:"name"`
+	Title        string            `json:"title,omitempty"`
 	Description  string            `json:"description"`
 	Capability   string            `json:"capability"`
 	MinEdition   licverify.Edition `json:"min_edition"`
 	ControlPlane bool              `json:"control_plane"`
 	Group        string            `json:"group"`
+	GroupTitle   string            `json:"group_title,omitempty"`
+	Order        int               `json:"order,omitempty"`
 	Input        json.RawMessage   `json:"input_schema"`
 }
 
@@ -101,7 +104,11 @@ func LoadHTTPProviderManifest(endpoint string, body []byte, client *http.Client)
 		}
 		seen[definition.Name] = true
 		toolName := definition.Name
-		tools = append(tools, ExtraTool{Key: toolName, Name: toolName, Desc: definition.Description, Capability: definition.Capability, MinEdition: definition.MinEdition, Input: definition.Input, Group: definition.Group, ControlPlane: definition.ControlPlane,
+		tools = append(tools, ExtraTool{
+			Key: toolName, Name: toolName, Desc: definition.Description,
+			Capability: definition.Capability, MinEdition: definition.MinEdition,
+			Input: definition.Input, ControlPlane: definition.ControlPlane,
+			Title: definition.Title, Group: definition.Group, GroupTitle: definition.GroupTitle, Order: definition.Order,
 			Handle: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				// Credentials come only from the authenticated transport, never
 				// arguments or a provider-supplied URL. The provider rechecks them.
