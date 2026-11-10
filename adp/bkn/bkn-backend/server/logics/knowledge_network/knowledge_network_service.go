@@ -312,6 +312,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}
 
+	// A replace drops the definitions the package leaves out; their policies go after commit
+	// unless another branch still defines them.
+	ctx, orphans, orphansOwner := permission.WithAuthorizationCleanupTracker(ctx)
 	transactionStart = time.Now()
 	tx, err := kns.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -419,6 +422,10 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	}
 	if err = kns.finishProxyPublish(ctx, proxyPlan); err != nil {
 		return kn.KNID, err
+	}
+	if orphansOwner {
+		// The import committed; a failed cleanup is logged and leaves orphan policies only.
+		_ = orphans.Cleanup(ctx, kns.ps)
 	}
 
 	span.SetStatus(codes.Ok, "")

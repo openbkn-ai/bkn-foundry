@@ -251,8 +251,12 @@ func (s *service) run(ctx context.Context, knID string, op *operation,
 	}
 	var result any
 	ctx, purged := withIndexCleanup(ctx)
+	// Policies of the definitions the operation overwrites or deletes go after commit, unless
+	// some branch still defines them (permission.TrackBranchChildren).
+	ctx, orphans, orphansOwner := permission.WithAuthorizationCleanupTracker(ctx)
 	err = inTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		purged.versions = nil
+		orphans.Discard()
 		if event, err := s.findReplayLocked(ctx, tx, knID, op); err != nil || event != nil {
 			if event != nil {
 				return &errReplayed{event: event}
@@ -271,6 +275,10 @@ func (s *service) run(ctx context.Context, knID string, op *operation,
 		return nil, internalError(ctx, err)
 	}
 	s.deleteVersionIndexes(ctx, knID, purged)
+	if orphansOwner {
+		// The operation committed; a failed cleanup is logged and leaves orphan policies only.
+		_ = orphans.Cleanup(ctx, s.ps)
+	}
 	return result, nil
 }
 
@@ -988,8 +996,10 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 	// 2. Delete the draft and every version branch, keep the version records as purged, and
 	// remove the state row. The draft's concept index goes with the draft.
 	ctx, purged := withIndexCleanup(ctx)
+	ctx, orphans, orphansOwner := permission.WithAuthorizationCleanupTracker(ctx)
 	err = s.draftTx(knID)(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		purged.versions = nil
+		orphans.Discard()
 		state, err := s.lockAnyState(ctx, tx, knID)
 		if err != nil {
 			return err
@@ -1034,6 +1044,9 @@ func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDi
 		return nil, internalError(ctx, err)
 	}
 	s.deleteVersionIndexes(ctx, knID, purged)
+	if orphansOwner {
+		_ = orphans.Cleanup(ctx, s.ps)
+	}
 	return s.view(nil), nil
 }
 

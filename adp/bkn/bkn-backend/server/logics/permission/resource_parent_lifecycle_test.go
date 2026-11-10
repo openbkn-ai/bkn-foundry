@@ -162,8 +162,8 @@ func TestAuthorizationCleanupTrackerBatchesAndDeduplicatesResources(t *testing.T
 }
 
 // A definition's policy is keyed by network and definition id only, so the
-// running version and the draft share it. Deleting the draft's copy must not
-// remove the policy the running version still relies on.
+// running version and the draft share it. Without a presence check, deleting the
+// draft's copy must not remove the policy the running version still relies on.
 func TestAuthorizationCleanupTrackerSkipsVersionedBranches(t *testing.T) {
 	for _, branch := range []string{interfaces.DRAFT_BRANCH, interfaces.VersionBranch(3)} {
 		t.Run(branch, func(t *testing.T) {

@@ -248,12 +248,16 @@ func WithAuthorizationCleanupTracker(ctx context.Context) (context.Context, *Aut
 
 // TrackKNChildAuthorizationCleanup queues canonical child resources for cleanup
 // after the database transaction commits. A child's policy is keyed by network
-// and child id only, so every branch of the network shares it. Deleting a child
-// from the draft or a version branch of a versioned network therefore leaves the
-// policy alone: the running version may still contain that child.
+// and child id only, so every branch of the network shares it: the cleanup keeps
+// the policy of a child some branch still defines (SetKNChildPresence). Without
+// that check, a delete from the draft or a version branch leaves the policy
+// alone, since the running version may still contain the child.
 func TrackKNChildAuthorizationCleanup(ctx context.Context, resourceType, knID, branch string, childIDs []string) {
 	tracker, ok := ctx.Value(authorizationCleanupTrackerKey{}).(*AuthorizationCleanupTracker)
-	if !ok || len(childIDs) == 0 || interfaces.IsReservedBranch(branch) {
+	if !ok || len(childIDs) == 0 {
+		return
+	}
+	if currentKNChildPresence() == nil && interfaces.IsReservedBranch(branch) {
 		return
 	}
 	tracker.mu.Lock()
@@ -277,8 +281,8 @@ func TrackKNChildAuthorizationCleanup(ctx context.Context, resourceType, knID, b
 	tracker.entries[key] = entry
 }
 
-// Cleanup removes all queued policies and parent edges. It is safe to call
-// more than once.
+// Cleanup removes the queued policies of children no branch defines any more.
+// It must run after the transaction committed. It is safe to call more than once.
 func (tracker *AuthorizationCleanupTracker) Cleanup(ctx context.Context, ps interfaces.PermissionService) error {
 	tracker.mu.Lock()
 	entries := make([]trackedAuthorizationCleanup, 0, len(tracker.entries))
@@ -291,7 +295,8 @@ func (tracker *AuthorizationCleanupTracker) Cleanup(ctx context.Context, ps inte
 	cleanupCtx := context.WithoutCancel(ctx)
 	var cleanupErrs []error
 	for _, entry := range entries {
-		if err := CleanupKNChildAuthorization(cleanupCtx, ps, entry.resourceType, entry.knID, entry.childIDs); err != nil {
+		childIDs := absentKNChildIDs(cleanupCtx, entry.resourceType, entry.knID, entry.childIDs)
+		if err := CleanupKNChildAuthorization(cleanupCtx, ps, entry.resourceType, entry.knID, childIDs); err != nil {
 			cleanupErrs = append(cleanupErrs, err)
 		}
 	}
@@ -300,7 +305,8 @@ func (tracker *AuthorizationCleanupTracker) Cleanup(ctx context.Context, ps inte
 
 // PendingResources snapshots queued cleanups without consuming them. It is
 // used to attach cleanup work to the same durable outbox event that revokes the
-// corresponding proxy sources.
+// corresponding proxy sources. It runs inside the transaction, so it does not
+// check presence; the worker does (RemovePresentKNChildResources).
 func (tracker *AuthorizationCleanupTracker) PendingResources() []interfaces.AuthorizationCleanupTarget {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()

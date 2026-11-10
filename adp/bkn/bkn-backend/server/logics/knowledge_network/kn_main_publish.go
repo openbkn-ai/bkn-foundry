@@ -17,6 +17,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 // PublishKNMain runs mutate, which replaces main with srcBranch, in one transaction. When the
@@ -86,6 +87,12 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 	if err := mutate(ctx, tx); err != nil {
 		return err
 	}
+	// Policies of definitions main no longer has ride on the outbox event, so the worker removes
+	// them after it revoked the proxy grants on them.
+	orphans, tracksOrphans := permission.AuthorizationCleanupFrom(ctx)
+	if tracksOrphans {
+		plan.authorizationCleanups = orphans.PendingResources()
+	}
 	staged, err := kns.stageProxyDelta(ctx, tx, plan)
 	if err != nil {
 		return err
@@ -101,6 +108,10 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 	committed = true
 	kns.refreshConceptIndex(ctx, oldMain, candidate)
 	if staged {
+		if tracksOrphans {
+			// The event carries them now; the owner of the tracker must not remove them first.
+			orphans.Discard()
+		}
 		plan.grants.logSkipped(ctx, plan.mapping.KNID)
 		return nil
 	}
