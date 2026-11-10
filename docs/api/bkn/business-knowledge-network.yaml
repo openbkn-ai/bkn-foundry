@@ -210,8 +210,17 @@ paths:
             enum: [full, summary]
             default: full
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
@@ -249,6 +258,10 @@ paths:
                     updater: a0f02238-6cec-11f0-82bb-fa1c4529a151
                     update_time: 1757583140948
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: Get business knowledge network details
       description: Gets ontology model details and includes specification content when requested.
     put:
@@ -284,6 +297,7 @@ paths:
             enum: [normal, overwrite, ignore]
             default: normal
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       requestBody:
         content:
           application/json:
@@ -292,6 +306,9 @@ paths:
         required: true
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Update succeeded
         "404":
           description: The network does not exist on the requested branch (BknBackend.KnowledgeNetwork.NotFound)
@@ -299,6 +316,10 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Update a business knowledge network
     delete:
       parameters:
@@ -1380,6 +1401,17 @@ components:
         branch:
           description: Branch ID
           type: string
+        versioning:
+          description: >-
+            Set true to create the network with versioning from the start: what the request defines
+            is stored in its draft, and no version is running until the first one is published
+            (`POST /knowledge-networks/{kn_id}/versions`), so reads of the running version return
+            nothing meanwhile. `branch` must then be `main` or `draft`. Omit or false creates an
+            unversioned network; versioning can also be enabled later with
+            `POST /knowledge-networks/{kn_id}/versioning`. The version operations are described in
+            the knowledge-network versions API (`kn-versions.yaml`).
+          type: boolean
+          default: false
     UpdateKnowledgeNetwork:
       description: >-
         Business knowledge network update request body. Name, tags, comment, icon and color belong to
@@ -1414,7 +1446,9 @@ components:
         skill_content:
           description: >-
             The network's SKILL.md body on this branch. Leave it out to keep the stored value; send an
-            empty string to remove it.
+            empty string to remove it. On a versioned network it is written to the draft and the
+            request must carry `expected_draft_revision` (428 without it); updating only the name,
+            tags, comment, icon and color needs no precondition.
           type: string
     UpdateObjectType:
       description: Object type update
@@ -2193,6 +2227,8 @@ components:
           format: int64
           description: Most recent update time
           type: integer
+        versioning:
+          $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersioning"
         statistics:
           $ref: "#/components/schemas/Statistics"
           description: Concept statistics. Calculated only when include_statistics is true.

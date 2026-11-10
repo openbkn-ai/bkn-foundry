@@ -2,7 +2,35 @@ openapi: 3.1.0
 info:
   title: OpenBKN Object Metrics API
   version: 1.0.0
-  description: Versioned, object-centered metric authoring API. Published versions are immutable.
+  description: |
+    Versioned, object-centered metric authoring API. Published versions are immutable.
+
+    ## Knowledge-network versioning
+
+    A knowledge network can be versioned (see the knowledge-network versions API). Metric versions
+    here are the versions of one metric and are unrelated to the versions of the network, except
+    in the ways below.
+
+    On a versioned network every write goes to the draft of the network and moves its draft
+    revision, returned as the `X-Kn-Draft-Revision` response header. Writes send no `kn_version`
+    (400 `BknBackend.KNVersion.InvalidVersion`); `branch` may be `main` or `draft` and means the
+    draft. Updating a metric version (`PUT`) needs the `If-Match` header with the `revision` of the
+    version, also returned as the `ETag` of a single `GET`: without it the request is 428
+    `BknBackend.KNVersion.PreconditionRequired`, with a stale one 409
+    `BknBackend.KNVersion.DefinitionModified` (details `current_etag`). Deleting a version
+    needs `If-Match` or `expected_draft_revision`. Creating metrics, creating the next version,
+    validating, publishing and deprecating a metric version need no precondition. A stale
+    `expected_draft_revision` is 409 `BknBackend.KNVersion.DraftRevisionMismatch`. A network
+    without versioning accepts the same header and parameter and never requires them.
+
+    Reads accept `kn_version` (`running`, `draft` or a network version number) and, for the draft,
+    `draft_revision`, and answer with `X-Kn-Version`, `X-Kn-Draft-Revision` and
+    `X-Kn-Running-Version` like the other knowledge-network reads. Do not combine `kn_version` with
+    `branch`. The metrics of a network version are the ones published with it.
+
+    Publishing the draft as a network version also publishes the validated metrics of the draft
+    (Enterprise edition). A metric that stays unpublished is reported in the `warnings` of the
+    network publish response.
 servers:
   - url: /api/bkn-backend
 security:
@@ -30,12 +58,22 @@ paths:
         - { name: keyword, in: query, schema: { type: string } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 20 } }
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
       responses:
         "200":
           description: Latest metric versions matching the filters.
+          headers:
+            X-Kn-Version: { $ref: "#/components/headers/XKnVersion" }
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
+            X-Kn-Running-Version: { $ref: "#/components/headers/XKnRunningVersion" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricList" }
+        "400": { description: "`kn_version` is not `running`, `draft` or a version number, or is combined with `branch` (`BknBackend.KNVersion.InvalidVersion`); a version other than `running` on a network without versioning (`BknBackend.KNVersion.NotVersioned`)." }
+        "404": { description: "The requested network version was never published (`BknBackend.KNVersion.VersionNotFound`)." }
+        "409": { description: "Draft changed while it was read (`BknBackend.KNVersion.DraftRevisionMismatch`)." }
+        "410": { description: "The requested network version was purged (`BknBackend.KNVersion.VersionPurged`)." }
     post:
       operationId: createObjectMetricDraft
       requestBody:
@@ -45,10 +83,13 @@ paths:
             schema: { $ref: "#/components/schemas/ObjectMetricDefinition" }
       responses:
         "201":
-          description: Draft created.
+          description: Draft created. On a versioned network it is created in the draft of the network.
+          headers:
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+        "400": { description: "Invalid definition, or `kn_version` sent on a write (`BknBackend.KNVersion.InvalidVersion`)." }
   /v1/knowledge-networks/{kn_id}/object-metrics/validate:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
@@ -91,14 +132,28 @@ paths:
       - $ref: "#/components/parameters/Version"
     get:
       operationId: getObjectMetric
+      parameters:
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
       responses:
         "200":
-          description: Requested version, or the latest version when omitted.
+          description: Requested version, or the latest version when omitted. The `ETag` header carries its `revision`.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-Kn-Version: { $ref: "#/components/headers/XKnVersion" }
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
+            X-Kn-Running-Version: { $ref: "#/components/headers/XKnRunningVersion" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+        "400": { description: "`kn_version` is not `running`, `draft` or a version number, or is combined with `branch` (`BknBackend.KNVersion.InvalidVersion`); a version other than `running` on a network without versioning (`BknBackend.KNVersion.NotVersioned`)." }
+        "404": { description: "The metric or its requested version does not exist, or the requested network version was never published (`BknBackend.KNVersion.VersionNotFound`)." }
+        "409": { description: "Draft changed while it was read (`BknBackend.KNVersion.DraftRevisionMismatch`)." }
+        "410": { description: "The requested network version was purged (`BknBackend.KNVersion.VersionPurged`)." }
     put:
       operationId: updateObjectMetricDraft
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
@@ -107,21 +162,32 @@ paths:
       responses:
         "200":
           description: Draft updated. Identity, owner, code, type and version are server protected.
+          headers:
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+        "400": { description: "Invalid definition, or `kn_version` sent on a write (`BknBackend.KNVersion.InvalidVersion`)." }
+        "409": { description: "`BknBackend.KNVersion.DefinitionModified` (details `current_etag`) or `BknBackend.KNVersion.DraftRevisionMismatch` on a versioned network." }
+        "428": { description: "`If-Match` is missing on a versioned network (`BknBackend.KNVersion.PreconditionRequired`)." }
     delete:
       operationId: deleteObjectMetricVersion
       parameters:
         - $ref: "#/components/parameters/RequiredVersion"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/ExpectedDraftRevision"
       description: >-
         Deletes exactly one version in the requested knowledge-network branch. Metric references are
         branch-local because a metric reference does not carry a branch. Published versions and versions
         referenced by any retained metric version cannot be deleted.
       responses:
-        "204": { description: "Draft, validated, or unreferenced deprecated version removed." }
+        "204":
+          description: Draft, validated, or unreferenced deprecated version removed.
+          headers:
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
         "404": { description: The requested metric version does not exist (including a repeated delete). }
-        "409": { description: Published version or a version retained by metric references. }
+        "409": { description: "Published version or a version retained by metric references; on a versioned network also `BknBackend.KNVersion.DefinitionModified` or `BknBackend.KNVersion.DraftRevisionMismatch`." }
+        "428": { description: "Neither `If-Match` nor `expected_draft_revision` was sent on a versioned network (`BknBackend.KNVersion.PreconditionRequired`)." }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deletion-check:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
@@ -149,21 +215,33 @@ paths:
       operationId: createNextObjectMetricDraftVersion
       responses:
         "201":
-          description: A draft copied from the latest published version.
+          description: A draft copied from the latest published version. On a versioned network it is created in the draft of the network.
+          headers:
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
     get:
       operationId: listObjectMetricVersions
+      parameters:
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
       responses:
         "200":
           description: All immutable and draft versions, newest first.
+          headers:
+            X-Kn-Version: { $ref: "#/components/headers/XKnVersion" }
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
+            X-Kn-Running-Version: { $ref: "#/components/headers/XKnRunningVersion" }
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/ObjectMetricRecord" }
-        "404": { description: The requested metric does not exist in the requested knowledge-network branch. }
+        "400": { description: "`kn_version` is not `running`, `draft` or a version number, or is combined with `branch` (`BknBackend.KNVersion.InvalidVersion`); a version other than `running` on a network without versioning (`BknBackend.KNVersion.NotVersioned`)." }
+        "404": { description: "The metric does not exist in the requested network version, or that version was never published (`BknBackend.KNVersion.VersionNotFound`)." }
+        "409": { description: "Draft changed while it was read (`BknBackend.KNVersion.DraftRevisionMismatch`)." }
+        "410": { description: "The requested network version was purged (`BknBackend.KNVersion.VersionPurged`)." }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/publish:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
@@ -174,7 +252,9 @@ paths:
       operationId: publishObjectMetricVersion
       responses:
         "200":
-          description: Immutable published metric version. The saved version must already be in validated status.
+          description: Immutable published metric version. The saved version must already be in validated status. On a versioned network the draft of the network changes.
+          headers:
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
@@ -190,7 +270,9 @@ paths:
       description: Runs authoritative validation for a saved draft and persists its lifecycle status as validated. Any later edit returns it to draft.
       responses:
         "200":
-          description: Saved metric version marked as validated.
+          description: Saved metric version marked as validated. On a versioned network the draft of the network changes.
+          headers:
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
@@ -205,7 +287,9 @@ paths:
       operationId: deprecateObjectMetricVersion
       responses:
         "200":
-          description: Published version marked as deprecated.
+          description: Published version marked as deprecated. On a versioned network the draft of the network changes.
+          headers:
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
@@ -219,7 +303,48 @@ components:
     MetricId: { name: metric_id, in: path, required: true, schema: { type: string, format: uuid } }
     Branch: { name: branch, in: query, schema: { type: string, default: main } }
     Version: { name: version, in: query, schema: { type: integer, minimum: 1 } }
+    KnVersion:
+      name: kn_version
+      in: query
+      description: >-
+        Which version of a versioned knowledge network to read: `running` (default), `draft` or a version
+        number. Do not combine it with `branch`. Refused on writes.
+      schema: { type: string, example: draft }
+    DraftRevision:
+      name: draft_revision
+      in: query
+      description: With `kn_version=draft`, the draft revision the caller expects to read; a different current revision is 409 `BknBackend.KNVersion.DraftRevisionMismatch`.
+      schema: { type: integer, format: int64, minimum: 0 }
+    ExpectedDraftRevision:
+      name: expected_draft_revision
+      in: query
+      description: >-
+        The draft revision a write is based on. On a versioned network a delete of a metric version needs
+        it unless `If-Match` is sent; a stale value is 409 `BknBackend.KNVersion.DraftRevisionMismatch`.
+      schema: { type: integer, format: int64, minimum: 0 }
+    IfMatch:
+      name: If-Match
+      in: header
+      description: >-
+        The `revision` of the metric version being changed (quotes optional). Required on a versioned network to
+        update a version and, unless `expected_draft_revision` is sent, to delete one: 428
+        `BknBackend.KNVersion.PreconditionRequired` without it, 409 `BknBackend.KNVersion.DefinitionModified`
+        (details `current_etag`) when stale.
+      schema: { type: string }
     RequiredVersion: { name: version, in: query, required: true, schema: { type: integer, minimum: 1 } }
+  headers:
+    XKnVersion:
+      description: The network version the response was read from, a number or `draft`. Sent for reads of a versioned network.
+      schema: { type: string }
+    XKnDraftRevision:
+      description: The draft revision, sent for reads of the draft and by a write to the draft of a versioned network that succeeded (the revision it produced).
+      schema: { type: integer, format: int64 }
+    XKnRunningVersion:
+      description: The running version of the versioned network when the read was resolved.
+      schema: { type: integer }
+    ETag:
+      description: Quoted `revision` of the single metric version returned; send it back as `If-Match`.
+      schema: { type: string }
   schemas:
     ObjectMetricType: { type: string, enum: [atomic, derived, composite] }
     LifecycleStatus: { type: string, enum: [draft, validated, published, deprecated] }
@@ -495,6 +620,9 @@ components:
         updater: { type: object, additionalProperties: true }
         create_time: { type: integer, format: int64 }
         update_time: { type: integer, format: int64 }
+        revision:
+          type: string
+          description: Changes on every write of this metric version. Send it back as `If-Match` when updating or deleting the version on a versioned network.
     ObjectMetricList:
       type: object
       required: [entries, total_count]
