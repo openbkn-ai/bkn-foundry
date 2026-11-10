@@ -1153,6 +1153,28 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Returns not found when the row is gone from the branch\n", func() {
+			actionType := &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:   "at1",
+					ATName: "at1",
+				},
+				KNID:   "kn1",
+				Branch: "dev",
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrRowNotFound)
+			smock.ExpectRollback()
+
+			err := service.UpdateActionType(ctx, nil, actionType, false)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeNotFound)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("Failed when InsertDatasetData returns error\n", func() {
 			actionType := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{

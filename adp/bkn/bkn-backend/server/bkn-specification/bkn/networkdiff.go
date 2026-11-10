@@ -338,6 +338,26 @@ func collectDefinitions(net *BknNetwork) []definitionRef {
 			defs = append(defs, definitionRef{"concept_group", item.ID, item.Name, *item})
 		}
 	}
+	for _, item := range net.ValueTypes {
+		if item != nil {
+			defs = append(defs, definitionRef{"value_type", item.ID, item.Name, *item})
+		}
+	}
+	// A capability binding has no id of its own across networks; what it binds is its identity.
+	if c := net.Capabilities; c != nil {
+		for _, item := range c.Skills {
+			defs = append(defs, definitionRef{"capability_binding", "skill:" + item.ID, item.Name, *item})
+		}
+		for _, item := range c.Functions {
+			defs = append(defs, definitionRef{"capability_binding", "function:" + item.BoxID + "/" + item.ToolID, item.ToolName, *item})
+		}
+		for _, item := range c.MCPTools {
+			defs = append(defs, definitionRef{"capability_binding", "mcp_tool:" + item.MCPID + "/" + item.ToolName, item.ToolName, *item})
+		}
+		for _, item := range c.KnowledgeBases {
+			defs = append(defs, definitionRef{"capability_binding", "knowledge_base:" + item.ID, item.Name, *item})
+		}
+	}
 	for _, item := range net.ObjectMetrics {
 		id, version, name, _ := objectMetricArchiveMetadata(item)
 		var value any

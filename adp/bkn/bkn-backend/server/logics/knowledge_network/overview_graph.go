@@ -179,6 +179,7 @@ func overviewNodes(items []*interfaces.ObjectType, edges []interfaces.OverviewGr
 			ID: item.OTID, Name: item.OTName, Icon: item.Icon, Color: item.Color,
 			IndexStatus: item.IndexStatus, Degree: degree[item.OTID],
 			ConceptGroups: groupsByObjectType[item.OTID],
+			Lifecycle:     interfaces.NormalizeLifecycle(item.Lifecycle),
 		})
 	}
 	return nodes
@@ -299,6 +300,7 @@ func overviewEdges(items []*interfaces.RelationType, nodeIDs map[string]struct{}
 		edges = append(edges, interfaces.OverviewGraphEdge{
 			ID: item.RTID, Name: item.RTName, SourceID: item.SourceObjectTypeID,
 			TargetID: item.TargetObjectTypeID, MappingMode: item.Type,
+			Lifecycle: interfaces.NormalizeLifecycle(item.Lifecycle),
 		})
 	}
 	return edges

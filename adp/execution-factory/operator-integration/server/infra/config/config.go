@@ -44,6 +44,7 @@ type Config struct {
 	MFModelAPI              PrivateBaseConfig         `yaml:"mf-model-api"`
 	MFModelManager          PrivateBaseConfig         `yaml:"mf-model-manager"`
 	VegaBackend             PrivateBaseConfig         `yaml:"vega-backend"`
+	BknBackend              PrivateBaseConfig         `yaml:"bkn-backend"` // Runs Cypher functions.
 	AIGenerationConfig      AIGenerationConfig        `yaml:"ai_generation_config"`
 	OSSGatewayBackendConfig OSSGatewayBackendConfig   `yaml:"oss-gateway-backend"`
 	SkillIndexBuildConfig   SkillIndexBuildConfig     `yaml:"skill_index_build"`

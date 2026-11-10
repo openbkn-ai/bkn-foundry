@@ -21,6 +21,7 @@ type ConceptGroup struct {
 	CommonInfo `mapstructure:",squash"`
 	KNID       string `json:"kn_id" mapstructure:"kn_id"`
 	Branch     string `json:"branch" mapstructure:"branch"`
+	Revision   string `json:"revision,omitempty" mapstructure:"-"`
 
 	ObjectTypeIDs []string        `json:"object_type_ids,omitempty" mapstructure:"object_type_ids"`
 	ObjectTypes   []*ObjectType   `json:"object_types,omitempty" mapstructure:"object_types"`
@@ -99,3 +100,9 @@ func GetUniqueIDs(ids []ID) []string {
 
 	return result
 }
+
+func (d *ConceptGroup) RevisionID() string { return d.CGID }
+
+func (d *ConceptGroup) SetRevision(revision string) { d.Revision = revision }
+
+func (d *ConceptGroup) GetRevision() string { return d.Revision }

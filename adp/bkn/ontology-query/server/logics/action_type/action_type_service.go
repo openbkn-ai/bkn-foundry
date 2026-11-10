@@ -65,6 +65,9 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		span.SetAttributes(attribute.Key("at_id").String(query.ActionTypeID))
 		otellog.LogError(ctx, fmt.Sprintf("Get Action Type error: %v", err), err)
 
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return resps, versionErr
+		}
 		return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 	}
@@ -93,6 +96,9 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		objectType, exists, err = ats.omAccess.GetObjectType(ctx, query.KNID, query.Branch, actionType.ObjectTypeID)
 		if err != nil {
 			logger.Errorf("Get Object Type error: %s", err.Error())
+			if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+				return resps, versionErr
+			}
 			return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}

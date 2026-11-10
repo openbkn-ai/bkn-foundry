@@ -23,6 +23,9 @@ const (
 	// Default branch.
 	MAIN_BRANCH = "main"
 
+	// Draft of a versioned knowledge network; only trial runs may read it.
+	DRAFT_BRANCH = "draft"
+
 	// Whether metric data queries include model information.
 	DEFAULT_INCLUDE_TYPE_INFO    = "false"
 	DEFAULT_INCLUDE_LOGIC_PARAMS = "false"

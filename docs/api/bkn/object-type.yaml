@@ -81,13 +81,26 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListObjectTypes"
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: List object types
     post:
       requestBody:
@@ -586,6 +599,9 @@ paths:
         "503":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
         "201":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
@@ -1192,17 +1208,31 @@ paths:
             type: boolean
             default: true
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
         "400":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
         "403":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "404":
+          description: Object type not found on the requested branch (BknBackend.ObjectType.ObjectTypeNotFound)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "502":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
         "503":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Update an object type
     parameters:
       - name: kn_id
@@ -1240,13 +1270,28 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
+            ETag:
+              $ref: "../_shared/kn-version.yaml#/components/headers/ETag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ObjectTypeDetails"
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: Get object type details
     delete:
       parameters:
@@ -1276,18 +1321,29 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
         "409":
           description: |
             BknBackend.ObjectType.StillReferenced: an object type to delete is still the lifecycle replaced_by of a deprecated object type
             that this request does not delete. `error_details.references` lists each reference; change or remove them
             first, or delete the referring definitions in the same request.
+
+            On a versioned network the request also answers 409 `BknBackend.KNVersion.DefinitionModified` when `If-Match`
+            is stale, `BknBackend.KNVersion.DraftRevisionMismatch` when `expected_draft_revision` is stale, and
+            `BknBackend.KNVersion.VersioningDisabling` while versioning is being turned off.
           content:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
       summary: Delete object types
     parameters:
       - name: kn_id
@@ -1358,8 +1414,17 @@ paths:
           schema:
             type: string
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         '200':
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
           content:
             application/json:
@@ -1399,6 +1464,10 @@ paths:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         '401':
           description: Unauthorized
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ob_id}/data_properties/{property_names}:
     put:
       description: Requires effective `modify` on `object_type:{kn_id}/{ob_id}`. Before the write, `strict_mode` controls request validation for vector-index embedding-model dependencies; it never bypasses authorization.
@@ -1414,6 +1483,7 @@ paths:
             type: boolean
             default: true
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       requestBody:
         content:
           application/json:
@@ -1422,7 +1492,20 @@ paths:
         required: true
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Updated successfully
+        "404":
+          description: Object type not found on the requested branch (BknBackend.ObjectType.ObjectTypeNotFound)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Update data properties
     parameters:
       - name: kn_id
@@ -2202,6 +2285,25 @@ components:
           description: Object type name
           type: string
           maxLength: 128
+        aliases:
+          description: Other names of the object type (BKN spec 3.0). Left out when it has none.
+          type: array
+          items:
+            type: string
+        lifecycle:
+          description: |
+            Whether the object type is still in use (BKN spec 3.0, §4.3); not the index status. Left out when the object
+            type is active.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags. May be empty.
           type: array

@@ -295,6 +295,7 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 			"f_updater",
 			"f_updater_type",
 			"f_update_time",
+			"f_revision",
 		).
 		Values(
 			actionType.ATID,
@@ -323,7 +324,8 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 			actionType.CreateTime,
 			actionType.Updater.ID,
 			actionType.Updater.Type,
-			actionType.UpdateTime).
+			actionType.UpdateTime,
+			interfaces.NewDefinitionRevision()).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of insert action type, error", err)
@@ -359,7 +361,7 @@ func (ata *actionTypeAccess) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_aliases", "f_lifecycle_status", "f_deprecation",
 			"f_object_type_id", "f_condition", "f_affect", "f_action_source", "f_parameters",
 			"f_schedule", "f_creator", "f_creator_type", "f_create_time", "f_updater",
-			"f_updater_type", "f_update_time",
+			"f_updater_type", "f_update_time", "f_revision",
 		)
 		for _, actionType := range actionTypes[start:end] {
 			values, err := actionTypeInsertValues(actionType)
@@ -396,7 +398,7 @@ func actionTypeInsertValues(actionType *interfaces.ActionType) ([]any, error) {
 		serialized.impactContracts, serialized.aliases, serialized.lifecycleStatus, serialized.deprecation, actionType.ObjectTypeID, serialized.condition, serialized.affect,
 		serialized.actionSource, serialized.parameters, serialized.schedule, actionType.Creator.ID,
 		actionType.Creator.Type, actionType.CreateTime, actionType.Updater.ID, actionType.Updater.Type,
-		actionType.UpdateTime,
+		actionType.UpdateTime, interfaces.NewDefinitionRevision(),
 	}, nil
 }
 
@@ -1021,11 +1023,13 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		"f_updater":          actionType.Updater.ID,
 		"f_updater_type":     actionType.Updater.Type,
 		"f_update_time":      actionType.UpdateTime,
+		"f_revision":         interfaces.NewDefinitionRevision(),
 	}
 	sqlStr, vals, err := sq.Update(AT_TABLE_NAME).
 		SetMap(data).
 		Where(sq.Eq{"f_id": actionType.ATID}).
 		Where(sq.Eq{"f_kn_id": actionType.KNID}).
+		Where(sq.Eq{"f_branch": actionType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update action type by action type id, error", err)
@@ -1040,18 +1044,10 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		common.LogSafeError(ctx, "update action type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": actionType.ATID, "f_kn_id": actionType.KNID, "f_branch": actionType.Branch}
+	if err = common.EnsureRowUpdated(ctx, tx, ret, AT_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update action type found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update action type affected unexpected row count: action_type_id=%s, rows=%d",
-			actionType.ATID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -1122,6 +1118,7 @@ func (ata *actionTypeAccess) UpdateActionTypes(ctx context.Context, tx *sql.Tx,
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, actionType := range batch {

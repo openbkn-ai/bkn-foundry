@@ -1110,6 +1110,27 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Returns not found when the row is gone from the branch\n", func() {
+			conceptGroup := &interfaces.ConceptGroup{
+				CGID:   "cg1",
+				CGName: "cg1",
+				KNID:   "kn1",
+				Branch: "dev",
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", "dev", []string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
+			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrRowNotFound)
+			smock.ExpectRollback()
+
+			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, false)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("Failed when InsertDatasetData returns error\n", func() {
 			conceptGroup := &interfaces.ConceptGroup{
 				CGID:   "cg1",

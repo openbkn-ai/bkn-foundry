@@ -142,7 +142,7 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricQuery(ctx context.Conte
 func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Context,
 	knID, branch string, definition *interfaces.ObjectMetricDefinitionV1,
 	query *interfaces.ObjectMetricQueryRequestV1) error {
-	if err := validateQueryIdentity(ctx, knID, branch, "object-metric-trial"); err != nil {
+	if err := validateTrialIdentity(ctx, knID, branch); err != nil {
 		return err
 	}
 	return s.authorizeObjectMetricDefinitions(ctx, knID, []objectMetricAuthorizationInput{{
@@ -698,9 +698,8 @@ func (s *queryAuthorizationService) loadObjectType(ctx context.Context, knID, ob
 	if objectType.KNID != "" && objectType.KNID != knID {
 		return empty, invalidQuery(ctx, "object type belongs to another knowledge network")
 	}
-	if objectType.Branch != "" && objectType.Branch != interfaces.MAIN_BRANCH {
-		return empty, invalidQuery(ctx, "object type is not from the published main model")
-	}
+	// The branch the definition was read from is chosen by the query's pinned version
+	// (main, v<N> or draft); the model is the one the query is pinned to.
 	return objectType, nil
 }
 
@@ -867,6 +866,20 @@ func uniquePermissionResources(resources []interfaces.PermissionResource) []inte
 	return result
 }
 
+// validateTrialIdentity is validateQueryIdentity for a trial run, which may also read the draft of
+// a versioned knowledge network: a trial evaluates a definition that is not published yet.
+func validateTrialIdentity(ctx context.Context, knID, branch string) error {
+	if branch == interfaces.DRAFT_BRANCH {
+		branch = interfaces.MAIN_BRANCH
+	}
+	return validateQueryIdentity(ctx, knID, branch, "object-metric-trial")
+}
+
+// validateQueryIdentity checks the branch and the resource ids of a query. The branch is
+// the legacy parameter and stays main, which means the running version. Other versions are
+// named by kn_version and pinned in ctx: the definitions are then read from the pinned
+// version, so a running or history version keeps the read permission checked here, and a
+// draft is refused by bkn-backend unless the caller has modify permission on the network.
 func validateQueryIdentity(ctx context.Context, knID, branch, childID string) error {
 	if branch != interfaces.MAIN_BRANCH {
 		return invalidQuery(ctx, "only the published main branch can be queried")
@@ -920,6 +933,10 @@ func invalidQuery(ctx context.Context, detail string) error {
 }
 
 func dependencyResolutionFailed(ctx context.Context, err error) error {
+	// A refusal about the version (purged, draft changed, unknown) fails the query as it is.
+	if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+		return versionErr
+	}
 	var downstream *httperrors.HTTPError
 	if errors.As(err, &downstream) &&
 		(downstream.HTTPCode == http.StatusUnauthorized || downstream.HTTPCode == http.StatusForbidden) {

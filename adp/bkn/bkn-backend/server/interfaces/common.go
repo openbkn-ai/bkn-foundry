@@ -78,6 +78,9 @@ const (
 	ImportMode_Normal    = "normal"
 	ImportMode_Ignore    = "ignore"
 	ImportMode_Overwrite = "overwrite"
+	// ImportMode_Replace is overwrite that also deletes what the package leaves out, capability
+	// bindings included. Only BKN package uploads accept it.
+	ImportMode_Replace = "replace"
 
 	Mode_Export = "export"
 

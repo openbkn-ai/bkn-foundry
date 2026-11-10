@@ -935,9 +935,10 @@ func (s *cypherQueryService) resolveProxy(ctx context.Context, query interfaces.
 	if s.proxies == nil {
 		return nil, fallbackNoResolver
 	}
-	// The proxy holds what the published main model binds. Another branch may
-	// bind its concepts differently, so its reads stay on the caller.
-	if query.Branch != interfaces.MAIN_BRANCH {
+	// The proxy holds what the published main model binds, which the running
+	// version of a versioned network mirrors. Another branch may bind its
+	// concepts differently, so its reads stay on the caller.
+	if query.Branch != interfaces.MAIN_BRANCH && !query.RunningVersion {
 		return nil, fallbackNonMainBranch
 	}
 	caller, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)

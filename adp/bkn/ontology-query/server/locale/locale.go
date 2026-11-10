@@ -23,6 +23,8 @@ func Register() {
 		i18n.RegisterI18n(&actionTypeZhCN)
 		i18n.RegisterI18n(&errorcodeEnUS)
 		i18n.RegisterI18n(&errorcodeZhCN)
+		i18n.RegisterI18n(&knVersionEnUS)
+		i18n.RegisterI18n(&knVersionZhCN)
 		i18n.RegisterI18n(&knowledgeNetworkEnUS)
 		i18n.RegisterI18n(&knowledgeNetworkZhCN)
 		i18n.RegisterI18n(&objectTypeEnUS)

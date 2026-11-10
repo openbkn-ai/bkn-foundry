@@ -206,6 +206,12 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if len(actionTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, actionTypes[0].KNID, actionTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return []string{}, err
+			}
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -745,6 +751,10 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, actionType.KNID, actionType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -764,12 +774,19 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindActionType, actionType.KNID, actionType.Branch, actionType.ATID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = ats.ata.UpdateActionType(ctx, tx, actionType)
 	if err != nil {
 		logger.Errorf("UpdateActionType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改行动类失败")
+		if errors.Is(err, common.ErrRowNotFound) {
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+				berrors.BknBackend_ActionType_ActionTypeNotFound).WithErrorDetails(err.Error())
+		}
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
@@ -846,6 +863,10 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -864,6 +885,9 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindActionType, knID, branch, atIDs...); err != nil {
+		return err
 	}
 
 	// Delete action types.
@@ -890,7 +914,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs)
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, branch, atIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -925,7 +949,7 @@ func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *s
 	logger.Infof("DeleteActionTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs)
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, branch, atIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

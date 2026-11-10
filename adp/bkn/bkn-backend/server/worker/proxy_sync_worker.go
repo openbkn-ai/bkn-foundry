@@ -17,6 +17,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 const (
@@ -253,6 +254,9 @@ func (w *ProxySyncWorker) cleanupAuthorization(ctx context.Context,
 		if target.ResourceType == "" || len(target.ResourceIDs) == 0 {
 			return errors.New("proxy sync authorization cleanup target is invalid")
 		}
+	}
+	// The delete committed before the event was claimed; keep what another branch still defines.
+	for _, target := range permission.RemovePresentKNChildResources(ctx, targets) {
 		if err := w.permission.DeleteResources(ctx, target.ResourceType, target.ResourceIDs); err != nil {
 			return fmt.Errorf("delete %d %s authorization resources: %w",
 				len(target.ResourceIDs), target.ResourceType, err)

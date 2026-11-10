@@ -18,6 +18,9 @@ var errCodeMap = map[int]string{
 	401: "Unauthorized",
 	403: "Forbidden",
 	404: "NotFound",
+	// comm-go has no Public.Gone; what is gone (a purged knowledge-network version) is not found
+	// any more. The HTTP status stays 410 and the details keep the downstream code.
+	410: "NotFound",
 	405: "MethodNotAllowed",
 	409: "Conflict",
 	413: "RequestEntityTooLarge",

@@ -9,6 +9,7 @@ package concept_group
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -235,6 +236,12 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if len(conceptGroups) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, conceptGroups[0].KNID, conceptGroups[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return nil, err
+			}
 		}
 		defer func() {
 			if err == nil {
@@ -492,6 +499,10 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return "", err
 		}
 
 		// 0.1 On failure.
@@ -1088,6 +1099,10 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1107,6 +1122,9 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = cgs.cga.UpdateConceptGroup(ctx, tx, conceptGroup)
@@ -1114,6 +1132,10 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 		logger.Errorf("UpdateConceptGroup error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改概念分组失败")
 
+		if errors.Is(err, common.ErrRowNotFound) {
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).WithErrorDetails(err.Error())
+		}
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).
 			WithErrorDetails(err.Error())
@@ -1173,6 +1195,10 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 	}
 
 	// 0.1 On failure.
@@ -1193,6 +1219,9 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 			}
 		}
 	}()
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return err
+	}
 
 	// Delete concept groups.
 	rowsAffect, err := cgs.cga.DeleteConceptGroupByID(ctx, tx, knID, branch, cgID)
@@ -1233,7 +1262,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		return err
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, []string{cgID})
+		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, branch, []string{cgID})
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1278,7 +1307,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 	logger.Infof("DeleteConceptGroupRelationsByKnID: Rows affected is %v, request delete knID is %s in knowledge network [%s] branch [%s]!",
 		rowsAffect, knID, knID, branch)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgIDs)
+		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, branch, cgIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1496,6 +1525,10 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return []string{}, err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1514,6 +1547,12 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return []string{}, err
+	}
+	if err = logics.TouchDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return []string{}, err
 	}
 
 	// De-duplicate IDs before querying.
@@ -1768,6 +1807,10 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1786,6 +1829,12 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return err
+	}
+	if err = logics.TouchDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return err
 	}
 
 	// Delete object type-to-group bindings.

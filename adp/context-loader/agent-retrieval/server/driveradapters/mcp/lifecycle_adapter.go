@@ -40,7 +40,7 @@ func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandle
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			ctx = withMCPClientApplication(ctx)
-			if _, lifecycle := lifecycleToolNames[req.Params.Name]; lifecycle {
+			if !isBusinessTool(req.Params.Name) {
 				return next(ctx, req)
 			}
 			// Guarding the executor as well would record two Operations for one

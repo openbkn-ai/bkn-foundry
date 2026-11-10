@@ -90,6 +90,9 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	}
 	objectType, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, objectTypeID)
 	if err != nil {
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return nil, versionErr
+		}
 		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 	}
@@ -116,7 +119,7 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
-	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+	proxyContext, err := logics.ResolveDataProxy(ctx, ots.proxy, interfaces.TrustedProxyBinding{
 		KNID:       knID,
 		ChildType:  interfaces.PermissionResourceTypeObjectType,
 		ChildID:    objectType.OTID,
@@ -127,7 +130,11 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	response, err := ots.vba.GetResourceSchema(interfaces.WithTrustedProxyContext(ctx, proxyContext), objectType.DataSource.ID)
+	// A nil proxy context means the draft or a history version: read as the caller.
+	if proxyContext != nil {
+		ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+	}
+	response, err := ots.vba.GetResourceSchema(ctx, objectType.DataSource.ID)
 	if err != nil {
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return nil, httperrors.NewHTTPError(ctx, downstream.StatusCode, proxyDownstreamErrorCode(downstream.StatusCode))
@@ -400,6 +407,9 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 
 	objectType, exists, err := ots.omAccess.GetObjectType(ctx, query.KNID, query.Branch, query.ObjectTypeID)
 	if err != nil {
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return resps, versionErr
+		}
 		span.SetAttributes(attribute.Key("model_id").String(query.ObjectTypeID))
 		otellog.LogError(ctx, fmt.Sprintf("Get Object Type error: %v", err), err)
 
@@ -450,7 +460,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
-	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+	proxyContext, err := logics.ResolveDataProxy(ctx, ots.proxy, interfaces.TrustedProxyBinding{
 		KNID:       query.KNID,
 		ChildType:  interfaces.PermissionResourceTypeObjectType,
 		ChildID:    objectType.OTID,
@@ -461,7 +471,12 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 	if err != nil {
 		return resps, err
 	}
-	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+	// A nil proxy context means the draft or a history version: read as the caller.
+	if proxyContext != nil {
+		ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+	}
+	// The version token ties cursors to the version they were read from.
+	versionToken := logics.ReadVersionToken(ctx, proxyContext)
 
 	if ots.rowFilters == nil {
 		return resps, propertyDecisionUnavailable(ctx, fmt.Errorf("row-filter resolver is not configured"))
@@ -509,13 +524,13 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 			return resps, invalidQueryCursorError(ctx)
 		}
 		if dataSourceType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
-			resourceCursor, resourceOffset, err := ots.cursor.decodeResource(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+			resourceCursor, resourceOffset, err := ots.cursor.decodeResource(ctx, query, versionToken, query.Cursor)
 			if err != nil {
 				return resps, invalidQueryCursorError(ctx)
 			}
 			query.ResourceCursor, query.ResourceOffset = resourceCursor, resourceOffset
 		} else {
-			searchAfter, err := ots.cursor.decode(ctx, query, proxyContext.PublishedModelVersion, query.Cursor)
+			searchAfter, err := ots.cursor.decode(ctx, query, versionToken, query.Cursor)
 			if err != nil {
 				return resps, invalidQueryCursorError(ctx)
 			}
@@ -549,7 +564,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		if ots.cursor == nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
 		}
-		resps.Cursor, err = ots.cursor.encodeResource(ctx, query, proxyContext.PublishedModelVersion,
+		resps.Cursor, err = ots.cursor.encodeResource(ctx, query, versionToken,
 			resps.ResourceCursor, resps.ResourceCursorExpiry)
 		if err != nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
@@ -558,7 +573,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		if ots.cursor == nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
 		}
-		resps.Cursor, err = ots.cursor.encodeResourceOffset(ctx, query, proxyContext.PublishedModelVersion, resps.ResourceNextOffset)
+		resps.Cursor, err = ots.cursor.encodeResourceOffset(ctx, query, versionToken, resps.ResourceNextOffset)
 		if err != nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
 		}
@@ -566,7 +581,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		if ots.cursor == nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, fmt.Errorf("query cursor codec is not configured"))
 		}
-		resps.Cursor, err = ots.cursor.encode(ctx, query, proxyContext.PublishedModelVersion, resps.SearchAfter)
+		resps.Cursor, err = ots.cursor.encode(ctx, query, versionToken, resps.SearchAfter)
 		if err != nil {
 			return interfaces.Objects{}, propertyDecisionUnavailable(ctx, err)
 		}
@@ -1427,7 +1442,7 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
-	proxyContext, err := ots.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+	proxyContext, err := logics.ResolveDataProxy(ctx, ots.proxy, interfaces.TrustedProxyBinding{
 		KNID:      knID,
 		ChildType: interfaces.PermissionResourceTypeLogicProperty,
 		ChildID:   logicPropertyBindingID(knID, objectTypeID, propName),
@@ -1437,8 +1452,14 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	toolResult, err := ots.aoAccess.ExecuteToolAsProxy(interfaces.WithTrustedProxyContext(ctx, proxyContext),
-		logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, request)
+	var toolResult any
+	if proxyContext == nil {
+		// The draft or a history version: the tool runs with the caller's own permissions.
+		toolResult, err = ots.aoAccess.ExecuteTool(ctx, logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, request)
+	} else {
+		toolResult, err = ots.aoAccess.ExecuteToolAsProxy(interfaces.WithTrustedProxyContext(ctx, proxyContext),
+			logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, request)
+	}
 	if err != nil {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ToolExecutionFailed", map[string]any{
 			"property": propName, "toolbox": logicProp.DataSource.BoxID, "tool": logicProp.DataSource.ToolID,

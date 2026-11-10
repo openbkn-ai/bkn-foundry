@@ -60,6 +60,9 @@ paths:
               $ref: "#/components/schemas/ValueTypeCreateRequest"
       responses:
         "201":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Created. Returns the IDs of the value types created or overwritten.
           content:
             application/json:
@@ -129,8 +132,17 @@ paths:
               - asc
               - desc
             default: desc
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
           content:
             application/json:
@@ -152,6 +164,10 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/value-types/{vt_id}:
     get:
       tags:
@@ -162,8 +178,19 @@ paths:
         - $ref: "#/components/parameters/KNID"
         - $ref: "#/components/parameters/VTID"
         - $ref: "#/components/parameters/Branch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
+            ETag:
+              $ref: "../_shared/kn-version.yaml#/components/headers/ETag"
           description: ok
           content:
             application/json:
@@ -175,6 +202,10 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
     put:
       tags:
         - ValueType
@@ -187,6 +218,7 @@ paths:
         - $ref: "#/components/parameters/KNID"
         - $ref: "#/components/parameters/VTID"
         - $ref: "#/components/parameters/Branch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
@@ -195,6 +227,9 @@ paths:
               $ref: "#/components/schemas/ValueTypeInput"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Updated
         "400":
           $ref: "#/components/responses/InvalidParameter"
@@ -206,6 +241,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Referenced"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
     delete:
       tags:
         - ValueType
@@ -215,8 +252,13 @@ paths:
         - $ref: "#/components/parameters/KNID"
         - $ref: "#/components/parameters/VTID"
         - $ref: "#/components/parameters/Branch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Deleted
         "401":
           description: Unauthorized
@@ -226,6 +268,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Referenced"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
 components:
   securitySchemes:
     OAuth2:
@@ -279,6 +323,10 @@ components:
       description: |-
         BknBackend.ValueType.Referenced. Data properties name the value type; error_details is
         `{"reason": "...", "references": [ValueTypeReference]}`.
+
+        On a versioned network an update or delete also answers 409 `BknBackend.KNVersion.DefinitionModified`
+        when `If-Match` is stale, `BknBackend.KNVersion.DraftRevisionMismatch` when `expected_draft_revision`
+        is stale, and `BknBackend.KNVersion.VersioningDisabling` while versioning is being turned off.
       content:
         application/json:
           schema:

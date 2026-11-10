@@ -2,7 +2,7 @@
 
 The platform's built-in Agent runtime (Epic #202; design: `docs/design/bkn-agent/features/202-bkn-agent.md`).
 
-Legacy management and service-call APIs remain internal. Version 0.2.1 adds user execution APIs with independent credential verification; do not expose the entire service or legacy API through the gateway. By default, the chart creates a scoped Ingress for Studio access through the unified gateway, exposing `/api/bkn-agent/v1/metric-design/executions`, `/api/bkn-agent/v1/executions` (including result recovery), `/api/bkn-agent/v1/me/agents`, `/api/bkn-agent/v1/networks` (the latter currently contains only Agent-setting handlers), and `/api/bkn-agent/v1/admin/agents`. Set `publicIngress.enabled=false` for internal-only installations, or `publicIngress.adminAgentsEnabled=false` to keep the built-in Agent administration route internal. Agent settings require a verified account, a supported public Agent ID, and the relevant Agent or knowledge-network permission. All reads and writes under `/admin/agents`, including Prompt content and version history, require `admin-agent:manage`; the seeded super-admin has this permission through its wildcard grant. Neither `/api/bkn-agent/in/v1` nor other legacy management APIs are exposed. The Ingress disables proxy buffering for SSE and sets a 180-second read timeout.
+Legacy management and service-call APIs remain internal. Version 0.2.1 adds user execution APIs with independent credential verification; do not expose the entire service or legacy API through the gateway. By default, the chart creates a scoped Ingress for Studio access through the unified gateway, exposing `/api/bkn-agent/v1/metric-design/executions`, `/api/bkn-agent/v1/executions` (including result recovery), `/api/bkn-agent/v1/me/agents`, `/api/bkn-agent/v1/networks` (the latter currently contains only Agent-setting handlers), and `/api/bkn-agent/v1/admin/agents`. Set `publicIngress.enabled=false` for internal-only installations, or `publicIngress.adminAgentsEnabled=false` to keep the built-in Agent administration route internal. Agent settings require a verified account and a supported public Agent ID; a network's setting also requires that knowledge network's permission. There is no separate permission on the Agent. All reads and writes under `/admin/agents`, including Prompt content and version history, require `admin-agent:manage`; the seeded super-admin has this permission through its wildcard grant. Neither `/api/bkn-agent/in/v1` nor other legacy management APIs are exposed. The Ingress disables proxy buffering for SSE and sets a 180-second read timeout.
 
 - Engine: LangGraph (Python)
 - Model: mf-model-api (OpenAI-compatible, cluster-internal `/api/private`; an empty model uses the platform default)
@@ -19,6 +19,20 @@ uvicorn main:app --port 30800
 ```
 
 See `app/config.py` for key environment variables (`RDS*`, `MF_MODEL_API_PRIVATE_BASE`, `OPERATOR_INTEGRATION_BASE`, and `CHECKPOINTER_BACKEND`).
+
+## 0.2.2 Eval assistant initialization
+
+Current fresh installs use `migrations/bkn-agent/mariadb/0.2.2/init.sql`, the
+complete Agent snapshot. Upgrades from 0.2.1 execute only
+`0.2.2/06-seed-eval-assistant.sql` for this release. The dedicated
+`eval_assistant` and its Prompt are created only when missing, published with
+the platform-default model, and repeated execution preserves administrator
+changes. Released 0.2.1 scripts do not contain this seed.
+
+Eval business tables remain private to the EE backend and use its own
+`eval/migrations/mariadb/0.2.2/init.sql` plus the explicit `eval-init` command.
+They are not part of the shared Agent database migrations. Neither Agent nor
+Eval service startup applies these database changes automatically.
 
 ## 0.2.1 LangGraph dependency baseline (#2174 / #537)
 
@@ -204,7 +218,7 @@ reads.
 
 `POST /api/bkn-agent/v1/executions` returns SSE; `GET /api/bkn-agent/v1/executions/{run_id}` reads run status and the committed result; `POST /api/bkn-agent/v1/executions/{run_id}/cancel` requests cancellation. All three require `Authorization: Bearer ...`. OAuth credentials are validated through Hydra, and `bak_` AppKeys through bkn-safe. External account headers are not accepted as identity. Dependency addresses are configured with `runtime.hydraAdminBase` / `HYDRA_ADMIN_BASE` and `runtime.bknSafeBase` / `BKN_SAFE_BASE`; the original caller credential is forwarded downstream.
 
-The API serves `studio_smart_qa` and `cypher_generation`. Before use, an administrator must complete shared configuration and publish the Agent, and the caller must have that Agent's `use` permission and the knowledge network's `view_detail` permission. Downstream services continue to enforce actual data and action permissions. This API does not automatically publish an Agent, grant permissions, or modify defaults.
+The API serves `studio_smart_qa`, `eval_assistant`, `cypher_generation`, and `graph_explorer`. Before use, an administrator must complete shared configuration and publish the Agent, and the caller must have the knowledge network's `view_detail` permission. Access follows the network's authorization alone: the Agent's own `use` permission is not checked. Downstream services continue to enforce actual data and action permissions. This API does not automatically publish an Agent, grant permissions, or modify defaults. The Eval assistant only proposes controlled workspace actions; the Eval service still validates and executes every state change.
 
 ```json
 {
@@ -215,7 +229,13 @@ The API serves `studio_smart_qa` and `cypher_generation`. Before use, an adminis
 }
 ```
 
-Include the first turn's `thread_id` from `meta` on follow-up turns; use a new thread when switching networks. Requests cannot override the model, tools, Skill, or Prompt. The new entry point always uses the shared Prompt; the old API's personal and request overrides remain compatible.
+`context` may also name the network version the run reads: `kn_version` is `running`, `draft` or a version number, and `draft_revision` pins one draft revision and is only accepted with `kn_version=draft` (422 otherwise). bkn-agent sends them to Context Loader as `X-Kn-Version` / `X-Kn-Draft-Revision` and also pins them into every network-scoped tool call, because a tool argument overrides the header; a model-supplied value that differs returns `ToolScopeMismatch`. The run's record and its result `context` keep the version. Without these fields nothing is sent and the network's default read applies, exactly as before. BKN-project uses `kn_version=draft` with the draft revision it read to run its regression on the draft before publishing.
+
+```json
+"context": {"kn_id": "network-01", "kn_version": "draft", "draft_revision": 128}
+```
+
+Include the first turn's `thread_id` from `meta` on follow-up turns; use a new thread when switching networks or network versions. Requests cannot override the model, tools, Skill, or Prompt. The new entry point always uses the shared Prompt; the old API's personal and request overrides remain compatible.
 
 SSE events are `meta/token/tool_started/tool_finished/usage/result/terminal`, with a `run_id` and monotonically increasing sequence number. Tool events reference a real call ID; parameters and results are size-limited and redacted. The result is written to the existing `t_agent_task` before a successful terminal event is sent; GET can recover the committed result. Missing actual usage is explicitly marked unavailable. See the [OpenAPI contract](../../docs/api/bkn-agent/bkn-agent.yaml) for endpoint and error details.
 

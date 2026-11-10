@@ -70,6 +70,10 @@ vega-backend:
   private_host: "vega-backend-svc.openbkn"
   private_port: 13014
   private_protocol: "http"
+bkn-backend:
+  private_host: "bkn-backend-svc.openbkn"
+  private_port: 13014
+  private_protocol: "http"
 
 redis:
   connectType: "sentinel"

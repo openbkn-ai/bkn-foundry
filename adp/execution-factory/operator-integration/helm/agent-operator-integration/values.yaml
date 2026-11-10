@@ -189,6 +189,10 @@ depServices:
     privateHost: vega-backend-svc
     privatePort: 13014
     privateProtocol: http
+  bkn-backend:
+    privateHost: bkn-backend-svc
+    privatePort: 13014
+    privateProtocol: http
 
 env:
   language: en_US.UTF-8

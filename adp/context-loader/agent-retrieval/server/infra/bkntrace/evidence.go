@@ -93,6 +93,7 @@ type evidenceOutcome struct {
 	failureCode  string
 	failureStage string
 	businessRefs []BusinessRef
+	knVersion    string
 }
 
 var artifactHTTPClient = &http.Client{}
@@ -700,7 +701,7 @@ func buildRunCypherEvent(ctx context.Context, knID, query string, extra map[stri
 		refs = append(refs, map[string]any{
 			"ref_id": "kn:" + knID, "ref_type": "knowledge_network",
 			"source_system": ModuleName, "validity": "observed",
-			"version_status": "unversioned", "visibility": "visible",
+			"version_status": knVersionStatus(ctx), "visibility": "visible",
 		})
 	}
 	payload := map[string]any{
@@ -852,7 +853,7 @@ func BuildSchemaDefinitionEvents(ctx context.Context, kind, knID string, ids []s
 	refs := []map[string]any{{
 		"ref_id": "kn:" + knID, "ref_type": "knowledge_network",
 		"source_system": ModuleName, "validity": "observed",
-		"version_status": "unversioned", "visibility": "visible",
+		"version_status": knVersionStatus(ctx), "visibility": "visible",
 	}}
 	for _, id := range ids {
 		id = strings.TrimSpace(id)
@@ -862,7 +863,7 @@ func BuildSchemaDefinitionEvents(ctx context.Context, kind, knID string, ids []s
 		refs = append(refs, map[string]any{
 			"ref_id": kind + ":" + knID + ":" + id, "ref_type": refType,
 			"source_system": ModuleName, "validity": "observed",
-			"version_status": "unversioned", "visibility": "visible",
+			"version_status": knVersionStatus(ctx), "visibility": "visible",
 		})
 	}
 	return buildRetrievalEvents(ec, "context.get_"+kind+"_types", HashValue(strings.Join(ids, "\x00")), matched, false, refs)
@@ -1489,7 +1490,7 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 		claimID:           strings.TrimSpace(traceContext.ClaimID),
 		attempt:           traceContext.Attempt,
 		observedAt:        observedAt,
-		businessRefs:      requestDerivedBusinessRefsFromContext(ctx),
+		businessRefs:      stampKnVersion(requestDerivedBusinessRefsFromContext(ctx), knVersionLabel(ctx)),
 	}, true
 }
 

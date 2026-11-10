@@ -396,10 +396,34 @@ ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_
 class ExecutionScope(BaseModel):
     model_config = {"extra": "forbid"}
     kn_id: str = Field(min_length=1, max_length=128, pattern=_ID_PATTERN)
+    # Analysis is inference over backend-collected evidence, never a tool runner.
+    purpose: Optional[Literal["eval_root_cause"]] = Field(
+        default=None,
+        description="Root cause analysis for eval_assistant only. Disables all tools and skills; evidence is collected by Eval before execution.",
+    )
     # The graph explorer's canvas: snapshot, selection, canvas_id and revision.
     # Required by an Agent that mounts the graph_explorer builtin provider, which
     # validates it; other Agents must not receive it.
     canvas: Optional[dict[str, Any]] = None
+    # Which definitions of the network the run reads. Both are sent to Context
+    # Loader as headers and pinned into every scoped tool call like kn_id.
+    kn_version: Optional[str] = Field(
+        default=None,
+        pattern=r"^(running|draft|[1-9][0-9]{0,9})$",
+        description=(
+            "Version of the knowledge network the run reads: running, draft, or a"
+            " version number. Without it the network's default read applies."
+        ),
+    )
+    draft_revision: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Draft revision the run must read; only with kn_version=draft (422"
+            " otherwise). A read after the draft moved on fails instead of mixing"
+            " revisions."
+        ),
+    )
 
 
 class ExecutionRequest(BaseModel):

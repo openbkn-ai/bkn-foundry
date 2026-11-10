@@ -62,6 +62,9 @@ func (a *knowledgeNetworkProxyAccess) ResolveKnowledgeNetworkProxy(
 
 	account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	endpoint := fmt.Sprintf("%s/%s/proxy-account/resolve", a.baseURL, url.PathEscape(binding.KNID))
+	if binding.Branch != "" {
+		endpoint += "?branch=" + url.QueryEscape(binding.Branch)
+	}
 	headers := common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   account.ID,

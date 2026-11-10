@@ -61,7 +61,7 @@ func TestIndirectViewIndexMatchesTheRowByRowCheck(t *testing.T) {
 	for name, mappingRules := range mappings {
 		for _, isForward := range []bool{true, false} {
 			checked, related := 0, 0
-			for round := 0; round < 200; round++ {
+			for round := 0; round < 1000; round++ {
 				currentFields := []string{"source_key", "source_org"}
 				nextFields := []string{"target_key", "target_org"}
 				if !isForward {

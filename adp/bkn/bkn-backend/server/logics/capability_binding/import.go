@@ -9,9 +9,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
@@ -440,4 +444,45 @@ func mcpUnusableReason(tools []*interfaces.MCPToolBrief, toolName string) string
 		return fmt.Sprintf("mcp server %s is %s", tools[0].MCPID, tools[0].MCPStatus)
 	}
 	return ""
+}
+
+func (cbs *capabilityBindingService) ReplaceCapabilitiesTx(ctx context.Context, tx *sql.Tx, knID, branch string,
+	declared *bknsdk.BknCapabilities) (*interfaces.CapabilityImportReport, []*interfaces.CapabilityBinding, error) {
+	report, bound, err := cbs.ImportCapabilitiesTx(ctx, tx, knID, branch, declared)
+	if err != nil {
+		return nil, nil, err
+	}
+	existing, err := cbs.BindingIDs(ctx, knID, branch)
+	if err != nil {
+		return nil, nil, err
+	}
+	keep := make(map[string]struct{}, len(bound))
+	for _, binding := range bound {
+		keep[binding.ID] = struct{}{}
+	}
+	var stale []string
+	for _, id := range existing {
+		if _, ok := keep[id]; !ok {
+			stale = append(stale, id)
+		}
+	}
+	if len(stale) > 0 {
+		if _, err := cbs.DetachCapabilities(ctx, tx, knID, branch, stale); err != nil {
+			return nil, nil, err
+		}
+	}
+	return report, bound, nil
+}
+
+func (cbs *capabilityBindingService) BindingIDs(ctx context.Context, knID, branch string) ([]string, error) {
+	bindings, err := cbs.cba.ListBindings(ctx, interfaces.CapabilityBindingsQueryParams{KNID: knID, Branch: branch})
+	if err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_CapabilityBinding_InternalError).WithErrorDetails(err.Error())
+	}
+	ids := make([]string, 0, len(bindings))
+	for _, binding := range bindings {
+		ids = append(ids, binding.ID)
+	}
+	return ids, nil
 }

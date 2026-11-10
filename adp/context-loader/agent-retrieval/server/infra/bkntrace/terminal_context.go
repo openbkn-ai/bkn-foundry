@@ -83,11 +83,15 @@ func retainSchemaSnapshotTargets(ctx context.Context, kind, knID string, ids []s
 		}
 	}
 	refType := trace30RefType(kind)
+	version := "unversioned"
+	if label := knVersionLabel(ctx); label != "" {
+		version = label
+	}
 	targets := make([]BusinessRef, 0, len(ids))
 	for _, id := range ids {
 		refID := kind + ":" + knID + ":" + strings.TrimSpace(id)
 		if trace30CanonicalRefID(refType, refID) {
-			targets = append(targets, BusinessRef{RefType: refType, RefID: refID, Version: "unversioned"})
+			targets = append(targets, BusinessRef{RefType: refType, RefID: refID, Version: version})
 		}
 	}
 	outcome.mu.Lock()

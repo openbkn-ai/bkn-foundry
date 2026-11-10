@@ -358,6 +358,29 @@ func Test_KnowledgeNetworkRestHandler_UpdateKN(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
 		})
 
+		// Studio saves the basic info only; that must not clear the network's skill content.
+		Convey("UpdateKN keeps skill content the request leaves out\n", func() {
+			for body, keep := range map[string]bool{
+				`{"name":"kn1"}`:                     true,
+				`{"name":"kn1","skill_content":""}`:  false,
+				`{"name":"kn1","skill_content":"s"}`: false,
+			} {
+				kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("kn1", true, nil)
+				kns.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.KN, _ bool) error {
+						So(got.KeepSkillContent, ShouldEqual, keep)
+						return nil
+					})
+
+				req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader([]byte(body)))
+				req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+				w := httptest.NewRecorder()
+				engine.ServeHTTP(w, req)
+
+				So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
+			}
+		})
+
 		Convey("Failed UpdateKN ShouldBind Error\n", func() {
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader([]byte("invalid json")))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)

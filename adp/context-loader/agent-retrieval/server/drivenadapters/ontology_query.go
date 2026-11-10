@@ -87,7 +87,7 @@ func NewOntologyQueryAccess() interfaces.DrivenOntologyQuery {
 		ontologyQuery = &ontologyQueryClient{
 			logger:     configLoader.GetLogger(),
 			baseURL:    configLoader.OntologyQuery.BuildURL("/api/ontology-query"),
-			httpClient: rest.NewHTTPClient(),
+			httpClient: newKnVersionClient(rest.NewHTTPClient()),
 		}
 	})
 	return ontologyQuery
