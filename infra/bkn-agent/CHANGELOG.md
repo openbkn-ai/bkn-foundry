@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- Stop requiring the Agent's `use` permission on public executions and Agent settings: the public surface runs built-in Agents only, so access follows the knowledge network's authorization alone (`view_detail` to run or read, `modify` to change a network's setting). Users with network access no longer get `BknAgent.Execution.Forbidden` for lacking an Agent grant that role administration could not assign.
+
 - Remove the business-provenance directory-account bootstrap, Secret dependency, and credential exception; reject the retired identity while retaining SQL defaults, caller identity, and shared configuration history (#2823).
 
 - Backfill the exact historical Object Metric Designer v1 Chinese Prompt with a protected en-US translation, without replacing canonical content, administrator translations, or version pointers (#2784).

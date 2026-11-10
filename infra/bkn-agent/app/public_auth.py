@@ -200,10 +200,6 @@ async def authorize(account: Account, checks: list[dict]) -> None:
         raise err(403, "BknAgent.Execution.Forbidden")
 
 
-def _agent_check(agent_id: str) -> dict:
-    return {"resource": {"type": "agent", "id": agent_id}, "operation": "use"}
-
-
 def _network_check(kn_id: str, operation: str) -> dict:
     return {
         "resource": {"type": "knowledge_network", "id": kn_id},
@@ -211,24 +207,18 @@ def _network_check(kn_id: str, operation: str) -> dict:
     }
 
 
-async def authorize_execution(account: Account, agent_id: str, kn_id: str) -> None:
-    await authorize(account, [_agent_check(agent_id), _network_check(kn_id, "view_detail")])
+# The public surface runs built-in Agents only, and each one works inside one
+# knowledge network under the caller's identity. Access therefore follows the
+# network's authorization alone: there is no separate permission on the Agent.
+async def authorize_execution(account: Account, kn_id: str) -> None:
+    await authorize(account, [_network_check(kn_id, "view_detail")])
 
 
-async def authorize_network_setting(
-    account: Account, agent_id: str, kn_id: str, *, write: bool
-) -> None:
+async def authorize_network_setting(account: Account, kn_id: str, *, write: bool) -> None:
     """Reading a network's Q&A setting needs view_detail; changing it needs the
     network's existing modify operation, so whoever maintains the network
     maintains its Q&A configuration."""
-    await authorize(
-        account,
-        [_agent_check(agent_id), _network_check(kn_id, "modify" if write else "view_detail")],
-    )
-
-
-async def authorize_agent(account: Account, agent_id: str) -> None:
-    await authorize(account, [_agent_check(agent_id)])
+    await authorize(account, [_network_check(kn_id, "modify" if write else "view_detail")])
 
 
 # Changing a built-in Agent is a platform administration operation registered in
