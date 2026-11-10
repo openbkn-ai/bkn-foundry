@@ -626,7 +626,7 @@ func (s *service) purgeInTx(ctx context.Context, tx *sql.Tx, knID string, versio
 func (s *service) indexVersion(ctx context.Context, knID, src string, n int) error {
 	if err := s.pub.IndexVersion(ctx, knID, src, interfaces.VersionBranch(n)); err != nil {
 		otellog.LogError(ctx, "Build the concept index of a version failed", err)
-		return newHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNVersion_ConceptIndexFailed).
+		return newHTTPError(ctx, http.StatusServiceUnavailable, berrors.BknBackend_KNVersion_ConceptIndexFailed).
 			WithErrorDetails(err.Error())
 	}
 	return nil

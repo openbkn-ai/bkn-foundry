@@ -291,6 +291,8 @@ type KNResolvedBranch struct {
 	DraftRevision int64
 	// Running is set when Branch is the running version, the content the proxy grants cover.
 	Running bool
+	// RunningVersion is the running version when the branch was resolved, 0 if none.
+	RunningVersion int
 }
 
 // KNVersionService manages the versions of knowledge networks.

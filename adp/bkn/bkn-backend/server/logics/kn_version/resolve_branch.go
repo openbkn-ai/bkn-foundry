@@ -63,7 +63,7 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 		}
 		n := state.RunningVersion
 		return &interfaces.KNResolvedBranch{Branch: interfaces.VersionBranch(n), Versioned: true, Version: strconv.Itoa(n),
-			Running: true}, nil
+			Running: true, RunningVersion: n}, nil
 	case interfaces.DRAFT_BRANCH:
 		if state.Mode == interfaces.KNVersioningDisabling {
 			return nil, newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_VersioningDisabling)
@@ -75,7 +75,7 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 			return nil, revisionMismatch(ctx, state)
 		}
 		return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true,
-			Version: interfaces.DRAFT_BRANCH, DraftRevision: state.DraftRevision}, nil
+			Version: interfaces.DRAFT_BRANCH, DraftRevision: state.DraftRevision, RunningVersion: state.RunningVersion}, nil
 	}
 
 	n, err := strconv.Atoi(target)
@@ -99,7 +99,7 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 		return nil, editionRestricted(ctx)
 	}
 	return &interfaces.KNResolvedBranch{Branch: interfaces.VersionBranch(n), Versioned: true, Version: strconv.Itoa(n),
-		Running: n == state.RunningVersion}, nil
+		Running: n == state.RunningVersion, RunningVersion: state.RunningVersion}, nil
 }
 
 // resolveUnversioned keeps the branch parameter as it was; kn_version=running means main.

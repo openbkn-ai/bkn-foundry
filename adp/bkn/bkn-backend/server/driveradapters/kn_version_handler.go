@@ -446,6 +446,10 @@ func (r *restHandler) resolveRead(ctx *context.Context, c *gin.Context, knID str
 	if resolved.Branch == interfaces.DRAFT_BRANCH && resolved.Versioned {
 		c.Header("X-Kn-Draft-Revision", strconv.FormatInt(resolved.DraftRevision, 10))
 	}
+	// Lets a caller that named a version number tell whether it is the running one.
+	if resolved.Versioned && resolved.RunningVersion > 0 {
+		c.Header("X-Kn-Running-Version", strconv.Itoa(resolved.RunningVersion))
+	}
 	return resolved, true
 }
 
