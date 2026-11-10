@@ -66,6 +66,9 @@ func NewKNVersionService(appSetting *common.AppSetting, pub interfaces.KNMainPub
 	return serviceInst
 }
 
+// Current returns the version service built for the main handler; nil before it exists.
+func Current() interfaces.KNVersionService { return serviceInst }
+
 func newHTTPError(ctx context.Context, status int, code string) *httperrors.HTTPError {
 	return httperrors.NewHTTPError(ctx, status, code)
 }

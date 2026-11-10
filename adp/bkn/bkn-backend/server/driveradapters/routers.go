@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,6 +69,7 @@ type restHandler struct {
 	oms                     interfaces.ObjectMetricServiceV1
 	kes                     interfaces.KnEventServiceV1
 	kvs                     interfaces.KNVersionService
+	kvsOnce                 sync.Once
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService
