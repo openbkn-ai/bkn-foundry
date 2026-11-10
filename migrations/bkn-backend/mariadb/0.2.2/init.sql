@@ -582,7 +582,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_suite (
     PRIMARY KEY (id),
     KEY idx_eval_suite_kn (kn_id),
     description VARCHAR(1000) NOT NULL DEFAULT ''
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_suite_version (
     id VARCHAR(128) NOT NULL,
@@ -599,7 +599,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_suite_version (
     tags_json JSON NOT NULL,
     name_snapshot VARCHAR(255) NOT NULL,
     description_snapshot VARCHAR(1000) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_case (
     id VARCHAR(128) NOT NULL,
@@ -610,7 +610,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_case (
     KEY idx_eval_case_kn (kn_id),
     archived_at DATETIME(6) NULL,
     archived_by VARCHAR(128) NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_case_version (
     id VARCHAR(128) NOT NULL,
@@ -636,7 +636,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_case_version (
     risk_level VARCHAR(32) NOT NULL,
     diagnostic_spec_json JSON NOT NULL,
     definition_sha256 CHAR(64) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_run (
     id VARCHAR(128) NOT NULL,
@@ -673,7 +673,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_run (
     run_plan_id VARCHAR(36) NULL,
     scheduled_at DATETIME(6) NULL,
     KEY idx_eval_run_plan_id (kn_id, run_plan_id, created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_run_credential (
     run_id VARCHAR(128) NOT NULL,
@@ -686,7 +686,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_run_credential (
     PRIMARY KEY (run_id),
     KEY idx_eval_run_credential_expiry (expires_at),
     CONSTRAINT fk_eval_run_credential_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_case_run (
     id VARCHAR(128) NOT NULL,
@@ -711,7 +711,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_case_run (
     UNIQUE KEY uk_eval_case_run_attempt (run_id, case_version_id, attempt_no),
     KEY idx_eval_case_run_page (run_id, created_at, id),
     CONSTRAINT fk_eval_case_run_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_assertion_result (
     id VARCHAR(128) NOT NULL,
@@ -725,7 +725,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_assertion_result (
     PRIMARY KEY (id),
     UNIQUE KEY uk_eval_assertion_once (case_run_id, assertion_id, evaluator_version),
     CONSTRAINT fk_eval_assertion_case_run FOREIGN KEY (case_run_id) REFERENCES t_bkn_eval_case_run (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_finding (
     id VARCHAR(128) NOT NULL,
@@ -740,7 +740,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_finding (
     first_result_revision INT NOT NULL DEFAULT 1,
     last_result_revision INT NULL,
     assertion_id VARCHAR(128) NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_job (
     id VARCHAR(128) NOT NULL,
@@ -759,7 +759,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_job (
     UNIQUE KEY uk_eval_job_once (job_type, idempotency_key),
     KEY idx_eval_job_claim (status, next_retry_at, lease_until, created_at, id),
     CONSTRAINT fk_eval_job_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_case_draft (
     case_id VARCHAR(128) NOT NULL,
@@ -786,7 +786,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_case_draft (
     PRIMARY KEY (case_id),
     KEY idx_eval_case_draft_kn_status (kn_id, status, updated_at, case_id),
     CONSTRAINT fk_eval_case_draft_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_gold_access_audit (
     id VARCHAR(128) NOT NULL,
@@ -799,7 +799,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_gold_access_audit (
     KEY idx_eval_gold_audit_case (kn_id, case_id, accessed_at),
     KEY idx_eval_gold_audit_principal (kn_id, principal_id, accessed_at),
     CONSTRAINT fk_eval_gold_audit_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_template_config (
     kn_id VARCHAR(128) NOT NULL,
@@ -810,7 +810,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_template_config (
     published_revision INT NOT NULL DEFAULT 0,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (kn_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_template_config_version (
     kn_id VARCHAR(128) NOT NULL,
@@ -819,7 +819,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_template_config_version (
     rules_sha256 CHAR(64) NOT NULL,
     published_at DATETIME(6) NOT NULL,
     PRIMARY KEY (kn_id, version)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_run_result_revision (
     run_id VARCHAR(128) NOT NULL,
@@ -832,7 +832,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_run_result_revision (
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (run_id, revision),
     CONSTRAINT fk_eval_result_revision_run FOREIGN KEY (run_id) REFERENCES t_bkn_eval_run (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_target_scan (
     id VARCHAR(36) NOT NULL,
@@ -843,7 +843,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_target_scan (
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     KEY idx_eval_scan_kn (kn_id, created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_generation_plan (
     id VARCHAR(36) NOT NULL,
@@ -860,7 +860,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_generation_plan (
     PRIMARY KEY (id),
     KEY idx_eval_plan_kn (kn_id, created_at),
     CONSTRAINT fk_eval_plan_scan FOREIGN KEY (scan_id) REFERENCES t_bkn_eval_target_scan (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_generation_job (
     id VARCHAR(36) NOT NULL,
@@ -880,7 +880,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_generation_job (
     error_code VARCHAR(80) NULL,
     updated_at DATETIME(6) NULL,
     KEY idx_eval_generation_claim (status, lease_until, created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_case_candidate (
     id VARCHAR(36) NOT NULL,
@@ -901,7 +901,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_case_candidate (
     UNIQUE KEY uk_eval_candidate_target_rule (job_id, target_id, rule_id),
     KEY idx_eval_candidate_kn (kn_id, job_id, status),
     CONSTRAINT fk_eval_candidate_job FOREIGN KEY (job_id) REFERENCES t_bkn_eval_generation_job (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_template_grant (
     kn_id VARCHAR(128) NOT NULL,
@@ -910,7 +910,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_template_grant (
     granted_by VARCHAR(128) NOT NULL,
     granted_at DATETIME(6) NOT NULL,
     PRIMARY KEY (kn_id, account_id, operation)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_template_origin (
     kn_id VARCHAR(128) NOT NULL,
@@ -922,7 +922,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_template_origin (
     CONSTRAINT fk_eval_template_origin_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id),
     PRIMARY KEY (kn_id, target_id, rule_id, case_id),
     UNIQUE KEY uk_eval_template_origin_case (case_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_case_state (
     case_id VARCHAR(128) NOT NULL,
@@ -933,7 +933,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_case_state (
     PRIMARY KEY (case_id),
     KEY idx_eval_case_state_kn (kn_id, enabled),
     CONSTRAINT fk_eval_case_state_case FOREIGN KEY (case_id) REFERENCES t_bkn_eval_case (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_run_plan (
     id VARCHAR(36) NOT NULL,
@@ -967,7 +967,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_run_plan (
     CONSTRAINT fk_eval_run_plan_suite FOREIGN KEY (suite_id) REFERENCES t_bkn_eval_suite (id),
     last_error_code VARCHAR(64) NULL,
     last_error_message VARCHAR(512) NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_run_plan_authorization (
     plan_id VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -982,7 +982,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_run_plan_authorization (
     pending_until DATETIME(6) NULL,
     updated_at DATETIME(6) NOT NULL,
     CONSTRAINT fk_eval_plan_authorization FOREIGN KEY (plan_id) REFERENCES t_bkn_eval_run_plan(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_overview_scope (
     kn_id VARCHAR(128) NOT NULL,
@@ -992,7 +992,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_overview_scope (
     updated_by VARCHAR(128) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (kn_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS t_bkn_eval_root_cause_analysis (
     id CHAR(64) NOT NULL PRIMARY KEY,
@@ -1012,4 +1012,4 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_root_cause_analysis (
     updated_at DATETIME(6) NOT NULL,
     INDEX idx_eval_analysis_history (kn_id, requested_by, run_id, case_run_id, result_revision, created_at, id),
     CONSTRAINT fk_eval_analysis_case_run FOREIGN KEY (case_run_id) REFERENCES t_bkn_eval_case_run (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

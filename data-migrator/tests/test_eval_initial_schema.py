@@ -82,6 +82,16 @@ def test_eval_foreign_keys_reference_tables_created_earlier():
     assert created == EVAL_TABLES
 
 
+def test_eval_table_collations_do_not_depend_on_server_defaults():
+    definitions = re.findall(
+        r"CREATE TABLE(?: IF NOT EXISTS)? (t_bkn_eval_\w+)\s*\(.*?\) ENGINE([^;]+);",
+        SNAPSHOT.read_text(), re.S,
+    )
+    assert {table for table, _ in definitions} == EVAL_TABLES
+    for table, options in definitions:
+        assert re.search(r"\bCOLLATE\s*=\s*utf8mb4_bin\b", options, re.I), table
+
+
 def test_community_migrator_initializes_eval_in_fresh_mariadb():
     """Opt in only against a disposable, empty MariaDB service (as in CI)."""
     host = os.environ.get("EVAL_FRESH_INSTALL_DB_HOST")
@@ -115,6 +125,12 @@ def test_community_migrator_initializes_eval_in_fresh_mariadb():
             cursor.execute("SELECT table_name AS name FROM information_schema.tables "
                            "WHERE table_schema = 'openbkn' AND LEFT(table_name, 11) = 't_bkn_eval_'")
             assert {row["name"] for row in cursor.fetchall()} == EVAL_TABLES
+            cursor.execute("SELECT table_name AS name, table_collation AS collation "
+                           "FROM information_schema.tables WHERE table_schema = 'openbkn' "
+                           "AND LEFT(table_name, 11) = 't_bkn_eval_'")
+            assert {row["name"]: row["collation"] for row in cursor.fetchall()} == {
+                table: "utf8mb4_bin" for table in EVAL_TABLES
+            }
             for table in sorted(EVAL_TABLES):
                 cursor.execute(f"SELECT COUNT(*) AS rows_count FROM openbkn.`{table}`")
                 assert cursor.fetchone()["rows_count"] == 0
