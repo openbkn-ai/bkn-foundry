@@ -66,23 +66,6 @@ CREATE TABLE IF NOT EXISTS t_kn_version_event (
   UNIQUE KEY uk_kn_version_event_idem (f_kn_id, f_idempotency_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络版本事件';
 
--- 概念索引构建：就绪后不再改变，版本与草稿引用构建
-CREATE TABLE IF NOT EXISTS t_kn_index_build (
-  f_build_id VARCHAR(40) NOT NULL COMMENT '构建id',
-  f_kn_id VARCHAR(128) NOT NULL COMMENT '业务知识网络id',
-  f_index_key VARCHAR(64) NOT NULL COMMENT '索引键，写入概念索引记录的 branch 字段',
-  f_def_branch VARCHAR(40) NOT NULL COMMENT '构建所依据的定义分支',
-  f_draft_revision BIGINT NOT NULL DEFAULT -1 COMMENT '依据草稿构建时的草稿修订号，其他为 -1',
-  f_source_build VARCHAR(40) NOT NULL DEFAULT '' COMMENT '复用向量的来源构建',
-  f_status VARCHAR(20) NOT NULL COMMENT 'building / ready / failed / deleting',
-  f_lease_owner VARCHAR(64) NOT NULL DEFAULT '' COMMENT '构建者实例',
-  f_lease_until BIGINT NOT NULL DEFAULT 0 COMMENT '租约到期时间',
-  f_unreferenced_at BIGINT NOT NULL DEFAULT 0 COMMENT '清理任务首次发现无引用的时间，0 表示有引用',
-  f_create_time BIGINT NOT NULL DEFAULT 0 COMMENT '创建时间',
-  f_update_time BIGINT NOT NULL DEFAULT 0 COMMENT '更新时间',
-  PRIMARY KEY (f_build_id),
-  KEY idx_kn_index_build (f_kn_id, f_status)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '概念索引构建';
 
 -- 对象指标版本号分配：按网络分配，复制或切换版本不会复用版本号
 CREATE TABLE IF NOT EXISTS t_object_metric_version_seq (

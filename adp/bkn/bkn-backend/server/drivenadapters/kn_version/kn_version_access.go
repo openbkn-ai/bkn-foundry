@@ -327,7 +327,7 @@ func (va *versionAccess) DeleteState(ctx context.Context, tx *sql.Tx, knID strin
 }
 
 func (va *versionAccess) DeleteNetwork(ctx context.Context, tx *sql.Tx, knID string) error {
-	for _, table := range []string{stateTable, versionTable, eventTable, "t_kn_index_build", "t_object_metric_version_seq"} {
+	for _, table := range []string{stateTable, versionTable, eventTable, "t_object_metric_version_seq"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE f_kn_id = ?", knID); err != nil {
 			return fmt.Errorf("delete %s of %s: %w", table, knID, err)
 		}
