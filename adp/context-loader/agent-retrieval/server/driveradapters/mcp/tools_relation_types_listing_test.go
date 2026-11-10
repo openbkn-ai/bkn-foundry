@@ -6,6 +6,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -324,5 +325,26 @@ func TestGetRelationTypesOutputSchemaAcceptsACutPage(t *testing.T) {
 		map[string]any{"kn_id": "kn-001", "limit": 200}))
 	if err := schema.Validate(m); err != nil {
 		t.Fatalf("a cut page does not match the advertised output schema: %v", err)
+	}
+}
+
+// The page bound holds for the structuredContent JSON a host may read in place of the
+// TOON text, which is the larger of the two.
+func TestGetRelationTypesPageBoundHoldsForTheStructuredCopy(t *testing.T) {
+	setAsideRelationPageBound(t, 6000)
+	bkn := &relationListingBackend{total: 120, comment: longRelationComment}
+	result, err := handleGetRelationTypes(bkn)(context.Background(), mcpReq(map[string]any{"kn_id": "kn-001", "response_format": "toon"}))
+	if err != nil || result.IsError {
+		t.Fatalf("listing failed: %v %+v", err, result)
+	}
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := utf8.RuneCount(raw); n > 6000 {
+		t.Fatalf("structuredContent is %d characters, past the bound", n)
+	}
+	if n := utf8.RuneCountInString(resultText(result)); n > 6000 {
+		t.Fatalf("text is %d characters, past the bound", n)
 	}
 }

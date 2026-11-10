@@ -10,7 +10,6 @@ import (
 	"context"
 	"log"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-playground/validator/v10"
@@ -936,14 +935,14 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched,
 			TotalCount: totalCount, NextOffset: nextOffset, Notice: notice}
 		if listing {
-			// Measured on the text the caller reads, before the snapshot, so the
-			// evidence is the page the caller got.
+			// Measured on what the caller reads -- the text and the structuredContent
+			// beside it -- and before the snapshot, so the evidence is the page they got.
 			if _, err := interfaces.FitRelationTypePage(resp, offset, interfaces.MaxRelationTypePageChars,
 				func(kept int) string {
 					return renderDetailNotice(ctx, "agentRetrieval.Detail.RelationTypePageCharsCut",
 						map[string]any{"Arg1": interfaces.MaxRelationTypePageChars, "Arg2": kept})
 				},
-				func(r *interfaces.RelationTypesResp) (int, error) { return toolTextRunes(r, format) },
+				func(r *interfaces.RelationTypesResp) (int, error) { return toolResultRunes(r, format) },
 			); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -967,21 +966,6 @@ func renderDetailNotice(ctx context.Context, key string, args map[string]any) st
 		logger.Errorf("localized message rendering failed: %v", err)
 	}
 	return text
-}
-
-// toolTextRunes is how many characters the text of resp's tool result carries.
-func toolTextRunes(resp any, format rest.ResponseFormat) (int, error) {
-	result, err := BuildMCPToolResult(resp, format)
-	if err != nil {
-		return 0, err
-	}
-	n := 0
-	for _, content := range result.Content {
-		if text, ok := content.(mcp.TextContent); ok {
-			n += utf8.RuneCountInString(text.Text)
-		}
-	}
-	return n, nil
 }
 
 func schemaObjectTypeIDs(items []*interfaces.ObjectType) []string {

@@ -18,8 +18,9 @@ const (
 	RelationTypeIndexCommentRunes = 120
 )
 
-// MaxRelationTypePageChars bounds one listed page, measured on the text the caller
-// receives. An index entry without its comment is still 150-180 characters, so a
+// MaxRelationTypePageChars bounds one listed page, measured on what the caller
+// receives: a REST body in the format they asked for, and over MCP the larger of the
+// text and the structuredContent JSON beside it. An index entry without its comment is still 150-180 characters, so a
 // full page of 200 can pass it even with the comments shortened. A variable so tests
 // can reach it with small pages.
 var MaxRelationTypePageChars = 30000
