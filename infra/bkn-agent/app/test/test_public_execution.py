@@ -373,8 +373,13 @@ def test_allowed_agent_runs_on_the_public_surface(monkeypatch, agent_id):
             assert events[0][1]["agent_id"] == agent_id
             assert events[-1][1]["status"] == "succeeded"
             assert [call.agent_id for call in calls] == [agent_id]
-            # The caller needs use on this Agent, not on smart Q&A.
-            assert {"resource": {"type": "agent", "id": agent_id}, "operation": "use"} in checked
+            # Access follows the network alone; no Agent permission is asked for.
+            assert checked == [
+                {
+                    "resource": {"type": "knowledge_network", "id": BODY["context"]["kn_id"]},
+                    "operation": "view_detail",
+                }
+            ]
 
     asyncio.run(run())
 
@@ -792,7 +797,7 @@ def test_incomplete_authorization_response_is_not_permission(
 
         monkeypatch.setattr(public_auth, "_post", post)
         with pytest.raises(HTTPException) as error:
-            await public_auth.authorize_execution(Account("u", "user"), "a", "n")
+            await public_auth.authorize_execution(Account("u", "user"), "n")
         assert error.value.status_code == status
 
     asyncio.run(run())

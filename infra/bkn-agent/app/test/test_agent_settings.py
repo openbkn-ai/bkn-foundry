@@ -110,6 +110,38 @@ def test_user_setting_belongs_to_its_owner_only(monkeypatch):
     asyncio.run(run())
 
 
+def test_network_access_is_enough_without_any_agent_permission(monkeypatch):
+    """A caller holding only knowledge-network permissions runs a built-in Agent
+    and reaches its settings: bkn-safe here refuses every check on an Agent."""
+
+    async def run():
+        async with environment(monkeypatch) as (client, _, calls):
+            original = public_auth._post
+
+            async def post(url, **kwargs):
+                result = await original(url, **kwargs)
+                for decision in result.get("results", []):
+                    if decision["resource_type"] == "agent":
+                        decision["allowed"] = False
+                        result["allowed"] = False
+                return result
+
+            monkeypatch.setattr(public_auth, "_post", post)
+            assert (await client.get(SETTING, headers=AUTH)).status_code == 200
+            saved = await client.put(SETTING, json={"instruction": "Short"}, headers=AUTH)
+            assert saved.status_code == 200, saved.text
+            assert (await client.delete(SETTING, headers=AUTH)).status_code == 200
+            assert (await client.get(NETWORK, headers=AUTH)).status_code == 200
+            written = await client.put(NETWORK, json={"instruction": "x"}, headers=AUTH)
+            assert written.status_code == 200, written.text
+            assert (await client.get(CONFIG, headers=AUTH)).status_code == 200
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            assert response.status_code == 200, response.text
+            assert len(calls) == 1
+
+    asyncio.run(run())
+
+
 def test_setting_rejects_unknown_fields_and_oversized_instructions(monkeypatch):
     async def run():
         async with environment(monkeypatch) as (client, _, _):

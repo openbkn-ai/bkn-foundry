@@ -119,9 +119,9 @@ async def _owned(session, run_id, account):
     if info["protocol"] == METRIC_PROTOCOL:
         if task.agent_id != METRIC_AGENT_ID or not info.get("metric_request"):
             raise not_found("task", run_id)
-        await authorize_network_setting(account, task.agent_id, kn_id, write=True)
+        await authorize_network_setting(account, kn_id, write=True)
     else:
-        await authorize_execution(account, task.agent_id, kn_id)
+        await authorize_execution(account, kn_id)
     return task
 
 
@@ -205,9 +205,9 @@ async def _execute_impl(
     if metric_request:
         if account.account_type != "user":
             raise err(403, "BknAgent.Execution.Forbidden")
-        await authorize_network_setting(account, agent.agent_id, req.context.kn_id, write=True)
+        await authorize_network_setting(account, req.context.kn_id, write=True)
     else:
-        await authorize_execution(account, agent.agent_id, req.context.kn_id)
+        await authorize_execution(account, req.context.kn_id)
     if metric_request and (agent.tools or agent.skills):
         raise err(409, "BknAgent.Execution.Unsupported")
     if not metric_request and any(
