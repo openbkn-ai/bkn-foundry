@@ -46,6 +46,7 @@ func (r *restHandler) registerKNVersionRoutes(apiV1 *gin.RouterGroup) {
 		{http.MethodPost, "/versions/:version/restore", r.restoreKNVersion},
 		{http.MethodPost, "/versions/:version/purge", r.purgeKNVersion},
 		{http.MethodPost, "/draft/reset", r.resetKNDraft},
+		{http.MethodPost, "/draft/index", r.buildKNDraftIndex},
 	}
 	group := apiV1.Group("/knowledge-networks/:kn_id")
 	for _, route := range routes {
@@ -131,6 +132,19 @@ func (r *restHandler) enableKNVersioning(c *gin.Context, ctx context.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusCreated, state)
+}
+
+func (r *restHandler) buildKNDraftIndex(c *gin.Context, ctx context.Context) {
+	index, err := r.kvs.BuildDraftIndex(ctx, c.Param("kn_id"))
+	if err != nil {
+		replyKNVersionError(c, err)
+		return
+	}
+	status := http.StatusOK
+	if index.Status == interfaces.KNIndexBuildBuilding {
+		status = http.StatusAccepted
+	}
+	rest.ReplyOK(c, status, index)
 }
 
 // disableKNVersioning is the operator's route that takes a network out of versioning.

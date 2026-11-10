@@ -102,8 +102,36 @@ func (s *service) view(state *interfaces.KNVersionState) *interfaces.KNVersionin
 			HasChanges:  state.DraftHasChanges(),
 			Outdated:    state.DraftOutdated(),
 			Revision:    state.DraftRevision,
+			Index:       draftIndex(state),
+			IndexReady:  true,
 		},
 	}
+}
+
+// draftIndex is the concept index of the draft. Every draft write updates the index of the
+// draft as it saves, and copying a version into the draft rewrites it, so the index always
+// matches the current revision; there is no separate build to wait for.
+func draftIndex(state *interfaces.KNVersionState) *interfaces.KNDraftIndexView {
+	return &interfaces.KNDraftIndexView{Revision: state.DraftRevision, Status: interfaces.KNIndexBuildReady}
+}
+
+// BuildDraftIndex answers POST /draft/index. The draft's index is kept current on every write,
+// so the build for the current revision is always ready.
+func (s *service) BuildDraftIndex(ctx context.Context, knID string) (*interfaces.KNDraftIndexView, error) {
+	if err := s.checkPermission(ctx, knID, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+		return nil, err
+	}
+	state, err := s.va.GetState(ctx, nil, knID, false)
+	if err != nil {
+		return nil, internalError(ctx, err)
+	}
+	if state == nil {
+		return nil, newHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_NotVersioned)
+	}
+	if state.Mode == interfaces.KNVersioningDisabling {
+		return nil, newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_VersioningDisabling)
+	}
+	return draftIndex(state), nil
 }
 
 // operation identifies a version operation for idempotency: its event types and the version it

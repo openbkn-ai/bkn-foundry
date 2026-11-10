@@ -108,6 +108,13 @@ type KNDraftView struct {
 	IndexReady  bool              `json:"index_ready"`
 }
 
+// Statuses of a concept index build.
+const (
+	KNIndexBuildBuilding = "building"
+	KNIndexBuildReady    = "ready"
+	KNIndexBuildFailed   = "failed"
+)
+
 type KNDraftIndexView struct {
 	Revision int64  `json:"revision"`
 	Status   string `json:"status"`
@@ -264,6 +271,8 @@ type KNVersionService interface {
 	// Disable takes the network out of versioning (design §12.9): main keeps the running
 	// version, the draft and every version branch are deleted, version records are kept.
 	Disable(ctx context.Context, knID string, req *KNDisableVersioningRequest) (*KNVersioningView, error)
+	// BuildDraftIndex makes the draft's concept index match its current revision.
+	BuildDraftIndex(ctx context.Context, knID string) (*KNDraftIndexView, error)
 }
 
 // KNDisableVersioningRequest is the body of the operator's disable request.
