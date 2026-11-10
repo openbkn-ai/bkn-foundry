@@ -21,6 +21,7 @@ type RiskType struct {
 	CommonInfo `mapstructure:",squash"`
 	KNID       string `json:"kn_id" mapstructure:"kn_id"`
 	Branch     string `json:"branch" mapstructure:"branch"`
+	Revision   string `json:"revision,omitempty" mapstructure:"-"`
 
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
@@ -56,3 +57,9 @@ type RiskTypes struct {
 	NextCursor *string     `json:"next_cursor,omitempty"`
 	OverallMs  int64       `json:"overall_ms"`
 }
+
+func (d *RiskType) RevisionID() string { return d.RTID }
+
+func (d *RiskType) SetRevision(revision string) { d.Revision = revision }
+
+func (d *RiskType) GetRevision() string { return d.Revision }

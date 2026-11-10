@@ -262,6 +262,12 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if len(objectTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, objectTypes[0].KNID, objectTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return []string{}, err
+			}
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1232,6 +1238,10 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, objectType.KNID, objectType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1251,6 +1261,9 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindObjectType, objectType.KNID, objectType.Branch, objectType.OTID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = ots.ota.UpdateObjectType(ctx, tx, objectType)
@@ -1258,9 +1271,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改对象类失败")
 
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(err.Error())
+		return objectTypeUpdateError(ctx, err)
 	}
 	// Standalone object updates retain full-replacement group semantics. Whole-network import
 	// defers relationships to its normalized additive membership plan.
@@ -1342,6 +1353,10 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 			berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
+	if err = logics.GuardDefinitionWrite(ctx, tx, objectType.KNID, objectType.Branch, false); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
 	// 0.1 On failure.
 	defer func() {
 		switch err {
@@ -1360,6 +1375,9 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 			}
 		}
 	}()
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindObjectType, objectType.KNID, objectType.Branch, objectType.OTID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = ots.ota.UpdateDataProperties(ctx, tx, objectType)
@@ -1367,9 +1385,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改对象类失败")
 
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(err.Error())
+		return objectTypeUpdateError(ctx, err)
 	}
 
 	err = ots.InsertDatasetData(ctx, []*interfaces.ObjectType{objectType})
@@ -1445,6 +1461,10 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1462,6 +1482,9 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindObjectType, knID, branch, otIDs...); err != nil {
+		return err
 	}
 
 	// Delete object types.
@@ -1530,7 +1553,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	logger.Infof("DeleteObjectTypesFromGroup success, the kn_id is [%s], branch is [%s], ot_ids is [%v], rowsAffect is [%d]",
 		knID, branch, otIDs, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs)
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, branch, otIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1575,7 +1598,7 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 	logger.Infof("DeleteObjectTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs)
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, branch, otIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
@@ -2230,6 +2253,15 @@ func (ots *objectTypeService) readRefusedResourcesByProxy(ctx context.Context, o
 		return
 	}
 
+	covered := map[[2]string]bool{}
+	covers := func(knID, branch string) bool {
+		key := [2]string{knID, branch}
+		if ok, known := covered[key]; known {
+			return ok
+		}
+		covered[key] = logics.ProxyCoversBranch(ctx, knID, branch)
+		return covered[key]
+	}
 	var knIDs []string
 	bindingsByKN := map[string][]interfaces.KNProxyBinding{}
 	seen := map[string]struct{}{}
@@ -2242,8 +2274,9 @@ func (ots *objectTypeService) readRefusedResourcesByProxy(ctx context.Context, o
 		if _, ok := refused[resourceID]; !ok {
 			continue
 		}
-		// The proxy holds grants only for the published main model; an editing branch keeps the refusal.
-		if objectType.Branch != interfaces.MAIN_BRANCH || objectType.KNID == "" || objectType.OTID == "" {
+		// The proxy holds grants only for the published main model, which the running version
+		// mirrors; an editing branch or a history version keeps the refusal.
+		if objectType.KNID == "" || objectType.OTID == "" || !covers(objectType.KNID, objectType.Branch) {
 			continue
 		}
 		binding := interfaces.KNProxyBinding{
@@ -3022,4 +3055,15 @@ func (ots *objectTypeService) GetTotalWithOTIDs(ctx context.Context,
 	}
 
 	return total, nil
+}
+
+// objectTypeUpdateError maps a failed object type UPDATE to its HTTP error: a row missing
+// from the branch is not found, anything else is internal.
+func objectTypeUpdateError(ctx context.Context, err error) error {
+	if errors.Is(err, common.ErrRowNotFound) {
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound,
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(err.Error())
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+		berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 }

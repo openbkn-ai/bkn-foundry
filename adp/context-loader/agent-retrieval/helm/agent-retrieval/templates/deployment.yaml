@@ -55,6 +55,14 @@ spec:
           imagePullPolicy: {{ .Values.image.service.pullPolicy }}
 
           env:
+            {{- if .Values.mcpExtensionManifestURL }}
+              - name: CONTEXT_LOADER_EXTENSION_MANIFEST_URL
+                value: {{ .Values.mcpExtensionManifestURL | quote }}
+            {{- end }}
+            {{- if .Values.mcpExtensionManifestJSON }}
+              - name: CONTEXT_LOADER_EXTENSION_MANIFEST_JSON
+                value: {{ .Values.mcpExtensionManifestJSON | quote }}
+            {{- end }}
             {{- if .Values.service.loggerOutput}}
               - name: LOGOUT
                 value: {{ .Values.service.loggerOutput }}

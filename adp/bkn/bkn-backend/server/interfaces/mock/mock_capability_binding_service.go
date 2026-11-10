@@ -10,12 +10,12 @@
 package mock_interfaces
 
 import (
-	bkn "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
-	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	context "context"
 	sql "database/sql"
 	reflect "reflect"
 
+	bkn "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -56,6 +56,21 @@ func (m *MockCapabilityBindingService) AttachCapabilities(ctx context.Context, t
 func (mr *MockCapabilityBindingServiceMockRecorder) AttachCapabilities(ctx, tx, knID, branch, entries any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachCapabilities", reflect.TypeOf((*MockCapabilityBindingService)(nil).AttachCapabilities), ctx, tx, knID, branch, entries)
+}
+
+// BindingIDs mocks base method.
+func (m *MockCapabilityBindingService) BindingIDs(ctx context.Context, knID, branch string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BindingIDs", ctx, knID, branch)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BindingIDs indicates an expected call of BindingIDs.
+func (mr *MockCapabilityBindingServiceMockRecorder) BindingIDs(ctx, knID, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BindingIDs", reflect.TypeOf((*MockCapabilityBindingService)(nil).BindingIDs), ctx, knID, branch)
 }
 
 // DeleteCapabilitiesByKnID mocks base method.
@@ -146,6 +161,22 @@ func (m *MockCapabilityBindingService) ListCapabilities(ctx context.Context, que
 func (mr *MockCapabilityBindingServiceMockRecorder) ListCapabilities(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCapabilities", reflect.TypeOf((*MockCapabilityBindingService)(nil).ListCapabilities), ctx, query)
+}
+
+// ReplaceCapabilitiesTx mocks base method.
+func (m *MockCapabilityBindingService) ReplaceCapabilitiesTx(ctx context.Context, tx *sql.Tx, knID, branch string, declared *bkn.BknCapabilities) (*interfaces.CapabilityImportReport, []*interfaces.CapabilityBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceCapabilitiesTx", ctx, tx, knID, branch, declared)
+	ret0, _ := ret[0].(*interfaces.CapabilityImportReport)
+	ret1, _ := ret[1].([]*interfaces.CapabilityBinding)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ReplaceCapabilitiesTx indicates an expected call of ReplaceCapabilitiesTx.
+func (mr *MockCapabilityBindingServiceMockRecorder) ReplaceCapabilitiesTx(ctx, tx, knID, branch, declared any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceCapabilitiesTx", reflect.TypeOf((*MockCapabilityBindingService)(nil).ReplaceCapabilitiesTx), ctx, tx, knID, branch, declared)
 }
 
 // ResolveCapabilities mocks base method.

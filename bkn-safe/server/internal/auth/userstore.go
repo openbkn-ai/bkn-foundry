@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -159,10 +160,10 @@ func (s *UserStore) UpdateUser(ctx context.Context, id string, fields map[string
 	return nil
 }
 
-// DeleteUser removes a user and its directory memberships (department links and
-// group memberships) in one transaction. Casbin role/permission cleanup is the
-// caller's job (it holds the enforcer). Returns gorm.ErrRecordNotFound when the
-// user doesn't exist.
+// DeleteUser removes a user and memberships, invoking companion cleanup in the
+// same transaction. Extensions can return an error to roll back the whole delete.
+// Casbin role/permission cleanup is the caller's job (it holds the enforcer).
+// Returns gorm.ErrRecordNotFound when the user doesn't exist.
 func (s *UserStore) DeleteUser(ctx context.Context, id string) error {
 	if err := rejectManagedMutation(ctx, s.db, id); err != nil {
 		return err
@@ -176,6 +177,9 @@ func (s *UserStore) DeleteUser(ctx context.Context, id string) error {
 			return gorm.ErrRecordNotFound
 		}
 		if err := tx.Where("user_id = ?", id).Delete(&model.UserDepartment{}).Error; err != nil {
+			return err
+		}
+		if err := identity.CleanupUser(tx, id); err != nil {
 			return err
 		}
 		return tx.Where("member_id = ?", id).Delete(&model.GroupMember{}).Error

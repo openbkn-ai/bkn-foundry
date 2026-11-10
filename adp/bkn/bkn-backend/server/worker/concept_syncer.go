@@ -147,7 +147,7 @@ func (cs *ConceptSyncer) handleKNs() error {
 
 	for _, knInDB := range knsInDB {
 		need_update := false
-		knInDataset, exist := knsInDataset[knInDB.KNID]
+		knInDataset, exist := knsInDataset[knBranch{knInDB.KNID, knInDB.Branch}]
 		if !exist {
 			need_update = true
 		} else if knInDB.UpdateTime != knInDataset.UpdateTime {
@@ -911,7 +911,10 @@ func (cs *ConceptSyncer) queryAllDatasetEntries(ctx context.Context, filterCondi
 	}
 }
 
-func (cs *ConceptSyncer) getAllKNsFromDataset(ctx context.Context) (map[string]*interfaces.KN, error) {
+// knBranch identifies one branch of a knowledge network; each has its own concept document.
+type knBranch struct{ id, branch string }
+
+func (cs *ConceptSyncer) getAllKNsFromDataset(ctx context.Context) (map[knBranch]*interfaces.KN, error) {
 	filterCondition := map[string]any{
 		"field":      "module_type",
 		"operation":  "==",
@@ -921,18 +924,18 @@ func (cs *ConceptSyncer) getAllKNsFromDataset(ctx context.Context) (map[string]*
 
 	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
-		return map[string]*interfaces.KN{}, err
+		return map[knBranch]*interfaces.KN{}, err
 	}
 
-	kns := map[string]*interfaces.KN{}
+	kns := map[knBranch]*interfaces.KN{}
 	for _, entry := range entries {
 		kn := interfaces.KN{}
 		err := mapstructure.Decode(entry, &kn)
 		if err != nil {
-			return map[string]*interfaces.KN{}, err
+			return map[knBranch]*interfaces.KN{}, err
 		}
 
-		kns[kn.KNID] = &kn
+		kns[knBranch{kn.KNID, kn.Branch}] = &kn
 	}
 
 	return kns, nil

@@ -47,6 +47,7 @@ type CapabilityBinding struct {
 	ID             string `json:"id" mapstructure:"id"`
 	KNID           string `json:"kn_id" mapstructure:"kn_id"`
 	Branch         string `json:"branch" mapstructure:"branch"`
+	Revision       string `json:"revision,omitempty" mapstructure:"-"`
 	CapabilityType string `json:"capability_type" mapstructure:"capability_type"`
 
 	// CreatedByAttach is a transient mutation fact, never serialized or persisted.
@@ -275,3 +276,9 @@ type CapabilityImportReport struct {
 	Bound   int               `json:"bound"`
 	Skipped []*CapabilitySkip `json:"skipped"`
 }
+
+func (d *CapabilityBinding) RevisionID() string { return d.ID }
+
+func (d *CapabilityBinding) SetRevision(revision string) { d.Revision = revision }
+
+func (d *CapabilityBinding) GetRevision() string { return d.Revision }

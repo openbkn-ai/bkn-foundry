@@ -183,6 +183,7 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 			"f_update_time",
 		).
 		Columns(declarationColumns...).
+		Columns("f_revision").
 		Values(values...).
 		ToSql()
 	if err != nil {
@@ -220,7 +221,7 @@ func (rta *relationTypeAccess) CreateRelationTypes(ctx context.Context, tx *sql.
 			"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type",
 			"f_mapping_rules", "f_creator", "f_creator_type", "f_create_time", "f_updater",
 			"f_updater_type", "f_update_time",
-		).Columns(declarationColumns...)
+		).Columns(declarationColumns...).Columns("f_revision")
 		for _, relationType := range relationTypes[start:end] {
 			values, err := relationTypeInsertValues(relationType)
 			if err != nil {
@@ -260,7 +261,7 @@ func relationTypeInsertValues(relationType *interfaces.RelationType) ([]any, err
 		relationType.TargetObjectTypeID, relationType.Type, mappingRulesBytes, relationType.Creator.ID,
 		relationType.Creator.Type, relationType.CreateTime, relationType.Updater.ID,
 		relationType.Updater.Type, relationType.UpdateTime,
-	}, declarations...), nil
+	}, append(declarations, interfaces.NewDefinitionRevision())...), nil
 }
 
 // Query current relation types on the main branch.
@@ -822,6 +823,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		"f_updater":               relationType.Updater.ID,
 		"f_updater_type":          relationType.Updater.Type,
 		"f_update_time":           relationType.UpdateTime,
+		"f_revision":              interfaces.NewDefinitionRevision(),
 	}
 	declarations, err := declarationValues(relationType)
 	if err != nil {
@@ -835,6 +837,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		SetMap(data).
 		Where(sq.Eq{"f_id": relationType.RTID}).
 		Where(sq.Eq{"f_kn_id": relationType.KNID}).
+		Where(sq.Eq{"f_branch": relationType.Branch}).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update relation type by relation type id, error", err)
@@ -849,18 +852,10 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		common.LogSafeError(ctx, "update relation type error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	key := sq.Eq{"f_id": relationType.RTID, "f_kn_id": relationType.KNID, "f_branch": relationType.Branch}
+	if err = common.EnsureRowUpdated(ctx, tx, ret, RT_TABLE_NAME, key); err != nil {
+		common.LogSafeError(ctx, "Update relation type found no row", err)
 		return err
-	}
-
-	if RowsAffected != 1 {
-		// Do not return an error when affected rows are not one because the update has occurred.
-		otellog.LogWarn(ctx, fmt.Sprintf("Update relation type affected unexpected row count: relation_type_id=%s, rows=%d",
-			relationType.RTID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -932,6 +927,7 @@ func (rta *relationTypeAccess) UpdateRelationTypes(ctx context.Context, tx *sql.
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, relationType := range batch {

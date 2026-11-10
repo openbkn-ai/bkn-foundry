@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -442,8 +443,10 @@ func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[st
 }
 
 // DeleteDepartment removes a department, but only if it is empty: no child
-// departments and no member users. Returns ErrDepartmentNotEmpty otherwise, or
-// gorm.ErrRecordNotFound if the id doesn't exist.
+// departments and no member users. Extension companion cleanup runs in the same
+// transaction so any cleanup failure rolls the deletion back.
+// Returns ErrDepartmentNotEmpty otherwise, or gorm.ErrRecordNotFound if the id
+// doesn't exist.
 func (s *Service) DeleteDepartment(ctx context.Context, id string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Coordinate deletion with creates/moves so a validated parent cannot
@@ -466,6 +469,9 @@ func (s *Service) DeleteDepartment(ctx context.Context, id string) error {
 		}
 		if members > 0 {
 			return ErrDepartmentNotEmpty
+		}
+		if err := identity.CleanupDepartment(tx, id); err != nil {
+			return err
 		}
 		return tx.Where("id = ?", id).Delete(&model.Department{}).Error
 	})

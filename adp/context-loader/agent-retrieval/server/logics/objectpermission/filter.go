@@ -318,6 +318,26 @@ func OmitUnrestrictedPermissions(objectTypes []*interfaces.ObjectType) {
 	}
 }
 
+// WithUnrestrictedPermissionsOmitted returns detail as OmitUnrestrictedPermissions
+// will leave it, without changing detail: the object types are shallow copies, so
+// the answer can be measured before the evidence snapshot still sees every entry.
+func WithUnrestrictedPermissionsOmitted(detail *interfaces.KnowledgeNetworkDetail) *interfaces.KnowledgeNetworkDetail {
+	if detail == nil || detail.ObjectTypes == nil {
+		return detail
+	}
+	view := *detail
+	view.ObjectTypes = make([]*interfaces.ObjectType, len(detail.ObjectTypes))
+	for i, objectType := range detail.ObjectTypes {
+		if objectType != nil {
+			copied := *objectType
+			objectType = &copied
+		}
+		view.ObjectTypes[i] = objectType
+	}
+	OmitUnrestrictedPermissions(view.ObjectTypes)
+	return &view
+}
+
 // TrimObjectTypesToIndexBackedOps keeps only operators whose availability
 // cannot be inferred from the property type. REST and MCP both call this helper
 // so their advertised schema stays byte-for-byte equivalent.

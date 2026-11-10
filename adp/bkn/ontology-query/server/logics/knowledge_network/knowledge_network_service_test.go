@@ -919,6 +919,7 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 							RelationTypeId:     "rt1",
 							SourceObjectTypeId: sourceObjectTypeID,
 							TargetObjectTypeId: "ot2",
+							Direction:          interfaces.DIRECTION_FORWARD,
 							RelationType: interfaces.RelationType{
 								MappingRules: []interfaces.Mapping{
 									{
@@ -1022,6 +1023,7 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 							RelationTypeId:     "rt1",
 							SourceObjectTypeId: sourceObjectTypeID,
 							TargetObjectTypeId: "ot2",
+							Direction:          interfaces.DIRECTION_FORWARD,
 							RelationType: interfaces.RelationType{
 								MappingRules: []interfaces.Mapping{
 									{
@@ -1546,7 +1548,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 				{
 					ObjectID: "obj1",
 					ObjectData: map[string]any{
-						"id": "123",
+						"target_id": "123",
 					},
 				},
 			}
@@ -1674,7 +1676,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 				{
 					ObjectID: "obj1",
 					ObjectData: map[string]any{
-						"id": "123",
+						"target_id": "123",
 					},
 				},
 			}
@@ -1702,7 +1704,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 
 			nextObjects := interfaces.Objects{
 				Datas: []map[string]any{
-					{"target_id": "123"},
+					{"id": "123"},
 				},
 				TotalCount: 1,
 				ObjectType: &interfaces.ObjectType{

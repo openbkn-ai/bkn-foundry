@@ -236,6 +236,28 @@ func (a *actionScheduleAccess) UpdateScheduleStatus(ctx context.Context, schedul
 	return nil
 }
 
+// DeleteSchedulesByKnID deletes every schedule of a network, on all branches, in the caller's
+// transaction.
+func (a *actionScheduleAccess) DeleteSchedulesByKnID(ctx context.Context, tx *sql.Tx, knID string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete schedules of a knowledge network")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(knID))
+
+	sqlStr, vals, err := sq.Delete(SCHEDULE_TABLE_NAME).Where(sq.Eq{"f_kn_id": knID}).ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+
+	if _, err = tx.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Delete data error")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // DeleteSchedules deletes schedules by IDs
 func (a *actionScheduleAccess) DeleteSchedules(ctx context.Context, tx *sql.Tx, scheduleIDs []string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, fmt.Sprintf("Delete schedules[%v]", scheduleIDs))

@@ -120,6 +120,7 @@ type ActionType struct {
 	declared map[string]bool
 	KNID     string `json:"kn_id" mapstructure:"kn_id"`
 	Branch   string `json:"branch" mapstructure:"branch"`
+	Revision string `json:"revision,omitempty" mapstructure:"-"`
 
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
@@ -210,3 +211,9 @@ func IsValidActionTypeIntentValue(s string) bool {
 func IsValidExpectedOperation(s string) bool {
 	return ExpectedOperationMap[s]
 }
+
+func (d *ActionType) RevisionID() string { return d.ATID }
+
+func (d *ActionType) SetRevision(revision string) { d.Revision = revision }
+
+func (d *ActionType) GetRevision() string { return d.Revision }

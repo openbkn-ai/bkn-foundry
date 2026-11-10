@@ -65,6 +65,51 @@ def test_execution_scope_accepts_maximum_length_network_id():
         )
 
 
+def test_eval_analysis_disables_all_tools_and_preserves_purpose(monkeypatch):
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, _):
+            async with factory() as session:
+                session.add(AgentRow(
+                    f_agent_id="eval_assistant", f_name="Eval", f_mode="chat",
+                    f_prompt_id="qa-prompt", f_tools=[{"type": "context_loader"}],
+                    f_skills=[], f_status="published", f_create_user="admin",
+                    f_update_user="admin", f_create_time=1, f_update_time=1,
+                ))
+                await session.commit()
+            calls = []
+
+            async def chat(session, agent, req, account_id, account_type, *, public):
+                calls.append(req)
+                assert agent.tools == [] and agent.skills == []
+                assert public.allowed_tools == set()
+                assert public.allowed_builtin_tools == set()
+                assert public.builtin_run is None
+                await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+                public.final = '{"summary":"暂未确定根因"}'
+
+                async def events():
+                    yield "event: done\ndata: {}\n\n"
+                return events()
+
+            monkeypatch.setattr(executions, "stream_chat", chat)
+            body = {**BODY, "agent_id": "eval_assistant", "context": {
+                "kn_id": "network-1", "purpose": "eval_root_cause",
+            }}
+            response = await client.post(URL, json=body, headers=AUTH)
+            frames = parse_sse(response.text)
+            assert frames[-1][1]["status"] == "succeeded"
+            run_id = frames[0][1]["run_id"]
+            persisted = (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()
+            assert persisted["result"]["context"]["purpose"] == "eval_root_cause"
+            replay = await client.post(URL, json=body, headers=AUTH)
+            assert parse_sse(replay.text)[-1][1]["status"] == "succeeded"
+            assert len(calls) == 1
+            rejected = await client.post(URL, json={**body, "agent_id": "studio_smart_qa"}, headers=AUTH)
+            assert rejected.status_code == 409
+
+    asyncio.run(run())
+
+
 @asynccontextmanager
 async def environment(monkeypatch, *, stream=True):
     directory = tempfile.TemporaryDirectory(prefix="bkn-execution-test-")
@@ -188,6 +233,7 @@ def test_run_persisted_before_success_and_retry_does_not_run_twice(monkeypatch):
             result = (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()
             assert result["status"] == "succeeded"
             assert result["result"]["answer"] == "Answer"
+            assert "interaction_id" not in result["result"]
             async with factory() as session:
                 row = await session.get(TaskRow, run_id)
                 assert row.f_account_id == "user-1"
@@ -284,14 +330,15 @@ def test_public_request_rejects_config_and_lifecycle_overrides(monkeypatch, extr
     asyncio.run(run())
 
 
-def test_cypher_generation_runs_on_the_public_surface(monkeypatch):
+@pytest.mark.parametrize("agent_id", ["cypher_generation", "eval_assistant"])
+def test_allowed_agent_runs_on_the_public_surface(monkeypatch, agent_id):
     async def run():
         async with environment(monkeypatch) as (client, factory, calls):
             async with factory() as session:
                 session.add(
                     AgentRow(
-                        f_agent_id="cypher_generation",
-                        f_name="Cypher",
+                        f_agent_id=agent_id,
+                        f_name="Allowed Agent",
                         f_mode="chat",
                         f_prompt_id="qa-prompt",
                         f_tools=[
@@ -319,15 +366,20 @@ def test_cypher_generation_runs_on_the_public_surface(monkeypatch):
                 return await allow(url, **kwargs)
 
             monkeypatch.setattr(public_auth, "_post", post)
-            body = {**BODY, "agent_id": "cypher_generation"}
+            body = {**BODY, "agent_id": agent_id}
             response = await client.post(URL, json=body, headers=AUTH)
             assert response.status_code == 200, response.text
             events = parse_sse(response.text)
-            assert events[0][1]["agent_id"] == "cypher_generation"
+            assert events[0][1]["agent_id"] == agent_id
             assert events[-1][1]["status"] == "succeeded"
-            assert [call.agent_id for call in calls] == ["cypher_generation"]
-            # The caller needs use on this Agent, not on smart Q&A.
-            assert {"resource": {"type": "agent", "id": "cypher_generation"}, "operation": "use"} in checked
+            assert [call.agent_id for call in calls] == [agent_id]
+            # Access follows the network alone; no Agent permission is asked for.
+            assert checked == [
+                {
+                    "resource": {"type": "knowledge_network", "id": BODY["context"]["kn_id"]},
+                    "operation": "view_detail",
+                }
+            ]
 
     asyncio.run(run())
 
@@ -745,7 +797,7 @@ def test_incomplete_authorization_response_is_not_permission(
 
         monkeypatch.setattr(public_auth, "_post", post)
         with pytest.raises(HTTPException) as error:
-            await public_auth.authorize_execution(Account("u", "user"), "a", "n")
+            await public_auth.authorize_execution(Account("u", "user"), "n")
         assert error.value.status_code == status
 
     asyncio.run(run())
@@ -954,6 +1006,57 @@ def test_missing_mcp_session_is_failure_in_public_loop(monkeypatch):
             assert events[-1][1]["status"] == "failed"
             assert events[-1][1]["error"]["code"] == "BknAgent.Execution.Unavailable"
             assert not executions._thread_claims
+
+    asyncio.run(run())
+
+
+def test_lifecycle_interaction_id_is_persisted_for_managed_execution(monkeypatch):
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import graph
+    from app.core.context_loader import ContextLoaderSession
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, _):
+            async with factory() as session:
+                row = await session.get(AgentRow, "studio_smart_qa")
+                row.f_tools = [{"type": "context_loader"}]
+                await session.commit()
+
+            async def session(*args, **kwargs):
+                return ContextLoaderSession("conversation-1", "interaction-1")
+
+            async def close(*args, **kwargs):
+                return None
+
+            async def tools(*args, **kwargs):
+                return []
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield MemorySaver()
+
+            monkeypatch.setattr(graph.context_loader, "open_session", session)
+            monkeypatch.setattr(graph.context_loader, "close_session", close)
+            monkeypatch.setattr(graph, "load_tools", tools)
+            monkeypatch.setattr(graph, "build_chat_model", lambda *args, **kwargs: Model(responses=[AIMessage(content="Answer")]))
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            events = parse_sse(response.text)
+            assert events[-1][1]["status"] == "succeeded", response.text
+            result = next(data for name, data in events if name == "result")
+            assert result["content"]["interaction_id"] == "interaction-1"
+            run_id = events[0][1]["run_id"]
+            persisted = (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()
+            assert persisted["result"]["interaction_id"] == "interaction-1"
+            replay = parse_sse((await client.post(URL, json=BODY, headers=AUTH)).text)
+            assert next(data for name, data in replay if name == "result")["content"]["interaction_id"] == "interaction-1"
 
     asyncio.run(run())
 
@@ -2293,5 +2396,280 @@ def test_execution_with_an_unusable_model_neither_reserves_nor_runs(monkeypatch,
             assert not calls
             async with factory() as session:
                 assert (await session.execute(select(TaskRow))).scalars().all() == []
+
+    asyncio.run(run())
+
+
+VERSIONED = {**BODY, "context": {"kn_id": "network-1", "kn_version": "draft", "draft_revision": 7}}
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        {"kn_version": "running"},
+        {"kn_version": "draft"},
+        {"kn_version": "3"},
+        {"kn_version": "draft", "draft_revision": 0},
+        {"kn_version": "draft", "draft_revision": 128},
+    ],
+)
+def test_execution_scope_accepts_network_versions(context):
+    request = ExecutionRequest.model_validate(
+        {**BODY, "context": {"kn_id": "network-1", **context}}
+    )
+    assert request.context.kn_version == context["kn_version"]
+    assert request.context.draft_revision == context.get("draft_revision")
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        {"kn_version": "main"},
+        {"kn_version": "v3"},
+        {"kn_version": "0"},
+        {"kn_version": ""},
+        {"kn_version": "draft", "draft_revision": -1},
+        {"kn_version": "draft", "draft_revision": "seven"},
+    ],
+)
+def test_execution_scope_rejects_malformed_network_versions(monkeypatch, context):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, calls):
+            body = {**BODY, "context": {"kn_id": "network-1", **context}}
+            response = await client.post(URL, json=body, headers=AUTH)
+            assert response.status_code == 400, response.text
+            assert response.json()["code"] == "BknAgent.ParamError.FormatError"
+            assert calls == []
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        {"draft_revision": 7},
+        {"kn_version": "running", "draft_revision": 7},
+        {"kn_version": "3", "draft_revision": 7},
+    ],
+)
+def test_draft_revision_without_draft_version_is_422_and_never_runs(monkeypatch, context):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, calls):
+            body = {**BODY, "context": {"kn_id": "network-1", **context}}
+            response = await client.post(URL, json=body, headers=AUTH)
+            assert response.status_code == 422, response.text
+            assert response.json()["code"] == "BknAgent.Execution.ContextInvalid"
+            assert calls == []
+            async with factory() as session:
+                assert (await session.execute(select(TaskRow))).scalars().all() == []
+
+    asyncio.run(run())
+
+
+def _scoped_tool(calls, properties):
+    async def query(**kwargs):
+        calls.append(kwargs)
+        return "ok"
+
+    return StructuredTool.from_function(
+        coroutine=query,
+        name="query",
+        description="Query",
+        args_schema={"type": "object", "properties": {"kn_id": {"type": "string"}, **properties}},
+        metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
+    )
+
+
+def test_tool_scope_pins_network_version_like_kn_id():
+    async def run():
+        calls = []
+        tool = _scoped_tool(
+            calls,
+            {
+                "kn_version": {"type": "string"},
+                "draft_revision": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            },
+        )
+        public = PublicChat("run", "network-1", kn_version="draft", draft_revision=7)
+        guarded = public.guard_tools([tool])[0]
+        pinned = {"kn_id": "network-1", "kn_version": "draft", "draft_revision": 7}
+        # Missing, explicit null and the same value are all pinned to the run's.
+        assert await guarded.ainvoke({}) == "ok"
+        assert await guarded.ainvoke({"kn_version": None, "draft_revision": None}) == "ok"
+        assert await guarded.ainvoke({"kn_version": "draft", "draft_revision": "7"}) == "ok"
+        assert calls == [pinned, pinned, pinned]
+        for rewrite in (
+            {"kn_version": "running"},
+            {"kn_version": "3"},
+            {"draft_revision": 6},
+            {"kn_id": "network-2"},
+        ):
+            assert "ToolScopeMismatch" in await guarded.ainvoke(rewrite)
+        assert len(calls) == 3
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("kn_version", ["running", "3", "draft"])
+def test_tool_scope_refuses_a_draft_revision_the_run_did_not_set(kn_version):
+    async def run():
+        calls = []
+        tool = _scoped_tool(
+            calls, {"kn_version": {"type": "string"}, "draft_revision": {"type": "integer"}}
+        )
+        guarded = PublicChat("run", "network-1", kn_version=kn_version).guard_tools([tool])[0]
+        assert "ToolScopeMismatch" in await guarded.ainvoke({"draft_revision": 5})
+        assert await guarded.ainvoke({"draft_revision": None}) == "ok"
+        assert await guarded.ainvoke({}) == "ok"
+        pinned = {"kn_id": "network-1", "kn_version": kn_version}
+        assert calls == [pinned, pinned]
+
+    asyncio.run(run())
+
+
+def test_tool_scope_passes_a_numbered_version_in_the_declared_type():
+    async def run():
+        calls = []
+        tool = _scoped_tool(calls, {"kn_version": {"type": "integer"}})
+        guarded = PublicChat("run", "network-1", kn_version="3").guard_tools([tool])[0]
+        assert await guarded.ainvoke({"kn_version": 3}) == "ok"
+        assert "ToolScopeMismatch" in await guarded.ainvoke({"kn_version": 4})
+        assert calls == [{"kn_id": "network-1", "kn_version": 3}]
+
+    asyncio.run(run())
+
+
+def test_tool_scope_without_a_version_leaves_version_arguments_alone():
+    async def run():
+        calls = []
+        tool = _scoped_tool(calls, {"kn_version": {"type": "string"}})
+        guarded = PublicChat("run", "network-1").guard_tools([tool])[0]
+        assert await guarded.ainvoke({}) == "ok"
+        assert await guarded.ainvoke({"kn_version": "running"}) == "ok"
+        assert calls == [{"kn_id": "network-1"}, {"kn_id": "network-1", "kn_version": "running"}]
+        # A tool that takes no version gets none, even when the run has one.
+        plain = []
+        versioned = PublicChat("run", "network-1", kn_version="draft", draft_revision=7)
+        guarded = versioned.guard_tools([_scoped_tool(plain, {})])[0]
+        assert await guarded.ainvoke({}) == "ok"
+        assert plain == [{"kn_id": "network-1"}]
+
+    asyncio.run(run())
+
+
+def test_execution_records_the_network_version_and_keeps_it_for_the_thread(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, calls):
+            seen = []
+            chat = executions.stream_chat
+
+            async def recording(session, agent, req, account_id, account_type, *, public):
+                seen.append((public.kn_version, public.draft_revision))
+                return await chat(session, agent, req, account_id, account_type, public=public)
+
+            monkeypatch.setattr(executions, "stream_chat", recording)
+            response = await client.post(URL, json=VERSIONED, headers=AUTH)
+            assert response.status_code == 200, response.text
+            meta = parse_sse(response.text)[0][1]
+            assert seen == [("draft", 7)]
+            async with factory() as session:
+                row = await session.get(TaskRow, meta["run_id"])
+                assert row.f_input["request"]["context"]["kn_version"] == "draft"
+                assert row.f_input["request"]["context"]["draft_revision"] == 7
+            persisted = (await client.get(f"{URL}/{meta['run_id']}", headers=AUTH)).json()
+            assert persisted["result"]["context"]["kn_version"] == "draft"
+            assert persisted["result"]["context"]["draft_revision"] == 7
+            # The same request id with another version is a different request.
+            other = {**VERSIONED, "context": {**VERSIONED["context"], "draft_revision": 8}}
+            assert (await client.post(URL, json=other, headers=AUTH)).status_code == 409
+            # A later turn reads the version the thread began with.
+            later = {**VERSIONED, "thread_id": meta["thread_id"], "client_request_id": "request-2"}
+            assert (await client.post(URL, json=later, headers=AUTH)).status_code == 200
+            moved = {**later, "client_request_id": "request-3", "context": {"kn_id": "network-1"}}
+            assert (await client.post(URL, json=moved, headers=AUTH)).status_code == 409
+            assert len(calls) == 2
+
+    asyncio.run(run())
+
+
+def test_execution_without_a_version_is_stored_and_run_as_before(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _calls):
+            seen = []
+            chat = executions.stream_chat
+
+            async def recording(session, agent, req, account_id, account_type, *, public):
+                seen.append((public.kn_version, public.draft_revision))
+                return await chat(session, agent, req, account_id, account_type, public=public)
+
+            monkeypatch.setattr(executions, "stream_chat", recording)
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            meta = parse_sse(response.text)[0][1]
+            assert seen == [(None, None)]
+            async with factory() as session:
+                row = await session.get(TaskRow, meta["run_id"])
+                # Stored exactly as before the fields existed, so retries and
+                # threads started earlier still match.
+                assert row.f_input["request"]["context"] == {"kn_id": "network-1", "canvas": None}
+            persisted = (await client.get(f"{URL}/{meta['run_id']}", headers=AUTH)).json()
+            assert "kn_version" not in persisted["result"]["context"]
+            # A thread that began without a version cannot switch to one.
+            later = {**VERSIONED, "thread_id": meta["thread_id"], "client_request_id": "request-2"}
+            assert (await client.post(URL, json=later, headers=AUTH)).status_code == 409
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        (VERSIONED, {"kn_version": "draft", "draft_revision": 7}),
+        (BODY, {}),
+    ],
+)
+def test_public_run_opens_context_loader_on_the_requested_version(monkeypatch, body, expected):
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import graph
+    from app.core.context_loader import ContextLoaderSession
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, _):
+            async with factory() as session:
+                row = await session.get(AgentRow, "studio_smart_qa")
+                row.f_tools = [{"type": "context_loader"}]
+                await session.commit()
+            opened = []
+
+            async def session(*args, **kwargs):
+                opened.append(kwargs)
+                return ContextLoaderSession("conversation-1", "interaction-1")
+
+            async def close(*args, **kwargs):
+                return None
+
+            async def tools(*args, **kwargs):
+                return []
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield MemorySaver()
+
+            monkeypatch.setattr(graph.context_loader, "open_session", session)
+            monkeypatch.setattr(graph.context_loader, "close_session", close)
+            monkeypatch.setattr(graph, "load_tools", tools)
+            monkeypatch.setattr(graph, "build_chat_model", lambda *args, **kwargs: Model(responses=[AIMessage(content="Answer")]))
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+
+            response = await client.post(URL, json=body, headers=AUTH)
+            assert parse_sse(response.text)[-1][1]["status"] == "succeeded", response.text
+            assert len(opened) == 1
+            versions = {k: opened[0][k] for k in ("kn_version", "draft_revision") if k in opened[0]}
+            assert versions == expected
 
     asyncio.run(run())

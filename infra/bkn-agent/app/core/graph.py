@@ -115,8 +115,15 @@ async def stream_chat(
                 agent_name=agent.name,
                 host_conversation_key=thread_id,
                 profile=context_loader.profile_of(agent.tools),
+                **(
+                    {"kn_version": public.kn_version, "draft_revision": public.draft_revision}
+                    if public and public.kn_version is not None
+                    else {}
+                ),
             )
             if cl_session is not None:
+                if public:
+                    public.interaction_id = cl_session.interaction_id
                 # Set only when a session was really opened.
                 #
                 # An earlier version reset this in the finally of _events(). That

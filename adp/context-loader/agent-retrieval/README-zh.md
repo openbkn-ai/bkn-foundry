@@ -187,3 +187,22 @@ helm template agent-retrieval ./helm/agent-retrieval -n <命名空间> -f ./helm
 
 - **团队**：OpenBKN
 - **文档**：见 `docs/`（PRD、API、发布说明等）。
+
+## 可选 HTTP MCP 扩展
+
+Context Loader 可从 HTTP 扩展提供方加载付费工具，不内嵌其业务逻辑。通过 Helm
+`mcpExtensionManifestURL` 或环境变量 `CONTEXT_LOADER_EXTENSION_MANIFEST_URL`
+指定清单地址。默认为空，现有工具目录不变。修改清单内容或地址后须重启 Context
+Loader；已配置的提供方加载失败时启动失败，不发布无法调用的工具。
+
+Eval 使用 EE 后端的清单地址
+`http://<bkn-backend-host>:<port>/api/bkn-backend/v1/eval-mcp/tools`，并在该后端设置
+`OPENBKN_EVAL_ENABLED=true` 和 `OPENBKN_EVAL_EXTERNAL_AGENT_ENABLED=true`。
+客户端仍连接 `/api/agent-retrieval/v1/mcp/` 或精简 MCP 入口，受专业版及以上许可和后端
+用户权限控制。提供的工具为 `bkn_eval_list_suites`、`bkn_eval_start_run`、
+`bkn_eval_next_case`、`bkn_eval_submit_result`、`bkn_eval_get_progress`。
+
+提供方维护工具 Schema 及同源调用路径。Context Loader 只向该路径转发已认证传输的
+`Authorization`，不信任账号头或工具参数中的凭据，也不跟随重定向。Eval 控制工具可在
+没有既有 Interaction 时发起运行；业务工具仍要求原有生命周期上下文。每道评测题目的
+Interaction 和 Trace 由 Eval 后端创建与核验，已有业务工具及证据处理保持不变。

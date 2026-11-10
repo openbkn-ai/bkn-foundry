@@ -46,6 +46,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/kn_proxy"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/kn_version"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_base"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/model_factory"
@@ -58,6 +59,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/value_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	permission_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 	vega_backend_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
@@ -87,6 +89,7 @@ type Application struct {
 	extensionMu      sync.Mutex
 	extensionsFrozen bool
 	routeExtensions  map[string]func(*gin.Engine)
+	workerExtensions map[string]func(context.Context) error
 }
 
 // Setting exposes immutable boot configuration to explicitly assembled extensions.
@@ -121,6 +124,76 @@ func (server *Application) RegisterRoutes(name string, install func(*gin.Engine)
 	return nil
 }
 
+// RegisterWorker adds one background worker to the application lifecycle.
+// The worker blocks until ctx is canceled and must stop within the shutdown deadline.
+// Registration is only valid after Boot and before Run.
+func (server *Application) RegisterWorker(name string, run func(context.Context) error) error {
+	server.extensionMu.Lock()
+	defer server.extensionMu.Unlock()
+	if server.extensionsFrozen {
+		return fmt.Errorf("bkn-backend app: register worker %q after Run", name)
+	}
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("bkn-backend app: worker extension name is required")
+	}
+	if run == nil {
+		return fmt.Errorf("bkn-backend app: worker extension %q has no runner", name)
+	}
+	if server.workerExtensions == nil {
+		server.workerExtensions = make(map[string]func(context.Context) error)
+	}
+	if _, exists := server.workerExtensions[name]; exists {
+		return fmt.Errorf("bkn-backend app: worker extension %q already registered", name)
+	}
+	server.workerExtensions[name] = run
+	return nil
+}
+
+type workerExtension struct {
+	name string
+	run  func(context.Context) error
+}
+
+func (server *Application) frozenWorkerExtensions() []workerExtension {
+	server.extensionMu.Lock()
+	defer server.extensionMu.Unlock()
+	names := make([]string, 0, len(server.workerExtensions))
+	for name := range server.workerExtensions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	workers := make([]workerExtension, 0, len(names))
+	for _, name := range names {
+		workers = append(workers, workerExtension{name: name, run: server.workerExtensions[name]})
+	}
+	return workers
+}
+
+func startWorkerExtensions(ctx context.Context, workers []workerExtension) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var running sync.WaitGroup
+		for _, extension := range workers {
+			running.Add(1)
+			go func() {
+				defer running.Done()
+				err := extension.run(ctx)
+				if ctx.Err() != nil {
+					return
+				}
+				if err != nil {
+					logger.Errorf("Worker extension %q stopped: %s", extension.name, common.SafeErrorSummary(err))
+				} else {
+					logger.Warnf("Worker extension %q stopped before shutdown", extension.name)
+				}
+			}()
+		}
+		running.Wait()
+	}()
+	return done
+}
+
 func (server *Application) freezeRouteExtensions() []func(*gin.Engine) {
 	server.extensionMu.Lock()
 	defer server.extensionMu.Unlock()
@@ -144,6 +217,7 @@ func (server *Application) freezeRouteExtensions() []func(*gin.Engine) {
 func (server *Application) Run() {
 	logger.Info("Server Starting")
 	routeExtensions := server.freezeRouteExtensions()
+	workerExtensions := server.frozenWorkerExtensions()
 	entitlement.Freeze()
 	if caps := entitlement.Assembled(); len(caps) > 0 {
 		logger.Infof("Extensions assembled: %+v", caps)
@@ -171,6 +245,8 @@ func (server *Application) Run() {
 	go server.conceptSyncer.Start()
 	go server.scheduleWorker.Start()
 	server.proxySyncWorker.Start()
+	extensionCtx, stopExtensions := context.WithCancel(context.Background())
+	extensionsDone := startWorkerExtensions(extensionCtx, workerExtensions)
 
 	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -220,6 +296,12 @@ func (server *Application) Run() {
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
+	}
+	stopExtensions()
+	select {
+	case <-extensionsDone:
+	case <-ctx.Done():
+		logger.Warn("Worker extensions did not stop before the shutdown deadline")
 	}
 	// Stop accepting mutations and let in-flight handlers finish before the
 	// outbox workers are canceled. Otherwise a request can enqueue work after
@@ -356,6 +438,12 @@ func Boot(_ Options) *Application {
 	logics.SetActionTypeAccess(action_type.NewActionTypeAccess(appSetting))
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
+	// A child's policy is shared by every branch; it goes only when no branch defines the child.
+	if presence, ok := logics.KNA.(interfaces.KNChildPresence); ok {
+		permission_service.SetKNChildPresence(presence)
+	}
+	logics.SetKNVersionAccess(kn_version.NewKNVersionAccess(appSetting),
+		permission_service.TrackBranchChildren(kn_version.NewBranchCopier(appSetting)))
 	logics.SetKNProxyAccess(kn_proxy.NewAccess(db))
 	proxyOutboxAccess := kn_proxy.NewOutboxAccess(db)
 	if appSetting.ServerSetting.ProxySyncWorkerEnabled {
@@ -383,17 +471,18 @@ func Boot(_ Options) *Application {
 		auditRecorder = operationaudit.NewKafkaRecorder(auditRuntime.Publisher, os.Getenv("BKN_AUDIT_ENVIRONMENT"), auditTelemetry)
 	}
 	server := &Application{
-		appSetting:      appSetting,
-		db:              db,
-		otelProviders:   otelProviders,
-		restHandler:     driveradapters.NewRestHandler(appSetting, auditRecorder),
-		auditRuntime:    auditRuntime,
-		auditTelemetry:  auditTelemetry,
-		refresh:         refresh,
-		stop:            make(chan struct{}),
-		routeExtensions: make(map[string]func(*gin.Engine)),
-		conceptSyncer:   worker.NewConceptSyncer(appSetting),
-		scheduleWorker:  worker.NewScheduleWorker(appSetting),
+		appSetting:       appSetting,
+		db:               db,
+		otelProviders:    otelProviders,
+		restHandler:      driveradapters.NewRestHandler(appSetting, auditRecorder),
+		auditRuntime:     auditRuntime,
+		auditTelemetry:   auditTelemetry,
+		refresh:          refresh,
+		stop:             make(chan struct{}),
+		routeExtensions:  make(map[string]func(*gin.Engine)),
+		workerExtensions: make(map[string]func(context.Context) error),
+		conceptSyncer:    worker.NewConceptSyncer(appSetting),
+		scheduleWorker:   worker.NewScheduleWorker(appSetting),
 		proxySyncWorker: worker.NewProxySyncWorker(appSetting, proxyOutboxAccess, logics.MPA,
 			permission_service.NewPermissionService(appSetting)),
 	}

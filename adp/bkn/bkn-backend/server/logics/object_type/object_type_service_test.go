@@ -1787,6 +1787,28 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Returns not found when the row is gone from the branch\n", func() {
+			objectType := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object_type1",
+				},
+				KNID:   "kn1",
+				Branch: "dev",
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrRowNotFound)
+			smock.ExpectRollback()
+
+			err := service.UpdateObjectType(ctx, nil, objectType, true)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		})
+
 		Convey("Failed when syncObjectGroups returns error\n", func() {
 			objectType := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1887,6 +1909,24 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("Returns not found when the row is gone from the branch\n", func() {
+			objectType := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "object_type1"},
+				KNID:                   "kn1",
+				Branch:                 "dev",
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrRowNotFound)
+			smock.ExpectRollback()
+
+			err := service.UpdateDataProperties(ctx, objectType, []*interfaces.DataProperty{{Name: "prop1"}})
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Success with vector index when strictMode false skips model validation\n", func() {
@@ -4019,4 +4059,38 @@ func Test_applyIndexCapOps(t *testing.T) {
 			So(interfaces.DSL_TEXT_OPS, ShouldResemble, before)
 		})
 	})
+}
+
+// The running version and the draft share one policy per object type, so
+// deleting the draft's copy must keep it.
+func Test_objectTypeService_DeleteObjectTypesByIDs_DraftKeepsPolicy(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).AnyTimes()
+	ps := bmock.NewMockPermissionService(mockCtrl)
+	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	cga := bmock.NewMockConceptGroupAccess(mockCtrl)
+	vbs := bmock.NewMockVegaBackendService(mockCtrl)
+	db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	service := &objectTypeService{appSetting: &common.AppSetting{}, db: db, ota: ota, ps: ps, cga: cga, vbs: vbs}
+
+	smock.ExpectBegin()
+	ota.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.DRAFT_BRANCH, []string{"ot1"}).Return(int64(1), nil)
+	ota.EXPECT().DeleteObjectTypeStatusByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+	vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+	smock.ExpectCommit()
+
+	if err := service.DeleteObjectTypesByIDs(ctx, nil, "kn1", interfaces.DRAFT_BRANCH, []string{"ot1"}); err != nil {
+		t.Fatalf("DeleteObjectTypesByIDs() error = %v", err)
+	}
+	if err := smock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
 }

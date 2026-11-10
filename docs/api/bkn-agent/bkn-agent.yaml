@@ -305,13 +305,15 @@ paths:
             usage, result, terminal. reasoning carries the model''s streamed thinking
             when it provides any; it is never part of the answer. Each event carries
             run_id and sequence. result.content.answer is the last assistant message;
-            text streamed before tool calls is progress, not the answer. tool_finished
-            of a built-in provider''s tool may carry progress, {<result key>: what
-            the run planned since the previous one}, to show before the run ends;
-            the final result stays authoritative. Successful result is persisted before
-            result/terminal; terminal.status is succeeded/failed/cancelled. Retries
-            return meta and the existing terminal; an active retry returns 409. Disconnect
-            cancels execution.'
+            text streamed before tool calls is progress, not the answer. result.content.interaction_id
+            is present only when Context Loader opened a lifecycle-issued Interaction;
+            GET and replay retain the same reference. tool_finished of a built-in
+            provider''s tool may carry progress, {<result key>: what the run planned
+            since the previous one}, to show before the run ends; the final result
+            stays authoritative. Successful result is persisted before result/terminal;
+            terminal.status is succeeded/failed/cancelled. Retries return meta and
+            the existing terminal; an active retry returns 409. Disconnect cancels
+            execution.'
           content:
             text/event-stream:
               schema:
@@ -2444,12 +2446,37 @@ components:
           minLength: 1
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
+        purpose:
+          anyOf:
+          - type: string
+            const: eval_root_cause
+          - type: 'null'
+          title: Purpose
+          description: Root cause analysis for eval_assistant only. Disables all tools
+            and skills; evidence is collected by Eval before execution.
         canvas:
           anyOf:
           - additionalProperties: true
             type: object
           - type: 'null'
           title: Canvas
+        kn_version:
+          anyOf:
+          - type: string
+            pattern: ^(running|draft|[1-9][0-9]{0,9})$
+          - type: 'null'
+          title: Kn Version
+          description: 'Version of the knowledge network the run reads: running, draft,
+            or a version number. Without it the network''s default read applies.'
+        draft_revision:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Draft Revision
+          description: Draft revision the run must read; only with kn_version=draft
+            (422 otherwise). A read after the draft moved on fails instead of mixing
+            revisions.
       additionalProperties: false
       type: object
       required:

@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,9 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 	}
 	actionType, _, exists, err := s.omAccess.GetActionType(ctx, req.KNID, interfaces.MAIN_BRANCH, req.ActionTypeID)
 	if err != nil {
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return versionErr
+		}
 		return actionPermissionUnavailable(ctx, err)
 	}
 	if !exists {
@@ -100,6 +104,10 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 	_, err = s.authorizeActionType(ctx, req.KNID, &actionType)
 	if err != nil {
 		return err
+	}
+	if interfaces.KNVersionPinFromContext(ctx).UsesCallerIdentity() {
+		// The draft and history versions run as the caller: there is no proxy binding to check.
+		return nil
 	}
 	_, _, err = s.resolveActionProxyContext(ctx, req.KNID, &actionType)
 	return err
@@ -128,6 +136,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	actionType, actionTypeSnapshot, exists, err := s.omAccess.GetActionType(ctx, req.KNID, req.Branch, req.ActionTypeID)
 	if err != nil {
 		logger.Errorf("Failed to get action type: %v", err)
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return nil, versionErr
+		}
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -156,9 +167,22 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	if err != nil {
 		return nil, err
 	}
-	actionProxy, proxyPermissionSnapshot, err := s.resolveActionProxyContext(ctx, req.KNID, &actionType)
-	if err != nil {
-		return nil, err
+	// The proxy's grants cover only the running version. On the draft or a history version the
+	// action runs with the caller's own identity: no proxy, and the token records the version.
+	var (
+		actionProxy             = &interfaces.TrustedProxyContext{}
+		proxyPermissionSnapshot []interfaces.PermissionRequirement
+	)
+	// Decided once: the instance read below can resolve the pin and change its answer.
+	pin := interfaces.KNVersionPinFromContext(ctx)
+	callerIdentity := pin.UsesCallerIdentity()
+	if callerIdentity {
+		actionProxy.PublishedModelVersion = interfaces.CallerIdentityModelPrefix + pin.Token()
+	} else {
+		actionProxy, proxyPermissionSnapshot, err = s.resolveActionProxyContext(ctx, req.KNID, &actionType)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Get instances based on action type configuration and request parameters
@@ -235,7 +259,11 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	}
 	executionID := generatedExecutionID.String()
 	actionProxy.ExecutionID = executionID
-	proxySubject := actionProxy.Proxy
+	var proxySubject *interfaces.AccountInfo
+	if !callerIdentity {
+		subject := actionProxy.Proxy
+		proxySubject = &subject
+	}
 	now := time.Now().UnixMilli()
 
 	// Determine trigger type (default to manual if not specified)
@@ -268,7 +296,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		StartTime:               now,
 		ActionTypeSnapshot:      actionTypeSnapshot, // Save the action type configuration snapshot used during execution.
 		PermissionSnapshot:      permissionSnapshot,
-		Proxy:                   &proxySubject,
+		Proxy:                   proxySubject,
 		ProxyVersion:            actionProxy.ProxyVersion,
 		ProxyModelVersion:       actionProxy.PublishedModelVersion,
 		ProxyPermissionSnapshot: proxyPermissionSnapshot,
@@ -334,7 +362,10 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, execution.Executor)
 	// A Function-backed action reads BKN as the caller who started it.
 	ctx = interfaces.WithCallerRuntimeCredential(ctx, callerCredential)
-	if proxyContext, err := trustedActionProxyContext(execution, actionType); err == nil {
+	if execution.Proxy == nil && strings.HasPrefix(execution.ProxyModelVersion, interfaces.CallerIdentityModelPrefix) {
+		// Started on the draft or a history version: the tool runs as the caller who started it.
+		ctx = interfaces.WithCallerIdentityExecution(ctx)
+	} else if proxyContext, err := trustedActionProxyContext(execution, actionType); err == nil {
 		ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
 	} else {
 		logger.Errorf("Execution %s has an invalid proxy snapshot: %v", execution.ID, err)
@@ -809,6 +840,9 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 				objectType, exists, err := s.omAccess.GetObjectType(ctx, knID, branch, actionType.ObjectTypeID)
 				if err != nil {
 					logger.Errorf("Failed to get object type: %v", err)
+					if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+						return nil, nil, versionErr
+					}
 					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
 						WithErrorDetails(fmt.Sprintf("Failed to get object type: %v", err))
 				}

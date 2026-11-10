@@ -19,11 +19,12 @@
       "detail_level": {
         "type": "string",
         "enum": [
+          "brief",
           "summary",
           "full"
         ],
         "default": "summary",
-        "description": "详情级别。summary（默认）：对象类/关系类/行动类骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含对象类/关系类/行动类的 comment，也不含属性的 display_name/comment、字段映射、查询算子、映射规则与 module_type（概念组的 name/tags/comment 全部保留，选簇就靠它们），足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types，要行动类说明改调 get_action_info。full：一次返回全量（体积大，慎用）。"
+        "description": "详情级别。brief：只返回知识网络的名称、说明（comment）、概念组与对象类/关系类/行动类各自的数量，三个概念数组回 null，几 KB；想先弄清这个网络是做什么的、该从哪个分组进入时用它。summary（默认）：对象类/关系类/行动类骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含对象类/关系类/行动类的 comment，也不含属性的 display_name/comment、字段映射、查询算子、映射规则与 module_type（概念组的 name/tags/comment 全部保留，选簇就靠它们），足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types，要行动类说明改调 get_action_info。full：一次返回全量（体积大，慎用）。summary 与 full 的返回超过约 30000 字符时会自动收窄并附 notice：先省略对象类的属性列表（改为 data_property_count / logic_property_count），仍超过则只返回与 brief 相同的导航壳。"
       }
     },
     "required": [
@@ -116,6 +117,14 @@
                 "additionalProperties": true
               },
               "description": "数据属性 [{name, type, condition_operations}]；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
+            },
+            "data_property_count": {
+              "type": "integer",
+              "description": "数据属性个数。仅当返回超过字符上限、本次省略了属性列表时出现（notice 会说明）；要属性本身调 get_object_types。"
+            },
+            "logic_property_count": {
+              "type": "integer",
+              "description": "逻辑属性个数。出现条件同 data_property_count。"
             },
             "primary_keys": {
               "type": "array",
@@ -227,7 +236,7 @@
       },
       "object_type_count": {
         "type": "integer",
-        "description": "该网络的对象类总数。仅当网络超过单次返回上限、本次只给导航壳时出现；其余情况下 object_types 数组本身就是数量。"
+        "description": "该网络的对象类总数。仅当本次只给导航壳时出现（detail_level=brief，或网络超过单次返回上限）；其余情况下 object_types 数组本身就是数量。"
       },
       "relation_type_count": {
         "type": "integer",
@@ -239,7 +248,7 @@
       },
       "notice": {
         "type": "string",
-        "description": "本次返回被收窄的原因与下一步指引。出现时 object_types/relation_types/action_types 三个字段都回 null，这不表示该网络没有这些概念——数量见三个 *_count 字段，具体概念按 concept_groups 选簇后用 search_schema 取。 该网络若没划概念组，notice 会改为指向 search_schema。"
+        "description": "本次返回比所请求的级别少了什么，以及下一步指引。两种情形：① 导航壳（detail_level=brief，或网络超过单次返回上限）：object_types/relation_types/action_types 三个字段都回 null，这不表示该网络没有这些概念——数量见三个 *_count 字段，具体概念按 concept_groups 选簇后用 search_schema 取；该网络若没划概念组，notice 会改为指向 search_schema。② 大纲（返回超过约 30000 字符）：三个数组都在，但对象类不带属性列表，只给 data_property_count / logic_property_count，要属性调 get_object_types。"
       }
     }
   }

@@ -26,6 +26,31 @@ info:
     with the server. The internal cursor digest encoding remains unchanged.
     Changing `ignore_local_index` requires a new query rather than continuing
     an existing cursor.
+
+    ## Knowledge-network versions
+
+    The data, schema and subgraph queries and the action endpoints accept `kn_version` (`running`,
+    `draft` or a version number of a versioned knowledge network) and, with `kn_version=draft`,
+    `draft_revision`. Without them the running version is read. The first read of a query from
+    bkn-backend fixes the version, and every later bkn-backend call of the same query asks for
+    exactly that version, so a publish or a draft edit during a query cannot mix two versions;
+    if bkn-backend nevertheless answers from another version, the query fails with 409
+    `OntologyQuery.KNVersion.Changed`. A cursor is bound to the version it was read from: continue it
+    with the same `kn_version` (and `draft_revision`), otherwise the cursor is refused as invalid.
+    Paging never switches to the version of the cursor. The legacy `branch` parameter still accepts only
+    `main`, which means the running version.
+
+    Bkn-backend refuses a request about a version in its own words and the refusal is returned
+    unchanged, with its error code, also on endpoints that report a missing definition as 404: 404
+    `BknBackend.KNVersion.VersionNotFound`, 410 `BknBackend.KNVersion.VersionPurged`, 409
+    `BknBackend.KNVersion.DraftRevisionMismatch`, 400 `BknBackend.KNVersion.NotVersioned` or
+    `BknBackend.KNVersion.InvalidVersion`, 403 `BknBackend.KNVersion.EditionRestricted` and 409
+    `BknBackend.KNVersion.VersioningDisabling`. A malformed `kn_version` or `draft_revision`, or
+    `draft_revision` without `kn_version=draft`, is 400 `OntologyQuery.KNVersion.InvalidParameter`.
+
+    The managed proxy's grants cover the running version. A query that reads the draft or a version that is
+    not running reads data with the caller's own identity, so Vega checks the caller's own permissions on
+    the data resources instead of the proxy's.
 security:
   - OAuth2: []
 paths:
@@ -66,6 +91,8 @@ paths:
         Proxy identities and resource IDs supplied by the client are ignored.
       operationId: getObjectTypeResourceSchema
       parameters:
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
         - name: kn_id
           in: path
           required: true
@@ -78,6 +105,12 @@ paths:
           in: query
           schema: { type: string, enum: [main], default: main }
       responses:
+        "400":
+          $ref: "#/components/responses/BadKnVersion"
+        "409":
+          $ref: "#/components/responses/KnVersionConflict"
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         '200':
           description: The schema definition only; physical resource metadata is not exposed.
           content:
@@ -103,6 +136,8 @@ paths:
         final managed-proxy `resource.query_data` check before reading rows.
       operationId: getObjectTypeSampleDataViaProxy
       parameters:
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
         - name: kn_id
           in: path
           required: true
@@ -130,6 +165,12 @@ paths:
             Raw search_after values are rejected.
           schema: { type: string }
       responses:
+        "400":
+          $ref: "#/components/responses/BadKnVersion"
+        "409":
+          $ref: "#/components/responses/KnVersionConflict"
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         '200':
           description: Object-type columns and sample entries.
           content:
@@ -203,6 +244,8 @@ paths:
                   limit: 10
         required: true
       parameters:
+      - $ref: "#/components/parameters/KnVersion"
+      - $ref: "#/components/parameters/DraftRevision"
       - name: kn_id
         description: 业务知识网络ID
         schema:
@@ -257,6 +300,12 @@ paths:
         in: header
         required: true
       responses:
+        "404":
+          $ref: "#/components/responses/KnVersionNotFound"
+        "409":
+          $ref: "#/components/responses/KnVersionConflict"
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         "200":
           content:
             application/json:
@@ -742,6 +791,8 @@ paths:
                     Authorization: "Bearer xxx"
         required: true
       parameters:
+      - $ref: "#/components/parameters/KnVersion"
+      - $ref: "#/components/parameters/DraftRevision"
       - name: kn_id
         description: 业务知识网络id
         schema:
@@ -788,6 +839,12 @@ paths:
         in: header
         required: true
       responses:
+        "404":
+          $ref: "#/components/responses/KnVersionNotFound"
+        "409":
+          $ref: "#/components/responses/KnVersionConflict"
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         "200":
           content:
             application/json:
@@ -915,6 +972,8 @@ paths:
                       target_object_type_id: comment
         required: true
       parameters:
+      - $ref: "#/components/parameters/KnVersion"
+      - $ref: "#/components/parameters/DraftRevision"
       - name: kn_id
         description: 业务知识网络ID
         in: path
@@ -967,6 +1026,14 @@ paths:
         in: header
         required: true
       responses:
+        "400":
+          $ref: "#/components/responses/BadKnVersion"
+        "404":
+          $ref: "#/components/responses/KnVersionNotFound"
+        "409":
+          $ref: "#/components/responses/KnVersionConflict"
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         "200":
           content:
             application/json:
@@ -2026,6 +2093,8 @@ paths:
                       ps_postid: 481036361318
         required: true
       parameters:
+      - $ref: "#/components/parameters/KnVersion"
+      - $ref: "#/components/parameters/DraftRevision"
       - name: kn_id
         description: 业务知识网络ID
         schema:
@@ -2068,6 +2137,14 @@ paths:
         in: query
         required: false
       responses:
+        "400":
+          $ref: "#/components/responses/BadKnVersion"
+        "404":
+          $ref: "#/components/responses/KnVersionNotFound"
+        "409":
+          $ref: "#/components/responses/KnVersionConflict"
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         "200":
           description: 成功返回关系子图
           content:
@@ -2164,6 +2241,8 @@ paths:
                       Authorization: aasssdffgg
         required: true
       parameters:
+      - $ref: "#/components/parameters/KnVersion"
+      - $ref: "#/components/parameters/DraftRevision"
       - name: kn_id
         description: 业务知识网络ID
         schema:
@@ -2208,6 +2287,14 @@ paths:
         in: header
         required: true
       responses:
+        "400":
+          $ref: "#/components/responses/BadKnVersion"
+        "404":
+          $ref: "#/components/responses/KnVersionNotFound"
+        "409":
+          $ref: "#/components/responses/KnVersionConflict"
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         "200":
           content:
             application/json:
@@ -2257,6 +2344,8 @@ paths:
                     Authorization: "Bearer xxx"
         required: true
       parameters:
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
         - name: kn_id
           description: 业务知识网络ID
           schema:
@@ -2276,6 +2365,8 @@ paths:
           in: query
           required: false
       responses:
+        "410":
+          $ref: "#/components/responses/KnVersionPurged"
         "202":
           content:
             application/json:
@@ -2696,7 +2787,64 @@ components:
   securitySchemes:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  parameters:
+    KnVersion:
+      name: kn_version
+      in: query
+      required: false
+      description: |
+        The knowledge-network version to read: `running` (default), `draft`, or a version number.
+        Reading the draft needs `modify` on the network, any other version `view_detail`. On a network
+        without versioning only `running` is accepted. Do not combine it with `branch`.
+      schema:
+        type: string
+        example: draft
+    DraftRevision:
+      name: draft_revision
+      in: query
+      required: false
+      description: |
+        With `kn_version=draft`, the draft revision the query expects. A different current revision is
+        409 `BknBackend.KNVersion.DraftRevisionMismatch`. Without it the query reads the draft as it is
+        when the query starts and keeps that revision.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
   responses:
+    BadKnVersion:
+      description: |
+        `OntologyQuery.KNVersion.InvalidParameter` (malformed `kn_version` or `draft_revision`, or
+        `draft_revision` without `kn_version=draft`), or a refusal of bkn-backend about the version
+        (`BknBackend.KNVersion.NotVersioned`, `BknBackend.KNVersion.InvalidVersion`), returned unchanged.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    KnVersionNotFound:
+      description: |
+        The knowledge network, the definition or the requested version does not exist. A missing version
+        is bkn-backend's `BknBackend.KNVersion.VersionNotFound`, returned unchanged.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    KnVersionConflict:
+      description: |
+        `BknBackend.KNVersion.DraftRevisionMismatch` (the draft is not at `draft_revision`, or changed
+        during the read), `BknBackend.KNVersion.VersioningDisabling`, or `OntologyQuery.KNVersion.Changed`
+        (two reads of the query were served from different versions).
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    KnVersionPurged:
+      description: |
+        `BknBackend.KNVersion.VersionPurged`. The requested version was purged and its content is gone.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Unauthorized:
       description: Missing or invalid OAuth bearer token.
       content:
