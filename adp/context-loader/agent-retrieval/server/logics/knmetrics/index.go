@@ -82,6 +82,32 @@ func ObjectTypeDetailForBranch(ctx context.Context, bkn interfaces.BknBackendAcc
 	return reader.GetObjectTypeDetailBranch(ctx, knID, branch, ids, includeDetail)
 }
 
+// RelationTypesForBranch reads one page of a network's relation types, keeping those that
+// start or end at objectTypeIDs when it is given. Unlike the object type index there is no
+// main-only reader to fall back on: listing relation types is new on every branch.
+func RelationTypesForBranch(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string,
+	objectTypeIDs []string, offset, limit int) (*interfaces.RelationTypePage, error) {
+	reader, ok := bkn.(interfaces.RelationTypeReader)
+	if !ok {
+		return nil, fmt.Errorf("relation type listing is unavailable")
+	}
+	return reader.ListRelationTypesBranch(ctx, knID, discoveryBranch(branch), objectTypeIDs, offset, limit)
+}
+
+// RelationTypeDetailForBranch reads relation types by id. main keeps the reader it always
+// used; another branch needs one that names it.
+func RelationTypeDetailForBranch(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string,
+	ids []string, includeDetail bool) ([]*interfaces.RelationType, error) {
+	if branch = discoveryBranch(branch); branch == defaultBranch {
+		return bkn.GetRelationTypeDetail(ctx, knID, ids, includeDetail)
+	}
+	reader, ok := bkn.(interfaces.RelationTypeReader)
+	if !ok {
+		return nil, fmt.Errorf("branch-aware relation type reads are unavailable for %q", branch)
+	}
+	return reader.GetRelationTypeDetailBranch(ctx, knID, branch, ids, includeDetail)
+}
+
 // KnMetricsService metric visibility and metric access.
 type KnMetricsService interface {
 	// AttachRelatedMetrics attaches the metrics under its scope to the object type.

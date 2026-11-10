@@ -751,6 +751,12 @@ type RelationTypesResp struct {
 	KnID          string          `json:"kn_id"`
 	RelationTypes []*RelationType `json:"relation_types"`
 	Missing       []string        `json:"missing,omitempty"`
+
+	// The three below appear only when the caller listed instead of naming ids, and
+	// mean what they mean on ObjectTypesResp.
+	TotalCount int64  `json:"total_count,omitempty"`
+	NextOffset *int   `json:"next_offset,omitempty"`
+	Notice     string `json:"notice,omitempty"`
 }
 
 // FilterObjectTypes returns the object types whose ID (or, as a fallback, Name)

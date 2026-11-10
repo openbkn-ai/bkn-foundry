@@ -316,11 +316,11 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 150,
-    "description": "按 id 批量取关系类的完整定义（含 mapping_rules、source/target 对象名）。渐进式下钻用：先 get_kn_detail（summary）拿关系 id，再用本工具展开。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。",
+    "description": "按 id 批量取关系类的完整定义（含 mapping_rules、source/target 对象名）。渐进式下钻用：先 get_kn_detail（summary）拿关系 id，再用本工具展开。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。不传 ids 时按 offset/limit 列举关系类索引（不含 mapping_rules，comment 只是前 120 字摘要，默认 50 条，上限 200；单页超过约 3 万字符会提前截断，按 next_offset 续页即可）。已经选好对象类时优先传 object_type_ids，只列起点或终点是这些对象类的关系；需要完整定义时再按 id 查询。branch 指定分支，省略时为 main。",
     "gateway": {
-      "summary": "按 ID 取关系类的完整定义：两端对象类和映射规则。",
-      "use_when": "要确认某个关系连接的是哪两个对象类、按哪些字段关联。",
-      "not_for": "不知道关系类 ID 时先用 search_schema 或 get_kn_detail。",
+      "summary": "按 ID 取关系类的完整定义：两端对象类和映射规则；不传 ID 时按页列举，可只列某些对象类的关系。",
+      "use_when": "要确认某个关系连接的是哪两个对象类、按哪些字段关联，或想知道选中的对象类之间有哪些关系。",
+      "not_for": "找「哪个关系相关」用 search_schema；这里只按 ID 取或按页列举。",
       "next_step": "确认路径后用 query_instance_subgraph 取实例。",
       "keywords": [
         "关系类",
