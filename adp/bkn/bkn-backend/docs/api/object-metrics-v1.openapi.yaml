@@ -70,6 +70,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricList" }
+        "400": { description: "`kn_version` is not `running`, `draft` or a version number, or is combined with `branch` (`BknBackend.KNVersion.InvalidVersion`); a version other than `running` on a network without versioning (`BknBackend.KNVersion.NotVersioned`)." }
+        "404": { description: "The requested network version was never published (`BknBackend.KNVersion.VersionNotFound`)." }
         "409": { description: "Draft changed while it was read (`BknBackend.KNVersion.DraftRevisionMismatch`)." }
         "410": { description: "The requested network version was purged (`BknBackend.KNVersion.VersionPurged`)." }
     post:
@@ -144,6 +146,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
+        "400": { description: "`kn_version` is not `running`, `draft` or a version number, or is combined with `branch` (`BknBackend.KNVersion.InvalidVersion`); a version other than `running` on a network without versioning (`BknBackend.KNVersion.NotVersioned`)." }
+        "404": { description: "The metric or its requested version does not exist, or the requested network version was never published (`BknBackend.KNVersion.VersionNotFound`)." }
         "409": { description: "Draft changed while it was read (`BknBackend.KNVersion.DraftRevisionMismatch`)." }
         "410": { description: "The requested network version was purged (`BknBackend.KNVersion.VersionPurged`)." }
     put:
@@ -234,7 +238,10 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/ObjectMetricRecord" }
-        "404": { description: The requested metric does not exist in the requested knowledge-network branch. }
+        "400": { description: "`kn_version` is not `running`, `draft` or a version number, or is combined with `branch` (`BknBackend.KNVersion.InvalidVersion`); a version other than `running` on a network without versioning (`BknBackend.KNVersion.NotVersioned`)." }
+        "404": { description: "The metric does not exist in the requested network version, or that version was never published (`BknBackend.KNVersion.VersionNotFound`)." }
+        "409": { description: "Draft changed while it was read (`BknBackend.KNVersion.DraftRevisionMismatch`)." }
+        "410": { description: "The requested network version was purged (`BknBackend.KNVersion.VersionPurged`)." }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/publish:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
