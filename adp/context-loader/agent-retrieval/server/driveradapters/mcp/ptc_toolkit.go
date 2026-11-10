@@ -271,10 +271,22 @@ func ptcToleratedParams(raw json.RawMessage) []string {
 	return names
 }
 
-// ptcStubSignature is ptcSignature plus the tolerated plumbing parameters. Only the
-// executable stub carries them; the digest shown to the model stays without them, so it
-// keeps telling the model not to pass bkn_context.
+// ptcStubSignature is the executable stub's signature: ptcCallSignature plus the
+// tolerated plumbing parameters.
 func ptcStubSignature(tool MCPToolInfo) string {
+	return ptcCallSignature(tool, ptcToleratedParams(tool.InputSchema))
+}
+
+// ptcDigestSignature is the signature shown to the model. It puts every argument in the
+// same slot as the stub, by-name-only ones after the star, but leaves the plumbing
+// parameters out, so it keeps telling the model not to pass bkn_context.
+func ptcDigestSignature(tool MCPToolInfo) string {
+	return ptcCallSignature(tool, nil)
+}
+
+// ptcCallSignature is ptcSignature with the arguments that arrived after scripts already
+// used the optional ones positionally moved after a star, and with tolerated appended.
+func ptcCallSignature(tool MCPToolInfo, tolerated []string) string {
 	signature := ptcSignature(tool)
 	// These tools gained branch after scripts had already used their optional
 	// arguments positionally. Keep every old positional slot stable in the
@@ -293,7 +305,6 @@ func ptcStubSignature(tool MCPToolInfo) string {
 			keywordOnly = append(keywordOnly, kw)
 		}
 	}
-	tolerated := ptcToleratedParams(tool.InputSchema)
 	if len(tolerated) == 0 && !branchKeywordOnly && len(keywordOnly) == 0 {
 		return signature
 	}
@@ -486,7 +497,7 @@ func renderPTCDigestForLocale(locale *mcpLocaleBundle, tools []MCPToolInfo, with
 			fmt.Fprintf(&b, "\n### %s\n\n```python\n", ptcGroupTitle(locale, tool))
 			group = next
 		}
-		fmt.Fprintf(&b, "%s -> %s\n", ptcSignature(tool), ptcReturnKeys(tool))
+		fmt.Fprintf(&b, "%s -> %s\n", ptcDigestSignature(tool), ptcReturnKeys(tool))
 		if tool.Title != "" {
 			fmt.Fprintf(&b, "    # %s\n", tool.Title)
 		}

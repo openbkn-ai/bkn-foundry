@@ -673,6 +673,26 @@ func TestPTCBranchKeepsExistingPositionalArguments(t *testing.T) {
 	}
 }
 
+// The digest shown to the model lists arguments in the same slots as the stub it will
+// call: by-name-only arguments sit after the star there too. Only the plumbing parameters
+// the stub tolerates are left out of the digest.
+func TestPTCDigestMatchesStubKeywordOnlyArguments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{toolKeyGetKnDetail, "get_kn_detail(kn_id: str, detail_level: str = 'summary', response_format: str = 'json', *, branch: str = 'main', kn_version: str = None, draft_revision: int = None)"},
+		{toolKeyGetObjectTypes, "get_object_types(kn_id: str, ids: list = None, limit: int = 50, offset: int = 0, response_format: str = 'json', *, branch: str = 'main', kn_version: str = None, draft_revision: int = None)"},
+		{toolKeyGetRelationTypes, "get_relation_types(kn_id: str, branch: str = 'main', ids: list = None, limit: int = 50, object_type_ids: list = None, offset: int = 0, response_format: str = 'json', *, kn_version: str = None, draft_revision: int = None)"},
+	} {
+		input, _ := loadToolSchemas(tc.name)
+		tool := MCPToolInfo{Name: tc.name, InputSchema: input}
+		if got := ptcDigestSignature(tool); got != tc.want {
+			t.Fatalf("%s digest signature =\n  %s\nwant\n  %s", tc.name, got, tc.want)
+		}
+	}
+}
+
 // Streamable HTTP may keep an SSE response open after delivering one JSON-RPC
 // event. The sandbox client must return after that event instead of waiting for
 // the connection to close and consuming the whole run_code timeout.

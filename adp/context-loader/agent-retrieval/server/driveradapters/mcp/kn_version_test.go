@@ -73,8 +73,10 @@ func TestKnVersionBranchConflict(t *testing.T) {
 		branch, version string
 		ok              bool
 	}{
-		{"main", "running", true}, {"draft", "draft", true},
-		{"main", "draft", false}, {"draft", "running", false}, {"draft", "3", false}, {"feature", "running", false},
+		// main is the schema default of branch, which PTC stubs always send, so kn_version wins over it.
+		{"main", "running", true}, {"main", "draft", true}, {"main", "3", true},
+		{"draft", "draft", true},
+		{"draft", "running", false}, {"draft", "3", false}, {"feature", "running", false}, {"feature", "draft", false},
 	} {
 		_, err := knVersionFromRequest(versionReq(map[string]any{"branch": tc.branch, "kn_version": tc.version}, nil))
 		if (err == nil) != tc.ok {

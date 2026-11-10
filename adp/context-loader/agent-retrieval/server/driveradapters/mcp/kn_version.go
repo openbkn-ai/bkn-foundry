@@ -105,19 +105,20 @@ func knVersionFromRequest(req mcp.CallToolRequest) (*knversion.Selector, error) 
 	}
 	if branch := argString(args["branch"]); branch != "" && sel.Version() != "" {
 		if !branchMatchesVersion(branch, sel.Version()) {
-			return nil, fmt.Errorf("branch %q and kn_version %q disagree: branch main is the running version and "+
-				"branch draft is the draft; pass only one of them", branch, sel.Version())
+			return nil, fmt.Errorf("branch %q and kn_version %q disagree: with kn_version, leave branch out "+
+				"(or main); branch draft only goes with kn_version draft", branch, sel.Version())
 		}
 	}
 	return sel, nil
 }
 
-// branchMatchesVersion maps the legacy branch onto kn_version: main is the
-// running version, draft is the draft; no other branch has a version.
+// branchMatchesVersion tells whether the legacy branch can go with kn_version. main is
+// the schema default of branch, which PTC stubs always send, so kn_version wins over it,
+// as it does in bkn-backend. draft only goes with the draft; no other branch has a version.
 func branchMatchesVersion(branch, version string) bool {
 	switch branch {
 	case "main":
-		return version == knversion.Running
+		return true
 	case knversion.Draft:
 		return version == knversion.Draft
 	}
