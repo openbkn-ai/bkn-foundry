@@ -115,6 +115,11 @@ async def stream_chat(
                 agent_name=agent.name,
                 host_conversation_key=thread_id,
                 profile=context_loader.profile_of(agent.tools),
+                **(
+                    {"kn_version": public.kn_version, "draft_revision": public.draft_revision}
+                    if public and public.kn_version is not None
+                    else {}
+                ),
             )
             if cl_session is not None:
                 if public:
