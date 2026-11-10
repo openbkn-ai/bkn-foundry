@@ -21,7 +21,7 @@ func TestMCPLocaleBundle(t *testing.T) {
 		convey.So(meta.Name, convey.ShouldEqual, "search_schema")
 		convey.So(meta.Description, convey.ShouldContainSubstring, "Explore schema")
 		convey.So(meta.Title, convey.ShouldEqual, "Explore Schema")
-		convey.So(meta.GroupTitle, convey.ShouldEqual, "Networks & Schema")
+		convey.So(meta.GroupTitle, convey.ShouldEqual, "Knowledge network concept search")
 		// Group and order belong only to the baseline file. Locales can translate
 		// presentation text, but must not alter grouping or ordering.
 		convey.So(meta.Group, convey.ShouldEqual, "discovery")
