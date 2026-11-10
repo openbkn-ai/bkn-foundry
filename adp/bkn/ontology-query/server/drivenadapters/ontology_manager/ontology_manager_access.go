@@ -92,6 +92,9 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 	}
 
 	if respCode == http.StatusNotFound {
+		if versionErr := versionRefusal(ctx, result); versionErr != nil {
+			return emptyObjectType, false, versionErr
+		}
 		logger.Errorf("object type %s not exists", otID)
 
 		// Add trace attributes for the exception.
@@ -413,6 +416,9 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 	}
 
 	if respCode == http.StatusNotFound {
+		if versionErr := versionRefusal(ctx, result); versionErr != nil {
+			return emptyRelationType, false, versionErr
+		}
 		logger.Errorf("relation type %s not exists", rtID)
 
 		// Add trace attributes for the exception.
@@ -626,6 +632,9 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	}
 
 	if respCode == http.StatusNotFound {
+		if versionErr := versionRefusal(ctx, result); versionErr != nil {
+			return emptyActionType, nil, false, versionErr
+		}
 		logger.Errorf("action type %s not exists", atID)
 
 		// Add trace attributes for the exception.
@@ -767,6 +776,16 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 
 // newOntologyManagerError keeps dependency details under a locally owned error.
 // Authentication and permission refusals must not use an internal-failure message.
+// versionRefusal returns bkn-backend's refusal when a 404 is about the requested version (it does
+// not exist) rather than about the definition, so the caller is not told the definition is missing.
+func versionRefusal(ctx context.Context, body []byte) *httperrors.HTTPError {
+	var baseError httperrors.BaseError
+	if len(body) == 0 || sonic.Unmarshal(body, &baseError) != nil || !oerrors.IsPassThroughKNVersionError(baseError.ErrorCode) {
+		return nil
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusNotFound, baseError.ErrorCode)
+}
+
 func newOntologyManagerError(ctx context.Context, status int, code string, source httperrors.BaseError) *httperrors.HTTPError {
 	// A refusal about the requested version keeps bkn-backend's code, so the caller sees why.
 	if oerrors.IsPassThroughKNVersionError(source.ErrorCode) {

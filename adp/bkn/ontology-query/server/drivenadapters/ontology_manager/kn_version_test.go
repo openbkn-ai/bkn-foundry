@@ -197,3 +197,40 @@ func TestReadFromAnotherVersionFailsTheQuery(t *testing.T) {
 		t.Fatalf("error = %#v (%v), want 409 OntologyQuery.KNVersion.Changed", versionErr, err)
 	}
 }
+
+// A missing version is a 404 too; it must not read as a missing object, relation or action type.
+func TestMissingVersionIsNotAMissingDefinition(t *testing.T) {
+	backend := newVersionedBackend(t, func(_ int, w http.ResponseWriter) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error_code":"BknBackend.KNVersion.VersionNotFound","description":"no such version"}`))
+	})
+	ctx, _ := pinnedContext(t, "99", "")
+	wantVersionNotFound := func(name string, err error) {
+		t.Helper()
+		versionErr, ok := logics.KNVersionError(ctx, err)
+		if !ok || versionErr.HTTPCode != http.StatusNotFound || versionErr.ErrorCode != "BknBackend.KNVersion.VersionNotFound" {
+			t.Fatalf("%s error = %v, want 404 BknBackend.KNVersion.VersionNotFound", name, err)
+		}
+	}
+
+	_, _, err := backend.accessor.GetObjectType(ctx, "kn-1", "main", "ot-1")
+	wantVersionNotFound("GetObjectType", err)
+	_, _, err = backend.accessor.GetRelationType(ctx, "kn-1", "main", "rt-1")
+	wantVersionNotFound("GetRelationType", err)
+	_, _, _, err = backend.accessor.GetActionType(ctx, "kn-1", "main", "at-1")
+	wantVersionNotFound("GetActionType", err)
+}
+
+// An object type that is not there still reads as not there.
+func TestMissingDefinitionStillReadsAsNotFound(t *testing.T) {
+	backend := newVersionedBackend(t, func(_ int, w http.ResponseWriter) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error_code":"BknBackend.ObjectType.NotFound","description":"no such object type"}`))
+	})
+	ctx, _ := pinnedContext(t, "", "")
+	if _, exists, err := backend.accessor.GetObjectType(ctx, "kn-1", "main", "ot-1"); err != nil || exists {
+		t.Fatalf("exists=%v err=%v, want not found without error", exists, err)
+	}
+}
