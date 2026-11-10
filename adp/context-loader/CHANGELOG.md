@@ -5,6 +5,7 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 ## Unreleased
 
 - Align MCP catalog group labels in Chinese and English, and preserve optional HTTP extension titles, group titles, and ordering in both MCP discovery profiles. Tool names, schemas, and execution behavior are unchanged.
+  - Deployment: Rebuild and upgrade the sandbox image together with Context Loader. Catalog metadata contributes to the generated SDK toolkit fingerprint; `run_code` rejects an older sandbox image with `sandbox toolkit version mismatch`.
 
 - `list_knowledge_networks` returns each network's `description` again. bkn-backend names the field `comment`, so it was dropped while reading the list and every network came back with an empty description.
 

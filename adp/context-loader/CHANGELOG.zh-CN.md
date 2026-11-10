@@ -5,6 +5,7 @@
 ## Unreleased
 
 - 统一 MCP 工具分类的中英文名称；HTTP 扩展透传可选的工具标题、分组名称及排序，完整与精简 MCP 接口均可正确展示。工具调用名称、参数及执行行为保持不变。
+  - 发布注意：沙箱镜像需要重新构建，并与 Context Loader 配套升级。工具分类元数据参与 SDK 工具包指纹计算；`run_code` 会拒绝旧沙箱镜像并返回 `sandbox toolkit version mismatch`。
 
 - `list_knowledge_networks` 恢复返回各知识网络的 `description`。bkn-backend 的字段名是 `comment`，读取列表时被丢弃，所有网络的说明都是空的。
 
