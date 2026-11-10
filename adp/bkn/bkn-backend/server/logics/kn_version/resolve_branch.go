@@ -62,7 +62,8 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 			return &interfaces.KNResolvedBranch{Branch: interfaces.MAIN_BRANCH, Versioned: true}, nil
 		}
 		n := state.RunningVersion
-		return &interfaces.KNResolvedBranch{Branch: interfaces.VersionBranch(n), Versioned: true, Version: strconv.Itoa(n)}, nil
+		return &interfaces.KNResolvedBranch{Branch: interfaces.VersionBranch(n), Versioned: true, Version: strconv.Itoa(n),
+			Running: true}, nil
 	case interfaces.DRAFT_BRANCH:
 		if state.Mode == interfaces.KNVersioningDisabling {
 			return nil, newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_VersioningDisabling)
@@ -97,7 +98,8 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 	if !s.editionAllows(state, n) {
 		return nil, editionRestricted(ctx)
 	}
-	return &interfaces.KNResolvedBranch{Branch: interfaces.VersionBranch(n), Versioned: true, Version: strconv.Itoa(n)}, nil
+	return &interfaces.KNResolvedBranch{Branch: interfaces.VersionBranch(n), Versioned: true, Version: strconv.Itoa(n),
+		Running: n == state.RunningVersion}, nil
 }
 
 // resolveUnversioned keeps the branch parameter as it was; kn_version=running means main.

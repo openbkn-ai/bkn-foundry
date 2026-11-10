@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
@@ -113,6 +115,30 @@ func TestParseImportOptionsReplace(t *testing.T) {
 			interfaces.ImportMode_Overwrite, false, tc.allowReplace)
 		if (httpErr != nil) != tc.wantErr || mode != tc.wantMode {
 			t.Errorf("allowReplace %v: mode %q err %v", tc.allowReplace, mode, httpErr)
+		}
+	}
+}
+
+// knownVersions has versions 1 and 2, of which 1 was purged.
+type knownVersions struct{ interfaces.KNVersionService }
+
+func (knownVersions) ResolveBranch(ctx context.Context, _ string, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, error) {
+	if req.KNVersion == "1" {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusGone, berrors.BknBackend_KNVersion_VersionPurged)
+	}
+	return &interfaces.KNResolvedBranch{Branch: "v" + req.KNVersion, Versioned: true, Version: req.KNVersion}, nil
+}
+
+func TestProxyBranchReadable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for query, want := range map[string]int{"": 0, "branch=main": 0, "branch=v2": 0,
+		"branch=v1": http.StatusGone, "branch=draft": http.StatusBadRequest, "branch=vx": http.StatusBadRequest} {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/resolve?"+query, nil)
+		ok := (&restHandler{kvs: knownVersions{}}).proxyBranchReadable(context.Background(), c, "kn1")
+		if (want == 0) != ok || (want != 0 && recorder.Code != want) {
+			t.Errorf("%q: ok %v code %d, want %d", query, ok, recorder.Code, want)
 		}
 	}
 }

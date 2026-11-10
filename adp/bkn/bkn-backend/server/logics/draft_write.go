@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
@@ -161,4 +162,17 @@ func FillRevisions[T interfaces.Revisioned](ctx context.Context, kind, knID, bra
 func versionInternalError(ctx context.Context, err error) error {
 	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNVersion_InternalError).
 		WithErrorDetails(err.Error())
+}
+
+// ProxyCoversBranch tells whether the proxy grants of a network cover reads of branch: they are
+// made for main, which the running version of a versioned network mirrors.
+func ProxyCoversBranch(ctx context.Context, knID, branch string) bool {
+	if branch == interfaces.MAIN_BRANCH {
+		return true
+	}
+	if KNVA == nil || !strings.HasPrefix(branch, "v") {
+		return false
+	}
+	state, err := KNVA.GetState(ctx, nil, knID, false)
+	return err == nil && state != nil && branch == interfaces.VersionBranch(state.RunningVersion)
 }

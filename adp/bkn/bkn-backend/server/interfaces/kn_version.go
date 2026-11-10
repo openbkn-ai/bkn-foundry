@@ -254,10 +254,12 @@ type KNBranchRequest struct {
 // KNResolvedBranch is the storage branch a request reads or writes. Version is the value of
 // the X-Kn-Version response header, empty when none is sent.
 type KNResolvedBranch struct {
-	Branch string
+	Branch        string
 	Versioned     bool
 	Version       string
 	DraftRevision int64
+	// Running is set when Branch is the running version, the content the proxy grants cover.
+	Running bool
 }
 
 // KNVersionService manages the versions of knowledge networks.

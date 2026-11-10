@@ -2253,6 +2253,15 @@ func (ots *objectTypeService) readRefusedResourcesByProxy(ctx context.Context, o
 		return
 	}
 
+	covered := map[[2]string]bool{}
+	covers := func(knID, branch string) bool {
+		key := [2]string{knID, branch}
+		if ok, known := covered[key]; known {
+			return ok
+		}
+		covered[key] = logics.ProxyCoversBranch(ctx, knID, branch)
+		return covered[key]
+	}
 	var knIDs []string
 	bindingsByKN := map[string][]interfaces.KNProxyBinding{}
 	seen := map[string]struct{}{}
@@ -2265,8 +2274,9 @@ func (ots *objectTypeService) readRefusedResourcesByProxy(ctx context.Context, o
 		if _, ok := refused[resourceID]; !ok {
 			continue
 		}
-		// The proxy holds grants only for the published main model; an editing branch keeps the refusal.
-		if objectType.Branch != interfaces.MAIN_BRANCH || objectType.KNID == "" || objectType.OTID == "" {
+		// The proxy holds grants only for the published main model, which the running version
+		// mirrors; an editing branch or a history version keeps the refusal.
+		if objectType.KNID == "" || objectType.OTID == "" || !covers(objectType.KNID, objectType.Branch) {
 			continue
 		}
 		binding := interfaces.KNProxyBinding{

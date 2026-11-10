@@ -67,10 +67,11 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	knID := c.Param("kn_id")
-	branch, branchOK := r.readBranch(&ctx, c, knID)
+	resolved, branchOK := r.resolveBranch(&ctx, c, knID, false)
 	if !branchOK {
 		return
 	}
+	branch := resolved.Branch
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
 
 	var body CypherQueryRequest
@@ -101,6 +102,7 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	result, err := r.cqs.Query(ctx, interfaces.CypherQuery{
 		KNID:             knID,
 		Branch:           branch,
+		RunningVersion:   resolved.Running,
 		Query:            body.Query,
 		Parameters:       body.Parameters,
 		ObjectProperties: body.ObjectProperties,
