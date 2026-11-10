@@ -774,6 +774,9 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindActionType, actionType.KNID, actionType.Branch, actionType.ATID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = ats.ata.UpdateActionType(ctx, tx, actionType)
@@ -882,6 +885,9 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindActionType, knID, branch, atIDs...); err != nil {
+		return err
 	}
 
 	// Delete action types.

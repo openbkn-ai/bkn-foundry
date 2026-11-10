@@ -295,6 +295,7 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 			"f_updater",
 			"f_updater_type",
 			"f_update_time",
+			"f_revision",
 		).
 		Values(
 			actionType.ATID,
@@ -323,7 +324,8 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 			actionType.CreateTime,
 			actionType.Updater.ID,
 			actionType.Updater.Type,
-			actionType.UpdateTime).
+			actionType.UpdateTime,
+			interfaces.NewDefinitionRevision()).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of insert action type, error", err)
@@ -359,7 +361,7 @@ func (ata *actionTypeAccess) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_aliases", "f_lifecycle_status", "f_deprecation",
 			"f_object_type_id", "f_condition", "f_affect", "f_action_source", "f_parameters",
 			"f_schedule", "f_creator", "f_creator_type", "f_create_time", "f_updater",
-			"f_updater_type", "f_update_time",
+			"f_updater_type", "f_update_time", "f_revision",
 		)
 		for _, actionType := range actionTypes[start:end] {
 			values, err := actionTypeInsertValues(actionType)
@@ -396,7 +398,7 @@ func actionTypeInsertValues(actionType *interfaces.ActionType) ([]any, error) {
 		serialized.impactContracts, serialized.aliases, serialized.lifecycleStatus, serialized.deprecation, actionType.ObjectTypeID, serialized.condition, serialized.affect,
 		serialized.actionSource, serialized.parameters, serialized.schedule, actionType.Creator.ID,
 		actionType.Creator.Type, actionType.CreateTime, actionType.Updater.ID, actionType.Updater.Type,
-		actionType.UpdateTime,
+		actionType.UpdateTime, interfaces.NewDefinitionRevision(),
 	}, nil
 }
 
@@ -1021,6 +1023,7 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		"f_updater":          actionType.Updater.ID,
 		"f_updater_type":     actionType.Updater.Type,
 		"f_update_time":      actionType.UpdateTime,
+		"f_revision":         interfaces.NewDefinitionRevision(),
 	}
 	sqlStr, vals, err := sq.Update(AT_TABLE_NAME).
 		SetMap(data).
@@ -1115,6 +1118,7 @@ func (ata *actionTypeAccess) UpdateActionTypes(ctx context.Context, tx *sql.Tx,
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, actionType := range batch {

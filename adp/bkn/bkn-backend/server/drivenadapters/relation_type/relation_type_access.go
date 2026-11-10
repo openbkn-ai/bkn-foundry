@@ -183,6 +183,7 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 			"f_update_time",
 		).
 		Columns(declarationColumns...).
+		Columns("f_revision").
 		Values(values...).
 		ToSql()
 	if err != nil {
@@ -220,7 +221,7 @@ func (rta *relationTypeAccess) CreateRelationTypes(ctx context.Context, tx *sql.
 			"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type",
 			"f_mapping_rules", "f_creator", "f_creator_type", "f_create_time", "f_updater",
 			"f_updater_type", "f_update_time",
-		).Columns(declarationColumns...)
+		).Columns(declarationColumns...).Columns("f_revision")
 		for _, relationType := range relationTypes[start:end] {
 			values, err := relationTypeInsertValues(relationType)
 			if err != nil {
@@ -260,7 +261,7 @@ func relationTypeInsertValues(relationType *interfaces.RelationType) ([]any, err
 		relationType.TargetObjectTypeID, relationType.Type, mappingRulesBytes, relationType.Creator.ID,
 		relationType.Creator.Type, relationType.CreateTime, relationType.Updater.ID,
 		relationType.Updater.Type, relationType.UpdateTime,
-	}, declarations...), nil
+	}, append(declarations, interfaces.NewDefinitionRevision())...), nil
 }
 
 // Query current relation types on the main branch.
@@ -822,6 +823,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		"f_updater":               relationType.Updater.ID,
 		"f_updater_type":          relationType.Updater.Type,
 		"f_update_time":           relationType.UpdateTime,
+		"f_revision":              interfaces.NewDefinitionRevision(),
 	}
 	declarations, err := declarationValues(relationType)
 	if err != nil {
@@ -925,6 +927,7 @@ func (rta *relationTypeAccess) UpdateRelationTypes(ctx context.Context, tx *sql.
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, relationType := range batch {

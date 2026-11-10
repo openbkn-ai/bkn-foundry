@@ -186,6 +186,7 @@ func (r *restHandler) GetValueType(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	setETag(c, []*interfaces.ValueType{vt})
 	rest.ReplyOK(c, http.StatusOK, vt)
 }
 

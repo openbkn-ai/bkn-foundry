@@ -665,7 +665,16 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	// Changing skill_content changes the draft as a whole; changing only the basic information
+	// needs no precondition. A body that fails to bind is reported below.
+	fields := struct {
+		SkillContent *string `json:"skill_content"`
+	}{}
+	need := preconditionNone
+	if c.ShouldBindBodyWith(&fields, binding.JSON) == nil && fields.SkillContent != nil {
+		need = preconditionDraftRevision
+	}
+	branch, branchOK := r.writeBranchNeeding(&ctx, c, knID, need)
 	if !branchOK {
 		return
 	}
@@ -691,9 +700,6 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Bind request parameters. A request that leaves skill_content out keeps the stored value.
 	kn := interfaces.KN{}
-	fields := struct {
-		SkillContent *string `json:"skill_content"`
-	}{}
 	err = c.ShouldBindBodyWith(&kn, binding.JSON)
 	if err == nil {
 		err = c.ShouldBindBodyWith(&fields, binding.JSON)

@@ -327,3 +327,80 @@ func (va *versionAccess) DeleteNetwork(ctx context.Context, tx *sql.Tx, knID str
 	}
 	return nil
 }
+
+// revisionTables maps each revision kind to the table of its definitions.
+var revisionTables = map[string]string{
+	interfaces.RevisionKindObjectType:        "t_object_type",
+	interfaces.RevisionKindRelationType:      "t_relation_type",
+	interfaces.RevisionKindActionType:        "t_action_type",
+	interfaces.RevisionKindConceptGroup:      "t_concept_group",
+	interfaces.RevisionKindValueType:         "t_value_type",
+	interfaces.RevisionKindRiskType:          "t_risk_type",
+	interfaces.RevisionKindCapabilityBinding: "t_kn_capability_binding",
+}
+
+func revisionTable(kind string) (string, error) {
+	table, ok := revisionTables[kind]
+	if !ok {
+		return "", fmt.Errorf("definitions of kind %q have no revision", kind)
+	}
+	return table, nil
+}
+
+func (va *versionAccess) DefinitionRevision(ctx context.Context, tx *sql.Tx, kind, knID, branch, id string) (string, bool, error) {
+	table, err := revisionTable(kind)
+	if err != nil {
+		return "", false, err
+	}
+	var revision string
+	err = va.q(tx).QueryRowContext(ctx, "SELECT f_revision FROM "+table+
+		" WHERE f_kn_id = ? AND f_branch = ? AND f_id = ?"+lockClause(tx != nil), knID, branch, id).Scan(&revision)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("get the revision of %s %s: %w", kind, id, err)
+	}
+	return revision, true, nil
+}
+
+func (va *versionAccess) TouchDefinitionRevision(ctx context.Context, tx *sql.Tx, kind, knID, branch, id string) error {
+	table, err := revisionTable(kind)
+	if err != nil {
+		return err
+	}
+	if _, err := va.q(tx).ExecContext(ctx, "UPDATE "+table+" SET f_revision = ? WHERE f_kn_id = ? AND f_branch = ? AND f_id = ?",
+		interfaces.NewDefinitionRevision(), knID, branch, id); err != nil {
+		return fmt.Errorf("touch the revision of %s %s: %w", kind, id, err)
+	}
+	return nil
+}
+
+func (va *versionAccess) DefinitionRevisions(ctx context.Context, kind, knID, branch string, ids []string) (map[string]string, error) {
+	revisions := map[string]string{}
+	if len(ids) == 0 {
+		return revisions, nil
+	}
+	table, err := revisionTable(kind)
+	if err != nil {
+		return nil, err
+	}
+	args := []any{knID, branch}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := va.db.QueryContext(ctx, "SELECT f_id, f_revision FROM "+table+" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (?"+
+		strings.Repeat(", ?", len(ids)-1)+")", args...)
+	if err != nil {
+		return nil, fmt.Errorf("list the revisions of %s: %w", kind, err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id, revision string
+		if err := rows.Scan(&id, &revision); err != nil {
+			return nil, err
+		}
+		revisions[id] = revision
+	}
+	return revisions, rows.Err()
+}

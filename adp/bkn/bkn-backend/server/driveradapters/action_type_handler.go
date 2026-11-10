@@ -734,6 +734,9 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 	// if simpleInfo {
 	// Get authorization-filtered action type summaries from a storage page.
 	otList, total, err := r.ats.ListActionTypeSummaries(ctx, parameter)
+	if !replyWithRevisions(ctx, c, interfaces.RevisionKindActionType, knID, branch, otList) {
+		return
+	}
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
@@ -836,6 +839,9 @@ func (r *restHandler) GetActionTypes(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if !replyWithRevisions(ctx, c, interfaces.RevisionKindActionType, knID, branch, actionTypes) {
+		return
+	}
 	httpResult := map[string]any{"entries": actionTypes}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)

@@ -976,6 +976,9 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// if simpleInfo {
 	// Get object type summaries.
 	otList, total, err := r.ots.ListObjectTypeSummaries(ctx, nil, parameter)
+	if !replyWithRevisions(ctx, c, interfaces.RevisionKindObjectType, knID, branch, otList) {
+		return
+	}
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
@@ -1087,6 +1090,9 @@ func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor, filt
 		}
 	}
 
+	if !replyWithRevisions(ctx, c, interfaces.RevisionKindObjectType, knID, branch, result) {
+		return
+	}
 	httpResult := map[string]any{"entries": result}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)

@@ -24,6 +24,10 @@ type DraftWrite struct {
 	Expected *int64
 	Revision int64
 	Written  bool
+	// IfMatch is the If-Match of the request, the expected revision of the one definition it
+	// changes. It is cleared once checked, so later transactions of the request do not check
+	// it again against the revision the request itself produced.
+	IfMatch string
 }
 
 type draftWriteKey struct{}
@@ -84,6 +88,64 @@ func GuardDefinitionWrite(ctx context.Context, tx *sql.Tx, knID, branch string, 
 	}
 	if dw != nil {
 		dw.Expected, dw.Revision, dw.Written = &revision, revision, true
+	}
+	return nil
+}
+
+// CheckDefinitionRevision checks the request's If-Match against the definition the transaction
+// is about to change or delete, locking its row. It does nothing without If-Match, or when the
+// definition does not exist, which the caller reports as before. ids are the definitions the
+// request changes; If-Match names one definition, so with several it is refused.
+func CheckDefinitionRevision(ctx context.Context, tx *sql.Tx, kind, knID, branch string, ids ...string) error {
+	dw := DraftWriteFrom(ctx)
+	if KNVA == nil || tx == nil || dw == nil || dw.IfMatch == "" {
+		return nil
+	}
+	if len(ids) != 1 {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidParameter).
+			WithErrorDetails("If-Match applies to one definition; use expected_draft_revision to change several")
+	}
+	current, ok, err := KNVA.DefinitionRevision(ctx, tx, kind, knID, branch, ids[0])
+	if err != nil {
+		return versionInternalError(ctx, err)
+	}
+	if !ok {
+		return nil
+	}
+	if current != dw.IfMatch {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_DefinitionModified).
+			WithErrorDetails(map[string]any{"current_etag": current})
+	}
+	dw.IfMatch = ""
+	return nil
+}
+
+// TouchDefinitionRevision gives a definition a new revision for a change stored outside its row.
+func TouchDefinitionRevision(ctx context.Context, tx *sql.Tx, kind, knID, branch, id string) error {
+	if KNVA == nil || tx == nil {
+		return nil
+	}
+	if err := KNVA.TouchDefinitionRevision(ctx, tx, kind, knID, branch, id); err != nil {
+		return versionInternalError(ctx, err)
+	}
+	return nil
+}
+
+// FillRevisions sets the revision of each loaded definition of the branch.
+func FillRevisions[T interfaces.Revisioned](ctx context.Context, kind, knID, branch string, items []T) error {
+	if KNVA == nil || len(items) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.RevisionID())
+	}
+	revisions, err := KNVA.DefinitionRevisions(ctx, kind, knID, branch, ids)
+	if err != nil {
+		return versionInternalError(ctx, err)
+	}
+	for _, item := range items {
+		item.SetRevision(revisions[item.RevisionID()])
 	}
 	return nil
 }

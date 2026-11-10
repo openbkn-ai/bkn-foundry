@@ -9,6 +9,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strconv"
+	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Reserved branches of a versioned network: the draft, and one immutable branch per version.
@@ -286,6 +289,38 @@ type KNVersionAccess interface {
 
 	// DeleteNetwork removes every version row of a deleted network.
 	DeleteNetwork(ctx context.Context, tx *sql.Tx, knID string) error
+
+	// DefinitionRevision returns the revision of one definition, locking its row, and false
+	// when the definition does not exist. kind is a RevisionKind.
+	DefinitionRevision(ctx context.Context, tx *sql.Tx, kind, knID, branch, id string) (string, bool, error)
+	// TouchDefinitionRevision gives one definition a new revision, for changes stored outside
+	// its own row, such as concept group members.
+	TouchDefinitionRevision(ctx context.Context, tx *sql.Tx, kind, knID, branch, id string) error
+	// DefinitionRevisions returns the revisions of the given definitions by id.
+	DefinitionRevisions(ctx context.Context, kind, knID, branch string, ids []string) (map[string]string, error)
+}
+
+// Kinds of definitions that carry a revision, the value compared with If-Match.
+const (
+	RevisionKindObjectType        = MODULE_TYPE_OBJECT_TYPE
+	RevisionKindRelationType      = MODULE_TYPE_RELATION_TYPE
+	RevisionKindActionType        = MODULE_TYPE_ACTION_TYPE
+	RevisionKindConceptGroup      = MODULE_TYPE_CONCEPT_GROUP
+	RevisionKindValueType         = MODULE_TYPE_VALUE_TYPE
+	RevisionKindRiskType          = MODULE_TYPE_RISK_TYPE
+	RevisionKindCapabilityBinding = "capability_binding"
+)
+
+// NewDefinitionRevision returns a new revision for an inserted or changed definition.
+func NewDefinitionRevision() string {
+	return strings.ReplaceAll(uuid.NewString(), "-", "")
+}
+
+// Revisioned is a definition whose revision is returned on reads.
+type Revisioned interface {
+	RevisionID() string
+	GetRevision() string
+	SetRevision(revision string)
 }
 
 // BranchCopier copies the versioned rows of a network between branches, inside the caller's

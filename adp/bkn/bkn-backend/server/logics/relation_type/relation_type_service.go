@@ -706,6 +706,9 @@ func (rts *relationTypeService) updateRelationType(ctx context.Context, tx *sql.
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRelationType, relationType.KNID, relationType.Branch, relationType.RTID); err != nil {
+		return err
+	}
 
 	// Validate source and target object type existence when present, controlled by strict_mode.
 	err = rts.validateDependency(ctx, tx, relationType, strictMode, nil)
@@ -823,6 +826,9 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRelationType, knID, branch, rtIDs...); err != nil {
+		return err
 	}
 
 	// Delete metric models.

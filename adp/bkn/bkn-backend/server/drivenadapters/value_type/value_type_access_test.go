@@ -28,7 +28,7 @@ func newAccess(t *testing.T) (*valueTypeAccess, sqlmock.Sqlmock) {
 func valueTypeRow(definition any) *sqlmock.Rows {
 	return sqlmock.NewRows(valueTypeColumns).AddRow(
 		"lis_status", "检验申请状态", "", `"lis"`, "", "", "raw", "kn1", "main", "string", definition,
-		"u1", "user", int64(1), "u1", "user", int64(2),
+		"u1", "user", int64(1), "u1", "user", int64(2), "rev1",
 	)
 }
 
@@ -42,7 +42,7 @@ func TestCreateValueTypes(t *testing.T) {
 	smock.ExpectBegin()
 	smock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_value_type (f_id,f_name,f_comment,f_tags,f_icon,f_color,f_bkn_raw_content,f_kn_id,f_branch,f_base_type,f_definition,")).
 		WithArgs("rating", "满意度", "", "", "", "", "", "kn1", "main", "integer", `{"length":{"min":1}}`,
-			"", "", int64(0), "", "", int64(0)).
+			"", "", int64(0), "", "", int64(0), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	smock.ExpectCommit()
 
@@ -63,6 +63,7 @@ func TestReadValueTypes(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, list, 1)
 		assert.Equal(t, []string{"lis"}, list[0].Tags)
+		assert.Equal(t, "rev1", list[0].Revision)
 		assert.Equal(t, interfaces.MODULE_TYPE_VALUE_TYPE, list[0].ModuleType)
 		require.Len(t, list[0].Enum, 2)
 		assert.True(t, list[0].Enum[1].Deprecated)

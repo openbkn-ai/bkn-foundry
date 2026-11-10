@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -298,7 +299,88 @@ func optionalInt64Query(c *gin.Context, name string) (*int64, bool) {
 // resolveBranch maps the branch and kn_version parameters of a request to the storage
 // branch, replying with the error when it fails. A write gets a context that carries its
 // expected_draft_revision; a read of a versioned network gets the X-Kn-Version header.
+// writePrecondition is what a write to the draft of a versioned network must carry (design
+// section 10). Unversioned networks accept the same preconditions but never require them.
+type writePrecondition int
+
+const (
+	// preconditionNone: creating definitions, or changing only the network's basic information.
+	preconditionNone writePrecondition = iota
+	// preconditionIfMatch: changing one definition.
+	preconditionIfMatch
+	// preconditionDelete: deleting definitions, by If-Match for one or the draft revision for several.
+	preconditionDelete
+	// preconditionDraftRevision: changing the draft as a whole, such as an import.
+	preconditionDraftRevision
+)
+
+// preconditionByMethod is the precondition of a write to one kind of definition.
+func preconditionByMethod(method string) writePrecondition {
+	switch method {
+	case http.MethodPut, http.MethodPatch:
+		return preconditionIfMatch
+	case http.MethodDelete:
+		return preconditionDelete
+	default:
+		return preconditionNone
+	}
+}
+
+// ifMatchRevision returns the revision an If-Match header names, without quotes or a weak prefix.
+func ifMatchRevision(header string) string {
+	value := strings.TrimSpace(header)
+	value = strings.TrimPrefix(value, "W/")
+	return strings.Trim(value, `"`)
+}
+
 func (r *restHandler) resolveBranch(ctx *context.Context, c *gin.Context, knID string, write bool) (*interfaces.KNResolvedBranch, bool) {
+	if write {
+		return r.resolveWrite(ctx, c, knID, preconditionByMethod(c.Request.Method))
+	}
+	return r.resolveRead(ctx, c, knID, false)
+}
+
+// resolveWrite resolves the branch of a write, records its preconditions in ctx for the write
+// transaction, and on a versioned network refuses with 428 a request that lacks the one need.
+func (r *restHandler) resolveWrite(ctx *context.Context, c *gin.Context, knID string, need writePrecondition) (*interfaces.KNResolvedBranch, bool) {
+	resolved, ok := r.resolveRead(ctx, c, knID, true)
+	if !ok {
+		return nil, false
+	}
+	expected, ok := optionalInt64Query(c, "expected_draft_revision")
+	if !ok {
+		return nil, false
+	}
+	var dw *logics.DraftWrite
+	*ctx, dw = logics.WithDraftWrite(*ctx, expected)
+	dw.IfMatch = ifMatchRevision(c.GetHeader("If-Match"))
+	if resolved.Versioned {
+		missing := ""
+		switch need {
+		case preconditionIfMatch:
+			if dw.IfMatch == "" {
+				missing = "If-Match is required"
+			}
+		case preconditionDelete:
+			if dw.IfMatch == "" && expected == nil {
+				missing = "If-Match or expected_draft_revision is required"
+			}
+		case preconditionDraftRevision:
+			if expected == nil {
+				missing = "expected_draft_revision is required"
+			}
+		}
+		if missing != "" {
+			replyKNVersionError(c, httperrors.NewHTTPError(*ctx, http.StatusPreconditionRequired,
+				berrors.BknBackend_KNVersion_PreconditionRequired).WithErrorDetails(missing))
+			return nil, false
+		}
+		c.Writer = &draftRevisionWriter{ResponseWriter: c.Writer, dw: dw}
+	}
+	return resolved, true
+}
+
+func (r *restHandler) resolveRead(ctx *context.Context, c *gin.Context, knID string, write bool) (*interfaces.KNResolvedBranch, bool) {
 	req := interfaces.KNBranchRequest{Branch: c.Query("branch"), KNVersion: c.Query("kn_version"), Write: write}
 	var ok bool
 	if req.DraftRevision, ok = optionalInt64Query(c, "draft_revision"); !ok {
@@ -317,15 +399,6 @@ func (r *restHandler) resolveBranch(ctx *context.Context, c *gin.Context, knID s
 		return nil, false
 	}
 	if write {
-		expected, ok := optionalInt64Query(c, "expected_draft_revision")
-		if !ok {
-			return nil, false
-		}
-		var dw *logics.DraftWrite
-		*ctx, dw = logics.WithDraftWrite(*ctx, expected)
-		if resolved.Versioned {
-			c.Writer = &draftRevisionWriter{ResponseWriter: c.Writer, dw: dw}
-		}
 		return resolved, true
 	}
 	if resolved.Version != "" {
@@ -346,7 +419,12 @@ func (r *restHandler) readBranch(ctx *context.Context, c *gin.Context, knID stri
 }
 
 func (r *restHandler) writeBranch(ctx *context.Context, c *gin.Context, knID string) (string, bool) {
-	resolved, ok := r.resolveBranch(ctx, c, knID, true)
+	return r.writeBranchNeeding(ctx, c, knID, preconditionByMethod(c.Request.Method))
+}
+
+// writeBranchNeeding is writeBranch for a write whose precondition does not follow its method.
+func (r *restHandler) writeBranchNeeding(ctx *context.Context, c *gin.Context, knID string, need writePrecondition) (string, bool) {
+	resolved, ok := r.resolveWrite(ctx, c, knID, need)
 	if !ok {
 		return "", false
 	}
@@ -368,14 +446,27 @@ func (r *restHandler) searchBranch(ctx *context.Context, c *gin.Context, knID st
 // writeWholeDraftBranch resolves the branch of a write that replaces several definitions at
 // once, such as an import: on a versioned network it needs expected_draft_revision.
 func (r *restHandler) writeWholeDraftBranch(ctx *context.Context, c *gin.Context, knID string) (string, bool) {
-	resolved, ok := r.resolveBranch(ctx, c, knID, true)
-	if !ok {
-		return "", false
+	return r.writeBranchNeeding(ctx, c, knID, preconditionDraftRevision)
+}
+
+// replyWithRevisions sets the revision of each definition about to be returned, and, when the
+// response is one definition, the ETag that a later write sends back as If-Match. A failure is
+// replied and reported as false.
+func replyWithRevisions[T interfaces.Revisioned](ctx context.Context, c *gin.Context, kind, knID, branch string, items []T) bool {
+	if err := logics.FillRevisions(ctx, kind, knID, branch, items); err != nil {
+		replyKNVersionError(c, err)
+		return false
 	}
-	if resolved.Versioned && logics.DraftWriteFrom(*ctx).Expected == nil {
-		replyKNVersionError(c, httperrors.NewHTTPError(*ctx, http.StatusPreconditionRequired,
-			berrors.BknBackend_KNVersion_PreconditionRequired).WithErrorDetails("expected_draft_revision is required"))
-		return "", false
+	setETag(c, items)
+	return true
+}
+
+// setETag sets the ETag of a response that returns one definition.
+func setETag[T interfaces.Revisioned](c *gin.Context, items []T) {
+	if len(items) != 1 {
+		return
 	}
-	return resolved.Branch, true
+	if revision := items[0].GetRevision(); revision != "" {
+		c.Header("ETag", `"`+revision+`"`)
+	}
 }

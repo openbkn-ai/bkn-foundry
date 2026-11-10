@@ -220,8 +220,8 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_data_source,f_data_properties,f_aliases,f_lifecycle_status,f_deprecation,f_logic_properties,f_primary_keys,"+
-			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
+			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
 
 		Convey("CreateObjectType Success \n", func() {
 			smock.ExpectBegin()
@@ -433,8 +433,8 @@ func Test_objectTypeAccess_CreateObjectTypes(t *testing.T) {
 		second.OTName = "Object Type 2"
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_data_source,f_data_properties,f_aliases,f_lifecycle_status,f_deprecation,f_logic_properties,f_primary_keys,"+
-			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
+			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
 		smock.ExpectBegin()
 		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
 		tx, err := ota.db.Begin()
@@ -1279,7 +1279,7 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_data_properties = ?, "+
 			"f_data_source = ?, f_deprecation = ?, f_display_key = ?, f_icon = ?, f_incremental_key = ?, f_lifecycle_status = ?, f_logic_properties = ?, "+
-			"f_name = ?, f_primary_keys = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"f_name = ?, f_primary_keys = ?, f_revision = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
 			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", OT_TABLE_NAME)
 		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", OT_TABLE_NAME)
 
@@ -1436,7 +1436,7 @@ func Test_objectTypeAccess_UpdateDataProperties(t *testing.T) {
 		ota, smock := MockNewObjectTypeAccess(appSetting)
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_data_properties = ?, "+
-			"f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"f_revision = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
 			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", OT_TABLE_NAME)
 		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", OT_TABLE_NAME)
 

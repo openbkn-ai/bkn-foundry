@@ -340,6 +340,9 @@ func (s *valueTypeService) UpdateValueType(ctx context.Context, tx *sql.Tx, vt *
 		if _, err := s.get(ctx, tx, vt.KNID, vt.Branch, vt.VTID); err != nil {
 			return err
 		}
+		if err := logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindValueType, vt.KNID, vt.Branch, vt.VTID); err != nil {
+			return err
+		}
 		existing, err := s.vta.GetValueTypeIdentitiesByIDsOrNames(ctx, vt.KNID, vt.Branch, nil, []string{vt.VTName})
 		if err != nil {
 			return internalError(ctx, err)
@@ -396,6 +399,9 @@ func (s *valueTypeService) DeleteValueType(ctx context.Context, tx *sql.Tx, knID
 	}
 	err := s.withTx(ctx, tx, knID, branch, func(tx *sql.Tx) error {
 		if _, err := s.get(ctx, tx, knID, branch, vtID); err != nil {
+			return err
+		}
+		if err := logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindValueType, knID, branch, vtID); err != nil {
 			return err
 		}
 		refs, err := s.references(ctx, knID, branch, vtID)

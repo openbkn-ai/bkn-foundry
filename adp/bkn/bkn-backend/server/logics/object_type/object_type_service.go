@@ -1261,6 +1261,9 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindObjectType, objectType.KNID, objectType.Branch, objectType.OTID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = ots.ota.UpdateObjectType(ctx, tx, objectType)
@@ -1372,6 +1375,9 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 			}
 		}
 	}()
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindObjectType, objectType.KNID, objectType.Branch, objectType.OTID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = ots.ota.UpdateDataProperties(ctx, tx, objectType)
@@ -1476,6 +1482,9 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindObjectType, knID, branch, otIDs...); err != nil {
+		return err
 	}
 
 	// Delete object types.

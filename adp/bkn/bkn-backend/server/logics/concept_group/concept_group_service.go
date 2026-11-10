@@ -1122,6 +1122,9 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID); err != nil {
+		return err
+	}
 
 	// Update model information.
 	err = cgs.cga.UpdateConceptGroup(ctx, tx, conceptGroup)
@@ -1216,6 +1219,9 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 			}
 		}
 	}()
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return err
+	}
 
 	// Delete concept groups.
 	rowsAffect, err := cgs.cga.DeleteConceptGroupByID(ctx, tx, knID, branch, cgID)
@@ -1542,6 +1548,12 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return []string{}, err
+	}
+	if err = logics.TouchDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return []string{}, err
+	}
 
 	// De-duplicate IDs before querying.
 	otIDArr := interfaces.GetUniqueIDs(otIDs)
@@ -1817,6 +1829,12 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return err
+	}
+	if err = logics.TouchDefinitionRevision(ctx, tx, interfaces.RevisionKindConceptGroup, knID, branch, cgID); err != nil {
+		return err
 	}
 
 	// Delete object type-to-group bindings.

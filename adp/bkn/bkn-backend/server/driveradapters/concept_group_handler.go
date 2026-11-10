@@ -740,6 +740,9 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 
 	// Get concept group summaries.
 	knList, total, tags, err := r.cgs.ListConceptGroupSummaries(ctx, parameter)
+	if !replyWithRevisions(ctx, c, interfaces.RevisionKindConceptGroup, knID, branch, knList) {
+		return
+	}
 	result := map[string]any{"entries": knList, "total_count": total, "available_tags": tags}
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
@@ -889,6 +892,9 @@ func (r *restHandler) GetConceptGroup(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetConceptGroup Success")
+	if !replyWithRevisions(ctx, c, interfaces.RevisionKindConceptGroup, knID, branch, []*interfaces.ConceptGroup{cg}) {
+		return
+	}
 	rest.ReplyOK(c, http.StatusOK, cg)
 }
 
@@ -929,7 +935,7 @@ func (r *restHandler) AddObjectTypesToConceptGroup(c *gin.Context, visitor hydra
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	branch, branchOK := r.writeBranchNeeding(&ctx, c, knID, preconditionIfMatch)
 	if !branchOK {
 		return
 	}

@@ -200,8 +200,8 @@ func Test_RiskTypeAccess_CreateRiskType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf(
 			"INSERT INTO %s (f_id,f_name,f_comment,f_tags,f_icon,f_color,f_bkn_raw_content,f_kn_id,f_branch,"+
-				"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-				"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+				"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+				"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 			RT_TABLE_NAME,
 		)
 
@@ -468,7 +468,7 @@ func Test_RiskTypeAccess_UpdateRiskType(t *testing.T) {
 
 		// squirrel SetMap sorts keys alphabetically
 		sqlStr := fmt.Sprintf(
-			"UPDATE %s SET f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, f_tags = ?, "+
+			"UPDATE %s SET f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, f_revision = ?, f_tags = ?, "+
 				"f_update_time = ?, f_updater = ?, f_updater_type = ? "+
 				"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?",
 			RT_TABLE_NAME,

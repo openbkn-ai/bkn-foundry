@@ -474,6 +474,9 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 			}
 		}()
 	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRiskType, riskType.KNID, riskType.Branch, riskType.RTID); err != nil {
+		return err
+	}
 
 	if err = rts.rta.UpdateRiskType(ctx, tx, riskType); err != nil {
 		logger.Errorf("UpdateRiskType error: %s", err.Error())
@@ -560,6 +563,9 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRiskType, knID, branch, rtIDs...); err != nil {
+		return err
 	}
 
 	_, err = rts.rta.DeleteRiskTypesByIDs(ctx, tx, knID, branch, rtIDs)
