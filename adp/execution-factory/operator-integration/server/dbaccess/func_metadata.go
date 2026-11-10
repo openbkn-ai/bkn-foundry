@@ -61,7 +61,7 @@ func (fm *functionMetadataDB) InsertFuncMetadata(ctx context.Context, tx *sql.Tx
 		orm = fm.orm.WithTx(tx)
 	}
 
-	row, err := orm.Insert().Into(tbFunctionMetadata).Values(map[string]interface{}{
+	values := map[string]interface{}{
 		"f_version":          metadata.Version,
 		"f_summary":          metadata.Summary,
 		"f_description":      metadata.Description,
@@ -77,7 +77,9 @@ func (fm *functionMetadataDB) InsertFuncMetadata(ctx context.Context, tx *sql.Tx
 		"f_create_time":      metadata.CreateTime,
 		"f_update_user":      metadata.UpdateUser,
 		"f_update_time":      metadata.UpdateTime,
-	}).Execute(ctx)
+	}
+	addCypherColumns(values, metadata)
+	row, err := orm.Insert().Into(tbFunctionMetadata).Values(values).Execute(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "insert function metadata error")
 		return
@@ -100,7 +102,7 @@ func (fm *functionMetadataDB) UpdateByVersion(ctx context.Context, tx *sql.Tx, m
 	if tx != nil {
 		orm = fm.orm.WithTx(tx)
 	}
-	row, err := orm.Update(tbFunctionMetadata).SetData(map[string]interface{}{
+	values := map[string]interface{}{
 		"f_summary":          metadata.Summary,
 		"f_description":      metadata.Description,
 		"f_path":             metadata.Path,
@@ -113,7 +115,9 @@ func (fm *functionMetadataDB) UpdateByVersion(ctx context.Context, tx *sql.Tx, m
 		"f_code":             metadata.Code,
 		"f_update_user":      metadata.UpdateUser,
 		"f_update_time":      metadata.UpdateTime,
-	}).WhereEq("f_version", metadata.Version).Execute(ctx)
+	}
+	addCypherColumns(values, metadata)
+	row, err := orm.Update(tbFunctionMetadata).SetData(values).WhereEq("f_version", metadata.Version).Execute(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "update function metadata error")
 		return
@@ -200,6 +204,16 @@ func (fm *functionMetadataDB) InsertFuncMetadatas(ctx context.Context, tx *sql.T
 		"f_update_user",
 		"f_update_time",
 	}
+	withCypher := false
+	for _, metadata := range metadatas {
+		if metadata.IsCypher() {
+			withCypher = true
+			break
+		}
+	}
+	if withCypher {
+		columns = append(columns, "f_kn_id", "f_result_shape")
+	}
 	now := time.Now().UnixNano()
 	versions = []string{}
 	values := [][]interface{}{}
@@ -212,7 +226,7 @@ func (fm *functionMetadataDB) InsertFuncMetadatas(ctx context.Context, tx *sql.T
 			metadata.Version = id.String()
 		}
 		versions = append(versions, metadata.Version)
-		values = append(values, []interface{}{
+		value := []interface{}{
 			metadata.Version,
 			metadata.Summary,
 			metadata.Description,
@@ -228,7 +242,11 @@ func (fm *functionMetadataDB) InsertFuncMetadatas(ctx context.Context, tx *sql.T
 			now,
 			metadata.UpdateUser,
 			now,
-		})
+		}
+		if withCypher {
+			value = append(value, metadata.KnID, metadata.ResultShape)
+		}
+		values = append(values, value)
 	}
 	row, err := orm.Insert().Into(tbFunctionMetadata).BatchValues(columns, values).Execute(ctx)
 	if err != nil {
@@ -258,4 +276,15 @@ func (fm *functionMetadataDB) SelectListByVersion(ctx context.Context, versions 
 		err = errors.Wrapf(err, "select function metadata list by version error")
 	}
 	return
+}
+
+// addCypherColumns writes the Cypher columns only for a Cypher function. A
+// Python function never names them, so creating and editing Python functions
+// keeps working on a database the 0.2.2 migration has not reached yet.
+func addCypherColumns(values map[string]interface{}, metadata *model.FunctionMetadataDB) {
+	if !metadata.IsCypher() {
+		return
+	}
+	values["f_kn_id"] = metadata.KnID
+	values["f_result_shape"] = metadata.ResultShape
 }

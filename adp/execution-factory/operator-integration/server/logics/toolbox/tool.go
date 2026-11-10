@@ -69,6 +69,12 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 	if err != nil {
 		return
 	}
+	// A Cypher function is checked by bkn-backend, as its author, before it is saved.
+	for _, metadata := range metadataList {
+		if err = s.validateCypherFunctionMetadata(ctx, metadata); err != nil {
+			return
+		}
+	}
 	// Check imported tools for duplicate tools.
 	tools, validatorNameMap, validatorMethodPathMap, err := s.parseOpenAPIToMetadata(ctx, req.BoxID, req.UserID, metadataList, false)
 	if err != nil {

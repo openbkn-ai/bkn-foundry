@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/creasty/defaults"
@@ -515,6 +516,14 @@ func (s *ToolServiceImpl) importCheck(ctx context.Context, item *interfaces.Tool
 				Dependencies: utils.ObjectToJSON(toolImpexItem.Dependencies),
 				Code:         toolImpexItem.Code,
 			}
+			if metadataDB.IsCypher() {
+				if err = checkImportedCypherFunction(ctx, toolImpexItem); err != nil {
+					return
+				}
+				metadataDB.Dependencies = ""
+				metadataDB.KnID = toolImpexItem.KnID
+				metadataDB.ResultShape = string(toolImpexItem.ResultShape)
+			}
 			metadataList = append(metadataList, metadataDB)
 		}
 	}
@@ -686,8 +695,35 @@ func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*mod
 				Dependencies:    dependencies,
 				DependenciesURL: metadataDB.GetDependenciesURL(),
 			}
+			if function, ok := metadataDB.(*model.FunctionMetadataDB); ok && function.IsCypher() {
+				toolInfo.KnID = function.KnID
+				toolInfo.ResultShape = interfaces.CypherResultShape(function.ResultShape)
+			}
 			toolBox.Tools = append(toolBox.Tools, toolInfo)
 		}
 	}
 	return
+}
+
+// checkImportedCypherFunction checks what an imported Cypher function needs to
+// run at all. It does not ask bkn-backend: the package may come from another
+// environment whose network is not here yet, or not readable by the importer,
+// and refusing the whole import for that would block moving a toolbox ahead of
+// its network. A statement that no longer fits is reported when it runs.
+func checkImportedCypherFunction(ctx context.Context, item *interfaces.ToolImpexItem) error {
+	if strings.TrimSpace(item.KnID) == "" {
+		return errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			fmt.Sprintf("cypher function %s has no kn_id", item.Name))
+	}
+	switch item.ResultShape {
+	case interfaces.CypherResultShapeValue, interfaces.CypherResultShapeTable:
+	default:
+		return errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			fmt.Sprintf("cypher function %s has an invalid result_shape %q", item.Name, item.ResultShape))
+	}
+	if strings.TrimSpace(item.Code) == "" {
+		return errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			fmt.Sprintf("cypher function %s has no statement", item.Name))
+	}
+	return nil
 }

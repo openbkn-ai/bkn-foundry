@@ -222,6 +222,9 @@ func (p *pythonFunctionParser) Parse(ctx context.Context, inputValue any) (metad
 	// Record the operation span.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
+	if input, ok := cypherFunctionInput(inputValue); ok {
+		return p.parseCypherFunction(ctx, input)
+	}
 	input, err := p.validate(ctx, inputValue)
 	if err != nil {
 		return nil, err
@@ -254,6 +257,12 @@ func (p *pythonFunctionParser) Parse(ctx context.Context, inputValue any) (metad
 
 // GetAllContent returns the complete generated API contract.
 func (p *pythonFunctionParser) GetAllContent(ctx context.Context, inputValue any) (content any, err error) {
+	if input, ok := cypherFunctionInput(inputValue); ok {
+		if err = p.validateCypherFunction(ctx, input); err != nil {
+			return nil, err
+		}
+		return convertCypherToPathItemContent(input), nil
+	}
 	input, err := p.validate(ctx, inputValue)
 	if err != nil {
 		return nil, err
