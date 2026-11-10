@@ -246,6 +246,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.POST("/knowledge-networks/:kn_id/proxy-account/deletion/finalize", r.FinalizeKNProxyDeletion)
 	apiInV1.POST("/proxy-accounts/reconcile", r.ReconcileKNProxies)
 	apiInV1.GET("/authorization-resources", r.ListAuthorizationResources)
+	apiInV1.POST("/knowledge-networks/:kn_id/versioning/disable", knEventInternal(r.disableKNVersioning))
 
 	// Knowledge networks.
 	apiInV1.POST("/knowledge-networks", r.verifyJsonContentType(), r.CreateKNByIn)

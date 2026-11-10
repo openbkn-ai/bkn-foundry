@@ -261,6 +261,15 @@ type KNVersionService interface {
 	Restore(ctx context.Context, knID string, version int, req *KNVersionStatusRequest) (*KNVersion, error)
 	Purge(ctx context.Context, knID string, version int, req *KNVersionStatusRequest) (*KNVersion, error)
 	ListEvents(ctx context.Context, knID string, offset, limit int) ([]*KNVersionEvent, int, error)
+	// Disable takes the network out of versioning (design §12.9): main keeps the running
+	// version, the draft and every version branch are deleted, version records are kept.
+	Disable(ctx context.Context, knID string, req *KNDisableVersioningRequest) (*KNVersioningView, error)
+}
+
+// KNDisableVersioningRequest is the body of the operator's disable request.
+type KNDisableVersioningRequest struct {
+	DiscardDraft bool   `json:"discard_draft"`
+	Notes        string `json:"notes"`
 }
 
 // KNVersionAccess stores version state, versions and version events. Methods that take a tx
@@ -289,6 +298,8 @@ type KNVersionAccess interface {
 
 	// DeleteNetwork removes every version row of a deleted network.
 	DeleteNetwork(ctx context.Context, tx *sql.Tx, knID string) error
+	// DeleteState removes the version state row, after which the network is not versioned.
+	DeleteState(ctx context.Context, tx *sql.Tx, knID string) error
 
 	// DefinitionRevision returns the revision of one definition, locking its row, and false
 	// when the definition does not exist. kind is a RevisionKind.

@@ -107,28 +107,34 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 	return kns.finishProxyDeltaPublish(ctx, plan)
 }
 
-// ReplaceKNDraft runs mutate, which replaces the draft with a copy of another branch, in one
-// transaction, and rewrites the concept index of the draft after commit.
+// ReplaceKNDraft runs mutate, which replaces the draft with a copy of another branch or deletes
+// it, in one transaction, and rewrites the concept index of the draft after commit.
 func (kns *knowledgeNetworkService) ReplaceKNDraft(ctx context.Context, knID string,
 	mutate func(context.Context, *sql.Tx) error) error {
-	oldDraft, err := kns.loadKNForDatasetSnapshot(ctx, knID, interfaces.DRAFT_BRANCH)
+	oldDraft, err := kns.loadDraftIfAny(ctx, knID)
 	if err != nil {
-		var httpErr *httperrors.HTTPError
-		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusNotFound {
-			return err
-		}
-		oldDraft = nil
+		return err
 	}
 	if err := kns.runInTx(ctx, mutate); err != nil {
 		return err
 	}
-	newDraft, err := kns.loadKNForDatasetSnapshot(context.WithoutCancel(ctx), knID, interfaces.DRAFT_BRANCH)
+	newDraft, err := kns.loadDraftIfAny(context.WithoutCancel(ctx), knID)
 	if err != nil {
 		otellog.LogError(ctx, "Load the draft for its concept index failed", err)
 		return nil
 	}
 	kns.refreshConceptIndex(ctx, oldDraft, newDraft)
 	return nil
+}
+
+// loadDraftIfAny loads the draft, or returns nil when the network has none.
+func (kns *knowledgeNetworkService) loadDraftIfAny(ctx context.Context, knID string) (*interfaces.KN, error) {
+	draft, err := kns.loadKNForDatasetSnapshot(ctx, knID, interfaces.DRAFT_BRANCH)
+	var httpErr *httperrors.HTTPError
+	if err != nil && errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound {
+		return nil, nil
+	}
+	return draft, err
 }
 
 // planFullProxyProjection records in plan the grants of the complete desired source set.
@@ -206,7 +212,7 @@ func rebranch(kn *interfaces.KN, branch string) {
 // refreshConceptIndex rewrites the concept index of a branch after its content was replaced
 // by a copy: documents of definitions no longer on the branch are deleted, the others written
 // again. Like the index writes of an import, it runs after commit, and a failure is only logged.
-// oldKN may be nil when the branch was empty; newKN must be on the branch.
+// oldKN is nil when the branch was empty, newKN when it no longer exists; both are on one branch.
 func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, oldKN, newKN *interfaces.KN) {
 	ctx = context.WithoutCancel(ctx)
 	ids := func(kn *interfaces.KN) map[string]struct{} {
@@ -215,7 +221,7 @@ func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, old
 			return set
 		}
 		add := func(moduleType, id string) {
-			set[interfaces.GenerateConceptDocuemtnID(kn.KNID, moduleType, id, newKN.Branch)] = struct{}{}
+			set[interfaces.GenerateConceptDocuemtnID(kn.KNID, moduleType, id, kn.Branch)] = struct{}{}
 		}
 		for _, item := range kn.ConceptGroups {
 			add(interfaces.MODULE_TYPE_CONCEPT_GROUP, item.CGID)
@@ -242,6 +248,15 @@ func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, old
 		if err := kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, id); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Delete concept index document %s failed", id), err)
 		}
+	}
+	if newKN == nil {
+		if oldKN != nil {
+			if err := kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID,
+				interfaces.GenerateConceptDocuemtnID(oldKN.KNID, interfaces.MODULE_TYPE_KN, oldKN.KNID, oldKN.Branch)); err != nil {
+				otellog.LogError(ctx, "Delete the concept index document of the network failed", err)
+			}
+		}
+		return
 	}
 	steps := []struct {
 		name string

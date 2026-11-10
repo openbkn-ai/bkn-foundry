@@ -133,6 +133,20 @@ func (r *restHandler) enableKNVersioning(c *gin.Context, ctx context.Context) {
 	rest.ReplyOK(c, http.StatusCreated, state)
 }
 
+// disableKNVersioning is the operator's route that takes a network out of versioning.
+func (r *restHandler) disableKNVersioning(c *gin.Context, ctx context.Context) {
+	var req interfaces.KNDisableVersioningRequest
+	if !bindKNVersionBody(c, &req) {
+		return
+	}
+	state, err := r.kvs.Disable(ctx, c.Param("kn_id"), &req)
+	if err != nil {
+		replyKNVersionError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, state)
+}
+
 func (r *restHandler) getKNVersioning(c *gin.Context, ctx context.Context) {
 	state, err := r.kvs.GetState(ctx, c.Param("kn_id"))
 	if err != nil {

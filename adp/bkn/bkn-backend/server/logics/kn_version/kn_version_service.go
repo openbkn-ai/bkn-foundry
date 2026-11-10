@@ -158,6 +158,18 @@ func (s *service) replayVersion(ctx context.Context, event *interfaces.KNVersion
 // lockState locks the network exclusively and its state row, in that order, and checks the
 // network is versioned and not being disabled.
 func (s *service) lockState(ctx context.Context, tx *sql.Tx, knID string) (*interfaces.KNVersionState, error) {
+	state, err := s.lockAnyState(ctx, tx, knID)
+	if err != nil {
+		return nil, err
+	}
+	if state.Mode == interfaces.KNVersioningDisabling {
+		return nil, newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_VersioningDisabling)
+	}
+	return state, nil
+}
+
+// lockAnyState is lockState for the disable flow, which also runs on a disabling network.
+func (s *service) lockAnyState(ctx context.Context, tx *sql.Tx, knID string) (*interfaces.KNVersionState, error) {
 	exists, err := s.va.LockNetwork(ctx, tx, knID, true)
 	if err != nil {
 		return nil, err
@@ -171,9 +183,6 @@ func (s *service) lockState(ctx context.Context, tx *sql.Tx, knID string) (*inte
 	}
 	if state == nil {
 		return nil, newHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_NotVersioned)
-	}
-	if state.Mode == interfaces.KNVersioningDisabling {
-		return nil, newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_VersioningDisabling)
 	}
 	return state, nil
 }
@@ -813,4 +822,79 @@ func (s *service) Purge(ctx context.Context, knID string, k int, req *interfaces
 			}
 			return nil
 		})
+}
+
+// Disable takes a network out of versioning (design §12.9). Each step can be repeated: a
+// failure leaves the network disabling, with writes paused, and running Disable again resumes.
+// main already holds the running version, its concept index and its proxy grants, because
+// publish and activate keep them current, so only the versioned rows are left to remove.
+func (s *service) Disable(ctx context.Context, knID string, req *interfaces.KNDisableVersioningRequest) (*interfaces.KNVersioningView, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Disable knowledge network versioning")
+	defer span.End()
+	if err := s.checkPermission(ctx, knID, interfaces.OPERATION_TYPE_AUTHORIZE); err != nil {
+		return nil, err
+	}
+	// 1. Pause writes, unless the draft has changes the request does not discard.
+	err := s.plainTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		state, err := s.lockAnyState(ctx, tx, knID)
+		if err != nil {
+			return err
+		}
+		if state.Mode == interfaces.KNVersioningDisabling {
+			return nil
+		}
+		if state.DraftHasChanges() && !req.DiscardDraft {
+			return newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_DraftHasChanges).
+				WithErrorDetails("pass discard_draft=true to drop the unpublished changes")
+		}
+		state.Mode, state.UpdateTime = interfaces.KNVersioningDisabling, s.now()
+		return s.va.UpdateState(ctx, tx, state)
+	})
+	if err != nil {
+		return nil, internalError(ctx, err)
+	}
+	// 2. Delete the draft and every version branch, keep the version records as purged, and
+	// remove the state row. The draft's concept index goes with the draft.
+	err = s.draftTx(knID)(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		state, err := s.lockAnyState(ctx, tx, knID)
+		if err != nil {
+			return err
+		}
+		if state.Mode != interfaces.KNVersioningDisabling {
+			return newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_VersioningDisabling)
+		}
+		branches, err := s.bc.BranchesWithData(ctx, tx, knID)
+		if err != nil {
+			return err
+		}
+		for _, branch := range branches {
+			if branch == interfaces.MAIN_BRANCH {
+				continue
+			}
+			if err := s.bc.DeleteBranch(ctx, tx, knID, branch); err != nil {
+				return err
+			}
+		}
+		versions, _, err := s.va.ListVersions(ctx, knID, &interfaces.KNVersionsQuery{
+			Statuses: []string{interfaces.KNVersionRunning, interfaces.KNVersionHistory, interfaces.KNVersionDeprecated},
+			Limit:    -1,
+		})
+		if err != nil {
+			return err
+		}
+		for _, version := range versions {
+			if err := s.setStatus(ctx, tx, knID, version.Version, interfaces.KNVersionPurged); err != nil {
+				return err
+			}
+		}
+		if err := s.va.CreateEvent(ctx, tx, s.newEvent(ctx, knID, interfaces.KNVersionEventDisable,
+			state.RunningVersion, 0, req.Notes, "")); err != nil {
+			return err
+		}
+		return s.va.DeleteState(ctx, tx, knID)
+	})
+	if err != nil {
+		return nil, internalError(ctx, err)
+	}
+	return s.view(nil), nil
 }

@@ -325,3 +325,43 @@ func TestEnableRefusesReservedBranchData(t *testing.T) {
 		t.Fatal("enable left a state row behind")
 	}
 }
+
+func TestDisableKeepsRunningVersionOnMain(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(1, f.editDraft("name-2"), ""); err != nil {
+		t.Fatal(err)
+	}
+	f.editDraft("name-3")
+	// Unpublished changes are kept unless the operator discards them.
+	_, err := f.svc.Disable(f.ctx, f.knID, &interfaces.KNDisableVersioningRequest{})
+	wantCode(t, err, berrors.BknBackend_KNVersion_DraftHasChanges)
+	if !f.state().Enabled {
+		t.Fatal("a refused disable changed the state")
+	}
+	view, err := f.svc.Disable(f.ctx, f.knID, &interfaces.KNDisableVersioningRequest{DiscardDraft: true, Notes: "rollback"})
+	if err != nil || view.Enabled {
+		t.Fatalf("disable: %+v %v", view, err)
+	}
+	tx, err := f.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	branches, err := f.svc.bc.BranchesWithData(f.ctx, tx, f.knID)
+	_ = tx.Rollback()
+	if err != nil || len(branches) != 1 || branches[0] != interfaces.MAIN_BRANCH || f.objectName("main") != "name-2" {
+		t.Fatalf("after disable: branches %v main %q %v", branches, f.objectName("main"), err)
+	}
+	if f.status(1) != interfaces.KNVersionPurged || f.status(2) != interfaces.KNVersionPurged {
+		t.Fatalf("versions: %s %s", f.status(1), f.status(2))
+	}
+	// Disabling again reports the network as not versioned; enabling again continues numbering.
+	_, err = f.svc.Disable(f.ctx, f.knID, &interfaces.KNDisableVersioningRequest{})
+	wantCode(t, err, berrors.BknBackend_KNVersion_NotVersioned)
+	view, err = f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{})
+	if err != nil || view.RunningVersion != 3 {
+		t.Fatalf("enable again: %+v %v", view, err)
+	}
+}

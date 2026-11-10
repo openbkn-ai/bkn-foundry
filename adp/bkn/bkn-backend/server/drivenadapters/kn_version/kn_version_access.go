@@ -319,6 +319,13 @@ func (va *versionAccess) ListEvents(ctx context.Context, knID string, offset, li
 	return events, total, rows.Err()
 }
 
+func (va *versionAccess) DeleteState(ctx context.Context, tx *sql.Tx, knID string) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM "+stateTable+" WHERE f_kn_id = ?", knID); err != nil {
+		return fmt.Errorf("delete the version state of %s: %w", knID, err)
+	}
+	return nil
+}
+
 func (va *versionAccess) DeleteNetwork(ctx context.Context, tx *sql.Tx, knID string) error {
 	for _, table := range []string{stateTable, versionTable, eventTable, "t_kn_index_build", "t_object_metric_version_seq"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE f_kn_id = ?", knID); err != nil {
