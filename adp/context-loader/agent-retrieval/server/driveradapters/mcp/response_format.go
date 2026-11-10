@@ -7,6 +7,8 @@
 package mcp
 
 import (
+	"unicode/utf8"
+
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
@@ -21,21 +23,33 @@ func GetResponseFormatFromRequest(req mcp.CallToolRequest) (rest.ResponseFormat,
 
 // BuildMCPToolResult uniformly constructs the MCP Tool return result based on response_format (the text is JSON or TOON, and structuredContent is still the original object)
 func BuildMCPToolResult(resp interface{}, format rest.ResponseFormat) (*mcp.CallToolResult, error) {
-	textContent, err := renderToolText(resp, format)
-	if err != nil {
-		return nil, err
+	var textContent string
+	if format == rest.FormatTOON {
+		_, bodyBytes, err := rest.MarshalResponse(rest.FormatTOON, resp)
+		if err != nil {
+			return nil, err
+		}
+		textContent = string(bodyBytes)
+	} else {
+		textContent = utils.ObjectToJSON(resp)
 	}
 	return mcp.NewToolResultStructured(resp, textContent), nil
 }
 
-// renderToolText is the text BuildMCPToolResult puts in front of the caller.
-func renderToolText(resp interface{}, format rest.ResponseFormat) (string, error) {
+// toolResultRunes is how many characters the larger of a tool result's two copies
+// carries: the text in the requested format, and the structuredContent JSON that
+// BuildMCPToolResult puts beside it. A host may read either one, so a size bound on a
+// tool's answer has to hold for both.
+func toolResultRunes(resp interface{}, format rest.ResponseFormat) (int, error) {
+	n := utf8.RuneCountInString(utils.ObjectToJSON(resp))
 	if format == rest.FormatTOON {
-		_, bodyBytes, err := rest.MarshalResponse(rest.FormatTOON, resp)
+		_, toon, err := rest.MarshalResponse(rest.FormatTOON, resp)
 		if err != nil {
-			return "", err
+			return 0, err
 		}
-		return string(bodyBytes), nil
+		if t := utf8.RuneCount(toon); t > n {
+			n = t
+		}
 	}
-	return utils.ObjectToJSON(resp), nil
+	return n, nil
 }

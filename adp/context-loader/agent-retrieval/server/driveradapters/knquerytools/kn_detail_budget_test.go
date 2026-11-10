@@ -16,6 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 )
@@ -117,5 +119,39 @@ func TestGetKnDetailRESTBrief(t *testing.T) {
 	}
 	if m["object_type_count"] != float64(2) {
 		t.Fatalf("object_type_count = %v, want 2", m["object_type_count"])
+	}
+}
+
+// A REST caller that asked for TOON is measured in TOON, the body it is written: the
+// format comes from the request context, where the response format middleware puts it.
+func TestGetKnDetailRESTNarrowsWithinTheCharacterLimitInTOON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	backend := &detailRESTBackend{detail: restNetwork(60, 40)}
+	handler := &knQueryToolsHandler{
+		bknBackend:   backend,
+		metrics:      knmetrics.NewKnMetricsServiceWith(nil, backend, nil),
+		schemaAccess: grantAll{properties: 40},
+		knAuthz:      allowReads{},
+	}
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(common.SetResponseFormatToCtx(c.Request.Context(), rest.FormatTOON))
+		c.Next()
+	})
+	router.POST("/kn/get_kn_detail", handler.GetKnDetail)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/kn/get_kn_detail", strings.NewReader(`{"kn_id":"kn-1"}`)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if strings.HasPrefix(strings.TrimSpace(body), "{") {
+		t.Fatalf("want a TOON body, got JSON: %.80s", body)
+	}
+	if n := utf8.RuneCountInString(body); n > interfaces.MaxKnDetailChars {
+		t.Fatalf("TOON body is %d characters, past the %d limit", n, interfaces.MaxKnDetailChars)
+	}
+	if !strings.Contains(body, "data_property_count") || !strings.Contains(body, "notice") {
+		t.Fatalf("want the outline with its notice, got %.200s", body)
 	}
 }

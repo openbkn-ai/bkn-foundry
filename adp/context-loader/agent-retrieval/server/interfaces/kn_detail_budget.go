@@ -11,8 +11,9 @@ import "strings"
 // cheap way to learn what a network is about before reading any of its model.
 const DetailLevelBrief = "brief"
 
-// MaxKnDetailChars bounds a get_kn_detail answer, counted in characters of the text
-// the caller reads, in the format they asked for.
+// MaxKnDetailChars bounds a get_kn_detail answer, counted in characters of what the
+// caller reads: a REST body in the format they asked for, and over MCP the larger of
+// the text and the structuredContent JSON beside it, since a host may read either.
 //
 // The count caps above bound what an answer costs to build; this bounds what it costs
 // to read. Under them a summary still reached about 218 thousand characters, which

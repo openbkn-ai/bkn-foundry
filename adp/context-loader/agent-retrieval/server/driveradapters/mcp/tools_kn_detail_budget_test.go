@@ -6,6 +6,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -198,5 +199,73 @@ func TestKnDetailUnderTheCharacterLimitIsUnchanged(t *testing.T) {
 	first, _ := objectTypes[0].(map[string]any)
 	if len(objectTypes) != 10 || first["data_properties"] == nil {
 		t.Fatalf("want all 10 object types with their properties, got %v", objectTypes)
+	}
+}
+
+// structuredRunes is the size of the structuredContent copy a host may read in place
+// of the text.
+func structuredRunes(t *testing.T, result *mcp.CallToolResult) int {
+	t.Helper()
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return utf8.RuneCount(raw)
+}
+
+// The text a TOON caller reads sits beside a structuredContent JSON copy that is
+// larger, and a host may read either. A limit that held for the text alone let the
+// JSON copy pass it.
+func TestKnDetailLimitHoldsForTheStructuredCopyToo(t *testing.T) {
+	saved := interfaces.MaxKnDetailChars
+	t.Cleanup(func() { interfaces.MaxKnDetailChars = saved })
+
+	interfaces.MaxKnDetailChars = 1 << 30
+	whole, _ := callKnDetail(t, networkOfSize(40), map[string]any{"kn_id": "kn-001", "response_format": "toon"})
+	toon, structured := utf8.RuneCountInString(resultText(whole)), structuredRunes(t, whole)
+	if structured <= toon {
+		t.Fatalf("fixture: the JSON copy (%d) must be larger than the TOON text (%d)", structured, toon)
+	}
+
+	// Between the two: the TOON text fits, the JSON copy does not.
+	interfaces.MaxKnDetailChars = (toon + structured) / 2
+	result, _ := callKnDetail(t, networkOfSize(40), map[string]any{"kn_id": "kn-001", "response_format": "toon"})
+	if n := structuredRunes(t, result); n > interfaces.MaxKnDetailChars {
+		t.Fatalf("structuredContent is %d characters, past the %d limit", n, interfaces.MaxKnDetailChars)
+	}
+	if n := utf8.RuneCountInString(resultText(result)); n > interfaces.MaxKnDetailChars {
+		t.Fatalf("text is %d characters, past the %d limit", n, interfaces.MaxKnDetailChars)
+	}
+	if notice, _ := resultToMap(t, result)["notice"].(string); notice == "" {
+		t.Fatalf("a narrowed answer must say so")
+	}
+}
+
+// A shell built for brief, before any authorization, and one the size limit forces
+// after it, count the same network the same way: authorization narrows an object
+// type's properties, never the object types themselves.
+func TestKnDetailShellsCountTheNetworkAlike(t *testing.T) {
+	saved := interfaces.MaxKnDetailChars
+	t.Cleanup(func() { interfaces.MaxKnDetailChars = saved })
+
+	brief, _ := callKnDetail(t, propertyHeavyNetwork(), map[string]any{
+		"kn_id": "kn-001", "response_format": "json", "detail_level": interfaces.DetailLevelBrief,
+	})
+	interfaces.MaxKnDetailChars = 3000
+	sized, reads := callKnDetail(t, propertyHeavyNetwork(), map[string]any{"kn_id": "kn-001", "response_format": "json"})
+	if reads == 0 {
+		t.Fatalf("fixture: the size-forced shell must come after authorization")
+	}
+	b, s := resultToMap(t, brief), resultToMap(t, sized)
+	if _, isShell := s["object_types"]; !isShell || s["object_types"] != nil {
+		t.Fatalf("fixture: want the size limit to force the shell, got %v", s["object_types"])
+	}
+	for _, field := range []string{"object_type_count", "relation_type_count", "action_type_count"} {
+		if b[field] != s[field] {
+			t.Fatalf("%s: brief says %v, the size-forced shell %v", field, b[field], s[field])
+		}
+	}
+	if s["object_type_count"] != float64(60) {
+		t.Fatalf("object_type_count = %v, want the network's 60", s["object_type_count"])
 	}
 }

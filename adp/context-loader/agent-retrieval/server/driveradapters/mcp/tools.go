@@ -10,7 +10,6 @@ import (
 	"context"
 	"log"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-playground/validator/v10"
@@ -720,8 +719,7 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			if detailLevel != interfaces.DetailLevelFull {
 				d = objectpermission.WithUnrestrictedPermissionsOmitted(d)
 			}
-			text, err := renderToolText(d, format)
-			return utf8.RuneCountInString(text), err
+			return toolResultRunes(d, format)
 		}); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
