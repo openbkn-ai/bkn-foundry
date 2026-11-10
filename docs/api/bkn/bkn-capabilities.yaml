@@ -257,8 +257,15 @@ paths:
               - desc
             type: string
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         '200':
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: >-
             Capability bindings of this branch for a knowledge-network detail reader. A
             navigation-only caller who reaches the network through a visible child receives a
@@ -275,6 +282,10 @@ paths:
             this network.
         '404':
           description: Knowledge network or branch not found
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       operationId: listCapabilities
       tags:
         - Capabilities
@@ -303,6 +314,9 @@ paths:
               $ref: '#/components/schemas/AttachCapabilitiesRequest'
       responses:
         '200':
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: >-
             The bindings of the requested capabilities. This reuses the list schema but fills
             only `entries` and `total_count`: `boxes` is empty and `metadata_available` /
@@ -362,8 +376,13 @@ paths:
           schema:
             type: string
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       responses:
         '204':
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: >-
             Released. Releasing a binding that is already gone is also a 204: the request states
             that the capability is not mounted, and that is true either way. This matches
@@ -374,6 +393,10 @@ paths:
           description: The caller cannot modify this knowledge network
         '404':
           description: Knowledge network or branch not found
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       operationId: detachCapabilities
       tags:
         - Capabilities

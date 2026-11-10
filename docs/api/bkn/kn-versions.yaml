@@ -1,0 +1,967 @@
+---
+openapi: 3.0.3
+info:
+  title: BKN 知识网络 · 版本管理 API
+  version: 0.1.0
+  description: |
+    Versions of a knowledge network. A network with versioning keeps a **draft** that all
+    definition writes go to, and numbered **versions** published from it. Exactly one version is
+    **running**: reads, queries and the proxy grants of the network use it unless a request names
+    another version with `kn_version`.
+
+    Operations here enable versioning, publish the draft as a new version, switch the running
+    version (activate), copy a version into the draft or discard the draft's changes
+    (`draft/reset`), and deprecate, restore and purge versions. The same
+    `kn_version` / `draft_revision` read parameters and the `If-Match` / `expected_draft_revision`
+    write preconditions apply to the definition APIs of the network; they are described on those
+    operations and in the sections below.
+
+    ## Version statuses
+
+    | Status | Meaning |
+    | --- | --- |
+    | `running` | The version in use. Only one. |
+    | `history` | A published version that is not running; it can be activated, copied or deprecated. |
+    | `deprecated` | Hidden from normal use; it can be restored. Professional edition. |
+    | `purged` | Its content was deleted. The record stays, reads answer 410. |
+
+    The Community edition keeps only the running and the previous version: a publish purges the
+    version before the previous one (`purged_version` in the response), and deprecate, restore and
+    purge are refused with 403 `BknBackend.KNVersion.EditionRestricted`. `full_history` in the
+    versioning state tells which edition applies.
+
+    ## Reading a version
+
+    Every read endpoint of a versioned network accepts `kn_version` (`running`, `draft` or a version
+    number) and, for the draft, `draft_revision`. The response carries `X-Kn-Version`, and for the
+    draft `X-Kn-Draft-Revision`. Reading the draft needs `modify` on the network; reading a version
+    needs `view_detail`. A read that finds its version purged while it ran answers 410
+    `BknBackend.KNVersion.VersionPurged`; a read of the draft that was written meanwhile answers 409
+    `BknBackend.KNVersion.DraftRevisionMismatch`. On an unversioned network `kn_version` accepts only
+    `running`, which means main, so callers can use one code path for both.
+
+    ## Writing to the draft
+
+    A write to a versioned network always goes to the draft and each write adds one to the draft
+    revision, returned as `X-Kn-Draft-Revision`. What a write must send to detect concurrent changes
+    depends on the operation, and is checked only on versioned networks (an unversioned network
+    accepts the same headers and parameters but never requires them):
+
+    | Write | Precondition |
+    | --- | --- |
+    | Create definitions (`POST`) | none |
+    | Update one definition (`PUT`, `PATCH`) | `If-Match` with the definition's `revision` (also its `ETag`) |
+    | Delete definitions (`DELETE`) | `If-Match` for one definition, or `expected_draft_revision` |
+    | Import an archive, replace the draft, change `skill_content` of the network | `expected_draft_revision` |
+
+    A write without its precondition is 428 `BknBackend.KNVersion.PreconditionRequired`; a stale
+    `If-Match` is 409 `BknBackend.KNVersion.DefinitionModified` with `current_etag` in the error
+    details; a stale `expected_draft_revision` is 409 `BknBackend.KNVersion.DraftRevisionMismatch`.
+
+    ## Idempotency
+
+    Operations that change versions accept an `Idempotency-Key` header (at most 64 characters).
+    Retrying with the same key returns the first call's result and status without running it again.
+
+    ## Permissions
+
+    Enabling versioning, publishing, activating, resetting the draft, building the draft index,
+    deprecating and restoring need `modify` on the knowledge network; purging needs `delete`; reading
+    the state, versions, events and referenced resources needs `view_detail`. See
+    `../knowledge-network-authorization.md`.
+
+    All APIs are exposed under /api/bkn-backend/v1 and require OAuth2 authentication.
+security:
+  - OAuth2: []
+tags:
+  - name: KN Versioning
+    description: Enable versioning, and read the state of a versioned network.
+  - name: KN Versions
+    description: Publish, switch, copy and retire versions.
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versioning:
+    post:
+      tags: [KN Versioning]
+      summary: Enable versioning for a knowledge network
+      description: |
+        Turns an existing network into a versioned one. The current content of the main branch becomes
+        the first running version (the next free number if the network was versioned before) and the
+        draft starts as a copy of it. Idempotent with `Idempotency-Key`. Refused with 409
+        `BknBackend.KNVersion.ReservedBranchInUse` when the network already holds data on a reserved
+        branch (`draft` or `v<N>`).
+      operationId: enableKnVersioning
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnableVersioningRequest"
+      responses:
+        "201":
+          description: Versioning enabled. Returns the version state.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersioning"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `BknBackend.KNVersion.AlreadyVersioned` (details: none), `BknBackend.KNVersion.ReservedBranchInUse`
+            (details `branches`), or `BknBackend.KNVersion.VersioningDisabling`.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+        "422":
+          $ref: "#/components/responses/IdempotencyKeyReused"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      tags: [KN Versioning]
+      summary: Get the version state of a knowledge network
+      description: |
+        Returns the running and previous versions and the state of the draft. A network without
+        versioning answers `enabled: false`. The same object is returned in the `versioning` field of
+        `GET /knowledge-networks/{kn_id}` for a versioned network.
+      operationId: getKnVersioning
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersioning"
+              examples:
+                versioned:
+                  value:
+                    enabled: true
+                    mode: enabled
+                    running_version: 3
+                    previous_version: 2
+                    full_history: true
+                    draft:
+                      base_version: 3
+                      has_changes: true
+                      outdated: false
+                      revision: 128
+                      index: { revision: 128, status: ready }
+                      index_ready: true
+                not_versioned:
+                  value:
+                    enabled: false
+                    running_version: 0
+                    previous_version: 0
+                    full_history: true
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions:
+    get:
+      tags: [KN Versions]
+      summary: List the versions of a knowledge network
+      description: Lists version records, newest first. Purged versions stay listed with status `purged`.
+      operationId: listKnVersions
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - name: status
+          in: query
+          description: Comma-separated statuses to keep, from `running`, `history`, `deprecated`, `purged`. Defaults to all.
+          schema:
+            type: string
+            example: running,history
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/KnVersion"
+                  total_count:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [KN Versions]
+      summary: Publish the draft as a new version
+      description: |
+        Publishes the draft as the next version and makes it the running version, in one transaction
+        that also switches the network's main branch, concept index and proxy grants to it. The
+        request must name the running version and the draft revision it was prepared against, so a
+        publish never goes out over a change the caller did not see.
+
+        Refused with 400 `BknBackend.KNVersion.ValidationFailed` when the draft references things
+        that do not exist; its details list `problems`. Refused with 409
+        `BknBackend.KNVersion.NothingToPublish` when the draft has no unpublished changes (the first
+        version of a network without a running version publishes even without edits), and with 409
+        `BknBackend.KNVersion.DraftBaseOutdated` when the running version was switched after the draft
+        took its base, unless `allow_outdated_base` is true. In the Community edition the publish
+        purges the version before the previous one.
+      operationId: publishKnVersion
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishRequest"
+            example:
+              expected_running_version: 3
+              expected_draft_revision: 128
+              label: v1.2.0
+              notes: "Regulatory update: add the small-business customer class"
+              source:
+                type: bkn-project
+                project_id: p-01
+                ref: 9f3c2e1
+      responses:
+        "201":
+          description: Published. Returns the new version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishResult"
+        "400":
+          description: |
+            `BknBackend.KNVersion.ValidationFailed` (details `problems`), `BknBackend.KNVersion.InvalidParameter`
+            (a required field is missing), or `BknBackend.KNVersion.NotVersioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemsError"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `BknBackend.KNVersion.RunningVersionMismatch` (details `running_version`),
+            `BknBackend.KNVersion.DraftRevisionMismatch` (details `draft_revision`),
+            `BknBackend.KNVersion.NothingToPublish`, `BknBackend.KNVersion.DraftBaseOutdated`
+            (details `running_version`, `draft_base_version`, `based_on_running_version`), or
+            `BknBackend.KNVersion.VersioningDisabling`.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+        "422":
+          $ref: "#/components/responses/IdempotencyKeyReused"
+        "500":
+          description: Internal error, including `BknBackend.KNVersion.ConceptIndexFailed` when the concept index of the new version could not be built. Retry the publish.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions/events:
+    get:
+      tags: [KN Versions]
+      summary: List version events
+      description: The audit trail of version operations, newest first.
+      operationId: listKnVersionEvents
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/KnVersionEvent"
+                  total_count:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions/referenced-resources:
+    get:
+      tags: [KN Versions]
+      summary: List the resources the draft and the versions reference
+      description: |
+        Lists the data resources, functions and Skills that the draft and the versions not purged use,
+        each with the versions that use it (`draft` for the draft, otherwise version numbers). Use it
+        to find what a clean-up must keep.
+      operationId: listKnReferencedResources
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferencedResources"
+              example:
+                data_resources:
+                  - resource_id: ds-orders
+                    versions: [draft, 3, 2]
+                functions:
+                  - box_id: box-01
+                    tool_id: tool-07
+                    versions: [draft, 3]
+                skills:
+                  - skill_id: skill-12
+                    versions: [2]
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions/{version}:
+    get:
+      tags: [KN Versions]
+      summary: Get one version record
+      description: Returns the record of a version, not its definitions. Read the definitions with `kn_version` on the definition APIs.
+      operationId: getKnVersion
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Version"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnVersion"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions/{version}/activate:
+    post:
+      tags: [KN Versions]
+      summary: Make a version the running version
+      description: |
+        Switches the running version to a `history` version, in one transaction that also switches the
+        main branch, concept index and proxy grants. The previous running version becomes `history`.
+        The target's references are checked first; a version that references resources that no longer
+        exist is refused with 409 `BknBackend.KNVersion.BrokenReferences` and its details list
+        `problems`. Only a `history` version can be activated (409 `BknBackend.KNVersion.VersionNotActivatable`,
+        details `status`).
+      operationId: activateKnVersion
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Version"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateRequest"
+      responses:
+        "200":
+          description: Switched. Returns the version state.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersioning"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `BknBackend.KNVersion.RunningVersionMismatch`, `BknBackend.KNVersion.VersionNotActivatable`,
+            `BknBackend.KNVersion.BrokenReferences` (details `problems`), or
+            `BknBackend.KNVersion.VersioningDisabling`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemsError"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
+        "422":
+          $ref: "#/components/responses/IdempotencyKeyReused"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions/{version}/deprecate:
+    post:
+      tags: [KN Versions]
+      summary: Deprecate a version
+      description: Marks a `history` version `deprecated`. Professional edition only (403 `BknBackend.KNVersion.EditionRestricted` otherwise).
+      operationId: deprecateKnVersion
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Version"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionStatusRequest"
+      responses:
+        "200":
+          description: Deprecated. Returns the version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnVersion"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "`BknBackend.KNVersion.VersionNotDeprecatable` (details `status`): only a `history` version can be deprecated. Also `BknBackend.KNVersion.VersioningDisabling`."
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+        "422":
+          $ref: "#/components/responses/IdempotencyKeyReused"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions/{version}/restore:
+    post:
+      tags: [KN Versions]
+      summary: Restore a deprecated version
+      description: Returns a `deprecated` version to `history`. Professional edition only.
+      operationId: restoreKnVersion
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Version"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionStatusRequest"
+      responses:
+        "200":
+          description: Restored. Returns the version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnVersion"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "`BknBackend.KNVersion.VersionNotRestorable` (details `status`): only a `deprecated` version can be restored. Also `BknBackend.KNVersion.VersioningDisabling`."
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+        "422":
+          $ref: "#/components/responses/IdempotencyKeyReused"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/versions/{version}/purge:
+    post:
+      tags: [KN Versions]
+      summary: Purge a version
+      description: |
+        Deletes the content and the concept index of a version permanently; the record stays with
+        status `purged`. Needs `delete` on the network. Professional edition only. The running version
+        and the version the draft is based on cannot be purged (409 `BknBackend.KNVersion.VersionProtected`).
+        Purging a version that is already purged answers 410.
+      operationId: purgeKnVersion
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Version"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionStatusRequest"
+      responses:
+        "200":
+          description: Purged. Returns the version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnVersion"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "`BknBackend.KNVersion.VersionProtected`, or `BknBackend.KNVersion.VersioningDisabling`."
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
+        "422":
+          $ref: "#/components/responses/IdempotencyKeyReused"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/draft/reset:
+    post:
+      tags: [KN Versions]
+      summary: Copy a version into the draft, or discard the draft's changes
+      description: |
+        Replaces the whole draft with a version. With `from_version` the draft becomes a copy of that
+        version (a `copy` event); without it the draft returns to the running version, discarding its
+        changes (a `discard` event). `expected_draft_revision` is required. When the draft has
+        unpublished changes the request is refused with 409 `BknBackend.KNVersion.DraftHasChanges`
+        (details `draft`) unless `overwrite_changes` is true.
+      operationId: resetKnDraft
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetDraftRequest"
+      responses:
+        "200":
+          description: Draft reset. Returns the version state.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersioning"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `BknBackend.KNVersion.DraftRevisionMismatch`, `BknBackend.KNVersion.DraftHasChanges`,
+            or `BknBackend.KNVersion.VersioningDisabling`.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
+        "422":
+          $ref: "#/components/responses/IdempotencyKeyReused"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/draft/index:
+    post:
+      tags: [KN Versions]
+      summary: Make the concept index of the draft current
+      description: |
+        Ensures the concept index of the draft matches its current revision, so that concept search
+        over `kn_version=draft` finds the latest edits. The draft's index is kept current on every
+        write, so the build is reported `ready` for the current revision; 202 is reserved for a build
+        that runs in the background.
+      operationId: buildKnDraftIndex
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      responses:
+        "200":
+          description: The index is ready for the current draft revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftIndex"
+        "202":
+          description: A build for the current draft revision is running; ask again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftIndex"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "`BknBackend.KNVersion.VersioningDisabling`."
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  parameters:
+    KNID:
+      name: kn_id
+      in: path
+      required: true
+      description: Business knowledge network ID
+      schema:
+        type: string
+        maxLength: 128
+        pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
+    Version:
+      name: version
+      in: path
+      required: true
+      description: Version number, a positive integer.
+      schema:
+        type: integer
+        minimum: 1
+    Offset:
+      name: offset
+      in: query
+      description: Offset, greater than or equal to 0. Defaults to 0.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Limit:
+      name: limit
+      in: query
+      description: Page size in the range [1, 1000]. Defaults to 20.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 20
+  responses:
+    BadRequest:
+      description: |
+        `BknBackend.KNVersion.InvalidParameter` (a parameter or required field is wrong or missing),
+        `BknBackend.KNVersion.InvalidVersion` (the version is not a positive integer), or
+        `BknBackend.KNVersion.NotVersioned` (the network has no versioning).
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+    Forbidden:
+      description: |
+        No permission on the knowledge network, or `BknBackend.KNVersion.EditionRestricted` (details
+        `edition`) when the Community edition is asked for a version other than the running and the
+        previous one, or for deprecate, restore or purge.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+    NotFound:
+      description: The knowledge network does not exist, or `BknBackend.KNVersion.VersionNotFound`.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+    IdempotencyKeyReused:
+      description: |
+        `BknBackend.KNVersion.IdempotencyKeyReused`. The `Idempotency-Key` was already used for a
+        different operation or target version (details `operation`, `version`).
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+    InternalError:
+      description: Internal error (`BknBackend.KNVersion.InternalError`). Retry; contact an administrator if it persists.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/kn-version.yaml#/components/schemas/KnVersionError"
+  schemas:
+    AccountInfo:
+      $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+    EnableVersioningRequest:
+      type: object
+      additionalProperties: false
+      description: Optional body; unknown fields are refused.
+      properties:
+        label:
+          type: string
+          description: A name for the first version, such as `v1.0.0`.
+        notes:
+          type: string
+          description: Release notes recorded with the version and its event.
+    PublishRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_running_version, expected_draft_revision]
+      properties:
+        expected_running_version:
+          type: integer
+          description: The running version the caller saw. A different current value is 409 `RunningVersionMismatch`.
+        expected_draft_revision:
+          type: integer
+          format: int64
+          description: The draft revision the caller saw. A different current value is 409 `DraftRevisionMismatch`.
+        label:
+          type: string
+        notes:
+          type: string
+        source:
+          $ref: "#/components/schemas/VersionSource"
+        allow_outdated_base:
+          type: boolean
+          default: false
+          description: Publish a draft whose base is not the running version any more (`DraftBaseOutdated` otherwise).
+        fail_on_skipped_sources:
+          type: boolean
+          default: false
+          description: Accepted for forward compatibility. It currently has no effect.
+    ActivateRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_running_version]
+      properties:
+        expected_running_version:
+          type: integer
+          description: The running version the caller saw. A different current value is 409 `RunningVersionMismatch`.
+        notes:
+          type: string
+    ResetDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_draft_revision]
+      properties:
+        from_version:
+          type: integer
+          minimum: 1
+          description: The version to copy into the draft. Left out, the draft returns to the running version.
+        expected_draft_revision:
+          type: integer
+          format: int64
+          description: The draft revision the caller saw. A different current value is 409 `DraftRevisionMismatch`.
+        overwrite_changes:
+          type: boolean
+          default: false
+          description: Confirms overwriting unpublished changes of the draft (`DraftHasChanges` otherwise).
+    VersionStatusRequest:
+      type: object
+      additionalProperties: false
+      description: Optional body; unknown fields are refused.
+      properties:
+        notes:
+          type: string
+    VersionSource:
+      type: object
+      description: Where a published version came from, such as a commit of a BKN project.
+      properties:
+        type:
+          type: string
+          example: bkn-project
+        project_id:
+          type: string
+        ref:
+          type: string
+    KnVersion:
+      type: object
+      properties:
+        kn_id:
+          type: string
+        version:
+          type: integer
+        label:
+          type: string
+        status:
+          type: string
+          enum: [running, history, deprecated, purged]
+        origin:
+          type: string
+          enum: [enable, publish]
+          description: How the version came to be.
+        base_version:
+          type: integer
+          description: The version the draft was based on when this version was published.
+        draft_revision:
+          type: integer
+          format: int64
+          description: The draft revision that was published.
+        notes:
+          type: string
+        source:
+          $ref: "#/components/schemas/VersionSource"
+        publisher:
+          $ref: "#/components/schemas/AccountInfo"
+        publish_time:
+          type: integer
+          format: int64
+          description: Milliseconds since the epoch.
+        status_by:
+          $ref: "#/components/schemas/AccountInfo"
+        status_time:
+          type: integer
+          format: int64
+          description: When the status last changed, milliseconds since the epoch.
+    PublishResult:
+      description: The new version. In the Community edition `purged_version` names the version the publish purged.
+      allOf:
+        - $ref: "#/components/schemas/KnVersion"
+        - type: object
+          properties:
+            purged_version:
+              type: integer
+              description: Present only when a version was purged by this publish.
+    KnVersionEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        kn_id:
+          type: string
+        type:
+          type: string
+          enum: [enable, publish, switch, copy, discard, deprecate, restore, purge, disable]
+        from_version:
+          type: integer
+        to_version:
+          type: integer
+        reason:
+          type: string
+          description: "`retention` marks the purge a Community edition publish runs."
+        notes:
+          type: string
+        operator:
+          $ref: "#/components/schemas/AccountInfo"
+        create_time:
+          type: integer
+          format: int64
+    DraftIndex:
+      type: object
+      properties:
+        revision:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [building, ready, failed]
+    ReferencedResources:
+      type: object
+      properties:
+        data_resources:
+          type: array
+          items:
+            type: object
+            properties:
+              resource_id:
+                type: string
+              versions:
+                $ref: "#/components/schemas/ReferencingVersions"
+        functions:
+          type: array
+          items:
+            type: object
+            properties:
+              box_id:
+                type: string
+              tool_id:
+                type: string
+              versions:
+                $ref: "#/components/schemas/ReferencingVersions"
+        skills:
+          type: array
+          items:
+            type: object
+            properties:
+              skill_id:
+                type: string
+              versions:
+                $ref: "#/components/schemas/ReferencingVersions"
+    ReferencingVersions:
+      type: array
+      description: The versions that use the resource, the draft first (`draft`) and then version numbers, newest first.
+      items:
+        oneOf:
+          - type: string
+            enum: [draft]
+          - type: integer
+    ProblemsError:
+      description: |
+        Error envelope whose `error_details` may carry `problems`, the reasons a version cannot go live.
+      allOf:
+        - $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        - type: object
+          properties:
+            error_details:
+              type: object
+              properties:
+                problems:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Problem"
+    Problem:
+      type: object
+      properties:
+        category:
+          type: string
+          description: Currently `broken_reference`, a definition, schedule or binding that points at nothing.
+        definition_type:
+          type: string
+        definition_id:
+          type: string
+        description:
+          type: string

@@ -1,0 +1,199 @@
+# Knowledge-network versioning fragments shared by the bkn module documents.
+# Like errors.yaml and auth.yaml, this file is a $ref fragment and is not linted
+# as a standalone API description. Referencing module documents validate it
+# while resolving their references.
+openapi: 3.0.3
+info:
+  title: shared knowledge-network versioning fragments
+  version: 0.1.0
+paths: {}
+components:
+  parameters:
+    KnVersion:
+      name: kn_version
+      in: query
+      required: false
+      description: |
+        Which version of a versioned knowledge network to read: `running` (the default), `draft`, or a
+        version number. Reading the draft needs `modify` on the network; reading any other version
+        needs `view_detail`. Do not combine it with `branch`. On a network without versioning only
+        `running` is accepted, and it means the main branch.
+
+        Not accepted on writes: a write to a versioned network always goes to its draft, and a write
+        that names `kn_version` is refused with 409 `BknBackend.KNVersion.InvalidVersion`.
+      schema:
+        type: string
+        example: draft
+    DraftRevision:
+      name: draft_revision
+      in: query
+      required: false
+      description: |
+        With `kn_version=draft`, the draft revision the caller expects to read (see the `revision` of
+        `draft` in the versioning state, and the `X-Kn-Draft-Revision` response header). A different
+        current revision is refused with 409 `BknBackend.KNVersion.DraftRevisionMismatch`.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    ExpectedDraftRevision:
+      name: expected_draft_revision
+      in: query
+      required: false
+      description: |
+        The draft revision the write is based on. On a versioned network it is required when the
+        request changes the draft as a whole (an import, or `skill_content` of the network) and
+        accepted instead of `If-Match` when a delete removes several definitions at once. A different
+        current revision is refused with 409 `BknBackend.KNVersion.DraftRevisionMismatch`. Accepted
+        but never required on a network without versioning.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: |
+        The `revision` of the definition being changed or deleted, as returned in its `revision` field
+        or `ETag` response header (quotes are optional). Required on a versioned network for an update
+        (`PUT`, `PATCH`) and, for a delete of one definition, unless `expected_draft_revision` is sent;
+        missing it is 428 `BknBackend.KNVersion.PreconditionRequired`. A stale value is 409
+        `BknBackend.KNVersion.DefinitionModified`, whose details carry `current_etag`. `If-Match`
+        names one definition: with several ids in the path send `expected_draft_revision` instead.
+        Accepted but never required on a network without versioning.
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Makes a version operation safe to retry, at most 64 characters. Retrying with the same key
+        returns the result and status of the first call without running the operation again; a key
+        already used for a different operation or target version is 422
+        `BknBackend.KNVersion.IdempotencyKeyReused`.
+      schema:
+        type: string
+        maxLength: 64
+  headers:
+    XKnVersion:
+      description: |
+        The version this response was read from: a version number, or `draft`. Sent for reads of a
+        versioned network.
+      schema:
+        type: string
+    XKnDraftRevision:
+      description: |
+        The draft revision. Sent when the response was read from the draft (`kn_version=draft`), and
+        by a write to the draft of a versioned network that succeeded: then it is the revision the
+        write produced, to use as the next `expected_draft_revision`.
+      schema:
+        type: integer
+        format: int64
+    ETag:
+      description: |
+        Revision of the single definition returned, quoted. Send it back as `If-Match` when updating
+        or deleting the definition on a versioned network.
+      schema:
+        type: string
+  schemas:
+    KnVersioning:
+      description: >-
+        Version state of a versioned network. Present only on a network with versioning (it is
+        absent otherwise); the same object is returned by `GET /knowledge-networks/{kn_id}/versioning`,
+        where an unversioned network answers `enabled: false` with `full_history` only.
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        mode:
+          type: string
+          enum: [enabled, disabling]
+          description: "`disabling` while an operator is turning versioning off; writes and version operations are paused."
+        running_version:
+          type: integer
+          description: The version that unscoped reads and queries use. 0 before the first version is published.
+        previous_version:
+          type: integer
+          description: The version that ran before, or 0 when none is kept.
+        full_history:
+          type: boolean
+          description: false in the Community edition, which keeps only the running and the previous version.
+        draft:
+          type: object
+          properties:
+            base_version:
+              type: integer
+              description: The version the draft started from.
+            has_changes:
+              type: boolean
+              description: The draft differs from the running version by its base or by edits.
+            outdated:
+              type: boolean
+              description: The running version was switched after the draft took its base.
+            revision:
+              type: integer
+              format: int64
+              description: Draft revision; every write to the draft adds one.
+            index:
+              type: object
+              nullable: true
+              description: >-
+                Concept index build of the draft. The index is kept current on every write to the draft,
+                so it is reported as `ready` for the current revision.
+              properties:
+                revision:
+                  type: integer
+                  format: int64
+                status:
+                  type: string
+                  enum: [building, ready, failed]
+            index_ready:
+              type: boolean
+    KnVersionError:
+      description: |
+        Error envelope of the versioning errors: the common `Error` with a
+        `BknBackend.KNVersion.*` code.
+      allOf:
+        - $ref: './errors.yaml#/components/schemas/Error'
+  responses:
+    PreconditionRequired:
+      description: |
+        `BknBackend.KNVersion.PreconditionRequired`. A write to a versioned network lacks the
+        precondition its operation needs: `If-Match`, `expected_draft_revision`, or either of them.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/KnVersionError'
+    DefinitionModified:
+      description: |
+        Conflict on a versioned network. `BknBackend.KNVersion.DefinitionModified` when `If-Match` no
+        longer matches the definition (details `current_etag`);
+        `BknBackend.KNVersion.DraftRevisionMismatch` when `expected_draft_revision` no longer matches
+        (details `draft_revision`); `BknBackend.KNVersion.DraftHasChanges` when a whole-draft replace
+        would overwrite unpublished changes without `overwrite_changes=true`;
+        `BknBackend.KNVersion.InvalidVersion` when the write names a version or a branch other than
+        the draft; `BknBackend.KNVersion.VersioningDisabling` while versioning is being turned off.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/KnVersionError'
+    ReadConflict:
+      description: |
+        A read of the draft of a versioned network that no longer holds. `BknBackend.KNVersion.DraftRevisionMismatch`
+        when `draft_revision` differs from the current revision, or the draft was written while the
+        read was running (details `draft_revision`); `BknBackend.KNVersion.VersioningDisabling` while
+        versioning is being turned off.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/KnVersionError'
+    VersionPurged:
+      description: |
+        `BknBackend.KNVersion.VersionPurged`. The requested version was purged, or was purged while
+        the read was running; its content is gone.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/KnVersionError'

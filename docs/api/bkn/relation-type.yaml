@@ -97,13 +97,24 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListRelationTypes"
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: List relation types
     post:
       requestBody:
@@ -325,6 +336,9 @@ paths:
                     next_cursor: cursor-relation-types-2
           description: Override GET to search relation types
         "201":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
@@ -372,8 +386,12 @@ paths:
             type: boolean
             default: true
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
         "400":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
@@ -389,6 +407,10 @@ paths:
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
         "503":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Update a relation type
     parameters:
       - name: kn_id
@@ -426,13 +448,26 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
+            ETag:
+              $ref: "../_shared/kn-version.yaml#/components/headers/ETag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RelationTypeDetails"
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: Get relation type details
     delete:
       parameters:
@@ -456,18 +491,29 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
         "409":
           description: |
             BknBackend.RelationType.StillReferenced: a relation type to delete is still the lifecycle replaced_by of a deprecated relation type, or the fallback_for of a relation type
             that this request does not delete. `error_details.references` lists each reference; change or remove them
             first, or delete the referring definitions in the same request.
+
+            On a versioned network the request also answers 409 `BknBackend.KNVersion.DefinitionModified` when `If-Match`
+            is stale, `BknBackend.KNVersion.DraftRevisionMismatch` when `expected_draft_revision` is stale, and
+            `BknBackend.KNVersion.VersioningDisabling` while versioning is being turned off.
           content:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
       summary: Delete relation types
     parameters:
       - name: kn_id
@@ -518,8 +564,15 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
@@ -874,6 +927,10 @@ paths:
                           direction: backward
                       length: 1
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: Explore concept paths from a source
       description: Explore concept paths from a source
     parameters:

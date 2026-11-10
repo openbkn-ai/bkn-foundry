@@ -105,9 +105,14 @@ paths:
             capability declarations in an uploaded archive are resolved and mounted independently after model
             processing, including when ignore leaves an existing model unchanged. Defaults to overwrite for
             compatibility with archive uploads that predate this parameter.
+
+            replace is overwrite that also deletes whatever the archive leaves out, so the target
+            branch ends up holding exactly the archive: definitions and capability bindings, in one
+            transaction. Only archive uploads accept it. overwrite never deletes definitions the archive
+            lacks.
           schema:
             type: string
-            enum: [normal, overwrite, ignore]
+            enum: [normal, overwrite, ignore, replace]
             default: overwrite
           in: query
         - name: strict_mode
@@ -129,9 +134,24 @@ paths:
             type: boolean
             default: false
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
+        - name: overwrite_changes
+          in: query
+          description: |
+            With `import_mode=replace` into a versioned network, confirms that the unpublished changes
+            of the draft may be overwritten. Without it a draft that has such changes is refused with
+            409 `BknBackend.KNVersion.DraftHasChanges`. Defaults to false.
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
-          description: Import succeeded
+          description: |
+            Import succeeded. A versioned network is imported into its draft: every import needs
+            `expected_draft_revision`, and the response carries the draft revision the import produced.
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
@@ -144,6 +164,10 @@ paths:
           description: Invalid request parameters
         '401':
           description: Unauthorized
+        '409':
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
+        '428':
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
 
   /api/bkn-backend/v1/bkns/{kn_id}:
     get:
@@ -181,9 +205,18 @@ paths:
           schema:
             type: string
             enum: ['2.0', '3.0']
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         '200':
-          description: Export succeeded
+          description: |
+            Export succeeded. A versioned network exports its running version unless `kn_version`
+            names the draft or another version.
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/octet-stream:
               schema:
@@ -195,6 +228,10 @@ paths:
           description: Unauthorized
         '404':
           description: Knowledge network not found
+        '409':
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        '410':
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
   /api/bkn-backend/v1/bkns/{kn_id}/check:
     get:
       tags:
@@ -223,9 +260,16 @@ paths:
           schema:
             type: string
             default: main
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         '200':
           description: Check result
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
@@ -236,11 +280,15 @@ paths:
           description: No permission to read the knowledge network
         '404':
           description: Knowledge network not found
+        '409':
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        '410':
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
   /api/bkn-backend/v1/bkns/diff:
     post:
       tags:
         - BKN Import/Export
-      summary: Compare two knowledge network branches
+      summary: Compare two knowledge network branches or versions
       description: |
         Report what differs between two knowledge network branches, definition by definition and
         field by field. Both networks are named in the body: neither is the resource being
@@ -256,6 +304,12 @@ paths:
 
         Definitions that are identical on both sides are counted in `summary` and left out of
         `entries`.
+
+        A side of a versioned network names what to compare with `kn_version` (`running`, `draft` or a
+        version number) instead of `branch`; comparing the draft needs `modify` on the network. The
+        comparison covers object types, relation types, action types, risk types, concept groups,
+        metrics, value types and capability bindings, and the network itself. `base` and `target`
+        in the result echo the branch that was read (`draft`, or `v<N>` for a version).
       operationId: diffKNs
       security:
         - OAuth2: []
@@ -307,6 +361,10 @@ paths:
           description: The caller may not read one of the two networks
         '404':
           description: Knowledge network not found
+        '409':
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        '410':
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
   /api/bkn-backend/v1/bkns/diff/object-data-stats:
     post:
       tags:
@@ -566,7 +624,14 @@ components:
         branch:
           type: string
           default: main
-          description: Branch name. Defaults to main.
+          description: Branch name. Defaults to main. Do not combine it with `kn_version`.
+        kn_version:
+          type: string
+          description: |
+            Which version of a versioned network to compare: `running`, `draft` or a version number.
+            On a network without versioning only `running` is accepted, and it means main. Do not
+            combine it with `branch`.
+          example: draft
 
     ObjectDataStatsSideRequest:
       type: object
@@ -681,7 +746,7 @@ components:
       properties:
         type:
           type: string
-          enum: [object_type, relation_type, action_type, risk_type, concept_group, metric, network]
+          enum: [object_type, relation_type, action_type, risk_type, concept_group, metric, value_type, capability_binding, network]
         id:
           type: string
         action:
