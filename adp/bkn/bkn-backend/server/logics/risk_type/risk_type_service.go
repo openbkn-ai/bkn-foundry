@@ -130,6 +130,12 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
+		if len(riskTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, riskTypes[0].KNID, riskTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return nil, err
+			}
+		}
 		defer func() {
 			if err != nil {
 				if rollbackErr := tx.Rollback(); rollbackErr != nil {
@@ -456,6 +462,10 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, riskType.KNID, riskType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		defer func() {
 			if err != nil {
 				_ = tx.Rollback()
@@ -533,6 +543,10 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 		if err != nil {
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
 		}
 		defer func() {
 			if err != nil {

@@ -237,6 +237,12 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if len(conceptGroups) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, conceptGroups[0].KNID, conceptGroups[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return nil, err
+			}
+		}
 		defer func() {
 			if err == nil {
 				err = tx.Commit()
@@ -493,6 +499,10 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return "", err
 		}
 
 		// 0.1 On failure.
@@ -1089,6 +1099,10 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1177,6 +1191,10 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
 		}
 	}
 
@@ -1501,6 +1519,10 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return []string{}, err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1772,6 +1794,10 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
 		}
 		// 0.1 On failure.
 		defer func() {

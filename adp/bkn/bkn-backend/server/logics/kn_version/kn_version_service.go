@@ -109,10 +109,10 @@ func (s *service) view(state *interfaces.KNVersionState) *interfaces.KNVersionin
 // operation identifies a version operation for idempotency: its event types and the version it
 // targets, 0 when the request names none.
 type operation struct {
-	types   []string
-	target  int
-	key     string
-	replay  func(ctx context.Context, event *interfaces.KNVersionEvent) (any, error)
+	types  []string
+	target int
+	key    string
+	replay func(ctx context.Context, event *interfaces.KNVersionEvent) (any, error)
 }
 
 // errReplayed rolls back a transaction that found the idempotency key already used.
@@ -247,6 +247,12 @@ func (s *service) plainTx(ctx context.Context, fn func(context.Context, *sql.Tx)
 	return tx.Commit()
 }
 
+func (s *service) draftTx(knID string) func(context.Context, func(context.Context, *sql.Tx) error) error {
+	return func(ctx context.Context, fn func(context.Context, *sql.Tx) error) error {
+		return s.pub.ReplaceKNDraft(ctx, knID, fn)
+	}
+}
+
 func (s *service) mainTx(knID, src string) func(context.Context, func(context.Context, *sql.Tx) error) error {
 	return func(ctx context.Context, fn func(context.Context, *sql.Tx) error) error {
 		return s.pub.PublishKNMain(ctx, knID, src, fn)
@@ -260,7 +266,7 @@ func (s *service) Enable(ctx context.Context, knID string, req *interfaces.KNEna
 		return nil, err
 	}
 	op := &operation{types: []string{interfaces.KNVersionEventEnable}, key: req.IdempotencyKey, replay: s.replayState}
-	result, err := s.run(ctx, knID, op, s.plainTx, func(ctx context.Context, tx *sql.Tx) (any, error) {
+	result, err := s.run(ctx, knID, op, s.draftTx(knID), func(ctx context.Context, tx *sql.Tx) (any, error) {
 		exists, err := s.va.LockNetwork(ctx, tx, knID, true)
 		if err != nil {
 			return nil, err
@@ -675,7 +681,7 @@ func (s *service) ResetDraft(ctx context.Context, knID string, req *interfaces.K
 	if req.FromVersion != nil {
 		op.types, op.target = []string{interfaces.KNVersionEventCopy}, *req.FromVersion
 	}
-	result, err := s.run(ctx, knID, op, s.plainTx, func(ctx context.Context, tx *sql.Tx) (any, error) {
+	result, err := s.run(ctx, knID, op, s.draftTx(knID), func(ctx context.Context, tx *sql.Tx) (any, error) {
 		state, err := s.lockState(ctx, tx, knID)
 		if err != nil {
 			return nil, err

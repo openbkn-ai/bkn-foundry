@@ -262,6 +262,12 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if len(objectTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, objectTypes[0].KNID, objectTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return []string{}, err
+			}
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1232,6 +1238,10 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, objectType.KNID, objectType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1340,6 +1350,10 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 			berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
+	if err = logics.GuardDefinitionWrite(ctx, tx, objectType.KNID, objectType.Branch, false); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
 	// 0.1 On failure.
 	defer func() {
 		switch err {
@@ -1440,6 +1454,10 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
 		}
 		// 0.1 On failure.
 		defer func() {

@@ -208,10 +208,31 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	if kn.Branch == "" {
 		kn.Branch = interfaces.MAIN_BRANCH
 	}
+	// A network versioned from the start keeps what the request defines in its draft.
+	versioned := kn.Versioning != nil && kn.Versioning.Requested
+	if versioned {
+		if kn.Branch != interfaces.MAIN_BRANCH && kn.Branch != interfaces.DRAFT_BRANCH {
+			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidVersion).
+				WithErrorDetails("a versioned knowledge network is created on its main and draft branches")
+		}
+		_, exists, err := kns.kna.CheckKNExistByID(ctx, kn.KNID, interfaces.MAIN_BRANCH)
+		if err != nil {
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed).WithErrorDetails(err.Error())
+		}
+		if exists {
+			return "", httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnowledgeNetwork_KNIDExisted).
+				WithErrorDetails("enable versioning on the existing network instead")
+		}
+		kn.Branch = interfaces.DRAFT_BRANCH
+	}
 	// Resolve ignore before inspecting child definitions: an existing network is a no-op.
 	isCreate, isUpdate, err = kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return "", err
+	}
+	if versioned && !isCreate {
+		return "", httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnowledgeNetwork_KNIDExisted)
 	}
 	if !isCreate && !isUpdate {
 		kn.ImportSkipped = true
@@ -300,6 +321,10 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 	defer func() { _ = tx.Rollback() }()
+	// An update rewrites the network row, so it locks the network exclusively.
+	if err = logics.GuardDefinitionWrite(ctx, tx, kn.KNID, kn.Branch, isUpdate); err != nil {
+		return "", err
+	}
 
 	// Process creation.
 	if isCreate {
@@ -315,6 +340,11 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 
 		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
 			return "", err
+		}
+		if versioned {
+			if err = initVersionedNetwork(ctx, tx, kn); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -1363,6 +1393,10 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, kn.KNID, kn.Branch, true); err != nil {
+			_ = tx.Rollback()
+			return err
 		}
 		// 0.1 On failure.
 		defer func() {

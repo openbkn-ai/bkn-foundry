@@ -7,12 +7,16 @@ package knowledge_network
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 // PublishKNMain runs mutate, which replaces main with srcBranch, in one transaction. When the
@@ -35,7 +39,7 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 		if err := kns.runInTx(ctx, mutate); err != nil {
 			return err
 		}
-		kns.refreshMainConceptIndex(ctx, oldMain, candidate)
+		kns.refreshConceptIndex(ctx, oldMain, candidate)
 		return nil
 	}
 
@@ -95,12 +99,36 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 		return proxyHTTPError(ctx, http.StatusInternalServerError, "commit main publication")
 	}
 	committed = true
-	kns.refreshMainConceptIndex(ctx, oldMain, candidate)
+	kns.refreshConceptIndex(ctx, oldMain, candidate)
 	if staged {
 		plan.grants.logSkipped(ctx, plan.mapping.KNID)
 		return nil
 	}
 	return kns.finishProxyDeltaPublish(ctx, plan)
+}
+
+// ReplaceKNDraft runs mutate, which replaces the draft with a copy of another branch, in one
+// transaction, and rewrites the concept index of the draft after commit.
+func (kns *knowledgeNetworkService) ReplaceKNDraft(ctx context.Context, knID string,
+	mutate func(context.Context, *sql.Tx) error) error {
+	oldDraft, err := kns.loadKNForDatasetSnapshot(ctx, knID, interfaces.DRAFT_BRANCH)
+	if err != nil {
+		var httpErr *httperrors.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusNotFound {
+			return err
+		}
+		oldDraft = nil
+	}
+	if err := kns.runInTx(ctx, mutate); err != nil {
+		return err
+	}
+	newDraft, err := kns.loadKNForDatasetSnapshot(context.WithoutCancel(ctx), knID, interfaces.DRAFT_BRANCH)
+	if err != nil {
+		otellog.LogError(ctx, "Load the draft for its concept index failed", err)
+		return nil
+	}
+	kns.refreshConceptIndex(ctx, oldDraft, newDraft)
+	return nil
 }
 
 // planFullProxyProjection records in plan the grants of the complete desired source set.
@@ -175,15 +203,19 @@ func rebranch(kn *interfaces.KN, branch string) {
 	}
 }
 
-// refreshMainConceptIndex rewrites the concept index of main after its content was replaced:
-// documents of definitions no longer on main are deleted, the others written again. Like the
-// index writes of an import, it runs after commit, and a failure is only logged.
-func (kns *knowledgeNetworkService) refreshMainConceptIndex(ctx context.Context, oldMain, newMain *interfaces.KN) {
+// refreshConceptIndex rewrites the concept index of a branch after its content was replaced
+// by a copy: documents of definitions no longer on the branch are deleted, the others written
+// again. Like the index writes of an import, it runs after commit, and a failure is only logged.
+// oldKN may be nil when the branch was empty; newKN must be on the branch.
+func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, oldKN, newKN *interfaces.KN) {
 	ctx = context.WithoutCancel(ctx)
 	ids := func(kn *interfaces.KN) map[string]struct{} {
 		set := map[string]struct{}{}
+		if kn == nil {
+			return set
+		}
 		add := func(moduleType, id string) {
-			set[interfaces.GenerateConceptDocuemtnID(kn.KNID, moduleType, id, interfaces.MAIN_BRANCH)] = struct{}{}
+			set[interfaces.GenerateConceptDocuemtnID(kn.KNID, moduleType, id, newKN.Branch)] = struct{}{}
 		}
 		for _, item := range kn.ConceptGroups {
 			add(interfaces.MODULE_TYPE_CONCEPT_GROUP, item.CGID)
@@ -202,29 +234,49 @@ func (kns *knowledgeNetworkService) refreshMainConceptIndex(ctx context.Context,
 		}
 		return set
 	}
-	keep := ids(newMain)
-	for id := range ids(oldMain) {
+	keep := ids(newKN)
+	for id := range ids(oldKN) {
 		if _, ok := keep[id]; ok {
 			continue
 		}
 		if err := kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, id); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Delete concept index document %s of main failed", id), err)
+			otellog.LogError(ctx, fmt.Sprintf("Delete concept index document %s failed", id), err)
 		}
 	}
 	steps := []struct {
 		name string
 		run  func() error
 	}{
-		{"concept groups", func() error { return kns.cgs.InsertDatasetDatas(ctx, newMain.ConceptGroups) }},
-		{"object types", func() error { return kns.ots.InsertDatasetData(ctx, newMain.ObjectTypes) }},
-		{"relation types", func() error { return kns.rts.InsertDatasetData(ctx, newMain.RelationTypes) }},
-		{"action types", func() error { return kns.ats.InsertDatasetData(ctx, newMain.ActionTypes) }},
-		{"risk types", func() error { return kns.riskTypeS.InsertDatasetData(ctx, newMain.RiskTypes) }},
-		{"network", func() error { return kns.InsertDatasetData(ctx, newMain) }},
+		{"concept groups", func() error { return kns.cgs.InsertDatasetDatas(ctx, newKN.ConceptGroups) }},
+		{"object types", func() error { return kns.ots.InsertDatasetData(ctx, newKN.ObjectTypes) }},
+		{"relation types", func() error { return kns.rts.InsertDatasetData(ctx, newKN.RelationTypes) }},
+		{"action types", func() error { return kns.ats.InsertDatasetData(ctx, newKN.ActionTypes) }},
+		{"risk types", func() error { return kns.riskTypeS.InsertDatasetData(ctx, newKN.RiskTypes) }},
+		{"network", func() error { return kns.InsertDatasetData(ctx, newKN) }},
 	}
 	for _, step := range steps {
 		if err := step.run(); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Write the concept index of main %s failed", step.name), err)
+			otellog.LogError(ctx, fmt.Sprintf("Write the concept index of %s on %s failed", step.name, newKN.Branch), err)
 		}
 	}
+}
+
+// initVersionedNetwork completes a network created versioned from the start: what the request
+// defined is on the draft, main gets only the network row, and nothing is published yet.
+func initVersionedNetwork(ctx context.Context, tx *sql.Tx, kn *interfaces.KN) error {
+	if logics.BC == nil || logics.KNVA == nil {
+		return proxyHTTPError(ctx, http.StatusNotImplemented, "knowledge network versioning is unavailable")
+	}
+	if err := logics.BC.CopyNetworkRow(ctx, tx, kn.KNID, interfaces.DRAFT_BRANCH, interfaces.MAIN_BRANCH); err != nil {
+		return proxyHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	now := time.Now().UnixMilli()
+	account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if err := logics.KNVA.CreateState(ctx, tx, &interfaces.KNVersionState{
+		KNID: kn.KNID, Mode: interfaces.KNVersioningEnabled, NextVersion: 1, DraftIndexRevision: -1,
+		EnabledBy: account.ID, EnabledByType: account.Type, EnableTime: now, UpdateTime: now,
+	}); err != nil {
+		return proxyHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	return nil
 }

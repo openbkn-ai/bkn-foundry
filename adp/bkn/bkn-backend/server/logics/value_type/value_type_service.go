@@ -99,13 +99,18 @@ func accountInfo(ctx context.Context) interfaces.AccountInfo {
 }
 
 // withTx runs fn in tx, or in a transaction of its own when tx is nil.
-func (s *valueTypeService) withTx(ctx context.Context, tx *sql.Tx, fn func(tx *sql.Tx) error) (err error) {
+func (s *valueTypeService) withTx(ctx context.Context, tx *sql.Tx, knID, branch string,
+	fn func(tx *sql.Tx) error) (err error) {
 	if tx != nil {
 		return fn(tx)
 	}
 	tx, err = s.db.Begin()
 	if err != nil {
 		return internalError(ctx, err)
+	}
+	if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+		_ = tx.Rollback()
+		return err
 	}
 	defer func() {
 		if err != nil {
@@ -155,7 +160,7 @@ func (s *valueTypeService) CreateValueTypes(ctx context.Context, tx *sql.Tx, val
 		return nil, err
 	}
 	ids := make([]string, 0, len(creates)+len(updates))
-	err = s.withTx(ctx, tx, func(tx *sql.Tx) error {
+	err = s.withTx(ctx, tx, knID, branch, func(tx *sql.Tx) error {
 		if len(creates) > 0 {
 			if err := s.vta.CreateValueTypes(ctx, tx, creates); err != nil {
 				if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
@@ -331,7 +336,7 @@ func (s *valueTypeService) UpdateValueType(ctx context.Context, tx *sql.Tx, vt *
 	}
 	vt.Updater = accountInfo(ctx)
 	vt.UpdateTime = time.Now().UnixMilli()
-	err := s.withTx(ctx, tx, func(tx *sql.Tx) error {
+	err := s.withTx(ctx, tx, vt.KNID, vt.Branch, func(tx *sql.Tx) error {
 		if _, err := s.get(ctx, tx, vt.KNID, vt.Branch, vt.VTID); err != nil {
 			return err
 		}
@@ -389,7 +394,7 @@ func (s *valueTypeService) DeleteValueType(ctx context.Context, tx *sql.Tx, knID
 	if err := s.checkKNPermission(ctx, knID, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return err
 	}
-	err := s.withTx(ctx, tx, func(tx *sql.Tx) error {
+	err := s.withTx(ctx, tx, knID, branch, func(tx *sql.Tx) error {
 		if _, err := s.get(ctx, tx, knID, branch, vtID); err != nil {
 			return err
 		}

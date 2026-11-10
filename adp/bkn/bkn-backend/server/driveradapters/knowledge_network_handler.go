@@ -542,7 +542,10 @@ func (r *restHandler) ValidateKN(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
@@ -662,7 +665,10 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -1108,7 +1114,10 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -1159,6 +1168,17 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+
+	if r.kvs != nil && mode != interfaces.Mode_Export {
+		view, err := r.kvs.GetState(ctx, knID)
+		if err != nil {
+			replyKNVersionError(c, err)
+			return
+		}
+		if view.Enabled {
+			kn.Versioning = &interfaces.KNVersioningField{View: view}
+		}
 	}
 
 	// Get concept statistics.
@@ -1226,7 +1246,10 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),

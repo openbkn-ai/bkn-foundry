@@ -76,7 +76,10 @@ func (r *restHandler) CreateRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
@@ -179,7 +182,10 @@ func (r *restHandler) UpdateRiskType(c *gin.Context, visitor hydra.Visitor) {
 
 	knID := c.Param("kn_id")
 	rtID := c.Param("rt_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("rt_id").String(rtID), attr.Key("branch").String(branch))
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
@@ -280,7 +286,10 @@ func (r *restHandler) DeleteRiskTypes(c *gin.Context) {
 
 	knID := c.Param("kn_id")
 	rtIDsStr := c.Param("rt_ids")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("rt_ids").String(rtIDsStr), attr.Key("branch").String(branch))
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
@@ -350,7 +359,10 @@ func (r *restHandler) ListRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
@@ -426,7 +438,10 @@ func (r *restHandler) GetRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	knID := c.Param("kn_id")
 	rtIDsStr := c.Param("rt_ids")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("rt_ids").String(rtIDsStr), attr.Key("branch").String(branch))
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
@@ -487,10 +502,15 @@ func (r *restHandler) GetRiskTypesByInWithPath(c *gin.Context) {
 func (r *restHandler) GetRiskTypesByIn(c *gin.Context) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
+	vis := visitor.GenerateVisitor(c)
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: vis.ID, Type: string(vis.Type)})
 
 	knID := c.Param("kn_id")
 	rtIDsStr := c.Query("risk_type_ids")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("risk_type_ids").String(rtIDsStr), attr.Key("branch").String(branch))
 
 	if rtIDsStr == "" {
@@ -545,7 +565,10 @@ func (r *restHandler) SearchRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	otellog.LogInfo(ctx, fmt.Sprintf("检索风险类请求参数: [%s]", c.Request.RequestURI))
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.searchBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),

@@ -117,7 +117,10 @@ func (r *restHandler) CreateActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -265,7 +268,10 @@ func (r *restHandler) ValidateActionTypesForKN(c *gin.Context, visitor hydra.Vis
 	}
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
@@ -363,7 +369,10 @@ func (r *restHandler) UpdateActionType(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -535,7 +544,10 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.writeBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -647,7 +659,10 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -777,7 +792,10 @@ func (r *restHandler) GetActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -867,7 +885,10 @@ func (r *restHandler) SearchActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.searchBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),

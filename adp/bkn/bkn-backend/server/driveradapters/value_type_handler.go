@@ -65,7 +65,11 @@ func (r *restHandler) valueTypeRequest(c *gin.Context, visitor hydra.Visitor) (c
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	resolved, ok := r.resolveBranch(&ctx, c, knID, c.Request.Method != http.MethodGet)
+	if !ok {
+		return ctx, span, "", "", false
+	}
+	branch := resolved.Branch
 	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("branch").String(branch))
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)

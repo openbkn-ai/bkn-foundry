@@ -111,6 +111,12 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if len(relationTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, relationTypes[0].KNID, relationTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return []string{}, err
+			}
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -677,6 +683,10 @@ func (rts *relationTypeService) updateRelationType(ctx context.Context, tx *sql.
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, relationType.KNID, relationType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -790,6 +800,10 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
 		}
 		// 0.1 On failure.
 		defer func() {

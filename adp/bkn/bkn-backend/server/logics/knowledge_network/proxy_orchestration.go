@@ -448,6 +448,10 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		}
 	}
 
+	if err := logics.GuardDefinitionWrite(mutationCtx, tx, changes.KNID, changes.Branch, false); err != nil {
+		rollback()
+		return err
+	}
 	if err := mutate(mutationCtx, tx); err != nil {
 		rollback()
 		cleanupCreatedAuthorization()
@@ -488,6 +492,25 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	return nil
 }
 
+// mutateCapabilitiesInTx runs a capability write without proxy orchestration in one
+// transaction, so a failure part way leaves no rows behind.
+func (kns *knowledgeNetworkService) mutateCapabilitiesInTx(ctx context.Context, knID, branch string,
+	mutate func(context.Context, *sql.Tx) (*interfaces.KNCapabilityMutationResult, error),
+) (result *interfaces.KNCapabilityMutationResult, err error) {
+	err = kns.runInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if err := logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			return err
+		}
+		var err error
+		result, err = mutate(ctx, tx)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // PublishKNCapabilityMutation serializes capability rows with proxy grant
 // publication. Capability validation and persistence run inside the transaction;
 // the complete desired grant set is preflighted before that transaction commits.
@@ -502,7 +525,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		return nil, proxyHTTPError(ctx, http.StatusBadRequest, "capability mutation identity is invalid")
 	}
 	if !kns.proxyOrchestrationEnabled(branch) {
-		return mutate(ctx, nil)
+		return kns.mutateCapabilitiesInTx(ctx, knID, branch, mutate)
 	}
 
 	plan, err := kns.beginProxyPublish(ctx, &interfaces.KN{KNID: knID, Branch: branch}, true, true)
@@ -542,6 +565,10 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		}
 	}
 
+	if err := logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+		rollback()
+		return nil, err
+	}
 	result, err := mutate(ctx, tx)
 	if err != nil {
 		rollback()

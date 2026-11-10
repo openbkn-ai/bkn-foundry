@@ -7,6 +7,7 @@ package interfaces
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strconv"
 )
 
@@ -109,6 +110,28 @@ type KNDraftIndexView struct {
 	Status   string `json:"status"`
 }
 
+// KNVersioningField is the versioning field of a network: a boolean in a create request, the
+// version state in a response.
+type KNVersioningField struct {
+	Requested bool
+	View      *KNVersioningView
+}
+
+func (f *KNVersioningField) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &f.Requested); err == nil {
+		return nil
+	}
+	f.View = &KNVersioningView{}
+	return json.Unmarshal(data, f.View)
+}
+
+func (f KNVersioningField) MarshalJSON() ([]byte, error) {
+	if f.View != nil {
+		return json.Marshal(f.View)
+	}
+	return json.Marshal(f.Requested)
+}
+
 // KNVersionSource records where a published version came from, such as a BKN-project commit.
 type KNVersionSource struct {
 	Type      string `json:"type,omitempty"`
@@ -198,8 +221,32 @@ type KNVersionsQuery struct {
 	Limit    int
 }
 
+// KNBranchRequest is how a request names what it reads or writes: the legacy branch
+// parameter, and kn_version with draft_revision.
+type KNBranchRequest struct {
+	Branch        string
+	KNVersion     string
+	DraftRevision *int64
+	Write         bool
+}
+
+// KNResolvedBranch is the storage branch a request reads or writes. Version is the value of
+// the X-Kn-Version response header, empty when none is sent.
+type KNResolvedBranch struct {
+	Branch string
+	// IndexBranch is the branch of the concept index to search. Until versions have concept
+	// index builds of their own, the running version is searched in the index of main, which
+	// has the same content.
+	IndexBranch   string
+	Versioned     bool
+	Version       string
+	DraftRevision int64
+}
+
 // KNVersionService manages the versions of knowledge networks.
 type KNVersionService interface {
+	// ResolveBranch maps a request's branch and kn_version to the storage branch (design §10).
+	ResolveBranch(ctx context.Context, knID string, req KNBranchRequest) (*KNResolvedBranch, error)
 	Enable(ctx context.Context, knID string, req *KNEnableVersioningRequest) (*KNVersioningView, error)
 	GetState(ctx context.Context, knID string) (*KNVersioningView, error)
 	ListVersions(ctx context.Context, knID string, query *KNVersionsQuery) ([]*KNVersion, int, error)
@@ -249,6 +296,8 @@ type BranchCopier interface {
 	ReplaceBranch(ctx context.Context, tx *sql.Tx, knID, src, dst string) error
 	// DeleteBranch deletes every versioned row of the branch, its network row included.
 	DeleteBranch(ctx context.Context, tx *sql.Tx, knID, branch string) error
+	// CopyNetworkRow copies only the network row of src to dst.
+	CopyNetworkRow(ctx context.Context, tx *sql.Tx, knID, src, dst string) error
 	// BranchesWithData lists the branches of a network that have a network row or any
 	// versioned row, so enabling can refuse reserved branches that already hold data.
 	BranchesWithData(ctx context.Context, tx *sql.Tx, knID string) ([]string, error)
@@ -259,4 +308,7 @@ type BranchCopier interface {
 // does. mutate runs inside the transaction and performs the copy.
 type KNMainPublisher interface {
 	PublishKNMain(ctx context.Context, knID, srcBranch string, mutate func(context.Context, *sql.Tx) error) error
+	// ReplaceKNDraft runs mutate, which replaces the draft, in one transaction, and keeps the
+	// draft's concept index in step with it.
+	ReplaceKNDraft(ctx context.Context, knID string, mutate func(context.Context, *sql.Tx) error) error
 }

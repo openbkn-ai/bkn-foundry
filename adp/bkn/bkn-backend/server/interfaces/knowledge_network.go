@@ -127,6 +127,9 @@ type KN struct {
 	KeepSkillContent bool `json:"-" mapstructure:"-"`
 
 	Branch string `json:"branch,omitempty" mapstructure:"branch"`
+	// Versioning is true in a create request for a network versioned from the start, and the
+	// version state in a read of a versioned network.
+	Versioning *KNVersioningField `json:"versioning,omitempty" mapstructure:"-"`
 
 	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 	ObjectTypes   []*ObjectType   `json:"object_types,omitempty" mapstructure:"object_types"`

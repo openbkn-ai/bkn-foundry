@@ -19,6 +19,7 @@ import (
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 const (
@@ -265,4 +266,116 @@ func (r *restHandler) listKNVersionEvents(c *gin.Context, ctx context.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, gin.H{"entries": events, "total_count": total})
+}
+
+// draftRevisionWriter adds X-Kn-Draft-Revision to the response once a draft write has
+// committed, just before the status line is written.
+type draftRevisionWriter struct {
+	gin.ResponseWriter
+	dw *logics.DraftWrite
+}
+
+func (w *draftRevisionWriter) WriteHeader(code int) {
+	if w.dw.Written && code < http.StatusMultipleChoices {
+		w.Header().Set("X-Kn-Draft-Revision", strconv.FormatInt(w.dw.Revision, 10))
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func optionalInt64Query(c *gin.Context, name string) (*int64, bool) {
+	raw := c.Query(name)
+	if raw == "" {
+		return nil, true
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		knVersionBadRequest(c, name+" must be a non-negative integer")
+		return nil, false
+	}
+	return &value, true
+}
+
+// resolveBranch maps the branch and kn_version parameters of a request to the storage
+// branch, replying with the error when it fails. A write gets a context that carries its
+// expected_draft_revision; a read of a versioned network gets the X-Kn-Version header.
+func (r *restHandler) resolveBranch(ctx *context.Context, c *gin.Context, knID string, write bool) (*interfaces.KNResolvedBranch, bool) {
+	req := interfaces.KNBranchRequest{Branch: c.Query("branch"), KNVersion: c.Query("kn_version"), Write: write}
+	var ok bool
+	if req.DraftRevision, ok = optionalInt64Query(c, "draft_revision"); !ok {
+		return nil, false
+	}
+	if r.kvs == nil {
+		branch := req.Branch
+		if branch == "" {
+			branch = interfaces.MAIN_BRANCH
+		}
+		return &interfaces.KNResolvedBranch{Branch: branch}, true
+	}
+	resolved, err := r.kvs.ResolveBranch(*ctx, knID, req)
+	if err != nil {
+		replyKNVersionError(c, err)
+		return nil, false
+	}
+	if write {
+		expected, ok := optionalInt64Query(c, "expected_draft_revision")
+		if !ok {
+			return nil, false
+		}
+		var dw *logics.DraftWrite
+		*ctx, dw = logics.WithDraftWrite(*ctx, expected)
+		if resolved.Versioned {
+			c.Writer = &draftRevisionWriter{ResponseWriter: c.Writer, dw: dw}
+		}
+		return resolved, true
+	}
+	if resolved.Version != "" {
+		c.Header("X-Kn-Version", resolved.Version)
+	}
+	if resolved.Branch == interfaces.DRAFT_BRANCH && resolved.Versioned {
+		c.Header("X-Kn-Draft-Revision", strconv.FormatInt(resolved.DraftRevision, 10))
+	}
+	return resolved, true
+}
+
+func (r *restHandler) readBranch(ctx *context.Context, c *gin.Context, knID string) (string, bool) {
+	resolved, ok := r.resolveBranch(ctx, c, knID, false)
+	if !ok {
+		return "", false
+	}
+	return resolved.Branch, true
+}
+
+func (r *restHandler) writeBranch(ctx *context.Context, c *gin.Context, knID string) (string, bool) {
+	resolved, ok := r.resolveBranch(ctx, c, knID, true)
+	if !ok {
+		return "", false
+	}
+	return resolved.Branch, true
+}
+
+// searchBranch resolves the branch whose concept index a search reads.
+func (r *restHandler) searchBranch(ctx *context.Context, c *gin.Context, knID string) (string, bool) {
+	resolved, ok := r.resolveBranch(ctx, c, knID, false)
+	if !ok {
+		return "", false
+	}
+	if resolved.IndexBranch != "" {
+		return resolved.IndexBranch, true
+	}
+	return resolved.Branch, true
+}
+
+// writeWholeDraftBranch resolves the branch of a write that replaces several definitions at
+// once, such as an import: on a versioned network it needs expected_draft_revision.
+func (r *restHandler) writeWholeDraftBranch(ctx *context.Context, c *gin.Context, knID string) (string, bool) {
+	resolved, ok := r.resolveBranch(ctx, c, knID, true)
+	if !ok {
+		return "", false
+	}
+	if resolved.Versioned && logics.DraftWriteFrom(*ctx).Expected == nil {
+		replyKNVersionError(c, httperrors.NewHTTPError(*ctx, http.StatusPreconditionRequired,
+			berrors.BknBackend_KNVersion_PreconditionRequired).WithErrorDetails("expected_draft_revision is required"))
+		return "", false
+	}
+	return resolved.Branch, true
 }

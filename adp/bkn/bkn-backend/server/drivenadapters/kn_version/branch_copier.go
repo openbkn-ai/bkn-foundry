@@ -89,7 +89,7 @@ func (bc *branchCopier) ReplaceBranch(ctx context.Context, tx *sql.Tx, knID, src
 			return err
 		}
 	}
-	return bc.copyNetworkRow(ctx, tx, knID, src, dst)
+	return bc.CopyNetworkRow(ctx, tx, knID, src, dst)
 }
 
 func (bc *branchCopier) DeleteBranch(ctx context.Context, tx *sql.Tx, knID, branch string) error {
@@ -169,9 +169,9 @@ func (bc *branchCopier) copyRows(ctx context.Context, tx *sql.Tx, table versione
 	return nil
 }
 
-// copyNetworkRow creates the network row of dst from src, or, when dst already has one, carries
+// CopyNetworkRow creates the network row of dst from src, or, when dst already has one, carries
 // over only the content that belongs to a version. Basic info is the same on every branch.
-func (bc *branchCopier) copyNetworkRow(ctx context.Context, tx *sql.Tx, knID, src, dst string) error {
+func (bc *branchCopier) CopyNetworkRow(ctx context.Context, tx *sql.Tx, knID, src, dst string) error {
 	columns, err := bc.tableColumns(ctx, tx, knTable)
 	if err != nil {
 		return err

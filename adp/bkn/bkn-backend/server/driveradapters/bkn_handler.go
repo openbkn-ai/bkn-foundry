@@ -145,6 +145,11 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	resolvedBranch, branchOK := r.writeWholeDraftBranch(&ctx, c, bknNetwork.ID)
+	if !branchOK {
+		return
+	}
+	branch = resolvedBranch
 	bknNetwork.Branch = branch
 
 	// Import the network.
@@ -441,7 +446,10 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	}
 
 	// Read query parameters.
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, kn_id)
+	if !branchOK {
+		return
+	}
 	spec := strings.TrimSpace(c.Query("bkn_spec"))
 	switch spec {
 	case interfaces.BKN_EXPORT_SPEC_AUTO, interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3:
@@ -515,7 +523,10 @@ func (r *restHandler) CheckBKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 
 	result, err := r.bs.CheckNetwork(ctx, knID, branch)
 	if err != nil {

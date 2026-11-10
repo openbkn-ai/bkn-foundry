@@ -206,6 +206,12 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if len(actionTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, actionTypes[0].KNID, actionTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return []string{}, err
+			}
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -745,6 +751,10 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, actionType.KNID, actionType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -849,6 +859,10 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
+		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
 		}
 		// 0.1 On failure.
 		defer func() {

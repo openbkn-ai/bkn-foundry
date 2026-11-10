@@ -52,6 +52,10 @@ func (p txPublisher) PublishKNMain(ctx context.Context, _, _ string, mutate func
 	return tx.Commit()
 }
 
+func (p txPublisher) ReplaceKNDraft(ctx context.Context, knID string, mutate func(context.Context, *sql.Tx) error) error {
+	return p.PublishKNMain(ctx, knID, "", mutate)
+}
+
 type fixture struct {
 	t    *testing.T
 	db   *sql.DB
