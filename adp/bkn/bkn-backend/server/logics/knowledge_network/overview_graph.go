@@ -297,10 +297,16 @@ func overviewEdges(items []*interfaces.RelationType, nodeIDs map[string]struct{}
 			continue
 		}
 		seen[item.RTID] = struct{}{}
+		var constraints *interfaces.RelationConstraints
+		if !item.Constraints.IsEmpty() {
+			constraints = item.Constraints
+		}
 		edges = append(edges, interfaces.OverviewGraphEdge{
 			ID: item.RTID, Name: item.RTName, SourceID: item.SourceObjectTypeID,
 			TargetID: item.TargetObjectTypeID, MappingMode: item.Type,
-			Lifecycle: interfaces.NormalizeLifecycle(item.Lifecycle),
+			Lifecycle:   interfaces.NormalizeLifecycle(item.Lifecycle),
+			Cardinality: item.Cardinality,
+			Constraints: constraints,
 		})
 	}
 	return edges

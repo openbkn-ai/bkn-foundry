@@ -48,3 +48,30 @@ func TestOverviewGraphCarriesDeprecationOnly(t *testing.T) {
 		t.Errorf("treats_old lifecycle = %+v, want deprecated, replaced by treats", got)
 	}
 }
+
+func TestOverviewGraphCarriesCardinalityAndConstraints(t *testing.T) {
+	relations := []*interfaces.RelationType{
+		{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "ordered_by", RTName: "Ordered by",
+			SourceObjectTypeID: "order", TargetObjectTypeID: "doctor", Type: "direct"},
+			RelationDeclarations: interfaces.RelationDeclarations{
+				Cardinality: "many_to_one", Constraints: &interfaces.RelationConstraints{Required: []string{"source"}}}},
+		{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "plain", RTName: "Plain",
+			SourceObjectTypeID: "order", TargetObjectTypeID: "doctor", Type: "direct"},
+			RelationDeclarations: interfaces.RelationDeclarations{Constraints: &interfaces.RelationConstraints{}}},
+	}
+	edges := overviewEdges(relations, map[string]struct{}{"order": {}, "doctor": {}})
+
+	byID := map[string]interfaces.OverviewGraphEdge{}
+	for _, edge := range edges {
+		byID[edge.ID] = edge
+	}
+	declared := byID["ordered_by"]
+	if declared.Cardinality != "many_to_one" || declared.Constraints == nil ||
+		len(declared.Constraints.Required) != 1 || declared.Constraints.Required[0] != "source" {
+		t.Errorf("ordered_by = %+v, want many_to_one with the source required", declared)
+	}
+	plain := byID["plain"]
+	if plain.Cardinality != "" || plain.Constraints != nil {
+		t.Errorf("plain = %+v, want no cardinality and no constraints", plain)
+	}
+}
