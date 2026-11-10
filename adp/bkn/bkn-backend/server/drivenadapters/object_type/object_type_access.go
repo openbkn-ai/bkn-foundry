@@ -280,6 +280,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			"f_updater",
 			"f_updater_type",
 			"f_update_time",
+			"f_revision",
 		).
 		Values(
 			objectType.OTID,
@@ -305,7 +306,8 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			objectType.CreateTime,
 			objectType.Updater.ID,
 			objectType.Updater.Type,
-			objectType.UpdateTime).
+			objectType.UpdateTime,
+			interfaces.NewDefinitionRevision()).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of insert object type, error", err)
@@ -345,7 +347,7 @@ func (ota *objectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_data_source", "f_data_properties", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_logic_properties",
 			"f_primary_keys", "f_display_key", "f_incremental_key", "f_creator", "f_creator_type",
-			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
+			"f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_revision",
 		)
 		for _, objectType := range objectTypes[start:end] {
 			values, err := objectTypeInsertValues(objectType)
@@ -405,7 +407,7 @@ func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
 		objectType.Icon, objectType.Color, objectType.BKNRawContent, objectType.KNID, objectType.Branch,
 		dataSourceBytes, dataPropertiesBytes, aliases, lifecycleStatus, deprecation, logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey,
 		objectType.IncrementalKey, objectType.Creator.ID, objectType.Creator.Type, objectType.CreateTime,
-		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime,
+		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime, interfaces.NewDefinitionRevision(),
 	}, nil
 }
 
@@ -1300,6 +1302,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		"f_updater":          objectType.Updater.ID,
 		"f_updater_type":     objectType.Updater.Type,
 		"f_update_time":      objectType.UpdateTime,
+		"f_revision":         interfaces.NewDefinitionRevision(),
 	}
 	sqlStr, vals, err := sq.Update(OT_TABLE_NAME).
 		SetMap(data).
@@ -1408,6 +1411,7 @@ func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, objectType := range batch {
@@ -1492,6 +1496,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		"f_updater":         objectType.Updater.ID,
 		"f_updater_type":    objectType.Updater.Type,
 		"f_update_time":     objectType.UpdateTime,
+		"f_revision":        interfaces.NewDefinitionRevision(),
 	}
 	sqlStr, vals, err := sq.Update(OT_TABLE_NAME).
 		SetMap(data).

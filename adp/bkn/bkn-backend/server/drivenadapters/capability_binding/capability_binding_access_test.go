@@ -31,7 +31,7 @@ func bindingRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"f_id", "f_kn_id", "f_branch", "f_capability_type", "f_owner_id", "f_capability_id",
 		"f_bound_as_box", "f_comment", "f_creator", "f_creator_type", "f_create_time",
-		"f_updater", "f_updater_type", "f_update_time",
+		"f_updater", "f_updater_type", "f_update_time", "f_revision",
 	})
 }
 
@@ -43,9 +43,9 @@ func TestCapabilityBindingAccess_CreateBindings(t *testing.T) {
 		mock.ExpectExec("INSERT INTO t_kn_capability_binding").
 			WithArgs(
 				"bind-1", "kn1", "main", interfaces.CAPABILITY_TYPE_SKILL, "", "skill-1", 0, "交期评估",
-				"user-1", "user", int64(1), "user-1", "user", int64(1),
+				"user-1", "user", int64(1), "user-1", "user", int64(1), sqlmock.AnyArg(),
 				"bind-2", "kn1", "main", interfaces.CAPABILITY_TYPE_FUNCTION, "box-1", "tool-1", 1, "",
-				"user-1", "user", int64(1), "user-1", "user", int64(1),
+				"user-1", "user", int64(1), "user-1", "user", int64(1), sqlmock.AnyArg(),
 			).
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
@@ -88,7 +88,7 @@ func TestCapabilityBindingAccess_GetBindingByCapability(t *testing.T) {
 			WithArgs("kn1", "main", interfaces.CAPABILITY_TYPE_FUNCTION, "box-1", "tool-1").
 			WillReturnRows(bindingRows().AddRow(
 				"bind-2", "kn1", "main", interfaces.CAPABILITY_TYPE_FUNCTION, "box-1", "tool-1",
-				1, "", "user-1", "user", int64(1), "user-1", "user", int64(1),
+				1, "", "user-1", "user", int64(1), "user-1", "user", int64(1), "rev1",
 			))
 
 		binding, err := ca.GetBindingByCapability(context.Background(), "kn1", "main",
@@ -97,6 +97,7 @@ func TestCapabilityBindingAccess_GetBindingByCapability(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(binding.ID, ShouldEqual, "bind-2")
 		So(binding.BoundAsBox, ShouldBeTrue)
+		So(binding.Revision, ShouldEqual, "rev1")
 		So(mock.ExpectationsWereMet(), ShouldBeNil)
 	})
 
@@ -126,7 +127,7 @@ func TestCapabilityBindingAccess_ListBindings(t *testing.T) {
 			WithArgs("kn1", "dev", interfaces.CAPABILITY_TYPE_SKILL).
 			WillReturnRows(bindingRows().AddRow(
 				"bind-1", "kn1", "dev", interfaces.CAPABILITY_TYPE_SKILL, "", "skill-1",
-				0, "", "user-1", "user", int64(1), "user-1", "user", int64(1),
+				0, "", "user-1", "user", int64(1), "user-1", "user", int64(1), "rev1",
 			))
 
 		list, err := ca.ListBindings(context.Background(), interfaces.CapabilityBindingsQueryParams{
@@ -138,6 +139,7 @@ func TestCapabilityBindingAccess_ListBindings(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		So(len(list), ShouldEqual, 1)
+		So(list[0].Revision, ShouldEqual, "rev1")
 		So(mock.ExpectationsWereMet(), ShouldBeNil)
 	})
 

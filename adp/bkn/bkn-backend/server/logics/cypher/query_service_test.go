@@ -1327,3 +1327,25 @@ func TestBindJoinTimeoutLeavesTimeForTheFallback(t *testing.T) {
 		t.Fatalf("a statement with no time left was not refused as a timeout: %v", err)
 	}
 }
+
+// The running version of a versioned network is what main mirrors and the proxy grants cover,
+// so a refused statement on it falls back to the proxy as on main.
+func TestQueryOnRunningVersionFallsBackToProxy(t *testing.T) {
+	vega := &recordingVega{
+		err: interfaces.NewDependencyError("vega", "raw_query", interfaces.DependencyForbidden, http.StatusForbidden),
+		response: &interfaces.RawQueryResponse{
+			Columns: []interfaces.RawQueryColumn{{Name: "id"}, {Name: "name"}},
+			Entries: []map[string]any{{"id": "o-1", "name": "c-1"}},
+		},
+	}
+	service := relationService(vega, &stubPermission{}, &stubProxies{mapping: readyProxy()})
+	if _, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: "v2", RunningVersion: true,
+		Query: "MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN o.id AS id, c.name AS name LIMIT 3",
+	}); err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if vega.proxyRequest == nil {
+		t.Fatal("want the statement run again under the proxy")
+	}
+}

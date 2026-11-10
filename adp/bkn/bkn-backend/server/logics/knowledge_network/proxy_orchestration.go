@@ -421,34 +421,8 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		if err != nil {
 			return invalidProxyTargetError(ctx, err)
 		}
-		if kns.kpoa != nil {
-			delta, err = kns.buildFullProxyDelta(ctx, plan, sources)
-			if err != nil {
-				return err
-			}
-			selection, preflightErr := kns.preflightProxyDelta(ctx, plan.mapping.ProxyAccountID,
-				plan.delegatorID, delta)
-			if preflightErr != nil {
-				return preflightErr
-			}
-			if err := finalizeProxyGrantDelta(delta, selection); err != nil {
-				return proxyHTTPError(ctx, http.StatusServiceUnavailable, "finalize full proxy grant delta")
-			}
-			plan.delta = delta
-			plan.grants = selection
-			plan.resolvedSources = selection.resolved
-			plan.modelVersion = delta.targetVersion
-		} else {
-			grants, err := kns.preflightProxySources(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, sources)
-			if err != nil {
-				return err
-			}
-			plan.grants = grants
-			plan.resolvedSources = grants.resolved
-			plan.modelVersion, err = proxyGrantSnapshotVersion(grants.materialized(sources))
-			if err != nil {
-				return proxyHTTPError(ctx, http.StatusServiceUnavailable, "hash proxy grant snapshot")
-			}
+		if err := kns.planFullProxyProjection(ctx, plan, sources); err != nil {
+			return err
 		}
 	}
 
@@ -474,6 +448,10 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 		}
 	}
 
+	if err := logics.GuardDefinitionWrite(mutationCtx, tx, changes.KNID, changes.Branch, false); err != nil {
+		rollback()
+		return err
+	}
 	if err := mutate(mutationCtx, tx); err != nil {
 		rollback()
 		cleanupCreatedAuthorization()
@@ -514,6 +492,25 @@ func (kns *knowledgeNetworkService) PublishKNChildMutation(ctx context.Context, 
 	return nil
 }
 
+// mutateCapabilitiesInTx runs a capability write without proxy orchestration in one
+// transaction, so a failure part way leaves no rows behind.
+func (kns *knowledgeNetworkService) mutateCapabilitiesInTx(ctx context.Context, knID, branch string,
+	mutate func(context.Context, *sql.Tx) (*interfaces.KNCapabilityMutationResult, error),
+) (result *interfaces.KNCapabilityMutationResult, err error) {
+	err = kns.runInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if err := logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			return err
+		}
+		var err error
+		result, err = mutate(ctx, tx)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // PublishKNCapabilityMutation serializes capability rows with proxy grant
 // publication. Capability validation and persistence run inside the transaction;
 // the complete desired grant set is preflighted before that transaction commits.
@@ -528,7 +525,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		return nil, proxyHTTPError(ctx, http.StatusBadRequest, "capability mutation identity is invalid")
 	}
 	if !kns.proxyOrchestrationEnabled(branch) {
-		return mutate(ctx, nil)
+		return kns.mutateCapabilitiesInTx(ctx, knID, branch, mutate)
 	}
 
 	plan, err := kns.beginProxyPublish(ctx, &interfaces.KN{KNID: knID, Branch: branch}, true, true)
@@ -568,6 +565,10 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 		}
 	}
 
+	if err := logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+		rollback()
+		return nil, err
+	}
 	result, err := mutate(ctx, tx)
 	if err != nil {
 		rollback()
@@ -798,6 +799,19 @@ func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error 
 
 func mergeProxyMutationChanges(current, changes *interfaces.KN, mergeMode string) *interfaces.KN {
 	candidate := *current
+	if changes.ReplaceContent {
+		// A whole-package replace leaves only what the package defines.
+		candidate.ConceptGroups, candidate.ObjectTypes = changes.ConceptGroups, changes.ObjectTypes
+		candidate.RelationTypes, candidate.ActionTypes = changes.RelationTypes, changes.ActionTypes
+		candidate.ObjectMetrics = mergeProxyItems(current.ObjectMetrics, changes.ObjectMetrics, false,
+			func(item *interfaces.ObjectMetricRecordV1) (string, bool) {
+				if item == nil {
+					return "", false
+				}
+				return fmt.Sprintf("%s@%d", item.Definition.ID, item.Definition.Version), true
+			})
+		return &candidate
+	}
 	keepExisting := mergeMode != interfaces.ImportMode_Overwrite
 	candidate.ConceptGroups = mergeProxyItems(current.ConceptGroups, changes.ConceptGroups, keepExisting,
 		func(item *interfaces.ConceptGroup) (string, bool) {

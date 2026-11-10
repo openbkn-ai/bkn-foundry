@@ -1274,6 +1274,51 @@ func (kna *knowledgeNetworkAccess) ListKNChildResourceCandidates(ctx context.Con
 	return candidates, nil
 }
 
+// PresentKNChildIDs returns the ids among childIDs that some branch of the network defines as a
+// child of resourceType. It reads committed rows, so a cleanup calls it after its delete committed.
+func (kna *knowledgeNetworkAccess) PresentKNChildIDs(ctx context.Context, resourceType, knID string,
+	childIDs []string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge network children still defined")
+	defer span.End()
+
+	if len(childIDs) == 0 {
+		return nil, nil
+	}
+	tableName := ""
+	for _, childTable := range knChildResourceTables {
+		if childTable.resourceType == resourceType {
+			tableName = childTable.tableName
+		}
+	}
+	if tableName == "" {
+		return nil, fmt.Errorf("unknown knowledge network child resource type %q", resourceType)
+	}
+	query, args, err := sq.Select("f_id").Distinct().From(tableName).
+		Where(sq.Eq{"f_kn_id": knID}).Where(sq.Eq{"f_id": childIDs}).ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := kna.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to list knowledge network children still defined", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	present := make([]string, 0, len(childIDs))
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		present = append(present, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return present, nil
+}
+
 func processConceptGroupRelationsQueryCondition(query interfaces.ConceptGroupRelationsQueryParams, subBuilder sq.SelectBuilder, fieldPrefix string) sq.SelectBuilder {
 
 	if query.KNID != "" {

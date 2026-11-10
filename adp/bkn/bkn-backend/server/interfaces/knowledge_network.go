@@ -125,8 +125,13 @@ type KN struct {
 	// KeepSkillContent tells UpdateKN to leave the stored skill content alone, set when an
 	// update request leaves skill_content out.
 	KeepSkillContent bool `json:"-" mapstructure:"-"`
+	// ReplaceContent makes an overwrite import delete the definitions the package leaves out.
+	ReplaceContent bool `json:"-" mapstructure:"-"`
 
 	Branch string `json:"branch,omitempty" mapstructure:"branch"`
+	// Versioning is true in a create request for a network versioned from the start, and the
+	// version state in a read of a versioned network.
+	Versioning *KNVersioningField `json:"versioning,omitempty" mapstructure:"-"`
 
 	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 	ObjectTypes   []*ObjectType   `json:"object_types,omitempty" mapstructure:"object_types"`

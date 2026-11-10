@@ -177,8 +177,8 @@ func Test_conceptGroupAccess_CreateConceptGroup(t *testing.T) {
 		cga, smock := MockNewConceptGroupAccess(appSetting)
 
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
-			"f_kn_id,f_branch,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", CONCEPT_GROUP_TABLE_NAME)
+			"f_kn_id,f_branch,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", CONCEPT_GROUP_TABLE_NAME)
 
 		Convey("CreateConceptGroup Success \n", func() {
 			smock.ExpectBegin()
@@ -527,7 +527,7 @@ func Test_conceptGroupAccess_UpdateConceptGroup(t *testing.T) {
 		cga, smock := MockNewConceptGroupAccess(appSetting)
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_icon = ?, f_name = ?, "+
-			"f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"f_revision = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
 			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", CONCEPT_GROUP_TABLE_NAME)
 		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", CONCEPT_GROUP_TABLE_NAME)
 

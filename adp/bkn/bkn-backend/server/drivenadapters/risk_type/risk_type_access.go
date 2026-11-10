@@ -194,6 +194,7 @@ func (rta *riskTypeAccess) CreateRiskType(ctx context.Context, tx *sql.Tx, riskT
 			"f_updater",
 			"f_updater_type",
 			"f_update_time",
+			"f_revision",
 		).
 		Values(
 			riskType.RTID,
@@ -211,6 +212,7 @@ func (rta *riskTypeAccess) CreateRiskType(ctx context.Context, tx *sql.Tx, riskT
 			riskType.Updater.ID,
 			riskType.Updater.Type,
 			riskType.UpdateTime,
+			interfaces.NewDefinitionRevision(),
 		).
 		ToSql()
 	if err != nil {
@@ -238,7 +240,7 @@ func (rta *riskTypeAccess) CreateRiskTypes(ctx context.Context, tx *sql.Tx,
 		builder := sq.Insert(RT_TABLE_NAME).Columns(
 			"f_id", "f_name", "f_comment", "f_tags", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_creator", "f_creator_type", "f_create_time", "f_updater",
-			"f_updater_type", "f_update_time",
+			"f_updater_type", "f_update_time", "f_revision",
 		)
 		for _, riskType := range riskTypes[start:end] {
 			builder = builder.Values(riskTypeInsertValues(riskType)...)
@@ -263,7 +265,7 @@ func riskTypeInsertValues(riskType *interfaces.RiskType) []any {
 		riskType.RTID, riskType.RTName, riskType.Comment, libCommon.TagSlice2TagString(riskType.Tags),
 		riskType.Icon, riskType.Color, riskType.BKNRawContent, riskType.KNID, riskType.Branch,
 		riskType.Creator.ID, riskType.Creator.Type, riskType.CreateTime, riskType.Updater.ID,
-		riskType.Updater.Type, riskType.UpdateTime,
+		riskType.Updater.Type, riskType.UpdateTime, interfaces.NewDefinitionRevision(),
 	}
 }
 
@@ -467,6 +469,7 @@ func (rta *riskTypeAccess) UpdateRiskType(ctx context.Context, tx *sql.Tx, riskT
 		"f_updater":         riskType.Updater.ID,
 		"f_updater_type":    riskType.Updater.Type,
 		"f_update_time":     riskType.UpdateTime,
+		"f_revision":        interfaces.NewDefinitionRevision(),
 	}
 
 	sqlStr, vals, err := sq.Update(RT_TABLE_NAME).
@@ -542,6 +545,7 @@ func (rta *riskTypeAccess) UpdateRiskTypes(ctx context.Context, tx *sql.Tx,
 			statement.WriteString(column)
 			statement.WriteString(" END")
 		}
+		statement.WriteString(", f_revision = REPLACE(UUID(), '-', '')")
 		statement.WriteString(" WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (")
 		args = append(args, knID, branch)
 		for index, riskType := range batch {

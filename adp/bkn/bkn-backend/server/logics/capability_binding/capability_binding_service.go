@@ -246,6 +246,9 @@ func (cbs *capabilityBindingService) DetachCapabilities(ctx context.Context, tx 
 	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
 		return 0, err
 	}
+	if err := logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindCapabilityBinding, knID, branch, bindingIDs...); err != nil {
+		return 0, err
+	}
 
 	rows, err := cbs.cba.DeleteBindingsByIDs(ctx, tx, knID, branch, bindingIDs)
 	if err != nil {

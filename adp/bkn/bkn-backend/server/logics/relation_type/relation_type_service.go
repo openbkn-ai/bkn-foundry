@@ -111,6 +111,12 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if len(relationTypes) > 0 {
+			if err = logics.GuardDefinitionWrite(ctx, tx, relationTypes[0].KNID, relationTypes[0].Branch, false); err != nil {
+				_ = tx.Rollback()
+				return []string{}, err
+			}
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -677,6 +683,10 @@ func (rts *relationTypeService) updateRelationType(ctx context.Context, tx *sql.
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, relationType.KNID, relationType.Branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -695,6 +705,9 @@ func (rts *relationTypeService) updateRelationType(ctx context.Context, tx *sql.
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRelationType, relationType.KNID, relationType.Branch, relationType.RTID); err != nil {
+		return err
 	}
 
 	// Validate source and target object type existence when present, controlled by strict_mode.
@@ -791,6 +804,10 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, knID, branch, false); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -809,6 +826,9 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 				}
 			}
 		}()
+	}
+	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindRelationType, knID, branch, rtIDs...); err != nil {
+		return err
 	}
 
 	// Delete metric models.
@@ -836,7 +856,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, branch, rtIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -871,7 +891,7 @@ func (rts *relationTypeService) DeleteRelationTypesByKnID(ctx context.Context, t
 	logger.Infof("DeleteRelationTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, branch, rtIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

@@ -40,6 +40,12 @@ type CapabilityBindingService interface {
 	// publication and also returns the concrete rows included in that projection.
 	ImportCapabilitiesTx(ctx context.Context, tx *sql.Tx, knID, branch string,
 		declared *bkn.BknCapabilities) (*CapabilityImportReport, []*CapabilityBinding, error)
+	// ReplaceCapabilitiesTx is ImportCapabilitiesTx that also detaches the bindings of the
+	// branch the declaration leaves out, including those whose declaration did not resolve.
+	ReplaceCapabilitiesTx(ctx context.Context, tx *sql.Tx, knID, branch string,
+		declared *bkn.BknCapabilities) (*CapabilityImportReport, []*CapabilityBinding, error)
+	// BindingIDs lists the ids of the committed bindings of a branch.
+	BindingIDs(ctx context.Context, knID, branch string) ([]string, error)
 	// DeleteCapabilitiesByKnID clears the bindings of a network without a permission check,
 	// for use by knowledge-network deletion. tx must be non-nil.
 	DeleteCapabilitiesByKnID(ctx context.Context, tx *sql.Tx, knID, branch string) error

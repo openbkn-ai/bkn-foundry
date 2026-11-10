@@ -275,9 +275,13 @@ func (r *restHandler) CreateKNByEx(c *gin.Context) {
 
 // parseKnowledgeNetworkImportOptions parses the import behavior shared by JSON and archive imports.
 // strict_mode takes precedence over the deprecated validate_dependency parameter.
+// With allowReplace, replace is accepted and parsed as overwrite; the caller prunes what is left out.
 func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context,
-	defaultMode string, defaultStrictMode bool) (string, bool, *httperrors.HTTPError) {
+	defaultMode string, defaultStrictMode bool, allowReplace bool) (string, bool, *httperrors.HTTPError) {
 	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, defaultMode)
+	if allowReplace && mode == interfaces.ImportMode_Replace {
+		mode = interfaces.ImportMode_Overwrite
+	}
 	if httpErr := validateImportMode(ctx, mode); httpErr != nil {
 		return "", false, httpErr
 	}
@@ -320,7 +324,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c,
-		interfaces.ImportMode_Normal, true)
+		interfaces.ImportMode_Normal, true, false)
 	if httpErr != nil {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -542,7 +546,10 @@ func (r *restHandler) ValidateKN(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
@@ -662,7 +669,19 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	// Changing skill_content changes the draft as a whole; changing only the basic information
+	// needs no precondition. A body that fails to bind is reported below.
+	fields := struct {
+		SkillContent *string `json:"skill_content"`
+	}{}
+	need := preconditionNone
+	if c.ShouldBindBodyWith(&fields, binding.JSON) == nil && fields.SkillContent != nil {
+		need = preconditionDraftRevision
+	}
+	branch, branchOK := r.writeBranchNeeding(&ctx, c, knID, need)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -685,9 +704,6 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Bind request parameters. A request that leaves skill_content out keeps the stored value.
 	kn := interfaces.KN{}
-	fields := struct {
-		SkillContent *string `json:"skill_content"`
-	}{}
 	err = c.ShouldBindBodyWith(&kn, binding.JSON)
 	if err == nil {
 		err = c.ShouldBindBodyWith(&fields, binding.JSON)
@@ -1108,7 +1124,10 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
@@ -1159,6 +1178,17 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+
+	if r.kvs != nil && mode != interfaces.Mode_Export {
+		view, err := r.kvs.GetState(ctx, knID)
+		if err != nil {
+			replyKNVersionError(c, err)
+			return
+		}
+		if view.Enabled {
+			kn.Versioning = &interfaces.KNVersioningField{View: view}
+		}
 	}
 
 	// Get concept statistics.
@@ -1226,7 +1256,10 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 
 	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),

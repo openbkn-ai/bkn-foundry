@@ -147,8 +147,8 @@ func Test_relationTypeAccess_CreateRelationType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_source_object_type_id,f_target_object_type_id,f_type,f_mapping_rules,"+
-			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_reverse_name,f_aliases,f_cardinality,f_constraints,f_lifecycle_status,f_deprecation,f_importance,f_fallback_for,f_verification) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
+			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_reverse_name,f_aliases,f_cardinality,f_constraints,f_lifecycle_status,f_deprecation,f_importance,f_fallback_for,f_verification,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
 
 		Convey("CreateRelationType Success \n", func() {
 			smock.ExpectBegin()
@@ -225,8 +225,8 @@ func Test_relationTypeAccess_CreateRelationTypes(t *testing.T) {
 		second.RTName = "Relation Type 2"
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_source_object_type_id,f_target_object_type_id,f_type,f_mapping_rules,"+
-			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_reverse_name,f_aliases,f_cardinality,f_constraints,f_lifecycle_status,f_deprecation,f_importance,f_fallback_for,f_verification) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
+			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_reverse_name,f_aliases,f_cardinality,f_constraints,f_lifecycle_status,f_deprecation,f_importance,f_fallback_for,f_verification,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
 		smock.ExpectBegin()
 		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
 		tx, err := rta.db.Begin()
@@ -696,7 +696,7 @@ func Test_relationTypeAccess_UpdateRelationType(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta, smock := MockNewRelationTypeAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_cardinality = ?, f_color = ?, f_comment = ?, f_constraints = ?, f_deprecation = ?, f_fallback_for = ?, f_icon = ?, f_importance = ?, f_lifecycle_status = ?, f_mapping_rules = ?, f_name = ?, f_reverse_name = ?, f_source_object_type_id = ?, f_tags = ?, f_target_object_type_id = ?, f_type = ?, f_update_time = ?, f_updater = ?, f_updater_type = ?, f_verification = ? WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", RT_TABLE_NAME)
+		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_cardinality = ?, f_color = ?, f_comment = ?, f_constraints = ?, f_deprecation = ?, f_fallback_for = ?, f_icon = ?, f_importance = ?, f_lifecycle_status = ?, f_mapping_rules = ?, f_name = ?, f_reverse_name = ?, f_revision = ?, f_source_object_type_id = ?, f_tags = ?, f_target_object_type_id = ?, f_type = ?, f_update_time = ?, f_updater = ?, f_updater_type = ?, f_verification = ? WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", RT_TABLE_NAME)
 		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", RT_TABLE_NAME)
 
 		relationType := &interfaces.RelationType{
