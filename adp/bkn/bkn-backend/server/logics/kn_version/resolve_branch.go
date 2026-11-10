@@ -122,3 +122,29 @@ func resolveUnversioned(ctx context.Context, req interfaces.KNBranchRequest) (*i
 	}
 	return nil, newHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_NotVersioned)
 }
+
+func (s *service) CheckReadEnd(ctx context.Context, knID string, resolved *interfaces.KNResolvedBranch) error {
+	state, err := s.va.GetState(ctx, nil, knID, false)
+	if err != nil {
+		return internalError(ctx, err)
+	}
+	if resolved.Branch == interfaces.DRAFT_BRANCH {
+		// Disabling deletes the state together with the draft.
+		if state == nil || state.DraftRevision != resolved.DraftRevision {
+			return newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_DraftRevisionMismatch)
+		}
+		return nil
+	}
+	n, err := strconv.Atoi(resolved.Version)
+	if err != nil {
+		return nil
+	}
+	v, err := s.va.GetVersion(ctx, nil, knID, n, false)
+	if err != nil {
+		return internalError(ctx, err)
+	}
+	if v == nil || v.Status == interfaces.KNVersionPurged {
+		return newHTTPError(ctx, http.StatusGone, berrors.BknBackend_KNVersion_VersionPurged)
+	}
+	return nil
+}

@@ -429,6 +429,7 @@ func (r *restHandler) resolveRead(ctx *context.Context, c *gin.Context, knID str
 	if write {
 		return resolved, true
 	}
+	markVersionedRead(c, knID, resolved)
 	if resolved.Version != "" {
 		c.Header("X-Kn-Version", resolved.Version)
 	}

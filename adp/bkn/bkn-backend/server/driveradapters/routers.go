@@ -130,8 +130,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	apiV1 := c.Group("/api/bkn-backend/v1")
 	bknApiV2 := c.Group("/api/bkn-backend/v2")
-	apiV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
-	bknApiV2.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
+	apiV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations(), r.consistentReads())
+	bknApiV2.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations(), r.consistentReads())
 	apiV1.GET("/proxy-accounts", r.ListKNProxiesByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxyByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/proxy-account/plan", r.PlanKNProxySyncByEx)
@@ -237,7 +237,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/bkns/diff/object-data-stats", r.verifyJsonContentType(), r.ObjectDataStatsByEx)
 
 	apiInV1 := c.Group("/api/bkn-backend/in/v1")
-	apiInV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
+	apiInV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations(), r.consistentReads())
 	apiInV1.GET("/trace/projection/knowledge-networks/:kn_id", r.GetKNByProjectionGrant)
 	apiInV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxy)
 	apiInV1.POST("/knowledge-networks/:kn_id/proxy-account/resolve", r.verifyJsonContentType(), r.ResolveKNProxyBinding)

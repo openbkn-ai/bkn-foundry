@@ -268,6 +268,9 @@ type KNResolvedBranch struct {
 type KNVersionService interface {
 	// ResolveBranch maps a request's branch and kn_version to the storage branch (design §10).
 	ResolveBranch(ctx context.Context, knID string, req KNBranchRequest) (*KNResolvedBranch, error)
+	// CheckReadEnd tells, after a read finished, whether the branch it resolved changed under it:
+	// VersionPurged when the version was purged, DraftRevisionMismatch when the draft was written.
+	CheckReadEnd(ctx context.Context, knID string, resolved *KNResolvedBranch) error
 	Enable(ctx context.Context, knID string, req *KNEnableVersioningRequest) (*KNVersioningView, error)
 	GetState(ctx context.Context, knID string) (*KNVersioningView, error)
 	ListVersions(ctx context.Context, knID string, query *KNVersionsQuery) ([]*KNVersion, int, error)

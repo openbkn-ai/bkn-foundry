@@ -401,3 +401,28 @@ func TestBrokenReferencesRefuseGoingLive(t *testing.T) {
 		t.Fatalf("running version after refusals = %d", got)
 	}
 }
+
+func TestCheckReadEnd(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{KNVersion: interfaces.DRAFT_BRANCH})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{KNVersion: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.CheckReadEnd(f.ctx, f.knID, draft); err != nil {
+		t.Fatalf("unchanged draft: %v", err)
+	}
+	if err := f.svc.CheckReadEnd(f.ctx, f.knID, v1); err != nil {
+		t.Fatalf("unchanged version: %v", err)
+	}
+	f.editDraft("name-2")
+	wantCode(t, f.svc.CheckReadEnd(f.ctx, f.knID, draft), berrors.BknBackend_KNVersion_DraftRevisionMismatch)
+	f.exec("UPDATE t_kn_version SET f_status = 'purged' WHERE f_kn_id = ? AND f_version = 1", f.knID)
+	wantCode(t, f.svc.CheckReadEnd(f.ctx, f.knID, v1), berrors.BknBackend_KNVersion_VersionPurged)
+}
