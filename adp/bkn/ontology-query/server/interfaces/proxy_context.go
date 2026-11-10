@@ -74,6 +74,8 @@ type TrustedProxyBinding struct {
 	TargetType string `json:"target_type"`
 	TargetID   string `json:"target_id"`
 	Operation  string `json:"operation"`
+	// Branch is the running version the binding belongs to ("v<N>"); empty means main.
+	Branch string `json:"branch,omitempty"`
 }
 
 // TrustedProxyContext keeps the real caller separate from the effective

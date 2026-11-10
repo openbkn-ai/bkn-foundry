@@ -90,6 +90,9 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 			span.SetAttributes(attribute.Key("branch").String(query.Branch))
 			otellog.LogError(ctx, fmt.Sprintf("Get RelationTypePathsBaseOnSource error: %v", err), err)
 
+			if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+				return resps, versionErr
+			}
 			return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
@@ -217,6 +220,10 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 			span.SetAttributes(attribute.Key("rt_id").String(edge.RelationTypeId))
 			otellog.LogError(ctx, fmt.Sprintf("Get relation type error: %v", err), err)
 
+			if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+				typePathsObjectCtx.errCh <- versionErr
+				return
+			}
 			err = httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed).WithErrorDetails(err.Error())
 
@@ -1345,7 +1352,7 @@ func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
 	if relationTypeID == "" {
 		relationTypeID = edge.RelationTypeId
 	}
-	proxyContext, err := kns.proxy.Resolve(ctx, interfaces.TrustedProxyBinding{
+	proxyContext, err := logics.ResolveDataProxy(ctx, kns.proxy, interfaces.TrustedProxyBinding{
 		KNID:       query.KNID,
 		ChildType:  interfaces.PermissionResourceTypeRelationType,
 		ChildID:    relationTypeID,
@@ -1356,7 +1363,10 @@ func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+	// A nil proxy context means the draft or a history version: read as the caller.
+	if proxyContext != nil {
+		ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
+	}
 
 	batchSize := 50 // Batch size for view queries.
 	var mappingRulesToUse, farMappingRules []interfaces.Mapping
@@ -1666,6 +1676,9 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 		// Get object type information.
 		objectType, exists, err := kns.omAccess.GetObjectType(ctx, query.KNID, query.Branch, otID)
 		if err != nil {
+			if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+				return nil, nil, versionErr
+			}
 			return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
@@ -1739,6 +1752,9 @@ func (kns *knowledgeNetworkService) discoverRelationTypes(ctx context.Context,
 		TargetObjectTypeIDs: objectTypeIDs,
 	})
 	if err != nil {
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return nil, versionErr
+		}
 		return nil, err
 	}
 

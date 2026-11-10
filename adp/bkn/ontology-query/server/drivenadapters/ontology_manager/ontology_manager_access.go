@@ -42,7 +42,7 @@ func NewOntologyManagerAccess(appSetting *common.AppSetting) interfaces.Ontology
 		omAccess = &ontologyManagerAccess{
 			appSetting:         appSetting,
 			ontologyManagerUrl: appSetting.BKNBackendUrl,
-			httpClient:         common.NewHTTPClient(),
+			httpClient:         newVersionAwareHTTPClient(),
 		}
 	})
 	return omAccess
@@ -51,7 +51,7 @@ func NewOntologyManagerAccess(appSetting *common.AppSetting) interfaces.Ontology
 // Get object type information.
 func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string, branch string, otID string) (interfaces.ObjectType, bool, error) {
 
-	httpUrl := fmt.Sprintf("%s/%s/object-types/%s?branch=%s", oma.ontologyManagerUrl, knID, otID, branch)
+	httpUrl := fmt.Sprintf("%s/%s/object-types/%s?branch=%s", oma.ontologyManagerUrl, knID, otID, branch) + versionQuery(ctx)
 	// When the HTTP client sends a request, RoundTrip uses transport; at this point the transport is otelhttp.NewTransport.
 	// otelhttp.NewTransport injects the propagator during RoundTrip, that is, t.propagators.Inject.
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 ontology-manager 获取对象类信息")
@@ -88,7 +88,7 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get object type request failed: %v", err), err)
 
-		return emptyObjectType, false, fmt.Errorf("get request method failed: %v", err)
+		return emptyObjectType, false, fmt.Errorf("get request method failed: %w", err)
 	}
 
 	if respCode == http.StatusNotFound {
@@ -168,7 +168,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 	metricID string, version int) (*interfaces.ObjectMetricExecutionContextV1, error) {
 
 	httpURL := fmt.Sprintf("%s/%s/object-metrics/%s/execution-context?branch=%s&version=%d",
-		oma.ontologyManagerUrl, knID, metricID, branch, version)
+		oma.ontologyManagerUrl, knID, metricID, branch, version) + versionQuery(ctx)
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get object metric execution context")
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
 		HttpUrl: httpURL, HttpMethod: http.MethodGet, HttpContentType: rest.ContentTypeJson,
@@ -218,7 +218,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.Context, knID string,
 	branch string, query interfaces.PathsQueryBaseOnSource) ([]interfaces.RelationTypePath, error) {
 
-	url := fmt.Sprintf("%s/%s/relation-type-paths?branch=%s", oma.ontologyManagerUrl, knID, branch)
+	url := fmt.Sprintf("%s/%s/relation-type-paths?branch=%s", oma.ontologyManagerUrl, knID, branch) + versionQuery(ctx)
 
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 ontology-manager 获取关系类路径信息")
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
@@ -251,7 +251,7 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type paths request failed: %v", err), err)
 
-		return nil, fmt.Errorf("get request method failed: %v", err)
+		return nil, fmt.Errorf("get request method failed: %w", err)
 	}
 
 	if respCode != http.StatusOK {
@@ -372,7 +372,7 @@ func decodeRelationTypeMappingRules(relationType *interfaces.RelationType) error
 func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID string,
 	branch string, rtID string) (interfaces.RelationType, bool, error) {
 
-	httpUrl := fmt.Sprintf("%s/%s/relation-types/%s?branch=%s", oma.ontologyManagerUrl, knID, rtID, branch)
+	httpUrl := fmt.Sprintf("%s/%s/relation-types/%s?branch=%s", oma.ontologyManagerUrl, knID, rtID, branch) + versionQuery(ctx)
 	// When the HTTP client sends a request, RoundTrip uses transport; at this point the transport is otelhttp.NewTransport.
 	// otelhttp.NewTransport injects the propagator during RoundTrip, that is, t.propagators.Inject.
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 ontology-manager 获取关系类信息")
@@ -409,7 +409,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type request failed: %v", err), err)
 
-		return emptyRelationType, false, fmt.Errorf("get request method failed: %v", err)
+		return emptyRelationType, false, fmt.Errorf("get request method failed: %w", err)
 	}
 
 	if respCode == http.StatusNotFound {
@@ -487,7 +487,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID string,
 	branch string, query interfaces.RelationTypesQuery) ([]interfaces.RelationType, error) {
 
-	httpUrl := fmt.Sprintf("%s/%s/relation-types?branch=%s&limit=-1", oma.ontologyManagerUrl, knID, branch)
+	httpUrl := fmt.Sprintf("%s/%s/relation-types?branch=%s&limit=-1", oma.ontologyManagerUrl, knID, branch) + versionQuery(ctx)
 
 	// Support querying multiple object type IDs.
 	if len(query.SourceObjectTypeIDs) > 0 {
@@ -534,7 +534,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Get Failed")
 		otellog.LogError(ctx, fmt.Sprintf("List relation types request failed: %v", err), err)
-		return nil, fmt.Errorf("get request method failed: %v", err)
+		return nil, fmt.Errorf("get request method failed: %w", err)
 	}
 
 	if respCode != http.StatusOK {
@@ -585,7 +585,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string,
 	branch string, atID string) (interfaces.ActionType, map[string]any, bool, error) {
 
-	httpUrl := fmt.Sprintf("%s/%s/action-types/%s?branch=%s", oma.ontologyManagerUrl, knID, atID, branch)
+	httpUrl := fmt.Sprintf("%s/%s/action-types/%s?branch=%s", oma.ontologyManagerUrl, knID, atID, branch) + versionQuery(ctx)
 	// When the HTTP client sends a request, RoundTrip uses transport; at this point the transport is otelhttp.NewTransport.
 	// otelhttp.NewTransport injects the propagator during RoundTrip, that is, t.propagators.Inject.
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 ontology-manager 获取行动类信息")
@@ -622,7 +622,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get action type request failed: %v", err), err)
 
-		return emptyActionType, nil, false, fmt.Errorf("get request method failed: %v", err)
+		return emptyActionType, nil, false, fmt.Errorf("get request method failed: %w", err)
 	}
 
 	if respCode == http.StatusNotFound {
@@ -715,7 +715,7 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 	}
 
 	idsStr := strings.Join(riskTypeIDs, ",")
-	httpUrl := fmt.Sprintf("%s/%s/risk-types?risk_type_ids=%s&branch=%s", oma.ontologyManagerUrl, knID, idsStr, branch)
+	httpUrl := fmt.Sprintf("%s/%s/risk-types?risk_type_ids=%s&branch=%s", oma.ontologyManagerUrl, knID, idsStr, branch) + versionQuery(ctx)
 
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 bkn-backend 获取风险类")
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
@@ -768,6 +768,10 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 // newOntologyManagerError keeps dependency details under a locally owned error.
 // Authentication and permission refusals must not use an internal-failure message.
 func newOntologyManagerError(ctx context.Context, status int, code string, source httperrors.BaseError) *httperrors.HTTPError {
+	// A refusal about the requested version keeps bkn-backend's code, so the caller sees why.
+	if oerrors.IsPassThroughKNVersionError(source.ErrorCode) {
+		return httperrors.NewHTTPError(ctx, status, source.ErrorCode)
+	}
 	switch status {
 	case http.StatusUnauthorized:
 		code = httperrors.PublicError_Unauthorized
