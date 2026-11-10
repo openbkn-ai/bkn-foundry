@@ -28,7 +28,7 @@ ContextLoader 知识网络查询工具集使用指南。
 
 探索顺序：
 1. 不知道 kn_id 时先 list_knowledge_networks 获取（其余工具都需要 kn_id）；宿主或网络说明已指定知识网络时直接用它，不要另找。
-2. get_kn_detail（默认 detail_level=summary，体积小）先看概念组清单。每个分组带 name/tags/comment，据此选出 1-3 个与问题相关的分组。
+2. get_kn_detail(detail_level=brief) 先看网络说明（顶层 comment）、概念组清单与挂载能力数量，只有几 KB。每个分组带 name/tags/comment，据此选出 1-3 个与问题相关的分组。要一眼看全网对象类与关系类再用默认的 summary；返回超过约 30000 字符时会自动收窄并在 notice 里说明。
 3. search_schema 在选中分组内找对象类：传 search_scope={"concept_groups":[选中的分组 ID]}，返回 ot_id、属性、索引能力（共用的算子放在对象类的 index_operations，支持它的属性写 indexed=true）、data_source.id。
    默认精简（schema_brief=true，省约 70%，够写查询）；要属性备注/主键/标签的完整 Schema 才传 schema_brief=false。
    回退：概念组清单为空、凭语义判断不出该选哪个、或问题跨越三个以上分组时，不传 concept_groups 直接全网检索。

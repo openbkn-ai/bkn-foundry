@@ -21,15 +21,21 @@ func GetResponseFormatFromRequest(req mcp.CallToolRequest) (rest.ResponseFormat,
 
 // BuildMCPToolResult uniformly constructs the MCP Tool return result based on response_format (the text is JSON or TOON, and structuredContent is still the original object)
 func BuildMCPToolResult(resp interface{}, format rest.ResponseFormat) (*mcp.CallToolResult, error) {
-	var textContent string
+	textContent, err := renderToolText(resp, format)
+	if err != nil {
+		return nil, err
+	}
+	return mcp.NewToolResultStructured(resp, textContent), nil
+}
+
+// renderToolText is the text BuildMCPToolResult puts in front of the caller.
+func renderToolText(resp interface{}, format rest.ResponseFormat) (string, error) {
 	if format == rest.FormatTOON {
 		_, bodyBytes, err := rest.MarshalResponse(rest.FormatTOON, resp)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		textContent = string(bodyBytes)
-	} else {
-		textContent = utils.ObjectToJSON(resp)
+		return string(bodyBytes), nil
 	}
-	return mcp.NewToolResultStructured(resp, textContent), nil
+	return utils.ObjectToJSON(resp), nil
 }

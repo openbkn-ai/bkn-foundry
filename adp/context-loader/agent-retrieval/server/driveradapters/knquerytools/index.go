@@ -11,8 +11,8 @@ package knquerytools
 import (
 	stderrors "errors"
 	"net/http"
-	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -172,26 +172,31 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		return
 	}
 
+	detailLevel := req.DetailLevel
+	if detailLevel == "" {
+		detailLevel = interfaces.DetailLevelSummary
+	}
 	resp, err := knmetrics.NetworkDetailForBranch(ctx, h.bknBackend, req.KnID, req.Branch)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] failed: %v", err)
 		rest.ReplyError(c, err)
 		return
 	}
-	// A network too large to answer with its concept model narrows to its navigation
-	// shell, and does so here -- before the two steps below, which each cost a
-	// downstream call per object type of a list this answer will not carry (#1877).
-	if resp.NeedsNavigationShell() {
-		resp.ReduceToNavigationShell()
-		noticeKey := resp.NavigationShellNoticeKey()
-		if branch := strings.TrimSpace(req.Branch); branch != "" && branch != "main" {
-			noticeKey = "KnDetailNavigationShellBranch"
-		}
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+noticeKey, map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
+	notice := func(reduction interfaces.KnDetailReduction) string {
+		key, args := resp.KnDetailNotice(reduction, detailLevel, req.Branch)
+		text, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+key, args)
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		resp.Notice = localizedText
+		return text
+	}
+	// A network too large to answer with its concept model narrows to its navigation
+	// shell, and does so here -- before the two steps below, which each cost a
+	// downstream call per object type of a list this answer will not carry (#1877).
+	// brief asks for that shell outright.
+	if detailLevel == interfaces.DetailLevelBrief || resp.NeedsNavigationShell() {
+		resp.ReduceToNavigationShell()
+		resp.Notice = notice(interfaces.KnDetailReductionShell)
 	} else {
 		resp.ObjectTypes, err = objectpermission.FilterObjectTypesBranch(ctx, h.schemaAccess, req.KnID, req.Branch, resp.ObjectTypes)
 		if err != nil {
@@ -218,11 +223,25 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	} else {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] capability bindings unreadable: %v", err)
 	}
-	detailLevel := req.DetailLevel
-	if detailLevel == "" {
-		detailLevel = interfaces.DetailLevelSummary
-	}
 	resp.Slim(detailLevel)
+	// The same bound as the MCP tool, measured in the format this route replies in.
+	format := rest.FormatJSON
+	if v, ok := common.GetResponseFormatFromCtx(ctx); ok {
+		if f, ok := v.(rest.ResponseFormat); ok {
+			format = f
+		}
+	}
+	if _, err := resp.FitWithin(interfaces.MaxKnDetailChars, notice, func(d *interfaces.KnowledgeNetworkDetail) (int, error) {
+		if detailLevel != interfaces.DetailLevelFull {
+			d = objectpermission.WithUnrestrictedPermissionsOmitted(d)
+		}
+		_, body, err := rest.MarshalResponse(format, d)
+		return utf8.RuneCount(body), err
+	}); err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] measuring the answer failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
 	// The same trim the MCP tool applies, for the same reason: an all-full map is the
 	// caller's own permissions read back to them one property at a time. Answering the
 	// REST caller differently made two faces of one service disagree about one network

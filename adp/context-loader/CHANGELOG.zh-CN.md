@@ -6,6 +6,8 @@
 
 - `list_knowledge_networks` 恢复返回各知识网络的 `description`。bkn-backend 的字段名是 `comment`，读取列表时被丢弃，所有网络的说明都是空的。
 
+- `get_kn_detail` 的返回限制在约 30000 字符以内，按调用方实际读到的格式计数。summary 或 full 超过时逐级收窄并附 `notice`：先把对象类的属性列表换成 `data_property_count` / `logic_property_count`，仍超过则只返回导航壳。新增 `detail_level=brief`，只返回网络名称、说明、概念组与各类概念数量；MCP 使用说明改为以它开局。默认级别仍是 `summary`，返回未超限的网络输出不变。
+
 - 增加可选 HTTP MCP 扩展，按同源路径转发认证、核验许可，并在完整及精简入口直接发布控制工具。支持接入 EE Eval 参评工具，不内嵌 Eval 业务逻辑；默认工具目录不变。 (#2570)
 
 - `search_schema` 展开枚举并输出别名（BKN 规范 3.0 阶段 2）。引用枚举值类型的属性带 `value_type` 与枚举项 `enum: [{value, display, deprecated}]`，停用项保留；超过展开上限（`concept_search_config.enum_expand_limit`，默认 50）的枚举以及精简模式下的所有枚举只给 `enum_count`，新参数 `enum_query` 按显示名或编码检索枚举项，命中超过上限时另给命中总数 `enum_match_count`。读取值类型受 `schema_read_timeout_ms` 限制。对象类、关系类、行动类在两种模式下都输出 `aliases`，数据属性的别名只在完整模式输出。`get_kn_detail`、`get_object_types`、`get_relation_types` 不输出别名。无值类型、无别名的网络输出与之前相同。 (#2282)
