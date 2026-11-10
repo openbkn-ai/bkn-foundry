@@ -118,9 +118,11 @@ func (a *App) Run() error {
 	if err := validatePorts(a.config.Project); err != nil {
 		return err
 	}
-	if endpoint := strings.TrimSpace(os.Getenv("CONTEXT_LOADER_EXTENSION_MANIFEST_URL")); endpoint != "" {
+	endpoint := strings.TrimSpace(os.Getenv("CONTEXT_LOADER_EXTENSION_MANIFEST_URL"))
+	manifest := []byte(os.Getenv("CONTEXT_LOADER_EXTENSION_MANIFEST_JSON"))
+	if endpoint != "" || len(manifest) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		tools, err := mcptool.LoadHTTPProvider(ctx, endpoint, nil)
+		tools, err := mcptool.LoadConfiguredHTTPProvider(ctx, endpoint, manifest, nil)
 		cancel()
 		if err != nil {
 			return err

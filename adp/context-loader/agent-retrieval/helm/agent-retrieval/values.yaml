@@ -161,6 +161,9 @@ env:
 # Optional, same-origin HTTP extension provider. Schemas and authorization stay
 # in the provider. Leave empty for the unchanged community tool catalogue.
 mcpExtensionManifestURL: ""
+# Optional provider-owned deployment artifact, registered before licence
+# activation. Calls still use the HTTP provider and authenticated user identity.
+mcpExtensionManifestJSON: ""
 
 # Master switch for skill execution capability; disabled by default.
 # When disabled, execute_skill is not assembled as an MCP tool (absent from tools/list and /mcp/info),
