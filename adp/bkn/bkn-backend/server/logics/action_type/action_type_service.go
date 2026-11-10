@@ -914,7 +914,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs)
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, branch, atIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -949,7 +949,7 @@ func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *s
 	logger.Infof("DeleteActionTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs)
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, branch, atIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

@@ -399,21 +399,7 @@ func (s *service) checkReservedBranches(ctx context.Context, tx *sql.Tx, knID st
 }
 
 // IsReservedBranch reports draft and v<digits>, the branches a versioned network keeps for itself.
-func IsReservedBranch(branch string) bool {
-	if branch == interfaces.DRAFT_BRANCH {
-		return true
-	}
-	digits, ok := strings.CutPrefix(branch, interfaces.VERSION_BRANCH_PREFIX)
-	if !ok || digits == "" {
-		return false
-	}
-	for _, r := range digits {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
+func IsReservedBranch(branch string) bool { return interfaces.IsReservedBranch(branch) }
 
 func (s *service) GetState(ctx context.Context, knID string) (*interfaces.KNVersioningView, error) {
 	if err := s.checkPermission(ctx, knID, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {

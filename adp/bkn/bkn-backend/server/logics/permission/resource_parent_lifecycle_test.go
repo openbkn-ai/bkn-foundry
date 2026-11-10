@@ -147,8 +147,8 @@ func TestAuthorizationCleanupTrackerBatchesAndDeduplicatesResources(t *testing.T
 	if !owner {
 		t.Fatal("new cleanup tracker must have an owner")
 	}
-	TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_METRIC, "kn-1", []string{"metric-1"})
-	TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_METRIC, "kn-1", []string{"metric-1", "metric-2"})
+	TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_METRIC, "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1"})
+	TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_METRIC, "kn-1", interfaces.MAIN_BRANCH, []string{"metric-1", "metric-2"})
 	resourceIDs := []string{"kn-1/metric-1", "kn-1/metric-2"}
 	pending := tracker.PendingResources()
 	if len(pending) != 1 || pending[0].ResourceType != interfaces.RESOURCE_TYPE_METRIC ||
@@ -158,5 +158,38 @@ func TestAuthorizationCleanupTrackerBatchesAndDeduplicatesResources(t *testing.T
 	ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC, resourceIDs).Return(nil)
 	if err := tracker.Cleanup(ctx, ps); err != nil {
 		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
+// A definition's policy is keyed by network and definition id only, so the
+// running version and the draft share it. Deleting the draft's copy must not
+// remove the policy the running version still relies on.
+func TestAuthorizationCleanupTrackerSkipsVersionedBranches(t *testing.T) {
+	for _, branch := range []string{interfaces.DRAFT_BRANCH, interfaces.VersionBranch(3)} {
+		t.Run(branch, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps := bmock.NewMockPermissionService(ctrl)
+			ctx, tracker, _ := WithAuthorizationCleanupTracker(context.Background())
+			TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn-1", branch, []string{"ot-1"})
+			if pending := tracker.PendingResources(); len(pending) != 0 {
+				t.Fatalf("PendingResources() = %#v, want none for branch %q", pending, branch)
+			}
+			if err := tracker.Cleanup(ctx, ps); err != nil {
+				t.Fatalf("Cleanup() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestAuthorizationCleanupTrackerKeepsOrdinaryBranches(t *testing.T) {
+	for _, branch := range []string{interfaces.MAIN_BRANCH, "dev", "v", "v1a"} {
+		t.Run(branch, func(t *testing.T) {
+			ctx, tracker, _ := WithAuthorizationCleanupTracker(context.Background())
+			TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_OBJECT_TYPE, "kn-1", branch, []string{"ot-1"})
+			pending := tracker.PendingResources()
+			if len(pending) != 1 || !slices.Equal(pending[0].ResourceIDs, []string{"kn-1/ot-1"}) {
+				t.Fatalf("PendingResources() = %#v, want kn-1/ot-1 for branch %q", pending, branch)
+			}
+		})
 	}
 }

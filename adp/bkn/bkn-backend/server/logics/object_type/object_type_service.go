@@ -1553,7 +1553,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	logger.Infof("DeleteObjectTypesFromGroup success, the kn_id is [%s], branch is [%s], ot_ids is [%v], rowsAffect is [%d]",
 		knID, branch, otIDs, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs)
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, branch, otIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1598,7 +1598,7 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 	logger.Infof("DeleteObjectTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs)
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, branch, otIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

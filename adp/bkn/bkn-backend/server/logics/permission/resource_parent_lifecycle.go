@@ -247,10 +247,13 @@ func WithAuthorizationCleanupTracker(ctx context.Context) (context.Context, *Aut
 }
 
 // TrackKNChildAuthorizationCleanup queues canonical child resources for cleanup
-// after the database transaction commits.
-func TrackKNChildAuthorizationCleanup(ctx context.Context, resourceType, knID string, childIDs []string) {
+// after the database transaction commits. A child's policy is keyed by network
+// and child id only, so every branch of the network shares it. Deleting a child
+// from the draft or a version branch of a versioned network therefore leaves the
+// policy alone: the running version may still contain that child.
+func TrackKNChildAuthorizationCleanup(ctx context.Context, resourceType, knID, branch string, childIDs []string) {
 	tracker, ok := ctx.Value(authorizationCleanupTrackerKey{}).(*AuthorizationCleanupTracker)
-	if !ok || len(childIDs) == 0 {
+	if !ok || len(childIDs) == 0 || interfaces.IsReservedBranch(branch) {
 		return
 	}
 	tracker.mu.Lock()

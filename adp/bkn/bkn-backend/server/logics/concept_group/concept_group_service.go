@@ -1262,7 +1262,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		return err
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, []string{cgID})
+		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, branch, []string{cgID})
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -1307,7 +1307,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 	logger.Infof("DeleteConceptGroupRelationsByKnID: Rows affected is %v, request delete knID is %s in knowledge network [%s] branch [%s]!",
 		rowsAffect, knID, knID, branch)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgIDs)
+		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, branch, cgIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil

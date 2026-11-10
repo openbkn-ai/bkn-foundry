@@ -23,6 +23,23 @@ const (
 // VersionBranch is the branch that stores version n.
 func VersionBranch(n int) string { return VERSION_BRANCH_PREFIX + strconv.Itoa(n) }
 
+// IsReservedBranch reports draft and v<digits>, the branches a versioned network keeps for itself.
+func IsReservedBranch(branch string) bool {
+	if branch == DRAFT_BRANCH {
+		return true
+	}
+	digits, ok := strings.CutPrefix(branch, VERSION_BRANCH_PREFIX)
+	if !ok || digits == "" {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // Versioning modes of a network. A network without a state row is not versioned.
 const (
 	KNVersioningEnabled   = "enabled"

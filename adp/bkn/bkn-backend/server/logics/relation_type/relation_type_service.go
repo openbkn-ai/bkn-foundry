@@ -856,7 +856,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, branch, rtIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -891,7 +891,7 @@ func (rts *relationTypeService) DeleteRelationTypesByKnID(ctx context.Context, t
 	logger.Infof("DeleteRelationTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, branch, rtIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

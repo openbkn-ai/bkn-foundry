@@ -585,7 +585,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, branch, rtIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -855,7 +855,7 @@ func (rts *riskTypeService) DeleteRiskTypesByKnID(ctx context.Context, tx *sql.T
 		return err
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,
-		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs)
+		interfaces.RESOURCE_TYPE_RISK_TYPE, knID, branch, rtIDs)
 	span.SetStatus(codes.Ok, "")
 	return err
 }
