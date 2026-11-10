@@ -24,6 +24,8 @@ func TestDistinguishableErrorCodes(t *testing.T) {
 		http.StatusForbidden,
 		http.StatusNotFound,
 		http.StatusUnprocessableEntity,
+		// A purged knowledge-network version: retrying the same version never succeeds.
+		http.StatusGone,
 	}
 	for _, status := range statuses {
 		err := DefaultHTTPError(context.Background(), status, "detail")

@@ -47,7 +47,7 @@ func NewBknBackendAccess() interfaces.BknBackendAccess {
 		bknAccess = &bknBackendAccess{
 			logger:     conf.GetLogger(),
 			baseURL:    conf.BknBackend.BuildURL("/api/bkn-backend"),
-			httpClient: rest.NewHTTPClient(),
+			httpClient: newKnVersionClient(rest.NewHTTPClient()),
 		}
 	})
 	return bknAccess
