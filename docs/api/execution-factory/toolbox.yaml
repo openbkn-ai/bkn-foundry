@@ -362,6 +362,13 @@ paths:
         `function_input`（代码约定见 [function.yaml](function.yaml)，入口函数必须叫
         `handler`），`openapi` 走 `data`（OpenAPI 原文）。
 
+        **Cypher 函数**：函数工具箱里的函数有两种脚本类型，`python` 与 `cypher`。
+        `script_type=cypher` 时，`code` 是一条只读 Cypher 语句，语句里的 `$name`
+        就是入参，另需 `kn_id`（查哪个知识网络）与 `result_shape`（`value` / `table`）。
+        保存前平台以**调用人身份**向 bkn-backend 发一次 `explain`（只编译、不读数据）：
+        语法错误、写操作、对象类或属性不存在、调用人无权读取时拒绝保存，并带回
+        bkn-backend 的原因；`value` 形状返回多列或节点、关系、map、列表时也拒绝。
+
         **一次可以建出多个工具**：一份 OpenAPI 文档里有几个操作就建几个工具，
         所以响应是 `success_count` / `failure_count` 的批量结果，**部分成功是常态**
         ——`failure_count` 非 0 时接口仍返回 200，失败明细在 `failures` 里。
@@ -714,6 +721,16 @@ paths:
 
         注意随之而来的信任边界：函数代码由注册者提供，沙箱可出网，因此被调函数
         能在自身环境变量里读到调用者的活令牌。只把函数工具发布给可信的注册者。
+
+        **Cypher 函数**不进沙箱：平台以调用人身份在 bkn-backend 中执行语句，行列权限
+        与属性权限按调用人生效，与 Python 函数用调用人令牌读 BKN 得到的结果一致。
+        经知识网络代理调用（逻辑属性取值、Context Loader `execute_tool`）时，代理账号
+        只用来校验这个绑定能否调用该工具，语句仍以代理所代表的调用人身份执行。入参取自
+        `body`，按 `inputs` 的类型转换（如 `"5"` 转为数字），缺少入参或类型不符时
+        不执行查询，信封 `status_code` 为 400。bkn-backend 的拒绝（语法、权限、超时
+        等）原样放进信封的 `status_code` 与 `body`。顶层 `timeout` 是调用方最多等待的
+        秒数，超过时信封 `status_code` 为 504；语句本身的运行时长由 bkn-backend 的配置
+        限定（默认 55 秒）。
       parameters:
         - $ref: '#/components/parameters/BoxID'
         - $ref: '#/components/parameters/ToolID'
@@ -1387,7 +1404,8 @@ components:
           additionalProperties: true
           description: |
             工具元数据。`openapi` 类的接口定义在 `api_spec`，`function` 类的代码在
-            `function_content`。
+            `function_content`；Cypher 函数的 `function_content` 另带 `kn_id` 与
+            `result_shape`，`code` 为语句。
         use_rule:
           type: string
           description: 使用规则，告诉大模型什么时候该调这个工具。
@@ -1472,9 +1490,20 @@ components:
           additionalProperties: true
           description: |
             函数定义。**`metadata_type=function` 时必填**，字段为 `name`、
-            `description`、`script_type`（仅 `python`）、`code`、`inputs`、`outputs`、
-            `dependencies`、`dependencies_url`。代码约定与 [function.yaml](function.yaml)
-            一致：入口函数必须叫 `handler`。
+            `description`、`script_type`（`python` 或 `cypher`，默认 `python`）、`code`、
+            `inputs`、`outputs`、`dependencies`、`dependencies_url`，以及仅 Cypher 函数
+            使用的 `kn_id`、`result_shape`。
+
+            - `python`：代码约定与 [function.yaml](function.yaml) 一致，入口函数必须叫
+              `handler`。
+            - `cypher`：`code` 为只读 Cypher 语句；`kn_id` 必填；`result_shape` 必填，
+              `value` 返回 `{"value": x}`（只能一列标量，0 行为 null，多于 1 行报错），
+              `table` 返回 `{columns, entries, limited}`。`inputs` 必须与语句中的 `$name`
+              一一对应（多出或缺少都拒绝），类型只能是 `string`、`number`、`boolean`，
+              或这三者之一的 `array`（用于 `IN $name`）；每个入参都必填且要写
+              `description`。`outputs` 由平台按 `result_shape` 生成，请求中的值忽略；
+              `dependencies`、`dependencies_url` 必须为空。入参的 `example` 会作为保存
+              校验时的试算值。
         data:
           oneOf:
             - type: object
@@ -1540,7 +1569,12 @@ components:
         function_input:
           type: object
           additionalProperties: true
-          description: 函数定义（编辑形态，无 name / description）。
+          description: |
+            函数定义（编辑形态，无 name / description）。未传的字段沿用已保存的值。
+            编辑 Cypher 函数时须传 `script_type: cypher`：该字段缺省为 `python`，
+            而脚本类型不能在 `python` 与 `cypher` 之间修改，需要换类型时新建函数。
+            Cypher 函数可改 `code`、`inputs`、`kn_id`、`result_shape`，保存前同样经过
+            `explain` 校验。
         data:
           oneOf:
             - type: object

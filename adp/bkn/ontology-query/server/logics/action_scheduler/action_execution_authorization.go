@@ -16,6 +16,7 @@ import (
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
 
 func (s *actionSchedulerService) authorizeActionType(ctx context.Context, knID string,
@@ -91,6 +92,9 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 		}
 		objectType, exists, err := s.omAccess.GetObjectType(ctx, knID, interfaces.MAIN_BRANCH, objectTypeID)
 		if err != nil {
+			if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+				return nil, versionErr
+			}
 			return nil, actionPermissionUnavailable(ctx, err)
 		}
 		if !exists {

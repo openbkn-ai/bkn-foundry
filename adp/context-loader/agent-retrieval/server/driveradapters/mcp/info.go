@@ -71,6 +71,7 @@ func tryLoadToolSchemas(locale *mcpLocaleBundle, toolKey string) (input, output 
 	if isBusinessTool(toolKey) {
 		wrapper.InputSchema = offerBKNContext(wrapper.InputSchema)
 	}
+	wrapper.InputSchema = offerKnVersion(wrapper.InputSchema)
 	return locale.OverlaySchemas(toolKey, wrapper.InputSchema, wrapper.OutputSchema)
 }
 

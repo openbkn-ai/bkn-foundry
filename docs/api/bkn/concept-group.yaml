@@ -44,13 +44,28 @@ paths:
           schema:
             type: string
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
+            ETag:
+              $ref: "../_shared/kn-version.yaml#/components/headers/ETag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConceptGroupDetail"
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: Get concept group details
     put:
       requestBody:
@@ -77,17 +92,31 @@ paths:
             type: boolean
             default: true
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
         "400":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadRequest"
         "403":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyForbidden"
+        "404":
+          description: Concept group not found on the requested branch (BknBackend.ConceptGroup.ConceptGroupNotFound)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "502":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyBadGateway"
         "503":
           $ref: "../_shared/errors.yaml#/components/responses/StrictDependencyUnavailable"
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Update a concept group
     delete:
       parameters:
@@ -103,9 +132,18 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: ok
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Delete one concept group
     parameters:
       - name: kn_id
@@ -172,13 +210,26 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:
         "200":
+          headers:
+            X-Kn-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnVersion"
+            X-Kn-Running-Version:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnRunningVersion"
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListConceptGroups"
           description: ok
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
+        "410":
+          $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
       summary: List concept groups
     post:
       parameters:
@@ -227,6 +278,9 @@ paths:
         required: true
       responses:
         "201":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           content:
             application/json:
               schema:
@@ -276,9 +330,17 @@ paths:
             type: boolean
             default: true
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       responses:
         "201":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Addition succeeded
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Add an object type
     parameters:
       - name: kn_id
@@ -306,9 +368,18 @@ paths:
             type: string
             default: main
           in: query
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/ExpectedDraftRevision"
       responses:
         "204":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
           description: Removal succeeded
+        "428":
+          $ref: "../_shared/kn-version.yaml#/components/responses/PreconditionRequired"
+        "409":
+          $ref: "../_shared/kn-version.yaml#/components/responses/DefinitionModified"
       summary: Remove an object type
     parameters:
       - name: kn_id

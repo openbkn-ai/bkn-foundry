@@ -29,11 +29,14 @@ type HTTPManifest struct {
 
 type HTTPTool struct {
 	Name         string            `json:"name"`
+	Title        string            `json:"title,omitempty"`
 	Description  string            `json:"description"`
 	Capability   string            `json:"capability"`
 	MinEdition   licverify.Edition `json:"min_edition"`
 	ControlPlane bool              `json:"control_plane"`
 	Group        string            `json:"group"`
+	GroupTitle   string            `json:"group_title,omitempty"`
+	Order        int               `json:"order,omitempty"`
 	Input        json.RawMessage   `json:"input_schema"`
 }
 
@@ -41,15 +44,11 @@ type HTTPTool struct {
 // A configured but unavailable provider fails startup instead of advertising
 // tools that cannot execute. The URL is operator configuration, never user input.
 func LoadHTTPProvider(ctx context.Context, endpoint string, client *http.Client) ([]ExtraTool, error) {
-	base, err := url.Parse(endpoint)
-	if err != nil || base == nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
-		return nil, errors.New("invalid MCP extension manifest URL")
+	base, bounded, err := httpProviderConfig(endpoint, client)
+	if err != nil {
+		return nil, err
 	}
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
-	}
-	bounded := *client
-	bounded.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
 	if err != nil {
 		return nil, err
@@ -62,6 +61,29 @@ func LoadHTTPProvider(ctx context.Context, endpoint string, client *http.Client)
 	body, err := io.ReadAll(io.LimitReader(response.Body, 256*1024+1))
 	if err != nil || len(body) > 256*1024 || response.StatusCode != http.StatusOK {
 		return nil, errors.New("cannot read MCP extension manifest")
+	}
+	return LoadHTTPProviderManifest(endpoint, body, client)
+}
+
+// LoadConfiguredHTTPProvider uses a provider-owned deployment artifact when
+// supplied. Registration must finish before Freeze even without a licence;
+// discovery must not require exposing the provider's paid HTTP surface.
+func LoadConfiguredHTTPProvider(ctx context.Context, endpoint string, manifest []byte, client *http.Client) ([]ExtraTool, error) {
+	if len(manifest) > 0 {
+		return LoadHTTPProviderManifest(endpoint, manifest, client)
+	}
+	return LoadHTTPProvider(ctx, endpoint, client)
+}
+
+// LoadHTTPProviderManifest shares the HTTP loader's validation and authenticated
+// same-origin forwarding. Configured schemas never authorize execution.
+func LoadHTTPProviderManifest(endpoint string, body []byte, client *http.Client) ([]ExtraTool, error) {
+	base, bounded, err := httpProviderConfig(endpoint, client)
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > 256*1024 {
+		return nil, errors.New("invalid MCP extension manifest")
 	}
 	var manifest HTTPManifest
 	if json.Unmarshal(body, &manifest) != nil || len(manifest.Tools) == 0 || len(manifest.Tools) > 32 || !strings.HasPrefix(manifest.CallPath, "/api/") || strings.ContainsAny(manifest.CallPath, "?#") || strings.Contains(manifest.CallPath, "..") {
@@ -82,7 +104,11 @@ func LoadHTTPProvider(ctx context.Context, endpoint string, client *http.Client)
 		}
 		seen[definition.Name] = true
 		toolName := definition.Name
-		tools = append(tools, ExtraTool{Key: toolName, Name: toolName, Desc: definition.Description, Capability: definition.Capability, MinEdition: definition.MinEdition, Input: definition.Input, Group: definition.Group, ControlPlane: definition.ControlPlane,
+		tools = append(tools, ExtraTool{
+			Key: toolName, Name: toolName, Desc: definition.Description,
+			Capability: definition.Capability, MinEdition: definition.MinEdition,
+			Input: definition.Input, ControlPlane: definition.ControlPlane,
+			Title: definition.Title, Group: definition.Group, GroupTitle: definition.GroupTitle, Order: definition.Order,
 			Handle: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				// Credentials come only from the authenticated transport, never
 				// arguments or a provider-supplied URL. The provider rechecks them.
@@ -126,4 +152,17 @@ func LoadHTTPProvider(ctx context.Context, endpoint string, client *http.Client)
 		})
 	}
 	return tools, nil
+}
+
+func httpProviderConfig(endpoint string, client *http.Client) (*url.URL, *http.Client, error) {
+	base, err := url.Parse(endpoint)
+	if err != nil || base == nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+		return nil, nil, errors.New("invalid MCP extension manifest URL")
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	bounded := *client
+	bounded.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return base, &bounded, nil
 }

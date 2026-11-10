@@ -7,6 +7,8 @@ package driveradapters
 import (
 	"context"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -75,6 +77,9 @@ func (r *restHandler) ResolveKNProxyBinding(c *gin.Context) {
 	if err := c.ShouldBindJSON(&binding); err != nil {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails("invalid proxy binding request"))
+		return
+	}
+	if !r.proxyBranchReadable(ctx, c, c.Param("kn_id")) {
 		return
 	}
 	mapping, err := r.kns.ResolveKNProxyBinding(ctx, c.Param("kn_id"), binding)
@@ -166,4 +171,26 @@ func (r *restHandler) reconcileKNProxies(c *gin.Context, ctx context.Context, re
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, report)
+}
+
+// proxyBranchReadable checks the branch a proxy read is for: main, or a version that has not
+// been purged. A query pins the running version when it starts, and that version may become a
+// history version before the query asks, so history versions are accepted too. The draft is read
+// as the caller only.
+func (r *restHandler) proxyBranchReadable(ctx context.Context, c *gin.Context, knID string) bool {
+	branch := c.Query("branch")
+	if branch == "" || branch == interfaces.MAIN_BRANCH {
+		return true
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(branch, "v"))
+	if !strings.HasPrefix(branch, "v") || err != nil || n <= 0 || r.kvs == nil {
+		replyKNVersionError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidVersion).
+			WithErrorDetails("a proxy read is for main or a version branch v<N>"))
+		return false
+	}
+	if _, err := r.kvs.ResolveBranch(ctx, knID, interfaces.KNBranchRequest{KNVersion: strconv.Itoa(n)}); err != nil {
+		replyKNVersionError(c, err)
+		return false
+	}
+	return true
 }

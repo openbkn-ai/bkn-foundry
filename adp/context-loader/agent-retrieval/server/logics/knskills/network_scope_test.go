@@ -18,6 +18,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/knversion"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -243,6 +244,37 @@ func TestOnlyACallerRefusalFallsBackToTheProxy(t *testing.T) {
 		t.Fatal("a missing file was retried through the proxy")
 	}
 }
+
+// Only the running version may fall back to the proxy: a draft or a history
+// version is read as the caller and nobody else.
+func TestProxyFallbackIsLimitedToTheRunningVersion(t *testing.T) {
+	for _, tc := range []struct {
+		version   string
+		wantProxy bool
+	}{{"", true}, {"running", true}, {"draft", false}, {"3", false}} {
+		ctx := context.Background()
+		if tc.version != "" {
+			sel, err := knversion.Resolve(tc.version, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx = knversion.WithSelector(ctx, sel)
+		}
+		op := &proxyOperator{fakeOperator: &fakeOperator{err: forbidden(ctx)}, proxyContent: skillContent()}
+		bkn := &resolvingBkn{fakeBkn: &fakeBkn{refs: mountedWithID("binding-1", "sk-1")}}
+		_, err := NewKnSkillsServiceWith(op, bkn, &fakeKnAuthz{}).GetSkillContent(ctx, "kn-1", "sk-1")
+		if tc.wantProxy {
+			if err != nil || op.proxyCalls != 1 {
+				t.Fatalf("version %q: err=%v proxyCalls=%d, want one proxied read", tc.version, err, op.proxyCalls)
+			}
+			continue
+		}
+		if status, _ := detailOf(t, err); status != http.StatusForbidden || op.proxyCalls != 0 || bkn.resolved != 0 {
+			t.Fatalf("version %q: status=%d proxyCalls=%d, want the caller's own 403", tc.version, status, op.proxyCalls)
+		}
+	}
+}
+
 func TestNetworkViewIsTheGateForSkillReads(t *testing.T) {
 	ctx := context.Background()
 	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.CapabilityNetworkViewRequired", map[string]any{})

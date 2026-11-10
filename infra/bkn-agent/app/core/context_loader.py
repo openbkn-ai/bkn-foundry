@@ -89,6 +89,8 @@ def _credential() -> Optional[str]:
 # separate sessions holding one interaction each, and they cannot be merged
 # afterwards. See adp/context-loader/.../mcp/host_lifecycle_hints.go:22.
 _HOST_CONVERSATION_KEY_HEADER = "X-OpenBKN-Host-Conversation-Key"
+_KN_VERSION_HEADER = "X-Kn-Version"
+_KN_DRAFT_REVISION_HEADER = "X-Kn-Draft-Revision"
 
 
 def profile_of(tool_refs: list) -> Optional[str]:
@@ -120,12 +122,20 @@ def _client(
     authorization: str,
     host_conversation_key: Optional[str] = None,
     profile: Optional[str] = None,
+    kn_version: Optional[str] = None,
+    draft_revision: Optional[int] = None,
 ) -> MultiServerMCPClient:
     headers = locale.internal_request_headers(
         {"Authorization": authorization, **observability.outbound_headers()}
     )
     if host_conversation_key:
         headers[_HOST_CONVERSATION_KEY_HEADER] = host_conversation_key
+    # The network version every read of this session uses. Scoped tool calls
+    # also carry it as an argument, which takes precedence over the header.
+    if kn_version is not None:
+        headers[_KN_VERSION_HEADER] = kn_version
+    if draft_revision is not None:
+        headers[_KN_DRAFT_REVISION_HEADER] = str(draft_revision)
     return MultiServerMCPClient(
         {
             _CONNECTION_NAME: {
@@ -228,6 +238,8 @@ async def open_session(
     agent_name: str | None = None,
     host_conversation_key: str | None = None,
     profile: str | None = None,
+    kn_version: str | None = None,
+    draft_revision: int | None = None,
 ) -> Optional[ContextLoaderSession]:
     """Handshake and load the tools. Returns None when the credential is missing
     or the handshake fails, and the caller decides whether that is fatal.
@@ -252,7 +264,9 @@ async def open_session(
         )
         return None
 
-    client = _client(authorization, host_conversation_key, profile)
+    client = _client(
+        authorization, host_conversation_key, profile, kn_version, draft_revision
+    )
     try:
         tools = await client.get_tools()
     except Exception as e:

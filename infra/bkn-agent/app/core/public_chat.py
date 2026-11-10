@@ -37,6 +37,18 @@ _INDIRECT_TOOLS = {
     "execute_native_tool",
 }
 
+def _declared_types(prop: Any) -> set[str]:
+    """JSON Schema types a property allows, including those in anyOf/oneOf."""
+    if not isinstance(prop, dict):
+        return set()
+    found = prop.get("type")
+    types = set(found) if isinstance(found, list) else {found} if found else set()
+    for key in ("anyOf", "oneOf"):
+        for branch in prop.get(key) or ():
+            types |= _declared_types(branch)
+    return types - {"null"}
+
+
 REASONING_FLUSH_CHARS = 200
 REASONING_FLUSH_S = 0.3
 
@@ -45,6 +57,10 @@ REASONING_FLUSH_S = 0.3
 class PublicChat:
     run_id: str
     kn_id: str
+    # The network version the run reads, pinned into scoped calls like kn_id.
+    # None leaves the tool's own argument and default untouched.
+    kn_version: str | None = None
+    draft_revision: int | None = None
     sequence: int = 0
     prompt_version: int | None = None
     # Only a lifecycle-issued Context Loader Interaction may be returned as a
@@ -245,6 +261,34 @@ class PublicChat:
         delta = provider.progress(run)
         return {provider.result_key: delta} if delta else None
 
+    def _pinned_scope(self, properties: dict) -> dict:
+        """The scope values a tool's call must carry: always kn_id, and the
+        network version when the run has one and the tool takes it. A value
+        is passed in the type the tool declares."""
+        pinned: dict = {"kn_id": self.kn_id}
+        if self.kn_version is None:
+            return pinned
+        # With a version set, the run also decides the draft revision: a run
+        # without one sends none, so the model cannot add one the entry point
+        # would have refused (draft_revision=5 on kn_version=running).
+        for name, value in (
+            ("kn_version", self.kn_version),
+            ("draft_revision", self.draft_revision),
+        ):
+            if name not in properties:
+                continue
+            if value is None:
+                pinned[name] = None
+                continue
+            declared = _declared_types(properties[name])
+            if "integer" in declared and str(value).isdigit():
+                pinned[name] = int(value)
+            elif "string" in declared or not declared:
+                pinned[name] = str(value)
+            else:
+                pinned[name] = value
+        return pinned
+
     def guard_tools(self, tools: list) -> list:
         from app.core import builtin_tools
 
@@ -281,19 +325,32 @@ class PublicChat:
             if self.allowed_tools is not None and tool.name not in self.allowed_tools:
                 continue
 
+            pinned = self._pinned_scope(schema.get("properties", {}))
+
             # Bind closure state outside model-controlled keyword arguments.
-            def bind(inner):
+            def bind(inner, pinned):
                 async def call(**kwargs):
-                    if kwargs.get("kn_id", self.kn_id) != self.kn_id:
-                        raise ToolException(
-                            json.dumps(
-                                build_error_content(
-                                    "BknAgent.Execution.ToolScopeMismatch"
-                                ),
-                                ensure_ascii=False,
+                    for name, value in pinned.items():
+                        if name == "kn_id":
+                            same = kwargs.get(name, value) == value
+                        else:
+                            # A version may come as "3" or 3; an explicit
+                            # null is replaced by the pinned value.
+                            given = kwargs.get(name)
+                            same = given is None or str(given) == str(value)
+                        if not same:
+                            raise ToolException(
+                                json.dumps(
+                                    build_error_content(
+                                        "BknAgent.Execution.ToolScopeMismatch"
+                                    ),
+                                    ensure_ascii=False,
+                                )
                             )
-                        )
-                    kwargs["kn_id"] = self.kn_id
+                        if value is None:
+                            kwargs.pop(name, None)
+                        else:
+                            kwargs[name] = value
                     try:
                         return await inner(**kwargs)
                     except ToolException:
@@ -317,7 +374,7 @@ class PublicChat:
 
                 return call
 
-            call = bind(tool.coroutine)
+            call = bind(tool.coroutine, pinned)
             guarded.append(
                 StructuredTool.from_function(
                     coroutine=call,

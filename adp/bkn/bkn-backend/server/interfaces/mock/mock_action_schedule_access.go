@@ -70,6 +70,20 @@ func (mr *MockActionScheduleAccessMockRecorder) DeleteSchedules(ctx, tx, schedul
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSchedules", reflect.TypeOf((*MockActionScheduleAccess)(nil).DeleteSchedules), ctx, tx, scheduleIDs)
 }
 
+// DeleteSchedulesByKnID mocks base method.
+func (m *MockActionScheduleAccess) DeleteSchedulesByKnID(ctx context.Context, tx *sql.Tx, knID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSchedulesByKnID", ctx, tx, knID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteSchedulesByKnID indicates an expected call of DeleteSchedulesByKnID.
+func (mr *MockActionScheduleAccessMockRecorder) DeleteSchedulesByKnID(ctx, tx, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSchedulesByKnID", reflect.TypeOf((*MockActionScheduleAccess)(nil).DeleteSchedulesByKnID), ctx, tx, knID)
+}
+
 // GetDueSchedules mocks base method.
 func (m *MockActionScheduleAccess) GetDueSchedules(ctx context.Context, now int64) ([]*interfaces.ActionSchedule, error) {
 	m.ctrl.T.Helper()

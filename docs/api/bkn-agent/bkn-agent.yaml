@@ -2460,6 +2460,23 @@ components:
             type: object
           - type: 'null'
           title: Canvas
+        kn_version:
+          anyOf:
+          - type: string
+            pattern: ^(running|draft|[1-9][0-9]{0,9})$
+          - type: 'null'
+          title: Kn Version
+          description: 'Version of the knowledge network the run reads: running, draft,
+            or a version number. Without it the network''s default read applies.'
+        draft_revision:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Draft Revision
+          description: Draft revision the run must read; only with kn_version=draft
+            (422 otherwise). A read after the draft moved on fails instead of mixing
+            revisions.
       additionalProperties: false
       type: object
       required:

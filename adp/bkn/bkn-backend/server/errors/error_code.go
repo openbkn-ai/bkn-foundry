@@ -111,4 +111,5 @@ func init() {
 	httperrors.Register(CapabilityBindingErrCodeList)
 	httperrors.Register(CypherErrCodeList)
 	httperrors.Register(KNDiffErrCodeList)
+	httperrors.Register(KNVersionErrCodeList)
 }

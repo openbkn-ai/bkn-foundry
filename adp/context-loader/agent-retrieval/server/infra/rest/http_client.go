@@ -263,7 +263,21 @@ func (c *httpClient) httpDoNoUnmarshal(ctx context.Context, mtehod, url string, 
 	}()
 	respBody, err = io.ReadAll(resp.Body)
 	respCode = resp.StatusCode
+	if observe, ok := ctx.Value(responseObserverKey{}).(ResponseObserver); ok && err == nil {
+		observe(respCode, resp.Header, respBody)
+	}
 	return
+}
+
+// ResponseObserver sees every response of the calls made with a context that
+// carries it (see WithResponseObserver).
+type ResponseObserver func(status int, header http.Header, body []byte)
+
+type responseObserverKey struct{}
+
+// WithResponseObserver makes the HTTP client report each response to observe.
+func WithResponseObserver(ctx context.Context, observe ResponseObserver) context.Context {
+	return context.WithValue(ctx, responseObserverKey{}, observe)
 }
 
 func (c *httpClient) generateURL(rawURL string, queryValues url.Values) (*url.URL, error) {

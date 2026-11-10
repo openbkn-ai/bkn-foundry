@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -61,8 +62,18 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 
 	// Archive uploads predate these query parameters and historically behaved as overwrite +
 	// non-strict. Keep those omission defaults for existing callers while honoring explicit values.
+	// replace is overwrite that also deletes what the package leaves out; only uploads take it.
+	replace := c.Query(interfaces.QueryParam_ImportMode) == interfaces.ImportMode_Replace
+	overwriteChanges, parseErr := strconv.ParseBool(c.DefaultQuery("overwrite_changes", "false"))
+	if parseErr != nil {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails("overwrite_changes must be true or false")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 	mode, strictMode, httpErr := parseKnowledgeNetworkImportOptions(ctx, c,
-		interfaces.ImportMode_Overwrite, false)
+		interfaces.ImportMode_Overwrite, false, true)
 	if httpErr != nil {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -145,10 +156,19 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	resolvedBranch, branchOK := r.writeWholeDraftBranch(&ctx, c, bknNetwork.ID)
+	if !branchOK {
+		return
+	}
+	branch = resolvedBranch
 	bknNetwork.Branch = branch
+	if replace && !overwriteChanges {
+		logics.DraftWriteFrom(ctx).RefuseDraftChanges = true
+	}
 
 	// Import the network.
 	kn := logics.ToADPNetWork(bknNetwork)
+	kn.ReplaceContent = replace
 	kn.ObjectMetrics = make([]*interfaces.ObjectMetricRecordV1, 0, len(bknNetwork.ObjectMetrics))
 	otMap := make(map[string]*interfaces.ObjectType)
 	for _, bknObj := range bknNetwork.ObjectTypes {
@@ -296,14 +316,26 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		declaredCapabilities = nil
 	}
 	var capabilityReport *interfaces.CapabilityImportReport
-	capResult, capErr := r.publishKNCapabilityMutation(ctx, knID, branch, nil,
-		func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
-			var bindings []*interfaces.CapabilityBinding
-			var importErr error
-			capabilityReport, bindings, importErr = r.cbs.ImportCapabilitiesTx(
-				mutationCtx, tx, knID, branch, declaredCapabilities)
-			return &interfaces.KNCapabilityMutationResult{Bindings: bindings}, importErr
-		})
+	importCapabilities := r.cbs.ImportCapabilitiesTx
+	// A replace drops every binding the package does not keep: all current ones are named as
+	// removed, and the ones it keeps come back as bound.
+	var removedBindingIDs []string
+	var capErr error
+	if replace && !kn.ImportSkipped {
+		importCapabilities = r.cbs.ReplaceCapabilitiesTx
+		removedBindingIDs, capErr = r.cbs.BindingIDs(ctx, knID, branch)
+	}
+	var capResult *interfaces.KNCapabilityMutationResult
+	if capErr == nil {
+		capResult, capErr = r.publishKNCapabilityMutation(ctx, knID, branch, removedBindingIDs,
+			func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
+				var bindings []*interfaces.CapabilityBinding
+				var importErr error
+				capabilityReport, bindings, importErr = importCapabilities(
+					mutationCtx, tx, knID, branch, declaredCapabilities)
+				return &interfaces.KNCapabilityMutationResult{Bindings: bindings}, importErr
+			})
+	}
 	if capErr != nil {
 		logger.Errorf("Upload BKN: capability import failed: kn_id=%s, err=%v", knID, capErr)
 		capabilityReport = &interfaces.CapabilityImportReport{
@@ -441,7 +473,10 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	}
 
 	// Read query parameters.
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, kn_id)
+	if !branchOK {
+		return
+	}
 	spec := strings.TrimSpace(c.Query("bkn_spec"))
 	switch spec {
 	case interfaces.BKN_EXPORT_SPEC_AUTO, interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3:
@@ -515,7 +550,10 @@ func (r *restHandler) CheckBKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	branch, branchOK := r.readBranch(&ctx, c, knID)
+	if !branchOK {
+		return
+	}
 
 	result, err := r.bs.CheckNetwork(ctx, knID, branch)
 	if err != nil {

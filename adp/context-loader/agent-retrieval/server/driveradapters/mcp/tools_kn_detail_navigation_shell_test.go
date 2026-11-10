@@ -121,6 +121,8 @@ func TestKnDetailNarrowsAnOversizedNetworkToItsNavigationShell(t *testing.T) {
 
 // At the cap the answer is unchanged, so networks that work today keep working.
 func TestKnDetailAtTheCapStillCarriesTheWholeModel(t *testing.T) {
+	// The count caps alone; the character limit has tests of its own.
+	setAsideKnDetailBudget(t)
 	m, reads := knDetailWithSchemaCounter(t, interfaces.MaxSummaryObjectTypes, interfaces.DetailLevelSummary)
 
 	if reads != int64(interfaces.MaxSummaryObjectTypes) {

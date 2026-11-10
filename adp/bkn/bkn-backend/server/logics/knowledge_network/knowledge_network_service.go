@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -207,10 +208,31 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	if kn.Branch == "" {
 		kn.Branch = interfaces.MAIN_BRANCH
 	}
+	// A network versioned from the start keeps what the request defines in its draft.
+	versioned := kn.Versioning != nil && kn.Versioning.Requested
+	if versioned {
+		if kn.Branch != interfaces.MAIN_BRANCH && kn.Branch != interfaces.DRAFT_BRANCH {
+			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidVersion).
+				WithErrorDetails("a versioned knowledge network is created on its main and draft branches")
+		}
+		_, exists, err := kns.kna.CheckKNExistByID(ctx, kn.KNID, interfaces.MAIN_BRANCH)
+		if err != nil {
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed).WithErrorDetails(err.Error())
+		}
+		if exists {
+			return "", httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnowledgeNetwork_KNIDExisted).
+				WithErrorDetails("enable versioning on the existing network instead")
+		}
+		kn.Branch = interfaces.DRAFT_BRANCH
+	}
 	// Resolve ignore before inspecting child definitions: an existing network is a no-op.
 	isCreate, isUpdate, err = kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return "", err
+	}
+	if versioned && !isCreate {
+		return "", httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnowledgeNetwork_KNIDExisted)
 	}
 	if !isCreate && !isUpdate {
 		kn.ImportSkipped = true
@@ -290,6 +312,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}
 
+	// A replace drops the definitions the package leaves out; their policies go after commit
+	// unless another branch still defines them.
+	ctx, orphans, orphansOwner := permission.WithAuthorizationCleanupTracker(ctx)
 	transactionStart = time.Now()
 	tx, err := kns.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -299,6 +324,10 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 	defer func() { _ = tx.Rollback() }()
+	// An update rewrites the network row, so it locks the network exclusively.
+	if err = logics.GuardDefinitionWrite(ctx, tx, kn.KNID, kn.Branch, isUpdate); err != nil {
+		return "", err
+	}
 
 	// Process creation.
 	if isCreate {
@@ -315,6 +344,11 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
 			return "", err
 		}
+		if versioned {
+			if err = initVersionedNetwork(ctx, tx, kn); err != nil {
+				return "", err
+			}
+		}
 	}
 
 	// Process updates.
@@ -329,6 +363,11 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 
 		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
 			return "", err
+		}
+		if kn.ReplaceContent {
+			if err = pruneReplacedDefinitions(ctx, tx, kn); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -378,8 +417,15 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	)
 	transactionStart = time.Time{}
 	modelCommitted = true
+	if isUpdate && kn.ReplaceContent {
+		kns.deleteStaleConceptDocuments(context.WithoutCancel(ctx), overwriteSnapshot, kn)
+	}
 	if err = kns.finishProxyPublish(ctx, proxyPlan); err != nil {
 		return kn.KNID, err
+	}
+	if orphansOwner {
+		// The import committed; a failed cleanup is logged and leaves orphan policies only.
+		_ = orphans.Cleanup(ctx, kns.ps)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -1363,6 +1409,10 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 				berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
+		if err = logics.GuardDefinitionWrite(ctx, tx, kn.KNID, kn.Branch, true); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		// 0.1 On failure.
 		defer func() {
 			switch err {
@@ -1385,6 +1435,10 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 
 	// Update model information.
 	err = kns.kna.UpdateKN(ctx, tx, kn)
+	if errors.Is(err, common.ErrRowNotFound) {
+		span.SetStatus(codes.Error, "Knowledge network not found on the branch")
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+	}
 	if err != nil {
 		logger.Errorf("UpdateKN error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改业务知识网络失败")
@@ -1423,7 +1477,18 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces.KN) (err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete knowledge network")
 	defer span.End()
-	if kn.Branch != interfaces.MAIN_BRANCH {
+
+	// Deleting a network removes it on every branch. The request names main, or, for a network
+	// whose main row is already gone, a branch it still has.
+	branches, err := kns.kna.ListKNBranches(ctx, kn.KNID)
+	if err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	if len(branches) == 0 {
+		branches = []string{kn.Branch}
+	}
+	if kn.Branch != interfaces.MAIN_BRANCH && slices.Contains(branches, interfaces.MAIN_BRANCH) {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("only the main branch can be deleted")
@@ -1459,7 +1524,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	// Safe cleanup is external to the BKN database transaction. Complete it
 	// while the network and its own delete permission still exist so a failed
 	// request can be retried through the normal DELETE endpoint.
-	if err = kns.cleanupKNChildAuthorization(ctx, kn.KNID, kn.Branch); err != nil {
+	if err = kns.cleanupKNChildAuthorization(ctx, kn.KNID, branches...); err != nil {
 		return err
 	}
 
@@ -1474,128 +1539,32 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 
 	defer func() { _ = tx.Rollback() }()
 
-	// Delete versioned object metrics in the same transaction as the network.
-	if archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); ok {
-		if err := archive.DeleteObjectMetricArchive(ctx, tx, kn.KNID, kn.Branch); err != nil {
-			return err
-		}
-	}
-
-	// Events belong to the network, which only the main branch represents here.
+	// Events and schedules belong to the network as a whole.
 	if logics.KECA != nil {
 		if err := logics.KECA.DeleteKnEvents(ctx, tx, kn.KNID); err != nil {
 			return err
 		}
 	}
-
-	// Delete all action types before the object types they can reference.
-	err = kns.ats.DeleteActionTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteActionTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络动作类失败")
-		return err
+	if logics.ASA != nil {
+		if err := logics.ASA.DeleteSchedulesByKnID(ctx, tx, kn.KNID); err != nil {
+			logger.Errorf("DeleteSchedulesByKnID error: %s", err.Error())
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+		}
+	}
+	// So do its version state, versions and version events.
+	if logics.KNVA != nil {
+		if err := logics.KNVA.DeleteNetwork(ctx, tx, kn.KNID); err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+		}
 	}
 
-	// Delete all relation types before their endpoint object types.
-	err = kns.rts.DeleteRelationTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteRelationTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络关系类失败")
-		return err
-	}
-
-	// Delete all risk types under the business knowledge network.
-	err = kns.riskTypeS.DeleteRiskTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteRiskTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络风险类失败")
-		return err
-	}
-
-	// Delete all concept groups under the business knowledge network.
-	err = kns.cgs.DeleteConceptGroupsByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络概念分组失败")
-		return err
-	}
-
-	// Object types are depended on by metrics, actions, relations, risks and
-	// concept-group bindings, so delete them after those definitions.
-	err = kns.ots.DeleteObjectTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteObjectTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络对象类失败")
-		return err
-	}
-
-	// Value types are referenced by object properties and are therefore the
-	// last internal definitions removed.
-	if err = kns.vts.DeleteValueTypesByKnID(ctx, tx, kn.KNID, kn.Branch); err != nil {
-		logger.Errorf("DeleteValueTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "delete knowledge network value types failed")
-		return err
-	}
-
-	// Delete the capability bindings of the business knowledge network. A knowledge network ID
-	// can be supplied by the caller, so leaving the rows behind would let a network recreated
-	// under the same ID inherit Skills and functions its owner never mounted.
-	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "delete knowledge network capability bindings failed")
-		return err
-	}
-
-	docid := interfaces.GenerateConceptDocuemtnID(kn.KNID,
-		interfaces.MODULE_TYPE_KN, kn.KNID, kn.Branch)
-	err = kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
-	if err != nil {
-		logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络概念失败")
-		return err
-	}
-
-	// Delete all concepts under this KN by query condition
-	filterCondition := map[string]any{
-		"operation": "and",
-		"sub_conditions": []map[string]any{
-			{
-				"field":      "kn_id",
-				"operation":  "==",
-				"value":      kn.KNID,
-				"value_from": "const",
-			},
-			{
-				"field":      "branch",
-				"operation":  "==",
-				"value":      kn.Branch,
-				"value_from": "const",
-			},
-		},
-	}
-	err = kns.vbs.DeleteDatasetDocumentsByQuery(ctx, interfaces.BKN_DATASET_ID, filterCondition)
-	if err != nil {
-		logger.Errorf("DeleteDatasetDocumentsByQuery error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络概念失败")
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError).
-			WithErrorDetails(err.Error())
-	}
-
-	// Delete the network row only after every internal definition, binding and
-	// external search document has been cleaned successfully.
-	rowsAffect, err := kns.kna.DeleteKN(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteKN error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络失败")
-
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
-	}
-	logger.Infof("DeleteKN: Rows affected is %v, request delete KNID is %s!", rowsAffect, kn.KNID)
-	if rowsAffect != 1 {
-		otellog.LogWarn(ctx, fmt.Sprintf("Delete kns number %v not equal 1!", rowsAffect))
+	for _, branch := range branches {
+		if err = kns.deleteKNBranch(ctx, tx, kn.KNID, branch); err != nil {
+			span.SetStatus(codes.Error, "delete knowledge network branch failed")
+			return err
+		}
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -1621,6 +1590,109 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	return nil
 }
 
+// deleteKNBranch deletes one branch of a network in the caller's transaction: its definitions,
+// capability bindings, network concept document and network row.
+func (kns *knowledgeNetworkService) deleteKNBranch(ctx context.Context, tx *sql.Tx, knID, branch string) error {
+	// Delete versioned object metrics in the same transaction as the network.
+	if archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); ok {
+		if err := archive.DeleteObjectMetricArchive(ctx, tx, knID, branch); err != nil {
+			return err
+		}
+	}
+
+	// Delete all action types before the object types they can reference.
+	err := kns.ats.DeleteActionTypesByKnID(ctx, tx, knID, branch)
+	if err != nil {
+		logger.Errorf("DeleteActionTypesByKnID error: %s", err.Error())
+		return err
+	}
+
+	// Delete all relation types before their endpoint object types.
+	err = kns.rts.DeleteRelationTypesByKnID(ctx, tx, knID, branch)
+	if err != nil {
+		logger.Errorf("DeleteRelationTypesByKnID error: %s", err.Error())
+		return err
+	}
+
+	// Delete all risk types under the business knowledge network.
+	err = kns.riskTypeS.DeleteRiskTypesByKnID(ctx, tx, knID, branch)
+	if err != nil {
+		logger.Errorf("DeleteRiskTypesByKnID error: %s", err.Error())
+		return err
+	}
+
+	// Delete all concept groups under the business knowledge network.
+	err = kns.cgs.DeleteConceptGroupsByKnID(ctx, tx, knID, branch)
+	if err != nil {
+		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
+		return err
+	}
+
+	// Object types are depended on by metrics, actions, relations, risks and
+	// concept-group bindings, so delete them after those definitions.
+	err = kns.ots.DeleteObjectTypesByKnID(ctx, tx, knID, branch)
+	if err != nil {
+		logger.Errorf("DeleteObjectTypesByKnID error: %s", err.Error())
+		return err
+	}
+
+	// Value types are referenced by object properties and are therefore the
+	// last internal definitions removed.
+	if err = kns.vts.DeleteValueTypesByKnID(ctx, tx, knID, branch); err != nil {
+		logger.Errorf("DeleteValueTypesByKnID error: %s", err.Error())
+		return err
+	}
+
+	// Delete the capability bindings of the business knowledge network. A knowledge network ID
+	// can be supplied by the caller, so leaving the rows behind would let a network recreated
+	// under the same ID inherit Skills and functions its owner never mounted.
+	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, knID, branch)
+	if err != nil {
+		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
+		return err
+	}
+
+	docid := interfaces.GenerateConceptDocuemtnID(knID,
+		interfaces.MODULE_TYPE_KN, knID, branch)
+	err = kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
+	if err != nil {
+		logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+
+	// Delete all concepts of this branch by query condition.
+	filterCondition := map[string]any{
+		"operation": "and",
+		"sub_conditions": []map[string]any{
+			{"field": "kn_id", "operation": "==", "value": knID, "value_from": "const"},
+			{"field": "branch", "operation": "==", "value": branch, "value_from": "const"},
+		},
+	}
+	err = kns.vbs.DeleteDatasetDocumentsByQuery(ctx, interfaces.BKN_DATASET_ID, filterCondition)
+	if err != nil {
+		logger.Errorf("DeleteDatasetDocumentsByQuery error: %s", err.Error())
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).
+			WithErrorDetails(err.Error())
+	}
+
+	// Delete the network row only after every internal definition, binding and
+	// external search document has been cleaned successfully.
+	rowsAffect, err := kns.kna.DeleteKN(ctx, tx, knID, branch)
+	if err != nil {
+		logger.Errorf("DeleteKN error: %s", err.Error())
+
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	logger.Infof("DeleteKN: Rows affected is %v, request delete KNID is %s, branch %s!", rowsAffect, knID, branch)
+	if rowsAffect != 1 {
+		otellog.LogWarn(ctx, fmt.Sprintf("Delete kns number %v not equal 1!", rowsAffect))
+	}
+	return nil
+}
+
 var knChildAuthorizationCleanupOrder = []string{
 	interfaces.RESOURCE_TYPE_METRIC,
 	interfaces.RESOURCE_TYPE_ACTION_TYPE,
@@ -1630,11 +1702,15 @@ var knChildAuthorizationCleanupOrder = []string{
 	interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 }
 
-func (kns *knowledgeNetworkService) cleanupKNChildAuthorization(ctx context.Context, knID, branch string) error {
-	candidates, err := kns.kna.ListKNChildResourceCandidates(ctx, []string{knID}, branch)
-	if err != nil {
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+func (kns *knowledgeNetworkService) cleanupKNChildAuthorization(ctx context.Context, knID string, branches ...string) error {
+	candidates := []interfaces.KNChildResourceCandidate{}
+	for _, branch := range branches {
+		onBranch, err := kns.kna.ListKNChildResourceCandidates(ctx, []string{knID}, branch)
+		if err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+		}
+		candidates = append(candidates, onBranch...)
 	}
 
 	childIDsByType := make(map[string][]string, len(knChildAuthorizationCleanupOrder))

@@ -62,13 +62,13 @@ func TestCreateConceptGroupRelationsBatchesRows(t *testing.T) {
 func TestCreateConceptGroupsBatchesRows(t *testing.T) {
 	cga, smock := MockNewConceptGroupAccess(&common.AppSetting{})
 	smock.ExpectBegin()
-	query := "INSERT INTO t_concept_group (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,f_kn_id,f_branch,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+	query := "INSERT INTO t_concept_group (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,f_kn_id,f_branch,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 	smock.ExpectExec(query).
 		WithArgs(
 			"cg-1", "group-1", "", "comment-1", "", "", "raw-1", "kn-1", interfaces.MAIN_BRANCH,
-			"user-1", "user", int64(1), "user-1", "user", int64(1),
+			"user-1", "user", int64(1), "user-1", "user", int64(1), sqlmock.AnyArg(),
 			"cg-2", "group-2", "", "comment-2", "", "", "raw-2", "kn-1", interfaces.MAIN_BRANCH,
-			"user-1", "user", int64(1), "user-1", "user", int64(1),
+			"user-1", "user", int64(1), "user-1", "user", int64(1), sqlmock.AnyArg(),
 		).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	tx, err := cga.db.Begin()
@@ -94,7 +94,7 @@ func TestCreateConceptGroupsBatchesRows(t *testing.T) {
 func TestUpdateConceptGroupsUsesCaseBatch(t *testing.T) {
 	cga, smock := MockNewConceptGroupAccess(&common.AppSetting{})
 	smock.ExpectBegin()
-	query := "UPDATE t_concept_group SET f_name = CASE f_id WHEN ? THEN ? ELSE f_name END, f_tags = CASE f_id WHEN ? THEN ? ELSE f_tags END, f_comment = CASE f_id WHEN ? THEN ? ELSE f_comment END, f_icon = CASE f_id WHEN ? THEN ? ELSE f_icon END, f_color = CASE f_id WHEN ? THEN ? ELSE f_color END, f_bkn_raw_content = CASE f_id WHEN ? THEN ? ELSE f_bkn_raw_content END, f_updater = CASE f_id WHEN ? THEN ? ELSE f_updater END, f_updater_type = CASE f_id WHEN ? THEN ? ELSE f_updater_type END, f_update_time = CASE f_id WHEN ? THEN ? ELSE f_update_time END WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (?)"
+	query := "UPDATE t_concept_group SET f_name = CASE f_id WHEN ? THEN ? ELSE f_name END, f_tags = CASE f_id WHEN ? THEN ? ELSE f_tags END, f_comment = CASE f_id WHEN ? THEN ? ELSE f_comment END, f_icon = CASE f_id WHEN ? THEN ? ELSE f_icon END, f_color = CASE f_id WHEN ? THEN ? ELSE f_color END, f_bkn_raw_content = CASE f_id WHEN ? THEN ? ELSE f_bkn_raw_content END, f_updater = CASE f_id WHEN ? THEN ? ELSE f_updater END, f_updater_type = CASE f_id WHEN ? THEN ? ELSE f_updater_type END, f_update_time = CASE f_id WHEN ? THEN ? ELSE f_update_time END, f_revision = REPLACE(UUID(), '-', '') WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (?)"
 	smock.ExpectExec(query).
 		WithArgs(
 			"cg-1", "group-1", "cg-1", "", "cg-1", "comment-1", "cg-1", "", "cg-1", "",

@@ -37,6 +37,7 @@ type RelationType struct {
 	CommonInfo               `mapstructure:",squash"`
 	KNID                     string           `json:"kn_id" mapstructure:"kn_id"`
 	Branch                   string           `json:"branch,omitempty" mapstructure:"branch"`
+	Revision                 string           `json:"revision,omitempty" mapstructure:"-"`
 	SourceObjectType         SimpleObjectType `json:"source_object_type,omitempty" mapstructure:"source_object_type"` // Name returned when retrieving details
 	TargetObjectType         SimpleObjectType `json:"target_object_type,omitempty" mapstructure:"target_object_type"` // Name returned when retrieving details
 
@@ -108,3 +109,9 @@ type RelationTypes struct {
 	NextCursor *string         `json:"next_cursor,omitempty"`
 	OverallMs  int64           `json:"overall_ms"`
 }
+
+func (d *RelationType) RevisionID() string { return d.RTID }
+
+func (d *RelationType) SetRevision(revision string) { d.Revision = revision }
+
+func (d *RelationType) GetRevision() string { return d.Revision }

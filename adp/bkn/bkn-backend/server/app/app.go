@@ -46,6 +46,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/kn_proxy"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/kn_version"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_base"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/model_factory"
@@ -58,6 +59,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/value_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	permission_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 	vega_backend_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
@@ -436,6 +438,12 @@ func Boot(_ Options) *Application {
 	logics.SetActionTypeAccess(action_type.NewActionTypeAccess(appSetting))
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
+	// A child's policy is shared by every branch; it goes only when no branch defines the child.
+	if presence, ok := logics.KNA.(interfaces.KNChildPresence); ok {
+		permission_service.SetKNChildPresence(presence)
+	}
+	logics.SetKNVersionAccess(kn_version.NewKNVersionAccess(appSetting),
+		permission_service.TrackBranchChildren(kn_version.NewBranchCopier(appSetting)))
 	logics.SetKNProxyAccess(kn_proxy.NewAccess(db))
 	proxyOutboxAccess := kn_proxy.NewOutboxAccess(db)
 	if appSetting.ServerSetting.ProxySyncWorkerEnabled {

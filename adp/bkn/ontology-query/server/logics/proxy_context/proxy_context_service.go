@@ -48,6 +48,17 @@ func (r *proxyContextResolver) Resolve(
 	if r == nil || r.access == nil {
 		return nil, proxyUnavailable(ctx, "knowledge network proxy resolver is not configured")
 	}
+	// The proxy's grants cover only the running version. A query on the draft or a history
+	// version never reaches this point through a data read; refusing here keeps any other
+	// path from borrowing the proxy's identity for a version it does not cover.
+	pin := interfaces.KNVersionPinFromContext(ctx)
+	if pin.UsesCallerIdentity() {
+		return nil, proxyError(ctx, http.StatusForbidden, oerrors.OntologyQuery_Proxy_BindingInvalid,
+			"the knowledge network proxy covers only the running version")
+	}
+	if binding.Branch == "" {
+		binding.Branch = pin.ProxyBranch()
+	}
 
 	mapping, err := r.access.ResolveKnowledgeNetworkProxy(ctx, binding)
 	if err != nil {
@@ -63,6 +74,7 @@ func (r *proxyContextResolver) Resolve(
 	}
 	resolvedBinding := *mapping.ResolvedBinding
 	resolvedBinding.KNID = binding.KNID
+	resolvedBinding.Branch = binding.Branch
 	if err := validateBinding(resolvedBinding); err != nil {
 		return nil, proxyUnavailable(ctx, "published proxy binding is invalid")
 	}

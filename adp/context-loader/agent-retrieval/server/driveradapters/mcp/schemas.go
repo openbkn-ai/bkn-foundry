@@ -114,6 +114,7 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 	if isBusinessTool(toolKey) {
 		wrapper.InputSchema = offerBKNContext(wrapper.InputSchema)
 	}
+	wrapper.InputSchema = offerKnVersion(wrapper.InputSchema)
 	return wrapper.InputSchema, wrapper.OutputSchema
 }
 

@@ -29,4 +29,5 @@ type KNCapabilityMutationResult struct {
 type KNServiceWithProxyMutation interface {
 	KNService
 	KNProxyMutationPublisher
+	KNMainPublisher
 }

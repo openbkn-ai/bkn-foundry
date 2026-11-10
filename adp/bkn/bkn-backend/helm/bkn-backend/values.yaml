@@ -17,6 +17,9 @@ bknSafe:
 knowledgeBase:
   url: ""
 
+# Additional runtime configuration for explicitly installed extensions.
+extraEnv: []
+
 replicaCount: 1
 
 # Node selector.

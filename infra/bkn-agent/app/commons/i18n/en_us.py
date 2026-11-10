@@ -44,9 +44,9 @@ error_messages = {
     },
     "BknAgent.Execution.Forbidden": {
         "code": "BknAgent.Execution.Forbidden",
-        "description": "The caller cannot use this agent or knowledge network.",
-        "detail": "The caller cannot use this agent or knowledge network.",
-        "solution": "Request the required resource permissions.",
+        "description": "The caller has no access to this knowledge network.",
+        "detail": "The caller has no access to this knowledge network.",
+        "solution": "Request access to the knowledge network.",
     },
     "BknAgent.Execution.Unsupported": {
         "code": "BknAgent.Execution.Unsupported",

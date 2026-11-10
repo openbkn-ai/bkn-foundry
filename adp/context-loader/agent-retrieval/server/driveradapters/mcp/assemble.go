@@ -60,6 +60,9 @@ func newToolBuilder(locale *mcpLocaleBundle) *toolBuilder {
 // bundle.
 func (b *toolBuilder) add(key string, h mcptool.Handler) {
 	in, out := b.locale.ToolSchemas(key)
+	if hasKnVersionProperty(in) {
+		h = withKnVersion(h)
+	}
 	b.addWith(key, b.locale.ToolMeta(key), in, out, h)
 }
 

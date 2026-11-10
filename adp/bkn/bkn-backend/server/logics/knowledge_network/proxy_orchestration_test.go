@@ -1881,7 +1881,10 @@ func TestStoppingProxyDeletionHeartbeatDoesNotHideLeaseLoss(t *testing.T) {
 }
 
 func TestDeleteKNRejectsNonMainBranch(t *testing.T) {
-	service := &knowledgeNetworkService{}
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().ListKNBranches(gomock.Any(), "kn-1").Return([]string{"draft", interfaces.MAIN_BRANCH}, nil)
+	service := &knowledgeNetworkService{kna: kna}
 	err := service.DeleteKN(t.Context(), &interfaces.KN{KNID: "kn-1", Branch: "draft"})
 	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusBadRequest {
@@ -1956,6 +1959,7 @@ func TestDeleteKNRevokesProxyBeforeLoadingChildAuthorization(t *testing.T) {
 	permissionService.EXPECT().CheckPermission(gomock.Any(), gomock.Any(),
 		[]string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
 	kna := bmock.NewMockKNAccess(ctrl)
+	kna.EXPECT().ListKNBranches(gomock.Any(), "kn-1").Return([]string{interfaces.MAIN_BRANCH}, nil)
 	kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn-1"}, interfaces.MAIN_BRANCH).
 		Return(nil, errors.New("list children failed"))
 	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{

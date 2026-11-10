@@ -220,8 +220,8 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_data_source,f_data_properties,f_aliases,f_lifecycle_status,f_deprecation,f_logic_properties,f_primary_keys,"+
-			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
+			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
 
 		Convey("CreateObjectType Success \n", func() {
 			smock.ExpectBegin()
@@ -433,8 +433,8 @@ func Test_objectTypeAccess_CreateObjectTypes(t *testing.T) {
 		second.OTName = "Object Type 2"
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_data_source,f_data_properties,f_aliases,f_lifecycle_status,f_deprecation,f_logic_properties,f_primary_keys,"+
-			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
+			"f_display_key,f_incremental_key,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", OT_TABLE_NAME)
 		smock.ExpectBegin()
 		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
 		tx, err := ota.db.Begin()
@@ -1279,8 +1279,9 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_data_properties = ?, "+
 			"f_data_source = ?, f_deprecation = ?, f_display_key = ?, f_icon = ?, f_incremental_key = ?, f_lifecycle_status = ?, f_logic_properties = ?, "+
-			"f_name = ?, f_primary_keys = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
-			"WHERE f_id = ? AND f_kn_id = ?", OT_TABLE_NAME)
+			"f_name = ?, f_primary_keys = ?, f_revision = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", OT_TABLE_NAME)
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", OT_TABLE_NAME)
 
 		objectType := &interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1299,7 +1300,8 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 				Icon:    "icon1",
 				Color:   "color1",
 			},
-			KNID: "kn1",
+			KNID:   "kn1",
+			Branch: "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -1368,9 +1370,11 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateObjectType RowsAffected not equal 1\n", func() {
+		Convey("UpdateObjectType changes nothing on a row that already holds the values\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(1, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "ot1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
 
 			tx, _ := ota.db.Begin()
 			err := ota.UpdateObjectType(testCtx, tx, objectType)
@@ -1395,13 +1399,15 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateObjectType RowsAffected != 1 \n", func() {
+		Convey("UpdateObjectType reports a row missing on the branch\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "ot1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}))
 
 			tx, _ := ota.db.Begin()
 			err := ota.UpdateObjectType(testCtx, tx, objectType)
-			So(err, ShouldBeNil)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
@@ -1430,15 +1436,17 @@ func Test_objectTypeAccess_UpdateDataProperties(t *testing.T) {
 		ota, smock := MockNewObjectTypeAccess(appSetting)
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_data_properties = ?, "+
-			"f_update_time = ?, f_updater = ?, f_updater_type = ? "+
-			"WHERE f_id = ? AND f_kn_id = ?", OT_TABLE_NAME)
+			"f_revision = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", OT_TABLE_NAME)
+		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", OT_TABLE_NAME)
 
 		objectType := &interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 				OTID:           "ot1",
 				DataProperties: []*interfaces.DataProperty{},
 			},
-			KNID: "kn1",
+			KNID:   "kn1",
+			Branch: "dev",
 			Updater: interfaces.AccountInfo{
 				ID:   "admin",
 				Type: "admin",
@@ -1473,13 +1481,15 @@ func Test_objectTypeAccess_UpdateDataProperties(t *testing.T) {
 			}
 		})
 
-		Convey("UpdateDataProperties RowsAffected != 1 \n", func() {
+		Convey("UpdateDataProperties reports a row missing on the branch\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsSQL).WithArgs("dev", "ot1", "kn1").
+				WillReturnRows(sqlmock.NewRows([]string{"1"}))
 
 			tx, _ := ota.db.Begin()
 			err := ota.UpdateDataProperties(testCtx, tx, objectType)
-			So(err, ShouldBeNil)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)

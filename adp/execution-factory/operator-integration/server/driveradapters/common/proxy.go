@@ -420,6 +420,14 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 
 	// Execute function.
 	scriptType := metadata.GetScriptType()
+	if scriptType == string(interfaces.ScriptTypeCypher) {
+		// A Cypher function has no code for the sandbox; the toolbox service runs
+		// its statement in bkn-backend as the caller.
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest,
+			fmt.Sprintf("function %s is a cypher function; run it through its toolbox", req.Version))
+		rest.ReplyError(c, err)
+		return
+	}
 	if scriptType != string(interfaces.ScriptTypePython) {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, fmt.Sprintf("script_type %s not supported", scriptType))
 		rest.ReplyError(c, err)

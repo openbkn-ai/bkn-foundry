@@ -106,6 +106,10 @@ data:
       private_protocol: {{ index .Values "depServices" "vega-backend" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "vega-backend" "privateHost" | quote }}
       private_port: {{ index .Values "depServices" "vega-backend" "privatePort" }}
+    bkn-backend:
+      private_protocol: {{ index .Values "depServices" "bkn-backend" "privateProtocol" | quote }}
+      private_host: {{ index .Values "depServices" "bkn-backend" "privateHost" | quote }}
+      private_port: {{ index .Values "depServices" "bkn-backend" "privatePort" }}
 
   mq_config.yaml: |
     {{- toYaml .Values.depServices.mq | nindent 4 }}
