@@ -1457,6 +1457,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 			berrors.BknBackend_KnowledgeNetwork_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
+	kns.rewriteOtherBranchDocuments(ctx, kn)
 
 	// Call the resource name update API.
 	if kn.IfNameModify {
@@ -1866,6 +1867,46 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 	// Default behavior is creation.
 	isCreate = true
 	return isCreate, isUpdate, nil
+}
+
+// rewriteOtherBranchDocuments writes the network's concept document again on every branch other
+// than kn.Branch. An update writes the basic information to every branch, since it belongs to the
+// network, but only the requested branch's document was written with it; the concept syncer leaves
+// versioned networks alone, so the documents of main and the versions would keep the old name. A
+// document takes the basic information from kn and the rest from its own branch's row. A branch
+// whose basic information already matched is skipped, so a save does not embed every branch again.
+// Failures are only logged: the update stands, and the index can be rebuilt (#3096).
+func (kns *knowledgeNetworkService) rewriteOtherBranchDocuments(ctx context.Context, kn *interfaces.KN) {
+	branches, err := kns.kna.ListKNBranches(ctx, kn.KNID)
+	if err != nil {
+		otellog.LogError(ctx, "List the branches whose network concept document to rewrite failed", err)
+		return
+	}
+	for _, branch := range branches {
+		if branch == kn.Branch {
+			continue
+		}
+		row, err := kns.kna.GetKNByID(ctx, kn.KNID, branch)
+		if err != nil {
+			otellog.LogError(ctx, fmt.Sprintf("Read the network row on %s failed", branch), err)
+			continue
+		}
+		if row == nil || sameBasicInfo(row, kn) {
+			continue
+		}
+		row.KNName, row.Tags, row.Comment, row.Icon, row.Color = kn.KNName, kn.Tags, kn.Comment, kn.Icon, kn.Color
+		row.Updater, row.UpdateTime = kn.Updater, kn.UpdateTime
+		if err := kns.InsertDatasetData(ctx, row); err != nil {
+			otellog.LogError(ctx, fmt.Sprintf("Rewrite the network concept document on %s failed", branch), err)
+		}
+	}
+}
+
+// sameBasicInfo reports whether row already has the basic information of kn that the network's
+// concept document carries.
+func sameBasicInfo(row, kn *interfaces.KN) bool {
+	return row.KNName == kn.KNName && slices.Equal(row.Tags, kn.Tags) && row.Comment == kn.Comment &&
+		row.Icon == kn.Icon && row.Color == kn.Color
 }
 
 func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origKN *interfaces.KN) error {

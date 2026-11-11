@@ -1832,6 +1832,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{interfaces.MAIN_BRANCH}, nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateKN(ctx, nil, kn, false)
@@ -1920,6 +1921,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			ps2.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{interfaces.MAIN_BRANCH}, nil)
 			ps2.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -1948,6 +1950,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			ps2.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{interfaces.MAIN_BRANCH}, nil)
 			ps2.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectCommit()
 
@@ -3041,6 +3044,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			cgs.EXPECT().ValidateConceptGroups(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				kn.ConceptGroups, true, gomock.Any(), interfaces.ImportMode_Overwrite).Return(nil)
 			kna2.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna2.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{interfaces.MAIN_BRANCH}, nil)
 			cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				[]string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(map[string][]string{}, nil)
 			cgs.EXPECT().CreateConceptGroups(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, true).
