@@ -189,7 +189,7 @@ ORDER BY n DESC LIMIT 4
 
 - ORDER BY takes a property, a returned column name, an aggregate or a computed value; `DESC` reverses it.
 - A result collapsed by aggregation or `DISTINCT` can only be sorted by a value it returns.
-- Without `LIMIT` at most **1000** rows come back, and a result that reaches 1000 carries `limited: true`: more may match. `LIMIT` may not exceed **10000**: a larger one is refused, not quietly reduced. Page with `SKIP n LIMIT m`.
+- Without `LIMIT` at most **1000** rows come back, and a result that reaches 1000 carries `limited: true`: more may match. `LIMIT` may not exceed **10000**: a larger one is refused, not quietly reduced. Page with `SKIP n LIMIT m`. Both take an integer or a parameter, as in `SKIP $from LIMIT $size`; the value has to be a non-negative integer, and a bound `LIMIT` meets the same 10000 ceiling.
 
 ### UNION / UNION ALL
 

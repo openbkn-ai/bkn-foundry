@@ -709,37 +709,90 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext, 
 		}
 	}
 	if skip := ctx.OC_Skip(); skip != nil {
-		value, err := analyzeRowCount(skip.OC_Expression(), "SKIP")
-		if err != nil {
+		if err := analyzeRowCount(skip.OC_Expression(), "SKIP", &query.Skip, &query.SkipParameter); err != nil {
 			return err
 		}
-		query.Skip = &value
 	}
 	if limit := ctx.OC_Limit(); limit != nil {
-		value, err := analyzeRowCount(limit.OC_Expression(), "LIMIT")
-		if err != nil {
+		if err := analyzeRowCount(limit.OC_Expression(), "LIMIT", &query.Limit, &query.LimitParameter); err != nil {
 			return err
 		}
-		query.Limit = &value
 	}
 	return nil
 }
 
-// analyzeRowCount reads SKIP and LIMIT, which must be plain non-negative
-// integers: anything computed would have to be evaluated before the query is
-// generated.
-func analyzeRowCount(ctx parsing.IOC_ExpressionContext, clause string) (int64, error) {
+// analyzeRowCount reads SKIP and LIMIT: a non-negative integer, or a parameter
+// that bindRowCounts replaces with one before the query is planned. Anything
+// computed would have to be evaluated before the query is generated.
+func analyzeRowCount(ctx parsing.IOC_ExpressionContext, clause string, count **int64, parameter **ParameterRef) error {
 	value, err := analyzeOperand(ctx)
 	if err != nil {
-		return 0, err
+		return err
+	}
+	if value.parameter != nil && value.parameter.Temporal == "" {
+		ref := *value.parameter
+		*parameter = &ref
+		return nil
 	}
 	if value.literal == nil || value.literal.Kind != LiteralInteger {
-		return 0, unsupportedf(ctx, "a non-integer "+clause, "%s takes an integer literal", clause)
+		return unsupportedf(ctx, "a non-integer "+clause, "%s takes an integer or a $parameter", clause)
 	}
 	if value.literal.Integer < 0 {
-		return 0, unsupportedf(ctx, "a negative "+clause, "%s must not be negative", clause)
+		return unsupportedf(ctx, "a negative "+clause, "%s must not be negative", clause)
 	}
-	return value.literal.Integer, nil
+	integer := value.literal.Integer
+	*count = &integer
+	return nil
+}
+
+// bindRowCounts puts the values of SKIP $name and LIMIT $name in place, in the
+// query and in each part of a UNION. A bound value follows the rules of one
+// written in the query, a non-negative integer, and is bound before the LIMIT
+// ceiling is checked, so it meets the same ceiling. Binding twice changes
+// nothing: a count already in place is kept.
+func bindRowCounts(query *Query, parameters map[string]any) error {
+	if query.Union != nil {
+		for _, part := range query.Union.Parts {
+			if err := bindRowCounts(part, parameters); err != nil {
+				return err
+			}
+		}
+	}
+	for _, slot := range []struct {
+		clause    string
+		parameter *ParameterRef
+		count     **int64
+	}{
+		{"SKIP", query.SkipParameter, &query.Skip},
+		{"LIMIT", query.LimitParameter, &query.Limit},
+	} {
+		if slot.parameter == nil || *slot.count != nil {
+			continue
+		}
+		value, err := rowCountFromParameter(*slot.parameter, slot.clause, parameters)
+		if err != nil {
+			return err
+		}
+		*slot.count = &value
+	}
+	return nil
+}
+
+func rowCountFromParameter(parameter ParameterRef, clause string, parameters map[string]any) (int64, error) {
+	supplied, ok := parameters[parameter.Name]
+	if !ok {
+		return 0, planErrorf(parameter.Pos, "parameter %q was not supplied", parameter.Name)
+	}
+	got := describeParameterValue(supplied)
+	literal, err := literalFromParameter(supplied)
+	if err == nil {
+		if literal.Kind == LiteralInteger && literal.Integer >= 0 {
+			return literal.Integer, nil
+		}
+		got = literal.describe()
+	}
+	return 0, planErrorf(parameter.Pos, "parameter %q is used as %s, which takes a non-negative integer; got %s",
+		parameter.Name, clause, got)
 }
 
 // analyzeProjection reads one RETURN item: a property, an aggregate over one,

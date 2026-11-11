@@ -440,18 +440,14 @@ func (w withScope) analyzeTotals(query *Query, body parsing.IOC_ProjectionBodyCo
 // analyzeRowWindow reads SKIP and LIMIT after a WITH.
 func analyzeRowWindow(query *Query, body parsing.IOC_ProjectionBodyContext) error {
 	if skip := body.OC_Skip(); skip != nil {
-		value, err := analyzeRowCount(skip.OC_Expression(), "SKIP")
-		if err != nil {
+		if err := analyzeRowCount(skip.OC_Expression(), "SKIP", &query.Skip, &query.SkipParameter); err != nil {
 			return err
 		}
-		query.Skip = &value
 	}
 	if limit := body.OC_Limit(); limit != nil {
-		value, err := analyzeRowCount(limit.OC_Expression(), "LIMIT")
-		if err != nil {
+		if err := analyzeRowCount(limit.OC_Expression(), "LIMIT", &query.Limit, &query.LimitParameter); err != nil {
 			return err
 		}
-		query.Limit = &value
 	}
 	return nil
 }

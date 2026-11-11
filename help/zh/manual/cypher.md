@@ -189,7 +189,7 @@ ORDER BY n DESC LIMIT 4
 
 - ORDER BY 可以用属性、返回的列名、聚合或算出来的值；加 `DESC` 倒序。
 - 结果被聚合或 `DISTINCT` 折叠后，只能按返回的值排序。
-- 不写 `LIMIT` 时最多返回 **1000** 行，返回满 1000 行时结果带 `limited: true`，说明可能还有更多；`LIMIT` 不能超过 **10000**，超过会被拒绝，不会悄悄截断。分页用 `SKIP n LIMIT m`。
+- 不写 `LIMIT` 时最多返回 **1000** 行，返回满 1000 行时结果带 `limited: true`，说明可能还有更多；`LIMIT` 不能超过 **10000**，超过会被拒绝，不会悄悄截断。分页用 `SKIP n LIMIT m`。两者都可以写整数或参数，例如 `SKIP $from LIMIT $size`；参数值必须是非负整数，参数给出的 `LIMIT` 同样不能超过 10000。
 
 ### UNION / UNION ALL
 

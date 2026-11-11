@@ -9,7 +9,8 @@ info:
     subset accepted here is what compiles that way: one MATCH over a single path, a WHERE over
     properties, and a projection of properties and aggregates of them. Everything else is
     refused by name rather than approximated.
-    Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter.
+    Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter. Both take
+    an integer or a $parameter (SKIP $from LIMIT $size) whose value is a non-negative integer.
     Exposed under /api/bkn-backend/v1 (OAuth2), with the branch query parameter defaulting
     to main.
 security:

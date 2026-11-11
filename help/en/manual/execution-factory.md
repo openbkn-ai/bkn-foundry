@@ -60,7 +60,7 @@ Notes:
 - An edit that leaves out `script_type` keeps the function's type. The script type cannot change between `python` and `cypher`; create a new function instead.
 - Parameters replace values only, never object type, relation type or property names. A parameter cannot be `null`, so a filter that applies only when given needs two functions.
 - Importing a toolbox does not check its statements, because the target environment may not have the network yet. A statement that no longer fits fails when it is called.
-- `LIMIT` and `SKIP` take an integer, not a `$parameter`. A `table` statement without `LIMIT` returns at most 1000 rows, with `limited` set to `true` when there were more; a statement that writes its own `LIMIT` is cut there and `limited` does not say so. `LIMIT` is at most 10000.
+- `LIMIT` and `SKIP` take an integer or a `$parameter` (of type `number`, called with a non-negative integer), for a "first N" or paged function. A `table` statement without `LIMIT` returns at most 1000 rows, with `limited` set to `true` when there were more; a statement that writes its own `LIMIT` is cut there and `limited` does not say so. `LIMIT` is at most 10000.
 - A `value` statement that takes one row with `LIMIT 1` needs an `ORDER BY`, or which row it gets is arbitrary; aggregate (`count()`, `max()` and the like) where you can.
 
 ## CLI
