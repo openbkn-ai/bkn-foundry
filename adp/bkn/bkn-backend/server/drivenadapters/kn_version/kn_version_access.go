@@ -92,6 +92,27 @@ func stateValues(s *interfaces.KNVersionState) []any {
 		s.DraftIndexBuild, s.DraftIndexRevision, s.EnabledBy, s.EnabledByType, s.EnableTime, s.UpdateTime}
 }
 
+func (va *versionAccess) ListUnversionedKNIDs(ctx context.Context) ([]string, error) {
+	// A network with events was versioned before and had it turned off: it stays off.
+	rows, err := va.db.QueryContext(ctx, "SELECT kn.f_id FROM "+knTable+" kn LEFT JOIN "+stateTable+
+		" s ON s.f_kn_id = kn.f_id WHERE kn.f_branch = ? AND s.f_kn_id IS NULL AND NOT EXISTS "+
+		"(SELECT 1 FROM "+eventTable+" e WHERE e.f_kn_id = kn.f_id) ORDER BY kn.f_create_time",
+		interfaces.MAIN_BRANCH)
+	if err != nil {
+		return nil, fmt.Errorf("list unversioned networks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("list unversioned networks: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (va *versionAccess) GetState(ctx context.Context, tx *sql.Tx, knID string, forUpdate bool) (*interfaces.KNVersionState, error) {
 	s := &interfaces.KNVersionState{}
 	err := va.q(tx).QueryRowContext(ctx, "SELECT "+stateColumns+" FROM "+stateTable+" WHERE f_kn_id = ?"+lockClause(forUpdate),

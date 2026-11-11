@@ -359,6 +359,11 @@ type KNVersionService interface {
 	// VersionPurged when the version was purged, DraftRevisionMismatch when the draft was written.
 	CheckReadEnd(ctx context.Context, knID string, resolved *KNResolvedBranch) error
 	Enable(ctx context.Context, knID string, req *KNEnableVersioningRequest) (*KNVersioningView, error)
+	// EnableUnversioned turns versioning on for a network that does not have it, without a
+	// permission check: versioning is on for every network, so a network created or kept
+	// from before gets it from the server itself. It reports false for a network that is
+	// already versioned or gone. notes become the notes of its first version.
+	EnableUnversioned(ctx context.Context, knID string, notes string) (bool, error)
 	GetState(ctx context.Context, knID string) (*KNVersioningView, error)
 	ListVersions(ctx context.Context, knID string, query *KNVersionsQuery) ([]*KNVersion, int, error)
 	GetVersion(ctx context.Context, knID string, version int) (*KNVersion, error)
@@ -389,6 +394,9 @@ type KNVersionAccess interface {
 	// LockNetwork locks the main row of the network, exclusively or in share mode, and reports
 	// whether the network exists.
 	LockNetwork(ctx context.Context, tx *sql.Tx, knID string, exclusive bool) (bool, error)
+	// ListUnversionedKNIDs lists the networks that were never versioned: no version state and
+	// no version events, so a network whose versioning was turned off is not listed.
+	ListUnversionedKNIDs(ctx context.Context) ([]string, error)
 	// GetState returns the version state, or nil when the network is not versioned.
 	GetState(ctx context.Context, tx *sql.Tx, knID string, forUpdate bool) (*KNVersionState, error)
 	// ListVersionedKNIDs returns the ids of every network that has a version state, disabling

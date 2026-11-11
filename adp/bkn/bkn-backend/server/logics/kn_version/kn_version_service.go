@@ -326,6 +326,22 @@ func (s *service) Enable(ctx context.Context, knID string, req *interfaces.KNEna
 	if err := s.checkPermission(ctx, knID, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return nil, err
 	}
+	return s.enable(ctx, knID, req)
+}
+
+func (s *service) EnableUnversioned(ctx context.Context, knID string, notes string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Enable versioning of an unversioned knowledge network")
+	defer span.End()
+	_, err := s.enable(ctx, knID, &interfaces.KNEnableVersioningRequest{Notes: notes})
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) && (httpErr.BaseError.ErrorCode == berrors.BknBackend_KNVersion_AlreadyVersioned ||
+		httpErr.BaseError.ErrorCode == berrors.BknBackend_KnowledgeNetwork_NotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (s *service) enable(ctx context.Context, knID string, req *interfaces.KNEnableVersioningRequest) (*interfaces.KNVersioningView, error) {
 	op := &operation{types: []string{interfaces.KNVersionEventEnable}, key: req.IdempotencyKey, replay: s.replayState}
 	result, err := s.run(ctx, knID, op, s.draftTx(knID), func(ctx context.Context, tx *sql.Tx) (any, error) {
 		exists, err := s.va.LockNetwork(ctx, tx, knID, true)

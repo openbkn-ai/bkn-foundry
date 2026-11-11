@@ -477,6 +477,9 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	// them without resolving the environment-local dependencies just removed.
 	persistenceStrictMode := strictMode && bindingPolicy != bknBindingPolicyDetach
 
+	// Every network is versioned: it is created on main and its content becomes v1 right
+	// after, so a request still asking for versioning gets the same.
+	kn.Versioning = nil
 	// Create the knowledge network.
 	knID, err := r.kns.CreateKN(ctx, &kn, mode, persistenceStrictMode)
 	if err != nil {
@@ -487,6 +490,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	r.versionCreatedKN(ctx, knID, kn.ImportSkipped)
 
 	if r.auditRecorder != nil {
 		c.Set("operation_audit_skip", kn.ImportSkipped)

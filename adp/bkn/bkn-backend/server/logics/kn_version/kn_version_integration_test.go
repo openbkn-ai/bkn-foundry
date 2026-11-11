@@ -638,3 +638,50 @@ func TestPurgeDeletesTheIndexAfterCommit(t *testing.T) {
 		t.Fatalf("index deletions = %v, want [v1:%s] (deleted after the purge committed)", f.indexDeletes, interfaces.KNVersionPurged)
 	}
 }
+
+func listsUnversioned(t *testing.T, f *fixture) bool {
+	t.Helper()
+	ids, err := f.svc.va.ListUnversionedKNIDs(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if id == f.knID {
+			return true
+		}
+	}
+	return false
+}
+
+// The server versions a network made before every network was versioned, once, and leaves
+// alone one whose versioning was turned off.
+func TestEnableUnversionedVersionsOnlyNetworksNeverVersioned(t *testing.T) {
+	f := setup(t)
+	if !listsUnversioned(t, f) {
+		t.Fatal("a network never versioned is not listed")
+	}
+	ok, err := f.svc.EnableUnversioned(context.Background(), f.knID, "upgrade")
+	if err != nil || !ok {
+		t.Fatalf("enable unversioned: %v %v", ok, err)
+	}
+	if view := f.state(); !view.Enabled || view.RunningVersion != 1 {
+		t.Fatalf("state %+v", view)
+	}
+	if listsUnversioned(t, f) {
+		t.Fatal("a versioned network is still listed")
+	}
+	// A second pod reaching it later does nothing.
+	if ok, err = f.svc.EnableUnversioned(context.Background(), f.knID, "upgrade"); err != nil || ok {
+		t.Fatalf("enable again: %v %v", ok, err)
+	}
+	if _, err = f.svc.Disable(f.ctx, f.knID, &interfaces.KNDisableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if listsUnversioned(t, f) {
+		t.Fatal("a network whose versioning was turned off is listed again")
+	}
+	// A network deleted meanwhile is skipped.
+	if ok, err = f.svc.EnableUnversioned(context.Background(), "it_ver_missing", "upgrade"); err != nil || ok {
+		t.Fatalf("enable a missing network: %v %v", ok, err)
+	}
+}
