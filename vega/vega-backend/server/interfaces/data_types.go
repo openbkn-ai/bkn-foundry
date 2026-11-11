@@ -102,12 +102,16 @@ func DataType_HasDatePart(t string) bool {
 
 // legacyTypeFilterable 为历史字段和手动创建时缺失开关提供统一类型兼容值。
 // 扫描默认值由各连接器的 type_mapping.go 负责，不调用此兼容函数。
+// IP 过滤暂不启用，缺省关闭；类型和已有显式开关仍保留。
 func legacyTypeFilterable(dataType string) bool {
 	switch dataType {
-	case DataType_Integer, DataType_UnsignedInteger, DataType_LargeInteger,
-		DataType_Float, DataType_Decimal, DataType_String, DataType_Text,
-		DataType_Date, DataType_Time, DataType_Datetime, DataType_Timestamp,
-		DataType_Ip, DataType_Boolean, DataType_Vector:
+	case DataType_Integer, DataType_UnsignedInteger,
+		DataType_LargeInteger,
+		DataType_Float, DataType_Decimal,
+		DataType_String, DataType_Text,
+		DataType_Date, DataType_Time,
+		DataType_Datetime, DataType_Timestamp,
+		DataType_Boolean, DataType_Vector:
 		return true
 	default:
 		return false

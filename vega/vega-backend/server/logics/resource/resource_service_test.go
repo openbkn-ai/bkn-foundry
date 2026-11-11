@@ -4299,6 +4299,51 @@ func TestMapFilterabilityError(t *testing.T) {
 func TestResourceServiceUpdateFilterabilityCapability(t *testing.T) {
 	flag := func(v bool) *bool { return &v }
 
+	t.Run("historical IP read can be saved with filtering disabled", func(t *testing.T) {
+		rs, ra, ps, ds, _, cs, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		rs.lim = vmock.NewMockLocalIndexManager(gomock.NewController(t))
+		const stored = `{"id":"r1","name":"addresses","catalog_id":"cat1","category":"dataset","update_time":7,"schema_definition":[{"name":"address","type":"ip","original_name":"client_address","original_type":"ip","attributes":{"format":"ipv4"}}]}`
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").DoAndReturn(func(context.Context, *sql.Tx, string) (*interfaces.Resource, error) {
+			var resource interfaces.Resource
+			err := json.Unmarshal([]byte(stored), &resource)
+			return &resource, err
+		}).Times(2)
+		writes := 0
+		ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(7)).DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource, _ int64) (int64, error) {
+			writes++
+			require.Len(t, resource.SchemaDefinition, 1)
+			property := resource.SchemaDefinition[0]
+			require.NotNil(t, property.Filterable)
+			assert.False(t, *property.Filterable)
+			assert.Equal(t, interfaces.DataType_Ip, property.Type)
+			assert.Equal(t, "address", property.Name)
+			assert.Equal(t, "client_address", property.OriginalName)
+			assert.Equal(t, "ip", property.OriginalType)
+			assert.Equal(t, map[string]any{"format": "ipv4"}, property.Attributes)
+			return 1, nil
+		})
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ds.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+
+		read, err := rs.InternalGetByID(t.Context(), nil, "r1")
+		require.NoError(t, err)
+		require.Len(t, read.SchemaDefinition, 1)
+		require.NotNil(t, read.SchemaDefinition[0].Filterable)
+		assert.False(t, *read.SchemaDefinition[0].Filterable)
+		assert.Zero(t, writes, "reading must not backfill the stored resource")
+		var historical interfaces.Resource
+		require.NoError(t, json.Unmarshal([]byte(stored), &historical))
+		assert.Nil(t, historical.SchemaDefinition[0].Filterable)
+		require.NoError(t, rs.Update(t.Context(), &interfaces.ResourceRequest{
+			ID: read.ID, Name: read.Name, CatalogID: read.CatalogID, Category: read.Category, Enabled: read.Enabled,
+			SchemaDefinition: read.SchemaDefinition, ExpectedUpdateTime: read.UpdateTime,
+		}))
+		assert.Equal(t, 1, writes)
+	})
+
 	t.Run("catalog context is only loaded for enabled source schema updates", func(t *testing.T) {
 		for _, tc := range []struct {
 			name, category  string
@@ -4522,7 +4567,7 @@ func TestResourceServiceCreateClosedFilterability(t *testing.T) {
 			rs.lim = vmock.NewMockLocalIndexManager(gomock.NewController(t))
 			cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 			closed := false
-			req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, Filterable: &closed}, {Name: "payload", Type: interfaces.DataType_Json}}}
+			req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, Filterable: &closed}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "address", Type: interfaces.DataType_Ip}}}
 			ds.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, r *interfaces.Resource) error {
 				for _, field := range r.SchemaDefinition {
 					require.NotNil(t, field.Filterable)

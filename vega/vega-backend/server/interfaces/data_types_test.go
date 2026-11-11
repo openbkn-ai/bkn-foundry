@@ -39,7 +39,7 @@ func TestPropertyEffectiveFilterable(t *testing.T) {
 		{DataType_Integer, true}, {DataType_UnsignedInteger, true}, {DataType_LargeInteger, true},
 		{DataType_Float, true}, {DataType_Decimal, true}, {DataType_String, true}, {DataType_Text, true},
 		{DataType_Date, true}, {DataType_Time, true}, {DataType_Datetime, true}, {DataType_Timestamp, true},
-		{DataType_Ip, true}, {DataType_Boolean, true}, {DataType_Vector, true},
+		{DataType_Ip, false}, {DataType_Boolean, true}, {DataType_Vector, true},
 		{DataType_Binary, false}, {DataType_Json, false}, {DataType_Other, false},
 		{DataType_Point, false}, {DataType_Shape, false}, {"future_type", false}, {"", false},
 	} {

@@ -883,7 +883,7 @@ func newLocalIndexTestConnector(controller *gomock.Controller) *vmock.MockIndexC
 func TestLocalIndexManagerValidateFilterability(t *testing.T) {
 	flag := func(v bool) *bool { return &v }
 	t.Run("all explicitly enabled fields are checked including excluded query types", func(t *testing.T) {
-		for _, typ := range []string{interfaces.DataType_Binary, interfaces.DataType_Json, interfaces.DataType_Other} {
+		for _, typ := range []string{interfaces.DataType_Binary, interfaces.DataType_Json, interfaces.DataType_Other, interfaces.DataType_Ip} {
 			t.Run(typ, func(t *testing.T) {
 				lim := &localIndexManager{lic: opensearchConnector.NewOpenSearchConnector()}
 				err := lim.ValidateFilterability([]*interfaces.Property{{Name: "payload", Type: typ, Filterable: flag(true)}})
@@ -891,6 +891,27 @@ func TestLocalIndexManagerValidateFilterability(t *testing.T) {
 				require.ErrorAs(t, err, &typed)
 			})
 		}
+	})
+	t.Run("IP default stays closed through the physical query projection", func(t *testing.T) {
+		lim := &localIndexManager{lic: opensearchConnector.NewOpenSearchConnector()}
+		source := &interfaces.Property{Name: "address", OriginalName: "client_address", OriginalType: "ip", Type: interfaces.DataType_Ip,
+			Attributes: map[string]any{"format": "ipv4"}}
+		source.SetDefaultFilterable()
+		require.NotNil(t, source.Filterable)
+		assert.False(t, *source.Filterable)
+		mapping, err := buildFieldMappings([]*interfaces.Property{source}, false)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"type": "ip"}, mapping["address"])
+		require.NoError(t, lim.ValidateFilterability([]*interfaces.Property{source}))
+		projected, err := lim.SchemaForQuery([]*interfaces.Property{source})
+		require.NoError(t, err)
+		require.Len(t, projected, 1)
+		assert.Equal(t, interfaces.DataType_Ip, projected[0].Type)
+		assert.Equal(t, "address", projected[0].OriginalName)
+		assert.Equal(t, source.Attributes, projected[0].Attributes)
+		require.NotNil(t, projected[0].Filterable)
+		assert.False(t, *projected[0].Filterable)
+		assert.Equal(t, "client_address", source.OriginalName)
 	})
 	t.Run("false and omitted fields do not require a connector", func(t *testing.T) {
 		require.NoError(t, (&localIndexManager{}).ValidateFilterability([]*interfaces.Property{{Name: "disabled", Type: interfaces.DataType_Other, Filterable: flag(false)}, {Name: "legacy", Type: interfaces.DataType_Other}}))
