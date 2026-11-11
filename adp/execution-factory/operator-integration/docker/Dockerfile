@@ -23,10 +23,9 @@ WORKDIR /app/operator-integration
 COPY --from=builder /out/operator-integration ./operator-integration
 
 # The Go binary does not include root certificates, and the base image does not include them either.
-# Without ca-certificates, outbound HTTPS requests fail with "certificate signed by unknown authority" (for example, querying PyPI versions).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Without them, outbound HTTPS requests fail with "certificate signed by unknown authority" (for example, querying PyPI versions).
+# The bundle comes from the builder rather than apt, so the build does not depend on reaching the Ubuntu mirrors.
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # Create non-root user.
 RUN useradd -m -r -s /bin/bash openbkn \

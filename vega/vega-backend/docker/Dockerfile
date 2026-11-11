@@ -31,10 +31,11 @@ ARG UID=1001
 ARG GID=1001
 
 RUN groupadd -r -g $GID openbkn \
-    && useradd -r -u $UID -g $GID openbkn \
-    && apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    && useradd -r -u $UID -g $GID openbkn
+
+# 根证书与时区数据取自 builder 镜像，不走 apt，构建不依赖能否连上 Ubuntu 软件源。
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend
 

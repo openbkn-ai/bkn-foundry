@@ -19,8 +19,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o oss-gateway main.go
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-# Install runtime dependencies with apt-get on Ubuntu.
-RUN apt-get update && apt-get install -y ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
+# Root certificates and time zone data come from the builder rather than apt,
+# so the build does not depend on reaching the Ubuntu mirrors.
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
 WORKDIR /root/
 
