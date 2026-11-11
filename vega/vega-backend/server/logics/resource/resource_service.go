@@ -188,7 +188,6 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 	}
 	switch resource.Category {
 	case interfaces.ResourceCategoryDataset:
-		keepStoredPropertyAPINames(nil, resource.SchemaDefinition)
 		AddDefaultStringAndTextFeatures(resource.SchemaDefinition, resource.IndexConfig)
 		if err := validatePropertyFeatures(ctx, resource.SchemaDefinition); err != nil {
 			return nil, err
@@ -230,13 +229,10 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 		resource.SourceMetadata = req.SourceMetadata
 		resource.Schema = ""
 		resource.SourceIdentifier = id
-		keepStoredPropertyAPINames(nil, resource.SchemaDefinition)
 		if err := validatePropertyFeatures(ctx, resource.SchemaDefinition); err != nil {
 			return nil, err
 		}
 		completeResourceFilterability(resource)
-	default:
-		keepStoredPropertyAPINames(nil, resource.SchemaDefinition)
 	}
 	if err := encodeResourceLogicFields(resource); err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails("failed to encode resource definition")
@@ -1608,8 +1604,6 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		if logicalType != resource.LogicalType {
 			return false, unsupportedResourceUpdateError(ctx, "logical_type cannot be changed")
 		}
-		// 先带回已存的 api_name 再比较，否则只差 api_name 也会被当成结构变化。
-		keepStoredPropertyAPINames(resource.SchemaDefinition, viewFields)
 		requestedFilterability := make(map[string]*bool, len(req.SchemaDefinition))
 		for _, property := range req.SchemaDefinition {
 			requestedFilterability[property.Name] = property.Filterable
@@ -1642,8 +1636,6 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 	// migration. The request was normalized at ingress; normalize both sides before comparison so an
 	// ordinary edit without schema changes is not classified as a build-related change.
 	NormalizeSelfReferencingFeatures(resource.SchemaDefinition)
-	// api_name 不随请求更新：省略或改写都按已存值处理，免得被当成不可变字段的改动而拒绝。
-	keepStoredPropertyAPINames(resource.SchemaDefinition, req.SchemaDefinition)
 	schemaChanged, err := validateMutableSchemaUpdate(
 		ctx,
 		resource.SchemaDefinition,
@@ -2086,18 +2078,6 @@ func InitializeJSONIndexAttributes(schema []*interfaces.Property) {
 	}
 }
 
-// keepStoredPropertyAPINames 让字段 api_name 只来自已存的同名字段。api_name 由语义理解只写一次，
-// 请求或逻辑视图生成的字段带来的值一律不采纳；stored 为空（新建）时全部清空。
-func keepStoredPropertyAPINames(stored, next []*interfaces.Property) {
-	apiNames := make(map[string]string, len(stored))
-	for _, property := range stored {
-		apiNames[property.Name] = property.APIName
-	}
-	for _, property := range next {
-		property.APIName = apiNames[property.Name]
-	}
-}
-
 func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) []*interfaces.Property {
 	if requested == nil {
 		return current
@@ -2115,7 +2095,6 @@ func applyMutableSchemaFields(current []*interfaces.Property, requested []*inter
 			continue
 		}
 		if allowPropertyAdditions {
-			requestedProp.APIName = ""
 			InitializeJSONIndexAttributes([]*interfaces.Property{requestedProp})
 			current = append(current, requestedProp)
 		}

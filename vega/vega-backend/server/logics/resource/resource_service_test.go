@@ -1188,7 +1188,6 @@ func TestResourceServiceInternalCreate(t *testing.T) {
 			assert.Equal(t, source, r.SourceMetadata)
 			assert.Equal(t, "public.source", r.SourceIdentifier)
 			require.Len(t, r.SchemaDefinition, 1)
-			assert.Empty(t, r.SchemaDefinition[0].APIName)
 			assert.Nil(t, r.SchemaDefinition[0].Filterable)
 			assert.Empty(t, r.SchemaDefinition[0].Features)
 			assert.Equal(t, "scanner", r.Creator.ID)
@@ -1200,7 +1199,7 @@ func TestResourceServiceInternalCreate(t *testing.T) {
 		ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{ResourceID: "physical-id", ParentID: "cat1"}}).Return(nil)
 		ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "scanner"})
 		builtin := true
-		got, err := rs.InternalCreate(ctx, &interfaces.ResourceRequest{ID: "physical-id", CatalogID: "cat1", Builtin: &builtin, Category: interfaces.ResourceCategoryTable, SourceIdentifier: "public.source", SourceMetadata: source, SchemaDefinition: []*interfaces.Property{{Name: "source", Type: interfaces.DataType_String, OriginalType: "varchar", APIName: "injected"}}})
+		got, err := rs.InternalCreate(ctx, &interfaces.ResourceRequest{ID: "physical-id", CatalogID: "cat1", Builtin: &builtin, Category: interfaces.ResourceCategoryTable, SourceIdentifier: "public.source", SourceMetadata: source, SchemaDefinition: []*interfaces.Property{{Name: "source", Type: interfaces.DataType_String, OriginalType: "varchar"}}})
 		require.NoError(t, err)
 		assert.Equal(t, "physical-id", got.ID)
 	})
@@ -1509,23 +1508,6 @@ func TestResourceServiceCreate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		require.NotNil(t, resource)
-	})
-	t.Run("takes no api name from the request", func(t *testing.T) {
-		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
-		expectResourceServiceTransaction(t, rs, true)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
-				require.Len(t, got.SchemaDefinition, 1)
-				assert.Empty(t, got.SchemaDefinition[0].APIName)
-				return nil
-			})
-		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
-
-		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
-			Name: "test-dataset", Category: interfaces.ResourceCategoryDataset,
-			SchemaDefinition: []*interfaces.Property{{Name: "code", Type: interfaces.DataType_String, APIName: "code"}},
-		})
-		require.NoError(t, err)
 	})
 	t.Run("cleans attempted parent when the resource transaction cannot commit", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -3950,41 +3932,10 @@ func TestApplyMutableSchemaFields(t *testing.T) {
 			assert.Equal(t, map[string]any{"enabled": false}, got[2].Attributes)
 		})
 	}
-	t.Run("keeps stored api names and takes none from the request", func(t *testing.T) {
-		existing := &interfaces.Property{Name: "code", Type: interfaces.DataType_String, APIName: "code"}
-		got := applyMutableSchemaFields([]*interfaces.Property{existing}, []*interfaces.Property{
-			{Name: "code", Type: interfaces.DataType_String, APIName: "renamed"},
-			{Name: "added", Type: interfaces.DataType_String, APIName: "added"},
-		}, true)
-		require.Len(t, got, 2)
-		assert.Equal(t, "code", got[0].APIName)
-		assert.Empty(t, got[1].APIName)
-	})
 	t.Run("table updates cannot add properties", func(t *testing.T) {
 		got := applyMutableSchemaFields(nil, []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}, false)
 		assert.Empty(t, got)
 	})
-}
-
-func TestValidateResourceUpdateScopeKeepsStoredAPINames(t *testing.T) {
-	// 接口文档不列 api_name，客户端更新时通常省略它；不能因此被拒，也不能借此改写它。
-	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
-		for _, requested := range []string{"", "renamed"} {
-			t.Run(category+"/request api_name "+requested, func(t *testing.T) {
-				rs := &resourceService{}
-				resource := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: category,
-					SchemaDefinition: []*interfaces.Property{{Name: "code", Type: interfaces.DataType_String, APIName: "code"}}}
-				req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: category,
-					SchemaDefinition: []*interfaces.Property{{Name: "code", Type: interfaces.DataType_String, APIName: requested, DisplayName: "编号"}}}
-
-				changed, err := rs.validateResourceUpdateScope(context.Background(), resource, req)
-
-				require.NoError(t, err)
-				assert.False(t, changed)
-				assert.Equal(t, "code", req.SchemaDefinition[0].APIName)
-			})
-		}
-	}
 }
 
 func TestValidateMutableSchemaUpdateJSONEnabled(t *testing.T) {

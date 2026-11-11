@@ -293,7 +293,6 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 			}
 			if existing, ok := existingProperties[field.Name]; ok {
 				property.DisplayName = existing.DisplayName
-				property.APIName = existing.APIName
 				property.Description = resolveSourceDescription(existing.Description, existing.OriginalDescription, field.Description)
 				property.Features = mergeIndexFeatures(existing.Features, property.Features)
 			}
