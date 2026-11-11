@@ -25,3 +25,11 @@ func defaultBranchAlias() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// mainIfDefault reads the default branch name in a request body as main.
+func mainIfDefault(branch string) string {
+	if branch == defaultBranchName {
+		return interfaces.MAIN_BRANCH
+	}
+	return branch
+}

@@ -23,14 +23,15 @@ import (
 type resolvingVersions struct {
 	interfaces.KNVersionService
 	versioned bool
-	converted bool
 }
+
+func (resolvingVersions) RebaseDraft(context.Context, string) error { return nil }
 
 func (v resolvingVersions) ResolveBranch(_ context.Context, _ string, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, error) {
 	if !v.versioned {
 		return &interfaces.KNResolvedBranch{Branch: interfaces.MAIN_BRANCH}, nil
 	}
-	return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true, Converted: v.converted}, nil
+	return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true}, nil
 }
 
 func TestResolveWritePreconditions(t *testing.T) {
@@ -38,33 +39,28 @@ func TestResolveWritePreconditions(t *testing.T) {
 	cases := []struct {
 		name      string
 		versioned bool
-		converted bool
 		need      writePrecondition
 		query     string
 		ifMatch   string
 		wantCode  int
 	}{
-		{"create needs nothing", true, false, preconditionNone, "branch=draft", "", 0},
-		{"change without If-Match", true, false, preconditionIfMatch, "branch=draft", "", http.StatusPreconditionRequired},
-		{"change with If-Match", true, false, preconditionIfMatch, "branch=draft", `"r1"`, 0},
-		{"change with only the draft revision", true, false, preconditionIfMatch, "branch=draft&expected_draft_revision=3", "", http.StatusPreconditionRequired},
-		{"delete without either", true, false, preconditionDelete, "branch=draft", "", http.StatusPreconditionRequired},
-		{"delete with If-Match", true, false, preconditionDelete, "branch=draft", "r1", 0},
-		{"delete several with the draft revision", true, false, preconditionDelete, "branch=draft&expected_draft_revision=3", "", 0},
-		{"import without the draft revision", true, false, preconditionDraftRevision, "branch=draft", "r1", http.StatusPreconditionRequired},
-		{"import with the draft revision", true, false, preconditionDraftRevision, "branch=draft&expected_draft_revision=3", "", 0},
+		{"create needs nothing", true, preconditionNone, "branch=draft", "", 0},
+		{"change without If-Match", true, preconditionIfMatch, "branch=draft", "", http.StatusPreconditionRequired},
+		{"change with If-Match", true, preconditionIfMatch, "branch=draft", `"r1"`, 0},
+		{"change with only the draft revision", true, preconditionIfMatch, "branch=draft&expected_draft_revision=3", "", http.StatusPreconditionRequired},
+		{"delete without either", true, preconditionDelete, "branch=draft", "", http.StatusPreconditionRequired},
+		{"delete with If-Match", true, preconditionDelete, "branch=draft", "r1", 0},
+		{"delete several with the draft revision", true, preconditionDelete, "branch=draft&expected_draft_revision=3", "", 0},
+		{"import without the draft revision", true, preconditionDraftRevision, "branch=draft", "r1", http.StatusPreconditionRequired},
+		{"import with the draft revision", true, preconditionDraftRevision, "branch=draft&expected_draft_revision=3", "", 0},
 		// A write that does not name the draft is published at once and needs no precondition.
-		{"direct change needs nothing", true, false, preconditionIfMatch, "", "", 0},
-		{"direct change on main needs nothing", true, false, preconditionIfMatch, "branch=main", "", 0},
-		{"direct delete needs nothing", true, false, preconditionDelete, "", "", 0},
-		{"direct import needs nothing", true, false, preconditionDraftRevision, "", "", 0},
-		{"direct change keeps its If-Match", true, false, preconditionIfMatch, "", `"r1"`, 0},
-		{"unversioned change needs nothing", false, false, preconditionIfMatch, "", "", 0},
-		{"unversioned import needs nothing", false, false, preconditionDraftRevision, "", "", 0},
-		// The write that versioned the network read only main; what it sends is still checked.
-		{"converting change needs nothing", true, true, preconditionIfMatch, "branch=draft", "", 0},
-		{"converting delete needs nothing", true, true, preconditionDelete, "branch=draft", "", 0},
-		{"converting import needs nothing", true, true, preconditionDraftRevision, "branch=draft", "", 0},
+		{"direct change needs nothing", true, preconditionIfMatch, "", "", 0},
+		{"direct change on main needs nothing", true, preconditionIfMatch, "branch=main", "", 0},
+		{"direct delete needs nothing", true, preconditionDelete, "", "", 0},
+		{"direct import needs nothing", true, preconditionDraftRevision, "", "", 0},
+		{"direct change keeps its If-Match", true, preconditionIfMatch, "", `"r1"`, 0},
+		{"unversioned change needs nothing", false, preconditionIfMatch, "", "", 0},
+		{"unversioned import needs nothing", false, preconditionDraftRevision, "", "", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,7 +70,7 @@ func TestResolveWritePreconditions(t *testing.T) {
 			if tc.ifMatch != "" {
 				c.Request.Header.Set("If-Match", tc.ifMatch)
 			}
-			r := &restHandler{kvs: resolvingVersions{versioned: tc.versioned, converted: tc.converted}}
+			r := &restHandler{kvs: resolvingVersions{versioned: tc.versioned}}
 			ctx := context.Background()
 			_, ok := r.resolveWrite(&ctx, c, "kn1", tc.need)
 			if tc.wantCode != 0 {

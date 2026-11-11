@@ -54,7 +54,9 @@ func isDirectWrite(c *gin.Context, resolved *interfaces.KNResolvedBranch) bool {
 func startDirectWrite(ctx context.Context, c *gin.Context, knID string, dw *logics.DraftWrite, runningVersion int) {
 	dw.RefuseDraftChanges = true
 	dw.RefuseDraftChangesDetail = directWriteDraftBusy
-	write := &directWrite{ctx: ctx, knID: knID, dw: dw, runningVersion: runningVersion}
+	// The write is committed by then: publishing it, or putting the draft back, must finish even
+	// when the client has gone, or the draft stays dirty and refuses every later direct write.
+	write := &directWrite{ctx: context.WithoutCancel(ctx), knID: knID, dw: dw, runningVersion: runningVersion}
 	if value, ok := c.Get(directWritesKey); ok {
 		state := value.(*directWrites)
 		for i, existing := range state.writes {

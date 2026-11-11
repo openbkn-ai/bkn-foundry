@@ -34,14 +34,16 @@ components:
         carries the new version in `X-Kn-Version`. A direct write is refused with 409
         `BknBackend.KNVersion.DraftHasChanges` while the draft holds unpublished changes, which it
         would otherwise publish too; an import with `overwrite_changes=true` replaces them instead.
-        When the write or its publish fails, the draft is put back as it was before the write and
-        the publish error is returned, for example 400 `BknBackend.KNVersion.ValidationFailed`.
+        Two direct writes to one network at the same time can meet this way: the second sees the
+        first one's write in the draft before it is published, and can be retried. A draft left on
+        another version by a switch of the running version, with no changes of its own, is first
+        put back on the running version. When the write or its publish fails, the draft is put back
+        as it was before the write and the publish error is returned, for example 400
+        `BknBackend.KNVersion.ValidationFailed`.
 
         A network without versioning is its main branch, shown as v1: writes without `branch` change
-        main, as they always did. The first write that sends `branch=draft` versions it in the same request:
-        main becomes the running version 1, the draft starts as a copy of it, and the write lands in
-        the draft. That write needs no `If-Match` or `expected_draft_revision` (they are still
-        checked when sent); the writes after it need them as on any versioned network.
+        main, as they always did, and `branch` names a branch as it is. Enabling versioning (see
+        the versions API) is what makes main its running version 1 and starts the draft.
       schema:
         type: string
         example: draft

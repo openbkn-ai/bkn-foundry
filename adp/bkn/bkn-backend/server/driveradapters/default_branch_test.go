@@ -30,3 +30,11 @@ func TestDefaultBranchIsMain(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultBranchInARequestBodyIsMain(t *testing.T) {
+	for in, want := range map[string]string{"default": "main", "main": "main", "draft": "draft", "": ""} {
+		if got := mainIfDefault(in); got != want {
+			t.Fatalf("%q read as %q, want %q", in, got, want)
+		}
+	}
+}

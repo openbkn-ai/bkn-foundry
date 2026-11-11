@@ -639,42 +639,64 @@ func TestPurgeDeletesTheIndexAfterCommit(t *testing.T) {
 	}
 }
 
-// A network without versioning is its main branch until the first write to its draft, which
-// versions it in that request: v1 and the draft start as copies of main.
-func TestFirstDraftWriteVersionsTheNetwork(t *testing.T) {
+// A network without versioning is shown as its running v1: kn_version running, draft and 1 read
+// main. A branch it names is kept as it was, draft too, so data an older caller wrote to a
+// branch called draft stays where it was written.
+func TestUnversionedNetworkReadsAsV1(t *testing.T) {
 	f := setup(t)
 	for _, req := range []interfaces.KNBranchRequest{
-		{KNVersion: interfaces.DRAFT_BRANCH}, {Branch: interfaces.DRAFT_BRANCH}, {KNVersion: "running"}, {KNVersion: "1"}, {},
+		{KNVersion: interfaces.DRAFT_BRANCH}, {KNVersion: "running"}, {KNVersion: "1"}, {},
 	} {
 		resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, req)
 		if err != nil || resolved.Branch != interfaces.MAIN_BRANCH || resolved.Versioned {
-			t.Fatalf("read %+v before the first draft write: %+v %v", req, resolved, err)
+			t.Fatalf("read %+v: %+v %v", req, resolved, err)
 		}
 	}
-	// It is shown as v1; there is no other version to read.
 	_, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{KNVersion: "2"})
 	wantCode(t, err, berrors.BknBackend_KNVersion_NotVersioned)
-	// A write that does not name the draft keeps writing main.
-	resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true})
-	if err != nil || resolved.Branch != interfaces.MAIN_BRANCH || f.state().Enabled {
-		t.Fatalf("write to main: %+v %v, versioned %v", resolved, err, f.state().Enabled)
-	}
-	_, err = f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true, Branch: interfaces.DRAFT_BRANCH, KNVersion: "draft"})
-	wantCode(t, err, berrors.BknBackend_KNVersion_InvalidVersion)
 
-	resolved, err = f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true, Branch: interfaces.DRAFT_BRANCH})
-	if err != nil || resolved.Branch != interfaces.DRAFT_BRANCH || !resolved.Versioned || !resolved.Converted || resolved.RunningVersion != 1 {
-		t.Fatalf("first draft write: %+v %v", resolved, err)
+	f.exec("INSERT INTO t_object_type (f_kn_id, f_id, f_name, f_branch, f_comment, f_bkn_raw_content, f_data_source) VALUES (?, 'ot1', 'legacy', 'draft', '', '', '')", f.knID)
+	for _, req := range []interfaces.KNBranchRequest{
+		{Branch: interfaces.DRAFT_BRANCH}, {Branch: interfaces.DRAFT_BRANCH, Write: true},
+	} {
+		resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, req)
+		if err != nil || resolved.Branch != interfaces.DRAFT_BRANCH || resolved.Versioned {
+			t.Fatalf("%+v: %+v %v", req, resolved, err)
+		}
 	}
-	if view := f.state(); !view.Enabled || view.RunningVersion != 1 {
-		t.Fatalf("state %+v", view)
+	if f.objectName("draft") != "legacy" || f.state().Enabled {
+		t.Fatalf("draft %q, versioned %v", f.objectName("draft"), f.state().Enabled)
 	}
-	if f.objectName("draft") != "name-1" || f.objectName("v1") != "name-1" {
-		t.Fatalf("draft %q v1 %q", f.objectName("draft"), f.objectName("v1"))
+}
+
+// A rollback leaves the draft on the newer version. Direct writes rebase a draft with nothing of
+// its own onto the running version; a draft someone edited is theirs and stays.
+func TestRebaseDraftFollowsARollback(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
 	}
-	// The next one writes the draft like any other.
-	resolved, err = f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true, Branch: interfaces.DRAFT_BRANCH})
-	if err != nil || resolved.Converted || resolved.Branch != interfaces.DRAFT_BRANCH {
-		t.Fatalf("second draft write: %+v %v", resolved, err)
+	if _, err := f.publish(1, f.editDraft("name-2"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil || f.state().Draft.BaseVersion != 2 {
+		t.Fatalf("rebase of a draft on the running version: %v %+v", err, f.state().Draft)
+	}
+	if _, err := f.svc.Activate(f.ctx, f.knID, 1, &interfaces.KNActivateRequest{ExpectedRunningVersion: ptr(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil {
+		t.Fatal(err)
+	}
+	if draft := f.state().Draft; draft.BaseVersion != 1 || draft.HasChanges || f.objectName("draft") != "name-1" {
+		t.Fatalf("after rebase: %+v, draft %q", draft, f.objectName("draft"))
+	}
+
+	f.editDraft("mine")
+	if _, err := f.svc.Activate(f.ctx, f.knID, 2, &interfaces.KNActivateRequest{ExpectedRunningVersion: ptr(1)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil || f.objectName("draft") != "mine" {
+		t.Fatalf("an edited draft was rebased: %v, draft %q", err, f.objectName("draft"))
 	}
 }

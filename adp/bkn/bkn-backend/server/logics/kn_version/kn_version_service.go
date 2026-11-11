@@ -320,6 +320,24 @@ func (s *service) mainTx(knID, src string) func(context.Context, func(context.Co
 	}
 }
 
+func (s *service) RebaseDraft(ctx context.Context, knID string) error {
+	state, err := s.va.GetState(ctx, nil, knID, false)
+	if err != nil {
+		return internalError(ctx, err)
+	}
+	if state == nil || state.DraftModified || state.DraftBaseVersion == state.RunningVersion {
+		return nil
+	}
+	revision := state.DraftRevision
+	_, err = s.ResetDraft(ctx, knID, &interfaces.KNResetDraftRequest{ExpectedDraftRevision: &revision, OverwriteChanges: true})
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == berrors.BknBackend_KNVersion_DraftRevisionMismatch {
+		// Written meanwhile: the write that follows finds the draft changed and says so.
+		return nil
+	}
+	return err
+}
+
 func (s *service) Enable(ctx context.Context, knID string, req *interfaces.KNEnableVersioningRequest) (*interfaces.KNVersioningView, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Enable knowledge network versioning")
 	defer span.End()

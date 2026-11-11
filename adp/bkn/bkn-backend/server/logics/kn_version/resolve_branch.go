@@ -6,11 +6,8 @@ package kn_version
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strconv"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -31,9 +28,6 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 		return nil, internalError(ctx, err)
 	}
 	if state == nil {
-		if req.Write && req.Branch == interfaces.DRAFT_BRANCH {
-			return s.convertOnDraftWrite(ctx, knID, req)
-		}
 		return resolveUnversioned(ctx, req)
 	}
 	if state.Mode == interfaces.KNVersioningDisabling && req.Write {
@@ -109,42 +103,13 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 		Running: n == state.RunningVersion, RunningVersion: state.RunningVersion}, nil
 }
 
-// convertNotes is the note of the first version of a network versioned by its first draft write.
-const convertNotes = "Versioned on the first write to the draft"
-
-// convertOnDraftWrite versions a network on the first write that names its draft. Until then the
-// network is its main branch, which is what every read without a version gets; the draft and
-// v1 start as copies of it. Two first writes at once: the second finds the network versioned.
-func (s *service) convertOnDraftWrite(ctx context.Context, knID string, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, error) {
-	if req.KNVersion != "" {
-		return nil, invalidVersion(ctx, "writes to a versioned knowledge network go to its draft; kn_version is not accepted")
-	}
-	_, err := s.Enable(ctx, knID, &interfaces.KNEnableVersioningRequest{Notes: convertNotes})
-	converted := err == nil
-	var httpErr *httperrors.HTTPError
-	if err != nil && !(errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == berrors.BknBackend_KNVersion_AlreadyVersioned) {
-		return nil, err
-	}
-	state, err := s.va.GetState(ctx, nil, knID, false)
-	if err != nil {
-		return nil, internalError(ctx, err)
-	}
-	if state == nil {
-		// Turned off again in between; the write goes nowhere rather than to a stray draft branch.
-		return nil, newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_NotVersioned)
-	}
-	return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true,
-		RunningVersion: state.RunningVersion, Converted: converted}, nil
-}
-
-// resolveUnversioned reads a network without versioning from main: it is shown as its running
-// v1, and its draft and v1 are both main until the first write to the draft versions it. Other
-// branches are kept as they were.
+// resolveUnversioned keeps the branch parameter as it was. A network without versioning is
+// shown as its running v1, so kn_version=running, draft and 1 all read main.
 func resolveUnversioned(ctx context.Context, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, error) {
 	switch req.KNVersion {
 	case "":
 		branch := req.Branch
-		if branch == "" || branch == interfaces.DRAFT_BRANCH {
+		if branch == "" {
 			branch = interfaces.MAIN_BRANCH
 		}
 		return &interfaces.KNResolvedBranch{Branch: branch}, nil

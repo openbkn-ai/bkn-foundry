@@ -349,9 +349,6 @@ type KNResolvedBranch struct {
 	Running bool
 	// RunningVersion is the running version when the branch was resolved, 0 if none.
 	RunningVersion int
-	// Converted is set on the write that versioned the network: its draft was copied from main in
-	// this request, so the caller could not have read it.
-	Converted bool
 }
 
 // KNVersionService manages the versions of knowledge networks.
@@ -362,6 +359,9 @@ type KNVersionService interface {
 	// VersionPurged when the version was purged, DraftRevisionMismatch when the draft was written.
 	CheckReadEnd(ctx context.Context, knID string, resolved *KNResolvedBranch) error
 	Enable(ctx context.Context, knID string, req *KNEnableVersioningRequest) (*KNVersioningView, error)
+	// RebaseDraft puts a draft with no changes of its own back on the running version, after a
+	// switch left it on another. A draft with changes, or one written meanwhile, stays as it is.
+	RebaseDraft(ctx context.Context, knID string) error
 	GetState(ctx context.Context, knID string) (*KNVersioningView, error)
 	ListVersions(ctx context.Context, knID string, query *KNVersionsQuery) ([]*KNVersion, int, error)
 	GetVersion(ctx context.Context, knID string, version int) (*KNVersion, error)

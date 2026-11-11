@@ -628,7 +628,7 @@ components:
         branch:
           type: string
           default: main
-          description: Branch name. Defaults to main. Do not combine it with `kn_version`.
+          description: Branch name; `default` also names main. Defaults to main. Do not combine it with `kn_version`.
         kn_version:
           type: string
           description: |
@@ -646,6 +646,7 @@ components:
         branch:
           type: string
           default: main
+          description: Branch name; `default` also names main.
         ot_id:
           type: string
 
