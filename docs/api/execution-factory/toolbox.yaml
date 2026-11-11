@@ -1571,8 +1571,8 @@ components:
           additionalProperties: true
           description: |
             函数定义（编辑形态，无 name / description）。未传的字段沿用已保存的值。
-            编辑 Cypher 函数时须传 `script_type: cypher`：该字段缺省为 `python`，
-            而脚本类型不能在 `python` 与 `cypher` 之间修改，需要换类型时新建函数。
+            `script_type` 不传时沿用函数已保存的类型；脚本类型不能在 `python` 与 `cypher`
+            之间修改，传了另一种类型会被拒绝，需要换类型时新建函数。
             Cypher 函数可改 `code`、`inputs`、`kn_id`、`result_shape`，保存前同样经过
             `explain` 校验。
         data:

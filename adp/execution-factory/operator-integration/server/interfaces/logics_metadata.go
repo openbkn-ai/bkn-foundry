@@ -210,10 +210,13 @@ type FunctionInputEdit struct {
 	Inputs  []*ParameterDef `json:"inputs,omitempty" form:"inputs"`   // Input parameter list.
 	Outputs []*ParameterDef `json:"outputs,omitempty" form:"outputs"` // Output parameter list.
 	// Code related.
-	ScriptType      ScriptType        `json:"script_type" form:"script_type" default:"python" validate:"required,oneof=python cypher"` // Script type.
-	Code            string            `json:"code" form:"code"`                                                                        // Python code (required)
-	Dependencies    []*DependencyInfo `json:"dependencies,omitempty" form:"dependencies"`                                              // Dependency list.
-	DependenciesURL string            `json:"dependencies_url,omitempty" form:"dependencies_url"`                                      // Dependency library installation source address.
+	// ScriptType has no default: left out, the edit keeps the stored function's
+	// type (see buildFunctionInput). A default of python would refuse every
+	// such edit of a Cypher function as a change of language.
+	ScriptType      ScriptType        `json:"script_type" form:"script_type" validate:"omitempty,oneof=python cypher"`
+	Code            string            `json:"code" form:"code"`                                   // Python code (required)
+	Dependencies    []*DependencyInfo `json:"dependencies,omitempty" form:"dependencies"`         // Dependency list.
+	DependenciesURL string            `json:"dependencies_url,omitempty" form:"dependencies_url"` // Dependency library installation source address.
 	// Cypher function only: the knowledge network Code reads, and whether it returns one value or a table.
 	KnID        string            `json:"kn_id,omitempty" form:"kn_id"`
 	ResultShape CypherResultShape `json:"result_shape,omitempty" form:"result_shape"`
