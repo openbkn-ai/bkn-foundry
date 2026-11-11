@@ -152,8 +152,8 @@ type DraftInputs struct {
 }
 
 // DraftInputIDs sums up the ids of items drafted from names that are not ASCII. Placeholders are
-// the ids of items in the draft that stand until semantic understanding gives a short name, not
-// counting those a confirmation locked; Fingerprint is a SHA-256 of every registered id, its origin
+// the ids of items in the draft made from a short hash of the name, not counting those a
+// confirmation locked; Fingerprint is a SHA-256 of every registered id, its origin
 // and whether it is locked, and changes when any of them does.
 type DraftInputIDs struct {
 	Count        int    `json:"count"`

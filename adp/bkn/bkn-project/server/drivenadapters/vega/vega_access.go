@@ -62,7 +62,6 @@ type resource struct {
 	CatalogID   string `json:"catalog_id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	APIName     string `json:"api_name"`
 	Category    string `json:"category"`
 	IndexConfig *struct {
 		PrimaryKeyFields  []string `json:"primary_key_fields"`
@@ -81,7 +80,6 @@ type resource struct {
 		Type         string `json:"type"`
 		Description  string `json:"description"`
 		OriginalName string `json:"original_name"`
-		APIName      string `json:"api_name"`
 	} `json:"schema_definition"`
 }
 
@@ -664,7 +662,6 @@ func toTable(r *resource) *interfaces.VegaTable {
 		CatalogID:   r.CatalogID,
 		Name:        r.Name,
 		Description: r.Description,
-		APIName:     r.APIName,
 		Index:       interfaces.VegaTableIndex{LocalStatus: r.LocalStatus, IndexName: r.IndexName},
 	}
 	if r.IndexConfig != nil {
@@ -687,14 +684,14 @@ func toTable(r *resource) *interfaces.VegaTable {
 	}
 	// schema_definition carries vega's types and what semantic understanding wrote back:
 	// a display name other than the field's own name, and a description.
-	type defined struct{ typ, displayName, description, apiName string }
+	type defined struct{ typ, displayName, description string }
 	definitions := map[string]defined{}
 	for _, property := range r.SchemaDefinition {
 		name := property.OriginalName
 		if name == "" {
 			name = property.Name
 		}
-		d := defined{typ: property.Type, description: property.Description, apiName: property.APIName}
+		d := defined{typ: property.Type, description: property.Description}
 		if property.DisplayName != name && property.DisplayName != property.Name {
 			d.displayName = property.DisplayName
 		}
@@ -708,7 +705,7 @@ func toTable(r *resource) *interfaces.VegaTable {
 		}
 		table.Columns = append(table.Columns, interfaces.VegaColumn{
 			Name: column.Name, DisplayName: d.displayName, Type: d.typ, Description: description,
-			Comment: column.Description, APIName: d.apiName, Nullable: column.Nullable,
+			Comment: column.Description, Nullable: column.Nullable,
 		})
 	}
 	table.PrimaryKeys = meta.PrimaryKeys

@@ -221,7 +221,7 @@ func Test_ApplySourceChanges(t *testing.T) {
 			customers := customersTable()
 			customers.Columns = append(customers.Columns,
 				interfaces.VegaColumn{Name: "等级", DisplayName: "等级", Type: "string"},
-				interfaces.VegaColumn{Name: "区域", APIName: "region", Type: "string"})
+				interfaces.VegaColumn{Name: "区域", Type: "string"})
 			registered = []*interfaces.RegisteredID{{ProjectID: "p1", ID: "grade", Origin: interfaces.ID_ORIGIN_SEMANTIC,
 				IDKey: interfaces.IDKey{Kind: interfaces.ID_KIND_PROPERTIES, SourceKey: propertySourceKey("t_customers", "等级")}}}
 
@@ -229,9 +229,10 @@ func Test_ApplySourceChanges(t *testing.T) {
 
 			ot := draft.Items.ObjectTypes[0]
 			So(findProperty(ot, "grade").MappedField, ShouldEqual, "等级")
-			So(findProperty(ot, "region").MappedField, ShouldEqual, "区域")
+			region := idFrom("区域", idPrefixProperty)
+			So(findProperty(ot, region).MappedField, ShouldEqual, "区域")
 			So(d.recorded, ShouldHaveLength, 1)
-			So(d.recorded[0].ID, ShouldEqual, "region")
+			So(d.recorded[0].ID, ShouldEqual, region)
 			So(d.recorded[0].SourceKey, ShouldEqual, propertySourceKey("t_customers", "区域"))
 		})
 
@@ -382,7 +383,7 @@ func Test_WithRecordedIDs(t *testing.T) {
 		Convey("A new placeholder is counted beside those drafting counted, and the summary changes\n", func() {
 			withRecordedIDs(items, registered, []*interfaces.RegisteredID{
 				{IDKey: key("等级"), ID: "p_bbbbbb", Origin: interfaces.ID_ORIGIN_FALLBACK},
-				{IDKey: key("区域"), ID: "region", Origin: interfaces.ID_ORIGIN_SEMANTIC},
+				{IDKey: key("区域"), ID: "p_cccccc", Origin: interfaces.ID_ORIGIN_FALLBACK, Locked: true},
 			})
 
 			So(items.Inputs.IDs.Count, ShouldEqual, 3)
@@ -554,7 +555,7 @@ func Test_DraftSourceChanges(t *testing.T) {
 		Convey("Ids the draft's new properties need are registered before the draft is written\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			tables[0].Columns = append(tables[0].Columns, interfaces.VegaColumn{Name: "区域", APIName: "region", Type: "string"})
+			tables[0].Columns = append(tables[0].Columns, interfaces.VegaColumn{Name: "区域", Type: "string"})
 			signature := sourceSignature(draft, readOf(nil, tables...))
 			expectRead()
 
@@ -574,9 +575,9 @@ func Test_DraftSourceChanges(t *testing.T) {
 
 				So(err, ShouldBeNil)
 				So(ira.recorded, ShouldHaveLength, 1)
-				So(ira.recorded[0].ID, ShouldEqual, "region")
+				So(ira.recorded[0].ID, ShouldEqual, idFrom("区域", idPrefixProperty))
 				So(draft.Items.Inputs.IDs.Count, ShouldEqual, 1)
-				So(draft.Items.Inputs.IDs.Placeholders, ShouldEqual, 0)
+				So(draft.Items.Inputs.IDs.Placeholders, ShouldEqual, 1)
 			})
 		})
 

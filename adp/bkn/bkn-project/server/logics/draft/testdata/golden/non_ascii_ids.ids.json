@@ -1,27 +1,12 @@
 [
   {
     "ProjectID": "p1",
-    "Kind": "object_types",
-    "SourceKey": "r_ck",
-    "ID": "warehouse",
-    "Origin": "semantic",
-    "Basis": {
-      "physical_name": "仓库",
-      "api_name": "warehouse"
-    },
-    "Locked": false,
-    "CreateTime": 0,
-    "UpdateTime": 0
-  },
-  {
-    "ProjectID": "p1",
     "Kind": "properties",
     "SourceKey": "r_ck/编号",
-    "ID": "warehouse_code",
-    "Origin": "semantic",
+    "ID": "p_fc1477",
+    "Origin": "fallback",
     "Basis": {
-      "physical_name": "编号",
-      "api_name": "warehouse_code"
+      "physical_name": "编号"
     },
     "Locked": false,
     "CreateTime": 0,
@@ -31,11 +16,10 @@
     "ProjectID": "p1",
     "Kind": "object_types",
     "SourceKey": "r_gys",
-    "ID": "supplier_2",
-    "Origin": "semantic",
+    "ID": "ot_033ed5",
+    "Origin": "fallback",
     "Basis": {
-      "physical_name": "供应商",
-      "api_name": "supplier"
+      "physical_name": "供应商"
     },
     "Locked": false,
     "CreateTime": 0,
@@ -45,11 +29,10 @@
     "ProjectID": "p1",
     "Kind": "properties",
     "SourceKey": "r_gys/编号",
-    "ID": "supplier_code",
-    "Origin": "semantic",
+    "ID": "p_fc1477",
+    "Origin": "fallback",
     "Basis": {
-      "physical_name": "编号",
-      "api_name": "supplier_code"
+      "physical_name": "编号"
     },
     "Locked": false,
     "CreateTime": 0,
@@ -59,11 +42,10 @@
     "ProjectID": "p1",
     "Kind": "properties",
     "SourceKey": "r_gys/名称",
-    "ID": "name",
-    "Origin": "semantic",
+    "ID": "p_d44e9b",
+    "Origin": "fallback",
     "Basis": {
-      "physical_name": "名称",
-      "api_name": "name"
+      "physical_name": "名称"
     },
     "Locked": false,
     "CreateTime": 0,
@@ -86,11 +68,10 @@
     "ProjectID": "p1",
     "Kind": "properties",
     "SourceKey": "r_wl/编号",
-    "ID": "material_code",
-    "Origin": "semantic",
+    "ID": "p_fc1477",
+    "Origin": "fallback",
     "Basis": {
-      "physical_name": "编号",
-      "api_name": "material_code"
+      "physical_name": "编号"
     },
     "Locked": false,
     "CreateTime": 0,

@@ -44,7 +44,7 @@
       "needs_identity": false
     },
     {
-      "id": "warehouse",
+      "id": "ot_000001",
       "name": "仓库",
       "description": "",
       "adopted": true,
@@ -54,12 +54,12 @@
         "catalog_id": "c1"
       },
       "primary_keys": [
-        "warehouse_code"
+        "p_fc1477"
       ],
-      "display_key": "warehouse_code",
+      "display_key": "p_fc1477",
       "properties": [
         {
-          "name": "warehouse_code",
+          "name": "p_fc1477",
           "display_name": "编号",
           "type": "string",
           "description": "",
@@ -78,7 +78,7 @@
       "needs_identity": false
     },
     {
-      "id": "supplier_2",
+      "id": "ot_033ed5",
       "name": "供应商",
       "description": "",
       "adopted": true,
@@ -88,12 +88,12 @@
         "catalog_id": "c1"
       },
       "primary_keys": [
-        "supplier_code"
+        "p_fc1477"
       ],
-      "display_key": "name",
+      "display_key": "p_d44e9b",
       "properties": [
         {
-          "name": "supplier_code",
+          "name": "p_fc1477",
           "display_name": "编号",
           "type": "string",
           "description": "",
@@ -102,7 +102,7 @@
           "missing_description": true
         },
         {
-          "name": "name",
+          "name": "p_d44e9b",
           "display_name": "名称",
           "type": "string",
           "description": "",
@@ -140,12 +140,12 @@
         "catalog_id": "c1"
       },
       "primary_keys": [
-        "material_code"
+        "p_fc1477"
       ],
-      "display_key": "material_code",
+      "display_key": "p_fc1477",
       "properties": [
         {
-          "name": "material_code",
+          "name": "p_fc1477",
           "display_name": "编号",
           "type": "string",
           "description": "",
