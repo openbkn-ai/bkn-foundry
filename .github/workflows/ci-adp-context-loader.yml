@@ -51,6 +51,9 @@ jobs:
         working-directory: adp/context-loader/agent-retrieval
     steps:
       - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Retrieval Chart contracts
+        run: make test-helm
       - uses: actions/setup-go@v5
         with:
           go-version-file: adp/context-loader/agent-retrieval/go.mod

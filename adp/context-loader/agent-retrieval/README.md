@@ -85,11 +85,20 @@ take effect without a restart. The artifact must match the deployed provider.
 Empty JSON retains the existing HTTP discovery mode, including startup failure
 when that configured provider is unavailable. Community defaults stay empty.
 
+For licensed providers, set Helm `licenseHub.url` to the licence hub, for example
+`--set-string licenseHub.url=http://bkn-safe:3000`. The Chart injects `BKN_SAFE_URL`
+only when this value is nonempty. The default is empty, including when the shared
+platform `bknSafe.url` is configured. A hub address does not grant capabilities:
+discovery and invocation still require a valid licence and the current user's
+permissions. Retain this value in Helm values on upgrades; a manual Pod patch is
+not an installation configuration.
+
 For Eval, the enterprise bundle supplies its generated artifact and the EE backend manifest
 `http://<bkn-backend-host>:<port>/api/bkn-backend/v1/eval-mcp/tools` and enable
-`OPENBKN_EVAL_ENABLED=true` and `OPENBKN_EVAL_EXTERNAL_AGENT_ENABLED=true` in that
-backend. Clients continue connecting to `/api/agent-retrieval/v1/mcp/` or the
-compact MCP entry. Professional-or-higher licensing and backend user permissions
+`OPENBKN_EVAL_ENABLED=true` in that backend. Its delivery profile also supplies
+Retrieval's `licenseHub.url`; the community installer retains existing Helm and
+nonempty custom hub addresses on upgrades. Clients continue connecting to
+`/api/agent-retrieval/v1/mcp/` or the compact MCP entry. Professional-or-higher licensing and backend user permissions
 still apply. The provider publishes `bkn_eval_list_suites`, `bkn_eval_start_run`,
 `bkn_eval_next_case`, `bkn_eval_submit_result`, and `bkn_eval_get_progress`.
 
