@@ -2539,14 +2539,34 @@ def test_tool_scope_passes_a_numbered_version_in_the_declared_type():
     asyncio.run(run())
 
 
-def test_tool_scope_without_a_version_leaves_version_arguments_alone():
+def test_tool_scope_without_a_version_reads_only_the_running_version():
     async def run():
         calls = []
-        tool = _scoped_tool(calls, {"kn_version": {"type": "string"}})
+        tool = _scoped_tool(
+            calls,
+            {
+                "kn_version": {"type": "string"},
+                "draft_revision": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            },
+        )
         guarded = PublicChat("run", "network-1").guard_tools([tool])[0]
+        # A run without a version reads what the network runs. Leaving the version
+        # out, null and "running" all mean that and are sent as no version.
         assert await guarded.ainvoke({}) == "ok"
+        assert await guarded.ainvoke({"kn_version": None, "draft_revision": None}) == "ok"
         assert await guarded.ainvoke({"kn_version": "running"}) == "ok"
-        assert calls == [{"kn_id": "network-1"}, {"kn_id": "network-1", "kn_version": "running"}]
+        assert calls == [{"kn_id": "network-1"}] * 3
+        # The caller did not ask for the draft or an older version, so the model
+        # cannot pick one: the draft holds unpublished edits.
+        for rewrite in (
+            {"kn_version": "draft"},
+            {"kn_version": "draft", "draft_revision": 7},
+            {"kn_version": "3"},
+            {"kn_version": 3},
+            {"draft_revision": 7},
+        ):
+            assert "ToolScopeMismatch" in await guarded.ainvoke(rewrite)
+        assert len(calls) == 3
         # A tool that takes no version gets none, even when the run has one.
         plain = []
         versioned = PublicChat("run", "network-1", kn_version="draft", draft_revision=7)

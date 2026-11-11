@@ -4,7 +4,7 @@
 
 ### Added
 
-- Public executions accept an optional `kn_version` (`running`, `draft` or a version number) and `draft_revision` in `context`. Both are sent to Context Loader as `X-Kn-Version` / `X-Kn-Draft-Revision`, pinned into scoped tool calls like `kn_id` (a different model-supplied value returns `ToolScopeMismatch`), and stored with the execution. `draft_revision` without `kn_version=draft` returns 422. Requests without them are stored and run as before (#1229).
+- Public executions accept an optional `kn_version` (`running`, `draft` or a version number) and `draft_revision` in `context`. Both are sent to Context Loader as `X-Kn-Version` / `X-Kn-Draft-Revision`, pinned into scoped tool calls like `kn_id` (a different model-supplied value returns `ToolScopeMismatch`), and stored with the execution. `draft_revision` without `kn_version=draft` returns 422. Requests without them are stored and run as before, and their scoped tool calls read the running version: a model-supplied `draft`, version number or `draft_revision` returns `ToolScopeMismatch` (#1229).
 
 - Add the quality-evaluation assistant to the built-in Agent catalog, preserve administrator changes when seeding it, and carry an explicit Eval purpose through public execution and request deduplication (#2570).
 

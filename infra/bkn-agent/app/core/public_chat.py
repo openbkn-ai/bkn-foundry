@@ -263,10 +263,16 @@ class PublicChat:
 
     def _pinned_scope(self, properties: dict) -> dict:
         """The scope values a tool's call must carry: always kn_id, and the
-        network version when the run has one and the tool takes it. A value
-        is passed in the type the tool declares."""
+        network version when the tool takes it. A value is passed in the type
+        the tool declares; None means the call carries none."""
         pinned: dict = {"kn_id": self.kn_id}
         if self.kn_version is None:
+            # A run without a version reads what the network runs. The model
+            # cannot pick the draft, with its unpublished edits, or an older
+            # version the caller did not ask for.
+            for name in ("kn_version", "draft_revision"):
+                if name in properties:
+                    pinned[name] = None
             return pinned
         # With a version set, the run also decides the draft revision: a run
         # without one sends none, so the model cannot add one the entry point
@@ -335,9 +341,14 @@ class PublicChat:
                             same = kwargs.get(name, value) == value
                         else:
                             # A version may come as "3" or 3; an explicit
-                            # null is replaced by the pinned value.
+                            # null is replaced by the pinned value. Without a
+                            # pinned version, "running" names the same read.
                             given = kwargs.get(name)
-                            same = given is None or str(given) == str(value)
+                            same = (
+                                given is None
+                                or (value is None and name == "kn_version" and given == "running")
+                                or (value is not None and str(given) == str(value))
+                            )
                         if not same:
                             raise ToolException(
                                 json.dumps(
