@@ -125,11 +125,16 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	// details). All other
 	// requests use standard MCP Streamable HTTP.
 	engine.Any("/mcp/*path", r.handleMCP)
+	// The catch-all does not match the bare path, and gin would answer it with a
+	// 307 to /mcp/. Clients that deliberately do not follow redirects (the
+	// execution factory) would then fail to initialize, so serve it directly.
+	engine.Any("/mcp", r.handleMCP)
 
 	// The compact profile is a sibling of /mcp, not a child: under /mcp the
 	// catch-all above would take it. It shares every middleware registered on
 	// this group.
 	engine.Any("/mcp-compact/*path", r.handleCompactMCP)
+	engine.Any("/mcp-compact", r.handleCompactMCP)
 }
 
 // handleMCP dispatches requests inside the MCP catch-all route.
