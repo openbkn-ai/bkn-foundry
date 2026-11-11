@@ -19,9 +19,9 @@ components:
         needs `view_detail`. Do not combine it with `branch` (400 `BknBackend.KNVersion.InvalidVersion`,
         which is also the answer to a value that is not `running`, `draft` or a positive integer). A
         version that does not exist is 404 `BknBackend.KNVersion.VersionNotFound` and a purged one is
-        410 `BknBackend.KNVersion.VersionPurged`. On a network without versioning `running` and `draft`
-        are accepted and both mean the main branch; any other value is 400
-        `BknBackend.KNVersion.NotVersioned`.
+        410 `BknBackend.KNVersion.VersionPurged`. A network without versioning is shown as its running
+        version 1: `running`, `draft` and `1` are accepted and all mean the main branch; any other
+        value is 400 `BknBackend.KNVersion.NotVersioned`.
 
         Not accepted on writes: a write to a versioned network always goes to its draft, and a write
         that names `kn_version` is refused with 400 `BknBackend.KNVersion.InvalidVersion`.
@@ -37,8 +37,8 @@ components:
         When the write or its publish fails, the draft is put back as it was before the write and
         the publish error is returned, for example 400 `BknBackend.KNVersion.ValidationFailed`.
 
-        A network without versioning is its main branch: writes without `branch` change main, as
-        they always did. The first write that sends `branch=draft` versions it in the same request:
+        A network without versioning is its main branch, shown as v1: writes without `branch` change
+        main, as they always did. The first write that sends `branch=draft` versions it in the same request:
         main becomes the running version 1, the draft starts as a copy of it, and the write lands in
         the draft. That write needs no `If-Match` or `expected_draft_revision` (they are still
         checked when sent); the writes after it need them as on any versioned network.

@@ -137,9 +137,9 @@ func (s *service) convertOnDraftWrite(ctx context.Context, knID string, req inte
 		RunningVersion: state.RunningVersion, Converted: converted}, nil
 }
 
-// resolveUnversioned reads a network without versioning from main: its draft and its running
-// version are both main until the first write to the draft versions it. Other branches are
-// kept as they were.
+// resolveUnversioned reads a network without versioning from main: it is shown as its running
+// v1, and its draft and v1 are both main until the first write to the draft versions it. Other
+// branches are kept as they were.
 func resolveUnversioned(ctx context.Context, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, error) {
 	switch req.KNVersion {
 	case "":
@@ -148,7 +148,7 @@ func resolveUnversioned(ctx context.Context, req interfaces.KNBranchRequest) (*i
 			branch = interfaces.MAIN_BRANCH
 		}
 		return &interfaces.KNResolvedBranch{Branch: branch}, nil
-	case knVersionRunning, interfaces.DRAFT_BRANCH:
+	case knVersionRunning, interfaces.DRAFT_BRANCH, "1":
 		if req.Branch != "" && req.Branch != interfaces.MAIN_BRANCH {
 			return nil, invalidVersion(ctx, "use either kn_version or branch, not both")
 		}

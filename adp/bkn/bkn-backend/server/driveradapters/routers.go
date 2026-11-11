@@ -123,6 +123,8 @@ func projectionGrantVerifierEnabled() bool {
 }
 
 func (r *restHandler) RegisterPublic(c *gin.Engine) {
+	// Before anything reads the query.
+	c.Use(defaultBranchAlias())
 	c.Use(r.AccessLog())
 	c.Use(middleware.TracingMiddleware())
 	c.Use(r.LanguageMiddleware())

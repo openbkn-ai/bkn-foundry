@@ -644,13 +644,16 @@ func TestPurgeDeletesTheIndexAfterCommit(t *testing.T) {
 func TestFirstDraftWriteVersionsTheNetwork(t *testing.T) {
 	f := setup(t)
 	for _, req := range []interfaces.KNBranchRequest{
-		{KNVersion: interfaces.DRAFT_BRANCH}, {Branch: interfaces.DRAFT_BRANCH}, {KNVersion: "running"}, {},
+		{KNVersion: interfaces.DRAFT_BRANCH}, {Branch: interfaces.DRAFT_BRANCH}, {KNVersion: "running"}, {KNVersion: "1"}, {},
 	} {
 		resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, req)
 		if err != nil || resolved.Branch != interfaces.MAIN_BRANCH || resolved.Versioned {
 			t.Fatalf("read %+v before the first draft write: %+v %v", req, resolved, err)
 		}
 	}
+	// It is shown as v1; there is no other version to read.
+	_, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{KNVersion: "2"})
+	wantCode(t, err, berrors.BknBackend_KNVersion_NotVersioned)
 	// A write that does not name the draft keeps writing main.
 	resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true})
 	if err != nil || resolved.Branch != interfaces.MAIN_BRANCH || f.state().Enabled {

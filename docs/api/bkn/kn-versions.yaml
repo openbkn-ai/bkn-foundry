@@ -9,10 +9,14 @@ info:
     **running**: reads, queries and the proxy grants of the network use it unless a request names
     another version with `kn_version`.
 
-    A network without versioning is its main branch, and reads of its draft or running version
-    read main. It is versioned by the first write that names `branch=draft`, which needs no
-    precondition: main becomes the running version 1 and the draft a copy of it. Enabling
-    versioning explicitly does the same without a write.
+    A network without versioning is its main branch, shown as its running version 1: reads of its
+    draft, its running version or version 1 read main. It is versioned by the first write that
+    names `branch=draft`, which needs no precondition: main is kept as version 1 and the draft
+    starts as a copy of it, so the next publish is version 2. Enabling versioning explicitly does
+    the same without a write.
+
+    Every endpoint accepts `branch=default` as another name of `branch=main`; responses still name
+    the branch `main`.
 
     Operations here enable versioning, publish the draft as a new version, switch the running
     version (activate), copy a version into the draft or discard the draft's changes
