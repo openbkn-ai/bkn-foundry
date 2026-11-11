@@ -24,11 +24,10 @@ import (
 // through the nil embedded interface, so a test fails on any call it did not plan for.
 type fakeVersionAccess struct {
 	interfaces.KNVersionAccess
-	listed     []string
-	listErr    error
-	versioned  map[string]bool // version state read under the lock
-	locks      []string
-	lockShared bool
+	listed    []string
+	listErr   error
+	versioned map[string]bool // version state read under the lock
+	locks     []string        // "<kn id>:exclusive" or "<kn id>:share"
 }
 
 func (f *fakeVersionAccess) ListVersionedKNIDs(context.Context) ([]string, error) {
@@ -39,8 +38,11 @@ func (f *fakeVersionAccess) LockNetwork(_ context.Context, tx *sql.Tx, knID stri
 	if tx == nil {
 		return false, errors.New("lock without a transaction")
 	}
-	f.locks = append(f.locks, knID)
-	f.lockShared = !exclusive
+	mode := "share"
+	if exclusive {
+		mode = "exclusive"
+	}
+	f.locks = append(f.locks, knID+":"+mode)
 	return true, nil
 }
 
@@ -103,8 +105,7 @@ func TestConceptSyncer_VersionedNetworks(t *testing.T) {
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 			So(cs.handleKNs(), ShouldBeNil)
-			So(knva.locks, ShouldResemble, []string{"kn_plain"})
-			So(knva.lockShared, ShouldBeTrue)
+			So(knva.locks, ShouldResemble, []string{"kn_plain:exclusive"})
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
@@ -128,7 +129,24 @@ func TestConceptSyncer_VersionedNetworks(t *testing.T) {
 
 			err := cs.handleKnowledgeNetwork(ctx, &interfaces.KN{KNID: "kn1", Branch: "main"}, true)
 			So(err, ShouldBeNil)
-			So(knva.locks, ShouldResemble, []string{"kn1"})
+			So(knva.locks, ShouldResemble, []string{"kn1:exclusive"})
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		// Writing main updates the row the lock is on. A share lock upgraded there can deadlock
+		// with a version operation waiting for it with FOR UPDATE, so main is locked exclusively,
+		// as version operations and network-row writes do. Other branches lock main in share mode.
+		Convey("Locks main exclusively when writing main and in share mode otherwise", func() {
+			vbs.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(emptyDataset(), nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			for _, branch := range []string{"main", "dev"} {
+				expectDefinitionsRead("kn1", branch)
+				smock.ExpectBegin()
+				smock.ExpectCommit()
+				kna.EXPECT().UpdateKNDetail(ctx, gomock.Not(gomock.Nil()), "kn1", branch, gomock.Any()).Return(nil)
+				So(cs.handleKnowledgeNetwork(ctx, &interfaces.KN{KNID: "kn1", Branch: branch}, true), ShouldBeNil)
+			}
+			So(knva.locks, ShouldResemble, []string{"kn1:exclusive", "kn1:share"})
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 

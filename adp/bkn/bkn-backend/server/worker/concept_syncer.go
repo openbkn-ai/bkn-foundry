@@ -277,9 +277,11 @@ func (cs *ConceptSyncer) versionedKNIDs(ctx context.Context) (map[string]bool, e
 }
 
 // writeKNDetail writes the network row of one branch and reports whether it did. It holds
-// the network lock in share mode and reads the version state under it, so a network whose
-// versioning was enabled after this round listed the versioned ones is not written. A
-// branch row that is gone is not written either.
+// the network lock and reads the version state under it, so a network whose versioning was
+// enabled after this round listed the versioned ones is not written. The lock is on the main
+// row: writing main takes it exclusively, as version operations do, since upgrading a share
+// lock on the row it then updates can deadlock with them; other branches take it in share
+// mode. A branch row that is gone is not written either.
 func (cs *ConceptSyncer) writeKNDetail(ctx context.Context, kn *interfaces.KN) (bool, error) {
 	if cs.knva == nil || cs.db == nil {
 		return true, cs.kna.UpdateKNDetail(ctx, nil, kn.KNID, kn.Branch, kn.BKNRawContent)
@@ -294,7 +296,7 @@ func (cs *ConceptSyncer) writeKNDetail(ctx context.Context, kn *interfaces.KN) (
 			_ = tx.Rollback()
 		}
 	}()
-	if _, err := cs.knva.LockNetwork(ctx, tx, kn.KNID, false); err != nil {
+	if _, err := cs.knva.LockNetwork(ctx, tx, kn.KNID, kn.Branch == interfaces.MAIN_BRANCH); err != nil {
 		return false, err
 	}
 	state, err := cs.knva.GetState(ctx, tx, kn.KNID, false)
