@@ -46,6 +46,8 @@ type txPublisher struct {
 	problems map[string][]*interfaces.KNVersionProblem
 	// indexDeletes records each concept index deletion as "<branch>:<committed version status>".
 	indexDeletes *[]string
+	// rebuild, when set, is called for each branch RebuildBranchIndex rebuilds.
+	rebuild func(knID, branch string) error
 }
 
 func (txPublisher) BranchReferences(_ context.Context, _, branch string) (*interfaces.KNBranchReferences, error) {
@@ -53,6 +55,13 @@ func (txPublisher) BranchReferences(_ context.Context, _, branch string) (*inter
 }
 
 func (txPublisher) IndexVersion(context.Context, string, string, string) error { return nil }
+
+func (p txPublisher) RebuildBranchIndex(_ context.Context, knID, branch string) error {
+	if p.rebuild == nil {
+		return nil
+	}
+	return p.rebuild(knID, branch)
+}
 
 func (p txPublisher) DeleteBranchIndex(_ context.Context, knID, branch string) error {
 	if p.indexDeletes == nil {
@@ -637,4 +646,92 @@ func TestPurgeDeletesTheIndexAfterCommit(t *testing.T) {
 	if len(f.indexDeletes) != 1 || f.indexDeletes[0] != "v1:"+interfaces.KNVersionPurged {
 		t.Fatalf("index deletions = %v, want [v1:%s] (deleted after the purge committed)", f.indexDeletes, interfaces.KNVersionPurged)
 	}
+}
+
+// shareLockWaits reports whether taking the network lock in share mode, as a definition write
+// does, has to wait on another connection.
+func (f *fixture) shareLockWaits() bool {
+	f.t.Helper()
+	conn, err := f.db.Conn(context.Background())
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.ExecContext(context.Background(), "SET SESSION innodb_lock_wait_timeout = 1"); err != nil {
+		f.t.Fatal(err)
+	}
+	var id string
+	err = conn.QueryRowContext(context.Background(),
+		"SELECT f_id FROM t_knowledge_network WHERE f_id = ? AND f_branch = 'main' LOCK IN SHARE MODE", f.knID).Scan(&id)
+	if err == nil {
+		return false
+	}
+	if strings.Contains(err.Error(), "1205") {
+		return true
+	}
+	f.t.Fatal(err)
+	return false
+}
+
+func TestRebuildIndexCoversEveryBranchUnderTheLock(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(1, f.editDraft("name-2"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Purge(f.ctx, f.knID, 1, &interfaces.KNVersionStatusRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, waited := []string{}, []bool{}
+	pub := f.svc.pub.(txPublisher)
+	pub.rebuild = func(_, branch string) error {
+		rebuilt = append(rebuilt, branch)
+		waited = append(waited, f.shareLockWaits())
+		return nil
+	}
+	f.svc.pub = pub
+
+	view, err := f.svc.RebuildIndex(f.ctx, f.knID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{interfaces.MAIN_BRANCH, interfaces.DRAFT_BRANCH, "v2"}
+	if !slices.Equal(rebuilt, want) || !slices.Equal(view.Branches, want) {
+		t.Fatalf("rebuilt %v, view %v, want %v (the purged v1 is left out)", rebuilt, view.Branches, want)
+	}
+	if !slices.Equal(waited, []bool{true, true, true}) {
+		t.Fatalf("a definition write would wait %v, want it to wait during every branch", waited)
+	}
+	if f.shareLockWaits() {
+		t.Fatal("the network lock is still held after the rebuild")
+	}
+
+	rebuilt = nil
+	if _, err := f.svc.RebuildIndex(f.ctx, f.knID, "v2"); err != nil || !slices.Equal(rebuilt, []string{"v2"}) {
+		t.Fatalf("rebuild v2: rebuilt %v, err %v", rebuilt, err)
+	}
+	_, err = f.svc.RebuildIndex(f.ctx, f.knID, "v1")
+	wantCode(t, err, berrors.BknBackend_KNVersion_VersionPurged)
+	_, err = f.svc.RebuildIndex(f.ctx, f.knID, "v9")
+	wantCode(t, err, berrors.BknBackend_KNVersion_VersionNotFound)
+	_, err = f.svc.RebuildIndex(f.ctx, f.knID, "dev")
+	wantCode(t, err, berrors.BknBackend_KNVersion_InvalidParameter)
+
+	pub.rebuild = func(_, branch string) error {
+		if branch == interfaces.DRAFT_BRANCH {
+			return errors.New("model unavailable")
+		}
+		return nil
+	}
+	f.svc.pub = pub
+	_, err = f.svc.RebuildIndex(f.ctx, f.knID, "")
+	wantCode(t, err, berrors.BknBackend_KNVersion_ConceptIndexFailed)
+}
+
+func TestRebuildIndexRefusesANetworkWithoutVersions(t *testing.T) {
+	f := setup(t)
+	_, err := f.svc.RebuildIndex(f.ctx, f.knID, "")
+	wantCode(t, err, berrors.BknBackend_KNVersion_NotVersioned)
 }
