@@ -97,8 +97,8 @@ For Eval, the enterprise bundle supplies its generated artifact and the EE backe
 `http://<bkn-backend-host>:<port>/api/bkn-backend/v1/eval-mcp/tools` and enable
 `OPENBKN_EVAL_ENABLED=true` in that backend. Its delivery profile also supplies
 Retrieval's `licenseHub.url`; the community installer retains existing Helm and
-live custom hub addresses on upgrades. Clients continue connecting to `/api/agent-retrieval/v1/mcp/` or the
-compact MCP entry. Professional-or-higher licensing and backend user permissions
+nonempty custom hub addresses on upgrades. Clients continue connecting to
+`/api/agent-retrieval/v1/mcp/` or the compact MCP entry. Professional-or-higher licensing and backend user permissions
 still apply. The provider publishes `bkn_eval_list_suites`, `bkn_eval_start_run`,
 `bkn_eval_next_case`, `bkn_eval_submit_result`, and `bkn_eval_get_progress`.
 
