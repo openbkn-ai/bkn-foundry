@@ -61,7 +61,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 		lateRate := &interfaces.KNObjectMetric{ID: "m1", Version: 3, Code: "late_rate", Name: "Late rate", Description: "d",
 			OwnerObjectTypeID: "order", OwnerObjectTypeName: "Order", MetricType: "atomic", Status: "published"}
 
-		Convey("ListObjectMetrics reads main a page at a time, of the owner object type, and maps each definition\n", func() {
+		Convey("ListObjectMetrics reads the draft a page at a time, of the owner object type, and maps each definition\n", func() {
 			reply = func(r *http.Request) (int, string) {
 				if offsetOf(r) == 0 {
 					entries := []string{metricJSON}
@@ -83,7 +83,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 			for i, g := range got {
 				So(g.path, ShouldEqual, networkPath+"/object-metrics")
 				So(g.auth, ShouldEqual, token)
-				So(g.query, ShouldResemble, url.Values{"branch": {"main"}, "owner_object_type_id": {"order"},
+				So(g.query, ShouldResemble, url.Values{"kn_version": {"draft"}, "owner_object_type_id": {"order"},
 					"offset": {strconv.Itoa(i * listPageSize)}, "limit": {strconv.Itoa(listPageSize)}})
 			}
 		})
@@ -97,7 +97,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 			So(got[0].query.Has("owner_object_type_id"), ShouldBeFalse)
 		})
 
-		Convey("GetObjectMetric reads one metric of main\n", func() {
+		Convey("GetObjectMetric reads one metric of the draft\n", func() {
 			reply = func(*http.Request) (int, string) { return http.StatusOK, metricJSON }
 
 			metric, err := bba.GetObjectMetric(ctx, token, "kn 1", "m/1")
@@ -106,7 +106,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 			So(metric, ShouldResemble, lateRate)
 			So(got[0].path, ShouldEqual, networkPath+"/object-metrics/m%2F1")
 			So(got[0].auth, ShouldEqual, token)
-			So(got[0].query, ShouldResemble, url.Values{"branch": {"main"}})
+			So(got[0].query, ShouldResemble, url.Values{"kn_version": {"draft"}})
 		})
 
 		Convey("ListCapabilities reads the bound capabilities with their detail, of a type and metadata type\n", func() {
@@ -123,7 +123,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 			So(got, ShouldHaveLength, 1)
 			So(got[0].path, ShouldEqual, networkPath+"/capabilities")
 			So(got[0].auth, ShouldEqual, token)
-			So(got[0].query, ShouldResemble, url.Values{"branch": {"main"}, "with_detail": {"true"}, "type": {"function"},
+			So(got[0].query, ShouldResemble, url.Values{"kn_version": {"draft"}, "with_detail": {"true"}, "type": {"function"},
 				"metadata_type": {"openapi"}, "offset": {"0"}, "limit": {strconv.Itoa(listPageSize)}})
 
 			got = nil
@@ -146,7 +146,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 				ActionType: "modify", Source: interfaces.KNActionTypeSource{Type: "mcp", McpID: "mcp1", ToolName: "hold"}}})
 			So(got[0].path, ShouldEqual, networkPath+"/action-types")
 			So(got[0].auth, ShouldEqual, token)
-			So(got[0].query, ShouldResemble, url.Values{"branch": {"main"}, "object_type_id": {"order"},
+			So(got[0].query, ShouldResemble, url.Values{"kn_version": {"draft"}, "object_type_id": {"order"},
 				"offset": {"0"}, "limit": {strconv.Itoa(listPageSize)}})
 
 			got = nil
@@ -172,7 +172,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 			So(got, ShouldHaveLength, 2)
 			So(got[0].path, ShouldEqual, networkPath+"/object-types")
 			So(got[0].auth, ShouldEqual, token)
-			So(got[1].query, ShouldResemble, url.Values{"branch": {"main"}, "offset": {strconv.Itoa(listPageSize)},
+			So(got[1].query, ShouldResemble, url.Values{"kn_version": {"draft"}, "offset": {strconv.Itoa(listPageSize)},
 				"limit": {strconv.Itoa(listPageSize)}})
 		})
 

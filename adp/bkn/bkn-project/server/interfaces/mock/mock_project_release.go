@@ -56,49 +56,79 @@ func (mr *MockProjectReleaseServiceMockRecorder) CommitDrift(ctx, token, project
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitDrift", reflect.TypeOf((*MockProjectReleaseService)(nil).CommitDrift), ctx, token, projectID, caller, author)
 }
 
-// GetRegression mocks base method.
-func (m *MockProjectReleaseService) GetRegression(ctx context.Context, token, projectID, networkID string) (*interfaces.Regression, error) {
+// CopyVersion mocks base method.
+func (m *MockProjectReleaseService) CopyVersion(ctx context.Context, token, projectID string, knVersion int, req interfaces.ProjectCopyVersion, caller interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRegression", ctx, token, projectID, networkID)
+	ret := m.ctrl.Call(m, "CopyVersion", ctx, token, projectID, knVersion, req, caller, author)
+	ret0, _ := ret[0].(*interfaces.CommitDefinitionsResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CopyVersion indicates an expected call of CopyVersion.
+func (mr *MockProjectReleaseServiceMockRecorder) CopyVersion(ctx, token, projectID, knVersion, req, caller, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CopyVersion", reflect.TypeOf((*MockProjectReleaseService)(nil).CopyVersion), ctx, token, projectID, knVersion, req, caller, author)
+}
+
+// GetRegression mocks base method.
+func (m *MockProjectReleaseService) GetRegression(ctx context.Context, token, projectID, version string) (*interfaces.Regression, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRegression", ctx, token, projectID, version)
 	ret0, _ := ret[0].(*interfaces.Regression)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetRegression indicates an expected call of GetRegression.
-func (mr *MockProjectReleaseServiceMockRecorder) GetRegression(ctx, token, projectID, networkID any) *gomock.Call {
+func (mr *MockProjectReleaseServiceMockRecorder) GetRegression(ctx, token, projectID, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegression", reflect.TypeOf((*MockProjectReleaseService)(nil).GetRegression), ctx, token, projectID, networkID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegression", reflect.TypeOf((*MockProjectReleaseService)(nil).GetRegression), ctx, token, projectID, version)
+}
+
+// ListVersions mocks base method.
+func (m *MockProjectReleaseService) ListVersions(ctx context.Context, token, projectID string) (*interfaces.ProjectVersions, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVersions", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.ProjectVersions)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListVersions indicates an expected call of ListVersions.
+func (mr *MockProjectReleaseServiceMockRecorder) ListVersions(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVersions", reflect.TypeOf((*MockProjectReleaseService)(nil).ListVersions), ctx, token, projectID)
 }
 
 // PlanRollback mocks base method.
-func (m *MockProjectReleaseService) PlanRollback(ctx context.Context, token, projectID string) (*interfaces.RollbackPlan, error) {
+func (m *MockProjectReleaseService) PlanRollback(ctx context.Context, token, projectID string, toVersion int) (*interfaces.RollbackPlan, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PlanRollback", ctx, token, projectID)
+	ret := m.ctrl.Call(m, "PlanRollback", ctx, token, projectID, toVersion)
 	ret0, _ := ret[0].(*interfaces.RollbackPlan)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // PlanRollback indicates an expected call of PlanRollback.
-func (mr *MockProjectReleaseServiceMockRecorder) PlanRollback(ctx, token, projectID any) *gomock.Call {
+func (mr *MockProjectReleaseServiceMockRecorder) PlanRollback(ctx, token, projectID, toVersion any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanRollback", reflect.TypeOf((*MockProjectReleaseService)(nil).PlanRollback), ctx, token, projectID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanRollback", reflect.TypeOf((*MockProjectReleaseService)(nil).PlanRollback), ctx, token, projectID, toVersion)
 }
 
-// PlanSwitch mocks base method.
-func (m *MockProjectReleaseService) PlanSwitch(ctx context.Context, token, projectID, toNetworkID string) (*interfaces.SwitchPlan, error) {
+// PrepareRelease mocks base method.
+func (m *MockProjectReleaseService) PrepareRelease(ctx context.Context, token, projectID string, req interfaces.ProjectPrepare, caller interfaces.AccountInfo) (*interfaces.Release, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PlanSwitch", ctx, token, projectID, toNetworkID)
-	ret0, _ := ret[0].(*interfaces.SwitchPlan)
+	ret := m.ctrl.Call(m, "PrepareRelease", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.Release)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// PlanSwitch indicates an expected call of PlanSwitch.
-func (mr *MockProjectReleaseServiceMockRecorder) PlanSwitch(ctx, token, projectID, toNetworkID any) *gomock.Call {
+// PrepareRelease indicates an expected call of PrepareRelease.
+func (mr *MockProjectReleaseServiceMockRecorder) PrepareRelease(ctx, token, projectID, req, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanSwitch", reflect.TypeOf((*MockProjectReleaseService)(nil).PlanSwitch), ctx, token, projectID, toNetworkID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareRelease", reflect.TypeOf((*MockProjectReleaseService)(nil).PrepareRelease), ctx, token, projectID, req, caller)
 }
 
 // PublishRelease mocks base method.
@@ -132,10 +162,10 @@ func (mr *MockProjectReleaseServiceMockRecorder) ReviewRelease(ctx, token, proje
 }
 
 // Rollback mocks base method.
-func (m *MockProjectReleaseService) Rollback(ctx context.Context, token, projectID string, req interfaces.ProjectRollback, caller interfaces.AccountInfo) (*interfaces.Switch, error) {
+func (m *MockProjectReleaseService) Rollback(ctx context.Context, token, projectID string, req interfaces.ProjectRollback, caller interfaces.AccountInfo) (*interfaces.RollbackResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Rollback", ctx, token, projectID, req, caller)
-	ret0, _ := ret[0].(*interfaces.Switch)
+	ret0, _ := ret[0].(*interfaces.RollbackResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -147,33 +177,18 @@ func (mr *MockProjectReleaseServiceMockRecorder) Rollback(ctx, token, projectID,
 }
 
 // RunRegression mocks base method.
-func (m *MockProjectReleaseService) RunRegression(ctx context.Context, token, projectID, networkID string, caller interfaces.AccountInfo) (*interfaces.Regression, error) {
+func (m *MockProjectReleaseService) RunRegression(ctx context.Context, token, projectID, version string, caller interfaces.AccountInfo) (*interfaces.Regression, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RunRegression", ctx, token, projectID, networkID, caller)
+	ret := m.ctrl.Call(m, "RunRegression", ctx, token, projectID, version, caller)
 	ret0, _ := ret[0].(*interfaces.Regression)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // RunRegression indicates an expected call of RunRegression.
-func (mr *MockProjectReleaseServiceMockRecorder) RunRegression(ctx, token, projectID, networkID, caller any) *gomock.Call {
+func (mr *MockProjectReleaseServiceMockRecorder) RunRegression(ctx, token, projectID, version, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunRegression", reflect.TypeOf((*MockProjectReleaseService)(nil).RunRegression), ctx, token, projectID, networkID, caller)
-}
-
-// SwitchConsumers mocks base method.
-func (m *MockProjectReleaseService) SwitchConsumers(ctx context.Context, token, projectID, toNetworkID string, caller interfaces.AccountInfo) (*interfaces.Switch, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SwitchConsumers", ctx, token, projectID, toNetworkID, caller)
-	ret0, _ := ret[0].(*interfaces.Switch)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SwitchConsumers indicates an expected call of SwitchConsumers.
-func (mr *MockProjectReleaseServiceMockRecorder) SwitchConsumers(ctx, token, projectID, toNetworkID, caller any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SwitchConsumers", reflect.TypeOf((*MockProjectReleaseService)(nil).SwitchConsumers), ctx, token, projectID, toNetworkID, caller)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunRegression", reflect.TypeOf((*MockProjectReleaseService)(nil).RunRegression), ctx, token, projectID, version, caller)
 }
 
 // SyncBranch mocks base method.

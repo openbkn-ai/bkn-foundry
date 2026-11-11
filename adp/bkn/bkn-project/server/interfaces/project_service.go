@@ -15,6 +15,9 @@ type CreateProjectRequest struct {
 	CatalogIDs []string      `json:"catalog_ids"`
 	// NamingLanguage defaults to the creator's language when empty.
 	NamingLanguage string `json:"naming_language"`
+	// EnableVersioning confirms turning versioning on for KNID when it does not keep versions yet:
+	// from then on every edit to it takes effect only when published.
+	EnableVersioning bool `json:"enable_versioning"`
 }
 
 // NewKNRequest names the network a project creates; bkn-backend makes up an id when ID is empty.

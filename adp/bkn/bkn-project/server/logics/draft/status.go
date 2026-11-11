@@ -72,24 +72,19 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 	}
 	// Only a current confirmation can have been published.
 	if status.Confirmation != nil && status.Confirmation.Current {
-		latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: entry.KNID, Limit: 1})
+		latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: entry.KNID,
+			State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1})
 		if err != nil {
 			span.SetStatus(codes.Error, "List releases failed")
 			return nil, internalError(ctx, "List releases failed", err)
 		}
-		sw, switched, err := s.ra.GetLatestSwitch(ctx, entry.KNID)
-		if err != nil {
-			span.SetStatus(codes.Error, "Get switch failed")
-			return nil, internalError(ctx, "Get switch failed", err)
-		}
-		if !switched {
-			sw = nil
-		}
 		var newest *interfaces.Release
+		var running *interfaces.KNVersion
 		if len(latest) > 0 {
 			newest = latest[0]
+			running = s.runningVersion(ctx, token, entry.KNID)
 		}
-		withRelease(status, entry.Project, newest, sw, caller)
+		withRelease(status, entry.Project, newest, running, caller)
 	}
 	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
 		status.Unreviewed = unreviewed(&draft.Items)
@@ -309,13 +304,37 @@ func withDataSources(s *interfaces.ProjectStatus, project *interfaces.Project, c
 	}
 }
 
-// withRelease reads a status against latest, the lineage's newest release or nil before any. Until
-// the project is published, reviewing a release names the next version, which the client may
-// change. The status is published when latest is the project's and came after its current
-// confirmation; consumers not yet on it wait for the owner to switch them. What blocked the
-// confirmation from being published no longer does. sw is the lineage's latest switch, or nil.
+// runningVersion is the version the network runs, or nil when it cannot be told; a status is read
+// as before then.
+func (s *draftService) runningVersion(ctx context.Context, token string, knID string) *interfaces.KNVersion {
+	if s.kva == nil {
+		return nil
+	}
+	versioning, err := s.kva.GetVersioning(ctx, token, knID)
+	if err != nil || versioning.RunningVersion == 0 {
+		return nil
+	}
+	versions, err := s.kva.ListVersions(ctx, token, knID)
+	if err != nil {
+		return &interfaces.KNVersion{Version: versioning.RunningVersion}
+	}
+	for _, v := range versions {
+		if v.Version == versioning.RunningVersion {
+			return v
+		}
+	}
+	return &interfaces.KNVersion{Version: versioning.RunningVersion}
+}
+
+// withRelease reads a status against latest, the lineage's newest published release or nil before
+// any, and running, the version the network runs or nil when unknown. Until the project is
+// published, reviewing a release names the next version, which the client may change. The status
+// is published when latest is the project's and came after its current confirmation; the owner may
+// then roll it back. Once rolled back, the network runs another version: the status says so, and
+// the owner may publish again instead. What blocked the confirmation from being published no
+// longer does.
 func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, latest *interfaces.Release,
-	sw *interfaces.Switch, caller interfaces.AccountInfo) {
+	running *interfaces.KNVersion, caller interfaces.AccountInfo) {
 	version := nextVersion(latest)
 	for i := range s.NextActions {
 		if a := &s.NextActions[i]; a.Action == interfaces.ACTION_REVIEW_RELEASE {
@@ -328,29 +347,22 @@ func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, lates
 		return
 	}
 	s.Stage = interfaces.PROJECT_STAGE_PUBLISHED
-	s.Release = &interfaces.ProjectStatusRelease{Version: latest.Version, NetworkID: latest.NetworkID,
-		InUse: sw != nil && sw.ToNetworkID == latest.NetworkID}
+	s.Release = &interfaces.ProjectStatusRelease{Version: latest.Version, NetworkID: latest.NetworkID, KNVersion: latest.KNVersion}
 	s.Blockers = []interfaces.ProjectStatusBlocker{}
-	actions := []interfaces.ProjectStatusNextAction{}
-	if !s.Release.InUse {
-		switchAction := interfaces.ProjectStatusNextAction{
-			Action: interfaces.ACTION_SWITCH_CONSUMERS, Method: http.MethodPost, Path: "/projects/" + project.ID + "/switches",
-			Body: map[string]any{"to_network_id": latest.NetworkID}, Allowed: caller.ID == project.Owner.ID,
-		}
-		if !switchAction.Allowed {
-			switchAction.Reason = interfaces.ACTION_REASON_NOT_OWNER
-		}
-		actions = append(actions, switchAction)
-	} else {
-		rollback := interfaces.ProjectStatusNextAction{
-			Action: interfaces.ACTION_REVIEW_ROLLBACK, Method: http.MethodGet, Path: "/projects/" + project.ID + "/rollback-plan",
-			Allowed: caller.ID == project.Owner.ID,
-		}
-		if !rollback.Allowed {
-			rollback.Reason = interfaces.ACTION_REASON_NOT_OWNER
-		}
-		actions = append(actions, rollback)
+	if running != nil && running.Version != latest.KNVersion {
+		// Publishing again goes through the review, which keeps its place among the actions.
+		s.Release.RolledBack = true
+		s.Release.Running = &interfaces.ProjectStatusRunning{KNVersion: running.Version, Label: running.Label}
+		return
 	}
+	rollback := interfaces.ProjectStatusNextAction{
+		Action: interfaces.ACTION_REVIEW_ROLLBACK, Method: http.MethodGet, Path: "/projects/" + project.ID + "/rollback-plan",
+		Allowed: caller.ID == project.Owner.ID,
+	}
+	if !rollback.Allowed {
+		rollback.Reason = interfaces.ACTION_REASON_NOT_OWNER
+	}
+	actions := []interfaces.ProjectStatusNextAction{rollback}
 	for _, a := range s.NextActions {
 		if a.Action != interfaces.ACTION_REVIEW_RELEASE {
 			actions = append(actions, a)

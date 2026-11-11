@@ -26,32 +26,32 @@ func Test_RegressionAccess(t *testing.T) {
 		ctx := context.Background()
 		questions := `[{"id":"q1","text":"Which supplier?","needs":[{"kind":"object_type","id":"supplier"}]}]`
 		running := &interfaces.Regression{
-			NetworkID: "supply_v1_1_0", ProjectID: "p1", Version: "1.1.0", Status: interfaces.REGRESSION_STATUS_RUNNING,
+			ReleaseID: "rel1", ProjectID: "p1", Version: "1.1.0", Status: interfaces.REGRESSION_STATUS_RUNNING,
 			RunID: "r2", Attempt: 1, Runner: interfaces.AccountInfo{ID: "u1", Type: "user"},
 			Questions: []interfaces.RegressionQuestion{{ID: "q1", Text: "Which supplier?",
 				Needs: []interfaces.RequirementItemRef{{Kind: "object_type", ID: "supplier"}}}},
 			StartTime: 10,
 		}
-		columns := []string{"f_network_id", "f_project_id", "f_version", "f_status", "f_run_id", "f_attempt",
+		columns := []string{"f_release_id", "f_project_id", "f_version", "f_status", "f_run_id", "f_attempt",
 			"f_runner", "f_runner_type", "f_questions", "f_results", "f_error", "f_start_time", "f_finish_time"}
-		ensureRow := regexp.QuoteMeta("INSERT INTO t_bkn_project_regression (f_network_id,f_questions,f_results) " +
-			"VALUES (?,?,?) ON DUPLICATE KEY UPDATE f_network_id = f_network_id")
-		lockRow := regexp.QuoteMeta("SELECT f_status, f_start_time FROM t_bkn_project_regression WHERE f_network_id = ? FOR UPDATE")
+		ensureRow := regexp.QuoteMeta("INSERT INTO t_bkn_project_regression (f_release_id,f_questions,f_results) " +
+			"VALUES (?,?,?) ON DUPLICATE KEY UPDATE f_release_id = f_release_id")
+		lockRow := regexp.QuoteMeta("SELECT f_status, f_start_time FROM t_bkn_project_regression WHERE f_release_id = ? FOR UPDATE")
 		replace := regexp.QuoteMeta("UPDATE t_bkn_project_regression SET f_project_id = ?, f_version = ?, f_status = ?")
 
 		Convey("GetRegression reads a release's regression with its questions and results\n", func() {
-			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_network_id, f_project_id, f_version")).WithArgs("supply_v1_1_0").
-				WillReturnRows(sqlmock.NewRows(columns).AddRow("supply_v1_1_0", "p1", "1.1.0", "not_passed", "r2", 2, "u1",
+			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_release_id, f_project_id, f_version")).WithArgs("rel1").
+				WillReturnRows(sqlmock.NewRows(columns).AddRow("rel1", "p1", "1.1.0", "not_passed", "r2", 2, "u1",
 					"user", questions,
 					`[{"question_id":"q1","outcome":"missing","missing":[{"kind":"object_type","id":"supplier","name":"supplier"}]}]`,
 					"", int64(10), int64(20)))
 
-			r, exist, err := ra.GetRegression(ctx, "supply_v1_1_0")
+			r, exist, err := ra.GetRegression(ctx, "rel1")
 
 			So(err, ShouldBeNil)
 			So(exist, ShouldBeTrue)
 			So(r, ShouldResemble, &interfaces.Regression{
-				NetworkID: "supply_v1_1_0", ProjectID: "p1", Version: "1.1.0", Status: "not_passed", RunID: "r2",
+				ReleaseID: "rel1", ProjectID: "p1", Version: "1.1.0", Status: "not_passed", RunID: "r2",
 				Attempt: 2, Runner: interfaces.AccountInfo{ID: "u1", Type: "user"}, Questions: running.Questions,
 				Results: []interfaces.RegressionResult{{QuestionID: "q1", Outcome: "missing",
 					Missing: []interfaces.ReleaseItem{{Kind: "object_type", ID: "supplier", Name: "supplier"}}}},
@@ -60,17 +60,17 @@ func Test_RegressionAccess(t *testing.T) {
 		})
 
 		Convey("GetRegression reads a release without one as none, and empty columns as empty lists\n", func() {
-			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_network_id")).WillReturnRows(sqlmock.NewRows(columns))
+			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_release_id")).WillReturnRows(sqlmock.NewRows(columns))
 
-			_, exist, err := ra.GetRegression(ctx, "supply_v1_1_0")
+			_, exist, err := ra.GetRegression(ctx, "rel1")
 
 			So(err, ShouldBeNil)
 			So(exist, ShouldBeFalse)
 
-			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_network_id")).WillReturnRows(sqlmock.NewRows(columns).AddRow(
-				"supply_v1_1_0", "p1", "1.1.0", "running", "r2", 1, "u1", "user", "", "", "", int64(10), int64(0)))
+			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_release_id")).WillReturnRows(sqlmock.NewRows(columns).AddRow(
+				"rel1", "p1", "1.1.0", "running", "r2", 1, "u1", "user", "", "", "", int64(10), int64(0)))
 
-			r, _, err := ra.GetRegression(ctx, "supply_v1_1_0")
+			r, _, err := ra.GetRegression(ctx, "rel1")
 
 			So(err, ShouldBeNil)
 			So(r.Questions, ShouldResemble, []interfaces.RegressionQuestion{})
@@ -78,20 +78,20 @@ func Test_RegressionAccess(t *testing.T) {
 		})
 
 		Convey("GetRegression passes a failure to read on\n", func() {
-			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_network_id")).WillReturnError(errors.New("db down"))
+			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_release_id")).WillReturnError(errors.New("db down"))
 
-			_, _, err := ra.GetRegression(ctx, "supply_v1_1_0")
+			_, _, err := ra.GetRegression(ctx, "rel1")
 
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("StartRegression writes the first regression of a release into the row it makes sure of\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectExec(ensureRow).WithArgs("supply_v1_1_0", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
-			smock.ExpectQuery(lockRow).WithArgs("supply_v1_1_0").
+			smock.ExpectExec(ensureRow).WithArgs("rel1", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectQuery(lockRow).WithArgs("rel1").
 				WillReturnRows(sqlmock.NewRows([]string{"f_status", "f_start_time"}).AddRow("", int64(0)))
 			smock.ExpectExec(replace).WithArgs("p1", "1.1.0", "running", "r2", 1, "u1", "user", questions, "[]", "",
-				int64(10), int64(0), "supply_v1_1_0").WillReturnResult(sqlmock.NewResult(0, 1))
+				int64(10), int64(0), "rel1").WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
 			started, err := ra.StartRegression(ctx, running, 5)
@@ -148,11 +148,11 @@ func Test_RegressionAccess(t *testing.T) {
 			finished.Questions = []interfaces.RegressionQuestion{{ID: "q1", Text: "Q1?", Needs: []interfaces.RequirementItemRef{},
 				Tests: []interfaces.RegressionTest{{ID: "record", Text: "Q1 of S1?", Expect: "exists"}}}}
 			finish := regexp.QuoteMeta("UPDATE t_bkn_project_regression SET f_status = ?, f_attempt = ?, f_questions = ?, f_results = ?, " +
-				"f_error = ?, f_finish_time = ? WHERE f_network_id = ? AND f_run_id = ? AND f_status = ?")
+				"f_error = ?, f_finish_time = ? WHERE f_release_id = ? AND f_run_id = ? AND f_status = ?")
 			smock.ExpectExec(finish).WithArgs("passed", 2,
 				`[{"id":"q1","text":"Q1?","needs":[],"tests":[{"id":"record","text":"Q1 of S1?","expect":"exists"}]}]`,
 				`[{"question_id":"q1","outcome":"passed","answer":"S1."}]`, "",
-				int64(30), "supply_v1_1_0", "r2", "running").WillReturnResult(sqlmock.NewResult(0, 1))
+				int64(30), "rel1", "r2", "running").WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectExec(finish).WillReturnResult(sqlmock.NewResult(0, 0))
 
 			ok, err := ra.FinishRegression(ctx, &finished)

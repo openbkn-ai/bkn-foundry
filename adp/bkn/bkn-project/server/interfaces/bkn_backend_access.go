@@ -75,19 +75,6 @@ func (e *BknBackendError) Error() string {
 //
 //go:generate mockgen -source ../interfaces/bkn_backend_access.go -destination ../interfaces/mock/mock_bkn_backend_access.go
 type BknBackendAccess interface {
-	// ExportBKN returns the files of the network's main branch, keyed by their path in the export tar.
-	ExportBKN(ctx context.Context, token string, knID string) (map[string][]byte, error)
-	// ImportBKN imports files into the main branch with import_mode=overwrite.
-	ImportBKN(ctx context.Context, token string, files map[string][]byte) (*BKNImportResult, error)
-	// ListSchedules returns every schedule of the network's main branch, all statuses.
-	ListSchedules(ctx context.Context, token string, knID string) ([]*ActionSchedule, error)
-	// CreateSchedule creates the schedule on the network's main branch, in its Status, and
-	// returns the new id. bkn-backend runs it as the caller.
-	CreateSchedule(ctx context.Context, token string, knID string, schedule *ActionSchedule) (string, error)
-	// SetScheduleStatus turns a schedule of the network on or off.
-	SetScheduleStatus(ctx context.Context, token string, knID string, scheduleID string, status string) error
-	// CreateKN creates an empty network and returns its id; bkn-backend makes one up when id is empty.
-	CreateKN(ctx context.Context, token string, id string, name string) (string, error)
 	// GetKN returns the network, or bkn-backend's 403 or 404 when the caller cannot see it.
 	GetKN(ctx context.Context, token string, knID string) (*KnowledgeNetwork, error)
 	// ListKNIDs returns the ids of every network the caller can see.

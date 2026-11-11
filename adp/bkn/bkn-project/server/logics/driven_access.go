@@ -22,6 +22,7 @@ var (
 	IBA interfaces.IndexBuildAccess
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
+	KVA interfaces.KNVersionAccess
 	EFA interfaces.ExecutionFactoryAccess
 	RQA interfaces.RequirementAccess
 	BAA interfaces.BknAgentAccess
@@ -70,6 +71,10 @@ func SetGitStore(gs interfaces.GitStore) {
 
 func SetBknBackendAccess(bba interfaces.BknBackendAccess) {
 	BBA = bba
+}
+
+func SetKNVersionAccess(kva interfaces.KNVersionAccess) {
+	KVA = kva
 }
 
 func SetExecutionFactoryAccess(efa interfaces.ExecutionFactoryAccess) {

@@ -5,44 +5,31 @@
 USE openbkn;
 
 
--- BKN-project release lineage: each release is imported as a new knowledge
--- network; the lineage id is the base network id.
+-- BKN-project releases of a versioned knowledge network, whose id is the
+-- lineage id. A release is prepared (written into the network's draft) and
+-- then published as a network version.
 CREATE TABLE IF NOT EXISTS t_bkn_project_release (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release ID',
-  f_lineage_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Lineage ID: the base knowledge network ID',
-  f_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID this release was imported as',
+  f_lineage_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Lineage ID: the versioned knowledge network ID',
+  f_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID the release was written into',
   f_version VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release version',
   f_base_version VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Version this release was based on; empty for the first release',
   f_project_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
   f_publisher VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Publisher ID',
   f_publisher_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Publisher type',
   f_notes TEXT NOT NULL COMMENT 'Release notes',
-  f_state VARCHAR(20) NOT NULL DEFAULT 'live' COMMENT 'State: live or archived',
+  f_state VARCHAR(20) NOT NULL DEFAULT 'prepared' COMMENT 'State: prepared, published, or legacy for one-network-per-release records',
+  f_kn_version INT NOT NULL DEFAULT 0 COMMENT 'Network version publishing made; 0 while prepared',
+  f_branch_commit VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Commit holding the prepared definitions',
+  f_draft_revision BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Draft revision once the definitions were written',
+  f_capabilities MEDIUMTEXT NOT NULL COMMENT 'Function and Skill files publishing commits, JSON',
+  f_publish_request MEDIUMTEXT NOT NULL COMMENT 'Publish sent with its idempotency key, JSON; empty until sent',
   f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Create time',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Update time',
   PRIMARY KEY (f_id),
-  UNIQUE KEY uk_bkn_project_release_network (f_network_id),
+  UNIQUE KEY uk_bkn_project_release_version (f_lineage_id, f_version),
   KEY idx_bkn_project_release_lineage (f_lineage_id, f_create_time, f_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN-project release lineage';
-
--- Consumer switches of a release lineage: each row moves the lineage's
--- consumers, and the schedules bkn-project can move, from one network to
--- another. The latest row names the network in use; a rollback is a switch
--- back to an earlier network.
-
-
-CREATE TABLE IF NOT EXISTS t_bkn_project_switch (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Switch ID',
-  f_lineage_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Lineage ID',
-  f_from_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched away from',
-  f_to_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched to',
-  f_operator VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Operator ID',
-  f_operator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Operator type',
-  f_schedules TEXT NOT NULL COMMENT 'Schedules moved, JSON: from_id, to_id, name',
-  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Create time',
-  PRIMARY KEY (f_id),
-  KEY idx_bkn_project_switch_lineage (f_lineage_id, f_create_time, f_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN-project consumer switches';
 
 -- Projects: each one changes one knowledge network on its own git branch of
 -- the network's lineage. The project's network is the lineage id.
@@ -187,14 +174,14 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_requirement (
   KEY idx_bkn_project_requirement_status (f_status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN-project requirement specifications';
 
--- Regressions of project releases: after a project publishes a release, its
--- scenario questions of the knowledge layer are answered on the new network
--- and judged by rules. One row per release, keyed by the network it created;
+-- Regressions of project releases: once a project prepares a release, its
+-- scenario questions of the knowledge layer are answered on the network's draft
+-- and judged by rules. One row per release, keyed by the release id;
 -- the questions are kept as they were, so the result reads the same after the
 -- specification changes. A regression never blocks or undoes a release.
 
 CREATE TABLE IF NOT EXISTS t_bkn_project_regression (
-  f_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network the release created',
+  f_release_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release ID',
   f_project_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
   f_version VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release version',
   f_status VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Status: running, passed, not_passed, failed or no_questions',
@@ -207,7 +194,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_regression (
   f_error VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Why the run failed, as a code',
   f_start_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Start time',
   f_finish_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Finish time',
-  PRIMARY KEY (f_network_id),
+  PRIMARY KEY (f_release_id),
   KEY idx_bkn_project_regression_project (f_project_id, f_start_time),
   KEY idx_bkn_project_regression_status (f_status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN-project regressions of releases';
