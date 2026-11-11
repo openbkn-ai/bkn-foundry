@@ -290,6 +290,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, table.Columns, 2)
 			for _, column := range table.Columns {
+				require.NotNil(t, column.Filterable)
+				assert.True(t, *column.Filterable)
 				assert.Equal(t, "money", column.Type)
 				assert.Equal(t, 19, column.NumPrecision)
 				assert.Equal(t, int(tc.scale.(int64)), column.NumScale)

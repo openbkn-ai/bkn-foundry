@@ -28,7 +28,11 @@
 - 原生 Index 的扫描 schema 直接用于保存和查询校验；`SchemaForQuery` 只用于非 Index 资源查询托管本地索引时的投影，不为缺少实际来源依据的 `date_nanos` 等原始类型追加转换特判。
 
 - 公共过滤输入契约变更须核对所有连接器及本地索引通道；回归测试应验证解析后的绑定值、时区语义和错误分类，不能仅凭复现来源的单一连接器测试通过宣称契约统一。
-- 连接器过滤校验接口按完整条件树设计，工厂直接委托连接器的 `ConvertFilterCondition`，校验期间使用读锁并通过 `defer RUnlock` 统一释放，允许并发读取，不重复遍历条件树；Table 与现用逻辑视图入口统一传递 filter、properties、columns，Index 只传递 filter、properties；转换能力分别声明在 TableConnector、IndexConnector 中，不靠匿名接口猜测签名，也不为单个算子新增专用工厂接口或保存流程。
+- 连接器过滤校验接口按完整条件树设计，工厂接收已加载的 Resource，在内存中提取 SchemaDefinition 和所需的 ColumnMetadata，直接委托连接器的 `ConvertFilterCondition`；校验期间使用读锁并通过 `defer RUnlock` 统一释放，允许并发读取，不重复遍历条件树。底层 Table 转换接口传递 filter、properties、columns，Index 只传递 filter、properties；转换能力分别声明在 TableConnector、IndexConnector 中，不靠匿名接口猜测签名，也不为单个算子新增专用工厂接口或保存流程。
+- Resource、Catalog 等业务对象由流程层获取并显式传给校验函数；校验函数不自行加载业务对象，不在入参缺失时隐式回查。委托连接器或 LIM 的能力判断保持各自职责。
+- 资源级字段过滤能力由工厂按连接器类别委托，基础 Connector 不要求实现 ValidateFilterability。工厂完成显式开启检查和可用性检查后，Table 先由 table.ColumnMetadata(resource) 还原源列，再调用公共 table.ValidateFilterability(resource, connector, columns)。公共校验只消费已解析列并调用 TableConnector.IsFilterable，不做 JSON 往返或解析 Property.Attributes；进入能力校验的字段必须存在于真实源列中，缺失时返回包含公开字段名的参数错误，不能用 OriginalType 或 Attributes 构造默认列；各数据库不添加资源级转发方法。IndexConnector、FilesetConnector 声明并实现各自 ValidateFilterability，OpenSearch 负责原生 mapping、子字段寻址与 alias 目标解析，Fileset 由所属连接器处理，未提供能力的连接器拒绝显式开启过滤。
+- 元数据还原使用所属类别的单一包级函数：table.ColumnMetadata、fileset.ColumnMetadata、index.FieldMetadata，统一返回 (元数据, error)。Resource 不承载类别解析方法，不保留吞错包装；所有调用方显式处理错误。解析层允许缺失元数据；过滤能力校验不得从 Schema 补造不存在的源列或字段，Index alias 的目标也必须来自真实 mapping。已类型化数据直接使用，通用数据只解码一次；Index 解析返回独立字段 map，保留 Attributes／SubFields，alias 与子字段寻址仍属于具体连接器，不在通用解析函数中展开或修改原对象。
+- 类型映射文件及测试只维护类型与单字段能力规则；连接器资源级校验及相关 helper 放在既有连接器主文件，测试随实现归属。Table 公共校验保留在 table_connector.go，各数据库调用公共校验的集成测试放在各自主测试文件，不新增 filterability 文件。
 - 派生视图按实际查询通道校验：`category=index` 始终走 Connector；其他资源的可用本地索引走 LocalIndexManager，由 Manager 完成查询 schema 投影。不得直接调用 OpenSearch 包装函数或因原生 Index 携带本地索引元数据而改变通道。
 
 - 时间戳单位与时间字符串精度须分别约定；不得从毫秒时间戳推导出字符串仅支持三位小数，也不得为未经论证的限制增加内部绕过标记。

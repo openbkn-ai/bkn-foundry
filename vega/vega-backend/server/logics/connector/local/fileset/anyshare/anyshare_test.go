@@ -252,6 +252,10 @@ func TestAnyShareConnectorListFilesetsFromEntryDocLib(t *testing.T) {
 		assert.Equal(t, "Knowledge", filesets[0].Name)
 		assert.Equal(t, "Knowledge", filesets[0].DisplayPath)
 		assert.Len(t, filesets[0].Columns, 20)
+		for _, column := range filesets[0].Columns {
+			require.NotNil(t, column.Filterable)
+			assert.Equal(t, DefaultFilterable(column.Type), *column.Filterable)
+		}
 		assert.Equal(t, "1", filesets[0].SourceMetadata["rev"])
 	})
 }
@@ -451,4 +455,90 @@ func decodeAnyShareRequestJSON(t *testing.T, r *http.Request, out any) {
 	body, err := io.ReadAll(r.Body)
 	require.NoError(t, err)
 	require.NoError(t, sonic.Unmarshal(body, out))
+}
+
+func TestAnyShareConnectorValidateFilterability(t *testing.T) {
+	c := &AnyShareConnector{}
+	flag := func(value bool) *bool { return &value }
+	t.Run("closed or omitted flags do not inspect source metadata", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "corrupt"}, SchemaDefinition: []*interfaces.Property{{Name: "closed", Filterable: flag(false)}, {Name: "legacy"}}}
+		require.NoError(t, c.ValidateFilterability(resource))
+	})
+	t.Run("trusted fileset columns override stale properties and saved flags", func(t *testing.T) {
+		for _, persisted := range []bool{false, true} {
+			t.Run(map[bool]string{false: "discovery", true: "persisted JSON"}[persisted], func(t *testing.T) {
+				resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": []interfaces.FilesetColumnMeta{{Name: "native_path", Type: interfaces.DataType_String, Filterable: flag(false)}}}, SchemaDefinition: []*interfaces.Property{{Name: "public_path", OriginalName: "native_path", OriginalType: "unsupported", Filterable: flag(true)}, {Name: "closed", Filterable: flag(false)}, {Name: "legacy"}}}
+				if persisted {
+					encoded, err := json.Marshal(resource)
+					require.NoError(t, err)
+					var stored interfaces.Resource
+					require.NoError(t, json.Unmarshal(encoded, &stored))
+					resource = &stored
+				}
+				before, err := json.Marshal(resource)
+				require.NoError(t, err)
+				require.NoError(t, c.ValidateFilterability(resource))
+				after, err := json.Marshal(resource)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+	t.Run("property name binds source columns when original name is absent", func(t *testing.T) {
+		require.NoError(t, c.ValidateFilterability(&interfaces.Resource{SourceMetadata: map[string]any{"columns": []interfaces.FilesetColumnMeta{{Name: "path", Type: interfaces.DataType_String}}}, SchemaDefinition: []*interfaces.Property{{Name: "path", Filterable: flag(true)}}}))
+	})
+	t.Run("native source column types use fileset capabilities", func(t *testing.T) {
+		for _, tc := range []struct {
+			native string
+			want   bool
+		}{{"string", true}, {"integer", true}, {"boolean", true}, {"json", false}, {"binary", false}, {"vector", false}, {"datetime", false}, {"unknown", false}, {"", false}} {
+			t.Run(tc.native, func(t *testing.T) {
+				resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": []interfaces.FilesetColumnMeta{{Name: "field", Type: tc.native}}, "mapping": make(chan int)}, SchemaDefinition: []*interfaces.Property{{Name: "field", Type: interfaces.DataType_String, OriginalType: "stale", Filterable: flag(true)}}}
+				err := c.ValidateFilterability(resource)
+				if tc.want {
+					require.NoError(t, err)
+				} else {
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+				}
+			})
+		}
+	})
+	t.Run("missing source columns cannot be fabricated from schema", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			metadata map[string]any
+		}{
+			{"missing source metadata", nil}, {"missing columns", map[string]any{"mapping": "unrelated"}},
+			{"empty columns", map[string]any{"columns": []interfaces.FilesetColumnMeta{}}},
+			{"other typed column", map[string]any{"columns": []interfaces.FilesetColumnMeta{{Name: "real", Type: "string"}}}},
+			{"other persisted column", map[string]any{"columns": []any{map[string]any{"name": "real", "type": "string"}}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				resource := &interfaces.Resource{SourceMetadata: tc.metadata, SchemaDefinition: []*interfaces.Property{{Name: "public_field", OriginalName: "missing", OriginalType: "string", Type: interfaces.DataType_String, Attributes: map[string]any{"type": "string"}, Filterable: flag(true)}}}
+				before, err := json.Marshal(resource)
+				require.NoError(t, err)
+				err = c.ValidateFilterability(resource)
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+				assert.Contains(t, invalid.Reason, "public_field")
+				after, err := json.Marshal(resource)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+	t.Run("stored corrupt columns do not fall back to supported property types", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			raw  any
+		}{{"explicit nil", nil}, {"JSON null", json.RawMessage("null")}, {"typed nil", []interfaces.FilesetColumnMeta(nil)}, {"invalid shape", "corrupt"}, {"marshal failure", make(chan int)}} {
+			t.Run(tc.name, func(t *testing.T) {
+				err := c.ValidateFilterability(&interfaces.Resource{SourceMetadata: map[string]any{"columns": tc.raw}, SchemaDefinition: []*interfaces.Property{{Name: "path", OriginalType: interfaces.DataType_String, Filterable: flag(true)}}})
+				require.Error(t, err)
+				var invalid *interfaces.ConditionBuildError
+				assert.NotErrorAs(t, err, &invalid)
+			})
+		}
+	})
 }

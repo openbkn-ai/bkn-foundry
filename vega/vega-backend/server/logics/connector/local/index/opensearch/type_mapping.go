@@ -91,3 +91,41 @@ func (c *OpenSearchConnector) MapType(nativeType string) string {
 	}
 	return interfaces.DataType_Other // default
 }
+
+// IsFilterable 根据字段映射判断过滤能力，不连接索引或修改元数据。
+func (c *OpenSearchConnector) IsFilterable(field *interfaces.IndexFieldMeta) bool {
+	return isFilterable(field)
+}
+
+// isFilterable 仅检查传入物理字段自身的索引或 doc values，忽略用户开关和子字段。
+func isFilterable(field *interfaces.IndexFieldMeta) bool {
+	if field == nil || !mappingParameterEnabled(field.Attributes, "enabled") {
+		return false
+	}
+	switch field.Type {
+	case "keyword", "constant_keyword", "icu_collation_keyword", "version",
+		"byte", "short", "integer", "long", "unsigned_long", "token_count",
+		"float", "half_float", "scaled_float", "double", "boolean", "date", "date_nanos":
+		// 这些类型在未建立倒排索引时，仍可通过 doc values 执行支持的查询。
+		if mappingParameterEnabled(field.Attributes, "index") || mappingParameterEnabled(field.Attributes, "doc_values") {
+			return true
+		}
+	case "text", "match_only_text", "search_as_you_type", "wildcard", "knn_vector":
+		if mappingParameterEnabled(field.Attributes, "index") {
+			return true
+		}
+	default:
+		return false
+	}
+	return false
+}
+
+// 映射布尔参数缺省时按开启处理，非法值不声明对应路径的能力。
+func mappingParameterEnabled(attributes map[string]any, name string) bool {
+	value, exists := attributes[name]
+	if !exists {
+		return true
+	}
+	enabled, ok := value.(bool)
+	return ok && enabled
+}

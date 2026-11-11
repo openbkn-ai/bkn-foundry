@@ -119,3 +119,37 @@ func TestMariaDBConnectorNormalizeColumnType(t *testing.T) {
 		})
 	}
 }
+
+func TestMariaDBConnectorIsFilterable(t *testing.T) {
+	connector := &MariaDBConnector{}
+	for _, tc := range []struct {
+		nativeType string
+		want       bool
+	}{
+		{"INT(11) UNSIGNED", true},
+		{"enum('Active','Inactive')", true},
+		{"decimal(18,4) unsigned", true},
+		{"varchar(255)", true},
+		{"timestamp(6)", true},
+		{"boolean", true},
+		{"json", false},
+		{"varbinary(255)", false},
+		{"bit(8)", false},
+		{"geometry", false},
+		{"future_type", false},
+		{"", false},
+	} {
+		t.Run(tc.nativeType, func(t *testing.T) {
+			for _, flag := range []*bool{nil, new(false), new(true)} {
+				column := interfaces.TableColumnMeta{Name: "field", Type: tc.nativeType, Filterable: flag}
+				before := column
+				if flag != nil {
+					before.Filterable = new(*flag)
+				}
+				assert.Equal(t, tc.want, connector.IsFilterable(&column))
+				assert.Equal(t, before, column, "capability checks must not change column metadata")
+				assert.True(t, flag == column.Filterable, "capability checks must preserve the original filterable pointer")
+			}
+		})
+	}
+}

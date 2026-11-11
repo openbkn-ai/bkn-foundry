@@ -789,6 +789,79 @@ func TestOpenSearchConnectorExecuteQueryPreservesBackendErrors(t *testing.T) {
 	}
 }
 
+func TestOpenSearchConnectorExecuteQueryMultiMatchPhysicalFields(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		field        *interfaces.Property
+		fields       []any
+		wantPhysical string
+	}{
+		{name: "native pattern in a non-sole field list", field: &interfaces.Property{Name: "foo*", Type: interfaces.DataType_Text}, fields: []any{"foo*", "body"}},
+		{name: "native boost syntax", field: &interfaces.Property{Name: "foo^2", Type: interfaces.DataType_Text}, fields: []any{"foo^2"}},
+		{name: "safe alias with a physical pattern", field: &interfaces.Property{Name: "published", OriginalName: "foo*", Type: interfaces.DataType_Text}, fields: []any{"published"}},
+		{name: "safe alias with physical boost syntax", field: &interfaces.Property{Name: "published", OriginalName: "foo^2", Type: interfaces.DataType_Text}, fields: []any{"published"}},
+		{name: "managed fulltext feature pattern", field: &interfaces.Property{Name: "published", OriginalName: "published", Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, FeatureName: "foo*"}}}, fields: []any{"published"}},
+		{name: "managed fulltext feature boost syntax", field: &interfaces.Property{Name: "published", OriginalName: "published", Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, FeatureName: "foo^2"}}}, fields: []any{"published"}},
+		{name: "empty bound fields", field: &interfaces.Property{Name: "published", Type: interfaces.DataType_Text}, fields: []any{}},
+		{name: "ordinary native field", field: &interfaces.Property{Name: "published", Type: interfaces.DataType_Text}, fields: []any{"published"}, wantPhysical: "published"},
+		{name: "ordinary physical alias", field: &interfaces.Property{Name: "published", OriginalName: "body.text", Type: interfaces.DataType_Text}, fields: []any{"published"}, wantPhysical: "body.text"},
+		{name: "ordinary managed fulltext feature", field: &interfaces.Property{Name: "published", OriginalName: "published", Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}}}, fields: []any{"published"}, wantPhysical: "published.fulltext"},
+		{name: "raw wildcard binds a concrete field", field: &interfaces.Property{Name: "published", Type: interfaces.DataType_Text}, fields: []any{"*"}, wantPhysical: "published"},
+	} {
+		for _, aggregate := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/aggregate=%v", tc.name, aggregate), func(t *testing.T) {
+				requests := 0
+				client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+					Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+						requests++
+						if tc.wantPhysical == "" {
+							return nil, errors.New("invalid multi_match fields reached search")
+						}
+						assert.Equal(t, "/events/_search", request.URL.Path)
+						var body map[string]any
+						require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+						assert.Equal(t, map[string]any{"multi_match": map[string]any{
+							"query": "example", "fields": []any{tc.wantPhysical}, "type": "phrase",
+						}}, body["query"])
+						return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+							Body: io.NopCloser(strings.NewReader(`{"hits":{"total":{"value":0},"hits":[]},"aggregations":{"__value":{"value":0}}}`))}, nil
+					})})
+				require.NoError(t, err)
+				fields := map[string]*interfaces.Property{tc.field.Name: tc.field}
+				schema := []*interfaces.Property{tc.field}
+				if len(tc.fields) > 1 {
+					fields["body"] = &interfaces.Property{Name: "body", Type: interfaces.DataType_Text}
+					schema = append(schema, fields["body"])
+				}
+				cfg := &interfaces.FilterCondCfg{Operation: filter_condition.OperationMultiMatch, ValueFrom: interfaces.ValueFrom_Const,
+					Value: "example", RemainCfg: map[string]any{"fields": tc.fields, "match_type": "phrase"}}
+				actual, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
+				require.NoError(t, err)
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg, ActualFilterCond: actual}
+				if aggregate {
+					schema = append(schema, &interfaces.Property{Name: "id", Type: interfaces.DataType_Integer})
+					params.Aggregation = &interfaces.Aggregation{Aggr: "count", Property: "id"}
+				}
+				result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(t.Context(), "events", &interfaces.Resource{SchemaDefinition: schema}, params)
+				assert.Equal(t, tc.fields, cfg.RemainCfg["fields"], "binding must preserve the raw field list")
+				if tc.wantPhysical == "" {
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.Nil(t, result)
+					assert.Zero(t, requests, "invalid bound fields must fail before any search or mapping request")
+					return
+				}
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				assert.Equal(t, 1, requests)
+			})
+		}
+	}
+}
+
 func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
 	t.Run("decimal aggregation selects scaled HAVING without changing count or AVG", func(t *testing.T) {
 		for _, operation := range []string{"sum", "min", "max", "avg", "count", "count_distinct"} {

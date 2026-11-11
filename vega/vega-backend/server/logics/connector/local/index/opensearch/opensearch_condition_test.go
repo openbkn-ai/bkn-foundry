@@ -22,7 +22,118 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
+func TestOpenSearchConnectorConvertFilterConditionMultiMatch(t *testing.T) {
+	for _, matchType := range []string{"", "best_fields", "most_fields", "cross_fields", "phrase", "phrase_prefix", "bool_prefix"} {
+		t.Run("type="+matchType, func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				fields []*interfaces.Property
+			}{
+				{name: "no bound fields"},
+				{name: "empty physical name", fields: []*interfaces.Property{{Type: interfaces.DataType_Text}}},
+				{name: "literal star", fields: []*interfaces.Property{{Name: "*", Type: interfaces.DataType_Text}}},
+				{name: "source name pattern", fields: []*interfaces.Property{{Name: "published", OriginalName: "body*", Type: interfaces.DataType_Text}}},
+				{name: "backslash does not escape expansion", fields: []*interfaces.Property{{Name: `body\*`, Type: interfaces.DataType_Text}}},
+				{name: "source name boost", fields: []*interfaces.Property{{Name: "published", OriginalName: "body^2", Type: interfaces.DataType_Text}}},
+				{name: "invalid boost suffix", fields: []*interfaces.Property{{Name: "body^literal", Type: interfaces.DataType_Text}}},
+				{name: "fulltext feature pattern", fields: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_String,
+					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, FeatureName: "search*"}}}}},
+				{name: "fulltext feature boost", fields: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_String,
+					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, FeatureName: "search^2"}}}}},
+				{name: "unsafe field after safe field", fields: []*interfaces.Property{{Name: "safe", Type: interfaces.DataType_Text}, {Name: "*", Type: interfaces.DataType_Text}}},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cfg := &interfaces.FilterCondCfg{Operation: filter_condition.OperationMultiMatch, Value: "query"}
+					condition := &filter_condition.MultiMatchCond{Cfg: cfg, Fields: tc.fields, MatchType: matchType}
+					query, err := (&OpenSearchConnector{}).ConvertFilterConditionMultiMatch(condition)
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.Nil(t, query)
+					assert.Same(t, cfg, condition.Cfg)
+					assert.Equal(t, matchType, condition.MatchType)
+					assert.Equal(t, tc.fields, condition.Fields)
+				})
+			}
+			fields := []*interfaces.Property{
+				{Name: "*", OriginalName: "safe_source", Type: interfaces.DataType_Text},
+				{Name: "body", OriginalName: "body_source", Type: interfaces.DataType_String,
+					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, FeatureName: "search"}}},
+				{Name: "question?mark", Type: interfaces.DataType_Text},
+				{Name: "中文", Type: interfaces.DataType_Text},
+			}
+			condition := &filter_condition.MultiMatchCond{Cfg: &interfaces.FilterCondCfg{Operation: filter_condition.OperationMultiMatch, Value: "query"},
+				Fields: fields, MatchType: matchType}
+			query, err := (&OpenSearchConnector{}).ConvertFilterConditionMultiMatch(condition)
+			require.NoError(t, err)
+			multi := map[string]any{"query": "query", "fields": []string{"safe_source", "body_source.search", "question?mark", "中文"}}
+			if matchType != "" {
+				multi["type"] = matchType
+			}
+			assert.Equal(t, map[string]any{"multi_match": multi}, query)
+		})
+	}
+}
+
 func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
+	t.Run("SQL LIKE 与 NOT LIKE 的完整模式及空值边界", func(t *testing.T) {
+		for _, kind := range []string{interfaces.DataType_String, interfaces.DataType_Text} {
+			for _, operation := range []string{filter_condition.OperationLike, filter_condition.OperationNotLike} {
+				for _, tc := range []struct{ pattern, want string }{
+					{"", ""}, {"%", "*"}, {"_", "?"}, {"alice", "alice"}, {"ali%", "ali*"}, {"%ali", "*ali"}, {"%ali%", "*ali*"},
+					{"a_b", "a?b"}, {"中文_😀%", "中文?😀*"}, {`50\%`, "50%"}, {`a\_b`, "a_b"}, {`a\\b`, `a\\b`}, {`a\nb`, "anb"},
+					{`a*b?c`, `a\*b\?c`}, {`.*`, `.\*`}, {`\*\?`, `\*\?`}, {"O'Reilly[%]", "O'Reilly[*]"},
+				} {
+					t.Run(kind+"/"+operation+"/"+tc.pattern, func(t *testing.T) {
+						field := &interfaces.Property{Name: "name", OriginalName: "physical_name", Type: kind}
+						physical := field.OriginalName
+						if kind == interfaces.DataType_Text {
+							field.Features = []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw"}}
+							physical += ".raw"
+						}
+						cfg := &interfaces.FilterCondCfg{Field: "name", Operation: operation, Value: tc.pattern}
+						condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"name": field})
+						require.NoError(t, err)
+						got, err := (&OpenSearchConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field})
+						require.NoError(t, err)
+						wildcard := map[string]any{"wildcard": map[string]any{physical: tc.want}}
+						if operation == filter_condition.OperationLike {
+							assert.Equal(t, wildcard, got)
+						} else {
+							assert.Equal(t, map[string]any{"bool": map[string]any{"filter": map[string]any{"exists": map[string]any{"field": physical}}, "must_not": wildcard}}, got)
+						}
+						assert.Equal(t, tc.pattern, cfg.Value)
+						if kind == interfaces.DataType_Text {
+							field.Features = nil
+							got, err = (&OpenSearchConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field})
+							require.ErrorContains(t, err, "no keyword feature")
+							assert.Nil(t, got)
+						}
+					})
+				}
+			}
+		}
+	})
+	t.Run("全文通配字段沿用既有 OpenSearch 字段转换", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{Name: "allowed", OriginalName: "allowed_source", Type: interfaces.DataType_Text},
+			{Name: "blocked", OriginalName: "blocked_source", Type: interfaces.DataType_Text, Filterable: new(false)},
+		}
+		fields := map[string]*interfaces.Property{"allowed": schema[0], "blocked": schema[1]}
+		for _, operation := range []string{filter_condition.OperationMatch, filter_condition.OperationMatchPhrase, filter_condition.OperationMultiMatch} {
+			t.Run(operation, func(t *testing.T) {
+				cfg := &interfaces.FilterCondCfg{Operation: operation, Value: "hello", RemainCfg: map[string]any{"fields": []any{"*"}}}
+				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
+				require.NoError(t, err)
+				query, err := (&OpenSearchConnector{}).ConvertFilterCondition(condition, schema)
+				require.NoError(t, err)
+				encoded, err := sonic.Marshal(query)
+				require.NoError(t, err)
+				assert.Contains(t, string(encoded), `"allowed_source"`)
+				assert.Contains(t, string(encoded), `"blocked_source"`)
+			})
+		}
+	})
+
 	t.Run("relative boundaries are checked throughout the tree", func(t *testing.T) {
 		t.Setenv("TZ", "UTC")
 		now := time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC)
@@ -466,31 +577,19 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"terms": map[string]any{"name": []any{"alice", "bob"}}},
 		},
 		{
-			name: "like matches the value as a literal substring",
+			name: "like matches the complete pattern",
 			cfg:  osConstCfg("name", filter_condition.OperationLike, "ali"),
-			want: map[string]any{"wildcard": map[string]any{"name": "*ali*"}},
+			want: map[string]any{"wildcard": map[string]any{"name": "ali"}},
 		},
 		{
 			name: "like escapes wildcard metacharacters in the value",
 			cfg:  osConstCfg("name", filter_condition.OperationLike, `a*b?c`),
-			want: map[string]any{"wildcard": map[string]any{"name": `*a\*b\?c*`}},
-		},
-		{
-			// Legacy spelling from a stored view definition: once marked, the index path still
-			// renders it as a wildcard regexp, so the rows match what the query returned before
-			name: "legacy like keeps the wildcard regexp",
-			cfg:  osLegacyCfg("name", filter_condition.OperationLike, "%a_c%"),
-			want: map[string]any{"regexp": map[string]any{"name": ".*a.c.*"}},
-		},
-		{
-			name: "legacy not_like keeps the wildcard regexp",
-			cfg:  osLegacyCfg("name", filter_condition.OperationNotLike, "a%"),
-			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"regexp": map[string]any{"name": "a.*"}}}},
+			want: map[string]any{"wildcard": map[string]any{"name": `a\*b\?c`}},
 		},
 		{
 			name: "like treats an escaped percent as a literal character",
 			cfg:  osConstCfg("name", filter_condition.OperationLike, `50\%`),
-			want: map[string]any{"wildcard": map[string]any{"name": "*50%*"}},
+			want: map[string]any{"wildcard": map[string]any{"name": "50%"}},
 		},
 		{
 			name: "range uses inclusive bounds",
@@ -1198,13 +1297,6 @@ func TestFulltextFieldName(t *testing.T) {
 
 		assert.Equal(t, "code", fulltextFieldName(prop))
 	})
-}
-
-// osLegacyCfg builds a like/not_like marked as legacy, i.e. one using % as a wildcard
-func osLegacyCfg(name string, op string, value any) *interfaces.FilterCondCfg {
-	cfg := osConstCfg(name, op, value)
-	cfg.LegacyLikeWildcards = true
-	return cfg
 }
 
 func TestOpenSearchConnectorExactMatchFieldName(t *testing.T) {

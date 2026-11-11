@@ -127,8 +127,6 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 
 	field := &interfaces.Property{Name: "name", OriginalName: "name", Type: interfaces.DataType_String}
 	for _, operation := range []struct{ op, sql, prefix, suffix string }{
-		{"like", `("name" LIKE $1)`, "%", "%"},
-		{"not_like", `("name" NOT LIKE $1)`, "%", "%"},
 		{"prefix", `("name" LIKE $1)`, "", "%"},
 		{"not_prefix", `("name" NOT LIKE $1)`, "", "%"},
 	} {
@@ -141,7 +139,7 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 				{"mixed", `O'Reilly\\\%_`, `O'Reilly\%_`, `O'Reilly\\\%\_`},
 			} {
 				t.Run(value.name, func(t *testing.T) {
-					// prefix 输入本身就是字面前缀；只有 like/not_like 使用输入转义协议。
+					// prefix 输入沿用字面前缀语义。
 					input := value.likeInput
 					if operation.op == "prefix" || operation.op == "not_prefix" {
 						input = value.prefixInput
@@ -156,6 +154,25 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestPostgresqlConnectorConvertFilterConditionLike(t *testing.T) {
+	field := &interfaces.Property{Name: "name", OriginalName: "name", Type: interfaces.DataType_String}
+	for _, operation := range []string{"like", "not_like"} {
+		for _, pattern := range []string{"", "%", "_", "%ali%", "ali%", "%ali", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`, "O'Reilly%_!"} {
+			t.Run(operation+"/"+pattern, func(t *testing.T) {
+				condition, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "name", Operation: operation, Value: pattern}, map[string]*interfaces.Property{"name": field})
+				require.NoError(t, err)
+				text, args := toSQL(t, &PostgresqlConnector{}, condition)
+				keyword := "LIKE"
+				if operation == "not_like" {
+					keyword = "NOT LIKE"
+				}
+				assert.Equal(t, `("name" `+keyword+` $1 ESCAPE E'\\')`, text)
+				assert.Equal(t, []any{pattern}, args)
+			})
+		}
 	}
 }
 

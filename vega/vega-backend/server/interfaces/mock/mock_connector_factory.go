@@ -203,15 +203,29 @@ func (mr *MockConnectorFactoryMockRecorder) ValidateConnectorTypeRegistration(ct
 }
 
 // ValidateFilterCondition mocks base method.
-func (m *MockConnectorFactory) ValidateFilterCondition(tp string, condition interfaces.FilterCondition, properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) error {
+func (m *MockConnectorFactory) ValidateFilterCondition(tp string, condition interfaces.FilterCondition, resource *interfaces.Resource) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateFilterCondition", tp, condition, properties, columns)
+	ret := m.ctrl.Call(m, "ValidateFilterCondition", tp, condition, resource)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ValidateFilterCondition indicates an expected call of ValidateFilterCondition.
-func (mr *MockConnectorFactoryMockRecorder) ValidateFilterCondition(tp, condition, properties, columns any) *gomock.Call {
+func (mr *MockConnectorFactoryMockRecorder) ValidateFilterCondition(tp, condition, resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterCondition", reflect.TypeOf((*MockConnectorFactory)(nil).ValidateFilterCondition), tp, condition, properties, columns)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterCondition", reflect.TypeOf((*MockConnectorFactory)(nil).ValidateFilterCondition), tp, condition, resource)
+}
+
+// ValidateFilterability mocks base method.
+func (m *MockConnectorFactory) ValidateFilterability(tp string, resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateFilterability", tp, resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateFilterability indicates an expected call of ValidateFilterability.
+func (mr *MockConnectorFactoryMockRecorder) ValidateFilterability(tp, resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterability", reflect.TypeOf((*MockConnectorFactory)(nil).ValidateFilterability), tp, resource)
 }

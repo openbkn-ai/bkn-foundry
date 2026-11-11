@@ -49,8 +49,10 @@ var TypeMapping = map[string]string{
 	"interval":          interfaces.DataType_String,
 	"character varying": interfaces.DataType_String,
 	"enum":              interfaces.DataType_String,
-	"inet":              interfaces.DataType_Ip,
-	"cidr":              interfaces.DataType_Ip,
+
+	// 暂不启用 IP 类型，inet/cidr 统一归为 other。
+	// "inet": interfaces.DataType_Ip,
+	// "cidr": interfaces.DataType_Ip,
 
 	// Text
 	"text": interfaces.DataType_Text,
@@ -91,4 +93,18 @@ func (c *PostgresqlConnector) MapType(dataType string) string {
 // normalizeColumnType normalizes source type syntax before storing column metadata.
 func (c *PostgresqlConnector) normalizeColumnType(nativeType string) string {
 	return strings.ToLower(strings.TrimSpace(nativeType))
+}
+
+// IsFilterable 根据列元数据判断过滤能力，忽略已有 Filterable，不修改入参。
+func (c *PostgresqlConnector) IsFilterable(column *interfaces.TableColumnMeta) bool {
+	switch c.MapType(column.Type) {
+	case interfaces.DataType_Integer,
+		interfaces.DataType_Float, interfaces.DataType_Decimal,
+		interfaces.DataType_String, interfaces.DataType_Text,
+		interfaces.DataType_Date, interfaces.DataType_Time,
+		interfaces.DataType_Timestamp, interfaces.DataType_Boolean:
+		return true
+	default:
+		return false
+	}
 }

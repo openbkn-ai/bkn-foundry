@@ -65,6 +65,8 @@ type TableConnector interface {
 
 	// MapType maps a native source type to a VEGA unified type.
 	MapType(nativeType string) string
+	// IsFilterable 判断列过滤能力，忽略已有 Filterable，不连接数据源或修改入参。
+	IsFilterable(column *TableColumnMeta) bool
 
 	// BuildSourceIdentifier builds a SQL table reference with dialect-specific quoting from valid raw name components without connecting to the source.
 	BuildSourceIdentifier(table *TableMeta) string
@@ -121,6 +123,12 @@ type FileConnector interface {
 type FilesetConnector interface {
 	Connector
 
+	// ValidateFilterability 根据可信来源元数据校验显式开启的字段，不连接源端或修改资源。
+	ValidateFilterability(resource *Resource) error
+
+	// IsFilterable 判断文件集字段能力，忽略已有 Filterable，不访问源端。
+	IsFilterable(column *FilesetColumnMeta) bool
+
 	// ListFilesets lists files and directories within the discovery scope, returning fileset metadata.
 	ListFilesets(ctx context.Context) ([]*FilesetMeta, error)
 	// ExecuteQuery queries a fileset using the resource and query parameters and returns the query result.
@@ -144,8 +152,13 @@ type MetricConnector interface {
 type IndexConnector interface {
 	Connector
 
+	// ValidateFilterability 根据可信来源 mapping 校验显式开启的字段，不连接源端或修改资源。
+	ValidateFilterability(resource *Resource) error
+
 	// MapType maps a native source type to a VEGA unified type.
 	MapType(nativeType string) string
+	// IsFilterable 仅判断当前物理字段自身的过滤能力，不遍历 SubFields，不连接索引或修改入参。
+	IsFilterable(field *IndexFieldMeta) bool
 
 	// ListIndexes lists indexes within the discovery scope, returning basic index metadata.
 	ListIndexes(ctx context.Context) ([]*IndexMeta, error)

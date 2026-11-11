@@ -22,8 +22,16 @@ type IndexCapabilities struct {
 //
 //go:generate mockgen -source ../interfaces/local_index_manager.go -destination ../interfaces/mock/mock_local_index_manager.go
 type LocalIndexManager interface {
+	// SchemaForQuery 投影主字段及独立物理子字段、生成字段，由连接器分别判断能力；构造失败返回错误。
+	SchemaForQuery(schema []*Property) ([]*Property, error)
+	// GeneratedFields 返回托管索引生成字段，使用完整 mapping 补齐过滤能力；构造失败返回错误。
+	GeneratedFields(schema []*Property) (map[string]*Property, error)
+
+	// ValidateFilterability 按最终主字段映射校验显式开启，不查询模型或索引。
+	ValidateFilterability(schema []*Property) error
+
 	// ValidateFilterCondition 复用本地索引查询转换校验完整条件树，不连接索引。
-	ValidateFilterCondition(condition FilterCondition, properties []*Property) error
+	ValidateFilterCondition(condition FilterCondition, schema []*Property) error
 
 	ListIndexes(ctx context.Context) ([]*IndexMeta, error)
 	GetIndexMeta(ctx context.Context, index *IndexMeta) error

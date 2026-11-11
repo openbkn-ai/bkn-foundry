@@ -535,6 +535,20 @@ func (mr *MockTableConnectorMockRecorder) GetType() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetType", reflect.TypeOf((*MockTableConnector)(nil).GetType))
 }
 
+// IsFilterable mocks base method.
+func (m *MockTableConnector) IsFilterable(column *interfaces.TableColumnMeta) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsFilterable", column)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsFilterable indicates an expected call of IsFilterable.
+func (mr *MockTableConnectorMockRecorder) IsFilterable(column any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsFilterable", reflect.TypeOf((*MockTableConnector)(nil).IsFilterable), column)
+}
+
 // ListTables mocks base method.
 func (m *MockTableConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
 	m.ctrl.T.Helper()
@@ -1078,6 +1092,20 @@ func (mr *MockFilesetConnectorMockRecorder) GetType() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetType", reflect.TypeOf((*MockFilesetConnector)(nil).GetType))
 }
 
+// IsFilterable mocks base method.
+func (m *MockFilesetConnector) IsFilterable(column *interfaces.FilesetColumnMeta) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsFilterable", column)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsFilterable indicates an expected call of IsFilterable.
+func (mr *MockFilesetConnectorMockRecorder) IsFilterable(column any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsFilterable", reflect.TypeOf((*MockFilesetConnector)(nil).IsFilterable), column)
+}
+
 // ListFilesets mocks base method.
 func (m *MockFilesetConnector) ListFilesets(ctx context.Context) ([]*interfaces.FilesetMeta, error) {
 	m.ctrl.T.Helper()
@@ -1160,6 +1188,20 @@ func (m *MockFilesetConnector) ValidateBuildSchema(resource *interfaces.Resource
 func (mr *MockFilesetConnectorMockRecorder) ValidateBuildSchema(resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateBuildSchema", reflect.TypeOf((*MockFilesetConnector)(nil).ValidateBuildSchema), resource)
+}
+
+// ValidateFilterability mocks base method.
+func (m *MockFilesetConnector) ValidateFilterability(resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateFilterability", resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateFilterability indicates an expected call of ValidateFilterability.
+func (mr *MockFilesetConnectorMockRecorder) ValidateFilterability(resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterability", reflect.TypeOf((*MockFilesetConnector)(nil).ValidateFilterability), resource)
 }
 
 // MockTopicConnector is a mock of TopicConnector interface.
@@ -2030,6 +2072,20 @@ func (mr *MockIndexConnectorMockRecorder) IndexDocuments(ctx, indexName, documen
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IndexDocuments", reflect.TypeOf((*MockIndexConnector)(nil).IndexDocuments), ctx, indexName, documents)
 }
 
+// IsFilterable mocks base method.
+func (m *MockIndexConnector) IsFilterable(field *interfaces.IndexFieldMeta) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsFilterable", field)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsFilterable indicates an expected call of IsFilterable.
+func (mr *MockIndexConnectorMockRecorder) IsFilterable(field any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsFilterable", reflect.TypeOf((*MockIndexConnector)(nil).IsFilterable), field)
+}
+
 // ListIndexes mocks base method.
 func (m *MockIndexConnector) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
 	m.ctrl.T.Helper()
@@ -2170,6 +2226,20 @@ func (m *MockIndexConnector) ValidateBuildSchema(resource *interfaces.Resource) 
 func (mr *MockIndexConnectorMockRecorder) ValidateBuildSchema(resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateBuildSchema", reflect.TypeOf((*MockIndexConnector)(nil).ValidateBuildSchema), resource)
+}
+
+// ValidateFilterability mocks base method.
+func (m *MockIndexConnector) ValidateFilterability(resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateFilterability", resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateFilterability indicates an expected call of ValidateFilterability.
+func (mr *MockIndexConnectorMockRecorder) ValidateFilterability(resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterability", reflect.TypeOf((*MockIndexConnector)(nil).ValidateFilterability), resource)
 }
 
 // MockAPIConnector is a mock of APIConnector interface.

@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
@@ -280,9 +281,12 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	if isIncremental && indexName != resource.LocalIndexName {
 		return errors.New("resource local index changed before incremental build")
 	}
+	columns, err := table.ColumnMetadata(resource)
+	if err != nil {
+		return err
+	}
 	restartFromBeginning := buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeFull &&
 		buildTaskInfo.SyncedMark == ""
-	var err error
 	switch {
 	case restartFromBeginning:
 		err = recreateManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
@@ -294,7 +298,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	if err != nil {
 		return fmt.Errorf("prepare local index failed: %w", err)
 	}
-	decimalSchema, err := local_index.DecimalIndexSchema(resource.SchemaDefinition, resource.ColumnMetadata())
+	decimalSchema, err := local_index.DecimalIndexSchema(resource.SchemaDefinition, columns)
 	if err != nil {
 		return err
 	}
@@ -416,9 +420,16 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 			// Convert FilterCondCfg to ActualFilterCond
 			fieldMap := map[string]*interfaces.Property{}
-			if resource.SchemaDefinition != nil {
-				for _, prop := range resource.SchemaDefinition {
-					fieldMap[prop.Name] = prop
+			for _, prop := range resource.SchemaDefinition {
+				fieldMap[prop.Name] = prop
+			}
+			// Internal keyset pagination is not a caller-supplied filter.
+			// Permit cursor comparisons on copies without changing public metadata.
+			for _, name := range effectiveCursorFields {
+				if property, exists := fieldMap[name]; exists {
+					copied := *property
+					copied.Filterable = new(true)
+					fieldMap[name] = &copied
 				}
 			}
 			actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)

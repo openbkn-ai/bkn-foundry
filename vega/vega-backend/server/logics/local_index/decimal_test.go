@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
 func TestDecimalIndexConfig(t *testing.T) {
@@ -65,9 +66,11 @@ func TestDecimalIndexSchema(t *testing.T) {
 			property := &interfaces.Property{Name: "amount", OriginalName: "source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal}
 			columns := []interfaces.TableColumnMeta{{Name: "source_amount", Type: "money", NumPrecision: 19, NumScale: tc.scale}}
 			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{property}, SourceMetadata: map[string]any{"columns": columns}}
-			schema, err := DecimalIndexSchema(resource.SchemaDefinition, resource.ColumnMetadata())
+			metadata, err := table.ColumnMetadata(resource)
 			require.NoError(t, err)
-			mapping, err := buildFieldMappings(schema)
+			schema, err := DecimalIndexSchema(resource.SchemaDefinition, metadata)
+			require.NoError(t, err)
+			mapping, err := buildFieldMappings(schema, true)
 			require.NoError(t, err)
 			assert.Equal(t, tc.storage, mapping["amount"].(map[string]any)["type"])
 			doc := map[string]any{"amount": tc.value}
@@ -100,7 +103,7 @@ func TestDecimalIndexSchema(t *testing.T) {
 	assert.Equal(t, 2, schema[0].Attributes["scale"])
 	assert.Equal(t, "source", schema[0].Attributes["comment"])
 	assert.Equal(t, interfaces.TableColumnMeta{Name: "source_amount", NumPrecision: 12, NumScale: 2}, columns["source_amount"])
-	mapping, err := buildFieldMappings(schema)
+	mapping, err := buildFieldMappings(schema, true)
 	require.NoError(t, err)
 	assert.Equal(t, 100.0, mapping["amount"].(map[string]any)["scaling_factor"])
 	t.Run("nil source metadata uses field declarations", func(t *testing.T) {
@@ -108,12 +111,11 @@ func TestDecimalIndexSchema(t *testing.T) {
 			{Name: "amount", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"precision": 12, "scale": 2}},
 			{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"},
 		} {
-			schema, err := DecimalIndexSchema([]*interfaces.Property{nil, property}, nil)
+			schema, err := DecimalIndexSchema([]*interfaces.Property{property}, nil)
 			require.NoError(t, err)
-			assert.Nil(t, schema[0])
-			assert.Same(t, property, schema[1])
-			assert.Equal(t, 12, schema[1].Attributes["precision"])
-			assert.Equal(t, 2, schema[1].Attributes["scale"])
+			assert.Same(t, property, schema[0])
+			assert.Equal(t, 12, schema[0].Attributes["precision"])
+			assert.Equal(t, 2, schema[0].Attributes["scale"])
 		}
 	})
 	t.Run("missing decimal declaration fails", func(t *testing.T) {
@@ -239,6 +241,21 @@ func TestValidateDecimalDocument(t *testing.T) {
 }
 
 func TestDecimalAggregateConfig(t *testing.T) {
+	t.Run("only scale-sensitive decimal aggregation parses source columns", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "invalid metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
+		for _, operation := range []string{"sum", "min", "max"} {
+			config, err := decimalAggregateConfig(resource, &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: operation}})
+			require.Error(t, err)
+			assert.Zero(t, config)
+			var decimalError *interfaces.DecimalIndexError
+			assert.NotErrorAs(t, err, &decimalError)
+		}
+		for _, operation := range []string{"avg", "count"} {
+			config, err := decimalAggregateConfig(resource, &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: operation}})
+			require.NoError(t, err)
+			assert.Zero(t, config)
+		}
+	})
 	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", OriginalName: "AMOUNT", Type: interfaces.DataType_Decimal, Attributes: map[string]any{"precision": 18, "scale": 4}}}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "AMOUNT", NumPrecision: 12, NumScale: 2}}}}
 	for _, operation := range []string{"sum", "min", "max", "avg", "count", "count_distinct"} {
 		t.Run(operation, func(t *testing.T) {
@@ -282,6 +299,16 @@ func TestNormalizeDecimalAggregate(t *testing.T) {
 }
 
 func TestEncodeDecimalDocument(t *testing.T) {
+	t.Run("corrupt source columns cannot be ignored in favor of a native declaration", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "invalid metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
+		document := map[string]any{"amount": "12.34", "label": "unchanged"}
+		encoded, err := EncodeDecimalDocument(resource, document)
+		require.Error(t, err)
+		assert.Nil(t, encoded)
+		var decimalError *interfaces.DecimalIndexError
+		assert.NotErrorAs(t, err, &decimalError)
+		assert.Equal(t, map[string]any{"amount": "12.34", "label": "unchanged"}, document)
+	})
 	for _, tc := range []struct {
 		name, original  string
 		value, expected any
