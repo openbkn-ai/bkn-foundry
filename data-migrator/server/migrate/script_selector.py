@@ -62,10 +62,14 @@ class ScriptSelector:
             return None, None
         return init_path, max_version
 
-    def select_upgrade_scripts(self, service_name: str,
-                               installed_version: str) -> Tuple[List[Tuple[str, List[str]]], str, bool]:
+    def select_upgrade_scripts(self, service_name: str, installed_version: str,
+                               last_script: str = "") -> Tuple[List[Tuple[str, List[str]]], str, bool]:
         """
         选择 installed_version 之后待执行的升级脚本。
+
+        last_script 是 task 表的断点（"<version>/<filename>"）。断点是已装版本下带编号的脚本时，
+        该版本中编号更大的脚本也会选出：开发版的同一版本目录会陆续追加脚本，已升到该版本的环境
+        否则永远不会执行它们。断点是 init.sql 或属于其他版本时，已装版本整体视为已完成。
 
         返回: (upgrade_files_list, max_version, has_scripts)
           - upgrade_files_list: [(version, [scripts]), ...]
@@ -78,21 +82,42 @@ class ScriptSelector:
 
         max_version = versions[-1]
         db_type_path = self.get_service_db_type_path(service_name)
+        resume_after = self._resume_number(installed_version, last_script)
 
         upgrade_files_list = []
 
         for version in versions:
-            if compare_version(version, installed_version) <= 0:
+            cmp = compare_version(version, installed_version)
+            if cmp < 0 or (cmp == 0 and resume_after is None):
                 continue
 
             version_path = os.path.join(db_type_path, version)
             scripts = self._collect_scripts_from_dir(version_path)
+            if cmp == 0:
+                scripts = [s for s in scripts if extract_number(s) > resume_after]
 
             if scripts:
                 upgrade_files_list.append((version, scripts))
 
         has_scripts = len(upgrade_files_list) > 0
         return upgrade_files_list, max_version, has_scripts
+
+    @staticmethod
+    def _resume_number(installed_version: str, last_script: str) -> Optional[int]:
+        """断点是已装版本下带编号的脚本时返回其编号，否则返回 None。"""
+        version, _, filename = (last_script or "").partition("/")
+        if version != installed_version or not re.match(r"^\d+-.*\.(sql|py|json)$", filename):
+            return None
+        return extract_number(filename)
+
+    def find_latest_script(self, service_name: str, version: str) -> Optional[str]:
+        """返回版本目录下编号最大的升级脚本文件名，没有时返回 None。
+
+        init.sql 是该版本当时全部脚本的快照，首次安装以此作为断点。
+        """
+        version_path = os.path.join(self.get_service_db_type_path(service_name), version)
+        scripts = self._collect_scripts_from_dir(version_path)
+        return os.path.basename(scripts[-1]) if scripts else None
 
     def _collect_scripts_from_dir(self, version_path: str) -> List[str]:
         """
