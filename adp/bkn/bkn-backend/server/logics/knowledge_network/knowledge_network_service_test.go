@@ -698,7 +698,7 @@ func Test_knowledgeNetworkService_UpdateKNDetail(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			detail := "updated detail"
 
-			kna.EXPECT().UpdateKNDetail(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().UpdateKNDetail(gomock.Any(), nil, knID, branch, detail).Return(nil)
 
 			err := service.UpdateKNDetail(ctx, knID, branch, detail)
 			So(err, ShouldBeNil)
@@ -709,7 +709,7 @@ func Test_knowledgeNetworkService_UpdateKNDetail(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			detail := "updated detail"
 
-			kna.EXPECT().UpdateKNDetail(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().UpdateKNDetail(gomock.Any(), nil, knID, branch, detail).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := service.UpdateKNDetail(ctx, knID, branch, detail)
 			So(err, ShouldNotBeNil)

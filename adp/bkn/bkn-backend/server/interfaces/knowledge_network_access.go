@@ -22,7 +22,7 @@ type KNAccess interface {
 	ListAuthorizationResources(ctx context.Context, query AuthorizationResourcesQuery) ([]*AuthorizationResource, int, error)
 	GetKNByID(ctx context.Context, knID string, branch string) (*KN, error)
 	UpdateKN(ctx context.Context, tx *sql.Tx, kn *KN) error
-	UpdateKNDetail(ctx context.Context, knID string, branch string, detail string) error
+	UpdateKNDetail(ctx context.Context, tx *sql.Tx, knID string, branch string, detail string) error
 	DeleteKN(ctx context.Context, tx *sql.Tx, knID string, branch string) (int64, error)
 	// ListKNBranches returns every branch the network has a row on.
 	ListKNBranches(ctx context.Context, knID string) ([]string, error)

@@ -615,56 +615,73 @@ func Test_knowledgeNetworkAccess_UpdateKNDetail(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna, smock := MockNewKNAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ? WHERE f_id = ? AND f_branch = ?", KN_TABLE_NAME)
+		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ? WHERE f_branch = ? AND f_id = ?", KN_TABLE_NAME)
+		existsStr := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? LIMIT 1", KN_TABLE_NAME)
 
 		knID := "kn1"
 		branch := "main"
 		detail := "updated detail"
 
 		Convey("UpdateKNDetail Success \n", func() {
-			smock.ExpectExec(sqlStr).WithArgs(detail, knID, branch).WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectExec(sqlStr).WithArgs(detail, branch, knID).WillReturnResult(sqlmock.NewResult(1, 1))
 
-			err := kna.UpdateKNDetail(testCtx, knID, branch, detail)
+			err := kna.UpdateKNDetail(testCtx, nil, knID, branch, detail)
 			So(err, ShouldBeNil)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("UpdateKNDetail Failed \n", func() {
 			expectedErr := errors.New("some error")
-			smock.ExpectExec(sqlStr).WithArgs(detail, knID, branch).WillReturnError(expectedErr)
+			smock.ExpectExec(sqlStr).WithArgs(detail, branch, knID).WillReturnError(expectedErr)
 
-			err := kna.UpdateKNDetail(testCtx, knID, branch, detail)
+			err := kna.UpdateKNDetail(testCtx, nil, knID, branch, detail)
 			So(err, ShouldResemble, expectedErr)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
-		Convey("UpdateKNDetail RowsAffected != 1 \n", func() {
-			smock.ExpectExec(sqlStr).WithArgs(detail, knID, branch).WillReturnResult(sqlmock.NewResult(0, 0))
+		// MariaDB counts changed rows only: zero rows with the row present is a write that
+		// changed nothing.
+		Convey("Zero rows on an existing branch row is not an error \n", func() {
+			smock.ExpectExec(sqlStr).WithArgs(detail, branch, knID).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsStr).WithArgs(branch, knID).WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
 
-			err := kna.UpdateKNDetail(testCtx, knID, branch, detail)
+			err := kna.UpdateKNDetail(testCtx, nil, knID, branch, detail)
 			So(err, ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
 
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
+		// A branch replaced or removed after it was read, such as a version branch purged or
+		// main replaced by a publish, must not pass as written.
+		Convey("Zero rows on a missing branch row returns ErrRowNotFound \n", func() {
+			smock.ExpectExec(sqlStr).WithArgs(detail, branch, knID).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsStr).WithArgs(branch, knID).WillReturnRows(sqlmock.NewRows([]string{"1"}))
+
+			err := kna.UpdateKNDetail(testCtx, nil, knID, branch, detail)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("Runs the write and the existence check on the given transaction \n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(sqlStr).WithArgs(detail, branch, knID).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(existsStr).WithArgs(branch, knID).WillReturnRows(sqlmock.NewRows([]string{"1"}))
+			smock.ExpectRollback()
+
+			tx, err := kna.db.Begin()
+			So(err, ShouldBeNil)
+			err = kna.UpdateKNDetail(testCtx, tx, knID, branch, detail)
+			So(errors.Is(err, common.ErrRowNotFound), ShouldBeTrue)
+			So(tx.Rollback(), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("UpdateKNDetail RowsAffected error \n", func() {
 			expectedErr := errors.New("Get RowsAffected error")
-			smock.ExpectExec(sqlStr).WithArgs(detail, knID, branch).WillReturnResult(sqlmock.NewErrorResult(expectedErr))
+			smock.ExpectExec(sqlStr).WithArgs(detail, branch, knID).WillReturnResult(sqlmock.NewErrorResult(expectedErr))
 
-			err := kna.UpdateKNDetail(testCtx, knID, branch, detail)
+			err := kna.UpdateKNDetail(testCtx, nil, knID, branch, detail)
 			So(err, ShouldResemble, expectedErr)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 	})
 }
