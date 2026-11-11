@@ -77,6 +77,9 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 		}
 		relation, exists, err := s.omAccess.GetRelationType(ctx, knID, interfaces.MAIN_BRANCH, cfg.RelationTypeID)
 		if err != nil {
+			if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+				return nil, versionErr
+			}
 			return nil, actionPermissionUnavailable(ctx, err)
 		}
 		if !exists {

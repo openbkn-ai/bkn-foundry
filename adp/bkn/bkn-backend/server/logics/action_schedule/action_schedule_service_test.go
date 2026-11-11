@@ -103,14 +103,15 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 
 		Convey("Success with inactive status (default)\n", func() {
 			schedule := &interfaces.ActionSchedule{
-				KNID:           knID,
-				Branch:         branch,
-				ActionTypeID:   "at1",
-				CronExpression: "* * * * *",
-				Status:         interfaces.ScheduleStatusInactive,
+				KNID:               knID,
+				Branch:             branch,
+				ActionTypeID:       "at1",
+				CronExpression:     "* * * * *",
+				Status:             interfaces.ScheduleStatusInactive,
+				InstanceIdentities: []map[string]any{{"id": "target-1"}},
 			}
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, []string{"at1"}).
-				Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1"}}}, nil)
+				Return([]*interfaces.ActionType{schedulableActionType("at1")}, nil)
 			asa.EXPECT().CreateSchedule(gomock.Any(), nil, gomock.Any()).Return(nil)
 
 			id, err := svc.CreateSchedule(ctx, schedule)
@@ -120,14 +121,15 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 
 		Convey("Success with active status (calculates next run time)\n", func() {
 			schedule := &interfaces.ActionSchedule{
-				KNID:           knID,
-				Branch:         branch,
-				ActionTypeID:   "at1",
-				CronExpression: "* * * * *",
-				Status:         interfaces.ScheduleStatusActive,
+				KNID:               knID,
+				Branch:             branch,
+				ActionTypeID:       "at1",
+				CronExpression:     "* * * * *",
+				Status:             interfaces.ScheduleStatusActive,
+				InstanceIdentities: []map[string]any{{"id": "target-1"}},
 			}
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, []string{"at1"}).
-				Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1"}}}, nil)
+				Return([]*interfaces.ActionType{schedulableActionType("at1")}, nil)
 			asa.EXPECT().CreateSchedule(gomock.Any(), nil, gomock.Any()).Return(nil)
 
 			id, err := svc.CreateSchedule(ctx, schedule)
@@ -186,13 +188,14 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 
 		Convey("Failed when asa.CreateSchedule returns error\n", func() {
 			schedule := &interfaces.ActionSchedule{
-				KNID:           knID,
-				Branch:         branch,
-				ActionTypeID:   "at1",
-				CronExpression: "* * * * *",
+				KNID:               knID,
+				Branch:             branch,
+				ActionTypeID:       "at1",
+				CronExpression:     "* * * * *",
+				InstanceIdentities: []map[string]any{{"id": "target-1"}},
 			}
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, []string{"at1"}).
-				Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1"}}}, nil)
+				Return([]*interfaces.ActionType{schedulableActionType("at1")}, nil)
 			asa.EXPECT().CreateSchedule(gomock.Any(), nil, gomock.Any()).Return(errors.New("db error"))
 
 			_, err := svc.CreateSchedule(ctx, schedule)
@@ -208,7 +211,7 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 	Convey("Test UpdateSchedule\n", t, func() {
 		ctx := context.Background()
-		svc, mockCtrl, asa, _ := newTestService(t)
+		svc, mockCtrl, asa, ata := newTestService(t)
 		defer mockCtrl.Finish()
 
 		scheduleID := "sched1"
@@ -228,11 +231,16 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 
 		Convey("Success with cron change on active schedule (recalculates next run)\n", func() {
 			activeExisting := &interfaces.ActionSchedule{
-				ID:             scheduleID,
-				CronExpression: "0 8 * * *",
-				Status:         interfaces.ScheduleStatusActive,
+				ID:                 scheduleID,
+				KNID:               "kn1",
+				ActionTypeID:       "at1",
+				InstanceIdentities: []map[string]any{{"id": "target-1"}},
+				CronExpression:     "0 8 * * *",
+				Status:             interfaces.ScheduleStatusActive,
 			}
 			asa.EXPECT().GetSchedule(gomock.Any(), scheduleID).Return(activeExisting, nil)
+			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", "", []string{"at1"}).
+				Return([]*interfaces.ActionType{schedulableActionType("at1")}, nil)
 			asa.EXPECT().UpdateSchedule(gomock.Any(), nil, gomock.Any()).Return(nil)
 
 			err := svc.UpdateSchedule(ctx, scheduleID, &interfaces.ActionScheduleUpdateRequest{CronExpression: "0 9 * * *"})
@@ -283,18 +291,23 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 	Convey("Test UpdateScheduleStatus\n", t, func() {
 		ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
-		svc, mockCtrl, asa, _ := newTestService(t)
+		svc, mockCtrl, asa, ata := newTestService(t)
 		defer mockCtrl.Finish()
 
 		scheduleID := "sched1"
 		existing := &interfaces.ActionSchedule{
-			ID:             scheduleID,
-			CronExpression: "* * * * *",
-			Status:         interfaces.ScheduleStatusInactive,
+			ID:                 scheduleID,
+			KNID:               "kn1",
+			ActionTypeID:       "at1",
+			InstanceIdentities: []map[string]any{{"id": "target-1"}},
+			CronExpression:     "* * * * *",
+			Status:             interfaces.ScheduleStatusInactive,
 		}
 
 		Convey("Success activating schedule\n", func() {
 			asa.EXPECT().GetSchedule(gomock.Any(), scheduleID).Return(existing, nil)
+			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", "", []string{"at1"}).
+				Return([]*interfaces.ActionType{schedulableActionType("at1")}, nil)
 			asa.EXPECT().UpdateSchedule(gomock.Any(), nil, gomock.Any()).Return(nil)
 
 			err := svc.UpdateScheduleStatus(ctx, scheduleID, interfaces.ScheduleStatusActive)

@@ -7,14 +7,34 @@ package action_scheduler
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
+
+func TestRelationAuthorizationPreservesKNVersionError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	ctx := context.Background()
+	want := httperrors.NewHTTPError(ctx, http.StatusGone, oerrors.BknBackend_KNVersion_VersionPurged)
+	models.EXPECT().GetRelationType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "rt-1").
+		Return(interfaces.RelationType{}, false, want)
+	service := &actionSchedulerService{omAccess: models}
+	_, err := service.resolveActionPermissionRequirements(ctx, "kn-1", &interfaces.ActionType{
+		ATID: "at-1", ObjectTypeID: "ot-1",
+		OperationConfig: &interfaces.ActionOperationConfig{Type: "relation", RelationTypeID: "rt-1", RelationOperation: "create", AnchorRole: "source"},
+	})
+	if err != want {
+		t.Fatalf("relation version error = %v, want original %v", err, want)
+	}
+}
 
 type actionPermissionStub struct {
 	requirements []interfaces.PermissionRequirement

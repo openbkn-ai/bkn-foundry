@@ -33,6 +33,28 @@ type ActionOperationConfig struct {
 	OtherObjectCondition *ActionCondCfg `json:"other_object_condition,omitempty" mapstructure:"other_object_condition"`
 }
 
+// ValidateIdentitySchedule keeps the legacy schedule transport within the
+// operations it can represent. Other operations need explicit target fields
+// before they can be scheduled.
+func ValidateIdentitySchedule(action *ActionType, identities []map[string]any) error {
+	if action == nil || action.OperationConfig == nil {
+		return fmt.Errorf("scheduled action requires a migrated operation_config")
+	}
+	if action.OperationConfig.Type != ActionOperationObject ||
+		(action.ActionType != ACTION_TYPE_MODIFY && action.ActionType != ACTION_TYPE_DELETE) {
+		return fmt.Errorf("scheduled execution currently supports only modify or delete object operations")
+	}
+	if len(identities) == 0 {
+		return fmt.Errorf("scheduled object execution requires _instance_identities")
+	}
+	for index, identity := range identities {
+		if len(identity) == 0 {
+			return fmt.Errorf("scheduled target %d has an empty identity", index+1)
+		}
+	}
+	return nil
+}
+
 // UnmarshalJSON rejects obsolete endpoint-mapping fields instead of silently
 // accepting a definition whose execution semantics would be lost.
 func (config *ActionOperationConfig) UnmarshalJSON(data []byte) error {

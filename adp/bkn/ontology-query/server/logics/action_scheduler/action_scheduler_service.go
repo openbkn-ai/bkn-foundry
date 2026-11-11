@@ -8,6 +8,7 @@ package action_scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -201,7 +202,8 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	req.ObjDatas = objDatas
 	for index, data := range objDatas {
 		if _, err := s.buildExecutionParams(&actionType, data, req.DynamicParams, instances[index].InstanceIdentity); err != nil {
-			return nil, actionTargetError(ctx, err.Error())
+			identity, _ := json.Marshal(instances[index].InstanceIdentity)
+			return nil, actionTargetError(ctx, fmt.Sprintf("target %d identity %s: %v", index+1, identity, err))
 		}
 	}
 
