@@ -701,8 +701,20 @@ func TestRebaseDraftFollowsARollback(t *testing.T) {
 		t.Fatalf("after rebase: %+v, draft %q", draft, f.objectName("draft"))
 	}
 
+	// A version copied into the draft on purpose is not undone.
+	if _, err := f.publish(1, f.editDraft("name-3"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.ResetDraft(f.ctx, f.knID, &interfaces.KNResetDraftRequest{
+		FromVersion: ptr(1), ExpectedDraftRevision: ptr(f.state().Draft.Revision)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil || f.state().Draft.BaseVersion != 1 || f.objectName("draft") != "name-1" {
+		t.Fatalf("a copied version was rebased: %v %+v, draft %q", err, f.state().Draft, f.objectName("draft"))
+	}
+
 	f.editDraft("mine")
-	if _, err := f.svc.Activate(f.ctx, f.knID, 2, &interfaces.KNActivateRequest{ExpectedRunningVersion: ptr(1)}); err != nil {
+	if _, err := f.svc.Activate(f.ctx, f.knID, 2, &interfaces.KNActivateRequest{ExpectedRunningVersion: ptr(3)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil || f.objectName("draft") != "mine" {

@@ -407,7 +407,10 @@ func (s *service) RebaseDraft(ctx context.Context, knID string) error {
 	if err != nil {
 		return internalError(ctx, err)
 	}
-	if state == nil || state.DraftModified || state.DraftBaseVersion == state.RunningVersion {
+	// Only a draft that is exactly what was running when it was taken: one copied from another
+	// version (draft/reset with from_version) is somebody's choice, and stays.
+	if state == nil || state.DraftModified || state.DraftBaseVersion != state.DraftBasedOnRunning ||
+		state.DraftBaseVersion == state.RunningVersion {
 		return nil
 	}
 	revision := state.DraftRevision
