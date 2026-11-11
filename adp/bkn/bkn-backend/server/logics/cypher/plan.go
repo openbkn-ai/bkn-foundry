@@ -479,6 +479,9 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	if err := bindRowCounts(query, options.Parameters); err != nil {
 		return nil, err
 	}
+	if err := bindNullChecks(query, options.Parameters); err != nil {
+		return nil, err
+	}
 	if query.Intersection != nil {
 		return compileIntersection(query.Intersection, schema, options)
 	}
@@ -938,6 +941,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 			return nil, err
 		}
 		return PlanNegation{Operand: operand}, nil
+
+	case NeverMatches:
+		return PlanNever{}, nil
 
 	case NullCheck:
 		table, column, err := p.resolveProperty(node.Property)

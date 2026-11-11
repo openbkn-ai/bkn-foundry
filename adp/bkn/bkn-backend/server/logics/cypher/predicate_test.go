@@ -131,7 +131,7 @@ func TestCompilePredicateRejections(t *testing.T) {
 		{
 			name:  "is null on something that is not a property",
 			query: "MATCH (o:Order) WHERE 1 IS NULL RETURN o.id",
-			want:  "IN and IS NULL apply to variable.property",
+			want:  "IS NULL to variable.property or $parameter",
 		},
 		{
 			name:  "comparing two conditions",

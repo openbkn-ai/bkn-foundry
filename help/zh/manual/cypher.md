@@ -44,7 +44,7 @@ openbkn context tool-call <kn_id> run_cypher --args '{"query":"MATCH (g:goals) R
 | 字段 | 说明 |
 | --- | --- |
 | `query` | Cypher 文本，最长 8192 字符 |
-| `parameters` | `$name` 的取值。参数只能是值，不能是标签、关系或属性名；不接受 null |
+| `parameters` | `$name` 的取值。参数只能是值，不能是标签、关系或属性名；null 只能用于 `$name IS NULL` 判空（见下文「可选条件」） |
 | `object_properties` | 返回节点时，每个节点变量额外带回哪些属性，例如 `{"t": ["team_name"]}`。变量必须是查询里返回的节点，属性总数最多 128 个，授权规则与查询中其他属性相同 |
 | `explain` | 为 `true` 时只返回执行计划、不读数据，见下文「先用 explain 校验」 |
 
@@ -124,6 +124,7 @@ ORDER BY goals, team LIMIT 5
 | 两个属性比较 | `g.team_id <> g.player_team_id`（乌龙球） |
 | 列表 | `t.team_name IN ['Brazil', 'Germany']`，或 `IN $names` |
 | 空值 | `g.match_period IS NULL`、`IS NOT NULL` |
+| 可选条件 | `($team IS NULL OR t.team_name = $team)` |
 | 字符串 | `STARTS WITH`、`ENDS WITH`、`CONTAINS` |
 | 组合 | `AND`、`OR`、`NOT`，可以加括号 |
 | 日期 | `o.placed_at >= date('2026-08-13')`（属性为日期或时间类型时） |
@@ -133,6 +134,7 @@ ORDER BY goals, team LIMIT 5
 
 - **不等于写 `<>`**，这是 openCypher 的写法；`!=` 也接受，按 `<>` 处理。
 - **`IN $list`**：整个列表作为一个参数传入，必须是同一类型的标量数组，最多 500 个元素。空数组不匹配任何行，与直接写 `IN []` 相同。
+- **可选条件**：`($team IS NULL OR t.team_name = $team)` 在 `$team` 有值时按它过滤，传 null 或不传时这个条件不生效，适合保存成函数、让调用方决定是否过滤。判空在执行前按传入的值算好，数据源收到的只是 `t.team_name = 'Brazil'`，或者没有这个条件，不会因为 OR 用不上索引。`$x IS NOT NULL AND …` 在 `$x` 为 null 时不匹配任何行。可以写在 MATCH、OPTIONAL MATCH 和 WITH 的 WHERE 里（如 `WITH t, count(*) AS n WHERE ($min IS NULL OR n >= $min)`），多个可选条件用 AND 连接。不传的参数只在判空时算作 null，在别处用到仍然报未提供；不能只写 `WHERE $x IS NULL`，也不能写在 RETURN 或 CASE 里。
 - **字符串匹配**是字面子串匹配，`%` 和 `_` 不是通配符；只能用在字符串属性上；大小写是否敏感取决于数据源的排序规则；属性为 null 时不匹配。`LIKE` 不是 openCypher 语法，会提示改用这三种写法。
 - **日期**：`date(...)`、`datetime(...)`、`localdatetime(...)` 只能用在日期、时间类型的属性上，参数是字符串字面量或参数。属性在模型里声明为字符串时，直接与字符串比较即可，例如 `m.match_date >= '2014-06-12'`。日期、日期时间属性也可以直接和字符串比较，例如 `o.placed_at >= $since` 传 `2026-08-13` 或 `2026-08-13T09:30:00`；不是日期的字符串（如 `2026/08/13`、`下周一`）会被拒绝，不会匹配全部或零行。
 - 模型里一个是字符串、一个是数字的两个属性不能互相比较。

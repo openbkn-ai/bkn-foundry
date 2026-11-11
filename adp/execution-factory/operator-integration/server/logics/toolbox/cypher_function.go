@@ -266,8 +266,10 @@ func moreRowsHint(limited bool) string {
 }
 
 // cypherArguments turns the call's arguments into the statement's parameters.
-// Every input is required: bkn-backend has no optional parameter, a statement
-// using $name fails without one. Values are converted to the declared type,
+// A required input has to be given. An optional one, left out or null, is not
+// sent: the statement makes it optional with ($name IS NULL OR ...), which
+// bkn-backend decides as null, and uses it nowhere else unguarded, or
+// bkn-backend reports it as not supplied. Values are converted to the declared type,
 // so an agent that sends 5 as "5" still gets a number compared with a number.
 // Arguments the function does not declare are left out rather than refused, the
 // way any tool ignores fields its schema does not name.
@@ -284,7 +286,9 @@ func cypherArguments(body any, inputs []*interfaces.ParameterDef) (map[string]an
 		}
 		value, ok := args[input.Name]
 		if !ok || value == nil {
-			missing = append(missing, input.Name)
+			if input.Required {
+				missing = append(missing, input.Name)
+			}
 			continue
 		}
 		converted, convErr := convertCypherArgument(input, value)
