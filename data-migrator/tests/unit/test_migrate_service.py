@@ -87,6 +87,7 @@ class TestInstallService:
         open(init_path, "w").close()
         executor = make_executor()
         executor.script_selector.find_init_sql.return_value = (init_path, "1.0.0")
+        executor.script_selector.find_latest_script.return_value = None
 
         with patch("server.migrate.executor.parse_sql_file", return_value=["CREATE TABLE..."]):
             executor._install_service("svc")
@@ -97,6 +98,22 @@ class TestInstallService:
             target_version="1.0.0",
             script_file_name="1.0.0/init.sql",
         )
+
+    def test_checkpoint_is_latest_script_init_sql_holds(self, tmp_path):
+        """init.sql 已含本版本全部脚本：断点记到编号最大的脚本，之后追加的脚本升级时才会执行"""
+        init_path = str(tmp_path / "init.sql")
+        open(init_path, "w").close()
+        executor = make_executor()
+        executor.script_selector.find_init_sql.return_value = (init_path, "1.0.0")
+        executor.script_selector.find_latest_script.return_value = "02-b.sql"
+
+        with patch("server.migrate.executor.parse_sql_file", return_value=["CREATE TABLE..."]):
+            executor._install_service("svc")
+
+        executor.script_selector.find_latest_script.assert_called_once_with("svc", "1.0.0")
+        assert executor.task_mgr.insert_task.call_args.kwargs["script_file_name"] == "1.0.0/02-b.sql"
+        # 历史表记的仍是实际执行的 init.sql
+        assert executor.history_mgr.record.call_args.kwargs["script_file_name"] == "1.0.0/init.sql"
 
     def test_success_records_history_success(self, tmp_path):
         init_path = str(tmp_path / "init.sql")
@@ -181,13 +198,15 @@ class TestUpgradeService:
             "svc", upgrade_files, "1.1.0", "1.0.0/init.sql"
         )
 
-    def test_passes_installed_version_to_selector(self):
+    def test_passes_installed_version_and_checkpoint_to_selector(self):
         executor = make_executor()
         executor.script_selector.select_upgrade_scripts.return_value = ([], "1.1.0", False)
 
-        executor._upgrade_service("svc", self._task_record(installed="1.1.0"))
+        executor._upgrade_service("svc", self._task_record(installed="1.1.0", last_script="1.1.0/02-b.sql"))
 
-        executor.script_selector.select_upgrade_scripts.assert_called_once_with("svc", "1.1.0")
+        executor.script_selector.select_upgrade_scripts.assert_called_once_with(
+            "svc", "1.1.0", "1.1.0/02-b.sql"
+        )
 
 
 # ──────────────────────────────────────────────

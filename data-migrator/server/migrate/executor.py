@@ -186,11 +186,14 @@ class MigrationExecutor:
             )
             raise Exception(f"[{service_name}] init.sql 执行失败: {ex}")
 
+        # init.sql already holds every script of its version, so the checkpoint is the
+        # latest of them: a script added to this version later still runs on upgrade.
+        latest_script = self.script_selector.find_latest_script(service_name, init_version)
         self.task_mgr.insert_task(
             service_name=service_name,
             installed_version=init_version,
             target_version=init_version,
-            script_file_name=relative_name,
+            script_file_name=f"{init_version}/{latest_script}" if latest_script else relative_name,
         )
         self.history_mgr.record(
             service_name=service_name,
@@ -207,7 +210,7 @@ class MigrationExecutor:
         self.logger.info(f"[{service_name}] 升级, installed_version={installed_version}")
 
         upgrade_files, max_version, has_scripts = self.script_selector.select_upgrade_scripts(
-            service_name, installed_version
+            service_name, installed_version, last_script
         )
 
         if not has_scripts:

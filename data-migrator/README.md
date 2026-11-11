@@ -185,12 +185,12 @@ docker build -f data-migrator/Dockerfile -t <registry>/core-data-migrator:<tag> 
 **首次安装（task 表无记录）：**
 1. 取最大版本目录下的 `init.sql`（每个版本均存在，lint 保证）
 2. 执行 `<max_version>/init.sql`（完整快照）
-3. 成功后写入 task 记录（`f_installed_version = max_version`，`f_script_file_name = <max_version>/init.sql`）
+3. 成功后写入 task 记录（`f_installed_version = max_version`）。`init.sql` 是该版本当时全部增量脚本的快照，所以 `f_script_file_name` 记为该版本编号最大的脚本（如 `<max_version>/04-xxx.sql`）；版本下没有增量脚本时记为 `<max_version>/init.sql`。历史表记录的仍是 `init.sql`
 4. 失败则不写 task，下次 rerun 重新从 init.sql 开始
 
 **版本升级（task 表已有记录）：**
 1. 读取 `f_installed_version` 作为当前版本
-2. 收集所有 `> installed_version` 的版本目录，跳过 `init.sql`，按编号排序增量脚本
+2. 收集所有 `> installed_version` 的版本目录，跳过 `init.sql`，按编号排序增量脚本。断点（`f_script_file_name`）是已装版本下带编号的脚本时，该版本中编号更大的脚本也一并收集：开发版的同一版本目录会陆续追加脚本，已升到该版本的环境靠这条才能补上。断点是 `init.sql` 或属于其他版本时，已装版本视为已完成
 3. 每个脚本执行成功后更新 `f_script_file_name`（断点续跑锚点）
 4. 一个版本内所有脚本完成后更新 `f_installed_version`
 
@@ -200,6 +200,7 @@ rerun 时通过 `f_script_file_name` 定位断点：
 - 格式为 `<version>/<filename>`，如 `1.1.0/02-add-index.sql`
 - 同版本内：跳过序号 `<= last_script_seq` 的脚本
 - 跨版本：`f_installed_version` 之前的版本整体跳过，`f_installed_version` 对应版本按脚本锚点续跑
+- 断点只看编号，所以同一版本内编号不能重复（CI `lint-migrations` 检查），新脚本只能追加在该版本最大编号之后
 
 #### 核心执行流程
 

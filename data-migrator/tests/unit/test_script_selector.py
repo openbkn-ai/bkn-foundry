@@ -214,3 +214,62 @@ class TestSelectUpgradeScripts:
         version, scripts = files[0]
         assert version == "1.1.0"
         assert [os.path.basename(s) for s in scripts] == ["01-add.sql"]
+
+
+# ── 已装版本中后追加的脚本 ─────────────────────────────────────────────────────
+# 开发版的同一版本目录会陆续追加脚本；已升到该版本的环境须从断点接着执行。
+
+class TestSelectScriptsAddedToInstalledVersion:
+    def _names(self, files):
+        return [(v, [os.path.basename(s) for s in scripts]) for v, scripts in files]
+
+    def test_runs_scripts_after_checkpoint_of_installed_version(self, tmp_path):
+        mk_version(tmp_path, "svc", "mariadb", "0.2.2", has_init=True,
+                   scripts=["01-a.sql", "02-b.sql", "03-c.sql", "04-d.sql"])
+        sel = make_selector(tmp_path)
+        files, max_v, has = sel.select_upgrade_scripts("svc", "0.2.2", "0.2.2/02-b.sql")
+        assert has is True and max_v == "0.2.2"
+        assert self._names(files) == [("0.2.2", ["03-c.sql", "04-d.sql"])]
+
+    def test_checkpoint_at_last_script_selects_nothing(self, tmp_path):
+        mk_version(tmp_path, "svc", "mariadb", "0.2.2", has_init=True,
+                   scripts=["01-a.sql", "02-b.sql"])
+        sel = make_selector(tmp_path)
+        files, _, has = sel.select_upgrade_scripts("svc", "0.2.2", "0.2.2/02-b.sql")
+        assert files == [] and has is False
+
+    def test_init_sql_checkpoint_keeps_installed_version_complete(self, tmp_path):
+        """断点是 init.sql 时无从得知它含哪些脚本，沿用原行为：整个版本视为已完成"""
+        mk_version(tmp_path, "svc", "mariadb", "0.2.2", has_init=True,
+                   scripts=["01-a.sql", "02-b.sql"])
+        sel = make_selector(tmp_path)
+        files, _, has = sel.select_upgrade_scripts("svc", "0.2.2", "0.2.2/init.sql")
+        assert files == [] and has is False
+
+    def test_checkpoint_of_another_version_keeps_installed_version_complete(self, tmp_path):
+        mk_version(tmp_path, "svc", "mariadb", "0.2.1", scripts=["05-x.sql"])
+        mk_version(tmp_path, "svc", "mariadb", "0.2.2", has_init=True, scripts=["01-a.sql"])
+        sel = make_selector(tmp_path)
+        files, _, has = sel.select_upgrade_scripts("svc", "0.2.2", "0.2.1/05-x.sql")
+        assert files == [] and has is False
+
+    def test_resumed_installed_version_comes_before_newer_versions(self, tmp_path):
+        mk_version(tmp_path, "svc", "mariadb", "0.2.2", scripts=["01-a.sql", "02-b.sql"])
+        mk_version(tmp_path, "svc", "mariadb", "0.2.3", has_init=True, scripts=["01-c.sql"])
+        sel = make_selector(tmp_path)
+        files, max_v, has = sel.select_upgrade_scripts("svc", "0.2.2", "0.2.2/01-a.sql")
+        assert has is True and max_v == "0.2.3"
+        assert self._names(files) == [("0.2.2", ["02-b.sql"]), ("0.2.3", ["01-c.sql"])]
+
+
+class TestFindLatestScript:
+    def test_returns_highest_numbered_script(self, tmp_path):
+        mk_version(tmp_path, "svc", "mariadb", "1.0.0", has_init=True,
+                   scripts=["10-j.sql", "02-b.py", "01-a.sql"])
+        sel = make_selector(tmp_path)
+        assert sel.find_latest_script("svc", "1.0.0") == "10-j.sql"
+
+    def test_version_with_only_init_returns_none(self, tmp_path):
+        mk_version(tmp_path, "svc", "mariadb", "1.0.0", has_init=True)
+        sel = make_selector(tmp_path)
+        assert sel.find_latest_script("svc", "1.0.0") is None
