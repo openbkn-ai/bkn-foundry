@@ -18,6 +18,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/knversion/locale"
 )
 
 // Refusals about the requested version. The codes keep bkn-backend's prefix:
@@ -42,35 +43,9 @@ var refusalCodes = []string{
 	DraftRevisionMismatch,
 }
 
-var refusalsEnUS = i18n.I18nMessages{
-	Locale: i18n.AmericanEnglish,
-	Messages: map[string]string{
-		NotVersioned:          "Versioning is not enabled for this knowledge network.",
-		InvalidVersion:        "Invalid knowledge network version. Use draft, running or a version number; a versioned network accepts only the main or draft branch.",
-		VersionNotFound:       "The knowledge network version does not exist.",
-		VersionPurged:         "The knowledge network version has been purged and its content is no longer available.",
-		EditionRestricted:     "This version operation requires the Professional edition. The Community edition keeps only the running and the previous version.",
-		VersioningDisabling:   "Versioning is being disabled for this knowledge network. Writes, version operations and reads of the draft or older versions are paused.",
-		DraftRevisionMismatch: "The draft has changed. Reload the draft and retry.",
-	},
-}
-
-var refusalsZhCN = i18n.I18nMessages{
-	Locale: i18n.SimplifiedChinese,
-	Messages: map[string]string{
-		NotVersioned:          "该知识网络未开启版本管理。",
-		InvalidVersion:        "版本取值不合法。请使用 draft、running 或版本号；版本化网络只接受 main 或 draft 分支。",
-		VersionNotFound:       "知识网络版本不存在。",
-		VersionPurged:         "该版本已清理，内容不再可用。",
-		EditionRestricted:     "该版本操作需要专业版。社区版只保留运行版本与上一版。",
-		VersioningDisabling:   "该知识网络正在关闭版本管理，写入、版本操作以及读取草稿与历史版本暂停。",
-		DraftRevisionMismatch: "草稿已变化，请重新读取草稿后重试。",
-	},
-}
-
 func init() {
-	i18n.RegisterI18n(&refusalsEnUS)
-	i18n.RegisterI18n(&refusalsZhCN)
+	i18n.RegisterI18n(&locale.EnUS)
+	i18n.RegisterI18n(&locale.ZhCN)
 	httperrors.Register(refusalCodes)
 }
 
