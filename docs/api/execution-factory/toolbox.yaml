@@ -1498,7 +1498,10 @@ components:
               `handler`。
             - `cypher`：`code` 为只读 Cypher 语句；`kn_id` 必填；`result_shape` 必填，
               `value` 返回 `{"value": x}`（只能一列标量，0 行为 null，多于 1 行报错），
-              `table` 返回 `{columns, entries, limited}`。`inputs` 必须与语句中的 `$name`
+              `table` 返回 `{columns, entries, limited}`。decimal 属性的值和对它的
+              `sum()` 以字符串返回（如 `"13833141.000000"`），计算出的比值等以数字返回。
+              语句在数据源上最多执行 55 秒（bkn-backend `cypherQueryTimeoutSec`），调用时的
+              `timeout` 不能延长它。`inputs` 必须与语句中的 `$name`
               一一对应（多出或缺少都拒绝），类型只能是 `string`、`number`、`boolean`，
               或这三者之一的 `array`（用于 `IN $name`）；每个入参都必填且要写
               `description`。`outputs` 由平台按 `result_shape` 生成，请求中的值忽略；
