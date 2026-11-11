@@ -382,7 +382,7 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 				"object_types/node.bkn": "---\ntype: object_type\nid: node\nname: 节点\ntags: []\naliases: [主机]\n---\n\n## ObjectType: 节点\n\n" +
 					"### Data Properties\n\n| Name | Display Name | Type | Aliases | Mapped Field |\n|------|--------------|------|---------|--------------|\n" +
 					"| host | 主机名 | string | 主机地址 | host |\n\n### Keys\n\nPrimary Keys: host\nDisplay Key: host\n",
-				"action_types/restart.bkn": "---\ntype: action_type\nid: restart\nname: 重启\ntags: []\naction_intent: modify\naliases: [重启容器组]\n---\n\n## ActionType: 重启\n",
+				"action_types/restart.bkn": "---\ntype: action_type\nid: restart\nname: 重启\ntags: []\naction_intent: modify\naliases: [重启容器组]\n---\n\n## ActionType: 重启\n\n### Operation Config\n\n```yaml\noperation_config:\n  type: tool\n```\n",
 			}))
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
@@ -609,7 +609,7 @@ func TestDetachBKNExternalBindingsPreservesTopology(t *testing.T) {
 		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{metric},
 		ActionTypes: []*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 			ATID: "at-1", ObjectTypeID: "ot-1",
-			ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_MCP, McpID: "mcp-1", ToolName: "run"},
+			ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_MCP, McpID: "mcp-1", ToolName: "run"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 		}}},
 	}
 

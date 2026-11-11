@@ -124,6 +124,7 @@ var sectionRules = map[string]map[string]sectionRule{
 		"Target Condition":     {content: contentYAML},
 	},
 	kindActionType: {
+		"Operation Config": {content: contentYAML},
 		"Bound Object": {content: contentTable, table: tableRule{
 			columns:   []string{"Bound Object"},
 			refused:   map[string]string{"Action Type": "the frontmatter field action_intent"},

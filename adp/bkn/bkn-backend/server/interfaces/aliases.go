@@ -6,6 +6,7 @@
 package interfaces
 
 import (
+	"bytes"
 	"encoding/json"
 )
 
@@ -49,7 +50,9 @@ func (ot *ObjectType) DeclaresLifecycle() bool {
 func (at *ActionType) UnmarshalJSON(data []byte) error {
 	type actionType ActionType
 	var value actionType
-	if err := json.Unmarshal(data, &value); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
 		return err
 	}
 	declared, err := carriedKeys(data, DECLARATION_ALIASES, DECLARATION_LIFECYCLE)

@@ -70,7 +70,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 				ATID:         "at1",
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
-				ActionType:   interfaces.ACTION_TYPE_ADD,
+				ActionType:   interfaces.ACTION_TYPE_ADD, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 			},
 		}
 		requestData := struct {
@@ -220,7 +220,7 @@ func Test_ActionTypeRestHandler_UpdateActionType(t *testing.T) {
 				ATID:         atID,
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
-				ActionType:   interfaces.ACTION_TYPE_MODIFY,
+				ActionType:   interfaces.ACTION_TYPE_MODIFY, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 			},
 		}
 
@@ -436,14 +436,14 @@ func Test_ActionTypeRestHandler_GetActionTypes(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:       "at1",
 						ATName:     "action1",
-						ActionType: interfaces.ACTION_TYPE_ADD,
+						ActionType: interfaces.ACTION_TYPE_ADD, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 				},
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:       "at2",
 						ATName:     "action2",
-						ActionType: interfaces.ACTION_TYPE_ADD,
+						ActionType: interfaces.ACTION_TYPE_ADD, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 				},
 			}, nil)
@@ -608,7 +608,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverride(t *testing.T) {
 				ATID:         "at1",
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
-				ActionType:   interfaces.ACTION_TYPE_ADD,
+				ActionType:   interfaces.ACTION_TYPE_ADD, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 			},
 		}
 		requestData := struct {
@@ -692,7 +692,7 @@ func Test_ActionTypeRestHandler_CreateActionTypesByIn(t *testing.T) {
 					ATID:         "at1",
 					ATName:       "action1",
 					ObjectTypeID: "ot1",
-					ActionType:   interfaces.ACTION_TYPE_ADD,
+					ActionType:   interfaces.ACTION_TYPE_ADD, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 				},
 			}
 			requestData := struct {
@@ -728,7 +728,7 @@ func Test_ActionTypeRestHandler_UpdateActionTypeByIn(t *testing.T) {
 					ATID:         atID,
 					ATName:       "action1",
 					ObjectTypeID: "ot1",
-					ActionType:   interfaces.ACTION_TYPE_MODIFY,
+					ActionType:   interfaces.ACTION_TYPE_MODIFY, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 				},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
@@ -837,7 +837,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverrideByIn(t *testing.T) {
 				ATID:         "at1",
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
-				ActionType:   interfaces.ACTION_TYPE_ADD,
+				ActionType:   interfaces.ACTION_TYPE_ADD, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 			},
 		}
 		requestData := struct {
@@ -922,7 +922,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 				ATID:         atID,
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
-				ActionType:   interfaces.ACTION_TYPE_MODIFY,
+				ActionType:   interfaces.ACTION_TYPE_MODIFY, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 			},
 		}
 
@@ -964,7 +964,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:         atID,
 					ObjectTypeID: "ot1",
-					ActionType:   interfaces.ACTION_TYPE_MODIFY,
+					ActionType:   interfaces.ACTION_TYPE_MODIFY, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 				},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)

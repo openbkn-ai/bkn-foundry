@@ -391,6 +391,9 @@ type KNVersionAccess interface {
 	LockNetwork(ctx context.Context, tx *sql.Tx, knID string, exclusive bool) (bool, error)
 	// GetState returns the version state, or nil when the network is not versioned.
 	GetState(ctx context.Context, tx *sql.Tx, knID string, forUpdate bool) (*KNVersionState, error)
+	// ListVersionedKNIDs returns the ids of every network that has a version state, disabling
+	// ones included.
+	ListVersionedKNIDs(ctx context.Context) ([]string, error)
 	CreateState(ctx context.Context, tx *sql.Tx, state *KNVersionState) error
 	UpdateState(ctx context.Context, tx *sql.Tx, state *KNVersionState) error
 	// MarkDraftWritten adds one to the draft revision and marks the draft modified. With

@@ -8,10 +8,14 @@ package local_index
 import "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 
 // GeneratedFields derives physical fields generated for a local index.
-func GeneratedFields(schemaDefinition []*interfaces.Property) map[string]*interfaces.Property {
+func (lim *localIndexManager) GeneratedFields(schemaDefinition []*interfaces.Property) (map[string]*interfaces.Property, error) {
+	mappings, err := queryFieldMappings(schemaDefinition)
+	if err != nil {
+		return nil, err
+	}
 	generated := map[string]*interfaces.Property{}
 	for _, property := range schemaDefinition {
-		if property == nil || (property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text) {
+		if property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text {
 			continue
 		}
 		for _, feature := range property.Features {
@@ -19,9 +23,12 @@ func GeneratedFields(schemaDefinition []*interfaces.Property) map[string]*interf
 				continue
 			}
 			generatedName := VectorFieldName(property.Name)
+			mapping, _ := mappings[generatedName].(map[string]any)
+			filterable := lim.lic.IsFilterable(indexFieldMeta(generatedName, mapping))
 			generated[generatedName] = &interfaces.Property{
-				Name: generatedName,
-				Type: interfaces.DataType_Vector,
+				Name:       generatedName,
+				Type:       interfaces.DataType_Vector,
+				Filterable: &filterable,
 				Features: []interfaces.PropertyFeature{{
 					FeatureType: interfaces.PropertyFeatureType_Vector,
 					Config:      feature.Config,
@@ -29,8 +36,5 @@ func GeneratedFields(schemaDefinition []*interfaces.Property) map[string]*interf
 			}
 		}
 	}
-	if len(generated) == 0 {
-		return nil
-	}
-	return generated
+	return generated, nil
 }

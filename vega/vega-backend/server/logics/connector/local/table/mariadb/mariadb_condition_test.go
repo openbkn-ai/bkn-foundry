@@ -264,32 +264,20 @@ func TestMariaDBDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 	}
 }
 func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
-	t.Run("convert like", func(t *testing.T) {
-		c := &MariaDBConnector{}
-		cond := mustNewCond(t, "name", "like", "ali")
-		sql, args := toSQL(t, c, cond)
-		if sql != "(`name` LIKE CONCAT('%', REPLACE(REPLACE(REPLACE(?, '!', '!!'), '%', '!%'), '_', '!_'), '%') ESCAPE '!')" {
-			t.Errorf("unexpected SQL: %s", sql)
+	for _, operation := range []string{"like", "not_like"} {
+		for _, pattern := range []string{"", "%", "_", "%ali%", "ali%", "%ali", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`, "O'Reilly%_!"} {
+			t.Run(operation+"/"+pattern, func(t *testing.T) {
+				condition := mustNewCond(t, "name", operation, pattern)
+				text, args := toSQL(t, &MariaDBConnector{}, condition)
+				keyword := "LIKE"
+				if operation == "not_like" {
+					keyword = "NOT LIKE"
+				}
+				assert.Equal(t, "(`name` "+keyword+" ? ESCAPE CONCAT('', CHAR(92 USING ascii)))", text)
+				assert.Equal(t, []any{pattern}, args)
+			})
 		}
-		if len(args) != 1 || args[0] != "ali" {
-			t.Errorf("unexpected args: %v", args)
-		}
-	})
-	t.Run("convert like special chars", func(t *testing.T) {
-		c := &MariaDBConnector{}
-		// The caller escapes a literal percent sign; NewFilterCondition rejects
-		// unescaped percent wildcards before SQL conversion.
-		cond := mustNewCond(t, "name", "like", `100\%`)
-		_, args := toSQL(t, c, cond)
-		argStr, ok := args[0].(string)
-		if !ok {
-			t.Fatalf("expected string arg, got %T", args[0])
-		}
-		// The bound value stays literal; the renderer escapes LIKE metacharacters using !.
-		if argStr != "100%" {
-			t.Errorf("expected escaped %%, got %s", argStr)
-		}
-	})
+	}
 }
 func TestMariaDBConnectorConvertFilterConditionNull(t *testing.T) {
 	t.Run("convert null", func(t *testing.T) {
@@ -747,16 +735,16 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 			assert.Equal(t, tc.args, args)
 		})
 	}
-	t.Run("parsed LIKE is literal and parameters never become SQL", func(t *testing.T) {
+	t.Run("LIKE patterns stay bound and never become SQL", func(t *testing.T) {
 		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Field: "x", Operation: filter_condition.OperationLike, Value: `O'Reilly\%_!`}, map[string]*interfaces.Property{"x": field})
 		require.NoError(t, err)
 		node, err := connector.ConvertFilterCondition(condition, nil, nil)
 		require.NoError(t, err)
 		sql, args, err := render(node)
 		require.NoError(t, err)
-		assert.Contains(t, sql, "LIKE CONCAT")
+		assert.Contains(t, sql, "LIKE ? ESCAPE")
 		assert.NotContains(t, sql, "O'Reilly")
-		assert.Equal(t, []any{"O'Reilly%_!"}, args)
+		assert.Equal(t, []any{`O'Reilly\%_!`}, args)
 	})
 	t.Run("temporal parsing preserves the server timezone and precision", func(t *testing.T) {
 		t.Setenv("TZ", "UTC")

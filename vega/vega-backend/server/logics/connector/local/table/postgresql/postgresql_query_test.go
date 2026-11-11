@@ -25,6 +25,29 @@ import (
 )
 
 func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
+	t.Run("corrupt source columns stop before querying", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			raw  any
+		}{{"null", nil}, {"typed nil", []interfaces.TableColumnMeta(nil)}, {"wrong shape", "corrupt"}} {
+			t.Run(tc.name, func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
+				defer func() { _ = db.Close() }()
+				connector := &PostgresqlConnector{db: db, connected: true}
+				field := &interfaces.Property{Name: "id", OriginalName: "native_id", OriginalType: "integer", Type: interfaces.DataType_Integer}
+				condition, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "id", Operation: filter_condition.OperationEqual, Value: 1}, map[string]*interfaces.Property{"id": field})
+				require.NoError(t, err)
+				resource := &interfaces.Resource{SourceIdentifier: "orders", SourceMetadata: map[string]any{"columns": tc.raw}, SchemaDefinition: []*interfaces.Property{field}}
+				result, err := connector.ExecuteQuery(t.Context(), resource, &interfaces.ResourceDataQueryParams{ActualFilterCond: condition, Paging: interfaces.PagingRequest{Limit: 10}})
+				require.ErrorContains(t, err, "invalid stored source column metadata")
+				assert.Nil(t, result)
+				var invalid *interfaces.ConditionBuildError
+				assert.NotErrorAs(t, err, &invalid)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
 	t.Run("money reads preserve exact decimal text and null values", func(t *testing.T) {
 		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 		require.NoError(t, err)

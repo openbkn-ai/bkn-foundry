@@ -51,6 +51,7 @@ func newOutputSchemaService(t *testing.T) (*knActionRecallServiceImpl, *mocks.Mo
 
 func toolActionsResponse() *interfaces.QueryActionsResponse {
 	return &interfaces.QueryActionsResponse{
+		ExecutionSchema: testActionExecutionSchema(),
 		ActionSource: &interfaces.ActionSource{
 			Type:   interfaces.ActionSourceTypeTool,
 			BoxID:  "box-001",
@@ -62,6 +63,7 @@ func toolActionsResponse() *interfaces.QueryActionsResponse {
 
 func mcpActionsResponse() *interfaces.QueryActionsResponse {
 	return &interfaces.QueryActionsResponse{
+		ExecutionSchema: testActionExecutionSchema(),
 		ActionSource: &interfaces.ActionSource{
 			Type:     interfaces.ActionSourceTypeMCP,
 			McpID:    "mcp-001",

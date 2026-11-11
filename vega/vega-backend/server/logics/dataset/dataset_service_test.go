@@ -29,6 +29,31 @@ import (
 )
 
 func TestDatasetServiceIndexLifecycle(t *testing.T) {
+	t.Run("corrupt source columns fail before index writes", func(t *testing.T) {
+		for _, operation := range []string{"create", "update"} {
+			t.Run(operation, func(t *testing.T) {
+				ds, _ := newDatasetServiceMock(t)
+				resource := &interfaces.Resource{ID: "dataset-corrupt", LocalIndexName: "index-unchanged", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+					SourceMetadata: map[string]any{"columns": "private source details"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
+				var err error
+				wantCode := verrors.VegaBackend_Resource_InternalError_CreateFailed
+				if operation == "create" {
+					err = ds.Create(context.Background(), resource)
+				} else {
+					err = ds.Update(context.Background(), resource)
+					wantCode = verrors.VegaBackend_Resource_InternalError_UpdateFailed
+				}
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+				assert.Equal(t, wantCode, httpErr.ErrorCode)
+				assert.NotContains(t, httpErr.Error(), "private source details")
+				assert.Equal(t, "index-unchanged", resource.LocalIndexName)
+				assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, resource.LocalIndexStatus)
+				assert.Nil(t, resource.SchemaDefinition[0].Attributes)
+			})
+		}
+	})
 	ctx := context.Background()
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
@@ -104,6 +129,142 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 	resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1"}
 	params := &interfaces.ResourceDataQueryParams{}
 	docs := []map[string]any{{"id": 1}}
+	t.Run("delete filters use the capability of the feature target physical field", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, kind, operation, feature, featureName, physicalName, physicalType string
+			parent, child, allowed                                                  bool
+		}{
+			{"fulltext uses enabled child", interfaces.DataType_String, "match", interfaces.PropertyFeatureType_Fulltext, "search", "field.search", interfaces.DataType_Text, false, true, true},
+			{"fulltext rejects disabled child", interfaces.DataType_String, "match", interfaces.PropertyFeatureType_Fulltext, "search", "field.search", interfaces.DataType_Text, true, false, false},
+			{"text exact uses enabled keyword", interfaces.DataType_Text, "eq", interfaces.PropertyFeatureType_Keyword, "raw", "field.raw", interfaces.DataType_String, false, true, true},
+			{"text exact rejects disabled keyword", interfaces.DataType_Text, "eq", interfaces.PropertyFeatureType_Keyword, "raw", "field.raw", interfaces.DataType_String, true, false, false},
+			{"main exact cannot borrow fulltext child", interfaces.DataType_String, "eq", interfaces.PropertyFeatureType_Fulltext, "search", "field.search", interfaces.DataType_Text, false, true, false},
+			{"main fulltext cannot borrow keyword child", interfaces.DataType_Text, "match", interfaces.PropertyFeatureType_Keyword, "raw", "field.raw", interfaces.DataType_String, false, true, false},
+			{"knn uses enabled generated field", interfaces.DataType_String, "knn_vector", interfaces.PropertyFeatureType_Vector, "embedding", "field_vector", interfaces.DataType_Vector, false, true, true},
+			{"knn rejects disabled generated field", interfaces.DataType_String, "knn_vector", interfaces.PropertyFeatureType_Vector, "embedding", "field_vector", interfaces.DataType_Vector, true, false, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				lim := vmock.NewMockLocalIndexManager(ctrl)
+				rs := vmock.NewMockResourceService(ctrl)
+				feature := interfaces.PropertyFeature{FeatureType: tc.feature, FeatureName: tc.featureName}
+				main := &interfaces.Property{Name: "field", OriginalName: "field", Type: tc.kind, Filterable: &tc.parent, Features: []interfaces.PropertyFeature{feature}}
+				physical := &interfaces.Property{Name: tc.physicalName, OriginalName: tc.physicalName, Type: tc.physicalType, Filterable: &tc.child}
+				resource := &interfaces.Resource{ID: "dataset", LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{main}}
+				rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_DATA_WRITE).Return(nil)
+				lim.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{main, physical}, nil)
+				var value any = "query"
+				queryField := "field"
+				if tc.operation == "knn_vector" {
+					value = []float32{1, 2}
+					queryField = tc.physicalName
+				}
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: queryField, Operation: tc.operation, Value: value}}
+				if tc.allowed {
+					lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "index", resource, params).DoAndReturn(
+						func(_ context.Context, _ string, _ *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.DeleteByQueryResult, error) {
+							require.NotNil(t, query.ActualFilterCond)
+							assert.Equal(t, queryField, query.FilterCondCfg.Field)
+							return &interfaces.DeleteByQueryResult{Deleted: 1}, nil
+						})
+				}
+				result, err := (&datasetService{lim: lim, rs: rs}).DeleteDocumentsByQuery(ctx, resource, params)
+				if tc.allowed {
+					require.NoError(t, err)
+					assert.EqualValues(t, 1, result.Deleted)
+				} else {
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+					assert.Nil(t, result)
+				}
+				assert.Equal(t, tc.parent, *main.Filterable)
+				assert.Equal(t, tc.child, *physical.Filterable)
+			})
+		}
+	})
+
+	t.Run("delete by query stops on LIM metadata failures before deleting", func(t *testing.T) {
+		for _, failure := range []struct {
+			name   string
+			cause  error
+			status int
+		}{
+			{"decimal mapping", interfaces.NewDecimalIndexError("amount", "invalid_scale"), http.StatusBadRequest},
+			{"unknown mapping", errors.New("private mapping diagnostic"), http.StatusInternalServerError},
+		} {
+			t.Run(failure.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				lim := vmock.NewMockLocalIndexManager(ctrl)
+				rs := vmock.NewMockResourceService(ctrl)
+				resource := &interfaces.Resource{ID: "dataset", LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_String}}}
+				rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_DATA_WRITE).Return(nil)
+				lim.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return(nil, failure.cause)
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "title", Operation: "eq", Value: "value"}}
+				result, err := (&datasetService{lim: lim, rs: rs}).DeleteDocumentsByQuery(ctx, resource, params)
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, failure.status, httpErr.HTTPCode)
+				assert.Nil(t, result)
+				assert.Nil(t, params.ActualFilterCond)
+				if failure.status == http.StatusBadRequest {
+					assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+					assert.Equal(t, "amount", httpErr.Metadata["field"])
+					assert.Equal(t, "invalid_scale", httpErr.Metadata["reason"])
+				} else {
+					assert.NotContains(t, httpErr.ErrorDetails, "private mapping diagnostic")
+				}
+			})
+		}
+	})
+
+	t.Run("delete by query honors disabled metadata returned by the injected LIM", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := &datasetService{lim: lim, rs: rs}
+		resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{
+			{Name: "title", Type: interfaces.DataType_String, Filterable: new(true)},
+		}}
+		projected := *resource.SchemaDefinition[0]
+		projected.Filterable = new(false)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_DATA_WRITE).Return(nil)
+		lim.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{&projected}, nil)
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "title", Operation: filter_condition.OperationEqual, Value: "value"}}
+		result, err := ds.DeleteDocumentsByQuery(ctx, resource, params)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+		assert.Nil(t, result)
+		assert.Nil(t, params.ActualFilterCond)
+		assert.True(t, *resource.SchemaDefinition[0].Filterable)
+	})
+
+	t.Run("delete by query uses LIM filterability without changing resource flags", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{ID: "dataset-1", Category: interfaces.ResourceCategoryDataset,
+			LocalIndexName: "dataset-1", SchemaDefinition: []*interfaces.Property{
+				{Name: "title", Type: interfaces.DataType_String, Filterable: new(false)},
+			}}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationAnd, SubConds: []*interfaces.FilterCondCfg{
+				{Field: "title", Operation: filter_condition.OperationEqual, Value: "protected"},
+			},
+		}}
+		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), resource.LocalIndexName, resource, params).
+			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.DeleteByQueryResult, error) {
+				require.NotNil(t, query.ActualFilterCond)
+				return &interfaces.DeleteByQueryResult{Deleted: 1}, nil
+			})
+		result, err := ds.DeleteDocumentsByQuery(ctx, resource, params)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, result.Deleted)
+		assert.False(t, *resource.SchemaDefinition[0].Filterable)
+	})
+
 	t.Run("temporal range errors preserve the actionable code", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		cause := interfaces.NewTemporalRangeError("created", "date", 2147483647, "year")
@@ -242,7 +403,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 	t.Run("get documents allows resource-level query permission", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim := newDatasetLocalIndexManagerMock(ctrl)
 		rs := vmock.NewMockResourceService(ctrl)
 		ds := &datasetService{lim: lim, rs: rs}
 		resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", LocalIndexName: "dataset-1"}
@@ -329,7 +490,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 	t.Run("requires data_write permission for document mutations", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim := newDatasetLocalIndexManagerMock(ctrl)
 		rs := vmock.NewMockResourceService(ctrl)
 		ds := &datasetService{lim: lim, rs: rs}
 		denied := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
@@ -491,8 +652,11 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		})
 	}
 
-	t.Run("delete by query resolves resource generated fields before local index access", func(t *testing.T) {
-		ds, lim := newDatasetServiceMock(t)
+	t.Run("delete by query uses generated vector from one complete query schema", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := &datasetService{lim: lim, rs: rs}
 		resource := &interfaces.Resource{
 			ID:             "dataset-1",
 			LocalIndexName: "dataset-1",
@@ -504,6 +668,11 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 				}},
 			}},
 		}
+		vector := &interfaces.Property{Name: "content_vector", OriginalName: "content_vector", Type: interfaces.DataType_Vector, Filterable: new(true),
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_DATA_WRITE).Return(nil)
+		lim.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{resource.SchemaDefinition[0], vector}, nil)
+		lim.EXPECT().GeneratedFields(gomock.Any()).Times(0)
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
 			Field:     "content_vector",
 			Operation: filter_condition.OperationKnnVector,
@@ -514,6 +683,9 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) (*interfaces.DeleteByQueryResult, error) {
 				require.NotNil(t, got.ActualFilterCond)
 				assert.Equal(t, filter_condition.OperationKnnVector, got.ActualFilterCond.GetOperation())
+				actual, ok := got.ActualFilterCond.(*filter_condition.KnnVectorCond)
+				require.True(t, ok)
+				assert.Equal(t, "content_vector", actual.FilterFieldName)
 				return &interfaces.DeleteByQueryResult{}, nil
 			})
 
@@ -547,11 +719,38 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 	})
 }
 
+// Ordinary document fixtures do not exercise physical schema projection.
+func newDatasetLocalIndexManagerMock(ctrl *gomock.Controller) *vmock.MockLocalIndexManager {
+	manager := vmock.NewMockLocalIndexManager(ctrl)
+	manager.EXPECT().SchemaForQuery(gomock.Any()).DoAndReturn(func(schema []*interfaces.Property) ([]*interfaces.Property, error) {
+		projected := make([]*interfaces.Property, 0, len(schema))
+		for _, source := range schema {
+			if source.Type == interfaces.DataType_Json {
+				continue
+			}
+			field := *source
+			field.Filterable = new(true)
+			projected = append(projected, &field)
+		}
+
+		for _, source := range schema {
+			for _, feature := range source.Features {
+				if feature.FeatureType == interfaces.PropertyFeatureType_Vector && feature.RefProperty == "" {
+					name := source.Name + "_vector"
+					projected = append(projected, &interfaces.Property{Name: name, Type: interfaces.DataType_Vector, Filterable: new(true), Features: []interfaces.PropertyFeature{feature}})
+				}
+			}
+		}
+		return projected, nil
+	}).AnyTimes()
+	return manager
+}
+
 func newDatasetServiceMock(t *testing.T) (*datasetService, *vmock.MockLocalIndexManager) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
-	lim := vmock.NewMockLocalIndexManager(ctrl)
+	lim := newDatasetLocalIndexManagerMock(ctrl)
 	rs := vmock.NewMockResourceService(ctrl)
 	rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	return &datasetService{lim: lim, rs: rs}, lim
@@ -570,7 +769,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 	ctx := context.Background()
 	t.Run("uses supplied resource and preserves individual results", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim := newDatasetLocalIndexManagerMock(ctrl)
 		ds := &datasetService{lim: lim}
 		resource := &interfaces.Resource{ID: "dataset", Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index"}
 
@@ -591,7 +790,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 
 	t.Run("duplicate IDs reject entire batch before inference or writes", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim := newDatasetLocalIndexManagerMock(ctrl)
 		mfs := vmock.NewMockModelFactoryService(ctrl)
 		ds := &datasetService{lim: lim, mfs: mfs}
 		resource := &interfaces.Resource{LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}}}
@@ -606,7 +805,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 	})
 	t.Run("write error is returned for entire request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim := newDatasetLocalIndexManagerMock(ctrl)
 		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryDataset, LocalIndexName: "index"}
 
 		writeErr := errors.New("index unavailable")
@@ -629,7 +828,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 	} {
 		t.Run(tc.name+" rejects entire batch", func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			ds := &datasetService{lim: vmock.NewMockLocalIndexManager(ctrl), mfs: vmock.NewMockModelFactoryService(ctrl)}
+			ds := &datasetService{lim: newDatasetLocalIndexManagerMock(ctrl), mfs: vmock.NewMockModelFactoryService(ctrl)}
 			resource := &interfaces.Resource{LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}}}
 			results, err := ds.BulkReplaceDocuments(ctx, resource, []map[string]any{{"_id": "valid", "content": "hello"}, tc.entry})
 			assert.Nil(t, results)
@@ -642,7 +841,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 
 	t.Run("constructs writes from materialized documents", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim := newDatasetLocalIndexManagerMock(ctrl)
 		mfs := vmock.NewMockModelFactoryService(ctrl)
 		ds := &datasetService{lim: lim, mfs: mfs}
 		resource := &interfaces.Resource{LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}}}
@@ -666,7 +865,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 			*sharedLogger = *zap.New(core).Sugar()
 			t.Cleanup(func() { *sharedLogger = original })
 			ctrl := gomock.NewController(t)
-			lim := vmock.NewMockLocalIndexManager(ctrl)
+			lim := newDatasetLocalIndexManagerMock(ctrl)
 			mfs := vmock.NewMockModelFactoryService(ctrl)
 			resource := &interfaces.Resource{LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}}}
 			entries := []map[string]any{{"_id": "explicit", "content_vector": []float32{1, 2}}, {"_id": "infer", "content": "hello"}}
@@ -732,7 +931,7 @@ func TestDatasetServiceReplaceDocumentChecksIndexResults(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			rs := vmock.NewMockResourceService(ctrl)
-			lim := vmock.NewMockLocalIndexManager(ctrl)
+			lim := newDatasetLocalIndexManagerMock(ctrl)
 			resource := &interfaces.Resource{ID: "dataset", LocalIndexName: "index"}
 			rs.EXPECT().CheckResourcePermission(gomock.Any(), "dataset", interfaces.OPERATION_TYPE_DATA_WRITE).Return(nil)
 			lim.EXPECT().IndexDocuments(gomock.Any(), "index", []interfaces.DocumentWrite{{ID: "doc", Document: map[string]any{"content": "hello"}}}).Return(tc.results, tc.err)

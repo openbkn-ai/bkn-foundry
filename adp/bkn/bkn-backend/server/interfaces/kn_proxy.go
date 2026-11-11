@@ -160,6 +160,9 @@ type ManagedProxyAccount struct {
 	LoginEnabled              bool   `json:"login_enabled"`
 	CredentialIssuanceEnabled bool   `json:"credential_issuance_enabled"`
 	Version                   int64  `json:"version"`
+	// GrantSyncGeneration is bkn-safe's full-sync fence for this account. It
+	// survives network id reuse, so BKN's own counter must start above it.
+	GrantSyncGeneration int64 `json:"grant_sync_generation"`
 }
 
 // ProxyGrantSourceSpec is one published-model binding's requirement for one
@@ -324,6 +327,9 @@ type KNProxyAccess interface {
 	Ensure(ctx context.Context, mapping *KNProxyAccount) (*KNProxyAccount, bool, error)
 	SetPending(ctx context.Context, tx *sql.Tx, knID, modelVersion, grantorID, lockOwner string, updatedAt int64) (int64, error)
 	ReserveSyncGeneration(ctx context.Context, knID, lockOwner string, updatedAt int64) (int64, error)
+	// ReserveSyncGenerationAbove behaves like ReserveSyncGeneration but first
+	// raises the stored generation to at least floor, never lowering it.
+	ReserveSyncGenerationAbove(ctx context.Context, knID, lockOwner string, floor, updatedAt int64) (int64, error)
 	MarkSyncFailed(ctx context.Context, knID string, generation int64, lockOwner, lastError string, updatedAt int64) (bool, error)
 	ReplacePublishedSnapshotAndMarkReady(ctx context.Context, knID string, generation int64,
 		lockOwner, snapshotVersion string, sources []ProxyGrantSourceSpec, updatedAt int64) error
@@ -368,6 +374,7 @@ type KNProxyBindingResolver interface {
 
 type ManagedProxyAccess interface {
 	Create(ctx context.Context, knID, name string) (*ManagedProxyAccount, bool, error)
+	Get(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Restore(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Disable(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)

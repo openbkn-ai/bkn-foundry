@@ -380,3 +380,39 @@ func TestDisableFailsClosedWithoutAdvancingMappingWhenUserIsMissing(t *testing.T
 		t.Fatalf("failed transition mutated mapping: %+v", mapping)
 	}
 }
+
+func TestAccountExposesGrantSyncFenceOnEveryLifecycleView(t *testing.T) {
+	db := managedProxyTestDB(t)
+	service := managedproxy.New(db)
+	account, _, err := service.Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork, ManagedResourceID: "kn-1", Name: "proxy",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.ManagedProxyAccount{}).Where("proxy_account_id = ?", account.ProxyAccountID).
+		Updates(map[string]any{"grant_sync_generation": 7, "grant_snapshot_version": "v7"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	check := func(name string, got *managedproxy.Account, err error) {
+		t.Helper()
+		if err != nil || got.GrantSyncGeneration != 7 || got.GrantSnapshotVersion != "v7" {
+			t.Fatalf("%s = (%+v, %v), want generation 7 / v7", name, got, err)
+		}
+	}
+	got, err := service.Get(t.Context(), account.ProxyAccountID)
+	check("Get", got, err)
+	got, err = service.Disable(t.Context(), account.ProxyAccountID)
+	check("Disable", got, err)
+	got, err = service.Archive(t.Context(), account.ProxyAccountID)
+	check("Archive", got, err)
+	got, err = service.Restore(t.Context(), account.ProxyAccountID)
+	check("Restore", got, err)
+	again, created, err := service.Create(t.Context(), managedproxy.CreateRequest{
+		ManagedResourceType: managedproxy.ResourceKnowledgeNetwork, ManagedResourceID: "kn-1", Name: "proxy",
+	})
+	if created {
+		t.Fatal("expected existing account")
+	}
+	check("Create replay", again, err)
+}

@@ -94,6 +94,7 @@ func Boot() *Application {
 	logics.SetIndexBuildAccess(indexbuild.NewIndexBuildAccess(appSetting))
 	logics.SetGitStore(gitstore.NewGitStore(appSetting))
 	logics.SetBknBackendAccess(bknbackend.NewBknBackendAccess(appSetting))
+	logics.SetKNVersionAccess(bknbackend.NewKNVersionAccess(appSetting))
 	logics.SetExecutionFactoryAccess(executionfactory.NewExecutionFactoryAccess(appSetting))
 	logics.SetBknAgentAccess(bknagent.NewBknAgentAccess(appSetting))
 	logics.SetRequirementAccess(requirementaccess.NewRequirementAccess(appSetting))

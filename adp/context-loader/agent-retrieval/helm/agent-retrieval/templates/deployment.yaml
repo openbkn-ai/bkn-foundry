@@ -55,6 +55,10 @@ spec:
           imagePullPolicy: {{ .Values.image.service.pullPolicy }}
 
           env:
+            {{- with (.Values.licenseHub | default dict).url }}
+              - name: BKN_SAFE_URL
+                value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.mcpExtensionManifestURL }}
               - name: CONTEXT_LOADER_EXTENSION_MANIFEST_URL
                 value: {{ .Values.mcpExtensionManifestURL | quote }}

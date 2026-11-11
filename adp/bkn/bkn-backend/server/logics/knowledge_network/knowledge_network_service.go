@@ -1751,7 +1751,7 @@ func (kns *knowledgeNetworkService) UpdateKNDetail(ctx context.Context, knID str
 	defer span.End()
 
 	// Update knowledge network details.
-	err := kns.kna.UpdateKNDetail(ctx, knID, branch, detail)
+	err := kns.kna.UpdateKNDetail(ctx, nil, knID, branch, detail)
 	if err != nil {
 		logger.Errorf("UpdateKNDetail error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改知识网络详情失败")

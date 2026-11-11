@@ -15,7 +15,7 @@ import (
 //
 //go:generate mockgen -source ../interfaces/resource_service.go -destination ../interfaces/mock/mock_resource_service.go
 type ResourceService interface {
-	// Create creates a new Resource.
+	// Create creates a user-defined Dataset or logical view after catalog authorization.
 	Create(ctx context.Context, req *ResourceRequest) (*Resource, error)
 	// Get retrieves a Resource by ID.
 	GetByID(ctx context.Context, id string) (*Resource, error)
@@ -68,8 +68,8 @@ type ResourceService interface {
 	InternalUpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) error
 	// InternalUpdateRowCount 仅写入精确数量及时间；tx 为 nil 时直接写库，不创建、提交或回滚事务。
 	InternalUpdateRowCount(ctx context.Context, tx *sql.Tx, resource *Resource, count, countTime int64) error
-	// InternalCreate creates a Resource for internal workers within a transaction.
-	InternalCreate(ctx context.Context, tx *sql.Tx, req *ResourceRequest) (*Resource, error)
+	// InternalCreate creates an already-authorized resource and manages its transaction and failure cleanup.
+	InternalCreate(ctx context.Context, req *ResourceRequest) (*Resource, error)
 	// InternalUpdateStatus updates a Resource status for internal workers within a transaction.
 	InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 }

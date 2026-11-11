@@ -401,6 +401,34 @@ func TestDisableKeepsRunningVersionOnMain(t *testing.T) {
 	}
 }
 
+// The concept syncer leaves versioned networks to the version service; it learns which
+// they are from this list, so a disabled network must drop out of it.
+func TestListVersionedKNIDsFollowsEnableAndDisable(t *testing.T) {
+	f := setup(t)
+	listed := func() bool {
+		ids, err := f.svc.va.ListVersionedKNIDs(f.ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.Contains(ids, f.knID)
+	}
+	if listed() {
+		t.Fatal("listed before enable")
+	}
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if !listed() {
+		t.Fatal("not listed after enable")
+	}
+	if _, err := f.svc.Disable(f.ctx, f.knID, &interfaces.KNDisableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if listed() {
+		t.Fatal("still listed after disable")
+	}
+}
+
 // Disabling removes only the branches versioning added. An ordinary branch the network had
 // before versioning was enabled survives.
 func TestDisableKeepsOrdinaryBranches(t *testing.T) {

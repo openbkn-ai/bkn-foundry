@@ -835,3 +835,182 @@ func TestOpenSearchConnectorCreateDocuments(t *testing.T) {
 		assert.Nil(t, ids)
 	})
 }
+
+func TestOpenSearchConnectorValidateFilterability(t *testing.T) {
+	c := &OpenSearchConnector{}
+	flag := func(value bool) *bool { return &value }
+	t.Run("closed or omitted flags do not parse mapping", func(t *testing.T) {
+		require.NoError(t, c.ValidateFilterability(&interfaces.Resource{SourceMetadata: map[string]any{"mapping": "corrupt"}, SchemaDefinition: []*interfaces.Property{{Name: "closed", Filterable: flag(false)}, {Name: "legacy"}}}))
+	})
+	t.Run("trusted physical mapping and alias targets keep their own capabilities", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, native string
+			attributes   map[string]any
+			want         bool
+		}{
+			{"indexed keyword", "keyword", map[string]any{"index": true, "doc_values": false}, true},
+			{"doc values keyword", "keyword", map[string]any{"index": false, "doc_values": true}, true},
+			{"disabled keyword", "keyword", map[string]any{"index": false, "doc_values": false}, false},
+			{"disabled mapping", "keyword", map[string]any{"enabled": false}, false},
+			{"unindexed text cannot use doc values", "text", map[string]any{"index": false, "doc_values": true}, false},
+			{"indexed text", "text", map[string]any{"index": true}, true},
+			{"object", "object", nil, false}, {"nested", "nested", nil, false}, {"alias chain", "alias", map[string]any{"path": "another_target"}, false},
+		} {
+			for _, alias := range []bool{false, true} {
+				t.Run(tc.name+map[bool]string{false: " field", true: " alias"}[alias], func(t *testing.T) {
+					mapping := map[string]interfaces.IndexFieldMeta{"native": {Name: "native", Type: tc.native, Attributes: tc.attributes, Filterable: flag(false)}}
+					name := "native"
+					if alias {
+						mapping["link"] = interfaces.IndexFieldMeta{Name: "link", Type: "alias", Attributes: map[string]any{"path": "native"}}
+						name = "link"
+					}
+					resource := &interfaces.Resource{SourceMetadata: map[string]any{"mapping": mapping, "columns": "irrelevant invalid table metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "public_field", OriginalName: name, OriginalType: "stale", Attributes: map[string]any{"index": true}, Filterable: flag(true)}}}
+					before, err := json.Marshal(resource)
+					require.NoError(t, err)
+					err = c.ValidateFilterability(resource)
+					if tc.want {
+						require.NoError(t, err)
+					} else {
+						var invalid *interfaces.ConditionBuildError
+						require.ErrorAs(t, err, &invalid)
+					}
+					after, err := json.Marshal(resource)
+					require.NoError(t, err)
+					assert.JSONEq(t, string(before), string(after))
+				})
+			}
+		}
+	})
+	t.Run("index validation never decodes unrelated columns", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": make(chan int), "mapping": map[string]interfaces.IndexFieldMeta{"id": {Name: "id", Type: "keyword"}}}, SchemaDefinition: []*interfaces.Property{{Name: "id", Filterable: flag(true)}}}
+		require.NoError(t, c.ValidateFilterability(resource))
+	})
+	t.Run("multi field capabilities do not enable their parent", func(t *testing.T) {
+		for _, childEnabled := range []bool{false, true} {
+			for _, name := range []string{"parent", "alias", "parent.raw"} {
+				t.Run(name+map[bool]string{false: " child disabled", true: " child enabled"}[childEnabled], func(t *testing.T) {
+					resource := &interfaces.Resource{SourceMetadata: map[string]any{"mapping": map[string]interfaces.IndexFieldMeta{
+						"parent": {Name: "parent", Type: "text", Attributes: map[string]any{"index": false}, SubFields: []interfaces.IndexSubFieldMeta{{Name: "raw", Type: "keyword", Attributes: map[string]any{"index": childEnabled, "doc_values": false}}}},
+						"alias":  {Name: "alias", Type: "alias", Attributes: map[string]any{"path": "parent.raw"}},
+					}}, SchemaDefinition: []*interfaces.Property{{Name: name, Filterable: flag(true)}}}
+					err := c.ValidateFilterability(resource)
+					if name != "parent" && childEnabled {
+						require.NoError(t, err)
+					} else {
+						var invalid *interfaces.ConditionBuildError
+						require.ErrorAs(t, err, &invalid)
+					}
+				})
+			}
+		}
+	})
+	t.Run("incomplete alias mapping is a safe request error", func(t *testing.T) {
+		for _, tc := range []struct {
+			name       string
+			attributes map[string]any
+			target     interfaces.IndexFieldMeta
+		}{
+			{name: "missing path", attributes: map[string]any{"private": "private-details"}},
+			{name: "missing target", attributes: map[string]any{"path": "private-target"}},
+			{name: "missing native type", attributes: map[string]any{"path": "private-target"}, target: interfaces.IndexFieldMeta{Name: "private-target"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				mapping := map[string]interfaces.IndexFieldMeta{"alias": {Name: "alias", Type: "alias", Attributes: tc.attributes}}
+				if tc.target.Name != "" {
+					mapping[tc.target.Name] = tc.target
+				}
+				err := c.ValidateFilterability(&interfaces.Resource{SourceMetadata: map[string]any{"mapping": mapping}, SchemaDefinition: []*interfaces.Property{{Name: "public_alias", OriginalName: "alias", Filterable: flag(true)}}})
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+				assert.Contains(t, invalid.Reason, "cannot confirm")
+				assert.Contains(t, invalid.Reason, "public_alias")
+				assert.NotContains(t, invalid.Reason, "private-")
+			})
+		}
+	})
+	t.Run("corrupt stored mapping cannot be replaced with property defaults", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			raw  any
+		}{{"explicit nil", nil}, {"JSON null", json.RawMessage("null")}, {"typed nil", map[string]interfaces.IndexFieldMeta(nil)}, {"invalid shape", "corrupt"}, {"marshal failure", make(chan int)}} {
+			t.Run(tc.name, func(t *testing.T) {
+				err := c.ValidateFilterability(&interfaces.Resource{SourceMetadata: map[string]any{"mapping": tc.raw}, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalType: "keyword", Filterable: flag(true)}}})
+				require.Error(t, err)
+				var invalid *interfaces.ConditionBuildError
+				assert.NotErrorAs(t, err, &invalid)
+			})
+		}
+	})
+	t.Run("physical mapping attributes determine native capabilities", func(t *testing.T) {
+		for _, supported := range []bool{false, true} {
+			resource := &interfaces.Resource{SourceMetadata: map[string]any{"mapping": map[string]interfaces.IndexFieldMeta{"id": {Name: "id", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": supported}}}}, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalType: "stale", Type: interfaces.DataType_Json, Attributes: map[string]any{"index": true, "doc_values": !supported}, Filterable: flag(true)}}}
+			err := c.ValidateFilterability(resource)
+			if supported {
+				require.NoError(t, err)
+			} else {
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+			}
+		}
+	})
+	t.Run("missing mapping fields cannot be fabricated from schema", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			metadata map[string]any
+		}{
+			{"missing source metadata", nil}, {"missing mapping", map[string]any{"columns": "unrelated"}},
+			{"empty mapping", map[string]any{"mapping": map[string]interfaces.IndexFieldMeta{}}},
+			{"other typed field", map[string]any{"mapping": map[string]interfaces.IndexFieldMeta{"real": {Name: "real", Type: "keyword"}}}},
+			{"other persisted field", map[string]any{"mapping": map[string]any{"real": map[string]any{"name": "real", "type": "keyword"}}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				resource := &interfaces.Resource{SourceMetadata: tc.metadata, SchemaDefinition: []*interfaces.Property{{Name: "public_field", OriginalName: "missing", OriginalType: "keyword", Type: interfaces.DataType_String, Attributes: map[string]any{"index": true}, Filterable: flag(true)}}}
+				before, err := json.Marshal(resource)
+				require.NoError(t, err)
+				err = c.ValidateFilterability(resource)
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+				assert.Contains(t, invalid.Reason, "public_field")
+				after, err := json.Marshal(resource)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+	t.Run("an alias cannot resolve a target supplied only by schema", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"mapping": map[string]interfaces.IndexFieldMeta{"link": {Name: "link", Type: "alias", Attributes: map[string]any{"path": "private_target"}}}}, SchemaDefinition: []*interfaces.Property{
+			{Name: "public_alias", OriginalName: "link", Filterable: flag(true)},
+			{Name: "private_target", OriginalType: "keyword", Attributes: map[string]any{"index": true}, Filterable: flag(false)},
+		}}
+		before, err := json.Marshal(resource)
+		require.NoError(t, err)
+		err = c.ValidateFilterability(resource)
+		var invalid *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &invalid)
+		assert.Contains(t, invalid.Reason, "public_alias")
+		assert.NotContains(t, invalid.Reason, "private_target")
+		after, err := json.Marshal(resource)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(before), string(after))
+	})
+
+	t.Run("persisted mapping resolves child aliases and additional fields without changing source", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"mapping": map[string]interfaces.IndexFieldMeta{
+			"parent":     {Name: "parent", Type: "text", Attributes: map[string]any{"index": false}, SubFields: []interfaces.IndexSubFieldMeta{{Name: "raw", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": true, "enabled": true}}}},
+			"alias":      {Name: "alias", Type: "alias", Attributes: map[string]any{"path": "parent.raw"}},
+			"future":     {Name: "future", Type: "unknown-native", Attributes: map[string]any{"enabled": true}},
+			"historical": {Name: "historical", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": true}},
+		}}, SchemaDefinition: []*interfaces.Property{{Name: "public_alias", OriginalName: "alias", OriginalType: "stale", Filterable: flag(true)}, {Name: "historical", OriginalType: "keyword", Attributes: map[string]any{"index": false, "doc_values": true}, Filterable: flag(true)}}}
+		before, err := json.Marshal(resource)
+		require.NoError(t, err)
+		var stored interfaces.Resource
+		require.NoError(t, json.Unmarshal(before, &stored))
+		require.NoError(t, c.ValidateFilterability(&stored))
+		after, err := json.Marshal(resource)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(before), string(after))
+		storedAfter, err := json.Marshal(stored)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(before), string(storedAfter))
+	})
+}

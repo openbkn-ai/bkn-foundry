@@ -23,6 +23,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index"
 )
 
 const defaultBulkRequestMaxBytes = 32 * 1024 * 1024
@@ -1007,4 +1008,53 @@ func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, indexNam
 		results[i] = entry
 	}
 	return results, nil
+}
+
+// ValidateFilterability 依据持久化索引映射校验显式开启，不读取无关 Table 列元数据或访问源端。
+func (c *OpenSearchConnector) ValidateFilterability(resource *interfaces.Resource) error {
+	enabled := false
+	for _, property := range resource.SchemaDefinition {
+		if property.Filterable != nil && *property.Filterable {
+			enabled = true
+			break
+		}
+	}
+	if !enabled {
+		return nil
+	}
+	fields, err := index.FieldMetadata(resource)
+	if err != nil {
+		return err
+	}
+	// 仅展开真实 mapping 中的 multi-field，不从 Schema 构造缺失字段或 alias 目标。
+	for name, field := range fields {
+		for _, sub := range field.SubFields {
+			fields[name+"."+sub.Name] = interfaces.IndexFieldMeta{Name: name + "." + sub.Name, Type: sub.Type, Attributes: sub.Attributes}
+		}
+	}
+	for _, property := range resource.SchemaDefinition {
+		if property.Filterable == nil || !*property.Filterable {
+			continue
+		}
+		name := property.OriginalName
+		if name == "" {
+			name = property.Name
+		}
+		field, exists := fields[name]
+		if !exists || field.Type == "" {
+			return interfaces.NewConditionBuildError("cannot confirm filterability for field %q without source mapping metadata", property.Name)
+		}
+		if field.Type == "alias" {
+			target, _ := field.Attributes["path"].(string)
+			resolved, exists := fields[target]
+			if target == "" || !exists || resolved.Type == "" {
+				return interfaces.NewConditionBuildError("cannot confirm filterability for field %q without source mapping metadata", property.Name)
+			}
+			field = resolved
+		}
+		if !c.IsFilterable(&field) {
+			return interfaces.NewConditionBuildError("field %q does not support filterable=true", property.Name)
+		}
+	}
+	return nil
 }

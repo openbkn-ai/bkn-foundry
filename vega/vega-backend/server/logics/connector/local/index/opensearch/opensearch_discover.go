@@ -211,14 +211,18 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 // resolveIndexAliasTypes 解析别名的有效类型，保留原生 alias 类型和 path 元数据。
 // 无效目标和别名链不作猜测，由 MapType 将未解析的 alias 归为 other。
 func resolveIndexAliasTypes(fields map[string]interfaces.IndexFieldMeta) {
-	targetTypes := make(map[string]string, len(fields))
+	targets := make(map[string]interfaces.IndexFieldMeta, len(fields))
 	for name, field := range fields {
 		if field.Type == "alias" || field.Type == "object" || field.Type == "nested" {
 			continue
 		}
-		targetTypes[name] = field.Type
+		targets[name] = field
 		for _, sub := range field.SubFields {
-			targetTypes[name+"."+sub.Name] = sub.Type
+			targets[name+"."+sub.Name] = interfaces.IndexFieldMeta{
+				Name:       name + "." + sub.Name,
+				Type:       sub.Type,
+				Attributes: sub.Attributes,
+			}
 		}
 	}
 	for name, field := range fields {
@@ -226,7 +230,10 @@ func resolveIndexAliasTypes(fields map[string]interfaces.IndexFieldMeta) {
 			continue
 		}
 		path, _ := field.Attributes["path"].(string)
-		field.ResolvedType = targetTypes[path]
+		target := targets[path]
+		field.ResolvedType = target.Type
+		filterable := isFilterable(&target)
+		field.Filterable = &filterable
 		fields[name] = field
 	}
 }
@@ -296,14 +303,16 @@ func parseProperties(parentPath string, props map[string]Property, out map[strin
 			currentPath = parentPath + "." + name
 		}
 		if prop.Type != "object" && prop.Type != "" {
-			out[currentPath] = interfaces.IndexFieldMeta{
+			field := interfaces.IndexFieldMeta{
 				Name:        currentPath,
 				Description: descriptionFromFieldMeta(prop.Attributes),
 				Type:        prop.Type,
-				Searchable:  isSearchable(prop.Attributes),
 				Attributes:  prop.Attributes,
 				SubFields:   collectSubFields(prop),
 			}
+			filterable := isFilterable(&field)
+			field.Filterable = &filterable
+			out[currentPath] = field
 		}
 		if len(prop.Properties) > 0 {
 			parseProperties(currentPath, prop.Properties, out)
@@ -318,11 +327,6 @@ func descriptionFromFieldMeta(attributes map[string]any) string {
 	}
 	description, _ := meta["description"].(string)
 	return description
-}
-
-func isSearchable(attributes map[string]any) bool {
-	searchable, ok := attributes["index"].(bool)
-	return !ok || searchable
 }
 
 // collectSubFields returns multi-fields in name order for stable serialization.

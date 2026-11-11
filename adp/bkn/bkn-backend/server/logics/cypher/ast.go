@@ -44,6 +44,11 @@ type Query struct {
 	OrderBy  []SortKey
 	Skip     *int64
 	Limit    *int64
+	// SkipParameter and LimitParameter are set for SKIP $name and LIMIT $name.
+	// bindRowCounts puts the supplied value in Skip or Limit before the query
+	// is planned, so everything after it reads one integer either way.
+	SkipParameter  *ParameterRef
+	LimitParameter *ParameterRef
 
 	// The fields below come from a WITH that aggregates, which the reader
 	// folds into this one query. GroupKeys are what the WITH grouped by,

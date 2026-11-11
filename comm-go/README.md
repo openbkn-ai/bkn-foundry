@@ -69,6 +69,9 @@ grep -rlE 'openbkn-ai/bkn-foundry/comm-go v[0-9]' --include=go.mod . | xargs -n1
 - `entitlement/socket` —— 插座通用注册表，各服务的插座（`mcptool`、将来的
   `httproute`）共用它来保证「注册只在装配期、必须声明能力与档位、重复键必炸、
   列举稳定排序」这四条。
+- `knversion` —— bkn-backend 因请求里的知识网络版本而拒绝时使用的 7 个错误码及其文案。
+  经 bkn-backend 读取的服务（如 ontology-query）原样返回这些错误码；错误码在一个进程里
+  只能登记一次，所以由这里统一登记，各服务引用，不再各自声明。
 - 其余（`audit` `common` `crypto` `db` `hydra` `i18n` `logger` `middleware`
   `mq` `otel` `rest`）为回迁前既有的基础设施封装。
 

@@ -28,7 +28,7 @@ var (
 )
 
 var regressionColumns = []string{
-	"f_network_id", "f_project_id", "f_version", "f_status", "f_run_id", "f_attempt", "f_runner", "f_runner_type",
+	"f_release_id", "f_project_id", "f_version", "f_status", "f_run_id", "f_attempt", "f_runner", "f_runner_type",
 	"f_questions", "f_results", "f_error", "f_start_time", "f_finish_time",
 }
 
@@ -43,12 +43,12 @@ func NewRegressionAccess(appSetting *common.AppSetting) interfaces.RegressionAcc
 	return raAccess
 }
 
-func (ra *regressionAccess) GetRegression(ctx context.Context, networkID string) (*interfaces.Regression, bool, error) {
+func (ra *regressionAccess) GetRegression(ctx context.Context, releaseID string) (*interfaces.Regression, bool, error) {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "GetRegression")
 	defer span.End()
 
 	sqlStr, vals, err := sq.Select(regressionColumns...).From(REGRESSION_TABLE_NAME).
-		Where(sq.Eq{"f_network_id": networkID}).
+		Where(sq.Eq{"f_release_id": releaseID}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -57,7 +57,7 @@ func (ra *regressionAccess) GetRegression(ctx context.Context, networkID string)
 	r := &interfaces.Regression{}
 	var questions, results string
 	err = ra.db.QueryRowContext(ctx, sqlStr, vals...).Scan(
-		&r.NetworkID, &r.ProjectID, &r.Version, &r.Status, &r.RunID, &r.Attempt, &r.Runner.ID, &r.Runner.Type,
+		&r.ReleaseID, &r.ProjectID, &r.Version, &r.Status, &r.RunID, &r.Attempt, &r.Runner.ID, &r.Runner.Type,
 		&questions, &results, &r.Error, &r.StartTime, &r.FinishTime,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -109,8 +109,8 @@ func (ra *regressionAccess) StartRegression(ctx context.Context, r *interfaces.R
 
 	// The row lock makes two starts of one release take turns: the second sees the first running.
 	// A release's first start has no row to lock, so the row is made sure of first.
-	sqlStr, vals, err := sq.Insert(REGRESSION_TABLE_NAME).Columns("f_network_id", "f_questions", "f_results").
-		Values(r.NetworkID, "", "").Suffix("ON DUPLICATE KEY UPDATE f_network_id = f_network_id").
+	sqlStr, vals, err := sq.Insert(REGRESSION_TABLE_NAME).Columns("f_release_id", "f_questions", "f_results").
+		Values(r.ReleaseID, "", "").Suffix("ON DUPLICATE KEY UPDATE f_release_id = f_release_id").
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -121,7 +121,7 @@ func (ra *regressionAccess) StartRegression(ctx context.Context, r *interfaces.R
 		return false, err
 	}
 	sqlStr, vals, err = sq.Select("f_status", "f_start_time").From(REGRESSION_TABLE_NAME).
-		Where(sq.Eq{"f_network_id": r.NetworkID}).Suffix("FOR UPDATE").
+		Where(sq.Eq{"f_release_id": r.ReleaseID}).Suffix("FOR UPDATE").
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -142,7 +142,7 @@ func (ra *regressionAccess) StartRegression(ctx context.Context, r *interfaces.R
 		Set("f_run_id", r.RunID).Set("f_attempt", r.Attempt).Set("f_runner", r.Runner.ID).
 		Set("f_runner_type", r.Runner.Type).Set("f_questions", questions).Set("f_results", results).
 		Set("f_error", r.Error).Set("f_start_time", r.StartTime).Set("f_finish_time", r.FinishTime).
-		Where(sq.Eq{"f_network_id": r.NetworkID}).
+		Where(sq.Eq{"f_release_id": r.ReleaseID}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -179,7 +179,7 @@ func (ra *regressionAccess) FinishRegression(ctx context.Context, r *interfaces.
 		Set("f_status", r.Status).Set("f_attempt", r.Attempt).Set("f_questions", questions).Set("f_results", results).
 		Set("f_error", r.Error).Set("f_finish_time", r.FinishTime).
 		Where(sq.Eq{
-			"f_network_id": r.NetworkID,
+			"f_release_id": r.ReleaseID,
 			"f_run_id":     r.RunID,
 			"f_status":     interfaces.REGRESSION_STATUS_RUNNING,
 		}).

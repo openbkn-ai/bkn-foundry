@@ -126,6 +126,12 @@ type BknAgentAnswerRequest struct {
 	Message         string `json:"message"`
 	ClientRequestID string `json:"client_request_id"`
 	KNID            string `json:"-"`
+	// KNVersion is the version of the network to answer on (KN_VERSION_DRAFT, say); empty is the
+	// running version.
+	KNVersion string `json:"-"`
+	// DraftRevision pins reads of the draft to one revision: a read of a draft that moved on is
+	// refused. 0 does not pin.
+	DraftRevision int64 `json:"-"`
 }
 
 // BknAgentAnswer is how an answer ended. ErrorCode is bkn-agent's code for a failed one, such as

@@ -29,7 +29,7 @@ func TestActionTypeSingleResourceAuthorization(t *testing.T) {
 		}},
 		{"update", interfaces.OPERATION_TYPE_MODIFY, func(service *actionTypeService, ctx context.Context) error {
 			return service.UpdateActionType(ctx, nil, &interfaces.ActionType{
-				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"},
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}},
 				KNID:                   "kn-1", Branch: interfaces.MAIN_BRANCH,
 			}, false)
 		}},
@@ -45,7 +45,7 @@ func TestActionTypeSingleResourceAuthorization(t *testing.T) {
 			denied := errors.New("denied")
 			if tt.name == "detail" {
 				ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}).
-					Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}}}, nil)
+					Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}}}, nil)
 			} else {
 				ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").
 					Return("action", true, nil)
@@ -75,8 +75,8 @@ func TestActionTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T)
 
 	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, ids).
 		Return([]*interfaces.ActionType{
-			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}},
-			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-2"}},
+			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
+			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-2", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
 		}, nil)
 	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{
 		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, ID: "kn-1/at-1"}, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},

@@ -13,7 +13,7 @@ import (
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
-func TestActionTypeIndexPayloadKeepsExistingStringFields(t *testing.T) {
+func TestActionTypeIndexPayloadKeepsOperationConfigAsObject(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	vbs := mock_interfaces.NewMockVegaBackendService(ctrl)
 	service := &actionTypeService{appSetting: &common.AppSetting{}, vbs: vbs}
@@ -21,7 +21,7 @@ func TestActionTypeIndexPayloadKeepsExistingStringFields(t *testing.T) {
 		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 			ATID: "at-1", ATName: "action",
 			Parameters: []interfaces.Parameter{{Name: "input", Type: "string"}},
-			Condition:  &interfaces.ActionCondCfg{Field: "state", Operation: "=="},
+			Condition:  &interfaces.ActionCondCfg{Field: "state", Operation: "=="}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 		},
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
 	}
@@ -32,6 +32,10 @@ func TestActionTypeIndexPayloadKeepsExistingStringFields(t *testing.T) {
 			}
 			if _, ok := document["condition"].(string); !ok {
 				t.Fatalf("condition = %#v, want encoded string", document["condition"])
+			}
+			config, ok := document["operation_config"].(map[string]any)
+			if !ok || config["type"] != "tool" {
+				t.Fatalf("operation_config must remain an object in the concept index: %#v", document["operation_config"])
 			}
 			if document["_id"] == "" {
 				t.Fatal("missing document ID")

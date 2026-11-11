@@ -131,18 +131,18 @@ func (mr *MockResourceServiceMockRecorder) GetByIDs(ctx, ids, includeRowCount an
 }
 
 // InternalCreate mocks base method.
-func (m *MockResourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+func (m *MockResourceService) InternalCreate(ctx context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalCreate", ctx, tx, req)
+	ret := m.ctrl.Call(m, "InternalCreate", ctx, req)
 	ret0, _ := ret[0].(*interfaces.Resource)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalCreate indicates an expected call of InternalCreate.
-func (mr *MockResourceServiceMockRecorder) InternalCreate(ctx, tx, req any) *gomock.Call {
+func (mr *MockResourceServiceMockRecorder) InternalCreate(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalCreate", reflect.TypeOf((*MockResourceService)(nil).InternalCreate), ctx, tx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalCreate", reflect.TypeOf((*MockResourceService)(nil).InternalCreate), ctx, req)
 }
 
 // InternalGetByCatalogID mocks base method.

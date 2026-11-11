@@ -157,9 +157,8 @@ type IndexMetaResponse struct {
 
 // FieldMeta field metadata
 type FieldMeta struct {
-	Type       string `json:"type"`
-	Analyzer   string `json:"analyzer,omitempty"`
-	Searchable bool   `json:"searchable"`
+	Type       string         `json:"type"`
+	Attributes map[string]any `json:"attributes"`
 }
 
 // SearchRequest Search request

@@ -6,9 +6,11 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -16,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters/httpx"
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -56,10 +59,10 @@ func (r *restHandler) GetRelease(c *gin.Context, visitor hydra.Visitor) {
 	defer span.End()
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	networkID := c.Param("network_id")
-	span.SetAttributes(attr.Key("network_id").String(networkID))
+	lineageID, version := c.Param("lineage_id"), c.Param("version")
+	span.SetAttributes(attr.Key("lineage_id").String(lineageID), attr.Key("version").String(version))
 
-	release, err := r.rs.GetRelease(ctx, networkID)
+	release, err := r.rs.GetRelease(ctx, lineageID, version)
 	if err != nil {
 		replyError(c, span, err)
 		return
@@ -68,8 +71,9 @@ func (r *restHandler) GetRelease(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, release)
 }
 
-// PublishRelease serves POST /lineages/{lineage_id}/releases with
-// {"branch", "version", "project_id", "notes"}.
+// PublishRelease serves POST /lineages/{lineage_id}/releases with {"branch", "version",
+// "project_id", "notes", "overwrite_draft_changes", "allow_outdated_base"}: it prepares the
+// branch in the network's draft and publishes it at once, with no regression in between.
 func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -86,6 +90,14 @@ func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 	span.SetAttributes(attr.Key("branch").String(req.Branch), attr.Key("version").String(req.Version))
 
 	publisher := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	// A publish of the version sent before with no answer is finished, not prepared anew: publishing
+	// resends it as it was.
+	if _, err := r.ls.PrepareRelease(ctx, visitor.TokenID, lineageID, req, publisher); err != nil && !isCode(err, perrors.BknProject_Release_PublishPending) {
+		replyError(c, span, err)
+		return
+	}
+	// The notes went with preparing; publishing adds none of its own.
+	req.Notes = ""
 	result, err := r.ls.PublishRelease(ctx, visitor.TokenID, lineageID, req, publisher, gitAuthor(visitor))
 	if err != nil {
 		replyError(c, span, err)
@@ -98,4 +110,10 @@ func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 // parseLimit reads the page size, from 1 to max; an absent limit takes the default.
 func parseLimit(ctx context.Context, value string, defaultLimit int, max int) (int, error) {
 	return httpx.ParseLimit(ctx, value, defaultLimit, max)
+}
+
+// isCode tells whether err is the bkn-project error code.
+func isCode(err error, code string) bool {
+	var httpErr *httperrors.HTTPError
+	return errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == code
 }

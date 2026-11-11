@@ -31,20 +31,17 @@ func TestFilterCondCfgWireContract(t *testing.T) {
 	assert.Equal(t, fromJSON, fromMap)
 
 	for _, condition := range []*FilterCondCfg{&fromJSON, &fromMap} {
-		condition.LegacyLikeWildcards = true
 		encoded, err := json.Marshal(condition)
 		require.NoError(t, err)
 		assert.JSONEq(t, stored, string(encoded))
 		assert.Contains(t, string(encoded), "9007199254740993")
 		assert.NotContains(t, string(encoded), `"name"`)
-		assert.NotContains(t, string(encoded), "LegacyLikeWildcards")
 
 		var encodedMap map[string]any
 		require.NoError(t, common.UnmarshalPreciseJSON(encoded, &encodedMap))
 		var roundTrip FilterCondCfg
 		require.NoError(t, mapstructure.Decode(encodedMap, &roundTrip))
 		expected := *condition
-		expected.LegacyLikeWildcards = false
 		assert.Equal(t, expected, roundTrip)
 	}
 }

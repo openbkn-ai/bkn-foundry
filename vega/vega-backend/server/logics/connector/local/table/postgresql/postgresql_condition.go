@@ -222,24 +222,39 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	return sqlSetCondition(sqlResourceColumn(cond.Lfield), cond.Lfield, cond.Value, true)
 }
 
-// ConvertFilterConditionLike builds a substring LIKE predicate with escaped input.
+// ConvertFilterConditionLike 将完整 SQL LIKE 模式作为绑定参数，显式指定转义字符。
 func (c *PostgresqlConnector) ConvertFilterConditionLike(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.LikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.LikeCond")
 	}
-
-	return &sb.Like{Expr: sqlResourceColumn(cond.Lfield), Pattern: &sb.Param{Value: "%" + Special.Replace(cond.Value) + "%"}}, nil
+	if err := filter_condition.ValidateLikePattern(filter_condition.OperationLike, cond.Value); err != nil {
+		return nil, err
+	}
+	escape := "\\"
+	return &sb.Like{
+		Expr:    sqlResourceColumn(cond.Lfield),
+		Pattern: &sb.Param{Value: cond.Value},
+		Escape:  &escape,
+	}, nil
 }
 
-// ConvertFilterConditionNotLike builds a negated substring LIKE predicate with escaped input.
+// ConvertFilterConditionNotLike 沿用 SQL NOT LIKE 的模式及 NULL 三值语义。
 func (c *PostgresqlConnector) ConvertFilterConditionNotLike(condition interfaces.FilterCondition) (sb.SqlNode, error) {
 	cond, ok := condition.(*filter_condition.NotLikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotLikeCond")
 	}
-
-	return &sb.Like{Expr: sqlResourceColumn(cond.Lfield), Pattern: &sb.Param{Value: "%" + Special.Replace(cond.Value) + "%"}, Negated: true}, nil
+	if err := filter_condition.ValidateLikePattern(filter_condition.OperationNotLike, cond.Value); err != nil {
+		return nil, err
+	}
+	escape := "\\"
+	return &sb.Like{
+		Expr:    sqlResourceColumn(cond.Lfield),
+		Pattern: &sb.Param{Value: cond.Value},
+		Escape:  &escape,
+		Negated: true,
+	}, nil
 }
 
 // ConvertFilterConditionRegex builds a regular-expression predicate.

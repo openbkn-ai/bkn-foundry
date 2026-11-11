@@ -26,7 +26,7 @@ import (
 
 func approve(aliases ...string) *interfaces.ActionType {
 	return &interfaces.ActionType{
-		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "approve", ATName: "审批"},
+		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "approve", ATName: "审批", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}},
 		Aliases:                aliases,
 		KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
 	}
@@ -55,7 +55,7 @@ func TestCheckActionTypeDeclarations(t *testing.T) {
 
 func TestCheckActionTypeAliasNames(t *testing.T) {
 	ctx := context.Background()
-	reject := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "reject", ATName: "驳回"}}
+	reject := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "reject", ATName: "驳回", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}}
 
 	ata := bmock.NewMockActionTypeAccess(gomock.NewController(t))
 	ats := &actionTypeService{ata: ata}

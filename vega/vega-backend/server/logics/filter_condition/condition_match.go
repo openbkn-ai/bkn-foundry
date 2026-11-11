@@ -38,9 +38,7 @@ func (c *MatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	// First, obtain the fields array from the RemainCfg
 	if cfgFields, ok := cfg.RemainCfg["fields"].([]any); ok {
 		if len(cfgFields) == 1 && cfgFields[0] == interfaces.AllField {
-			for _, field := range fieldsMap {
-				fields = append(fields, field)
-			}
+			fields = append(fields, wildcardFields(fieldsMap)...)
 		} else {
 			// The field array needs to be a string array
 			for _, cfgField := range cfgFields {
@@ -61,9 +59,7 @@ func (c *MatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 			return nil, fmt.Errorf("condition [match] left field is empty")
 		}
 		if cfg.Field == interfaces.AllField {
-			for fieldName := range fieldsMap {
-				fields = append(fields, fieldsMap[fieldName])
-			}
+			fields = append(fields, wildcardFields(fieldsMap)...)
 		} else {
 			field, ok := fieldsMap[cfg.Field]
 			if !ok {

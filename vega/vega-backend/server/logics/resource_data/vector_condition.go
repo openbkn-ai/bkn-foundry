@@ -54,6 +54,25 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 	if err != nil {
 		return err
 	}
+	var vectorProperty *interfaces.Property
+	usesLocalIndex := resourcelogic.HasAvailableLocalIndex(resource) &&
+		(resource.Category == interfaces.ResourceCategoryDataset ||
+			resource.Category == interfaces.ResourceCategoryTable && !ignoreLocalIndex)
+	if usesLocalIndex {
+		generatedFields, err := rds.lim.GeneratedFields(resource.SchemaDefinition)
+		if err != nil {
+			return fmt.Errorf("prepare local index generated fields: %w", err)
+		}
+		vectorProperty = generatedFields[field]
+	}
+	if vectorProperty == nil {
+		for _, property := range resource.SchemaDefinition {
+			if property != nil && property.Name == field {
+				vectorProperty = property
+				break
+			}
+		}
+	}
 	modelID, err := rds.embeddingModelForIndex(ctx, resource, cfg.Field)
 	if err != nil {
 		return err
@@ -74,16 +93,7 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 		return fmt.Errorf("condition [knn_vector] model %q returned no vector for %q", modelID, text)
 	}
 
-	vectorProperty := local_index.GeneratedFields(resource.SchemaDefinition)[field]
-	if vectorProperty == nil {
-		for _, property := range resource.SchemaDefinition {
-			if property != nil && property.Name == field {
-				vectorProperty = property
-				break
-			}
-		}
-	}
-	if err := filter_condition.ValidateVectorDimension(vectorProperty, vectors[0].Vector); err != nil {
+	if err := filter_condition.ValidateKnnValue(vectorProperty, vectors[0].Vector); err != nil {
 		// 错误向量来自模型输出，不能作为调用方输入错误继续传播。
 		return fmt.Errorf("condition [knn_vector] embedding model returned an invalid vector: %s", err.Error())
 	}

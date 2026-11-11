@@ -153,10 +153,10 @@ func (m *MCPClient) initClient(ctx context.Context) error {
 
 	switch mode {
 	case interfaces.MCPModeSSE:
-		httpClient := m.createHTTPClient()
+		httpClient := mcpAuthStatusClient(m.createHTTPClient())
 		cli, err = client.NewSSEMCPClient(m.MCPCoreConfigInfo.URL, client.WithHeaders(m.MCPCoreConfigInfo.Headers), client.WithHTTPClient(httpClient))
 	case interfaces.MCPModeStream:
-		httpClient := m.createHTTPClient()
+		httpClient := mcpAuthStatusClient(m.createHTTPClient())
 		cli, err = client.NewStreamableHttpClient(m.MCPCoreConfigInfo.URL, transport.WithHTTPHeaders(m.MCPCoreConfigInfo.Headers), transport.WithHTTPBasicClient(httpClient))
 	default:
 		return errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtMCPModeNotSupported,

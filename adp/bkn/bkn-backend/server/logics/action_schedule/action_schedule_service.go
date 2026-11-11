@@ -58,6 +58,27 @@ func NewActionScheduleService(appSetting *common.AppSetting) interfaces.ActionSc
 	return assService
 }
 
+func (s *actionScheduleService) validateScheduleTarget(ctx context.Context, schedule *interfaces.ActionSchedule) error {
+	actionTypes, err := s.ata.GetActionTypesByIDs(ctx, schedule.KNID, schedule.Branch, []string{schedule.ActionTypeID})
+	if err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionSchedule_GetActionTypeFailed).
+			WithErrorDetails(err.Error())
+	}
+	if len(actionTypes) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.ActionTypeNotFound", map[string]any{"actionTypeID": schedule.ActionTypeID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_ActionTypeNotFound).
+			WithErrorDetails(localizedText)
+	}
+	if err := interfaces.ValidateIdentitySchedule(actionTypes[0], schedule.InstanceIdentities); err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
+	return nil
+}
+
 // CreateSchedule creates a new action schedule
 func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *interfaces.ActionSchedule) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CreateSchedule")
@@ -75,23 +96,8 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 		return "", httpErr
 	}
 
-	// Validate action type exists
-	actionTypes, err := s.ata.GetActionTypesByIDs(ctx, schedule.KNID, schedule.Branch, []string{schedule.ActionTypeID})
-	if err != nil {
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionSchedule_GetActionTypeFailed).
-			WithErrorDetails(err.Error())
-		otellog.LogError(ctx, "Failed to get action type", httpErr)
-		return "", httpErr
-	}
-	if len(actionTypes) == 0 {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.ActionTypeNotFound", map[string]any{"actionTypeID": schedule.ActionTypeID})
-		if renderErr != nil {
-			logger.Errorf("localized message rendering failed: %v", renderErr)
-		}
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_ActionTypeNotFound).
-			WithErrorDetails(localizedText)
-		otellog.LogError(ctx, "Action type not found", httpErr)
-		return "", httpErr
+	if err := s.validateScheduleTarget(ctx, schedule); err != nil {
+		return "", err
 	}
 	if err := s.checkActionExecution(ctx, "schedule_create", schedule.KNID, schedule.ActionTypeID, schedule.DynamicParams); err != nil {
 		return "", err
@@ -201,6 +207,16 @@ func (s *actionScheduleService) UpdateSchedule(ctx context.Context, scheduleID s
 
 	executableConfigChanged := req.CronExpression != "" || req.InstanceIdentities != nil || req.DynamicParams != nil
 	if executableConfigChanged {
+		identities := existing.InstanceIdentities
+		if req.InstanceIdentities != nil {
+			identities = req.InstanceIdentities
+		}
+		if err := s.validateScheduleTarget(ctx, &interfaces.ActionSchedule{
+			KNID: existing.KNID, Branch: existing.Branch, ActionTypeID: existing.ActionTypeID,
+			InstanceIdentities: identities,
+		}); err != nil {
+			return err
+		}
 		dynamicParams := existing.DynamicParams
 		if req.DynamicParams != nil {
 			dynamicParams = req.DynamicParams
@@ -289,6 +305,9 @@ func (s *actionScheduleService) UpdateScheduleStatus(ctx context.Context, schedu
 
 	if status == interfaces.ScheduleStatusActive &&
 		existing.Status != interfaces.ScheduleStatusActive {
+		if err := s.validateScheduleTarget(ctx, existing); err != nil {
+			return err
+		}
 		if err := s.checkActionExecution(ctx, "schedule_activate", existing.KNID, existing.ActionTypeID, existing.DynamicParams); err != nil {
 			return err
 		}

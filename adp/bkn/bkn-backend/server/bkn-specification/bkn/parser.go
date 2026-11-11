@@ -38,6 +38,7 @@ var knownRelationTypeSections = map[string]bool{
 }
 
 var knownActionTypeSections = map[string]bool{
+	"Operation Config":  true,
 	"Bound Object":      true,
 	"Affect Object":     true,
 	"Impact Contracts":  true,
@@ -824,6 +825,24 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 	}
 	act.Summary = ExtractSummary(act.Description)
 
+	if section, ok := sections["Operation Config"]; ok {
+		match := yamlBlockRE.FindStringSubmatch(section)
+		if len(match) != 2 {
+			return nil, specErrorf("Operation Config requires a YAML block")
+		}
+		var payload struct {
+			OperationConfig *ActionOperationConfig `yaml:"operation_config"`
+		}
+		decoder := yaml.NewDecoder(strings.NewReader(match[1]))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&payload); err != nil {
+			return nil, specErrorf("invalid Operation Config: %v", err)
+		}
+		if payload.OperationConfig == nil {
+			return nil, specErrorf("Operation Config requires operation_config")
+		}
+		act.OperationConfig = payload.OperationConfig
+	}
 	if s, ok := sections["Bound Object"]; ok {
 		bo, at := parseBoundObject(s)
 		act.BoundObject = bo
@@ -859,6 +878,38 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 	}
 	if s, ok := sections["Schedule"]; ok {
 		act.Schedule = parseSchedule(s)
+	}
+	if act.OperationConfig != nil {
+		for index := range act.Parameters {
+			parameter := &act.Parameters[index]
+			if parameter.ValueFrom != "const" {
+				continue
+			}
+			raw, ok := parameter.Value.(string)
+			if !ok {
+				continue
+			}
+			if !json.Valid([]byte(raw)) {
+				switch strings.ToLower(parameter.Type) {
+				case "string", "text", "keyword", "date", "datetime", "":
+					continue
+				default:
+					return nil, specErrorf("action parameter %q has an invalid JSON constant", parameter.Name)
+				}
+			}
+			decoder := json.NewDecoder(strings.NewReader(raw))
+			decoder.UseNumber()
+			var value any
+			if err := decoder.Decode(&value); err != nil {
+				switch strings.ToLower(parameter.Type) {
+				case "string", "text", "keyword", "date", "datetime", "":
+					continue
+				default:
+					return nil, specErrorf("action parameter %q has an invalid JSON constant", parameter.Name)
+				}
+			}
+			parameter.Value = value
+		}
 	}
 
 	return act, nil
@@ -995,6 +1046,9 @@ func parseParameterBinding(sectionText string, opts parseOptions) ([]Parameter, 
 			ValueFrom:   valueFrom,
 			Value:       row["Value"],
 			Description: row["Description"],
+		}
+		if (param.ValueFrom == "source_identity" || param.ValueFrom == "target_identity") && param.Value == "" {
+			param.Value = nil
 		}
 		if opts.v3() {
 			if err := checkParameterValueSource("action", param); err != nil {

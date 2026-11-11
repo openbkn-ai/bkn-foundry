@@ -97,6 +97,11 @@ type PublishReleaseRequest struct {
 	Version   string `json:"version"`
 	ProjectID string `json:"project_id"`
 	Notes     string `json:"notes"`
+	// OverwriteDraftChanges confirms dropping edits made to the network's draft and not published.
+	OverwriteDraftChanges bool `json:"overwrite_draft_changes"`
+	// AllowOutdatedBase confirms publishing although the running version was rolled back after the
+	// release's base: what was rolled back comes back.
+	AllowOutdatedBase bool `json:"allow_outdated_base"`
 }
 
 type PublishReleaseResult struct {
@@ -105,6 +110,12 @@ type PublishReleaseResult struct {
 	Tag       string   `json:"tag"`
 	// Commit is the head of main after the release.
 	Commit string `json:"commit"`
+	// KNVersion is the network version the release is running as.
+	KNVersion        int                 `json:"kn_version"`
+	Warnings         []KNVersionWarning  `json:"warnings"`
+	PublishedMetrics []KNPublishedMetric `json:"published_metrics"`
+	// PurgedVersion is the network version the community edition cleaned up, 0 for none.
+	PurgedVersion int `json:"purged_version"`
 }
 
 // ReleasePreview is what publishing a project branch as Version would do, read without doing it:
@@ -149,27 +160,6 @@ type ReleaseRefusal struct {
 	Details any    `json:"details,omitempty"`
 }
 
-// SwitchRequest is the body of POST /lineages/{lineage_id}/switches.
-type SwitchRequest struct {
-	// ToNetworkID is a network of the lineage: one a release created, or the base network.
-	ToNetworkID string `json:"to_network_id"`
-	// FromNetworkID, when set, is the network the caller expects in use: the switch is refused
-	// when another switch moved consumers since, checked under the lineage's lock.
-	FromNetworkID string `json:"from_network_id,omitempty"`
-}
-
-// SwitchPlan is what switching the lineage to ToNetworkID would do to the
-// schedules. Agents, MCP configurations, workshop, eval and permissions on the
-// target are switched by their owners and are not listed.
-type SwitchPlan struct {
-	LineageID     string `json:"lineage_id"`
-	FromNetworkID string `json:"from_network_id"`
-	ToNetworkID   string `json:"to_network_id"`
-	// Schedules are the active schedules of the network in use. A switch turns
-	// each on on the target, where it runs as whoever switches, and off here.
-	Schedules []*ActionSchedule `json:"schedules"`
-}
-
 // LineageService sets up release lineages, keeps project branches in step with
 // main and publishes them. Errors are *httperrors.HTTPError.
 //
@@ -197,17 +187,15 @@ type LineageService interface {
 	SyncBranch(ctx context.Context, lineageID string, branch string, author GitAuthor) (*SyncBranchResult, error)
 	// CheckDrift compares the live network knID with main; with commit it also commits the live set to main.
 	CheckDrift(ctx context.Context, token string, lineageID string, knID string, commit bool, author GitAuthor) (*DriftResult, error)
-	// PublishRelease imports a project branch with token as a new knowledge network and records the release.
+	// PrepareRelease writes a project branch, as req.Version, into the draft of the lineage's
+	// versioned network and records the release as prepared.
+	PrepareRelease(ctx context.Context, token string, lineageID string, req PublishReleaseRequest,
+		publisher AccountInfo) (*Release, error)
+	// PublishRelease publishes the prepared release of req.Version as the network's running version.
 	PublishRelease(ctx context.Context, token string, lineageID string, req PublishReleaseRequest,
 		publisher AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
 	// PreviewRelease runs the checks of PublishRelease without acting on any, and reports what
 	// publishing the branch as version would do and every refusal it would meet now.
 	PreviewRelease(ctx context.Context, token string, lineageID string, branch string,
 		version string) (*ReleasePreview, error)
-	// PlanSwitch reports what switching the lineage to toNetworkID would do, without doing it.
-	PlanSwitch(ctx context.Context, token string, lineageID string, toNetworkID string) (*SwitchPlan, error)
-	// SwitchConsumers moves the lineage's schedules to req.ToNetworkID and records the switch. A
-	// rollback is a switch back to an earlier network.
-	SwitchConsumers(ctx context.Context, token string, lineageID string, req SwitchRequest,
-		operator AccountInfo) (*Switch, error)
 }

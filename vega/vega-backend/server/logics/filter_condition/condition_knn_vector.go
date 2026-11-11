@@ -38,10 +38,11 @@ func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if cfg.Field == "" {
 		return nil, fmt.Errorf("condition [knn_vector] left field is empty")
 	}
-	field, ok := fieldsMap[cfg.Field]
+	_, ok := fieldsMap[cfg.Field]
 	if !ok {
 		return nil, fmt.Errorf("condition [knn_vector] left field '%s' not found", cfg.Field)
 	}
+	field := FilterFieldForOperation(cfg.Field, OperationKnnVector, fieldsMap)
 	if field.Type != interfaces.DataType_Vector {
 		return nil, fmt.Errorf("condition [knn_vector] left field '%s' type must be vector", cfg.Field)
 	}
@@ -49,7 +50,7 @@ func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [knn_vector] does not support value_from type '%s'", cfg.ValueFrom)
 	}
 
-	if err := ValidateVectorDimension(field, cfg.Value); err != nil {
+	if err := ValidateKnnValue(field, cfg.Value); err != nil {
 		return nil, err
 	}
 
@@ -67,26 +68,36 @@ func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 
 	return &KnnVectorCond{
 		Cfg:             cfg,
-		FilterFieldName: cfg.Field,
+		FilterFieldName: field.Name,
 		SubConds:        subConds,
 	}, nil
 }
 
-// ValidateVectorDimension 按向量字段的索引配置校验长度；旧索引没有维度元数据时交由连接器处理。
-func ValidateVectorDimension(field *interfaces.Property, value any) error {
+// ValidateKnnValue 校验查询文本或非空有限数值向量；向量长度按可用的索引维度元数据检查。
+func ValidateKnnValue(field *interfaces.Property, value any) error {
+	if _, text := value.(string); text {
+		return nil
+	}
+	vector := reflect.ValueOf(value)
+	if !vector.IsValid() || vector.Kind() != reflect.Slice || vector.Len() == 0 || vector.Type().Elem().Kind() == reflect.Uint8 {
+		return interfaces.NewConditionBuildError("condition [knn_vector] value must be query text or a non-empty numeric vector")
+	}
+	for i := 0; i < vector.Len(); i++ {
+		if _, numeric := common.NumberAsFloat64(vector.Index(i).Interface()); !numeric {
+			return interfaces.NewConditionBuildError("condition [knn_vector] vector element at index %d must be a finite number", i)
+		}
+	}
 	if field == nil {
 		return nil
 	}
-	if IsSlice(value) {
-		actual := reflect.ValueOf(value).Len()
-		for _, feature := range field.Features {
-			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
-				continue
-			}
-			expected, known := common.NumberAsInt64(feature.Config["dimension"])
-			if known && expected > 0 && int64(actual) != expected {
-				return interfaces.NewConditionBuildError("condition [knn_vector] field '%s': query vector has dimension %d; index requires dimension %d", field.Name, actual, expected)
-			}
+	actual := vector.Len()
+	for _, feature := range field.Features {
+		if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+			continue
+		}
+		expected, known := common.NumberAsInt64(feature.Config["dimension"])
+		if known && expected > 0 && int64(actual) != expected {
+			return interfaces.NewConditionBuildError("condition [knn_vector] field '%s': query vector has dimension %d; index requires dimension %d", field.Name, actual, expected)
 		}
 	}
 	return nil

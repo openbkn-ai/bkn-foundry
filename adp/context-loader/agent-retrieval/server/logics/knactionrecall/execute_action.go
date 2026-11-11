@@ -25,6 +25,8 @@ func (s *knActionRecallServiceImpl) ExecuteAction(ctx context.Context, req *inte
 		AtID:               req.AtID,
 		InstanceIdentities: req.InstanceIdentities,
 		DynamicParams:      req.DynamicParams,
+		RelationTarget:     req.RelationTarget,
+		ObjectInput:        req.ObjectInput,
 	}
 
 	resp, err := s.ontologyQuery.ExecuteActions(ctx, execReq)

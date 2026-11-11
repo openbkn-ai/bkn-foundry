@@ -550,6 +550,11 @@ func (rta *relationTypeAccess) GetRelationTypesTotal(ctx context.Context, query 
 }
 
 func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID string, branch string, rtID string) (*interfaces.RelationType, error) {
+	return rta.GetRelationTypeByIDInTx(ctx, nil, knID, branch, rtID)
+}
+
+// GetRelationTypeByIDInTx sees relation definitions created in the same import transaction.
+func (rta *relationTypeAccess) GetRelationTypeByIDInTx(ctx context.Context, tx *sql.Tx, knID string, branch string, rtID string) (*interfaces.RelationType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetRelationTypeByID")
 	defer span.End()
 
@@ -598,7 +603,12 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 	var mappingRulesBytes []byte
 	var decl scannedDeclarations
 
-	row := rta.db.QueryRowContext(ctx, sqlStr, vals...)
+	var row *sql.Row
+	if tx != nil {
+		row = tx.QueryRowContext(ctx, sqlStr, vals...)
+	} else {
+		row = rta.db.QueryRowContext(ctx, sqlStr, vals...)
+	}
 	err = row.Scan(
 		&relationType.RTID,
 		&relationType.RTName,

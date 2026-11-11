@@ -148,20 +148,36 @@ func TestIsPhysicalResourceCategory(t *testing.T) {
 	}
 }
 
-func TestResourceColumnMetadata(t *testing.T) {
-	column := TableColumnMeta{Name: "FLAG", Type: "NUMBER", NumPrecision: 1, NumScale: 0}
-	for _, raw := range []any{
-		[]TableColumnMeta{column},
-		[]any{map[string]any{"name": "FLAG", "type": "NUMBER", "num_precision": json.Number("1"), "num_scale": json.Number("0")}},
-	} {
-		resource := &Resource{SourceMetadata: map[string]any{"columns": raw}}
-		if got := resource.ColumnMetadata(); !reflect.DeepEqual(got, map[string]TableColumnMeta{"FLAG": column}) {
-			t.Fatalf("column metadata = %#v", got)
-		}
-	}
-	for _, resource := range []*Resource{nil, {}, {SourceMetadata: map[string]any{}}, {SourceMetadata: map[string]any{"columns": "invalid"}}} {
-		if got := resource.ColumnMetadata(); got != nil {
-			t.Fatalf("expected absent column metadata, got %#v", got)
+func TestPropertyFilterableJSON(t *testing.T) {
+	for _, literal := range []string{`{"type":"string"}`, `{"type":"string","filterable":false}`, `{"type":"json","filterable":true}`} {
+		for _, codec := range []struct {
+			name      string
+			marshal   func(any) ([]byte, error)
+			unmarshal func([]byte, any) error
+		}{{"json", json.Marshal, json.Unmarshal}, {"sonic", sonic.Marshal, sonic.Unmarshal}} {
+			t.Run(codec.name+literal, func(t *testing.T) {
+				var property Property
+				if err := codec.unmarshal([]byte(literal), &property); err != nil {
+					t.Fatal(err)
+				}
+				encoded, err := codec.marshal(property)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var again Property
+				if err := codec.unmarshal(encoded, &again); err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(property.Filterable, again.Filterable) {
+					t.Fatalf("filterable changed on round trip: %s", encoded)
+				}
+				if property.Filterable == nil && strings.Contains(string(encoded), "filterable") {
+					t.Fatalf("serialization filled a historical omission: %s", encoded)
+				}
+				if property.Filterable != nil && !*property.Filterable && !strings.Contains(string(encoded), `"filterable":false`) {
+					t.Fatalf("explicit false lost: %s", encoded)
+				}
+			})
 		}
 	}
 }
