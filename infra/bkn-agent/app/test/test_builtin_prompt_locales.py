@@ -126,7 +126,8 @@ def test_official_locale_migration_preserves_versions_and_is_idempotent():
             for row in agents
             if row["f_agent_id"] == "resource-semantic-understanding"
         )
-        assert "api_name rules" in json.loads(resource["f_localized_content"])["en-US"]
+        # v7 no longer asks for api_name.
+        assert "api_name" not in json.loads(resource["f_localized_content"])["en-US"]
 
 
 @pytest.mark.parametrize(
