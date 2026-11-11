@@ -62,6 +62,8 @@ Notes:
 - Importing a toolbox does not check its statements, because the target environment may not have the network yet. A statement that no longer fits fails when it is called.
 - `LIMIT` and `SKIP` take an integer or a `$parameter` (of type `number`, called with a non-negative integer), for a "first N" or paged function. A `table` statement without `LIMIT` returns at most 1000 rows, with `limited` set to `true` when there were more; a statement that writes its own `LIMIT` is cut there and `limited` does not say so. `LIMIT` is at most 10000.
 - A `value` statement that takes one row with `LIMIT 1` needs an `ORDER BY`, or which row it gets is arbitrary; aggregate (`count()`, `max()` and the like) where you can.
+- Numbers come back in two forms. A decimal property and a `sum()` over one come back as strings (such as `"13833141.000000"`), keeping the data source's precision; a computed value, such as the ratio `sum(a) * 100.0 / sum(b)`, comes back as a number (such as `72.8975147437592`). A caller converts both forms to numbers before comparing or computing with them.
+- A statement runs for at most 55 seconds at the data source (bkn-backend's `cypherQueryTimeoutSec`). The call's `timeout` sets how long the caller waits and cannot extend that limit. Aggregates over several hops on a full data set time out easily: expanding a 3-hop BOM for every product times out, while narrowing the starting nodes with `STARTS WITH $prefix`, a key or another condition brings it back within the limit. Try the statement with typical arguments before saving it and watch how long it takes.
 
 ## CLI
 

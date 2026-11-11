@@ -296,8 +296,10 @@ func createCypherResponses(shape interfaces.CypherResultShape) []*interfaces.Res
 	if shape == interfaces.CypherResultShapeValue {
 		body.Description = "The single value the statement returns; null when it matches nothing"
 		body.Properties["value"] = openapi3.NewSchemaRef("", &openapi3.Schema{
-			Description: "A string, a number, a boolean or null",
-			Nullable:    true,
+			Description: "A string, a number, a boolean or null. A decimal property and a sum() over one " +
+				"come back as a string such as \"13833141.000000\", keeping their precision; " +
+				"a computed value such as a ratio comes back as a number",
+			Nullable: true,
 		})
 		body.Required = []string{"value"}
 	} else {
@@ -305,7 +307,9 @@ func createCypherResponses(shape interfaces.CypherResultShape) []*interfaces.Res
 		columns := openapi3.NewArraySchema().WithItems(openapi3.NewObjectSchema())
 		columns.Description = "Returned columns: name and type"
 		entries := openapi3.NewArraySchema().WithItems(openapi3.NewObjectSchema())
-		entries.Description = "One object per row, keyed by column name"
+		entries.Description = "One object per row, keyed by column name. A decimal value comes back as " +
+			"a string such as \"13833141.000000\", keeping its precision; a computed value such as a " +
+			"ratio comes back as a number"
 		limited := openapi3.NewBoolSchema()
 		limited.Description = "True when the statement wrote no LIMIT and the default cut the rows short"
 		body.Properties["columns"] = openapi3.NewSchemaRef("", columns)
