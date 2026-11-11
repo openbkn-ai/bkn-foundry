@@ -1093,4 +1093,4 @@ def test_a_chain_chart_follows_a_relation_from_a_type_to_itself():
 def test_analysis_instructions_draw_a_chain_as_a_chart():
     run, _ = _analysis_run([])
     text = "\n".join(graph._card_instructions(run))
-    assert "产业链" in text and "kind chain" in text and "do not clear" in text
+    assert "industry chain" in text and "kind chain" in text and "do not clear" in text

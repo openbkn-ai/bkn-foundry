@@ -1704,7 +1704,7 @@ def _card_instructions(run: builtin_tools.Run) -> list[str]:
         " a new line from nothing: no card is deleted and the user is not asked to confirm, so say that, not"
         " that a confirmation follows. Layout, labels, grouping and the other view tools change nothing in an"
         " analysis; do not offer or claim them.",
-        "An industry chain, supply chain or upstream and downstream (产业链、上下游、供应链) is a chain chart:"
+        "An industry chain, supply chain or upstream and downstream is a chain chart:"
         " one run_cypher that returns the instances of one type and the links of a relation from that type to"
         " itself (MATCH (a:T)-[r:R]->(b:T) RETURN a, r, b), then configure_analysis with kind chain, otIds [T]"
         " and chainRelByOt {T: R}. Do not draw the chain by adding batches of nodes, and do not clear to start"
