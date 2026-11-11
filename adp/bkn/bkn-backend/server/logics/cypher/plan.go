@@ -472,6 +472,9 @@ type CompileOptions struct {
 
 // Compile binds a query to a knowledge network and produces its plan.
 func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
+	if err := bindRowCounts(query, options.Parameters); err != nil {
+		return nil, err
+	}
 	if query.Intersection != nil {
 		return compileIntersection(query.Intersection, schema, options)
 	}
