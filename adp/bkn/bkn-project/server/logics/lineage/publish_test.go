@@ -54,8 +54,9 @@ func publishedQuery(id string) interfaces.ReleasesQuery {
 	return interfaces.ReleasesQuery{LineageID: id, State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}
 }
 
-func preparedQuery(id string) interfaces.ReleasesQuery {
-	return interfaces.ReleasesQuery{LineageID: id, State: interfaces.RELEASE_STATE_PREPARED, Limit: interfaces.MAX_RELEASE_LIMIT}
+// draftWritersQuery lists every release of the lineage, to find the one that wrote the draft.
+func draftWritersQuery(id string) interfaces.ReleasesQuery {
+	return interfaces.ReleasesQuery{LineageID: id, Limit: interfaces.MAX_RELEASE_LIMIT}
 }
 
 // versionRefusal is a refusal of the bkn-backend version API.
@@ -186,8 +187,8 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			live, _ := setUp(id)
 			expectDraftEdited := func() {
 				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), nil, nil)
-				// The draft's revision is not one a prepared release of the lineage wrote.
-				ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{
+				// The draft's revision is not one a release of the lineage wrote.
+				ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{
 					{ID: "other", LineageID: id, Version: "0.9.0", State: interfaces.RELEASE_STATE_PREPARED, DraftRevision: 5},
 				}, nil)
 				// Its definitions match main, so it is no drift.
@@ -223,7 +224,7 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 				State: interfaces.RELEASE_STATE_PREPARED, DraftRevision: 7, CreateTime: 5}
 			// The draft has edits, all of them what preparing 1.0.0 wrote: no drift check, no question.
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), earlier, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{earlier}, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{earlier}, nil)
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}).
 				Return(&interfaces.BKNImportResult{KNID: id}, int64(9), nil)
 			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(nil)
@@ -258,11 +259,33 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			})
 		})
 
+		Convey("After a switch back, the draft a published release wrote is still the project's: no drift check\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			// 1.0.1 published as version 2 at draft revision 4, then version 1 runs again: the draft is
+			// based on 2, so bkn-backend reports changes against the running version.
+			published := &interfaces.Release{ID: "r2", LineageID: id, NetworkID: id, Version: "1.0.1",
+				State: interfaces.RELEASE_STATE_PUBLISHED, KNVersion: 2, DraftRevision: 4}
+			versioning := versioningAt(1, 4, true)
+			versioning.PreviousVersion, versioning.Draft.BaseVersion, versioning.Draft.Outdated = 2, 2, true
+			expectChecks(kva, ra, id, "1.0.0", versioning, nil, []*interfaces.Release{published})
+			ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{published}, nil)
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 4, Overwrite: true}).
+				Return(&interfaces.BKNImportResult{KNID: id}, int64(6), nil)
+			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(nil)
+			ra.EXPECT().PrepareRelease(gomock.Any(), gomock.Any()).Return(true, nil)
+
+			release, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			So(err, ShouldBeNil)
+			So(release.DraftRevision, ShouldEqual, 6)
+		})
+
 		Convey("Drift between main and the draft replies 409 with the paths and writes nothing\n", func() {
 			id := newLineageID()
 			_, _ = setUp(id)
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), nil, nil)
-			ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{}, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{}, nil)
 			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_DRAFT).
 				Return(definitions("A part.", "A supplier, edited in Studio."), nil)
 

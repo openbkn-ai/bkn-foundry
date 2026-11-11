@@ -130,7 +130,41 @@ func (s *driftService) CommitLiveToMain(ctx context.Context, report *interfaces.
 	return head, nil
 }
 
-// DiffFiles compares the bytes of each path: what was added, changed or removed going from base to next.
+// networkFile is the network's own definition file; its front matter names the version it was
+// exported from (branch: draft, v1, v2 ...), which says nothing about its content.
+const networkFile = "network.bkn"
+
+// sameFile tells whether two copies of a file at path hold the same definitions.
+func sameFile(path string, a []byte, b []byte) bool {
+	if path != networkFile {
+		return bytes.Equal(a, b)
+	}
+	return bytes.Equal(withoutBranch(a), withoutBranch(b))
+}
+
+// withoutBranch drops the branch line of a definition file's front matter.
+func withoutBranch(data []byte) []byte {
+	lines := bytes.SplitAfter(data, []byte("\n"))
+	if len(lines) == 0 || !bytes.Equal(bytes.TrimSpace(lines[0]), []byte("---")) {
+		return data
+	}
+	out := make([]byte, 0, len(data))
+	out = append(out, lines[0]...)
+	inFront := true
+	for _, line := range lines[1:] {
+		if inFront && bytes.Equal(bytes.TrimSpace(line), []byte("---")) {
+			inFront = false
+		}
+		if inFront && bytes.HasPrefix(line, []byte("branch:")) {
+			continue
+		}
+		out = append(out, line...)
+	}
+	return out
+}
+
+// DiffFiles compares the bytes of each path, the network file without the version it names: what was
+// added, changed or removed going from base to next.
 func DiffFiles(base map[string][]byte, next map[string][]byte) interfaces.PathDiff {
 	diff := interfaces.PathDiff{Added: []string{}, Changed: []string{}, Removed: []string{}}
 	for p, data := range next {
@@ -138,7 +172,7 @@ func DiffFiles(base map[string][]byte, next map[string][]byte) interfaces.PathDi
 		switch {
 		case !ok:
 			diff.Added = append(diff.Added, p)
-		case !bytes.Equal(old, data):
+		case !sameFile(p, old, data):
 			diff.Changed = append(diff.Changed, p)
 		}
 	}

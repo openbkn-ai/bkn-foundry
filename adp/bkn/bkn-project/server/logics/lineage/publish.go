@@ -443,19 +443,22 @@ func (s *lineageService) recordInGit(ctx context.Context, gs interfaces.GitStore
 	return commit, nil
 }
 
-// ownDraft tells whether the draft at versioning holds only what a prepared release of the
-// lineage wrote into it.
+// ownDraft tells whether the draft at versioning holds only what a release of the lineage wrote
+// into it.
 func (s *lineageService) ownDraft(ctx context.Context, lineageID string, versioning *interfaces.KNVersioning) (bool, error) {
 	if !versioning.Draft.HasChanges {
 		return true, nil
 	}
-	prepared, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: lineageID,
-		State: interfaces.RELEASE_STATE_PREPARED, Limit: interfaces.MAX_RELEASE_LIMIT})
+	// Any write to the draft raises its revision, so a draft still at the revision a release of the
+	// lineage wrote is that release's: one being prepared, or one published and then switched away
+	// from, which leaves the draft on a base other than the running version.
+	releases, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: lineageID,
+		Limit: interfaces.MAX_RELEASE_LIMIT})
 	if err != nil {
 		return false, err
 	}
-	for _, r := range prepared {
-		if r.DraftRevision == versioning.Draft.Revision {
+	for _, r := range releases {
+		if r.DraftRevision != 0 && r.DraftRevision == versioning.Draft.Revision {
 			return true, nil
 		}
 	}

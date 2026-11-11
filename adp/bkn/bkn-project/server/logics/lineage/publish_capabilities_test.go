@@ -275,7 +275,7 @@ func Test_LineageService_PrepareRelease_Capabilities(t *testing.T) {
 
 			Convey("and another version from the same base copies it under another id\n", func() {
 				expectChecks(kva, ra, id, "1.2.0", versioningAt(2, 8, true), nil, latest)
-				ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{release}, nil)
+				ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{release}, nil)
 				expectExport()
 				_, second := expectCopy()
 				_, _ = expectWrite(9)

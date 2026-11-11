@@ -211,3 +211,32 @@ func Test_DriftService_CommitLiveToMain(t *testing.T) {
 		})
 	})
 }
+
+func Test_DiffFiles(t *testing.T) {
+	Convey("Test DiffFiles\n", t, func() {
+		network := func(branch string, objects string) []byte {
+			return []byte("---\ntype: knowledge_network\nid: kn\nbranch: " + branch + "\n---\n\n# kn\n" + objects)
+		}
+
+		Convey("The network file exported from another version is not a change\n", func() {
+			diff := DiffFiles(map[string][]byte{"network.bkn": network("v2", "| orders |\n")},
+				map[string][]byte{"network.bkn": network("draft", "| orders |\n")})
+
+			So(diff.Empty(), ShouldBeTrue)
+		})
+
+		Convey("but an edit to it still is\n", func() {
+			diff := DiffFiles(map[string][]byte{"network.bkn": network("v2", "| orders |\n")},
+				map[string][]byte{"network.bkn": network("draft", "| orders | edited |\n")})
+
+			So(diff.Changed, ShouldResemble, []string{"network.bkn"})
+		})
+
+		Convey("and other files are compared byte for byte\n", func() {
+			diff := DiffFiles(map[string][]byte{"object_types/orders.bkn": []byte("---\nbranch: v2\n---\n")},
+				map[string][]byte{"object_types/orders.bkn": []byte("---\nbranch: draft\n---\n")})
+
+			So(diff.Changed, ShouldResemble, []string{"object_types/orders.bkn"})
+		})
+	})
+}

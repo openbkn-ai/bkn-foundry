@@ -90,7 +90,7 @@ func Test_LineageService_PreviewRelease(t *testing.T) {
 			expectChecks(kva, ra, id, "1.0.0", versioning,
 				&interfaces.Release{LineageID: id, Version: "1.0.0", State: interfaces.RELEASE_STATE_PUBLISHED},
 				[]*interfaces.Release{{LineageID: id, NetworkID: id, Version: "0.9.0", State: interfaces.RELEASE_STATE_PUBLISHED}})
-			ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return(nil, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return(nil, nil)
 			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_DRAFT).Return(live, nil)
 
 			preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
@@ -117,7 +117,7 @@ func Test_LineageService_PreviewRelease(t *testing.T) {
 			prepared := &interfaces.Release{ID: "r1", LineageID: id, Version: "1.0.0", State: interfaces.RELEASE_STATE_PREPARED, DraftRevision: 7}
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), prepared, nil)
 			// What the draft holds is what preparing wrote, so it is not compared with main.
-			ra.EXPECT().ListReleases(gomock.Any(), preparedQuery(id)).Return([]*interfaces.Release{prepared}, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{prepared}, nil)
 
 			preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
 
