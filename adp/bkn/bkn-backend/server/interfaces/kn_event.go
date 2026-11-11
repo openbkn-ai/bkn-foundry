@@ -13,8 +13,11 @@ import (
 // Knowledge-network events record what happened in the business: a rule found
 // an object in an abnormal state, or a person reported something. They belong
 // to the network, not to an application; applications read the change feed
-// and handle the events in their own tasks. The contract lives in core while
-// the implementation is assembled by the paid image, as with object metrics.
+// and handle the events in their own tasks. Each kind of event is also an
+// object type of the network, its event class, so events are queried, related
+// and authorized like the network's other objects. The contract lives in core
+// while the implementation is assembled by the paid image, as with object
+// metrics.
 
 // Event statuses describe the event itself. How an application handles it is
 // recorded by that application.
@@ -87,6 +90,13 @@ type KnEventType struct {
 	Updater     string          `json:"updater"`
 	UpdaterType string          `json:"updater_type"`
 	UpdateTime  int64           `json:"update_time"`
+
+	// ObjectTypeID is the type's event class: the object type of the network
+	// its events are read as. DatasetID is the dataset behind that object
+	// type, a copy of the ledger which the event module writes. Both are empty
+	// for a type whose class has not been created yet.
+	ObjectTypeID string `json:"object_type_id"`
+	DatasetID    string `json:"dataset_id"`
 }
 
 // KnEventTypeInput creates or replaces an event type. Code and source are

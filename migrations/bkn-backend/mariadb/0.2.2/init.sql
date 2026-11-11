@@ -496,6 +496,9 @@ CREATE TABLE IF NOT EXISTS t_kn_event_type (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者ID',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_object_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件类（对象类）ID，空为尚未建立',
+  f_dataset_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件数据集ID，空为尚未建立',
+  f_dataset_synced TINYINT(1) NOT NULL DEFAULT 0 COMMENT '账本中已有的事件是否已写入数据集',
   PRIMARY KEY (f_kn_id, f_code)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件类型';
 
@@ -576,6 +579,7 @@ CREATE TABLE IF NOT EXISTS t_kn_event_rule_check (
 CREATE TABLE IF NOT EXISTS t_kn_event_head (
   f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
   f_last_seq BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最新变更序号',
+  f_projected_seq BIGINT(20) NOT NULL DEFAULT 0 COMMENT '已写入事件数据集的变更序号',
   PRIMARY KEY (f_kn_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件序号';
 
