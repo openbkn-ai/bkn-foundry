@@ -256,3 +256,18 @@ func TestSafeClientCreateAcceptsArchivedAccountButRejectsOtherStates(t *testing.
 		t.Fatal("Create() accepted a disabling account")
 	}
 }
+
+func TestSafeClientGetParsesGrantSyncGeneration(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/safe/in/v1/managed-proxy-accounts/proxy-1" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"proxy_account_id":"proxy-1","lifecycle_status":"active","grant_sync_generation":9}`))
+	}))
+	defer server.Close()
+
+	account, err := NewManagedProxyAccess(server.URL).Get(t.Context(), "proxy-1")
+	if err != nil || account.GrantSyncGeneration != 9 {
+		t.Fatalf("Get() = (%#v, %v), want generation 9", account, err)
+	}
+}

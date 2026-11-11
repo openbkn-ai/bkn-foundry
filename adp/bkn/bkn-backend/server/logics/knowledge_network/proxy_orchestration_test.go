@@ -102,6 +102,11 @@ func (s *proxyAccessStub) ReserveSyncGeneration(_ context.Context, _ string, _ s
 	return s.generation, nil
 }
 
+func (s *proxyAccessStub) ReserveSyncGenerationAbove(_ context.Context, _ string, _ string, floor, _ int64) (int64, error) {
+	s.generation = max(s.generation, floor) + 1
+	return s.generation, nil
+}
+
 func (s *proxyAccessStub) MarkSyncFailed(_ context.Context, _ string, _ int64, _, _ string, _ int64) (bool, error) {
 	s.syncStatus = interfaces.KNProxySyncFailed
 	return true, nil
@@ -227,6 +232,7 @@ type managedProxyAccessStub struct {
 	createName       string
 	createErr        error
 	createLifecycle  string
+	fence            int64 // bkn-safe's grant sync generation for the account
 	disabled         bool
 	disableLifecycle string
 	archived         bool
@@ -253,7 +259,7 @@ func (s *managedProxyAccessStub) Create(_ context.Context, knID, name string) (*
 		return nil, false, s.createErr
 	}
 	return &interfaces.ManagedProxyAccount{ProxyAccountID: "proxy-1", AccountType: interfaces.KNProxyAccountTypeApp,
-		ManagedResourceID: knID, LifecycleStatus: s.createLifecycle}, true, nil
+		ManagedResourceID: knID, LifecycleStatus: s.createLifecycle, GrantSyncGeneration: s.fence}, true, nil
 }
 
 func TestCreateProxyMappingRestoresArchivedAccountOfReusedNetworkID(t *testing.T) {
@@ -267,6 +273,48 @@ func TestCreateProxyMappingRestoresArchivedAccountOfReusedNetworkID(t *testing.T
 	}
 	if !mpa.restored || mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive {
 		t.Fatalf("restored=%t lifecycle=%q, want restored active", mpa.restored, mapping.LifecycleStatus)
+	}
+}
+
+func TestCreateProxyMappingSeedsSyncGenerationFromReusedAccount(t *testing.T) {
+	kpa := &proxyAccessStub{}
+	mpa := &managedProxyAccessStub{fence: 7}
+	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa}
+
+	mapping, _, err := service.createProxyMapping(t.Context(), &interfaces.KN{KNID: "kn-1", KNName: "network"})
+	if err != nil || mapping.SyncGeneration != 7 {
+		t.Fatalf("createProxyMapping() = (%+v, %v), want SyncGeneration 7", mapping, err)
+	}
+}
+
+func TestRevokeProxyDeleteRealignsGenerationAfterStaleFence(t *testing.T) {
+	// Mapping already out of step with bkn-safe (as on stuck networks): the
+	// first clear is fenced as stale, then retried above the account fence.
+	kpa := &proxyAccessStub{}
+	mpa := &managedProxyAccessStub{fence: 5}
+	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa}
+	plan := &proxyPublishPlan{
+		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDeleting},
+		delegatorID: "grantor-1", lockOwner: "worker-1",
+	}
+	if err := service.revokeProxyDelete(t.Context(), plan); err != nil {
+		t.Fatalf("revokeProxyDelete() = %v, want recovery after stale fence", err)
+	}
+	if mpa.syncCalls != 2 || plan.syncGeneration != 6 {
+		t.Fatalf("syncCalls=%d generation=%d, want one retry at generation 6", mpa.syncCalls, plan.syncGeneration)
+	}
+}
+
+func TestSyncGrantsRepairingStaleRetriesOnlyOnce(t *testing.T) {
+	mpa := &managedProxyAccessStub{fence: 1 << 40} // generation never catches up on its own
+	mpa.syncErr = &interfaces.ManagedProxyStatusError{StatusCode: http.StatusConflict, ErrorCode: interfaces.ManagedProxyErrorStaleSync}
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}, mpa: mpa}
+	plan := &proxyPublishPlan{mapping: &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1"}, lockOwner: "w"}
+	if _, err := service.syncGrantsRepairingStale(t.Context(), plan, "v", nil); err == nil {
+		t.Fatal("want error when retry is still stale")
+	}
+	if mpa.syncCalls != 2 {
+		t.Fatalf("syncCalls=%d, want exactly 2", mpa.syncCalls)
 	}
 }
 
@@ -355,6 +403,10 @@ func TestCreateProxyMappingKeepsTransportFailurePrivate(t *testing.T) {
 		t.Fatalf("transport error = status %d details %#v", httpErr.HTTPCode, httpErr.ErrorDetails)
 	}
 }
+func (s *managedProxyAccessStub) Get(context.Context, string) (*interfaces.ManagedProxyAccount, error) {
+	return &interfaces.ManagedProxyAccount{ProxyAccountID: "proxy-1", GrantSyncGeneration: s.fence}, nil
+}
+
 func (s *managedProxyAccessStub) Restore(context.Context, string) (*interfaces.ManagedProxyAccount, error) {
 	s.restored = true
 	return &interfaces.ManagedProxyAccount{ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive, Enabled: true}, nil
@@ -463,6 +515,10 @@ func (s *managedProxyAccessStub) SyncGrants(_ context.Context, _, _ string, gene
 	sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
 	s.syncCalls++
 	s.fullSyncCalls++
+	if s.fence > 0 && generation <= s.fence {
+		return interfaces.ProxyGrantSyncResult{}, &interfaces.ManagedProxyStatusError{
+			StatusCode: http.StatusConflict, ErrorCode: interfaces.ManagedProxyErrorStaleSync}
+	}
 	s.synced = append([]interfaces.ProxyGrantSourceSpec(nil), sources...)
 	s.syncGenerations = append(s.syncGenerations, generation)
 	s.syncVersions = append(s.syncVersions, snapshotVersion)
@@ -1965,30 +2021,12 @@ func TestFinalizeProxyDeleteRepairsAlreadyArchivedManagedProxy(t *testing.T) {
 	if err := service.finalizeProxyDelete(t.Context(), plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"proxy:disable", "snapshot:delete", "mapping:deleting", "policy:delete", "mapping:archived"}
+	want := []string{"proxy:disable", "grants:sync", "snapshot:delete", "mapping:deleting", "policy:delete", "mapping:archived"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("recovery events = %#v, want %#v", events, want)
 	}
 	if mpa.archived {
 		t.Fatal("already archived managed proxy was archived twice")
-	}
-}
-
-func TestRevokeProxyDeleteSkipsGrantClearForArchivedAccount(t *testing.T) {
-	// A reused network id can leave an archived account behind; bkn-safe
-	// rejects grant sync on it, so delete must not attempt to clear grants.
-	mpa := &managedProxyAccessStub{disableLifecycle: interfaces.KNProxyLifecycleArchived,
-		syncErr: errors.New("archived account rejects grant sync")}
-	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}, mpa: mpa}
-	plan := &proxyPublishPlan{
-		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDeleting},
-		delegatorID: "grantor-1", lockOwner: "worker-1",
-	}
-	if err := service.revokeProxyDelete(t.Context(), plan); err != nil {
-		t.Fatalf("revokeProxyDelete() = %v, want nil", err)
-	}
-	if mpa.syncCalls != 0 || mpa.archived {
-		t.Fatalf("syncCalls=%d archived=%t, want no sync and no second archive", mpa.syncCalls, mpa.archived)
 	}
 }
 

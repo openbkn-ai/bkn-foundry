@@ -61,6 +61,17 @@ func (c *safeClient) Disable(ctx context.Context, proxyAccountID string) (*inter
 	return c.changeLifecycle(ctx, proxyAccountID, "disable")
 }
 
+func (c *safeClient) Get(ctx context.Context, proxyAccountID string) (*interfaces.ManagedProxyAccount, error) {
+	var account interfaces.ManagedProxyAccount
+	if _, err := c.do(ctx, http.MethodGet, "/api/safe/in/v1/managed-proxy-accounts/"+proxyAccountID, nil, &account); err != nil {
+		return nil, err
+	}
+	if account.ProxyAccountID != proxyAccountID {
+		return nil, fmt.Errorf("invalid managed proxy get response")
+	}
+	return &account, nil
+}
+
 func (c *safeClient) Restore(ctx context.Context, proxyAccountID string) (*interfaces.ManagedProxyAccount, error) {
 	return c.changeLifecycle(ctx, proxyAccountID, "restore")
 }
