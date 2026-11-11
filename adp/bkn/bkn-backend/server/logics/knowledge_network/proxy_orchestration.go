@@ -222,6 +222,17 @@ func (kns *knowledgeNetworkService) createProxyMapping(ctx context.Context, kn *
 	if err != nil {
 		return nil, false, managedProxyDependencyHTTPError(ctx, "create managed knowledge network proxy", err)
 	}
+	// bkn-safe creates idempotently per network id, so a reused id yields the
+	// archived account left by the deleted network. Bring it back to active; any
+	// other non-active state is not ours to resurrect and is rejected.
+	if account.LifecycleStatus == interfaces.KNProxyLifecycleArchived {
+		if _, err := kns.mpa.Restore(ctx, account.ProxyAccountID); err != nil {
+			return nil, false, managedProxyDependencyHTTPError(ctx, "restore managed knowledge network proxy", err)
+		}
+		created = true // treat like a fresh account so failure paths compensate it
+	} else if account.LifecycleStatus != "" && account.LifecycleStatus != interfaces.KNProxyLifecycleActive {
+		return nil, false, proxyHTTPError(ctx, http.StatusConflict, "managed knowledge network proxy is not active")
+	}
 	now := time.Now().UnixMilli()
 	mapping := &interfaces.KNProxyAccount{
 		KNID:             kn.KNID,
@@ -230,8 +241,11 @@ func (kns *knowledgeNetworkService) createProxyMapping(ctx context.Context, kn *
 		LifecycleStatus:  interfaces.KNProxyLifecycleActive,
 		Version:          1,
 		SyncStatus:       interfaces.KNProxySyncPending,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		// bkn-safe keeps the fence across network id reuse; start above it so
+		// the first reserved generation is not rejected as stale.
+		SyncGeneration: account.GrantSyncGeneration,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	mapping, mappingCreated, err := kns.kpa.Ensure(ctx, mapping)
 	if err == nil {
@@ -939,8 +953,8 @@ func (kns *knowledgeNetworkService) finishProxyPublish(ctx context.Context, plan
 		return err
 	}
 	plan.grants.logSkipped(ctx, plan.mapping.KNID)
-	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration,
-		latestVersion, sources); err != nil {
+	_, err = kns.syncGrantsRepairingStale(ctx, plan, latestVersion, sources)
+	if err != nil {
 		kns.recordProxySyncFailure(ctx, plan, err)
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "synchronize latest proxy permissions")
 	}
@@ -1174,6 +1188,35 @@ func (kns *knowledgeNetworkService) finalizeProxyAuthorizationDelete(ctx context
 	return nil
 }
 
+// syncGrantsRepairingStale performs a full grant replacement and, when bkn-safe
+// fences it as stale, realigns the mapping's generation with the account's and
+// retries once. A full sync by the current lock owner is authoritative, so it
+// is safe to jump above the account's fence; this repairs mappings that fell
+// out of step when a network id was reused.
+func (kns *knowledgeNetworkService) syncGrantsRepairingStale(ctx context.Context, plan *proxyPublishPlan,
+	snapshotVersion string, sources []interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantSyncResult, error) {
+	result, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration,
+		snapshotVersion, sources)
+	var statusErr *interfaces.ManagedProxyStatusError
+	if err == nil || !errors.As(err, &statusErr) || statusErr.ErrorCode != interfaces.ManagedProxyErrorStaleSync {
+		return result, err
+	}
+	account, getErr := kns.mpa.Get(ctx, plan.mapping.ProxyAccountID)
+	if getErr != nil {
+		return result, err
+	}
+	generation, reserveErr := kns.kpa.ReserveSyncGenerationAbove(ctx, plan.mapping.KNID, plan.lockOwner,
+		account.GrantSyncGeneration, time.Now().UnixMilli())
+	if reserveErr != nil {
+		return result, err
+	}
+	otellog.LogInfo(ctx, fmt.Sprintf("Realigned proxy sync generation %d -> %d after stale fence %d",
+		plan.syncGeneration, generation, account.GrantSyncGeneration))
+	plan.syncGeneration = generation
+	return kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration,
+		snapshotVersion, sources)
+}
+
 // revokeProxyDelete disables the network proxy and removes every grant derived
 // from its bindings while the network row and its own delete permission still
 // exist. Generic child-policy cleanup may run only after this succeeds.
@@ -1198,7 +1241,7 @@ func (kns *knowledgeNetworkService) revokeProxyDelete(ctx context.Context, plan 
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "reserve proxy deletion synchronization generation")
 	}
 	plan.syncGeneration = generation
-	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration, proxyDeleteSnapshotVersion,
+	if _, err := kns.syncGrantsRepairingStale(ctx, plan, proxyDeleteSnapshotVersion,
 		[]interfaces.ProxyGrantSourceSpec{}); err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grants")
 	}
