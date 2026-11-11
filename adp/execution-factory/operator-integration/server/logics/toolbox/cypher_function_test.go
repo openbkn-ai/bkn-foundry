@@ -190,6 +190,28 @@ func TestCypherFunctionArguments(t *testing.T) {
 			t.Fatalf("parameters = %s", got)
 		}
 	})
+	// An optional input left out or sent as null is not sent on; the statement
+	// tests it with $name IS NULL, which bkn-backend decides as null.
+	for _, body := range []any{map[string]any{"id": "S1"}, map[string]any{"id": "S1", "region": nil}} {
+		t.Run("an optional input left out", func(t *testing.T) {
+			backend := &fakeBknBackend{body: `{"columns":[],"entries":[]}`}
+			function := cypherFunction(t, interfaces.CypherResultShapeTable, idInput())
+			spec := openapi3.NewObjectSchema()
+			spec.Properties["id"] = openapi3.NewSchemaRef("", openapi3.NewStringSchema())
+			spec.Properties["region"] = openapi3.NewSchemaRef("", openapi3.NewStringSchema())
+			spec.Required = []string{"id"}
+			function.APISpec = (&interfaces.APISpec{RequestBody: &interfaces.RequestBody{
+				Content: openapi3.NewContentWithJSONSchema(spec)}}).ToJSON()
+			s := newCypherExecutor(t, backend, function)
+			resp := runCypherTool(t, s, body, 0)
+			if resp.StatusCode != http.StatusOK || len(backend.calls) != 1 {
+				t.Fatalf("got %d %s", resp.StatusCode, bodyJSON(t, resp))
+			}
+			if got, _ := json.Marshal(backend.calls[0].Parameters); string(got) != `{"id":"S1"}` {
+				t.Fatalf("parameters = %s", got)
+			}
+		})
+	}
 	refusals := []struct {
 		name string
 		body any
@@ -313,7 +335,7 @@ func TestValidateCypherFunctionMetadata(t *testing.T) {
 		withExample.Example = "2024-01-31"
 		inputs := map[string]*openapi3.Schema{
 			"day": withExample, "n": openapi3.NewFloat64Schema(), "b": openapi3.NewBoolSchema(),
-			"ids": openapi3.NewArraySchema().WithItems(openapi3.NewStringSchema()),
+			"ids":   openapi3.NewArraySchema().WithItems(openapi3.NewStringSchema()),
 			"since": openapi3.NewStringSchema(),
 		}
 		backend := &fakeBknBackend{body: `{"plan":{"columns":[{"name":"c","type":{"kind":"integer"}}]}}`}

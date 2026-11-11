@@ -1503,8 +1503,9 @@ components:
               语句在数据源上最多执行 55 秒（bkn-backend `cypherQueryTimeoutSec`），调用时的
               `timeout` 不能延长它。`inputs` 必须与语句中的 `$name`
               一一对应（多出或缺少都拒绝），类型只能是 `string`、`number`、`boolean`，
-              或这三者之一的 `array`（用于 `IN $name`）；每个入参都必填且要写
-              `description`。`outputs` 由平台按 `result_shape` 生成，请求中的值忽略；
+              或这三者之一的 `array`（用于 `IN $name`）；每个入参都要写
+              `description`。`required: false` 的入参调用时可以不传（或传 null），语句用
+              `($name IS NULL OR …)` 让对应条件在不传时不生效。`outputs` 由平台按 `result_shape` 生成，请求中的值忽略；
               `dependencies`、`dependencies_url` 必须为空。入参的 `example` 会作为保存
               校验时的试算值。
         data:

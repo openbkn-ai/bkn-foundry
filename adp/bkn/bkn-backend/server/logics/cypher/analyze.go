@@ -185,6 +185,9 @@ func analyzeReading(reading []parsing.IOC_ReadingClauseContext, at antlr.ParserR
 	// Conditions from the pattern and from WHERE mean the same thing and are
 	// joined the way Cypher joins them.
 	query.Where = combine("AND", inline, positionOf(lastMatch))
+	if err := refuseBareNullChecks(query.Where); err != nil {
+		return nil, err
+	}
 	if err := scope.resolve(query); err != nil {
 		return nil, err
 	}
@@ -1706,9 +1709,18 @@ func analyzeStringListNullPredicate(ctx parsing.IOC_StringListNullPredicateExpre
 		return nil, operand{}, unsupportedf(ctx, "combining IN and IS NULL in one term",
 			"write them as separate terms joined by AND")
 	}
+	// $name IS NULL makes the condition beside it optional; see optional_filter.go.
+	if len(nulls) == 1 && subject.parameter != nil && subject.parameter.Temporal == "" &&
+		parentheses == groupsConditions {
+		return ParameterNullCheck{
+			Parameter: *subject.parameter,
+			Negated:   nulls[0].NOT() != nil,
+			Pos:       positionOf(ctx),
+		}, operand{}, nil
+	}
 	if subject.property == nil {
 		return nil, operand{}, unsupportedf(ctx, "this predicate",
-			"IN and IS NULL apply to variable.property")
+			"IN applies to variable.property, and IS NULL to variable.property or $parameter")
 	}
 
 	if len(nulls) == 1 {
@@ -1939,6 +1951,8 @@ func refuseNames(predicate Predicate) error {
 			return unsupportedAt(node.ListName.Pos, "IN over something other than a list",
 				"write the values as a list, as in n.property IN [1, 2], or pass one list parameter, as in n.property IN $values")
 		}
+	case ParameterNullCheck:
+		return refuseParameterNullChecks(node)
 	case Negation:
 		return refuseNames(node.Operand)
 	case LogicalOperator:

@@ -340,6 +340,12 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())
 	}
+	// $name IS NULL is decided here too, so the read every later step sizes
+	// is the one the data source will run.
+	if err := bindNullChecks(analyzed, query.Parameters); err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
+			WithErrorDetails(err.Error())
+	}
 	if limitExceeded(analyzed) {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.LimitExceeded", map[string]any{"max": interfaces.CYPHER_MAX_LIMIT})
 		if renderErr != nil {

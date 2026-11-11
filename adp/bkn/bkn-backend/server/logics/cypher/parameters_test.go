@@ -131,7 +131,7 @@ func TestCompileParameterRejections(t *testing.T) {
 			name:       "null",
 			query:      "MATCH (o:Order) WHERE o.region = $region RETURN o.id",
 			parameters: map[string]any{"region": nil},
-			want:       "write IS NULL",
+			want:       "IS NULL OR condition",
 		},
 		{
 			name:       "a type the statement cannot carry",

@@ -19,7 +19,7 @@ A function in a function toolbox has one of two script types: `python` (code run
 | `script_type` | `cypher` |
 | `kn_id` | The knowledge network the statement reads |
 | `code` | One read-only Cypher statement; see the [Cypher query manual](cypher.md) |
-| `inputs` | Exactly the statement's `$name`s; each is a `string`, `number` or `boolean`, or an `array` of one of those for `IN $name`; all are required and all need a description |
+| `inputs` | Exactly the statement's `$name`s; each is a `string`, `number` or `boolean`, or an `array` of one of those for `IN $name`; all need a description; one with `required: false` may be left out of a call, and the statement tests it with `($name IS NULL OR …)` |
 | `result_shape` | `value`: returns `{"value": x}`, one scalar column, `null` for no row, an error for more than one row; `table`: returns `{columns, entries, limited}` |
 
 Before saving, the platform has the knowledge network compile the statement without reading data. A syntax error, a write clause, an object type or property that does not exist, no read permission, or a `value` statement that returns several columns or a node, relationship or list is refused with the reason.
@@ -58,7 +58,8 @@ As a logic property:
 Notes:
 
 - An edit that leaves out `script_type` keeps the function's type. The script type cannot change between `python` and `cypher`; create a new function instead.
-- Parameters replace values only, never object type, relation type or property names. A parameter cannot be `null`, so a filter that applies only when given needs two functions.
+- Parameters replace values only, never object type, relation type or property names.
+- A filter that applies only when given: make the input `required: false` and write `WHERE ($code IS NULL OR s.code = $code)`. A call that passes a value filters by it; one that leaves it out or passes `null` drops the condition. Use an optional input only beside such a test: used anywhere else and left out, the call returns 400 (parameter not supplied).
 - Importing a toolbox does not check its statements, because the target environment may not have the network yet. A statement that no longer fits fails when it is called.
 - `LIMIT` and `SKIP` take an integer or a `$parameter` (of type `number`, called with a non-negative integer), for a "first N" or paged function. A `table` statement without `LIMIT` returns at most 1000 rows, with `limited` set to `true` when there were more; a statement that writes its own `LIMIT` is cut there and `limited` does not say so. `LIMIT` is at most 10000.
 - A `value` statement that takes one row with `LIMIT 1` needs an `ORDER BY`, or which row it gets is arbitrary; aggregate (`count()`, `max()` and the like) where you can.

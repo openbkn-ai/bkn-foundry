@@ -27,7 +27,7 @@
 | `script_type` | `cypher` |
 | `kn_id` | 语句查询的知识网络 |
 | `code` | 只读 Cypher 语句，语法见 [Cypher 查询手册](cypher.md) |
-| `inputs` | 与语句中的 `$name` 一一对应；类型为 `string`、`number`、`boolean`，或它们的 `array`（用于 `IN $name`）；都必填，都要写说明 |
+| `inputs` | 与语句中的 `$name` 一一对应；类型为 `string`、`number`、`boolean`，或它们的 `array`（用于 `IN $name`）；都要写说明；`required: false` 的入参调用时可以不传，语句里要用 `($name IS NULL OR …)` 判空 |
 | `result_shape` | `value`：返回 `{"value": x}`，只能一列标量，0 行为 `null`，多于 1 行报错；`table`：返回 `{columns, entries, limited}` |
 
 保存前平台会让知识网络编译一次语句（不读数据）：语法错误、写操作、对象类或属性不存在、没有读取权限，以及 `value` 形状返回多列或节点、关系、列表时，都拒绝保存并给出原因。
@@ -66,7 +66,8 @@ curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/tool-
 注意：
 
 - 编辑时不传 `script_type` 就沿用函数原来的类型。脚本类型不能在 `python` 与 `cypher` 之间修改，要换类型就新建函数。
-- 语句只能替换值，不能替换对象类、关系类和属性名；参数不接受 `null`，需要「不填就不过滤」时建两个函数。
+- 语句只能替换值，不能替换对象类、关系类和属性名。
+- 「不填就不过滤」：入参设为 `required: false`，语句写 `WHERE ($code IS NULL OR s.code = $code)`。调用时传了值就按它过滤，不传或传 `null` 时这个条件不生效。非必填的入参在语句里只能放在这种判空旁边，别处用到而调用方没传时，返回 400（参数未提供）。
 - 导入工具箱时不校验语句（目标环境可能还没有这个网络），语句失效会在调用时报错。
 - `LIMIT`、`SKIP` 后面可以写整数，也可以写 `$参数`（类型为 `number`，调用时须传非负整数），用来做“前 N 条”或分页。`table` 形状不写 `LIMIT` 时最多返回 1000 行，超出时 `limited` 为 `true`；自己写了 `LIMIT` 时按它截断，`limited` 不再提示。`LIMIT` 最大 10000。
 - `value` 形状用 `LIMIT 1` 取一行时要配 `ORDER BY`，否则取到哪一行不确定；能聚合（`count()`、`max()` 等）时优先聚合。

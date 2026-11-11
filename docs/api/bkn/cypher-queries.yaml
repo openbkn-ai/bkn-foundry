@@ -180,8 +180,12 @@ components:
           description: |-
             Values for the $name references in the query. A parameter is a value and never an
             identifier: it can change which rows come back, never which resource or column is
-            read. Strings, numbers and booleans are accepted; a null is refused, because IS
-            NULL says that and a comparison against null never matches. A parameter used as
+            read. Strings, numbers and booleans are accepted. A null is accepted only where the
+            query tests $name IS NULL, which makes a condition optional: WHERE ($code IS NULL OR
+            s.code = $code) filters by $code when it has a value and drops the condition when
+            it is null or left out. The test is decided before the query runs, so the data
+            source sees the plain condition or none. Anywhere else a null is refused, because a
+            comparison against null never matches. A parameter used as
             IN $name takes an array of scalars of one kind (integers and floats both count as
             numbers), with no null and at most 500 elements; an empty array matches nothing, as
             IN [] does. A string compared with a date, datetime or timestamp property has to be
