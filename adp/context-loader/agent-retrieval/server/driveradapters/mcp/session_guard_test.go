@@ -795,7 +795,7 @@ func TestSessionGuardAttachesOnlyTheReceiptFieldsACallerReads(t *testing.T) {
 		OperationID:          "op-1",
 		Attempt:              1,
 		OperationKey:         "mcp:abc",
-		ToolName:             "run_sql",
+		ToolName:             "run_cypher",
 		ReceiptStatus:        "completed",
 		EvidenceDurability:   "durable",
 		Required:             true,

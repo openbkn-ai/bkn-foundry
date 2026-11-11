@@ -3,8 +3,8 @@
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 // Package knquerytools provides HTTP handlers for the query tools that are also
-// exposed as MCP tools: run_sql, run_cypher, list_knowledge_networks, get_kn_detail,
-// list_resources, describe_resource.
+// exposed as MCP tools: run_cypher, list_knowledge_networks, get_kn_detail,
+// get_object_types, get_relation_types, query_metric.
 // These internal REST endpoints back the operator-integration toolbox entries.
 package knquerytools
 
@@ -28,31 +28,24 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 )
 
-// KnQueryToolsHandler handle run_sql / list_knowledge_networks / get_kn_detail /.
-// Internal REST entry for get_object_types / get_relation_types / list_resources / describe_resource.
+// KnQueryToolsHandler is the REST entry for run_cypher, list_knowledge_networks,
+// get_kn_detail, get_object_types, get_relation_types and query_metric.
 type KnQueryToolsHandler interface {
-	RunSQL(c *gin.Context)
 	RunCypher(c *gin.Context)
 	ListKnowledgeNetworks(c *gin.Context)
 	GetKnDetail(c *gin.Context)
 	GetObjectTypes(c *gin.Context)
 	GetRelationTypes(c *gin.Context)
 	QueryMetric(c *gin.Context)
-	ListResources(c *gin.Context)
-	DescribeResource(c *gin.Context)
 }
 
 type knQueryToolsHandler struct {
 	logger       interfaces.Logger
-	runSQL       knrunsql.KnRunSQLService
 	cypher       kncypher.KnCypherService
-	resources    knresources.KnResourcesService
 	bknBackend   interfaces.BknBackendAccess
 	metrics      knmetrics.KnMetricsService
 	schemaAccess interfaces.ObjectSchemaAccess
@@ -70,9 +63,7 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 		conf := config.NewConfigLoader()
 		handler = &knQueryToolsHandler{
 			logger:       conf.GetLogger(),
-			runSQL:       knrunsql.NewKnRunSQLService(),
 			cypher:       kncypher.NewKnCypherService(),
-			resources:    knresources.NewKnResourcesService(),
 			bknBackend:   drivenadapters.NewBknBackendAccess(),
 			metrics:      knmetrics.NewKnMetricsService(),
 			schemaAccess: drivenadapters.NewObjectSchemaAccess(),
@@ -80,28 +71,6 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 		}
 	})
 	return handler
-}
-
-// RunSQL executes read-only SQL (forced SELECT-only) on data resources mounted on the knowledge network.
-func (h *knQueryToolsHandler) RunSQL(c *gin.Context) {
-	ctx := c.Request.Context()
-	req := &knrunsql.RunSQLReq{}
-	if err := c.ShouldBindJSON(req); err != nil {
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
-		return
-	}
-
-	resp, err := h.runSQL.RunSQL(ctx, req)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#RunSQL] run sql failed: %v", err)
-		if _, ok := errors.HTTPStatus(err); ok {
-			rest.ReplyError(c, err)
-			return
-		}
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
-		return
-	}
-	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
 // RunCypher compiles one read-only Cypher query against the knowledge network's
@@ -248,47 +217,6 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	// by megabytes (#1891).
 	if detailLevel != interfaces.DetailLevelFull {
 		objectpermission.OmitUnrestrictedPermissions(resp.ObjectTypes)
-	}
-	rest.ReplyOK(c, http.StatusOK, resp)
-}
-
-// ListResources Data layer resource direct query: List the data resources that the account has the right to view (with describe_resource + run_sql).
-func (h *knQueryToolsHandler) ListResources(c *gin.Context) {
-	ctx := c.Request.Context()
-	req := &knresources.ListResourcesReq{}
-	// The body is optional; ignore binding errors for an empty body.
-	_ = c.ShouldBindJSON(req)
-
-	resp, err := h.resources.ListResources(ctx, req)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#ListResources] failed: %v", err)
-		rest.ReplyError(c, err)
-		return
-	}
-	rest.ReplyOK(c, http.StatusOK, resp)
-}
-
-// describeResourceReq describe_resource input parameter.
-type describeResourceReq struct {
-	ResourceID string `json:"resource_id" form:"resource_id"`
-}
-
-// DescribeResource takes the physical schema (column + connector type) of a single resource and writes it to run_sql.
-func (h *knQueryToolsHandler) DescribeResource(c *gin.Context) {
-	ctx := c.Request.Context()
-	req := &describeResourceReq{}
-	_ = c.ShouldBindQuery(req)
-	_ = c.ShouldBindJSON(req)
-	if req.ResourceID == "" {
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "resource_id is required"))
-		return
-	}
-
-	resp, err := h.resources.DescribeResource(ctx, req.ResourceID)
-	if err != nil {
-		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#DescribeResource] failed: %v", err)
-		rest.ReplyError(c, err)
-		return
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
@@ -487,7 +415,7 @@ func renderNotice(lang i18n.Language, key string, args map[string]any) string {
 // QueryMetric takes the number according to the metric's own semantics (step 3 of the OT-first path).
 //
 // Separate from get_logic_properties_values: instance level, which one has bound logical properties; class level, or unbound.
-// Logical attributes go this way. Neither should be replaced by run_sql - the semantics is in MetricDefinition.
+// Logical attributes go this way. Neither should be re-derived in a query - the semantics is in MetricDefinition.
 func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &interfaces.QueryMetricReq{}

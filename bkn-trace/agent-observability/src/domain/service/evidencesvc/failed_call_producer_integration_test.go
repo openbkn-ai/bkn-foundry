@@ -104,7 +104,7 @@ func TestFailedCallProducerToLedgerIntegrity(t *testing.T) {
 
 	checked := 0
 	for _, call := range contract.Calls {
-		if call.Name != "validation failure" && call.Name != "empty SQL" && call.Name != "missing SQL resource" && call.Name != "SQL backend failure" && call.Name != "SQL policy without target" {
+		if call.Name != "validation failure" && call.Name != "backend failure after resolving targets" && call.Name != "policy rejection" {
 			continue
 		}
 		checked++
@@ -142,7 +142,7 @@ func TestFailedCallProducerToLedgerIntegrity(t *testing.T) {
 			receipt.RequestID = fact.RequestID
 			receipt.TraceID = fact.TraceID
 			report, err := evaluateRecordIntegrity(snapshot, owner, now, nil)
-			if call.Name == "SQL policy without target" {
+			if call.Name == "policy rejection" {
 				if err == nil || !strings.Contains(err.Error(), "failed-call target context unavailable") {
 					t.Fatalf("targetless policy rejection mislabeled as input rejection: %+v %v", report, err)
 				}
@@ -151,10 +151,10 @@ func TestFailedCallProducerToLedgerIntegrity(t *testing.T) {
 			if err != nil || report == nil || report.Status != "complete" {
 				t.Fatalf("producer receipt failed integrity before event arrives: %+v %v", report, err)
 			}
-			if call.Name != "SQL backend failure" {
+			if call.Name != "backend failure after resolving targets" {
 				return
 			}
-			// A known SQL target must also be recoverable from its matching Ledger event.
+			// A known target must also be recoverable from its matching Ledger event.
 			receipt.BusinessRefs = nil
 			if _, err := evaluateRecordIntegrity(snapshot, owner, now, nil); err == nil || !strings.Contains(err.Error(), "failed-call target context unavailable") {
 				t.Fatalf("unknown target negative relaxed: %v", err)
@@ -179,8 +179,8 @@ func TestFailedCallProducerToLedgerIntegrity(t *testing.T) {
 			}
 		})
 	}
-	if checked != 5 {
-		t.Fatalf("expected five real failure contracts, got %d", checked)
+	if checked != 3 {
+		t.Fatalf("expected three real failure contracts, got %d", checked)
 	}
 }
 

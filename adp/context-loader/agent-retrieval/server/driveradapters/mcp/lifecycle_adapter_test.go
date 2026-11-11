@@ -31,7 +31,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
@@ -730,7 +729,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 		name          string
 		wantRetryable bool
 		wantStage     string
-		wantResource  string
+		wantRefs      []bkntrace.BusinessRef
 		wantCode      string
 		wantMessage   string
 		toolName      string
@@ -753,23 +752,29 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 		{name: "missing Cypher network", wantStage: "input_validation", wantCode: "RUN_CYPHER_KN_ID_REQUIRED", wantMessage: kncypher.ErrKnIDRequired.Error(), toolName: "run_cypher", input: map[string]any{}, next: handleRunCypher(kncypher.NewKnCypherServiceWith(nil), nil)},
 
 		{name: "missing search network", wantStage: "input_validation", wantCode: "invalid_arguments", toolName: "search_instance", input: map[string]any{}, next: handleSearchInstance(knsearch.NewKnSearchService(), nil)},
-		{name: "SQL policy without target", wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED", toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM inventory"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
-		{name: "SQL policy with target", wantStage: "sql_guard", wantCode: "RUN_SQL_READ_ONLY_REJECTED", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
-		{name: "untrusted failure stage", wantCode: "tool_error", wantMessage: "untrusted failure", toolName: "run_sql", input: map[string]any{}, next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		{name: "untrusted failure stage", wantCode: "tool_error", wantMessage: "untrusted failure", toolName: "run_cypher", input: map[string]any{}, next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			result := mcpsdk.NewToolResultError("untrusted failure")
 			result.StructuredContent = map[string]any{"stage": "input_validation"}
 			return result, nil
 		}},
 
-		{name: "empty SQL", wantStage: "input_validation", wantCode: "RUN_SQL_SQL_REQUIRED", wantMessage: knrunsql.ErrSQLRequired.Error(), toolName: "run_sql", input: map[string]any{"sql": ""}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
-		{name: "missing SQL resource", wantStage: "input_validation", wantCode: "RUN_SQL_RESOURCE_PLACEHOLDER_REQUIRED", wantMessage: knrunsql.ErrNoResourcePlaceholder.Error(), toolName: "run_sql", input: map[string]any{"sql": "SELECT 1"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(nil))},
-		{name: "SQL backend failure", wantStage: "vega_query", wantCode: "RUN_SQL_VEGA_QUERY_FAILED", wantMessage: "backend unavailable", wantResource: "resource:inventory", toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{inventory}}"}, next: handleRunSQL(knrunsql.NewKnRunSQLServiceWith(&failedCallVega{}))},
-
 		{
-			name: "policy rejection", wantCode: "tool_error", wantMessage: "run_sql is read-only",
-			toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{purchase_order_resource}} WHERE status = 'closed'"},
+			name: "policy rejection", wantCode: "tool_error", wantMessage: "run_cypher is read-only",
+			toolName: "run_cypher", input: map[string]any{"query": "MATCH (o:purchase_order) WHERE o.status = 'closed' DELETE o"},
 			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-				return mcpsdk.NewToolResultError("run_sql is read-only"), nil
+				return mcpsdk.NewToolResultError("run_cypher is read-only"), nil
+			},
+		},
+		{
+			// A handler that resolved its targets before failing: the receipt
+			// carries what it resolved and the stage it reported.
+			name: "backend failure after resolving targets", wantStage: "schema_query", wantCode: "SCHEMA_BACKEND_FAILED", wantMessage: "backend unavailable",
+			wantRefs: []bkntrace.BusinessRef{{RefType: "object_type", RefID: "object:kn_demo:inventory", Version: "unversioned"}},
+			toolName: "get_object_types", input: map[string]any{"ids": []any{"inventory"}},
+			next: func(ctx context.Context, _ mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+				bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", "kn_demo", []string{"inventory"}, nil, false)
+				bkntrace.RecordToolFailure(ctx, "SCHEMA_BACKEND_FAILED", "schema_query")
+				return mcpsdk.NewToolResultError("backend unavailable"), nil
 			},
 		},
 		{
@@ -782,7 +787,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 		},
 		{
 			name: "panic", wantCode: "handler_panic", wantMessage: "deterministic business defect",
-			toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{purchase_order_resource}} LIMIT 1"},
+			toolName: "run_cypher", input: map[string]any{"query": "MATCH (o:purchase_order) RETURN o.code LIMIT 1"},
 			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 				panic("deterministic business defect")
 			},
@@ -846,7 +851,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 			failure.Stage != expectedFailureStage(tests[index].wantStage) {
 			t.Errorf("%s error fact=%#v err=%v", tests[index].name, failure, err)
 		}
-		if tests[index].wantResource != "" && !reflect.DeepEqual(body.BusinessRefs, []bkntrace.BusinessRef{{RefType: "data_resource", RefID: tests[index].wantResource, Version: "unversioned"}}) {
+		if tests[index].wantRefs != nil && !reflect.DeepEqual(body.BusinessRefs, tests[index].wantRefs) {
 			t.Errorf("%s refs=%+v", tests[index].name, body.BusinessRefs)
 		}
 		if tests[index].wantStage == "input_validation" && len(body.BusinessRefs) != 0 {
@@ -1107,15 +1112,15 @@ func TestManagedBusinessToolsPreservePreciseArgumentsAndResults(t *testing.T) {
 			},
 		},
 		{
-			name: "run_sql",
+			name: "run_cypher",
 			input: map[string]any{
-				"sql":           "SELECT purchase_order_number, supplier_name FROM {{purchase_order_resource}} WHERE material_number = '101-000015' ORDER BY created_at DESC LIMIT 20",
-				"query_timeout": 60,
+				"query":      "MATCH (o:purchase_order) WHERE o.material_number = $material RETURN o.purchase_order_number, o.supplier_name ORDER BY o.created_at DESC LIMIT 20",
+				"parameters": map[string]any{"material": "101-000015"},
 			},
 			output: map[string]any{
-				"columns":     []any{map[string]any{"name": "purchase_order_number", "type": "string"}, map[string]any{"name": "supplier_name", "type": "string"}},
-				"entries":     []any{map[string]any{"purchase_order_number": "PO-240801", "supplier_name": "华东供应商"}},
-				"total_count": 1,
+				"columns": []any{"o.purchase_order_number", "o.supplier_name"},
+				"rows":    []any{map[string]any{"o.purchase_order_number": "PO-240801", "o.supplier_name": "华东供应商"}},
+				"limited": false,
 			},
 		},
 	}
@@ -1476,12 +1481,6 @@ func expectedFailureStage(stage string) string {
 	return stage
 }
 
-type failedCallVega struct{ interfaces.DrivenVega }
-
-func (*failedCallVega) RawQuery(context.Context, *interfaces.VegaRawQueryReq) (*interfaces.VegaRawQueryResp, error) {
-	return nil, errors.New("backend unavailable")
-}
-
 type failedCallSender struct{}
 
 func (failedCallSender) Send(context.Context, evidencepublisher.Record) error { return nil }
@@ -1533,7 +1532,7 @@ type lateFailureContent struct{ ctx context.Context }
 
 func (value lateFailureContent) MarshalJSON() ([]byte, error) {
 	bkntrace.RecordToolFailure(value.ctx, "late_backend_error", "backend")
-	bkntrace.EmitRunSQLFailure(value.ctx, nil, "late", []string{"late"}, bkntrace.RunSQLFailure{Code: "late_backend_error", Stage: "backend"})
+	bkntrace.EmitSchemaSnapshotEvents(value.ctx, nil, "object", "late", []string{"late"}, nil, false)
 	return []byte(`{"message":"original failure"}`), nil
 }
 

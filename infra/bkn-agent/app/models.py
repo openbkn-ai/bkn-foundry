@@ -182,7 +182,7 @@ class ContextLoaderToolRef(_ToolRefBase):
     # When undeclared, the existing behaviour of loading every Context Loader
     # business tool is preserved. An agent meant for read-only diagnosis must
     # list the permitted MCP tool names explicitly, so it cannot still receive
-    # run_sql or execution-class tools beyond what the prompt constrains.
+    # query or execution-class tools beyond what the prompt constrains.
     allowed_tools: Optional[list[str]] = Field(
         default=None,
         max_length=100,

@@ -46,5 +46,5 @@ def handler(event: dict) -> dict:
 # 也可以用已发布的对象指标 V1 口径取数，而不是自己聚合：
 #   kn.query_metric(kn_id, "{{metric_id}}", {{published_version}},
 #                   query={"time": {"start": start_ms, "end": end_ms}})
-# 或对数据资源执行只读 SQL（表名写 {{<resource_id>}} 占位符）：
-#   kn.run_sql(kn_id, "SELECT COUNT(*) AS n FROM {{<resource_id>}}")
+# 或用只读 Cypher 做分组聚合（节点标签写对象类 id，属性写对象类属性名）：
+#   kn.run_cypher(kn_id, "MATCH (o:{{object_type_id}}) RETURN o.{{field_a}}, count(*) AS n")

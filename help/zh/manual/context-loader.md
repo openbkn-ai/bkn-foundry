@@ -85,8 +85,8 @@ Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会
 | `list_knowledge_networks` | 列出知识网络 |
 | `bkn_start_interaction` / `bkn_finish_interaction` | 会话生命周期（业务可追溯性） |
 
-`run_sql`、`list_resources`、`describe_resource` 不在 MCP 面上：它们按调用者自己的数据资源授权返回物理列，绕开知识网络的属性级规则，只保留 REST 入口
-（`POST /kn/run_sql` 等）。模型侧要聚合用 `run_cypher`，要指标用 `query_metric`。
+`run_sql`、`list_resources`、`describe_resource` 已移除，MCP 和 REST 都不再提供（`POST /kn/run_sql` 等三条路由返回 404）：它们按调用者自己的数据资源授权返回物理列，绕开知识网络的属性级规则。
+要聚合用 `run_cypher`，要指标用 `query_metric`。
 
 `get_kn_detail` 在对象类超过 200、或关系类超过 600 的知识网络上只返回导航壳：概念组、三类概念的数量与一条 `notice`，三个概念数组回 `null`（`detail_level=full` 同样如此）。这类网络的全量 Schema 有一兆多，模型读不进去；该规模下先用概念组把范围收敛到 1-3 个分组，再用 `search_schema` 取概念；网络没划概念组时，`notice` 会改为让你直接调 `search_schema`。要按页走完这类网络的全部对象类，用 `get_object_types` 不传 `ids` 列举对象类索引（只有 id/name/comment，默认 50 条一页，响应带 `total_count` 与 `next_offset`），挑好再把 id 传回去取完整定义。
 

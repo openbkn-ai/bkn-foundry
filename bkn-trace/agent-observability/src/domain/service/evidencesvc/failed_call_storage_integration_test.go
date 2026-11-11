@@ -126,7 +126,7 @@ func verifyFailedCallMariaDB(t *testing.T, call failedCallContractCall, records 
 			t.Fatalf("stored snapshot unavailable: %v", err)
 		}
 		report, err := evaluateRecordIntegrity(snapshot, owner, time.Now(), nil)
-		if call.Name == "SQL policy without target" {
+		if call.Name == "policy rejection" {
 			if err == nil || !strings.Contains(err.Error(), "failed-call target context unavailable") {
 				t.Fatalf("targetless policy classification relaxed: %+v %v", report, err)
 			}

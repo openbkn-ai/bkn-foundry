@@ -15,7 +15,7 @@ import (
 )
 
 func TestConvertObjectTypesToLocal_BriefKeepsDataSource(t *testing.T) {
-	convey.Convey("brief keeps data_source (run_sql needs id) but drops primary_keys/tags/comment", t, func() {
+	convey.Convey("brief keeps data_source but drops primary_keys/tags/comment", t, func() {
 		s := &localSearchImpl{}
 		obj := &interfaces.ObjectType{
 			ID:          "ot_order",

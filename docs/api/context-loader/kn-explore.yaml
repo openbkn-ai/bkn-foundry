@@ -200,7 +200,7 @@ paths:
             - '{cl_ot_id}'
       description: |
         取 `get_kn_detail` 在 summary 级别剥掉的对象类细节：属性的 `mapped_field`
-        （写 `run_sql` 要的物理列名）、`condition_operations`（该属性可用的查询算子）、
+        （物理列名）、`condition_operations`（该属性可用的查询算子）、
         逻辑属性的 `data_source` 与 `parameters`。与 `get_kn_detail` 相同，不带对象类与属性的
         BKN 3.0 声明（`aliases` / `semantic` / `required` / `constraints`），用 `search_schema` 取。
 
@@ -869,8 +869,7 @@ components:
           additionalProperties: true
           description: |
             映射到的物理字段信息。summary 级别不返回，用 `get_object_types` 取。
-            结构随数据源类型而变，表 / 视图类数据源下至少含 `name`——**这就是写
-            `run_sql` 要用的物理列名**。
+            结构随数据源类型而变，表 / 视图类数据源下至少含 `name`，即物理列名。
           properties:
             name:
               type: string

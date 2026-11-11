@@ -28,8 +28,6 @@ import (
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kntools"
@@ -57,10 +55,7 @@ const (
 	toolKeyGetKnDetail              = "get_kn_detail"
 	toolKeyGetObjectTypes           = "get_object_types"
 	toolKeyGetRelationTypes         = "get_relation_types"
-	toolKeyRunSQL                   = "run_sql"
 	toolKeyRunCypher                = "run_cypher"
-	toolKeyListResources            = "list_resources"
-	toolKeyDescribeResource         = "describe_resource"
 	toolKeyListSkills               = "list_skills"
 	toolKeyGetSkillContent          = "get_skill_content"
 	toolKeyReadSkillFile            = "read_skill_file"
@@ -212,15 +207,8 @@ func newMCPServerForProfile(
 	b.add(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService, schemaAccess))
 	b.add(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
 
-	runSQLService := knrunsql.NewKnRunSQLService()
-	b.add(toolKeyRunSQL, handleRunSQL(runSQLService))
-
 	cypherService := kncypher.NewKnCypherService()
 	b.add(toolKeyRunCypher, handleRunCypher(cypherService, guide))
-
-	resourcesService := knresources.NewKnResourcesService()
-	b.add(toolKeyListResources, handleListResources(resourcesService))
-	b.add(toolKeyDescribeResource, handleDescribeResource(resourcesService))
 
 	// The skill surface: search_capabilities returns only ID, name, and description; the
 	// following tools are used after a client has selected a skill.

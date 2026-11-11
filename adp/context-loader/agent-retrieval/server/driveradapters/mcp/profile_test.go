@@ -138,7 +138,7 @@ func TestCompactProfileRefusesUnpublishedToolsLikeUnknownOnes(t *testing.T) {
 	if !ok {
 		t.Fatalf("unknown tool: expected a JSON-RPC error, got %#v", unknown)
 	}
-	for _, hidden := range []string{toolKeyRunSQL, toolKeyGetObjectTypes, toolKeyExecuteAction, "run_code"} {
+	for _, hidden := range []string{toolKeyGetObjectTypes, toolKeyExecuteAction, "run_code"} {
 		t.Run(hidden, func(t *testing.T) {
 			got := rpc(t, srv, "tools/call", map[string]any{"name": hidden, "arguments": map[string]any{}})
 			refused, ok := got.(mcpsdk.JSONRPCError)

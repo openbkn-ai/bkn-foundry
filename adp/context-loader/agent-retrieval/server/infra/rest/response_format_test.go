@@ -127,27 +127,22 @@ func TestMarshalResponse_TOON_Struct(t *testing.T) {
 
 func TestMarshalResponse_TOONStructPreservesLargeJSONNumber(t *testing.T) {
 	convey.Convey("MarshalResponse FormatTOON preserves a large json.Number in a struct", t, func() {
-		body := &interfaces.VegaRawQueryResp{
-			Columns: []interfaces.VegaColumn{{Name: "id_card"}},
-			Entries: []map[string]any{{
-				"id_card": json.Number("110101199001152345"),
-			}},
-		}
+		row := map[string]any{"id_card": json.Number("110101199001152345")}
+		body := &interfaces.QueryObjectInstancesResp{Data: []any{row}}
 
 		ct, toonBytes, err := MarshalResponse(FormatTOON, body)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(ct, convey.ShouldEqual, ContentTypeTOON)
 		convey.So(string(toonBytes), convey.ShouldContainSubstring, `"110101199001152345"`)
-		convey.So(body.Entries[0]["id_card"], convey.ShouldEqual, json.Number("110101199001152345"))
+		convey.So(row["id_card"], convey.ShouldEqual, json.Number("110101199001152345"))
 
 		var decoded map[string]any
 		err = toon.Unmarshal(toonBytes, &decoded)
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(decoded["columns"], convey.ShouldNotBeNil)
-		convey.So(decoded["Columns"], convey.ShouldBeNil)
+		convey.So(decoded["datas"], convey.ShouldNotBeNil)
+		convey.So(decoded["Data"], convey.ShouldBeNil)
 		convey.So(string(toonBytes), convey.ShouldNotContainSubstring, "total_count")
-		convey.So(string(toonBytes), convey.ShouldNotContainSubstring, "warnings")
-		convey.So(string(toonBytes), convey.ShouldNotContainSubstring, "paging")
+		convey.So(string(toonBytes), convey.ShouldNotContainSubstring, "cursor")
 	})
 }
 
@@ -182,7 +177,7 @@ func TestMarshalResponse_NilBody(t *testing.T) {
 
 // toon-go normalizes json.Number through float64
 // (internal/codec.normalizeNumberString), so the formatter converts wide
-// integers to decimal strings first — the same contract VegaRawQueryResp's
+// integers to decimal strings first — the same contract QueryObjectInstancesResp's
 // TOONValue already followed. Without it, MCP responses (which default to TOON)
 // rendered 9223372036854775808 as 9223372036854776000. See
 // openbkn-ai/bkn-studio#464.

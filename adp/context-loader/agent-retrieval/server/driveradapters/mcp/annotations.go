@@ -62,9 +62,7 @@ var toolAnnotations = map[string]func() mcp.ToolAnnotation{
 	"bkn_start_interaction":  lifecycleTool,
 	"bkn_finish_interaction": lifecycleTool,
 
-	// Discovery and query: read a knowledge network. run_sql belongs here - it
-	// is read-only SQL against resources already bound to the network, and the
-	// grammar it accepts excludes every write.
+	// Discovery and query: read a knowledge network.
 	toolKeyListKnowledgeNetworks:    readOnlyTool,
 	toolKeyGetKnDetail:              readOnlyTool,
 	toolKeySearchSchema:             readOnlyTool,
@@ -75,12 +73,9 @@ var toolAnnotations = map[string]func() mcp.ToolAnnotation{
 	toolKeyQueryInstanceSubgraph:    readOnlyTool,
 	toolKeyExploreSubgraph:          readOnlyTool,
 	toolKeyGetLogicPropertiesValues: readOnlyTool,
-	toolKeyRunSQL:                   readOnlyTool,
 	toolKeyRunCypher:                readOnlyTool,
 	toolKeyQueryMetric:              readOnlyTool,
 	toolKeyDrillThroughMetric:       readOnlyTool,
-	toolKeyListResources:            readOnlyTool,
-	toolKeyDescribeResource:         readOnlyTool,
 
 	// Actions: reading what an action is and what it did is not doing it.
 	toolKeyGetActionInfo:        readOnlyTool,

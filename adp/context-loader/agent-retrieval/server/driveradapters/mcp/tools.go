@@ -24,8 +24,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/objectpermission"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permissionguide"
@@ -497,33 +495,6 @@ func handleListKnowledgeNetworks(bkn interfaces.BknBackendAccess) func(ctx conte
 	}
 }
 
-// handleRunSQL handles run_sql tool calls.
-// Execute read-only SQL (mandatory SELECT-only) on the data resources mounted on the knowledge network, and use the shared knrunsql service at the bottom.
-func handleRunSQL(svc knrunsql.KnRunSQLService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		format, err := GetResponseFormatFromRequest(req)
-		if err != nil {
-			return inputValidationToolError(ctx, err.Error()), nil
-		}
-
-		sqlReq := &knrunsql.RunSQLReq{}
-		if err := bindArguments(req, sqlReq); err != nil {
-			return inputValidationToolError(ctx, err.Error()), nil
-		}
-
-		resp, err := svc.RunSQL(ctx, sqlReq)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		result, err := BuildMCPToolResult(resp, format)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return result, nil
-	}
-}
-
 // handleRunCypher handles run_cypher tool calls.
 // Read-only Cypher over the knowledge network's model: bkn-backend compiles the
 // query against the object and relation types and runs the SQL it produces.
@@ -591,60 +562,6 @@ func permissionGuidancesForObjectImpacts(ctx context.Context, guide *permissiong
 		}
 	}
 	return guidance
-}
-
-// handleListResources handles list_resources tool calls.
-// Data layer "Resource Direct Inspection" entrance (separated from the ontology): List the data resources that the account has the right to view, with describe_resource + run_sql.
-func handleListResources(svc knresources.KnResourcesService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		format, err := GetResponseFormatFromRequest(req)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		listReq := &knresources.ListResourcesReq{}
-		if err := bindArguments(req, listReq); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		resp, err := svc.ListResources(ctx, listReq)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		result, err := BuildMCPToolResult(resp, format)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return result, nil
-	}
-}
-
-// handleDescribeResource handles describe_resource tool calls.
-// Get the physical schema (column name + connector type) of a single resource for writing run_sql.
-func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		format, err := GetResponseFormatFromRequest(req)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		resourceID := getStringArg(req, "resource_id", "")
-		if resourceID == "" {
-			return mcp.NewToolResultError("resource_id is required"), nil
-		}
-
-		resp, err := svc.DescribeResource(ctx, resourceID)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		result, err := BuildMCPToolResult(resp, format)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return result, nil
-	}
 }
 
 // handleGetKnDetail handles get_kn_detail tool calls.
@@ -1031,9 +948,9 @@ func bindPreciseArguments(req mcp.CallToolRequest, target any) error {
 // handleQueryMetric handles query_metric tool calls: compute one modelled metric
 // by its own definition.
 //
-// This is step 3 of the OT-first metric path and the reason run_sql is not the
-// answer for a metric: the calculation formula lives in the MetricDefinition, so
-// the caller names the metric instead of re-deriving it in SQL.
+// This is step 3 of the OT-first metric path: the calculation formula lives in
+// the MetricDefinition, so the caller names the metric instead of re-deriving
+// it in a query.
 func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)

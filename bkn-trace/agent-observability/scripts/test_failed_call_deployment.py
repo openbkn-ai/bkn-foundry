@@ -7,8 +7,10 @@
 """Black-box #2072 acceptance against an explicitly supplied isolated deployment.
 
 Requires the business-provenance route assembly, a functioning artifact writer,
-Kafka consumer and projection worker. The Vega test dependency must fail the
-inventory query. This script creates five synthetic conversations/interactions.
+Kafka consumer and projection worker. This script creates three synthetic
+conversations/interactions. Every case is an input rejection on the MCP entry:
+a backend failure that keeps its resolved target cannot be provoked from outside
+a deployment, so scripts/test_failed_call_contract.sh covers that one.
 """
 import argparse
 import json
@@ -81,7 +83,6 @@ def completed_interaction(core, headers, conversation, interaction):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mcp-url", required=True)
-    parser.add_argument("--retrieval-url", required=True, help="Retrieval public base URL")
     parser.add_argument("--core-url", required=True, help="Core public base URL")
     parser.add_argument("--opensearch-url", required=True)
     parser.add_argument("--projection-index", required=True)
@@ -93,12 +94,8 @@ def main():
     core = args.core_url.rstrip("/") + "/api/agent-observability/v1"
     cases = [
         ("validation failure", "query_object_instance", {}, "input_validation", None),
-        ("empty SQL", "run_sql", {"sql": ""}, "input_validation", None),
-        ("missing SQL resource", "run_sql", {"sql": "SELECT 1"}, "input_validation", None),
-        ("SQL backend failure", "run_sql", {"sql": "SELECT * FROM {{inventory}}"},
-         "vega_query", "resource:inventory"),
-        ("SQL policy without target", "run_sql", {"sql": "DELETE FROM inventory"},
-         "sql_guard", None),
+        ("missing Cypher network", "run_cypher", {}, "input_validation", None),
+        ("missing object network", "get_object_types", {}, "input_validation", None),
     ]
     report = []
     for name, tool, business_input, stage, target in cases:
@@ -110,20 +107,9 @@ def main():
         identity = started["structuredContent"]
         interaction = identity["interaction_id"]
         context = {key: identity[key] for key in ("conversation_id", "interaction_id")}
-        if tool == "run_sql":
-            try:
-                request(args.retrieval_url.rstrip("/") + "/api/agent-retrieval/v1/kn/run_sql",
-                        {**headers, "Content-Type": "application/json"},
-                        {**business_input, "bkn_context": context})
-            except urllib.error.HTTPError as error:
-                assert 400 <= error.code < 600, "expected original SQL failure"
-                assert error.read(), "business error response missing"
-            else:
-                raise AssertionError("SQL unexpectedly succeeded")
-        else:
-            called = mcp.call(tool, {**business_input, "bkn_context": context})
-            assert called.get("isError"), "expected original business failure"
-            assert called["structuredContent"]["bkn_receipt"]["receipt_status"] == "failed"
+        called = mcp.call(tool, {**business_input, "bkn_context": context})
+        assert called.get("isError"), "expected original business failure"
+        assert called["structuredContent"]["bkn_receipt"]["receipt_status"] == "failed"
         facts, _ = request(core + "/interactions/" + interaction + "/operations", headers)
         assert facts["total"] == 1, "call executed or registered more than once"
         fact = facts["entries"][0]
@@ -132,8 +118,6 @@ def main():
         def durable_receipt():
             value, _ = request(core + "/receipts/" + fact["receipt_id"], headers)
             assert value["evidence_durability"] == "durable", "Ledger not confirmed"
-            if tool == "run_sql":
-                assert value["observed_evidence_refs"], "SQL event not consumed"
             return value
 
         receipt = poll(durable_receipt)
@@ -169,10 +153,6 @@ def main():
         detail, _ = request(detail_url, headers)
         matching = [row for row in detail["time_rail"] if row["operation_id"] == fact["operation_id"]]
         assert len(matching) == 1 and matching[0]["error"]["inline"]["stage"] == stage
-        if name == "SQL policy without target":
-            operation = next(row for row in detail["operations"] if row["operation_id"] == fact["operation_id"])
-            assert operation["status"] == "unresolved" and "resource_id" in operation["missing_facts"]
-            assert fact.get("capability_profile") is None, "REST capability contract changed"
 
         poll(lambda: completed_interaction(core, headers, identity["conversation_id"], interaction))
         integrity = "complete (registered call records)"

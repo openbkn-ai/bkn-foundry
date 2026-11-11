@@ -24,7 +24,6 @@ var displayBearingTools = map[string]string{
 	"query_object_instance":       "datas",
 	"get_logic_properties_values": "datas",
 	"query_instance_subgraph":     "entries",
-	"run_sql":                     "entries",
 }
 
 func compileOutputSchema(t *testing.T, locale, tool string) *jsonschema.Schema {

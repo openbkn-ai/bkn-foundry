@@ -15,7 +15,7 @@ info:
 
     同一份文件里还有 `POST /kn/query_metric`：对象指标只支持实例集合，始终按
     `metric_id` 与不可变的对象指标 V1 版本通过该接口取数，不绑定为逻辑属性。
-    已建模的指标一律不该用 `run_sql` 重写口径。指标清单来自 `get_object_types`
+    已建模的指标一律不该在查询里重写口径。指标清单来自 `get_object_types`
     返回的 `related_metrics`。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。

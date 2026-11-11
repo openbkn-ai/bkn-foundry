@@ -81,10 +81,10 @@ Once configured, MCP clients can discover and call these tools (your deployment 
 | `list_knowledge_networks` | List knowledge networks |
 | `bkn_start_interaction` / `bkn_finish_interaction` | Session lifecycle (business traceability) |
 
-`run_sql`, `list_resources` and `describe_resource` are not on the MCP surface: they answer
-with physical columns under the caller's own data-resource grants, outside the property-level
-rules the knowledge network applies, so only their REST routes remain (`POST /kn/run_sql` and
-the other two). Aggregate with `run_cypher`; read a modelled figure with `query_metric`.
+`run_sql`, `list_resources` and `describe_resource` have been removed, from MCP and from REST
+(`POST /kn/run_sql` and the other two now answer 404): they answered with physical columns
+under the caller's own data-resource grants, outside the property-level rules the knowledge
+network applies. Aggregate with `run_cypher`; read a modelled figure with `query_metric`.
 
 On a knowledge network of more than 200 object types or more than 600 relation types, `get_kn_detail` answers with its navigation shell: the concept groups, a count per concept kind and a `notice`, with the three concept arrays null (`detail_level=full` included). The full schema of such a network runs past a megabyte, which no model can read; at that size narrow to 1-3 concept groups first, then fetch concepts with `search_schema`. When the network defines no concept groups, the notice points straight at `search_schema`. To walk every object type of such a network instead, call `get_object_types` with no `ids` to list the object type index (id/name/comment, 50 per page; the response carries `total_count` and `next_offset`), then name the ids you want.
 
