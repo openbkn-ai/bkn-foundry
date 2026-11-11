@@ -314,6 +314,7 @@ func TestValidateCypherFunctionMetadata(t *testing.T) {
 		inputs := map[string]*openapi3.Schema{
 			"day": withExample, "n": openapi3.NewFloat64Schema(), "b": openapi3.NewBoolSchema(),
 			"ids": openapi3.NewArraySchema().WithItems(openapi3.NewStringSchema()),
+			"since": openapi3.NewStringSchema(),
 		}
 		backend := &fakeBknBackend{body: `{"plan":{"columns":[{"name":"c","type":{"kind":"integer"}}]}}`}
 		s := &ToolServiceImpl{BknBackend: backend}
@@ -324,7 +325,9 @@ func TestValidateCypherFunctionMetadata(t *testing.T) {
 			t.Fatal("validation must explain, not run")
 		}
 		got, _ := json.Marshal(backend.calls[0].Parameters)
-		if string(got) != `{"b":false,"day":"2024-01-31","ids":["x"],"n":0}` {
+		// A string without an example gets a date: bkn-backend refuses a string
+		// that is not one against a date property, and any string suits any other.
+		if string(got) != `{"b":false,"day":"2024-01-31","ids":["2000-01-01"],"n":0,"since":"2000-01-01"}` {
 			t.Fatalf("explain parameters = %s", got)
 		}
 	})

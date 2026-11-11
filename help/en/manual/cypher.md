@@ -132,9 +132,9 @@ When nothing matches, the row stays and the optional side's columns are null, so
 Notes:
 
 - **Not-equal is `<>`**, as openCypher writes it; `!=` is read as `<>` too.
-- **`IN $list`** takes the whole list as one parameter: a non-empty array of scalars of one kind, at most 500 elements.
+- **`IN $list`** takes the whole list as one parameter: an array of scalars of one kind, at most 500 elements. An empty array matches nothing, as `IN []` does.
 - **String matching** is a literal substring match: `%` and `_` are not wildcards. It applies to string properties only, case sensitivity follows the data source's collation, and a null property never matches. `LIKE` is not openCypher; the error suggests these three instead.
-- **Dates**: `date(...)`, `datetime(...)` and `localdatetime(...)` apply to date and time properties, over a string literal or a parameter. A property the model declares as a string is compared with a string, as in `m.match_date >= '2014-06-12'`.
+- **Dates**: `date(...)`, `datetime(...)` and `localdatetime(...)` apply to date and time properties, over a string literal or a parameter. A property the model declares as a string is compared with a string, as in `m.match_date >= '2014-06-12'`. A date or datetime property may be compared with a plain string too, as in `o.placed_at >= $since` with `2026-08-13` or `2026-08-13T09:30:00`; a string that is not a date, such as `2026/08/13` or `next Monday`, is refused instead of matching every row or none.
 - Two properties the model types as a string and a number cannot be compared.
 - `XOR` is not supported.
 
@@ -155,7 +155,7 @@ ORDER BY goals DESC LIMIT 10
 - **Arithmetic** `+ - * / %` with parentheses, as in `count(*) * 2`, `sum(o.price * o.qty)` or `count(o.x) * 1.0 / count(*)`.
   - Dividing two integers is refused: Cypher drops the remainder, and SQL databases do not agree on it. Multiply one side by `1.0` for a fractional result.
   - `%` takes integers only; `^` is not supported.
-  - A column that reads a property outside an aggregate beside one (as in `o.x - avg(o.x)`) needs that property returned as a column of its own.
+  - A column that reads a property outside an aggregate beside one (as in `o.x - avg(o.x)`) needs that property returned as a column of its own, unless the property belongs to a node a WITH passed on as a whole: after `WITH o, count(i) AS n`, `o.amount - n` has one value per order.
 - **A condition as a value**: `g.penalty = '1' AS is_penalty` gives true, false, or null when it cannot be decided, and groups like any other column. To sort by a condition, alias it and sort by the alias.
 
 ### CASE and coalesce

@@ -317,7 +317,6 @@ func TestCompileListParameterRejections(t *testing.T) {
 		{name: "null", value: nil, want: "is null"},
 		{name: "scalar", value: 6, want: "needs the parameter to be a list"},
 		{name: "object", value: map[string]any{"a": 1}, want: "is an object; IN $name needs"},
-		{name: "empty", value: []any{}, want: "is an empty list"},
 		{name: "null element", value: []any{1, nil}, want: "null at index 1"},
 		{name: "nested list", value: []any{1, []any{2}}, want: "element 1 is a list"},
 		{name: "object element", value: []any{map[string]any{"a": 1}}, want: "element 0 is an object"},

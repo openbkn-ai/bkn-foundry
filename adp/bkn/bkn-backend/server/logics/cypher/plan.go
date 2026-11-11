@@ -451,6 +451,10 @@ type planner struct {
 	tableOf      map[string]int           // variable name to table index
 	// groupKeys are what a WITH grouped by, resolved to columns.
 	groupKeys []PlanColumn
+	// groupedNodes are the tables a WITH grouped by as whole nodes. Grouped by
+	// their keys, each group holds one object, so every property of it has one
+	// value per group.
+	groupedNodes map[int]bool
 	// relationshipOf maps a relationship variable to the join it names.
 	relationshipOf map[string]joinVariable
 	// snapshotProperties are the properties object_properties asks of each
@@ -906,6 +910,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		if err := p.checkTemporal(table, node.Left.Property, value); err != nil {
 			return nil, err
 		}
+		if err := p.checkDateString(table, node.Left.Property, value, node.Right); err != nil {
+			return nil, err
+		}
 		return PlanCondition{
 			Table: table, Column: column, Property: node.Left.Property,
 			Operator: node.Operator, Value: value, InputPointer: operandInputPointer(node.Right),
@@ -949,6 +956,12 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 			if err != nil {
 				return nil, err
 			}
+			for _, value := range values {
+				if err := p.checkDateString(table, node.Property.Property, value,
+					Operand{Parameter: node.ListParameter}); err != nil {
+					return nil, err
+				}
+			}
 			return PlanMembership{
 				Table: table, Column: column, Property: node.Property.Property,
 				Values: values, Negated: node.Negated,
@@ -963,6 +976,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 				return nil, err
 			}
 			if err := p.checkTemporal(table, node.Property.Property, resolved); err != nil {
+				return nil, err
+			}
+			if err := p.checkDateString(table, node.Property.Property, resolved, value); err != nil {
 				return nil, err
 			}
 			values = append(values, resolved)
@@ -1183,6 +1199,40 @@ func (p *planner) checkTemporal(table int, property string, value Literal) error
 	return nil
 }
 
+// calendarTypes are the property types a string compared with them has to be a
+// date for. A time of day is left out: "09:30:00" is what such a property
+// holds, and it is not a date.
+var calendarTypes = map[string]struct{}{
+	dtype.DATATYPE_DATE:      {},
+	dtype.DATATYPE_DATETIME:  {},
+	dtype.DATATYPE_TIMESTAMP: {},
+}
+
+// checkDateString refuses a string compared with a date property when the
+// string is not a date. The SQL path hands the string to the data source, which
+// reads one it cannot parse as some fixed instant -- MySQL as the earliest --
+// so the comparison would match every row or none instead of failing. The
+// forms accepted are those the executor compares by wall-clock time. A value
+// written as date('...') was checked when it was read.
+func (p *planner) checkDateString(table int, property string, value Literal, written Operand) error {
+	if value.Kind != LiteralString || value.Temporal != "" {
+		return nil
+	}
+	declared, known := p.dataPropertyType(table, property)
+	if !known || !isIn(calendarTypes, strings.ToLower(declared)) {
+		return nil
+	}
+	if _, ok := wallClock(value.String); ok {
+		return nil
+	}
+	what := fmt.Sprintf("%q", value.String)
+	if written.Parameter != nil {
+		what = fmt.Sprintf("parameter %q, %q,", written.Parameter.Name, value.String)
+	}
+	return planErrorf(value.Pos, "%s is not a date, and %q holds %s values; write the date as 2026-08-13 "+
+		"or 2026-08-13T09:30:00", what, property, declared)
+}
+
 func (p *planner) planReturn(projections []Projection) error {
 	seen := make(map[string]bool, len(projections))
 	for _, projection := range projections {
@@ -1217,7 +1267,8 @@ func (p *planner) refuseUngroupedProperties(projections []Projection) error {
 			continue
 		}
 		for _, bare := range ungroupedColumns(column.Expression) {
-			if !p.isProjected(bare.Table, bare.Column) && !p.isGroupKey(bare.Table, bare.Column) {
+			if !p.isProjected(bare.Table, bare.Column) && !p.isGroupKey(bare.Table, bare.Column) &&
+				!p.groupedNodes[bare.Table] {
 				return planErrorf(projectionPosition(projections[i]),
 					"%q reads %s outside an aggregate; return %s as a column of its own so the result is grouped by it",
 					projections[i].Alias, bare.Property, bare.Property)
@@ -1348,6 +1399,21 @@ func (p *planner) planGrouping() {
 		for _, column := range p.plan.Select {
 			if !column.aggregates() && !hasColumn(p.plan.GroupBy, column) {
 				p.plan.GroupBy = append(p.plan.GroupBy, column)
+			}
+		}
+		// A column that computes with an aggregate may read a property of a
+		// node grouped as a whole. The property has one value per group, so
+		// grouping by it changes no group, and it lets a database that wants
+		// every column it reads grouped accept the statement.
+		for _, column := range p.plan.Select {
+			if column.Expression == nil || !planContainsAggregate(column.Expression) {
+				continue
+			}
+			for _, bare := range ungroupedColumns(column.Expression) {
+				read := PlanColumn{Table: bare.Table, Column: bare.Column, Property: bare.Property}
+				if p.groupedNodes[bare.Table] && !hasColumn(p.plan.GroupBy, read) {
+					p.plan.GroupBy = append(p.plan.GroupBy, read)
+				}
 			}
 		}
 		return
@@ -1899,6 +1965,10 @@ func (p *planner) planGroupKeys(keys []GroupKey) error {
 			}
 			p.groupKeys = append(p.groupKeys, PlanColumn{Table: table, Column: column, Property: primaryKey})
 		}
+		if p.groupedNodes == nil {
+			p.groupedNodes = map[int]bool{}
+		}
+		p.groupedNodes[table] = true
 	}
 	return nil
 }
