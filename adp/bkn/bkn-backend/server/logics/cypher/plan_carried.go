@@ -129,7 +129,7 @@ func ungroupedCarried(value PlanExpression) []string {
 		return append(ungroupedCarried(node.Left), ungroupedCarried(node.Right)...)
 	case PlanNegative:
 		return ungroupedCarried(node.Operand)
-	case PlanCase, PlanCoalesce:
+	case PlanCase, PlanCoalesce, PlanScalarFunction:
 		var names []string
 		for _, part := range caseValues(value) {
 			names = append(names, ungroupedCarried(part)...)

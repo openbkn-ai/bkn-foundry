@@ -262,7 +262,7 @@ func planContainsAggregate(value PlanExpression) bool {
 		return planContainsAggregate(node.Left) || planContainsAggregate(node.Right)
 	case PlanNegative:
 		return planContainsAggregate(node.Operand)
-	case PlanCase, PlanCoalesce:
+	case PlanCase, PlanCoalesce, PlanScalarFunction:
 		for _, part := range caseValues(value) {
 			if planContainsAggregate(part) {
 				return true
@@ -1303,7 +1303,7 @@ func ungroupedColumns(value PlanExpression) []PlanValueColumn {
 		return append(ungroupedColumns(node.Left), ungroupedColumns(node.Right)...)
 	case PlanNegative:
 		return ungroupedColumns(node.Operand)
-	case PlanCase, PlanCoalesce:
+	case PlanCase, PlanCoalesce, PlanScalarFunction:
 		var columns []PlanValueColumn
 		for _, condition := range caseConditions(value) {
 			for _, column := range havingColumns(condition) {
@@ -1560,6 +1560,9 @@ func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, 
 	case Coalesce:
 		return p.planCoalesce(node)
 
+	case ScalarFunction:
+		return p.planScalarFunction(node)
+
 	case CarriedValue:
 		kind, known := p.carriedKinds[node.Name]
 		if !known {
@@ -1630,7 +1633,7 @@ func (p *planner) planArithmetic(node Arithmetic) (PlanExpression, numberKind, e
 	if leftKind == kindNotNumber || rightKind == kindNotNumber {
 		// Only CASE and coalesce get here with something else: every other
 		// term was refused as it was planned.
-		return nil, kindUnknown, planErrorf(node.Pos, "arithmetic takes numbers; a CASE or coalesce here gives something else")
+		return nil, kindUnknown, planErrorf(node.Pos, "arithmetic takes numbers; a CASE, coalesce or function call here gives something else")
 	}
 	planned := PlanArithmetic{Operator: node.Operator, Left: left, Right: right}
 	switch node.Operator {

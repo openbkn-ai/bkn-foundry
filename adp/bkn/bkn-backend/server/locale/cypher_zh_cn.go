@@ -21,7 +21,7 @@ var cypherZhCN = i18n.I18nMessages{
 		"BknBackend.Cypher.ReadBudgetExceeded":                           "查询需要读取的数据行超过单次执行上限。请为模式中的节点增加过滤条件，减少需要读取的数据行。",
 		"BknBackend.Cypher.QueryTimeout":                                 "查询在执行时限内没有完成，已被终止。请为模式中的节点增加过滤条件，减少需要读取或关联的数据后重试。",
 		"BknBackend.Cypher.PropertyForbidden.Detail.NotFull":             "查询读取的每个属性都需要完整访问权限，以下属性未获授权：{{.properties}}。",
-		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSource":         "查询读到的对象类存放在数据集或索引里，或者分布在多个数据源中。这类数据只支持基础写法：MATCH、OPTIONAL MATCH、WHERE、RETURN 属性和聚合、ORDER BY / SKIP / LIMIT、WITH 聚合后过滤和按值过滤（半连接）。CASE、coalesce、对分组再统计、比较两个列表、把节点传给下一个 MATCH 和 collect 都不可用（返回节点和关系可以），请改写。",
+		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSource":         "查询读到的对象类存放在数据集或索引里，或者分布在多个数据源中。这类数据只支持基础写法：MATCH、OPTIONAL MATCH、WHERE、RETURN 属性和聚合、ORDER BY / SKIP / LIMIT、WITH 聚合后过滤和按值过滤（半连接）。CASE、coalesce、round 等函数、对分组再统计、比较两个列表、把节点传给下一个 MATCH 和 collect 都不可用（返回节点和关系可以），请改写。",
 		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceTooLarge": "查询读到的对象类存放在数据集或索引里，或者分布在多个数据源中，需要逐表读取后关联；这次要读的数据超过上限或超时，请加条件缩小范围。",
 		"BknBackend.Cypher.InvalidParameter.Detail.CartesianProduct":     "模式里有不相连的部分，其中至少两部分没有任何条件限制，结果会是两张表所有行的两两组合。请用关系类或 a.code = b.code 这类相等条件把它们连起来，或者给其中一边加上条件。",
 		"BknBackend.Cypher.InvalidParameter.Detail.QueryRequired":        "query 不能为空。",

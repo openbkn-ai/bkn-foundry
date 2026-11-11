@@ -255,6 +255,12 @@ func (g *generator) expression(value PlanExpression) string {
 			arguments[i] = g.expression(argument)
 		}
 		return "COALESCE(" + strings.Join(arguments, ", ") + ")"
+	case PlanScalarFunction:
+		arguments := make([]string, len(node.Arguments))
+		for i, argument := range node.Arguments {
+			arguments[i] = g.expression(argument)
+		}
+		return scalarFunctionSQL(node.Name, arguments)
 	case PlanNegative:
 		if column, ok := node.Operand.(PlanValueColumn); ok {
 			return "-" + g.column(column.Table, column.Column)

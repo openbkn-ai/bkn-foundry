@@ -57,13 +57,17 @@ func caseOrCoalesce(atom parsing.IOC_AtomContext) bool {
 		return true
 	}
 	invocation := atom.OC_FunctionInvocation()
-	return invocation != nil && strings.EqualFold(identifier(invocation.OC_FunctionName().GetText()), "coalesce")
+	return invocation != nil && (strings.EqualFold(identifier(invocation.OC_FunctionName().GetText()), "coalesce") ||
+		isScalarFunction(invocation))
 }
 
 // analyzeCaseOrCoalesce reads an atom caseOrCoalesce accepted.
 func analyzeCaseOrCoalesce(atom parsing.IOC_AtomContext, readers caseReaders) (Expression, error) {
 	if ctx := atom.OC_CaseExpression(); ctx != nil {
 		return analyzeCase(ctx, readers)
+	}
+	if invocation := atom.OC_FunctionInvocation(); isScalarFunction(invocation) {
+		return analyzeScalarFunction(invocation, readers)
 	}
 	return analyzeCoalesce(atom.OC_FunctionInvocation(), readers)
 }
@@ -190,6 +194,8 @@ func caseParts(value Expression) ([]Predicate, []Expression, bool) {
 		}
 		return conditions, values, true
 	case Coalesce:
+		return nil, node.Arguments, true
+	case ScalarFunction:
 		return nil, node.Arguments, true
 	default:
 		return nil, nil, false

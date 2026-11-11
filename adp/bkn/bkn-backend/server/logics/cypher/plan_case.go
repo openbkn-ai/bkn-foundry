@@ -187,6 +187,8 @@ func caseValues(value PlanExpression) []PlanExpression {
 		return values
 	case PlanCoalesce:
 		return node.Arguments
+	case PlanScalarFunction:
+		return node.Arguments
 	default:
 		return nil
 	}
