@@ -44,7 +44,7 @@ Request fields:
 | Field | Description |
 | --- | --- |
 | `query` | The Cypher text, at most 8192 characters |
-| `parameters` | Values for `$name`. A parameter is always a value, never a label, relationship type or property name; null is not accepted |
+| `parameters` | Values for `$name`. A parameter is always a value, never a label, relationship type or property name; null is accepted only where the query tests `$name IS NULL` (see "Optional conditions" below) |
 | `object_properties` | Extra properties a returned node carries, per node variable, as in `{"t": ["team_name"]}`. Each variable must be a node the query returns; at most 128 properties in all, authorized like any other property the query names |
 | `explain` | When `true`, returns the plan and reads nothing; see "Checking a query with explain" below |
 
@@ -124,6 +124,7 @@ When nothing matches, the row stays and the optional side's columns are null, so
 | Two properties | `g.team_id <> g.player_team_id` (own goals) |
 | List | `t.team_name IN ['Brazil', 'Germany']`, or `IN $names` |
 | Null | `g.match_period IS NULL`, `IS NOT NULL` |
+| Optional condition | `($team IS NULL OR t.team_name = $team)` |
 | String | `STARTS WITH`, `ENDS WITH`, `CONTAINS` |
 | Combining | `AND`, `OR`, `NOT`, with parentheses |
 | Date | `o.placed_at >= date('2026-08-13')` (on a date or time property) |
@@ -133,6 +134,7 @@ Notes:
 
 - **Not-equal is `<>`**, as openCypher writes it; `!=` is read as `<>` too.
 - **`IN $list`** takes the whole list as one parameter: an array of scalars of one kind, at most 500 elements. An empty array matches nothing, as `IN []` does.
+- **Optional conditions**: `($team IS NULL OR t.team_name = $team)` filters by `$team` when it has a value and drops the condition when it is null or left out, so a statement saved as a function lets its caller decide whether to filter. The test is decided from the supplied value before the query runs: the data source receives `t.team_name = 'Brazil'` or no condition at all, never an OR that keeps it from using an index. `$x IS NOT NULL AND …` matches nothing when `$x` is null. It may be written in the WHERE of a MATCH, an OPTIONAL MATCH or a WITH (as in `WITH t, count(*) AS n WHERE ($min IS NULL OR n >= $min)`), and several are joined with AND. A parameter left out counts as null only in the test; used anywhere else it is still reported as not supplied. A WHERE of nothing but `$x IS NULL` is refused, and so is the test in RETURN or CASE.
 - **String matching** is a literal substring match: `%` and `_` are not wildcards. It applies to string properties only, case sensitivity follows the data source's collation, and a null property never matches. `LIKE` is not openCypher; the error suggests these three instead.
 - **Dates**: `date(...)`, `datetime(...)` and `localdatetime(...)` apply to date and time properties, over a string literal or a parameter. A property the model declares as a string is compared with a string, as in `m.match_date >= '2014-06-12'`. A date or datetime property may be compared with a plain string too, as in `o.placed_at >= $since` with `2026-08-13` or `2026-08-13T09:30:00`; a string that is not a date, such as `2026/08/13` or `next Monday`, is refused instead of matching every row or none.
 - Two properties the model types as a string and a number cannot be compared.

@@ -40,7 +40,8 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 		if req.Branch != "" && req.Branch != interfaces.MAIN_BRANCH && req.Branch != interfaces.DRAFT_BRANCH {
 			return nil, invalidVersion(ctx, "a versioned knowledge network accepts only the main or draft branch")
 		}
-		return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true}, nil
+		return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true,
+			RunningVersion: state.RunningVersion}, nil
 	}
 
 	target := req.KNVersion
@@ -102,7 +103,8 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 		Running: n == state.RunningVersion, RunningVersion: state.RunningVersion}, nil
 }
 
-// resolveUnversioned keeps the branch parameter as it was; kn_version=running means main.
+// resolveUnversioned keeps the branch parameter as it was. A network without versioning is
+// shown as its running v1, so kn_version=running, draft and 1 all read main.
 func resolveUnversioned(ctx context.Context, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, error) {
 	switch req.KNVersion {
 	case "":
@@ -111,7 +113,7 @@ func resolveUnversioned(ctx context.Context, req interfaces.KNBranchRequest) (*i
 			branch = interfaces.MAIN_BRANCH
 		}
 		return &interfaces.KNResolvedBranch{Branch: branch}, nil
-	case knVersionRunning:
+	case knVersionRunning, interfaces.DRAFT_BRANCH, "1":
 		if req.Branch != "" && req.Branch != interfaces.MAIN_BRANCH {
 			return nil, invalidVersion(ctx, "use either kn_version or branch, not both")
 		}

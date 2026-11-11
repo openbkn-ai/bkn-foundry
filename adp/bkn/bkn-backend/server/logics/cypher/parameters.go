@@ -51,7 +51,7 @@ func literalFromParameter(value any) (Literal, error) {
 		}
 		return Literal{Kind: LiteralFloat, Float: typed}, nil
 	case nil:
-		return Literal{}, fmt.Errorf("is null; write IS NULL instead of comparing to a null parameter")
+		return Literal{}, fmt.Errorf("is null; to make the condition optional, write ($name IS NULL OR condition)")
 	default:
 		return Literal{}, fmt.Errorf("is %s; parameters must be a string, a number or a boolean", describeParameterValue(value))
 	}

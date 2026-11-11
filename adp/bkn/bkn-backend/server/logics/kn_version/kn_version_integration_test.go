@@ -648,6 +648,68 @@ func TestPurgeDeletesTheIndexAfterCommit(t *testing.T) {
 	}
 }
 
+// A network without versioning is shown as its running v1: kn_version running, draft and 1 read
+// main. A branch it names is kept as it was, draft too, so data an older caller wrote to a
+// branch called draft stays where it was written.
+func TestUnversionedNetworkReadsAsV1(t *testing.T) {
+	f := setup(t)
+	for _, req := range []interfaces.KNBranchRequest{
+		{KNVersion: interfaces.DRAFT_BRANCH}, {KNVersion: "running"}, {KNVersion: "1"}, {},
+	} {
+		resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, req)
+		if err != nil || resolved.Branch != interfaces.MAIN_BRANCH || resolved.Versioned {
+			t.Fatalf("read %+v: %+v %v", req, resolved, err)
+		}
+	}
+	_, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{KNVersion: "2"})
+	wantCode(t, err, berrors.BknBackend_KNVersion_NotVersioned)
+
+	f.exec("INSERT INTO t_object_type (f_kn_id, f_id, f_name, f_branch, f_comment, f_bkn_raw_content, f_data_source) VALUES (?, 'ot1', 'legacy', 'draft', '', '', '')", f.knID)
+	for _, req := range []interfaces.KNBranchRequest{
+		{Branch: interfaces.DRAFT_BRANCH}, {Branch: interfaces.DRAFT_BRANCH, Write: true},
+	} {
+		resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, req)
+		if err != nil || resolved.Branch != interfaces.DRAFT_BRANCH || resolved.Versioned {
+			t.Fatalf("%+v: %+v %v", req, resolved, err)
+		}
+	}
+	if f.objectName("draft") != "legacy" || f.state().Enabled {
+		t.Fatalf("draft %q, versioned %v", f.objectName("draft"), f.state().Enabled)
+	}
+}
+
+// A rollback leaves the draft on the newer version. Direct writes rebase a draft with nothing of
+// its own onto the running version; a draft someone edited is theirs and stays.
+func TestRebaseDraftFollowsARollback(t *testing.T) {
+	f := setup(t)
+	if _, err := f.svc.Enable(f.ctx, f.knID, &interfaces.KNEnableVersioningRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.publish(1, f.editDraft("name-2"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil || f.state().Draft.BaseVersion != 2 {
+		t.Fatalf("rebase of a draft on the running version: %v %+v", err, f.state().Draft)
+	}
+	if _, err := f.svc.Activate(f.ctx, f.knID, 1, &interfaces.KNActivateRequest{ExpectedRunningVersion: ptr(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil {
+		t.Fatal(err)
+	}
+	if draft := f.state().Draft; draft.BaseVersion != 1 || draft.HasChanges || f.objectName("draft") != "name-1" {
+		t.Fatalf("after rebase: %+v, draft %q", draft, f.objectName("draft"))
+	}
+
+	f.editDraft("mine")
+	if _, err := f.svc.Activate(f.ctx, f.knID, 2, &interfaces.KNActivateRequest{ExpectedRunningVersion: ptr(1)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.RebaseDraft(f.ctx, f.knID); err != nil || f.objectName("draft") != "mine" {
+		t.Fatalf("an edited draft was rebased: %v, draft %q", err, f.objectName("draft"))
+	}
+}
+
 // shareLockWaits reports whether taking the network lock in share mode, as a definition write
 // does, has to wait on another connection.
 func (f *fixture) shareLockWaits() bool {

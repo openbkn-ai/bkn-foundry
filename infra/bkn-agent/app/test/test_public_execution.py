@@ -2577,6 +2577,28 @@ def test_tool_scope_without_a_version_reads_only_the_running_version():
     asyncio.run(run())
 
 
+def test_tool_scope_without_a_version_refuses_the_draft_branch():
+    async def run():
+        calls = []
+        tool = _scoped_tool(calls, {"kn_version": {"type": "string"}, "branch": {"type": "string"}})
+        guarded = PublicChat("run", "network-1").guard_tools([tool])[0]
+        # Context Loader checks branch against kn_version only when the run sends
+        # a version, and bkn-backend reads branch=draft of a versioned network as
+        # its draft. Without a run version, the draft branch is refused too.
+        for rewrite in ({"branch": "draft"}, {"branch": " Draft "}):
+            assert "ToolScopeMismatch" in await guarded.ainvoke(rewrite)
+        # Other branches are passed as before: an unversioned network may have them,
+        # and bkn-backend refuses them on a versioned one.
+        assert await guarded.ainvoke({"branch": "main"}) == "ok"
+        assert await guarded.ainvoke({"branch": "dev"}) == "ok"
+        assert calls == [
+            {"kn_id": "network-1", "branch": "main"},
+            {"kn_id": "network-1", "branch": "dev"},
+        ]
+
+    asyncio.run(run())
+
+
 def test_execution_records_the_network_version_and_keeps_it_for_the_thread(monkeypatch):
     async def run():
         async with environment(monkeypatch) as (client, factory, calls):

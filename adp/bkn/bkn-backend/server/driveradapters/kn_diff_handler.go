@@ -127,6 +127,7 @@ func validateKNDiffBody(ctx context.Context, body *KNDiffRequestBody) *httperror
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
+	body.Base.Branch, body.Target.Branch = mainIfDefault(body.Base.Branch), mainIfDefault(body.Target.Branch)
 	if body.Base.Branch == "" {
 		body.Base.Branch = interfaces.MAIN_BRANCH
 	}
@@ -229,6 +230,7 @@ func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsReque
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
+		entry.side.Branch = mainIfDefault(entry.side.Branch)
 		if entry.side.Branch == "" {
 			entry.side.Branch = interfaces.MAIN_BRANCH
 		}

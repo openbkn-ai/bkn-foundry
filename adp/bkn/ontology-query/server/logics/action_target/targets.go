@@ -84,19 +84,25 @@ func (s *Resolver) Resolve(ctx context.Context, action *interfaces.ActionType, r
 			return nil, nil, actionTargetError(ctx, "new objects use object_input, not existing instance identities")
 		}
 		data := make(map[string]any, len(req.ObjectInput))
+		mapped := mappedObjectInputProperties(action.Parameters)
 		for key, value := range req.ObjectInput {
 			known := false
+			propertyType := ""
 			for _, property := range object.DataProperties {
 				if property.Name == key {
 					known = true
-					if err := logics.ValidateActionValue(property.Type, value); err != nil {
-						return nil, nil, actionTargetError(ctx, "object_input contains a value with an incompatible type")
-					}
+					propertyType = property.Type
 					break
 				}
 			}
 			if !known {
 				return nil, nil, actionTargetError(ctx, "object_input references an unknown property")
+			}
+			if !mapped[key] {
+				return nil, nil, actionTargetError(ctx, fmt.Sprintf("object_input property %q is not mapped to an execution parameter", key))
+			}
+			if err := logics.ValidateActionValue(propertyType, value); err != nil {
+				return nil, nil, actionTargetError(ctx, "object_input contains a value with an incompatible type")
 			}
 			data[key] = value
 		}
@@ -136,6 +142,20 @@ func (s *Resolver) Resolve(ctx context.Context, action *interfaces.ActionType, r
 		instances, datas = append(instances, instance), append(datas, data)
 	}
 	return instances, datas, nil
+}
+
+// mappedObjectInputProperties identifies the only object values consumed by
+// execution parameter binding when an action creates a new instance.
+func mappedObjectInputProperties(parameters []interfaces.Parameter) map[string]bool {
+	mapped := make(map[string]bool)
+	for _, parameter := range parameters {
+		if parameter.ValueFrom == "property" {
+			if name, ok := parameter.Value.(string); ok && name != "" {
+				mapped[name] = true
+			}
+		}
+	}
+	return mapped
 }
 
 func (s *Resolver) resolveRelationTarget(ctx context.Context, action *interfaces.ActionType, req *interfaces.ActionExecutionRequest) ([]interfaces.ObjectSystemInfo, []map[string]any, error) {

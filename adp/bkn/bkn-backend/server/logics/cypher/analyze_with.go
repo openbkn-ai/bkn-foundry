@@ -193,13 +193,24 @@ func (w withScope) filter(query *Query, with parsing.IOC_WithContext) error {
 		if err != nil {
 			return err
 		}
-		var before, after []Predicate
+		var before, after, switches []Predicate
 		for _, term := range conjunctsOf(condition) {
-			if predicateAggregates(term) {
+			switch {
+			case predicateAggregates(term):
 				after = append(after, term)
-			} else {
+			case hasParameterNullCheck(term) && len(predicateProperties(term)) == 0:
+				// $min IS NOT NULL AND n >= $min guards the aggregate beside
+				// it, so it stays with it: tested apart, the guard would
+				// decide nothing about the comparison that needs it.
+				switches = append(switches, term)
+			default:
 				before = append(before, term)
 			}
+		}
+		if len(after) > 0 {
+			after = append(switches, after...)
+		} else {
+			before = append(before, switches...)
 		}
 		// A condition on what the WITH grouped by holds for every row of a
 		// group or for none, so it can filter the rows before grouping.
@@ -567,6 +578,19 @@ func (w withScope) sortKey(expression parsing.IOC_ExpressionContext, returned ma
 }
 
 // predicate reads the WITH's WHERE, whose names are what the WITH passed on.
+// caseCondition reads a CASE condition after a WITH. A parameter null check is
+// refused there, as in RETURN: only a WHERE decides one.
+func (w withScope) caseCondition(ctx parsing.IOC_ExpressionContext) (Predicate, error) {
+	predicate, err := w.predicate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := refuseParameterNullChecks(predicate); err != nil {
+		return nil, err
+	}
+	return predicate, nil
+}
+
 func (w withScope) predicate(ctx parsing.IOC_ExpressionContext) (Predicate, error) {
 	or := ctx.OC_OrExpression()
 	operands := make([]Predicate, 0, len(or.AllOC_XorExpression()))
@@ -609,6 +633,9 @@ func (w withScope) comparison(ctx parsing.IOC_ComparisonExpressionContext) (Pred
 		value, err := w.value(left.OC_AddOrSubtractExpression())
 		if err != nil {
 			return nil, err
+		}
+		if parameter, ok := value.(ParameterRef); ok && parameter.Temporal == "" {
+			return ParameterNullCheck{Parameter: parameter, Negated: nulls[0].NOT() != nil, Pos: positionOf(ctx)}, nil
 		}
 		property, ok := value.(PropertyRef)
 		if !ok {
@@ -716,7 +743,7 @@ func (w withScope) term(ctx parsing.IOC_PropertyOrLabelsExpressionContext, atom 
 		if caseOrCoalesce(atom) {
 			// CASE after a WITH reads the WITH's names in its conditions as
 			// well, so CASE WHEN n > 10 THEN ... can test an aggregate.
-			return analyzeCaseOrCoalesce(atom, caseReaders{value: w.expression, condition: w.predicate})
+			return analyzeCaseOrCoalesce(atom, caseReaders{value: w.expression, condition: w.caseCondition})
 		}
 		if invocation := atom.OC_FunctionInvocation(); invocation != nil &&
 			strings.EqualFold(identifier(invocation.OC_FunctionName().GetText()), "size") {

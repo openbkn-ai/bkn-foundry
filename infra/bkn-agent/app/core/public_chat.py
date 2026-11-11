@@ -331,11 +331,24 @@ class PublicChat:
             if self.allowed_tools is not None and tool.name not in self.allowed_tools:
                 continue
 
-            pinned = self._pinned_scope(schema.get("properties", {}))
+            properties = schema.get("properties", {})
+            pinned = self._pinned_scope(properties)
+            # Context Loader checks branch against the version only when the run
+            # sends one, and bkn-backend reads branch=draft of a versioned network
+            # as its draft, so a run without a version refuses that branch too.
+            refuse_draft_branch = self.kn_version is None and "branch" in properties
 
             # Bind closure state outside model-controlled keyword arguments.
-            def bind(inner, pinned):
+            def bind(inner, pinned, refuse_draft_branch):
                 async def call(**kwargs):
+                    branch = kwargs.get("branch")
+                    if refuse_draft_branch and str(branch or "").strip().lower() == "draft":
+                        raise ToolException(
+                            json.dumps(
+                                build_error_content("BknAgent.Execution.ToolScopeMismatch"),
+                                ensure_ascii=False,
+                            )
+                        )
                     for name, value in pinned.items():
                         if name == "kn_id":
                             same = kwargs.get(name, value) == value
@@ -385,7 +398,7 @@ class PublicChat:
 
                 return call
 
-            call = bind(tool.coroutine, pinned)
+            call = bind(tool.coroutine, pinned, refuse_draft_branch)
             guarded.append(
                 StructuredTool.from_function(
                     coroutine=call,
