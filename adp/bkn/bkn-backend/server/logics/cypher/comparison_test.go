@@ -101,7 +101,8 @@ func TestComparisonsRefuse(t *testing.T) {
 		{query: "MATCH (o:Order) WHERE o.placed_at < date() RETURN o.id", want: "without one string"},
 		{query: "MATCH (o:Order) WHERE o.placed_at < date(1) RETURN o.id", want: "something other than a string"},
 		{query: "MATCH (o:Order) WHERE o.placed_at < date($d) RETURN o.id", parameters: map[string]any{"d": 5}, want: "takes a date string"},
-		{query: "MATCH (o:Order) WHERE toLower(o.region) = 'east' RETURN o.id", want: "function calls"},
+		{query: "MATCH (o:Order) WHERE toLower(o.region) = 'east' RETURN o.id", want: "the function toLower() is not supported"},
+		{query: "MATCH (o:Order) RETURN round(o.amount) AS n", want: "coalesce"},
 		{query: "MATCH (o:Order) RETURN sum(o) AS n", want: "sum over a whole node"},
 		{query: "MATCH (o:Order) RETURN count(x) AS n", want: `variable "x" is not defined`},
 	} {

@@ -2119,12 +2119,26 @@ func analyzeAtomLiteral(ctx parsing.IOC_AtomContext) (operand, error) {
 	return operand{literal: &value}, nil
 }
 
+// supportedFunctions lists, for a refusal, the functions a query may call.
+// size() is left out: it is read only in the shapes analyzeIntersection and
+// the WITH reader name, not as a function of any value.
+const supportedFunctions = "the aggregates count, sum, avg, min, max and collect, coalesce, " +
+	"and date, datetime and localdatetime over a date string"
+
+// unsupportedFunction refuses a call to a function the subset does not have,
+// naming it: in a statement with several calls, "function calls" alone does
+// not say which one to change.
+func unsupportedFunction(invocation parsing.IOC_FunctionInvocationContext) error {
+	name := identifier(invocation.OC_FunctionName().GetText())
+	return unsupportedf(invocation, "the function "+name+"()", "a query may call %s", supportedFunctions)
+}
+
 // describeAtom names the construct found where a value was expected, so the
 // rejection says what was written rather than that something was wrong.
 func describeAtom(ctx parsing.IOC_AtomContext) string {
 	switch {
 	case ctx.OC_FunctionInvocation() != nil:
-		return "function calls"
+		return "the function " + identifier(ctx.OC_FunctionInvocation().OC_FunctionName().GetText()) + "()"
 	case ctx.COUNT() != nil:
 		return "count(*)"
 	case ctx.OC_Parameter() != nil:
@@ -2293,7 +2307,7 @@ var temporalFunctions = map[string]bool{"date": true, "datetime": true, "localda
 func analyzeTemporal(invocation parsing.IOC_FunctionInvocationContext) (operand, error) {
 	name := strings.ToLower(identifier(invocation.OC_FunctionName().GetText()))
 	if !temporalFunctions[name] {
-		return operand{}, unsupported(invocation, "function calls")
+		return operand{}, unsupportedFunction(invocation)
 	}
 	arguments := invocation.AllOC_Expression()
 	if len(arguments) != 1 || invocation.DISTINCT() != nil {

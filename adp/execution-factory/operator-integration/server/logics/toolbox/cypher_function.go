@@ -140,10 +140,13 @@ func cypherPlaceholder(input *interfaces.ParameterDef) any {
 		if len(input.SubParameters) == 1 && input.SubParameters[0] != nil {
 			item = input.SubParameters[0]
 		}
-		// IN refuses an empty list, so the placeholder holds one element.
+		// One element, so the list reads as one of its kind.
 		return []any{cypherPlaceholder(item)}
 	default:
-		return "x"
+		// A date, because bkn-backend refuses a string that is not one when the
+		// statement compares it with a date property, and explain reads no
+		// data, so any string suits every other use.
+		return "2000-01-01"
 	}
 }
 
