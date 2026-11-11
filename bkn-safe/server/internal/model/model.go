@@ -322,8 +322,9 @@ type Department struct {
 
 // UserDepartment maps a user into a department (many-to-many).
 type UserDepartment struct {
-	UserID       string `gorm:"primaryKey;size:64"`
-	DepartmentID string `gorm:"primaryKey;size:64"`
+	UserID string `gorm:"primaryKey;size:64"`
+	// Department-first locking reads must not scan/lock the whole membership table.
+	DepartmentID string `gorm:"primaryKey;size:64;index:idx_user_departments_department_id"`
 }
 
 // Group is an internal group of members.
