@@ -52,8 +52,6 @@ const (
 type projector struct {
 	store   *store
 	classes *classes
-	// allowed reports whether the licence covers events.
-	allowed func() bool
 	now     func() time.Time
 
 	backfilled time.Time
@@ -64,9 +62,9 @@ type projector struct {
 	retry map[string]time.Time
 }
 
-func newProjector(store *store, classes *classes, allowed func() bool) *projector {
+func newProjector(store *store, classes *classes) *projector {
 	return &projector{
-		store: store, classes: classes, allowed: allowed, now: time.Now,
+		store: store, classes: classes, now: time.Now,
 		resume: map[string]string{}, retry: map[string]time.Time{},
 	}
 }
@@ -87,9 +85,6 @@ func (p *projector) run(ctx context.Context) error {
 
 // round does one turn of the work, unless another replica is at it.
 func (p *projector) round(ctx context.Context) {
-	if !p.allowed() {
-		return
-	}
 	ctx, cancel := context.WithTimeout(ctx, projectRun)
 	defer cancel()
 	_, err := p.store.alone(ctx, projectLock, func() error {

@@ -72,10 +72,10 @@ func (s *knEventServiceStub) ListChanges(ctx context.Context, knID string, after
 	return interfaces.KnEventChangeList{Entries: []interfaces.KnEventChange{}, LastSeq: after}, s.err
 }
 
-func newKnEventEngine(service interfaces.KnEventServiceV1, gate gin.HandlerFunc) *gin.Engine {
+func newKnEventEngine(service interfaces.KnEventServiceV1) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	RegisterKnEventRoutes(engine, &common.AppSetting{}, service, gate)
+	RegisterKnEventRoutes(engine, &common.AppSetting{}, service)
 	return engine
 }
 
@@ -94,43 +94,23 @@ var knEventUser = map[string]string{
 	interfaces.HTTP_HEADER_ACCOUNT_TYPE: "user",
 }
 
-// The paid image mounts the event routes next to the core and object-metric
-// routes; gin panics at startup if their paths conflict.
+// The event routes are mounted next to the core routes and the paid image's
+// object-metric routes; gin panics at startup if their paths conflict.
 func TestKnEventRoutesCoexistWithCoreRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	appSetting := &common.AppSetting{}
 	(&restHandler{appSetting: appSetting}).RegisterPublic(engine)
 	RegisterObjectMetricRoutes(engine, appSetting, nil, nil)
-	RegisterKnEventRoutes(engine, appSetting, &knEventServiceStub{}, nil)
+	RegisterKnEventRoutes(engine, appSetting, &knEventServiceStub{})
 	if got := serveKnEvent(engine, http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn1/events", "", knEventUser).Code; got != http.StatusOK {
 		t.Fatalf("event list next to the core routes: status %d", got)
 	}
 }
 
-func TestKnEventRoutesHiddenBelowTier(t *testing.T) {
-	hidden := func(c *gin.Context) {
-		c.AbortWithStatus(http.StatusNotFound)
-	}
-	stub := &knEventServiceStub{}
-	engine := newKnEventEngine(stub, hidden)
-	for _, path := range []string{
-		"/api/bkn-backend/v1/knowledge-networks/kn1/events",
-		"/api/bkn-backend/in/v1/knowledge-networks/kn1/events",
-		"/api/bkn-backend/in/v1/knowledge-networks/kn1/event-changes",
-	} {
-		if got := serveKnEvent(engine, http.MethodGet, path, "", knEventUser).Code; got != http.StatusNotFound {
-			t.Fatalf("%s: status %d, want 404 below the tier", path, got)
-		}
-	}
-	if stub.knID != "" {
-		t.Fatal("service reached below the tier")
-	}
-}
-
 func TestKnEventInternalRoutesForwardCallerIdentity(t *testing.T) {
 	stub := &knEventServiceStub{}
-	engine := newKnEventEngine(stub, nil)
+	engine := newKnEventEngine(stub)
 	recorder := serveKnEvent(engine, http.MethodGet,
 		"/api/bkn-backend/in/v1/knowledge-networks/kn1/events?event_type=a,%20b&status=verified&object_key=PO-1&limit=20&cursor=c1",
 		"", knEventUser)
@@ -148,7 +128,7 @@ func TestKnEventInternalRoutesForwardCallerIdentity(t *testing.T) {
 }
 
 func TestKnEventTypeListIsNeverNull(t *testing.T) {
-	engine := newKnEventEngine(&knEventServiceStub{}, nil)
+	engine := newKnEventEngine(&knEventServiceStub{})
 	recorder := serveKnEvent(engine, http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn1/event-types", "", knEventUser)
 	var body struct {
 		Entries []interfaces.KnEventType `json:"entries"`
@@ -161,7 +141,7 @@ func TestKnEventTypeListIsNeverNull(t *testing.T) {
 
 func TestKnEventActionRoute(t *testing.T) {
 	stub := &knEventServiceStub{}
-	engine := newKnEventEngine(stub, nil)
+	engine := newKnEventEngine(stub)
 	path := "/api/bkn-backend/in/v1/knowledge-networks/kn1/events/e1/"
 
 	if got := serveKnEvent(engine, http.MethodPost, path+"archive", "{}", knEventUser).Code; got != http.StatusNotFound {
@@ -181,7 +161,7 @@ func TestKnEventActionRoute(t *testing.T) {
 func TestKnEventServiceErrorsKeepTheirStatus(t *testing.T) {
 	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden, http.StatusConflict} {
 		stub := &knEventServiceStub{err: httperrors.NewHTTPError(context.Background(), status, berrors.BknBackend_KnEvent_ActionNotAllowed)}
-		engine := newKnEventEngine(stub, nil)
+		engine := newKnEventEngine(stub)
 		got := serveKnEvent(engine, http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks/kn1/events/e1/reject", `{"reason":"x"}`, knEventUser).Code
 		if got != status {
 			t.Fatalf("status %d, want %d", got, status)
@@ -191,7 +171,7 @@ func TestKnEventServiceErrorsKeepTheirStatus(t *testing.T) {
 
 func TestKnEventRuleCheckBodyLimit(t *testing.T) {
 	stub := &knEventServiceStub{}
-	engine := newKnEventEngine(stub, nil)
+	engine := newKnEventEngine(stub)
 	path := "/api/bkn-backend/in/v1/knowledge-networks/kn1/rule-checks"
 	body := `{"event_type":"t","status":"ok","hits":[{"key":"` + strings.Repeat("x", knEventBodyLimit) + `"}]}`
 	if got := serveKnEvent(engine, http.MethodPost, path, body, knEventUser).Code; got != http.StatusRequestEntityTooLarge {
@@ -205,7 +185,7 @@ func TestKnEventRuleCheckBodyLimit(t *testing.T) {
 // A misspelt field is refused rather than stored as its default.
 func TestKnEventBodiesRefuseUnknownFields(t *testing.T) {
 	stub := &knEventServiceStub{}
-	engine := newKnEventEngine(stub, nil)
+	engine := newKnEventEngine(stub)
 	base := "/api/bkn-backend/in/v1/knowledge-networks/kn1/"
 	for path, body := range map[string]string{
 		"rule-checks":     `{"event_type":"t","status":"ok","hit":[{"key":"a"}]}`,
@@ -222,7 +202,7 @@ func TestKnEventBodiesRefuseUnknownFields(t *testing.T) {
 
 func TestKnEventChangesNeedNoIdentity(t *testing.T) {
 	stub := &knEventServiceStub{}
-	engine := newKnEventEngine(stub, nil)
+	engine := newKnEventEngine(stub)
 	path := "/api/bkn-backend/in/v1/knowledge-networks/kn1/event-changes"
 	recorder := serveKnEvent(engine, http.MethodGet, path+"?after=41&limit=7", "", nil)
 	if recorder.Code != http.StatusOK || stub.after != 41 || stub.limit != 7 || stub.account.ID != "" {

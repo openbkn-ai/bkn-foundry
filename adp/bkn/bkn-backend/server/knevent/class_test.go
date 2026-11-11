@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 // definitionsStub keeps the object types and relation types of networks as
@@ -296,7 +297,7 @@ var lateOrder = interfaces.KnEventType{KNID: "kn1", Code: "order.late", Name: "�
 func TestEnsureMakesTheDatasetTheObjectTypeAndTheRelation(t *testing.T) {
 	classes, definitions, datasets := newTestClasses()
 	definitions.subject("kn1", "main", "order", "order_id")
-	class, err := classes.ensure(userContext(), lateOrder)
+	class, err := classes.ensure(i18n.WithLanguage(userContext(), i18n.AmericanEnglish), lateOrder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,10 +340,15 @@ func TestEnsureMakesTheDatasetTheObjectTypeAndTheRelation(t *testing.T) {
 	if want := map[string]string{"status": "status", "severity": "severity", "occurred_at": "event_time", "ended_at": "end_time"}; !reflect.DeepEqual(semantics, want) {
 		t.Fatalf("semantics %v", semantics)
 	}
+	// The texts are in Chinese, whatever language the caller reads.
+	if property := objectType.DataProperties[0]; property.Name != "event_id" || property.DisplayName != "事件 ID" ||
+		objectType.Comment != "事件类：每个对象是一条“订单超期”事件，由平台的事件模块写入。" {
+		t.Fatalf("texts %q %q", property.DisplayName, objectType.Comment)
+	}
 
 	relation := definitions.relations["kn1/main/order_late_subject"]
 	if relation == nil || relation.SourceObjectTypeID != "order_late" || relation.TargetObjectTypeID != "order" ||
-		relation.Type != interfaces.RELATION_TYPE_DIRECT {
+		relation.Type != interfaces.RELATION_TYPE_DIRECT || relation.RTName != "关于" || relation.Comment != "“订单超期”事件所关于的对象。" {
 		t.Fatalf("relation %+v", relation)
 	}
 	mapping := relation.MappingRules.([]interfaces.Mapping)
@@ -662,7 +668,8 @@ func TestEventDocument(t *testing.T) {
 	}
 	names := map[string]bool{}
 	for _, field := range classFields {
-		if names[field.name] || field.label == "" {
+		// A label that is missing from the locale falls back to the name.
+		if names[field.name] || field.label() == field.name {
 			t.Fatalf("field %+v", field)
 		}
 		names[field.name] = true

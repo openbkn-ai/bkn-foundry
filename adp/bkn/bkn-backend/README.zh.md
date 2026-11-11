@@ -86,6 +86,7 @@ bkn-backend/
     driveradapters/      # HTTP handler、router 和请求校验
     errors/              # BKN Backend 错误定义
     interfaces/          # DTO 和服务接口
+    knevent/             # 知识网络事件：事件账本、变更流水、事件类
     locale/              # 国际化资源
     logics/              # 业务逻辑
     version/             # 构建和版本元数据

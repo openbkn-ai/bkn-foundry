@@ -31,14 +31,13 @@ import (
 const knEventBodyLimit = 16 << 20
 
 // RegisterKnEventRoutes mounts the public and internal knowledge-network event
-// API around an implementation supplied during paid-image assembly. Community
-// binaries never call it, so they expose no event routes. The internal change
-// feed carries no caller identity: it is reachable only inside the cluster.
+// API around the event module, which the application assembles at boot. The
+// internal change feed carries no caller identity: it is reachable only inside
+// the cluster.
 func RegisterKnEventRoutes(
 	engine *gin.Engine,
 	appSetting *common.AppSetting,
 	service interfaces.KnEventServiceV1,
-	entitlementMiddleware gin.HandlerFunc,
 ) {
 	handler := &restHandler{
 		appSetting: appSetting,
@@ -49,9 +48,6 @@ func RegisterKnEventRoutes(
 	internal := engine.Group("/api/bkn-backend/in/v1/knowledge-networks/:kn_id")
 	for _, group := range []*gin.RouterGroup{public, internal} {
 		group.Use(rest.PrivateNoCacheMiddleware())
-		if entitlementMiddleware != nil {
-			group.Use(entitlementMiddleware)
-		}
 	}
 	routes := []struct {
 		method string

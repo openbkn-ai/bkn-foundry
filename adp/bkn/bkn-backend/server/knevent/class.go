@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
@@ -52,7 +53,6 @@ const (
 	// relationSuffix follows the class ID in the ID of its relation to the
 	// object type the events are about.
 	relationSuffix = "_subject"
-	relationName   = "关于"
 
 	fieldEventID   = "event_id"
 	fieldEventType = "event_type"
@@ -70,11 +70,28 @@ const (
 // a time that has not come is not written as the epoch.
 type classField struct {
 	name     string
-	label    string
 	kind     string
 	semantic string
 	value    func(*interfaces.KnEvent) any
 }
+
+// classLanguage is the language of what an event class shows. As with the
+// audit ledger, the definitions keep one business language whoever writes
+// them, so a class reads the same after anyone changes its type.
+const classLanguage = i18n.SimplifiedChinese
+
+// classText is a text the event classes show, or fallback if it is missing.
+func classText(id string, data map[string]any, fallback string) string {
+	rendered, err := i18n.Render(classLanguage, "BknBackend.KnEvent.Class."+id, data)
+	if err != nil {
+		logger.Errorf("knowledge-network event: render class text %s: %v", id, err)
+		return fallback
+	}
+	return rendered
+}
+
+// label is what people read for the property.
+func (f classField) label() string { return classText("Field."+f.name, nil, f.name) }
 
 func text(value string) any {
 	if value == "" {
@@ -96,26 +113,26 @@ func moment(millis int64) any {
 // version it ran. Every check refreshes every open event of its type, and
 // copying that would rewrite them all each time; the event API has them.
 var classFields = []classField{
-	{fieldEventID, "事件 ID", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return e.ID }},
-	{fieldEventType, "事件类型", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return e.EventType }},
-	{fieldTitle, "标题", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return e.Title }},
-	{"status", "状态", data_type.DATATYPE_STRING, "status", func(e *interfaces.KnEvent) any { return text(e.Status) }},
-	{"severity", "严重程度", data_type.DATATYPE_STRING, "severity", func(e *interfaces.KnEvent) any { return text(e.Severity) }},
-	{"source", "来源", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.Source) }},
-	{fieldObjectKey, "对象标识", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ObjectKey) }},
-	{"object_name", "对象名称", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ObjectName) }},
-	{"occurred_at", "发生时间", data_type.DATATYPE_DATETIME, "event_time", func(e *interfaces.KnEvent) any { return moment(e.OccurredAt) }},
-	{"ended_at", "结束时间", data_type.DATATYPE_DATETIME, "end_time", func(e *interfaces.KnEvent) any { return moment(e.EndedAt) }},
-	{"recorded_at", "记录时间", data_type.DATATYPE_DATETIME, "", func(e *interfaces.KnEvent) any { return moment(e.RecordedAt) }},
-	{"first_detected_at", "首次发现", data_type.DATATYPE_DATETIME, "", func(e *interfaces.KnEvent) any { return moment(e.FirstDetectedAt) }},
-	{"backlog", "存量", data_type.DATATYPE_BOOLEAN, "", func(e *interfaces.KnEvent) any { return e.Backlog }},
-	{"reported_by", "报告人 ID", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ReportedBy) }},
-	{"reported_by_name", "报告人", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ReportedByName) }},
-	{"verified_by", "核实人 ID", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.VerifiedBy) }},
-	{"verified_by_name", "核实人", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.VerifiedByName) }},
-	{"verified_at", "核实时间", data_type.DATATYPE_DATETIME, "", func(e *interfaces.KnEvent) any { return moment(e.VerifiedAt) }},
-	{"merged_into", "合并到", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.MergedInto) }},
-	{"detail", "详情", data_type.DATATYPE_JSON, "", detailOf},
+	{fieldEventID, data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return e.ID }},
+	{fieldEventType, data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return e.EventType }},
+	{fieldTitle, data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return e.Title }},
+	{"status", data_type.DATATYPE_STRING, "status", func(e *interfaces.KnEvent) any { return text(e.Status) }},
+	{"severity", data_type.DATATYPE_STRING, "severity", func(e *interfaces.KnEvent) any { return text(e.Severity) }},
+	{"source", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.Source) }},
+	{fieldObjectKey, data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ObjectKey) }},
+	{"object_name", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ObjectName) }},
+	{"occurred_at", data_type.DATATYPE_DATETIME, "event_time", func(e *interfaces.KnEvent) any { return moment(e.OccurredAt) }},
+	{"ended_at", data_type.DATATYPE_DATETIME, "end_time", func(e *interfaces.KnEvent) any { return moment(e.EndedAt) }},
+	{"recorded_at", data_type.DATATYPE_DATETIME, "", func(e *interfaces.KnEvent) any { return moment(e.RecordedAt) }},
+	{"first_detected_at", data_type.DATATYPE_DATETIME, "", func(e *interfaces.KnEvent) any { return moment(e.FirstDetectedAt) }},
+	{"backlog", data_type.DATATYPE_BOOLEAN, "", func(e *interfaces.KnEvent) any { return e.Backlog }},
+	{"reported_by", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ReportedBy) }},
+	{"reported_by_name", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.ReportedByName) }},
+	{"verified_by", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.VerifiedBy) }},
+	{"verified_by_name", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.VerifiedByName) }},
+	{"verified_at", data_type.DATATYPE_DATETIME, "", func(e *interfaces.KnEvent) any { return moment(e.VerifiedAt) }},
+	{"merged_into", data_type.DATATYPE_STRING, "", func(e *interfaces.KnEvent) any { return text(e.MergedInto) }},
+	{"detail", data_type.DATATYPE_JSON, "", detailOf},
 }
 
 // detailOf is an event's detail as the JSON it is, left out when empty.
@@ -435,7 +452,7 @@ func classDataset(eventType interfaces.KnEventType, datasetID string) *interface
 	for _, field := range classFields {
 		// A dataset's display names differ from each other and are not what
 		// people read, so the names stand in; the labels are on the class.
-		property := &interfaces.Property{Name: field.name, DisplayName: field.name, Type: field.kind, Description: field.label}
+		property := &interfaces.Property{Name: field.name, DisplayName: field.name, Type: field.kind, Description: field.label()}
 		if field.kind == data_type.DATATYPE_STRING {
 			property.Features = []interfaces.PropertyFeature{{
 				FeatureName: "keyword", FeatureType: interfaces.FieldFeatureType_Keyword, IsDefault: true,
@@ -456,7 +473,7 @@ func classObjectType(eventType interfaces.KnEventType, class eventClass, branch 
 	properties := make([]*interfaces.DataProperty, 0, len(classFields))
 	for _, field := range classFields {
 		properties = append(properties, &interfaces.DataProperty{
-			Name: field.name, DisplayName: field.label, Type: field.kind, Semantic: field.semantic,
+			Name: field.name, DisplayName: field.label(), Type: field.kind, Semantic: field.semantic,
 			MappedField: &interfaces.Field{Name: field.name},
 		})
 	}
@@ -470,7 +487,7 @@ func classObjectType(eventType interfaces.KnEventType, class eventClass, branch 
 		},
 		CommonInfo: interfaces.CommonInfo{
 			Tags:    []string{classTag},
-			Comment: "事件类：每个对象是一条“" + eventType.Name + "”事件，由平台的事件模块写入。",
+			Comment: classText("Comment", map[string]any{"name": eventType.Name}, ""),
 		},
 		KNID: eventType.KNID, Branch: branch,
 	}
@@ -479,7 +496,7 @@ func classObjectType(eventType interfaces.KnEventType, class eventClass, branch 
 func classRelationType(eventType interfaces.KnEventType, class eventClass, branch, id, subjectKey string) *interfaces.RelationType {
 	return &interfaces.RelationType{
 		RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-			RTID: id, RTName: relationName,
+			RTID: id, RTName: classText("Relation", nil, "subject"),
 			SourceObjectTypeID: class.objectTypeID, TargetObjectTypeID: eventType.Subject,
 			Type: interfaces.RELATION_TYPE_DIRECT,
 			MappingRules: []interfaces.Mapping{{
@@ -489,7 +506,7 @@ func classRelationType(eventType interfaces.KnEventType, class eventClass, branc
 		},
 		CommonInfo: interfaces.CommonInfo{
 			Tags:    []string{classTag},
-			Comment: "“" + eventType.Name + "”事件所关于的对象。",
+			Comment: classText("RelationComment", map[string]any{"name": eventType.Name}, ""),
 		},
 		KNID: eventType.KNID, Branch: branch,
 	}

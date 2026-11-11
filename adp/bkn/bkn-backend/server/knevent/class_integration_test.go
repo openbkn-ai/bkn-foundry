@@ -39,7 +39,7 @@ func newClassService(t *testing.T) *classService {
 		service: s, db: db, clock: c, at: time.Unix(1_800_000_000, 0),
 		definitions: s.classes.definitions.(*definitionsStub), datasets: s.classes.datasets.(*datasetsStub),
 	}
-	cs.projector = newProjector(s.store, s.classes, func() bool { return true })
+	cs.projector = newProjector(s.store, s.classes)
 	cs.projector.now = func() time.Time { return cs.at }
 	return cs
 }
@@ -710,12 +710,4 @@ func TestIntegrationOneReplicaWritesTheDatasetsAtATime(t *testing.T) {
 	}
 	cs.round()
 	cs.agrees(t, "kn1", "late_order")
-
-	// Without the licence nothing is written; events go on being recorded.
-	cs.projector.allowed = func() bool { return false }
-	cs.report(t, "kn1", "PO-2")
-	cs.round()
-	if last, projected, _ := cs.state(t, "kn1"); projected >= last {
-		t.Fatal("wrote without the licence")
-	}
 }

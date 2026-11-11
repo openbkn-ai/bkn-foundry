@@ -101,7 +101,7 @@ func SetObjectMetricVersionPublisher(p interfaces.ObjectMetricVersionPublisher) 
 	OMVP = p
 }
 
-// SetKnEventCleanupAccess installs the paid image's cleanup of a network's
+// SetKnEventCleanupAccess installs the event module's cleanup of a network's
 // events, run in the transaction that deletes the network.
 func SetKnEventCleanupAccess(keca interfaces.KnEventCleanupAccess) {
 	KECA = keca

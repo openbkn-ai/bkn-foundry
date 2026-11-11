@@ -93,6 +93,7 @@ bkn-backend/
     driveradapters/      # HTTP handlers, routers, request validation
     errors/              # BKN Backend error definitions
     interfaces/          # DTOs and service interfaces
+    knevent/             # Knowledge-network events: ledger, change feed, event classes
     locale/              # i18n resources
     logics/              # Business logic
     version/             # Build/version metadata

@@ -163,7 +163,7 @@ func (s *service) op(ctx context.Context) op {
 			title, err := i18n.Render(lang, "BknBackend.KnEvent.RuleEventTitle",
 				map[string]any{"type": typeName, "object": objectName})
 			if err != nil {
-				return typeName + "：" + objectName
+				return typeName + ": " + objectName
 			}
 			return title
 		},
