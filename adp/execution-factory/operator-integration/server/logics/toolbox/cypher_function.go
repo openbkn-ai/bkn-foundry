@@ -439,9 +439,11 @@ func cypherRefusal(ctx context.Context, result *interfaces.CypherQueryResult) er
 	}
 	details := decodeJSONBody(result.Body)
 	if refusal, ok := details.(map[string]any); ok {
+		// The details say what to change and where; the description only names
+		// the kind of error, in the server's language, so it is the fallback.
 		message := strings.TrimSpace(fmt.Sprint(refusal["description"]))
-		if extra, ok := refusal["error_details"]; ok && extra != nil && fmt.Sprint(extra) != "" {
-			message = strings.TrimSpace(message + ": " + fmt.Sprint(extra))
+		if extra, ok := refusal["error_details"]; ok && extra != nil && strings.TrimSpace(fmt.Sprint(extra)) != "" {
+			message = strings.TrimSpace(fmt.Sprint(extra))
 		}
 		if message != "" && message != "<nil>" {
 			return oerrors.DefaultHTTPError(ctx, status, "the cypher statement was refused: "+message)

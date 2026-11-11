@@ -338,7 +338,8 @@ func TestValidateCypherFunctionMetadata(t *testing.T) {
 	}{
 		{"bkn-backend refuses the statement", interfaces.CypherResultShapeValue, http.StatusBadRequest,
 			`{"error_code":"BknBackend.Cypher.SyntaxError","description":"Syntax error","error_details":"line 1: unexpected RETRUN"}`,
-			http.StatusBadRequest, "Syntax error: line 1: unexpected RETRUN"},
+			// The details say what to change; the description only names the kind of error.
+			http.StatusBadRequest, "the cypher statement was refused: line 1: unexpected RETRUN"},
 		{"the author cannot read it", interfaces.CypherResultShapeTable, http.StatusForbidden,
 			`{"error_code":"PublicError_Forbidden","description":"Forbidden"}`, http.StatusForbidden, "Forbidden"},
 		{"bkn-backend failing is a gateway error", interfaces.CypherResultShapeTable, http.StatusInternalServerError,
