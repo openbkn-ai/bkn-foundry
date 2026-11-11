@@ -4,7 +4,7 @@
 
 ### Added
 
-- The graph explorer's `configure_analysis` draws an industry or supply chain (`kind: chain`, one type along a relation from that type to itself in `chainRelByOt`, lanes by `propertyByOt`); a relation that does not link the type to itself is refused. In an analysis, the instructions route 产业链 / 上下游 / 供应链 questions to one Cypher query and this chart instead of drawing the chain node batch by node batch.
+- The graph explorer's `configure_analysis` draws an industry or supply chain (`kind: chain`, one type along a relation from that type to itself in `chainRelByOt`, lanes by `propertyByOt`); a relation that does not link the type to itself is refused. In an analysis, the instructions route industry-chain, supply-chain and upstream/downstream questions to one Cypher query and this chart instead of drawing the chain node batch by node batch.
 
 - Public executions accept an optional `kn_version` (`running`, `draft` or a version number) and `draft_revision` in `context`. Both are sent to Context Loader as `X-Kn-Version` / `X-Kn-Draft-Revision`, pinned into scoped tool calls like `kn_id` (a different model-supplied value returns `ToolScopeMismatch`), and stored with the execution. `draft_revision` without `kn_version=draft` returns 422. Requests without them are stored and run as before, and their scoped tool calls read the running version: a model-supplied `draft`, version number, `draft_revision` or `branch=draft` returns `ToolScopeMismatch` (#1229).
 
