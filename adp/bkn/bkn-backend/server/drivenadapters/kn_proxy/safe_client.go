@@ -48,7 +48,9 @@ func (c *safeClient) Create(ctx context.Context, knID, name string) (*interfaces
 	if account.ProxyAccountID == "" || account.ManagedResourceID != knID ||
 		account.ManagedResourceType != "knowledge_network" || account.ManagedBy != "bkn" ||
 		account.AccountType != interfaces.KNProxyAccountTypeApp ||
-		account.LifecycleStatus != interfaces.KNProxyLifecycleActive || !account.Enabled ||
+		(account.LifecycleStatus != interfaces.KNProxyLifecycleActive &&
+			account.LifecycleStatus != interfaces.KNProxyLifecycleArchived) ||
+		(account.LifecycleStatus == interfaces.KNProxyLifecycleActive && !account.Enabled) ||
 		account.LoginEnabled || account.CredentialIssuanceEnabled {
 		return nil, false, fmt.Errorf("invalid managed proxy create response")
 	}

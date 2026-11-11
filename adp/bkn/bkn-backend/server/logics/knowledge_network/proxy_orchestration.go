@@ -222,6 +222,17 @@ func (kns *knowledgeNetworkService) createProxyMapping(ctx context.Context, kn *
 	if err != nil {
 		return nil, false, managedProxyDependencyHTTPError(ctx, "create managed knowledge network proxy", err)
 	}
+	// bkn-safe creates idempotently per network id, so a reused id yields the
+	// archived account left by the deleted network. Bring it back to active; any
+	// other non-active state is not ours to resurrect and is rejected.
+	if account.LifecycleStatus == interfaces.KNProxyLifecycleArchived {
+		if _, err := kns.mpa.Restore(ctx, account.ProxyAccountID); err != nil {
+			return nil, false, managedProxyDependencyHTTPError(ctx, "restore managed knowledge network proxy", err)
+		}
+		created = true // treat like a fresh account so failure paths compensate it
+	} else if account.LifecycleStatus != "" && account.LifecycleStatus != interfaces.KNProxyLifecycleActive {
+		return nil, false, proxyHTTPError(ctx, http.StatusConflict, "managed knowledge network proxy is not active")
+	}
 	now := time.Now().UnixMilli()
 	mapping := &interfaces.KNProxyAccount{
 		KNID:             kn.KNID,
@@ -1187,20 +1198,23 @@ func (kns *knowledgeNetworkService) revokeProxyDelete(ctx context.Context, plan 
 	}
 	// Archive can succeed while persisting BKN's final lifecycle fails. The
 	// idempotent disable response then reports archived, allowing a retry to
-	// repair the mapping without regressing it to disabling. Grant cleanup is
-	// still replayed because revoking an empty desired set is idempotent.
+	// repair the mapping without regressing it to disabling.
 	alreadyArchived := account.LifecycleStatus == interfaces.KNProxyLifecycleArchived
 	if err := kns.renewProxyLock(ctx, plan); err != nil {
 		return err
 	}
-	generation, err := kns.kpa.ReserveSyncGeneration(ctx, plan.mapping.KNID, plan.lockOwner, time.Now().UnixMilli())
-	if err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "reserve proxy deletion synchronization generation")
-	}
-	plan.syncGeneration = generation
-	if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration, proxyDeleteSnapshotVersion,
-		[]interfaces.ProxyGrantSourceSpec{}); err != nil {
-		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grants")
+	// An archived account has already had its grants cleared (archive follows the
+	// clear), and bkn-safe rejects grant sync on it, so there is nothing to clear.
+	if !alreadyArchived {
+		generation, err := kns.kpa.ReserveSyncGeneration(ctx, plan.mapping.KNID, plan.lockOwner, time.Now().UnixMilli())
+		if err != nil {
+			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "reserve proxy deletion synchronization generation")
+		}
+		plan.syncGeneration = generation
+		if _, err := kns.mpa.SyncGrants(ctx, plan.mapping.ProxyAccountID, plan.delegatorID, plan.syncGeneration, proxyDeleteSnapshotVersion,
+			[]interfaces.ProxyGrantSourceSpec{}); err != nil {
+			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grants")
+		}
 	}
 	if err := kns.kpa.DeletePublishedSnapshot(ctx, plan.mapping.KNID); err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear knowledge network proxy grant snapshot")

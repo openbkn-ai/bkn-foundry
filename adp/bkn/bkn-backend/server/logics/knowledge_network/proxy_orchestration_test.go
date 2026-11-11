@@ -226,6 +226,7 @@ type managedProxyAccessStub struct {
 	createCount      int
 	createName       string
 	createErr        error
+	createLifecycle  string
 	disabled         bool
 	disableLifecycle string
 	archived         bool
@@ -251,7 +252,33 @@ func (s *managedProxyAccessStub) Create(_ context.Context, knID, name string) (*
 	if s.createErr != nil {
 		return nil, false, s.createErr
 	}
-	return &interfaces.ManagedProxyAccount{ProxyAccountID: "proxy-1", AccountType: interfaces.KNProxyAccountTypeApp, ManagedResourceID: knID}, true, nil
+	return &interfaces.ManagedProxyAccount{ProxyAccountID: "proxy-1", AccountType: interfaces.KNProxyAccountTypeApp,
+		ManagedResourceID: knID, LifecycleStatus: s.createLifecycle}, true, nil
+}
+
+func TestCreateProxyMappingRestoresArchivedAccountOfReusedNetworkID(t *testing.T) {
+	kpa := &proxyAccessStub{}
+	mpa := &managedProxyAccessStub{createLifecycle: interfaces.KNProxyLifecycleArchived}
+	service := &knowledgeNetworkService{kpa: kpa, mpa: mpa}
+
+	mapping, created, err := service.createProxyMapping(t.Context(), &interfaces.KN{KNID: "kn-1", KNName: "network"})
+	if err != nil || !created || mapping == nil || mapping.ProxyAccountID != "proxy-1" {
+		t.Fatalf("createProxyMapping() = (%+v, %v, %v), want restored mapping", mapping, created, err)
+	}
+	if !mpa.restored || mapping.LifecycleStatus != interfaces.KNProxyLifecycleActive {
+		t.Fatalf("restored=%t lifecycle=%q, want restored active", mpa.restored, mapping.LifecycleStatus)
+	}
+}
+
+func TestCreateProxyMappingRejectsNonActiveNonArchivedAccount(t *testing.T) {
+	mpa := &managedProxyAccessStub{createLifecycle: interfaces.KNProxyLifecycleDisabling}
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}, mpa: mpa}
+
+	_, _, err := service.createProxyMapping(t.Context(), &interfaces.KN{KNID: "kn-1", KNName: "network"})
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok || httpErr.HTTPCode != http.StatusConflict || mpa.restored {
+		t.Fatalf("createProxyMapping() = %#v restored=%t, want 409 without restore", err, mpa.restored)
+	}
 }
 
 func TestCreateProxyMappingPreservesMaximumUnicodeNetworkName(t *testing.T) {
@@ -1938,12 +1965,30 @@ func TestFinalizeProxyDeleteRepairsAlreadyArchivedManagedProxy(t *testing.T) {
 	if err := service.finalizeProxyDelete(t.Context(), plan); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"proxy:disable", "grants:sync", "snapshot:delete", "mapping:deleting", "policy:delete", "mapping:archived"}
+	want := []string{"proxy:disable", "snapshot:delete", "mapping:deleting", "policy:delete", "mapping:archived"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("recovery events = %#v, want %#v", events, want)
 	}
 	if mpa.archived {
 		t.Fatal("already archived managed proxy was archived twice")
+	}
+}
+
+func TestRevokeProxyDeleteSkipsGrantClearForArchivedAccount(t *testing.T) {
+	// A reused network id can leave an archived account behind; bkn-safe
+	// rejects grant sync on it, so delete must not attempt to clear grants.
+	mpa := &managedProxyAccessStub{disableLifecycle: interfaces.KNProxyLifecycleArchived,
+		syncErr: errors.New("archived account rejects grant sync")}
+	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}, mpa: mpa}
+	plan := &proxyPublishPlan{
+		mapping:     &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleDeleting},
+		delegatorID: "grantor-1", lockOwner: "worker-1",
+	}
+	if err := service.revokeProxyDelete(t.Context(), plan); err != nil {
+		t.Fatalf("revokeProxyDelete() = %v, want nil", err)
+	}
+	if mpa.syncCalls != 0 || mpa.archived {
+		t.Fatalf("syncCalls=%d archived=%t, want no sync and no second archive", mpa.syncCalls, mpa.archived)
 	}
 }
 

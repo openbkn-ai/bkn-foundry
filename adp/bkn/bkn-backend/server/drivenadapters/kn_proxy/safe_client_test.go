@@ -235,3 +235,24 @@ func contains(value, substring string) bool {
 	}
 	return false
 }
+
+func TestSafeClientCreateAcceptsArchivedAccountButRejectsOtherStates(t *testing.T) {
+	lifecycle := interfaces.KNProxyLifecycleArchived
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(interfaces.ManagedProxyAccount{
+			ProxyAccountID: "proxy-1", ManagedResourceID: "kn-1", ManagedResourceType: "knowledge_network",
+			ManagedBy: "bkn", AccountType: interfaces.KNProxyAccountTypeApp, LifecycleStatus: lifecycle,
+		})
+	}))
+	defer server.Close()
+	client := NewManagedProxyAccess(server.URL)
+
+	account, created, err := client.Create(t.Context(), "kn-1", "proxy")
+	if err != nil || created || account.LifecycleStatus != interfaces.KNProxyLifecycleArchived {
+		t.Fatalf("Create() archived = (%#v, %v, %v), want archived account for caller to restore", account, created, err)
+	}
+	lifecycle = interfaces.KNProxyLifecycleDisabling
+	if _, _, err := client.Create(t.Context(), "kn-1", "proxy"); err == nil {
+		t.Fatal("Create() accepted a disabling account")
+	}
+}
