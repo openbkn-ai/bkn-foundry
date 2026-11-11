@@ -65,7 +65,7 @@ curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/tool-
 
 注意：
 
-- 编辑 Cypher 函数时要传 `script_type: cypher`。脚本类型不能在 `python` 与 `cypher` 之间修改，要换类型就新建函数。
+- 编辑时不传 `script_type` 就沿用函数原来的类型。脚本类型不能在 `python` 与 `cypher` 之间修改，要换类型就新建函数。
 - 语句只能替换值，不能替换对象类、关系类和属性名；参数不接受 `null`，需要「不填就不过滤」时建两个函数。
 - 导入工具箱时不校验语句（目标环境可能还没有这个网络），语句失效会在调用时报错。
 - `LIMIT`、`SKIP` 后面可以写整数，也可以写 `$参数`（类型为 `number`，调用时须传非负整数），用来做“前 N 条”或分页。`table` 形状不写 `LIMIT` 时最多返回 1000 行，超出时 `limited` 为 `true`；自己写了 `LIMIT` 时按它截断，`limited` 不再提示。`LIMIT` 最大 10000。

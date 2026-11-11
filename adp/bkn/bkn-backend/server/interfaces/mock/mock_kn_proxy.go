@@ -219,6 +219,21 @@ func (mr *MockKNProxyAccessMockRecorder) ReserveSyncGeneration(ctx, knID, lockOw
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveSyncGeneration", reflect.TypeOf((*MockKNProxyAccess)(nil).ReserveSyncGeneration), ctx, knID, lockOwner, updatedAt)
 }
 
+// ReserveSyncGenerationAbove mocks base method.
+func (m *MockKNProxyAccess) ReserveSyncGenerationAbove(ctx context.Context, knID, lockOwner string, floor, updatedAt int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReserveSyncGenerationAbove", ctx, knID, lockOwner, floor, updatedAt)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReserveSyncGenerationAbove indicates an expected call of ReserveSyncGenerationAbove.
+func (mr *MockKNProxyAccessMockRecorder) ReserveSyncGenerationAbove(ctx, knID, lockOwner, floor, updatedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveSyncGenerationAbove", reflect.TypeOf((*MockKNProxyAccess)(nil).ReserveSyncGenerationAbove), ctx, knID, lockOwner, floor, updatedAt)
+}
+
 // ResolvePublishedBinding mocks base method.
 func (m *MockKNProxyAccess) ResolvePublishedBinding(ctx context.Context, knID string, binding interfaces.KNProxyBinding) (*interfaces.KNProxyBinding, error) {
 	m.ctrl.T.Helper()
@@ -370,6 +385,21 @@ func (m *MockManagedProxyAccess) Archive(ctx context.Context, proxyAccountID str
 func (mr *MockManagedProxyAccessMockRecorder) Archive(ctx, proxyAccountID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Archive", reflect.TypeOf((*MockManagedProxyAccess)(nil).Archive), ctx, proxyAccountID)
+}
+
+// Get mocks base method.
+func (m *MockManagedProxyAccess) Get(ctx context.Context, proxyAccountID string) (*interfaces.ManagedProxyAccount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, proxyAccountID)
+	ret0, _ := ret[0].(*interfaces.ManagedProxyAccount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockManagedProxyAccessMockRecorder) Get(ctx, proxyAccountID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockManagedProxyAccess)(nil).Get), ctx, proxyAccountID)
 }
 
 // CheckGrant mocks base method.

@@ -52,6 +52,11 @@ type Account struct {
 	LoginEnabled              bool   `json:"login_enabled"`
 	CredentialIssuanceEnabled bool   `json:"credential_issuance_enabled"`
 	Version                   uint64 `json:"version"`
+	// GrantSyncGeneration and GrantSnapshotVersion expose the grant-sync fence.
+	// The account is reused when a network id is reused, so BKN needs them to
+	// start its own generation counter above the fence instead of at zero.
+	GrantSyncGeneration  uint64 `json:"grant_sync_generation"`
+	GrantSnapshotVersion string `json:"grant_snapshot_version"`
 }
 
 // CreateRequest identifies the environment-local resource that owns the app.
@@ -281,7 +286,8 @@ func render(user model.User, mapping model.ManagedProxyAccount) *Account {
 		ManagedBy: mapping.ManagedBy, ManagedResourceType: mapping.ManagedResourceType,
 		ManagedResourceID: mapping.ManagedResourceID, LifecycleStatus: mapping.LifecycleStatus,
 		Enabled: user.Enabled, LoginEnabled: false, CredentialIssuanceEnabled: false,
-		Version: mapping.Version,
+		Version: mapping.Version, GrantSyncGeneration: mapping.GrantSyncGeneration,
+		GrantSnapshotVersion: mapping.GrantSnapshotVersion,
 	}
 }
 
