@@ -371,50 +371,6 @@ func TestBuildSchemaDefinitionEventsUsesKnowledgeNetworkAndSchemaRefs(t *testing
 	}
 }
 
-func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T) {
-	ctx := withRequestDerivedBusinessRefs(testTraceContext(), []BusinessRef{{
-		RefType: "object_type", RefID: "object:supplychain_hd0202:bkn_supply_forecast",
-		Version: "schema-v3",
-	}})
-	events := BuildRunSQLEvents(
-		ctx,
-		"SELECT demand_no, quantity FROM {{forecast_resource}} WHERE month = '2026-06'",
-		[]string{"forecast_resource"},
-		&interfaces.VegaRawQueryResp{
-			Entries: []map[string]any{{
-				"demand_no": "DF-SECRET-001",
-				"quantity":  11594,
-			}},
-		},
-	)
-	if len(events) != 1 || events[0]["event_type"] != "data.query.observed" {
-		t.Fatalf("unexpected run_sql events: %#v", events)
-	}
-	if events[0]["bkn.trace.schema.version"] != "2.2.0" {
-		t.Fatalf("schema version=%v, want artifact-linked 2.2.0 fact", events[0]["bkn.trace.schema.version"])
-	}
-	payload := events[0]["payload"].(map[string]any)
-	if payload["row_count"] != 1 || payload["query_type"] != "sql" || payload["query_hash"] == "" {
-		t.Fatalf("missing query facts: %#v", payload)
-	}
-	if _, duplicated := payload["query_artifact_ref"]; duplicated {
-		t.Fatalf("aggregate event must not refer to deleted duplicate query artifact: %#v", payload)
-	}
-	if _, duplicated := payload["result_artifact_ref"]; duplicated {
-		t.Fatalf("aggregate event must not refer to deleted duplicate result artifact: %#v", payload)
-	}
-	raw, _ := json.Marshal(events)
-	text := string(raw)
-	if !strings.Contains(text, `"ref_id":"resource:forecast_resource"`) {
-		t.Fatalf("missing resource reference: %s", text)
-	}
-	for _, leaked := range []string{"SELECT demand_no", "2026-06", "DF-SECRET-001", "11594"} {
-		if strings.Contains(text, leaked) {
-			t.Fatalf("run_sql evidence leaked %q: %s", leaked, text)
-		}
-	}
-}
-
 func TestBuildRunCypherEventsCarriesCompiledDescriptorAndTypedRefs(t *testing.T) {
 	descriptor := json.RawMessage(`{
 		"version":"semantic-query-descriptor/v1",
@@ -925,7 +881,7 @@ func TestEmitSearchSchemaEventsNoopsWhenIngestDisabled(t *testing.T) {
 	})
 }
 
-func TestEmitRunSQLEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
+func TestEmitRunCypherEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
 	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
 	if err != nil {
 		t.Fatal(err)
@@ -933,10 +889,8 @@ func TestEmitRunSQLEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *tes
 	SetEvidencePublisher(publisher)
 	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
-	sql := "SELECT material_id, SUM(quantity) FROM {{inventory}} WHERE warehouse = '昆山' GROUP BY material_id LIMIT 10"
-	EmitRunSQLEvents(testTraceContext(), nil, sql, []string{"inventory"}, &interfaces.VegaRawQueryResp{
-		Entries: []map[string]any{{"material_id": "M-001", "SUM(quantity)": 42}},
-	})
+	query := "MATCH (i:inventory) WHERE i.warehouse = '昆山' RETURN i.material_id, sum(i.quantity) LIMIT 10"
+	EmitRunCypherEvents(testTraceContext(), nil, "kn_demo", query, 1, nil)
 
 	queued := publisher.SnapshotQueue()
 	if len(queued) != 1 {
@@ -957,7 +911,7 @@ func TestEmitRunSQLEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *tes
 	}
 }
 
-func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
+func TestEmitRunCypherFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
 	publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "agent-retrieval", WorkloadIdentity: "agent-retrieval", ProcessBootID: "test", CapturePolicyRevision: "1"}, &captureEvidenceSender{})
 	if err != nil {
 		t.Fatal(err)
@@ -965,9 +919,9 @@ func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *te
 	SetEvidencePublisher(publisher)
 	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 
-	sql := "SELECT * FROM {{inventory}} WHERE material_id = 'M-001'"
-	EmitRunSQLFailure(testTraceContext(), nil, sql, []string{"inventory"}, RunSQLFailure{
-		Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "unknown column available_qty",
+	query := "MATCH (i:inventory) WHERE i.material_id = 'M-001' RETURN i.available_qty"
+	EmitRunCypherFailure(testTraceContext(), nil, "kn_demo", query, RunCypherFailure{
+		Stage: "cypher_query", Code: "RUN_CYPHER_QUERY_FAILED", Summary: "unknown property available_qty",
 	})
 
 	queued := publisher.SnapshotQueue()
@@ -984,8 +938,8 @@ func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *te
 		t.Fatalf("event=%#v", record.Envelope)
 	}
 	payload, _ := record.Envelope["payload"].(map[string]any)
-	if payload["status"] != "error" || payload["error_stage"] != "vega_query" ||
-		payload["error_code"] != "RUN_SQL_VEGA_QUERY_FAILED" || payload["safe_error_summary"] != "unknown column available_qty" {
+	if payload["status"] != "error" || payload["error_stage"] != "cypher_query" ||
+		payload["error_code"] != "RUN_CYPHER_QUERY_FAILED" || payload["safe_error_summary"] != "unknown property available_qty" {
 		t.Fatalf("failure event is not structured: %#v", payload)
 	}
 }
@@ -1053,7 +1007,7 @@ func TestSubmitEventsRecordsQueuedOutcomeForOperationFinish(t *testing.T) {
 	SetEvidencePublisher(publisher)
 	t.Cleanup(func() { SetEvidencePublisher(nil); _ = publisher.Close(context.Background()) })
 	ctx := withEvidenceOutcome(testTraceContext())
-	events := BuildRunSQLEvents(ctx, "SELECT 1", []string{"forecast_resource"}, &interfaces.VegaRawQueryResp{})
+	events := BuildRunCypherEvents(ctx, "kn_demo", "MATCH (f:forecast) RETURN count(*) AS n", 1, nil)
 	if err := SubmitEvents(ctx, nil, nil, events); err != nil {
 		t.Fatal(err)
 	}

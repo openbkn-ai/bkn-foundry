@@ -27,7 +27,7 @@ type KnSearchLocalRequest struct {
 	// to the deployment default (config.concept_search_config.rerank_model).
 	RerankModel string `json:"rerank_model,omitempty"`
 	// IncludeColumns adds each data property's physical column name (mapped_field)
-	// to the response for run_sql. Off by default to keep responses compact.
+	// to the response. Off by default to keep responses compact.
 	IncludeColumns bool `json:"include_columns" default:"false"`
 	// IndexOpsOnly See SearchSchemaReq field of the same name.
 	IndexOpsOnly bool `json:"-"`
@@ -206,8 +206,8 @@ type KnSearchObjectType struct {
 // KnSearchDataProperty data property (local response shape)
 type KnSearchDataProperty struct {
 	Name string `json:"name,omitempty"`
-	// Column is the physical column name (from mapped_field) to use when writing
-	// run_sql against the object type's data resource. It can differ from Name
+	// Column is the physical column name (from mapped_field) in the object type's
+	// data resource. It can differ from Name
 	// (logical), and one resource may back several object types with different
 	// logical names. Only populated when the request sets include_columns=true.
 	Column              string            `json:"column,omitempty"`

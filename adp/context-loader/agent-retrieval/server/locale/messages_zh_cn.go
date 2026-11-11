@@ -163,7 +163,6 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"agentRetrieval.Detail.SkillScopeKnIDRequired":                   "kn_id 必填：Skill 只能通过挂载了它的知识网络读取或执行。",
 		"agentRetrieval.Detail.SkillNotMountedOnNetwork":                 "该 Skill 未挂载到当前知识网络，无法在此读取或执行。请先在知识网络的「SKILLs」中挂载。",
 		"agentRetrieval.Detail.SkillAuthorizationUnavailable":            "知识网络授权未配置。",
-		"agentRetrieval.Detail.RunSQLResourceForbidden":                  "当前账号缺少 SQL 所引用的至少一个数据资源的查看权限（Vega 资源的 view_detail 权限），查询未执行。run_sql 以调用者自身身份直接读取底层数据资源；与其他查询工具不同，它不遵循知识网络授权，通过对象类获得的授权不能代替该权限。如已通过对象类获得授权，请改用 query_object_instance 或 run_cypher；如需使用 run_sql，请联系管理员授予所引用资源的 view_detail 权限。",
 		"agentRetrieval.Detail.ActionTypeNotAuthorized":                  "无权查看该行动类。",
 		"agentRetrieval.Detail.ObjectTypeNotAuthorized":                  "无权查看该对象类。",
 		"agentRetrieval.Detail.CapabilityNetworkViewRequired":            "这些知识网络范围的工具需要该知识网络本身的查看权限（view_detail）。仅有对象类等子资源的权限，或对某个 Skill 的单独授权，都不足以发现或读取该网络挂载的能力。请联系管理员授予此知识网络的查看权限。对象类上绑定的工具可通过 search_schema 或 get_object_types 发现，并用 get_logic_properties_values 计算；行动类上绑定的工具可通过 search_schema 和 get_action_info 发现。前提是你对相应对象类或行动类有查看权限。",

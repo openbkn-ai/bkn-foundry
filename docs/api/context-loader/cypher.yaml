@@ -15,8 +15,8 @@ info:
       / `explore_subgraph`：要的是**子图**（节点 + 边的拓扑）。
     - 本接口：要的是**表**（按路径过滤后投影出的行，可聚合、可排序、可分页），
       路径与条件写在一句 Cypher 里。
-    - [data-access.yaml](data-access.yaml) 的 `run_sql`：绕开本体直查物理表。
-      本接口表达不了的口径（CTE、窗口函数）或资源没建成对象类时才落到那里。
+    - 绕开本体直查物理表的 `run_sql` 已移除。本接口表达不了的口径（如窗口函数），
+      以及没建成对象类的资源，目前没有对应接口。
 
     **不需要 `resource_id`，也不需要物理列名**——名字全部取自
     [schema-search.yaml](schema-search.yaml) 的 `search_schema` 或

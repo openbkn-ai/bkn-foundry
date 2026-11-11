@@ -19,7 +19,6 @@
 | [action.yaml](action.yaml) | Action retrieval and execution | `POST /kn/get_action_info`, `POST /kn/execute_action`, `POST /kn/get_action_execution`, `POST /kn/list_action_executions` |
 | [skill.yaml](skill.yaml) | Skill reading and execution | `POST /kn/list_skills`, `POST /kn/get_skill_content`, `POST /kn/read_skill_file`, `POST /kn/execute_skill` |
 | [tool.yaml](tool.yaml) | Mounted-capability retrieval and tool execution | `POST /kn/search_capabilities`, `POST /kn/execute_tool` |
-| [data-access.yaml](data-access.yaml) | Direct data access | `POST /kn/list_resources`, `POST /kn/describe_resource`, `POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
 
 ## Sandbox OSDK REST routing
@@ -57,12 +56,11 @@ The Skill surface also has a knowledge-network-independent entry point:
 `list_skills` lists published Skills directly, followed by the same
 `get_skill_content` → `read_skill_file` → `execute_skill` flow.
 
-To bypass the ontology and access data directly, use
-`list_resources` → `describe_resource` → `run_sql`. These three are REST only:
-they return physical columns under the caller's own data-resource grants,
-outside the property-level rules the knowledge network applies, so the MCP
-surface withholds them — they appear in neither `tools/list` nor the on-demand
-gateway nor the sandbox capability surface.
+`list_resources`, `describe_resource` and `run_sql` have been removed, from
+REST as well as MCP: the three routes answer 404. They returned physical
+columns under the caller's own data-resource grants, outside the
+property-level rules the knowledge network applies. Aggregate with
+`run_cypher`; read a modelled figure with `query_metric`.
 
 Multi-hop retrieval across object types: `search_schema` → `run_cypher`. Labels are object types, relationship types are relation types, and properties are logical property names, so neither `resource_id` nor physical column names are needed.
 
@@ -131,7 +129,7 @@ Two things follow that are worth stating, because both have been got wrong:
 - **OpenAPI version:** 3.0.3.
 - **Authentication:** `Authorization: Bearer <token>` with either an OAuth access token or a self-issued AppKey with the `bak_` prefix. The service derives the account from the credential; callers do not send `x-account-id` or `x-account-type`.
 - **All operations use POST:** This includes query-like operations and operations without a request body, such as `list_knowledge_networks`.
-- **Managed execution:** While capture is enabled, `execute_action` and `execute_skill` require a nonempty `bkn_context` with `conversation_id` and `interaction_id`. A missing or empty context returns HTTP 400 `conversation_required` with `required_action: create_conversation` before execution. When capture is disabled, the MCP start tool still creates a Conversation and Interaction and returns their IDs with `capture_enabled=false`, `trace_recorded=false` and `code=capture_disabled`. MCP business tools require those IDs but execute without recording Operations, receipts or evidence. REST `execute_tool`, like `search_schema`, allows missing or empty `bkn_context` without a Trace Core probe. Authentication, network execute permissions and tool-mount checks still apply. Explicit nonempty context remains validated by the managed guard. When Trace Core is unavailable, REST execution uses a bounded, read-only probe and continues without context or Trace only after an infrastructure failure is confirmed. Read operations, including `run_sql` and `run_cypher`, may run ad hoc without a context; providing one enables managed execution when available.
+- **Managed execution:** While capture is enabled, `execute_action` and `execute_skill` require a nonempty `bkn_context` with `conversation_id` and `interaction_id`. A missing or empty context returns HTTP 400 `conversation_required` with `required_action: create_conversation` before execution. When capture is disabled, the MCP start tool still creates a Conversation and Interaction and returns their IDs with `capture_enabled=false`, `trace_recorded=false` and `code=capture_disabled`. MCP business tools require those IDs but execute without recording Operations, receipts or evidence. REST `execute_tool`, like `search_schema`, allows missing or empty `bkn_context` without a Trace Core probe. Authentication, network execute permissions and tool-mount checks still apply. Explicit nonempty context remains validated by the managed guard. When Trace Core is unavailable, REST execution uses a bounded, read-only probe and continues without context or Trace only after an infrastructure failure is confirmed. Read operations, including `run_cypher`, may run ad hoc without a context; providing one enables managed execution when available.
 - **Response format:** Every operation accepts `?response_format=toon` and returns `application/toon`, which represents homogeneous arrays as tables to reduce token usage. The default is `json`.
 - **Error envelope:** Local failures use `comm-go/httperrors.BaseError` with `error_code`, `description`, `error_details`, and optional `metadata`, as defined by [`ErrorAgentRetrieval`](../_shared/errors.yaml), an alias of the shared `Error` schema. Errors from BKN Backend are wrapped in a local error code with the source envelope in `error_details`. Locally generated codes start with `Public.*` or `agentRetrieval.*`.
 - **Internal APIs:** Most operations have a corresponding `/api/agent-retrieval/in/v1/...` route with the same request and response structure. External routes forward the original bearer token to Execution Factory. Internal routes derive the visitor from trusted `X-Account-ID` and `X-Account-Type` headers and use Execution Factory's `/internal-v1/caller/...` face, which performs the same caller-level permission checks without substituting a service identity. A request with neither a bearer token nor a trusted caller identity returns 401. Arbitrary function-code execution is the exception: it has no caller-scoped internal equivalent and returns 403 internally. This documentation covers only external APIs; `driveradapters/rest_private_handler.go` is authoritative for internal routing.
@@ -158,7 +156,6 @@ a running environment:
 | `execute_action` | Has side effects and starts a real action execution |
 | `logic-property-resolver` | Has side effects and requires a real instance identity |
 | `query_metric` | Requires a modeled metric whose `metric_id` cannot be synthesized |
-| `run_sql` | Requires meaningful SQL for a concrete resource |
 | `run_cypher` | Requires a meaningful statement over concrete object and relation types |
 | `POST /mcp` | Uses JSON-RPC session semantics rather than an ordinary request/response contract |
 | `execute_skill` | Has side effects and executes a command in the sandbox |

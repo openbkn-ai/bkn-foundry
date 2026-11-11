@@ -74,3 +74,24 @@ func TestCodeScaffoldUsesSharedI18n(t *testing.T) {
 		}
 	}
 }
+
+// The scaffold is the first code a function author sees, so it must not list
+// the physical query calls that are being removed from Context Loader.
+func TestCodeScaffoldAvoidsPhysicalQueryCalls(t *testing.T) {
+	for _, lang := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		text, err := i18n.Render(lang, "AgentOperatorIntegration.template.python", nil)
+		if err != nil {
+			t.Fatalf("%s: %v", lang, err)
+		}
+		for _, gone := range []string{"run_sql", "list_resources", "describe_resource"} {
+			if strings.Contains(text, gone) {
+				t.Errorf("%s scaffold still mentions %s", lang, gone)
+			}
+		}
+		for _, want := range []string{"kn.query_metric(", "kn.run_cypher("} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s scaffold does not mention %s", lang, want)
+			}
+		}
+	}
+}

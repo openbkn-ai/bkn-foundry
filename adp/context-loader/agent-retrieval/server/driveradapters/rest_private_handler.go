@@ -77,15 +77,12 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/kn_search", r.KnSearchHandler.KnSearch)
 
 	// At the same time, it serves as the entrance to MCP tool + operator-integration toolbox (OpenAPI HTTP)
-	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
 	engine.POST("/kn/run_cypher", r.KnQueryToolsHandler.RunCypher)
 	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
 	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
 	engine.POST("/kn/get_object_types", r.KnQueryToolsHandler.GetObjectTypes)
 	engine.POST("/kn/get_relation_types", r.KnQueryToolsHandler.GetRelationTypes)
 	engine.POST("/kn/query_metric", r.KnQueryToolsHandler.QueryMetric)
-	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
-	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
 
 	// Skills: browse/read files/execute (drill-down link after search_capabilities)
 	engine.POST("/kn/list_skills", r.KnSkillsHandler.ListSkills)

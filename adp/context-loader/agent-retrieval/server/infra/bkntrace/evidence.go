@@ -375,14 +375,6 @@ func EmitExploreSubgraphEvents(ctx context.Context, logger interfaces.Logger, re
 	return submitAndReturnFirstEventID(ctx, logger, req, BuildExploreSubgraphEvents(ctx, req, resp))
 }
 
-func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) string {
-	retainRunSQLTargets(ctx, resourceIDs)
-	if !EvidenceEnabled() {
-		return ""
-	}
-	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLEvents(ctx, sql, resourceIDs, resp))
-}
-
 // EmitRunCypherEvents records one compiled Cypher query as observed data
 // access. The generated SQL and the resources it touched stay inside
 // bkn-backend, so the evidence names the knowledge network the query ran
@@ -410,21 +402,6 @@ func EmitRunCypherFailure(ctx context.Context, logger interfaces.Logger, knID, q
 		return ""
 	}
 	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunCypherFailureEvents(ctx, knID, query, failure))
-}
-
-type RunSQLFailure struct {
-	Stage   string
-	Code    string
-	Summary string
-}
-
-func EmitRunSQLFailure(ctx context.Context, logger interfaces.Logger, sql string, resourceIDs []string, failure RunSQLFailure) string {
-	RecordToolFailure(ctx, failure.Code, failure.Stage)
-	retainRunSQLTargets(ctx, resourceIDs)
-	if !EvidenceEnabled() {
-		return ""
-	}
-	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLFailureEvents(ctx, sql, resourceIDs, failure))
 }
 
 func EmitSchemaDefinitionEvents(ctx context.Context, logger interfaces.Logger, kind, knID string, ids []string, matched int) string {
@@ -594,69 +571,6 @@ func BuildExploreSubgraphEvents(ctx context.Context, req *interfaces.ExploreSubg
 	return buildRetrievalEvents(ec, "context.explore_subgraph", exploreSubgraphHash(req), candidateCount, refsTruncated, refs)
 }
 
-func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) []Event {
-	ec, ok := contextFromRequest(ctx, nil)
-	if !ok {
-		return nil
-	}
-	refs := make([]map[string]any, 0, len(resourceIDs))
-	seen := map[string]struct{}{}
-	for _, resourceID := range resourceIDs {
-		resourceID = strings.TrimSpace(resourceID)
-		if resourceID == "" {
-			continue
-		}
-		key := "data_resource\x00resource:" + resourceID
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		refs = append(refs, map[string]any{
-			"ref_id":         "resource:" + resourceID,
-			"ref_type":       "data_resource",
-			"source_system":  "vega",
-			"validity":       "observed",
-			"version_status": "unversioned",
-			"visibility":     "visible",
-		})
-	}
-	resultSummary := runSQLResultSummary(resp)
-	event := buildEvent(ec, "data.query.observed", "context.run_sql", map[string]any{
-		"query_hash":     HashValue(strings.TrimSpace(sql)),
-		"query_type":     "sql",
-		"row_count":      resultSummary["row_count"],
-		"truncated":      resultSummary["truncated"],
-		"version_status": "unversioned",
-		"resource_refs":  refs,
-		"field_refs":     []map[string]any{},
-	}, "", ec.causationEventID)
-	event["bkn.trace.schema.version"] = "2.2.0"
-	return []Event{event}
-}
-
-func BuildRunSQLFailureEvents(ctx context.Context, sql string, resourceIDs []string, failure RunSQLFailure) []Event {
-	ec, ok := contextFromRequest(ctx, nil)
-	if !ok {
-		return nil
-	}
-	refs := runSQLResourceRefs(resourceIDs)
-	event := buildEvent(ec, "data.query.observed", "context.run_sql", map[string]any{
-		"query_hash":         HashValue(strings.TrimSpace(sql)),
-		"query_type":         "sql",
-		"row_count":          0,
-		"truncated":          false,
-		"version_status":     "unversioned",
-		"resource_refs":      refs,
-		"field_refs":         []map[string]any{},
-		"status":             "error",
-		"error_stage":        failure.Stage,
-		"error_code":         failure.Code,
-		"safe_error_summary": failure.Summary,
-	}, "", ec.causationEventID)
-	event["bkn.trace.schema.version"] = "2.2.0"
-	return []Event{event}
-}
-
 // BuildRunCypherEvents builds the observed-data event for one Cypher query.
 func BuildRunCypherEvents(ctx context.Context, knID, query string, rowCount int, descriptor json.RawMessage) []Event {
 	descriptorPayload := descriptorValue(descriptor)
@@ -796,44 +710,6 @@ func objectArray(value any) []map[string]any {
 		}
 	}
 	return result
-}
-
-func runSQLResultSummary(resp *interfaces.VegaRawQueryResp) map[string]any {
-	count := 0
-	truncated := false
-	if resp != nil {
-		count = len(resp.Entries)
-		truncated = resp.Paging != nil && resp.Paging.NextCursor != nil
-		if resp.TotalCount != nil && *resp.TotalCount > int64(count) {
-			truncated = true
-		}
-	}
-	return map[string]any{"row_count": count, "truncated": truncated}
-}
-
-func runSQLResourceRefs(resourceIDs []string) []map[string]any {
-	refs := make([]map[string]any, 0, len(resourceIDs))
-	seen := map[string]struct{}{}
-	for _, resourceID := range resourceIDs {
-		resourceID = strings.TrimSpace(resourceID)
-		if resourceID == "" {
-			continue
-		}
-		key := "data_resource\x00resource:" + resourceID
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		refs = append(refs, map[string]any{
-			"ref_id":         "resource:" + resourceID,
-			"ref_type":       "data_resource",
-			"source_system":  "vega",
-			"validity":       "observed",
-			"version_status": "unversioned",
-			"visibility":     "visible",
-		})
-	}
-	return refs
 }
 
 func BuildSchemaDefinitionEvents(ctx context.Context, kind, knID string, ids []string, matched int) []Event {

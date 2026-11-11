@@ -167,7 +167,7 @@ func TestCallMCPToolPreservesBigIntegers(t *testing.T) {
 
 	ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
 	result, err := client.CallMCPTool(ctx, &interfaces.CallMCPToolRequest{
-		McpID: "mcp-1", ToolName: "run_sql",
+		McpID: "mcp-1", ToolName: "run_cypher",
 	})
 	if err != nil {
 		t.Fatalf("CallMCPTool() error = %v", err)

@@ -55,6 +55,29 @@ func TestLocalizedPromptTemplateUsesRequestLanguage(t *testing.T) {
 	}
 }
 
+// run_sql and the two resource calls that feed it answer with raw physical
+// columns, outside the property-level rules of the knowledge network. They are
+// being removed from Context Loader, so the generator must not steer new
+// functions to them; aggregation goes through the knowledge network instead.
+func TestFunctionGeneratorPromptAvoidsPhysicalQueryCalls(t *testing.T) {
+	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		prompt, err := i18n.Render(language, "AgentOperatorIntegration.SystemPrompt.Python_Function_Generator.md", nil)
+		if err != nil {
+			t.Fatalf("%s: %v", language, err)
+		}
+		for _, gone := range []string{"run_sql", "list_resources", "describe_resource"} {
+			if strings.Contains(prompt, gone) {
+				t.Errorf("%s prompt still mentions %s", language, gone)
+			}
+		}
+		for _, want := range []string{"kn.query_metric(", "kn.run_cypher("} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s prompt does not mention %s", language, want)
+			}
+		}
+	}
+}
+
 func containsHan(value string) bool {
 	for _, char := range value {
 		if char >= '\u4e00' && char <= '\u9fff' {

@@ -175,10 +175,8 @@ func extraToolMeta(t mcptool.ExtraTool) ToolMeta {
 // filter is mcp-go's ToolFilterFunc: it decides what tools/list shows, per
 // request, against the licence in force at that moment.
 //
-// Three jobs. Retired tools are dropped for everyone, on every profile and on
-// the gateway that resolves through this filter (see retiredTools). Enterprise
-// tools the licence does not cover are dropped, so the catalogue matches what
-// a community binary would show. Decorated core tools
+// Two jobs. Enterprise tools the licence does not cover are dropped, so the
+// catalogue matches what a community binary would show. Decorated core tools
 // are swapped for their patched variant only while the decorator is covered,
 // so the paid parameter appears and disappears with the licence instead of
 // being baked in at boot.
@@ -188,9 +186,6 @@ func extraToolMeta(t mcptool.ExtraTool) ToolMeta {
 func (b *toolBuilder) filter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
 	out := make([]mcp.Tool, 0, len(tools))
 	for _, t := range tools {
-		if _, gone := retiredTools[b.names[t.Name]]; gone {
-			continue
-		}
 		if extra, isExtra := b.gated[t.Name]; isExtra {
 			if extra.Allowed() {
 				out = append(out, t)

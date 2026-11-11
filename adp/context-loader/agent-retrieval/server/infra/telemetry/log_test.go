@@ -29,7 +29,7 @@ func TestOperationLogAttributesCarryBusinessOperationScopeWithoutSelfAttestedTru
 		ConversationID: "conv-1",
 		InteractionID:  "int-1",
 		OperationID:    "op-1",
-		ToolName:       "run_sql",
+		ToolName:       "run_cypher",
 	})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID:   "user-1",
@@ -51,7 +51,7 @@ func TestOperationLogAttributesCarryBusinessOperationScopeWithoutSelfAttestedTru
 		"conversation_id":      "conv-1",
 		"interaction_id":       "int-1",
 		"operation_id":         "op-1",
-		"tool_name":            "run_sql",
+		"tool_name":            "run_cypher",
 		"log_category":         "runtime.business",
 		"event_name":           "operation.completed",
 		"outcome":              "success",

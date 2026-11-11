@@ -37,10 +37,6 @@ func TestMain(m *testing.M) {
 // This is the baseline the enterprise socket must not disturb. Adding a tool to
 // core means adding it here in the same change; a diff that touches only the
 // socket and moves this list is the bug this file exists to catch.
-//
-// run_sql, list_resources and describe_resource are assembled but withheld
-// (see retiredTools), so they are absent here exactly as they are absent from
-// tools/list.
 var communityTools = []string{
 	// Tracing lifecycle tool (bkntrace adaptation layer is directly hung on the server without using toolBuilder)
 	"bkn_finish_interaction",

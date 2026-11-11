@@ -39,7 +39,7 @@ func TestMCPLocaleBundle(t *testing.T) {
 		bundle := loadMCPLocaleBundle("fr-FR")
 
 		convey.So(bundle.ServerInstructions(), convey.ShouldEqual, mustReadMCPInstructions(schemasFS, defaultMCPLocale))
-		convey.So(bundle.ToolMeta(toolKeyRunSQL).Name, convey.ShouldEqual, toolKeyRunSQL)
+		convey.So(bundle.ToolMeta(toolKeyRunCypher).Name, convey.ShouldEqual, toolKeyRunCypher)
 	})
 
 	convey.Convey("localized schema description overlays should match existing schema paths", t, func() {
@@ -134,15 +134,16 @@ func TestServerInstructionsLeadWithManagedInteractionLifecycle(t *testing.T) {
 	}
 }
 
-// retiredToolNames is what no model-facing text may name any more.
-var retiredToolNames = []string{"run_sql", "list_resources", "describe_resource"}
+// removedToolNames is what no model-facing text may name any more: the
+// physical query tools, which the server no longer has.
+var removedToolNames = []string{"run_sql", "list_resources", "describe_resource"}
 
 // #1545 routed model-expressible aggregation to run_cypher and left run_sql as
-// the fallback; retiredTools has since withdrawn run_sql and the two resource
-// tools from the MCP surface, so run_cypher is the whole routing. Both locales,
-// in the server instructions and in the PTC digest, must say that — and must
-// name none of the withheld tools, because an instruction pointing at one
-// spends a turn on a call that answers "no such tool".
+// the fallback; run_sql and the two resource tools have since been removed, so
+// run_cypher is the whole routing. Both locales, in the server instructions
+// and in the PTC digest, must say that — and must name none of the removed
+// tools, because an instruction pointing at one spends a turn on a call that
+// answers "no such tool".
 func TestServerInstructionsRouteModelAggregationToCypher(t *testing.T) {
 	tests := []struct {
 		locale       string
@@ -157,12 +158,12 @@ func TestServerInstructionsRouteModelAggregationToCypher(t *testing.T) {
 				"跨表 join）→ run_cypher",
 				"聚合类问题（如「每个 X 的 Y 总数/排名」）用 run_cypher",
 			},
-			forbidden: retiredToolNames,
+			forbidden: removedToolNames,
 			ptcExpected: []string{
 				"**优先写一条 `run_cypher`**",
 				`print("答案:", run_cypher(`,
 			},
-			ptcForbidden: retiredToolNames,
+			ptcForbidden: removedToolNames,
 		},
 		{
 			locale: "en-US",
@@ -170,11 +171,11 @@ func TestServerInstructionsRouteModelAggregationToCypher(t *testing.T) {
 				"use run_cypher whenever the question can be stated in object types, relation types and logical properties",
 				"write them on the model with run_cypher",
 			},
-			forbidden: retiredToolNames,
+			forbidden: removedToolNames,
 			ptcExpected: []string{
 				"prefer run_cypher whenever the question can be stated in object types, relation types and logical properties",
 			},
-			ptcForbidden: retiredToolNames,
+			ptcForbidden: removedToolNames,
 		},
 	}
 	for _, test := range tests {

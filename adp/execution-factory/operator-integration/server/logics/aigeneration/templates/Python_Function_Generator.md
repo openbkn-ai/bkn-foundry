@@ -58,8 +58,8 @@
         detail = kn.get_kn_detail(kn_id, detail_level="summary")
         return {"object_types": [ot["name"] for ot in detail.get("object_types", [])]}
     ```
-    - 常用能力：`kn.get_kn_detail(kn_id)` 取 schema、`kn.search_schema(kn_id, query)` 按语义找对象类、`kn.query_object_instance(kn_id, ot_id, limit=...)` 查实例、`kn.list_resources(kn_id)` 列资源。
-    - 需要聚合时用 `kn.run_sql(kn_id, sql)`，但 SQL 里的表名必须写成占位符 `{{<resource_id>}}`，`<resource_id>` 先从 `kn.search_schema` 返回的 `data_source.id`（或 `kn.list_resources`）取，**不要直接写真实表名**（会被拒）。列名用物理列名，可让 `search_schema(..., include_columns=True)` 返回。
+    - 常用能力：`kn.get_kn_detail(kn_id)` 取 schema、`kn.search_schema(kn_id, query)` 按语义找对象类、`kn.query_object_instance(kn_id, ot_id, limit=...)` 查实例。
+    - 需要聚合时分两种情况。已建模的指标用 `kn.query_metric(kn_id, metric_id, version)`，`metric_id` 与 `version` 取自 `kn.get_object_types` 返回的 `related_metrics`。临时的计数、求和、分组用 `kn.run_cypher(kn_id, query)`，如 `MATCH (o:<对象类 id>) RETURN o.<属性>, count(*) AS n`：有聚合时按其余返回列自动分组，**不要自己写 GROUP BY**；条件里的值写成 `$name`，经 `parameters={...}` 传入。
     - 平台没配好地址或调用失败时抛 `bkn_osdk.BknError`（`InputError` / `HttpError` 都是它的子类）。除非需求要求降级返回，否则让它抛出去，不要吞掉换成空结果——那会把配置问题伪装成"查无数据"。
     - 旧写法 `from sandbox_sdk import tool, bkn` **仍然可用**，存量函数不需要改写。新生成的代码用上面的 `bkn_osdk`；改动已有函数时，除非用户明确要求迁移，否则保持它原有的写法。
 

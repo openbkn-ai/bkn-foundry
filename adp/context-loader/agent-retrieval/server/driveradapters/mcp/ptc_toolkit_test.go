@@ -50,11 +50,11 @@ func ptcTestTools() []MCPToolInfo {
 				"cursor":{"type":"string"}}}`),
 		},
 		{
-			Name: "run_sql", Title: "SQL 查询",
+			Name: "run_cypher", Title: "Cypher 查询",
 			Group: "query", GroupTitle: "实例查询", Order: 240,
-			Description:  "执行只读 SQL",
-			InputSchema:  json.RawMessage(`{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}`),
-			OutputSchema: json.RawMessage(`{"type":"object","properties":{"columns":{},"entries":{}}}`),
+			Description:  "执行只读 Cypher",
+			InputSchema:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`),
+			OutputSchema: json.RawMessage(`{"type":"object","properties":{"columns":{},"rows":{}}}`),
 		},
 		{
 			Name: "bkn_start_interaction", Title: "开始交互",
@@ -180,13 +180,6 @@ func TestPTCDigestGroupsOrderedByOrder(t *testing.T) {
 func TestPTCDigestFencesBalanced(t *testing.T) {
 	if n := strings.Count(ptcTestDigest(), "```"); n%2 != 0 {
 		t.Fatalf("代码围栏未闭合，共 %d 个", n)
-	}
-}
-
-// In actual testing, if the model writes SQL without reading the complete docstring, it will miss the placeholder convention and fail in one round.
-func TestPTCDigestCarriesRunSQLHint(t *testing.T) {
-	if digest := ptcTestDigest(); !strings.Contains(digest, "{{<resource_id>}}") {
-		t.Fatalf("run_sql 缺少占位符示例:\n%s", digest)
 	}
 }
 
@@ -462,7 +455,7 @@ func TestInlineDigestListsNamesOnly(t *testing.T) {
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
 	inline := renderPTCDigestForLocale(locale, tools, false)
 
-	for _, name := range []string{"list_knowledge_networks", "query_object_instance", "run_sql"} {
+	for _, name := range []string{"list_knowledge_networks", "query_object_instance", "run_cypher"} {
 		if !strings.Contains(inline, name) {
 			t.Fatalf("缺少函数名 %s:\n%s", name, inline)
 		}
@@ -489,7 +482,7 @@ func TestInlineDigestNameOrderIsStable(t *testing.T) {
 		t.Fatal("并入版渲染不稳定")
 	}
 	if !strings.Contains(renderPTCDigestForLocale(locale, tools, false),
-		"list_knowledge_networks, query_object_instance, run_sql") {
+		"list_knowledge_networks, query_object_instance, run_cypher") {
 		t.Fatal("函数名未按字典序排列")
 	}
 }
@@ -616,7 +609,7 @@ func TestPTCStubToleratesModelSuppliedBKNContext(t *testing.T) {
 		t.Fatalf("stub 应把 bkn_context 作为可忽略的尾参数接受:\n%s", stub)
 	}
 	// A tool whose schema never carried bkn_context does not grow one.
-	if !strings.Contains(stub, "def run_sql(sql: str) -> dict:") {
+	if !strings.Contains(stub, "def run_cypher(query: str) -> dict:") {
 		t.Fatalf("没有 bkn_context 的工具签名不该变:\n%s", stub)
 	}
 	if strings.Contains(stub, `"bkn_context": bkn_context`) {

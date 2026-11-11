@@ -24,7 +24,7 @@ type SearchSchemaReq struct {
 	// agents should not pick reranker model names.
 	RerankModel *string `json:"rerank_model,omitempty"`
 	// IncludeColumns, when true, adds each data property's physical column name
-	// (mapped_field) to the response, for writing run_sql against the resource.
+	// (mapped_field) to the response.
 	// Off by default to keep the response compact.
 	IncludeColumns *bool `json:"include_columns,omitempty" default:"false"`
 	// IndexOpsOnly keeps only index-derived operators in response condition_operations. It is set by the MCP layer,

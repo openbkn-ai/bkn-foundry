@@ -211,7 +211,7 @@ func TestEnterpriseToolCannotShadowACoreToolKey(t *testing.T) {
 	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
 	// Name does not collide, Key does. /mcp/info is sorted by key. Two entries sharing a key will be displayed twice.
 	// Changing positions between processes - the second duplication check of claimName is for this, and no use case has gone through it before.
-	shadow := extraTool(toolKeyRunSQL, "ee_run_sql")
+	shadow := extraTool(toolKeyRunCypher, "ee_run_cypher")
 	mcptool.Register(shadow)
 
 	defer func() {

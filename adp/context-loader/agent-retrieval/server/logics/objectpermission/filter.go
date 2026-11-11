@@ -4,8 +4,7 @@
 // See the LICENSE file in the project root for details.
 
 // Package objectpermission applies ontology-query's effective property plan to
-// Context Loader schema models. Physical resource tools intentionally do not
-// use this package: their authorization boundary is Vega resource permission.
+// Context Loader schema models.
 package objectpermission
 
 import (

@@ -763,7 +763,7 @@ type RelationTypesResp struct {
 // appears in ids, in request order and de-duplicated, plus the ids that matched
 // nothing. This is the drill-down that get_kn_detail's summary level omits; it
 // keeps the heavy per-property detail (mapped_field, condition_operations, logic
-// sources) so results stay run_sql-capable, but drops the property display_name
+// sources), but drops the property display_name
 // (a UI label of little value to an agent).
 func (d *KnowledgeNetworkDetail) FilterObjectTypes(ids []string) (matched []*ObjectType, missing []string) {
 	if d == nil {

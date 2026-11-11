@@ -63,16 +63,6 @@ func TestReadOnlyToolsOutnumberWriters(t *testing.T) {
 	t.Logf("%d read-only tools, %d writing tools", readers, writers)
 }
 
-// TestRunSQLIsReadOnly is called out on its own because the name invites the
-// opposite conclusion. run_sql accepts a single SELECT against resources already
-// bound to the network; its grammar excludes every write and every DDL.
-func TestRunSQLIsReadOnly(t *testing.T) {
-	a := annotationFor(toolKeyRunSQL)
-	if a.ReadOnlyHint == nil || !*a.ReadOnlyHint {
-		t.Fatal("run_sql executes read-only SQL and must be annotated as read-only")
-	}
-}
-
 // TestArbitraryEffectToolsAreNotReadOnly guards the other direction: the tools
 // whose effect is whatever the caller submits must never be marked safe.
 func TestArbitraryEffectToolsAreNotReadOnly(t *testing.T) {

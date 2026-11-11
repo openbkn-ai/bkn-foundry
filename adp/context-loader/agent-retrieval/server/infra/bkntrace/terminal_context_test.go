@@ -13,7 +13,9 @@ import (
 	"testing"
 )
 
-func TestSQLTargetReceiptIndependentOfPublishDisposition(t *testing.T) {
+// The targets a handler resolved and its failure classification are frozen at
+// the first Finish, whatever happened to the evidence event that carried them.
+func TestRetainedTargetReceiptIndependentOfPublishDisposition(t *testing.T) {
 	for _, disposition := range []string{"disabled", "accepted", "dropped", "success"} {
 		t.Run(disposition, func(t *testing.T) {
 			SetEvidencePublisher(nil)
@@ -26,10 +28,9 @@ func TestSQLTargetReceiptIndependentOfPublishDisposition(t *testing.T) {
 				_ = publisher
 			}
 			ctx := withEvidenceOutcome(testTraceContext())
-			if disposition == "success" {
-				EmitRunSQLEvents(ctx, nil, "SELECT * FROM {{inventory}}", []string{"inventory", " inventory ", ""}, nil)
-			} else {
-				EmitRunSQLFailure(ctx, nil, "SELECT * FROM {{inventory}}", []string{"inventory", " inventory ", ""}, RunSQLFailure{Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "backend unavailable"})
+			EmitSchemaSnapshotEvents(ctx, nil, "object", "kn_demo", []string{"inventory", " inventory ", ""}, nil, true)
+			if disposition != "success" {
+				RecordToolFailure(ctx, "SCHEMA_BACKEND_FAILED", "schema_query")
 			}
 			type finishBody struct {
 				BusinessRefs        []BusinessRef        `json:"business_refs"`
@@ -50,13 +51,14 @@ func TestSQLTargetReceiptIndependentOfPublishDisposition(t *testing.T) {
 			})
 			state := GuardState{Result: OperationResult{Operation: Operation{OperationID: "op", Attempt: 1}, Receipt: Receipt{ReceiptID: "receipt"}}}
 			for attempt := 0; attempt < 2; attempt++ {
-				if _, apiErr, err := NewGuard(client).Finish(ctx, state, json.RawMessage(`{"stage":"vega_query"}`), true, false); apiErr != nil || err != nil {
+				if _, apiErr, err := NewGuard(client).Finish(ctx, state, json.RawMessage(`{"stage":"schema_query"}`), true, false); apiErr != nil || err != nil {
 					t.Fatalf("finish: %v %v", apiErr, err)
 				}
 				// Late callbacks must not rewrite the frozen terminal target or classification.
-				EmitRunSQLFailure(ctx, nil, "late", []string{"different"}, RunSQLFailure{Stage: "input_validation", Code: "late"})
+				EmitSchemaSnapshotEvents(ctx, nil, "object", "kn_demo", []string{"different"}, nil, true)
+				RecordToolFailure(ctx, "late", "input_validation")
 			}
-			want := []BusinessRef{{RefType: "data_resource", RefID: "resource:inventory", Version: "unversioned"}}
+			want := []BusinessRef{{RefType: "object_type", RefID: "object:kn_demo:inventory", Version: "unversioned"}}
 			if !reflect.DeepEqual(bodies[0].BusinessRefs, want) || !reflect.DeepEqual(bodies[0], bodies[1]) {
 				t.Fatalf("terminal target or retry changed: %+v", bodies)
 			}
@@ -71,7 +73,7 @@ func TestSQLTargetReceiptIndependentOfPublishDisposition(t *testing.T) {
 				}
 			}
 			if disposition != "success" {
-				if code, stage := FreezeToolFailure(ctx); code != "RUN_SQL_VEGA_QUERY_FAILED" || stage != "vega_query" {
+				if code, stage := FreezeToolFailure(ctx); code != "SCHEMA_BACKEND_FAILED" || stage != "schema_query" {
 					t.Fatalf("classification changed: %s %s", code, stage)
 				}
 			}
@@ -82,14 +84,15 @@ func TestSQLTargetReceiptIndependentOfPublishDisposition(t *testing.T) {
 func TestTerminalContextIsolatedBetweenNestedAttempts(t *testing.T) {
 	parent := withEvidenceOutcome(context.Background())
 	child := withEvidenceOutcome(parent)
-	EmitRunSQLFailure(child, nil, "", []string{"child"}, RunSQLFailure{Code: "child", Stage: "vega_query"})
+	EmitSchemaSnapshotEvents(child, nil, "object", "kn_demo", []string{"child"}, nil, true)
+	RecordToolFailure(child, "child", "schema_query")
 	if code, stage := FreezeToolFailure(parent); code != "" || stage != "" || len(retainedBusinessRefs(parent)) != 0 {
 		t.Fatal("child failure leaked to parent")
 	}
 	freezeEvidenceExpectation(child)
 	refs := retainedBusinessRefs(child)
 	refs[0].RefID = "mutated"
-	if retainedBusinessRefs(child)[0].RefID != "resource:child" {
+	if retainedBusinessRefs(child)[0].RefID != "object:kn_demo:child" {
 		t.Fatal("caller mutated retained target")
 	}
 }
@@ -97,7 +100,10 @@ func TestTerminalContextIsolatedBetweenNestedAttempts(t *testing.T) {
 func TestUnmanagedChildCannotChangeParentTerminalFacts(t *testing.T) {
 	parent := withRequestDerivedBusinessRefs(withEvidenceOutcome(testTraceContext()), []BusinessRef{{RefType: "knowledge_network", RefID: "kn:parent", Version: "unversioned"}})
 	child := ClearManagedTraceContext(parent)
-	EmitRunSQLFailure(child, nil, "", []string{"child"}, RunSQLFailure{Code: "child", Stage: "input_validation"})
+	// Same knowledge network as the parent, so a leak cannot hide behind the
+	// cross-network guard in retainSchemaSnapshotTargets.
+	EmitSchemaSnapshotEvents(child, nil, "object", "parent", []string{"child"}, nil, true)
+	RecordToolFailure(child, "child", "input_validation")
 	if code, stage := FreezeToolFailure(parent); code != "" || stage != "" || len(retainedBusinessRefs(parent)) != 0 {
 		t.Fatal("unmanaged child contaminated parent terminal facts")
 	}

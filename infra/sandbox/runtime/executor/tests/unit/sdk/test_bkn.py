@@ -208,7 +208,7 @@ def test_shipped_artifact_is_importable_and_versioned():
     for name in ("list_knowledge_networks", "query_object_instance",
                  "run_cypher", "search_schema", "query_metric"):
         assert callable(getattr(_bkn_tools, name)), name
-    # run_sql and the resource tools are retired from the MCP surface, so the
+    # run_sql and the resource tools were removed from Context Loader, so the
     # renderer must not put them back into the shipped artifact.
     for name in ("run_sql", "list_resources", "describe_resource"):
         assert not hasattr(_bkn_tools, name), name

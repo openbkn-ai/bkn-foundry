@@ -16,7 +16,7 @@
 
 While evidence capture is enabled, MCP business tool calls and the REST execution
 endpoints `execute_action`, `execute_tool`, and `execute_skill` require an active
-Conversation and Interaction in `bkn_context`. REST reads, including `run_sql` and `run_cypher`,
+Conversation and Interaction in `bkn_context`. REST reads, including `run_cypher`,
 and `/mcp/proxy/.../call` may run ad hoc without it; when supplied, the context
 is validated and Trace capture is attempted:
 

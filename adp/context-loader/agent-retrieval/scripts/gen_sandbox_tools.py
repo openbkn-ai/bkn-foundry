@@ -217,9 +217,6 @@ def render_tools_py(tools: list[dict]) -> str:
 
 
 def render_digest(tools: list[dict]) -> str:
-    # 与 Go stub 生成器复用提示资源；去掉文件开头的许可证注释后读取 JSON。
-    hints_text = (SCHEMA_DIR / "locales/zh-CN/ptc_hints.json").read_text(encoding="utf-8")
-    hints = json.loads(hints_text.split("*/", 1)[-1])
     lines = [
         "<!-- 由 gen_sandbox_tools.py 生成，请勿手工编辑 -->",
         "",
@@ -247,8 +244,6 @@ def render_digest(tools: list[dict]) -> str:
         sig = signature(tool)[: -len(" -> dict")]
         lines.append(f"{sig} -> {return_keys(tool)}")
         lines.append(f"    # {meta.get('title', '')}")
-        if tool["name"] == "run_sql":
-            lines.extend(f"    #   {hint}" for hint in hints["run_sql"])
     lines += ["```", ""]
     lines += [
         "## 调用顺序",

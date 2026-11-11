@@ -980,14 +980,14 @@ func mappedFieldColumn(mappedField any, fallback string) string {
 }
 
 // convertObjectTypesToLocal maps object types to local response structures; brief controls the scope of included fields;
-// When includeColumns is true, the physical column name (mapped_field) of each attribute is additionally populated for use by run_sql.
+// When includeColumns is true, the physical column name (mapped_field) of each attribute is additionally populated.
 func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.ObjectType, brief bool, includeColumns bool) []*interfaces.KnSearchObjectType {
 	result := make([]*interfaces.KnSearchObjectType, len(objects))
 	for i, obj := range objects {
 		var conceptType string
 		var primaryKeys []string
 		var tags []string
-		// data_source is always retained: brief also requires data_source.id to write run_sql.
+		// data_source is always retained, in brief as well.
 		dataSource := obj.DataSource
 		if !brief {
 			conceptType = "object_type"

@@ -19,9 +19,9 @@ info:
     基础上做一轮语义实例召回，并把命中实例放在 `nodes` 里。参与召回的只有
     `condition_operations` 里带 `match` / `knn` / `==` 的属性——没建索引的对象类不出实例。
 
-    拿到概念后，实例数据也可以走
+    拿到概念后，实例数据可以走
     [object-instance.yaml](object-instance.yaml)、[instance-subgraph.yaml](instance-subgraph.yaml)，
-    或 [data-access.yaml](data-access.yaml) 的 `run_sql`。
+    或 [cypher.yaml](cypher.yaml) 的 `run_cypher`。
 
     **响应格式**：本模块所有端点都支持 `?response_format=toon`，返回
     `application/toon`（同构数组压成表格，比 JSON 省 token）；默认 `json`。
@@ -53,9 +53,9 @@ paths:
         统一的 Schema 探索入口。适用于还不确定该继续调用哪个 `query_*` / `find_*` /
         `get_*` 接口时，先探索相关概念。
 
-        **写 SQL 时注意 `include_columns`**：`data_properties[].name` 是逻辑名，
+        **`include_columns`**：`data_properties[].name` 是逻辑名，
         物理列名在 `mapped_field` 里，二者可以不同（同一份资源可被多个对象类以不同
-        逻辑名映射）。要用 `run_sql` 直查时置 `include_columns=true` 拿物理列名。
+        逻辑名映射）。置 `include_columns=true` 可拿到物理列名。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - name: x-kn-id
@@ -243,7 +243,7 @@ components:
           default: false
           description: |
             是否在每个对象类的 `data_properties` 上附带物理列名（取自 `mapped_field`）。
-            写 `run_sql` 需要物理列名时置 true；默认 false 以保持响应精简。
+            默认 false 以保持响应精简。
         enum_query:
           type: string
           description: |

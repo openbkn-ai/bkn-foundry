@@ -935,7 +935,7 @@ const (
 // ListMetricsPage fetches one batch of metrics for object types, paginates until all are fetched.
 //
 // Paging instead of truncation: The truncated answer is exactly the same as "This object type has no pointer" in the eyes of the caller.
-// And that is what pushes the Agent back to the run_sql state - the reason for this link's existence is to destroy it.
+// And that is what pushes the Agent to re-derive the metric in a query of its own - the reason for this link's existence is to prevent it.
 func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, header map[string]string,
 	knID string, branch ...string) ([]metricsListEntry, error) {
 	entries := make([]metricsListEntry, 0, metricsPageSize)

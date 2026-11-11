@@ -36,8 +36,6 @@ SCHEMA_TOOLS = frozenset(
         "get_object_types",
         "get_relation_types",
         "get_action_info",
-        "describe_resource",
-        "list_resources",
         "search_capabilities",
     }
 )
@@ -55,7 +53,6 @@ READ_TOOLS = SCHEMA_TOOLS | {
     "query_metric",
     "drill_through_metric",
     "run_cypher",
-    "run_sql",
 }
 
 _EARLIER_TURN = (

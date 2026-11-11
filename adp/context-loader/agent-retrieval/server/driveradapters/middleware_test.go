@@ -355,15 +355,12 @@ func (stubKnToolsHandler) ExecuteTool(c *gin.Context)        { c.Status(http.Sta
 
 type stubKnQueryToolsHandler struct{}
 
-func (stubKnQueryToolsHandler) RunSQL(c *gin.Context)                { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) RunCypher(c *gin.Context)             { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) GetKnDetail(c *gin.Context)           { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) GetObjectTypes(c *gin.Context)        { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) GetRelationTypes(c *gin.Context)      { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) QueryMetric(c *gin.Context)           { c.Status(http.StatusOK) }
-func (stubKnQueryToolsHandler) ListResources(c *gin.Context)         { c.Status(http.StatusOK) }
-func (stubKnQueryToolsHandler) DescribeResource(c *gin.Context)      { c.Status(http.StatusOK) }
 
 func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -450,9 +447,9 @@ func TestMCPRequestBodyForLogOmitsGovernedBusinessContent(t *testing.T) {
 	body := []byte(`{
 		"jsonrpc":"2.0",
 		"method":"tools/call",
-		"params":{"name":"run_sql","arguments":{
+		"params":{"name":"run_cypher","arguments":{
 			"question":"6月份有哪些需求预测单？",
-			"sql":"SELECT * FROM secret_table",
+			"query":"MATCH (s:secret_table) RETURN s.code",
 			"answer":"需求总量为11594"
 		}}
 	}`)
@@ -462,12 +459,12 @@ func TestMCPRequestBodyForLogOmitsGovernedBusinessContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"6月份", "SELECT *", "11594", "secret_table"} {
+	for _, forbidden := range []string{"6月份", "MATCH (", "11594", "secret_table"} {
 		if strings.Contains(encoded, forbidden) {
 			t.Fatalf("MCP business content leaked into general log: %s", encoded)
 		}
 	}
-	for _, expected := range []string{"tools/call", "run_sql", "argument_keys", "question", "sql", "answer"} {
+	for _, expected := range []string{"tools/call", "run_cypher", "argument_keys", "question", "query", "answer"} {
 		if !strings.Contains(encoded, expected) {
 			t.Fatalf("safe MCP structure missing %q: %s", expected, encoded)
 		}
@@ -478,7 +475,7 @@ func TestMCPRequestBodyForLogOmitsGovernedBusinessContent(t *testing.T) {
 // is a sibling of /mcp rather than a child of it, so a substring test on
 // "/mcp/" would miss it and write its tool arguments to the general log.
 func TestRequestBodyForLogSummarisesEveryMCPRoute(t *testing.T) {
-	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"run_sql","arguments":{"sql":"SELECT * FROM secret_table"}}}`)
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"run_cypher","arguments":{"query":"MATCH (s:secret_table) RETURN s.code"}}}`)
 	cases := []struct {
 		path      string
 		summarise bool

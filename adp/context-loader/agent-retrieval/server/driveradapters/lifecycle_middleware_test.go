@@ -44,7 +44,6 @@ func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q","bkn_context":{}}`, 1, ""},
 		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q"}`, 0, "conversation_required"},
 		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
-		{"/api/agent-retrieval/v1/kn/run_sql", `{"query":"q"}`, 1, ""},
 		{"/api/agent-retrieval/v1/kn/run_cypher", `{"query":"q"}`, 1, ""},
 		{"/api/agent-retrieval/internal-v1/kn/search_schema", `{"query":"q"}`, 1, ""},
 		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", `{"query":"q"}`, 1, ""},
@@ -260,7 +259,7 @@ func TestRESTContextOptionalityBoundary(t *testing.T) {
 
 			request := httptest.NewRequest(
 				http.MethodPost,
-				"/api/agent-retrieval/v1/kn/run_sql",
+				"/api/agent-retrieval/v1/kn/run_cypher",
 				bytes.NewBufferString(tc.body),
 			)
 			request.Header.Set("Content-Type", "application/json")
@@ -317,7 +316,7 @@ type countingQueryToolsHandler struct {
 	calls int
 }
 
-func (h *countingQueryToolsHandler) RunSQL(c *gin.Context) {
+func (h *countingQueryToolsHandler) RunCypher(c *gin.Context) {
 	h.calls++
 	c.Status(http.StatusNoContent)
 }
@@ -342,8 +341,8 @@ func TestRegisteredProxyRouteDoesNotRequireTrace(t *testing.T) {
 	public.RegisterRouter(publicEngine.Group("/api/agent-retrieval/v1"))
 	publicRequest := httptest.NewRequest(
 		http.MethodPost,
-		"/api/agent-retrieval/v1/kn/run_sql",
-		bytes.NewBufferString(`{"sql":"select 1"}`),
+		"/api/agent-retrieval/v1/kn/run_cypher",
+		bytes.NewBufferString(`{"query":"MATCH (n:x) RETURN count(*) AS n"}`),
 	)
 	publicRequest.Header.Set("Authorization", "Bearer token")
 	publicRequest.Header.Set("Content-Type", "application/json")
@@ -574,12 +573,12 @@ func TestLifecycleMiddlewarePendingReplaySkipsOperatorSideEffect(t *testing.T) {
 	router := gin.New()
 	router.Use(trustedLifecycleHTTPContext())
 	router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
-	router.POST("/kn/run_sql", func(c *gin.Context) {
+	router.POST("/kn/run_cypher", func(c *gin.Context) {
 		downstreamCalls++
 		c.JSON(http.StatusOK, gin.H{"unsafe": true})
 	})
-	request := httptest.NewRequest(http.MethodPost, "/kn/run_sql", bytes.NewBufferString(`{
-		"sql":"select side_effect()",
+	request := httptest.NewRequest(http.MethodPost, "/kn/run_cypher", bytes.NewBufferString(`{
+		"query":"MATCH (n:side_effect) RETURN n.code",
 		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1"}
 	}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -624,12 +623,11 @@ func TestLifecycleMiddlewarePreservesBusinessResponseWhenTerminalTraceWriteFails
 	router := gin.New()
 	router.Use(trustedLifecycleHTTPContext())
 	router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
-	router.POST("/kn/run_sql", func(c *gin.Context) {
+	router.POST("/kn/run_cypher", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"rows": []any{map[string]any{"material_code": "101-000015"}}})
 	})
-	request := httptest.NewRequest(http.MethodPost, "/kn/run_sql", bytes.NewBufferString(`{
-		"resource_id":"resource-1",
-		"sql":"SELECT material_code FROM material WHERE material_code = '101-000015'",
+	request := httptest.NewRequest(http.MethodPost, "/kn/run_cypher", bytes.NewBufferString(`{
+		"query":"MATCH (m:material) WHERE m.material_code = '101-000015' RETURN m.material_code",
 		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1"}
 	}`))
 	request.Header.Set("Content-Type", "application/json")

@@ -57,8 +57,8 @@ def kn_summary(kn_id: str) -> dict:
     return {"object_types": [ot["name"] for ot in detail.get("object_types", [])]}
 ```
 
-   - Common capabilities: `kn.get_kn_detail(kn_id)` for the schema, `kn.search_schema(kn_id, query)` to find object types semantically, `kn.query_object_instance(kn_id, ot_id, limit=...)` for instances, `kn.list_resources(kn_id)` for resources.
-   - For aggregation use `kn.run_sql(kn_id, sql)`, but table names in the SQL must be the placeholder `{{<resource_id>}}`, where `<resource_id>` comes from the `data_source.id` returned by `kn.search_schema` (or from `kn.list_resources`) — do **not** write a real table name (it is rejected). Use physical column names, which `search_schema(..., include_columns=True)` returns.
+   - Common capabilities: `kn.get_kn_detail(kn_id)` for the schema, `kn.search_schema(kn_id, query)` to find object types semantically, `kn.query_object_instance(kn_id, ot_id, limit=...)` for instances.
+   - Aggregation has two cases. For a modelled metric use `kn.query_metric(kn_id, metric_id, version)`, taking `metric_id` and `version` from the `related_metrics` that `kn.get_object_types` returns. For an ad hoc count, sum or grouping use `kn.run_cypher(kn_id, query)`, e.g. `MATCH (o:<object type id>) RETURN o.<property>, count(*) AS n`: aggregates group by the other returned columns automatically, so do **not** write GROUP BY; write values in conditions as `$name` and pass them through `parameters={...}`.
    - A misconfigured platform address or a failed call raises `bkn_osdk.BknError` (`InputError` and `HttpError` are its subclasses). Let it propagate unless the request asks for a degraded result — swallowing it into an empty result disguises a configuration problem as "no data found".
    - The older `from sandbox_sdk import tool, bkn` form **still works**; existing functions need no rewrite. Use `bkn_osdk` for newly generated code, and when editing an existing function keep whichever form it already uses unless the request explicitly asks to migrate.
 
