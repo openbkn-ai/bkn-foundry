@@ -81,6 +81,26 @@ func TestScalarFunctionRejections(t *testing.T) {
 	}
 }
 
+// A function may sit in an optional condition: given a value, it filters;
+// left out, the condition is dropped with the function in it.
+func TestScalarFunctionInOptionalCondition(t *testing.T) {
+	query := "MATCH (o:Order) WHERE ($r IS NULL OR toUpper(o.region) = $r) RETURN o.id"
+	sql, err := compileComparison(t, query, map[string]any{"r": "EAST"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "UPPER(t0.`f_region`) = ") {
+		t.Fatalf("given a value, SQL lacks the function condition:\n%s", sql)
+	}
+	sql, err = compileComparison(t, query, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sql, "UPPER") || strings.Contains(sql, "WHERE") {
+		t.Fatalf("left out, SQL still filters:\n%s", sql)
+	}
+}
+
 // Only the SQL path computes these, as it does CASE and coalesce, so a query
 // on a dataset or an index is refused rather than half answered.
 func TestScalarFunctionIsSQLOnly(t *testing.T) {
