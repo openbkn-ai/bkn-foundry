@@ -4,6 +4,8 @@
 
 ### Added
 
+- The graph explorer's `configure_analysis` draws an industry or supply chain (`kind: chain`, one type along a relation from that type to itself in `chainRelByOt`, lanes by `propertyByOt`); a relation that does not link the type to itself is refused. In an analysis, the instructions route 产业链 / 上下游 / 供应链 questions to one Cypher query and this chart instead of drawing the chain node batch by node batch.
+
 - Public executions accept an optional `kn_version` (`running`, `draft` or a version number) and `draft_revision` in `context`. Both are sent to Context Loader as `X-Kn-Version` / `X-Kn-Draft-Revision`, pinned into scoped tool calls like `kn_id` (a different model-supplied value returns `ToolScopeMismatch`), and stored with the execution. `draft_revision` without `kn_version=draft` returns 422. Requests without them are stored and run as before, and their scoped tool calls read the running version: a model-supplied `draft`, version number, `draft_revision` or `branch=draft` returns `ToolScopeMismatch` (#1229).
 
 - Add the quality-evaluation assistant to the built-in Agent catalog, preserve administrator changes when seeding it, and carry an explicit Eval purpose through public execution and request deduplication (#2570).
@@ -12,6 +14,7 @@
 
 ### Fixed
 
+- In an analysis, the graph explorer's `canvas_control clear` no longer tells the model the user will confirm. The instructions said no confirmation follows, the tool said one did, and the model undid and cleared again in a loop.
 - Resource semantic understanding v7 (`0.2.2/07-semantic-drop-api-name.sql`) no longer asks for an English short name (`api_name`): the official v6 without its api_name rules. Only an untouched official v6 is upgraded; customized prompts, history and runtime settings are kept, and fresh installs start at v7. Apply it before the vega release that reverts its api_name support (#3017).
 - Stop requiring the Agent's `use` permission on public executions and Agent settings: the public surface runs built-in Agents only, so access follows the knowledge network's authorization alone (`view_detail` to run or read, `modify` to change a network's setting). Users with network access no longer get `BknAgent.Execution.Forbidden` for lacking an Agent grant that role administration could not assign.
 

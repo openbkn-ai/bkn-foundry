@@ -1056,3 +1056,41 @@ def test_a_filter_on_a_missing_property_names_the_real_ones():
             )
         )
     assert not any(c[0] == "query_object_instance" for c in calls)
+
+
+def test_clearing_in_an_analysis_promises_no_confirmation():
+    _, tools = _analysis_run([{"no": 1, "kind": "select"}])
+    cleared = _invoke(tools["canvas_control"], action="clear")
+    # The model read "the user confirms" here, undid the clear and cleared again.
+    assert "confirm" in cleared["note"] and "nobody is asked" in cleared["note"]
+
+
+def test_a_chain_chart_follows_a_relation_from_a_type_to_itself():
+    run, tools = _canvas_run(object_types=[graph.ObjectTypeRef(id="segment"), graph.ObjectTypeRef(id="company")])
+    run.state["network"] = {
+        "relation_types": {
+            "supplies": {"name": "上游供给", "source": "segment", "target": "segment"},
+            "works_in": {"name": "参与环节", "source": "company", "target": "segment"},
+        }
+    }
+    chain = {"kind": "chain", "otIds": ["segment"], "chainRelByOt": {"segment": "supplies"}}
+    planned = _invoke(tools["configure_analysis"], chart=chain)
+    assert planned["planned"]["config"]["chainRelByOt"] == {"segment": "supplies"}
+    with pytest.raises(ToolException, match="to itself"):
+        asyncio.run(
+            tools["configure_analysis"].ainvoke(
+                {"chart": {"kind": "chain", "otIds": ["company"], "chainRelByOt": {"company": "works_in"}}}
+            )
+        )
+    with pytest.raises(ToolException, match="needs chainRelByOt"):
+        asyncio.run(tools["configure_analysis"].ainvoke({"chart": {"kind": "chain", "otIds": ["segment"]}}))
+    with pytest.raises(ToolException, match="Unknown object types"):
+        asyncio.run(
+            tools["configure_analysis"].ainvoke({"chart": {"kind": "chain", "chainRelByOt": {"ghosts": "supplies"}}})
+        )
+
+
+def test_analysis_instructions_draw_a_chain_as_a_chart():
+    run, _ = _analysis_run([])
+    text = "\n".join(graph._card_instructions(run))
+    assert "产业链" in text and "kind chain" in text and "do not clear" in text

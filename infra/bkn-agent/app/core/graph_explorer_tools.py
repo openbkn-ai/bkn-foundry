@@ -603,7 +603,7 @@ class MetricItem(TypedDict, total=False):
 
 
 class AnalysisConfig(TypedDict, total=False):
-    kind: Literal["types", "relations", "category", "numeric", "time", "degree", "scatter", "metric"]
+    kind: Literal["types", "relations", "category", "numeric", "time", "degree", "scatter", "metric", "chain"]
     otIds: Annotated[Optional[list[str]], Field(description="Types to analyse; null selects the default type. numeric takes one type.")]
     propertyByOt: Annotated[dict[str, str], Field(description="Object type id -> grouping, date or numeric property.")]
     degreeOt: Annotated[Optional[str], Field(description="Degree chart type filter; null for all types.")]
@@ -616,6 +616,10 @@ class AnalysisConfig(TypedDict, total=False):
     xByOt: dict[str, str]
     yByOt: dict[str, str]
     metrics: Annotated[list[MetricItem], Field(max_length=8, description="For kind metric: one number card each; replaces the current list.")]
+    chainRelByOt: Annotated[
+        dict[str, str],
+        Field(description="For kind chain: object type id -> the relation type, from that type to itself, drawn upstream to downstream."),
+    ]
 
 
 class Filter(TypedDict, total=False):
@@ -1320,7 +1324,11 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         counts; category groups by a property; numeric histogram; time timeline;
         degree scoped degree distribution; scatter numeric/time x against numeric y;
         metric number cards, one per item of metrics, each measuring one type's
-        canvas instances (optionally only those meeting its conditions).
+        canvas instances (optionally only those meeting its conditions); chain an
+        industry or supply chain: one type (otIds) drawn upstream to downstream
+        along a relation from that type to itself (chainRelByOt), in lanes by a
+        property (propertyByOt, optional), over the instances and links on the
+        canvas.
         Category and time support count/sum/avg/min/max measures. No pie charts or
         other chart styles. The Web checks the settings when it applies the plan."""
         patch = {
@@ -1334,11 +1342,13 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         named = (
             set((chart or {}).get("otIds") or ())
             | set((chart or {}).get("propertyByOt") or {})
+            | set((chart or {}).get("chainRelByOt") or {})
             | {item["otId"] for item in (chart or {}).get("metrics") or ()}
         )
         unknown = sorted(named - known) if known else []
         if unknown:
             raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use ids from view_state.")
+        _check_chain(run, chart or {})
         _record(run, "set_analysis", patch=patch)
         return _dump({"planned": patch})
 
@@ -1441,6 +1451,9 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             everything = sorted(_present_nodes(run) | _present_aggregates(run))
             _record(run, "clear")
             _take_off(run, everything)
+            if _canvas(run).analysis_cards is not None:
+                # An analysis keeps every card: clearing only starts the next steps from nothing.
+                return _dump({"planned": "clear", "note": "Later steps start from nothing; no card is deleted and nobody is asked to confirm."})
             return _dump({"planned": "clear", "note": "The Web asks the user to confirm; if they decline, this and later actions are skipped."})
         else:
             _record(run, action)
@@ -1659,6 +1672,18 @@ async def _instructions(run: builtin_tools.Run) -> str:
     )
 
 
+def _check_chain(run: builtin_tools.Run, chart: dict) -> None:
+    """A chain follows a relation from a type to itself; refuses one the network
+    lists otherwise, so the model does not leave the chart without links."""
+    if chart.get("kind") == "chain" and not chart.get("chainRelByOt"):
+        raise ToolException("A chain needs chainRelByOt: the type's id -> a relation type from it to itself.")
+    relations = (run.state.get("network") or {}).get("relation_types") or {}
+    for ot, rel in (chart.get("chainRelByOt") or {}).items():
+        known = relations.get(rel)
+        if known and (known.get("source"), known.get("target")) != (ot, ot):
+            raise ToolException(f"{rel} does not link {ot} to itself; a chain follows a relation from a type to itself.")
+
+
 def _card_instructions(run: builtin_tools.Run) -> list[str]:
     """The analysis cards, when the question is asked in an analysis: the user
     names them as `#<number>`, which is easily taken for a node."""
@@ -1679,6 +1704,11 @@ def _card_instructions(run: builtin_tools.Run) -> list[str]:
         " a new line from nothing: no card is deleted and the user is not asked to confirm, so say that, not"
         " that a confirmation follows. Layout, labels, grouping and the other view tools change nothing in an"
         " analysis; do not offer or claim them.",
+        "An industry chain, supply chain or upstream and downstream (产业链、上下游、供应链) is a chain chart:"
+        " one run_cypher that returns the instances of one type and the links of a relation from that type to"
+        " itself (MATCH (a:T)-[r:R]->(b:T) RETURN a, r, b), then configure_analysis with kind chain, otIds [T]"
+        " and chainRelByOt {T: R}. Do not draw the chain by adding batches of nodes, and do not clear to start"
+        " it again.",
         "Cards of the analysis (number, title, kind):",
         *(listed or ["(none)"]),
     ]
