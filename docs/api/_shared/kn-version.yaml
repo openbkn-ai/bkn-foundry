@@ -19,11 +19,31 @@ components:
         needs `view_detail`. Do not combine it with `branch` (400 `BknBackend.KNVersion.InvalidVersion`,
         which is also the answer to a value that is not `running`, `draft` or a positive integer). A
         version that does not exist is 404 `BknBackend.KNVersion.VersionNotFound` and a purged one is
-        410 `BknBackend.KNVersion.VersionPurged`. On a network without versioning only `running` is
-        accepted, and it means the main branch; any other value is 400 `BknBackend.KNVersion.NotVersioned`.
+        410 `BknBackend.KNVersion.VersionPurged`. A network without versioning is shown as its running
+        version 1: `running`, `draft` and `1` are accepted and all mean the main branch; any other
+        value is 400 `BknBackend.KNVersion.NotVersioned`.
 
         Not accepted on writes: a write to a versioned network always goes to its draft, and a write
         that names `kn_version` is refused with 400 `BknBackend.KNVersion.InvalidVersion`.
+
+        A write to a versioned network that sends `branch=draft` only changes the draft, which is
+        published later. A write without `branch`, or with `branch=main`, is a direct write: it goes
+        to the draft and is published as a new version in the same request, so later reads of the
+        running version see it, as on a network without versioning. A direct write needs no
+        `If-Match` or `expected_draft_revision` (they are still checked when sent), and its response
+        carries the new version in `X-Kn-Version`. A direct write is refused with 409
+        `BknBackend.KNVersion.DraftHasChanges` while the draft holds unpublished changes, which it
+        would otherwise publish too; an import with `overwrite_changes=true` replaces them instead.
+        Two direct writes to one network at the same time can meet this way: the second sees the
+        first one's write in the draft before it is published, and can be retried. A draft left on
+        another version by a switch of the running version, with no changes of its own, is first
+        put back on the running version. When the write or its publish fails, the draft is put back
+        as it was before the write and the publish error is returned, for example 400
+        `BknBackend.KNVersion.ValidationFailed`.
+
+        A network without versioning is its main branch, shown as v1: writes without `branch` change
+        main, as they always did, and `branch` names a branch as it is. Enabling versioning (see
+        the versions API) is what makes main its running version 1 and starts the draft.
       schema:
         type: string
         example: draft
@@ -48,7 +68,7 @@ components:
         request changes the draft as a whole (an import, or `skill_content` of the network) and
         accepted instead of `If-Match` when a delete removes several definitions at once. A different
         current revision is refused with 409 `BknBackend.KNVersion.DraftRevisionMismatch`. Accepted
-        but never required on a network without versioning.
+        but never required on a network without versioning, or by a direct write (see `kn_version`).
       schema:
         type: integer
         format: int64
@@ -64,7 +84,8 @@ components:
         missing it is 428 `BknBackend.KNVersion.PreconditionRequired`. A stale value is 409
         `BknBackend.KNVersion.DefinitionModified`, whose details carry `current_etag`. `If-Match`
         names one definition: with several ids in the path send `expected_draft_revision` instead.
-        Accepted but never required on a network without versioning.
+        Accepted but never required on a network without versioning, or by a direct write (see
+        `kn_version`).
       schema:
         type: string
     IdempotencyKey:
@@ -83,7 +104,7 @@ components:
     XKnVersion:
       description: |
         The version this response was read from: a version number, or `draft`. Sent for reads of a
-        versioned network.
+        versioned network, and by a direct write with the version it published.
       schema:
         type: string
     XKnDraftRevision:
@@ -171,8 +192,9 @@ components:
   responses:
     PreconditionRequired:
       description: |
-        `BknBackend.KNVersion.PreconditionRequired`. A write to a versioned network lacks the
-        precondition its operation needs: `If-Match`, `expected_draft_revision`, or either of them.
+        `BknBackend.KNVersion.PreconditionRequired`. A write to the draft of a versioned network
+        (`branch=draft`) lacks the precondition its operation needs: `If-Match`,
+        `expected_draft_revision`, or either of them.
       content:
         application/json:
           schema:
@@ -183,7 +205,8 @@ components:
         longer matches the definition (details `current_etag`);
         `BknBackend.KNVersion.DraftRevisionMismatch` when `expected_draft_revision` no longer matches
         (details `draft_revision`); `BknBackend.KNVersion.DraftHasChanges` when a whole-draft replace
-        would overwrite unpublished changes without `overwrite_changes=true`;
+        would overwrite unpublished changes without `overwrite_changes=true`, or a direct write
+        (without `branch=draft`) would publish them;
         `BknBackend.KNVersion.InvalidVersion` when a write that was resolved before versioning was
         enabled reaches a branch other than the draft (a request that names `kn_version` or a
         branch other than `main` or `draft` is refused earlier, with 400);

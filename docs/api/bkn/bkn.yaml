@@ -628,13 +628,13 @@ components:
         branch:
           type: string
           default: main
-          description: Branch name. Defaults to main. Do not combine it with `kn_version`.
+          description: Branch name; `default` also names main. Defaults to main. Do not combine it with `kn_version`.
         kn_version:
           type: string
           description: |
             Which version of a versioned network to compare: `running`, `draft` or a version number.
-            On a network without versioning only `running` is accepted, and it means main. Do not
-            combine it with `branch`.
+            On a network without versioning `running`, `draft` and `1` are accepted, and all mean main.
+            Do not combine it with `branch`.
           example: draft
 
     ObjectDataStatsSideRequest:
@@ -646,6 +646,7 @@ components:
         branch:
           type: string
           default: main
+          description: Branch name; `default` also names main.
         ot_id:
           type: string
 

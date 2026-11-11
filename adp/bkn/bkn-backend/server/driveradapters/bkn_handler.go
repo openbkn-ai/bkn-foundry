@@ -164,6 +164,9 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	bknNetwork.Branch = branch
 	if replace && !overwriteChanges {
 		logics.DraftWriteFrom(ctx).RefuseDraftChanges = true
+	} else if replace && overwriteChanges {
+		// The package replaces the unpublished changes, so a direct import publishes only itself.
+		logics.DraftWriteFrom(ctx).RefuseDraftChanges = false
 	}
 
 	// Import the network.

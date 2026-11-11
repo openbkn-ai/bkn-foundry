@@ -32,6 +32,8 @@ type DraftWrite struct {
 	// RefuseDraftChanges makes the first write refuse a draft with unpublished changes, for a
 	// whole-package replace without overwrite_changes. It is cleared once checked.
 	RefuseDraftChanges bool
+	// RefuseDraftChangesDetail explains the refusal; empty means the whole-package replace one.
+	RefuseDraftChangesDetail string
 }
 
 type draftWriteKey struct{}
@@ -82,8 +84,12 @@ func GuardDefinitionWrite(ctx context.Context, tx *sql.Tx, knID, branch string, 
 	if dw != nil {
 		expected = dw.Expected
 		if dw.RefuseDraftChanges && state.DraftHasChanges() {
+			detail := dw.RefuseDraftChangesDetail
+			if detail == "" {
+				detail = "pass overwrite_changes=true to replace the unpublished changes"
+			}
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_DraftHasChanges).
-				WithErrorDetails("pass overwrite_changes=true to replace the unpublished changes")
+				WithErrorDetails(detail)
 		}
 		dw.RefuseDraftChanges = false
 	}

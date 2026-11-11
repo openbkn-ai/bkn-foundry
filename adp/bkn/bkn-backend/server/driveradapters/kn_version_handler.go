@@ -392,6 +392,18 @@ func (r *restHandler) resolveWrite(ctx *context.Context, c *gin.Context, knID st
 	var dw *logics.DraftWrite
 	*ctx, dw = logics.WithDraftWrite(*ctx, expected)
 	dw.IfMatch = ifMatchRevision(c.GetHeader("If-Match"))
+	if isDirectWrite(c, resolved) {
+		// The caller does not know the draft: it gets no precondition to send, and its write is
+		// published at once. Preconditions it does send are still checked. It writes on the
+		// running version, so a draft left on another by a switch, with nothing of its own, is
+		// moved back first.
+		if err := r.kvs.RebaseDraft(*ctx, knID); err != nil {
+			replyKNVersionError(c, err)
+			return nil, false
+		}
+		startDirectWrite(*ctx, c, knID, dw, resolved.RunningVersion)
+		return resolved, true
+	}
 	if resolved.Versioned {
 		missing := ""
 		switch need {
