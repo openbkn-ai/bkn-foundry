@@ -47,7 +47,20 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 		out := map[string]interfaces.IndexFieldMeta{}
 		parseProperties("", map[string]Property{"title": prop}, out)
 		assert.Equal(t, "商品标题", out["title"].Description)
-		assert.False(t, out["title"].Searchable)
+		assert.Equal(t, false, out["title"].Attributes["index"])
+		assert.Equal(t, "ik_max_word", out["title"].Attributes["analyzer"])
+		require.NotNil(t, out["title"].Filterable)
+		assert.False(t, *out["title"].Filterable, "父字段不能借助 keyword 子字段开放过滤")
+		encoded, err := sonic.Marshal(out["title"])
+		require.NoError(t, err)
+		var metadata map[string]any
+		require.NoError(t, sonic.Unmarshal(encoded, &metadata))
+		assert.NotContains(t, metadata, "analyzer")
+		assert.NotContains(t, metadata, "searchable")
+		attributes, ok := metadata["attributes"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, false, attributes["index"])
+		assert.Equal(t, "ik_max_word", attributes["analyzer"])
 		require.Contains(t, prop.Fields, "keyword")
 		assert.Equal(t, "keyword", prop.Fields["keyword"].Type)
 		assert.Equal(t, float64(256), prop.Fields["keyword"].Attributes["ignore_above"])
@@ -95,16 +108,41 @@ func TestParseProperties(t *testing.T) {
 		assert.Equal(t, "description", out["description"].Name)
 		assert.Equal(t, "商品标题", out["description"].Description)
 		assert.Equal(t, "text", out["description"].Type)
-		assert.True(t, out["description"].Searchable)
+		assert.Equal(t, "ik_max_word", out["description"].Attributes["analyzer"])
+		assert.NotContains(t, out["description"].Attributes, "index")
 		require.Len(t, out["description"].SubFields, 1)
 		assert.Equal(t, "keyword", out["description"].SubFields[0].Name)
 		assert.Equal(t, "keyword", out["description"].SubFields[0].Type)
 		require.Contains(t, out, "profile.age")
 		assert.Equal(t, "integer", out["profile.age"].Type)
-		assert.False(t, out["not_searchable"].Searchable)
+		assert.Equal(t, false, out["not_searchable"].Attributes["index"])
 		assert.NotContains(t, out, "profile")
 		assert.NotContains(t, out, "ignored")
 	})
+	t.Run("uses index and doc values for main and child fields", func(t *testing.T) {
+		out := map[string]interfaces.IndexFieldMeta{}
+		parseProperties("", map[string]Property{
+			"text_only": {Type: "text", Attributes: map[string]any{"index": false}},
+			"no_paths":  {Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": false}},
+			"doc_only":  {Type: "long", Attributes: map[string]any{"index": false}},
+			"child_only": {Type: "text", Attributes: map[string]any{"index": false}, Fields: map[string]Property{
+				"raw": {Type: "keyword", Attributes: map[string]any{"index": false}},
+			}},
+		}, out)
+		for name, want := range map[string]bool{"text_only": false, "no_paths": false, "doc_only": true, "child_only": false} {
+			require.NotNil(t, out[name].Filterable, name)
+			assert.Equal(t, want, *out[name].Filterable, name)
+			assert.Equal(t, false, out[name].Attributes["index"], name)
+		}
+		require.Len(t, out["child_only"].SubFields, 1)
+		child := out["child_only"].SubFields[0]
+		assert.Equal(t, "raw", child.Name)
+		assert.Equal(t, false, child.Attributes["index"])
+		assert.True(t, (&OpenSearchConnector{}).IsFilterable(&interfaces.IndexFieldMeta{
+			Name: "child_only.raw", Type: child.Type, Attributes: child.Attributes,
+		}))
+	})
+
 }
 
 func TestDescriptionFromFieldMeta(t *testing.T) {
@@ -113,13 +151,6 @@ func TestDescriptionFromFieldMeta(t *testing.T) {
 	}))
 	assert.Empty(t, descriptionFromFieldMeta(map[string]any{"meta": map[string]any{"description": 1}}))
 	assert.Empty(t, descriptionFromFieldMeta(map[string]any{"meta": "invalid"}))
-}
-
-func TestIsSearchable(t *testing.T) {
-	assert.True(t, isSearchable(nil))
-	assert.True(t, isSearchable(map[string]any{"index": true}))
-	assert.False(t, isSearchable(map[string]any{"index": false}))
-	assert.True(t, isSearchable(map[string]any{"index": "false"}))
 }
 
 func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
@@ -377,5 +408,28 @@ func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
 			map[string]*interfaces.Property{name: property})
 		require.NoError(t, err, name)
 		assert.NotNil(t, condition, name)
+	}
+}
+
+func TestResolveIndexAliasTypes(t *testing.T) {
+	fields := map[string]interfaces.IndexFieldMeta{
+		"blocked":  {Name: "blocked", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": false}},
+		"doc_only": {Name: "doc_only", Type: "long", Attributes: map[string]any{"index": false}},
+		"title": {Name: "title", Type: "text", Attributes: map[string]any{"index": false}, SubFields: []interfaces.IndexSubFieldMeta{
+			{Name: "blocked", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": false}},
+			{Name: "doc_only", Type: "keyword", Attributes: map[string]any{"index": false}},
+		}},
+	}
+	aliases := map[string]string{"blocked_alias": "blocked", "doc_alias": "doc_only", "blocked_child_alias": "title.blocked", "doc_child_alias": "title.doc_only", "main_alias": "title"}
+	for name, target := range aliases {
+		fields[name] = interfaces.IndexFieldMeta{Name: name, Type: "alias", Attributes: map[string]any{"path": target}}
+	}
+	resolveIndexAliasTypes(fields)
+	for name, want := range map[string]bool{"blocked_alias": false, "doc_alias": true, "blocked_child_alias": false, "doc_child_alias": true, "main_alias": false} {
+		field := fields[name]
+		require.NotNil(t, field.Filterable, name)
+		assert.Equal(t, want, *field.Filterable, name)
+		assert.Equal(t, map[string]any{"path": aliases[name]}, field.Attributes)
+		assert.Equal(t, "alias", field.Type)
 	}
 }

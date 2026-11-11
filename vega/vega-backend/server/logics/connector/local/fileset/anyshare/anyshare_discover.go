@@ -76,7 +76,7 @@ func (c *AnyShareConnector) ListFilesets(ctx context.Context) ([]*interfaces.Fil
 // buildFilesetMeta is an auxiliary function for creating FilesetMeta objects
 func buildFilesetMeta(id, name, displayPath, itemType, createdAt, modifiedAt string,
 	createdBy, modifiedBy userInfoDTO, rev string) *interfaces.FilesetMeta {
-	return &interfaces.FilesetMeta{
+	metadata := &interfaces.FilesetMeta{
 		ID:          id,
 		Name:        name,
 		DisplayPath: displayPath,
@@ -113,6 +113,11 @@ func buildFilesetMeta(id, name, displayPath, itemType, createdAt, modifiedAt str
 			{Name: "score", Type: "integer"},
 		},
 	}
+	for i := range metadata.Columns {
+		value := DefaultFilterable(metadata.Columns[i].Type)
+		metadata.Columns[i].Filterable = &value
+	}
+	return metadata
 }
 
 func (c *AnyShareConnector) getEntryDocLib(ctx context.Context) ([]entryDocLibDTO, error) {

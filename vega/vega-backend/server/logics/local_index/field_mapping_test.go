@@ -17,7 +17,7 @@ import (
 func TestBuildFieldMappings(t *testing.T) {
 	t.Run("integer encoding cannot be overridden by features", func(t *testing.T) {
 		for _, config := range []map[string]any{{"scaling_factor": nil}, {"scaling_factor": 1}, {"type": "scaled_float"}, {"coerce": true}, {"ignore_malformed": true}, {"null_value": 0}} {
-			mapping, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "numeric(2,-3)", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: config}}}})
+			mapping, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "numeric(2,-3)", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: config}}}}, true)
 			var failure *interfaces.DecimalIndexError
 			require.ErrorAs(t, err, &failure)
 			assert.Equal(t, "unsafe_mapping_override", failure.Reason)
@@ -27,7 +27,7 @@ func TestBuildFieldMappings(t *testing.T) {
 
 	t.Run("features cannot override decimal safety", func(t *testing.T) {
 		for _, config := range []map[string]any{{"scaling_factor": 1e18}, {"type": "double"}, {"ignore_malformed": true}, {"null_value": 0}} {
-			mapping, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: config}}}})
+			mapping, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: config}}}}, true)
 			var failure *interfaces.DecimalIndexError
 			require.ErrorAs(t, err, &failure)
 			assert.Equal(t, "unsafe_mapping_override", failure.Reason)
@@ -56,7 +56,7 @@ func TestBuildFieldMappings(t *testing.T) {
 			{name: "invalid precision", original: "decimal(0,13)"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				properties, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: tc.original, Attributes: tc.attributes}})
+				properties, err := buildFieldMappings([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: tc.original, Attributes: tc.attributes}}, true)
 				if tc.factor == 0 {
 					require.Error(t, err)
 					assert.Nil(t, properties)
@@ -97,7 +97,7 @@ func TestBuildFieldMappings(t *testing.T) {
 				RefProperty: "embedding",
 				Config:      map[string]any{"dimension": 3, "embedding_model": "model-1"},
 			}}},
-		})
+		}, true)
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{"type": "long"}, properties["id"])
@@ -126,7 +126,7 @@ func TestBuildFieldMappings(t *testing.T) {
 			{Name: "legacy", Type: interfaces.DataType_Json},
 			{Name: "enabled", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true}},
 			{Name: "disabled", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": false}},
-		})
+		}, true)
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{"type": "object"}, properties["legacy"])
 		assert.Equal(t, map[string]any{"type": "object", "enabled": true}, properties["enabled"])
@@ -140,7 +140,7 @@ func TestBuildFieldMappings(t *testing.T) {
 			Features: []interfaces.PropertyFeature{{
 				FeatureType: interfaces.PropertyFeatureType_Fulltext,
 			}},
-		}})
+		}}, true)
 
 		require.NoError(t, err)
 		title := properties["title"].(map[string]any)
@@ -154,7 +154,7 @@ func TestBuildFieldMappings(t *testing.T) {
 			Features: []interfaces.PropertyFeature{{
 				FeatureType: interfaces.PropertyFeatureType_Keyword,
 			}},
-		}})
+		}}, true)
 
 		require.NoError(t, err)
 		body := properties["body"].(map[string]any)
@@ -179,7 +179,7 @@ func TestBuildFieldMappings(t *testing.T) {
 					FeatureType: interfaces.PropertyFeatureType_Keyword,
 				}},
 			},
-		})
+		}, true)
 
 		require.NoError(t, err)
 		titleFields := properties["title"].(map[string]any)["fields"].(map[string]any)
@@ -210,7 +210,7 @@ func TestBuildFieldMappings(t *testing.T) {
 					FeatureType: interfaces.PropertyFeatureType_Keyword,
 				}},
 			},
-		})
+		}, true)
 
 		require.NoError(t, err)
 		assert.Contains(t, properties["title"].(map[string]any)["fields"].(map[string]any), "analyzed")
@@ -218,7 +218,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported resource type", func(t *testing.T) {
-		properties, err := buildFieldMappings([]*interfaces.Property{{Name: "raw", Type: interfaces.DataType_Other, OriginalType: "_text"}})
+		properties, err := buildFieldMappings([]*interfaces.Property{{Name: "raw", Type: interfaces.DataType_Other, OriginalType: "_text"}}, true)
 
 		require.Error(t, err)
 		assert.Nil(t, properties)
@@ -233,7 +233,7 @@ func TestBuildFieldMappings(t *testing.T) {
 				FeatureType: "unsupported",
 				Config:      map[string]any{"x": true},
 			}},
-		}})
+		}}, true)
 
 		require.Error(t, err)
 		assert.Nil(t, properties)
@@ -247,7 +247,7 @@ func TestBuildFieldMappings(t *testing.T) {
 			Features: []interfaces.PropertyFeature{{
 				FeatureType: interfaces.PropertyFeatureType_Vector,
 			}},
-		}})
+		}}, true)
 
 		require.Error(t, err)
 		assert.Nil(t, properties)
@@ -265,7 +265,7 @@ func TestBuildFieldMappings(t *testing.T) {
 				}},
 			},
 			{Name: "content_vector", Type: interfaces.DataType_String},
-		})
+		}, true)
 
 		require.Error(t, err)
 		assert.Nil(t, properties)

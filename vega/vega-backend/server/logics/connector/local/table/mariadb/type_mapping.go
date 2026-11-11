@@ -122,3 +122,17 @@ func (c *MariaDBConnector) normalizeColumnType(nativeType string) string {
 	}
 	return strings.ToLower(normalizedType)
 }
+
+// IsFilterable 根据列元数据判断过滤能力，忽略已有 Filterable，不修改入参。
+func (c *MariaDBConnector) IsFilterable(column *interfaces.TableColumnMeta) bool {
+	switch c.MapType(column.Type) {
+	case interfaces.DataType_Integer, interfaces.DataType_UnsignedInteger,
+		interfaces.DataType_Float, interfaces.DataType_Decimal,
+		interfaces.DataType_String, interfaces.DataType_Text,
+		interfaces.DataType_Date, interfaces.DataType_Time,
+		interfaces.DataType_Datetime, interfaces.DataType_Timestamp:
+		return true
+	default:
+		return false
+	}
+}

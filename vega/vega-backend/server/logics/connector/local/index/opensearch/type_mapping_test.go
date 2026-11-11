@@ -8,6 +8,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -109,5 +110,79 @@ func TestOpenSearchConnectorMapType(t *testing.T) {
 		require.IsType(t, &filter_condition.KnnVectorCond{}, condition)
 		assert.Equal(t, property.Name, condition.(*filter_condition.KnnVectorCond).FilterFieldName)
 		assert.Equal(t, cfg, condition.(*filter_condition.KnnVectorCond).Cfg)
+	})
+}
+
+func TestOpenSearchConnectorIsFilterable(t *testing.T) {
+	connector := &OpenSearchConnector{}
+
+	for _, tc := range []struct {
+		nativeType string
+		want       bool
+	}{
+		{"keyword", true},
+		{"text", true},
+		{"long", true},
+		{"unsigned_long", true},
+		{"scaled_float", true},
+		{"boolean", true},
+		{"date_nanos", true},
+		{"knn_vector", true},
+		{"binary", false},
+		{"nested", false},
+		{"integer_range", false},
+		{"sparse_vector", false},
+		{"completion", false},
+		{"murmur3", false},
+		{"rank_feature", false},
+		{"alias", false},
+		{"ip", false},
+		{"geo_point", false},
+		{"dense_vector", false},
+		{"future_type", false},
+		{"", false},
+	} {
+		t.Run(tc.nativeType, func(t *testing.T) {
+			assert.Equal(t, tc.want, connector.IsFilterable(&interfaces.IndexFieldMeta{Type: tc.nativeType}))
+		})
+	}
+	t.Run("uses complete mapping attributes and leaves metadata unchanged", func(t *testing.T) {
+		assert.False(t, connector.IsFilterable(nil))
+		for _, tc := range []struct {
+			name  string
+			field interfaces.IndexFieldMeta
+			want  bool
+		}{
+			{name: "unindexed text", field: interfaces.IndexFieldMeta{Type: "text", Attributes: map[string]any{"index": false}}},
+			{name: "text ignores doc values", field: interfaces.IndexFieldMeta{Type: "text", Attributes: map[string]any{"index": false, "doc_values": true}}},
+			{name: "keyword doc values", field: interfaces.IndexFieldMeta{Type: "keyword", Attributes: map[string]any{"index": false}}, want: true},
+			{name: "keyword neither indexed nor doc values", field: interfaces.IndexFieldMeta{Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": false}}},
+			{name: "numeric doc values", field: interfaces.IndexFieldMeta{Type: "long", Attributes: map[string]any{"index": false, "doc_values": true}}, want: true},
+			{name: "numeric no query path", field: interfaces.IndexFieldMeta{Type: "long", Attributes: map[string]any{"index": false, "doc_values": false}}},
+			{name: "date doc values", field: interfaces.IndexFieldMeta{Type: "date_nanos", Attributes: map[string]any{"index": false}}, want: true},
+			{name: "boolean doc values", field: interfaces.IndexFieldMeta{Type: "boolean", Attributes: map[string]any{"index": false}}, want: true},
+			{name: "vector has no doc value filter path", field: interfaces.IndexFieldMeta{Type: "knn_vector", Attributes: map[string]any{"index": false, "doc_values": true}}},
+			{name: "indexed without doc values", field: interfaces.IndexFieldMeta{Type: "keyword", Attributes: map[string]any{"doc_values": false}}, want: true},
+			{name: "disabled mapping", field: interfaces.IndexFieldMeta{Type: "keyword", Attributes: map[string]any{"enabled": false}}},
+			{name: "searchable child does not enable parent", field: interfaces.IndexFieldMeta{Type: "text", Attributes: map[string]any{"index": false}, SubFields: []interfaces.IndexSubFieldMeta{{Name: "raw", Type: "keyword"}}}},
+			{name: "keyword child unsearchable", field: interfaces.IndexFieldMeta{Type: "text", Attributes: map[string]any{"index": false}, SubFields: []interfaces.IndexSubFieldMeta{{Name: "raw", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": false}}}}},
+			{name: "unsearchable child does not disable parent", field: interfaces.IndexFieldMeta{Type: "text", SubFields: []interfaces.IndexSubFieldMeta{{Name: "raw", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": false}}}}, want: true},
+			{name: "independent searchable child", field: interfaces.IndexFieldMeta{Name: "title.raw", Type: "keyword", Attributes: map[string]any{"index": false}}, want: true},
+			{name: "independent unsearchable child", field: interfaces.IndexFieldMeta{Name: "title.raw", Type: "keyword", Attributes: map[string]any{"index": false, "doc_values": false}}},
+			{name: "only resolved alias type", field: interfaces.IndexFieldMeta{Type: "alias", ResolvedType: "keyword"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, stored := range []bool{false, true} {
+					tc.field.Filterable = &stored
+					before, err := sonic.Marshal(tc.field)
+					require.NoError(t, err)
+					assert.Equal(t, tc.want, connector.IsFilterable(&tc.field))
+					after, err := sonic.Marshal(tc.field)
+					require.NoError(t, err)
+					assert.JSONEq(t, string(before), string(after))
+					assert.Equal(t, stored, *tc.field.Filterable)
+				}
+			})
+		}
 	})
 }

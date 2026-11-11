@@ -183,7 +183,7 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context,
 		Status:           interfaces.ResourceStatusActive,
 		SourceIdentifier: index.Name,
 	}
-	resource, err := dtw.rs.Create(ctx, req)
+	resource, err := dtw.rs.InternalCreate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +288,8 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 				OriginalDescription: field.Description,
 				Attributes:          field.Attributes,
 				Features:            buildSubFieldFeatures(field.Name, field.SubFields),
+
+				Filterable: field.Filterable,
 			}
 			if existing, ok := existingProperties[field.Name]; ok {
 				property.DisplayName = existing.DisplayName

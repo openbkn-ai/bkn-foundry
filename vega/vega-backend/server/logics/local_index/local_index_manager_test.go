@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	opensearchConnector "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
@@ -29,7 +30,7 @@ func TestLocalIndexManagerValidateFilterCondition(t *testing.T) {
 	properties := []*interfaces.Property{{Name: "created", OriginalName: "SOURCE_CREATED", Type: interfaces.DataType_Datetime}}
 	want := errors.New("conversion failed")
 	for _, failure := range []error{nil, want} {
-		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		connector := newLocalIndexTestConnector(gomock.NewController(t))
 		connector.EXPECT().ConvertFilterCondition(condition, gomock.Any()).DoAndReturn(
 			func(got interfaces.FilterCondition, schema []*interfaces.Property) (map[string]any, error) {
 				assert.Same(t, condition, got)
@@ -56,7 +57,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		{name: "neither HanLP analyzer installed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+			connector := newLocalIndexTestConnector(gomock.NewController(t))
 			manager := &localIndexManager{lic: connector}
 			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
 			connector.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
@@ -87,7 +88,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(false, errors.New("connection refused"))
@@ -125,7 +126,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 
 		connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
@@ -147,7 +148,7 @@ func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 
 		started := make(chan struct{})
@@ -190,7 +191,7 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	ctx := context.Background()
-	connector := vmock.NewMockIndexConnector(ctrl)
+	connector := newLocalIndexTestConnector(ctrl)
 	manager := &localIndexManager{lic: connector}
 
 	connector.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
@@ -207,7 +208,7 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 func TestLocalIndexManagerListDocuments(t *testing.T) {
 	t.Run("grouped decimal metadata reaches the connector before result ordering", func(t *testing.T) {
 		for _, countHaving := range []bool{false, true} {
-			connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+			connector := newLocalIndexTestConnector(gomock.NewController(t))
 			original := map[string]any{"precision": 20, "scale": 4}
 			resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}, {Name: "amount", OriginalName: "source_amount", Type: interfaces.DataType_Decimal, Attributes: original}}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "source_amount", NumPrecision: 12, NumScale: 2}}}}
 			params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: "total"}, Sort: []*interfaces.SortField{{Field: "total", Direction: "desc"}}, Paging: interfaces.PagingRequest{Limit: 1}}
@@ -241,7 +242,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 			{name: "unreferenced decimal", params: &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count"}}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+				connector := newLocalIndexTestConnector(gomock.NewController(t))
 				resource := &interfaces.Resource{
 					LocalIndexName: "saved-index",
 					SchemaDefinition: []*interfaces.Property{
@@ -270,7 +271,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		}
 	})
 	t.Run("missing resource fails before invoking the connector", func(t *testing.T) {
-		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		connector := newLocalIndexTestConnector(gomock.NewController(t))
 		result, err := (&localIndexManager{lic: connector}).ListDocuments(context.Background(), "index", nil, nil)
 		var conditionError *interfaces.ConditionBuildError
 		require.ErrorAs(t, err, &conditionError)
@@ -279,7 +280,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 	t.Run("exact distinct uses schema without rebuilding mapping", func(t *testing.T) {
 		for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
 			t.Run(category, func(t *testing.T) {
-				connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+				connector := newLocalIndexTestConnector(gomock.NewController(t))
 				manager := &localIndexManager{lic: connector}
 				sourceAttributes := map[string]any{"source_precision": 20}
 				resource := &interfaces.Resource{Category: category, SchemaDefinition: []*interfaces.Property{
@@ -317,12 +318,12 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 	})
 	t.Run("table JSON results are returned as text", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}}}
 		params := &interfaces.ResourceDataQueryParams{}
 		stored := []map[string]any{{"payload": map[string]any{"z": "<>&", "a": json.Number("9007199254740993")}}, {"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}
-		queryResource, prepErr := resourceForQuery(resource)
+		queryResource, prepErr := manager.resourceForQuery(resource)
 		require.NoError(t, prepErr)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: 5, SearchAfter: []any{"next"}}, nil)
 		gotResult, err := manager.ListDocuments(context.Background(), "index", resource, params)
@@ -344,11 +345,13 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		assert.Equal(t, int64(5), total)
 		assert.Equal(t, []any{"next"}, gotResult.SearchAfter)
 		assert.Empty(t, params.SearchAfter)
-		assert.Len(t, SchemaForQuery(resource.SchemaDefinition), 1)
+		projected, projectionErr := manager.SchemaForQuery(resource.SchemaDefinition)
+		require.NoError(t, projectionErr)
+		assert.Len(t, projected, 1)
 	})
 	t.Run("dataset JSON values retain document types", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
 		params := &interfaces.ResourceDataQueryParams{}
@@ -358,7 +361,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 			stored = append(stored, map[string]any{"payload": value})
 		}
 		stored = append(stored, map[string]any{})
-		queryResource, prepErr := resourceForQuery(resource)
+		queryResource, prepErr := manager.resourceForQuery(resource)
 		require.NoError(t, prepErr)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), "dataset-index", queryResource, params).
 			Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: int64(len(stored)), SearchAfter: []any{"next"}}, nil)
@@ -383,11 +386,11 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 	})
 	t.Run("aggregate alias matching a JSON field stays numeric", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}}}
 		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "payload"}}
-		queryResource, prepErr := resourceForQuery(resource)
+		queryResource, prepErr := manager.resourceForQuery(resource)
 		require.NoError(t, prepErr)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"payload": int64(5)}}, TotalCount: 5}, nil)
 		gotResult3, err := manager.ListDocuments(context.Background(), "index", resource, params)
@@ -400,7 +403,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 	})
 
 	ctrl := gomock.NewController(t)
-	connector := vmock.NewMockIndexConnector(ctrl)
+	connector := newLocalIndexTestConnector(ctrl)
 	resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
 		SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "SOURCE_ID", Type: interfaces.DataType_Integer}}}
 	params := &interfaces.ResourceDataQueryParams{
@@ -435,7 +438,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 		schema := []*interfaces.Property{{Name: "id", Type: "integer"}}
 		resource := &interfaces.Resource{ID: "resource-1", SchemaDefinition: schema}
@@ -457,7 +460,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		connector.EXPECT().UpdateIndex(ctx, "idx", properties).Return(nil)
 		connector.EXPECT().DeleteIndex(ctx, "idx").Return(nil)
 		connector.EXPECT().CheckIndexExist(ctx, "idx").Return(true, nil)
-		queryResource, prepErr := resourceForQuery(resource)
+		queryResource, prepErr := manager.resourceForQuery(resource)
 		require.NoError(t, prepErr)
 		connector.EXPECT().ExecuteQuery(ctx, "idx", queryResource, params).Return(queryResult, nil)
 		connector.EXPECT().GetDocument(ctx, "idx", "doc-1").Return(document, nil)
@@ -516,7 +519,7 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		connector := vmock.NewMockIndexConnector(ctrl)
+		connector := newLocalIndexTestConnector(ctrl)
 		manager := &localIndexManager{lic: connector}
 		resource := &interfaces.Resource{
 			LocalIndexName: "saved-index",
@@ -535,8 +538,10 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 		}
 		var gotParams *interfaces.ResourceDataQueryParams
 		var gotSchema []*interfaces.Property
+		wantSchema, projectionErr := manager.SchemaForQuery(resource.SchemaDefinition)
+		require.NoError(t, projectionErr)
 		connector.EXPECT().
-			DeleteDocumentsByQuery(ctx, "idx", params, SchemaForQuery(resource.SchemaDefinition)).
+			DeleteDocumentsByQuery(ctx, "idx", params, wantSchema).
 			DoAndReturn(func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams, schema []*interfaces.Property) (*interfaces.DeleteByQueryResult, error) {
 				gotParams = p
 				gotSchema = schema
@@ -547,15 +552,210 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 		require.NoError(t, err)
 		assert.Nil(t, params.ActualFilterCond)
 		assert.Same(t, params, gotParams)
-		assert.Equal(t, SchemaForQuery(resource.SchemaDefinition), gotSchema)
+		assert.Equal(t, wantSchema, gotSchema)
 		assert.Equal(t, "saved-index", resource.LocalIndexName)
 	})
 }
 
-func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
+func TestLocalIndexManagerSchemaForQuery(t *testing.T) {
+	manager := &localIndexManager{lic: &opensearchConnector.OpenSearchConnector{}}
+	t.Run("Feature 目标独立校验并保持实际 DSL 字段一致", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, kind, operation, target, dslKey string
+			features                              []interfaces.PropertyFeature
+		}{
+			{name: "title", kind: interfaces.DataType_String, operation: "match", target: "title.search", dslKey: "match", features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"index": false, "doc_values": false}},
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext, FeatureName: "search"},
+			}},
+			{name: "body", kind: interfaces.DataType_Text, operation: "eq", target: "body.raw", dslKey: "term", features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"index": false}},
+				{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw"},
+			}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				source := &interfaces.Property{Name: tc.name, Type: tc.kind, Features: tc.features}
+				projected, err := manager.SchemaForQuery([]*interfaces.Property{source})
+				require.NoError(t, err)
+				fields := make(map[string]*interfaces.Property)
+				for _, property := range projected {
+					fields[property.Name] = property
+				}
+				require.Contains(t, fields, tc.target)
+				assert.False(t, *fields[tc.name].Filterable)
+				assert.True(t, *fields[tc.target].Filterable)
+				cfg := &interfaces.FilterCondCfg{Field: tc.name, Operation: tc.operation, Value: "value"}
+				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
+				require.NoError(t, err)
+				dsl, err := manager.lic.ConvertFilterCondition(condition, projected)
+				require.NoError(t, err)
+				assert.Contains(t, dsl[tc.dslKey], tc.target)
+				assert.Equal(t, tc.name, cfg.Field)
+				_, err = filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: tc.name, Operation: "null"}, fields)
+				require.ErrorContains(t, err, "not filterable")
+			})
+		}
+	})
+	t.Run("本地最终 mapping 的开关和子字段交给 lic 判定", func(t *testing.T) {
+		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		connector.EXPECT().IsFilterable(gomock.Any()).DoAndReturn(func(meta *interfaces.IndexFieldMeta) bool {
+			if meta.Name == "body.exact" {
+				assert.Equal(t, "keyword", meta.Type)
+				assert.Empty(t, meta.SubFields)
+				return false
+			}
+			assert.Equal(t, "text", meta.Type)
+			assert.Equal(t, map[string]any{"index": false}, meta.Attributes)
+			assert.Equal(t, []interfaces.IndexSubFieldMeta{{Name: "exact", Type: "keyword",
+				Attributes: map[string]any{"index": false, "doc_values": false}}}, meta.SubFields)
+			return (&opensearchConnector.OpenSearchConnector{}).IsFilterable(meta)
+		}).Times(2)
+		connector.EXPECT().MapType("keyword").Return(interfaces.DataType_String)
+		source := &interfaces.Property{Name: "body", Type: interfaces.DataType_Text, Filterable: new(true),
+			Attributes: map[string]any{"index": true, "doc_values": true},
+			Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"index": false}},
+				{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "exact", Config: map[string]any{"index": false, "doc_values": false}},
+			}}
+		projected, err := (&localIndexManager{lic: connector}).SchemaForQuery([]*interfaces.Property{source})
+		require.NoError(t, err)
+		require.Len(t, projected, 2)
+		assert.False(t, *projected[0].Filterable)
+		assert.Equal(t, "body.exact", projected[1].Name)
+		assert.False(t, *projected[1].Filterable)
+		assert.True(t, *source.Filterable)
+		assert.Equal(t, true, source.Attributes["index"])
+	})
+	t.Run("源索引关闭配置不会带入本地 mapping", func(t *testing.T) {
+		source := &interfaces.Property{Name: "code", Type: interfaces.DataType_String, Filterable: new(false),
+			Attributes: map[string]any{"index": false, "doc_values": false}}
+		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		connector.EXPECT().IsFilterable(gomock.Any()).DoAndReturn(func(meta *interfaces.IndexFieldMeta) bool {
+			assert.Equal(t, "keyword", meta.Type)
+			assert.NotContains(t, meta.Attributes, "index")
+			assert.NotContains(t, meta.Attributes, "doc_values")
+			return true
+		})
+		projected, err := (&localIndexManager{lic: connector}).SchemaForQuery([]*interfaces.Property{source})
+		require.NoError(t, err)
+		assert.True(t, *projected[0].Filterable)
+		assert.False(t, *source.Filterable)
+	})
+	t.Run("mapping 构造失败保持错误且不调用 lic", func(t *testing.T) {
+		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		projected, err := (&localIndexManager{lic: connector}).SchemaForQuery([]*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal,
+			Attributes: map[string]any{"precision": 12}}})
+		require.Error(t, err)
+		var decimalError *interfaces.DecimalIndexError
+		require.ErrorAs(t, err, &decimalError)
+		assert.Equal(t, "invalid_precision_scale", decimalError.Reason)
+		assert.Nil(t, projected)
+	})
+	t.Run("实际 lic 接收物理类型且其返回值覆盖源开关", func(t *testing.T) {
+		for _, tc := range []struct {
+			kind, original, native string
+		}{
+			{interfaces.DataType_Integer, "", "long"},
+			{interfaces.DataType_UnsignedInteger, "", "unsigned_long"},
+			{interfaces.DataType_Float, "", "double"},
+			{interfaces.DataType_Decimal, "decimal(12,2)", "scaled_float"},
+			{interfaces.DataType_Decimal, "decimal(12,0)", "long"},
+			{interfaces.DataType_Decimal, "numeric(2,-3)", "long"},
+			{interfaces.DataType_String, "", "keyword"},
+			{interfaces.DataType_LargeInteger, "", "keyword"},
+			{interfaces.DataType_Text, "", "text"},
+			{interfaces.DataType_Date, "", "date"},
+			{interfaces.DataType_Datetime, "", "date"},
+			{interfaces.DataType_Timestamp, "", "date"},
+			{interfaces.DataType_Time, "", "keyword"},
+			{interfaces.DataType_Boolean, "", "boolean"},
+			{interfaces.DataType_Vector, "", "knn_vector"},
+		} {
+			t.Run(tc.kind+"/"+tc.original, func(t *testing.T) {
+				for _, allowed := range []bool{false, true} {
+					connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+					connector.EXPECT().IsFilterable(gomock.Any()).DoAndReturn(func(meta *interfaces.IndexFieldMeta) bool {
+						assert.Equal(t, tc.native, meta.Type)
+						assert.Equal(t, "field", meta.Name)
+						assert.Nil(t, meta.Filterable)
+						return allowed
+					})
+					source := &interfaces.Property{Name: "field", OriginalName: "SOURCE_FIELD", Type: tc.kind,
+						OriginalType: tc.original, Filterable: new(!allowed)}
+					mapping, err := buildFieldMappings([]*interfaces.Property{source}, true)
+					require.NoError(t, err)
+					assert.Equal(t, tc.native, mapping[source.Name].(map[string]any)["type"])
+					projected, projectionErr := (&localIndexManager{lic: connector}).SchemaForQuery([]*interfaces.Property{source})
+					require.NoError(t, projectionErr)
+					require.Len(t, projected, 1)
+					assert.Equal(t, allowed, *projected[0].Filterable)
+					assert.Equal(t, !allowed, *source.Filterable)
+					assert.Equal(t, "SOURCE_FIELD", source.OriginalName)
+				}
+			})
+		}
+	})
+	t.Run("LIM 查询 Schema 覆盖源开关且不写回源 Schema", func(t *testing.T) {
+		source := &interfaces.Property{Name: "body", OriginalName: "source_body", Type: interfaces.DataType_String,
+			Filterable: new(false), Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}},
+			}}
+		amount := &interfaces.Property{Name: "amount", Type: interfaces.DataType_Integer, Filterable: new(false)}
+		projected, projectionErr := manager.SchemaForQuery([]*interfaces.Property{source, amount})
+		require.NoError(t, projectionErr)
+		require.Len(t, projected, 4)
+		assert.True(t, *projected[0].Filterable)
+		assert.NotSame(t, source.Filterable, projected[0].Filterable)
+		assert.False(t, *source.Filterable)
+		assert.Equal(t, "body", projected[0].OriginalName)
+		assert.Equal(t, "source_body", source.OriginalName)
+		assert.Equal(t, source.Features, projected[0].Features)
+		fields := map[string]*interfaces.Property{"body": projected[0], "amount": projected[1]}
+		for _, operation := range []string{"match", "match_phrase", "multi_match"} {
+			cfg := &interfaces.FilterCondCfg{Operation: operation, Value: "hello", RemainCfg: map[string]any{"fields": []any{"body"}}}
+			_, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
+			require.NoError(t, err)
+			require.Error(t, filter_condition.ValidateFilterable(cfg, map[string]*interfaces.Property{"body": source}))
+		}
+		vector := &interfaces.FilterCondCfg{Field: "body", Operation: "knn_vector", Value: "hello",
+			SubConds: []*interfaces.FilterCondCfg{{Field: "body", Operation: "eq", Value: "secret"}}}
+		require.NoError(t, filter_condition.ValidateFilterable(vector, fields))
+		_, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "body", Operation: "eq", Value: "x"}, fields)
+		require.NoError(t, err)
+		rangeCondition := &interfaces.FilterCondCfg{Field: "amount", Operation: "range", Value: []any{1, 10}}
+		_, err = filter_condition.NewFilterCondition(t.Context(), rangeCondition, fields)
+		require.NoError(t, err)
+		require.ErrorContains(t, filter_condition.ValidateFilterable(rangeCondition, map[string]*interfaces.Property{"amount": amount}), "not filterable")
+		assert.False(t, *amount.Filterable)
+		require.ErrorContains(t, filter_condition.ValidateFilterable(vector, map[string]*interfaces.Property{"body": source}), "not filterable")
+	})
+	t.Run("LIM 不因源字段显式开启而开放不支持的本地类型", func(t *testing.T) {
+		for _, kind := range []string{interfaces.DataType_Point, interfaces.DataType_Shape, interfaces.DataType_Ip, "future"} {
+			source := &interfaces.Property{Name: "unsupported", Type: kind, Filterable: new(true)}
+			projected, projectionErr := manager.SchemaForQuery([]*interfaces.Property{source})
+			require.NoError(t, projectionErr)
+			require.Len(t, projected, 1)
+			assert.False(t, *projected[0].Filterable)
+			assert.True(t, *source.Filterable)
+			err := filter_condition.ValidateFilterable(&interfaces.FilterCondCfg{Field: source.Name, Operation: "eq", Value: "x"}, map[string]*interfaces.Property{source.Name: projected[0]})
+			require.ErrorContains(t, err, "not filterable")
+		}
+	})
+	t.Run("LIM 按本地映射补齐缺失的查询开关", func(t *testing.T) {
+		source := &interfaces.Property{Name: "wide", Type: interfaces.DataType_LargeInteger}
+		projected, projectionErr := manager.SchemaForQuery([]*interfaces.Property{source})
+		require.NoError(t, projectionErr)
+		require.Len(t, projected, 1)
+		require.NotNil(t, projected[0].Filterable)
+		assert.True(t, *projected[0].Filterable)
+		assert.Nil(t, source.Filterable)
+	})
+
 	t.Run("large integer uses the physical string query contract", func(t *testing.T) {
 		source := &interfaces.Property{Name: "wide", OriginalName: "source_wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT"}
-		got := SchemaForQuery([]*interfaces.Property{source})
+		got, projectionErr := manager.SchemaForQuery([]*interfaces.Property{source})
+		require.NoError(t, projectionErr)
 		require.Len(t, got, 1)
 		assert.Equal(t, interfaces.DataType_String, got[0].Type)
 		assert.Equal(t, "wide", got[0].OriginalName)
@@ -577,9 +777,11 @@ func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
 		Name:         "body",
 		OriginalName: "source_body",
 		Type:         interfaces.DataType_Text,
-	}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "blob", Type: interfaces.DataType_Binary}, {Name: "unknown", Type: interfaces.DataType_Other}, nil}
+	}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "blob", Type: interfaces.DataType_Binary}, {Name: "unknown", Type: interfaces.DataType_Other}}
 
-	got := SchemaForQuery(schema)
+	got, projectionErr := manager.SchemaForQuery(schema)
+
+	require.NoError(t, projectionErr)
 
 	require.Len(t, got, 1)
 	assert.Equal(t, "body", got[0].OriginalName)
@@ -594,7 +796,7 @@ func TestLocalIndexManagerRejectsUnavailableQueryFields(t *testing.T) {
 				{Aggregation: &interfaces.Aggregation{Property: "payload", Aggr: "count"}},
 				{GroupBy: []*interfaces.GroupByItem{{Property: "payload"}}},
 			} {
-				connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+				connector := newLocalIndexTestConnector(gomock.NewController(t))
 				manager := &localIndexManager{lic: connector}
 				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: fieldType}}}
 				rowsResult, err := manager.ListDocuments(context.Background(), "idx", resource, params)
@@ -614,13 +816,14 @@ func TestLocalIndexManagerRejectsUnavailableQueryFields(t *testing.T) {
 	}
 }
 
-func TestValidateQueryFieldsAggregationAliases(t *testing.T) {
+func TestLocalIndexManagerValidateQueryFieldsAggregationAliases(t *testing.T) {
+	manager := &localIndexManager{lic: &opensearchConnector.OpenSearchConnector{}}
 	t.Run("implicit count value is an output rather than a source field", func(t *testing.T) {
 		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}}}
 		params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}, Sort: []*interfaces.SortField{{Field: "__value", Direction: interfaces.DESC_DIRECTION}}}
-		require.NoError(t, validateQueryFields(resource, params))
+		require.NoError(t, manager.validateQueryFields(resource, params))
 		params.Having = nil
-		require.ErrorContains(t, validateQueryFields(resource, params), "not found")
+		require.ErrorContains(t, manager.validateQueryFields(resource, params), "not found")
 	})
 
 	for _, alias := range []string{"payload", "__value"} {
@@ -630,30 +833,32 @@ func TestValidateQueryFieldsAggregationAliases(t *testing.T) {
 				continue
 			}
 			params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: declared}, Sort: []*interfaces.SortField{{Field: alias}}}
-			require.NoError(t, validateQueryFields(resource, params))
+			require.NoError(t, manager.validateQueryFields(resource, params))
 			params.Aggregation.Property = alias
-			require.ErrorContains(t, validateQueryFields(resource, params), "not found")
+			require.ErrorContains(t, manager.validateQueryFields(resource, params), "not found")
 		}
 	}
 }
 
-func TestValidateQueryFieldsKnownSchema(t *testing.T) {
-	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "text", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
+func TestLocalIndexManagerValidateQueryFieldsKnownSchema(t *testing.T) {
+	manager := &localIndexManager{lic: &opensearchConnector.OpenSearchConnector{}}
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "text", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}}}
 	for _, name := range []string{"missing", "payload", "payload.id"} {
 		for _, params := range []*interfaces.ResourceDataQueryParams{{Sort: []*interfaces.SortField{{Field: name}}}, {GroupBy: []*interfaces.GroupByItem{{Property: name}}}, {Aggregation: &interfaces.Aggregation{Property: name, Aggr: "count"}}} {
-			err := validateQueryFields(resource, params)
+			err := manager.validateQueryFields(resource, params)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "not found")
 		}
 	}
 	for _, name := range []string{"id", "text_vector", "_score"} {
-		require.NoError(t, validateQueryFields(resource, &interfaces.ResourceDataQueryParams{Sort: []*interfaces.SortField{{Field: name}}}))
+		require.NoError(t, manager.validateQueryFields(resource, &interfaces.ResourceDataQueryParams{Sort: []*interfaces.SortField{{Field: name}}}))
 	}
 }
 
-func TestResourceForQueryIncludesGeneratedFields(t *testing.T) {
-	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "title", OriginalName: "source_title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
-	got, err := resourceForQuery(resource)
+func TestLocalIndexManagerResourceForQueryIncludesGeneratedFields(t *testing.T) {
+	manager := &localIndexManager{lic: &opensearchConnector.OpenSearchConnector{}}
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "title", OriginalName: "source_title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
+	got, err := manager.resourceForQuery(resource)
 	require.NoError(t, err)
 	fields := map[string]*interfaces.Property{}
 	for _, prop := range got.SchemaDefinition {
@@ -665,4 +870,71 @@ func TestResourceForQueryIncludesGeneratedFields(t *testing.T) {
 	assert.NotContains(t, fields, "payload")
 	assert.Equal(t, "source_title", resource.SchemaDefinition[0].OriginalName)
 	assert.Len(t, resource.SchemaDefinition, 2)
+}
+
+// newLocalIndexTestConnector 在业务测试中复用真实连接器的纯类型判定，不连接索引。
+func newLocalIndexTestConnector(controller *gomock.Controller) *vmock.MockIndexConnector {
+	connector := vmock.NewMockIndexConnector(controller)
+	connector.EXPECT().IsFilterable(gomock.Any()).DoAndReturn((&opensearchConnector.OpenSearchConnector{}).IsFilterable).AnyTimes()
+	connector.EXPECT().MapType(gomock.Any()).DoAndReturn((&opensearchConnector.OpenSearchConnector{}).MapType).AnyTimes()
+	return connector
+}
+
+func TestLocalIndexManagerValidateFilterability(t *testing.T) {
+	flag := func(v bool) *bool { return &v }
+	t.Run("all explicitly enabled fields are checked including excluded query types", func(t *testing.T) {
+		for _, typ := range []string{interfaces.DataType_Binary, interfaces.DataType_Json, interfaces.DataType_Other} {
+			t.Run(typ, func(t *testing.T) {
+				lim := &localIndexManager{lic: opensearchConnector.NewOpenSearchConnector()}
+				err := lim.ValidateFilterability([]*interfaces.Property{{Name: "payload", Type: typ, Filterable: flag(true)}})
+				var typed *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &typed)
+			})
+		}
+	})
+	t.Run("false and omitted fields do not require a connector", func(t *testing.T) {
+		require.NoError(t, (&localIndexManager{}).ValidateFilterability([]*interfaces.Property{{Name: "disabled", Type: interfaces.DataType_Other, Filterable: flag(false)}, {Name: "legacy", Type: interfaces.DataType_Other}}))
+	})
+	t.Run("native physical main field controls capability independently of children", func(t *testing.T) {
+		lic := vmock.NewMockIndexConnector(gomock.NewController(t))
+		lim := &localIndexManager{lic: lic}
+		lic.EXPECT().IsFilterable(gomock.Any()).DoAndReturn(func(meta *interfaces.IndexFieldMeta) bool {
+			assert.Equal(t, "keyword", meta.Type)
+			assert.Equal(t, false, meta.Attributes["index"])
+			assert.Equal(t, false, meta.Attributes["doc_values"])
+			require.Len(t, meta.SubFields, 1)
+			assert.Equal(t, "text", meta.SubFields[0].Type)
+			return false
+		})
+		err := lim.ValidateFilterability([]*interfaces.Property{{Name: "title", Type: interfaces.DataType_String, Filterable: flag(true), Features: []interfaces.PropertyFeature{
+			{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"index": false, "doc_values": false}},
+			{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+		}}})
+		var typed *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &typed)
+	})
+	t.Run("unresolved generated vector does not delay main field capability checks", func(t *testing.T) {
+		lim := &localIndexManager{lic: opensearchConnector.NewOpenSearchConnector()}
+		schema := []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text, Filterable: flag(true), Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"embedding_model": "model"}}}}, {Name: "payload", Type: interfaces.DataType_Binary, Filterable: flag(true)}}
+		before, err := json.Marshal(schema)
+		require.NoError(t, err)
+		var typed *interfaces.ConditionBuildError
+		require.ErrorAs(t, lim.ValidateFilterability(schema), &typed)
+		assert.Contains(t, typed.Reason, "payload")
+		require.NoError(t, lim.ValidateFilterability(schema[:1]))
+		_, err = lim.SchemaForQuery(schema[:1])
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "dimension")
+		after, err := json.Marshal(schema)
+		require.NoError(t, err)
+		assert.Equal(t, string(before), string(after))
+	})
+	t.Run("full mapping still rejects a generated name collision", func(t *testing.T) {
+		lim := &localIndexManager{lic: opensearchConnector.NewOpenSearchConnector()}
+		schema := []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text, Filterable: flag(true), Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 3}}}}, {Name: "body_vector", Type: interfaces.DataType_Vector}}
+		require.NoError(t, lim.ValidateFilterability(schema))
+		_, err := lim.SchemaForQuery(schema)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "conflicts")
+	})
 }

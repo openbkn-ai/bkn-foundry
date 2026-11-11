@@ -16,6 +16,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
 var decimalTypePattern = regexp.MustCompile(`(?i)^\s*(?:decimal|numeric|number|dec|fixed)\s*\(\s*([0-9]+)\s*,\s*(-?[0-9]+)\s*\)(?:\s+unsigned)?\s*$`)
@@ -68,7 +69,7 @@ func ValidateDecimalIndexConfig(field string, config *interfaces.DecimalIndexCon
 // DecimalIndexSchema 在传入的 schema 中原地补齐 Decimal 字段的缩放元数据。
 func DecimalIndexSchema(schema []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) ([]*interfaces.Property, error) {
 	for _, property := range schema {
-		if property == nil || property.Type != interfaces.DataType_Decimal {
+		if property.Type != interfaces.DataType_Decimal {
 			continue
 		}
 		config, err := DecimalIndexConfig(property, columns[property.OriginalName])
@@ -100,9 +101,12 @@ func EncodeDecimalDocument(resource *interfaces.Resource, document map[string]an
 	for name, value := range document {
 		result[name] = value
 	}
-	columns := resource.ColumnMetadata()
+	columns, err := table.ColumnMetadata(resource)
+	if err != nil {
+		return nil, err
+	}
 	for _, property := range resource.SchemaDefinition {
-		if property == nil || property.Type != interfaces.DataType_Decimal {
+		if property.Type != interfaces.DataType_Decimal {
 			continue
 		}
 		value, exists := document[property.Name]
@@ -232,10 +236,14 @@ func decimalAggregateConfig(resource *interfaces.Resource, params *interfaces.Re
 		return interfaces.DecimalIndexConfig{}, nil
 	}
 	for _, property := range resource.SchemaDefinition {
-		if property == nil || property.Name != aggregation.Property || property.Type != interfaces.DataType_Decimal {
+		if property.Name != aggregation.Property || property.Type != interfaces.DataType_Decimal {
 			continue
 		}
-		config, err := DecimalIndexConfig(property, resource.ColumnMetadata()[property.OriginalName])
+		columns, err := table.ColumnMetadata(resource)
+		if err != nil {
+			return interfaces.DecimalIndexConfig{}, err
+		}
+		config, err := DecimalIndexConfig(property, columns[property.OriginalName])
 		if err != nil {
 			return interfaces.DecimalIndexConfig{}, err
 		}

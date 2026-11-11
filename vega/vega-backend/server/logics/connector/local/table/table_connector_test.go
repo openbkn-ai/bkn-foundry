@@ -7,13 +7,17 @@
 package table
 
 import (
+	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestScanRows(t *testing.T) {
@@ -264,5 +268,147 @@ func TestQuerySortFields(t *testing.T) {
 	t.Run("group-only queries default to declared group order", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}, {Property: "secondary"}}}
 		assert.Equal(t, []*interfaces.SortField{{Field: "key", Direction: interfaces.ASC_DIRECTION}, {Field: "secondary", Direction: interfaces.ASC_DIRECTION}}, QuerySortFields(params, ""))
+	})
+}
+
+func TestValidateFilterability(t *testing.T) {
+	flag := func(value bool) *bool { return &value }
+	t.Run("closed flags do not invoke connector capability checks", func(t *testing.T) {
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "off", Filterable: flag(false)}, {Name: "legacy"}}}
+		require.NoError(t, ValidateFilterability(resource, connector, nil))
+	})
+	t.Run("uses externally parsed columns without decoding source metadata", func(t *testing.T) {
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		column := interfaces.TableColumnMeta{Name: "native_id", Type: "NUMBER", NumPrecision: 38, NumScale: 6, Nullable: true, Filterable: flag(false)}
+		columns := map[string]interfaces.TableColumnMeta{column.Name: column}
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "not read by validator"}, SchemaDefinition: []*interfaces.Property{{Name: "public_id", OriginalName: "native_id", OriginalType: "stale", Filterable: flag(true)}, {Name: "closed", Filterable: flag(false)}, {Name: "legacy"}}}
+		before, err := json.Marshal(resource)
+		require.NoError(t, err)
+		connector.EXPECT().IsFilterable(gomock.Eq(&column)).Return(true)
+		require.NoError(t, ValidateFilterability(resource, connector, columns))
+		after, err := json.Marshal(resource)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(before), string(after))
+		assert.Equal(t, column, columns[column.Name])
+		assert.Same(t, column.Filterable, columns[column.Name].Filterable)
+	})
+	t.Run("missing source columns reject supported schema declarations", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, originalName string
+			columns            map[string]interfaces.TableColumnMeta
+		}{
+			{name: "missing metadata", originalName: "native_field"},
+			{name: "empty columns", originalName: "native_field", columns: map[string]interfaces.TableColumnMeta{}},
+			{name: "different source column", originalName: "native_field", columns: map[string]interfaces.TableColumnMeta{"other": {Name: "other", Type: "NATIVE"}}},
+			{name: "property name without matching column", columns: map[string]interfaces.TableColumnMeta{"other": {Name: "other", Type: "NATIVE"}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				connector := vmock.NewMockTableConnector(gomock.NewController(t))
+				property := &interfaces.Property{Name: "field", OriginalName: tc.originalName, OriginalType: "NATIVE", Type: interfaces.DataType_String, Filterable: flag(true), Attributes: map[string]any{"type": "NATIVE", "num_precision": 12}}
+				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{property}}
+				before, err := json.Marshal(resource)
+				require.NoError(t, err)
+				err = ValidateFilterability(resource, connector, tc.columns)
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+				assert.Contains(t, invalid.Reason, "field")
+				after, err := json.Marshal(resource)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+				assert.Same(t, property, resource.SchemaDefinition[0])
+			})
+		}
+	})
+	t.Run("missing native metadata and unsupported native types are request errors", func(t *testing.T) {
+		for _, native := range []string{"", "unsupported"} {
+			t.Run(map[bool]string{false: "unsupported", true: "missing native type"}[native == ""], func(t *testing.T) {
+				connector := vmock.NewMockTableConnector(gomock.NewController(t))
+				if native != "" {
+					connector.EXPECT().IsFilterable(gomock.Any()).DoAndReturn(func(column *interfaces.TableColumnMeta) bool {
+						assert.Equal(t, native, column.Type)
+						return false
+					})
+				}
+				err := ValidateFilterability(&interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "public_field", Type: interfaces.DataType_Integer, OriginalType: "ignored", Filterable: flag(true)}}}, connector, map[string]interfaces.TableColumnMeta{"public_field": {Name: "public_field", Type: native}})
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+				assert.Contains(t, invalid.Reason, "public_field")
+			})
+		}
+	})
+}
+
+func TestColumnMetadata(t *testing.T) {
+	t.Run("typed columns retain native attributes without JSON round trip", func(t *testing.T) {
+		enabled := false
+		column := interfaces.TableColumnMeta{Name: "FLAG", Type: "NUMBER", AliasType: "native_alias", Nullable: true, NumPrecision: 38, NumScale: 6, Filterable: &enabled}
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{column}, "unrelated": make(chan int)}}
+		got, err := ColumnMetadata(resource)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, map[string]interfaces.TableColumnMeta{"FLAG": column}) {
+			t.Fatalf("column metadata = %#v", got)
+		}
+		if got["FLAG"].Filterable != column.Filterable {
+			t.Fatal("typed metadata must retain the original flag pointer")
+		}
+		if enabled {
+			t.Fatal("parsing must not change source flags")
+		}
+	})
+	t.Run("persisted JSON restores full native column attributes", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": []any{map[string]any{"name": "AMOUNT", "type": "NUMBER", "nullable": true, "num_precision": json.Number("38"), "num_scale": json.Number("6"), "filterable": false}}}}
+		before, err := json.Marshal(resource)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := ColumnMetadata(resource)
+		if err != nil {
+			t.Fatal(err)
+		}
+		column := got["AMOUNT"]
+		if column.Name != "AMOUNT" || column.Type != "NUMBER" || !column.Nullable || column.NumPrecision != 38 || column.NumScale != 6 || column.Filterable == nil || *column.Filterable {
+			t.Fatalf("restored column = %#v", column)
+		}
+		after, err := json.Marshal(resource)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(before) != string(after) {
+			t.Fatal("parsing must not change source metadata")
+		}
+	})
+	t.Run("missing metadata is distinct from explicit empty columns", func(t *testing.T) {
+		for _, resource := range []*interfaces.Resource{nil, {}, {SourceMetadata: map[string]any{}}} {
+			got, err := ColumnMetadata(resource)
+			if err != nil || got != nil {
+				t.Fatalf("absent metadata = %#v, %v", got, err)
+			}
+		}
+		for _, raw := range []any{[]interfaces.TableColumnMeta{}, []any{}} {
+			got, err := ColumnMetadata(&interfaces.Resource{SourceMetadata: map[string]any{"columns": raw}})
+			if err != nil || got == nil || len(got) != 0 {
+				t.Fatalf("empty columns = %#v, %v", got, err)
+			}
+		}
+	})
+	t.Run("corrupt stored columns return errors rather than missing metadata", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			raw  any
+		}{
+			{"explicit nil", nil}, {"typed nil", []interfaces.TableColumnMeta(nil)}, {"JSON null", json.RawMessage("null")},
+			{"wrong shape", "corrupt"}, {"marshal failure", make(chan int)}, {"wrong native type", []any{map[string]any{"name": "field", "type": 4}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": tc.raw}}
+				got, err := ColumnMetadata(resource)
+				if err == nil || got != nil {
+					t.Fatalf("corrupt metadata = %#v, %v", got, err)
+				}
+			})
+		}
 	})
 }

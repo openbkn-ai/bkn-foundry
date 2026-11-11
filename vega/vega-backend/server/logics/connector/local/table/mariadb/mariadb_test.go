@@ -9,7 +9,9 @@ package mariadb
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"maps"
 	"strings"
 	"testing"
@@ -472,4 +474,71 @@ func cleanupMariaDBConnectorMock(t *testing.T, connector *MariaDBConnector, mock
 
 	mock.ExpectClose()
 	require.NoError(t, connector.db.Close())
+}
+
+func TestMariaDBConnectorFilterabilityValidation(t *testing.T) {
+	connector := &MariaDBConnector{}
+	for _, tc := range []struct {
+		native string
+		want   bool
+	}{{"int", true}, {"blob", false}, {"json", false}, {"unknown", false}, {"", false}} {
+		t.Run(tc.native, func(t *testing.T) {
+			enabled := true
+			resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "field", Type: tc.native}}}, SchemaDefinition: []*interfaces.Property{{Name: "field", Type: interfaces.DataType_Integer, OriginalType: tc.native, Filterable: &enabled}}}
+			before, err := json.Marshal(resource)
+			require.NoError(t, err)
+			columns, err := table.ColumnMetadata(resource)
+			require.NoError(t, err)
+			err = table.ValidateFilterability(resource, connector, columns)
+			if tc.want {
+				require.NoError(t, err)
+			} else {
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+				assert.Contains(t, invalid.Reason, "field")
+			}
+			assert.True(t, *resource.SchemaDefinition[0].Filterable)
+			after, err := json.Marshal(resource)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(before), string(after))
+		})
+	}
+	t.Run("missing source columns cannot be fabricated from schema", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			metadata map[string]any
+		}{
+			{"no metadata", nil},
+			{"no columns", map[string]any{}},
+			{"empty columns", map[string]any{"columns": []interfaces.TableColumnMeta{}}},
+			{"only another column", map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "other", Type: "int"}}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				enabled := true
+				resource := &interfaces.Resource{SourceMetadata: tc.metadata, SchemaDefinition: []*interfaces.Property{{Name: "published", OriginalName: "native_field", Type: interfaces.DataType_Integer, OriginalType: "int", Attributes: map[string]any{"type": "int"}, Filterable: &enabled}}}
+				before, err := json.Marshal(resource)
+				require.NoError(t, err)
+				columns, err := table.ColumnMetadata(resource)
+				require.NoError(t, err)
+				err = table.ValidateFilterability(resource, connector, columns)
+				var invalid *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &invalid)
+				assert.Contains(t, invalid.Reason, "published")
+				after, err := json.Marshal(resource)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+				assert.Same(t, &enabled, resource.SchemaDefinition[0].Filterable)
+			})
+		}
+	})
+	t.Run("closed or omitted flags need no source columns", func(t *testing.T) {
+		closed := false
+		for _, flag := range []*bool{&closed, nil} {
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "published", OriginalName: "native_field", OriginalType: "int", Filterable: flag}}}
+			columns, err := table.ColumnMetadata(resource)
+			require.NoError(t, err)
+			require.NoError(t, table.ValidateFilterability(resource, connector, columns))
+			assert.True(t, flag == resource.SchemaDefinition[0].Filterable)
+		}
+	})
 }

@@ -59,6 +59,21 @@ func TestValidateResourceRequestIgnoresExpectedUpdateTime(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestValidateResourceRequestRejectsNullField(t *testing.T) {
+	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
+		t.Run(category, func(t *testing.T) {
+			req := &interfaces.ResourceRequest{
+				Name: "resource", CatalogID: "catalog", Category: category,
+				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, nil},
+			}
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, ValidateResourceRequest(t.Context(), req), &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Dataset_InvalidParameter_FieldName, httpErr.ErrorCode)
+		})
+	}
+}
+
 func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
 	newRequest := func(props ...*interfaces.Property) *interfaces.ResourceRequest {
 		return &interfaces.ResourceRequest{

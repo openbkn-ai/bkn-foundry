@@ -58,10 +58,7 @@ func (c *MultiMatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 
 	if len(cfgFields) == 1 && cfgFields[0] == interfaces.AllField {
-		mFields = make([]*interfaces.Property, 0, len(fieldsMap))
-		for _, field := range fieldsMap {
-			mFields = append(mFields, field)
-		}
+		mFields = wildcardFields(fieldsMap)
 	} else {
 		// The field array needs to be a string array
 		for _, cfgField := range cfgFields {

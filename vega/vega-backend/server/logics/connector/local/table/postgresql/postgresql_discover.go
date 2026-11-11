@@ -524,6 +524,10 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 				column.DatetimePrecision = int(typeModifier)
 			}
 		}
+
+		filterable := c.IsFilterable(&column)
+		column.Filterable = &filterable
+
 		columns = append(columns, column)
 	}
 

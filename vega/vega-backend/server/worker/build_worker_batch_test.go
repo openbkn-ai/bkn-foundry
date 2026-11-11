@@ -233,6 +233,21 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 }
 
 func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
+	t.Run("corrupt columns fail before full rebuild index deletion or creation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		mfs := vmock.NewMockModelFactoryService(ctrl)
+		worker := &batchBuildWorker{lim: lim, cf: cf, mfs: mfs}
+		resource := &interfaces.Resource{LocalIndexName: "index", SourceMetadata: map[string]any{"columns": "invalid metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
+		task := &interfaces.BuildTask{ID: "task", IndexName: "index", ExecuteType: interfaces.BuildTaskExecuteTypeFull, SyncedCount: 17}
+		err := worker.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)
+		require.Error(t, err)
+		assert.Equal(t, "index", resource.LocalIndexName)
+		assert.Empty(t, task.SyncedMark)
+		assert.EqualValues(t, 17, task.SyncedCount)
+		assert.Nil(t, resource.SchemaDefinition[0].Attributes)
+	})
 	for _, connectorType := range []string{"mysql", "mariadb", "postgresql", "sqlserver", "oracle", "doris", "hana"} {
 		t.Run("exact integer decimal write for "+connectorType, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -710,8 +725,14 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 	cf := vmock.NewMockConnectorFactory(ctrl)
 	connector := vmock.NewMockTableConnector(ctrl)
 	resource := workerTestResource()
+	filterable := false
+	for _, property := range resource.SchemaDefinition {
+		if property.Name == "id" {
+			property.Filterable = &filterable
+		}
+	}
 	resource.SchemaDefinition = append(resource.SchemaDefinition,
-		&interfaces.Property{Name: "ingested_at", Type: interfaces.DataType_Timestamp})
+		&interfaces.Property{Name: "ingested_at", Type: interfaces.DataType_Timestamp, Filterable: &filterable})
 	resource.IndexConfig.IncrementalFields = []string{"ingested_at"}
 	resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 	resource.LocalIndexName = "current-index"
@@ -742,6 +763,13 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 	connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(2).DoAndReturn(
 		func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 			queryCount++
+			for _, property := range resource.SchemaDefinition {
+				if property.Name == "id" || property.Name == "ingested_at" {
+					require.NotNil(t, property.Filterable)
+					assert.False(t, *property.Filterable, "internal pagination must not mutate the public switch")
+				}
+			}
+			require.NotNil(t, params.ActualFilterCond)
 			require.Len(t, params.Sort, 2)
 			assert.Equal(t, "ingested_at", params.Sort[0].Field)
 			assert.Equal(t, "id", params.Sort[1].Field)
@@ -806,6 +834,12 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []int{1000, 500}, batchSizes)
+	for _, property := range resource.SchemaDefinition {
+		if property.Name == "id" || property.Name == "ingested_at" {
+			require.NotNil(t, property.Filterable)
+			assert.False(t, *property.Filterable)
+		}
+	}
 	require.NotNil(t, finalProgress.SyncedCount)
 	assert.EqualValues(t, 1500, *finalProgress.SyncedCount)
 	require.NotNil(t, finalProgress.SyncedMark)
