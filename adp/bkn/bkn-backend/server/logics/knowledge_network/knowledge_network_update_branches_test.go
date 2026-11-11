@@ -42,17 +42,37 @@ func Test_knowledgeNetworkService_UpdateKN_RewritesOtherBranchDocuments(t *testi
 			db:         db,
 		}
 
-		words := []string{}
+		// Each text gets a vector naming the branch content it came from, so a test can tell
+		// which text a written document was embedded from.
+		vectorOf := func(text string) []float32 {
+			for i, raw := range []string{"main-raw", "v1-raw", "v2-raw"} {
+				if strings.HasSuffix(text, raw) {
+					return []float32{float32(i + 1)}
+				}
+			}
+			return []float32{0}
+		}
+		calls := [][]string{}
+		failEmbedding := false
 		mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "m"}, nil).AnyTimes()
 		mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *interfaces.SmallModel, in []string) ([]*cond.VectorResp, error) {
-				words = append(words, in...)
-				return []*cond.VectorResp{{Vector: []float32{0.1}}}, nil
+				calls = append(calls, in)
+				if failEmbedding && len(calls) > 1 {
+					return nil, errors.New("model unavailable")
+				}
+				vectors := make([]*cond.VectorResp, 0, len(in))
+				for _, text := range in {
+					vectors = append(vectors, &cond.VectorResp{Vector: vectorOf(text)})
+				}
+				return vectors, nil
 			}).AnyTimes()
 		written := map[string]map[string]any{}
+		writes := map[string]int{}
 		failOn := ""
 		vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ string, docID string, doc map[string]any) error {
+				writes[docID]++
 				if docID == failOn {
 					return errors.New("vega unavailable")
 				}
@@ -92,9 +112,41 @@ func Test_knowledgeNetworkService_UpdateKN_RewritesOtherBranchDocuments(t *testi
 				So(written[docID(branch)]["name"], ShouldEqual, "renamed")
 				So(written[docID(branch)]["branch"], ShouldEqual, branch)
 			}
-			joined := strings.Join(words, "\n---\n")
-			So(joined, ShouldContainSubstring, "renamed\nt\nc\nmain-raw")
-			So(joined, ShouldContainSubstring, "renamed\nt\nc\nv1-raw")
+			So(calls, ShouldHaveLength, 2)
+			So(calls[1], ShouldResemble, []string{"renamed\nt\nc\nmain-raw", "renamed\nt\nc\nv1-raw"})
+		})
+
+		// A versioned network gains a branch with every published version; the rename runs
+		// under the network lock, so it must not wait on one embedding per branch (#3104).
+		Convey("the other branches are embedded in one request and each written once", func() {
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{"draft", "main", "v1", "v2"}, nil)
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", "main").Return(row("main", "old", "main-raw"), nil)
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", "v1").Return(row("v1", "old", "v1-raw"), nil)
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", "v2").Return(row("v2", "old", "v2-raw"), nil)
+
+			So(service.UpdateKN(ctx, nil, kn, false), ShouldBeNil)
+
+			// One request for the requested branch, one for all the others.
+			So(calls, ShouldHaveLength, 2)
+			So(calls[1], ShouldHaveLength, 3)
+			for i, branch := range []string{"main", "v1", "v2"} {
+				So(writes[docID(branch)], ShouldEqual, 1)
+				So(written[docID(branch)]["name"], ShouldEqual, "renamed")
+				So(written[docID(branch)]["_vector"], ShouldResemble, []any{float64(i + 1)})
+			}
+			So(writes[docID("draft")], ShouldEqual, 1)
+		})
+
+		Convey("a failed embedding of the other branches leaves the update standing", func() {
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{"draft", "main", "v1"}, nil)
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", "main").Return(row("main", "old", "main-raw"), nil)
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", "v1").Return(row("v1", "old", "v1-raw"), nil)
+			failEmbedding = true
+
+			So(service.UpdateKN(ctx, nil, kn, false), ShouldBeNil)
+
+			So(written, ShouldContainKey, docID("draft"))
+			So(len(written), ShouldEqual, 1)
 		})
 
 		Convey("a branch whose basic information already matches is not rewritten", func() {

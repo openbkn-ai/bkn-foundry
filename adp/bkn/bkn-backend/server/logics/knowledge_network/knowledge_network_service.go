@@ -1875,13 +1875,16 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 // versioned networks alone, so the documents of main and the versions would keep the old name. A
 // document takes the basic information from kn and the rest from its own branch's row. A branch
 // whose basic information already matched is skipped, so a save does not embed every branch again.
-// Failures are only logged: the update stands, and the index can be rebuilt (#3096).
+// The documents are embedded in one request, since this runs under the network lock and a network
+// gains a branch with every published version (#3104). Failures are only logged: the update stands,
+// and the index can be rebuilt (#3096).
 func (kns *knowledgeNetworkService) rewriteOtherBranchDocuments(ctx context.Context, kn *interfaces.KN) {
 	branches, err := kns.kna.ListKNBranches(ctx, kn.KNID)
 	if err != nil {
 		otellog.LogError(ctx, "List the branches whose network concept document to rewrite failed", err)
 		return
 	}
+	docs := make([]*interfaces.KN, 0, len(branches))
 	for _, branch := range branches {
 		if branch == kn.Branch {
 			continue
@@ -1896,8 +1899,18 @@ func (kns *knowledgeNetworkService) rewriteOtherBranchDocuments(ctx context.Cont
 		}
 		row.KNName, row.Tags, row.Comment, row.Icon, row.Color = kn.KNName, kn.Tags, kn.Comment, kn.Icon, kn.Color
 		row.Updater, row.UpdateTime = kn.Updater, kn.UpdateTime
-		if err := kns.InsertDatasetData(ctx, row); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Rewrite the network concept document on %s failed", branch), err)
+		docs = append(docs, networkDocument(row))
+	}
+	if len(docs) == 0 {
+		return
+	}
+	if err := kns.embedNetworkDocuments(ctx, docs); err != nil {
+		otellog.LogError(ctx, "Embed the network concept documents of the other branches failed", err)
+		return
+	}
+	for _, doc := range docs {
+		if err := kns.writeNetworkDocument(ctx, doc); err != nil {
+			otellog.LogError(ctx, fmt.Sprintf("Rewrite the network concept document on %s failed", doc.Branch), err)
 		}
 	}
 }
@@ -1913,7 +1926,21 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "业务知识网络概念索引写入")
 	defer span.End()
 
-	kn := &interfaces.KN{
+	kn := networkDocument(origKN)
+	if err := kns.embedNetworkDocuments(ctx, []*interfaces.KN{kn}); err != nil {
+		span.SetStatus(codes.Error, "获取业务知识网络向量失败")
+		return err
+	}
+	if err := kns.writeNetworkDocument(ctx, kn); err != nil {
+		span.SetStatus(codes.Error, "业务知识网络概念索引写入失败")
+		return err
+	}
+	return nil
+}
+
+// networkDocument returns the fields of origKN that the network's concept document carries.
+func networkDocument(origKN *interfaces.KN) *interfaces.KN {
+	return &interfaces.KN{
 		KNID:   origKN.KNID,
 		KNName: origKN.KNName,
 		CommonInfo: interfaces.CommonInfo{
@@ -1930,31 +1957,45 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 		UpdateTime: origKN.UpdateTime,
 		ModuleType: interfaces.MODULE_TYPE_KN,
 	}
+}
 
-	if kns.appSetting.ServerSetting.DefaultSmallModelEnabled {
-		words := []string{kn.KNName}
-		words = append(words, kn.Tags...)
-		words = append(words, kn.Comment, kn.BKNRawContent)
-		word := strings.Join(words, "\n")
-
-		defaultModel, err := kns.mfs.GetDefaultModel(ctx)
-		if err != nil {
-			logger.Errorf("GetDefaultModel error: %s", err.Error())
-			span.SetStatus(codes.Error, "获取默认模型失败")
-			return err
-		}
-		vectors, err := kns.mfs.GetVector(ctx, defaultModel, []string{word})
-		if err != nil {
-			logger.Errorf("GetVector error: %s", err.Error())
-			span.SetStatus(codes.Error, "获取业务知识网络向量失败")
-			return err
-		}
-
-		kn.Vector = vectors[0].Vector
+// embedNetworkDocuments sets the vector of each document from its own text, in one request to the
+// default model. It does nothing when the default small model is disabled.
+func (kns *knowledgeNetworkService) embedNetworkDocuments(ctx context.Context, docs []*interfaces.KN) error {
+	if !kns.appSetting.ServerSetting.DefaultSmallModelEnabled {
+		return nil
+	}
+	words := make([]string, 0, len(docs))
+	for _, kn := range docs {
+		parts := []string{kn.KNName}
+		parts = append(parts, kn.Tags...)
+		parts = append(parts, kn.Comment, kn.BKNRawContent)
+		words = append(words, strings.Join(parts, "\n"))
 	}
 
-	docid := interfaces.GenerateConceptDocuemtnID(kn.KNID, interfaces.MODULE_TYPE_KN, kn.KNID, kn.Branch)
+	defaultModel, err := kns.mfs.GetDefaultModel(ctx)
+	if err != nil {
+		logger.Errorf("GetDefaultModel error: %s", err.Error())
+		return err
+	}
+	vectors, err := kns.mfs.GetVector(ctx, defaultModel, words)
+	if err != nil {
+		logger.Errorf("GetVector error: %s", err.Error())
+		return err
+	}
+	if len(vectors) != len(docs) {
+		return fmt.Errorf("GetVector error: expect vectors num is [%d], actual vectors num is [%d]",
+			len(docs), len(vectors))
+	}
+	for i, kn := range docs {
+		kn.Vector = vectors[i].Vector
+	}
+	return nil
+}
 
+// writeNetworkDocument writes kn as the network's concept document of its branch.
+func (kns *knowledgeNetworkService) writeNetworkDocument(ctx context.Context, kn *interfaces.KN) error {
+	docid := interfaces.GenerateConceptDocuemtnID(kn.KNID, interfaces.MODULE_TYPE_KN, kn.KNID, kn.Branch)
 	document, err := vega_backend.NewDatasetDocument(docid, kn)
 	if err != nil {
 		return err
@@ -1963,10 +2004,8 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 		[]vega_backend.DatasetDocument{document})
 	if err != nil {
 		logger.Errorf("WriteDatasetDocument error: %s", err.Error())
-		span.SetStatus(codes.Error, "业务知识网络概念索引写入失败")
 		return err
 	}
-
 	return nil
 }
 
