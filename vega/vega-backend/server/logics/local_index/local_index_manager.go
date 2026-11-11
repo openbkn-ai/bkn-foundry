@@ -9,6 +9,7 @@ package local_index
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -82,8 +83,45 @@ func (lim *localIndexManager) ValidateFilterCondition(condition interfaces.Filte
 	if condition == nil {
 		return nil
 	}
-	_, err := lim.lic.ConvertFilterCondition(condition, SchemaForQuery(properties))
+	schema, err := lim.SchemaForQuery(properties)
+	if err != nil {
+		return err
+	}
+	_, err = lim.lic.ConvertFilterCondition(condition, schema)
 	return err
+}
+
+// ValidateFilterability 在模型请求前校验主字段，不依赖尚未解析的派生向量维度。
+func (lim *localIndexManager) ValidateFilterability(schema []*interfaces.Property) error {
+	for _, property := range schema {
+		if property.Filterable == nil || !*property.Filterable {
+			continue
+		}
+		main := *property
+		if main.Type == interfaces.DataType_String || main.Type == interfaces.DataType_Text {
+			main.Features = make([]interfaces.PropertyFeature, 0, len(property.Features))
+			for _, feature := range property.Features {
+				// 独立派生向量不改变主字段 mapping，完整保存流程仍负责其维度和命名冲突。
+				if feature.FeatureType == interfaces.PropertyFeatureType_Vector && feature.RefProperty == "" {
+					continue
+				}
+				main.Features = append(main.Features, feature)
+			}
+		}
+		mapping, err := buildFieldMappings([]*interfaces.Property{&main}, false)
+		if err != nil {
+			var decimal *interfaces.DecimalIndexError
+			if errors.As(err, &decimal) {
+				return err
+			}
+			return interfaces.NewConditionBuildError("cannot construct a filterable mapping for field %q", property.Name)
+		}
+		field, _ := mapping[property.Name].(map[string]any)
+		if !lim.lic.IsFilterable(indexFieldMeta(property.Name, field)) {
+			return interfaces.NewConditionBuildError("field %q does not support filterable=true", property.Name)
+		}
+	}
+	return nil
 }
 
 func (lim *localIndexManager) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
@@ -95,7 +133,7 @@ func (lim *localIndexManager) GetIndexMeta(ctx context.Context, index *interface
 }
 
 func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property, mappingMeta map[string]string) error {
-	properties, err := buildFieldMappings(schema)
+	properties, err := buildFieldMappings(schema, true)
 	if err != nil {
 		return err
 	}
@@ -103,7 +141,7 @@ func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string,
 }
 
 func (lim *localIndexManager) UpdateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
-	properties, err := buildFieldMappings(schema)
+	properties, err := buildFieldMappings(schema, true)
 	if err != nil {
 		return err
 	}
@@ -204,10 +242,10 @@ func cloneIndexCapabilities(capabilities interfaces.IndexCapabilities) *interfac
 }
 
 func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-	if err := validateQueryFields(res, params); err != nil {
+	if err := lim.validateQueryFields(res, params); err != nil {
 		return nil, err
 	}
-	queryResource, err := resourceForQuery(res)
+	queryResource, err := lim.resourceForQuery(res)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +308,11 @@ func (lim *localIndexManager) DeleteDocuments(ctx context.Context, indexName str
 
 func (lim *localIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexName string,
 	res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.DeleteByQueryResult, error) {
-	return lim.lic.DeleteDocumentsByQuery(ctx, indexName, params, SchemaForQuery(res.SchemaDefinition))
+	schema, err := lim.SchemaForQuery(res.SchemaDefinition)
+	if err != nil {
+		return nil, err
+	}
+	return lim.lic.DeleteDocumentsByQuery(ctx, indexName, params, schema)
 }
 
 func (lim *localIndexManager) IndexDocuments(ctx context.Context, indexName string,
@@ -283,33 +325,72 @@ func (lim *localIndexManager) IndexDocuments(ctx context.Context, indexName stri
 // JSON is stored only in _source; binary and other are unavailable for index queries.
 // Managed documents and mappings are keyed by Property.Name; OriginalName only
 // belongs to source connectors and must not leak into local-index DSL.
-func SchemaForQuery(schema []*interfaces.Property) []*interfaces.Property {
+func (lim *localIndexManager) SchemaForQuery(schema []*interfaces.Property) ([]*interfaces.Property, error) {
+	mappings, err := queryFieldMappings(schema)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]*interfaces.Property, 0, len(schema))
+	seen := make(map[string]bool, len(schema))
 	for _, property := range schema {
-		if property == nil || !isQueryableFieldType(property.Type) {
+		if !isQueryableFieldType(property.Type) {
 			continue
 		}
 		cloned := *property
 		cloned.OriginalName = property.Name
+		// 查询副本统一使用 LIM 映射的过滤能力，不继承源端开关。
+		mapping, _ := mappings[property.Name].(map[string]any)
+		filterable := lim.lic.IsFilterable(indexFieldMeta(property.Name, mapping))
+		cloned.Filterable = &filterable
 		// 查询使用索引的物理字符串语义，不继承源端大整数能力。
 		if cloned.Type == interfaces.DataType_LargeInteger {
 			cloned.Type = interfaces.DataType_String
 		}
 		result = append(result, &cloned)
+		seen[cloned.Name] = true
 	}
-	return result
+	for _, property := range schema {
+		if !isQueryableFieldType(property.Type) {
+			continue
+		}
+		mapping, _ := mappings[property.Name].(map[string]any)
+		meta := indexFieldMeta(property.Name, mapping)
+		for _, sub := range meta.SubFields {
+			name := property.Name + "." + sub.Name
+			if seen[name] {
+				continue
+			}
+			fieldMeta := &interfaces.IndexFieldMeta{Name: name, Type: sub.Type, Attributes: sub.Attributes}
+			filterable := lim.lic.IsFilterable(fieldMeta)
+			result = append(result, &interfaces.Property{Name: name, OriginalName: name, OriginalType: sub.Type,
+				Type: lim.lic.MapType(sub.Type), Attributes: sub.Attributes, Filterable: &filterable})
+			seen[name] = true
+		}
+	}
+	generated, err := lim.GeneratedFields(schema)
+	if err != nil {
+		return nil, err
+	}
+	for _, property := range generated {
+		if !seen[property.Name] {
+			result = append(result, property)
+		}
+	}
+	return result, nil
 }
 
 // resourceForQuery 准备托管索引的查询副本，保留源 schema 的属性和特征配置。
-func resourceForQuery(resource *interfaces.Resource) (*interfaces.Resource, error) {
+func (lim *localIndexManager) resourceForQuery(resource *interfaces.Resource) (*interfaces.Resource, error) {
 	if resource == nil {
 		return nil, interfaces.NewConditionBuildError("resource is required for local index queries")
 	}
 	cloned := *resource
-	cloned.SchemaDefinition = SchemaForQuery(resource.SchemaDefinition)
-	for _, prop := range GeneratedFields(resource.SchemaDefinition) {
-		cloned.SchemaDefinition = append(cloned.SchemaDefinition, prop)
+	schema, err := lim.SchemaForQuery(resource.SchemaDefinition)
+	if err != nil {
+		return nil, err
 	}
+	cloned.SchemaDefinition = schema
+
 	return &cloned, nil
 }
 
@@ -322,7 +403,7 @@ func normalizeQueryJSONValues(resource *interfaces.Resource, params *interfaces.
 		return nil
 	}
 	for _, property := range resource.SchemaDefinition {
-		if property == nil || property.Type != interfaces.DataType_Json {
+		if property.Type != interfaces.DataType_Json {
 			continue
 		}
 		for _, entry := range result.Entries {
@@ -341,7 +422,7 @@ func normalizeQueryJSONValues(resource *interfaces.Resource, params *interfaces.
 }
 
 // validateQueryFields 校验不经过条件构造器的排序和聚合字段，沿用字段不存在的错误口径。
-func validateQueryFields(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+func (lim *localIndexManager) validateQueryFields(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
 	if resource == nil || params == nil {
 		return nil
 	}
@@ -368,12 +449,14 @@ func validateQueryFields(resource *interfaces.Resource, params *interfaces.Resou
 		}
 	}
 	queryFields := make(map[string]struct{}, len(resource.SchemaDefinition))
-	for _, property := range SchemaForQuery(resource.SchemaDefinition) {
+	schema, err := lim.SchemaForQuery(resource.SchemaDefinition)
+	if err != nil {
+		return err
+	}
+	for _, property := range schema {
 		queryFields[property.Name] = struct{}{}
 	}
-	for name := range GeneratedFields(resource.SchemaDefinition) {
-		queryFields[name] = struct{}{}
-	}
+
 	for _, field := range fields {
 		if _, ok := queryFields[field]; !ok {
 			return interfaces.NewConditionBuildError("field %q not found in schema", field)

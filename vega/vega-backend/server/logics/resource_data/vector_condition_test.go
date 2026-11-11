@@ -7,6 +7,7 @@ package resource_data
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,7 @@ func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
 	model := &interfaces.SmallModel{ModelID: "model-1", BatchSize: 16}
 	resource := &interfaces.Resource{
 		ID:               "resource1",
+		Category:         interfaces.ResourceCategoryTable,
 		Name:             "orders",
 		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 		LocalIndexName:   "managed-index",
@@ -45,7 +47,7 @@ func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
 	mfs.EXPECT().GetVector(gomock.Any(), model, []string{"search text"}).
 		Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2}}}, nil)
 
-	rds := &resourceDataService{mfs: mfs}
+	rds := &resourceDataService{mfs: mfs, lim: newResourceDataLocalIndexManagerMock(ctrl)}
 	err := rds.resolveVectorConditions(context.Background(), resource, cfg, false)
 
 	require.NoError(t, err)
@@ -129,14 +131,53 @@ func TestEmbeddingModelForIndexUsesReferencedVectorFieldOwner(t *testing.T) {
 }
 
 func TestResolveVectorConditionsRejectsModelDimensionMismatch(t *testing.T) {
+	t.Run("generated metadata errors precede model lookup and retain their cause", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		models := mock_interfaces.NewMockModelFactoryService(ctrl)
+		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
+		cause := errors.New("mapping failed")
+		indexes.EXPECT().GeneratedFields(resource.SchemaDefinition).Return(nil, cause)
+		cfg := &interfaces.FilterCondCfg{Field: "title", Operation: filter_condition.OperationKnnVector, Value: "query"}
+		err := (&resourceDataService{lim: indexes, mfs: models}).resolveVectorConditions(t.Context(), resource, cfg, false)
+		require.ErrorIs(t, err, cause)
+		assert.Equal(t, "title", cfg.Field)
+		assert.Equal(t, "query", cfg.Value)
+	})
+
+	t.Run("native index uses scanned vector metadata without requesting LIM schema", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		models := mock_interfaces.NewMockModelFactoryService(ctrl)
+		indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		model := &interfaces.SmallModel{ModelID: "model"}
+		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryIndex, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"},
+			SchemaDefinition: []*interfaces.Property{{Name: "embedding", Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}}}}}}
+		models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+		models.EXPECT().GetVector(gomock.Any(), model, []string{"query"}).Return([]*interfaces.VectorResp{{Vector: []float32{1, 2}}}, nil)
+		cfg := &interfaces.FilterCondCfg{Field: "embedding", Operation: filter_condition.OperationKnnVector, Value: "query"}
+		err := (&resourceDataService{mfs: models, lim: indexes}).resolveVectorConditions(t.Context(), resource, cfg, false)
+		require.ErrorContains(t, err, "1024")
+		assert.Equal(t, "embedding", cfg.Field)
+		assert.Equal(t, "query", cfg.Value)
+	})
+
 	ctrl := gomock.NewController(t)
 	models := mock_interfaces.NewMockModelFactoryService(ctrl)
+	indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
 	model := &interfaces.SmallModel{ModelID: "model"}
-	resource := &interfaces.Resource{LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}}}}}}
+	resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 768}}}}}}
 	cfg := &interfaces.FilterCondCfg{Field: "title", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: "query text"}
 	models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
 	models.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2, 0.3}}}, nil)
-	err := (&resourceDataService{mfs: models}).resolveVectorConditions(context.Background(), resource, cfg, false)
+	// Use the manager's generated metadata, including its physical dimension.
+	indexes.EXPECT().GeneratedFields(resource.SchemaDefinition).Return(map[string]*interfaces.Property{
+		"title_vector": {Name: "title_vector", Type: interfaces.DataType_Vector, Filterable: new(true), Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}}}},
+	}, nil)
+	err := (&resourceDataService{mfs: models, lim: indexes}).resolveVectorConditions(context.Background(), resource, cfg, false)
 	require.Error(t, err)
 	_, invalid := interfaces.RequestSideQueryError(err)
 	assert.False(t, invalid)

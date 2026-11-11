@@ -45,8 +45,8 @@ jobs:
 
       - uses: azure/setup-helm@v4
 
-      - name: Verify health probe chart rendering
-        run: bash adp/context-loader/agent-retrieval/scripts/test_health_probes_chart.sh
+      - name: Verify Retrieval Chart contracts
+        run: make -C adp/context-loader/agent-retrieval test-helm
 
       - uses: docker/setup-buildx-action@v3
 

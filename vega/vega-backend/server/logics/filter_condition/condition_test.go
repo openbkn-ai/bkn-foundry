@@ -9,6 +9,7 @@ package filter_condition
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -87,7 +88,218 @@ func TestNormalizeValueFrom(t *testing.T) {
 	}
 }
 
+func TestResolveFulltextWildcardFields(t *testing.T) {
+	for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+		for _, single := range []bool{false, true} {
+			if single && operation == OperationMultiMatch {
+				continue
+			}
+			t.Run(fmt.Sprintf("%s/single=%v", operation, single), func(t *testing.T) {
+				published := &interfaces.Property{Name: "published", Type: interfaces.DataType_Text, Filterable: new(false)}
+				fields := map[string]*interfaces.Property{
+					"published": published,
+					"hidden":    {Name: "hidden", Type: interfaces.DataType_Text, Filterable: new(false)},
+					"allowed":   {Name: "allowed", Type: interfaces.DataType_String, Filterable: new(true)},
+					"embedding": {Name: "embedding", Type: interfaces.DataType_Vector, Filterable: new(true)},
+				}
+				wildcard := constCfg("", operation, "query")
+				if single {
+					wildcard.Field = interfaces.AllField
+				} else {
+					wildcard.RemainCfg = map[string]any{"fields": []any{interfaces.AllField}}
+				}
+				knn := constCfg("embedding", OperationKnnVector, []float32{0.1})
+				knn.SubConds = []*interfaces.FilterCondCfg{wildcard}
+				cfg := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{
+					constCfg("allowed", OperationEqual, "value"), {Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{knn}},
+				}}
+				actual, err := NewFilterCondition(t.Context(), cfg, fields)
+				require.NoError(t, err)
+				require.NoError(t, ResolveFulltextWildcardFields(actual, []string{"published"}))
+				leaf := actual.(*AndCond).SubConds[1].(*OrCond).SubConds[0].(*KnnVectorCond).SubConds[0]
+				var selected []*interfaces.Property
+				switch match := leaf.(type) {
+				case *MatchCond:
+					selected = match.Fields
+				case *MatchPhraseCond:
+					selected = match.Fields
+				case *MultiMatchCond:
+					selected = match.Fields
+				}
+				require.Len(t, selected, 1)
+				assert.Same(t, published, selected[0])
+				assert.False(t, *published.Filterable)
+				if single {
+					assert.Equal(t, interfaces.AllField, wildcard.Field)
+				} else {
+					assert.Equal(t, []any{interfaces.AllField}, wildcard.RemainCfg["fields"])
+				}
+				for _, names := range [][]string{nil, {}, {"missing"}} {
+					err := ResolveFulltextWildcardFields(actual, names)
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+				}
+				wildcard.Field = interfaces.AllField
+				wildcard.RemainCfg = map[string]any{"fields": []any{"allowed"}}
+				explicit, err := NewFilterCondition(t.Context(), wildcard, fields)
+				require.NoError(t, err)
+				// 显式 fields 优先于 field="*"，不因候选范围改成 published。
+				require.NoError(t, ResolveFulltextWildcardFields(explicit, []string{"published"}))
+				switch match := explicit.(type) {
+				case *MatchCond:
+					assert.Equal(t, []*interfaces.Property{fields["allowed"]}, match.Fields)
+				case *MatchPhraseCond:
+					assert.Equal(t, []*interfaces.Property{fields["allowed"]}, match.Fields)
+				case *MultiMatchCond:
+					assert.Equal(t, []*interfaces.Property{fields["allowed"]}, match.Fields)
+				}
+				wildcard.RemainCfg["fields"] = []any{"published"}
+				_, err = NewFilterCondition(t.Context(), wildcard, fields)
+				require.ErrorContains(t, err, "not filterable")
+				wildcard.RemainCfg["fields"] = []any{}
+				empty, err := NewFilterCondition(t.Context(), wildcard, fields)
+				require.NoError(t, err)
+				require.NoError(t, ResolveFulltextWildcardFields(empty, nil))
+			})
+		}
+	}
+	require.NoError(t, ResolveFulltextWildcardFields(nil, nil))
+}
+
 func TestNewFilterCondition(t *testing.T) {
+	t.Run("Feature 只使用实际物理目标的过滤开关", func(t *testing.T) {
+		for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch, OperationEqual, OperationEqual2, OperationLike, OperationKnnVector} {
+			t.Run(operation, func(t *testing.T) {
+				for _, targetEnabled := range []bool{false, true} {
+					name, kind, featureType, featureName, physical := "title", interfaces.DataType_String, interfaces.PropertyFeatureType_Fulltext, "search", "title.search"
+					switch operation {
+					case OperationEqual, OperationEqual2, OperationLike:
+						name, kind, featureType, featureName, physical = "body", interfaces.DataType_Text, interfaces.PropertyFeatureType_Keyword, "raw", "body.raw"
+					case OperationKnnVector:
+						featureType, featureName, physical = interfaces.PropertyFeatureType_Vector, "", "title_vector"
+					}
+					fields := map[string]*interfaces.Property{
+						name:     {Name: name, Type: kind, Filterable: new(!targetEnabled), Features: []interfaces.PropertyFeature{{FeatureType: featureType, FeatureName: featureName}}},
+						physical: {Name: physical, Type: interfaces.DataType_String, Filterable: new(targetEnabled)},
+					}
+					cfg := constCfg(name, operation, "value")
+					if operation == OperationMultiMatch {
+						cfg.RemainCfg = map[string]any{"fields": []any{name}}
+					}
+					err := ValidateFilterable(cfg, fields)
+					if targetEnabled {
+						require.NoError(t, err)
+					} else {
+						require.ErrorContains(t, err, physical)
+					}
+					assert.Equal(t, !targetEnabled, *fields[name].Filterable)
+				}
+			})
+		}
+	})
+	t.Run("物理子字段不扩大全文通配的逻辑字段范围", func(t *testing.T) {
+		fields := map[string]*interfaces.Property{
+			"body":           {Name: "body", Type: interfaces.DataType_Text, Filterable: new(false), Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw"}}},
+			"body.raw":       {Name: "body.raw", Type: interfaces.DataType_String, Filterable: new(true)},
+			"title":          {Name: "title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}}},
+			"title.fulltext": {Name: "title.fulltext", Type: interfaces.DataType_Text, Filterable: new(true)},
+			"title_vector":   {Name: "title_vector", Type: interfaces.DataType_Vector, Filterable: new(true)},
+		}
+		for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			cfg := constCfg("", operation, "value")
+			cfg.RemainCfg = map[string]any{"fields": []any{interfaces.AllField}}
+			condition, err := NewFilterCondition(t.Context(), cfg, fields)
+			require.NoError(t, err)
+			var selected []*interfaces.Property
+			switch cond := condition.(type) {
+			case *MatchCond:
+				selected = cond.Fields
+			case *MatchPhraseCond:
+				selected = cond.Fields
+			case *MultiMatchCond:
+				selected = cond.Fields
+			}
+			names := make([]string, 0, len(selected))
+			for _, field := range selected {
+				names = append(names, field.Name)
+			}
+			assert.ElementsMatch(t, []string{"body", "title", "title_vector"}, names)
+		}
+	})
+	t.Run("disabled field references cannot bypass validation", func(t *testing.T) {
+		disabled := false
+		fields := map[string]*interfaces.Property{
+			"allowed": {Name: "allowed", Type: interfaces.DataType_String},
+			"blocked": {Name: "blocked", Type: interfaces.DataType_String, Filterable: &disabled},
+		}
+		cases := []*interfaces.FilterCondCfg{
+			{Field: "blocked", Operation: OperationEqual2, Value: "x"},
+			{Field: "allowed", Operation: OperationEqual2, ValueFrom: interfaces.ValueFrom_Field, Value: "blocked"},
+			{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{{Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{{Field: "blocked", Operation: OperationNull}}}}},
+			{Operation: OperationMultiMatch, Value: "x", RemainCfg: map[string]any{"fields": []any{"allowed", "blocked"}}},
+		}
+		for _, cfg := range cases {
+			result, err := NewFilterCondition(context.Background(), cfg, fields)
+			require.ErrorContains(t, err, "not filterable")
+			assert.Nil(t, result)
+		}
+		for _, kind := range []string{interfaces.DataType_Json, interfaces.DataType_Binary, interfaces.DataType_Other, "unknown"} {
+			fields["legacy"] = &interfaces.Property{Name: "legacy", Type: kind}
+			_, err := NewFilterCondition(context.Background(), constCfg("legacy", OperationNull, nil), fields)
+			require.ErrorContains(t, err, "not filterable")
+		}
+		enabled := true
+		fields["legacy"].Filterable = &enabled
+		_, err := NewFilterCondition(context.Background(), constCfg("legacy", OperationNull, nil), fields)
+		require.NoError(t, err, "explicit true does not get overwritten by type defaults")
+	})
+
+	t.Run("全文通配字段不按整个 Schema 的过滤开关拒绝", func(t *testing.T) {
+		fields := map[string]*interfaces.Property{
+			"allowed": {Name: "allowed", Type: interfaces.DataType_Text},
+			"blocked": {Name: "blocked", Type: interfaces.DataType_Text, Filterable: new(false)},
+			"payload": {Name: "payload", Type: interfaces.DataType_Json},
+		}
+		for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			t.Run(operation, func(t *testing.T) {
+				cfg := constCfg("", operation, "hello")
+				cfg.RemainCfg = map[string]any{"fields": []any{"*"}}
+				nested := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{cfg}}
+				require.NoError(t, ValidateFilterable(nested, fields))
+				condition, err := NewFilterCondition(context.Background(), cfg, fields)
+				require.NoError(t, err)
+				var resolved []*interfaces.Property
+				switch actual := condition.(type) {
+				case *MatchCond:
+					resolved = actual.Fields
+				case *MatchPhraseCond:
+					resolved = actual.Fields
+				case *MultiMatchCond:
+					resolved = actual.Fields
+				default:
+					t.Fatalf("unexpected condition type %T", condition)
+				}
+				names := make([]string, len(resolved))
+				for i, property := range resolved {
+					names[i] = property.Name
+				}
+				assert.ElementsMatch(t, []string{"allowed", "blocked", "payload"}, names)
+				_, err = NewFilterCondition(context.Background(), nested, fields)
+				require.NoError(t, err)
+				if operation != OperationMultiMatch {
+					_, err = NewFilterCondition(context.Background(), constCfg("*", operation, "hello"), fields)
+					require.NoError(t, err)
+					_, err = NewFilterCondition(context.Background(), constCfg("blocked", operation, "hello"), fields)
+					require.ErrorContains(t, err, "not filterable")
+				}
+				cfg.RemainCfg["fields"] = []any{"allowed", "blocked"}
+				require.ErrorContains(t, ValidateFilterable(nested, fields), "not filterable")
+				_, err = NewFilterCondition(context.Background(), cfg, fields)
+				require.ErrorContains(t, err, "not filterable")
+			})
+		}
+	})
+
 	t.Run("large integer ranges preserve exact bounds", func(t *testing.T) {
 		fields := map[string]*interfaces.Property{"wide": {Name: "wide", Type: "large_integer"}}
 		bounds := []any{"-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"}
@@ -563,6 +775,27 @@ func TestInCond(t *testing.T) {
 }
 
 func TestLikeCond(t *testing.T) {
+	t.Run("SQL LIKE 模式保持原值并拒绝孤立转义", func(t *testing.T) {
+		for _, operation := range []string{OperationLike, OperationNotLike} {
+			for _, pattern := range []string{"", "%", "_", "%ali%", "ali%", "%ali", "object_type", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`} {
+				t.Run(operation+"/"+pattern, func(t *testing.T) {
+					cfg := constCfg("name", operation, pattern)
+					condition, err := NewFilterCondition(t.Context(), cfg, testFieldsMap())
+					require.NoError(t, err)
+					switch value := condition.(type) {
+					case *LikeCond:
+						assert.Equal(t, pattern, value.Value)
+					case *NotLikeCond:
+						assert.Equal(t, pattern, value.Value)
+					}
+					assert.Equal(t, pattern, cfg.Value)
+				})
+			}
+			condition, err := NewFilterCondition(t.Context(), constCfg("name", operation, `trailing\`), testFieldsMap())
+			require.ErrorContains(t, err, "escape")
+			assert.Nil(t, condition)
+		}
+	})
 	t.Run("like cond valid", func(t *testing.T) {
 		cfg := constCfg("name", "like", "ali")
 		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
@@ -573,22 +806,6 @@ func TestLikeCond(t *testing.T) {
 		if like.Value != "ali" {
 			t.Errorf("expected value 'ali', got '%s'", like.Value)
 		}
-	})
-	// The value of a like is a literal substring. When a caller writes "%ali%" out of SQL habit
-	// the SQL connectors escape the % into a literal and the query returns nothing, without an
-	// error — which is why this has to be said at the entry point.
-	t.Run("like cond rejects SQL wildcards", func(t *testing.T) {
-		cfg := constCfg("name", "like", "%ali%")
-		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "literal substring")
-		assert.Contains(t, err.Error(), "[regex]")
-	})
-	t.Run("not_like cond rejects SQL wildcards", func(t *testing.T) {
-		cfg := constCfg("name", "not_like", "ali%")
-		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "literal substring")
 	})
 	t.Run("like cond non string field", func(t *testing.T) {
 		cfg := constCfg("age", "like", "test")
@@ -612,40 +829,57 @@ func TestLikeCond(t *testing.T) {
 	})
 }
 
-func TestParseLikeValue(t *testing.T) {
-	tests := []struct {
-		name       string
-		value      string
-		want       string
-		errContain string
-	}{
-		{name: "plain substring", value: "Indirect", want: "Indirect"},
-		{name: "empty value", value: "", want: ""},
-		{name: "cjk substring", value: "吹塑风管", want: "吹塑风管"},
-		{name: "escaped percent is a literal", value: `50\%`, want: "50%"},
-		{name: "escaped underscore is a literal", value: `a\_b`, want: "a_b"},
-		{name: "escaped backslash is a literal", value: `a\\b`, want: `a\b`},
-		{name: "backslash before a plain char is kept", value: `a\nb`, want: `a\nb`},
-		{name: "trailing backslash is kept", value: `ab\`, want: `ab\`},
-		{name: "leading and trailing percent rejected", value: "%Indirect%", errContain: "literal substring"},
-		// _ was literal on every path before this change, so rejecting it is collateral damage:
-		// search terms containing an underscore are far too common
-		{name: "bare underscore is a literal", value: "object_type", want: "object_type"},
+func TestValidateLikePattern(t *testing.T) {
+	for _, operation := range []string{OperationLike, OperationNotLike} {
+		for _, pattern := range []string{"", "%", "_", "a%_", `\%`, `\_`, `\\`, `\q`, "中文_😀%"} {
+			require.NoError(t, ValidateLikePattern(operation, pattern))
+		}
+		for _, pattern := range []string{`\`, `abc\`, `a\\\`} {
+			err := ValidateLikePattern(operation, pattern)
+			var invalid *interfaces.ConditionBuildError
+			require.ErrorAs(t, err, &invalid)
+			assert.Contains(t, err.Error(), operation)
+		}
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseLikeValue(OperationLike, tt.value)
+func TestNormalizeSQLLikePattern(t *testing.T) {
+	for _, operation := range []string{OperationLike, OperationNotLike} {
+		for _, tc := range []struct{ pattern, want string }{
+			{"", ""}, {"%_", "%_"}, {"%ali%", "%ali%"}, {`50\%`, `50\%`}, {`a\_b`, `a\_b`}, {`a\\b`, `a\\b`},
+			{`a\qb`, "aqb"}, {`\*\?\[`, "*?["}, {`\中\😀_`, "中😀_"}, {`\q\%_\\\?`, `q\%_\\?`},
+		} {
+			t.Run(operation+"/"+tc.pattern, func(t *testing.T) {
+				original := tc.pattern
+				got, err := NormalizeSQLLikePattern(operation, tc.pattern)
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, got)
+				assert.Equal(t, original, tc.pattern)
+			})
+		}
+		got, err := NormalizeSQLLikePattern(operation, `a\`)
+		var invalid *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &invalid)
+		assert.Empty(t, got)
+	}
+}
 
-			if tt.errContain != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errContain)
-				return
-			}
+func TestSQLLikeToWildcard(t *testing.T) {
+	for _, tc := range []struct{ pattern, want string }{
+		{"", ""}, {"%", "*"}, {"_", "?"}, {"ali", "ali"}, {"%ali%", "*ali*"},
+		{"ali%", "ali*"}, {"%ali", "*ali"}, {"a_b", "a?b"}, {"中文_😀%", "中文?😀*"},
+		{`50\%`, "50%"}, {`a\_b`, "a_b"}, {`a\\b`, `a\\b`}, {`a\nb`, "anb"},
+		{`a*b?c`, `a\*b\?c`}, {`.*`, `.\*`}, {`\*\?`, `\*\?`}, {`'[%]`, "'[*]"},
+	} {
+		t.Run(tc.pattern, func(t *testing.T) {
+			got, err := SQLLikeToWildcard(OperationLike, tc.pattern)
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tc.want, got)
 		})
 	}
+	got, err := SQLLikeToWildcard(OperationNotLike, `abc\`)
+	require.Error(t, err)
+	assert.Empty(t, got)
 }
 
 func TestRangeCond(t *testing.T) {
@@ -1010,60 +1244,6 @@ func advancedFieldsMap() map[string]*interfaces.Property {
 	fields := testFieldsMap()
 	fields["embedding"] = &interfaces.Property{Name: "embedding", Type: interfaces.DataType_Vector}
 	return fields
-}
-
-// A legacy spelling stored in a view definition must not stop working under the new contract:
-// once marked, each connector renders it with its own pre-change semantics — a literal on the
-// SQL side, a wildcard regexp on the index side — instead of returning 400 on every query.
-func TestMarkLegacyLikeWildcards(t *testing.T) {
-	t.Run("marks an unescaped percent without touching the value", func(t *testing.T) {
-		cfg := constCfg("name", "like", "%ali%")
-
-		marked := MarkLegacyLikeWildcards(cfg)
-
-		assert.Equal(t, 1, marked)
-		assert.True(t, cfg.LegacyLikeWildcards)
-		// The value is left alone: translation belongs to the connectors, and rewriting it here
-		// uniformly would throw away the wildcard semantics the index path had
-		assert.Equal(t, "%ali%", cfg.Value)
-
-		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-		require.NoError(t, err)
-		like := cond.(*LikeCond)
-		assert.True(t, like.LegacyWildcards)
-		assert.Equal(t, "%ali%", like.Value)
-	})
-
-	t.Run("leaves already valid values untouched", func(t *testing.T) {
-		cfg := constCfg("name", "like", `object_type\%`)
-
-		marked := MarkLegacyLikeWildcards(cfg)
-
-		assert.Equal(t, 0, marked)
-		assert.False(t, cfg.LegacyLikeWildcards)
-	})
-
-	t.Run("walks nested conditions and skips other operations", func(t *testing.T) {
-		cfg := &interfaces.FilterCondCfg{
-			Operation: OperationAnd,
-			SubConds: []*interfaces.FilterCondCfg{
-				constCfg("name", "like", "%a"),
-				constCfg("name", "not_like", "b%"),
-				constCfg("name", "==", "100%"),
-			},
-		}
-
-		marked := MarkLegacyLikeWildcards(cfg)
-
-		assert.Equal(t, 2, marked)
-		assert.True(t, cfg.SubConds[0].LegacyLikeWildcards)
-		assert.True(t, cfg.SubConds[1].LegacyLikeWildcards)
-		assert.False(t, cfg.SubConds[2].LegacyLikeWildcards)
-	})
-
-	t.Run("tolerates a nil condition", func(t *testing.T) {
-		assert.Equal(t, 0, MarkLegacyLikeWildcards(nil))
-	})
 }
 
 func TestConditionConstructorsRejectNilValues(t *testing.T) {

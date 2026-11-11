@@ -24,6 +24,7 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/model_factory"
@@ -63,7 +64,13 @@ func NewDatasetService(appSetting *common.AppSetting) interfaces.DatasetService 
 func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset")
 	defer span.End()
-	schema, err := local_index.DecimalIndexSchema(res.SchemaDefinition, res.ColumnMetadata())
+
+	columns, err := table.ColumnMetadata(res)
+	if err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
+			WithErrorDetails("failed to read source column metadata")
+	}
+	schema, err := local_index.DecimalIndexSchema(res.SchemaDefinition, columns)
 	if err != nil {
 		return query_error.DecimalIndexHTTPError(ctx, err)
 	}
@@ -95,7 +102,12 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 func (ds *datasetService) Update(ctx context.Context, res *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update dataset")
 	defer span.End()
-	schema, err := local_index.DecimalIndexSchema(res.SchemaDefinition, res.ColumnMetadata())
+	columns, err := table.ColumnMetadata(res)
+	if err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			WithErrorDetails("failed to read source column metadata")
+	}
+	schema, err := local_index.DecimalIndexSchema(res.SchemaDefinition, columns)
 	if err != nil {
 		return query_error.DecimalIndexHTTPError(ctx, err)
 	}
@@ -347,15 +359,24 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
 			WithErrorDetails(err.Error())
 	}
-	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)
+	querySchema, err := ds.lim.SchemaForQuery(res.SchemaDefinition)
+	if err != nil {
+		span.SetStatus(codes.Error, "Prepare dataset query schema failed")
+		if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
+		if reason, invalid := interfaces.RequestSideQueryError(err); invalid {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+				WithErrorDetails(reason)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+			WithErrorDetails("failed to prepare dataset query schema")
+	}
 	fieldMap := make(map[string]*interfaces.Property, len(querySchema))
 	for _, prop := range querySchema {
 		if prop != nil {
 			fieldMap[prop.Name] = prop
 		}
-	}
-	for name, prop := range local_index.GeneratedFields(res.SchemaDefinition) {
-		fieldMap[name] = prop
 	}
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
 	if err != nil {

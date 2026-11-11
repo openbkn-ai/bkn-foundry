@@ -26,6 +26,7 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 )
 
 // newTestService 使用 mockgen 生成的 mock 构建 resourceService
@@ -45,6 +46,8 @@ func newTestService(t *testing.T) (*resourceService,
 	mockCS := vmock.NewMockCatalogService(ctrl)
 	mockBTA := vmock.NewMockBuildTaskAccess(ctrl)
 	mockDTA := vmock.NewMockDiscoverTaskAccess(ctrl)
+	mockCF := vmock.NewMockConnectorFactory(ctrl)
+	mockLIM := vmock.NewMockLocalIndexManager(ctrl)
 
 	rs := &resourceService{
 		ra:  mockRA,
@@ -54,12 +57,17 @@ func newTestService(t *testing.T) (*resourceService,
 		cs:  mockCS,
 		bta: mockBTA,
 		dta: mockDTA,
+		cf:  mockCF,
+		lim: mockLIM,
 	}
 
+	// Unrelated service fixtures delegate successful capability checks; dedicated tests replace these providers.
+	mockCF.EXPECT().ValidateFilterability(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockLIM.EXPECT().ValidateFilterability(gomock.Any()).Return(nil).AnyTimes()
 	mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(),
 		[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
 		DoAndReturn(func(_ context.Context, id string, _ []string, _ bool) (bool, *interfaces.Catalog, error) {
-			return true, &interfaces.Catalog{ID: id}, nil
+			return true, &interfaces.Catalog{ID: id, ConnectorType: "test-table"}, nil
 		}).AnyTimes()
 	mockDTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	mockPS.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -148,8 +156,8 @@ func expectResourceServiceTransaction(t *testing.T, rs *resourceService, commit 
 	})
 }
 
-func TestValidateSchemaDefinitionRejectsDuplicateFeatureTypes(t *testing.T) {
-	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{
+func TestValidatePropertyFeaturesRejectsDuplicateFeatureTypes(t *testing.T) {
+	err := validatePropertyFeatures(context.Background(), []*interfaces.Property{{
 		Name: "code",
 		Features: []interfaces.PropertyFeature{
 			{FeatureType: interfaces.PropertyFeatureType_Keyword},
@@ -161,7 +169,7 @@ func TestValidateSchemaDefinitionRejectsDuplicateFeatureTypes(t *testing.T) {
 	assert.Contains(t, httpErr.ErrorDetails, `property "code" has more than one "keyword" feature`)
 }
 
-func TestValidateSchemaDefinitionRejectsDefaultFeatureNameCollision(t *testing.T) {
+func TestValidatePropertyFeaturesRejectsDefaultFeatureNameCollision(t *testing.T) {
 	schema := []*interfaces.Property{{
 		Name: "body",
 		Type: interfaces.DataType_Text,
@@ -172,14 +180,14 @@ func TestValidateSchemaDefinitionRejectsDefaultFeatureNameCollision(t *testing.T
 	}}
 	AddDefaultStringAndTextFeatures(schema, nil)
 
-	err := validateSchemaDefinition(context.Background(), schema)
+	err := validatePropertyFeatures(context.Background(), schema)
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 	assert.Contains(t, httpErr.ErrorDetails, `property "body" has more than one feature named "keyword"`)
 }
 
-func TestValidateSchemaDefinitionRejectsQualifiedFeatureName(t *testing.T) {
-	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{
+func TestValidatePropertyFeaturesRejectsQualifiedFeatureName(t *testing.T) {
+	err := validatePropertyFeatures(context.Background(), []*interfaces.Property{{
 		Name: "title",
 		Type: interfaces.DataType_Text,
 		Features: []interfaces.PropertyFeature{{
@@ -319,6 +327,36 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 }
 
 func TestResourceServiceGetByID(t *testing.T) {
+	t.Run("completes historical filterability without persisting a read", func(t *testing.T) {
+		rs, ra, ps, _, ums, _, _ := newTestService(t)
+		const stored = `[{"name":"id","type":"integer"},{"name":"payload","type":"json"},{"name":"disabled","type":"integer","filterable":false},{"name":"explicit","type":"json","filterable":true}]`
+		var schema []*interfaces.Property
+		require.NoError(t, json.Unmarshal([]byte(stored), &schema))
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
+			ID: "r1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: schema,
+		}, nil)
+		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			[]string{"r1"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).
+			Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1", Operations: []string{"view_detail"}}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, err := rs.GetByID(t.Context(), "r1")
+		require.NoError(t, err)
+		require.Len(t, got.SchemaDefinition, 4)
+		for i, expected := range []bool{true, false, false, true} {
+			require.NotNil(t, got.SchemaDefinition[i].Filterable)
+			assert.Equal(t, expected, *got.SchemaDefinition[i].Filterable)
+		}
+		encoded, err := json.Marshal(got.SchemaDefinition)
+		require.NoError(t, err)
+		assert.Contains(t, string(encoded), `"filterable":false`)
+		// No access-layer write is expected: the stored JSON remains historical.
+		var persisted []*interfaces.Property
+		require.NoError(t, json.Unmarshal([]byte(stored), &persisted))
+		assert.Nil(t, persisted[0].Filterable)
+		assert.Nil(t, persisted[1].Filterable)
+	})
+
 	t.Run("trusted proxy cannot bypass internal resource guard", func(t *testing.T) {
 		rs, mockRA, _, _ := newS2STestService(t)
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int", Builtin: true}, nil)
@@ -1103,13 +1141,6 @@ func TestValidateKeywordConfig(t *testing.T) {
 	})
 }
 
-func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
-	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{Name: "id"}, nil})
-
-	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.ErrorDetails, "cannot contain null fields")
-}
-
 func TestJSONNumbersEqual(t *testing.T) {
 	stored := map[string]any{
 		"source_resource_id": "source-1",
@@ -1130,7 +1161,301 @@ func TestJSONNumbersEqual(t *testing.T) {
 	))
 }
 
+func TestResourceServiceCreateUserCategories(t *testing.T) {
+	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryIndex, interfaces.ResourceCategoryFileset} {
+		t.Run(category, func(t *testing.T) {
+			rs, _, _, _, _, _, _ := newTestService(t)
+			got, err := rs.Create(t.Context(), &interfaces.ResourceRequest{CatalogID: "cat1", Category: category})
+			assert.Nil(t, got)
+			failure := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_CategoryNotCreatable)
+			assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+		})
+	}
+}
+
+func TestResourceServiceInternalCreate(t *testing.T) {
+	t.Run("physical registration owns its transaction without user modeling", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ra := vmock.NewMockResourceAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		rs := &resourceService{ra: ra, ps: ps}
+		expectResourceServiceTransaction(t, rs, true)
+		source := map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "source", Type: "varchar"}}}
+		ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, r *interfaces.Resource) error {
+			assert.Equal(t, "physical-id", r.ID)
+			assert.True(t, r.Builtin)
+			assert.True(t, r.Enabled)
+			assert.Equal(t, source, r.SourceMetadata)
+			assert.Equal(t, "public.source", r.SourceIdentifier)
+			require.Len(t, r.SchemaDefinition, 1)
+			assert.Empty(t, r.SchemaDefinition[0].APIName)
+			assert.Nil(t, r.SchemaDefinition[0].Filterable)
+			assert.Empty(t, r.SchemaDefinition[0].Features)
+			assert.Equal(t, "scanner", r.Creator.ID)
+			assert.Equal(t, r.Creator, r.Updater)
+			assert.Positive(t, r.CreateTime)
+			assert.Equal(t, r.CreateTime, r.UpdateTime)
+			return nil
+		})
+		ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{ResourceID: "physical-id", ParentID: "cat1"}}).Return(nil)
+		ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "scanner"})
+		builtin := true
+		got, err := rs.InternalCreate(ctx, &interfaces.ResourceRequest{ID: "physical-id", CatalogID: "cat1", Builtin: &builtin, Category: interfaces.ResourceCategoryTable, SourceIdentifier: "public.source", SourceMetadata: source, SchemaDefinition: []*interfaces.Property{{Name: "source", Type: interfaces.DataType_String, OriginalType: "varchar", APIName: "injected"}}})
+		require.NoError(t, err)
+		assert.Equal(t, "physical-id", got.ID)
+	})
+	t.Run("dataset definition validation cannot be bypassed", func(t *testing.T) {
+		for _, internal := range []bool{false, true} {
+			t.Run(map[bool]string{false: "user", true: "internal"}[internal], func(t *testing.T) {
+				rs, _, _, _, _, _, _ := newTestService(t)
+				req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
+				var got *interfaces.Resource
+				var err error
+				if internal {
+					got, err = rs.InternalCreate(t.Context(), req)
+				} else {
+					got, err = rs.Create(t.Context(), req)
+				}
+				assert.Nil(t, got)
+				failure := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+				assert.Contains(t, failure.ErrorDetails, "embedding model is required")
+			})
+		}
+	})
+
+	t.Run("owned parent publication precedes commit", func(t *testing.T) {
+		for _, internal := range []bool{false, true} {
+			t.Run(map[bool]string{false: "user", true: "internal"}[internal], func(t *testing.T) {
+				const catalogID = "cat1"
+				rs, ra, _, _, _, _, _ := newTestService(t)
+				ctrl := gomock.NewController(t)
+				ps := vmock.NewMockPermissionService(ctrl)
+				ds := vmock.NewMockDatasetService(ctrl)
+				rs.ps = ps
+				rs.ds = ds
+				db, sqlMock, err := sqlmock.New()
+				require.NoError(t, err)
+				rs.db = db
+				t.Cleanup(func() {
+					sqlMock.ExpectClose()
+					require.NoError(t, db.Close())
+					require.NoError(t, sqlMock.ExpectationsWereMet())
+				})
+				sqlMock.ExpectBegin()
+				rowWritten := false
+				ds.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, r *interfaces.Resource) error { r.LocalIndexName = "owned-index"; return nil })
+				ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, _ *interfaces.Resource) error { rowWritten = true; return nil })
+				ps.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{ResourceID: "dataset-id", ParentID: catalogID}}).DoAndReturn(func(_ context.Context, _ string, _ string, _ []interfaces.PermissionResourceParent) error {
+					assert.True(t, rowWritten)
+					sqlMock.ExpectCommit()
+					return nil
+				})
+				ra.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				ds.EXPECT().Delete(gomock.Any(), gomock.Any()).Times(0)
+				req := &interfaces.ResourceRequest{ID: "dataset-id", CatalogID: catalogID, Category: interfaces.ResourceCategoryDataset}
+				var got *interfaces.Resource
+				if internal {
+					got, err = rs.InternalCreate(t.Context(), req)
+				} else {
+					ra.EXPECT().GetByID(gomock.Any(), nil, "dataset-id").Return(nil, nil)
+					got, err = rs.Create(t.Context(), req)
+				}
+				require.NoError(t, err)
+				assert.Equal(t, "owned-index", got.LocalIndexName)
+				assert.Equal(t, catalogID, got.CatalogID)
+			})
+		}
+	})
+	t.Run("owned transaction failures compensate only known created datasets", func(t *testing.T) {
+		for _, internal := range []bool{false, true} {
+			for _, phase := range []string{"physical", "begin", "create", "commit", "parent"} {
+				t.Run(map[bool]string{false: "user ", true: "internal "}[internal]+phase, func(t *testing.T) {
+					rs, ra, _, _, _, _, _ := newTestService(t)
+					ctrl := gomock.NewController(t)
+					ds := vmock.NewMockDatasetService(ctrl)
+					ps := vmock.NewMockPermissionService(ctrl)
+					rs.ds = ds
+					rs.ps = ps
+					db, sqlMock, err := sqlmock.New()
+					require.NoError(t, err)
+					rs.db = db
+					t.Cleanup(func() {
+						sqlMock.ExpectClose()
+						require.NoError(t, db.Close())
+						require.NoError(t, sqlMock.ExpectationsWereMet())
+					})
+					ra.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					creationCtx, cancelCreation := context.WithCancel(t.Context())
+					defer cancelCreation()
+					failure := errors.New("creation failed at " + phase)
+					ds.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, r *interfaces.Resource) error {
+						if phase == "physical" {
+							return failure
+						}
+						r.LocalIndexName = "owned-index"
+						return nil
+					})
+					if phase != "physical" {
+						ds.EXPECT().Delete(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, r *interfaces.Resource) error {
+							assert.NoError(t, ctx.Err())
+							deadline, ok := ctx.Deadline()
+							require.True(t, ok)
+							remaining := time.Until(deadline)
+							assert.Positive(t, remaining)
+							assert.LessOrEqual(t, remaining, resourceParentCleanupTimeout)
+							assert.Equal(t, "owned-index", r.LocalIndexName)
+							return nil
+						})
+						if phase == "begin" {
+							sqlMock.ExpectBegin().WillReturnError(failure)
+						} else {
+							sqlMock.ExpectBegin()
+							var createErr error
+							if phase == "create" {
+								createErr = failure
+							}
+							ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(createErr)
+							switch phase {
+							case "create":
+								sqlMock.ExpectRollback()
+							case "commit":
+								sqlMock.ExpectCommit().WillReturnError(failure)
+								ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+								ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"dataset-id"}).DoAndReturn(func(ctx context.Context, _ string, _ []string) error {
+									cancelCreation()
+									assert.NoError(t, ctx.Err())
+									require.NoError(t, sqlMock.ExpectationsWereMet())
+									return errors.New("parent cleanup failed")
+								})
+							case "parent":
+								sqlMock.ExpectRollback()
+								ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(failure)
+								ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"dataset-id"}).DoAndReturn(func(ctx context.Context, _ string, _ []string) error {
+									cancelCreation()
+									assert.NoError(t, ctx.Err())
+									require.NoError(t, sqlMock.ExpectationsWereMet())
+									return errors.New("parent cleanup failed")
+								})
+							}
+						}
+					}
+					req := &interfaces.ResourceRequest{ID: "dataset-id", CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset}
+					var got *interfaces.Resource
+					if internal {
+						got, err = rs.InternalCreate(creationCtx, req)
+					} else {
+						ra.EXPECT().GetByID(gomock.Any(), nil, "dataset-id").Return(nil, nil)
+						got, err = rs.Create(creationCtx, req)
+					}
+					assert.Nil(t, got)
+					require.Error(t, err)
+					if phase == "physical" || phase == "parent" {
+						assert.ErrorIs(t, err, failure)
+					} else {
+						httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_CreateFailed)
+						assert.NotContains(t, httpErr.ErrorDetails, "creation failed")
+					}
+				})
+			}
+		}
+	})
+	t.Run("row failure deletes the successful dataset target snapshot", func(t *testing.T) {
+		rs, ra, _, _, _, _, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
+		ds := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = ds
+		ds.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, r *interfaces.Resource) error { r.LocalIndexName = "created-index"; return nil })
+		ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, r *interfaces.Resource) error {
+			r.LocalIndexName = "later-mutation"
+			return errors.New("insert failed")
+		})
+		ds.EXPECT().Delete(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, r *interfaces.Resource) error {
+			assert.Equal(t, "created-index", r.LocalIndexName)
+			return nil
+		})
+		got, err := rs.InternalCreate(t.Context(), &interfaces.ResourceRequest{CatalogID: "cat1", ID: "r1", Category: interfaces.ResourceCategoryDataset})
+		assert.Nil(t, got)
+		failure := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_CreateFailed)
+		assert.Equal(t, http.StatusInternalServerError, failure.HTTPCode)
+	})
+
+}
+
+func TestResourceServiceCreateLogicalViewPreparation(t *testing.T) {
+	for _, internal := range []bool{false, true} {
+		for _, missingMetadata := range []bool{false, true} {
+			t.Run(map[bool]string{false: "user", true: "internal"}[internal]+map[bool]string{false: " invalid schema", true: " missing snapshot"}[missingMetadata], func(t *testing.T) {
+				view := vmock.NewMockLogicalViewService(gomock.NewController(t))
+				previous := GetLogicalViewService()
+				SetLogicalViewService(view)
+				t.Cleanup(func() { SetLogicalViewService(previous) })
+				view.EXPECT().Prepare(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (string, []*interfaces.Property, error) {
+					assert.Nil(t, req.SourceMetadata)
+					if !missingMetadata {
+						req.SourceMetadata = map[string]any{"source_resource": map[string]any{"id": "source-id"}}
+					}
+					return interfaces.LogicalType_Derived, []*interfaces.Property{{Name: "body", Features: []interfaces.PropertyFeature{{FeatureName: "first", FeatureType: interfaces.PropertyFeatureType_Keyword}, {FeatureName: "second", FeatureType: interfaces.PropertyFeatureType_Keyword}}}}, nil
+				})
+				rs, _, _, _, _, _, _ := newTestService(t)
+				req := &interfaces.ResourceRequest{CatalogID: "cat1", ID: "", Category: interfaces.ResourceCategoryLogicalView, SourceMetadata: map[string]any{"injected": true}}
+				var got *interfaces.Resource
+				var err error
+				if internal {
+					got, err = rs.InternalCreate(t.Context(), req)
+				} else {
+					got, err = rs.Create(t.Context(), req)
+				}
+				assert.Nil(t, got)
+				var failure *httperrors.HTTPError
+				require.ErrorAs(t, err, &failure)
+				if missingMetadata {
+					assert.Equal(t, http.StatusInternalServerError, failure.HTTPCode)
+				} else {
+					assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+				}
+			})
+		}
+	}
+}
+
 func TestResourceServiceCreate(t *testing.T) {
+	t.Run("persists and reads explicit filterability and type defaults", func(t *testing.T) {
+		rs, ra, _, _, _, _, _ := newTestService(t)
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		expectResourceServiceTransaction(t, rs, true)
+		allowed, disabled := true, false
+		var stored []byte
+		ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+				var err error
+				stored, err = json.Marshal(got)
+				return err
+			})
+		created, err := rs.Create(t.Context(), &interfaces.ResourceRequest{
+			CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, Name: "table",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "default", Type: interfaces.DataType_Integer},
+				{Name: "disabled", Type: interfaces.DataType_Integer, Filterable: &disabled},
+				{Name: "explicit", Type: interfaces.DataType_Integer, OriginalType: "int", Filterable: &allowed},
+				{Name: "payload", Type: interfaces.DataType_Json},
+			},
+		})
+		require.NoError(t, err)
+		var persisted interfaces.Resource
+		require.NoError(t, json.Unmarshal(stored, &persisted))
+		ra.EXPECT().GetByID(gomock.Any(), nil, created.ID).Return(&persisted, nil)
+		read, err := rs.InternalGetByID(t.Context(), nil, created.ID)
+		require.NoError(t, err)
+		for i, expected := range []bool{true, false, true, false} {
+			require.NotNil(t, read.SchemaDefinition[i].Filterable)
+			assert.Equal(t, expected, *read.SchemaDefinition[i].Filterable)
+		}
+		assert.Contains(t, string(stored), `"filterable":false`)
+	})
+
 	// Prepare owns definition validation; this test checks propagation and prevents persistence.
 	t.Run("propagates prepare temporal validation error before persistence", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1172,7 +1497,7 @@ func TestResourceServiceCreate(t *testing.T) {
 				return nil
 			})
 
-		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
 			Name:     "test-dataset",
 			Category: interfaces.ResourceCategoryDataset,
 			SchemaDefinition: []*interfaces.Property{
@@ -1196,13 +1521,13 @@ func TestResourceServiceCreate(t *testing.T) {
 			})
 		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
 			Name: "test-dataset", Category: interfaces.ResourceCategoryDataset,
 			SchemaDefinition: []*interfaces.Property{{Name: "code", Type: interfaces.DataType_String, APIName: "code"}},
 		})
 		require.NoError(t, err)
 	})
-	t.Run("does not publish parent when the resource transaction cannot commit", func(t *testing.T) {
+	t.Run("cleans attempted parent when the resource transaction cannot commit", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRA := vmock.NewMockResourceAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
@@ -1214,6 +1539,10 @@ func TestResourceServiceCreate(t *testing.T) {
 			require.NoError(t, sqlMock.ExpectationsWereMet())
 		})
 		rs := &resourceService{db: db, ra: mockRA, ps: mockPS, cs: mockCS}
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		dataset.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
 
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectCommit().WillReturnError(errors.New("commit failed"))
@@ -1221,17 +1550,23 @@ func TestResourceServiceCreate(t *testing.T) {
 		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat1",
 			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
 			Return(true, &interfaces.Catalog{ID: "cat1"}, nil)
+		mockPS.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockPS.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 		_, err = rs.Create(context.Background(), &interfaces.ResourceRequest{
 			CatalogID: "cat1",
 			Name:      "resource",
-			Category:  interfaces.ResourceCategoryTable,
+			Category:  interfaces.ResourceCategoryDataset,
 		})
 
 		require.Error(t, err)
 	})
-	t.Run("deletes durable resource when parent publication fails", func(t *testing.T) {
+	t.Run("rolls back resource when parent publication fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		dataset.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
 		parentPS := &parentAwarePermissionService{
 			MockPermissionService: mockPS,
 			onUpsertParents: func(resourceType, parentType string,
@@ -1245,23 +1580,21 @@ func TestResourceServiceCreate(t *testing.T) {
 			},
 		}
 		rs.ps = parentPS
-		expectResourceServiceTransaction(t, rs, true)
+		expectResourceServiceTransaction(t, rs, false)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), false).DoAndReturn(
-			func(_ context.Context, ids []string, _ bool) error {
-				require.Len(t, ids, 1)
-				require.NotEmpty(t, ids[0])
-				return nil
-			})
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
-			CatalogID: "cat1", Name: "resource", Category: interfaces.ResourceCategoryTable,
+			CatalogID: "cat1", Name: "resource", Category: interfaces.ResourceCategoryDataset,
 		})
 
 		require.ErrorContains(t, err, "parent unavailable")
 	})
 	t.Run("create success", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		expectResourceServiceTransaction(t, rs, true)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
@@ -1271,9 +1604,9 @@ func TestResourceServiceCreate(t *testing.T) {
 				return nil
 			})
 
-		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
 			Name:     "test-resource",
-			Category: "table",
+			Category: interfaces.ResourceCategoryDataset,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1368,6 +1701,9 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 	t.Run("registers parent as part of normal resource creation", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		expectResourceServiceTransaction(t, rs, true)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
@@ -1376,19 +1712,22 @@ func TestResourceServiceCreate(t *testing.T) {
 			})
 
 		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
-			CatalogID: "cat-1", Name: "test-resource", Category: interfaces.ResourceCategoryTable,
+			CatalogID: "cat-1", Name: "test-resource", Category: interfaces.ResourceCategoryDataset,
 		})
 		require.NoError(t, err)
 		assert.NotNil(t, resource)
 	})
-	t.Run("create table adds required default features to text fields", func(t *testing.T) {
+	t.Run("create dataset adds required default features to text fields", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		expectResourceServiceTransaction(t, rs, true)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
-		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
 			Name:     "test-resource",
-			Category: interfaces.ResourceCategoryTable,
+			Category: interfaces.ResourceCategoryDataset,
 			SchemaDefinition: []*interfaces.Property{{
 				Name: "body",
 				Type: interfaces.DataType_Text,
@@ -1405,14 +1744,17 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 	t.Run("create with explicit id", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		expectResourceServiceTransaction(t, rs, true)
 		mockRA.EXPECT().GetByID(gomock.Any(), nil, "custom-id").Return(nil, nil)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
-		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
 			ID:       "custom-id",
 			Name:     "test-resource",
-			Category: "table",
+			Category: interfaces.ResourceCategoryDataset,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1423,11 +1765,15 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 	t.Run("create dberror", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		dataset.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
 		expectResourceServiceTransaction(t, rs, false)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(fmt.Errorf("db error"))
 
-		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
-			Name: "test-resource",
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
+			Name: "test-resource", Category: interfaces.ResourceCategoryDataset,
 		})
 		if err == nil {
 			t.Fatal("expected error")
@@ -1440,7 +1786,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(errors.New("insert failed"))
 		mockDS.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
 
-		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{CatalogID: "cat1",
 			Name:     "test-dataset",
 			Category: interfaces.ResourceCategoryDataset,
 		})
@@ -1457,15 +1803,14 @@ func TestResourceServiceCreate(t *testing.T) {
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
 			Name:             "table",
-			Category:         interfaces.ResourceCategoryTable,
+			Category:         interfaces.ResourceCategoryDataset,
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{
 				{
-					Name: "title",
+					Name: "title", Type: interfaces.DataType_String,
 					Features: []interfaces.PropertyFeature{
 						{
 							FeatureType: interfaces.PropertyFeatureType_Vector,
-							RefProperty: "title",
 							Config:      map[string]any{"embedding_model": "missing-model-id"},
 						},
 					},
@@ -1491,13 +1836,12 @@ func TestResourceServiceCreate(t *testing.T) {
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
 			Name:             "table",
-			Category:         interfaces.ResourceCategoryTable,
+			Category:         interfaces.ResourceCategoryDataset,
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{{
-				Name: "title",
+				Name: "title", Type: interfaces.DataType_String,
 				Features: []interfaces.PropertyFeature{{
 					FeatureType: interfaces.PropertyFeatureType_Vector,
-					RefProperty: "title",
 				}},
 			}},
 		})
@@ -1523,6 +1867,9 @@ func TestResourceServiceCreate(t *testing.T) {
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		mockCS := vmock.NewMockCatalogService(ctrl)
 		rs := &resourceService{ra: mockRA, ps: mockPS, cs: mockCS}
+		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
+		rs.ds = dataset
+		dataset.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		expectResourceServiceTransaction(t, rs, true)
 
 		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-internal",
@@ -1542,62 +1889,13 @@ func TestResourceServiceCreate(t *testing.T) {
 		_, err := rs.Create(ctx, &interfaces.ResourceRequest{
 			CatalogID: "cat-internal",
 			Name:      "internal-res",
-			Category:  "table",
+			Category:  interfaces.ResourceCategoryDataset,
 			Builtin:   &internal,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-}
-
-func TestResourceServiceInternalCreateTracksParentForTransactionCompensation(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockRA := vmock.NewMockResourceAccess(ctrl)
-	mockPS := vmock.NewMockPermissionService(ctrl)
-	rs := &resourceService{ra: mockRA, ps: mockPS}
-	tx := &sql.Tx{}
-	ctx, tracker, owner := WithResourceParentTracker(context.Background())
-	require.True(t, owner)
-	internal := true
-
-	mockRA.EXPECT().Create(gomock.Any(), tx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
-			assert.True(t, resource.Builtin)
-			assert.Empty(t, resource.LogicType)
-			assert.Empty(t, resource.LogicDefinitionStr)
-			require.Len(t, resource.SchemaDefinition, 1)
-			assert.Empty(t, resource.SchemaDefinition[0].APIName)
-			return nil
-		})
-	mockPS.EXPECT().UpsertResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
-			ResourceID: "resource-1", ParentID: "cat-internal",
-		}}).Return(nil)
-	mockPS.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		[]string{"resource-1"}).Return(nil)
-
-	resource, err := rs.InternalCreate(ctx, tx, &interfaces.ResourceRequest{
-		ID:        "resource-1",
-		CatalogID: "cat-internal",
-		Name:      "internal-resource",
-		Category:  interfaces.ResourceCategoryTable,
-		Builtin:   &internal,
-		// api_name 只由语义理解写入，新建时不采纳请求里的值。
-		SchemaDefinition: []*interfaces.Property{{Name: "code", Type: interfaces.DataType_String, APIName: "code"}},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, resource)
-	require.NoError(t, tracker.Cleanup(ctx))
-}
-
-func TestResourceServiceInternalCreateRequiresParentTracker(t *testing.T) {
-	rs := &resourceService{}
-
-	_, err := rs.InternalCreate(context.Background(), &sql.Tx{}, &interfaces.ResourceRequest{})
-
-	require.EqualError(t, err, "resource parent tracker is required")
 }
 
 // expectDeleteGrantedByCatalog 通过 bkn-safe 的 resource 判定装配删除授权。
@@ -2032,6 +2330,11 @@ func TestResourceServiceUpdateDiscoverStatus(t *testing.T) {
 func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfaces.Resource,
 	req *interfaces.ResourceRequest) error {
 	t.Helper()
+	// Existing update scenarios submit a complete, valid field contract. Tests
+	// for omitted filterable deliberately call Update directly instead.
+	for _, property := range req.SchemaDefinition {
+		property.SetDefaultFilterable()
+	}
 	id := "r1"
 	if resource != nil {
 		id = resource.ID
@@ -2047,12 +2350,102 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 		resource.LogicalType = ""
 		resource.LogicalViewDefinition = nil
 	}
+	// These tests exercise other update contracts with an available capability provider.
+	if cs, ok := rs.cs.(*vmock.MockCatalogService); ok {
+		cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), false).Return(&interfaces.Catalog{ConnectorType: "test-table"}, nil).AnyTimes()
+	}
+	if lim, ok := rs.lim.(*vmock.MockLocalIndexManager); ok {
+		lim.EXPECT().ValidateFilterability(gomock.Any()).Return(nil).AnyTimes()
+	}
 	mockRA.EXPECT().GetByID(gomock.Any(), nil, id).Return(resource, nil)
 	req.ID = id
 	return rs.Update(context.Background(), req)
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("rejects missing or null filterable before reading or persisting", func(t *testing.T) {
+		for _, wire := range []string{
+			`{"id":"r1","schema_definition":[{"name":"id","type":"integer"}]}`,
+			`{"id":"r1","schema_definition":[{"name":"id","type":"integer","filterable":null}]}`,
+		} {
+			t.Run(wire, func(t *testing.T) {
+				rs, _, ps, _, _, _, _ := newTestService(t)
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				var req interfaces.ResourceRequest
+				require.NoError(t, json.Unmarshal([]byte(wire), &req))
+				err := rs.Update(t.Context(), &req)
+				httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Contains(t, httpErr.ErrorDetails, "filterable")
+			})
+		}
+	})
+	t.Run("filterability alone changes no index state or build configuration", func(t *testing.T) {
+		for _, next := range []bool{true, false} {
+			t.Run(fmt.Sprint(next), func(t *testing.T) {
+				rs, ra, ps, _, _, cs, _ := newTestService(t)
+				expectResourceServiceTransaction(t, rs, true)
+				cs.EXPECT().InternalGetByID(gomock.Any(), "cat1", false).Return(&interfaces.Catalog{ConnectorType: "test-table"}, nil).AnyTimes()
+				previous := !next
+				stored := &interfaces.Resource{
+					ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "table",
+					LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index-r1", SyncMark: "checkpoint",
+					SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, Filterable: &previous}},
+				}
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+				ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+				ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
+					func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+						require.NotNil(t, got.SchemaDefinition[0].Filterable)
+						assert.Equal(t, next, *got.SchemaDefinition[0].Filterable)
+						assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, got.LocalIndexStatus)
+						assert.Equal(t, "index-r1", got.LocalIndexName)
+						assert.Equal(t, "checkpoint", got.SyncMark)
+						encoded, err := json.Marshal(got.SchemaDefinition)
+						require.NoError(t, err)
+						var persisted []*interfaces.Property
+						require.NoError(t, json.Unmarshal(encoded, &persisted))
+						assert.Equal(t, next, *persisted[0].Filterable)
+						return 1, nil
+					})
+				err := rs.Update(t.Context(), &interfaces.ResourceRequest{
+					ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "table",
+					SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, Filterable: &next}},
+				})
+				require.NoError(t, err)
+			})
+		}
+	})
+	t.Run("unrelated update preserves explicit values and persists historical defaults", func(t *testing.T) {
+		rs, ra, ps, _, _, cs, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		allowed, disabled := true, false
+		stored := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "table",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "payload", Type: interfaces.DataType_Json},
+				{Name: "disabled", Type: interfaces.DataType_Integer, Filterable: &disabled},
+				{Name: "explicit", Type: interfaces.DataType_Json, Filterable: &allowed},
+			},
+		}
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+		ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+				for i, expected := range []bool{true, false, false, true} {
+					require.NotNil(t, got.SchemaDefinition[i].Filterable)
+					assert.Equal(t, expected, *got.SchemaDefinition[i].Filterable)
+				}
+				assert.Equal(t, "renamed", got.Name)
+				return 1, nil
+			})
+		require.NoError(t, rs.Update(t.Context(), &interfaces.ResourceRequest{
+			ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "renamed",
+		}))
+	})
+
 	t.Run("persists the inherited keyword limit for large integer fields", func(t *testing.T) {
 		for _, limit := range []int{interfaces.DefaultTextKeywordIgnoreAbove, 512} {
 			t.Run(fmt.Sprint(limit), func(t *testing.T) {
@@ -3362,6 +3755,157 @@ func TestResourceServiceDiscoveryDoesNotSaveStatistics(t *testing.T) {
 	require.NoError(t, rs.InternalUpdateDiscoveryMetadata(context.Background(), nil, resource, 42))
 }
 
+func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
+	t.Run("fresh scan repairs unreadable previous metadata and invalidates uncertain indexes", func(t *testing.T) {
+		for _, raw := range []struct {
+			name  string
+			value any
+		}{
+			{"invalid shape", "corrupt-old-columns"}, {"explicit null", nil},
+			{"typed nil", []interfaces.TableColumnMeta(nil)}, {"JSON null", json.RawMessage("null")},
+		} {
+			for _, available := range []bool{false, true} {
+				for _, owned := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/available=%t/owned=%t", raw.name, available, owned), func(t *testing.T) {
+						service, access, _, _, _, _, _ := newTestService(t)
+						var tx *sql.Tx
+						var txMatcher any
+						if owned {
+							expectResourceServiceTransaction(t, service, true)
+							txMatcher = gomock.Not(nil)
+						} else {
+							tx = &sql.Tx{}
+							txMatcher = tx
+						}
+						status := interfaces.ResourceLocalIndexStatusUnavailable
+						if available {
+							status = interfaces.ResourceLocalIndexStatusAvailable
+						}
+						current := &interfaces.Resource{ID: "r1", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: status, LocalIndexName: "index-r1", SyncMark: "old-checkpoint",
+							SourceMetadata: map[string]any{"columns": raw.value}, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", OriginalType: "int", Type: interfaces.DataType_Integer, Filterable: new(false)}},
+						}
+						refreshed := &interfaces.Resource{ID: "r1", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: status, LocalIndexName: "index-r1", SyncMark: "old-checkpoint",
+							SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "id", Type: "int", Filterable: new(true)}}}, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", OriginalType: "int", Type: interfaces.DataType_Integer, Filterable: new(true)}},
+						}
+						access.EXPECT().GetByID(gomock.Any(), txMatcher, "r1").Return(current, nil)
+						access.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), txMatcher, refreshed, int64(42)).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+							assert.Same(t, current.SchemaDefinition[0].Filterable, got.SchemaDefinition[0].Filterable)
+							assert.False(t, *got.SchemaDefinition[0].Filterable, "a scan must preserve an explicit user flag")
+							columns, ok := got.SourceMetadata["columns"].([]interfaces.TableColumnMeta)
+							require.True(t, ok)
+							require.Len(t, columns, 1)
+							assert.Equal(t, "int", columns[0].Type)
+							return 1, nil
+						})
+						if available {
+							access.EXPECT().UpdateLocalIndexState(gomock.Any(), txMatcher, "r1", interfaces.ResourceLocalIndexStatusStale, "index-r1", "").Return(true, nil)
+						}
+						require.NoError(t, service.InternalUpdateDiscoveryMetadata(t.Context(), tx, refreshed, 42))
+						if available {
+							assert.Equal(t, interfaces.ResourceLocalIndexStatusStale, refreshed.LocalIndexStatus)
+							assert.Empty(t, refreshed.SyncMark)
+						} else {
+							assert.Equal(t, status, refreshed.LocalIndexStatus)
+							assert.Equal(t, "old-checkpoint", refreshed.SyncMark)
+						}
+						assert.Equal(t, "index-r1", refreshed.LocalIndexName)
+						assert.Equal(t, raw.value, current.SourceMetadata["columns"], "do not fabricate a comparable old contract")
+					})
+				}
+			}
+		}
+	})
+	t.Run("invalid fresh metadata is never written even when previous metadata is corrupt", func(t *testing.T) {
+		for _, oldCorrupt := range []bool{false, true} {
+			t.Run(fmt.Sprintf("old corrupt %t", oldCorrupt), func(t *testing.T) {
+				service, access, _, _, _, _, _ := newTestService(t)
+				expectResourceServiceTransaction(t, service, false)
+				current := &interfaces.Resource{ID: "r1", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index-r1",
+					SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "id", Type: "int"}}}, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalType: "int", Type: interfaces.DataType_Integer}},
+				}
+				if oldCorrupt {
+					current.SourceMetadata["columns"] = "old-corrupt"
+				}
+				refreshed := &interfaces.Resource{ID: "r1", LocalIndexStatus: current.LocalIndexStatus, LocalIndexName: current.LocalIndexName,
+					SourceMetadata: map[string]any{"columns": "new-corrupt"}, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalType: "int", Type: interfaces.DataType_Integer}},
+				}
+				access.EXPECT().GetByID(gomock.Any(), gomock.Not(nil), "r1").Return(current, nil)
+				err := service.InternalUpdateDiscoveryMetadata(t.Context(), nil, refreshed, 42)
+				require.Error(t, err)
+				assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, refreshed.LocalIndexStatus)
+				assert.Equal(t, "index-r1", refreshed.LocalIndexName)
+			})
+		}
+	})
+	t.Run("uncertain index state failure rolls back the repaired metadata", func(t *testing.T) {
+		service, access, _, _, _, _, _ := newTestService(t)
+		expectResourceServiceTransaction(t, service, false)
+		current := &interfaces.Resource{ID: "r1", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index-r1", SourceMetadata: map[string]any{"columns": "old-corrupt"}, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+		refreshed := &interfaces.Resource{ID: "r1", SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "id", Type: "int"}}}, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+		access.EXPECT().GetByID(gomock.Any(), gomock.Not(nil), "r1").Return(current, nil)
+		access.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), gomock.Not(nil), refreshed, int64(42)).Return(int64(1), nil)
+		access.EXPECT().UpdateLocalIndexState(gomock.Any(), gomock.Not(nil), "r1", interfaces.ResourceLocalIndexStatusStale, "index-r1", "").Return(false, errors.New("state write failed"))
+		err := service.InternalUpdateDiscoveryMetadata(t.Context(), nil, refreshed, 42)
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+	})
+	for _, addFields := range []bool{false, true} {
+		t.Run(fmt.Sprintf("add fields %t", addFields), func(t *testing.T) {
+			rs, ra, _, _, _, _, _ := newTestService(t)
+			allowed, disabled := true, false
+			current := &interfaces.Resource{
+				ID: "r1", UpdateTime: 42, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+				LocalIndexName: "index-r1", SyncMark: "checkpoint",
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "disabled", Type: interfaces.DataType_Integer, Filterable: &disabled},
+					{Name: "explicit", Type: interfaces.DataType_Binary, Filterable: &allowed},
+					{Name: "legacy", Type: interfaces.DataType_Boolean},
+				},
+			}
+			refreshed := &interfaces.Resource{ID: "r1", UpdateTime: 43,
+				LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index-r1", SyncMark: "checkpoint",
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "disabled", Type: interfaces.DataType_Integer, Filterable: &allowed},
+					{Name: "explicit", Type: interfaces.DataType_Binary, Filterable: &disabled},
+					{Name: "legacy", Type: interfaces.DataType_Boolean, Filterable: &allowed},
+				},
+			}
+			if addFields {
+				refreshed.SchemaDefinition = append(refreshed.SchemaDefinition,
+					&interfaces.Property{Name: "new_number", Type: interfaces.DataType_Integer},
+					&interfaces.Property{Name: "new_unknown", Type: "future_type"},
+				)
+			}
+			tx := &sql.Tx{}
+			ra.EXPECT().GetByID(gomock.Any(), tx, "r1").Return(current, nil)
+			ra.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), tx, refreshed, int64(42)).DoAndReturn(
+				func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+					for i, expected := range []bool{false, true, true} {
+						require.NotNil(t, got.SchemaDefinition[i].Filterable)
+						assert.Equal(t, expected, *got.SchemaDefinition[i].Filterable)
+					}
+					if addFields {
+						require.NotNil(t, got.SchemaDefinition[3].Filterable)
+						require.NotNil(t, got.SchemaDefinition[4].Filterable)
+						assert.True(t, *got.SchemaDefinition[3].Filterable)
+						assert.False(t, *got.SchemaDefinition[4].Filterable)
+					}
+					return 1, nil
+				})
+			if addFields {
+				ra.EXPECT().UpdateLocalIndexState(gomock.Any(), tx, "r1", interfaces.ResourceLocalIndexStatusStale, "index-r1", "").Return(true, nil)
+			}
+			require.NoError(t, rs.InternalUpdateDiscoveryMetadata(t.Context(), tx, refreshed, 42))
+			if addFields {
+				assert.Equal(t, interfaces.ResourceLocalIndexStatusStale, refreshed.LocalIndexStatus)
+			} else {
+				assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, refreshed.LocalIndexStatus)
+				assert.Equal(t, "checkpoint", refreshed.SyncMark)
+			}
+		})
+	}
+}
+
 func TestResourceServiceRowCountReusesCallerTransaction(t *testing.T) {
 	for _, scenario := range []string{"success", "write failure", "conflict"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -3720,6 +4264,327 @@ func TestResourceServiceReadsCompositeAndEmptyStoredDefinitions(t *testing.T) {
 			} else {
 				assert.Nil(t, got.LogicalViewDefinition)
 			}
+		})
+	}
+}
+
+func TestMapFilterabilityError(t *testing.T) {
+	require.NoError(t, mapFilterabilityError(t.Context(), nil))
+	for _, tc := range []struct {
+		name     string
+		err      error
+		status   int
+		code     string
+		metadata map[string]any
+	}{
+		{name: "invalid condition", err: interfaces.NewConditionBuildError("field id does not support filterable=true"), status: http.StatusBadRequest, code: verrors.VegaBackend_InvalidParameter_RequestBody},
+		{name: "decimal input", err: fmt.Errorf("private source details: %w", interfaces.NewDecimalIndexError("amount", "missing_precision_scale")), status: http.StatusBadRequest, code: verrors.VegaBackend_Resource_InvalidParameter, metadata: map[string]any{"field": "amount", "reason": "missing_precision_scale"}},
+		{name: "decimal aggregate failure", err: fmt.Errorf("private source details: %w", interfaces.NewDecimalIndexError("amount", "invalid_aggregate_value")), status: http.StatusInternalServerError, code: verrors.VegaBackend_Resource_InternalError, metadata: map[string]any{"field": "amount", "reason": "invalid_aggregate_value"}},
+		{name: "entitlement denied", err: fmt.Errorf("private entitlement details: %w", factory.ErrConnectorEntitlementDenied), status: http.StatusForbidden, code: verrors.VegaBackend_Connector_EntitlementDenied},
+		{name: "disabled", err: fmt.Errorf("private connector details: %w", factory.ErrConnectorDisabled), status: http.StatusConflict, code: verrors.VegaBackend_Connector_Disabled},
+		{name: "unavailable", err: factory.ErrConnectorUnavailable, status: http.StatusInternalServerError, code: verrors.VegaBackend_Resource_InternalError},
+		{name: "unknown", err: errors.New("private connection data"), status: http.StatusInternalServerError, code: verrors.VegaBackend_Resource_InternalError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			httpErr := requireResourceHTTPError(t, mapFilterabilityError(t.Context(), tc.err), tc.code)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+			assert.NotContains(t, httpErr.ErrorDetails, "private")
+			if tc.metadata != nil {
+				assert.Equal(t, tc.metadata, httpErr.Metadata)
+			}
+		})
+	}
+}
+
+func TestResourceServiceUpdateFilterabilityCapability(t *testing.T) {
+	flag := func(v bool) *bool { return &v }
+
+	t.Run("historical IP read can be saved with filtering disabled", func(t *testing.T) {
+		rs, ra, ps, ds, _, cs, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		rs.lim = vmock.NewMockLocalIndexManager(gomock.NewController(t))
+		const stored = `{"id":"r1","name":"addresses","catalog_id":"cat1","category":"dataset","update_time":7,"schema_definition":[{"name":"address","type":"ip","original_name":"client_address","original_type":"ip","attributes":{"format":"ipv4"}}]}`
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").DoAndReturn(func(context.Context, *sql.Tx, string) (*interfaces.Resource, error) {
+			var resource interfaces.Resource
+			err := json.Unmarshal([]byte(stored), &resource)
+			return &resource, err
+		}).Times(2)
+		writes := 0
+		ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(7)).DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource, _ int64) (int64, error) {
+			writes++
+			require.Len(t, resource.SchemaDefinition, 1)
+			property := resource.SchemaDefinition[0]
+			require.NotNil(t, property.Filterable)
+			assert.False(t, *property.Filterable)
+			assert.Equal(t, interfaces.DataType_Ip, property.Type)
+			assert.Equal(t, "address", property.Name)
+			assert.Equal(t, "client_address", property.OriginalName)
+			assert.Equal(t, "ip", property.OriginalType)
+			assert.Equal(t, map[string]any{"format": "ipv4"}, property.Attributes)
+			return 1, nil
+		})
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ds.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+
+		read, err := rs.InternalGetByID(t.Context(), nil, "r1")
+		require.NoError(t, err)
+		require.Len(t, read.SchemaDefinition, 1)
+		require.NotNil(t, read.SchemaDefinition[0].Filterable)
+		assert.False(t, *read.SchemaDefinition[0].Filterable)
+		assert.Zero(t, writes, "reading must not backfill the stored resource")
+		var historical interfaces.Resource
+		require.NoError(t, json.Unmarshal([]byte(stored), &historical))
+		assert.Nil(t, historical.SchemaDefinition[0].Filterable)
+		require.NoError(t, rs.Update(t.Context(), &interfaces.ResourceRequest{
+			ID: read.ID, Name: read.Name, CatalogID: read.CatalogID, Category: read.Category, Enabled: read.Enabled,
+			SchemaDefinition: read.SchemaDefinition, ExpectedUpdateTime: read.UpdateTime,
+		}))
+		assert.Equal(t, 1, writes)
+	})
+
+	t.Run("catalog context is only loaded for enabled source schema updates", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, category  string
+			schema, enabled bool
+		}{
+			{"source without schema", interfaces.ResourceCategoryTable, false, true},
+			{"table all false", interfaces.ResourceCategoryTable, true, false},
+			{"index all false", interfaces.ResourceCategoryIndex, true, false},
+			{"fileset all false", interfaces.ResourceCategoryFileset, true, false},
+			{"dataset enabled", interfaces.ResourceCategoryDataset, true, true},
+			{"dataset all false", interfaces.ResourceCategoryDataset, true, false},
+			{"logical view", interfaces.ResourceCategoryLogicalView, true, true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				rs, ra, ps, _, _, cs, _ := newTestService(t)
+				expectResourceServiceTransaction(t, rs, true)
+				cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+				cf := vmock.NewMockConnectorFactory(gomock.NewController(t))
+				rs.cf = cf
+				lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+				rs.lim = lim
+				stored := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: tc.category, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, OriginalType: "int", Filterable: flag(true)}}}
+				req := &interfaces.ResourceRequest{ID: "r1", CatalogID: "cat1", Category: tc.category}
+				if tc.schema {
+					requested := *stored.SchemaDefinition[0]
+					requested.Filterable = flag(tc.enabled)
+					req.SchemaDefinition = []*interfaces.Property{&requested}
+				}
+				if tc.category == interfaces.ResourceCategoryLogicalView {
+					stored.LogicType = interfaces.LogicalType_Derived
+					stored.LogicDefinitionStr = `{"source_resource_id":"source-1"}`
+					req.LogicalType = interfaces.LogicalType_Derived
+					req.LogicalViewDefinition = map[string]any{"source_resource_id": "source-1"}
+					viewService := &prepareViewService{sourceMetadata: map[string]any{"source_resource": map[string]any{"id": "source-1"}}, schemaDefinition: req.SchemaDefinition}
+					previous := GetLogicalViewService()
+					SetLogicalViewService(viewService)
+					t.Cleanup(func() { SetLogicalViewService(previous) })
+				}
+				if tc.category == interfaces.ResourceCategoryDataset && tc.enabled {
+					lim.EXPECT().ValidateFilterability(req.SchemaDefinition).Return(nil)
+				}
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+				ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(func(_ context.Context, _ *sql.Tx, r *interfaces.Resource, _ int64) (int64, error) {
+					assert.Equal(t, tc.enabled, *r.SchemaDefinition[0].Filterable)
+					return 1, nil
+				})
+				require.NoError(t, rs.Update(t.Context(), req))
+			})
+		}
+	})
+	t.Run("catalog lookup failures stop validation and writes", func(t *testing.T) {
+		for _, missing := range []bool{false, true} {
+			t.Run(map[bool]string{false: "lookup error", true: "missing catalog"}[missing], func(t *testing.T) {
+				rs, ra, ps, ds, _, cs, _ := newTestService(t)
+				rs.cf = vmock.NewMockConnectorFactory(gomock.NewController(t))
+				rs.lim = vmock.NewMockLocalIndexManager(gomock.NewController(t))
+				rs.mfs = vmock.NewMockModelFactoryService(gomock.NewController(t))
+				stored := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, Filterable: flag(false)}, {Name: "other", Type: interfaces.DataType_Integer, Filterable: flag(false)}}}
+				req := &interfaces.ResourceRequest{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, Filterable: flag(true)}, {Name: "other", Type: interfaces.DataType_Integer, Filterable: flag(true)}}}
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+				var failure error
+				if !missing {
+					failure = errors.New("catalog lookup failed")
+				}
+				cs.EXPECT().InternalGetByID(gomock.Any(), "cat1", false).Return(nil, failure)
+				ra.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				ds.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+				err := rs.Update(t.Context(), req)
+				if missing {
+					httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Catalog_NotFound)
+					assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+				} else {
+					assert.ErrorIs(t, err, failure)
+				}
+			})
+		}
+	})
+	t.Run("rejects unsupported source before model or persistence with trusted metadata", func(t *testing.T) {
+		rs, ra, ps, ds, _, cs, _ := newTestService(t)
+		cf := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		rs.cf = cf
+		ra.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ds.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+		rs.mfs = vmock.NewMockModelFactoryService(gomock.NewController(t))
+		stored := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, OriginalName: "source_payload", OriginalType: "json", Filterable: flag(false)}}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "source_payload", Type: "json"}}}}
+		requested := *stored.SchemaDefinition[0]
+		requested.Filterable = flag(true)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "cat1", false).Return(&interfaces.Catalog{ConnectorType: "source"}, nil)
+		cf.EXPECT().ValidateFilterability("source", gomock.Any()).DoAndReturn(func(_ string, r *interfaces.Resource) error {
+			assert.Equal(t, stored.SourceMetadata, r.SourceMetadata)
+			assert.Equal(t, "json", r.SchemaDefinition[0].OriginalType)
+			return interfaces.NewConditionBuildError("field payload does not support filterable=true")
+		})
+		err := rs.Update(context.Background(), &interfaces.ResourceRequest{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{&requested}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "source_payload", Type: "int"}}}})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	})
+	t.Run("dataset rejects before any physical writes", func(t *testing.T) {
+		rs, ra, ps, ds, _, _, _ := newTestService(t)
+		lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+		rs.lim = lim
+		ra.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ds.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+		rs.mfs = vmock.NewMockModelFactoryService(gomock.NewController(t))
+		stored := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Binary, Filterable: flag(false)}}}
+		requested := *stored.SchemaDefinition[0]
+		requested.Filterable = flag(true)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+		lim.EXPECT().ValidateFilterability(gomock.Any()).Return(interfaces.NewConditionBuildError("unsupported main field"))
+		err := rs.Update(context.Background(), &interfaces.ResourceRequest{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{&requested}})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	})
+	t.Run("supported source field can be reopened from saved false", func(t *testing.T) {
+		rs, ra, ps, _, _, cs, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		cf := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		rs.cf = cf
+		stored := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, OriginalType: "int", Filterable: flag(false)}}}
+		requested := *stored.SchemaDefinition[0]
+		requested.Filterable = flag(true)
+		other := &interfaces.Property{Name: "other", Type: interfaces.DataType_Integer, OriginalType: "int", Filterable: flag(false)}
+		stored.SchemaDefinition = append(stored.SchemaDefinition, other)
+		requestedOther := *other
+		requestedOther.Filterable = flag(true)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "cat1", false).Return(&interfaces.Catalog{ConnectorType: "source"}, nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		cf.EXPECT().ValidateFilterability("source", gomock.Any()).DoAndReturn(func(_ string, r *interfaces.Resource) error {
+			assert.True(t, *r.SchemaDefinition[0].Filterable)
+			require.Len(t, r.SchemaDefinition, 2)
+			assert.True(t, *r.SchemaDefinition[1].Filterable)
+			assert.Equal(t, "int", r.SchemaDefinition[0].OriginalType)
+			assert.False(t, *stored.SchemaDefinition[0].Filterable)
+			assert.False(t, *stored.SchemaDefinition[1].Filterable)
+			return nil
+		})
+		ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(func(_ context.Context, _ *sql.Tx, r *interfaces.Resource, _ int64) (int64, error) {
+			assert.True(t, *r.SchemaDefinition[0].Filterable)
+			require.Len(t, r.SchemaDefinition, 2)
+			assert.True(t, *r.SchemaDefinition[1].Filterable)
+			return 1, nil
+		})
+		require.NoError(t, rs.Update(context.Background(), &interfaces.ResourceRequest{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{&requested, &requestedOther}}))
+	})
+	t.Run("unrelated legacy update does not require native metadata or capability checks", func(t *testing.T) {
+		rs, ra, ps, _, _, cs, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		rs.cf = vmock.NewMockConnectorFactory(gomock.NewController(t))
+		rs.lim = vmock.NewMockLocalIndexManager(gomock.NewController(t))
+		stored := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(stored, nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(func(_ context.Context, _ *sql.Tx, r *interfaces.Resource, _ int64) (int64, error) {
+			assert.Equal(t, "renamed", r.Name)
+			assert.True(t, *r.SchemaDefinition[0].Filterable)
+			return 1, nil
+		})
+		require.NoError(t, rs.Update(context.Background(), &interfaces.ResourceRequest{ID: "r1", Name: "renamed", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable}))
+	})
+
+}
+
+func TestResourceServiceCreateFilterabilityCapability(t *testing.T) {
+	for _, entry := range []string{"user", "internal"} {
+		for _, explicit := range []bool{false, true} {
+			t.Run(entry+" "+map[bool]string{false: "default enabled", true: "explicit enabled"}[explicit], func(t *testing.T) {
+				rs, ra, _, ds, _, cs, _ := newTestService(t)
+				rs.cf = vmock.NewMockConnectorFactory(gomock.NewController(t))
+				cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				ra.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				ds.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+				lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+				rs.lim = lim
+				rs.mfs = vmock.NewMockModelFactoryService(gomock.NewController(t))
+				property := &interfaces.Property{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"index": false}},
+					{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"embedding_model": "model"}},
+				}}
+				if explicit {
+					value := true
+					property.Filterable = &value
+				}
+				lim.EXPECT().ValidateFilterability(gomock.Any()).DoAndReturn(func(schema []*interfaces.Property) error {
+					require.NotNil(t, schema[0].Filterable)
+					assert.True(t, *schema[0].Filterable)
+					assert.Equal(t, false, schema[0].Features[0].Config["index"])
+					return interfaces.NewConditionBuildError("field body does not support filterable=true")
+				})
+				req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{property}}
+				var created *interfaces.Resource
+				var err error
+				switch entry {
+				case "user":
+					created, err = rs.Create(t.Context(), req)
+				case "internal":
+					created, err = rs.InternalCreate(t.Context(), req)
+				}
+				assert.Nil(t, created)
+				httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			})
+		}
+	}
+}
+
+func TestResourceServiceCreateClosedFilterability(t *testing.T) {
+	for _, internal := range []bool{false, true} {
+		t.Run(map[bool]string{false: "user", true: "internal"}[internal], func(t *testing.T) {
+			rs, ra, _, ds, _, cs, _ := newTestService(t)
+			expectResourceServiceTransaction(t, rs, true)
+			rs.cf = vmock.NewMockConnectorFactory(gomock.NewController(t))
+			rs.lim = vmock.NewMockLocalIndexManager(gomock.NewController(t))
+			cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			closed := false
+			req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer, Filterable: &closed}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "address", Type: interfaces.DataType_Ip}}}
+			ds.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, r *interfaces.Resource) error {
+				for _, field := range r.SchemaDefinition {
+					require.NotNil(t, field.Filterable)
+					assert.False(t, *field.Filterable)
+				}
+				return nil
+			})
+			ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+			var created *interfaces.Resource
+			var err error
+			if internal {
+				created, err = rs.InternalCreate(t.Context(), req)
+			} else {
+				created, err = rs.Create(t.Context(), req)
+			}
+			require.NoError(t, err)
+			assert.Equal(t, "cat1", created.CatalogID)
 		})
 	}
 }

@@ -301,6 +301,16 @@ paths:
 
         - `name` 在 catalog 内唯一；改名为已占用值返回 409 `VegaBackend.Resource.NameExists`。
         - `catalog_id` 和 `category` 不可修改，与当前 Resource 不一致时返回 400。
+        - PUT 提交 `schema_definition` 时，每个字段必须显式提供布尔值 `filterable`；缺失、null
+          或非布尔值返回 400。非逻辑视图资源省略整个 Schema 时保留已有配置，历史缺失值按类型补齐
+          并随保存持久化；逻辑视图沿用完整定义更新，仍须提供非空 Schema。
+          显式 true 还须由源连接器（Table/Index/Fileset）或 Dataset 的 LIM 按主字段真实映射确认支持；
+          不支持返回 400 `VegaBackend.InvalidParameter.RequestBody`，在模型请求及资源/物理映射写入前拒绝。
+          源字段不能借托管索引能力绕过保存校验，false 不要求连接器可用。
+          历史资源显式提交 Schema 但缺少可信原生元数据、无法确认开启能力时返回 400；省略 Schema 的无关更新不受影响。
+          单纯切换该开关不会重建索引；关闭后仍可返回字段，使用源 Schema 的显式过滤引用被拒绝。
+          查询可用托管本地索引时，整份查询 Schema 由 LIM 按本地映射生成，filterable 委托其本地索引连接器按完整字段 mapping 判定，不继承源字段值。
+          现有 OpenSearch 全文算子的通配字段不展开整个 Schema 校验该开关，沿用原字段解析与转换。
         - PUT 中的 `enabled` 不可修改；请使用 `POST /resources/{id}/enable` 或 `/disable`。
         - PUT 中的 `status`、`schema`、`source_identifier`、`source_metadata` 由内部流程管理；即使携带也会被忽略。
         - 必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
@@ -327,6 +337,14 @@ paths:
                 - type: object
                   required:
                     - expected_update_time
+                  properties:
+                    schema_definition:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: "#/components/schemas/Property"
+                          - type: object
+                            required: [filterable]
       responses:
         "204":
           description: 更新成功
@@ -563,6 +581,30 @@ components:
             源端 lc_monetary 变化后须重建连接池并重新探查元数据。
             money 定义读取失败或非法时，连接初始化失败。
           type: string
+        filterable:
+          type: boolean
+          description: |
+            是否允许该 Schema 中的字段参与过滤条件。显式 true/false 均保留；false 不影响字段投影或返回，
+            true 仍受已有类型、操作符、通道和连接器能力校验，不表示全文索引、聚合或访问权限。
+            历史缺失时，integer / unsigned integer / large_integer / float / decimal / string / text /
+            date / time / datetime / timestamp / boolean / vector 默认 true；
+            ip / binary / json / other / point / shape 及未知类型默认 false。
+            IP 过滤暂不启用，但保留 ip 类型用于历史 Schema、读取和投影；省略开关时补 false，
+            不主动改写已有显式值，显式 true 保存仍受实际连接器或 LIM 能力校验。
+            扫描时由连接器补齐，Index 结合原生类型、index/doc_values 和子字段配置判断；刷新保留已有字段保存的显式值。
+            GET 返回有效布尔值但不写回数据库，升级不主动批量回填；正常保存可持久化补齐值。
+            PUT 提交 schema_definition 时本字段必填，缺失、null 或非布尔值返回 400。
+            保存显式 true 时由源连接器或 Dataset LIM 校验主字段能力；新建时补齐后将持久化的有效 true 同样校验。
+            不支持或缺少确认能力所需的原生元数据时返回 400，不调用模型或写入资源/物理映射。false 始终允许。
+            match、match_phrase、multi_match 使用 fields=["*"]，或 match/match_phrase 使用
+            field="*" 时，不因通配展开中存在 filterable=false 字段而提前拒绝，也不按开关缩减
+            字段列表；显式字段或显式字段列表仍逐项校验。
+            查询已构建且可用的托管本地索引时，整份 Schema 由 LIM 按本地映射投影，
+            LIM 为主字段、物理子字段及生成向量分别构造 IndexFieldMeta，委托实际本地索引连接器 IsFilterable 判定自身能力；
+            子字段能力不反向开放父字段。Feature 操作检查实际物理目标的 filterable；普通比较、嵌套、字段比较、
+            全文与向量查询统一按这份 Schema 校验，不再使用源字段开关。
+            投影不写回存储。原生 Index 使用自身 Schema；索引不可用或强制走源端时使用源 Schema。
+            其他类型、算子、已发布特征范围和查询通道限制继续生效。
         api_name:
           description: |
             只读。字段的英文短名（snake_case，`^[a-z][a-z0-9_]{0,39}$`），可作机器标识；

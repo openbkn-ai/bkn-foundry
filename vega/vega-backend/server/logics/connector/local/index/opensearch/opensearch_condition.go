@@ -221,9 +221,17 @@ func (c *OpenSearchConnector) ConvertFilterConditionMultiMatch(condition interfa
 	}
 
 	value := cond.Cfg.Value
+	if len(cond.Fields) == 0 {
+		return nil, interfaces.NewConditionBuildError("condition [multi_match] requires at least one bound field")
+	}
 	fields := make([]string, 0, len(cond.Fields))
 	for _, field := range cond.Fields {
-		fields = append(fields, fulltextFieldName(field))
+		name := fulltextFieldName(field)
+		// 字段已经绑定，不能再被 OpenSearch 当成通配或权重表达式解析；反斜杠不能转义这些语法。
+		if name == "" || strings.ContainsAny(name, "*^") {
+			return nil, interfaces.NewConditionBuildError("condition [multi_match] field %q cannot be queried as a literal field name", name)
+		}
+		fields = append(fields, name)
 	}
 
 	multiMatchQuery := map[string]any{
@@ -549,65 +557,41 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	}, nil
 }
 
-// ConvertFilterConditionLike converts a LikeCond to OpenSearch DSL.
+// ConvertFilterConditionLike 使用完整 SQL LIKE 模式，不自动补充前后通配符。
 func (c *OpenSearchConnector) ConvertFilterConditionLike(condition interfaces.FilterCondition, schemaDefinition []*interfaces.Property) (map[string]any, error) {
-
 	cond, ok := condition.(*filter_condition.LikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.LikeCond")
 	}
-
-	fieldName := cond.Lfield.OriginalName
-	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
+	pattern, err := filter_condition.SQLLikeToWildcard(filter_condition.OperationLike, cond.Value)
 	if err != nil {
 		return nil, err
 	}
-
-	if cond.LegacyWildcards {
-		return map[string]any{
-			"regexp": map[string]any{
-				exactField: c.legacyLikeWildcardRegexp(cond.Value),
-			},
-		}, nil
+	exactField, err := c.exactMatchFieldName(propertyPhysicalFieldName(cond.Lfield), schemaDefinition)
+	if err != nil {
+		return nil, err
 	}
-
-	return map[string]any{
-		"wildcard": map[string]any{
-			exactField: c.likeContainsPattern(cond.Value),
-		},
-	}, nil
+	return map[string]any{"wildcard": map[string]any{exactField: pattern}}, nil
 }
 
-// ConvertFilterConditionNotLike converts a NotLikeCond to OpenSearch DSL.
+// ConvertFilterConditionNotLike 排除 NULL/缺失的精确字段，保持 SQL NOT LIKE 的三值语义。
 func (c *OpenSearchConnector) ConvertFilterConditionNotLike(condition interfaces.FilterCondition, schemaDefinition []*interfaces.Property) (map[string]any, error) {
-
 	cond, ok := condition.(*filter_condition.NotLikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotLikeCond")
 	}
-
-	fieldName := cond.Lfield.OriginalName
-	exactField, err := c.exactMatchFieldName(fieldName, schemaDefinition)
+	pattern, err := filter_condition.SQLLikeToWildcard(filter_condition.OperationNotLike, cond.Value)
 	if err != nil {
 		return nil, err
 	}
-
-	inner := map[string]any{
-		"wildcard": map[string]any{
-			exactField: c.likeContainsPattern(cond.Value),
-		},
+	exactField, err := c.exactMatchFieldName(propertyPhysicalFieldName(cond.Lfield), schemaDefinition)
+	if err != nil {
+		return nil, err
 	}
-	if cond.LegacyWildcards {
-		inner = map[string]any{
-			"regexp": map[string]any{
-				exactField: c.legacyLikeWildcardRegexp(cond.Value),
-			},
-		}
-	}
-
 	return map[string]any{
 		"bool": map[string]any{
-			"must_not": inner,
+			"filter":   map[string]any{"exists": map[string]any{"field": exactField}},
+			"must_not": map[string]any{"wildcard": map[string]any{exactField: pattern}},
 		},
 	}, nil
 }
@@ -1269,68 +1253,6 @@ func (c *OpenSearchConnector) ConvertFilterConditionKnnVector(condition interfac
 	return map[string]any{
 		"knn": knnQuery,
 	}, nil
-}
-
-// likeContainsPattern converts a literal like/not_like substring into an OpenSearch wildcard pattern.
-//
-// The like contract uses substring containment. ParseLikeValue has already handled % and _,
-// so the value is matched literally here; escape the wildcard metacharacters * ? \ and wrap it in *.
-func (c *OpenSearchConnector) likeContainsPattern(input string) string {
-	var escaped strings.Builder
-	for _, r := range input {
-		if r == '*' || r == '?' || r == '\\' {
-			escaped.WriteRune('\\')
-		}
-		escaped.WriteRune(r)
-	}
-	return "*" + escaped.String() + "*"
-}
-
-// legacyLikeWildcardRegexp reproduces how the index path handled a like value before this
-// change: % -> .*, _ -> ., backslash escapes preserved. It is used only for conditions marked
-// as legacy (see filter_condition.MarkLegacyLikeWildcards), so stored view definitions return
-// the same rows as before; new values go through likeContainsPattern's literal semantics.
-func (c *OpenSearchConnector) legacyLikeWildcardRegexp(input string) string {
-	if input == "" {
-		return input
-	}
-
-	var result strings.Builder
-	escaped := false
-	runes := []rune(input)
-
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-
-		if escaped {
-			switch r {
-			case '%', '_', '\\':
-				result.WriteRune(r)
-			default:
-				result.WriteRune('\\')
-				result.WriteRune(r)
-			}
-			escaped = false
-		} else if r == '\\' {
-			if i == len(runes)-1 {
-				result.WriteRune(r)
-			} else {
-				escaped = true
-			}
-		} else if r == '%' {
-			result.WriteString(".*")
-		} else if r == '_' {
-			result.WriteString(".")
-		} else {
-			result.WriteRune(r)
-		}
-	}
-
-	if escaped {
-		result.WriteRune('\\')
-	}
-
-	return result.String()
 }
 
 // exactMatchProperty 为别名查找目标字段，复用目标的 keyword 配置和校验元数据。

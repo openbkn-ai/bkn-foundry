@@ -18,9 +18,6 @@ type LikeCond struct {
 	Cfg    *interfaces.FilterCondCfg
 	Lfield *interfaces.Property
 	Value  string
-	// When LegacyWildcards is true, Value uses the unparsed legacy form (% as a wildcard).
-	// Each connector renders it with its pre-change semantics instead of literal substring semantics.
-	LegacyWildcards bool
 }
 
 func (c *LikeCond) GetOperation() string { return OperationLike }
@@ -55,100 +52,81 @@ func (c *LikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
 	}
-	if cfg.LegacyLikeWildcards {
-		return &LikeCond{Cfg: cfg, Lfield: field, Value: val, LegacyWildcards: true}, nil
-	}
-	literal, err := ParseLikeValue(OperationLike, val)
-	if err != nil {
+	if err := ValidateLikePattern(OperationLike, val); err != nil {
 		return nil, err
 	}
 
 	return &LikeCond{
 		Cfg:    cfg,
 		Lfield: field,
-		Value:  literal,
+		Value:  val,
 	}, nil
 }
 
-// ParseLikeValue validates and parses a like/not_like value and returns the literal substring to match.
-//
-// The like contract means substring containment, not SQL LIKE syntax. Backends previously handled %
-// inconsistently: SQL connectors escaped it as a literal and wrapped the value in %, while OpenSearch
-// translated it to .*. The same condition therefore produced different database and index results,
-// with SQL silently returning an empty set. Reject an unescaped % and direct callers to regex; use \%
-// to match a literal percent sign.
-//
-// Do not reject _: every pre-change path except OpenSearch treated it literally (Special.Replace
-// escaped it as \_, and it is not a metacharacter in the DSL .* regex). It never caused the silent
-// empty-set behavior of %, and underscores are common in search terms. Parse \_ as an escape,
-// symmetrically with \%.
-func ParseLikeValue(operation, value string) (string, error) {
-	var literal strings.Builder
+// ValidateLikePattern 校验 SQL LIKE 模式；反斜杠转义下一字符，孤立的结尾转义无效。
+func ValidateLikePattern(operation, pattern string) error {
 	escaped := false
-
-	for _, r := range value {
-		switch {
-		case escaped:
-			// Only % _ \ have escape semantics; preserve the backslash for other characters.
-			if r != '%' && r != '_' && r != '\\' {
-				literal.WriteRune('\\')
-			}
-			literal.WriteRune(r)
+	for _, r := range pattern {
+		if escaped {
 			escaped = false
-		case r == '\\':
+		} else if r == '\\' {
 			escaped = true
-		case r == '%':
-			return "", fmt.Errorf(
-				"condition [%s] value is matched as a literal substring, so the wildcard '%%' is not supported; "+
-					"use operation [regex] for pattern matching, or escape it as '\\%%' to match the character itself",
-				operation)
-		default:
-			literal.WriteRune(r)
 		}
 	}
 	if escaped {
-		literal.WriteRune('\\')
+		return interfaces.NewConditionBuildError("condition [%s] pattern ends with an incomplete escape", operation)
 	}
-
-	return literal.String(), nil
+	return nil
 }
 
-// MarkLegacyLikeWildcards marks like/not_like conditions that use % as a wildcard as legacy
-// and returns the number of marked conditions.
-//
-// This applies only to filters stored in view definitions. Callers cannot change that server-side
-// data, so enforcing the new contract would break legacy views after an upgrade. Once marked, each
-// connector renders the condition with its own pre-change semantics: SQL treats % literally while
-// index connectors translate it to a regex wildcard. This preserves every legacy view result.
-// Normalizing all paths to literal matching would silently empty results that index paths previously
-// matched as wildcards.
-//
-// Caller-supplied conditions do not use this path; they are rejected with guidance to use regex.
-func MarkLegacyLikeWildcards(cfg *interfaces.FilterCondCfg) int {
-	if cfg == nil {
-		return 0
+// NormalizeSQLLikePattern 为只允许转义模式元字符的 SQL 通道规范化普通字符转义。
+// 不补充通配符，保留百分号、下划线和反斜杠自身的转义。
+func NormalizeSQLLikePattern(operation, pattern string) (string, error) {
+	if err := ValidateLikePattern(operation, pattern); err != nil {
+		return "", err
 	}
+	var result strings.Builder
+	escaped := false
+	for _, r := range pattern {
+		if !escaped && r == '\\' {
+			escaped = true
+			continue
+		}
+		if escaped && (r == '%' || r == '_' || r == '\\') {
+			result.WriteByte('\\')
+		}
+		result.WriteRune(r)
+		escaped = false
+	}
+	return result.String(), nil
+}
 
-	markedCount := 0
-	for _, sub := range cfg.SubConds {
-		markedCount += MarkLegacyLikeWildcards(sub)
+// SQLLikeToWildcard 将完整 SQL LIKE 模式转为索引 wildcard 模式，不自动补充通配符。
+func SQLLikeToWildcard(operation, pattern string) (string, error) {
+	if err := ValidateLikePattern(operation, pattern); err != nil {
+		return "", err
 	}
-
-	if cfg.Operation != OperationLike && cfg.Operation != OperationNotLike {
-		return markedCount
+	var result strings.Builder
+	escaped := false
+	for _, r := range pattern {
+		if !escaped {
+			switch r {
+			case '\\':
+				escaped = true
+				continue
+			case '%':
+				result.WriteByte('*')
+				continue
+			case '_':
+				result.WriteByte('?')
+				continue
+			}
+		}
+		if r == '*' || r == '?' || r == '\\' {
+			result.WriteByte('\\')
+		}
+		result.WriteRune(r)
+		escaped = false
 	}
-	if cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return markedCount
-	}
-	value, ok := cfg.Value.(string)
-	if !ok {
-		return markedCount
-	}
-	if _, err := ParseLikeValue(cfg.Operation, value); err == nil {
-		return markedCount
-	}
-
-	cfg.LegacyLikeWildcards = true
-
-	return markedCount + 1
+	return result.String(), nil
 }

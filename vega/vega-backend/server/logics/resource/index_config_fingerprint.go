@@ -19,6 +19,7 @@ import (
 	"github.com/bytedance/sonic"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 )
 
@@ -45,7 +46,10 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (interfaces.IndexCo
 		defaultFulltextAnalyzer = strings.TrimSpace(resource.IndexConfig.DefaultFulltextAnalyzer)
 	}
 
-	columns := resource.ColumnMetadata()
+	columns, err := table.ColumnMetadata(resource)
+	if err != nil {
+		return interfaces.IndexConfigContract{}, err
+	}
 	seenFields := make(map[string]struct{}, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
 		if property == nil || property.Name == "" {

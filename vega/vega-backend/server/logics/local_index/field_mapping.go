@@ -8,52 +8,25 @@ package local_index
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
-// buildFieldMappings converts a Resource schema into the physical mapping used by OpenSearch.
-func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any, error) {
+// buildFieldMappings 共用物理字段构造；创建索引要求完整精度，查询能力描述兼容历史未保存的精度。
+func buildFieldMappings(schemaDefinition []*interfaces.Property, requireComplete bool) (map[string]any, error) {
 	properties := map[string]any{}
 	declaredFields := make(map[string]struct{}, len(schemaDefinition))
 	for _, prop := range schemaDefinition {
-		if prop != nil {
-			declaredFields[prop.Name] = struct{}{}
-		}
+		declaredFields[prop.Name] = struct{}{}
 	}
 
 	for _, prop := range schemaDefinition {
-		if prop == nil {
-			continue
-		}
-		fieldType := prop.Type
-		switch prop.Type {
-		case interfaces.DataType_Integer:
-			fieldType = "long"
-		case interfaces.DataType_UnsignedInteger:
-			fieldType = "unsigned_long"
-		case interfaces.DataType_Float:
-			fieldType = "double"
-		case interfaces.DataType_Decimal:
-			fieldType = "scaled_float"
-		case interfaces.DataType_String, interfaces.DataType_LargeInteger:
-			fieldType = "keyword"
-		case interfaces.DataType_Datetime, interfaces.DataType_Timestamp:
-			fieldType = "date"
-		case interfaces.DataType_Time:
-			fieldType = "keyword"
-		case interfaces.DataType_Json:
-			fieldType = "object"
-		case interfaces.DataType_Vector:
-			fieldType = "knn_vector"
-		case interfaces.DataType_Point:
-			fieldType = "geo_point"
-		case interfaces.DataType_Shape:
-			fieldType = "geo_shape"
-		case interfaces.DataType_Other:
+		if prop.Type == interfaces.DataType_Other {
 			return nil, fmt.Errorf("unsupported schema field %q: type %s (original_type: %s)", prop.Name, prop.Type, prop.OriginalType)
 		}
+		fieldType := fieldMappingType(prop.Type)
 
 		fieldProps := map[string]any{"type": fieldType}
 		var decimalConfig *interfaces.DecimalIndexConfig
@@ -62,16 +35,20 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 			if err != nil {
 				return nil, err
 			}
-			if err := ValidateDecimalIndexConfig(prop.Name, config); err != nil {
-				return nil, err
+			if requireComplete || config.Precision > 0 || decimalTypePattern.MatchString(prop.OriginalType) {
+				if err := ValidateDecimalIndexConfig(prop.Name, config); err != nil {
+					return nil, err
+				}
 			}
-			decimalConfig = config
-			if config.Scale <= 0 {
-				fieldType = "long"
-				fieldProps["type"] = fieldType
-				fieldProps["coerce"] = false
-			} else {
-				fieldProps["scaling_factor"] = math.Pow10(config.Scale)
+			if config.Precision > 0 {
+				decimalConfig = config
+				if config.Scale <= 0 {
+					fieldType = "long"
+					fieldProps["type"] = fieldType
+					fieldProps["coerce"] = false
+				} else {
+					fieldProps["scaling_factor"] = math.Pow10(config.Scale)
+				}
 			}
 		}
 
@@ -124,7 +101,7 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 	}
 
 	for _, prop := range schemaDefinition {
-		if prop == nil || (prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text) {
+		if prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text {
 			continue
 		}
 		for _, feature := range prop.Features {
@@ -218,4 +195,70 @@ func defaultVectorMethod() map[string]any {
 		"engine":     "lucene",
 		"parameters": map[string]any{"ef_construction": 256},
 	}
+}
+
+// fieldMappingType 与创建索引共用逻辑类型到物理映射类型的转换。
+func fieldMappingType(dataType string) string {
+	switch dataType {
+	case interfaces.DataType_Integer:
+		return "long"
+	case interfaces.DataType_UnsignedInteger:
+		return "unsigned_long"
+	case interfaces.DataType_Float:
+		return "double"
+	case interfaces.DataType_Decimal:
+		return "scaled_float"
+	case interfaces.DataType_String, interfaces.DataType_LargeInteger, interfaces.DataType_Time:
+		return "keyword"
+	case interfaces.DataType_Datetime, interfaces.DataType_Timestamp:
+		return "date"
+	case interfaces.DataType_Json:
+		return "object"
+	case interfaces.DataType_Vector:
+		return "knn_vector"
+	case interfaces.DataType_Point:
+		return "geo_point"
+	case interfaces.DataType_Shape:
+		return "geo_shape"
+	default:
+		return dataType
+	}
+}
+
+// queryFieldMappings 复用创建索引的最终 mapping，不继承源字段的索引开关。
+func queryFieldMappings(schema []*interfaces.Property) (map[string]any, error) {
+	properties := make([]*interfaces.Property, 0, len(schema))
+	for _, property := range schema {
+		if isQueryableFieldType(property.Type) {
+			properties = append(properties, property)
+		}
+	}
+	return buildFieldMappings(properties, false)
+}
+
+// indexFieldMeta 将最终物理 mapping 转为连接器使用的字段元数据。
+func indexFieldMeta(name string, mapping map[string]any) *interfaces.IndexFieldMeta {
+	meta := &interfaces.IndexFieldMeta{Name: name, Attributes: make(map[string]any)}
+	meta.Type, _ = mapping["type"].(string)
+	for key, value := range mapping {
+		if key != "type" && key != "fields" && key != "properties" {
+			meta.Attributes[key] = value
+		}
+	}
+	fields, _ := mapping["fields"].(map[string]any)
+	names := make([]string, 0, len(fields))
+	for fieldName := range fields {
+		names = append(names, fieldName)
+	}
+	sort.Strings(names)
+	for _, fieldName := range names {
+		fieldMapping, _ := fields[fieldName].(map[string]any)
+		subfield := indexFieldMeta(fieldName, fieldMapping)
+		meta.SubFields = append(meta.SubFields, interfaces.IndexSubFieldMeta{
+			Name:       subfield.Name,
+			Type:       subfield.Type,
+			Attributes: subfield.Attributes,
+		})
+	}
+	return meta
 }
