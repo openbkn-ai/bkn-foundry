@@ -148,6 +148,17 @@ func (r *restHandler) buildKNDraftIndex(c *gin.Context, ctx context.Context) {
 	rest.ReplyOK(c, status, index)
 }
 
+// rebuildKNConceptIndex is the operator's route that rewrites the concept index of a versioned
+// network: ?branch= names main, draft or v<N>; without it every branch is rebuilt.
+func (r *restHandler) rebuildKNConceptIndex(c *gin.Context, ctx context.Context) {
+	view, err := r.kvs.RebuildIndex(ctx, c.Param("kn_id"), c.Query("branch"))
+	if err != nil {
+		replyKNVersionError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, view)
+}
+
 // disableKNVersioning is the operator's route that takes a network out of versioning.
 func (r *restHandler) disableKNVersioning(c *gin.Context, ctx context.Context) {
 	var req interfaces.KNDisableVersioningRequest

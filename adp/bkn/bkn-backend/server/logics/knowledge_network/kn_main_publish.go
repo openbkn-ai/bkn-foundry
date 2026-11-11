@@ -251,36 +251,8 @@ func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, old
 // deleteStaleConceptDocuments deletes the concept index documents of the definitions oldKN has
 // and newKN no longer has. newKN nil means the branch is gone, its network document too.
 func (kns *knowledgeNetworkService) deleteStaleConceptDocuments(ctx context.Context, oldKN, newKN *interfaces.KN) {
-	ids := func(kn *interfaces.KN) map[string]struct{} {
-		set := map[string]struct{}{}
-		if kn == nil {
-			return set
-		}
-		add := func(moduleType, id string) {
-			set[interfaces.GenerateConceptDocuemtnID(kn.KNID, moduleType, id, kn.Branch)] = struct{}{}
-		}
-		for _, item := range kn.ConceptGroups {
-			add(interfaces.MODULE_TYPE_CONCEPT_GROUP, item.CGID)
-		}
-		for _, item := range kn.ObjectTypes {
-			add(interfaces.MODULE_TYPE_OBJECT_TYPE, item.OTID)
-		}
-		for _, item := range kn.RelationTypes {
-			add(interfaces.MODULE_TYPE_RELATION_TYPE, item.RTID)
-		}
-		for _, item := range kn.ActionTypes {
-			add(interfaces.MODULE_TYPE_ACTION_TYPE, item.ATID)
-		}
-		for _, item := range kn.RiskTypes {
-			add(interfaces.MODULE_TYPE_RISK_TYPE, item.RTID)
-		}
-		if newKN == nil {
-			add(interfaces.MODULE_TYPE_KN, kn.KNID)
-		}
-		return set
-	}
-	keep := ids(newKN)
-	for id := range ids(oldKN) {
+	keep := conceptDocumentIDs(newKN, false)
+	for id := range conceptDocumentIDs(oldKN, newKN == nil) {
 		if _, ok := keep[id]; ok {
 			continue
 		}
@@ -288,6 +260,37 @@ func (kns *knowledgeNetworkService) deleteStaleConceptDocuments(ctx context.Cont
 			otellog.LogError(ctx, fmt.Sprintf("Delete concept index document %s failed", id), err)
 		}
 	}
+}
+
+// conceptDocumentIDs is the set of concept index documents of the definitions of kn, plus the
+// network's own document when withNetwork is set. A nil kn has none.
+func conceptDocumentIDs(kn *interfaces.KN, withNetwork bool) map[string]struct{} {
+	set := map[string]struct{}{}
+	if kn == nil {
+		return set
+	}
+	add := func(moduleType, id string) {
+		set[interfaces.GenerateConceptDocuemtnID(kn.KNID, moduleType, id, kn.Branch)] = struct{}{}
+	}
+	for _, item := range kn.ConceptGroups {
+		add(interfaces.MODULE_TYPE_CONCEPT_GROUP, item.CGID)
+	}
+	for _, item := range kn.ObjectTypes {
+		add(interfaces.MODULE_TYPE_OBJECT_TYPE, item.OTID)
+	}
+	for _, item := range kn.RelationTypes {
+		add(interfaces.MODULE_TYPE_RELATION_TYPE, item.RTID)
+	}
+	for _, item := range kn.ActionTypes {
+		add(interfaces.MODULE_TYPE_ACTION_TYPE, item.ATID)
+	}
+	for _, item := range kn.RiskTypes {
+		add(interfaces.MODULE_TYPE_RISK_TYPE, item.RTID)
+	}
+	if withNetwork {
+		add(interfaces.MODULE_TYPE_KN, kn.KNID)
+	}
+	return set
 }
 
 // initVersionedNetwork completes a network created versioned from the start: what the request
@@ -362,6 +365,12 @@ func (kns *knowledgeNetworkService) IndexVersion(ctx context.Context, knID, src,
 		return err
 	}
 	rebranch(kn, dst)
+	return kns.writeConceptDocuments(ctx, kn)
+}
+
+// writeConceptDocuments writes the concept index document of every definition of kn and of the
+// network itself, on kn's branch, stopping at the first failure.
+func (kns *knowledgeNetworkService) writeConceptDocuments(ctx context.Context, kn *interfaces.KN) error {
 	for _, write := range []func() error{
 		func() error { return kns.cgs.InsertDatasetDatas(ctx, kn.ConceptGroups) },
 		func() error { return kns.ots.InsertDatasetData(ctx, kn.ObjectTypes) },
@@ -375,6 +384,76 @@ func (kns *knowledgeNetworkService) IndexVersion(ctx context.Context, knID, src,
 		}
 	}
 	return nil
+}
+
+// rebuildPageLimit is the page size of listing a branch's concept documents during a rebuild.
+const rebuildPageLimit = 1000
+
+// RebuildBranchIndex writes the concept index of one branch again from its rows, then deletes the
+// documents on the branch that no longer belong to any of its definitions. Documents are replaced
+// one at a time rather than deleted first, so a search during the rebuild still reads a whole
+// index. The caller holds the network lock, so no write changes the branch meanwhile (#3096).
+func (kns *knowledgeNetworkService) RebuildBranchIndex(ctx context.Context, knID, branch string) error {
+	kn, err := kns.loadKNForDatasetSnapshot(ctx, knID, branch)
+	if err != nil {
+		return err
+	}
+	if err := kns.writeConceptDocuments(ctx, kn); err != nil {
+		return err
+	}
+	// Definition documents carry kn_id and branch; the network's own document carries neither as
+	// such and was just written, so it never shows up here.
+	keep := conceptDocumentIDs(kn, false)
+	params := &interfaces.ResourceDataQueryParams{
+		FilterCondition: map[string]any{
+			"operation": "and",
+			"sub_conditions": []map[string]any{
+				{"field": "kn_id", "operation": "==", "value": knID, "value_from": "const"},
+				{"field": "branch", "operation": "==", "value": branch, "value_from": "const"},
+			},
+		},
+		Sort:         []*interfaces.SortParams{{Field: "id", Direction: "asc"}},
+		Paging:       interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: rebuildPageLimit},
+		OutputFields: []string{"id", "module_type"},
+	}
+	stale := []string{}
+	for {
+		response, err := kns.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		if err != nil {
+			return err
+		}
+		for _, entry := range response.Entries {
+			moduleType, _ := entry["module_type"].(string)
+			id, _ := entry["id"].(string)
+			if !conceptModuleTypes[moduleType] || id == "" {
+				continue
+			}
+			docID := interfaces.GenerateConceptDocuemtnID(knID, moduleType, id, branch)
+			if _, ok := keep[docID]; !ok {
+				stale = append(stale, docID)
+			}
+		}
+		if response.Paging == nil || response.Paging.NextCursor == nil {
+			break
+		}
+		params = &interfaces.ResourceDataQueryParams{Paging: interfaces.ResourceDataPagingRequest{Cursor: *response.Paging.NextCursor}}
+	}
+	for _, docID := range stale {
+		if err := kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// conceptModuleTypes are the definition documents a branch's concept index holds; a rebuild only
+// deletes documents of these kinds.
+var conceptModuleTypes = map[string]bool{
+	interfaces.MODULE_TYPE_CONCEPT_GROUP: true,
+	interfaces.MODULE_TYPE_OBJECT_TYPE:   true,
+	interfaces.MODULE_TYPE_RELATION_TYPE: true,
+	interfaces.MODULE_TYPE_ACTION_TYPE:   true,
+	interfaces.MODULE_TYPE_RISK_TYPE:     true,
 }
 
 // DeleteBranchIndex deletes every concept index document of one branch.

@@ -137,6 +137,12 @@ type KNDraftIndexView struct {
 	Status   string `json:"status"`
 }
 
+// KNIndexRebuildView answers the operator's rebuild of a versioned network's concept index.
+type KNIndexRebuildView struct {
+	KNID     string   `json:"kn_id"`
+	Branches []string `json:"branches"`
+}
+
 // KNVersioningField is the versioning field of a network: a boolean in a create request, the
 // version state in a response.
 type KNVersioningField struct {
@@ -377,6 +383,9 @@ type KNVersionService interface {
 	Disable(ctx context.Context, knID string, req *KNDisableVersioningRequest) (*KNVersioningView, error)
 	// BuildDraftIndex makes the draft's concept index match its current revision.
 	BuildDraftIndex(ctx context.Context, knID string) (*KNDraftIndexView, error)
+	// RebuildIndex rewrites the concept index of one branch of a versioned network (main, draft
+	// or v<N>), or of all its branches when branch is empty, from the branch's rows (#3096).
+	RebuildIndex(ctx context.Context, knID, branch string) (*KNIndexRebuildView, error)
 	ReferencedResources(ctx context.Context, knID string) (*KNReferencedResources, error)
 }
 
@@ -479,6 +488,9 @@ type KNMainPublisher interface {
 	IndexVersion(ctx context.Context, knID, src, dst string) error
 	// DeleteBranchIndex deletes the concept index of one branch.
 	DeleteBranchIndex(ctx context.Context, knID, branch string) error
+	// RebuildBranchIndex writes the concept index of one branch again from its rows and deletes
+	// the documents of definitions the branch no longer has.
+	RebuildBranchIndex(ctx context.Context, knID, branch string) error
 	// BranchReferences lists the data resources, functions and Skills one branch uses.
 	BranchReferences(ctx context.Context, knID, branch string) (*KNBranchReferences, error)
 	// CheckReferences lists what a branch references that does not exist, before it goes live.

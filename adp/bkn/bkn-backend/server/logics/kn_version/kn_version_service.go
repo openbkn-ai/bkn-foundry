@@ -9,9 +9,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -138,6 +140,86 @@ func (s *service) BuildDraftIndex(ctx context.Context, knID string) (*interfaces
 		return nil, newHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KNVersion_VersioningDisabling)
 	}
 	return draftIndex(state), nil
+}
+
+// RebuildIndex is the operator's repair of a versioned network's concept index. The concept
+// syncer leaves versioned networks alone, so a document a write or a version operation failed to
+// write stays missing until this rewrites it. It rebuilds the named branch (main, draft or v<N>),
+// or main, the draft and every version not purged when branch is empty. The network lock is held
+// exclusively throughout, as version operations hold it, so no write changes a branch while its
+// index is rewritten; writes to the network wait for the rebuild.
+func (s *service) RebuildIndex(ctx context.Context, knID, branch string) (*interfaces.KNIndexRebuildView, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Rebuild knowledge network concept index")
+	defer span.End()
+	branch = strings.TrimSpace(branch)
+	if branch != "" && branch != interfaces.MAIN_BRANCH && !interfaces.IsReservedBranch(branch) {
+		return nil, newHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidParameter).
+			WithErrorDetails("branch must be main, draft or v<N>")
+	}
+	if err := s.checkPermission(ctx, knID, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+		return nil, err
+	}
+	view := &interfaces.KNIndexRebuildView{KNID: knID, Branches: []string{}}
+	err := s.plainTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if _, err := s.lockState(ctx, tx, knID); err != nil {
+			return err
+		}
+		branches, err := s.rebuildBranches(ctx, tx, knID, branch)
+		if err != nil {
+			return err
+		}
+		for _, b := range branches {
+			if err := s.pub.RebuildBranchIndex(ctx, knID, b); err != nil {
+				otellog.LogError(ctx, fmt.Sprintf("Rebuild the concept index of %s failed", b), err)
+				return newHTTPError(ctx, http.StatusServiceUnavailable, berrors.BknBackend_KNVersion_ConceptIndexFailed).
+					WithErrorDetails(map[string]any{"branch": b, "rebuilt": view.Branches, "error": err.Error()})
+			}
+			view.Branches = append(view.Branches, b)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, internalError(ctx, err)
+	}
+	return view, nil
+}
+
+// rebuildBranches lists the branches a rebuild covers: the named one after checking a version
+// still has content, or main, the draft and every version not purged.
+func (s *service) rebuildBranches(ctx context.Context, tx *sql.Tx, knID, branch string) ([]string, error) {
+	if branch == interfaces.MAIN_BRANCH || branch == interfaces.DRAFT_BRANCH {
+		return []string{branch}, nil
+	}
+	if branch != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(branch, interfaces.VERSION_BRANCH_PREFIX))
+		if err != nil || n < 1 {
+			return nil, newHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidParameter).
+				WithErrorDetails("branch must be main, draft or v<N>")
+		}
+		v, err := s.va.GetVersion(ctx, tx, knID, n, false)
+		if err != nil {
+			return nil, err
+		}
+		if v == nil {
+			return nil, newHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KNVersion_VersionNotFound)
+		}
+		if v.Status == interfaces.KNVersionPurged {
+			return nil, newHTTPError(ctx, http.StatusGone, berrors.BknBackend_KNVersion_VersionPurged)
+		}
+		return []string{branch}, nil
+	}
+	versions, _, err := s.va.ListVersions(ctx, knID, &interfaces.KNVersionsQuery{
+		Statuses: []string{interfaces.KNVersionRunning, interfaces.KNVersionHistory, interfaces.KNVersionDeprecated},
+		Limit:    -1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	branches := []string{interfaces.MAIN_BRANCH, interfaces.DRAFT_BRANCH}
+	for _, v := range versions {
+		branches = append(branches, interfaces.VersionBranch(v.Version))
+	}
+	return branches, nil
 }
 
 // operation identifies a version operation for idempotency: its event types and the version it

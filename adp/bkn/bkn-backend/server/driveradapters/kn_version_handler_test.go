@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -154,5 +155,38 @@ func TestProxyBranchReadable(t *testing.T) {
 		if (want == 0) != ok || (want != 0 && recorder.Code != want) {
 			t.Errorf("%q: ok %v code %d, want %d", query, ok, recorder.Code, want)
 		}
+	}
+}
+
+// rebuildingVersions records the rebuild it is asked for; v1 was purged.
+type rebuildingVersions struct {
+	interfaces.KNVersionService
+	asked *[]string
+}
+
+func (v rebuildingVersions) RebuildIndex(ctx context.Context, knID, branch string) (*interfaces.KNIndexRebuildView, error) {
+	*v.asked = append(*v.asked, knID+":"+branch)
+	if branch == "v1" {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusGone, berrors.BknBackend_KNVersion_VersionPurged)
+	}
+	return &interfaces.KNIndexRebuildView{KNID: knID, Branches: []string{"main"}}, nil
+}
+
+func TestRebuildKNConceptIndexRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	asked := []string{}
+	engine := gin.New()
+	engine.POST("/api/bkn-backend/in/v1/knowledge-networks/:kn_id/concept-index/rebuild",
+		knEventInternal((&restHandler{kvs: rebuildingVersions{asked: &asked}}).rebuildKNConceptIndex))
+	for query, want := range map[string]int{"": http.StatusOK, "?branch=main": http.StatusOK, "?branch=v1": http.StatusGone} {
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost,
+			"/api/bkn-backend/in/v1/knowledge-networks/kn1/concept-index/rebuild"+query, nil))
+		if recorder.Code != want {
+			t.Errorf("%q: code %d, want %d (%s)", query, recorder.Code, want, recorder.Body.String())
+		}
+	}
+	if len(asked) != 3 || !slices.Contains(asked, "kn1:") || !slices.Contains(asked, "kn1:main") {
+		t.Errorf("rebuilds asked %v, want kn1 with no branch, main and v1", asked)
 	}
 }
