@@ -15,9 +15,8 @@ import (
 // to the network, not to an application; applications read the change feed
 // and handle the events in their own tasks. Each kind of event is also an
 // object type of the network, its event class, so events are queried, related
-// and authorized like the network's other objects. The contract lives in core
-// while the implementation is assembled by the paid image, as with object
-// metrics.
+// and authorized like the network's other objects. The implementation is the
+// knevent package, which every edition assembles.
 
 // Event statuses describe the event itself. How an application handles it is
 // recorded by that application.
@@ -282,8 +281,7 @@ type KnEventServiceV1 interface {
 }
 
 // KnEventCleanupAccess removes a network's events in the transaction that
-// deletes the network. The paid image installs it; it must keep working after
-// a licence downgrade so that networks remain deletable.
+// deletes the network.
 type KnEventCleanupAccess interface {
 	DeleteKnEvents(ctx context.Context, tx *sql.Tx, knID string) error
 }

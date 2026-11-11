@@ -211,6 +211,7 @@ RESNAME_bkn-safe_build-grants                      := 构建委托授权
 RESNAME_bkn-safe-admin_role-permissions            := 角色权限
 RESNAME_bkn_bkn-object-metrics-v1                  := 对象指标
 RESNAME_bkn_value-types                            := 值类型
+RESNAME_bkn_kn-events                              := 事件
 RESNAME_ontology-query_object-metrics-v1           := 对象指标
 RESNAME_bkn-safe_self-service                      := 用户自助授权
 

@@ -60,6 +60,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/knevent"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	permission_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 	vega_backend_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
@@ -489,6 +490,9 @@ func Boot(_ Options) *Application {
 	if publisherRuntime != nil {
 		server.evidenceRuntime = publisherRuntime.Runtime
 		server.evidenceProducer = publisherRuntime.Producer
+	}
+	if err := knevent.Setup(server); err != nil {
+		logger.Fatalf("Failed to assemble knowledge-network events: %v", err)
 	}
 	return server
 }

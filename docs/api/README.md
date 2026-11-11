@@ -32,7 +32,7 @@ The order below matches the card groups on the documentation home page. It is co
 
 | Module | Directory | Coverage |
 |---|---|---|
-| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, capability bindings, import/export, and [Object Metrics V1](bkn/bkn-object-metrics-v1.yaml). |
+| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, capability bindings, import/export, knowledge-network [events](bkn/kn-events.yaml) (event types, events, rule checks, change feed), and [Object Metrics V1](bkn/bkn-object-metrics-v1.yaml). |
 | 🛡️ bkn-safe admin | [`bkn-safe-admin/`](bkn-safe-admin/) | Gateway-exposed, bearer-token-protected Enterprise security-policy management APIs. Internal decision endpoints remain under `bkn-safe/` and are not published. |
 | 🔐 bkn-safe | [`bkn-safe/`](bkn-safe/) | Only [MCP client registration and connected clients](bkn-safe/oauth-clients.yaml) is published: RFC 7591 self-registration, listing and disconnecting your connected clients, and admin cleanup. The other files are linted but stay unpublished (see below). |
 | 🟫 context-loader | [`context-loader/`](context-loader/) | Agent context entry points: schema retrieval, instance and subgraph queries, logical properties, action execution, Skill retrieval, direct data access, and MCP. **Complete external surface**; internal `/in/v1` APIs are excluded |

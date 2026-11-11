@@ -1,0 +1,1132 @@
+openapi: 3.0.2
+info:
+  title: BKN 知识网络 · 事件 API
+  version: 0.1.0
+  description: |-
+    Events of a knowledge network. An event records something that happened in the business: a rule
+    found an object in an abnormal state (source `rule`), or a person reported something (source
+    `report`). Events belong to the network, not to an application. Applications follow a network's
+    events through the change feed and handle them in their own tasks.
+
+    An event type, identified by `code`, says how one kind of event is recognised in the network:
+    its source, the object type it is about (`subject`), a severity, a merge window and, for a rule
+    type, the rule. Every event type has an event class: an object type of the same network named
+    after the event type, whose objects are the events of that type, so events can be queried,
+    related and authorized like the network's other objects. The platform writes a dataset behind
+    the class, a copy of the events. `object_type_id` and `dataset_id` on the event type are the IDs
+    of the class and its dataset; they are empty for a type whose class has not been created yet.
+    The class is created with the event type and is written again when the type's name or subject
+    changes. In a versioned network the class is written into the draft. The class is a
+    platform-managed object type with the ID `object_type_id`; do not change it through the object
+    type API.
+
+    ## Authorization
+
+    Every operation checks one knowledge-network permission after confirming that the network exists.
+
+    | Operations | Permission on the knowledge network |
+    | --- | --- |
+    | List and get event types | `view_detail` |
+    | Create, update and delete event types | `modify` |
+    | List and get events, report an event, verify / reject / close / reopen an event, list and record rule checks | `query_data` |
+
+    A caller without the permission gets 403. The change feed carries no identity and checks no
+    permission. See `../knowledge-network-authorization.md`.
+
+    ## Authentication and the internal face
+
+    The routes under `/api/bkn-backend/v1` require an OAuth2 bearer token (an AppKey is not accepted).
+    Each of them has a twin under `/api/bkn-backend/in/v1` with the same method, parameters, body and
+    response. The twin takes the caller from the `x-account-id` and `x-account-type` request headers
+    instead of a token and is reachable only inside the cluster. The one internal-only route is the
+    change feed `GET /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/event-changes`, which applications
+    such as Workshop read to follow a network's events.
+
+    ## Behaviour
+
+    - Events are kept on the network, not on a branch. The network is looked up on its main branch;
+      an unknown network is 404 `BknBackend.KnowledgeNetwork.NotFound`.
+    - Request bodies are JSON of at most 16 MiB; a larger body is 413 `BknBackend.KnEvent.TooLarge`.
+      A field the API does not define is refused with 400 `BknBackend.KnEvent.InvalidParameter`.
+      Responses are not cached. All times are Unix timestamps in milliseconds.
+    - Statuses of an event: `unverified`, `verified`, `rejected`, `duplicate`, `closed`. The status
+      describes the event itself; how an application handles it is recorded by that application.
+    - A rule event type is fed by rule checks. The first check of an object that is not yet open
+      creates a `verified` event (verified by `rule`). A check that finds an open event's object again
+      only refreshes it. A check that covers an open event's object but does not hit it ends the
+      abnormal period: the event becomes `closed` and gets `ended_at`. A rejected event is never
+      reopened by a check, and a person's close does not end a rule event's period; a rule event
+      ends only when its rule finds it over.
+    - A reported event type is fed by reports. A report is `unverified` unless `verify` is true, which
+      verifies it at once as the reporter. If the type has `merge_hours` above 0 and the report has an
+      `object_key`, and an `unverified` or `verified` event of the same type and object has an
+      `occurred_at` within the window, the new event is stored as `duplicate` with `merged_into` set
+      to the first event.
+    - Event type deletion is refused with 409 while the type has any event, or while its event class is
+      used by other definitions of the network.
+    - The change feed keeps every change to an event. The entries for a check that only refreshed an
+      event (action `checked`) are removed after 7 days; the other entries are the events' history and
+      are kept.
+    - Names of the reporter, verifier and actors are resolved from the user directory when the change
+      is written; if the directory is unavailable the name is left empty.
+
+    Event type codes match `^[a-z0-9][a-z0-9_.-]{0,63}$`. Resource IDs of knowledge networks use
+    lowercase letters, digits, underscores and hyphens, start with a letter or digit, and contain at
+    most 128 characters.
+security:
+  - OAuth2: []
+tags:
+  - name: KnEventType
+    description: Event types and their event classes
+  - name: KnEvent
+    description: Events, reports and actions
+  - name: KnEventRuleCheck
+    description: Rule checks of rule event types
+  - name: KnEventChange
+    description: Internal change feed
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/event-types:
+    get:
+      tags:
+        - KnEventType
+      summary: List event types
+      description: Lists all event types of the knowledge network, ordered by code. Requires `view_detail`. Not paginated.
+      operationId: listKnEventTypes
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      responses:
+        "200":
+          description: The event types.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventTypeList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags:
+        - KnEventType
+      summary: Create an event type
+      description: |-
+        Creates an event type and its event class (an object type, with a dataset behind it) in the
+        knowledge network. Requires `modify`. The class is created first; if it cannot be created the
+        event type is not created.
+
+        `code` is required and matches `^[a-z0-9][a-z0-9_.-]{0,63}$`. `source` is required and cannot
+        be changed later. If `subject` names an object type of the network that has a primary key, the
+        class gets a relation to it, so an event reaches the object it is about.
+
+        409 `BknBackend.KnEvent.EventTypeExisted` is returned when the code is taken, when the class
+        ID derived from the code is the class of another event type, or when the network already has
+        an object type with that ID or with the same name as the event type.
+      operationId: createKnEventType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnEventTypeInput"
+      responses:
+        "201":
+          description: Created. Returns the event type including its class IDs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventType"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/event-types/{code}:
+    get:
+      tags:
+        - KnEventType
+      summary: Get an event type
+      description: Returns one event type. Requires `view_detail`. 404 `BknBackend.KnEvent.EventTypeNotFound` if the code is unknown.
+      operationId: getKnEventType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/EventTypeCode"
+      responses:
+        "200":
+          description: The event type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventType"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags:
+        - KnEventType
+      summary: Replace an event type
+      description: |-
+        Replaces the changeable fields of an event type (`name`, `subject`, `severity`, `merge_hours`,
+        `rule`, `rule_version`); omitted fields take their zero values, they are not kept. Requires
+        `modify`. `code` and `source` cannot change: the body may omit them or repeat the current values,
+        anything else is 400. Existing events keep the severity, type name and other values they were
+        written with.
+
+        The event class is written again when `name` or `subject` changes, and created for a type that
+        has none yet. A name taken by another object type of the network is 409
+        `BknBackend.KnEvent.EventTypeExisted`.
+      operationId: updateKnEventType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/EventTypeCode"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnEventTypeUpdate"
+      responses:
+        "200":
+          description: The updated event type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventType"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags:
+        - KnEventType
+      summary: Delete an event type
+      description: |-
+        Deletes an event type, its event class and the class's dataset. Requires `modify`.
+
+        409 `BknBackend.KnEvent.EventTypeInUse` is returned when the type has any event (of any status),
+        or when its class, or the class's relation, is used by other definitions of the network (the
+        error details name the users). Nothing is deleted in that case. The dataset is deleted after the
+        type is gone; a failure to delete it is logged and does not fail the request. In a versioned
+        network the class is removed in the draft and the dataset is kept, since the published version
+        still reads the class.
+      operationId: deleteKnEventType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/EventTypeCode"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/events:
+    get:
+      tags:
+        - KnEvent
+      summary: List events
+      description: |-
+        Lists events of the knowledge network, newest recorded first (ordered by `recorded_at`, then ID,
+        descending). Requires `query_data`. Entries carry no `history`. Pages are cursor based: pass the
+        `next_cursor` of a page as `cursor` to get the next one; `next_cursor` is empty on the last page.
+        An unknown status or a cursor that is not valid is 400.
+      operationId: listKnEvents
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - name: event_type
+          in: query
+          description: Event type codes, comma separated. Empty values are ignored. Defaults to all types.
+          schema:
+            type: string
+          example: overdue_order,quality_issue
+        - name: status
+          in: query
+          description: Statuses, comma separated, each one of `unverified`, `verified`, `rejected`, `duplicate`, `closed`. Defaults to all statuses.
+          schema:
+            type: string
+          example: unverified,verified
+        - name: object_key
+          in: query
+          description: Only events about the object with this key.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: The `next_cursor` of the previous page.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Page size. A non-negative integer; 0 or absent gives 50, a value above 200 is reduced to 200. A negative or non-numeric value is 400.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 50
+            maximum: 200
+      responses:
+        "200":
+          description: One page of events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventList"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags:
+        - KnEvent
+      summary: Report an event
+      description: |-
+        Reports an event of a `report` event type. Requires `query_data`. The reporter is the caller.
+
+        The event starts `unverified`, or `verified` when `verify` is true. If the type's `merge_hours`
+        is above 0, `object_key` is given and an `unverified` or `verified` event of the same type and
+        object has an `occurred_at` within `merge_hours` of this one's, the new event is stored as
+        `duplicate` (`verify` is then ignored) with `merged_into` set to the first matching event, and
+        that event is returned too. `occurred_at` defaults to the time of the report. `object_name`
+        defaults to `object_key`. `detail` is free JSON of at most 1 MiB and defaults to `{}`.
+
+        404 `BknBackend.KnEvent.EventTypeNotFound` for an unknown type; 409
+        `BknBackend.KnEvent.SourceMismatch` if the type is a `rule` type.
+      operationId: reportKnEvent
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnEventReportInput"
+      responses:
+        "201":
+          description: Recorded. `events` holds the new event and, for a duplicate, the event it repeats (second).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventsResult"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/events/{event_id}:
+    get:
+      tags:
+        - KnEvent
+      summary: Get an event
+      description: Returns one event with its `history`, oldest first. Requires `query_data`. 404 `BknBackend.KnEvent.EventNotFound` if the event does not exist.
+      operationId: getKnEvent
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/EventID"
+      responses:
+        "200":
+          description: The event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/events/{event_id}/{action}:
+    post:
+      tags:
+        - KnEvent
+      summary: Verify, reject, close or reopen an event
+      description: |-
+        Takes an action on an event. Requires `query_data`. The body is optional; when present it may
+        only hold `reason`. The caller is recorded as the actor in the event's history.
+
+        | Action | From status | To status | Reason |
+        | --- | --- | --- | --- |
+        | `verify` | `unverified` | `verified` (records the verifier) | optional |
+        | `reject` | `unverified` | `rejected` | required |
+        | `close` | `verified` | `closed` | required |
+        | `reopen` | `closed` | `verified` | required |
+
+        A `reopen` is allowed for a closed reported event at any time, and for a closed rule event only
+        while its rule has not ended it (`ended_at` is 0). Closing a reported event sets `ended_at`;
+        reopening it clears it. Closing a rule event does not set `ended_at`. The `actions` field of an
+        event lists what it allows now.
+
+        An action name other than the four above is 404 `Public.NotFound`. An action the status does
+        not allow is 409 `BknBackend.KnEvent.ActionNotAllowed`, with error details
+        `{"action": "...", "status": "..."}`. A missing required reason is 400.
+      operationId: changeKnEvent
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/EventID"
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - verify
+              - reject
+              - close
+              - reopen
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnEventReasonInput"
+      responses:
+        "200":
+          description: The changed event, as `events` with one entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventsResult"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/rule-checks:
+    get:
+      tags:
+        - KnEventRuleCheck
+      summary: List the last rule checks
+      description: |-
+        Lists the last recorded check of each rule event type, ordered by event type code. Requires
+        `query_data`. A rule type that has never been checked has no entry. Not paginated.
+      operationId: listKnEventRuleChecks
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      responses:
+        "200":
+          description: The last checks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventRuleCheckList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags:
+        - KnEventRuleCheck
+      summary: Record a rule check
+      description: |-
+        Records one run of a rule event type and applies it to the type's events. Requires `query_data`.
+        404 `BknBackend.KnEvent.EventTypeNotFound` for an unknown type; 409
+        `BknBackend.KnEvent.SourceMismatch` if the type is a `report` type.
+
+        - `status: unknown` means the rule could not decide. No event changes state; the open events of
+          the type only get `last_checked_at` and `check_status: unknown` refreshed. The stored check
+          keeps `last_ok`, the time of the last check that decided.
+        - `status: ok` means the rule decided and `hits` is the complete result for the objects it
+          read. A hit with no open event of the type for that key opens a new `verified` event; a hit
+          whose object has an open event refreshes it (`rule_version`, attributes merged by property
+          name, `last_checked_at`, `check_status: ok`); an open event whose object is not hit is
+          closed. Duplicate keys in `hits` count once, the first one winning.
+        - `covered` limits `ok` to the objects the rule read when it read only some: open events whose
+          `object_key` is not listed are left as they are. Absent or `null`, the check covered all
+          objects. An empty list covers none.
+        - An event opened by the first `ok` check after a rule is set up, one with no earlier decided
+          check, is marked `backlog: true`: it records what had long been wrong.
+        - Only events whose period is open (`ended_at` is 0) and that are not `rejected` take part in a
+          check. A closed event whose period has ended is never changed by a check, so an object that
+          is hit again opens a new event.
+        - A closed event whose rule has not ended it does take part: a hit refreshes it, and a miss ends
+          its period.
+
+        The event's title for a hit is the type name and the object name. `hits` has at most 20000
+        entries (413 beyond), each with a `key` of 1 to 250 characters.
+      operationId: recordKnEventRuleCheck
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnEventRuleCheckInput"
+      responses:
+        "200":
+          description: The events the check created or changed (current state, without history) and the check recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventRuleCheckResult"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/event-changes:
+    get:
+      tags:
+        - KnEventChange
+      summary: Read the change feed of a network's events
+      description: |-
+        Internal, cluster only. Returns the changes to a network's events after a sequence number, so an
+        application can follow them and handle the events in its own tasks. It takes no caller identity
+        and checks no permission; the network must exist (404 otherwise).
+
+        Each write to an event appends one entry with a network-wide increasing `seq`. An entry carries
+        the event's state after the write, without `history`. A page's entries are ordered by `seq`,
+        ascending. To follow the feed, read with `after` set to the `last_seq` of the previous page and
+        stop when `entries` is empty; `last_seq` then equals the `after` that was sent. Sequence numbers
+        may have gaps, because the feed removes `checked` entries after 7 days.
+
+        `action` is one of `reported`, `detected`, `recovered`, `recovered-after-update`, `checked`, or
+        the person's actions `verify`, `reject`, `close`, `reopen`. `checked` means a rule check only
+        refreshed the detection fields of an open event.
+      operationId: listKnEventChanges
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - name: after
+          in: query
+          description: Return entries with a sequence greater than this. A non-negative integer; defaults to 0, the start of the feed. A negative or non-numeric value is 400.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          description: Maximum entries in the page. 0 or absent gives 500; a value above 1000 is reduced to 1000. A negative or non-numeric value is 400.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 500
+            maximum: 1000
+      responses:
+        "200":
+          description: One page of the feed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventChangeList"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  parameters:
+    KNID:
+      name: kn_id
+      in: path
+      required: true
+      description: Business knowledge network ID
+      schema:
+        type: string
+        maxLength: 128
+        pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
+    EventTypeCode:
+      name: code
+      in: path
+      required: true
+      description: Event type code
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9_.-]{0,63}$"
+    EventID:
+      name: event_id
+      in: path
+      required: true
+      description: Event ID
+      schema:
+        type: string
+  responses:
+    InvalidParameter:
+      description: BknBackend.KnEvent.InvalidParameter. A field or parameter is invalid; error_details names it.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Unauthorized:
+      description: Missing, invalid or expired token
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: The caller lacks the knowledge-network permission the operation needs
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotFound:
+      description: |-
+        The knowledge network (BknBackend.KnowledgeNetwork.NotFound), event type (BknBackend.KnEvent.EventTypeNotFound),
+        event (BknBackend.KnEvent.EventNotFound) or action name (Public.NotFound) was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Conflict:
+      description: |-
+        One of BknBackend.KnEvent.EventTypeExisted, BknBackend.KnEvent.EventTypeInUse,
+        BknBackend.KnEvent.SourceMismatch (error_details: `{"event_type", "source"}`) or
+        BknBackend.KnEvent.ActionNotAllowed (error_details: `{"action", "status"}`).
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    TooLarge:
+      description: BknBackend.KnEvent.TooLarge. The body is over 16 MiB, `rule` or `detail` is over 1 MiB, or `hits` has more than 20000 entries.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    InternalError:
+      description: BknBackend.KnEvent.InternalError
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  schemas:
+    KnEventTypeInput:
+      type: object
+      required:
+        - code
+        - name
+        - source
+      properties:
+        code:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_.-]{0,63}$"
+          description: Event type code, unique in the network. Cannot change.
+        name:
+          type: string
+          maxLength: 128
+          description: Name, trimmed. Also the name of the event class, so it cannot repeat another object type's name.
+        source:
+          type: string
+          enum:
+            - rule
+            - report
+          description: Who writes the type's events. Cannot change.
+        subject:
+          type: string
+          maxLength: 128
+          description: ID of the object type the events are about. Optional; an event's `object_type` is set from it.
+        severity:
+          type: string
+          maxLength: 16
+          description: Severity copied to new events. Free text.
+        merge_hours:
+          type: number
+          format: double
+          minimum: 0
+          default: 0
+          description: Window in hours within which a repeated report about the same object is a duplicate. 0 turns merging off. Used by report types.
+        rule:
+          type: object
+          additionalProperties: true
+          description: The rule of a rule type, kept as given and not interpreted by the platform; at most 1 MiB. Defaults to `{}`.
+        rule_version:
+          type: string
+          maxLength: 64
+          description: Version label of the rule.
+    KnEventTypeUpdate:
+      type: object
+      required:
+        - name
+      description: The body of a replace. `code` and `source` may be omitted or must equal the current values.
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+          maxLength: 128
+        source:
+          type: string
+          enum:
+            - rule
+            - report
+        subject:
+          type: string
+          maxLength: 128
+        severity:
+          type: string
+          maxLength: 16
+        merge_hours:
+          type: number
+          format: double
+          minimum: 0
+        rule:
+          type: object
+          additionalProperties: true
+        rule_version:
+          type: string
+          maxLength: 64
+    KnEventType:
+      type: object
+      properties:
+        kn_id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        source:
+          type: string
+          enum:
+            - rule
+            - report
+        subject:
+          type: string
+        severity:
+          type: string
+        merge_hours:
+          type: number
+          format: double
+        rule:
+          type: object
+          additionalProperties: true
+        rule_version:
+          type: string
+        object_type_id:
+          type: string
+          description: ID of the event class, the object type the type's events are read as. Empty for a type whose class has not been created yet.
+        dataset_id:
+          type: string
+          description: ID of the dataset behind the event class, written by the platform. Empty like `object_type_id`.
+        creator:
+          type: string
+        creator_type:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        updater:
+          type: string
+        updater_type:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+    KnEventTypeList:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnEventType"
+        total:
+          type: integer
+    KnEventAttribute:
+      type: object
+      description: A value of the event object's property, stored as given.
+      properties:
+        key:
+          type: string
+          maxLength: 250
+        label:
+          type: string
+          maxLength: 256
+    KnEventAttributes:
+      type: object
+      maxProperties: 64
+      description: Values by property name, at most 64; a name is 1 to 128 characters.
+      additionalProperties:
+        $ref: "#/components/schemas/KnEventAttribute"
+    KnEventTransition:
+      type: object
+      description: One entry of an event's history.
+      properties:
+        action:
+          type: string
+          description: "`reported`, `detected`, `recovered`, `recovered-after-update`, `verify`, `reject`, `close` or `reopen`."
+        from_status:
+          type: string
+        to_status:
+          type: string
+        actor:
+          type: string
+          description: Account ID; empty for a rule.
+        actor_type:
+          type: string
+          description: Account type, or `rule` when the rule made the change.
+        actor_name:
+          type: string
+        note:
+          type: string
+          description: The reason given.
+        time:
+          type: integer
+          format: int64
+    KnEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        kn_id:
+          type: string
+        event_type:
+          type: string
+          description: Event type code.
+        event_type_name:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+            - unverified
+            - verified
+            - rejected
+            - duplicate
+            - closed
+        severity:
+          type: string
+        source:
+          type: string
+          enum:
+            - rule
+            - report
+        rule_version:
+          type: string
+        object_type:
+          type: string
+          description: ID of the object type the event is about (the type's `subject`). Empty for a report without `object_key`.
+        object_key:
+          type: string
+        object_name:
+          type: string
+        object_attributes:
+          $ref: "#/components/schemas/KnEventAttributes"
+        occurred_at:
+          type: integer
+          format: int64
+        recorded_at:
+          type: integer
+          format: int64
+        ended_at:
+          type: integer
+          format: int64
+          description: When the abnormal period ended; 0 while it has not.
+        first_detected_at:
+          type: integer
+          format: int64
+          description: Rule events only.
+        last_checked_at:
+          type: integer
+          format: int64
+          description: Rule events only. When a rule check last looked at the event.
+        check_status:
+          type: string
+          enum:
+            - ok
+            - unknown
+          description: Rule events only. Outcome of the last check that looked at the event.
+        detail:
+          type: object
+          additionalProperties: true
+        backlog:
+          type: boolean
+          description: Rule events only. True for an event found by the first deciding check after the rule was set up.
+        merged_into:
+          type: string
+          description: ID of the event a `duplicate` repeats.
+        reported_by:
+          type: string
+        reported_by_name:
+          type: string
+        verified_by:
+          type: string
+        verified_by_type:
+          type: string
+          description: Account type of the verifier, or `rule` for a rule event.
+        verified_by_name:
+          type: string
+        verified_at:
+          type: integer
+          format: int64
+        revision:
+          type: integer
+          description: Starts at 1 and increases with each change to the event.
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+        actions:
+          type: array
+          description: The actions the event's status allows now.
+          items:
+            type: string
+            enum:
+              - verify
+              - reject
+              - close
+              - reopen
+        history:
+          type: array
+          description: Only in the response of the get operation. Oldest first.
+          items:
+            $ref: "#/components/schemas/KnEventTransition"
+    KnEventList:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnEvent"
+        next_cursor:
+          type: string
+          description: Empty on the last page.
+    KnEventsResult:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnEvent"
+    KnEventReportInput:
+      type: object
+      required:
+        - event_type
+        - title
+      properties:
+        event_type:
+          type: string
+          description: Code of a `report` event type.
+        title:
+          type: string
+          maxLength: 256
+          description: Title, trimmed.
+        occurred_at:
+          type: integer
+          format: int64
+          minimum: 0
+          description: When it happened. Defaults to the time of the report.
+        object_key:
+          type: string
+          maxLength: 250
+        object_name:
+          type: string
+          maxLength: 256
+        object_attributes:
+          $ref: "#/components/schemas/KnEventAttributes"
+        detail:
+          type: object
+          additionalProperties: true
+          description: Free JSON of at most 1 MiB.
+        verify:
+          type: boolean
+          default: false
+          description: Verify the event at once, as its reporter.
+    KnEventReasonInput:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 512
+          description: Why. Required by `reject`, `close` and `reopen`.
+    KnEventRuleHit:
+      type: object
+      required:
+        - key
+      properties:
+        key:
+          type: string
+          minLength: 1
+          maxLength: 250
+          description: Key of the object the rule found.
+        name:
+          type: string
+          maxLength: 256
+          description: Defaults to `key`.
+        attributes:
+          $ref: "#/components/schemas/KnEventAttributes"
+    KnEventRuleCheckInput:
+      type: object
+      required:
+        - event_type
+        - status
+      properties:
+        event_type:
+          type: string
+          description: Code of a `rule` event type.
+        rule_version:
+          type: string
+          maxLength: 64
+        status:
+          type: string
+          enum:
+            - ok
+            - unknown
+        message:
+          type: string
+          maxLength: 1024
+          description: Why the rule could not decide, for `unknown`.
+        hits:
+          type: array
+          maxItems: 20000
+          items:
+            $ref: "#/components/schemas/KnEventRuleHit"
+        covered:
+          type: array
+          nullable: true
+          description: Object keys the check read, when it read only some.
+          items:
+            type: string
+    KnEventRuleCheck:
+      type: object
+      properties:
+        event_type:
+          type: string
+        status:
+          type: string
+          enum:
+            - ok
+            - unknown
+        rule_version:
+          type: string
+        hits:
+          type: integer
+          description: Distinct hit keys of an `ok` check; 0 for `unknown`.
+        message:
+          type: string
+        last_ok:
+          type: integer
+          format: int64
+          description: When the rule last decided, `ok` checks; 0 if it never has.
+        checked_by:
+          type: string
+        time:
+          type: integer
+          format: int64
+    KnEventRuleCheckList:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnEventRuleCheck"
+        total:
+          type: integer
+    KnEventRuleCheckResult:
+      type: object
+      properties:
+        events:
+          type: array
+          description: Events the check created or changed, including refreshed ones.
+          items:
+            $ref: "#/components/schemas/KnEvent"
+        check:
+          $ref: "#/components/schemas/KnEventRuleCheck"
+    KnEventChange:
+      type: object
+      properties:
+        seq:
+          type: integer
+          format: int64
+        event_id:
+          type: string
+        action:
+          type: string
+          description: "`reported`, `detected`, `recovered`, `recovered-after-update`, `checked`, `verify`, `reject`, `close` or `reopen`."
+        time:
+          type: integer
+          format: int64
+        event:
+          $ref: "#/components/schemas/KnEvent"
+    KnEventChangeList:
+      type: object
+      properties:
+        entries:
+          type: array
+          description: Ordered by `seq`, ascending.
+          items:
+            $ref: "#/components/schemas/KnEventChange"
+        last_seq:
+          type: integer
+          format: int64
+          description: The largest `seq` returned, or the requested `after` when nothing is new.
