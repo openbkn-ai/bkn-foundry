@@ -4,5 +4,6 @@ pymongo>=4.17.0
 opensearch-py>=3.2.0
 
 # RDS 多数据库驱动
-git+https://github.com/openbkn-ai/bkn-comm-py.git@v0.0.1
+# 以 tag 的源码包安装，构建镜像时不需要 git
+bkn-comm-py @ https://github.com/openbkn-ai/bkn-comm-py/archive/refs/tags/v0.0.1.tar.gz
 

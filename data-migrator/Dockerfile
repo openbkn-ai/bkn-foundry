@@ -6,7 +6,11 @@
 # layout the runtime expects under /app/repos, so it is copied in directly
 # (no collect step / copy_repos.py / git fetch / PAT / network).
 
-ARG BASE_IMAGE=ubuntu:24.04
+# python:3.12-slim (Debian) rather than Ubuntu plus apt: the build then reaches
+# only PyPI and GitHub, and keeps working when the Ubuntu mirrors do not resolve.
+# Pinned to trixie so a change of the image's default Debian release is a
+# deliberate edit here, not a surprise.
+ARG BASE_IMAGE=python:3.12-slim-trixie
 
 FROM ${BASE_IMAGE}
 
@@ -14,16 +18,12 @@ WORKDIR /app
 
 COPY data-migrator/server ./server
 
-# git is required for pip to install the git-sourced RDS driver in requirements.txt.
+# ksycopg2 (Kingbase) ships the libraries it loads next to its own module, so
+# its directory goes on the loader path. The directory is asked of Python rather
+# than written out, since it differs between distributions.
 RUN set -ex; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends git python3-pip ca-certificates; \
-    pip3 install --no-cache-dir -r server/requirements.txt --break-system-packages; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
-
-RUN set -ex; \
-    echo "/usr/local/lib/python3.12/dist-packages/ksycopg2" > /etc/ld.so.conf.d/ksycopg2.conf; \
+    pip install --no-cache-dir --root-user-action=ignore -r server/requirements.txt; \
+    python3 -c 'import os, ksycopg2; print(os.path.dirname(ksycopg2.__file__))' > /etc/ld.so.conf.d/ksycopg2.conf; \
     ldconfig
 
 # Bake config + migrations. migrations/<service>/<db_type>/<version>/ maps 1:1
