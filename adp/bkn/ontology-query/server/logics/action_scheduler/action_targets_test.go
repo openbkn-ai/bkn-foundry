@@ -44,7 +44,7 @@ func TestActionCreateUsesInputWithoutScanning(t *testing.T) {
 	object := actionTargetObject("orders", "order_id")
 	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "orders").Return(object, true, nil)
 	svc := &actionSchedulerService{omAccess: models}
-	action := &interfaces.ActionType{ActionType: "add", ObjectTypeID: "orders", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}}
+	action := &interfaces.ActionType{ActionType: "add", ObjectTypeID: "orders", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}, Parameters: []interfaces.Parameter{{Name: "order_id", ValueFrom: "property", Value: "order_id"}}}
 	instances, data, err := svc.getInstancesForAction(context.Background(), action, &interfaces.ActionExecutionRequest{KNID: "kn", Branch: "main", ObjectInput: map[string]any{"order_id": "new-order"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

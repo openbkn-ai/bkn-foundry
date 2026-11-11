@@ -51,21 +51,24 @@ func (s *Resolver) ExecutionSchema(ctx context.Context, action *interfaces.Actio
 		}
 		if action.ActionType == "add" {
 			fields := make(map[string]any)
+			requiredFields := []string{}
+			mapped := mappedObjectInputProperties(action.Parameters)
 			for _, property := range object.DataProperties {
+				if !mapped[property.Name] {
+					continue
+				}
 				field := schemaForType(property.Type)
 				field["title"] = property.DisplayName
 				fields[property.Name] = field
+				requiredFields = append(requiredFields, property.Name)
 			}
-			requiredFields := []string{}
-			for _, parameter := range action.Parameters {
-				if parameter.ValueFrom == "property" {
-					if name, ok := parameter.Value.(string); ok {
-						requiredFields = append(requiredFields, name)
-					}
+			for name := range mapped {
+				if _, exists := fields[name]; !exists {
+					return nil, actionTargetError(ctx, fmt.Sprintf("execution parameter maps unknown object property %q", name))
 				}
 			}
-			properties["object_input"] = map[string]any{"type": "object", "title": object.OTName, "properties": fields, "required": requiredFields, "additionalProperties": false}
 			if len(requiredFields) > 0 {
+				properties["object_input"] = map[string]any{"type": "object", "title": object.OTName, "properties": fields, "required": requiredFields, "additionalProperties": false}
 				required = append(required, "object_input")
 			}
 		} else {
