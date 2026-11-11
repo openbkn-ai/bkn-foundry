@@ -44,7 +44,7 @@ openbkn context tool-call <kn_id> run_cypher --args '{"query":"MATCH (g:goals) R
 | 字段 | 说明 |
 | --- | --- |
 | `query` | Cypher 文本，最长 8192 字符 |
-| `parameters` | `$name` 的取值。参数只能是值，不能是标签、关系或属性名；null 只能用于 `$name IS NULL` 判空（见下文「可选条件」） |
+| `parameters` | `$name` 的取值。参数只能是值，不能是标签、关系或属性名；null 只能用于 `$name IS NULL` 判空（见下文「可选条件」）。参数名区分大小写，也可以是关键字，如 `$end`、`$limit` |
 | `object_properties` | 返回节点时，每个节点变量额外带回哪些属性，例如 `{"t": ["team_name"]}`。变量必须是查询里返回的节点，属性总数最多 128 个，授权规则与查询中其他属性相同 |
 | `explain` | 为 `true` 时只返回执行计划、不读数据，见下文「先用 explain 校验」 |
 

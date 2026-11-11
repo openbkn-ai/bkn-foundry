@@ -44,7 +44,7 @@ Request fields:
 | Field | Description |
 | --- | --- |
 | `query` | The Cypher text, at most 8192 characters |
-| `parameters` | Values for `$name`. A parameter is always a value, never a label, relationship type or property name; null is accepted only where the query tests `$name IS NULL` (see "Optional conditions" below) |
+| `parameters` | Values for `$name`. A parameter is always a value, never a label, relationship type or property name; null is accepted only where the query tests `$name IS NULL` (see "Optional conditions" below). Parameter names are case-sensitive and may be keywords, such as `$end` or `$limit` |
 | `object_properties` | Extra properties a returned node carries, per node variable, as in `{"t": ["team_name"]}`. Each variable must be a node the query returns; at most 128 properties in all, authorized like any other property the query names |
 | `explain` | When `true`, returns the plan and reads nothing; see "Checking a query with explain" below |
 
