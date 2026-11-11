@@ -360,7 +360,8 @@ type KNVersionService interface {
 	CheckReadEnd(ctx context.Context, knID string, resolved *KNResolvedBranch) error
 	Enable(ctx context.Context, knID string, req *KNEnableVersioningRequest) (*KNVersioningView, error)
 	// RebaseDraft puts a draft with no changes of its own back on the running version, after a
-	// switch left it on another. A draft with changes, or one written meanwhile, stays as it is.
+	// switch left it on another. A draft with changes, one copied from another version, or one
+	// written meanwhile, stays as it is.
 	RebaseDraft(ctx context.Context, knID string) error
 	GetState(ctx context.Context, knID string) (*KNVersioningView, error)
 	ListVersions(ctx context.Context, knID string, query *KNVersionsQuery) ([]*KNVersion, int, error)
