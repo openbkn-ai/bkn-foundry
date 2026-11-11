@@ -344,6 +344,12 @@ components:
         - kn_id
         - at_id
       properties:
+        relation_target:
+          $ref: '#/components/schemas/ActionRelationTarget'
+        object_input:
+          type: object
+          additionalProperties: true
+          description: New object data for create operations; no existing-instance scan.
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
@@ -419,6 +425,12 @@ components:
         - kn_id
         - at_id
       properties:
+        relation_target:
+          $ref: '#/components/schemas/ActionRelationTarget'
+        object_input:
+          type: object
+          additionalProperties: true
+          description: New object data for create operations; no existing-instance scan.
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
@@ -432,7 +444,7 @@ components:
           items:
             $ref: '#/components/schemas/InstanceIdentity'
           description: |
-            目标对象实例。留空表示按行动类自身的条件扫描目标实例。
+            修改和删除的明确目标实例；不传时拒绝执行，不按条件扫描。
         dynamic_params:
           type: object
           additionalProperties: true
@@ -764,3 +776,18 @@ components:
           type: array
           items: {}
           description: 下一页游标；为空表示没有更多数据。
+    ActionRelationTarget:
+      type: object
+      required:
+      - source_identity
+      - target_identity
+      additionalProperties: false
+      properties:
+        source_identity:
+          type: object
+          additionalProperties: true
+        target_identity:
+          type: object
+          additionalProperties: true
+      description: One explicit directed instance pair. Keys are defined by the endpoint object primary keys. No implicit
+        pairing or cross join.

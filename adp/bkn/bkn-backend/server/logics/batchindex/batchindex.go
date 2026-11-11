@@ -23,6 +23,7 @@ func NewBatchIDIndex(knID, branch string) *interfaces.BatchIDIndex {
 		KNID:            knID,
 		Branch:          branch,
 		ObjectTypes:     make(map[string]*interfaces.ObjectType),
+		RelationTypes:   make(map[string]*interfaces.RelationType),
 		RelationTypeIDs: make(map[string]struct{}),
 		ActionTypeIDs:   make(map[string]struct{}),
 		ConceptGroupIDs: make(map[string]struct{}),
@@ -59,6 +60,14 @@ func MergeBatchIndex(dst, src *interfaces.BatchIDIndex) error {
 			return err
 		}
 	}
+	if dst.RelationTypes == nil {
+		dst.RelationTypes = make(map[string]*interfaces.RelationType)
+	}
+	for _, rt := range src.RelationTypes {
+		if err := ingestRelationType(dst, rt); err != nil {
+			return err
+		}
+	}
 	for id := range src.RelationTypeIDs {
 		dst.RelationTypeIDs[id] = struct{}{}
 	}
@@ -87,7 +96,9 @@ func CollectKNFromPayload(kn *interfaces.KN) (*interfaces.BatchIDIndex, error) {
 		}
 	}
 	for _, rt := range kn.RelationTypes {
-		ingestRelationType(idx, rt)
+		if err := ingestRelationType(idx, rt); err != nil {
+			return nil, err
+		}
 	}
 	for _, at := range kn.ActionTypes {
 		ingestActionType(idx, at)
@@ -127,7 +138,9 @@ func ingestConceptGroup(b *interfaces.BatchIDIndex, cg *interfaces.ConceptGroup)
 		}
 	}
 	for _, rt := range cg.RelationTypes {
-		ingestRelationType(b, rt)
+		if err := ingestRelationType(b, rt); err != nil {
+			return err
+		}
 	}
 	for _, at := range cg.ActionTypes {
 		ingestActionType(b, at)
@@ -150,11 +163,23 @@ func ingestObjectType(b *interfaces.BatchIDIndex, ot *interfaces.ObjectType) err
 	return nil
 }
 
-func ingestRelationType(b *interfaces.BatchIDIndex, rt *interfaces.RelationType) {
+func ingestRelationType(b *interfaces.BatchIDIndex, rt *interfaces.RelationType) error {
 	if rt == nil || rt.RTID == "" {
-		return
+		return nil
 	}
+	if b.RelationTypes == nil {
+		b.RelationTypes = make(map[string]*interfaces.RelationType)
+	}
+	if existing := b.RelationTypes[rt.RTID]; existing != nil {
+		left, err1 := json.Marshal(existing.RelationTypeWithKeyField)
+		right, err2 := json.Marshal(rt.RelationTypeWithKeyField)
+		if err1 != nil || err2 != nil || string(left) != string(right) {
+			return fmt.Errorf("conflicting relation type definitions for id %q", rt.RTID)
+		}
+	}
+	b.RelationTypes[rt.RTID] = rt
 	b.RelationTypeIDs[rt.RTID] = struct{}{}
+	return nil
 }
 
 func ingestActionType(b *interfaces.BatchIDIndex, at *interfaces.ActionType) {

@@ -50,6 +50,7 @@ type Entry struct {
 	Action            string
 	TargetID          string
 	TargetName        string
+	TargetType        string // trusted extension snapshot; never taken from the request body
 	Detail            string
 	Status            int
 	ClientIP          string

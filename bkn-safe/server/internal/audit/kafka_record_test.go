@@ -200,3 +200,23 @@ func TestBuildKafkaAdminRecordClassifiesLicenseRenewFailureWithoutFakeHTTPCode(t
 		t.Fatalf("failure action = %+v", facts)
 	}
 }
+
+func TestExtensionAuditTargetTypeCannotOverrideCoreOrAcceptInvalidTypes(t *testing.T) {
+	entry := Entry{ActorID: "admin", ActorNameSnapshot: "Administrator", RequestID: "extension-target-test", Method: "PATCH", Resource: "external-resources", Action: "update", TargetID: "idp", TargetName: "Corporate identity", Status: 200}
+	for _, targetType := range []string{"", "invalid-type", "wrong type", "1target", "用户", strings.Repeat("x", 65)} {
+		entry.TargetType = targetType
+		if _, err := BuildKafkaAdminRecord(entry, "test"); err == nil {
+			t.Fatalf("accepted invalid extension target type %q", targetType)
+		}
+	}
+	entry.Resource = "users"
+	entry.TargetType = "sso_provider"
+	if _, err := BuildKafkaAdminRecord(entry, "test"); err == nil {
+		t.Fatal("extension overrode built-in user taxonomy")
+	}
+	entry.Resource = "external-resources"
+	entry.TargetType = "sso_provider"
+	if _, err := BuildKafkaAdminRecord(entry, "test"); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -284,15 +284,15 @@ func (mr *MockKNAccessMockRecorder) UpdateKN(ctx, tx, kn any) *gomock.Call {
 }
 
 // UpdateKNDetail mocks base method.
-func (m *MockKNAccess) UpdateKNDetail(ctx context.Context, knID, branch, detail string) error {
+func (m *MockKNAccess) UpdateKNDetail(ctx context.Context, tx *sql.Tx, knID, branch, detail string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateKNDetail", ctx, knID, branch, detail)
+	ret := m.ctrl.Call(m, "UpdateKNDetail", ctx, tx, knID, branch, detail)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateKNDetail indicates an expected call of UpdateKNDetail.
-func (mr *MockKNAccessMockRecorder) UpdateKNDetail(ctx, knID, branch, detail any) *gomock.Call {
+func (mr *MockKNAccessMockRecorder) UpdateKNDetail(ctx, tx, knID, branch, detail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateKNDetail", reflect.TypeOf((*MockKNAccess)(nil).UpdateKNDetail), ctx, knID, branch, detail)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateKNDetail", reflect.TypeOf((*MockKNAccess)(nil).UpdateKNDetail), ctx, tx, knID, branch, detail)
 }

@@ -163,7 +163,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 
-			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
+			kna.EXPECT().UpdateKNDetail(ctx, nil, knID, branch, gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.handleKNs()
@@ -273,7 +273,7 @@ func TestConceptSyncer_handleKnowledgeNetwork(t *testing.T) {
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 
-			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
+			kna.EXPECT().UpdateKNDetail(ctx, nil, knID, branch, gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
@@ -1717,7 +1717,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
-			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(errors.New("db error"))
+			kna.EXPECT().UpdateKNDetail(ctx, nil, knID, branch, gomock.Any()).Return(errors.New("db error"))
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
 			So(err, ShouldNotBeNil)
@@ -1729,7 +1729,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
-			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
+			kna.EXPECT().UpdateKNDetail(ctx, nil, knID, branch, gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
