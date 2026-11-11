@@ -1147,13 +1147,6 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 			}
 			document.Document["condition"] = string(encoded)
 		}
-		if config, exists := document.Document["operation_config"]; exists && config != nil {
-			encoded, err := sonic.Marshal(config)
-			if err != nil {
-				return err
-			}
-			document.Document["operation_config"] = string(encoded)
-		}
 		documents = append(documents, document)
 	}
 	if err := vega_backend.WriteDatasetDocuments(ctx, ats.vbs, interfaces.BKN_DATASET_ID, documents); err != nil {

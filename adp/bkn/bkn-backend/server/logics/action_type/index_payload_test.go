@@ -13,7 +13,7 @@ import (
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
-func TestActionTypeIndexPayloadKeepsExistingStringFields(t *testing.T) {
+func TestActionTypeIndexPayloadKeepsOperationConfigAsObject(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	vbs := mock_interfaces.NewMockVegaBackendService(ctrl)
 	service := &actionTypeService{appSetting: &common.AppSetting{}, vbs: vbs}
@@ -33,8 +33,9 @@ func TestActionTypeIndexPayloadKeepsExistingStringFields(t *testing.T) {
 			if _, ok := document["condition"].(string); !ok {
 				t.Fatalf("condition = %#v, want encoded string", document["condition"])
 			}
-			if _, ok := document["operation_config"].(string); !ok {
-				t.Fatalf("operation_config must remain an opaque JSON string in the concept index: %#v", document["operation_config"])
+			config, ok := document["operation_config"].(map[string]any)
+			if !ok || config["type"] != "tool" {
+				t.Fatalf("operation_config must remain an object in the concept index: %#v", document["operation_config"])
 			}
 			if document["_id"] == "" {
 				t.Fatal("missing document ID")

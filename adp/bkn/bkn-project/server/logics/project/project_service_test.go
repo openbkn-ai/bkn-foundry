@@ -41,6 +41,7 @@ type fixture struct {
 	pa  *pmock.MockProjectAccess
 	ra  *pmock.MockReleaseAccess
 	bba *pmock.MockBknBackendAccess
+	kva *pmock.MockKNVersionAccess
 	ls  *pmock.MockLineageService
 	va  *pmock.MockVegaAccess
 }
@@ -50,10 +51,11 @@ func newFixture(ctrl *gomock.Controller) *fixture {
 		pa:  pmock.NewMockProjectAccess(ctrl),
 		ra:  pmock.NewMockReleaseAccess(ctrl),
 		bba: pmock.NewMockBknBackendAccess(ctrl),
+		kva: pmock.NewMockKNVersionAccess(ctrl),
 		ls:  pmock.NewMockLineageService(ctrl),
 		va:  pmock.NewMockVegaAccess(ctrl),
 	}
-	f.svc = &projectService{pa: f.pa, ra: f.ra, bba: f.bba, ls: f.ls, va: f.va}
+	f.svc = &projectService{pa: f.pa, ra: f.ra, bba: f.bba, kva: f.kva, ls: f.ls, va: f.va}
 	return f
 }
 
@@ -75,9 +77,9 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 
 		Convey("A project of an existing network starts its lineage and branches off main\n", func() {
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{ID: "orders"}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
 			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).Return(&interfaces.CreateLineageResult{}, nil)
-			f.ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", Limit: 1}).
+			f.ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).
 				Return([]*interfaces.Release{}, nil)
 			var branch string
 			f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
@@ -121,7 +123,7 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 				{ctx, interfaces.NAMING_LANGUAGE_EN_US, interfaces.NAMING_LANGUAGE_EN_US},
 			} {
 				f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{ID: "orders"}, nil)
-				f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, nil)
+				f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
 				f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).Return(&interfaces.CreateLineageResult{}, nil)
 				f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
 				f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
@@ -140,13 +142,13 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 			}
 		})
 
-		Convey("A second project of a network shares its lineage and starts from the newest release\n", func() {
+		Convey("A second project of a network shares its lineage, whose network is its baseline\n", func() {
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{ID: "orders"}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
 			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).
 				Return(nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_AlreadyExists))
 			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).
-				Return([]*interfaces.Release{{NetworkID: "orders_v1_1_0"}}, nil)
+				Return([]*interfaces.Release{{NetworkID: "orders", KNVersion: 2}}, nil)
 			f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
 				Return(&interfaces.CreateBranchResult{}, nil)
 			var stored *interfaces.Project
@@ -157,45 +159,13 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 			entry, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders"}, owner, author)
 
 			So(err, ShouldBeNil)
-			So(stored.BaselineNetworkID, ShouldEqual, "orders_v1_1_0")
+			So(stored.BaselineNetworkID, ShouldEqual, "orders")
 			So(stored.CatalogIDs, ShouldNotBeNil)
 			So(entry.OtherProjects, ShouldEqual, 1)
 		})
 
-		Convey("A project of a released network joins the lineage the release belongs to\n", func() {
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders_v1_1_0").Return(&interfaces.KnowledgeNetwork{ID: "orders_v1_1_0"}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders_v1_1_0").
-				Return(&interfaces.Release{LineageID: "orders", NetworkID: "orders_v1_1_0"}, true, nil)
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{ID: "orders"}, nil)
-			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).
-				Return(nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_AlreadyExists))
-			f.ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", Limit: 1}).
-				Return([]*interfaces.Release{{NetworkID: "orders_v1_1_0"}}, nil)
-			f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
-				Return(&interfaces.CreateBranchResult{}, nil)
-			f.pa.EXPECT().CreateProject(gomock.Any(), gomock.Any()).Return(nil)
-			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), []string{"orders"}).Return(map[string]int64{"orders": 1}, nil)
-
-			entry, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders_v1_1_0"}, owner, author)
-
-			So(err, ShouldBeNil)
-			So(entry.KNID, ShouldEqual, "orders")
-			So(entry.BaselineNetworkID, ShouldEqual, "orders_v1_1_0")
-		})
-
-		Convey("A released network whose base network the caller cannot see is refused\n", func() {
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders_v1_1_0").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders_v1_1_0").
-				Return(&interfaces.Release{LineageID: "orders"}, true, nil)
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusForbidden})
-
-			_, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders_v1_1_0"}, owner, author)
-
-			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Project_BknBackendRequestFailed)
-		})
-
 		Convey("A project of a new network creates the network first\n", func() {
-			f.bba.EXPECT().CreateKN(gomock.Any(), token, "", "Orders").Return("01a1-new", nil)
+			f.kva.EXPECT().CreateVersionedKN(gomock.Any(), token, "", "Orders").Return("01a1-new", nil)
 			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "01a1-new", author).Return(&interfaces.CreateLineageResult{}, nil)
 			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
 			f.ls.EXPECT().CreateBranch(gomock.Any(), "01a1-new", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
@@ -250,7 +220,7 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 		})
 
 		Convey("A bkn-backend failure is a bad gateway\n", func() {
-			f.bba.EXPECT().CreateKN(gomock.Any(), token, "", "Orders").
+			f.kva.EXPECT().CreateVersionedKN(gomock.Any(), token, "", "Orders").
 				Return("", &interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError})
 
 			_, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{
@@ -262,7 +232,7 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 
 		Convey("Any other lineage failure stops before a branch or a row\n", func() {
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
 			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).
 				Return(nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Lineage_BknBackendRequestFailed))
 
@@ -273,7 +243,7 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 
 		Convey("A branch failure leaves no project\n", func() {
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
 			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).Return(&interfaces.CreateLineageResult{}, nil)
 			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
 			f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), gomock.Any()).
@@ -284,18 +254,75 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Lineage_BranchAlreadyExists)
 		})
 
-		Convey("A release lookup failure is an internal error\n", func() {
+		Convey("A network that keeps no versions is refused until the owner confirms turning them on\n", func() {
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, errors.New("db down"))
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{}, nil)
 
 			_, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders"}, owner, author)
 
-			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Project_InternalError)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Project_VersioningRequired)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, map[string]any{"kn_id": "orders"})
+		})
+
+		Convey("A confirmed project turns versioning on, and one turned on meanwhile is fine\n", func() {
+			for _, enableErr := range []error{nil,
+				&interfaces.BknBackendError{HTTPCode: http.StatusConflict, BaseError: httperrors.BaseError{ErrorCode: interfaces.KN_VERSION_ERROR_ALREADY_VERSIONED}}} {
+				f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+				f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{}, nil)
+				f.kva.EXPECT().EnableVersioning(gomock.Any(), token, "orders", gomock.Any()).Return(enableErr)
+				f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).Return(&interfaces.CreateLineageResult{}, nil)
+				f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil)
+				f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
+					Return(&interfaces.CreateBranchResult{}, nil)
+				f.pa.EXPECT().CreateProject(gomock.Any(), gomock.Any()).Return(nil)
+				f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 1}, nil)
+
+				entry, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{
+					Name: "Orders", KNID: "orders", EnableVersioning: true,
+				}, owner, author)
+
+				So(err, ShouldBeNil)
+				So(entry.KNID, ShouldEqual, "orders")
+			}
+		})
+
+		Convey("Turning versioning on that bkn-backend forbids is refused as forbidden\n", func() {
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{}, nil)
+			f.kva.EXPECT().EnableVersioning(gomock.Any(), token, "orders", gomock.Any()).
+				Return(&interfaces.BknBackendError{HTTPCode: http.StatusForbidden})
+
+			_, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{
+				Name: "Orders", KNID: "orders", EnableVersioning: true,
+			}, owner, author)
+
+			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Project_VersioningForbidden)
+		})
+
+		Convey("Another failure reading or turning on versioning keeps bkn-backend's status\n", func() {
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").
+				Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError})
+
+			_, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders"}, owner, author)
+			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Project_BknBackendRequestFailed)
+
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{}, nil)
+			f.kva.EXPECT().EnableVersioning(gomock.Any(), token, "orders", gomock.Any()).
+				Return(&interfaces.BknBackendError{HTTPCode: http.StatusBadRequest})
+
+			_, err = f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{
+				Name: "Orders", KNID: "orders", EnableVersioning: true,
+			}, owner, author)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_BknBackendRequestFailed)
 		})
 
 		Convey("A store failure is an internal error\n", func() {
 			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders").Return(nil, false, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
 			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).Return(&interfaces.CreateLineageResult{}, nil)
 			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
 

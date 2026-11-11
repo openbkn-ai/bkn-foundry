@@ -96,6 +96,30 @@ func Test_BknAgentAccess_AnswerOnNetwork(t *testing.T) {
 			})
 		})
 
+		Convey("An answer on a version of the network names that version in the context\n", func() {
+			respBody = sse([2]string{"result", `{"content":{"answer":"S1."}}`}, [2]string{"terminal", `{"status":"succeeded"}`})
+			onDraft := *req
+			onDraft.KNID, onDraft.KNVersion = "supply", interfaces.KN_VERSION_DRAFT
+
+			_, err := ba.AnswerOnNetwork(ctx, "Bearer t", &onDraft)
+
+			So(err, ShouldBeNil)
+			So(got[0].body["context"], ShouldResemble, map[string]any{"kn_id": "supply", "kn_version": "draft"})
+		})
+
+		Convey("An answer pinned to a draft revision names that revision in the context\n", func() {
+			respBody = sse([2]string{"result", `{"content":{"answer":"S1."}}`}, [2]string{"terminal", `{"status":"succeeded"}`})
+			pinned := *req
+			pinned.KNID, pinned.KNVersion, pinned.DraftRevision = "supply", interfaces.KN_VERSION_DRAFT, 12
+
+			_, err := ba.AnswerOnNetwork(ctx, "Bearer t", &pinned)
+
+			So(err, ShouldBeNil)
+			So(got[0].body["context"], ShouldResemble, map[string]any{
+				"kn_id": "supply", "kn_version": "draft", "draft_revision": float64(12),
+			})
+		})
+
 		Convey("A tool call's input too large to keep is left out and said so; one unfinished has no status\n", func() {
 			large := `{"query":"` + strings.Repeat("x", maxToolInputBytes) + `"}`
 			respBody = sse(
@@ -289,4 +313,15 @@ type readFailsClient struct {
 func (c *readFailsClient) PostNoUnmarshal(ctx context.Context, _ string, _ map[string]string,
 	_ interface{}) (int, []byte, error) {
 	return http.StatusOK, []byte(sse([2]string{"meta", `{"thread_id":"th1","agent_id":"studio_smart_qa"}`})), c.read(ctx)
+}
+
+func TestAnswerContextSendsADraftRevisionOnlyWithTheDraft(t *testing.T) {
+	got := answerContext(&interfaces.BknAgentAnswerRequest{KNID: "supply", KNVersion: "3", DraftRevision: 12})
+	if _, ok := got["draft_revision"]; ok || got["kn_version"] != "3" {
+		t.Fatal("a draft revision went with another version", got)
+	}
+	got = answerContext(&interfaces.BknAgentAnswerRequest{KNID: "supply", KNVersion: interfaces.KN_VERSION_DRAFT, DraftRevision: 12})
+	if got["draft_revision"] != int64(12) || got["kn_version"] != "draft" {
+		t.Fatal("the draft revision is not pinned with the draft", got)
+	}
 }

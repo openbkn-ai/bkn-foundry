@@ -158,6 +158,11 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 
+# Optional licence hub for licensed extension discovery and invocation. Leaving
+# the URL empty preserves community behaviour; an address does not grant a licence.
+licenseHub:
+  url: ""
+
 # Optional, same-origin HTTP extension provider. Schemas and authorization stay
 # in the provider. Leave empty for the unchanged community tool catalogue.
 mcpExtensionManifestURL: ""

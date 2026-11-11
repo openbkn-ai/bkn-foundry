@@ -26,9 +26,9 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		gs := pmock.NewMockGitStore(mockCtrl)
-		bba := pmock.NewMockBknBackendAccess(mockCtrl)
+		kva := pmock.NewMockKNVersionAccess(mockCtrl)
 		efa := pmock.NewMockExecutionFactoryAccess(mockCtrl)
-		svc := &driftService{gs: gs, bba: bba, efa: efa}
+		svc := &driftService{gs: gs, kva: kva, efa: efa}
 		ctx := context.Background()
 		main := map[string][]byte{
 			"network.bkn":              []byte("network"),
@@ -42,7 +42,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 				"object_types/order.bkn":  []byte("order edited in Studio"),
 				"relation_types/buys.bkn": []byte("buys"),
 			}
-			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(live, nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, "orders", interfaces.KN_VERSION_DRAFT).Return(live, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
 			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(map[string][]byte{}, nil)
 
@@ -61,7 +61,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 		})
 
 		Convey("Identical definitions report no drift\n", func() {
-			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders_1-0-0").Return(main, nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, "orders_1-0-0", interfaces.KN_VERSION_DRAFT).Return(main, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
 			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(map[string][]byte{}, nil)
 
@@ -81,7 +81,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 				"functions/box1/toolbox.json": exported.Files[capability.TOOLBOX_FILE],
 				"skills/s1/SKILL.md":          []byte("---\nname: s\n---\nv1\n"),
 			}
-			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, "orders", interfaces.KN_VERSION_DRAFT).Return(main, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
 			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(stored, nil)
 			efa.EXPECT().ExportToolbox(gomock.Any(), token, "box1").Return(export, nil)
@@ -108,7 +108,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 				"functions/box1/toolbox.json": []byte(`{"toolbox":{}}`),
 				"skills/s1/SKILL.md":          skill["SKILL.md"],
 			}
-			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, "orders", interfaces.KN_VERSION_DRAFT).Return(main, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
 			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(stored, nil)
 			efa.EXPECT().ExportToolbox(gomock.Any(), token, "box1").Return(nil, &interfaces.ExecutionFactoryError{HTTPCode: http.StatusNotFound})
@@ -128,7 +128,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 		})
 
 		Convey("A refused function export names the toolbox\n", func() {
-			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, "orders", interfaces.KN_VERSION_DRAFT).Return(main, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
 			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(map[string][]byte{
 				"release.yaml": []byte("functions:\n  - id: box1\n")}, nil)
@@ -143,7 +143,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 
 		Convey("An export refused by bkn-backend travels back unchanged\n", func() {
 			refused := &interfaces.BknBackendError{HTTPCode: http.StatusForbidden}
-			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(nil, refused)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, "orders", interfaces.KN_VERSION_DRAFT).Return(nil, refused)
 
 			_, err := svc.DriftCheck(ctx, token, "orders", "orders")
 
@@ -153,7 +153,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 		})
 
 		Convey("A failed git read fails the check\n", func() {
-			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
+			kva.EXPECT().ExportVersion(gomock.Any(), token, "orders", interfaces.KN_VERSION_DRAFT).Return(main, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(nil, errors.New("no repository"))
 
 			_, err := svc.DriftCheck(ctx, token, "orders", "orders")
@@ -208,6 +208,35 @@ func Test_DriftService_CommitLiveToMain(t *testing.T) {
 			_, err := svc.CommitLiveToMain(ctx, report, author)
 
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_DiffFiles(t *testing.T) {
+	Convey("Test DiffFiles\n", t, func() {
+		network := func(branch string, objects string) []byte {
+			return []byte("---\ntype: knowledge_network\nid: kn\nbranch: " + branch + "\n---\n\n# kn\n" + objects)
+		}
+
+		Convey("The network file exported from another version is not a change\n", func() {
+			diff := DiffFiles(map[string][]byte{"network.bkn": network("v2", "| orders |\n")},
+				map[string][]byte{"network.bkn": network("draft", "| orders |\n")})
+
+			So(diff.Empty(), ShouldBeTrue)
+		})
+
+		Convey("but an edit to it still is\n", func() {
+			diff := DiffFiles(map[string][]byte{"network.bkn": network("v2", "| orders |\n")},
+				map[string][]byte{"network.bkn": network("draft", "| orders | edited |\n")})
+
+			So(diff.Changed, ShouldResemble, []string{"network.bkn"})
+		})
+
+		Convey("and other files are compared byte for byte\n", func() {
+			diff := DiffFiles(map[string][]byte{"object_types/orders.bkn": []byte("---\nbranch: v2\n---\n")},
+				map[string][]byte{"object_types/orders.bkn": []byte("---\nbranch: draft\n---\n")})
+
+			So(diff.Changed, ShouldResemble, []string{"object_types/orders.bkn"})
 		})
 	})
 }

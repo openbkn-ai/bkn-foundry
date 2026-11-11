@@ -61,8 +61,8 @@ const (
 
 // Regression is the regression of one release, kept in t_bkn_project_regression.
 type Regression struct {
-	// NetworkID is the network the release created.
-	NetworkID string `json:"network_id"`
+	// ReleaseID is the release whose prepared definitions were answered on, in the network's draft.
+	ReleaseID string `json:"release_id"`
 	ProjectID string `json:"project_id"`
 	Version   string `json:"version"`
 	Status    string `json:"status"`
@@ -134,9 +134,8 @@ type RegressionResult struct {
 
 //go:generate mockgen -source ../interfaces/regression.go -destination ../interfaces/mock/mock_regression.go
 type RegressionAccess interface {
-	// GetRegression returns the regression of the release that created networkID, and false when
-	// it has none.
-	GetRegression(ctx context.Context, networkID string) (*Regression, bool, error)
+	// GetRegression returns the regression of the release, and false when it has none.
+	GetRegression(ctx context.Context, releaseID string) (*Regression, bool, error)
 	// StartRegression writes r, running, as its release's regression unless one is running already;
 	// it reports whether it did. One running since before staleBefore is taken over: it has ended
 	// without being recorded.
@@ -155,6 +154,11 @@ const (
 	REGRESSION_ERROR_INTERRUPTED = "interrupted"
 	// REGRESSION_ERROR_DEFINITIONS_UNREADABLE: the release's definitions could not be read.
 	REGRESSION_ERROR_DEFINITIONS_UNREADABLE = "definitions_unreadable"
+	// REGRESSION_ERROR_DRAFT_CHANGED: the network's draft was written while the regression read it,
+	// so its answers are of no one revision; preparing again runs it anew.
+	REGRESSION_ERROR_DRAFT_CHANGED = "draft_changed"
+	// REGRESSION_ERROR_INDEX_NOT_READY: the draft's search index was not ready in time.
+	REGRESSION_ERROR_INDEX_NOT_READY = "index_not_ready"
 )
 
 // REGRESSION_WARNING_REASON_HAS_TOOL_NAME: the judge's reason names a tool the answer called, even

@@ -52,6 +52,7 @@ type projectReleaseService struct {
 	ca  interfaces.CheckAccess
 	gs  interfaces.GitStore
 	ra  interfaces.ReleaseAccess
+	kva interfaces.KNVersionAccess
 	// va tells which tables the types on the branch read are gone.
 	va interfaces.VegaAccess
 	// rs reads the scenario questions of the project's requirement specification; without it a
@@ -74,6 +75,7 @@ func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectR
 			ca:  logics.CA,
 			gs:  logics.GS,
 			ra:  logics.RA,
+			kva: logics.KVA,
 			va:  logics.VA,
 			rs:  requirement.NewRequirementService(),
 			rgs: NewRegressionService(),
