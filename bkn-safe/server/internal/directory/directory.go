@@ -207,23 +207,24 @@ func (s *Service) DepartmentMembers(ctx context.Context, deptID string) ([]UserS
 // reference an existing user (else ErrUnknownUser) — nothing is written when
 // either check fails.
 func (s *Service) AddDepartmentMembers(ctx context.Context, deptID string, userIDs []string) error {
-	if err := s.requireDepartment(ctx, deptID); err != nil {
-		return err
-	}
-	ids := dedupeNonEmpty(userIDs)
-	if len(ids) == 0 {
-		return nil
-	}
-	if err := s.requireUsersExist(ctx, ids); err != nil {
-		return err
-	}
-	rows := make([]model.UserDepartment, 0, len(ids))
-	for _, uid := range ids {
-		rows = append(rows, model.UserDepartment{UserID: uid, DepartmentID: deptID})
-	}
-	// Composite PK (user_id, department_id): skip rows already present so the
-	// call is idempotent rather than erroring on a duplicate key.
-	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var department model.Department
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&department, "id = ?", deptID).Error; err != nil {
+			return err
+		}
+		ids := dedupeNonEmpty(userIDs)
+		if len(ids) == 0 {
+			return nil
+		}
+		if err := New(tx).requireUsersExist(ctx, ids); err != nil {
+			return err
+		}
+		rows := make([]model.UserDepartment, 0, len(ids))
+		for _, uid := range ids {
+			rows = append(rows, model.UserDepartment{UserID: uid, DepartmentID: deptID})
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+	})
 }
 
 // RemoveDepartmentMembers removes the given users from the department.
@@ -309,10 +310,16 @@ func (s *Service) SetUserDepartments(ctx context.Context, userID string, deptIDs
 		return err
 	}
 	ids := dedupeNonEmpty(deptIDs)
-	if err := s.DepartmentsExist(ctx, ids); err != nil {
-		return err
-	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(ids) > 0 {
+			var locked []model.Department
+			if err := tx.Select("id").Where("id IN ?", ids).Order("id").Clauses(clause.Locking{Strength: "UPDATE"}).Find(&locked).Error; err != nil {
+				return err
+			}
+			if len(locked) != len(ids) {
+				return ErrUnknownDepartment
+			}
+		}
 		if err := tx.Where("user_id = ?", userID).Delete(&model.UserDepartment{}).Error; err != nil {
 			return err
 		}
