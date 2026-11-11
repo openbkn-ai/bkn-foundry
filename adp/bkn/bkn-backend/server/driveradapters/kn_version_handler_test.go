@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -41,15 +42,21 @@ func TestResolveWritePreconditions(t *testing.T) {
 		ifMatch   string
 		wantCode  int
 	}{
-		{"create needs nothing", true, preconditionNone, "", "", 0},
-		{"change without If-Match", true, preconditionIfMatch, "", "", http.StatusPreconditionRequired},
-		{"change with If-Match", true, preconditionIfMatch, "", `"r1"`, 0},
-		{"change with only the draft revision", true, preconditionIfMatch, "expected_draft_revision=3", "", http.StatusPreconditionRequired},
-		{"delete without either", true, preconditionDelete, "", "", http.StatusPreconditionRequired},
-		{"delete with If-Match", true, preconditionDelete, "", "r1", 0},
-		{"delete several with the draft revision", true, preconditionDelete, "expected_draft_revision=3", "", 0},
-		{"import without the draft revision", true, preconditionDraftRevision, "", "r1", http.StatusPreconditionRequired},
-		{"import with the draft revision", true, preconditionDraftRevision, "expected_draft_revision=3", "", 0},
+		{"create needs nothing", true, preconditionNone, "branch=draft", "", 0},
+		{"change without If-Match", true, preconditionIfMatch, "branch=draft", "", http.StatusPreconditionRequired},
+		{"change with If-Match", true, preconditionIfMatch, "branch=draft", `"r1"`, 0},
+		{"change with only the draft revision", true, preconditionIfMatch, "branch=draft&expected_draft_revision=3", "", http.StatusPreconditionRequired},
+		{"delete without either", true, preconditionDelete, "branch=draft", "", http.StatusPreconditionRequired},
+		{"delete with If-Match", true, preconditionDelete, "branch=draft", "r1", 0},
+		{"delete several with the draft revision", true, preconditionDelete, "branch=draft&expected_draft_revision=3", "", 0},
+		{"import without the draft revision", true, preconditionDraftRevision, "branch=draft", "r1", http.StatusPreconditionRequired},
+		{"import with the draft revision", true, preconditionDraftRevision, "branch=draft&expected_draft_revision=3", "", 0},
+		// A write that does not name the draft is published at once and needs no precondition.
+		{"direct change needs nothing", true, preconditionIfMatch, "", "", 0},
+		{"direct change on main needs nothing", true, preconditionIfMatch, "branch=main", "", 0},
+		{"direct delete needs nothing", true, preconditionDelete, "", "", 0},
+		{"direct import needs nothing", true, preconditionDraftRevision, "", "", 0},
+		{"direct change keeps its If-Match", true, preconditionIfMatch, "", `"r1"`, 0},
 		{"unversioned change needs nothing", false, preconditionIfMatch, "", "", 0},
 		{"unversioned import needs nothing", false, preconditionDraftRevision, "", "", 0},
 	}
@@ -76,6 +83,11 @@ func TestResolveWritePreconditions(t *testing.T) {
 			dw := logics.DraftWriteFrom(ctx)
 			if dw == nil || (tc.ifMatch != "" && dw.IfMatch != "r1") {
 				t.Fatalf("draft write in ctx: %+v", dw)
+			}
+			_, direct := c.Get(directWritesKey)
+			wantDirect := tc.versioned && !strings.Contains(tc.query, "branch=draft")
+			if direct != wantDirect || dw.RefuseDraftChanges != wantDirect {
+				t.Fatalf("direct %v refuse draft changes %v, want %v", direct, dw.RefuseDraftChanges, wantDirect)
 			}
 		})
 	}

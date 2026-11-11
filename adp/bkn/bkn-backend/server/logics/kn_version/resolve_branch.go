@@ -40,7 +40,8 @@ func (s *service) ResolveBranch(ctx context.Context, knID string, req interfaces
 		if req.Branch != "" && req.Branch != interfaces.MAIN_BRANCH && req.Branch != interfaces.DRAFT_BRANCH {
 			return nil, invalidVersion(ctx, "a versioned knowledge network accepts only the main or draft branch")
 		}
-		return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true}, nil
+		return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true,
+			RunningVersion: state.RunningVersion}, nil
 	}
 
 	target := req.KNVersion

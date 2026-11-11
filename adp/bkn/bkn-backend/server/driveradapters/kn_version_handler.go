@@ -392,6 +392,12 @@ func (r *restHandler) resolveWrite(ctx *context.Context, c *gin.Context, knID st
 	var dw *logics.DraftWrite
 	*ctx, dw = logics.WithDraftWrite(*ctx, expected)
 	dw.IfMatch = ifMatchRevision(c.GetHeader("If-Match"))
+	if isDirectWrite(c, resolved) {
+		// The caller does not know the draft: it gets no precondition to send, and its write is
+		// published at once. Preconditions it does send are still checked.
+		startDirectWrite(*ctx, c, knID, dw, resolved.RunningVersion)
+		return resolved, true
+	}
 	if resolved.Versioned {
 		missing := ""
 		switch need {
