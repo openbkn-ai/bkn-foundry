@@ -862,7 +862,7 @@ func analyzeSortKey(ctx parsing.IOC_ExpressionContext) (*SortKey, error) {
 			return &SortKey{Property: &value, Pos: value.Pos}, nil
 		case Aggregate:
 			return &SortKey{Aggregate: &value, Pos: value.Pos}, nil
-		case Arithmetic, Negative, CaseValue, Coalesce:
+		case Arithmetic, Negative, CaseValue, Coalesce, ScalarFunction:
 		default:
 			return nil, unsupportedf(ctx, "sorting by a constant", "sort by a property, an aggregate or a returned column")
 		}
@@ -973,7 +973,7 @@ func analyzeAggregateAtom(atom parsing.IOC_AtomContext) (*Aggregate, bool, error
 		case PropertyRef:
 			aggregate.Property = &value
 			return aggregate, true, nil
-		case Arithmetic, Negative, CaseValue, Coalesce:
+		case Arithmetic, Negative, CaseValue, Coalesce, ScalarFunction:
 		default:
 			return nil, false, unsupportedf(arguments[0], "an expression here",
 				"only variable.property references are supported")
@@ -1091,7 +1091,7 @@ func analyzeComputedProjection(ctx parsing.IOC_ExpressionContext) (*Projection, 
 		return &Projection{Property: &value, Alias: alias, Pos: value.Pos}, nil
 	case Aggregate:
 		return &Projection{Aggregate: &value, Alias: alias, Pos: value.Pos}, nil
-	case Arithmetic, Negative, CaseValue, Coalesce:
+	case Arithmetic, Negative, CaseValue, Coalesce, ScalarFunction:
 	default:
 		return nil, unsupportedf(ctx, "an expression here", "only variable.property references are supported")
 	}
@@ -2190,6 +2190,7 @@ func analyzeAtomLiteral(ctx parsing.IOC_AtomContext) (operand, error) {
 // size() is left out: it is read only in the shapes analyzeIntersection and
 // the WITH reader name, not as a function of any value.
 const supportedFunctions = "the aggregates count, sum, avg, min, max and collect, coalesce, " +
+	"round, abs, toUpper, toLower, toString, toInteger and toFloat, " +
 	"and date, datetime and localdatetime over a date string"
 
 // unsupportedFunction refuses a call to a function the subset does not have,

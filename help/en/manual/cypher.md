@@ -187,6 +187,30 @@ ORDER BY n DESC LIMIT 4
 - The simple form cannot use `WHEN null`, since nothing equals null; write `CASE WHEN x IS NULL THEN …`.
 - Types are those the model declares.
 
+### Scalar functions
+
+```cypher
+MATCH (p:po)-[:po2sup]->(s:supplier {supplier_code: $code})
+RETURN toUpper(s.supplier_name) AS supplier,
+       round(sum(p.actqty) * 100.0 / sum(p.qty), 2) AS received_pct,
+       toFloat(sum(p.qty)) AS ordered
+```
+
+| Function | Gives |
+| --- | --- |
+| `round(x)`, `round(x, n)` | x rounded to a whole number or to n decimal places (n an integer literal from 0 to 30), as a number |
+| `abs(x)` | The absolute value, of the same type as x |
+| `toInteger(x)` | x truncated toward zero, so `toInteger(-4.97)` is `-4` |
+| `toFloat(x)` | x as a floating-point number |
+| `toUpper(s)`, `toLower(s)` | s in upper or lower case |
+| `toString(x)` | x as a string |
+
+- Like CASE and coalesce, they may be written in RETURN, WITH, ORDER BY, either side of a comparison and the argument of an aggregate. An argument may be a property, an aggregate, a computed value or another call.
+- `round`, `abs`, `toInteger` and `toFloat` take numbers, and `toUpper` and `toLower` take strings; another type returns 400. Write `toString(x)` first to change the case of a number.
+- A decimal value, including a `sum()` over one, comes back as a string such as `"13833141.000000"`; `toFloat(...)` or `round(..., n)` gives a number instead. `abs` keeps the type.
+- `toInteger` gives an integer, so a division by its result still needs a 1.0 under the rule for dividing two integers.
+- Which way a value exactly halfway, such as 2.5, rounds is up to the data source.
+
 ### ORDER BY / SKIP / LIMIT
 
 - ORDER BY takes a property, a returned column name, an aggregate or a computed value; `DESC` reverses it.
@@ -392,7 +416,7 @@ Only the basic forms are available there:
 | WHERE conditions (comparisons, IN, string matching, IS NULL, arithmetic) | Yes |
 | Returning properties, aggregates (count, sum, avg, min, max), ORDER BY / SKIP / LIMIT | Yes |
 | WITH to filter after aggregating or by an earlier stage's values (semi-join) | Yes |
-| CASE, coalesce | No |
+| CASE, coalesce, scalar functions such as round | No |
 | Totals over groups, comparing two lists, passing nodes on to the next MATCH | No |
 | Returning nodes, relationships and derived relationships | Yes, drawn as on SQL sources |
 | `collect` | No |
@@ -411,7 +435,7 @@ Only the basic forms are available there:
 | `GROUP BY` | Leave it out: aggregation groups by the other returned columns |
 | Variable-length paths `[:R*1..3]`, path variables `p = ...` | Write each length as a fixed path |
 | `UNWIND`, indexing `xs[0]`; list comprehensions `[x IN … WHERE …]` outside the `size(...)` that compares two lists | Count what two lists share with `size([x IN a WHERE x IN b])`; to list the shared values, share a node in one MATCH |
-| Function calls other than the date functions, `coalesce()`, `size()` (on a list a WITH collected) and the aggregates | Not supported yet |
+| Function calls other than the date functions, `coalesce()`, the scalar functions such as `round()`, `size()` (on a list a WITH collected) and the aggregates, such as `sqrt()`, `trim()` or `substring()` | Not supported yet |
 | `XOR`, exponentiation `^` | Rewrite with AND / OR / NOT; multiply out |
 | Relationship properties `r.x` | Relationships have none; read the end nodes' properties |
 | MATCH after a second WITH | Share a node between the paths in one MATCH |

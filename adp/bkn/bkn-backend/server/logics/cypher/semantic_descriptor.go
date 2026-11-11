@@ -124,6 +124,7 @@ const (
 	semanticSemiJoin   = "semi_join"
 	semanticCase       = "case"
 	semanticCoalesce   = "coalesce"
+	semanticFunction   = "function"
 	// semanticCarried marks a value a carried stage named, read after it.
 	semanticCarried = "carried"
 	// semanticIntersection marks the count of what two collected lists
@@ -167,6 +168,8 @@ func semanticExpressionKind(value PlanExpression) string {
 		return semanticCase
 	case PlanCoalesce:
 		return semanticCoalesce
+	case PlanScalarFunction:
+		return semanticFunction
 	case PlanCarriedValue:
 		return semanticCarried
 	}
@@ -514,7 +517,7 @@ func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
 			walk(node.Right)
 		case PlanNegative:
 			walk(node.Operand)
-		case PlanCase, PlanCoalesce:
+		case PlanCase, PlanCoalesce, PlanScalarFunction:
 			for _, condition := range caseConditions(value) {
 				walkPredicate(condition)
 			}
@@ -548,7 +551,7 @@ func semanticExpressionValues(value PlanExpression) ([]string, []string) {
 		return append(leftHashes, rightHashes...), append(leftPointers, rightPointers...)
 	case PlanNegative:
 		return semanticExpressionValues(node.Operand)
-	case PlanCase, PlanCoalesce:
+	case PlanCase, PlanCoalesce, PlanScalarFunction:
 		// A branch's condition records its values as any condition does;
 		// what the branches give is hashed here.
 		var hashes, pointers []string

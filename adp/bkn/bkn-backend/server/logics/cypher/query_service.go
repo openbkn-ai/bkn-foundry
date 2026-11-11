@@ -1173,7 +1173,7 @@ func unsupportedSource(err error) bool {
 // SQL through the resource data API the bind-join executor reads, which
 // serves datasets and indexes and joins across data sources. That executor
 // takes no new capabilities, so what only the SQL path answers -- CASE,
-// coalesce, totals over groups, comparing two lists, passing nodes on and
+// coalesce, scalar functions, totals over groups, comparing two lists, passing nodes on and
 // graph values -- is refused, saying why.
 func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfaces.CypherQuery,
 	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {

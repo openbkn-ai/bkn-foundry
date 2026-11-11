@@ -187,6 +187,30 @@ ORDER BY n DESC LIMIT 4
 - 简单形式不能写 `WHEN null`，因为没有任何值等于 null，要写成 `CASE WHEN x IS NULL THEN …`。
 - 类型按模型里声明的类型判断。
 
+### 标量函数
+
+```cypher
+MATCH (p:po)-[:po2sup]->(s:supplier {supplier_code: $code})
+RETURN toUpper(s.supplier_name) AS supplier,
+       round(sum(p.actqty) * 100.0 / sum(p.qty), 2) AS received_pct,
+       toFloat(sum(p.qty)) AS ordered
+```
+
+| 函数 | 结果 |
+| --- | --- |
+| `round(x)`、`round(x, n)` | 四舍五入到整数或 n 位小数（n 为 0 到 30 的整数字面量），结果是数字 |
+| `abs(x)` | 绝对值，类型与 x 相同 |
+| `toInteger(x)` | 向零截断成整数，如 `toInteger(-4.97)` 为 `-4` |
+| `toFloat(x)` | 转成浮点数 |
+| `toUpper(s)`、`toLower(s)` | 大写、小写 |
+| `toString(x)` | 转成字符串 |
+
+- 和 CASE、coalesce 一样，能写在 RETURN、WITH、ORDER BY、比较的两侧和聚合的参数里，参数可以是属性、聚合或算出来的值，也可以互相嵌套。
+- `round`、`abs`、`toInteger`、`toFloat` 只接受数字，`toUpper`、`toLower` 只接受字符串，类型不对返回 400；数字要先 `toString(x)` 再转大小写。
+- decimal 类型的值（包括对它的 `sum()`）默认以字符串返回，如 `"13833141.000000"`；要拿到数字，用 `toFloat(...)` 或 `round(..., n)`。`abs` 不改变类型。
+- `toInteger` 的结果是整数，再做除法时仍要按「两个整数相除」的规则乘 1.0。
+- 恰好在中间的值（如 2.5）往哪边取整由数据源决定。
+
 ### ORDER BY / SKIP / LIMIT
 
 - ORDER BY 可以用属性、返回的列名、聚合或算出来的值；加 `DESC` 倒序。
@@ -392,7 +416,7 @@ RETURN h AS source, '主场结果' AS relationType,
 | WHERE 条件（比较、IN、字符串匹配、IS NULL、算术） | 支持 |
 | RETURN 属性、聚合（count、sum、avg、min、max）、ORDER BY / SKIP / LIMIT | 支持 |
 | WITH 先聚合再过滤、按上一段的值过滤（半连接） | 支持 |
-| CASE、coalesce | 不支持 |
+| CASE、coalesce、round 等标量函数 | 不支持 |
 | 对分组再统计、比较两个列表、把节点传给下一个 MATCH | 不支持 |
 | 返回节点、关系和虚拟边 | 支持，和 SQL 数据源上一样画图 |
 | `collect` | 不支持 |
@@ -411,7 +435,7 @@ RETURN h AS source, '主场结果' AS relationType,
 | `GROUP BY` | 不写，按 RETURN 里其余各列自动分组 |
 | 变长路径 `[:R*1..3]`、路径变量 `p = ...` | 按跳数分别写成固定长度的路径 |
 | `UNWIND`、下标 `xs[0]`；列表推导式 `[x IN … WHERE …]` 只能用在比较两个列表的 `size(...)` 里 | 数两个列表的共有元素用 `size([x IN a WHERE x IN b])`；列出共有的值，在一个 MATCH 里共享节点 |
-| 日期函数、`coalesce()`、`size()`（只用于 WITH 收集的列表）和聚合以外的函数调用 | 暂不支持 |
+| 日期函数、`coalesce()`、`round()` 等标量函数、`size()`（只用于 WITH 收集的列表）和聚合以外的函数调用，如 `sqrt()`、`trim()`、`substring()` | 暂不支持 |
 | `XOR`、乘方 `^` | 用 AND / OR / NOT 改写；乘方展开为乘法 |
 | 关系属性 `r.x` | 关系没有自己的属性；读两端节点的属性 |
 | 第二个 WITH 之后再 MATCH | 让两条路径在一个 MATCH 里共享节点 |

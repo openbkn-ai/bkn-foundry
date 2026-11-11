@@ -121,8 +121,8 @@ func TestCompileAggregateRejections(t *testing.T) {
 		},
 		{
 			name:  "a function that is not an aggregate",
-			query: "MATCH (o:Order) RETURN toUpper(o.region) AS n",
-			want:  "the function toUpper() is not supported: a query may call",
+			query: "MATCH (o:Order) RETURN trim(o.region) AS n",
+			want:  "the function trim() is not supported: a query may call",
 		},
 		{
 			name:  "an aggregate over several arguments",

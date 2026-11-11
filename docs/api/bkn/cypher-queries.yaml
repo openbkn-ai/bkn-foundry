@@ -274,9 +274,17 @@ components:
             them. XOR is not supported. Not-equal is written <>; != is read as <> too. A date or
             time property can be compared
             with date('2026-08-13'), datetime(...) or localdatetime(...) over a string literal or
-            parameter; functions other than these, coalesce, size (of a list a WITH
-            collected) and the aggregates, and date()
-            with no argument, are refused.
+            parameter; functions other than these, coalesce, the scalar functions below, size
+            (of a list a WITH collected) and the aggregates, and date() with no argument, are
+            refused.
+
+            The scalar functions round(x) and round(x, n) (n an integer literal from 0 to 30,
+            giving a number), abs(x), toInteger(x) (truncated toward zero), toFloat(x),
+            toUpper(s), toLower(s) and toString(x) may stand wherever CASE and coalesce may.
+            round, abs, toInteger and toFloat take numbers, and toUpper and toLower strings;
+            another type is refused with 400. A decimal, including a sum() over one, comes
+            back as a string such as "13833141.000000"; toFloat(...) or round(..., n) gives a
+            number instead. Queries using them always run on the SQL path.
 
             CASE and coalesce compute a value wherever arithmetic may stand: in RETURN, WITH,
             ORDER BY, either side of a comparison and the argument of an aggregate, as in
@@ -317,7 +325,7 @@ components:
             Object types bound to a resource outside a SQL data source (a dataset or an index),
             or read from more than one data source, are read through the resource data API and
             joined instead of as one SQL statement. There only the basic forms run: CASE,
-            coalesce, totals over groups, comparing two lists, passing nodes on and collect are
+            coalesce, the scalar functions, totals over groups, comparing two lists, passing nodes on and collect are
             refused with 400, and a read too large or too slow is refused too. Nodes,
             relationships and derived relationships are returned as on a SQL data source,
             and UNION works, each part read on its own.
