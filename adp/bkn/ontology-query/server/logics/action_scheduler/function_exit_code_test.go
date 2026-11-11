@@ -47,7 +47,7 @@ func Test_ExecuteTool_FunctionExitCode(t *testing.T) {
 
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
 		actionType := &interfaces.ActionType{
-			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_fn", ToolID: "fn_1"},
+			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_fn", ToolID: "fn_1"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 		}
 		respond := func(body map[string]any) {
 			aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_fn", "fn_1", gomock.Any()).Return(body, nil)
@@ -96,7 +96,7 @@ func Test_executeAsync_FunctionExitCodePerInstance(t *testing.T) {
 			TotalCount: 2, StartTime: 1700000000000,
 		}
 		actionType := &interfaces.ActionType{
-			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_fn", ToolID: "fn_1"},
+			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box_fn", ToolID: "fn_1"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 		}
 		useFunctionTarget(t, execution, actionType)
 		req := &interfaces.ActionExecutionRequest{

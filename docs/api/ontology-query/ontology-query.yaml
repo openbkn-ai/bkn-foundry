@@ -3793,6 +3793,7 @@ components:
     ActionType:
       description: 行动类信息
       required:
+      - operation_config
       - action_source
       - action_type
       - affect
@@ -3804,6 +3805,8 @@ components:
       - schedule
       type: object
       properties:
+        operation_config:
+          $ref: '#/components/schemas/ActionOperationConfig'
         id:
           description: 行动类ID
           type: string
@@ -3879,6 +3882,11 @@ components:
       - actions
       type: object
       properties:
+        execution_schema:
+          type: object
+          additionalProperties: true
+          description: Authoritative JSON Schema for dynamic inputs and explicit execution targets; available before values
+            are supplied.
         action_type:
           $ref: '#/components/schemas/ActionType'
           description: |
@@ -4340,21 +4348,61 @@ components:
       - $ref: '#/components/schemas/condition_knn'
       - $ref: '#/components/schemas/condition_multi_match'
     ActionCondition:
-      oneOf:
-      - $ref: '#/components/schemas/action_condition_and'
-      - $ref: '#/components/schemas/action_condition_or'
-      - $ref: '#/components/schemas/action_condition_eq'
-      - $ref: '#/components/schemas/action_condition_not_eq'
-      - $ref: '#/components/schemas/action_condition_gt'
-      - $ref: '#/components/schemas/action_condition_gte'
-      - $ref: '#/components/schemas/action_condition_lt'
-      - $ref: '#/components/schemas/action_condition_lte'
-      - $ref: '#/components/schemas/action_condition_in'
-      - $ref: '#/components/schemas/action_condition_not_in'
-      - $ref: '#/components/schemas/action_condition_range'
-      - $ref: '#/components/schemas/action_condition_out_range'
-      - $ref: '#/components/schemas/action_condition_exist'
-      - $ref: '#/components/schemas/action_condition_not_exist'
+      type: object
+      required:
+      - operation
+      properties:
+        object_type_id:
+          type: string
+        field:
+          type: string
+        operation:
+          type: string
+          enum:
+          - and
+          - or
+          - ==
+          - '!='
+          - '>'
+          - '>='
+          - <
+          - <=
+          - in
+          - not_in
+          - empty
+          - not_empty
+          - 'true'
+          - 'false'
+          - range
+          - out_range
+          - before
+          - between
+          - exist
+          - not_exist
+          - like
+          - not_like
+          - prefix
+          - not_prefix
+          - 'null'
+          - not_null
+          - regex
+          - contain
+          - not_contain
+          - current
+        sub_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionCondition'
+        value_from:
+          type: string
+          enum:
+          - const
+          - property
+          - input
+          default: const
+        value:
+          description: Literal value for const; same-endpoint property name for property; runtime parameter name for
+            input. Applicability does not supply target identities.
     action_condition_and:
       description: and的过滤条件
       required:
@@ -4669,16 +4717,22 @@ components:
         行动查询。
       type: object
       properties:
+        relation_target:
+          $ref: '#/components/schemas/ActionRelationTarget'
+        object_input:
+          type: object
+          additionalProperties: true
+          description: New object data for create operations; no existing-instance scan.
         _instance_identities:
           description: |
-            目标对象主键列表。每项为主键字段名到值的映射。可为空数组或省略，表示由服务端依据行动类绑定与条件拉取候选实例。
+            目标对象主键列表。每项为主键字段名到值的映射。不传时仅返回定义和执行输入 Schema，不扫描实例。
           type: array
           items:
             $ref: '#/components/schemas/InstanceIdentity'
         dynamic_params:
           description: |
             行动类「动态输入」参数取值（与行动类 parameters 中 value_from=input 的 name 对应，支持点分路径表示嵌套键）。
-            当行动类定义了此类参数且要求客户端提供时须传入对应非 null 取值，否则可能在业务层返回 400（例如 OntologyQuery.ActionType.InvalidParameter.DynamicParams）。
+            发现接口允许省略动态值；真实执行时必须传入配置为 input 的全部非空值。
           type: object
           additionalProperties: true
 
@@ -4687,8 +4741,14 @@ components:
         行动执行请求体。当行动类 parameters 中存在 value_from 为 input 的项时，须在 dynamic_params 中传入全部对应非空取值，否则返回 400（错误码 OntologyQuery.ActionExecution.InvalidParameter）。
       type: object
       properties:
+        relation_target:
+          $ref: '#/components/schemas/ActionRelationTarget'
+        object_input:
+          type: object
+          additionalProperties: true
+          description: New object data for create operations; no existing-instance scan.
         _instance_identities:
-          description: 目标对象唯一标识列表；扫描模式下可传空数组，由服务端按行动条件拉取实例
+          description: 修改和删除必须传入的明确实例主键列表；不会依据条件扫描目标
           type: array
           items:
             $ref: '#/components/schemas/InstanceIdentity'
@@ -4762,17 +4822,17 @@ components:
           type: string
         execution_mode:
           description: |
-            执行粒度，由行动类参数来源推导：参数中存在 value_from=property 的项时为 per_instance，
-            每个命中实例各调用一次工具；否则所有命中实例解析出的参数完全相同，为 once，只调用一次工具。
+            执行粒度由 operation_config 决定：object 和 relation 为 per_instance，
+            每个明确目标各调用一次工具；独立工具调用为 once。条件不用于扫描目标。
           enum:
             - once
             - per_instance
           type: string
         target_count:
-          description: 命中的目标实例数。per_instance 下与 total_count 相等；once 下可大于 total_count。
+          description: 明确提交的目标数量；新建对象、单关系对和独立工具调用为 1。
           type: integer
         total_count:
-          description: 本次执行的工具调用次数。per_instance 下等于命中实例数；once 下恒为 1。
+          description: 本次执行的工具调用次数。每个明确对象目标一次；单关系对和独立工具调用一次。
           type: integer
         success_count:
           description: 成功的工具调用次数
@@ -5093,3 +5153,57 @@ components:
         completed_count:
           description: 取消时已成功的调用数（按最近一次进度更新计算）
           type: integer
+    ActionOperationConfig:
+      type: object
+      required:
+      - type
+      additionalProperties: false
+      description: Single-operation definition. Required by the new action runtime; migrate stored definitions before
+        switching services.
+      oneOf:
+        - properties:
+            type:
+              enum: [object, tool]
+          additionalProperties: false
+        - required: [relation_type_id, relation_operation]
+          properties:
+            type:
+              enum: [relation]
+      properties:
+        type:
+          type: string
+          enum:
+          - object
+          - relation
+          - tool
+        relation_type_id:
+          type: string
+          description: Required for relation operations; must connect the selected object type.
+        relation_operation:
+          type: string
+          enum:
+          - create
+          - delete
+        anchor_role:
+          type: string
+          enum:
+          - source
+          - target
+          description: Role of object_type_id in the relation. Self relations require an explicit role.
+        other_object_condition:
+          $ref: '#/components/schemas/ActionCondition'
+    ActionRelationTarget:
+      type: object
+      required:
+      - source_identity
+      - target_identity
+      additionalProperties: false
+      properties:
+        source_identity:
+          type: object
+          additionalProperties: true
+        target_identity:
+          type: object
+          additionalProperties: true
+      description: One explicit directed instance pair. Keys are defined by the endpoint object primary keys. No implicit
+        pairing or cross join.

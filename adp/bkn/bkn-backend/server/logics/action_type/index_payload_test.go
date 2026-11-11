@@ -21,7 +21,7 @@ func TestActionTypeIndexPayloadKeepsExistingStringFields(t *testing.T) {
 		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 			ATID: "at-1", ATName: "action",
 			Parameters: []interfaces.Parameter{{Name: "input", Type: "string"}},
-			Condition:  &interfaces.ActionCondCfg{Field: "state", Operation: "=="},
+			Condition:  &interfaces.ActionCondCfg{Field: "state", Operation: "=="}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 		},
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
 	}
@@ -32,6 +32,9 @@ func TestActionTypeIndexPayloadKeepsExistingStringFields(t *testing.T) {
 			}
 			if _, ok := document["condition"].(string); !ok {
 				t.Fatalf("condition = %#v, want encoded string", document["condition"])
+			}
+			if _, ok := document["operation_config"].(string); !ok {
+				t.Fatalf("operation_config must remain an opaque JSON string in the concept index: %#v", document["operation_config"])
 			}
 			if document["_id"] == "" {
 				t.Fatal("missing document ID")

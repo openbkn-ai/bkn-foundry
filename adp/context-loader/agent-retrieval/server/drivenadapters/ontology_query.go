@@ -426,11 +426,15 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	body := map[string]any{
 		"_instance_identities": req.InstanceIdentities,
 	}
+	if req.RelationTarget != nil {
+		body["relation_target"] = req.RelationTarget
+	}
+	if len(req.ObjectInput) > 0 {
+		body["object_input"] = req.ObjectInput
+	}
 
 	// Log the request.
-	bodyJSON, _ := sonic.Marshal(body)
-	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] URL: %s", url)
-	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Request Body: %s", string(bodyJSON))
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] URL: %s, explicit_target_count: %d", url, len(req.InstanceIdentities))
 
 	header := common.GetHeaderForChildOperation(ctx, "ontology.action.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
@@ -469,6 +473,12 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	// Buildrequest body (real execution, carries dynamic parameters; does not set method-override, so it is a real POST)
 	body := map[string]any{
 		"_instance_identities": req.InstanceIdentities,
+	}
+	if req.RelationTarget != nil {
+		body["relation_target"] = req.RelationTarget
+	}
+	if len(req.ObjectInput) > 0 {
+		body["object_input"] = req.ObjectInput
 	}
 	if len(req.DynamicParams) > 0 {
 		body["dynamic_params"] = req.DynamicParams

@@ -23,7 +23,7 @@ import (
 func independentActionFixture() []*interfaces.ActionType {
 	action := func(id, bound string) *interfaces.ActionType {
 		return &interfaces.ActionType{
-			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: id, ObjectTypeID: bound},
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: id, ObjectTypeID: bound, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}},
 			KNID:                   "kn-1",
 			Branch:                 interfaces.MAIN_BRANCH,
 		}

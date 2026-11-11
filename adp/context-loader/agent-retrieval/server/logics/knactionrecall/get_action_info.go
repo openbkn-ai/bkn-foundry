@@ -37,6 +37,8 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 	actionsReq := &interfaces.QueryActionsRequest{
 		KnID:               req.KnID,
 		AtID:               req.AtID,
+		RelationTarget:     req.RelationTarget,
+		ObjectInput:        req.ObjectInput,
 		InstanceIdentities: instanceIdentities,
 		IncludeTypeInfo:    false, // No type information required.
 	}
@@ -82,6 +84,8 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 	fixedParams := interfaces.ActionDriverFixedParams{
 		DynamicParams:      firstAction.Parameters,
 		InstanceIdentities: instanceIdentities,
+		RelationTarget:     req.RelationTarget,
+		ObjectInput:        req.ObjectInput,
 	}
 
 	var dynamicTool interfaces.KnDynamicTool
@@ -166,6 +170,12 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 			APICallStrategy: interfaces.ResultProcessStrategyKnActionRecall,
 		}
 	}
+
+	parameters, err := actionExecutionSchema(actionsResp.ExecutionSchema, dynamicTool.Parameters)
+	if err != nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, err.Error())
+	}
+	dynamicTool.Parameters = parameters
 
 	// 11. Build request headers.
 	headers := common.GetHeaderForChildOperation(ctx, "ontology.action.execute", 1)

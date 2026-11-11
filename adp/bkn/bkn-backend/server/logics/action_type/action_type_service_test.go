@@ -245,14 +245,14 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at1",
 						ATName:       "at1",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at2",
 						ATName:       "at2",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -273,7 +273,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 				},
 			}
@@ -308,7 +308,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at1",
 						ATName:       "at1",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -333,7 +333,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 						ObjectTypeID: "ot1",
 						Affect: &interfaces.ActionAffect{
 							ObjectTypeID: "ot2",
-						},
+						}, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -412,7 +412,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at1",
 						ATName:       "at1",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -469,7 +469,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at1",
 						ATName:       "at1",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -497,7 +497,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at1",
 						ATName:       "at1",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -526,7 +526,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at1",
 						ATName:       "at1",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -551,7 +551,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 				},
 			}
 			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
-				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1"},
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}},
 			}}, nil)
 
 			ats, total, err := service.ListActionTypes(ctx, query)
@@ -574,21 +574,21 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at1",
 						ATName:       "at1",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at2",
 						ATName:       "at2",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:         "at3",
 						ATName:       "at3",
-						ObjectTypeID: "ot1",
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 				},
 			}
@@ -792,7 +792,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -817,7 +817,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -849,7 +849,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					CommonInfo: interfaces.CommonInfo{
 						Tags:          []string{"tag1"},
@@ -892,7 +892,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -922,7 +922,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -953,7 +953,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1002,8 +1002,8 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atIDs := []string{"at1", "at2"}
 			actionTypes := []*interfaces.ActionType{
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1"}},
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2"}},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
 			}
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, atIDs).Return(actionTypes, nil)
 			smock.ExpectBegin()
@@ -1055,8 +1055,8 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atIDs := []string{"at1", "at2"}
 			actionTypes := []*interfaces.ActionType{
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1"}},
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2"}},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
 			}
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, atIDs).Return(actionTypes, nil)
 			smock.ExpectBegin()
@@ -1101,7 +1101,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			actionType := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:   "at1",
-					ATName: "at1",
+					ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 				KNID:   "kn1",
 				Branch: interfaces.MAIN_BRANCH,
@@ -1123,7 +1123,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			actionType := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:   "at1",
-					ATName: "at1",
+					ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 				KNID:   "kn1",
 				Branch: interfaces.MAIN_BRANCH,
@@ -1139,7 +1139,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			actionType := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:   "at1",
-					ATName: "at1",
+					ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 				KNID:   "kn1",
 				Branch: interfaces.MAIN_BRANCH,
@@ -1157,7 +1157,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			actionType := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:   "at1",
-					ATName: "at1",
+					ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 				KNID:   "kn1",
 				Branch: "dev",
@@ -1179,7 +1179,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			actionType := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:   "at1",
-					ATName: "at1",
+					ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 				KNID:   "kn1",
 				Branch: interfaces.MAIN_BRANCH,
@@ -1234,7 +1234,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1258,8 +1258,8 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 
 		Convey("Success creating multiple action types through batch access\n", func() {
 			actionTypes := []*interfaces.ActionType{
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
 			}
 
 			smock.ExpectBegin()
@@ -1281,7 +1281,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 
 		Convey("Safe failure rolls back and compensates partial action type policies\n", func() {
 			actionTypes := []*interfaces.ActionType{{
-				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1"},
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}},
 				KNID:                   "kn1",
 				Branch:                 interfaces.MAIN_BRANCH,
 			}}
@@ -1305,7 +1305,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 
 		Convey("Commit failure compensates created action type policies\n", func() {
 			actionTypes := []*interfaces.ActionType{{
-				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1"},
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}},
 				KNID:                   "kn1",
 				Branch:                 interfaces.MAIN_BRANCH,
 			}}
@@ -1332,7 +1332,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1356,7 +1356,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1390,7 +1390,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1412,7 +1412,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1433,16 +1433,16 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 
 		Convey("Success overwriting multiple action types through batch access\n", func() {
 			actionTypes := []*interfaces.ActionType{
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH},
 			}
 
 			smock.ExpectBegin()
 			ata.EXPECT().GetActionTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				[]string{"at1", "at2"}, []string{"action_type1", "action_type2"}).
 				Return([]*interfaces.ActionType{
-					{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1"}},
-					{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2"}},
+					{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "action_type1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
+					{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at2", ATName: "action_type2", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
 				}, nil)
 			ata.EXPECT().UpdateActionTypes(gomock.Any(), gomock.Any(), actionTypes).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
@@ -1459,7 +1459,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATID:   "at1",
-						ATName: "at1",
+						ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1498,7 +1498,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
-			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}},
 		}}, nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
@@ -1662,7 +1662,7 @@ func Test_actionTypeService_DeleteActionTypesByKnID(t *testing.T) {
 		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
-			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}},
 		}}, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -1710,7 +1710,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
-			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}},
 		}}, nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
@@ -1811,7 +1811,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATName:       "at1",
-						ObjectTypeID: "missing_ot",
+						ObjectTypeID: "missing_ot", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1829,7 +1829,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATName:       "at1",
-						ObjectTypeID: "missing_ot",
+						ObjectTypeID: "missing_ot", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1847,7 +1847,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 						ATName:       "at1",
-						ObjectTypeID: "ot_batch",
+						ObjectTypeID: "ot_batch", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1869,7 +1869,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 						ATName: "at1",
 						Affect: &interfaces.ActionAffect{
 							ObjectTypeID: "affect_ot",
-						},
+						}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1890,7 +1890,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 						ATName: "at1",
 						ImpactContracts: []interfaces.ImpactContractItem{
 							{ObjectTypeID: "ic_ot_missing", ExpectedOperation: interfaces.ExpectedOperationModify},
-						},
+						}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1910,7 +1910,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 						ATName: "at1",
 						ImpactContracts: []interfaces.ImpactContractItem{
 							{ObjectTypeID: "ot_ic_batch", ExpectedOperation: interfaces.ExpectedOperationDelete},
-						},
+						}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1939,7 +1939,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 							Type:   interfaces.ACTION_SOURCE_TYPE_TOOL,
 							BoxID:  "b1",
 							ToolID: "t1",
-						},
+						}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -1974,7 +1974,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 							Type:   interfaces.ACTION_SOURCE_TYPE_TOOL,
 							BoxID:  "b1",
 							ToolID: "t1",
-						},
+						}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -2002,7 +2002,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 							Type:     interfaces.ACTION_SOURCE_TYPE_MCP,
 							McpID:    "m1",
 							ToolName: "fn",
-						},
+						}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 					},
 					KNID:   "kn1",
 					Branch: interfaces.MAIN_BRANCH,
@@ -2036,7 +2036,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 						Type:   interfaces.ACTION_SOURCE_TYPE_TOOL,
 						BoxID:  "box-1",
 						ToolID: "tool-1",
-					},
+					}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 			})
 
@@ -2064,7 +2064,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 						Type:     interfaces.ACTION_SOURCE_TYPE_MCP,
 						McpID:    "mcp-1",
 						ToolName: "create_order",
-					},
+					}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 			})
 
@@ -2120,7 +2120,7 @@ func TestActionTypeStrictDependencyErrorMapping(t *testing.T) {
 					ActionSource: interfaces.ActionSource{
 						Type: tc.sourceType, BoxID: "box-1", ToolID: "tool-1",
 						McpID: "mcp-1", ToolName: "create_order",
-					},
+					}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				},
 			})
 

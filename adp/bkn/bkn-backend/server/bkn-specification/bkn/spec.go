@@ -138,6 +138,9 @@ var parameterValueSources = map[string]bool{"property": true, "input": true, "co
 // 3.0 package refuses such a row at import instead. The common mistake — the value source written
 // in Source — gets its own message.
 func checkParameterValueSource(owner string, p Parameter) error {
+	if owner == "action" && (p.ValueFrom == "source_identity" || p.ValueFrom == "target_identity") {
+		return nil
+	}
 	if parameterValueSources[strings.ToLower(strings.TrimSpace(p.ValueFrom))] {
 		return nil
 	}

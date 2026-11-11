@@ -104,8 +104,9 @@ func newBoundToolFixture(t *testing.T) *boundToolFixture {
 
 func (f *boundToolFixture) expectAction(source interfaces.ActionSource) {
 	f.query.EXPECT().QueryActions(gomock.Any(), gomock.Any()).Return(&interfaces.QueryActionsResponse{
-		ActionSource: &source,
-		Actions:      []interfaces.ActionParams{{Parameters: map[string]any{"order_id": "o-1"}}},
+		ExecutionSchema: testActionExecutionSchema(),
+		ActionSource:    &source,
+		Actions:         []interfaces.ActionParams{{Parameters: map[string]any{"order_id": "o-1"}}},
 	}, nil)
 }
 

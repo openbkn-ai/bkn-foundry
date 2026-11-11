@@ -415,6 +415,7 @@ type BatchIDIndex struct {
 	Branch string
 
 	ObjectTypes     map[string]*ObjectType
+	RelationTypes   map[string]*RelationType
 	RelationTypeIDs map[string]struct{}
 	ActionTypeIDs   map[string]struct{}
 	ConceptGroupIDs map[string]struct{}

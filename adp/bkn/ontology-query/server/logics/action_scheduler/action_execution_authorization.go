@@ -71,6 +71,25 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 		},
 	}
 	objectTypeIDs := []string{actionType.ObjectTypeID}
+	if cfg := actionType.OperationConfig; cfg != nil && cfg.Type == "relation" {
+		if err := validateActionResourceID(knID, cfg.RelationTypeID); err != nil {
+			return nil, actionPermissionInvalid(ctx, err.Error())
+		}
+		relation, exists, err := s.omAccess.GetRelationType(ctx, knID, interfaces.MAIN_BRANCH, cfg.RelationTypeID)
+		if err != nil {
+			return nil, actionPermissionUnavailable(ctx, err)
+		}
+		if !exists {
+			return nil, actionPermissionInvalid(ctx, "relation type does not exist")
+		}
+		objectTypeIDs = append(objectTypeIDs, relation.SourceObjectTypeID, relation.TargetObjectTypeID)
+		requirements = append(requirements, interfaces.PermissionRequirement{
+			ResourceType: interfaces.PermissionResourceTypeRelationType,
+			ResourceID:   knID + "/" + cfg.RelationTypeID,
+			Operation:    interfaces.PermissionOperationViewDetail,
+		})
+	}
+
 	if actionType.Affect != nil {
 		objectTypeIDs = append(objectTypeIDs, actionType.Affect.ObjectTypeID)
 	}

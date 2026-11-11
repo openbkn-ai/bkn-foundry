@@ -33,7 +33,7 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 		toolName = source.ToolID
 	}
 
-	// params are assembled by the caller through buildExecutionParams + buildMCPParameters and are used directly here.
+	// params are assembled by the caller through buildExecutionParams and are used directly here.
 	mcpRequest := interfaces.MCPExecutionRequest{
 		McpID:      source.McpID,
 		ToolName:   toolName,
@@ -43,7 +43,7 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 
 	mcpID := source.McpID
 
-	logger.Debugf("Executing MCP: mcp_id=%s, tool_name=%s, params=%+v", mcpID, toolName, params)
+	logger.Debugf("Executing MCP: mcp_id=%s, tool_name=%s, parameter_count=%d", mcpID, toolName, len(params))
 
 	// Execute through agent-operator-integration MCP endpoint
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(mcpRequest.Timeout)*time.Second)
@@ -65,21 +65,4 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 
 	logger.Debugf("MCP execution completed successfully")
 	return result, nil
-}
-
-// buildMCPParameters merges MCP tool call parameters.
-//
-// The MCP tool input schema is declared by the tool itself; get_action_info exposes input_schema directly as
-// dynamic_params. The action type does not need to declare parameters one by one, so undeclared dynamic_params must also pass through.
-// Otherwise the MCP tool receives empty parameters. Parameters declared by the action type, including const/property/input mapping results, have higher precedence.
-// When names collide, declared values override pass-through values. MCP does not distinguish header/query/path/body; all parameters are flattened.
-func buildMCPParameters(params map[string]any, dynamicParams map[string]any) map[string]any {
-	merged := make(map[string]any, len(params)+len(dynamicParams))
-	for k, v := range dynamicParams {
-		merged[k] = v
-	}
-	for k, v := range params {
-		merged[k] = v
-	}
-	return merged
 }

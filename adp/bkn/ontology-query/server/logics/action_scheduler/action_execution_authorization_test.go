@@ -101,7 +101,7 @@ func TestAuthorizeActionTypeResolvesTrustedRequirements(t *testing.T) {
 		ImpactContracts: []interfaces.ImpactContractItem{
 			{ObjectTypeID: "ot-input"},
 		},
-		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
+		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"}, ActionType: "modify", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 	})
 	if err != nil {
 		t.Fatalf("authorizeActionType() error = %v", err)
@@ -122,7 +122,7 @@ func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
 	models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").Return(
 		interfaces.ActionType{
 			ATID:         "at-1",
-			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeMCP, McpID: "mcp-1", ToolName: "run"},
+			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeMCP, McpID: "mcp-1", ToolName: "run"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 		}, nil, true, nil)
 	permissionErr := errors.New("permission denied")
 	permissions := &actionPermissionStub{err: permissionErr}
@@ -151,7 +151,7 @@ func TestExecuteActionRejectsMissingDataDependencyBeforeProxyAndInstanceRead(t *
 		interfaces.ActionType{
 			ATID:         "at-1",
 			ObjectTypeID: "missing-object",
-			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
+			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"}, ActionType: "modify", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 		}, nil, true, nil)
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "missing-object").Return(
 		interfaces.ObjectType{}, false, nil)
@@ -177,7 +177,7 @@ func TestExecuteActionProxyFailureStopsInstanceRead(t *testing.T) {
 	models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").Return(
 		interfaces.ActionType{
 			ATID:         "at-1",
-			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
+			ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 		}, nil, true, nil)
 	proxyErr := errors.New("proxy unavailable")
 	service := &actionSchedulerService{
@@ -204,7 +204,7 @@ func TestResolveActionProxyContextKeepsDownstreamPermissionSeparate(t *testing.T
 		interfaces.AccountInfo{ID: "caller-1", Type: "user"})
 	proxy, requirements, err := service.resolveActionProxyContext(ctx, "kn-1", &interfaces.ActionType{
 		ATID:         "at-1",
-		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
+		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 	})
 	if err != nil {
 		t.Fatalf("resolveActionProxyContext() error = %v", err)
@@ -224,7 +224,7 @@ func TestResolveFunctionActionProxyContextUsesFunctionGrant(t *testing.T) {
 	resolver := &actionProxyResolverStub{targetType: interfaces.ProxyTargetTypeFunction}
 	service := &actionSchedulerService{proxy: resolver}
 	_, requirements, err := service.resolveActionProxyContext(t.Context(), "kn-1", &interfaces.ActionType{
-		ATID: "at-fn", ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-fn", ToolID: "fn-1"},
+		ATID: "at-fn", ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-fn", ToolID: "fn-1"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestTrustedActionProxyContextRejectsMissingProxySnapshot(t *testing.T) {
 	}
 	actionType := &interfaces.ActionType{
 		ATID:         "at-1",
-		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
+		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 	}
 
 	if proxy, err := trustedActionProxyContext(execution, actionType); err == nil || proxy != nil {
@@ -264,8 +264,8 @@ func TestInvokeActionSourceDoesNotCallExternalServiceAfterRevocation(t *testing.
 	params, result, err := service.invokeActionSource(context.Background(), []interfaces.PermissionRequirement{
 		{ResourceType: "tool_box", ResourceID: "box-1", Operation: "execute"},
 	}, &interfaces.ActionType{
-		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"},
-	}, map[string]any{"value": 1}, nil)
+		ActionSource: interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool, BoxID: "box-1", ToolID: "tool-1"}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
+	}, map[string]any{"value": 1})
 	if !errors.Is(err, revoked) || result != nil || params["value"] != 1 {
 		t.Fatalf("invokeActionSource() = %#v, %#v, %v", params, result, err)
 	}

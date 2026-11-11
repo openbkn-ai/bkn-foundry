@@ -57,7 +57,7 @@ func assertProxyMutation(t *testing.T, publisher *knProxyMutationPublisherStub, 
 func TestConceptGroupImportWithBindingsUsesKNProxyPublisher(t *testing.T) {
 	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-1"}}
 	relationType := &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt-1"}}
-	actionType := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}}
+	actionType := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}}
 	conceptGroup := &interfaces.ConceptGroup{
 		CGID: "cg-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
 		ObjectTypes: []*interfaces.ObjectType{objectType}, RelationTypes: []*interfaces.RelationType{relationType},
@@ -228,7 +228,7 @@ func TestRelationTypeWritesUseKNProxyPublisher(t *testing.T) {
 
 func TestActionTypeWritesUseKNProxyPublisher(t *testing.T) {
 	actionType := &interfaces.ActionType{
-		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"},
+		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}},
 		KNID:                   "kn-1", Branch: interfaces.MAIN_BRANCH,
 	}
 

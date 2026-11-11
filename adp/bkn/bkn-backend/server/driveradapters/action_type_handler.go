@@ -716,15 +716,26 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Build the tag-list query parameters.
 	parameter := interfaces.ActionTypesQueryParams{
-		NamePattern: namePattern,
-		Tag:         tag,
-		Branch:      branch,
-		KNID:        knID,
-		ActionType:  actionType,
+		NamePattern:       namePattern,
+		Tag:               tag,
+		Branch:            branch,
+		KNID:              knID,
+		ActionType:        actionType,
+		OperationKind:     c.Query("operation_kind"),
+		RelationOperation: c.Query("relation_operation"),
 	}
 	if objectTypeID != "" {
 		parameter.ObjectTypeIDs = []string{objectTypeID}
 	}
+	if parameter.OperationKind != "" && parameter.OperationKind != "object" && parameter.OperationKind != "relation" && parameter.OperationKind != "tool" {
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("operation_kind must be object, relation or tool"))
+		return
+	}
+	if parameter.RelationOperation != "" && parameter.RelationOperation != "create" && parameter.RelationOperation != "delete" {
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("relation_operation must be create or delete"))
+		return
+	}
+
 	parameter.Sort = pageParam.Sort
 	parameter.Direction = pageParam.Direction
 	parameter.Limit = pageParam.Limit

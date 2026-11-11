@@ -50,12 +50,14 @@ const (
 
 // ActionExecutionRequest represents the request to execute an action
 type ActionExecutionRequest struct {
-	KNID               string           `json:"-"`
-	Branch             string           `json:"-"`
-	ActionTypeID       string           `json:"-"`
-	TriggerType        string           `json:"trigger_type,omitempty"` // "manual" or "scheduled", defaults to "manual"
-	InstanceIdentities []map[string]any `json:"_instance_identities"`
-	DynamicParams      map[string]any   `json:"dynamic_params,omitempty"`
+	RelationTarget     *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput        map[string]any        `json:"object_input,omitempty"`
+	KNID               string                `json:"-"`
+	Branch             string                `json:"-"`
+	ActionTypeID       string                `json:"-"`
+	TriggerType        string                `json:"trigger_type,omitempty"` // "manual" or "scheduled", defaults to "manual"
+	InstanceIdentities []map[string]any      `json:"_instance_identities"`
+	DynamicParams      map[string]any        `json:"dynamic_params,omitempty"`
 
 	Instances []ObjectSystemInfo `json:"-"`
 	ObjDatas  []map[string]any   `json:"-"`

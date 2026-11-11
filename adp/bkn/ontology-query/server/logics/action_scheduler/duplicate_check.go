@@ -53,7 +53,7 @@ func init() {
 // instance digests are sorted so request order does not matter. dynamic_params are
 // included so unbound / virtual-instance actions (empty identity) with different
 // inputs are not incorrectly treated as duplicates.
-func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynamicParams map[string]any) (string, error) {
+func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynamicParams map[string]any, executionContext ...any) (string, error) {
 	parts := make([]string, 0, len(instances)+1)
 	for _, inst := range instances {
 		b, err := canonicalJSON.Marshal(inst.InstanceIdentity)
@@ -69,6 +69,13 @@ func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynami
 		return "", fmt.Errorf("marshal dynamic_params: %w", err)
 	}
 	parts = append(parts, "dynamic_params:"+string(paramsJSON))
+	if len(executionContext) > 0 {
+		encoded, err := canonicalJSON.Marshal(executionContext)
+		if err != nil {
+			return "", fmt.Errorf("marshal action context: %w", err)
+		}
+		parts = append(parts, "action_context:"+string(encoded))
+	}
 
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
 	return hex.EncodeToString(sum[:]), nil
